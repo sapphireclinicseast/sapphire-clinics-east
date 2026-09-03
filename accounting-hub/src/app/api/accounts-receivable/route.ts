@@ -126,7 +126,7 @@ export async function GET(req: Request) {
         // SoaSubmission batch — logged in SOA Submissions, or auto-recorded
         // when an SOA Report is generated over it.
         soaSubmissionItems: {
-          select: { submission: { select: { submittedDate: true } } },
+          select: { submission: { select: { submittedDate: true, referenceNo: true } } },
         },
       },
       // The unscoped list backs the page grid, where 500 newest is plenty. Any

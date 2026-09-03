@@ -46,6 +46,7 @@ export async function GET(req: Request) {
                 transactionDate: true,
                 arCustomDate: true,
                 patientName: true,
+                clinicianName: true,
                 items: { select: { name: true } },
                 payments: { where: { method: 'HMO' }, select: { amount: true, walletId: true } },
               },

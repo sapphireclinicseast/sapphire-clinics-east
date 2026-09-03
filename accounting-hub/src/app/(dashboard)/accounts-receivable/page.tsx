@@ -62,7 +62,7 @@ interface AROrder {
   items: { name: string; service?: { department?: string | null; hmoPaysClinicianDirect?: boolean } | null }[]
   payments: { amount: number | string; walletId?: string }[]
   arPaymentItems: { paymentId: string }[]
-  soaSubmissionItems?: { submission: { submittedDate: string } }[]
+  soaSubmissionItems?: { submission: { submittedDate: string; referenceNo?: string | null } }[]
   soaApprovalStatus?: string | null   // APPROVED | DISAPPROVED | null (pending)
 }
 
@@ -2217,6 +2217,15 @@ export default function AccountsReceivablePage() {
           const wantPaid = perHmoColSearch.status === 'paid'
           perHmoOrders = perHmoOrders.filter(o => (o.arPaymentItems.length > 0) === wantPaid)
         }
+        if (perHmoColSearch.soasub) {
+          const wantYes = perHmoColSearch.soasub === 'yes'
+          perHmoOrders = perHmoOrders.filter(o => ((o.soaSubmissionItems?.length || 0) > 0) === wantYes)
+        }
+        if (perHmoColSearch.soaref) {
+          const q = perHmoColSearch.soaref.toLowerCase()
+          perHmoOrders = perHmoOrders.filter(o =>
+            (o.soaSubmissionItems || []).some(i => (i.submission.referenceNo || '').toLowerCase().includes(q)))
+        }
         if (perHmoColSearch.hmo) {
           const q = perHmoColSearch.hmo.toLowerCase()
           perHmoOrders = perHmoOrders.filter(o => {
@@ -2322,6 +2331,7 @@ export default function AccountsReceivablePage() {
                 Amount: amt,
                 'SOA Submitted': soaDates.length ? 'Yes' : 'No',
                 'Date SOA Submitted': soaDates.length ? formatDate(soaDates[soaDates.length - 1]) : '',
+                'SOA Ref': (() => { const subs = [...(o.soaSubmissionItems || [])].sort((a, b) => a.submission.submittedDate.localeCompare(b.submission.submittedDate)); return subs.length ? (subs[subs.length - 1].submission.referenceNo || '') : '' })(),
                 'Submission Status': o.arPaymentItems.length > 0 ? 'Approved'
                   : o.soaApprovalStatus === 'APPROVED' ? 'Approved'
                   : o.soaApprovalStatus === 'DISAPPROVED' ? 'Disapproved' : 'Pending',
@@ -2415,8 +2425,9 @@ export default function AccountsReceivablePage() {
                       { label: 'HMO', field: 'hmo', searchKey: 'hmo' },
                       { label: 'Amount', field: 'amount', searchKey: 'amount' },
                       { label: 'Status', field: 'status', searchKey: 'status' },
-                      { label: 'SOA Submitted', field: '', searchKey: '' },
+                      { label: 'SOA Submitted', field: '', searchKey: 'soasub' },
                       { label: 'Date SOA Submitted', field: '', searchKey: '' },
+                      { label: 'SOA Ref', field: '', searchKey: 'soaref' },
                       { label: 'Submission Status', field: '', searchKey: '' },
                       { label: 'Invoice', field: '', searchKey: '' },
                       { label: 'Proof', field: '', searchKey: '' },
@@ -2442,6 +2453,28 @@ export default function AccountsReceivablePage() {
                           )}
                           {col.field && perHmoSortField !== col.field && <ArrowUpDown size={10} style={{ color: 'var(--light-gray)' }} />}
                         </div>
+                        {col.searchKey === 'soasub' && (
+                          <select
+                            className="mt-1 w-full px-1 py-0.5 rounded border text-xs outline-none bg-white font-normal"
+                            style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}
+                            value={perHmoColSearch.soasub || ''}
+                            onChange={e => setPerHmoColSearch(prev => ({ ...prev, soasub: e.target.value }))}
+                            onClick={e => e.stopPropagation()}>
+                            <option value="">All</option>
+                            <option value="yes">Yes</option>
+                            <option value="no">No</option>
+                          </select>
+                        )}
+                        {col.searchKey === 'soaref' && (
+                          <input
+                            className="mt-1 w-full px-2 py-0.5 rounded border text-xs outline-none font-normal"
+                            style={{ borderColor: 'var(--light-gray)' }}
+                            placeholder="Filter…"
+                            value={perHmoColSearch.soaref || ''}
+                            onChange={e => setPerHmoColSearch(prev => ({ ...prev, soaref: e.target.value }))}
+                            onClick={e => e.stopPropagation()}
+                          />
+                        )}
                         {col.searchKey === 'status' && (
                           <select
                             className="mt-1 w-full px-1 py-0.5 rounded border text-xs outline-none bg-white font-normal"
@@ -2470,9 +2503,9 @@ export default function AccountsReceivablePage() {
                 </thead>
                 <tbody>
                   {loading ? (
-                    <tr><td colSpan={13} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>Loading...</td></tr>
+                    <tr><td colSpan={14} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>Loading...</td></tr>
                   ) : perHmoOrders.length === 0 ? (
-                    <tr><td colSpan={13} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>
+                    <tr><td colSpan={14} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>
                       {/* Fetching a past year takes a moment — saying "none" while
                           the rows are still in flight is how this read as empty. */}
                       {perHmoLoading ? 'Loading transactions…' : 'No transactions found'}
@@ -2587,7 +2620,9 @@ export default function AccountsReceivablePage() {
                             SOA Submissions batch (logged there, or auto-recorded when
                             an SOA Report was generated over it). */}
                         {(() => {
-                          const soaDates = (o.soaSubmissionItems || []).map(i => i.submission.submittedDate).sort()
+                          const subs = [...(o.soaSubmissionItems || [])].sort((a, b) => a.submission.submittedDate.localeCompare(b.submission.submittedDate))
+                          const soaDates = subs.map(i => i.submission.submittedDate)
+                          const soaRef = subs.length ? (subs[subs.length - 1].submission.referenceNo || null) : null
                           const soaSubmitted = soaDates.length > 0
                           return (
                             <>
@@ -2599,6 +2634,9 @@ export default function AccountsReceivablePage() {
                               </td>
                               <td className="px-3 py-2 text-xs text-center whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>
                                 {soaSubmitted ? formatDate(soaDates[soaDates.length - 1]) : '—'}
+                              </td>
+                              <td className="px-3 py-2 text-xs font-mono whitespace-nowrap" style={{ color: soaRef ? 'var(--deep-teal)' : 'var(--mid-gray)' }}>
+                                {soaRef || '—'}
                               </td>
                               {/* Submission Status — Pending by default; Paid auto-shows Approved */}
                               <td className="px-3 py-2 text-center">

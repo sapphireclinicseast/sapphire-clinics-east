@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { Fragment, useState, useEffect, useCallback } from 'react'
 import {
   X, Upload, Download, Search, Plus, Trash2, Pencil, AlertCircle, FileText,
   Maximize2, Minimize2, ChevronDown, ChevronRight,
@@ -15,6 +15,7 @@ interface SubmissionOrder {
   transactionDate: string
   arCustomDate?: string | null
   patientName: string | null
+  clinicianName?: string | null
   items: { name: string }[]
   payments: { amount: number | string }[]
 }
@@ -39,6 +40,7 @@ interface TagOrder {
   transactionDate: string
   arCustomDate?: string | null
   patientName: string | null
+  clinicianName?: string | null
   items: { name: string }[]
   payments: { amount: number | string; walletId?: string | null }[]
   arPaymentItems: { paymentId: string }[]
@@ -260,100 +262,113 @@ export default function SubmittedForSoa({ wallets, canWrite }: { wallets: ARWall
           </p>
         </div>
       ) : (
-        <div className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
-          {submissions.map(s => {
-            const total = s.items.reduce((sum, i) => sum + i.order.payments.reduce((a, p) => a + toNum(p.amount), 0), 0)
-            const open = expandedId === s.id
-            return (
-              <div key={s.id} className="border-b last:border-b-0" style={{ borderColor: 'var(--light-gray)' }}>
-                <div className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50">
-                  <button onClick={() => setExpandedId(open ? null : s.id)} className="p-1 rounded hover:bg-gray-100">
-                    {open ? <ChevronDown size={14} style={{ color: 'var(--mid-gray)' }} /> : <ChevronRight size={14} style={{ color: 'var(--mid-gray)' }} />}
-                  </button>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold truncate" style={{ color: 'var(--charcoal)' }}>
-                      {s.wallet.patientName}
-                      {s.referenceNo && (
-                        <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-mono font-medium align-middle" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
-                          {s.referenceNo}
-                        </span>
-                      )}
-                    </p>
-                    <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
-                      Submitted {fmtDate(s.submittedDate)} · {s.items.length} session{s.items.length !== 1 ? 's' : ''} · by {s.createdBy.name}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    {urlList(s.transmittalUrls).length > 0 && (
-                      <span className="text-[10px] px-2 py-0.5 rounded-full font-medium" style={{ background: '#f0fdfa', color: 'var(--teal)' }}>
-                        {urlList(s.transmittalUrls).length} transmittal
-                      </span>
-                    )}
-                    {urlList(s.documentUrls).length > 0 && (
-                      <span className="text-[10px] px-2 py-0.5 rounded-full font-medium" style={{ background: '#eef2ff', color: '#4338ca' }}>
-                        {urlList(s.documentUrls).length} scan{urlList(s.documentUrls).length !== 1 ? 's' : ''}
-                      </span>
-                    )}
-                  </div>
-                  <span className="text-sm font-semibold w-32 text-right" style={{ color: 'var(--deep-teal)' }}>{formatCurrency(total)}</span>
-                  {canWrite && (
-                    <div className="flex items-center gap-1">
-                      <button onClick={() => openEdit(s)} className="p-1.5 rounded hover:bg-gray-100" title="Edit">
-                        <Pencil size={13} style={{ color: 'var(--mid-gray)' }} />
-                      </button>
-                      <button onClick={() => remove(s)} className="p-1.5 rounded hover:bg-red-50" title="Delete">
-                        <Trash2 size={13} style={{ color: '#dc2626' }} />
-                      </button>
-                    </div>
-                  )}
-                </div>
-                {open && (
-                  <div className="px-4 pb-4 pl-12 space-y-3">
-                    {(urlList(s.transmittalUrls).length > 0 || urlList(s.documentUrls).length > 0) && (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {urlList(s.transmittalUrls).length > 0 && (
-                          <div>
-                            <p className="text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Proof of transmittal</p>
-                            <div className="space-y-1">
-                              {urlList(s.transmittalUrls).map((u, i) => (
-                                <a key={i} href={u} target="_blank" rel="noopener noreferrer"
-                                  className="block text-xs underline truncate" style={{ color: 'var(--teal)' }}>{u.split('/').pop()}</a>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                        {urlList(s.documentUrls).length > 0 && (
-                          <div>
-                            <p className="text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Scanned documents</p>
-                            <div className="space-y-1">
-                              {urlList(s.documentUrls).map((u, i) => (
-                                <a key={i} href={u} target="_blank" rel="noopener noreferrer"
-                                  className="block text-xs underline truncate" style={{ color: 'var(--teal)' }}>{u.split('/').pop()}</a>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    {s.notes && <p className="text-xs italic" style={{ color: 'var(--mid-gray)' }}>{s.notes}</p>}
-                    <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
-                      {s.items.map(({ order: o }) => (
-                        <div key={o.id} className="flex items-center gap-3 px-3 py-2 text-xs border-b last:border-b-0" style={{ borderColor: 'var(--light-gray)' }}>
-                          <span style={{ color: 'var(--mid-gray)' }}>{fmtDate(o.arCustomDate || o.transactionDate)}</span>
-                          <span className="flex-1 truncate" style={{ color: 'var(--charcoal)' }}>
-                            {o.patientName} — {o.items.map(i => i.name).join(', ')}
-                          </span>
-                          <span className="font-medium">{formatCurrency(o.payments.reduce((a, p) => a + toNum(p.amount), 0))}</span>
+        <div className="rounded-2xl border overflow-x-auto" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
+                <th className="px-3 py-2.5 w-8" />
+                <th className="px-3 py-2.5 text-xs font-semibold whitespace-nowrap">Date</th>
+                <th className="px-3 py-2.5 text-xs font-semibold whitespace-nowrap">SOA Reference Number</th>
+                <th className="px-3 py-2.5 text-xs font-semibold">HMO</th>
+                <th className="px-3 py-2.5 text-xs font-semibold text-right whitespace-nowrap">Amount</th>
+                <th className="px-3 py-2.5" />
+              </tr>
+            </thead>
+            <tbody>
+              {submissions.map(s => {
+                const total = s.items.reduce((sum, i) => sum + i.order.payments.reduce((a, p) => a + toNum(p.amount), 0), 0)
+                const open = expandedId === s.id
+                return (
+                  <Fragment key={s.id}>
+                    <tr className="border-t hover:bg-gray-50 cursor-pointer" style={{ borderColor: 'var(--light-gray)' }}
+                      onClick={() => setExpandedId(open ? null : s.id)}>
+                      <td className="px-3 py-2.5">
+                        {open ? <ChevronDown size={14} style={{ color: 'var(--mid-gray)' }} /> : <ChevronRight size={14} style={{ color: 'var(--mid-gray)' }} />}
+                      </td>
+                      <td className="px-3 py-2.5 text-xs whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{fmtDate(s.submittedDate)}</td>
+                      <td className="px-3 py-2.5 text-xs font-mono whitespace-nowrap" style={{ color: s.referenceNo ? 'var(--deep-teal)' : 'var(--mid-gray)' }}>
+                        {s.referenceNo || '—'}
+                      </td>
+                      <td className="px-3 py-2.5 text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>
+                        {s.wallet.patientName}
+                        <span className="ml-2 font-normal" style={{ color: 'var(--mid-gray)' }}>{s.items.length} session{s.items.length !== 1 ? 's' : ''}</span>
+                      </td>
+                      <td className="px-3 py-2.5 text-sm font-semibold text-right whitespace-nowrap" style={{ color: 'var(--deep-teal)' }}>{formatCurrency(total)}</td>
+                      <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-center justify-end gap-1.5">
+                          {urlList(s.transmittalUrls).length > 0 && (
+                            <span className="text-[10px] px-2 py-0.5 rounded-full font-medium whitespace-nowrap" style={{ background: '#f0fdfa', color: 'var(--teal)' }}>
+                              {urlList(s.transmittalUrls).length} proof{urlList(s.transmittalUrls).length !== 1 ? 's' : ''}
+                            </span>
+                          )}
+                          {canWrite && (
+                            <>
+                              <button onClick={() => openEdit(s)} className="p-1.5 rounded hover:bg-gray-100" title="Edit">
+                                <Pencil size={13} style={{ color: 'var(--mid-gray)' }} />
+                              </button>
+                              <button onClick={() => remove(s)} className="p-1.5 rounded hover:bg-red-50" title="Delete">
+                                <Trash2 size={13} style={{ color: '#dc2626' }} />
+                              </button>
+                            </>
+                          )}
                         </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )
-          })}
+                      </td>
+                    </tr>
+                    {open && (
+                      <tr className="border-t" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                        <td colSpan={6} className="px-4 py-4">
+                          <div className="space-y-3">
+                            <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Recorded by {s.createdBy.name}{s.notes ? <> · <span className="italic">{s.notes}</span></> : null}</p>
+                            {(urlList(s.transmittalUrls).length > 0 || urlList(s.documentUrls).length > 0) && (
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                {urlList(s.transmittalUrls).length > 0 && (
+                                  <div>
+                                    <p className="text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Proof of transmittal</p>
+                                    <div className="space-y-1">
+                                      {urlList(s.transmittalUrls).map((u, i) => (
+                                        <a key={i} href={u} target="_blank" rel="noopener noreferrer"
+                                          className="block text-xs underline truncate" style={{ color: 'var(--teal)' }}>{u.split('/').pop()}</a>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                                {urlList(s.documentUrls).length > 0 && (
+                                  <div>
+                                    <p className="text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Scanned documents</p>
+                                    <div className="space-y-1">
+                                      {urlList(s.documentUrls).map((u, i) => (
+                                        <a key={i} href={u} target="_blank" rel="noopener noreferrer"
+                                          className="block text-xs underline truncate" style={{ color: 'var(--teal)' }}>{u.split('/').pop()}</a>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                            <div className="rounded-xl border overflow-hidden bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+                              {s.items.map(({ order: o }) => (
+                                <div key={o.id} className="flex items-center gap-3 px-3 py-2 text-xs border-b last:border-b-0" style={{ borderColor: 'var(--light-gray)' }}>
+                                  <span className="whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{fmtDate(o.arCustomDate || o.transactionDate)}</span>
+                                  <span className="flex-1 truncate" style={{ color: 'var(--charcoal)' }}>
+                                    {o.patientName} — {o.items.map(i => i.name).join(', ')}
+                                  </span>
+                                  <span className="whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{o.clinicianName || '—'}</span>
+                                  <span className="font-medium whitespace-nowrap">{formatCurrency(o.payments.reduce((a, p) => a + toNum(p.amount), 0))}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                )
+              })}
+            </tbody>
+          </table>
         </div>
       )}
+
 
       {/* ── Form modal ── */}
       {showForm && (

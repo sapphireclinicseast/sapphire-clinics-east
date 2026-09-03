@@ -24,6 +24,10 @@ interface LoaRow {
   createdAt: string
 }
 
+// Ops-hub branch codes → the AHEA/AHGH labels used everywhere else here.
+const BRANCH_LABEL: Record<string, string> = { SBEA: 'AHEA', SBGH: 'AHGH' }
+const branchLabelOf = (b: string) => BRANCH_LABEL[b] || b
+
 const STATUS_STYLE: Record<LoaRow['status'], { bg: string; fg: string; label: string }> = {
   AWAITING:  { bg: '#FDEAD6', fg: '#93460B', label: 'Awaiting document' },
   SUBMITTED: { bg: '#E3EEFB', fg: '#14507F', label: 'Document received' },
@@ -79,7 +83,7 @@ export default function LoaSubmissionsTab() {
         ) : (
           <select className={sel} style={selStyle} value={fBranch} onChange={e => setFBranch(e.target.value)}>
             <option value="">All branches</option>
-            {branches.map(b => <option key={b} value={b}>{b}</option>)}
+            {branches.map(b => <option key={b} value={b}>{branchLabelOf(b)}</option>)}
           </select>
         )}
         <select className={sel} style={selStyle} value={fHmo} onChange={e => setFHmo(e.target.value)}>
@@ -127,7 +131,7 @@ export default function LoaSubmissionsTab() {
                 <tr key={r.id} style={{ borderBottom: '1px solid #EEF1F3' }}>
                   <td className="px-4 py-3 font-semibold" style={{ color: 'var(--dark-gray)' }}>{r.patientName || '—'}</td>
                   <td className="px-4 py-3">{r.hmoName === 'UNSPECIFIED' ? <span style={{ color: '#B0B8BC' }}>Not set</span> : r.hmoName}</td>
-                  <td className="px-4 py-3">{r.branch}</td>
+                  <td className="px-4 py-3">{branchLabelOf(r.branch)}</td>
                   <td className="px-4 py-3" style={{ maxWidth: 240 }}>
                     {r.services.length ? r.services.join(', ') : <span style={{ color: '#B0B8BC' }}>—</span>}
                   </td>
@@ -141,7 +145,8 @@ export default function LoaSubmissionsTab() {
                     {/* The file itself stays in the Operations Hub behind its own
                         branch check — this only reports whether one exists. */}
                     {r.hasFile
-                      ? <span style={{ color: '#166534', fontWeight: 600 }}>On file</span>
+                      ? <a href={`/api/accounts-receivable/loa/${r.id}/file`} target="_blank" rel="noopener noreferrer"
+                          className="hover:underline" style={{ color: '#166534', fontWeight: 600 }}>View document</a>
                       : <span style={{ color: '#B0B8BC' }}>Not yet</span>}
                   </td>
                   <td className="px-4 py-3">
