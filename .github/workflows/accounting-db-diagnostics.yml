@@ -52,6 +52,9 @@ jobs:
           echo "══════════ HMO wallets: active vs inactive ══════════"
           $PSQL "SELECT \"walletType\"::text, \"isActive\", COUNT(*) FROM \"DigitalWallet\" GROUP BY 1,2 ORDER BY 1,2"
 
+          echo "══════════ accounting_app recent errors (48h) ══════════"
+          docker logs accounting_app --since 48h 2>&1 | grep -iE "error|prisma|unhandled" | tail -40
+
           echo "══════════ HMO-paid orders per month, 2025 ══════════"
           $PSQL "SELECT to_char(o.\"transactionDate\",'YYYY-MM') m, COUNT(DISTINCT o.id)
             FROM \"Order\" o JOIN \"OrderPayment\" p ON p.\"orderId\"=o.id AND p.method='HMO'
