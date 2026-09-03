@@ -9,7 +9,7 @@
 // a dropdown. Hiding the control is a courtesy, never the control itself.
 
 import { useCallback, useEffect, useState } from 'react'
-import { FileText, QrCode, Download, Settings, X, Trash2, Upload, Info, Copy } from 'lucide-react'
+import { FileText, QrCode, Download, Settings, X, Trash2, Upload, Info, Copy, RefreshCw } from 'lucide-react'
 
 interface Option { id: string; name: string; active: boolean; sortOrder: number }
 interface BranchOption { value: string; label: string; shortCode: string }
@@ -189,7 +189,8 @@ export default function LoaSubmissionsPage() {
             {branches.map(b => <option key={b.shortCode} value={b.shortCode}>{b.label}</option>)}
           </select>
         )}
-        <select value={fHmo} onChange={e => setFHmo(e.target.value)} style={input}>
+        <select value={fHmo} onChange={e => setFHmo(e.target.value)} style={input}
+                title="HMO providers come from the HMO digital wallets in Accounting Hub → Point of Sale">
           <option value="">All HMOs</option>
           {hmos.map(h => <option key={h.id} value={h.name}>{h.name}</option>)}
         </select>
@@ -412,7 +413,29 @@ function SettingsModal({
   const [tab, setTab] = useState<'hmo' | 'service'>('hmo')
   const [newName, setNewName] = useState('')
   const [busy, setBusy] = useState(false)
+  const [syncMsg, setSyncMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const list = tab === 'hmo' ? hmos : services
+
+  async function syncHmos() {
+    setBusy(true); setSyncMsg(null)
+    try {
+      const r = await fetch('/api/loa/settings/sync-hmos', { method: 'POST' })
+      const d = await r.json()
+      if (!r.ok) { setSyncMsg({ ok: false, text: d.error ?? 'Sync failed' }); return }
+      const bits = [
+        d.added.length   ? `${d.added.length} added`       : null,
+        d.restored.length? `${d.restored.length} restored` : null,
+        d.retired.length ? `${d.retired.length} retired`   : null,
+      ].filter(Boolean)
+      setSyncMsg({
+        ok: true,
+        text: bits.length
+          ? `Synced — ${bits.join(', ')}. ${d.unchanged} already matched.`
+          : `Already up to date — all ${d.unchanged} providers match the wallets.`,
+      })
+      onChanged()
+    } finally { setBusy(false) }
+  }
 
   async function post(body: Record<string, unknown>) {
     setBusy(true)
@@ -449,20 +472,45 @@ function SettingsModal({
           ))}
         </div>
 
-        <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.85rem' }}>
-          <input
-            value={newName} onChange={e => setNewName(e.target.value)}
-            placeholder={tab === 'hmo' ? 'Add an HMO…' : 'Add a service…'}
-            style={{ ...field, marginBottom: 0 }}
-          />
-          <button
-            disabled={busy || !newName.trim()}
-            onClick={async () => { await post({ name: newName }); setNewName('') }}
-            style={{ ...field, marginBottom: 0, width: 'auto', cursor: 'pointer', fontWeight: 700, background: '#ED6823', color: '#fff', border: 'none' }}
-          >
-            Add
-          </button>
-        </div>
+        {tab === 'hmo' ? (
+          <div style={{
+            background: '#F7F9FA', border: '1px solid #E5E9EC', borderRadius: 10,
+            padding: '0.75rem 0.85rem', marginBottom: '0.85rem',
+          }}>
+            <p style={{ fontSize: '0.82rem', color: '#46555C', lineHeight: 1.55, margin: '0 0 0.6rem' }}>
+              This list mirrors the <strong>HMO digital wallets</strong> in the Accounting Hub
+              (Point of Sale → Digital Wallet → HMO). Add a provider there and it appears
+              here — it syncs on a schedule, or press the button to pull it now.
+            </p>
+            <button
+              disabled={busy}
+              onClick={syncHmos}
+              style={{ ...field, marginBottom: 0, cursor: 'pointer', fontWeight: 700, background: '#1C2B30', color: '#fff', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}
+            >
+              <RefreshCw size={15} /> {busy ? 'Syncing…' : 'Sync from Accounting Hub'}
+            </button>
+            {syncMsg && (
+              <p style={{ fontSize: '0.8rem', marginTop: '0.6rem', marginBottom: 0, lineHeight: 1.5, color: syncMsg.ok ? '#166534' : '#991B1B' }}>
+                {syncMsg.text}
+              </p>
+            )}
+          </div>
+        ) : (
+          <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.85rem' }}>
+            <input
+              value={newName} onChange={e => setNewName(e.target.value)}
+              placeholder="Add a service…"
+              style={{ ...field, marginBottom: 0 }}
+            />
+            <button
+              disabled={busy || !newName.trim()}
+              onClick={async () => { await post({ name: newName }); setNewName('') }}
+              style={{ ...field, marginBottom: 0, width: 'auto', cursor: 'pointer', fontWeight: 700, background: '#ED6823', color: '#fff', border: 'none' }}
+            >
+              Add
+            </button>
+          </div>
+        )}
 
         <div style={{ border: '1px solid #E5E9EC', borderRadius: 8, overflow: 'hidden' }}>
           {list.length === 0 && <p style={{ padding: '0.75rem', color: '#8A9499', fontSize: '0.85rem' }}>Nothing here yet.</p>}
@@ -472,7 +520,8 @@ function SettingsModal({
                 {o.name}
               </span>
               {/* Retire rather than delete: letters already filed name this
-                  value, and removing it would blank their record. */}
+                  value, and removing it would blank their record. The HMO sync
+                  retires the same way when a wallet disappears. */}
               <button
                 disabled={busy}
                 onClick={() => post({ id: o.id, active: !o.active })}
