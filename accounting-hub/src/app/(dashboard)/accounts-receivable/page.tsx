@@ -487,6 +487,44 @@ export default function AccountsReceivablePage() {
   const [perHmoWallet, setPerHmoWallet] = useState('')
   // Fullscreen overlay for the Per HMO table — it carries a lot of columns.
   const [perHmoExpanded, setPerHmoExpanded] = useState(false)
+  // Adjustable column widths (px by column label), dragged on the header edge
+  // and remembered per browser. Empty = automatic layout. Double-click a
+  // handle to reset every column.
+  const [perHmoColW, setPerHmoColW] = useState<Record<string, number>>({})
+  useEffect(() => {
+    try { const s = localStorage.getItem('perHmoColWidths'); if (s) setPerHmoColW(JSON.parse(s)) } catch { /* ignore */ }
+  }, [])
+  const startPerHmoColResize = (e: React.MouseEvent, label: string) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const th = (e.currentTarget as HTMLElement).closest('th') as HTMLTableCellElement | null
+    const table = th?.closest('table')
+    if (!th || !table) return
+    // Snapshot every column's rendered width first, so switching the table to
+    // fixed layout doesn't reshuffle the others while one is being dragged.
+    const snap: Record<string, number> = {}
+    for (const h of Array.from(table.querySelectorAll('thead th')) as HTMLTableCellElement[]) {
+      const l = h.dataset.collabel
+      if (l) snap[l] = h.offsetWidth
+    }
+    const startX = e.clientX
+    const startW = th.offsetWidth
+    const apply = (clientX: number) => ({ ...snap, [label]: Math.max(56, startW + (clientX - startX)) })
+    const onMove = (ev: MouseEvent) => setPerHmoColW(apply(ev.clientX))
+    const onUp = (ev: MouseEvent) => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+      const next = apply(ev.clientX)
+      setPerHmoColW(next)
+      try { localStorage.setItem('perHmoColWidths', JSON.stringify(next)) } catch { /* ignore */ }
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
+  const resetPerHmoColW = () => {
+    setPerHmoColW({})
+    try { localStorage.removeItem('perHmoColWidths') } catch { /* ignore */ }
+  }
   useEffect(() => {
     if (!perHmoExpanded) return
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setPerHmoExpanded(false) }
@@ -2350,9 +2388,10 @@ export default function AccountsReceivablePage() {
               </div>{/* /ml-auto flex */}
             </div>{/* /filters row */}
 
-            {/* Sortable/filterable table */}
-            <div className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
-              <table className="w-full text-sm">
+            {/* Sortable/filterable table — drag a header's right edge to resize
+                that column (double-click the edge resets all widths) */}
+            <div className="rounded-2xl border overflow-x-auto" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+              <table className="w-full text-sm" style={{ tableLayout: Object.keys(perHmoColW).length ? 'fixed' : undefined }}>
                 <thead>
                   <tr style={{ background: 'var(--off-white)' }}>
                     {[
@@ -2370,7 +2409,19 @@ export default function AccountsReceivablePage() {
                       { label: 'Invoice', field: '', searchKey: '' },
                       { label: 'Proof', field: '', searchKey: '' },
                     ].map(col => (
-                      <th key={col.label} className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>
+                      <th key={col.label} data-collabel={col.label} className="px-3 py-2 relative"
+                        style={{ color: 'var(--charcoal)', width: perHmoColW[col.label] || undefined }}>
+                        {/* drag handle: resize this column; double-click resets all */}
+                        <span
+                          onMouseDown={e => startPerHmoColResize(e, col.label)}
+                          onDoubleClick={e => { e.stopPropagation(); resetPerHmoColW() }}
+                          onClick={e => e.stopPropagation()}
+                          className="absolute top-0 right-0 h-full cursor-col-resize select-none"
+                          style={{ width: 7, borderRight: '2px solid transparent' }}
+                          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderRight = '2px solid var(--teal)' }}
+                          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderRight = '2px solid transparent' }}
+                          title="Drag to resize · double-click to reset all columns"
+                        />
                         <div className={`flex items-center gap-1 ${col.field ? 'cursor-pointer select-none' : ''}`}
                           onClick={() => col.field && togglePerHmoSort(col.field)}>
                           <span className="text-xs font-semibold">{col.label}</span>
