@@ -734,6 +734,14 @@ model DeckingSlot {
   // Defaults to CASH because that is the overwhelming majority and because an
   // existing row has to land somewhere; it is not an assertion about the slot.
   paymentType String  @default("CASH")  // "CASH" | "HMO" | "GL"
+  // A SPED CLASS booking, as opposed to a 1-on-1 SPED therapy session. Both are
+  // department "SPED" but they are different bookings for different groups of
+  // patients, so department alone cannot tell them apart — filtering on it put
+  // every 1-on-1 onto the class board.
+  //
+  // Defaults false: everything that existed before this column is a 1-on-1,
+  // which is what it was created as.
+  isClass    Boolean  @default(false)
   disabled   Boolean  @default(false)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt

@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { staffId, patientId, dayOfWeek, startTime, endTime, branch, department, notes, disabled, paymentType } = await req.json()
+  const { staffId, patientId, dayOfWeek, startTime, endTime, branch, department, notes, disabled, paymentType, isClass } = await req.json()
   if (!staffId || !dayOfWeek || !startTime || !endTime)
     return NextResponse.json({ error: 'staffId, dayOfWeek, startTime, endTime are required' }, { status: 400 })
 
@@ -49,12 +49,13 @@ export async function POST(req: NextRequest) {
     // Max 3 patients per time slot — a therapist runs one-to-one or a small
     // pair, so a fourth name in an hour is a mistake worth blocking.
     //
-    // SPED is exempt: a SPED session IS a class. Capping it at 3 would cap the
-    // class size at 3, which is not a rule anyone asked for — it is this limit
-    // leaking into a context it was never written for.
-    if (department !== 'SPED') {
+    // Class bookings are exempt: a class is many children by definition, and
+    // capping it at 3 would cap the class size. Keyed off isClass rather than
+    // department, because a 1-on-1 SPED session is still 1-on-1 and keeps the
+    // cap — exempting the whole department also exempted those.
+    if (!isClass) {
       const existing = await prisma.deckingSlot.count({
-        where: { staffId, dayOfWeek, startTime, disabled: false },
+        where: { staffId, dayOfWeek, startTime, disabled: false, isClass: false },
       })
       if (existing >= 3)
         return NextResponse.json({ error: 'Maximum 3 patients per time slot' }, { status: 400 })
@@ -70,6 +71,7 @@ export async function POST(req: NextRequest) {
       // coding, and an unrecognised value would render as an uncoloured cell
       // that looks like plain cash.
       paymentType: PAYMENT_TYPES.includes(paymentType) ? paymentType : 'CASH',
+      isClass: isClass === true,
       disabled: isDisabled,
     },
     include: {
