@@ -1,6 +1,7 @@
 'use client'
 
 import { Suspense, useState, useEffect, useCallback, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { toChequeInput } from '@/lib/cheque-number'
 import { AccountPicker, type PickableAccount } from '@/components/AccountPicker'
 import { useSearchParams } from 'next/navigation'
@@ -34,16 +35,34 @@ const DEPARTMENTS = ['ADMIN', 'PT', 'OT', 'SLP', 'SPED', 'PSYCH', 'MD', 'ORTHOSI
 const CM_DEPTS = ['PT', 'OT', 'SLP', 'SPED', 'MD', 'PSYCHOLOGY', 'ORTHOSIS', 'TRAINING', 'RETAIL'] as const
 function DeptTagCell({ value, disabled, onSave }: { value: string[]; disabled?: boolean; onSave: (next: string[]) => void }) {
   const [open, setOpen] = useState(false)
+  // Portal positioning: the grid scrolls in an overflow container that clipped
+  // this dropdown (the tail of the list was unreachable), so the panel renders
+  // to <body> at a fixed position instead, clamped to stay on screen.
+  const btnRef = useRef<HTMLButtonElement>(null)
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
+  const toggleOpen = () => {
+    if (!open && btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect()
+      setPos({
+        top: Math.max(8, Math.min(r.bottom + 4, window.innerHeight - 308)),
+        left: Math.max(8, Math.min(r.left, window.innerWidth - 196)),
+      })
+    }
+    setOpen(o => !o)
+  }
   const label = value.length ? value.map(d => d === 'PSYCHOLOGY' ? 'PSYCH' : d === 'ORTHOSIS' ? 'ORTHO' : d).join(', ') : 'All'
   return (
     <div className="relative">
-      <button type="button" disabled={disabled} onClick={() => setOpen(o => !o)}
+      <button ref={btnRef} type="button" disabled={disabled} onClick={toggleOpen}
         className="px-2 py-1.5 w-full text-left text-sm whitespace-nowrap rounded"
         style={{ minWidth: 120, color: value.length ? 'var(--charcoal)' : 'var(--mid-gray)' }}>
         {label} ▾
       </button>
-      {open && (
-        <div className="absolute z-30 mt-1 p-2 rounded-xl bg-white shadow-lg" style={{ border: '1px solid var(--light-gray)', minWidth: 180 }}>
+      {open && pos && createPortal(
+        <>
+          <div className="fixed inset-0 z-[59]" onClick={() => setOpen(false)} />
+          <div className="fixed z-[60] p-2 rounded-xl bg-white shadow-lg overflow-y-auto"
+            style={{ top: pos.top, left: pos.left, maxHeight: 300, border: '1px solid var(--light-gray)', minWidth: 180 }}>
           <label className="flex items-center gap-2 px-1 py-1 text-xs font-semibold cursor-pointer" style={{ color: 'var(--charcoal)' }}>
             <input type="checkbox" checked={value.length === 0} onChange={() => { onSave([]); }} className="accent-current" />
             All (use rent %)
@@ -59,7 +78,9 @@ function DeptTagCell({ value, disabled, onSave }: { value: string[]; disabled?: 
           ))}
           <button type="button" onClick={() => setOpen(false)}
             className="mt-1 w-full py-1 rounded-lg text-xs font-medium" style={{ background: 'var(--light-gray)' }}>Done</button>
-        </div>
+          </div>
+        </>,
+        document.body
       )}
     </div>
   )
