@@ -51,7 +51,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ tok
   const [hmos, services, branches] = await Promise.all([
     prisma.hmoProvider.findMany({
       where: { active: true },
-      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+      // Alphabetical, matching the standing form's picker.
+      orderBy: { name: 'asc' },
       select: { id: true, name: true },
     }),
     prisma.loaServiceOption.findMany({
