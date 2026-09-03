@@ -55,6 +55,23 @@ jobs:
           echo "══════════ accounting_app recent errors (48h) ══════════"
           docker logs accounting_app --since 48h 2>&1 | grep -iE "error|prisma|unhandled" | tail -40
 
+          echo "══════════ Oct 2025 HMO orders: arCustomDate + branch profile ══════════"
+          $PSQL "SELECT o.branch::text,
+              COUNT(*) total,
+              COUNT(o.\"arCustomDate\") with_custom_date,
+              MIN(o.\"arCustomDate\")::date min_custom, MAX(o.\"arCustomDate\")::date max_custom
+            FROM \"Order\" o
+            WHERE o.\"transactionDate\" >= '2025-10-01' AND o.\"transactionDate\" < '2025-11-01'
+              AND EXISTS (SELECT 1 FROM \"OrderPayment\" p WHERE p.\"orderId\"=o.id AND p.method='HMO')
+            GROUP BY 1"
+
+          echo "══════════ Exact API where-clause replica (2025-10-10..2025-10-31, no branch) ══════════"
+          $PSQL "SELECT COUNT(*) FROM \"Order\" o
+            WHERE o.status <> 'VOIDED'
+              AND EXISTS (SELECT 1 FROM \"OrderPayment\" p WHERE p.\"orderId\"=o.id AND p.method='HMO')
+              AND ((o.\"arCustomDate\" IS NOT NULL AND o.\"arCustomDate\" >= '2025-10-10T00:00:00Z' AND o.\"arCustomDate\" <= '2025-10-31T23:59:59.999Z')
+                OR (o.\"arCustomDate\" IS NULL AND o.\"transactionDate\" >= '2025-10-10T00:00:00Z' AND o.\"transactionDate\" <= '2025-10-31T23:59:59.999Z'))"
+
           echo "══════════ HMO-paid orders per month, 2025 ══════════"
           $PSQL "SELECT to_char(o.\"transactionDate\",'YYYY-MM') m, COUNT(DISTINCT o.id)
             FROM \"Order\" o JOIN \"OrderPayment\" p ON p.\"orderId\"=o.id AND p.method='HMO'
