@@ -44,3 +44,6 @@ next-env.d.ts
 verdana-store/node_modules/
 .claude/settings.local.json
 .claude/worktrees/
+
+# Patient LOA documents — uploaded at runtime, never committed.
+uploads/loa/

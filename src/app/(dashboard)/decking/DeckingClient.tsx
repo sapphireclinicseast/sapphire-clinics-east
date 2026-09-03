@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { ChevronDown, ChevronUp, Plus, X, Settings2, Layers, Ban } from 'lucide-react'
 import PatientRequestsPanel from './PatientRequestsPanel'
+import SlotLoaPanel, { type LoaLite } from './SlotLoaPanel'
 import { DECK_SECTIONS, inSection, arrangementFor, type DeckSection } from '@/lib/work-arrangement'
 import DeckingPerDay from './DeckingPerDay'
 import SpedClassBoard from './SpedClassBoard'
@@ -256,7 +257,7 @@ function CustomSlotModal({ staff, activeBranch, workDays, onClose, onSave }: {
 }
 
 // ─── Therapist Row ─────────────────────────────────────────────────────────────
-function TherapistRow({ staff, activeBranch, config, slots, defaultHours, onSaveConfig, onSaveSlot, onDeleteSlot }: {
+function TherapistRow({ staff, activeBranch, config, slots, defaultHours, onSaveConfig, onSaveSlot, onDeleteSlot, onOpenLoa }: {
   staff: StaffMember
   activeBranch: string
   config: TherapistConfig | undefined
@@ -265,6 +266,8 @@ function TherapistRow({ staff, activeBranch, config, slots, defaultHours, onSave
   onSaveConfig: (staffId: string, data: { workDays: string[]; startTime: string; endTime: string; useDefault: boolean; branch: string; department: string }) => Promise<void>
   onSaveSlot: (data: { staffId: string; patientId: string | null; dayOfWeek: string; startTime: string; endTime: string; branch: string; department: string; notes: string | null; disabled?: boolean; isClass?: boolean }) => Promise<void>
   onDeleteSlot: (id: string) => Promise<void>
+  /** Raise / open the Letter of Authorization for an HMO slot. */
+  onOpenLoa?: (slot: DeckingSlot) => void
 }) {
   const [configOpen, setConfigOpen] = useState(!config)
   // Optimistic: the grid is scanned constantly, and a colour that lags a click
@@ -634,6 +637,25 @@ function TherapistRow({ staff, activeBranch, config, slots, defaultHours, onSave
                                     }}>
                                     {PAY_TYPES.map(t => <option key={t} value={t}>{PAY_STYLE[t].label}</option>)}
                                   </select>
+                                  {/* An HMO session cannot proceed without an
+                                      approved LOA on file, so the letter is
+                                      raised from the slot that needs it rather
+                                      than re-keyed in another module. Shown only
+                                      for HMO — cash and GL do not use one. */}
+                                  {pay === 'HMO' && (
+                                    <button
+                                      onClick={() => onOpenLoa?.(s2)}
+                                      title="Letter of Authorization for this session"
+                                      style={{
+                                        background: 'rgba(255,255,255,0.65)',
+                                        border: `1px solid ${st.border}`, borderRadius: 3,
+                                        color: st.fg, fontSize: '0.6rem', fontWeight: 800,
+                                        letterSpacing: '0.03em', padding: '0 3px',
+                                        cursor: 'pointer', flexShrink: 0, lineHeight: 1.6,
+                                      }}>
+                                      LOA
+                                    </button>
+                                  )}
                                   <button onClick={() => handleClearSlot(s2)}
                                     style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#B0453A', padding: 0, lineHeight: 1, flexShrink: 0 }}
                                     title="Remove">
@@ -814,6 +836,10 @@ export default function DeckingClient({ role }: { role: string }) {
   const [activeMainTab, setActiveMainTab] = useState<'decking' | 'settings'>('decking')
   const [nameFilter, setNameFilter] = useState('')
   const [activeSection, setActiveSection] = useState<DeckSection>('onsite')
+  // LOA raised from an HMO slot — kept on the board rather than routing to the
+  // LOA module, because front desk are mid-scan of the grid when they need it.
+  const [loaPanel, setLoaPanel] = useState<{ loa: LoaLite; slot: DeckingSlot } | null>(null)
+  const [loaBusy, setLoaBusy] = useState<string | null>(null)
 
   const [staff, setStaff] = useState<StaffMember[]>([])
   const [configs, setConfigs] = useState<TherapistConfig[]>([])
@@ -924,6 +950,42 @@ export default function DeckingClient({ role }: { role: string }) {
     // negative and needs no clamp to hide an inconsistency.
     return { total, booked, blocked, open: total - booked - blocked }
   })()
+
+  // Raise (or reopen) the Letter of Authorization for an HMO slot.
+  //
+  // Reuses an existing letter for the same slot rather than creating a second
+  // one — front desk click this to check on a letter at least as often as to
+  // start one, and two records for one session would split the paper trail.
+  async function openLoaForSlot(slot: DeckingSlot) {
+    setLoaBusy(slot.id)
+    try {
+      const found = await fetch(`/api/loa?slotId=${slot.id}`).then(r => r.json()).catch(() => null)
+      let loa = found?.submissions?.[0]
+
+      if (!loa) {
+        const res = await fetch('/api/loa', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            deckingSlotId: slot.id,
+            branch: activeBranch,
+            // The board knows the department; the HMO itself is what front desk
+            // fills in, so the letter starts unnamed rather than guessing.
+            hmoName: 'UNSPECIFIED',
+            patientName: slot.patient ? `${slot.patient.lastName}, ${slot.patient.firstName}` : null,
+          }),
+        })
+        if (!res.ok) {
+          alert((await res.json()).error ?? 'Could not create the LOA')
+          return
+        }
+        loa = await res.json()
+      }
+      setLoaPanel({ loa, slot })
+    } finally {
+      setLoaBusy(null)
+    }
+  }
 
   async function handleSaveConfig(staffId: string, data: { workDays: string[]; startTime: string; endTime: string; useDefault: boolean; branch: string; department: string }) {
     await fetch('/api/decking/therapists', {
@@ -1150,6 +1212,7 @@ export default function DeckingClient({ role }: { role: string }) {
                     onSaveConfig={handleSaveConfig}
                     onSaveSlot={handleSaveSlot}
                     onDeleteSlot={handleDeleteSlot}
+                    onOpenLoa={openLoaForSlot}
                   />
                 ))}
               </div>
@@ -1205,6 +1268,29 @@ export default function DeckingClient({ role }: { role: string }) {
             )}
           </div>
         </div>
+      )}
+      {/* Opening an LOA does a round trip (find-or-create), and the board gives
+          no other sign the click registered. */}
+      {loaBusy && !loaPanel && (
+        <div style={{
+          position: 'fixed', bottom: 18, right: 18, zIndex: 60,
+          background: '#1C2B30', color: '#fff', borderRadius: 8,
+          padding: '0.5rem 0.85rem', fontSize: '0.8rem', fontWeight: 600,
+        }}>
+          Opening LOA…
+        </div>
+      )}
+
+      {/* Raised from an HMO cell — see openLoaForSlot. */}
+      {loaPanel && (
+        <SlotLoaPanel
+          loa={loaPanel.loa}
+          patientLabel={loaPanel.slot.patient
+            ? `${loaPanel.slot.patient.lastName}, ${loaPanel.slot.patient.firstName}`
+            : '(slot)'}
+          sessionLabel={`${loaPanel.slot.department} · ${loaPanel.slot.dayOfWeek} ${loaPanel.slot.startTime}–${loaPanel.slot.endTime}`}
+          onClose={() => setLoaPanel(null)}
+        />
       )}
     </div>
   )
