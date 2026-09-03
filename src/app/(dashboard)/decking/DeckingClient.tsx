@@ -8,6 +8,7 @@ import SlotLoaPanel, { type LoaLite } from './SlotLoaPanel'
 import { DECK_SECTIONS, inSection, arrangementFor, type DeckSection } from '@/lib/work-arrangement'
 import DeckingPerDay from './DeckingPerDay'
 import SpedClassBoard from './SpedClassBoard'
+import InterdepartmentBoard from './InterdepartmentBoard'
 import { branchLabel } from '@/lib/branch-label'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -918,6 +919,26 @@ export default function DeckingClient({ role }: { role: string }) {
   // cell on a therapist's grid, not a DeckingSlot row: empty cells have no row,
   // and a cell holding two patients is still one slot. Counting rows would
   // report a booked pair as two slots and miss every open hour entirely.
+  // Hours each consultant has given this branch, per department per day. This
+  // is CAPACITY — the time offered — as opposed to the decked sessions Per Day
+  // already totals. Built from the same stored config times the grid draws
+  // from, so the two can never describe different weeks.
+  const perDayCapacity = (() => {
+    const cap: Record<string, Record<string, number>> = {}
+    for (const st of staff) {
+      if (isIntern(st)) continue
+      if (!(st.branch === activeBranch || (st.extraBranches ?? []).includes(activeBranch))) continue
+      const cfg = configMap.get(st.id)
+      if (!cfg) continue                       // no work days set — offered nothing
+      const hours = generateHourlySlots(cfg.startTime, cfg.endTime).length
+      for (const d of ((cfg.workDays as string[]) ?? [])) {
+        cap[st.department] ??= {}
+        cap[st.department][d] = (cap[st.department][d] ?? 0) + hours
+      }
+    }
+    return cap
+  })()
+
   const slotSummary = (() => {
     let total = 0, booked = 0, blocked = 0
     for (const st of filteredStaff) {
@@ -1104,7 +1125,7 @@ export default function DeckingClient({ role }: { role: string }) {
             )}
             {/* Name search — hidden on Per Day, which totals slots rather than
                 listing people, so filtering by name would change nothing. */}
-            {activeSection !== 'perday' && activeSection !== 'sped' && (
+            {activeSection !== 'perday' && activeSection !== 'sped' && activeSection !== 'crosssell' && (
             <input
               style={{ border: '1.5px solid rgba(26,123,138,0.3)', borderRadius: '0.5rem', padding: '0.4rem 0.75rem', fontSize: '0.82rem', outline: 'none', color: 'var(--charcoal)', minWidth: '180px' }}
               placeholder="Filter by name…"
@@ -1117,7 +1138,7 @@ export default function DeckingClient({ role }: { role: string }) {
           {/* Colour key. The grid is scanned, not read — without a key the fills
               are decoration, and front desk keeps going back to the sheet they
               already know how to interpret. */}
-          {activeSection !== 'perday' && activeSection !== 'sped' && (
+          {activeSection !== 'perday' && activeSection !== 'sped' && activeSection !== 'crosssell' && (
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.9rem', marginBottom: '0.85rem', fontSize: '0.72rem', color: 'var(--mid-gray)' }}>
               {([
                 { bg: OPEN_BG, border: OPEN_BORDER, label: 'Available' },
@@ -1136,7 +1157,7 @@ export default function DeckingClient({ role }: { role: string }) {
 
           {/* Department chips — hidden on Per Day, which is an all-department
               aggregate: a department filter there would contradict the table. */}
-          {activeSection !== 'perday' && activeSection !== 'sped' && !loadingStaff && presentDepts.length > 0 && (
+          {activeSection !== 'perday' && activeSection !== 'sped' && activeSection !== 'crosssell' && !loadingStaff && presentDepts.length > 0 && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1.25rem' }}>
               {presentDepts.map(d => (
                 <button key={d} onClick={() => setActiveDept(d)}
@@ -1153,13 +1174,45 @@ export default function DeckingClient({ role }: { role: string }) {
           {/* Single column until lg, so the requests panel drops below the
               board on laptops and tablets instead of squeezing it. */}
           <div className={`grid gap-4 items-start ${
-            activeSection === 'all' || activeSection === 'perday' || activeSection === 'sped'
+            activeSection === 'all' || activeSection === 'perday' || activeSection === 'sped' || activeSection === 'crosssell'
               ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]'
           }`}>
             <div style={{ minWidth: 0 }}>
+            {/* On All the card cannot sit in the right column — that section is
+                full width — so it runs across the top instead. Same numbers,
+                same derivation; All simply has no arrangement filter, so this
+                totals every mode of delivery at once. */}
+            {activeSection === 'all' && !loadingStaff && !loadingData && (
+              <div style={{ background: '#fff', border: '1px solid var(--light-gray)', borderRadius: '0.75rem', padding: '0.85rem 1rem', marginBottom: '0.75rem' }}>
+                <div style={{ fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--mid-gray)', marginBottom: '0.6rem' }}>
+                  Slots &mdash; {branchLabel(activeBranch) ?? activeBranch} &middot; {activeDept} &middot; all modes of delivery
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '0.5rem', maxWidth: 520 }}>
+                  {([
+                    { label: 'Total',  value: slotSummary.total,  fg: '#1F2937', bg: '#F1F3F5' },
+                    { label: 'Booked', value: slotSummary.booked, fg: '#14507F', bg: '#E3EEFB' },
+                    { label: 'Open',   value: slotSummary.open,   fg: '#166534', bg: '#DFF5E4' },
+                  ]).map(k => (
+                    <div key={k.label} style={{ background: k.bg, borderRadius: '0.5rem', padding: '0.5rem 0.4rem', textAlign: 'center' }}>
+                      <div style={{ fontSize: '1.25rem', fontWeight: 800, color: k.fg, lineHeight: 1.1, fontVariantNumeric: 'tabular-nums' }}>{k.value}</div>
+                      <div style={{ fontSize: '0.66rem', fontWeight: 700, color: k.fg, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{k.label}</div>
+                    </div>
+                  ))}
+                </div>
+                {slotSummary.blocked > 0 && (
+                  <p style={{ fontSize: '0.7rem', color: 'var(--mid-gray)', marginTop: '0.5rem' }}>
+                    {slotSummary.blocked} marked unavailable, not counted as open.
+                  </p>
+                )}
+              </div>
+            )}
             {/* Staff list */}
             {loadingStaff || loadingData ? (
               <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--mid-gray)', fontSize: '0.85rem' }}>Loading…</div>
+            ) : activeSection === 'crosssell' ? (
+              /* A patient list, not a roster: which patients on this branch's
+                 board see more than one department, and which do not yet. */
+              <InterdepartmentBoard branch={activeBranch} />
             ) : activeSection === 'sped' ? (
               /* SPED gets the branch's SPED slots and SPED staff, whatever the
                  department chip says — the chip is hidden here precisely because
@@ -1195,6 +1248,7 @@ export default function DeckingClient({ role }: { role: string }) {
                 slots={slots}
                 departments={presentDepts}
                 branchName={branchLabel(activeBranch) ?? activeBranch}
+                capacity={perDayCapacity}
               />
             ) : filteredStaff.length === 0 ? (
               <div style={{ background: '#fff', border: '1px solid var(--light-gray)', borderRadius: '0.75rem', padding: '3rem', textAlign: 'center' }}>
@@ -1222,7 +1276,7 @@ export default function DeckingClient({ role }: { role: string }) {
               </div>
             )}
             </div>
-            {activeSection !== 'all' && activeSection !== 'perday' && activeSection !== 'sped' && (
+            {activeSection !== 'all' && activeSection !== 'perday' && activeSection !== 'sped' && activeSection !== 'crosssell' && (
               <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                 {/* Capacity for the current branch / department / section, in the
                     space this column used to leave empty. Open is derived
