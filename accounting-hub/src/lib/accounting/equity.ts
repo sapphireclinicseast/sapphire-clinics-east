@@ -92,6 +92,18 @@ export async function repostCommonIssuance(db: Db, commonShareId: string, create
   })
   if (!share) return null
 
+  // A holding created by a share transfer (bought from another shareholder)
+  // must never carry an issuance entry: the equity was already credited when
+  // the shares were first issued to the seller, and no consideration reached
+  // the company. Reverse anything stale and stop here — even if someone later
+  // sets a bank account on the row.
+  const transferIn = await db.shareTransfer.findFirst({ where: { toCommonShareId: commonShareId }, select: { id: true } })
+  if (transferIn) {
+    await reverseEquityJournal(db, 'EQUITY_COMMON', commonShareId)
+    await db.commonShare.update({ where: { id: commonShareId }, data: { journalEntryId: null } })
+    return null
+  }
+
   const n = (v: unknown) => Number(v || 0)
   const considerations: EquityConsideration[] = (share.deposits || [])
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -155,6 +167,33 @@ export async function repostPreferredIssuance(db: Db, preferredShareId: string, 
   })
   await db.preferredShare.update({ where: { id: preferredShareId }, data: { journalEntryId: jeId } })
   return jeId
+}
+
+// Secondary sale (share transfer): the seller and buyer settle the price
+// privately, so NO cash touches the company's books and total equity on the
+// balance sheet must not move. The entry is a net-zero memo within the same
+// equity account — DR "Share capital — seller" / CR "Share capital — buyer" —
+// measured at BOOK value (shares × the seller's issue price), never at the
+// private sale price. Its only job is to keep the per-investor attribution in
+// the ledger correct; the balance sheet total is unchanged by construction.
+export async function postEquityTransfer(db: Db, opts: {
+  refId: string; date: Date; amount: number; equityAccountId?: string | null
+  fromInvestor: string; toInvestor: string; createdById: string
+}): Promise<string | null> {
+  if (!opts.equityAccountId || !(opts.amount > 0)) return null
+  const je = await postJournalEntry(db, {
+    entryDate: opts.date,
+    description: `Share transfer — ${opts.fromInvestor} → ${opts.toInvestor}`,
+    referenceType: 'EQUITY_TRANSFER',
+    referenceId: opts.refId,
+    branch: 'ALL',
+    createdById: opts.createdById,
+    lines: [
+      { accountId: opts.equityAccountId, debit: opts.amount, description: `Share capital — ${opts.fromInvestor} (transferred out)` },
+      { accountId: opts.equityAccountId, credit: opts.amount, description: `Share capital — ${opts.toInvestor} (transferred in)` },
+    ],
+  })
+  return je.id
 }
 
 // Buyback → Treasury: DR the chosen treasury/equity account / CR bank (money out).

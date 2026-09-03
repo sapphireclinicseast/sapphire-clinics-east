@@ -34,7 +34,11 @@ export async function GET() {
   if (!session?.user || !ADMIN.includes(session.user.role as string)) return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
 
   const [commons, preferreds, shareholders, settings] = await Promise.all([
-    prisma.commonShare.findMany({ include: { shareholder: true, buybacks: { orderBy: { date: 'asc' } }, deposits: { orderBy: { date: 'asc' } } }, orderBy: { createdAt: 'asc' } }),
+    prisma.commonShare.findMany({ include: {
+      shareholder: true, buybacks: { orderBy: { date: 'asc' } }, deposits: { orderBy: { date: 'asc' } },
+      transfersOut: { include: { toShareholder: { select: { shNumber: true, name: true } } }, orderBy: { date: 'asc' } },
+      transferIn: { include: { fromCommonShare: { include: { shareholder: { select: { shNumber: true, name: true } } } } } },
+    }, orderBy: { createdAt: 'asc' } }),
     prisma.preferredShare.findMany({ select: { numberOfShares: true, pricePerShare: true } }),
     prisma.shareholder.findMany({ orderBy: { shSeq: 'asc' }, select: { id: true, shNumber: true, name: true, tin: true, birthdate: true, email: true, address: true } }),
     prisma.equitySettings.findUnique({ where: { id: 'singleton' } }),
@@ -43,7 +47,11 @@ export async function GET() {
   const authorizedCommonShares = settings?.authorizedCommonShares ?? null
   const authorizedFounderShares = settings?.authorizedFounderShares ?? null
 
-  const commonCap = commons.reduce((s, c) => s + num(c.numberOfShares) * num(c.pricePerShare), 0)
+  // A transfer duplicates the same issued capital across two rows (seller's
+  // original + buyer's transfer-in holding at the same book value), so count
+  // each holding net of what it has sold on. Nothing was raised or returned in
+  // a transfer, and this keeps the figure equal to capital actually issued.
+  const commonCap = commons.reduce((s, c) => s + (num(c.numberOfShares) - c.transfersOut.reduce((t, x) => t + num(x.shares), 0)) * num(c.pricePerShare), 0)
   const prefCap = preferreds.reduce((s, p) => s + num(p.numberOfShares) * num(p.pricePerShare), 0)
   const totalCapitalization = commonCap + prefCap
   // Gross common = every common holding ever issued, including rows reissued out of
@@ -55,10 +63,16 @@ export async function GET() {
   // treasury") come back out of treasury and ARE outstanding again.
   const treasuryBought = commons.reduce((s, c) => s + c.buybacks.reduce((t, b) => t + num(b.shares), 0), 0)
   const reissuedFromTreasury = commons.reduce((s, c) => s + (c.soldFromTreasury ? num(c.numberOfShares) : 0), 0)
+  // Secondary sales: shares sold shareholder→shareholder appear twice in gross —
+  // once in the seller's original holding and once in the buyer's transfer-in
+  // holding — so subtract the transferred-out total exactly once. Outstanding
+  // shares are unchanged by a transfer, as they should be: ownership moved,
+  // nothing was issued or retired.
+  const transferredOut = commons.reduce((s, c) => s + c.transfersOut.reduce((t, x) => t + num(x.shares), 0), 0)
   // Total (outstanding) common shares = every issued common share (incl. reissued
   // treasury rows) minus every share bought back into treasury. Preferred shares have
   // their own card and are intentionally excluded here — no double counting.
-  const totalShares = grossCommonShares - treasuryBought
+  const totalShares = grossCommonShares - treasuryBought - transferredOut
   // Treasury (available-for-sale) = authorized issued capital − outstanding. Anchoring
   // to the authorized total keeps this correct even if a reissuance was entered without
   // the "sold from treasury" tag. Fall back to the tag-based figure only if authorized
@@ -73,7 +87,13 @@ export async function GET() {
       bankAccountId: b.bankAccountId, treasuryAccountId: b.treasuryAccountId, proofUrls: b.proofUrls,
     }))
     const buybackShares = buybacks.reduce((s, b) => s + b.shares, 0)
-    const netShares = num(c.numberOfShares) - buybackShares
+    const transfers = c.transfersOut.map(t => ({
+      id: t.id, date: t.date, shares: num(t.shares), price: num(t.price), amount: num(t.shares) * num(t.price),
+      toShareholderId: t.toShareholderId, toShNumber: t.toShareholder.shNumber, toName: t.toShareholder.name,
+      toCommonShareId: t.toCommonShareId, proofUrls: t.proofUrls,
+    }))
+    const transferredShares = transfers.reduce((s, t) => s + t.shares, 0)
+    const netShares = num(c.numberOfShares) - buybackShares - transferredShares
     const deposits = c.deposits
     const depositedAmount = deposits.reduce((s, d) => s + num(d.amount), 0)
     return {
@@ -90,6 +110,13 @@ export async function GET() {
       equityStake: totalShares > 0 ? (netShares / totalShares) * 100 : 0,
       bankAccountId: c.bankAccountId, equityAccountId: c.equityAccountId, receivableAccountId: c.receivableAccountId,
       boughtBack: buybacks.length > 0, buybackShares, buybacks,
+      transferredShares, transfers,
+      // Where this holding itself came from, when it was bought from another shareholder.
+      acquiredViaTransfer: !!c.transferIn,
+      transferFromName: c.transferIn ? c.transferIn.fromCommonShare.shareholder.name : null,
+      transferFromShNumber: c.transferIn ? c.transferIn.fromCommonShare.shareholder.shNumber : null,
+      // Fully out — every share bought back or sold on. Shown red as a retired holding.
+      retired: num(c.numberOfShares) > 0 && netShares <= 1e-9,
       deposits: deposits.map(d => ({
         id: d.id, date: d.date, amount: num(d.amount), kind: d.kind,
         bankAccountId: d.bankAccountId, assetAccountId: d.assetAccountId, note: d.note, proofUrls: d.proofUrls,
@@ -196,6 +223,19 @@ export async function DELETE(req: Request) {
   if (!session?.user || !ADMIN.includes(session.user.role as string)) return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
   const id = new URL(req.url).searchParams.get('id') || ''
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
+  // A holding with shares sold on cannot just be deleted — the cascade would
+  // silently orphan the buyers' transfer-in holdings (double-counting shares).
+  const withTransfers = await prisma.shareTransfer.count({ where: { fromCommonShareId: id } })
+  if (withTransfers > 0) {
+    return NextResponse.json({ error: 'This holding has shares sold to other parties — undo those transfers first (Sold Shares section).' }, { status: 400 })
+  }
+  // A transfer-in holding is one leg of a transfer — deleting it alone would
+  // leave the seller's shares reduced with nobody holding them. Undo the
+  // transfer from the seller's record instead, which removes both legs.
+  const isTransferIn = await prisma.shareTransfer.count({ where: { toCommonShareId: id } })
+  if (isTransferIn > 0) {
+    return NextResponse.json({ error: 'This holding was bought from another shareholder — undo the transfer on the seller\'s record (Sold Shares section) instead of deleting it.' }, { status: 400 })
+  }
   await prisma.$transaction(async (tx) => {
     const share = await tx.commonShare.findUnique({ where: { id }, select: { shareholderId: true } })
     await reverseEquityJournal(tx, 'EQUITY_COMMON', id)

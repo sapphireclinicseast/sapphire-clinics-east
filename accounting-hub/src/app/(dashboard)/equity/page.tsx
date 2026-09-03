@@ -7,10 +7,12 @@ import { redirect } from 'next/navigation'
 import { PieChart, Plus, Loader2, X, Eye, Trash2, Pencil } from 'lucide-react'
 import { applySortFilter, type SortCol } from '@/components/SortFilterHead'
 
-// Shares bought back are shown net, so sorting and filtering follow the figure
-// on screen rather than the original subscription.
-const netShares = (r: { numberOfShares: number; buybackShares?: number; boughtBack?: boolean }) =>
-  r.boughtBack && (r.buybackShares || 0) > 0 ? r.numberOfShares - (r.buybackShares || 0) : r.numberOfShares
+// Shares bought back or sold on to another holder are shown net, so sorting
+// and filtering follow the figure on screen rather than the original subscription.
+const netShares = (r: { numberOfShares: number; buybackShares?: number; boughtBack?: boolean; transferredShares?: number }) =>
+  r.numberOfShares
+  - (r.boughtBack && (r.buybackShares || 0) > 0 ? (r.buybackShares || 0) : 0)
+  - (r.transferredShares || 0)
 
 const COMMON_COLS: SortCol[] = [
   { key: 'shNumber', label: 'SH #' }, { key: 'name', label: 'Investor' },
@@ -58,6 +60,10 @@ const PREFERRED_SHARE_CLASSES = [
 ]
 
 interface Buyback { id: string; date: string; shares: number; price: number; amount: number; bankAccountId: string | null; treasuryAccountId: string | null; proofUrls: string[] | null }
+// A secondary sale out of a holding: shares sold to a current shareholder or an
+// external party. The price is what the buyer privately paid the seller — it
+// never passes through a company bank account.
+interface Transfer { id: string; date: string; shares: number; price: number; amount: number; toShareholderId: string; toShNumber: string; toName: string; toCommonShareId: string | null; proofUrls: string[] | null }
 // Consideration received for a holding — a cash deposit into a bank account, or
 // non-cash consideration (e.g. equipment bought for the company) debited to an
 // asset account. A holding may have many.
@@ -69,6 +75,9 @@ interface CommonRow {
   totalCapitalization: number; equityStake: number; equityStakeCurrent: number; equityStakeTotal: number; bankAccountId: string | null; equityAccountId: string | null
   soldFromTreasury: boolean
   boughtBack: boolean; buybackShares: number; buybacks: Buyback[]
+  transferredShares: number; transfers: Transfer[]
+  acquiredViaTransfer: boolean; transferFromName: string | null; transferFromShNumber: string | null
+  retired: boolean
   receivableAccountId: string | null; deposits: Deposit[]; depositedAmount: number; unaccountedAmount: number
 }
 interface EquityAcct { id: string; accountNumber: string; accountTitle: string }
@@ -178,22 +187,27 @@ export default function EquityPage() {
   const exportCommon = (format: 'xlsx' | 'pdf') => {
     const rows = data?.rows || []
     const num = (n: number) => n.toLocaleString('en-PH')
-    const headers = ['SH #', 'Investor', 'Class', 'Source', 'Date Acquired', 'Stock Cert.', 'Net Shares', 'Bought Back', 'Buyback Date(s)', 'True Par', 'APIC', 'Price/Share', 'Capitalization', '% Stake (Current)', '% Stake (Total)', 'Bank Debited']
+    const headers = ['SH #', 'Investor', 'Class', 'Source', 'Date Acquired', 'Stock Cert.', 'Net Shares', 'Bought Back', 'Buyback Date(s)', 'Sold', 'Sold To', 'True Par', 'APIC', 'Price/Share', 'Capitalization', '% Stake (Current)', '% Stake (Total)', 'Bank Debited']
     const body = rows.map(r => {
-      const netShares = r.numberOfShares - (r.buybackShares || 0)
+      const net = netShares(r)
       const buybackDates = (r.buybacks && r.buybacks.length)
         ? r.buybacks.map(b => `${String(b.date).slice(0, 10)} (${num(b.shares)})`).join('; ')
         : ''
+      const soldTo = (r.transfers && r.transfers.length)
+        ? r.transfers.map(t => `${String(t.date).slice(0, 10)}: ${num(t.shares)} → ${t.toName}`).join('; ')
+        : ''
       return [
-        r.shNumber, r.name, r.shareClass || '', r.soldFromTreasury ? 'Purchase from Treasury' : 'Original Issuance',
+        r.shNumber, r.name, r.shareClass || '',
+        r.acquiredViaTransfer ? `Bought from ${r.transferFromName || 'shareholder'}` : r.soldFromTreasury ? 'Purchase from Treasury' : 'Original Issuance',
         String(r.dateAcquired).slice(0, 10), r.stockCertNumber || '',
-        num(netShares), r.buybackShares ? num(r.buybackShares) : '', buybackDates,
+        num(net), r.buybackShares ? num(r.buybackShares) : '', buybackDates,
+        r.transferredShares ? num(r.transferredShares) : '', soldTo,
         r.truePar, r.apic, r.pricePerShare,
-        (netShares * r.pricePerShare), r.equityStakeCurrent.toFixed(3) + '%', r.equityStakeTotal.toFixed(3) + '%', bankLabel(r.bankAccountId),
+        (net * r.pricePerShare), r.equityStakeCurrent.toFixed(3) + '%', r.equityStakeTotal.toFixed(3) + '%', bankLabel(r.bankAccountId),
       ]
     })
-    const totalNet = rows.reduce((s, r) => s + (r.numberOfShares - (r.buybackShares || 0)), 0)
-    const totalCap = rows.reduce((s, r) => s + (r.numberOfShares - (r.buybackShares || 0)) * r.pricePerShare, 0)
+    const totalNet = rows.reduce((s, r) => s + netShares(r), 0)
+    const totalCap = rows.reduce((s, r) => s + netShares(r) * r.pricePerShare, 0)
     const subtitle = `${rows.length} common shareholders · ${num(totalNet)} outstanding shares · ₱${totalCap.toLocaleString('en-PH', { minimumFractionDigits: 2 })} capitalization`
     if (format === 'xlsx') {
       downloadXlsx('Common-Shareholders', [{ name: 'Common Shareholders', headers, rows: body }])
@@ -330,20 +344,20 @@ export default function EquityPage() {
               <tbody>
                 {loading ? <tr><td colSpan={17} className="text-center py-10 text-gray-400"><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
                 : commonRows.map(r => (
-                  <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)', background: r.boughtBack ? '#fef2f2' : undefined }}>
-                    <td className="px-3 py-2 font-mono font-semibold" style={{ color: 'var(--charcoal)' }}>{r.shNumber}</td>
-                    <td className="px-3 py-2" style={{ color: 'var(--charcoal)', overflow: 'hidden', wordBreak: 'break-word' }}>{r.name}{r.agreementType === 'DEED_OF_ASSIGNMENT' && <span className="ml-1 text-[10px] px-1 rounded whitespace-nowrap" style={{ background: '#e0e7ff', color: '#3730a3' }}>Deed</span>}{r.soldFromTreasury && <span className="ml-1 text-[10px] px-1 rounded whitespace-nowrap" style={{ background: '#fef3c7', color: '#92400e' }} title="Shares reissued from treasury (bought-back) stock">Treasury</span>}</td>
+                  <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)', background: r.retired || r.boughtBack ? '#fef2f2' : undefined }}>
+                    <td className="px-3 py-2 font-mono font-semibold" style={{ color: r.retired ? '#b91c1c' : 'var(--charcoal)' }}>{r.shNumber}</td>
+                    <td className="px-3 py-2" style={{ color: r.retired ? '#b91c1c' : 'var(--charcoal)', overflow: 'hidden', wordBreak: 'break-word' }}>{r.name}{r.retired && <span className="ml-1 text-[10px] px-1 rounded whitespace-nowrap font-semibold" style={{ background: '#fee2e2', color: '#b91c1c' }} title="All shares in this holding have been sold or bought back">Retired</span>}{r.acquiredViaTransfer ? <span className="ml-1 text-[10px] px-1 rounded whitespace-nowrap" style={{ background: '#e0e7ff', color: '#3730a3' }} title={`Shares bought from ${r.transferFromShNumber || ''} ${r.transferFromName || 'another shareholder'} — no company cash involved`}>Bought from {r.transferFromName || 'transfer'}</span> : r.agreementType === 'DEED_OF_ASSIGNMENT' && <span className="ml-1 text-[10px] px-1 rounded whitespace-nowrap" style={{ background: '#e0e7ff', color: '#3730a3' }}>Deed</span>}{r.soldFromTreasury && <span className="ml-1 text-[10px] px-1 rounded whitespace-nowrap" style={{ background: '#fef3c7', color: '#92400e' }} title="Shares reissued from treasury (bought-back) stock">Treasury</span>}</td>
                     <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{r.shareClass || '—'}</td>
                     <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{String(r.dateAcquired).slice(0, 10)}</td>
                     <td className="px-3 py-2 font-mono" style={{ color: 'var(--mid-gray)' }}>{r.stockCertNumber || '—'}</td>
-                    <td className="px-3 py-2 text-right" style={{ overflow: 'hidden' }}>{r.boughtBack && r.buybackShares > 0
-                      ? <><span className="whitespace-nowrap">{(r.numberOfShares - r.buybackShares).toLocaleString('en-PH')}</span><span className="block text-[10px] font-normal" style={{ color: 'var(--mid-gray)', wordBreak: 'break-word' }}>(Previously {r.numberOfShares.toLocaleString('en-PH')} with {r.buybackShares.toLocaleString('en-PH')} bought back)</span></>
+                    <td className="px-3 py-2 text-right" style={{ overflow: 'hidden' }}>{(r.buybackShares > 0 || (r.transferredShares || 0) > 0)
+                      ? <><span className="whitespace-nowrap">{netShares(r).toLocaleString('en-PH')}</span><span className="block text-[10px] font-normal" style={{ color: 'var(--mid-gray)', wordBreak: 'break-word' }}>(Previously {r.numberOfShares.toLocaleString('en-PH')}{r.buybackShares > 0 ? ` — ${r.buybackShares.toLocaleString('en-PH')} bought back` : ''}{(r.transferredShares || 0) > 0 ? ` — ${r.transferredShares.toLocaleString('en-PH')} sold to ${[...new Set(r.transfers.map(t => t.toName))].join(', ')}` : ''})</span></>
                       : <span className="whitespace-nowrap">{r.numberOfShares.toLocaleString('en-PH')}</span>}</td>
                     <td className="px-3 py-2 text-right">{peso(r.truePar)}</td>
                     <td className="px-3 py-2 text-right">{peso(r.apic)}</td>
                     <td className="px-3 py-2 text-right font-semibold">{peso(r.pricePerShare)}</td>
-                    <td className="px-3 py-2 text-right font-semibold" style={{ overflow: 'hidden' }}>{r.boughtBack && r.buybackShares > 0
-                      ? <><span className="whitespace-nowrap">{peso((r.numberOfShares - r.buybackShares) * r.pricePerShare)}</span><span className="block text-[10px] font-normal" style={{ color: 'var(--mid-gray)', wordBreak: 'break-word' }}>(Previously {peso(r.totalCapitalization)} but shares bought back)</span></>
+                    <td className="px-3 py-2 text-right font-semibold" style={{ overflow: 'hidden' }}>{(r.buybackShares > 0 || (r.transferredShares || 0) > 0)
+                      ? <><span className="whitespace-nowrap">{peso(netShares(r) * r.pricePerShare)}</span><span className="block text-[10px] font-normal" style={{ color: 'var(--mid-gray)', wordBreak: 'break-word' }}>(Previously {peso(r.totalCapitalization)} but shares {r.buybackShares > 0 && (r.transferredShares || 0) > 0 ? 'bought back / sold' : r.buybackShares > 0 ? 'bought back' : 'sold'})</span></>
                       : <span className="whitespace-nowrap">{peso(r.totalCapitalization)}</span>}</td>
                     <td className="px-3 py-2 text-right">{r.equityStakeCurrent.toFixed(3)}%</td>
                     <td className="px-3 py-2 text-right" style={{ color: 'var(--mid-gray)' }}>{r.equityStakeTotal.toFixed(3)}%</td>
@@ -398,6 +412,8 @@ function CommonModal({ row, rows, authCommon, authFounder, shareholders, banks, 
   const [agreementUrls, setAgreementUrls] = useState<string[]>(row?.agreementUrls || [])
   const [proofUrls, setProofUrls] = useState<string[]>(row?.proofOfDepositUrls || [])
   const [validIdUrls, setValidIdUrls] = useState<string[]>(row?.validIdUrls || [])
+  // Open the Sold Shares panel automatically when sales already exist.
+  const [showSold, setShowSold] = useState((row?.transfers?.length || 0) > 0)
   const [busy, setBusy] = useState(false)
   const set = (k: string, v: unknown) => setF(p => ({ ...p, [k]: v }))
   const n = (v: string) => Number(v) || 0
@@ -586,6 +602,22 @@ function CommonModal({ row, rows, authCommon, authFounder, shareholders, banks, 
             <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Save the shareholder first, then reopen this record to add one or more buybacks.</p>
           )}
         </div>
+
+        {/* Sold Shares — secondary sales to a current shareholder or an external
+            party. Settled privately between the parties, so nothing touches a
+            company bank account; the books only move the ownership. */}
+        <label className="mt-4 flex items-center gap-2 text-sm font-medium text-gray-700 cursor-pointer">
+          <input type="checkbox" checked={showSold} onChange={e => setShowSold(e.target.checked)} /> Sold Shares <span className="font-normal text-gray-400">(sold to a current shareholder or an external party — settled privately, not through a company bank account)</span>
+        </label>
+        {showSold && (
+          <div className="mt-2 rounded-xl border p-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+            {row ? (
+              <TransferManager share={row} shareholders={shareholders} equityAccts={equityAccts} onChanged={onReload} />
+            ) : (
+              <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Save the shareholder first, then reopen this record to record a sale.</p>
+            )}
+          </div>
+        )}
 
         <button onClick={save} disabled={busy} className="w-full mt-4 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2" style={{ background: 'var(--teal)' }}>{busy && <Loader2 size={15} className="animate-spin" />} {row ? 'Save changes' : 'Add shareholder'}</button>
       </div>
@@ -805,6 +837,143 @@ function BuybackManager({ share, banks, equityAccts, onChanged }: { share: Commo
         remaining > 0
           ? <button type="button" onClick={() => setAdding(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}><Plus size={13} /> Add buyback</button>
           : <p className="text-[11px]" style={{ color: '#b91c1c' }}>All shares have been bought back.</p>
+      )}
+    </div>
+  )
+}
+
+// Manages the secondary sales (share transfers) out of one common shareholding:
+// list existing (with undo) + an inline "record sale" form. Each add/delete hits
+// /api/equity/transfers, which moves the shares to the buyer — creating the
+// buyer's holding (and, for an external party, the new shareholder record)
+// automatically — and posts/reverses the net-zero equity memo entry. The sale
+// price is settled privately between the parties and never through a company
+// bank account, so no cash line is ever posted.
+function TransferManager({ share, shareholders, equityAccts, onChanged }: { share: CommonRow; shareholders: Shareholder[]; equityAccts: EquityAcct[]; onChanged: () => void }) {
+  const [list, setList] = useState<Transfer[]>(share.transfers || [])
+  const blank = { date: new Date().toISOString().slice(0, 10), shares: '', price: '', buyerKind: 'CURRENT' as 'CURRENT' | 'EXTERNAL', buyerShareholderId: '', buyerName: '', buyerTin: '', buyerBirthdate: '', buyerEmail: '', buyerAddress: '' }
+  const [d, setD] = useState(blank)
+  const [proofUrls, setProofUrls] = useState<string[]>([])
+  const [busy, setBusy] = useState(false)
+  const [adding, setAdding] = useState(false)
+  const n = (v: string) => Number(v) || 0
+  const inp = 'w-full px-3 py-2 rounded-xl border text-sm outline-none'
+  const lbl = 'block text-xs font-semibold mb-1'
+  const set = (k: keyof typeof blank, v: string) => setD(p => ({ ...p, [k]: v }))
+
+  const buybackTotal = (share.buybacks || []).reduce((s, b) => s + b.shares, 0)
+  const soldTotal = list.reduce((s, t) => s + t.shares, 0)
+  const remaining = share.numberOfShares - buybackTotal - soldTotal
+  // The buyer list excludes the seller — you cannot sell shares to yourself.
+  const buyerOptions = shareholders.filter(s => s.id !== share.shareholderId)
+  const buyerLabel = d.buyerKind === 'CURRENT'
+    ? (buyerOptions.find(s => s.id === d.buyerShareholderId)?.name || '(select the buyer)')
+    : (d.buyerName.trim() || '(enter the buyer\'s name)')
+  // The journal moves BOOK value (par + APIC), never the private sale price.
+  const bookValue = n(d.shares) * share.pricePerShare
+  const equityLabel = equityAccts.find(a => a.id === share.equityAccountId)?.accountTitle || '(equity account not set on this holding)'
+
+  const refresh = async () => {
+    try { const r = await fetch(`/api/equity/transfers?commonShareId=${share.id}`); if (r.ok) setList(await r.json()) } catch { /* keep */ }
+    onChanged()
+  }
+  const add = async () => {
+    if (!(n(d.shares) > 0)) { alert('Enter the number of shares sold.'); return }
+    if (!(n(d.price) > 0)) { alert('Enter the price per share it was sold for.'); return }
+    if (n(d.shares) > remaining + 1e-9) { alert(`Only ${remaining.toLocaleString('en-PH')} shares remain to sell.`); return }
+    if (d.buyerKind === 'CURRENT' && !d.buyerShareholderId) { alert('Pick the current shareholder who bought the shares.'); return }
+    if (d.buyerKind === 'EXTERNAL' && !d.buyerName.trim()) { alert('Enter the external buyer\'s name.'); return }
+    setBusy(true)
+    try {
+      const r = await fetch('/api/equity/transfers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+        commonShareId: share.id, date: d.date, shares: n(d.shares), price: n(d.price), proofUrls,
+        ...(d.buyerKind === 'CURRENT'
+          ? { buyerShareholderId: d.buyerShareholderId }
+          : { buyerName: d.buyerName, buyerTin: d.buyerTin, buyerBirthdate: d.buyerBirthdate || null, buyerEmail: d.buyerEmail, buyerAddress: d.buyerAddress }),
+      }) })
+      if (!r.ok) { alert((await r.json()).error || 'Failed'); return }
+      setD(blank); setProofUrls([]); setAdding(false)
+      await refresh()
+    } finally { setBusy(false) }
+  }
+  const del = async (t: Transfer) => {
+    if (!confirm(`Undo the ${String(t.date).slice(0, 10)} sale of ${t.shares.toLocaleString('en-PH')} shares to ${t.toName}? The buyer's holding from this sale is removed and the equity memo entry reversed.`)) return
+    const r = await fetch(`/api/equity/transfers?id=${t.id}`, { method: 'DELETE' })
+    if (!r.ok) { alert((await r.json()).error || 'Failed'); return }
+    await refresh()
+  }
+
+  return (
+    <div>
+      <p className="text-[11px] mb-2" style={{ color: 'var(--mid-gray)' }}>Holds {share.numberOfShares.toLocaleString('en-PH')} · bought back {buybackTotal.toLocaleString('en-PH')} · sold {soldTotal.toLocaleString('en-PH')} · <span style={{ color: remaining <= 0 ? '#b91c1c' : '#166534', fontWeight: 600 }}>{remaining.toLocaleString('en-PH')} remaining</span></p>
+      {remaining <= 0 && soldTotal > 0 && (
+        <p className="text-[11px] mb-2 font-semibold" style={{ color: '#b91c1c' }}>All shares have been sold — this shareholder is retired from this holding.</p>
+      )}
+      {list.length > 0 && (
+        <div className="rounded-xl border overflow-auto mb-2" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+          <table className="w-full text-xs"><thead><tr className="text-left" style={{ color: 'var(--mid-gray)' }}>{['Date', 'Sold to', 'Shares', 'Price/Share', 'Amount', 'Proof', ''].map(h => <th key={h} className="px-2.5 py-1.5 font-semibold">{h}</th>)}</tr></thead><tbody>
+            {list.map(t => (
+              <tr key={t.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                <td className="px-2.5 py-1.5 whitespace-nowrap">{String(t.date).slice(0, 10)}</td>
+                <td className="px-2.5 py-1.5">{t.toShNumber} — {t.toName}</td>
+                <td className="px-2.5 py-1.5 font-mono">{t.shares.toLocaleString('en-PH')}</td>
+                <td className="px-2.5 py-1.5 font-mono">{peso(t.price)}</td>
+                <td className="px-2.5 py-1.5 font-mono font-semibold">{peso(t.amount)}</td>
+                <td className="px-2.5 py-1.5">{(Array.isArray(t.proofUrls) ? t.proofUrls : []).map((u: string, i: number) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 mr-1" style={{ color: 'var(--teal)' }}><Eye size={11} />{i + 1}</a>)}</td>
+                <td className="px-2.5 py-1.5 text-right"><button type="button" onClick={() => del(t)} className="p-1 rounded hover:bg-red-50" title="Undo this sale"><Trash2 size={12} className="text-red-400" /></button></td>
+              </tr>
+            ))}
+          </tbody></table>
+        </div>
+      )}
+      {adding ? (
+        <div className="rounded-xl border p-3" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Sold to</label>
+              <select value={d.buyerKind} onChange={e => set('buyerKind', e.target.value)} className={inp} style={{ borderColor: 'var(--light-gray)' }}>
+                <option value="CURRENT">Current shareholder</option><option value="EXTERNAL">External party</option>
+              </select>
+            </div>
+            {d.buyerKind === 'CURRENT' ? (
+              <div className="col-span-2 sm:col-span-3"><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Buyer <span className="font-normal text-gray-400">(their holding is created automatically)</span></label>
+                <select value={d.buyerShareholderId} onChange={e => set('buyerShareholderId', e.target.value)} className={inp} style={{ borderColor: 'var(--light-gray)' }}>
+                  <option value="">— Select shareholder —</option>{buyerOptions.map(s => <option key={s.id} value={s.id}>{s.shNumber} — {s.name}</option>)}
+                </select>
+              </div>
+            ) : (
+              <>
+                <div className="col-span-2 sm:col-span-3"><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Buyer&apos;s name <span className="font-normal text-gray-400">(a new shareholder entry is created for them)</span></label>
+                  <input value={d.buyerName} onChange={e => set('buyerName', e.target.value)} className={inp} style={{ borderColor: 'var(--light-gray)' }} /></div>
+                <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>TIN Number</label><input value={d.buyerTin} onChange={e => set('buyerTin', e.target.value)} className={inp} style={{ borderColor: 'var(--light-gray)' }} /></div>
+                <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Birthdate</label><input type="date" value={d.buyerBirthdate} onChange={e => set('buyerBirthdate', e.target.value)} className={inp} style={{ borderColor: 'var(--light-gray)' }} /></div>
+                <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Email</label><input value={d.buyerEmail} onChange={e => set('buyerEmail', e.target.value)} className={inp} style={{ borderColor: 'var(--light-gray)' }} /></div>
+                <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Complete Address</label><input value={d.buyerAddress} onChange={e => set('buyerAddress', e.target.value)} className={inp} style={{ borderColor: 'var(--light-gray)' }} /></div>
+              </>
+            )}
+            <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Date of sale</label><input type="date" value={d.date} onChange={e => set('date', e.target.value)} className={inp} style={{ borderColor: 'var(--light-gray)' }} /></div>
+            <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Shares sold</label><input value={d.shares} onChange={e => set('shares', e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={{ borderColor: 'var(--light-gray)' }} /></div>
+            <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Price/Share sold for <span className="font-normal text-gray-400">(paid seller ← buyer)</span></label><input value={d.price} onChange={e => set('price', e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={{ borderColor: 'var(--light-gray)' }} /></div>
+            <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Total sale price</label><div className="px-3 py-2 rounded-xl text-sm font-mono font-bold" style={{ background: 'var(--off-white)', color: 'var(--charcoal)' }}>{peso(n(d.shares) * n(d.price))}</div></div>
+            <div className="col-span-2 sm:col-span-4"><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Proof of sale <span className="font-normal text-gray-400">(deed of sale / proof of payment — upload or scan via QR)</span></label>
+              <div className="flex flex-wrap items-center gap-2">{proofUrls.map((u, i) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="text-xs inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>)}
+                <ScanUpload compact section="equity" prefix={`${share.stockCertNumber || share.name}-SOLD`} existingCount={proofUrls.length} label="Add" onUploaded={u => setProofUrls(p => [...p, u])} /></div>
+            </div>
+          </div>
+          {n(d.shares) > 0 && (
+            <div className="text-[11px] mt-2 font-mono px-2 py-1.5 rounded" style={{ background: '#f8fafc', color: '#334155' }}>
+              <div>DR {equityLabel} — Share capital, {share.name} {peso(bookValue)} &nbsp;/&nbsp; CR {equityLabel} — Share capital, {buyerLabel} {peso(bookValue)}</div>
+              <div className="font-sans mt-0.5" style={{ color: 'var(--mid-gray)' }}>Net-zero within equity (book value: par + APIC). {n(d.price) > 0 && <>The {peso(n(d.shares) * n(d.price))} sale price is settled privately between the parties — no company bank account is touched.</>}</div>
+            </div>
+          )}
+          <div className="flex gap-2 mt-3">
+            <button type="button" onClick={add} disabled={busy} className="px-4 py-2 rounded-xl text-xs font-semibold text-white disabled:opacity-50 flex items-center gap-1.5" style={{ background: 'var(--teal)' }}>{busy && <Loader2 size={13} className="animate-spin" />} Record sale</button>
+            <button type="button" onClick={() => { setAdding(false); setD(blank); setProofUrls([]) }} className="px-4 py-2 rounded-xl text-xs font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Cancel</button>
+          </div>
+        </div>
+      ) : (
+        remaining > 0
+          ? <button type="button" onClick={() => setAdding(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}><Plus size={13} /> Record sale</button>
+          : soldTotal === 0 ? <p className="text-[11px]" style={{ color: '#b91c1c' }}>No shares remain to sell.</p> : null
       )}
     </div>
   )

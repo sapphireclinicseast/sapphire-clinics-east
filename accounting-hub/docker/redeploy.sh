@@ -703,6 +703,39 @@ BEGIN
       ON DELETE CASCADE ON UPDATE CASCADE;
   END IF;
 END$$;
+-- Secondary sales of common shares (Sold Shares in Equity). Seller/buyer settle
+-- privately; the company records only the ownership move + a net-zero equity memo JE.
+CREATE TABLE IF NOT EXISTS "ShareTransfer" (
+  "id" TEXT NOT NULL,
+  "fromCommonShareId" TEXT NOT NULL,
+  "toCommonShareId" TEXT,
+  "toShareholderId" TEXT NOT NULL,
+  "date" TIMESTAMP(3) NOT NULL,
+  "shares" DECIMAL(65,30) NOT NULL,
+  "price" DECIMAL(65,30) NOT NULL,
+  "proofUrls" JSONB,
+  "journalEntryId" TEXT,
+  "createdById" TEXT,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "ShareTransfer_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "ShareTransfer_toCommonShareId_key" ON "ShareTransfer"("toCommonShareId");
+CREATE INDEX IF NOT EXISTS "ShareTransfer_fromCommonShareId_idx" ON "ShareTransfer"("fromCommonShareId");
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ShareTransfer_fromCommonShareId_fkey') THEN
+    ALTER TABLE "ShareTransfer" ADD CONSTRAINT "ShareTransfer_fromCommonShareId_fkey"
+      FOREIGN KEY ("fromCommonShareId") REFERENCES "CommonShare"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ShareTransfer_toCommonShareId_fkey') THEN
+    ALTER TABLE "ShareTransfer" ADD CONSTRAINT "ShareTransfer_toCommonShareId_fkey"
+      FOREIGN KEY ("toCommonShareId") REFERENCES "CommonShare"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ShareTransfer_toShareholderId_fkey') THEN
+    ALTER TABLE "ShareTransfer" ADD CONSTRAINT "ShareTransfer_toShareholderId_fkey"
+      FOREIGN KEY ("toShareholderId") REFERENCES "Shareholder"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END$$;
 SQL
 
 # ── GL processor payout (Detailed GL → Pay GL Processor) ─────────────────────

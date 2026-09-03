@@ -2937,6 +2937,9 @@ model Shareholder {
 
   commonShares    CommonShare[]
   preferredShares PreferredShare[]
+  // Transfers where this shareholder was the buyer (kept for the registry even
+  // if the bought holding is later deleted).
+  transfersReceived ShareTransfer[] @relation("TransfersReceived")
 }
 
 model CommonShare {
@@ -2981,11 +2984,47 @@ model CommonShare {
   buybackProofUrls        Json?
   buybackJournalEntryId   String?
   buybacks                ShareBuyback[]
+  // Secondary sales: shares this holding sold to another party (out), and the
+  // transfer that created this holding when it was bought from another
+  // shareholder (in). See ShareTransfer.
+  transfersOut            ShareTransfer[] @relation("TransferFrom")
+  transferIn              ShareTransfer?  @relation("TransferTo")
   createdById             String?
   createdAt               DateTime        @default(now())
   updatedAt               DateTime        @updatedAt
 
   @@index([shareholderId])
+}
+
+// A secondary sale of shares: one shareholder sells part or all of a common
+// holding to another party — a current shareholder or an external buyer. The
+// price is settled privately between the two parties and never passes through
+// a company bank account, so the company records NO cash movement: total
+// equity on the balance sheet is unchanged. What is recorded is the ownership
+// move — the seller's holding shrinks by `shares`, a new holding
+// (`toCommonShareId`, agreement type DEED_OF_ASSIGNMENT) is created for the
+// buyer at the seller's BOOK value (par/APIC), and a net-zero memo journal
+// entry (DR/CR the same equity account, referenceType EQUITY_TRANSFER) keeps
+// the per-investor attribution in the ledger. `price` is the private
+// per-share sale price, kept for the registry only — it is deliberately NOT
+// what the journal entry is measured at.
+model ShareTransfer {
+  id                String       @id @default(cuid())
+  fromCommonShareId String
+  fromCommonShare   CommonShare  @relation("TransferFrom", fields: [fromCommonShareId], references: [id], onDelete: Cascade)
+  toCommonShareId   String?      @unique // buyer's holding created by this transfer
+  toCommonShare     CommonShare? @relation("TransferTo", fields: [toCommonShareId], references: [id], onDelete: SetNull)
+  toShareholderId   String
+  toShareholder     Shareholder  @relation("TransfersReceived", fields: [toShareholderId], references: [id])
+  date              DateTime
+  shares            Decimal
+  price             Decimal // per-share price the buyer paid the seller (private, off the company's books)
+  proofUrls         Json? // deed of sale / proof of the private payment
+  journalEntryId    String? // the net-zero equity memo entry
+  createdById       String?
+  createdAt         DateTime     @default(now())
+
+  @@index([fromCommonShareId])
 }
 
 // A single buyback event against a common shareholding. A shareholder may have
