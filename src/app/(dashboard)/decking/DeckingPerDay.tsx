@@ -11,15 +11,8 @@
 import { deptColor } from '@/lib/dept-colors'
 
 // Sunday first, matching how the clinic reads a week.
-const DAYS: { key: string; label: string; short: string }[] = [
-  { key: 'SUN', label: 'Sunday',    short: 'Sun' },
-  { key: 'MON', label: 'Monday',    short: 'Mon' },
-  { key: 'TUE', label: 'Tuesday',   short: 'Tue' },
-  { key: 'WED', label: 'Wednesday', short: 'Wed' },
-  { key: 'THU', label: 'Thursday',  short: 'Thu' },
-  { key: 'FRI', label: 'Friday',    short: 'Fri' },
-  { key: 'SAT', label: 'Saturday',  short: 'Sat' },
-]
+// Sunday → Saturday, shared with the rest of the module.
+import { DAYS } from '@/lib/decking-days'
 
 export interface PerDaySlot {
   dayOfWeek: string

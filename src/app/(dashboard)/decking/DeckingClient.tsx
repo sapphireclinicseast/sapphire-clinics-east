@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { ChevronDown, ChevronUp, Plus, X, Settings2, Layers, Ban } from 'lucide-react'
 import PatientRequestsPanel from './PatientRequestsPanel'
+import { DAY_KEYS, DAY_LABEL, DAY_SHORT, sortDays } from '@/lib/decking-days'
 import SlotLoaPanel, { type LoaLite } from './SlotLoaPanel'
 import { DECK_SECTIONS, inSection, arrangementFor, type DeckSection } from '@/lib/work-arrangement'
 import DeckingPerDay from './DeckingPerDay'
@@ -10,9 +11,10 @@ import SpedClassBoard from './SpedClassBoard'
 import { branchLabel } from '@/lib/branch-label'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const DAYS = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']
-const DAY_LABEL: Record<string, string> = { MON: 'Monday', TUE: 'Tuesday', WED: 'Wednesday', THU: 'Thursday', FRI: 'Friday', SAT: 'Saturday', SUN: 'Sunday' }
-const DAY_SHORT: Record<string, string> = { MON: 'Mon', TUE: 'Tue', WED: 'Wed', THU: 'Thu', FRI: 'Fri', SAT: 'Sat', SUN: 'Sun' }
+// Days come from @/lib/decking-days so this board, Per Day and the SPED class
+// board all run Sunday → Saturday. They used to hold three separate lists in
+// two different orders.
+const DAYS = DAY_KEYS
 const DEPARTMENTS = ['OT', 'PT', 'SLP', 'SPED', 'MD', 'PSYCHOLOGY', 'ORTHOSIS']
 
 const DEFAULT_HOURS: Record<string, { startTime: string; endTime: string }> = {
@@ -306,7 +308,9 @@ function TherapistRow({ staff, activeBranch, config, slots, defaultHours, onSave
     if (workDays.length > 0) setConfigOpen(false)
   }
 
-  const configuredDays = config ? (config.workDays as string[]) : []
+  // Calendar order, not the order the checkboxes were saved in — that is what
+  // put Friday before Thursday on a consultant's board.
+  const configuredDays = config ? sortDays(config.workDays as string[]) : []
   const timeSlots = config ? generateHourlySlots(config.startTime, config.endTime) : []
 
   // Returns ALL patients assigned to this time slot (up to 3)
