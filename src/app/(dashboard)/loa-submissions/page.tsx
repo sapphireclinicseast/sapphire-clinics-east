@@ -10,6 +10,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { FileText, QrCode, Download, Settings, X, Trash2, Upload, Info, Copy, RefreshCw } from 'lucide-react'
+import { branchLabel } from '@/lib/branch-label'
 
 interface Option { id: string; name: string; active: boolean; sortOrder: number }
 interface BranchOption { value: string; label: string; shortCode: string }
@@ -181,7 +182,7 @@ export default function LoaSubmissionsPage() {
       <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', margin: '1rem 0' }}>
         {branchLocked ? (
           <span style={{ ...input, background: '#F1F3F5', color: '#667', display: 'flex', alignItems: 'center' }}>
-            Branch: <strong style={{ marginLeft: 4, color: '#1C2B30' }}>{lockedBranch}</strong>
+            Branch: <strong style={{ marginLeft: 4, color: '#1C2B30' }}>{branchLabel(lockedBranch)}</strong>
           </span>
         ) : (
           <select value={fBranch} onChange={e => setFBranch(e.target.value)} style={input}>
@@ -239,7 +240,7 @@ export default function LoaSubmissionsPage() {
                     <td style={{ padding: '0.6rem 0.75rem', maxWidth: 220 }}>
                       {l.services.length ? l.services.join(', ') : <span style={{ color: '#B0B8BC' }}>—</span>}
                     </td>
-                    <td style={{ padding: '0.6rem 0.75rem' }}>{l.branch}</td>
+                    <td style={{ padding: '0.6rem 0.75rem' }}>{branchLabel(l.branch)}</td>
                     <td style={{ padding: '0.6rem 0.75rem', whiteSpace: 'nowrap' }}>
                       {l.dateOfApproval ? new Date(l.dateOfApproval).toLocaleDateString('en-CA') : <span style={{ color: '#B0B8BC' }}>—</span>}
                     </td>

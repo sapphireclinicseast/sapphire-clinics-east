@@ -20,7 +20,11 @@ export async function GET() {
   // Retired entries are still returned to editors so an existing letter that
   // names one keeps rendering its label; the form filters to active itself.
   const [hmos, services, branches] = await Promise.all([
-    prisma.hmoProvider.findMany({ orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] }),
+    // Alphabetical, not insertion order: this list is scanned to find a
+    // provider by name, and sortOrder only recorded the order rows happened
+    // to be created in — seeded ones first, then whatever the wallet sync
+    // appended, which reads as unsorted.
+    prisma.hmoProvider.findMany({ orderBy: { name: 'asc' } }),
     prisma.loaServiceOption.findMany({ orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] }),
     getBranchOptions(),
   ])

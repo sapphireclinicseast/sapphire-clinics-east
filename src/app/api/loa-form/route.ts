@@ -39,9 +39,13 @@ export async function GET() {
   const [hmos, services, branches] = await Promise.all([
     prisma.hmoProvider.findMany({
       where: { active: true },
-      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+      // Alphabetical — a patient hunting for their HMO in a 20-long dropdown
+      // needs it where they expect it, and creation order tells them nothing.
+      orderBy: { name: 'asc' },
       select: { id: true, name: true },
     }),
+    // Services keep sortOrder: that IS a meaningful order (OT, PT, SLP…),
+    // set deliberately rather than by when the row was made.
     prisma.loaServiceOption.findMany({
       where: { active: true },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
