@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { sortDays } from '@/lib/decking-days'
 
 export async function GET(req: NextRequest) {
   const session = await auth()
@@ -19,7 +20,11 @@ export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { staffId, workDays, startTime, endTime, useDefault, branch, department } = await req.json()
+  const { staffId, workDays: rawWorkDays, startTime, endTime, useDefault, branch, department } = await req.json()
+  // Stored in calendar order so the board never has to trust the order the
+  // checkboxes arrived in. The boards sort on render too — this just stops new
+  // rows from being written scrambled in the first place.
+  const workDays = sortDays(Array.isArray(rawWorkDays) ? rawWorkDays : [])
   if (!staffId) return NextResponse.json({ error: 'staffId is required' }, { status: 400 })
   if (!branch) return NextResponse.json({ error: 'branch is required' }, { status: 400 })
 
