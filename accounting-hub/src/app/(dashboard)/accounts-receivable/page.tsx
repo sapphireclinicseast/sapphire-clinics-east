@@ -606,6 +606,11 @@ export default function AccountsReceivablePage() {
   const [changeDateValue, setChangeDateValue] = useState('')
   const [changeDateBusy, setChangeDateBusy] = useState<string | null>(null)
 
+  // Clinician — inline editing state per order (blank POS entries, corrections)
+  const [clinicianEditId, setClinicianEditId] = useState<string | null>(null)
+  const [clinicianValue, setClinicianValue] = useState('')
+  const [clinicianBusy, setClinicianBusy] = useState<string | null>(null)
+
   // Approved-SOA recompute (one-shot data correction for the 2026-04-08
   // migration that clobbered totalGlAmount with the then-current balance).
   const [recomputeBusy, setRecomputeBusy] = useState(false)
@@ -1080,6 +1085,28 @@ export default function AccountsReceivablePage() {
     finally {
       setChangeDateBusy(null)
       setChangeDateEditId(null)
+    }
+  }
+
+  const saveClinician = async (orderId: string, name: string | null) => {
+    setClinicianBusy(orderId)
+    try {
+      const res = await fetch('/api/accounts-receivable/clinician', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId, clinicianName: name }),
+      })
+      if (res.ok) {
+        const clean = name?.trim() || ''
+        setOrders(prev => prev.map(o => o.id === orderId ? { ...o, clinicianName: clean } : o))
+      } else {
+        alert((await res.json().catch(() => ({}))).error || 'Failed to save clinician')
+      }
+    } catch { /* ignore */ }
+    finally {
+      setClinicianBusy(null)
+      setClinicianEditId(null)
+      setClinicianValue('')
     }
   }
 
@@ -2253,9 +2280,14 @@ export default function AccountsReceivablePage() {
           const q = perHmoColSearch.service.toLowerCase()
           perHmoOrders = perHmoOrders.filter(o => o.items.map(i => i.name).join(', ').toLowerCase().includes(q))
         }
+        // Clinician filter is a dropdown of exactly the names present (plus
+        // "(Blank)"), so blank rows can be pulled up and fixed — the options
+        // come from the rows BEFORE this filter, or picking one name would
+        // erase all the others from the list.
+        const clinicianOptions = Array.from(new Set(perHmoOrders.map(o => (o.clinicianName || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b))
         if (perHmoColSearch.clinician) {
-          const q = perHmoColSearch.clinician.toLowerCase()
-          perHmoOrders = perHmoOrders.filter(o => (o.clinicianName || '').toLowerCase().includes(q))
+          const v = perHmoColSearch.clinician
+          perHmoOrders = perHmoOrders.filter(o => v === '__blank__' ? !(o.clinicianName || '').trim() : (o.clinicianName || '').trim() === v)
         }
         if (perHmoColSearch.status) {
           const wantPaid = perHmoColSearch.status === 'paid'
@@ -2531,7 +2563,19 @@ export default function AccountsReceivablePage() {
                             <option value="unpaid">Unpaid</option>
                           </select>
                         )}
-                        {col.searchKey && ['service', 'patient', 'clinician', 'hmo'].includes(col.searchKey) && (
+                        {col.searchKey === 'clinician' && (
+                          <select
+                            className="mt-1 w-full px-1 py-0.5 rounded border text-xs outline-none bg-white font-normal"
+                            style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}
+                            value={perHmoColSearch.clinician || ''}
+                            onChange={e => setPerHmoColSearch(prev => ({ ...prev, clinician: e.target.value }))}
+                            onClick={e => e.stopPropagation()}>
+                            <option value="">All</option>
+                            <option value="__blank__">(Blank)</option>
+                            {clinicianOptions.map(name => <option key={name} value={name}>{name}</option>)}
+                          </select>
+                        )}
+                        {col.searchKey && ['service', 'patient', 'hmo'].includes(col.searchKey) && (
                           <input
                             className="mt-1 w-full px-2 py-0.5 rounded border text-xs outline-none"
                             style={{ borderColor: 'var(--light-gray)' }}
@@ -2643,7 +2687,53 @@ export default function AccountsReceivablePage() {
                         </td>
                         <td className="px-3 py-2 text-xs" style={{ color: 'var(--charcoal)' }}>{o.items.map(i => i.name).join(', ')}</td>
                         <td className="px-3 py-2 text-xs" style={{ color: 'var(--charcoal)' }}>{o.patientName || '—'}</td>
-                        <td className="px-3 py-2 text-xs" style={{ color: 'var(--charcoal)' }}>{o.clinicianName || '—'}</td>
+                        {/* Clinician — editable inline (HMO officer / frontdesk fix blank POS entries here) */}
+                        <td className="px-3 py-2 text-xs" style={{ color: 'var(--charcoal)' }}>
+                          {clinicianEditId === o.id ? (
+                            <div className="flex items-center gap-1">
+                              <input
+                                autoFocus
+                                list="perhmo-clinician-names"
+                                defaultValue={o.clinicianName || ''}
+                                onChange={e => setClinicianValue(e.target.value)}
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter') saveClinician(o.id, clinicianValue || o.clinicianName || null)
+                                  if (e.key === 'Escape') { setClinicianEditId(null); setClinicianValue('') }
+                                }}
+                                placeholder="Clinician name"
+                                className="px-1.5 py-0.5 rounded border text-xs outline-none"
+                                style={{ borderColor: 'var(--teal)', width: 140 }}
+                              />
+                              <datalist id="perhmo-clinician-names">
+                                {clinicianOptions.map(name => <option key={name} value={name} />)}
+                              </datalist>
+                              <button
+                                disabled={clinicianBusy === o.id}
+                                onClick={() => saveClinician(o.id, clinicianValue || o.clinicianName || null)}
+                                className="text-[10px] px-1.5 py-0.5 rounded font-semibold text-white disabled:opacity-50"
+                                style={{ background: 'var(--teal)' }}>
+                                {clinicianBusy === o.id ? '…' : '✓'}
+                              </button>
+                              <button
+                                onClick={() => { setClinicianEditId(null); setClinicianValue('') }}
+                                className="text-[10px] px-1 py-0.5 rounded"
+                                style={{ color: 'var(--mid-gray)' }}>
+                                ✕
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="inline-flex items-center gap-1">
+                              {o.clinicianName || <span style={{ color: '#c2410c' }}>—</span>}
+                              <button
+                                title={o.clinicianName ? 'Edit clinician' : 'Set clinician (blank on the POS entry)'}
+                                onClick={() => { setClinicianEditId(o.id); setClinicianValue(o.clinicianName || '') }}
+                                className="p-0.5 rounded hover:bg-teal-50"
+                                style={{ color: 'var(--teal)' }}>
+                                <Pencil size={10} />
+                              </button>
+                            </span>
+                          )}
+                        </td>
                         <td className="px-3 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>{wallet?.patientName || '—'}</td>
                         <td className="px-3 py-2 text-xs text-right font-medium" style={{ color: 'var(--charcoal)' }}>
                           <div className="relative group inline-block cursor-default">
