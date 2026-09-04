@@ -1757,7 +1757,7 @@ function PatientRegisterQrModal({
     let cancelled = false
     setLoading(true)
     import('qrcode').then(QR =>
-      QR.toDataURL(registerUrl, { width: 360, margin: 2, color: { dark: '#ED6823', light: '#ffffff' } })
+      QR.toDataURL(registerUrl, { width: 360, margin: 2, color: { dark: '#244952', light: '#ffffff' } })
     ).then(url => {
       if (!cancelled) { setQrDataUrl(url); setLoading(false) }
     }).catch(() => { if (!cancelled) setLoading(false) })

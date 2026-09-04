@@ -22,18 +22,13 @@ const BRANCH_ENUM: Record<string, string> = {
 }
 
 async function getBirthdayPatients(branch: string): Promise<BirthdayPatient[]> {
+  // TODAY only. This used to run Monday–Sunday and show the rest of the week,
+  // which meant the card was mostly people whose birthday had not arrived —
+  // greeting them early, or greeting them twice once the day came round.
   const now = new Date()
-  const dayOfWeek = now.getDay() // 0=Sun
-  const monday = new Date(now)
-  monday.setDate(now.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1))
-  monday.setHours(0, 0, 0, 0)
-
-  // {month (1-12), day, isoDate} for each day Mon–Sun
-  const weekDays = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(monday)
-    d.setDate(monday.getDate() + i)
-    return { month: d.getMonth() + 1, day: d.getDate(), iso: d.toISOString() }
-  })
+  const today = { month: now.getMonth() + 1, day: now.getDate(), iso: (() => {
+    const d = new Date(now); d.setHours(0, 0, 0, 0); return d.toISOString()
+  })() }
 
   const branchEnum = BRANCH_ENUM[branch] ?? branch
 
@@ -48,22 +43,13 @@ async function getBirthdayPatients(branch: string): Promise<BirthdayPatient[]> {
     branchEnum,
   )
 
-  // Today at midnight (server time) — used to exclude past birthdays
-  const todayStart = new Date(now)
-  todayStart.setHours(0, 0, 0, 0)
-
   return patients
     .flatMap(p => {
       const dob = new Date(p.dob!)
-      const m = dob.getUTCMonth() + 1
-      const d = dob.getUTCDate()
-      const match = weekDays.find(wd => wd.month === m && wd.day === d)
-      if (!match) return []
-      // Skip days before today
-      if (new Date(match.iso) < todayStart) return []
-      return [{ id: p.id, firstName: p.firstName, lastName: p.lastName, birthday: match.iso, hasPhone: !!p.phone }]
+      if (dob.getUTCMonth() + 1 !== today.month || dob.getUTCDate() !== today.day) return []
+      return [{ id: p.id, firstName: p.firstName, lastName: p.lastName, birthday: today.iso, hasPhone: !!p.phone }]
     })
-    .sort((a, b) => new Date(a.birthday).getTime() - new Date(b.birthday).getTime())
+    .sort((a, b) => `${a.lastName} ${a.firstName}`.localeCompare(`${b.lastName} ${b.firstName}`))
 }
 
 async function getDashboardData() {

@@ -473,7 +473,7 @@ export default function FrontDeskWelcome({
       )}
 
       {/* ── Top row: greeting (center) + reminder cards (right) ── */}
-      <div className="w-full max-w-[1200px] px-6 flex flex-col xl:flex-row gap-6 items-start">
+      <div className="w-full max-w-[1200px] px-6 flex flex-row gap-6 items-start justify-between">
 
         {/* Left column: greeting + quote + branch badge.
             This was a centred, full-height landing block — logo, then greeting,
@@ -541,25 +541,28 @@ export default function FrontDeskWelcome({
           )}
         </div>
 
-        {/* Right column: the mascot and the two reference cards.
-            This half of the header row was empty — the greeting is short, so a
-            single flex child left a hero-sized gap on every screen wider than a
-            laptop. The cards that fill it are reference, not work: they are read
-            once and remembered, which is exactly what belongs beside a greeting
-            rather than in the grid competing with today's queue. */}
-        <div style={{
-          width: '100%', maxWidth: 420, flex: '0 1 420px', minWidth: 0,
-          display: 'flex', flexDirection: 'column', gap: '0.75rem',
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', opacity: 0.9 }}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/Codepaca.svg" alt="Aura alpaca mascot" width={104} height={104} style={{ display: 'block' }} />
-          </div>
-          <DeskShortcutCard />
-          <PactCancellationReminder />
+        {/* Just the mascot beside the greeting. The two reference cards used to
+            stack here too, but they are far taller than the greeting, so the
+            row's left half sat empty for most of their height — a bigger hole
+            than the one they were moved up to fill. */}
+        <div style={{ flexShrink: 0, opacity: 0.9, alignSelf: 'flex-start' }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/Codepaca.svg" alt="Aura alpaca mascot" width={104} height={104} style={{ display: 'block' }} />
         </div>
 
       </div>{/* end top row */}
+
+      {/* The two reference cards, side by side across the full width. Still at
+          the top where they were asked for, but as their own row: two columns of
+          equal height beat one tall column beside a short greeting, and on a
+          narrow screen auto-fit drops them to one per row. */}
+      <div
+        className="w-full max-w-[1200px] px-6 grid gap-4 items-start mt-4"
+        style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))' }}
+      >
+        <DeskShortcutCard />
+        <PactCancellationReminder />
+      </div>
 
       {/* One flowing grid, not three fixed columns.
           The old layout was two flex rows of mismatched heights: a short greeting
@@ -594,7 +597,7 @@ export default function FrontDeskWelcome({
           }}>
             <span style={{ fontSize: '1rem' }}>🎂</span>
             <p style={{ color: '#fff', fontWeight: 700, fontSize: '0.78rem', margin: 0, letterSpacing: '0.04em' }}>
-              Birthdays This Week
+              Birthdays Today
             </p>
             <span style={{
               marginLeft: 'auto',
@@ -613,18 +616,15 @@ export default function FrontDeskWelcome({
           <div style={{ padding: '0.65rem 0.875rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
             {birthdayPatients.length === 0 ? (
               <p style={{ textAlign: 'center', fontSize: '0.75rem', color: '#AAA', padding: '0.6rem 0', margin: 0 }}>
-                No patient birthdays this week 🌿
+                No patient birthdays today 🌿
               </p>
             ) : (
               birthdayPatients.map(p => {
-                const dobDate = new Date(p.birthday)
-                const today = new Date()
-                const isToday =
-                  dobDate.getUTCDate() === today.getDate() &&
-                  dobDate.getUTCMonth() === today.getMonth()
-                const dayLabel = isToday
-                  ? 'Today! 🎉'
-                  : dobDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' })
+                // Every row on this card IS today now, so there is nothing to
+                // compare. The old check read a local-midnight timestamp with
+                // getUTC*, which in a UTC+8 clinic resolved to the previous day
+                // — a birthday happening today was labelled "Thu, Sep 3".
+                const dayLabel = 'Today! 🎉'
                 const clinicName =
                   branch === 'SBEA' ? 'Aura Health East'
                   : branch === 'SBGH' ? 'Aura Health Greenhills'
@@ -706,8 +706,11 @@ export default function FrontDeskWelcome({
                 return (
                   <div key={p.id} style={{
                     display: 'flex', alignItems: 'center', gap: '0.65rem',
-                    background: isToday ? '#FFF7F0' : '#FAFAFA',
-                    border: `1px solid ${isToday ? '#F5B48A' : '#EDE5D8'}`,
+                    // Every row is today's birthday now, so the highlight is
+                    // unconditional rather than branching on a flag that can
+                    // only be true.
+                    background: '#FFF7F0',
+                    border: '1px solid #F5B48A',
                     borderRadius: '0.6rem',
                     padding: '0.55rem 0.8rem',
                   }}>
@@ -715,7 +718,7 @@ export default function FrontDeskWelcome({
                       <p style={{ fontWeight: 700, fontSize: '0.8rem', color: '#1A1A1A', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {p.firstName} {p.lastName}
                       </p>
-                      <p style={{ fontSize: '0.67rem', color: isToday ? '#4a8073' : '#999', margin: 0, fontWeight: isToday ? 600 : 400 }}>
+                      <p style={{ fontSize: '0.67rem', color: '#4a8073', margin: 0, fontWeight: 600 }}>
                         {dayLabel}
                       </p>
                     </div>
