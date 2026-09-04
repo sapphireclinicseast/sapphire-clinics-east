@@ -10,7 +10,7 @@ import { useSearchParams } from 'next/navigation'
 import {
   FileCheck, Search, ChevronUp, ChevronDown, ArrowUpDown,
   X, AlertCircle, DollarSign, Calendar, Upload, Trash2, Pencil,
-  Download, Filter, FileText, Settings, Maximize2, Minimize2,
+  Download, Filter, FileText, Settings, Maximize2, Minimize2, Lock, Unlock,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { downloadXlsx, downloadReportPdf } from '@/lib/export'
@@ -108,12 +108,15 @@ function formatDate(d: string) {
   return new Date(d).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-// Helper: parse arProofUrl which may be a plain URL or a JSON array of URLs.
+// Helper: parse arProofUrl which may be a plain URL, or a JSON array whose
+// entries are "url" strings or { url, locked } objects (locked files can't be
+// removed until deliberately unlocked).
 function parseProofUrls(raw: string | null | undefined): string[] {
   if (!raw) return []
   try {
     const p = JSON.parse(raw)
-    if (Array.isArray(p)) return p.filter(Boolean) as string[]
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (Array.isArray(p)) return p.map((e: any) => typeof e === 'string' ? e : e?.url).filter(Boolean) as string[]
   } catch { /* plain URL */ }
   return [raw]
 }
@@ -122,6 +125,26 @@ function serializeProofUrls(urls: string[]): string | null {
   if (clean.length === 0) return null
   if (clean.length === 1) return clean[0]
   return JSON.stringify(clean)
+}
+interface ProofEntry { url: string; locked: boolean }
+function parseProofEntries(raw: string | null | undefined): ProofEntry[] {
+  if (!raw) return []
+  try {
+    const p = JSON.parse(raw)
+    if (Array.isArray(p)) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return p.map((e: any) => typeof e === 'string' ? { url: e, locked: false } : e?.url ? { url: String(e.url), locked: !!e.locked } : null).filter(Boolean) as ProofEntry[]
+    }
+  } catch { /* plain URL */ }
+  return [{ url: raw, locked: false }]
+}
+// Legacy shape (string / string[]) whenever nothing is locked, so older readers
+// keep working; objects only appear once a lock exists.
+function serializeProofEntries(entries: ProofEntry[]): string | null {
+  const clean = entries.filter(e => e.url)
+  if (clean.length === 0) return null
+  if (clean.every(e => !e.locked)) return serializeProofUrls(clean.map(e => e.url))
+  return JSON.stringify(clean.map(e => e.locked ? e : e.url))
 }
 
 interface PatientInfo {
@@ -301,10 +324,10 @@ function ProofCell({ orderId, currentUrl, onChange }: {
 }) {
   const [busy, setBusy] = useState(false)
 
-  const urls = parseProofUrls(currentUrl)
+  const entries = parseProofEntries(currentUrl)
 
-  const persist = async (newUrls: string[]) => {
-    const serialized = serializeProofUrls(newUrls)
+  const persist = async (next: ProofEntry[]) => {
+    const serialized = serializeProofEntries(next)
     const r = await fetch('/api/accounts-receivable/proof', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -317,9 +340,9 @@ function ProofCell({ orderId, currentUrl, onChange }: {
   /* ScanUpload streams several photos back-to-back from the phone poll, so
      additions accumulate through a ref — two photos arriving in one tick must
      not each persist against the same stale list and drop one another. */
-  const pendingRef = useRef<string[] | null>(null)
+  const pendingRef = useRef<ProofEntry[] | null>(null)
   const addUrl = (url: string) => {
-    const next = [...(pendingRef.current ?? urls), url]
+    const next = [...(pendingRef.current ?? entries), { url, locked: false }]
     pendingRef.current = next
     persist(next)
       .catch(e => alert((e as Error).message || 'Failed to attach proof'))
@@ -330,28 +353,49 @@ function ProofCell({ orderId, currentUrl, onChange }: {
     if (!confirm('Remove this proof file?')) return
     setBusy(true)
     try {
-      await persist(urls.filter(u => u !== urlToRemove))
+      await persist(entries.filter(e => e.url !== urlToRemove))
     } catch (e) {
       alert((e as Error).message || 'Failed to remove proof')
     } finally { setBusy(false) }
   }
 
+  // Locking a file hides its remove button and makes the API refuse to drop it;
+  // unlocking is its own deliberate step, so deletion is always two actions.
+  const toggleLock = async (entry: ProofEntry) => {
+    if (entry.locked && !confirm('Unlock this file? Once unlocked it can be removed again.')) return
+    setBusy(true)
+    try {
+      await persist(entries.map(e => e.url === entry.url ? { ...e, locked: !e.locked } : e))
+    } catch (e) {
+      alert((e as Error).message || 'Failed to update lock')
+    } finally { setBusy(false) }
+  }
+
   return (
     <div className="flex flex-col items-stretch gap-1.5 min-w-[130px]">
-      {/* Attached files as one tidy list: name on the left, remove on the right */}
-      {urls.length > 0 && (
+      {/* Attached files as one tidy list: name on the left, lock + remove on the right */}
+      {entries.length > 0 && (
         <div className="rounded-lg border divide-y" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
-          {urls.map((url, i) => (
-            <div key={url} className="flex items-center justify-between gap-1 px-2 py-1" style={{ borderColor: 'var(--light-gray)' }}>
-              <a href={url} target="_blank" rel="noopener noreferrer"
+          {entries.map((entry, i) => (
+            <div key={entry.url} className="flex items-center justify-between gap-1 px-2 py-1" style={{ borderColor: 'var(--light-gray)' }}>
+              <a href={entry.url} target="_blank" rel="noopener noreferrer"
                 className="inline-flex items-center gap-1 text-[10px] font-medium hover:underline"
                 style={{ color: 'var(--teal)' }}>
-                <FileCheck size={10} /> {urls.length > 1 ? `File ${i + 1}` : 'View file'}
+                <FileCheck size={10} /> {entries.length > 1 ? `File ${i + 1}` : 'View file'}
               </a>
-              <button onClick={() => remove(url)} disabled={busy}
-                className="p-0.5 rounded hover:bg-red-50 disabled:opacity-40" title="Remove this file">
-                <X size={10} className="text-red-400" />
-              </button>
+              <span className="inline-flex items-center">
+                <button onClick={() => toggleLock(entry)} disabled={busy}
+                  className="p-0.5 rounded hover:bg-amber-50 disabled:opacity-40"
+                  title={entry.locked ? 'Locked — click to unlock (then it can be removed)' : 'Lock this file so it can’t be removed'}>
+                  {entry.locked ? <Lock size={10} className="text-amber-600" /> : <Unlock size={10} className="text-gray-300" />}
+                </button>
+                {!entry.locked && (
+                  <button onClick={() => remove(entry.url)} disabled={busy}
+                    className="p-0.5 rounded hover:bg-red-50 disabled:opacity-40" title="Remove this file">
+                    <X size={10} className="text-red-400" />
+                  </button>
+                )}
+              </span>
             </div>
           ))}
         </div>
@@ -359,8 +403,8 @@ function ProofCell({ orderId, currentUrl, onChange }: {
       {/* File pick or QR scan — the phone photographs the proof and it lands
           on this order automatically, same session flow as everywhere else. */}
       <ScanUpload compact section="ar-proof" prefix={`ARPROOF-${orderId.slice(-6).toUpperCase()}`}
-        existingCount={urls.length} onUploaded={addUrl}
-        label={urls.length > 0 ? '+ Add' : 'Upload'} />
+        existingCount={entries.length} onUploaded={addUrl}
+        label={entries.length > 0 ? '+ Add' : 'Upload'} />
     </div>
   )
 }
