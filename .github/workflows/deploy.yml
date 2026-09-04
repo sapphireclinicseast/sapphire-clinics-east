@@ -488,17 +488,24 @@ jobs:
 
       # ── 6. Install survey API deps & start/restart ─────────────────
       - name: Setup & Restart Survey API
+        # A pm2 restart under a bare ssh session can leave the session's output
+        # held open by re-spawned children — run 33826714376 (2026-09-04) hung
+        # here for ~2h with the restart long done, wedging the deploy-vps
+        # concurrency queue. Cap the step and detach pm2 from the tty; the
+        # survey API is not worth blocking the rest of the deploy over.
+        continue-on-error: true
         run: |
-          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+          timeout 900 ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
             ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} \
             'mkdir -p /var/www/sapphireclinicseast.org/data && \
              cd /var/www/sapphireclinicseast.org/api && \
              npm install --production && \
              if pm2 describe scei-survey >/dev/null 2>&1; then \
-               pm2 restart scei-survey; \
+               pm2 restart scei-survey </dev/null >/dev/null 2>&1; \
              else \
-               SURVEY_API_KEY=${SURVEY_API_KEY:-SCEI_SURVEY_KEY_2025} pm2 start survey-api.js --name scei-survey && pm2 save; \
+               SURVEY_API_KEY=${SURVEY_API_KEY:-SCEI_SURVEY_KEY_2025} pm2 start survey-api.js --name scei-survey </dev/null >/dev/null 2>&1 && pm2 save; \
              fi && \
+             echo "✓ survey api pm2 ok" && \
              if [ ! -f /var/www/sapphireclinicseast.org/data/surveys.db ]; then \
                node seed-data.js; \
              fi'
