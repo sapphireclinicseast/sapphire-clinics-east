@@ -143,6 +143,12 @@ function DashboardContent({ role }: { role: string }) {
   const [slotFrom, setSlotFrom] = useState(monthsAgoMonthStr(11))
   const [slotTo, setSlotTo] = useState(thisMonthStr())
   const [slotIncludeCancelled, setSlotIncludeCancelled] = useState(false)
+  // Its own branch and department, rather than reading the filter bar at the
+  // top of the page. That bar is a long scroll away by the time this chart is
+  // on screen, so "filtered by the selection above" was a filter nobody could
+  // see or reach — it read as having no filter at all.
+  const [slotBranch, setSlotBranch] = useState(() => branchForRole(role) ?? 'all')
+  const [slotDept, setSlotDept] = useState('all')
   const [slotData, setSlotData] = useState<SlotUtilPoint[]>([])
   const [slotSummary, setSlotSummary] = useState<{ total: number; netChange: number | null; netPctChange: number | null } | null>(null)
   const [slotLoading, setSlotLoading] = useState(false)
@@ -232,8 +238,8 @@ function DashboardContent({ role }: { role: string }) {
     const ctl = new AbortController()
     setSlotLoading(true); setSlotError('')
     const params = new URLSearchParams({
-      from: slotFrom, to: slotTo, branch,
-      departments: allDepts ? 'all' : selectedDepts.join(','),
+      from: slotFrom, to: slotTo, branch: slotBranch,
+      departments: slotDept,
     })
     if (slotIncludeCancelled) params.set('includeCancelled', '1')
     fetch(`/api/scheduling-dashboard/slot-utilization?${params}`, { signal: ctl.signal })
@@ -246,7 +252,7 @@ function DashboardContent({ role }: { role: string }) {
       .catch(err => { if (err.name !== 'AbortError') { setSlotError(err.message); setSlotData([]) } })
       .finally(() => setSlotLoading(false))
     return () => ctl.abort()
-  }, [slotFrom, slotTo, branch, selectedDepts, allDepts, slotIncludeCancelled])
+  }, [slotFrom, slotTo, slotBranch, slotDept, slotIncludeCancelled])
 
   // ── Dept checkbox handlers ──
   function toggleAllDepts(checked: boolean) {
@@ -678,12 +684,36 @@ function DashboardContent({ role }: { role: string }) {
           <div>
             <h3 className={sectionH}>Slot Utilization</h3>
             <p className="text-xs text-gray-500 mt-1">
-              Slots run each month{branch !== 'all' ? ` · ${branch === 'SBEA' ? 'East Branch' : branch === 'SBGH' ? 'Greenhills Branch' : branch}` : ' · all branches'}
-              {allDepts ? ' · all departments' : ` · ${selectedDepts.join(', ') || 'no department selected'}`}
+              Slots run each month
               {slotIncludeCancelled ? ' · including cancelled' : ' · cancelled excluded, no-shows counted'}
             </p>
           </div>
           <div className="flex flex-wrap gap-3 items-end">
+            {/* Hidden for a branch-scoped account: the server pins their branch
+                anyway, so offering a choice that cannot take effect would be a
+                lie in the UI. */}
+            {!branchForRole(role) && (
+              <div className="flex flex-col gap-1">
+                <label className="text-[11px] font-semibold text-gray-500 uppercase">Branch</label>
+                <select value={slotBranch} onChange={e => setSlotBranch(e.target.value)}
+                  className="border border-gray-300 rounded-md px-3 py-1.5 text-sm">
+                  <option value="all">All branches</option>
+                  {BRANCHES.map(b => (
+                    <option key={b} value={b}>
+                      {b === 'SBEA' ? 'East Branch' : b === 'SBGH' ? 'Greenhills Branch' : b}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <div className="flex flex-col gap-1">
+              <label className="text-[11px] font-semibold text-gray-500 uppercase">Department</label>
+              <select value={slotDept} onChange={e => setSlotDept(e.target.value)}
+                className="border border-gray-300 rounded-md px-3 py-1.5 text-sm">
+                <option value="all">All departments</option>
+                {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+              </select>
+            </div>
             <div className="flex flex-col gap-1">
               <label className="text-[11px] font-semibold text-gray-500 uppercase">From</label>
               <input type="month" value={slotFrom} onChange={e => setSlotFrom(e.target.value)}
@@ -702,11 +732,6 @@ function DashboardContent({ role }: { role: string }) {
           </div>
         </div>
 
-        {/* Branch and department are not repeated here — this reads the page's
-            filters, so the whole screen describes one cut of the clinic. */}
-        <p className="text-[11px] text-gray-400 mb-3">
-          Filtered by the branch and department selected above.
-        </p>
 
         {slotError ? (
           <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md px-3 py-2">{slotError}</p>

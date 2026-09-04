@@ -31,6 +31,25 @@ const PAY_UI: Record<Pay, { label: string; fg: string; bg: string }> = {
   HMO:  { label: 'HMO',  fg: '#5B2A86', bg: '#EFE4FA' },
   GL:   { label: 'GL',   fg: '#93460B', bg: '#FDEAD6' },
 }
+// The three tables on this screen are read against each other — decked, offered,
+// still open for the same day — so their columns have to line up. Each sizes
+// itself independently otherwise, and SUN in one sits over MON in the next.
+// Fixed layout plus one shared colgroup is what makes the grids align.
+const TABLE_MIN_WIDTH = 760
+const tableStyle: React.CSSProperties = {
+  width: '100%', borderCollapse: 'collapse',
+  tableLayout: 'fixed', minWidth: TABLE_MIN_WIDTH,
+}
+function DayCols() {
+  return (
+    <colgroup>
+      <col style={{ width: '15%' }} />
+      {DAYS.map(d => <col key={d.key} style={{ width: '10%' }} />)}
+      <col style={{ width: '15%' }} />
+    </colgroup>
+  )
+}
+
 function payOfSlot(s: PerDaySlot): Pay {
   return (PAYS as string[]).includes(s.paymentType ?? '') ? (s.paymentType as Pay) : 'CASH'
 }
@@ -144,7 +163,7 @@ export default function DeckingPerDay({
         <CapacityTable
           title={`Available slots per day — ${branchName}`}
           blurb="Slots the consultants gave us, minus what is already decked and minus the hours marked unavailable — what is still open to book."
-          depts={capacityDepts} valueOf={availOf} accent="#166534" cellBase={cellBase} emphasiseZero
+          depts={capacityDepts} valueOf={availOf} accent="#166534" cellBase={cellBase} emphasiseZero outOf={capOf}
         />
       </div>
     )
@@ -204,7 +223,8 @@ export default function DeckingPerDay({
       })()}
 
       <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 620 }}>
+        <table style={tableStyle}>
+          <DayCols />
           <thead>
             <tr style={{ background: '#F8FAFC' }}>
               <th style={{ ...cellBase, textAlign: 'left', padding: '0.55rem 1rem', color: 'var(--mid-gray)', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
@@ -357,6 +377,7 @@ export default function DeckingPerDay({
       accent="#166534"
       cellBase={cellBase}
       emphasiseZero
+      outOf={capOf}
     />
     </div>
   )
@@ -370,7 +391,7 @@ export default function DeckingPerDay({
  * places for a day-order or totals bug to appear in.
  */
 function CapacityTable({
-  title, blurb, depts, valueOf, accent, cellBase, emphasiseZero = false,
+  title, blurb, depts, valueOf, accent, cellBase, emphasiseZero = false, outOf,
 }: {
   title: string
   blurb: string
@@ -379,6 +400,13 @@ function CapacityTable({
   accent: string
   cellBase: React.CSSProperties
   emphasiseZero?: boolean
+  /**
+   * Denominator for the percentage under each cell. Given for the available
+   * table so a number can be read as a share — 6 open slots means something
+   * different out of 8 than out of 80 — and omitted for the capacity table,
+   * where a percentage of itself would always be 100%.
+   */
+  outOf?: (dept: string, day: string) => number
 }) {
   const dayTotal = (day: string) => depts.reduce((n, d) => n + valueOf(d, day), 0)
   const weekTotal = DAYS.reduce((n, d) => n + dayTotal(d.key), 0)
@@ -403,7 +431,8 @@ function CapacityTable({
         </p>
       </div>
       <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <table style={tableStyle}>
+          <DayCols />
           <thead>
             <tr style={{ background: '#F8FAFC' }}>
               <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--mid-gray)', borderBottom: '1px solid #E2E8F0' }}>Department</th>
@@ -421,26 +450,65 @@ function CapacityTable({
                   <td style={{ padding: '0.5rem 0.75rem', fontSize: '0.82rem', fontWeight: 600, color: 'var(--charcoal)', borderBottom: '1px solid #F1F5F9' }}>{dept}</td>
                   {DAYS.map(d => {
                     const n = valueOf(dept, d.key)
+                    const base = outOf?.(dept, d.key) ?? 0
                     return (
                       <td key={d.key} style={{
                         ...cellBase,
                         color: n === 0 ? '#CBD5E1' : accent,
                         fontWeight: n > 0 && emphasiseZero ? 700 : 500,
                       }}>
-                        {n === 0 ? '·' : n}
+                        {n === 0 && base === 0 ? '·' : n}
+                        {/* No percentage when nothing was offered that day —
+                            0 of 0 is not 0%, it is "the clinic was shut". */}
+                        {outOf && base > 0 && (
+                          <div style={{ fontSize: '0.66rem', color: '#94A3B8', fontWeight: 500, lineHeight: 1.3 }}>
+                            {Math.round((n / base) * 100)}%
+                          </div>
+                        )}
                       </td>
                     )
                   })}
-                  <td style={{ ...cellBase, fontWeight: 700, color: 'var(--charcoal)' }}>{wk}</td>
+                  <td style={{ ...cellBase, fontWeight: 700, color: 'var(--charcoal)' }}>
+                    {wk}
+                    {outOf && (() => {
+                      const wkBase = DAYS.reduce((t, d) => t + (outOf(dept, d.key) ?? 0), 0)
+                      return wkBase > 0 ? (
+                        <div style={{ fontSize: '0.66rem', color: '#94A3B8', fontWeight: 500, lineHeight: 1.3 }}>
+                          {Math.round((wk / wkBase) * 100)}%
+                        </div>
+                      ) : null
+                    })()}
+                  </td>
                 </tr>
               )
             })}
             <tr style={{ background: '#F8FAFC' }}>
               <td style={{ padding: '0.5rem 0.75rem', fontSize: '0.82rem', fontWeight: 800, color: 'var(--charcoal)' }}>All departments</td>
-              {DAYS.map(d => (
-                <td key={d.key} style={{ ...cellBase, fontWeight: 800, color: accent }}>{dayTotal(d.key) || '·'}</td>
-              ))}
-              <td style={{ ...cellBase, fontWeight: 800, color: 'var(--charcoal)' }}>{weekTotal}</td>
+              {DAYS.map(d => {
+                const n = dayTotal(d.key)
+                const base = outOf ? depts.reduce((t, dept) => t + outOf(dept, d.key), 0) : 0
+                return (
+                  <td key={d.key} style={{ ...cellBase, fontWeight: 800, color: accent }}>
+                    {n === 0 && base === 0 ? '·' : n}
+                    {outOf && base > 0 && (
+                      <div style={{ fontSize: '0.66rem', color: '#64748B', fontWeight: 700, lineHeight: 1.3 }}>
+                        {Math.round((n / base) * 100)}%
+                      </div>
+                    )}
+                  </td>
+                )
+              })}
+              <td style={{ ...cellBase, fontWeight: 800, color: 'var(--charcoal)' }}>
+                {weekTotal}
+                {outOf && (() => {
+                  const wkBase = depts.reduce((t, dept) => t + DAYS.reduce((x, d) => x + outOf(dept, d.key), 0), 0)
+                  return wkBase > 0 ? (
+                    <div style={{ fontSize: '0.66rem', color: '#64748B', fontWeight: 700, lineHeight: 1.3 }}>
+                      {Math.round((weekTotal / wkBase) * 100)}%
+                    </div>
+                  ) : null
+                })()}
+              </td>
             </tr>
           </tbody>
         </table>

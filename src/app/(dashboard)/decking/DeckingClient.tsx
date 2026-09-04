@@ -1189,13 +1189,18 @@ export default function DeckingClient({ role }: { role: string }) {
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '0.5rem', maxWidth: 520 }}>
                   {([
-                    { label: 'Total',  value: slotSummary.total,  fg: '#1F2937', bg: '#F1F3F5' },
-                    { label: 'Booked', value: slotSummary.booked, fg: '#14507F', bg: '#E3EEFB' },
-                    { label: 'Open',   value: slotSummary.open,   fg: '#166534', bg: '#DFF5E4' },
+                    // Percentages are of TOTAL, named on the tile, so booked and open
+                    // read as shares of the same capacity, not of each other.
+                    { label: 'Total',  value: slotSummary.total,  fg: '#1F2937', bg: '#F1F3F5', pct: null },
+                    { label: 'Booked', value: slotSummary.booked, fg: '#14507F', bg: '#E3EEFB', pct: slotSummary.total > 0 ? Math.round((slotSummary.booked / slotSummary.total) * 100) : null },
+                    { label: 'Open',   value: slotSummary.open,   fg: '#166534', bg: '#DFF5E4', pct: slotSummary.total > 0 ? Math.round((slotSummary.open / slotSummary.total) * 100) : null },
                   ]).map(k => (
                     <div key={k.label} style={{ background: k.bg, borderRadius: '0.5rem', padding: '0.5rem 0.4rem', textAlign: 'center' }}>
                       <div style={{ fontSize: '1.25rem', fontWeight: 800, color: k.fg, lineHeight: 1.1, fontVariantNumeric: 'tabular-nums' }}>{k.value}</div>
                       <div style={{ fontSize: '0.66rem', fontWeight: 700, color: k.fg, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{k.label}</div>
+                      {k.pct !== null && (
+                        <div style={{ fontSize: '0.64rem', fontWeight: 600, color: k.fg, opacity: 0.75, fontVariantNumeric: 'tabular-nums' }}>{k.pct}% of total</div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -1288,13 +1293,18 @@ export default function DeckingClient({ role }: { role: string }) {
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
                     {([
-                      { label: 'Total',  value: slotSummary.total,  fg: '#1F2937', bg: '#F1F3F5' },
-                      { label: 'Booked', value: slotSummary.booked, fg: '#14507F', bg: '#E3EEFB' },
-                      { label: 'Open',   value: slotSummary.open,   fg: '#166534', bg: '#DFF5E4' },
+                      // Percentages are of TOTAL, named on the tile, so booked and open
+                      // read as shares of the same capacity, not of each other.
+                      { label: 'Total',  value: slotSummary.total,  fg: '#1F2937', bg: '#F1F3F5', pct: null },
+                      { label: 'Booked', value: slotSummary.booked, fg: '#14507F', bg: '#E3EEFB', pct: slotSummary.total > 0 ? Math.round((slotSummary.booked / slotSummary.total) * 100) : null },
+                      { label: 'Open',   value: slotSummary.open,   fg: '#166534', bg: '#DFF5E4', pct: slotSummary.total > 0 ? Math.round((slotSummary.open / slotSummary.total) * 100) : null },
                     ]).map(k => (
                       <div key={k.label} style={{ background: k.bg, borderRadius: '0.5rem', padding: '0.5rem 0.4rem', textAlign: 'center' }}>
                         <div style={{ fontSize: '1.25rem', fontWeight: 800, color: k.fg, lineHeight: 1.1, fontVariantNumeric: 'tabular-nums' }}>{k.value}</div>
                         <div style={{ fontSize: '0.66rem', fontWeight: 700, color: k.fg, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{k.label}</div>
+                      {k.pct !== null && (
+                        <div style={{ fontSize: '0.64rem', fontWeight: 600, color: k.fg, opacity: 0.75, fontVariantNumeric: 'tabular-nums' }}>{k.pct}% of total</div>
+                      )}
                       </div>
                     ))}
                   </div>
