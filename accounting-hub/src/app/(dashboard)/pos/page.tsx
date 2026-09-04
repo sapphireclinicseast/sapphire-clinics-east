@@ -49,6 +49,8 @@ interface ServiceItem {
   noPwdDiscount?: boolean
   doctorFee?: string | number | null
   clinicFee?: string | number | null
+  newDoctorFee?: string | number | null
+  newClinicFee?: string | number | null
   revenueType?: string
   [key: string]: unknown
 }
@@ -1135,8 +1137,14 @@ function OrderFormModal({
       pwdDiscountClinicOnly: svc.pwdDiscountClinicOnly,
       noPwdDiscount: svc.noPwdDiscount,
       priceType: svc.priceType as string | undefined,
-      doctorFee: svc.doctorFee != null ? toNum(svc.doctorFee) : undefined,
-      clinicFee: svc.clinicFee != null ? toNum(svc.clinicFee) : undefined,
+      // If the scheduled new price is already in effect (client-side rollover,
+      // before the server GET promoted it), its fee split rides along with it.
+      ...(() => {
+        const newActive = svc.newPrice && svc.newPriceEffectiveDate && new Date(svc.newPriceEffectiveDate as string) <= new Date()
+        const df = newActive && svc.newDoctorFee != null ? svc.newDoctorFee : svc.doctorFee
+        const cf = newActive && svc.newClinicFee != null ? svc.newClinicFee : svc.clinicFee
+        return { doctorFee: df != null ? toNum(df) : undefined, clinicFee: cf != null ? toNum(cf) : undefined }
+      })(),
     }])
     setServiceSearch('')
     setShowServiceDrop(false)

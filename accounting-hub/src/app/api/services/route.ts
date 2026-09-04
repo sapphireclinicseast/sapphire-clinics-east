@@ -77,20 +77,37 @@ export async function GET(req: Request) {
     prisma.service.count({ where }),
   ])
 
-  // Auto-rollover: if newPriceEffectiveDate has passed, move newPrice → price and clear
+  // Auto-rollover: if newPriceEffectiveDate has passed, move newPrice → price (and the
+  // scheduled fee split, when one was set) and clear the scheduled fields.
   const now = new Date()
   const rolloverPromises: Promise<unknown>[] = []
   for (const s of services) {
     if (s.newPrice != null && s.newPriceEffectiveDate && s.newPriceEffectiveDate <= now) {
+      const feeRoll = s.hasDoctorFee && (s.newDoctorFee != null || s.newClinicFee != null)
+      const histRows = [
+        { serviceId: s.id, field: 'price', oldValue: s.price, newValue: s.newPrice, source: 'SCHEDULED' },
+        ...(feeRoll && s.newDoctorFee != null ? [{ serviceId: s.id, field: 'doctorFee', oldValue: s.doctorFee, newValue: s.newDoctorFee, source: 'SCHEDULED' }] : []),
+        ...(feeRoll && s.newClinicFee != null ? [{ serviceId: s.id, field: 'clinicFee', oldValue: s.clinicFee, newValue: s.newClinicFee, source: 'SCHEDULED' }] : []),
+      ]
       rolloverPromises.push(
         prisma.service.update({
           where: { id: s.id },
-          data: { price: s.newPrice, newPrice: null, newPriceEffectiveDate: null },
-        })
+          data: {
+            price: s.newPrice, newPrice: null, newPriceEffectiveDate: null,
+            ...(feeRoll ? { doctorFee: s.newDoctorFee ?? s.doctorFee, clinicFee: s.newClinicFee ?? s.clinicFee } : {}),
+            newDoctorFee: null, newClinicFee: null,
+          },
+        }).then(() => prisma.servicePriceHistory.createMany({ data: histRows }))
       )
       s.price = s.newPrice
       s.newPrice = null
       s.newPriceEffectiveDate = null
+      if (feeRoll) {
+        s.doctorFee = s.newDoctorFee ?? s.doctorFee
+        s.clinicFee = s.newClinicFee ?? s.clinicFee
+      }
+      s.newDoctorFee = null
+      s.newClinicFee = null
     }
     for (const bp of s.branchPrices) {
       if (bp.newPrice != null && bp.newPriceEffectiveDate && bp.newPriceEffectiveDate <= now) {
@@ -169,6 +186,9 @@ export async function POST(req: Request) {
         hasDoctorFee: hasDoctorFee || false,
         doctorFee: hasDoctorFee && doctorFee ? parseFloat(doctorFee) : null,
         clinicFee: hasDoctorFee && clinicFee ? parseFloat(clinicFee) : null,
+        // Scheduled split rides with the scheduled price — meaningless without one.
+        newDoctorFee: hasDoctorFee && newPrice && body.newDoctorFee ? parseFloat(body.newDoctorFee) : null,
+        newClinicFee: hasDoctorFee && newPrice && body.newClinicFee ? parseFloat(body.newClinicFee) : null,
         pwdDiscountClinicOnly: hasDoctorFee ? (pwdDiscountClinicOnly || false) : false,
         noPwdDiscount: noPwdDiscount || false,
         description: description?.trim() || null,
@@ -254,8 +274,14 @@ export async function PUT(req: Request) {
     if (department !== undefined) data.department = department
     if (branch !== undefined) data.branch = branch
     if (price !== undefined) { const p = parseFloat(price); if (!isNaN(p)) data.price = p }
-    if (newPrice !== undefined) data.newPrice = newPrice ? parseFloat(newPrice) : null
+    if (newPrice !== undefined) {
+      data.newPrice = newPrice ? parseFloat(newPrice) : null
+      // The scheduled split rides with the scheduled price — clearing one clears both.
+      if (!newPrice) { data.newDoctorFee = null; data.newClinicFee = null }
+    }
     if (newPriceEffectiveDate !== undefined) data.newPriceEffectiveDate = newPriceEffectiveDate ? new Date(newPriceEffectiveDate) : null
+    if (body.newDoctorFee !== undefined && data.newDoctorFee === undefined) data.newDoctorFee = body.newDoctorFee ? parseFloat(body.newDoctorFee) : null
+    if (body.newClinicFee !== undefined && data.newClinicFee === undefined) data.newClinicFee = body.newClinicFee ? parseFloat(body.newClinicFee) : null
     if (priceType !== undefined) data.priceType = priceType
     if (revenueType !== undefined) {
       data.revenueType = revenueType
@@ -268,6 +294,8 @@ export async function PUT(req: Request) {
       if (!hasDoctorFee) {
         data.doctorFee = null
         data.clinicFee = null
+        data.newDoctorFee = null
+        data.newClinicFee = null
         data.pwdDiscountClinicOnly = false
       }
     }
@@ -289,7 +317,7 @@ export async function PUT(req: Request) {
     // Capture the money figures before the write so any movement can be recorded.
     const before = await prisma.service.findUnique({
       where: { id },
-      select: { price: true, doctorFee: true, clinicFee: true, newPrice: true },
+      select: { price: true, doctorFee: true, clinicFee: true, newPrice: true, newDoctorFee: true, newClinicFee: true },
     })
 
     const service = await prisma.service.update({ where: { id }, data })
@@ -297,7 +325,7 @@ export async function PUT(req: Request) {
     // Price history: one row per money field that actually moved. The audit log only
     // records which fields were touched, so this is the only place the old value survives.
     if (before) {
-      const MONEY = ['price', 'doctorFee', 'clinicFee', 'newPrice'] as const
+      const MONEY = ['price', 'doctorFee', 'clinicFee', 'newPrice', 'newDoctorFee', 'newClinicFee'] as const
       const rows = MONEY.flatMap((f) => {
         if (!(f in data)) return []
         const oldV = before[f] == null ? null : Number(before[f])

@@ -256,6 +256,10 @@ model Service {
   hasDoctorFee          Boolean       @default(false)
   doctorFee             Decimal?
   clinicFee             Decimal?
+  // Scheduled fee split that takes effect together with newPrice on its
+  // effective date; the current doctorFee/clinicFee stay until then.
+  newDoctorFee          Decimal?
+  newClinicFee          Decimal?
   pwdDiscountClinicOnly Boolean       @default(false)
   noPwdDiscount         Boolean       @default(false)
   description           String?

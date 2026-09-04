@@ -34,6 +34,8 @@ interface Service {
   hmoPaysClinicianDirect?: boolean
   newPrice?: string | number | null
   newPriceEffectiveDate?: string | null
+  newDoctorFee?: string | number | null
+  newClinicFee?: string | number | null
   branchPrices?: { id?: string; branch: string; price: string | number; newPrice?: string | number | null; newPriceEffectiveDate?: string | null }[]
   description: string | null
   revenueAccountId: string | null
@@ -147,6 +149,9 @@ export default function ServicesPage() {
   const [fHasDoctorFee, setFHasDoctorFee] = useState(false)
   const [fDoctorFee, setFDoctorFee] = useState('')
   const [fClinicFee, setFClinicFee] = useState('')
+  // Scheduled split that takes effect with the new price; current fees stay until then.
+  const [fNewDoctorFee, setFNewDoctorFee] = useState('')
+  const [fNewClinicFee, setFNewClinicFee] = useState('')
   const [fPwdClinicOnly, setFPwdClinicOnly] = useState(false)
   const [fNoPwdDiscount, setFNoPwdDiscount] = useState(false)
   const [fIssuedOfficialInvoice, setFIssuedOfficialInvoice] = useState(false)
@@ -262,7 +267,7 @@ export default function ServicesPage() {
     setEditing(null)
     setFName(''); setFDept('PT'); setFBranch('ALL'); setFPrice(''); setFNewPrice(''); setFNewPriceDate(''); setFBranchPrices([])
     setFPriceType('FIXED'); setFRevenueType('EARNED'); setFHasDoctorFee(false); setFDoctorFee('')
-    setFClinicFee(''); setFPwdClinicOnly(false); setFNoPwdDiscount(false); setFIssuedOfficialInvoice(false); setFIsHmoGl(false); setFHmoDirect(false); setFRecognitionMonths(''); setFDescription('')
+    setFClinicFee(''); setFNewDoctorFee(''); setFNewClinicFee(''); setFPwdClinicOnly(false); setFNoPwdDiscount(false); setFIssuedOfficialInvoice(false); setFIsHmoGl(false); setFHmoDirect(false); setFRecognitionMonths(''); setFDescription('')
     setFWalletType(''); setFVipTier(''); setFPackageSessions(''); setFRevenueAccountId(''); setFRevenueAccountSearch(''); setFUnitPayId(''); setFUnitPayEnabled(false); setFThresholdCounted(false); setFThresholdQty('1'); setFEligibleServices([]); setEligibleSearch(''); setEligibleResults([])
     setError(''); setModalOpen(true)
   }
@@ -276,6 +281,8 @@ export default function ServicesPage() {
     setFHasDoctorFee(s.hasDoctorFee)
     setFDoctorFee(s.doctorFee != null ? String(s.doctorFee) : '')
     setFClinicFee(s.clinicFee != null ? String(s.clinicFee) : '')
+    setFNewDoctorFee(s.newDoctorFee != null ? String(s.newDoctorFee) : '')
+    setFNewClinicFee(s.newClinicFee != null ? String(s.newClinicFee) : '')
     setFPwdClinicOnly(s.pwdDiscountClinicOnly)
     setFNoPwdDiscount(s.noPwdDiscount)
     setFIssuedOfficialInvoice(s.issuedOfficialInvoice)
@@ -312,9 +319,26 @@ export default function ServicesPage() {
       if (!isNaN(total)) setFPrice(String(total))
     }
   }, [fHasDoctorFee, fDoctorFee, fClinicFee])
+  // Same for the scheduled split: the new fees drive the new price.
+  useEffect(() => {
+    if (fHasDoctorFee && fNewDoctorFee && fNewClinicFee) {
+      const total = parseFloat(fNewDoctorFee) + parseFloat(fNewClinicFee)
+      if (!isNaN(total)) setFNewPrice(String(total))
+    }
+  }, [fHasDoctorFee, fNewDoctorFee, fNewClinicFee])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    // A scheduled price on a split service needs its own split — otherwise the
+    // rollover would apply the new price against the old doctor/clinic fees.
+    if (fHasDoctorFee && fNewPrice && (!fNewDoctorFee || !fNewClinicFee)) {
+      setError('This service has a Doctor Fee + Clinic Fee split — enter the NEW Doctor’s Fee and Clinic Fee that go with the new price.')
+      return
+    }
+    if (fHasDoctorFee && fNewPrice && Math.abs((parseFloat(fNewDoctorFee) + parseFloat(fNewClinicFee)) - parseFloat(fNewPrice)) > 0.01) {
+      setError('The new Doctor’s Fee + Clinic Fee must add up to the new price.')
+      return
+    }
     setSaving(true); setError('')
     const body: Record<string, unknown> = {
       name: fName, department: fDept, branch: fBranch,
@@ -340,6 +364,8 @@ export default function ServicesPage() {
       thresholdQty: fThresholdCounted ? (parseFloat(fThresholdQty) || 1) : 1,
       newPrice: fNewPrice || null,
       newPriceEffectiveDate: fNewPriceDate || null,
+      newDoctorFee: fHasDoctorFee && fNewPrice ? (fNewDoctorFee || null) : null,
+      newClinicFee: fHasDoctorFee && fNewPrice ? (fNewClinicFee || null) : null,
       branchPrices: fBranch === 'ALL' ? fBranchPrices.filter(bp => bp.price).map(bp => ({ branch: bp.branch, price: bp.price, newPrice: bp.newPrice || null, newPriceEffectiveDate: bp.newPriceDate || null })) : [],
     }
     if (editing) body.id = editing.id
@@ -993,6 +1019,40 @@ export default function ServicesPage() {
                           style={{ borderColor: 'var(--light-gray)' }} />
                       </div>
                     </div>
+
+                    {/* Scheduled split — the new price needs its own doctor/clinic share;
+                        the fees above stay in force until the effective date. */}
+                    {fNewPrice && (
+                      <div className="p-3 rounded-lg border" style={{ borderColor: 'var(--teal)', background: '#f0fdfa' }}>
+                        <p className="text-xs font-semibold mb-2" style={{ color: 'var(--deep-teal)' }}>
+                          New split for the scheduled price of ₱{Number(fNewPrice).toLocaleString('en-PH')}{fNewPriceDate ? ` (from ${fNewPriceDate})` : ''} — the current fees above stay until then
+                        </p>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs font-medium mb-1" style={{ color: 'var(--charcoal)' }}>New Doctor&apos;s Fee (PHP)</label>
+                            <input type="number" step="0.01" value={fNewDoctorFee}
+                              onChange={(e) => setFNewDoctorFee(e.target.value)}
+                              placeholder="e.g. 1185" required
+                              className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
+                              style={{ borderColor: 'var(--light-gray)' }} />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium mb-1" style={{ color: 'var(--charcoal)' }}>New Clinic Fee (PHP)</label>
+                            <input type="number" step="0.01" value={fNewClinicFee}
+                              onChange={(e) => setFNewClinicFee(e.target.value)}
+                              placeholder="e.g. 900" required
+                              className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
+                              style={{ borderColor: 'var(--light-gray)' }} />
+                          </div>
+                        </div>
+                        {fNewDoctorFee && fNewClinicFee && (
+                          <p className="text-[11px] mt-2" style={{ color: Math.abs((parseFloat(fNewDoctorFee) + parseFloat(fNewClinicFee)) - parseFloat(fNewPrice || '0')) <= 0.01 ? 'var(--deep-teal)' : '#b91c1c' }}>
+                            ₱{(parseFloat(fNewDoctorFee) || 0).toLocaleString('en-PH')} + ₱{(parseFloat(fNewClinicFee) || 0).toLocaleString('en-PH')} = ₱{((parseFloat(fNewDoctorFee) || 0) + (parseFloat(fNewClinicFee) || 0)).toLocaleString('en-PH')}
+                            {Math.abs((parseFloat(fNewDoctorFee) + parseFloat(fNewClinicFee)) - parseFloat(fNewPrice || '0')) <= 0.01 ? ' ✓ matches the new price' : ' — does not match the new price'}
+                          </p>
+                        )}
+                      </div>
+                    )}
 
                     {/* PWD Discount Rule */}
                     <div className="p-3 rounded-lg border" style={{ borderColor: '#fcd34d', background: '#fffbeb' }}>
