@@ -274,8 +274,9 @@ export default function PatientRegisterClient({ defaultBranch }: { defaultBranch
           </button>
 
           <p style={{ marginTop: 14, fontSize: '0.72rem', color: '#9ca3af', textAlign: 'center', lineHeight: 1.5 }}>
-            By submitting, you consent to SAPPHIRE Clinics using your information
-            for patient care and administration. A staff member will verify your details.
+            By submitting, you consent to Sapphire Clinics East Inc. using your information
+            for patient care and administration, compliant with the Data Privacy Act of 2012.
+            A staff member will verify your details.
           </p>
         </form>
       </div>

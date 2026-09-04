@@ -289,6 +289,12 @@ export default function LoaStandingFormPage() {
           Accepted: JPG, PNG or PDF, up to 20 MB. If you cannot find your name,
           please ask the clinic front desk to register you first.
         </p>
+
+        <p style={{ fontSize: '0.72rem', color: '#8A9499', marginTop: '0.75rem', lineHeight: 1.5 }}>
+          By submitting, you consent to Sapphire Clinics East Inc. using your information
+          for patient care and administration, compliant with the Data Privacy Act of 2012.
+          A staff member will verify your details.
+        </p>
       </div>
     </div>
   )
