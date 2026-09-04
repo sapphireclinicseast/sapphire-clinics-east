@@ -30,6 +30,7 @@ interface Service {
   noPwdDiscount: boolean
   issuedOfficialInvoice: boolean
   isHmoGl?: boolean
+  paymentType?: string // CASH | HMO | GL
   recognitionMonths?: number | null
   hmoPaysClinicianDirect?: boolean
   newPrice?: string | number | null
@@ -124,6 +125,7 @@ export default function ServicesPage() {
   // Any branch-locked user (or front desk) is pinned to their branch.
   const lockBranch = scope.enum || (isFrontDesk ? userBranch : null) || null
   const [filterBranch, setFilterBranch] = useState('')
+  const [filterPayType, setFilterPayType] = useState('') // '' | CASH | HMO | GL
   const [sortField, setSortField] = useState('name')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [error, setError] = useState('')
@@ -156,6 +158,7 @@ export default function ServicesPage() {
   const [fNoPwdDiscount, setFNoPwdDiscount] = useState(false)
   const [fIssuedOfficialInvoice, setFIssuedOfficialInvoice] = useState(false)
   const [fIsHmoGl, setFIsHmoGl] = useState(false)
+  const [fPaymentType, setFPaymentType] = useState('CASH') // CASH | HMO | GL — drives fIsHmoGl
   const [fRecognitionMonths, setFRecognitionMonths] = useState('')
   const [fHmoDirect, setFHmoDirect] = useState(false)
   const [fDescription, setFDescription] = useState('')
@@ -257,6 +260,10 @@ export default function ServicesPage() {
     }
   }
 
+  // Payment type of a service — pre-backfill rows fall back to the legacy flag.
+  const payTypeOf = (s: Service) => s.paymentType || (s.isHmoGl ? 'HMO' : 'CASH')
+  const visibleServices = filterPayType ? services.filter(s => payTypeOf(s) === filterPayType) : services
+
   function SortIcon({ field }: { field: string }) {
     if (sortField !== field) return <ArrowUpDown size={12} className="opacity-30" />
     return sortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />
@@ -267,7 +274,7 @@ export default function ServicesPage() {
     setEditing(null)
     setFName(''); setFDept('PT'); setFBranch('ALL'); setFPrice(''); setFNewPrice(''); setFNewPriceDate(''); setFBranchPrices([])
     setFPriceType('FIXED'); setFRevenueType('EARNED'); setFHasDoctorFee(false); setFDoctorFee('')
-    setFClinicFee(''); setFNewDoctorFee(''); setFNewClinicFee(''); setFPwdClinicOnly(false); setFNoPwdDiscount(false); setFIssuedOfficialInvoice(false); setFIsHmoGl(false); setFHmoDirect(false); setFRecognitionMonths(''); setFDescription('')
+    setFClinicFee(''); setFNewDoctorFee(''); setFNewClinicFee(''); setFPwdClinicOnly(false); setFNoPwdDiscount(false); setFIssuedOfficialInvoice(false); setFIsHmoGl(false); setFPaymentType('CASH'); setFHmoDirect(false); setFRecognitionMonths(''); setFDescription('')
     setFWalletType(''); setFVipTier(''); setFPackageSessions(''); setFRevenueAccountId(''); setFRevenueAccountSearch(''); setFUnitPayId(''); setFUnitPayEnabled(false); setFThresholdCounted(false); setFThresholdQty('1'); setFEligibleServices([]); setEligibleSearch(''); setEligibleResults([])
     setError(''); setModalOpen(true)
   }
@@ -287,6 +294,7 @@ export default function ServicesPage() {
     setFNoPwdDiscount(s.noPwdDiscount)
     setFIssuedOfficialInvoice(s.issuedOfficialInvoice)
     setFIsHmoGl(!!s.isHmoGl)
+    setFPaymentType(s.paymentType || (s.isHmoGl ? 'HMO' : 'CASH'))
     setFRecognitionMonths(s.recognitionMonths ? String(s.recognitionMonths) : '')
     setFHmoDirect(!!s.hmoPaysClinicianDirect)
     setFDescription(s.description || '')
@@ -354,6 +362,7 @@ export default function ServicesPage() {
       noPwdDiscount: fNoPwdDiscount,
       issuedOfficialInvoice: fIssuedOfficialInvoice,
       isHmoGl: fIsHmoGl,
+      paymentType: fPaymentType,
       recognitionMonths: fRecognitionMonths ? parseInt(fRecognitionMonths, 10) : null,
       hmoPaysClinicianDirect: fHmoDirect,
       description: fDescription,
@@ -517,6 +526,14 @@ export default function ServicesPage() {
           <option value="">All Departments</option>
           {DEPARTMENTS.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
         </select>
+        <select value={filterPayType} onChange={(e) => { setFilterPayType(e.target.value); setSvcPage(1) }}
+          className="px-3 py-2.5 rounded-xl border text-sm outline-none"
+          style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+          <option value="">All Payment Types</option>
+          <option value="CASH">Cash</option>
+          <option value="HMO">HMO</option>
+          <option value="GL">Guarantee Letter</option>
+        </select>
         {isFrontDesk ? (
           <span className="px-3 py-2.5 rounded-xl border text-sm"
             style={{ borderColor: 'var(--light-gray)', background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
@@ -551,6 +568,7 @@ export default function ServicesPage() {
                   onClick={() => toggleSort('department')}>
                   <span className="flex items-center gap-1">Department <SortIcon field="department" /></span>
                 </th>
+                <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Payment Type</th>
                 <th className="text-left px-4 py-3 font-semibold cursor-pointer select-none" style={{ color: 'var(--charcoal)' }}
                   onClick={() => toggleSort('branch')}>
                   <span className="flex items-center gap-1">Branch <SortIcon field="branch" /></span>
@@ -566,15 +584,15 @@ export default function ServicesPage() {
               </tr>
             </thead>
             <tbody>
-              {services.length === 0 ? (
+              {visibleServices.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>
+                  <td colSpan={9} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>
                     <Stethoscope size={32} className="mx-auto mb-2 opacity-40" />
                     <p>No services found</p>
                     {canWrite && <p className="text-xs mt-1">Add clinic services to get started</p>}
                   </td>
                 </tr>
-              ) : services.slice((svcPage - 1) * svcPageSize, svcPage * svcPageSize).map((s) => {
+              ) : visibleServices.slice((svcPage - 1) * svcPageSize, svcPage * svcPageSize).map((s) => {
                 const price = Number(s.price)
                 const doctor = s.doctorFee != null ? Number(s.doctorFee) : null
                 const clinic = s.clinicFee != null ? Number(s.clinicFee) : null
@@ -603,6 +621,15 @@ export default function ServicesPage() {
                       <span className="px-2 py-1 rounded-md text-xs font-medium" style={{ background: badge.bg, color: badge.color }}>
                         {DEPT_LABELS[s.department] || s.department}
                       </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      {(() => {
+                        const pt = payTypeOf(s)
+                        const chip = pt === 'HMO' ? { bg: '#ffedd5', color: '#c2410c', label: 'HMO' }
+                          : pt === 'GL' ? { bg: '#dbeafe', color: '#1d4ed8', label: 'GL' }
+                          : { bg: '#dcfce7', color: '#166534', label: 'Cash' }
+                        return <span className="px-2 py-1 rounded-md text-xs font-medium" style={{ background: chip.bg, color: chip.color }}>{chip.label}</span>
+                      })()}
                     </td>
                     <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
                       {BRANCH_LABELS[s.branch] || s.branch}
@@ -685,8 +712,8 @@ export default function ServicesPage() {
             </tbody>
           </table>
         </div>
-        {services.length > 0 && (
-          <Pagination totalItems={services.length} page={svcPage} pageSize={svcPageSize}
+        {visibleServices.length > 0 && (
+          <Pagination totalItems={visibleServices.length} page={svcPage} pageSize={svcPageSize}
             onPageChange={setSvcPage} onPageSizeChange={setSvcPageSize} />
         )}
       </div>
@@ -1115,15 +1142,22 @@ export default function ServicesPage() {
               </div>
 
               <div className="p-3 rounded-xl border" style={{ borderColor: fIsHmoGl ? '#fdba74' : 'var(--light-gray)', background: fIsHmoGl ? '#fff7ed' : 'var(--off-white)' }}>
-                <label className="flex items-center gap-2 text-sm font-medium cursor-pointer" style={{ color: fIsHmoGl ? '#9a3412' : 'var(--charcoal)' }}>
-                  <input type="checkbox" checked={fIsHmoGl}
-                    onChange={(e) => setFIsHmoGl(e.target.checked)}
-                    className="rounded" />
-                  This service is HMO / Guarantee Letter
-                </label>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: fIsHmoGl ? '#9a3412' : 'var(--charcoal)' }}>Service Payment Type</label>
+                <div className="flex gap-2">
+                  {([['CASH', 'Cash'], ['HMO', 'HMO'], ['GL', 'Guarantee Letter']] as const).map(([v, label]) => (
+                    <button key={v} type="button"
+                      onClick={() => { setFPaymentType(v); setFIsHmoGl(v !== 'CASH') }}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold border"
+                      style={fPaymentType === v
+                        ? { background: v === 'CASH' ? 'var(--teal)' : '#ea580c', color: '#fff', borderColor: 'transparent' }
+                        : { background: '#fff', color: 'var(--mid-gray)', borderColor: 'var(--light-gray)' }}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
                 {fIsHmoGl && (
                   <p className="mt-1.5 text-xs" style={{ color: '#9a3412' }}>
-                    Sales of this service are receivables — they show under &ldquo;Receivables Sales&rdquo; in the income statement.
+                    Billed to a payor — sales of this service are receivables and show under &ldquo;Receivables Sales&rdquo; in the income statement.
                   </p>
                 )}
                 <label className="mt-2 flex items-center gap-2 text-sm font-medium cursor-pointer" style={{ color: fHmoDirect ? '#9a3412' : 'var(--charcoal)' }}>

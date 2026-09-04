@@ -40,5 +40,17 @@ export async function POST() {
   const matches = await prisma.service.findMany({ where, select: { name: true, isHmoGl: true }, orderBy: { name: 'asc' } })
   const newlyTagged = matches.filter(m => !m.isHmoGl).map(m => m.name)
   const res = await prisma.service.updateMany({ where, data: { isHmoGl: true } })
+  // Payment-type tags ride along: '- OP' names are GL, provider-prefixed names
+  // are HMO. GL runs first so '- OP' wins where a name matches both, and both
+  // rungs only touch still-untagged (CASH) rows — a manual HMO/GL choice on a
+  // service is never overwritten.
+  await prisma.service.updateMany({
+    where: { department: { in: ['PT', 'OT', 'SLP'] }, name: { contains: '- OP', mode: 'insensitive' }, paymentType: 'CASH' },
+    data: { paymentType: 'GL' },
+  })
+  await prisma.service.updateMany({
+    where: { department: { in: ['PT', 'OT', 'SLP'] }, paymentType: 'CASH', OR: HMO_PREFIXES.map(p => ({ name: { startsWith: p, mode: 'insensitive' as const } })) },
+    data: { paymentType: 'HMO' },
+  })
   return NextResponse.json({ matched: matches.length, updated: res.count, newlyTagged, names: matches.map(m => m.name) })
 }

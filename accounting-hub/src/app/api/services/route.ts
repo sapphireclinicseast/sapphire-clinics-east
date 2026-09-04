@@ -197,6 +197,7 @@ export async function POST(req: Request) {
         unitPayEnabled: unitPayEnabled !== undefined ? unitPayEnabled : true,
         thresholdCounted: thresholdCounted || false,
         isHmoGl: isHmoGl || false,
+        paymentType: ['CASH', 'HMO', 'GL'].includes(body.paymentType) ? body.paymentType : (isHmoGl ? 'HMO' : 'CASH'),
         hmoPaysClinicianDirect: hmoPaysClinicianDirect || false,
         recognitionMonths: recognitionMonths ? Number(recognitionMonths) : null,
         thresholdQty: thresholdQty != null ? Math.max(0.5, Math.round((parseFloat(String(thresholdQty)) || 1) * 2) / 2) : 1,
@@ -311,6 +312,7 @@ export async function PUT(req: Request) {
     if (thresholdQty !== undefined) data.thresholdQty = Math.max(0.5, Math.round((parseFloat(String(thresholdQty)) || 1) * 2) / 2)
     if (issuedOfficialInvoice !== undefined) data.issuedOfficialInvoice = issuedOfficialInvoice
     if (isHmoGl !== undefined) data.isHmoGl = !!isHmoGl
+    if (body.paymentType !== undefined && ['CASH', 'HMO', 'GL'].includes(body.paymentType)) data.paymentType = body.paymentType
     if (hmoPaysClinicianDirect !== undefined) data.hmoPaysClinicianDirect = !!hmoPaysClinicianDirect
     if (recognitionMonths !== undefined) data.recognitionMonths = recognitionMonths ? Number(recognitionMonths) : null
 

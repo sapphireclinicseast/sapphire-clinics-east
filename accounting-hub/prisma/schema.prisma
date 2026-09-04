@@ -272,6 +272,10 @@ model Service {
   thresholdQty          Decimal       @default(1) // sessions credited per unit (e.g. 2 for a 2-hour, 0.5 for a half session)
   issuedOfficialInvoice Boolean       @default(false)
   isHmoGl               Boolean       @default(false) // service billed to HMO / Guarantee Letter → sales are receivables
+  // How this service is settled: CASH (patient pays) | HMO | GL. Finer-grained
+  // than isHmoGl (which stays true for both HMO and GL — receivables logic
+  // reads it); drives the Payment Type column/filter on the Services page.
+  paymentType           String        @default("CASH")
   hmoPaysClinicianDirect Boolean      @default(false) // HMO pays the clinician directly — sessions are monitored apart from our AR
   // Revenue recognized over N months starting the transaction month (tuition
   // and other period fees). null/1 = immediate. Applied by the reports engine.
