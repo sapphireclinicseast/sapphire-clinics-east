@@ -32,7 +32,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const loa = await prisma.loaSubmission.findUnique({
     where: { id },
     select: {
-      id: true, branch: true, fileUrl: true, fileMime: true, hmoName: true,
+      id: true, branch: true, fileUrl: true, fileMime: true, idFileUrl: true, idFileMime: true, hmoName: true,
       patientName: true, patient: { select: { firstName: true, lastName: true } },
     },
   })
@@ -42,9 +42,19 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if (forced && loa.branch !== locked)
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  if (!loa.fileUrl) return NextResponse.json({ error: 'No document uploaded yet' }, { status: 404 })
+  // ?doc=id serves the valid ID instead of the letter. Same route, so the
+  // branch and role checks above cover both — a second route would be a second
+  // place for that guard to be forgotten.
+  const wantsId = req.nextUrl.searchParams.get('doc') === 'id'
+  const sourceUrl = wantsId ? loa.idFileUrl : loa.fileUrl
+  if (!sourceUrl) {
+    return NextResponse.json(
+      { error: wantsId ? 'No ID uploaded for this letter' : 'No document uploaded yet' },
+      { status: 404 },
+    )
+  }
 
-  const stored = path.basename(loa.fileUrl)
+  const stored = path.basename(sourceUrl)
   const filePath = path.join(process.cwd(), 'uploads', 'loa', stored)
 
   let data: Buffer
@@ -55,7 +65,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   }
 
   const ext = stored.split('.').pop()?.toLowerCase() ?? ''
-  const mime = loa.fileMime
+  const mime = (wantsId ? loa.idFileMime : loa.fileMime)
     ?? (ext === 'pdf' ? 'application/pdf' : ext === 'png' ? 'image/png' : 'image/jpeg')
 
   // A readable filename so a printed stack is sortable by patient and provider.

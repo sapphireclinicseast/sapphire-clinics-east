@@ -22,6 +22,7 @@ const LIST_SELECT = {
   services: true,
   dateOfApproval: true,
   fileUrl: true,
+  idFileUrl: true,
   fileMime: true,
   status: true,
   notes: true,

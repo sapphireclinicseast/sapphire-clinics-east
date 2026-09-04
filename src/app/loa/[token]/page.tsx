@@ -8,6 +8,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import LoaPhotoCapture from '@/components/LoaPhotoCapture'
+import { PaperclipIcon, CameraIcon, ButtonLabel } from '@/components/loa-upload-icons'
 import { useParams } from 'next/navigation'
 
 type Stage = 'loading' | 'ready' | 'uploading' | 'success' | 'error'
@@ -31,6 +32,14 @@ export default function LoaUploadPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [approvalDate, setApprovalDate] = useState('')
   const galleryRef = useRef<HTMLInputElement>(null)
+  const [idFile, setIdFile] = useState<File | null>(null)
+  const [idPreview, setIdPreview] = useState<string | null>(null)
+  const idGalleryRef = useRef<HTMLInputElement>(null)
+
+  function handleIdFile(file: File) {
+    setIdFile(file)
+    setIdPreview(file.type.startsWith('image/') ? URL.createObjectURL(file) : null)
+  }
 
   useEffect(() => {
     fetch(`/api/loa-upload/${token}`)
@@ -60,9 +69,11 @@ export default function LoaUploadPage() {
 
   async function upload() {
     if (!selectedFile) return
+    if (!idFile) { setErrorMsg('Please attach a photo of a valid ID showing your signature.'); return }
     setStage('uploading')
     const form = new FormData()
     form.append('file', selectedFile)
+    form.append('idFile', idFile)
     if (approvalDate) form.append('dateOfApproval', approvalDate)
     if (hmoName) form.append('hmoName', hmoName)
     if (branch) form.append('branch', branch)
@@ -250,8 +261,44 @@ export default function LoaUploadPage() {
             capture attribute is ignored, it opens an in-page webcam instead. */}
         <LoaPhotoCapture onCapture={handleFile} buttonStyle={bigButton} />
         <button style={ghostButton} onClick={() => galleryRef.current?.click()}>
-          📎 Choose a photo or PDF
+          <ButtonLabel icon={<PaperclipIcon />}>Choose a photo or PDF of LOA</ButtonLabel>
         </button>
+
+        {/* ── The valid ID ──────────────────────────────────────────────────
+            Explained, not just asked for: "send a photo of your ID" reads as an
+            odd demand unless the reason sits next to it. */}
+        <div style={{ marginTop: '1.4rem', paddingTop: '1.2rem', borderTop: '1px solid #E5E9EC' }}>
+          <label style={fieldLabel}>Valid ID with your signature</label>
+          <p style={{ fontSize: '0.82rem', color: '#667', lineHeight: 1.55, marginBottom: '0.9rem' }}>
+            Please also send a photo of a valid ID that shows your signature.
+            When you come to the clinic you will sign the LOA by hand, and we
+            check that signature against the one on your ID — so the ID needs to
+            show your signature clearly.
+          </p>
+
+          {idPreview && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={idPreview} alt="Selected ID" style={{ width: '100%', borderRadius: 12, marginBottom: '1rem', border: '1px solid #E5E9EC' }} />
+          )}
+          {idFile && !idPreview && (
+            <p style={{ fontSize: '0.9rem', color: charcoal, marginBottom: '1rem' }}>
+              Selected: <strong>{idFile.name}</strong>
+            </p>
+          )}
+
+          <input ref={idGalleryRef} type="file" accept="image/*,application/pdf" style={{ display: 'none' }}
+            onChange={e => { const f = e.target.files?.[0]; if (f) handleIdFile(f) }} />
+
+          <LoaPhotoCapture
+            onCapture={handleIdFile}
+            label={<ButtonLabel icon={<CameraIcon />}>Take a photo of ID</ButtonLabel>}
+            buttonStyle={bigButton}
+          />
+          <button style={ghostButton} onClick={() => idGalleryRef.current?.click()}>
+            <ButtonLabel icon={<PaperclipIcon />}>Choose a photo or PDF of ID</ButtonLabel>
+          </button>
+        </div>
+
 
         {selectedFile && (
           <button

@@ -25,7 +25,7 @@ async function resolveToken(token: string) {
     include: {
       loa: {
         select: {
-          id: true, hmoName: true, branch: true, fileUrl: true, services: true,
+          id: true, hmoName: true, branch: true, fileUrl: true, idFileUrl: true, services: true,
           patientName: true, patient: { select: { firstName: true } },
         },
       },
@@ -117,9 +117,34 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     if (old && old !== filename) await fs.unlink(path.join(uploadDir, old)).catch(() => {})
   }
 
+  // ── The valid ID ──
+  // Required for the same reason as on the standing form: it exists to be
+  // matched against the wet signature written at the counter, and one chased
+  // afterwards never arrives.
+  const idFile = form.get('idFile') as File | null
+  if (!idFile || idFile.size === 0)
+    return NextResponse.json({ error: 'Please attach a photo of a valid ID showing your signature.' }, { status: 400 })
+  if (idFile.size > MAX_BYTES)
+    return NextResponse.json({ error: 'ID file too large (max 20 MB)' }, { status: 413 })
+  const idMime = idFile.type || 'application/octet-stream'
+  if (!ALLOWED_MIME.has(idMime))
+    return NextResponse.json({ error: 'Unsupported ID file type. Please use a photo or a PDF.' }, { status: 400 })
+  const idExt = idMime === 'application/pdf' ? '.pdf'
+    : idMime === 'image/png' ? '.png'
+    : idMime === 'image/webp' ? '.webp'
+    : '.jpg'
+  const idFilename = `loaid-${crypto.randomBytes(16).toString('hex')}${idExt}`
+  await fs.writeFile(path.join(uploadDir, idFilename), Buffer.from(await idFile.arrayBuffer()))
+  if (record.loa.idFileUrl) {
+    const oldId = path.basename(record.loa.idFileUrl)
+    if (oldId && oldId !== idFilename) await fs.unlink(path.join(uploadDir, oldId)).catch(() => {})
+  }
+
   const patch: Record<string, unknown> = {
     fileUrl: filename,
     fileMime: mime,
+    idFileUrl: idFilename,
+    idFileMime: idMime,
     status: 'SUBMITTED',
   }
 
