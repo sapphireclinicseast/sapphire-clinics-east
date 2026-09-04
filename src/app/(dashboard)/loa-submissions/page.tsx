@@ -24,6 +24,7 @@ interface Loa {
   services: string[]
   dateOfApproval: string | null
   fileUrl: string | null
+  idFileUrl: string | null
   fileMime: string | null
   status: 'AWAITING' | 'SUBMITTED' | 'APPROVED' | 'REJECTED'
   notes: string | null
@@ -265,6 +266,17 @@ export default function LoaSubmissionsPage() {
                           <a href={`/api/loa/${l.id}/file?view=1`} target="_blank" rel="noreferrer" style={{ ...input, padding: '0.25rem 0.5rem', fontSize: '0.78rem', textDecoration: 'none', color: '#46555C' }}>
                             View
                           </a>
+                          {/* The ID is what the counter signature gets checked
+                              against, so it belongs next to the letter rather
+                              than somewhere it has to be hunted for. Letters
+                              filed before the ID was asked for have none. */}
+                          {l.idFileUrl && (
+                            <a href={`/api/loa/${l.id}/file?doc=id&view=1`} target="_blank" rel="noreferrer"
+                               title="Valid ID — check the signature against the one signed at the counter"
+                               style={{ ...input, padding: '0.25rem 0.5rem', fontSize: '0.78rem', textDecoration: 'none', color: '#5B2A86' }}>
+                              ID
+                            </a>
+                          )}
                         </div>
                       ) : (
                         <span style={{ color: '#B0B8BC' }}>Not yet</span>

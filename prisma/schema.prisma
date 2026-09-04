@@ -2327,6 +2327,13 @@ model LoaSubmission {
   dateOfApproval DateTime?
   fileUrl        String?
   fileMime       String?
+  // A photo of a valid ID showing the patient's signature. The clinic matches
+  // it against the wet signature the patient writes on the LOA at the counter,
+  // so it is evidence for a later check rather than another copy of the letter.
+  // Nullable: every letter filed before this existed has none, and the column
+  // must not invent one for them.
+  idFileUrl      String?
+  idFileMime     String?
   status         LoaStatus @default(AWAITING)
   notes          String?
   createdById    String?

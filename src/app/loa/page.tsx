@@ -11,6 +11,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import LoaPhotoCapture from '@/components/LoaPhotoCapture'
+import { PaperclipIcon, CameraIcon, ButtonLabel } from '@/components/loa-upload-icons'
 
 type Stage = 'form' | 'submitting' | 'success'
 interface Picked { id: string; name: string }
@@ -39,6 +40,14 @@ export default function LoaStandingFormPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [preview, setPreview] = useState<string | null>(null)
   const galleryRef = useRef<HTMLInputElement>(null)
+  const [idFile, setIdFile] = useState<File | null>(null)
+  const [idPreview, setIdPreview] = useState<string | null>(null)
+  const idGalleryRef = useRef<HTMLInputElement>(null)
+
+  function handleIdFile(file: File) {
+    setIdFile(file)
+    setIdPreview(file.type.startsWith('image/') ? URL.createObjectURL(file) : null)
+  }
 
   useEffect(() => {
     fetch('/api/loa-form').then(r => r.json()).then(d => {
@@ -76,6 +85,7 @@ export default function LoaStandingFormPage() {
     if (!hmoName) return setErrorMsg('Please choose your HMO.')
     if (!branch) return setErrorMsg('Please choose the clinic branch.')
     if (!selectedFile) return setErrorMsg('Please attach a photo or PDF of your LOA.')
+    if (!idFile) return setErrorMsg('Please attach a photo of a valid ID showing your signature.')
 
     setStage('submitting')
     const fd = new FormData()
@@ -85,6 +95,7 @@ export default function LoaStandingFormPage() {
     if (approvalDate) fd.append('dateOfApproval', approvalDate)
     picked.forEach(s => fd.append('services', s))
     fd.append('file', selectedFile)
+    fd.append('idFile', idFile)
     try {
       const r = await fetch('/api/loa-form', { method: 'POST', body: fd })
       const d = await r.json()
@@ -271,7 +282,46 @@ export default function LoaStandingFormPage() {
         {/* Phone: rear camera. Laptop: in-page webcam, since the capture
             attribute is ignored there and this used to open a file picker. */}
         <LoaPhotoCapture onCapture={handleFile} buttonStyle={bigButton} />
-        <button style={ghostButton} onClick={() => galleryRef.current?.click()}>📎 Choose a photo or PDF</button>
+        <button style={ghostButton} onClick={() => galleryRef.current?.click()}>
+          <ButtonLabel icon={<PaperclipIcon />}>Choose a photo or PDF of LOA</ButtonLabel>
+        </button>
+
+        {/* ── The valid ID ──────────────────────────────────────────────────
+            Explained, not just asked for. "Send a photo of your ID" to a
+            clinic reads as an odd demand unless the reason is on the screen
+            next to it. */}
+        <div style={{ marginTop: '1.4rem', paddingTop: '1.2rem', borderTop: '1px solid #E5E9EC' }}>
+          <label style={fieldLabel}>Valid ID with your signature</label>
+          <p style={{ fontSize: '0.82rem', color: '#667', lineHeight: 1.55, marginBottom: '0.9rem' }}>
+            Please also send a photo of a valid ID that shows your signature.
+            When you come to the clinic you will sign the LOA by hand, and we
+            check that signature against the one on your ID — so the ID needs to
+            show your signature clearly.
+          </p>
+
+          {idPreview && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={idPreview} alt="Selected ID" style={{ width: '100%', borderRadius: 12, marginBottom: '1rem', border: '1px solid #E5E9EC' }} />
+          )}
+          {idFile && !idPreview && (
+            <p style={{ fontSize: '0.9rem', color: charcoal, marginBottom: '1rem' }}>
+              Selected: <strong>{idFile.name}</strong>
+            </p>
+          )}
+
+          <input ref={idGalleryRef} type="file" accept="image/*,application/pdf" style={{ display: 'none' }}
+            onChange={e => { const f = e.target.files?.[0]; if (f) handleIdFile(f) }} />
+
+          <LoaPhotoCapture
+            onCapture={handleIdFile}
+            label={<ButtonLabel icon={<CameraIcon />}>Take a photo of ID</ButtonLabel>}
+            buttonStyle={bigButton}
+          />
+          <button style={ghostButton} onClick={() => idGalleryRef.current?.click()}>
+            <ButtonLabel icon={<PaperclipIcon />}>Choose a photo or PDF of ID</ButtonLabel>
+          </button>
+        </div>
+
 
         {errorMsg && (
           <p style={{ color: '#991B1B', fontSize: '0.88rem', margin: '0.5rem 0 0.75rem' }}>{errorMsg}</p>

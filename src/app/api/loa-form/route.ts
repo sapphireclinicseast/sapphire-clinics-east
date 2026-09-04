@@ -56,6 +56,26 @@ export async function GET() {
   return NextResponse.json({ hmos, services, branches })
 }
 
+/**
+ * Write one uploaded file into uploads/loa and return its stored name.
+ *
+ * Shared by the letter and the ID so the two cannot drift on where they land or
+ * how they are named. The name is random, never the submission id: these files
+ * are served through an authenticated route, and a guessable name would matter
+ * the moment that route was ever relaxed.
+ */
+async function saveUpload(file: File, mime: string, prefix: string): Promise<string> {
+  const ext = mime === 'application/pdf' ? '.pdf'
+    : mime === 'image/png' ? '.png'
+    : mime === 'image/webp' ? '.webp'
+    : '.jpg'
+  const filename = `${prefix}-${crypto.randomBytes(16).toString('hex')}${ext}`
+  const uploadDir = path.join(process.cwd(), 'uploads', 'loa')
+  await fs.mkdir(uploadDir, { recursive: true })
+  await fs.writeFile(path.join(uploadDir, filename), Buffer.from(await file.arrayBuffer()))
+  return filename
+}
+
 export async function POST(req: NextRequest) {
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
     || req.headers.get('x-real-ip') || 'unknown'
@@ -122,14 +142,21 @@ export async function POST(req: NextRequest) {
   if (!ALLOWED_MIME.has(mime))
     return NextResponse.json({ error: 'Unsupported file type. Please use a photo or a PDF.' }, { status: 400 })
 
-  const ext = mime === 'application/pdf' ? '.pdf'
-    : mime === 'image/png' ? '.png'
-    : mime === 'image/webp' ? '.webp'
-    : '.jpg'
-  const filename = `loa-${crypto.randomBytes(16).toString('hex')}${ext}`
-  const uploadDir = path.join(process.cwd(), 'uploads', 'loa')
-  await fs.mkdir(uploadDir, { recursive: true })
-  await fs.writeFile(path.join(uploadDir, filename), Buffer.from(await file.arrayBuffer()))
+  const filename = await saveUpload(file, mime, 'loa')
+
+  // ── The valid ID ──
+  // Required: the whole point is matching this signature against the wet one
+  // the patient writes on the letter at the counter, and an ID chased
+  // afterwards is an ID that never arrives.
+  const idFile = form.get('idFile') as File | null
+  if (!idFile || idFile.size === 0)
+    return NextResponse.json({ error: 'Please attach a photo of a valid ID showing your signature.' }, { status: 400 })
+  if (idFile.size > MAX_BYTES)
+    return NextResponse.json({ error: 'ID file too large (max 20 MB)' }, { status: 413 })
+  const idMime = idFile.type || 'application/octet-stream'
+  if (!ALLOWED_MIME.has(idMime))
+    return NextResponse.json({ error: 'Unsupported ID file type. Please use a photo or a PDF.' }, { status: 400 })
+  const idFilename = await saveUpload(idFile, idMime, 'loaid')
 
   const created = await prisma.loaSubmission.create({
     data: {
@@ -141,6 +168,8 @@ export async function POST(req: NextRequest) {
       dateOfApproval,
       fileUrl: filename,
       fileMime: mime,
+      idFileUrl: idFilename,
+      idFileMime: idMime,
       status: 'SUBMITTED',
     },
     select: { id: true },

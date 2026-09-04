@@ -18,15 +18,20 @@
 // rather than appearing broken.
 
 import { useEffect, useRef, useState } from 'react'
+import { CameraIcon, ButtonLabel } from '@/components/loa-upload-icons'
 
 interface Props {
   onCapture: (file: File) => void
-  /** Rendered as the primary button. */
-  label?: string
+  /** Rendered as the primary button. A node, so it can carry an icon. */
+  label?: React.ReactNode
   buttonStyle?: React.CSSProperties
 }
 
-export default function LoaPhotoCapture({ onCapture, label = '📷 Take a photo', buttonStyle }: Props) {
+export default function LoaPhotoCapture({
+  onCapture,
+  label = <ButtonLabel icon={<CameraIcon />}>Take a photo of LOA</ButtonLabel>,
+  buttonStyle,
+}: Props) {
   const [open, setOpen] = useState(false)
   const [error, setError] = useState('')
   const [ready, setReady] = useState(false)
