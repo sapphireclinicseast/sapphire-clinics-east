@@ -88,8 +88,50 @@ export async function PATCH(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { id, paymentType } = await req.json()
+  const { id, paymentType, staffId } = await req.json()
   if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
+
+  // Reassigning the consultant a slot belongs to. Needed because every SPED
+  // class child added before the board tracked teachers per group landed on
+  // whichever consultant happened to be first on the roster — at East that is
+  // 45 children all filed under one teacher, and there was no way to correct it
+  // from the board.
+  if (staffId !== undefined) {
+    if (typeof staffId !== 'string' || !staffId.trim()) {
+      return NextResponse.json({ error: 'staffId must be a staff id' }, { status: 400 })
+    }
+    const existing = await prisma.deckingSlot.findUnique({
+      where: { id }, select: { branch: true, department: true },
+    })
+    if (!existing) return NextResponse.json({ error: 'Slot not found' }, { status: 404 })
+
+    // The new consultant has to actually work that department at that branch —
+    // otherwise a mis-click could file a child under someone who does not run
+    // the class, which is the very problem this is here to fix.
+    const target = await prisma.staff.findFirst({
+      where: {
+        id: staffId,
+        active: true,
+        department: existing.department as never,
+        OR: [{ branch: existing.branch }, { extraBranches: { has: existing.branch } }],
+      },
+      select: { id: true },
+    })
+    if (!target) {
+      return NextResponse.json(
+        { error: 'That consultant does not work this department at this branch.' },
+        { status: 400 },
+      )
+    }
+
+    const moved = await prisma.deckingSlot.update({
+      where: { id },
+      data: { staffId },
+      include: { patient: { select: { id: true, firstName: true, lastName: true } } },
+    })
+    return NextResponse.json(moved)
+  }
+
   if (!PAYMENT_TYPES.includes(paymentType)) {
     return NextResponse.json({ error: `paymentType must be one of ${PAYMENT_TYPES.join(', ')}` }, { status: 400 })
   }
