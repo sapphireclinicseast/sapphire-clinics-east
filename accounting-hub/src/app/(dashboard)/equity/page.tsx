@@ -178,10 +178,21 @@ export default function EquityPage() {
       default: return String(commonValue(r, k))
     }
   }
+  // Hide fully-retired holdings (all shares sold/bought back) and rescinded
+  // ones from the registry view; remembered per browser.
+  const [hideRetired, setHideRetired] = useState(false)
+  useEffect(() => {
+    try { setHideRetired(localStorage.getItem('equityHideRetired') === '1') } catch { /* ignore */ }
+  }, [])
+  const toggleHideRetired = () => setHideRetired(v => {
+    try { localStorage.setItem('equityHideRetired', v ? '0' : '1') } catch { /* ignore */ }
+    return !v
+  })
   const commonRows = useMemo(
-    () => applySortFilter(data?.rows || [], commonValue, cs.sortKey, cs.sortDir, cs.filters, commonText),
+    () => applySortFilter(data?.rows || [], commonValue, cs.sortKey, cs.sortDir, cs.filters, commonText)
+      .filter(r => !hideRetired || (!r.retired && !r.rescinded)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [data, cs.sortKey, cs.sortDir, cs.filters, banks],
+    [data, cs.sortKey, cs.sortDir, cs.filters, banks, hideRetired],
   )
 
   // Export the common-shareholder list (net-of-buyback shares & capitalization) to Excel/PDF.
@@ -333,7 +344,12 @@ export default function EquityPage() {
 
       {effectiveTab === 'common' && (
         <div className="space-y-3">
-          <div className="flex justify-end gap-2">
+          <div className="flex justify-end items-center gap-3">
+            <label className="flex items-center gap-1.5 text-xs font-medium cursor-pointer select-none" style={{ color: 'var(--mid-gray)' }}
+              title="Hide holdings whose shares are all sold or bought back, and rescinded ones">
+              <input type="checkbox" checked={hideRetired} onChange={toggleHideRetired} />
+              Hide retired shareholders
+            </label>
             <DownloadMenu onDownload={exportCommon} size="md" />
             <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}><Plus size={15} /> Add Common Shareholder</button>
           </div>
