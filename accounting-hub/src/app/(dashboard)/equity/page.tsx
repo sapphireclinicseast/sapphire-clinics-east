@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { useResizableColumns, ResizableColgroup, ColResizeHandle } from '@/components/useResizableColumns'
 import { redirect } from 'next/navigation'
@@ -194,6 +194,19 @@ export default function EquityPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [data, cs.sortKey, cs.sortDir, cs.filters, banks, hideRetired],
   )
+  // One line per person: holdings grouped by shareholder (in current sort
+  // order); a click unfolds that person's full holding history.
+  const groupedCommon = useMemo(() => {
+    const m = new Map<string, typeof commonRows>()
+    for (const r of commonRows) {
+      if (!m.has(r.shareholderId)) m.set(r.shareholderId, [])
+      m.get(r.shareholderId)!.push(r)
+    }
+    return [...m.values()]
+  }, [commonRows])
+  const [openShareholders, setOpenShareholders] = useState<Set<string>>(new Set())
+  const toggleShareholder = (id: string) =>
+    setOpenShareholders(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
 
   // Export the common-shareholder list (net-of-buyback shares & capitalization) to Excel/PDF.
   const exportCommon = (format: 'xlsx' | 'pdf') => {
@@ -360,9 +373,47 @@ export default function EquityPage() {
                 onToggleSort={k => cs.toggleSort(k, COMMON_NUMERIC)} onFilter={cs.setFilter} rz={commonRz} />
               <tbody>
                 {loading ? <tr><td colSpan={17} className="text-center py-10 text-gray-400"><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
-                : commonRows.map(r => (
-                  <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)', background: r.rescinded ? '#f3f4f6' : r.retired || r.boughtBack ? '#fef2f2' : undefined, opacity: r.rescinded ? 0.6 : undefined }}>
-                    <td className="px-3 py-2 font-mono font-semibold" style={{ color: r.retired ? '#b91c1c' : 'var(--charcoal)' }}>{r.shNumber}</td>
+                : groupedCommon.map(g => {
+                  const shId = g[0].shareholderId
+                  const open = openShareholders.has(shId)
+                  const liveRows = g.filter(r => !r.rescinded)
+                  const totalNet = liveRows.reduce((s2, r) => s2 + netShares(r), 0)
+                  const totalCap = liveRows.reduce((s2, r) => s2 + netShares(r) * r.pricePerShare, 0)
+                  const stakeCur = g.reduce((s2, r) => s2 + r.equityStakeCurrent, 0)
+                  const stakeTot = g.reduce((s2, r) => s2 + r.equityStakeTotal, 0)
+                  const buybackTotal = g.reduce((s2, r) => s2 + (r.buybackShares || 0), 0)
+                  const classes = [...new Set(g.map(r => r.shareClass).filter(Boolean))]
+                  const dates = g.map(r => String(r.dateAcquired).slice(0, 10)).sort()
+                  const rescindedCount = g.length - liveRows.length
+                  return (
+                  <Fragment key={shId}>
+                  <tr className="border-t cursor-pointer hover:bg-gray-50" style={{ borderColor: 'var(--light-gray)', background: open ? 'var(--off-white)' : undefined }}
+                    onClick={() => toggleShareholder(shId)}>
+                    <td className="px-3 py-2 font-mono font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{open ? '▾' : '▸'} {g[0].shNumber}</td>
+                    <td className="px-3 py-2 font-semibold" style={{ color: 'var(--charcoal)', overflow: 'hidden', wordBreak: 'break-word' }}>
+                      {g[0].name}
+                      <span className="ml-1.5 font-normal text-[10px]" style={{ color: 'var(--mid-gray)' }}>{g.length} holding{g.length !== 1 ? 's' : ''}</span>
+                      {rescindedCount > 0 && <span className="ml-1 text-[10px] px-1 rounded whitespace-nowrap font-semibold" style={{ background: '#e5e7eb', color: '#374151' }}>{rescindedCount} rescinded</span>}
+                    </td>
+                    <td className="px-3 py-2" style={{ color: 'var(--mid-gray)', overflow: 'hidden' }}>{classes.length === 1 ? classes[0] : classes.length ? `${classes.length} classes` : '—'}</td>
+                    <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{dates.length > 1 ? `${dates[0]} …` : (dates[0] || '—')}</td>
+                    <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{g.filter(r => r.stockCertNumber).length || '—'}</td>
+                    <td className="px-3 py-2 text-right font-semibold whitespace-nowrap">{totalNet.toLocaleString('en-PH')}</td>
+                    <td className="px-3 py-2 text-right" style={{ color: 'var(--mid-gray)' }}>—</td>
+                    <td className="px-3 py-2 text-right" style={{ color: 'var(--mid-gray)' }}>—</td>
+                    <td className="px-3 py-2 text-right" style={{ color: 'var(--mid-gray)' }}>—</td>
+                    <td className="px-3 py-2 text-right font-semibold whitespace-nowrap">{peso(totalCap)}</td>
+                    <td className="px-3 py-2 text-right font-semibold">{stakeCur.toFixed(3)}%</td>
+                    <td className="px-3 py-2 text-right" style={{ color: 'var(--mid-gray)' }}>{stakeTot.toFixed(3)}%</td>
+                    <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>—</td>
+                    <td className="px-3 py-2">{buybackTotal > 0 ? <span className="inline-block px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#fee2e2', color: '#b91c1c' }}>Yes · {buybackTotal.toLocaleString('en-PH')}</span> : 'No'}</td>
+                    <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>—</td>
+                    <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>—</td>
+                    <td className="px-3 py-2 text-right text-[10px] whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{open ? 'Hide' : 'Details'}</td>
+                  </tr>
+                  {open && g.map(r => (
+                  <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)', background: r.rescinded ? '#f3f4f6' : r.retired || r.boughtBack ? '#fef2f2' : '#fbfbfa', opacity: r.rescinded ? 0.6 : undefined }}>
+                    <td className="px-3 py-2 font-mono" style={{ color: r.retired ? '#b91c1c' : 'var(--mid-gray)' }}>↳ {r.shNumber}</td>
                     <td className="px-3 py-2" style={{ color: r.retired ? '#b91c1c' : 'var(--charcoal)', overflow: 'hidden', wordBreak: 'break-word' }}>{r.name}{r.rescinded && <span className="ml-1 text-[10px] px-1 rounded whitespace-nowrap font-semibold" style={{ background: '#e5e7eb', color: '#374151' }} title="Mutually rescinded — treated as if never issued; excluded from every figure and from the financial statements">Rescinded</span>}{r.retired && !r.rescinded && <span className="ml-1 text-[10px] px-1 rounded whitespace-nowrap font-semibold" style={{ background: '#fee2e2', color: '#b91c1c' }} title="All shares in this holding have been sold or bought back">Retired</span>}{r.acquiredViaTransfer ? <span className="ml-1 text-[10px] px-1 rounded whitespace-nowrap" style={{ background: '#e0e7ff', color: '#3730a3' }} title={`Shares bought from ${r.transferFromShNumber || ''} ${r.transferFromName || 'another shareholder'} — no company cash involved`}>Bought from {r.transferFromName || 'transfer'}</span> : r.agreementType === 'DEED_OF_ASSIGNMENT' && <span className="ml-1 text-[10px] px-1 rounded whitespace-nowrap" style={{ background: '#e0e7ff', color: '#3730a3' }}>Deed</span>}{r.soldFromTreasury && <span className="ml-1 text-[10px] px-1 rounded whitespace-nowrap" style={{ background: '#fef3c7', color: '#92400e' }} title="Shares reissued from treasury (bought-back) stock">Treasury</span>}</td>
                     <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{r.shareClass || '—'}</td>
                     <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{String(r.dateAcquired).slice(0, 10)}</td>
@@ -396,7 +447,10 @@ export default function EquityPage() {
                       <button onClick={() => del(r)} className="p-1 rounded hover:bg-red-50"><Trash2 size={13} className="text-red-400" /></button>
                     </td>
                   </tr>
-                ))}
+                  ))}
+                  </Fragment>
+                  )
+                })}
                 {!loading && commonRows.length === 0 && (
                   <tr><td colSpan={17} className="text-center py-10 text-gray-400">
                     {(data?.rows || []).length === 0 ? 'No common shareholders yet.'
