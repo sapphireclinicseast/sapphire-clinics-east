@@ -95,8 +95,25 @@ export async function GET(req: NextRequest) {
     const filterStaff = searchParams.get('staffId') || null
     const filterMonth = parseInt(searchParams.get('month') ?? '') || 0 // 1-12, 0 = all
 
-    const yearStart = new Date(`${year}-01-01`)
-    const yearEnd = new Date(`${year + 1}-01-01`)
+    // An explicit from/to wins over the year window, so "has anything been
+    // answered this week" is one question rather than picking a year and
+    // squinting at a month. Either bound may be given on its own.
+    const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+    const fromRaw = searchParams.get('from') || ''
+    const toRaw = searchParams.get('to') || ''
+    const hasFrom = DATE_RE.test(fromRaw)
+    const hasTo = DATE_RE.test(toRaw)
+
+    const yearStart = hasFrom ? new Date(`${fromRaw}T00:00:00.000Z`) : new Date(`${year}-01-01`)
+    // Exclusive upper bound on the day AFTER `to`, so the last day counts whole
+    // instead of stopping at its own midnight. With only a `from`, the window
+    // runs to the end of that year rather than forever — a range with one end
+    // open would quietly include next year's answers.
+    const yearEnd = hasTo
+      ? new Date(new Date(`${toRaw}T00:00:00.000Z`).getTime() + 24 * 60 * 60 * 1000)
+      : hasFrom
+        ? new Date(`${new Date(`${fromRaw}T00:00:00.000Z`).getUTCFullYear() + 1}-01-01`)
+        : new Date(`${year + 1}-01-01`)
 
     // Effective branch filter: branch admin locked to their branch, main admin can pick
     const effectiveBranch = resultsBranch ?? filterBranch

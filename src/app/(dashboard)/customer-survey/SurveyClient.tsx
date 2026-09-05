@@ -170,6 +170,11 @@ export default function SurveyClient({ role }: { role: string }) {
   const [rdFilterStaff, setRdFilterStaff] = useState('')
   const [rdFilterMonth, setRdFilterMonth] = useState(0) // 0 = all
   const [rdFilterDept, setRdFilterDept] = useState('')
+  // Answered-between. The month picker could only ask "any January", which
+  // cannot answer "has anyone answered this week" — the question that actually
+  // gets asked of this screen.
+  const [rdFrom, setRdFrom] = useState('')
+  const [rdTo, setRdTo] = useState('')
   const [expandedStaff, setExpandedStaff] = useState<string | null>(null)
   const [rdSubTab, setRdSubTab] = useState<'leaderboard' | 'details' | 'manage' | 'highlights' | 'settings'>('leaderboard')
 
@@ -226,13 +231,15 @@ export default function SurveyClient({ role }: { role: string }) {
     } catch { /* silent */ }
   }, [])
 
-  const loadResultsDashboard = useCallback(async (branch?: string, staffId?: string, month?: number) => {
+  const loadResultsDashboard = useCallback(async (branch?: string, staffId?: string, month?: number, from?: string, to?: string) => {
     setResultsLoading(true)
     try {
       const params = new URLSearchParams({ view: 'results-dashboard' })
       if (branch) params.set('branch', branch)
       if (staffId) params.set('staffId', staffId)
       if (month) params.set('month', String(month))
+      if (from) params.set('from', from)
+      if (to) params.set('to', to)
       const res = await fetch(`/api/customer-survey?${params}`)
       if (!res.ok) return
       setResultsDash(await res.json())
@@ -291,7 +298,7 @@ export default function SurveyClient({ role }: { role: string }) {
       }
       setSettingsMsg({ type: 'success', text: 'Settings saved! Leaderboard will update on next load.' })
       // Reload dashboard to reflect new weights
-      loadResultsDashboard(rdFilterBranch, rdFilterStaff, rdFilterMonth)
+      loadResultsDashboard(rdFilterBranch, rdFilterStaff, rdFilterMonth, rdFrom, rdTo)
     } catch {
       setSettingsMsg({ type: 'error', text: 'Network error' })
     } finally {
@@ -301,12 +308,12 @@ export default function SurveyClient({ role }: { role: string }) {
 
   useEffect(() => {
     if (tab === 'results' && isAdmin) {
-      loadResultsDashboard(rdFilterBranch, rdFilterStaff, rdFilterMonth)
+      loadResultsDashboard(rdFilterBranch, rdFilterStaff, rdFilterMonth, rdFrom, rdTo)
       if (rdSubTab === 'manage') loadResults()
       if (rdSubTab === 'highlights' && isMarketingAdmin) loadHighlights()
       if (rdSubTab === 'settings' && isAdmin) loadSettings()
     }
-  }, [tab, isAdmin, isMarketingAdmin, rdFilterBranch, rdFilterStaff, rdFilterMonth, rdSubTab, loadResultsDashboard, loadResults, loadHighlights, loadSettings])
+  }, [tab, isAdmin, isMarketingAdmin, rdFilterBranch, rdFilterStaff, rdFilterMonth, rdFrom, rdTo, rdSubTab, loadResultsDashboard, loadResults, loadHighlights, loadSettings])
 
   const deleteResult = async (assignmentId: string) => {
     if (!confirm('Are you sure you want to delete this survey result? This cannot be undone.')) return
@@ -824,6 +831,25 @@ export default function SurveyClient({ role }: { role: string }) {
                 <option key={m} value={m}>{new Date(2025, m - 1).toLocaleString('en', { month: 'long' })}</option>
               ))}
             </select>
+
+            {/* Answered between. Overrides the year the rest of this view runs
+                on, so it can answer "anything this week" rather than only
+                "any January". */}
+            <label className="text-xs font-semibold uppercase" style={{ color: '#94a3b8' }}>Answered</label>
+            <input type="date" value={rdFrom} onChange={e => setRdFrom(e.target.value)}
+              title="Answered from" aria-label="Answered from"
+              className="px-2 py-1.5 rounded-lg text-sm border" style={{ borderColor: '#e2e8f0' }} />
+            <span className="text-xs" style={{ color: '#94a3b8' }}>to</span>
+            <input type="date" value={rdTo} onChange={e => setRdTo(e.target.value)}
+              title="Answered to" aria-label="Answered to"
+              className="px-2 py-1.5 rounded-lg text-sm border" style={{ borderColor: '#e2e8f0' }} />
+            {(rdFrom || rdTo) && (
+              <button onClick={() => { setRdFrom(''); setRdTo('') }}
+                className="px-2 py-1 rounded-lg text-xs font-semibold border"
+                style={{ borderColor: '#e2e8f0', color: '#64748b' }}>
+                Clear dates
+              </button>
+            )}
           </div>
 
           {/* Sub-tabs */}

@@ -640,6 +640,11 @@ function AssignmentsTab({ role }: { role: string }) {
   const [filterYear, setFilterYear]         = useState(new Date().getFullYear())
   const [filterMonth, setFilterMonth]       = useState(0)
   const [filterStatus, setFilterStatus]     = useState('')
+  // Answered-between, applied to the response's submittedAt. The year/month
+  // pickers describe the evaluation PERIOD, which is not the same question as
+  // "has anyone actually answered recently".
+  const [filterFrom, setFilterFrom] = useState('')
+  const [filterTo, setFilterTo] = useState('')
 
   const [assignments, setAssignments]           = useState<Assignment[]>([])
   const [loading, setLoading]                   = useState(false)
@@ -660,6 +665,8 @@ function AssignmentsTab({ role }: { role: string }) {
       if (filterYear) params.set('year', String(filterYear))
       if (filterMonth) params.set('month', String(filterMonth))
       if (filterStatus) params.set('status', filterStatus)
+      if (filterFrom) params.set('from', filterFrom)
+      if (filterTo) params.set('to', filterTo)
       const res = await fetch(`/api/peer-eval/assignments?${params}`)
       if (!res.ok) throw new Error('Failed to load assignments')
       setAssignments(await res.json())
@@ -679,7 +686,7 @@ function AssignmentsTab({ role }: { role: string }) {
     } finally {
       setLoading(false)
     }
-  }, [filterFormType, filterBranch, filterYear, filterMonth, filterStatus])
+  }, [filterFormType, filterBranch, filterYear, filterMonth, filterStatus, filterFrom, filterTo])
 
   useEffect(() => { fetchAssignments() }, [fetchAssignments])
 
@@ -758,6 +765,20 @@ function AssignmentsTab({ role }: { role: string }) {
         <select value={filterYear} onChange={e => setFilterYear(parseInt(e.target.value))} style={selectStyle}>
           {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
         </select>
+
+        {/* Answered between — the response date, not the evaluation period. */}
+        <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase' }}>Answered</span>
+        <input type="date" value={filterFrom} onChange={e => setFilterFrom(e.target.value)}
+          aria-label="Answered from" title="Answered from" style={selectStyle} />
+        <span style={{ fontSize: '0.72rem', color: '#9ca3af' }}>to</span>
+        <input type="date" value={filterTo} onChange={e => setFilterTo(e.target.value)}
+          aria-label="Answered to" title="Answered to" style={selectStyle} />
+        {(filterFrom || filterTo) && (
+          <button onClick={() => { setFilterFrom(''); setFilterTo('') }}
+            style={{ ...selectStyle, cursor: 'pointer', color: '#64748b' }}>
+            Clear dates
+          </button>
+        )}
 
         <select value={filterMonth} onChange={e => setFilterMonth(parseInt(e.target.value))} style={selectStyle}>
           <option value={0}>All Months</option>
@@ -910,6 +931,15 @@ function AssignmentsTab({ role }: { role: string }) {
                             <span style={{ fontWeight: 500, color: '#111827' }}>{fullName(a.assessee)}</span>
                             <span style={{ color: '#9ca3af', marginLeft: 6, fontSize: '0.7rem' }}>{a.assessee.department}</span>
                           </div>
+                          {/* When it was actually answered. The status badge
+                              says "Completed" but not when, which is the whole
+                              question when checking for recent activity. */}
+                          {a.response?.submittedAt && (
+                            <span style={{ fontSize: '0.7rem', color: '#6b7280', whiteSpace: 'nowrap' }}
+                              title={`Answered ${new Date(a.response.submittedAt).toLocaleString('en-PH')}`}>
+                              {new Date(a.response.submittedAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
+                            </span>
+                          )}
                           {statusBadge(a.status)}
                           <div style={{ display: 'flex', gap: 4 }} onClick={e => e.stopPropagation()}>
                             {a.status !== 'COMPLETED' && canManage && (
