@@ -1262,6 +1262,15 @@ export default function DeckingClient({ role }: { role: string }) {
                   await handleSaveSlot({ ...block, patientId, branch: activeBranch, department: 'SPED', notes: null, isClass: true })
                 }}
                 onRemove={handleDeleteSlot}
+                onReassign={async (slotId, staffId) => {
+                  const r = await fetch('/api/decking/slots', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: slotId, staffId }),
+                  })
+                  if (!r.ok) throw new Error((await r.json()).error ?? 'Could not move the child')
+                  await loadBranchData(activeBranch)
+                }}
                 onCreateBlock={async (block) => {
                   // An empty block: the row has to exist before children can be
                   // dropped into it, and a class with no one in it yet is a real

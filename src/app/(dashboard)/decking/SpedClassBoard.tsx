@@ -50,13 +50,15 @@ function durationLabel(start: string, end: string): string {
 }
 
 export default function SpedClassBoard({
-  slots, staff, branchName, onAddChild, onRemove, onCreateBlock,
+  slots, staff, branchName, onAddChild, onRemove, onReassign, onCreateBlock,
 }: {
   slots: SpedSlot[]
   staff: SpedStaff[]
   branchName: string
   onAddChild: (block: { staffId: string; dayOfWeek: string; startTime: string; endTime: string }, patientId: string) => Promise<void>
   onRemove: (slotId: string) => Promise<void>
+  /** Move one child to a different teacher. */
+  onReassign: (slotId: string, staffId: string) => Promise<void>
   onCreateBlock: (block: { staffId: string; dayOfWeek: string; startTime: string; endTime: string }) => Promise<void>
 }) {
   const [adding, setAdding] = useState<string | null>(null)   // "day|start|end"
@@ -65,6 +67,7 @@ export default function SpedClassBoard({
   const [showBlockForm, setShowBlockForm] = useState(false)
   const [form, setForm] = useState({ staffId: '', dayOfWeek: 'MON', startTime: '09:00', endTime: '11:00' })
   const [busy, setBusy] = useState(false)
+  const [newGroupStaff, setNewGroupStaff] = useState('')
   const [error, setError] = useState<string | null>(null)
 
   const live = slots.filter(s => !s.disabled)
@@ -78,23 +81,47 @@ export default function SpedClassBoard({
   // Still derived from the slots rather than a fixed hourly ladder: a class runs
   // 10-12, not 10-11 and 11-12, and splitting it would misrepresent one session
   // as two.
-  interface Block { staffId: string; startTime: string; endTime: string }
-  const blockKey = (s: Block) => `${s.staffId}|${s.startTime}|${s.endTime}`
+  // A row is the TIME BLOCK — 10-12 appears once, however many teachers run
+  // then. Inside a day's cell the children are wrapped in one card per teacher,
+  // headed by that teacher's name, so "whose class is this child in" is answered
+  // by the card around them rather than by the row they happen to sit in.
+  interface Block { startTime: string; endTime: string }
+  const blockKey = (s: Block) => `${s.startTime}|${s.endTime}`
   const teacherName = (staffId: string) => {
     const t = staff.find(x => x.id === staffId)
     return t ? `${t.lastName}, ${t.firstName}` : 'Unassigned teacher'
   }
   const blocks: Block[] = Array.from(new Set(live.map(blockKey)))
-    .map(k => { const [staffId, startTime, endTime] = k.split('|'); return { staffId, startTime, endTime } })
-    .sort((a, b) =>
-      mins(a.startTime) - mins(b.startTime) ||
-      mins(a.endTime) - mins(b.endTime) ||
-      teacherName(a.staffId).localeCompare(teacherName(b.staffId)))
+    .map(k => { const [startTime, endTime] = k.split('|'); return { startTime, endTime } })
+    .sort((a, b) => mins(a.startTime) - mins(b.startTime) || mins(a.endTime) - mins(b.endTime))
 
   const cell = (day: string, b: Block) =>
-    live.filter(s =>
-      s.dayOfWeek === day && s.staffId === b.staffId &&
-      s.startTime === b.startTime && s.endTime === b.endTime)
+    live.filter(s => s.dayOfWeek === day && s.startTime === b.startTime && s.endTime === b.endTime)
+
+  /** The children in one cell, split into a card per teacher. */
+  const groupsIn = (day: string, b: Block) => {
+    const byTeacher = new Map<string, typeof live>()
+    for (const s of cell(day, b)) {
+      byTeacher.set(s.staffId, [...(byTeacher.get(s.staffId) ?? []), s])
+    }
+    return [...byTeacher.entries()]
+      .map(([staffId, kids]) => ({ staffId, kids }))
+      .sort((x, y) => teacherName(x.staffId).localeCompare(teacherName(y.staffId)))
+  }
+
+  /** Move every child in one teacher's card to another teacher. */
+  async function reassign(kids: { id: string }[], staffId: string) {
+    if (!staffId) return
+    setBusy(true); setError(null)
+    try {
+      // One request per child: the endpoint validates each against the branch
+      // and department, and a partial failure leaves the rest correctly moved
+      // rather than rolling the whole group back to the wrong teacher.
+      for (const k of kids) await onReassign(k.id, staffId)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not move the class to that teacher.')
+    } finally { setBusy(false) }
+  }
 
   async function search(v: string) {
     setQuery(v)
@@ -105,12 +132,10 @@ export default function SpedClassBoard({
     } catch { setResults([]) }
   }
 
-  async function pick(day: string, b: Block, p: SpedPatient) {
-    // The row IS a teacher's class, so the child joins that teacher — no
-    // guessing from the cell, the form or the first consultant on the roster.
-    // That guesswork is what used to fail on any day the class did not already
-    // run.
-    const staffId = b.staffId
+  async function pick(day: string, b: Block, p: SpedPatient, staffId: string) {
+    // The card being added to names its teacher, so there is nothing to guess
+    // from the cell, the form, or the first consultant on the roster. That
+    // guesswork is what used to fail on any day a class did not already run.
     setBusy(true); setError(null)
     try {
       await onAddChild({ staffId, dayOfWeek: day, startTime: b.startTime, endTime: b.endTime }, p.id)
@@ -222,17 +247,7 @@ export default function SpedClassBoard({
             <tbody>
               {blocks.map(b => (
                 <tr key={blockKey(b)}>
-                  <td style={{ ...td, background: '#F7F8FA', minWidth: 160 }}>
-                    {/* The teacher leads: with two classes running at the same
-                        hour, the time alone does not identify the row. */}
-                    <div style={{
-                      display: 'inline-block', maxWidth: '100%', marginBottom: 3,
-                      background: '#EFE9FA', border: '1px solid #D6C9F0', borderRadius: 4,
-                      padding: '0.1rem 0.4rem', fontSize: '0.7rem', fontWeight: 800, color: '#4C1D95',
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    }} title={teacherName(b.staffId)}>
-                      {teacherName(b.staffId)}
-                    </div>
+                  <td style={{ ...td, background: '#F7F8FA', minWidth: 130 }}>
                     <div style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--charcoal)', fontVariantNumeric: 'tabular-nums' }}>
                       {fmt(b.startTime)} &ndash; {fmt(b.endTime)}
                     </div>
@@ -241,57 +256,140 @@ export default function SpedClassBoard({
                     </div>
                   </td>
                   {DAYS.map(d => {
-                    const kids = cell(d.key, b)
-                    const key = `${d.key}|${b.staffId}|${b.startTime}|${b.endTime}`
-                    const isAdding = adding === key
+                    const groups = groupsIn(d.key, b)
                     return (
-                      <td key={d.key} style={td}>
-                        {kids.length === 0 && !isAdding ? (
-                          <button onClick={() => { setAdding(key); setQuery(''); setResults([]) }}
-                            style={{ width: '100%', background: 'transparent', border: '1px dashed #D6DCE2', borderRadius: 5, color: '#9AA2AC', fontSize: '0.7rem', padding: '0.35rem', cursor: 'pointer' }}>
-                            +
-                          </button>
-                        ) : (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                            {kids.map(s => (
-                              <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 4, background: '#EFE9FA', border: '1px solid #D6C9F0', borderRadius: 4, padding: '0.15rem 0.35rem' }}>
-                                <span style={{ flex: 1, fontSize: '0.72rem', fontWeight: 600, color: '#4C1D95', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                                  title={s.patient ? `${s.patient.lastName}, ${s.patient.firstName}` : '(slot)'}>
-                                  {s.patient ? `${s.patient.lastName}, ${s.patient.firstName[0]}.` : '(slot)'}
-                                </span>
-                                <button onClick={() => onRemove(s.id)} title="Remove from class"
-                                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#B0453A', padding: 0, lineHeight: 1 }}>
-                                  <X size={9} />
-                                </button>
-                              </div>
-                            ))}
-                            {isAdding ? (
-                              <div style={{ position: 'relative' }}>
-                                <input autoFocus value={query} onChange={e => search(e.target.value)}
-                                  placeholder="Search child…"
-                                  onBlur={() => setTimeout(() => setAdding(null), 200)}
-                                  style={{ width: '100%', padding: '0.2rem 0.4rem', fontSize: '0.72rem', border: '1.5px solid var(--teal)', borderRadius: 4, outline: 'none' }} />
-                                {results.length > 0 && (
-                                  <div style={{ position: 'absolute', zIndex: 40, background: '#fff', border: '1px solid #E2E8F0', borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', top: '100%', left: 0, right: 0, maxHeight: 150, overflowY: 'auto' }}>
-                                    {results.map(p => (
-                                      <button key={p.id} onMouseDown={() => pick(d.key, b, p)}
-                                        style={{ display: 'block', width: '100%', textAlign: 'left', padding: '0.25rem 0.5rem', fontSize: '0.72rem', background: 'none', border: 'none', cursor: 'pointer' }}>
-                                        {p.lastName}, {p.firstName}
+                      <td key={d.key} style={{ ...td, verticalAlign: 'top' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                          {groups.map(g => {
+                            const key = `${d.key}|${g.staffId}|${b.startTime}|${b.endTime}`
+                            const isAdding = adding === key
+                            return (
+                              /* The card IS the answer to "whose class is this":
+                                 the children sit inside it, under the teacher's
+                                 name, instead of being one flat list. */
+                              <div key={g.staffId} style={{
+                                border: '1px solid #D6C9F0', borderRadius: 6, background: '#FBFAFE',
+                                padding: '0.3rem', minWidth: 0,
+                              }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 3, marginBottom: 3 }}>
+                                  <span style={{
+                                    flex: 1, fontSize: '0.66rem', fontWeight: 800, color: '#4C1D95',
+                                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                  }} title={`${teacherName(g.staffId)} · ${g.kids.length} child${g.kids.length === 1 ? '' : 'ren'}`}>
+                                    {teacherName(g.staffId)}
+                                  </span>
+                                  <span style={{ fontSize: '0.62rem', fontWeight: 700, color: '#7C6BA8' }}>
+                                    {g.kids.length}
+                                  </span>
+                                </div>
+
+                                {/* Moves the whole group. Every class child added
+                                    before the board tracked teachers landed on
+                                    the first consultant on the roster, so the
+                                    common correction is a whole card at once —
+                                    not one child at a time. */}
+                                <select
+                                  value={g.staffId} disabled={busy}
+                                  onChange={e => reassign(g.kids, e.target.value)}
+                                  title="Move this group to another teacher"
+                                  style={{
+                                    width: '100%', fontSize: '0.62rem', padding: '0.1rem 0.15rem',
+                                    border: '1px solid #E6E1F2', borderRadius: 4, background: '#fff',
+                                    color: '#5B4B8A', marginBottom: 3, cursor: 'pointer',
+                                  }}>
+                                  {!staff.some(t => t.id === g.staffId) && (
+                                    <option value={g.staffId}>{teacherName(g.staffId)}</option>
+                                  )}
+                                  {staff.map(t => (
+                                    <option key={t.id} value={t.id}>{t.lastName}, {t.firstName}</option>
+                                  ))}
+                                </select>
+
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                                  {g.kids.map(sl => (
+                                    <div key={sl.id} style={{ display: 'flex', alignItems: 'center', gap: 4, background: '#EFE9FA', border: '1px solid #D6C9F0', borderRadius: 4, padding: '0.15rem 0.35rem' }}>
+                                      <span style={{ flex: 1, fontSize: '0.72rem', fontWeight: 600, color: '#4C1D95', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                                        title={sl.patient ? `${sl.patient.lastName}, ${sl.patient.firstName}` : '(slot)'}>
+                                        {sl.patient ? `${sl.patient.lastName}, ${sl.patient.firstName[0]}.` : '(slot)'}
+                                      </span>
+                                      <button onClick={() => onRemove(sl.id)} title="Remove from class"
+                                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#B0453A', padding: 0, lineHeight: 1 }}>
+                                        <X size={9} />
                                       </button>
-                                    ))}
+                                    </div>
+                                  ))}
+                                </div>
+
+                                {isAdding ? (
+                                  <div style={{ position: 'relative', marginTop: 3 }}>
+                                    <input autoFocus value={query} onChange={e => search(e.target.value)}
+                                      placeholder="Search child…"
+                                      onBlur={() => setTimeout(() => setAdding(null), 200)}
+                                      style={{ width: '100%', padding: '0.2rem 0.4rem', fontSize: '0.72rem', border: '1.5px solid var(--teal)', borderRadius: 4, outline: 'none' }} />
+                                    {results.length > 0 && (
+                                      <div style={{ position: 'absolute', zIndex: 40, background: '#fff', border: '1px solid #E2E8F0', borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', top: '100%', left: 0, right: 0, maxHeight: 150, overflowY: 'auto' }}>
+                                        {results.map(p => (
+                                          <button key={p.id} onMouseDown={() => pick(d.key, b, p, g.staffId)}
+                                            style={{ display: 'block', width: '100%', textAlign: 'left', padding: '0.25rem 0.5rem', fontSize: '0.72rem', background: 'none', border: 'none', cursor: 'pointer' }}>
+                                            {p.lastName}, {p.firstName}
+                                          </button>
+                                        ))}
+                                      </div>
+                                    )}
                                   </div>
+                                ) : (
+                                  <button onClick={() => { setAdding(key); setQuery(''); setResults([]) }}
+                                    title={`Add a child to ${teacherName(g.staffId)}'s class`}
+                                    style={{ width: '100%', background: 'transparent', border: 'none', borderTop: '1px solid #E6E9ED', cursor: 'pointer', color: '#7C6BA8', fontSize: '0.66rem', fontWeight: 700, padding: '2px 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3, marginTop: 3 }}>
+                                    <Plus size={9} /> Add child
+                                  </button>
+                                )}
+                              </div>
+                            )
+                          })}
+
+                          {/* Starting a group for a teacher who is not yet running
+                              this block — the case where two teachers share an
+                              hour with different children. */}
+                          {(() => {
+                            const spare = staff.filter(t => !groups.some(g => g.staffId === t.id))
+                            if (spare.length === 0) return null
+                            const key = `${d.key}|NEW|${b.startTime}|${b.endTime}`
+                            return adding === key ? (
+                              <div style={{ position: 'relative' }}>
+                                <select defaultValue="" disabled={busy}
+                                  onChange={e => setNewGroupStaff(e.target.value)}
+                                  style={{ width: '100%', fontSize: '0.66rem', padding: '0.2rem', border: '1.5px solid var(--teal)', borderRadius: 4, marginBottom: 3 }}>
+                                  <option value="">Which teacher?</option>
+                                  {spare.map(t => <option key={t.id} value={t.id}>{t.lastName}, {t.firstName}</option>)}
+                                </select>
+                                {newGroupStaff && (
+                                  <>
+                                    <input autoFocus value={query} onChange={e => search(e.target.value)}
+                                      placeholder="Search child…"
+                                      style={{ width: '100%', padding: '0.2rem 0.4rem', fontSize: '0.72rem', border: '1.5px solid var(--teal)', borderRadius: 4, outline: 'none' }} />
+                                    {results.length > 0 && (
+                                      <div style={{ position: 'absolute', zIndex: 40, background: '#fff', border: '1px solid #E2E8F0', borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', top: '100%', left: 0, right: 0, maxHeight: 150, overflowY: 'auto' }}>
+                                        {results.map(p => (
+                                          <button key={p.id} onMouseDown={() => { pick(d.key, b, p, newGroupStaff); setNewGroupStaff('') }}
+                                            style={{ display: 'block', width: '100%', textAlign: 'left', padding: '0.25rem 0.5rem', fontSize: '0.72rem', background: 'none', border: 'none', cursor: 'pointer' }}>
+                                            {p.lastName}, {p.firstName}
+                                          </button>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </>
                                 )}
                               </div>
                             ) : (
-                              /* No cap here — a class is as big as it is. */
-                              <button onClick={() => { setAdding(key); setQuery(''); setResults([]) }}
-                                title={`Add another child — ${kids.length} in this class`}
-                                style={{ background: 'transparent', border: 'none', borderTop: '1px solid #E6E9ED', cursor: 'pointer', color: '#7C6BA8', fontSize: '0.68rem', fontWeight: 700, padding: '1px 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3 }}>
-                                <Plus size={9} /> Add child
+                              <button onClick={() => { setAdding(key); setQuery(''); setResults([]); setNewGroupStaff('') }}
+                                title="Start another teacher's group in this block"
+                                style={{ width: '100%', background: 'transparent', border: '1px dashed #D6DCE2', borderRadius: 5, color: '#9AA2AC', fontSize: '0.66rem', padding: '0.3rem', cursor: 'pointer' }}>
+                                + Teacher
                               </button>
-                            )}
-                          </div>
-                        )}
+                            )
+                          })()}
+                        </div>
                       </td>
                     )
                   })}
