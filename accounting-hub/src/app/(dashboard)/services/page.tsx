@@ -399,11 +399,12 @@ export default function ServicesPage() {
     } catch { setError('Network error') }
   }
 
-  // PWD discount preview calculation
-  function calcPwdPreview() {
-    const totalPrice = parseFloat(fPrice) || 0
-    const doctor = parseFloat(fDoctorFee) || 0
-    const clinic = parseFloat(fClinicFee) || 0
+  // PWD discount preview calculation — pass explicit figures to preview the
+  // scheduled new rate; defaults preview the current one.
+  function calcPwdPreview(price?: number, doctorFee?: number, clinicFee?: number) {
+    const totalPrice = price ?? (parseFloat(fPrice) || 0)
+    const doctor = doctorFee ?? (parseFloat(fDoctorFee) || 0)
+    const clinic = clinicFee ?? (parseFloat(fClinicFee) || 0)
 
     if (!fHasDoctorFee || !fPwdClinicOnly) {
       // Standard 20% on total
@@ -1102,6 +1103,22 @@ export default function ServicesPage() {
                                 <div>PWD Discount: -{formatCurrency(discount)}</div>
                                 <div className="font-semibold">Patient Pays: {formatCurrency(finalPrice)}</div>
                               </>
+                            )
+                          })()}
+                          {/* Same computation at the scheduled new rate */}
+                          {(fNewPrice || (fHasDoctorFee && fNewDoctorFee && fNewClinicFee)) && (() => {
+                            const nDoctor = parseFloat(fNewDoctorFee) || 0
+                            const nClinic = parseFloat(fNewClinicFee) || 0
+                            const nPrice = parseFloat(fNewPrice) || (nDoctor + nClinic)
+                            if (!(nPrice > 0)) return null
+                            const { discount, finalPrice, label } = calcPwdPreview(nPrice, nDoctor, nClinic)
+                            return (
+                              <div className="mt-2 pt-2 space-y-1" style={{ borderTop: '1px dashed #fcd34d' }}>
+                                <div className="font-medium">At the new rate{fNewPriceDate ? ` (from ${fNewPriceDate})` : ''} — {label}</div>
+                                <div>Total Price: {formatCurrency(nPrice)}</div>
+                                <div>PWD Discount: -{formatCurrency(discount)}</div>
+                                <div className="font-semibold">Patient Pays: {formatCurrency(finalPrice)}</div>
+                              </div>
                             )
                           })()}
                         </div>
