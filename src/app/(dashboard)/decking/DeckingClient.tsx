@@ -5,7 +5,7 @@ import { ChevronDown, ChevronUp, Plus, X, Settings2, Layers, Ban } from 'lucide-
 import PatientRequestsPanel from './PatientRequestsPanel'
 import { DAY_KEYS, DAY_LABEL, DAY_SHORT, sortDays } from '@/lib/decking-days'
 import SlotLoaPanel, { type LoaLite } from './SlotLoaPanel'
-import { DECK_SECTIONS, inSection, arrangementFor, type DeckSection } from '@/lib/work-arrangement'
+import { DECK_SECTIONS, DECK_GROUPS, inSection, arrangementFor, type DeckSection } from '@/lib/work-arrangement'
 import DeckingPerDay from './DeckingPerDay'
 import SpedClassBoard from './SpedClassBoard'
 import InterdepartmentBoard from './InterdepartmentBoard'
@@ -1091,24 +1091,44 @@ export default function DeckingClient({ role }: { role: string }) {
       {/* Decking Tab */}
       {activeMainTab === 'decking' && (
         <div>
-          {/* Service sections. A consultant tagged "On-site + Teletherapy"
-              appears under BOTH On-site and Teletherapy — the combined
-              arrangements are genuinely two roles, not a third category. */}
-          <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
-            {DECK_SECTIONS.map(sec => {
-              const active = activeSection === sec.key
-              return (
-                <button key={sec.key} onClick={() => setActiveSection(sec.key)} title={sec.blurb}
-                  style={{
-                    padding: '0.45rem 1.1rem', fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer',
-                    borderRadius: '0.5rem', border: `1.5px solid ${active ? 'var(--teal)' : 'var(--light-gray)'}`,
-                    background: active ? 'var(--teal)' : '#fff',
-                    color: active ? '#fff' : 'var(--mid-gray)',
-                  }}>
-                  {sec.label}
-                </button>
-              )
-            })}
+          {/* Two cards, because the board does two different jobs: Decking is
+              where the week gets filled, Analysis is where the same slots are
+              read back. Eight equal chips in one row gave no clue which was
+              which, so a board and a report sat side by side looking alike.
+
+              A consultant tagged "On-site + Teletherapy" still appears under
+              BOTH of those — the combined arrangements are genuinely two roles,
+              not a third category. */}
+          <div style={{ display: 'flex', gap: '0.6rem', marginBottom: '1rem', flexWrap: 'wrap', alignItems: 'stretch' }}>
+            {DECK_GROUPS.map(group => (
+              <div key={group.key} style={{
+                background: '#fff', border: '1px solid var(--light-gray)', borderRadius: '0.75rem',
+                padding: '0.6rem 0.75rem', minWidth: 0,
+              }}>
+                <div style={{
+                  fontSize: '0.64rem', fontWeight: 800, letterSpacing: '0.07em', textTransform: 'uppercase',
+                  color: 'var(--mid-gray)', marginBottom: '0.45rem',
+                }}>
+                  {group.label}
+                </div>
+                <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
+                  {DECK_SECTIONS.filter(sec => sec.group === group.key).map(sec => {
+                    const active = activeSection === sec.key
+                    return (
+                      <button key={sec.key} onClick={() => setActiveSection(sec.key)} title={sec.blurb}
+                        style={{
+                          padding: '0.45rem 1.1rem', fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer',
+                          borderRadius: '0.5rem', border: `1.5px solid ${active ? 'var(--teal)' : 'var(--light-gray)'}`,
+                          background: active ? 'var(--teal)' : '#fff',
+                          color: active ? '#fff' : 'var(--mid-gray)',
+                        }}>
+                        {sec.label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
 
           {/* Controls row */}
