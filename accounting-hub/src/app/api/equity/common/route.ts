@@ -51,24 +51,28 @@ export async function GET() {
   // original + buyer's transfer-in holding at the same book value), so count
   // each holding net of what it has sold on. Nothing was raised or returned in
   // a transfer, and this keeps the figure equal to capital actually issued.
-  const commonCap = commons.reduce((s, c) => s + (num(c.numberOfShares) - c.transfersOut.reduce((t, x) => t + num(x.shares), 0)) * num(c.pricePerShare), 0)
+  // Rescinded holdings are as if never issued: they contribute to NOTHING —
+  // not capital, not gross/outstanding shares, not stakes. They stay visible
+  // in the registry rows, flagged, for the audit trail.
+  const live = commons.filter(c => !c.rescinded)
+  const commonCap = live.reduce((s, c) => s + (num(c.numberOfShares) - c.transfersOut.reduce((t, x) => t + num(x.shares), 0)) * num(c.pricePerShare), 0)
   const prefCap = preferreds.reduce((s, p) => s + num(p.numberOfShares) * num(p.pricePerShare), 0)
   const totalCapitalization = commonCap + prefCap
   // Gross common = every common holding ever issued, including rows reissued out of
   // treasury. Used only as the % equity denominator (kept stable across the cap table).
-  const grossCommonShares = commons.reduce((s, c) => s + num(c.numberOfShares), 0)
+  const grossCommonShares = live.reduce((s, c) => s + num(c.numberOfShares), 0)
   const grossShares = grossCommonShares + preferreds.reduce((s, p) => s + num(p.numberOfShares), 0)
   // Buybacks are ShareBuyback rows (multiple per shareholder); they move shares into
   // treasury (no longer outstanding). Reissued-from-treasury holdings ("sold from
   // treasury") come back out of treasury and ARE outstanding again.
-  const treasuryBought = commons.reduce((s, c) => s + c.buybacks.reduce((t, b) => t + num(b.shares), 0), 0)
-  const reissuedFromTreasury = commons.reduce((s, c) => s + (c.soldFromTreasury ? num(c.numberOfShares) : 0), 0)
+  const treasuryBought = live.reduce((s, c) => s + c.buybacks.reduce((t, b) => t + num(b.shares), 0), 0)
+  const reissuedFromTreasury = live.reduce((s, c) => s + (c.soldFromTreasury ? num(c.numberOfShares) : 0), 0)
   // Secondary sales: shares sold shareholder→shareholder appear twice in gross —
   // once in the seller's original holding and once in the buyer's transfer-in
   // holding — so subtract the transferred-out total exactly once. Outstanding
   // shares are unchanged by a transfer, as they should be: ownership moved,
   // nothing was issued or retired.
-  const transferredOut = commons.reduce((s, c) => s + c.transfersOut.reduce((t, x) => t + num(x.shares), 0), 0)
+  const transferredOut = live.reduce((s, c) => s + c.transfersOut.reduce((t, x) => t + num(x.shares), 0), 0)
   // Total (outstanding) common shares = every issued common share (incl. reissued
   // treasury rows) minus every share bought back into treasury. Preferred shares have
   // their own card and are intentionally excluded here — no double counting.
@@ -103,11 +107,12 @@ export async function GET() {
       agreementUrls: c.agreementUrls, stockCertNumber: c.stockCertNumber, proofOfDepositUrls: c.proofOfDepositUrls, validIdUrls: c.validIdUrls, shareClass: c.shareClass,
       numberOfShares: num(c.numberOfShares), truePar: num(c.truePar), apic: num(c.apic), pricePerShare: num(c.pricePerShare), totalCapitalization: cap,
       soldFromTreasury: c.soldFromTreasury,
+      rescinded: c.rescinded,
       // % equity is share-count based on this holding's NET (post-buyback) shares.
       // Current = ÷ outstanding common (subscribed) shares; Total = ÷ authorized shares.
-      equityStakeCurrent: totalShares > 0 ? (netShares / totalShares) * 100 : 0,
-      equityStakeTotal: authorizedShares > 0 ? (netShares / authorizedShares) * 100 : 0,
-      equityStake: totalShares > 0 ? (netShares / totalShares) * 100 : 0,
+      equityStakeCurrent: !c.rescinded && totalShares > 0 ? (netShares / totalShares) * 100 : 0,
+      equityStakeTotal: !c.rescinded && authorizedShares > 0 ? (netShares / authorizedShares) * 100 : 0,
+      equityStake: !c.rescinded && totalShares > 0 ? (netShares / totalShares) * 100 : 0,
       bankAccountId: c.bankAccountId, equityAccountId: c.equityAccountId, receivableAccountId: c.receivableAccountId,
       boughtBack: buybacks.length > 0, buybackShares, buybacks,
       transferredShares, transfers,
@@ -182,8 +187,13 @@ export async function PUT(req: Request) {
     const userId = session.user.id as string
     const id = body.id
     if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
-    const existing = await prisma.commonShare.findUnique({ where: { id }, include: { shareholder: true } })
+    const existing = await prisma.commonShare.findUnique({ where: { id }, include: { shareholder: true, buybacks: true, transfersOut: true, transferIn: true } })
     if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    const rescinded = !!body.rescinded
+    // "As if never issued" is incompatible with downstream events on the shares.
+    if (rescinded && (existing.buybacks.length > 0 || existing.transfersOut.length > 0 || existing.transferIn)) {
+      return NextResponse.json({ error: 'This holding has buybacks or transfers — undo those first; rescinded shares can have no history.' }, { status: 400 })
+    }
     const shares = num(body.numberOfShares)
     const truePar = num(body.truePar), apic = num(body.apic)
     const price = (body.truePar != null || body.apic != null) ? truePar + apic : num(body.pricePerShare)
@@ -204,12 +214,20 @@ export async function PUT(req: Request) {
         proofOfDepositUrls: Array.isArray(body.proofOfDepositUrls) ? body.proofOfDepositUrls : undefined,
         validIdUrls: Array.isArray(body.validIdUrls) ? body.validIdUrls : undefined,
         shareClass: body.shareClass?.trim() || null,
-        numberOfShares: shares, truePar, apic, pricePerShare: price, soldFromTreasury: !!body.soldFromTreasury, bankAccountId: body.bankAccountId || null, equityAccountId: body.equityAccountId || null,
+        numberOfShares: shares, truePar, apic, pricePerShare: price, soldFromTreasury: !!body.soldFromTreasury, rescinded, bankAccountId: body.bankAccountId || null, equityAccountId: body.equityAccountId || null,
         receivableAccountId: body.receivableAccountId || null,
       } })
-      // Re-posts from the stored deposits when the holding has any, else from the
-      // single bank account — and reverses the old entry either way.
-      await repostCommonIssuance(tx, id, userId)
+      if (rescinded) {
+        // As if never issued: reverse the issuance entry and post nothing —
+        // both legs (the consideration debit and the equity credit) drop out
+        // of the financial statements entirely.
+        await reverseEquityJournal(tx, 'EQUITY_COMMON', id)
+        await tx.commonShare.update({ where: { id }, data: { journalEntryId: null } })
+      } else {
+        // Re-posts from the stored deposits when the holding has any, else from the
+        // single bank account — and reverses the old entry either way.
+        await repostCommonIssuance(tx, id, userId)
+      }
     })
     return NextResponse.json({ success: true })
   } catch (e) {

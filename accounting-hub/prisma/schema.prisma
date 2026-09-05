@@ -2967,6 +2967,10 @@ model CommonShare {
   apic                    Decimal? // additional paid-in capital per share (PHP)
   pricePerShare           Decimal // = truePar + apic (issue price per share)
   soldFromTreasury        Boolean         @default(false) // shares reissued from treasury (bought-back) stock
+  // Mutual rescission: the issuance is treated as if it never happened — the
+  // issuance JE is reversed (both legs vanish from the statements) and the
+  // holding is excluded from every share count and capitalization figure.
+  rescinded               Boolean         @default(false)
   // Single bank account the equity was debited into. Kept for back-compat and
   // still used when the holding has no EquityDeposit rows — one deposit, one
   // bank, the common case. When deposits exist they take over entirely.

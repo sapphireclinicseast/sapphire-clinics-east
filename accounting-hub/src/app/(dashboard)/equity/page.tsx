@@ -74,6 +74,7 @@ interface CommonRow {
   stockCertNumber: string | null; proofOfDepositUrls: string[] | null; validIdUrls: string[] | null; shareClass: string | null; numberOfShares: number; truePar: number; apic: number; pricePerShare: number
   totalCapitalization: number; equityStake: number; equityStakeCurrent: number; equityStakeTotal: number; bankAccountId: string | null; equityAccountId: string | null
   soldFromTreasury: boolean
+  rescinded: boolean
   boughtBack: boolean; buybackShares: number; buybacks: Buyback[]
   transferredShares: number; transfers: Transfer[]
   acquiredViaTransfer: boolean; transferFromName: string | null; transferFromShNumber: string | null
@@ -344,9 +345,9 @@ export default function EquityPage() {
               <tbody>
                 {loading ? <tr><td colSpan={17} className="text-center py-10 text-gray-400"><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
                 : commonRows.map(r => (
-                  <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)', background: r.retired || r.boughtBack ? '#fef2f2' : undefined }}>
+                  <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)', background: r.rescinded ? '#f3f4f6' : r.retired || r.boughtBack ? '#fef2f2' : undefined, opacity: r.rescinded ? 0.6 : undefined }}>
                     <td className="px-3 py-2 font-mono font-semibold" style={{ color: r.retired ? '#b91c1c' : 'var(--charcoal)' }}>{r.shNumber}</td>
-                    <td className="px-3 py-2" style={{ color: r.retired ? '#b91c1c' : 'var(--charcoal)', overflow: 'hidden', wordBreak: 'break-word' }}>{r.name}{r.retired && <span className="ml-1 text-[10px] px-1 rounded whitespace-nowrap font-semibold" style={{ background: '#fee2e2', color: '#b91c1c' }} title="All shares in this holding have been sold or bought back">Retired</span>}{r.acquiredViaTransfer ? <span className="ml-1 text-[10px] px-1 rounded whitespace-nowrap" style={{ background: '#e0e7ff', color: '#3730a3' }} title={`Shares bought from ${r.transferFromShNumber || ''} ${r.transferFromName || 'another shareholder'} — no company cash involved`}>Bought from {r.transferFromName || 'transfer'}</span> : r.agreementType === 'DEED_OF_ASSIGNMENT' && <span className="ml-1 text-[10px] px-1 rounded whitespace-nowrap" style={{ background: '#e0e7ff', color: '#3730a3' }}>Deed</span>}{r.soldFromTreasury && <span className="ml-1 text-[10px] px-1 rounded whitespace-nowrap" style={{ background: '#fef3c7', color: '#92400e' }} title="Shares reissued from treasury (bought-back) stock">Treasury</span>}</td>
+                    <td className="px-3 py-2" style={{ color: r.retired ? '#b91c1c' : 'var(--charcoal)', overflow: 'hidden', wordBreak: 'break-word' }}>{r.name}{r.rescinded && <span className="ml-1 text-[10px] px-1 rounded whitespace-nowrap font-semibold" style={{ background: '#e5e7eb', color: '#374151' }} title="Mutually rescinded — treated as if never issued; excluded from every figure and from the financial statements">Rescinded</span>}{r.retired && !r.rescinded && <span className="ml-1 text-[10px] px-1 rounded whitespace-nowrap font-semibold" style={{ background: '#fee2e2', color: '#b91c1c' }} title="All shares in this holding have been sold or bought back">Retired</span>}{r.acquiredViaTransfer ? <span className="ml-1 text-[10px] px-1 rounded whitespace-nowrap" style={{ background: '#e0e7ff', color: '#3730a3' }} title={`Shares bought from ${r.transferFromShNumber || ''} ${r.transferFromName || 'another shareholder'} — no company cash involved`}>Bought from {r.transferFromName || 'transfer'}</span> : r.agreementType === 'DEED_OF_ASSIGNMENT' && <span className="ml-1 text-[10px] px-1 rounded whitespace-nowrap" style={{ background: '#e0e7ff', color: '#3730a3' }}>Deed</span>}{r.soldFromTreasury && <span className="ml-1 text-[10px] px-1 rounded whitespace-nowrap" style={{ background: '#fef3c7', color: '#92400e' }} title="Shares reissued from treasury (bought-back) stock">Treasury</span>}</td>
                     <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{r.shareClass || '—'}</td>
                     <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{String(r.dateAcquired).slice(0, 10)}</td>
                     <td className="px-3 py-2 font-mono" style={{ color: 'var(--mid-gray)' }}>{r.stockCertNumber || '—'}</td>
@@ -407,7 +408,7 @@ function CommonModal({ row, rows, authCommon, authFounder, shareholders, banks, 
     email: row?.email || '', address: row?.address || '', dateAcquired: row?.dateAcquired ? String(row.dateAcquired).slice(0, 10) : new Date().toISOString().slice(0, 10),
     agreementType: row?.agreementType || 'SUBSCRIPTION', assignedToShareholderId: row?.assignedToShareholderId || '', shareClass: row?.shareClass || '',
     stockCertNumber: row?.stockCertNumber || '', numberOfShares: row ? String(row.numberOfShares) : '', truePar: row?.truePar != null ? String(row.truePar) : '', apic: row?.apic != null ? String(row.apic) : '',
-    bankAccountId: row?.bankAccountId || '', equityAccountId: row?.equityAccountId || '', receivableAccountId: row?.receivableAccountId || '', soldFromTreasury: row?.soldFromTreasury || false,
+    bankAccountId: row?.bankAccountId || '', equityAccountId: row?.equityAccountId || '', receivableAccountId: row?.receivableAccountId || '', soldFromTreasury: row?.soldFromTreasury || false, rescinded: row?.rescinded || false,
   })
   const [agreementUrls, setAgreementUrls] = useState<string[]>(row?.agreementUrls || [])
   const [proofUrls, setProofUrls] = useState<string[]>(row?.proofOfDepositUrls || [])
@@ -591,6 +592,9 @@ function CommonModal({ row, rows, authCommon, authFounder, shareholders, banks, 
 
         <label className="mt-4 flex items-center gap-2 text-sm font-medium text-gray-700 cursor-pointer">
           <input type="checkbox" checked={f.soldFromTreasury} onChange={e => set('soldFromTreasury', e.target.checked)} /> Sold share from Treasury Shares <span className="font-normal text-gray-400">(shares reissued from bought-back stock)</span>
+        </label>
+        <label className="flex items-center gap-2 text-xs font-semibold" style={{ color: '#b91c1c' }}>
+          <input type="checkbox" checked={f.rescinded} onChange={e => set('rescinded', e.target.checked)} /> Shares rescinded <span className="font-normal text-gray-400">(mutual rescission — as if never issued: the issuance entry is cancelled from the books, both legs, and the holding counts toward nothing)</span>
         </label>
 
         {/* Buybacks (multiple per shareholder) */}
