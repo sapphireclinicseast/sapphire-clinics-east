@@ -180,9 +180,10 @@ export default function EquityPage() {
   }
   // Hide fully-retired holdings (all shares sold/bought back) and rescinded
   // ones from the registry view; remembered per browser.
-  const [hideRetired, setHideRetired] = useState(false)
+  // Hidden by default; showing them is the explicit opt-in, remembered per browser.
+  const [hideRetired, setHideRetired] = useState(true)
   useEffect(() => {
-    try { setHideRetired(localStorage.getItem('equityHideRetired') === '1') } catch { /* ignore */ }
+    try { if (localStorage.getItem('equityHideRetired') === '0') setHideRetired(false) } catch { /* ignore */ }
   }, [])
   const toggleHideRetired = () => setHideRetired(v => {
     try { localStorage.setItem('equityHideRetired', v ? '0' : '1') } catch { /* ignore */ }
