@@ -487,6 +487,17 @@ function CommonModal({ row, rows, authCommon, authFounder, shareholders, banks, 
   // Open the Sold Shares panel automatically when sales already exist.
   const [showSold, setShowSold] = useState((row?.transfers?.length || 0) > 0)
   const [busy, setBusy] = useState(false)
+  // Next free certificate number for the chosen class's series (SCEIF for
+  // Founders, SCEIC otherwise); gaps below the highest are not reused.
+  const nextCertNo = useMemo(() => {
+    const prefix = (f.shareClass || '').toUpperCase().startsWith('FOUNDERS') ? 'SCEIF' : 'SCEIC'
+    let max = 0
+    for (const r of rows) {
+      const m = (r.stockCertNumber || '').toUpperCase().match(/^([A-Z]+)[-\s]?(\d+)$/)
+      if (m && m[1] === prefix) max = Math.max(max, parseInt(m[2], 10))
+    }
+    return `${prefix}-${String(max + 1).padStart(4, '0')}`
+  }, [rows, f.shareClass])
   const set = (k: string, v: unknown) => setF(p => ({ ...p, [k]: v }))
   const n = (v: string) => Number(v) || 0
   const pricePerShare = n(f.truePar) + n(f.apic)
@@ -580,7 +591,14 @@ function CommonModal({ row, rows, authCommon, authFounder, shareholders, banks, 
               </select>
             </div>
           )}
-          <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Stock Certificate No.</label><input value={f.stockCertNumber} onChange={e => set('stockCertNumber', e.target.value)} className={inp} style={{ borderColor: 'var(--light-gray)' }} /></div>
+          <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Stock Certificate No.</label><input value={f.stockCertNumber} onChange={e => set('stockCertNumber', e.target.value)} className={inp} style={{ borderColor: 'var(--light-gray)' }} placeholder={nextCertNo} />
+            {!f.stockCertNumber && nextCertNo && (
+              <p className="mt-1 text-[10px]" style={{ color: 'var(--mid-gray)' }}>
+                Next free in this series:{' '}
+                <button type="button" onClick={() => set('stockCertNumber', nextCertNo)} className="font-mono font-semibold underline" style={{ color: 'var(--teal)' }}>{nextCertNo}</button>
+              </p>
+            )}
+          </div>
           <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Number of Shares</label><input value={f.numberOfShares} onChange={e => set('numberOfShares', e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={{ borderColor: 'var(--light-gray)' }} /></div>
           <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>True Par (PHP)</label><input value={f.truePar} onChange={e => set('truePar', e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={{ borderColor: 'var(--light-gray)' }} /></div>
           <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>APIC (PHP)</label><input value={f.apic} onChange={e => set('apic', e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={{ borderColor: 'var(--light-gray)' }} /></div>
@@ -1764,7 +1782,7 @@ interface CertRow {
   status: 'ACTIVE' | 'RETIRED' | 'RESCINDED'
   viaTransferFrom: string | null
 }
-interface CertSeries { code: string; label: string; count: number; maxSeq: number; missing: number[]; duplicates: number[]; certs: CertRow[] }
+interface CertSeries { code: string; label: string; count: number; maxSeq: number; missing: number[]; duplicates: number[]; nextNo: string; certs: CertRow[] }
 
 function CertificatesTab() {
   const [data, setData] = useState<{ series: CertSeries[]; uncertifiedCommon: number; uncertifiedPreferred: number } | null>(null)
@@ -1793,6 +1811,10 @@ function CertificatesTab() {
           <div className="px-4 py-3 flex flex-wrap items-center gap-2 border-b" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
             <h3 className="text-sm font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>{sr.label}</h3>
             <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>{sr.count} certificate{sr.count !== 1 ? 's' : ''} · highest {sr.code}-{String(sr.maxSeq).padStart(4, '0')}</span>
+            <span className="text-[11px] px-2 py-0.5 rounded-full font-bold font-mono" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}
+              title="Put this number on the next certificate issued in this series — skipped numbers below the highest are not reused">
+              Next: {sr.nextNo}
+            </span>
             {sr.duplicates.length > 0 && (
               <span className="text-[11px] px-2 py-0.5 rounded-full font-semibold" style={{ background: '#fee2e2', color: '#b91c1c' }}
                 title="The same certificate number sits on more than one holding — one of them needs renumbering">

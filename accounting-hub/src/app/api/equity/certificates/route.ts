@@ -96,7 +96,11 @@ export async function GET() {
     const counts = new Map<number, number>()
     for (const q of seqs) counts.set(q, (counts.get(q) || 0) + 1)
     const duplicates = [...counts.entries()].filter(([, n]) => n > 1).map(([q]) => q).sort((a, b) => a - b)
-    return { code, label: SERIES_LABEL[code] || code, count: rows.length, maxSeq, missing, duplicates, certs: rows }
+    // The number to put on the next certificate in this series. Gaps below the
+    // highest are deliberately NOT reused — a skipped number may belong to a
+    // cancelled or unrecorded paper cert.
+    const nextNo = `${code}-${String(maxSeq + 1).padStart(4, '0')}`
+    return { code, label: SERIES_LABEL[code] || code, count: rows.length, maxSeq, missing, duplicates, nextNo, certs: rows }
   }).sort((a, b) => a.code.localeCompare(b.code))
 
   return NextResponse.json({ series, uncertifiedCommon, uncertifiedPreferred })
