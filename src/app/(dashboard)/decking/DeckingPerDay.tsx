@@ -128,6 +128,13 @@ export default function DeckingPerDay({
   // data error rather than the over-booking it is.
   const availOf = (dept: string, day: string) =>
     Math.max(0, capOf(dept, day) - deckedOf(dept, day) - blockedOf(dept, day))
+  // How far past the offered hours a day is decked. Without this the floor at
+  // zero hides the difference between "exactly full" and "over-booked by two",
+  // and those call for opposite actions — one is healthy, the other means the
+  // consultant's configured work days do not match what they are actually
+  // doing, so every capacity figure for them is understated.
+  const overOf = (dept: string, day: string) =>
+    Math.max(0, deckedOf(dept, day) + blockedOf(dept, day) - capOf(dept, day))
 
   const rows = departments.filter(d => countsByDept.has(d))
   const dayTotal = (day: string) =>
@@ -163,7 +170,7 @@ export default function DeckingPerDay({
         <CapacityTable
           title={`Available slots per day — ${branchName}`}
           blurb="Slots the consultants gave us, minus what is already decked and minus the hours marked unavailable — what is still open to book."
-          depts={capacityDepts} valueOf={availOf} accent="#166534" cellBase={cellBase} emphasiseZero outOf={capOf}
+          depts={capacityDepts} valueOf={availOf} accent="#166534" cellBase={cellBase} emphasiseZero outOf={capOf} overOf={overOf}
         />
       </div>
     )
@@ -378,6 +385,7 @@ export default function DeckingPerDay({
       cellBase={cellBase}
       emphasiseZero
       outOf={capOf}
+      overOf={overOf}
     />
     </div>
   )
@@ -391,7 +399,7 @@ export default function DeckingPerDay({
  * places for a day-order or totals bug to appear in.
  */
 function CapacityTable({
-  title, blurb, depts, valueOf, accent, cellBase, emphasiseZero = false, outOf,
+  title, blurb, depts, valueOf, accent, cellBase, emphasiseZero = false, outOf, overOf,
 }: {
   title: string
   blurb: string
@@ -400,6 +408,8 @@ function CapacityTable({
   accent: string
   cellBase: React.CSSProperties
   emphasiseZero?: boolean
+  /** Hours decked beyond what was offered, shown instead of a bare zero. */
+  overOf?: (dept: string, day: string) => number
   /**
    * Denominator for the percentage under each cell. Given for the available
    * table so a number can be read as a share — 6 open slots means something
@@ -451,20 +461,28 @@ function CapacityTable({
                   {DAYS.map(d => {
                     const n = valueOf(dept, d.key)
                     const base = outOf?.(dept, d.key) ?? 0
+                    const over = overOf?.(dept, d.key) ?? 0
                     return (
                       <td key={d.key} style={{
                         ...cellBase,
                         color: n === 0 ? '#CBD5E1' : accent,
                         fontWeight: n > 0 && emphasiseZero ? 700 : 500,
                       }}>
-                        {n === 0 && base === 0 ? '·' : n}
-                        {/* No percentage when nothing was offered that day —
-                            0 of 0 is not 0%, it is "the clinic was shut". */}
-                        {outOf && base > 0 && (
+                        {n === 0 && base === 0 && !over ? '·' : n}
+                        {/* Over-booked days say so. A floored 0 with "0%" reads
+                            as "full", which is a different situation. */}
+                        {over > 0 ? (
+                          <div style={{ fontSize: '0.66rem', color: '#991B1B', fontWeight: 700, lineHeight: 1.3 }}
+                               title={`${over} more decked than the consultants offered on this day`}>
+                            {over} over
+                          </div>
+                        ) : outOf && base > 0 ? (
+                          /* No percentage when nothing was offered that day —
+                             0 of 0 is not 0%, it is "the clinic was shut". */
                           <div style={{ fontSize: '0.66rem', color: '#94A3B8', fontWeight: 500, lineHeight: 1.3 }}>
                             {Math.round((n / base) * 100)}%
                           </div>
-                        )}
+                        ) : null}
                       </td>
                     )
                   })}
@@ -487,14 +505,22 @@ function CapacityTable({
               {DAYS.map(d => {
                 const n = dayTotal(d.key)
                 const base = outOf ? depts.reduce((t, dept) => t + outOf(dept, d.key), 0) : 0
+                // The totals row carries the overage too. Without it a day could
+                // read 0% here while a department beneath it says "2 over",
+                // which looks like the table contradicting itself.
+                const over = overOf ? depts.reduce((t, dept) => t + overOf(dept, d.key), 0) : 0
                 return (
                   <td key={d.key} style={{ ...cellBase, fontWeight: 800, color: accent }}>
-                    {n === 0 && base === 0 ? '·' : n}
-                    {outOf && base > 0 && (
+                    {n === 0 && base === 0 && !over ? '·' : n}
+                    {over > 0 ? (
+                      <div style={{ fontSize: '0.66rem', color: '#991B1B', fontWeight: 800, lineHeight: 1.3 }}>
+                        {over} over
+                      </div>
+                    ) : outOf && base > 0 ? (
                       <div style={{ fontSize: '0.66rem', color: '#64748B', fontWeight: 700, lineHeight: 1.3 }}>
                         {Math.round((n / base) * 100)}%
                       </div>
-                    )}
+                    ) : null}
                   </td>
                 )
               })}

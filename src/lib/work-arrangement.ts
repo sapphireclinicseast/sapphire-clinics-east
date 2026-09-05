@@ -12,24 +12,34 @@
 
 export type DeckSection = 'onsite' | 'teletherapy' | 'homecare' | 'all' | 'perday' | 'sped' | 'crosssell' | 'history'
 
-export const DECK_SECTIONS: { key: DeckSection; label: string; blurb: string }[] = [
-  { key: 'onsite',      label: 'On-site',     blurb: 'Consultants seeing patients in clinic' },
-  { key: 'teletherapy', label: 'Teletherapy', blurb: 'Consultants running remote sessions' },
-  { key: 'homecare',    label: 'Homecare',    blurb: 'Consultants travelling to patients' },
-  { key: 'all',         label: 'All',         blurb: 'Every consultant, however they are tagged' },
-  // Not a roster cut like the others — an aggregate of the same slots by day of
-  // week, for setting a per-day session target. Last because it answers a
-  // different question from the four boards before it.
-  { key: 'perday',      label: 'Per Day',     blurb: 'Weekly totals by day, all departments — for setting a daily target' },
-  // Not a roster cut either: SPED runs classes, so it gets one board for the
-  // branch rather than a grid per consultant.
-  { key: 'sped',        label: 'SPED Class',  blurb: 'One board for SPED classes — many children per block, blocks longer than an hour' },
-  // Also not a roster cut: this one is about the PATIENTS on the board rather
-  // than the consultants running it — who already sees more than one
-  // department, and who does not yet.
-  { key: 'crosssell',   label: 'Interdepartment', blurb: 'Patients seeing more than one department, and the ones who could be' },
-  // Also not a roster cut: the board over time rather than the board today.
-  { key: 'history',     label: 'History', blurb: 'Filled and open slots over time, per department' },
+/**
+ * The board is two different jobs: filling the week, and reading it back.
+ * Grouping them says so — 'decking' is where slots get booked, 'analysis' is
+ * where the same slots are totalled, compared and charted. Order within each
+ * group is the order they appear.
+ */
+export type DeckGroup = 'decking' | 'analysis'
+
+export const DECK_GROUPS: { key: DeckGroup; label: string }[] = [
+  { key: 'decking',  label: 'Decking' },
+  { key: 'analysis', label: 'Analysis' },
+]
+
+export const DECK_SECTIONS: { key: DeckSection; label: string; blurb: string; group: DeckGroup }[] = [
+  // ── Decking: where the week gets filled ──
+  { key: 'onsite',      label: 'On-site',     blurb: 'Consultants seeing patients in clinic', group: 'decking' },
+  { key: 'teletherapy', label: 'Teletherapy', blurb: 'Consultants running remote sessions', group: 'decking' },
+  { key: 'homecare',    label: 'Homecare',    blurb: 'Consultants travelling to patients', group: 'decking' },
+  // Not a roster cut like the three above: SPED runs classes, so it gets one
+  // board for the branch rather than a grid per consultant. It sits with them
+  // anyway because it is where SPED classes are actually booked.
+  { key: 'sped',        label: 'SPED Class',  blurb: 'One board for SPED classes — many children per block, blocks longer than an hour', group: 'decking' },
+  { key: 'all',         label: 'All',         blurb: 'Every consultant, however they are tagged', group: 'decking' },
+
+  // ── Analysis: the same slots, read back ──
+  { key: 'perday',      label: 'Per Day',     blurb: 'Weekly totals by day, all departments — for setting a daily target', group: 'analysis' },
+  { key: 'crosssell',   label: 'Interdepartment', blurb: 'Patients seeing more than one department, and the ones who could be', group: 'analysis' },
+  { key: 'history',     label: 'History',     blurb: 'Filled and open slots over time, per department', group: 'analysis' },
 ]
 
 // HR's slugs. Kept as a literal list so an unrecognised value from HR falls
