@@ -90,7 +90,7 @@ export default function EquityPage() {
   const { data: session, status } = useSession()
   const role = session?.user?.role
   const isAdmin = role === 'ADMIN'
-  const [tab, setTab] = useState<'common' | 'preferred' | 'dividends'>('common')
+  const [tab, setTab] = useState<'common' | 'preferred' | 'dividends' | 'certificates'>('common')
   const commonTableRef = useRef<HTMLTableElement>(null)
   const commonRz = useResizableColumns('equity-common-list', commonTableRef)
   const [data, setData] = useState<{ rows: CommonRow[]; shareholders: Shareholder[]; figures: Figures } | null>(null)
@@ -134,7 +134,7 @@ export default function EquityPage() {
   }
   // Accountants/bookkeepers get Preferred Shares + Dividend Release History; the
   // Common Shares tab (and its figures) stays admin-only.
-  const allowedTabs = isAdmin ? ['common', 'preferred', 'dividends'] : ['preferred', 'dividends']
+  const allowedTabs = isAdmin ? ['common', 'preferred', 'dividends', 'certificates'] : ['preferred', 'dividends']
   const effectiveTab = allowedTabs.includes(tab) ? tab : 'preferred'
 
   const del = async (row: CommonRow) => {
@@ -349,8 +349,8 @@ export default function EquityPage() {
 
       {/* Tabs — accountants/bookkeepers only see Preferred Shares */}
       <div className="flex items-center gap-1 border-b" style={{ borderColor: 'var(--light-gray)' }}>
-        {(isAdmin ? [['common', 'Common Shares'], ['preferred', 'Preferred Shares'], ['dividends', 'Dividend Release History']] : [['preferred', 'Preferred Shares'], ['dividends', 'Dividend Release History']]).map(([v, label]) => (
-          <button key={v} onClick={() => setTab(v as 'common' | 'preferred' | 'dividends')} className="px-4 py-2.5 text-sm font-medium border-b-2 -mb-px"
+        {(isAdmin ? [['common', 'Common Shares'], ['preferred', 'Preferred Shares'], ['dividends', 'Dividend Release History'], ['certificates', 'Certificates']] : [['preferred', 'Preferred Shares'], ['dividends', 'Dividend Release History']]).map(([v, label]) => (
+          <button key={v} onClick={() => setTab(v as 'common' | 'preferred' | 'dividends' | 'certificates')} className="px-4 py-2.5 text-sm font-medium border-b-2 -mb-px"
             style={{ borderColor: effectiveTab === v ? 'var(--teal)' : 'transparent', color: effectiveTab === v ? 'var(--teal)' : 'var(--mid-gray)' }}>{label}</button>
         ))}
       </div>
@@ -466,6 +466,7 @@ export default function EquityPage() {
       {/* Preferred shares are editable by admin, accountant, and bookkeeper. */}
       {effectiveTab === 'preferred' && <PreferredTab banks={banks} equityAccts={equityAccts} assetAccts={assetAccts} onChanged={load} canWrite />}
       {effectiveTab === 'dividends' && <DividendTab banks={banks} equityAccts={equityAccts} isAdmin={isAdmin} />}
+      {effectiveTab === 'certificates' && <CertificatesTab />}
 
       {(showAdd || edit) && <CommonModal row={edit} rows={data?.rows || []} authCommon={authCommon} authFounder={authFounder} shareholders={data?.shareholders || []} banks={banks} equityAccts={equityAccts} assetAccts={assetAccts} onClose={() => { setShowAdd(false); setEdit(null) }} onReload={load} onSaved={() => { setShowAdd(false); setEdit(null); load() }} />}
     </div>
@@ -1749,4 +1750,98 @@ function useSortFilter(initialKey: string) {
   const setFilter = (k: string, v: string) => setFilters(f => ({ ...f, [k]: v }))
   const activeFilters = Object.values(filters).filter(Boolean).length
   return { sortKey, sortDir, filters, toggleSort, setFilter, setFilters, activeFilters }
+}
+
+
+/* ── Certificates registry: every stock certificate number, who holds it,
+   how it got there, plus the skipped numbers and duplicates per series. ── */
+interface CertRow {
+  certNo: string; series: string; seq: number | null
+  kind: 'COMMON' | 'PREFERRED'
+  shNumber: string; holder: string
+  shares: number; netShares: number
+  shareClass: string | null; dateAcquired: string
+  status: 'ACTIVE' | 'RETIRED' | 'RESCINDED'
+  viaTransferFrom: string | null
+}
+interface CertSeries { code: string; label: string; count: number; maxSeq: number; missing: number[]; duplicates: number[]; certs: CertRow[] }
+
+function CertificatesTab() {
+  const [data, setData] = useState<{ series: CertSeries[]; uncertifiedCommon: number; uncertifiedPreferred: number } | null>(null)
+  const [loading, setLoading] = useState(true)
+  useEffect(() => {
+    fetch('/api/equity/certificates').then(r => r.json()).then(setData).catch(() => setData(null)).finally(() => setLoading(false))
+  }, [])
+  if (loading) return <p className="py-10 text-center text-sm text-gray-400"><Loader2 size={16} className="inline animate-spin" /> Loading certificates…</p>
+  if (!data) return <p className="py-10 text-center text-sm text-gray-400">Could not load the certificate registry.</p>
+
+  const fmtSeq = (code: string, q: number) => `${code}-${String(q).padStart(4, '0')}`
+  const STATUS_STYLE: Record<CertRow['status'], { bg: string; fg: string }> = {
+    ACTIVE: { bg: '#dcfce7', fg: '#166534' },
+    RETIRED: { bg: '#fee2e2', fg: '#b91c1c' },
+    RESCINDED: { bg: '#e5e7eb', fg: '#374151' },
+  }
+  return (
+    <div className="space-y-6">
+      {(data.uncertifiedCommon > 0 || data.uncertifiedPreferred > 0) && (
+        <div className="rounded-xl border px-4 py-3 text-xs" style={{ borderColor: '#fed7aa', background: '#fff7ed', color: '#9a3412' }}>
+          <strong>Holdings without a certificate number:</strong> {data.uncertifiedCommon} common/founders and {data.uncertifiedPreferred} preferred active holding{data.uncertifiedCommon + data.uncertifiedPreferred !== 1 ? 's' : ''} have no cert on record — set them on the holding (edit ✎) so this registry stays complete.
+        </div>
+      )}
+      {data.series.map(sr => (
+        <div key={sr.code} className="rounded-2xl border bg-white overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+          <div className="px-4 py-3 flex flex-wrap items-center gap-2 border-b" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+            <h3 className="text-sm font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>{sr.label}</h3>
+            <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>{sr.count} certificate{sr.count !== 1 ? 's' : ''} · highest {sr.code}-{String(sr.maxSeq).padStart(4, '0')}</span>
+            {sr.duplicates.length > 0 && (
+              <span className="text-[11px] px-2 py-0.5 rounded-full font-semibold" style={{ background: '#fee2e2', color: '#b91c1c' }}
+                title="The same certificate number sits on more than one holding — one of them needs renumbering">
+                Duplicates: {sr.duplicates.map(q => fmtSeq(sr.code, q)).join(', ')}
+              </span>
+            )}
+            {sr.missing.length > 0 ? (
+              <span className="text-[11px] px-2 py-0.5 rounded-full font-semibold" style={{ background: '#fef3c7', color: '#92400e' }}
+                title="Numbers never used below the highest issued — cancelled certs, or holdings missing their number">
+                Skipped: {sr.missing.length > 12 ? `${sr.missing.slice(0, 12).map(q => fmtSeq(sr.code, q)).join(', ')} … +${sr.missing.length - 12} more` : sr.missing.map(q => fmtSeq(sr.code, q)).join(', ')}
+              </span>
+            ) : (
+              <span className="text-[11px] px-2 py-0.5 rounded-full font-semibold" style={{ background: '#dcfce7', color: '#166534' }}>No gaps</span>
+            )}
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead><tr className="text-left" style={{ color: 'var(--mid-gray)' }}>
+                <th className="px-4 py-2 font-semibold whitespace-nowrap">Cert No.</th>
+                <th className="px-3 py-2 font-semibold whitespace-nowrap">Holder</th>
+                <th className="px-3 py-2 font-semibold">Class</th>
+                <th className="px-3 py-2 font-semibold text-right whitespace-nowrap">Shares (net)</th>
+                <th className="px-3 py-2 font-semibold whitespace-nowrap">Date</th>
+                <th className="px-3 py-2 font-semibold">How acquired</th>
+                <th className="px-3 py-2 font-semibold">Status</th>
+              </tr></thead>
+              <tbody>
+                {sr.certs.map((c, i) => {
+                  const dup = c.seq != null && sr.duplicates.includes(c.seq)
+                  const st = STATUS_STYLE[c.status]
+                  return (
+                    <tr key={c.certNo + c.shNumber + i} className="border-t" style={{ borderColor: 'var(--light-gray)', background: dup ? '#fef2f2' : undefined }}>
+                      <td className="px-4 py-2 font-mono font-semibold whitespace-nowrap" style={{ color: dup ? '#b91c1c' : 'var(--deep-teal)' }}>
+                        {c.certNo}{dup && <span className="ml-1 text-[10px] font-sans font-semibold" style={{ color: '#b91c1c' }}>duplicate</span>}
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--charcoal)' }}><span className="font-mono" style={{ color: 'var(--mid-gray)' }}>{c.shNumber}</span> {c.holder}</td>
+                      <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{c.shareClass || '—'}</td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap">{c.netShares.toLocaleString('en-PH')}{c.netShares !== c.shares && <span className="block text-[10px]" style={{ color: 'var(--mid-gray)' }}>of {c.shares.toLocaleString('en-PH')}</span>}</td>
+                      <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{String(c.dateAcquired).slice(0, 10)}</td>
+                      <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{c.viaTransferFrom ? `Transfer from ${c.viaTransferFrom}` : 'Original issuance'}</td>
+                      <td className="px-3 py-2"><span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: st.bg, color: st.fg }}>{c.status.charAt(0) + c.status.slice(1).toLowerCase()}</span></td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
 }
