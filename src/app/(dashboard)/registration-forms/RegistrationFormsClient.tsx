@@ -621,6 +621,17 @@ export default function RegistrationFormsClient({ role }: Props) {
                     return sortDir === 'asc' ? c : -c
                   })
 
+                  // Fixed layout needs the table's own width to be the sum of
+                  // its columns, or the last column absorbs the slack and the
+                  // one being dragged appears not to move.
+                  const W_INDEX = 46, W_ACTIONS = 90
+                  const wOf = (key: string, fallback: number) => colWidths[key] ?? fallback
+                  const totalWidth =
+                    W_INDEX + W_ACTIONS
+                    + wOf('submitted', 170)
+                    + (isAdmin && selectedForm.sbgh ? wOf('branch', 130) : 0)
+                    + results.fields.reduce((t: number, f: any) => t + wOf(String(f.id), 200), 0)
+
                   const sortMark = (key: string) => sortCol === key ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''
                   const filterInput = (key: string) => (
                     <input
@@ -662,12 +673,20 @@ export default function RegistrationFormsClient({ role }: Props) {
                     )}
                   </div>
                   <div className="overflow-x-auto rounded-lg" style={{ border: '1px solid var(--border)' }}>
-                    <table className="w-full text-sm">
+                    {/* table-layout: fixed is what makes resizing WORK. Under
+                        the default `auto`, a width on a <th> is advisory —
+                        the browser sizes columns from their content and
+                        silently discards the drag, which is exactly how this
+                        behaved: the cursor changed, the state updated, and
+                        nothing moved. Fixed layout also needs a real total
+                        width, so the table is sized from the columns and the
+                        container scrolls. */}
+                    <table className="text-sm" style={{ tableLayout: 'fixed', width: totalWidth, minWidth: '100%' }}>
                       <thead>
                         <tr style={{ background: 'var(--bg-secondary, #f9f9f9)' }}>
                           <th className="text-left px-3 py-2 font-semibold text-xs uppercase tracking-wider" style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-display)', width: 46 }}>#</th>
                           <th className="text-left px-3 py-2 font-semibold text-xs uppercase tracking-wider"
-                            style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-display)', position: 'relative', width: colWidths['submitted'] ?? 170, cursor: 'pointer' }}
+                            style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-display)', position: 'relative', width: wOf('submitted', 170), cursor: 'pointer' }}
                             onClick={() => toggleSort('submitted')} title="Sort by date submitted">
                             Submitted{sortMark('submitted')}
                             {filterInput('submitted')}
@@ -675,7 +694,7 @@ export default function RegistrationFormsClient({ role }: Props) {
                           </th>
                           {isAdmin && selectedForm.sbgh && (
                             <th className="text-left px-3 py-2 font-semibold text-xs uppercase tracking-wider"
-                              style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-display)', position: 'relative', width: colWidths['branch'] ?? 130, cursor: 'pointer' }}
+                              style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-display)', position: 'relative', width: wOf('branch', 130), cursor: 'pointer' }}
                               onClick={() => toggleSort('branch')} title="Sort by branch">
                               Branch{sortMark('branch')}
                               {filterInput('branch')}
@@ -688,7 +707,7 @@ export default function RegistrationFormsClient({ role }: Props) {
                               style={{
                                 color: 'var(--text-secondary)', fontFamily: 'var(--font-display)',
                                 position: 'relative', cursor: 'pointer',
-                                width: colWidths[String(f.id)] ?? 200,
+                                width: wOf(String(f.id), 200),
                                 // Wraps now: a fixed width plus nowrap would clip
                                 // a long question title with no way to read it.
                                 whiteSpace: 'normal',
@@ -700,7 +719,7 @@ export default function RegistrationFormsClient({ role }: Props) {
                               {resizeHandle(String(f.id), 200)}
                             </th>
                           ))}
-                          <th className="px-3 py-2" />
+                          <th className="px-3 py-2" style={{ width: 90 }} />
                         </tr>
                       </thead>
                       <tbody>
