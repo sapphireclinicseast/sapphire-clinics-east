@@ -78,6 +78,25 @@ export async function GET() {
     })
   }
 
+  // One paper certificate can cover several holdings of the SAME person
+  // (e.g. a founder+common block issued under one cert). Merge those into a
+  // single entry — summed shares, combined class — so only the same number on
+  // DIFFERENT holders is flagged as a duplicate.
+  const merged = new Map<string, CertRow>()
+  const out: CertRow[] = []
+  for (const c of certs) {
+    const key = `${c.certNo}|${c.shNumber}`
+    const prev = merged.get(key)
+    if (!prev) { merged.set(key, c); out.push(c); continue }
+    prev.shares += c.shares
+    prev.netShares += c.netShares
+    if (c.shareClass && prev.shareClass && !prev.shareClass.includes(c.shareClass)) prev.shareClass = `${prev.shareClass} + ${c.shareClass}`
+    if (+new Date(c.dateAcquired) < +new Date(prev.dateAcquired)) prev.dateAcquired = c.dateAcquired
+    if (prev.status !== 'ACTIVE' && c.status === 'ACTIVE') prev.status = 'ACTIVE'
+  }
+  certs.length = 0
+  certs.push(...out)
+
   const SERIES_LABEL: Record<string, string> = {
     SCEIC: 'Common (SCEIC)', SCEIF: 'Founders (SCEIF)', SCEIP: 'Preferred (SCEIP)', OTHER: 'Other formats',
   }
