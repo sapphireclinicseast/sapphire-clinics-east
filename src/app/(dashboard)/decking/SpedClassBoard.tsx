@@ -96,8 +96,18 @@ export default function SpedClassBoard({
   }
 
   async function pick(day: string, b: { startTime: string; endTime: string }, p: SpedPatient) {
-    const staffId = teacherFor(day, b) ?? form.staffId ?? staff[0]?.id
-    if (!staffId) { setError('No SPED staff in this branch to attach the class to.'); return }
+    // `||`, not `??`. form.staffId defaults to the empty string, and `??` only
+    // falls through on null/undefined — so an untouched form short-circuited
+    // the chain to '' and the guard below fired "no SPED staff in this branch"
+    // at branches that plainly had SPED staff. It happened on any day the block
+    // had no teacher yet, which is every day but the one already running.
+    const staffId = teacherFor(day, b) || form.staffId || staff[0]?.id
+    if (!staffId) {
+      // Reachable only when the branch really has no SPED consultant, so say
+      // what to do about it rather than restating the fact.
+      setError('No SPED consultant is assigned to this branch yet — add one in the Staff Module, then attach the class.')
+      return
+    }
     setBusy(true); setError(null)
     try {
       await onAddChild({ staffId, dayOfWeek: day, startTime: b.startTime, endTime: b.endTime }, p.id)
