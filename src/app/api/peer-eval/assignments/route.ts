@@ -13,6 +13,31 @@ export async function GET(req: NextRequest) {
   const month = searchParams.get('month') ? parseInt(searchParams.get('month')!) : undefined
   const status = searchParams.get('status') as any
 
+  // Answered-between, on the RESPONSE's submittedAt. periodYear/periodMonth
+  // describe the evaluation period, which is a different question from "when
+  // was this actually answered" — an August evaluation can be answered in
+  // October, and checking for recent activity means the latter.
+  const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+  const from = searchParams.get('from') || ''
+  const to = searchParams.get('to') || ''
+  const hasFrom = DATE_RE.test(from)
+  const hasTo = DATE_RE.test(to)
+  // An assignment with no response has no answer date, so it cannot fall in the
+  // window — asking "what came in this week" should not return blanks.
+  const answeredWhere = hasFrom || hasTo
+    ? {
+        response: {
+          is: {
+            submittedAt: {
+              ...(hasFrom ? { gte: new Date(`${from}T00:00:00.000Z`) } : {}),
+              // Exclusive bound on the day after `to`, so the last day is whole.
+              ...(hasTo ? { lt: new Date(new Date(`${to}T00:00:00.000Z`).getTime() + 86400000) } : {}),
+            },
+          },
+        },
+      }
+    : {}
+
   const assignments = await prisma.peerEvalAssignment.findMany({
     where: {
       ...(formType ? { formType } : {}),
@@ -20,6 +45,7 @@ export async function GET(req: NextRequest) {
       ...(year !== undefined ? { periodYear: year } : {}),
       ...(month !== undefined ? { periodMonth: month } : {}),
       ...(status ? { status } : {}),
+      ...answeredWhere,
     },
     include: {
       assessor: { select: { id: true, firstName: true, lastName: true, department: true } },
