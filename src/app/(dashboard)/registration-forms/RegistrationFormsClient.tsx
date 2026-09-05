@@ -55,6 +55,22 @@ function isPartnerResponse(item: any, partners: Set<string>): boolean {
   })
 }
 
+/**
+ * The answer a given column holds for a given response.
+ *
+ * Used by the cell, the column filter and the sort, so the three cannot
+ * disagree about what a column contains. Matches on any id the column was
+ * merged from, then on the question title — the same question carries a
+ * different id in each branch's form.
+ */
+function answerFor(item: any, field: any): any {
+  const ids: string[] = field?.ids ?? [field?.id]
+  const title = String(field?.title ?? '').trim().toLowerCase()
+  return (item?.answers || []).find((a: any) =>
+    ids.includes(a.field?.id)
+    || (title && String(a.field?.title ?? '').trim().toLowerCase() === title))
+}
+
 type FormType = typeof FORM_TYPES[0]
 interface ResponseItem {
   landing_id: string
@@ -84,6 +100,42 @@ export default function RegistrationFormsClient({ role }: Props) {
   const [editValues, setEditValues]     = useState<Record<string, string>>({})
   const [saving, setSaving]             = useState(false)
   const [newCutoff, setNewCutoff]       = useState<Date | null>(null)
+  // ── Table controls: sort, per-column filter, column widths ──
+  // 374 rows across two branches is past the point where scrolling and reading
+  // is a workable way to find anything.
+  const [sortCol, setSortCol]   = useState<string>('submitted')
+  const [sortDir, setSortDir]   = useState<'asc' | 'desc'>('desc')
+  const [colFilters, setColFilters] = useState<Record<string, string>>({})
+  const [partnerOnly, setPartnerOnly] = useState(false)
+  const [colWidths, setColWidths] = useState<Record<string, number>>({})
+  const resizing = useRef<{ key: string; startX: number; startW: number } | null>(null)
+
+  // Drag a header edge to size a column. Listeners live on the document so the
+  // drag survives the pointer leaving the 2px handle, which is otherwise very
+  // easy to do and makes resizing feel broken.
+  useEffect(() => {
+    const move = (e: MouseEvent) => {
+      const r = resizing.current
+      if (!r) return
+      const next = Math.max(70, r.startW + (e.clientX - r.startX))
+      setColWidths(w => ({ ...w, [r.key]: next }))
+    }
+    const up = () => { resizing.current = null; document.body.style.cursor = '' }
+    document.addEventListener('mousemove', move)
+    document.addEventListener('mouseup', up)
+    return () => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up) }
+  }, [])
+
+  const startResize = (key: string, e: React.MouseEvent, currentWidth: number) => {
+    e.preventDefault(); e.stopPropagation()
+    resizing.current = { key, startX: e.clientX, startW: colWidths[key] ?? currentWidth }
+    document.body.style.cursor = 'col-resize'
+  }
+
+  const toggleSort = (key: string) => {
+    if (sortCol === key) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'))
+    else { setSortCol(key); setSortDir('asc') }
+  }
 
   // Determine the "new since" cutoff for highlighting.
   // If the user navigated here by clicking the notification bell, the URL
@@ -212,7 +264,7 @@ export default function RegistrationFormsClient({ role }: Props) {
       const d1 = await res1.json()
       if (!d1.ok) throw new Error(d1.error || 'Failed to load')
 
-      const fields = d1.fields || []
+      let fields = d1.fields || []
       let items: ResponseItem[] = (d1.items || []).map((i: any) => ({ ...i, _branch: 'SBEA', _formId: form.sbea }))
 
       if (res2) {
@@ -222,6 +274,29 @@ export default function RegistrationFormsClient({ role }: Props) {
           items = [...items, ...sbghItems].sort(
             (a, b) => new Date(b.submitted_at).getTime() - new Date(a.submitted_at).getTime()
           )
+
+          // Columns are the UNION of both forms' questions, matched by title.
+          //
+          // They used to be East's fields alone while the rows were both
+          // branches', and a cell was looked up by field ID. Greenhills has its
+          // own IDs for the same questions, so every Greenhills answer missed
+          // every column and the row rendered as a line of dashes — which read
+          // as "the system accepted a blank submission" when the answers were
+          // there all along, under a different id.
+          const byTitle = new Map<string, any>()
+          for (const f of [...fields, ...(d2.fields || [])]) {
+            const key = String(f.title ?? '').trim().toLowerCase()
+            if (!key) continue
+            const seen = byTitle.get(key)
+            if (seen) {
+              // Same question, two form ids. Keep both so either branch's
+              // answer can be found for this column.
+              seen.ids.push(f.id)
+            } else {
+              byTitle.set(key, { ...f, ids: [f.id] })
+            }
+          }
+          fields = [...byTitle.values()]
         }
       }
 
@@ -517,26 +592,119 @@ export default function RegistrationFormsClient({ role }: Props) {
                   <div className="text-center py-12 text-sm" style={{ color: 'var(--text-secondary)' }}>No responses yet.</div>
                 )}
 
-                {results && results.items.length > 0 && (
+                {results && results.items.length > 0 && (() => {
+                  // Filter, then sort. Both read a column through answerFor(),
+                  // the same accessor the cell uses, so what is filtered on is
+                  // exactly what is displayed.
+                  const val = (item: ResponseItem, key: string): string => {
+                    if (key === 'submitted') return item.submitted_at ?? ''
+                    if (key === 'branch') return item._branch === 'SBEA' ? 'East Branch' : 'Greenhills Branch'
+                    const f = results.fields.find((x: any) => String(x.id) === key)
+                    return f ? (extractAnswer(answerFor(item, f)) || '') : ''
+                  }
+
+                  let rows = results.items
+                  if (partnerOnly) rows = rows.filter(it => isPartnerResponse(it, partnerNames))
+                  for (const [key, q] of Object.entries(colFilters)) {
+                    const needle = q.trim().toLowerCase()
+                    if (!needle) continue
+                    rows = rows.filter(it => val(it, key).toLowerCase().includes(needle))
+                  }
+                  rows = [...rows].sort((a, b) => {
+                    // Dates compare as dates; everything else as text. Sorting
+                    // "Sep 5" against "Sep 20" as strings would put the 20th first.
+                    if (sortCol === 'submitted') {
+                      const d = new Date(a.submitted_at).getTime() - new Date(b.submitted_at).getTime()
+                      return sortDir === 'asc' ? d : -d
+                    }
+                    const c = val(a, sortCol).localeCompare(val(b, sortCol))
+                    return sortDir === 'asc' ? c : -c
+                  })
+
+                  const sortMark = (key: string) => sortCol === key ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''
+                  const filterInput = (key: string) => (
+                    <input
+                      value={colFilters[key] ?? ''}
+                      onChange={e => setColFilters(f => ({ ...f, [key]: e.target.value }))}
+                      placeholder="Filter…"
+                      onClick={e => e.stopPropagation()}
+                      style={{
+                        width: '100%', marginTop: 4, padding: '2px 5px', fontSize: '0.7rem',
+                        border: '1px solid var(--border, #e5e7eb)', borderRadius: 4, fontWeight: 400,
+                        textTransform: 'none', letterSpacing: 0,
+                      }} />
+                  )
+                  const resizeHandle = (key: string, w: number) => (
+                    <span onMouseDown={e => startResize(key, e, w)} title="Drag to resize"
+                      style={{ position: 'absolute', top: 0, right: 0, width: 5, height: '100%', cursor: 'col-resize', userSelect: 'none' }} />
+                  )
+
+                  return (
+                  <>
+                  {/* Partner institutions across BOTH branch forms. The column
+                      filter below only searches one question's text; this reads
+                      every answer, which is how a Greenhills registration gets
+                      caught even though its question has its own id. */}
+                  <div className="flex flex-wrap items-center gap-3 mb-2">
+                    <label className="flex items-center gap-1.5 text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>
+                      <input type="checkbox" checked={partnerOnly} onChange={e => setPartnerOnly(e.target.checked)} />
+                      Partner institutions only
+                    </label>
+                    <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                      Showing <strong>{rows.length}</strong> of {results.items.length}
+                    </span>
+                    {(partnerOnly || Object.values(colFilters).some(v => v.trim())) && (
+                      <button onClick={() => { setPartnerOnly(false); setColFilters({}) }}
+                        className="text-xs font-semibold px-2 py-1 rounded-lg border"
+                        style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}>
+                        Clear filters
+                      </button>
+                    )}
+                  </div>
                   <div className="overflow-x-auto rounded-lg" style={{ border: '1px solid var(--border)' }}>
                     <table className="w-full text-sm">
                       <thead>
                         <tr style={{ background: 'var(--bg-secondary, #f9f9f9)' }}>
-                          <th className="text-left px-3 py-2 font-semibold text-xs uppercase tracking-wider" style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-display)' }}>#</th>
-                          <th className="text-left px-3 py-2 font-semibold text-xs uppercase tracking-wider" style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-display)' }}>Submitted</th>
+                          <th className="text-left px-3 py-2 font-semibold text-xs uppercase tracking-wider" style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-display)', width: 46 }}>#</th>
+                          <th className="text-left px-3 py-2 font-semibold text-xs uppercase tracking-wider"
+                            style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-display)', position: 'relative', width: colWidths['submitted'] ?? 170, cursor: 'pointer' }}
+                            onClick={() => toggleSort('submitted')} title="Sort by date submitted">
+                            Submitted{sortMark('submitted')}
+                            {filterInput('submitted')}
+                            {resizeHandle('submitted', 170)}
+                          </th>
                           {isAdmin && selectedForm.sbgh && (
-                            <th className="text-left px-3 py-2 font-semibold text-xs uppercase tracking-wider" style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-display)' }}>Branch</th>
+                            <th className="text-left px-3 py-2 font-semibold text-xs uppercase tracking-wider"
+                              style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-display)', position: 'relative', width: colWidths['branch'] ?? 130, cursor: 'pointer' }}
+                              onClick={() => toggleSort('branch')} title="Sort by branch">
+                              Branch{sortMark('branch')}
+                              {filterInput('branch')}
+                              {resizeHandle('branch', 130)}
+                            </th>
                           )}
                           {results.fields.map((f: any) => (
-                            <th key={f.id} className="text-left px-3 py-2 font-semibold text-xs uppercase tracking-wider whitespace-nowrap" style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-display)' }}>
-                              {f.title}
+                            <th key={f.id}
+                              className="text-left px-3 py-2 font-semibold text-xs uppercase tracking-wider align-top"
+                              style={{
+                                color: 'var(--text-secondary)', fontFamily: 'var(--font-display)',
+                                position: 'relative', cursor: 'pointer',
+                                width: colWidths[String(f.id)] ?? 200,
+                                // Wraps now: a fixed width plus nowrap would clip
+                                // a long question title with no way to read it.
+                                whiteSpace: 'normal',
+                              }}
+                              onClick={() => toggleSort(String(f.id))}
+                              title={`${f.title} — click to sort`}>
+                              {f.title}{sortMark(String(f.id))}
+                              {filterInput(String(f.id))}
+                              {resizeHandle(String(f.id), 200)}
                             </th>
                           ))}
                           <th className="px-3 py-2" />
                         </tr>
                       </thead>
                       <tbody>
-                        {results.items.map((item, i) => {
+                        {rows.map((item, i) => {
                           const isNew = newCutoff && item.submitted_at
                             ? new Date(item.submitted_at) > newCutoff
                             : false
@@ -591,7 +759,7 @@ export default function RegistrationFormsClient({ role }: Props) {
                               </td>
                             )}
                             {results.fields.map((field: any) => {
-                              const ans = (item.answers || []).find((a: any) => a.field?.id === field.id)
+                              const ans = answerFor(item, field)
                               return (
                                 <td key={field.id} className="px-3 py-2 max-w-[200px] truncate" title={extractAnswer(ans)}>
                                   {extractAnswer(ans)}
@@ -623,7 +791,14 @@ export default function RegistrationFormsClient({ role }: Props) {
                       </tbody>
                     </table>
                   </div>
-                )}
+                  {rows.length === 0 && (
+                    <div className="text-center py-8 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                      No responses match these filters.
+                    </div>
+                  )}
+                  </>
+                  )
+                })()}
               </div>
             )}
           </div>
