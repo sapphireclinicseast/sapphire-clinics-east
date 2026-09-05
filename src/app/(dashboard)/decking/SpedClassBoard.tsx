@@ -69,22 +69,32 @@ export default function SpedClassBoard({
 
   const live = slots.filter(s => !s.disabled)
 
-  // Blocks are derived from the slots themselves rather than from a fixed hourly
-  // ladder — a class runs 9–11, not 9–10 and 10–11, and splitting it into hours
-  // would misrepresent one session as two.
-  const blockKey = (s: { startTime: string; endTime: string }) => `${s.startTime}|${s.endTime}`
-  const blocks = Array.from(new Set(live.map(blockKey)))
-    .map(k => { const [startTime, endTime] = k.split('|'); return { startTime, endTime } })
-    .sort((a, b) => mins(a.startTime) - mins(b.startTime) || mins(a.endTime) - mins(b.endTime))
+  // A row is ONE TEACHER'S class at one time, not "everything happening at
+  // 10am". Keying on time alone merged two teachers running simultaneously into
+  // a single cell, so their groups appeared as one long list of children with
+  // no way to tell whose class was whose — and 10-12 with both teachers looked
+  // the same as 10-12 with one.
+  //
+  // Still derived from the slots rather than a fixed hourly ladder: a class runs
+  // 10-12, not 10-11 and 11-12, and splitting it would misrepresent one session
+  // as two.
+  interface Block { staffId: string; startTime: string; endTime: string }
+  const blockKey = (s: Block) => `${s.staffId}|${s.startTime}|${s.endTime}`
+  const teacherName = (staffId: string) => {
+    const t = staff.find(x => x.id === staffId)
+    return t ? `${t.lastName}, ${t.firstName}` : 'Unassigned teacher'
+  }
+  const blocks: Block[] = Array.from(new Set(live.map(blockKey)))
+    .map(k => { const [staffId, startTime, endTime] = k.split('|'); return { staffId, startTime, endTime } })
+    .sort((a, b) =>
+      mins(a.startTime) - mins(b.startTime) ||
+      mins(a.endTime) - mins(b.endTime) ||
+      teacherName(a.staffId).localeCompare(teacherName(b.staffId)))
 
-  const cell = (day: string, b: { startTime: string; endTime: string }) =>
-    live.filter(s => s.dayOfWeek === day && s.startTime === b.startTime && s.endTime === b.endTime)
-
-  // A block belongs to whichever teacher's rows created it; needed so adding a
-  // child to an existing class attaches to the same teacher rather than asking
-  // again.
-  const teacherFor = (day: string, b: { startTime: string; endTime: string }): string | null =>
-    cell(day, b)[0]?.staffId ?? null
+  const cell = (day: string, b: Block) =>
+    live.filter(s =>
+      s.dayOfWeek === day && s.staffId === b.staffId &&
+      s.startTime === b.startTime && s.endTime === b.endTime)
 
   async function search(v: string) {
     setQuery(v)
@@ -95,19 +105,12 @@ export default function SpedClassBoard({
     } catch { setResults([]) }
   }
 
-  async function pick(day: string, b: { startTime: string; endTime: string }, p: SpedPatient) {
-    // `||`, not `??`. form.staffId defaults to the empty string, and `??` only
-    // falls through on null/undefined — so an untouched form short-circuited
-    // the chain to '' and the guard below fired "no SPED staff in this branch"
-    // at branches that plainly had SPED staff. It happened on any day the block
-    // had no teacher yet, which is every day but the one already running.
-    const staffId = teacherFor(day, b) || form.staffId || staff[0]?.id
-    if (!staffId) {
-      // Reachable only when the branch really has no SPED consultant, so say
-      // what to do about it rather than restating the fact.
-      setError('No SPED consultant is assigned to this branch yet — add one in the Staff Module, then attach the class.')
-      return
-    }
+  async function pick(day: string, b: Block, p: SpedPatient) {
+    // The row IS a teacher's class, so the child joins that teacher — no
+    // guessing from the cell, the form or the first consultant on the roster.
+    // That guesswork is what used to fail on any day the class did not already
+    // run.
+    const staffId = b.staffId
     setBusy(true); setError(null)
     try {
       await onAddChild({ staffId, dayOfWeek: day, startTime: b.startTime, endTime: b.endTime }, p.id)
@@ -219,15 +222,27 @@ export default function SpedClassBoard({
             <tbody>
               {blocks.map(b => (
                 <tr key={blockKey(b)}>
-                  <td style={{ ...td, background: '#F7F8FA', minWidth: 130 }}>
+                  <td style={{ ...td, background: '#F7F8FA', minWidth: 160 }}>
+                    {/* The teacher leads: with two classes running at the same
+                        hour, the time alone does not identify the row. */}
+                    <div style={{
+                      display: 'inline-block', maxWidth: '100%', marginBottom: 3,
+                      background: '#EFE9FA', border: '1px solid #D6C9F0', borderRadius: 4,
+                      padding: '0.1rem 0.4rem', fontSize: '0.7rem', fontWeight: 800, color: '#4C1D95',
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }} title={teacherName(b.staffId)}>
+                      {teacherName(b.staffId)}
+                    </div>
                     <div style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--charcoal)', fontVariantNumeric: 'tabular-nums' }}>
                       {fmt(b.startTime)} &ndash; {fmt(b.endTime)}
                     </div>
-                    <div style={{ fontSize: '0.68rem', color: 'var(--mid-gray)' }}>{durationLabel(b.startTime, b.endTime)}</div>
+                    <div style={{ fontSize: '0.68rem', color: 'var(--mid-gray)' }}>
+                      {durationLabel(b.startTime, b.endTime)}
+                    </div>
                   </td>
                   {DAYS.map(d => {
                     const kids = cell(d.key, b)
-                    const key = `${d.key}|${b.startTime}|${b.endTime}`
+                    const key = `${d.key}|${b.staffId}|${b.startTime}|${b.endTime}`
                     const isAdding = adding === key
                     return (
                       <td key={d.key} style={td}>
@@ -270,9 +285,9 @@ export default function SpedClassBoard({
                             ) : (
                               /* No cap here — a class is as big as it is. */
                               <button onClick={() => { setAdding(key); setQuery(''); setResults([]) }}
-                                title="Add another child to this class"
+                                title={`Add another child — ${kids.length} in this class`}
                                 style={{ background: 'transparent', border: 'none', borderTop: '1px solid #E6E9ED', cursor: 'pointer', color: '#7C6BA8', fontSize: '0.68rem', fontWeight: 700, padding: '1px 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3 }}>
-                                <Plus size={9} /> {kids.length}
+                                <Plus size={9} /> Add child
                               </button>
                             )}
                           </div>
