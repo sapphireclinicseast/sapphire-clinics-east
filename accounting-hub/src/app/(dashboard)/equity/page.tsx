@@ -202,8 +202,38 @@ export default function EquityPage() {
       if (!m.has(r.shareholderId)) m.set(r.shareholderId, [])
       m.get(r.shareholderId)!.push(r)
     }
-    return [...m.values()]
-  }, [commonRows])
+    const groups = [...m.values()]
+    // The summary lines show group AGGREGATES, so a header sort must order the
+    // groups by those aggregates — ordering by each group's best row scrambles
+    // the sums (a person with many small holdings sorts wrong).
+    const key = cs.sortKey
+    if (key) {
+      const dir = cs.sortDir === 'asc' ? 1 : -1
+      const aggOf = (g: typeof commonRows): number | string | null => {
+        const live = g.filter(r => !r.rescinded)
+        switch (key) {
+          case 'shares': return live.reduce((s2, r) => s2 + netShares(r), 0)
+          case 'capitalization': return live.reduce((s2, r) => s2 + netShares(r) * r.pricePerShare, 0)
+          case 'stakeCurrent': return g.reduce((s2, r) => s2 + r.equityStakeCurrent, 0)
+          case 'stakeTotal': return g.reduce((s2, r) => s2 + r.equityStakeTotal, 0)
+          case 'dateAcquired': return Math.min(...g.map(r => +new Date(r.dateAcquired)))
+          case 'truePar': return Math.max(...g.map(r => r.truePar || 0))
+          case 'apic': return Math.max(...g.map(r => r.apic || 0))
+          case 'pricePerShare': return Math.max(...g.map(r => r.pricePerShare || 0))
+          case 'name': return (g[0].name || '').toLowerCase()
+          case 'shNumber': return g[0].shNumber
+          default: return null
+        }
+      }
+      if (groups.length && aggOf(groups[0]) != null) {
+        groups.sort((a, b) => {
+          const va = aggOf(a), vb = aggOf(b)
+          return (va! < vb! ? -1 : va! > vb! ? 1 : 0) * dir
+        })
+      }
+    }
+    return groups
+  }, [commonRows, cs.sortKey, cs.sortDir])
   const [openShareholders, setOpenShareholders] = useState<Set<string>>(new Set())
   const toggleShareholder = (id: string) =>
     setOpenShareholders(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
@@ -260,9 +290,10 @@ export default function EquityPage() {
 
   const fig = data?.figures
   // Outstanding (net-of-buyback) shares split by class group for the summary cards.
-  const netOf = (r: CommonRow) => r.numberOfShares - (r.buybackShares || 0)
-  const foundersShares = (data?.rows || []).filter(r => (r.shareClass || '').toLowerCase().startsWith('founders')).reduce((s, r) => s + netOf(r), 0)
-  const commonClassShares = (data?.rows || []).filter(r => (r.shareClass || '').toLowerCase().startsWith('common')).reduce((s, r) => s + netOf(r), 0)
+  const netOf = (r: CommonRow) => r.numberOfShares - (r.buybackShares || 0) - (r.transferredShares || 0)
+  // Rescinded holdings are as if never issued — they count toward neither class.
+  const foundersShares = (data?.rows || []).filter(r => !r.rescinded && (r.shareClass || '').toLowerCase().startsWith('founders')).reduce((s, r) => s + netOf(r), 0)
+  const commonClassShares = (data?.rows || []).filter(r => !r.rescinded && (r.shareClass || '').toLowerCase().startsWith('common')).reduce((s, r) => s + netOf(r), 0)
   // Over-authorization alarms.
   const authTotal = fig?.authorizedShares ?? 20000000
   const authCommon = fig?.authorizedCommonShares ?? null
