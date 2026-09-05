@@ -1116,6 +1116,8 @@ interface PrefRow {
 interface PrefFigures { preferredCapitalization: number; preferredShares: number; retiredPreferredShares: number }
 
 function PreferredTab({ banks, equityAccts, assetAccts = [], onChanged, canWrite = true }: { banks: Bank[]; equityAccts: EquityAcct[]; assetAccts?: EquityAcct[]; onChanged: () => void; canWrite?: boolean }) {
+  const prefTableRef = useRef<HTMLTableElement>(null)
+  const prefRz = useResizableColumns('equity-preferred-list', prefTableRef)
   const [rows, setRows] = useState<PrefRow[]>([])
   const [shareholders, setShareholders] = useState<Shareholder[]>([])
   const [fig, setFig] = useState<PrefFigures | null>(null)
@@ -1203,9 +1205,10 @@ function PreferredTab({ banks, equityAccts, assetAccts = [], onChanged, canWrite
         {canWrite && <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}><Plus size={15} /> Add Preferred Shareholder</button>}
       </div>
       <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
-        <table className="w-full text-xs">
+        <table ref={prefTableRef} className="w-full text-xs" style={prefRz.tableStyle}>
+          <ResizableColgroup rz={prefRz} />
           <SortHead cols={PREFERRED_COLS} sortKey={ps.sortKey} sortDir={ps.sortDir} filters={ps.filters}
-            onToggleSort={k => ps.toggleSort(k, PREFERRED_NUMERIC)} onFilter={ps.setFilter} />
+            onToggleSort={k => ps.toggleSort(k, PREFERRED_NUMERIC)} onFilter={ps.setFilter} rz={prefRz} />
           <tbody>
           {loading ? <tr><td colSpan={16} className="text-center py-10 text-gray-400"><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
           : prefRows.map(r => (
