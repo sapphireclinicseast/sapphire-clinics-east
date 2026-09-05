@@ -2374,3 +2374,37 @@ model LoaServiceOption {
 
   @@index([active, sortOrder])
 }
+
+
+/// A daily reading of one branch+department's decking board.
+///
+/// The board itself is a WEEKLY TEMPLATE — DeckingSlot has a day-of-week and no
+/// date — so it can only ever describe today. Nothing in it records that a
+/// consultant used to work Saturdays, or that a slot was booked in March and
+/// freed in April. History therefore has to be written down as it happens, and
+/// this is where.
+///
+/// One row per (date, branch, department). Re-running the snapshot for a day
+/// overwrites that day rather than appending, so a manual re-run or a retried
+/// cron cannot double-count.
+model DeckingSnapshot {
+  id         String   @id @default(cuid())
+  /// Date only (UTC midnight) — the grain of the chart.
+  date       DateTime
+  branch     String
+  department String
+  /// Hours the consultants offered: work days x configured hours.
+  totalSlots Int
+  /// Cells holding at least one patient. Cells, not rows: three children in one
+  /// hour is one filled slot, matching how the board is read.
+  booked     Int
+  /// Cells switched off. Not open, and not capacity anybody can sell.
+  blocked    Int
+  /// totalSlots - booked - blocked, stored rather than derived so a later change
+  /// to the definition cannot silently rewrite recorded history.
+  open       Int
+  createdAt  DateTime @default(now())
+
+  @@unique([date, branch, department])
+  @@index([branch, department, date])
+}
