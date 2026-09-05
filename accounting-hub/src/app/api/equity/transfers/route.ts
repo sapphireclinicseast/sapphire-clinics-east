@@ -92,13 +92,23 @@ export async function POST(req: Request) {
       // The buyer's holding carries the seller's BOOK value (par/APIC) — the
       // private sale price lives on the transfer record only. No bank account,
       // no issuance JE: nothing was received by the company.
+      //
+      // A FULL sale hands over the physical stock certificate too: the cert
+      // number moves to the buyer's holding and leaves the seller's. A partial
+      // sale keeps the cert with the seller (the buyer's new cert, once issued,
+      // is typed on their holding).
+      const isFullSale = shares >= remaining - 1e-9
       const toShare = await tx.commonShare.create({ data: {
         shareholderId: buyer.id, dateAcquired: date, agreementType: 'DEED_OF_ASSIGNMENT',
         shareClass: share.shareClass, numberOfShares: shares,
+        stockCertNumber: isFullSale ? share.stockCertNumber : null,
         truePar: share.truePar, apic: share.apic, pricePerShare: share.pricePerShare,
         soldFromTreasury: false, bankAccountId: null, equityAccountId: share.equityAccountId,
         agreementUrls: proofUrls, createdById: userId,
       } })
+      if (isFullSale && share.stockCertNumber) {
+        await tx.commonShare.update({ where: { id: commonShareId }, data: { stockCertNumber: null } })
+      }
 
       const t = await tx.shareTransfer.create({ data: {
         fromCommonShareId: commonShareId, toCommonShareId: toShare.id, toShareholderId: buyer.id,
@@ -138,6 +148,13 @@ export async function DELETE(req: Request) {
     await reverseEquityJournal(tx, 'EQUITY_TRANSFER', id)
     const toShareId = t.toCommonShareId, buyerId = t.toShareholderId
     await tx.shareTransfer.delete({ where: { id } })
+    // If the certificate travelled to the buyer on a full sale, hand it back.
+    if (toShareId && t.toCommonShare?.stockCertNumber) {
+      const seller = await tx.commonShare.findUnique({ where: { id: t.fromCommonShareId }, select: { stockCertNumber: true } })
+      if (seller && !seller.stockCertNumber) {
+        await tx.commonShare.update({ where: { id: t.fromCommonShareId }, data: { stockCertNumber: t.toCommonShare.stockCertNumber } })
+      }
+    }
     if (toShareId) await tx.commonShare.delete({ where: { id: toShareId } }).catch(() => {})
     // Remove the buyer if this was their only holding (mirrors the common-share delete).
     const [cCount, pCount, tCount] = await Promise.all([
