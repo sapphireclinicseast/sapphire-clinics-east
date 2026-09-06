@@ -10,14 +10,14 @@ const num = (v: unknown) => Number(v || 0)
 const priceOf = (b: Record<string, unknown>) => (b.truePar != null || b.apic != null) ? num(b.truePar) + num(b.apic) : num(b.pricePerShare)
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function resolveShareholder(tx: any, body: { shareholderId?: string; name?: string; tin?: string; birthdate?: string; email?: string; address?: string }, createdById: string) {
+async function resolveShareholder(tx: any, body: { shareholderId?: string; name?: string; tin?: string; birthdate?: string; email?: string; mobile?: string; address?: string }, createdById: string) {
   if (body.shareholderId) { const sh = await tx.shareholder.findUnique({ where: { id: body.shareholderId } }); if (sh) return sh }
   const name = (body.name || '').trim()
   if (name) { const ex = await tx.shareholder.findFirst({ where: { name: { equals: name, mode: 'insensitive' } } }); if (ex) return ex }
   const last = await tx.shareholder.findFirst({ orderBy: { shSeq: 'desc' } })
   const seq = (last?.shSeq || 0) + 1
   return tx.shareholder.create({ data: { shNumber: `SH${String(seq).padStart(4, '0')}`, shSeq: seq, name: name || 'Unnamed',
-    tin: body.tin?.trim() || null, birthdate: body.birthdate ? new Date(body.birthdate) : null, email: body.email?.trim() || null, address: body.address?.trim() || null, createdById } })
+    tin: body.tin?.trim() || null, birthdate: body.birthdate ? new Date(body.birthdate) : null, email: body.email?.trim() || null, mobile: body.mobile?.trim() || null, address: body.address?.trim() || null, createdById } })
 }
 
 export async function GET() {
@@ -26,7 +26,7 @@ export async function GET() {
   const [prefs, commons, shareholders] = await Promise.all([
     prisma.preferredShare.findMany({ include: { shareholder: true, deposits: { orderBy: { date: 'asc' } } }, orderBy: { createdAt: 'asc' } }),
     prisma.commonShare.findMany({ select: { numberOfShares: true, pricePerShare: true } }),
-    prisma.shareholder.findMany({ orderBy: { shSeq: 'asc' }, select: { id: true, shNumber: true, name: true, tin: true, birthdate: true, email: true, address: true } }),
+    prisma.shareholder.findMany({ orderBy: { shSeq: 'asc' }, select: { id: true, shNumber: true, name: true, tin: true, birthdate: true, email: true, mobile: true, address: true } }),
   ])
   const commonCap = commons.reduce((s, c) => s + num(c.numberOfShares) * num(c.pricePerShare), 0)
   const prefCap = prefs.reduce((s, p) => s + num(p.numberOfShares) * num(p.pricePerShare), 0)
@@ -39,7 +39,7 @@ export async function GET() {
     const cap = num(p.numberOfShares) * num(p.pricePerShare)
     return {
       id: p.id, shareholderId: p.shareholderId, shNumber: p.shareholder.shNumber, name: p.shareholder.name,
-      tin: p.shareholder.tin, birthdate: p.shareholder.birthdate, email: p.shareholder.email, address: p.shareholder.address,
+      tin: p.shareholder.tin, birthdate: p.shareholder.birthdate, email: p.shareholder.email, mobile: p.shareholder.mobile, address: p.shareholder.address,
       dateAcquired: p.dateAcquired, agreementType: p.agreementType, agreementUrls: p.agreementUrls, stockCertNumber: p.stockCertNumber,
       proofOfDepositUrls: p.proofOfDepositUrls, validIdUrls: p.validIdUrls, shareClass: p.shareClass, numberOfShares: num(p.numberOfShares), retiredShares: num(p.retiredShares), truePar: num(p.truePar), apic: num(p.apic), pricePerShare: num(p.pricePerShare), totalCapitalization: cap,
       equityStake: totalShares > 0 ? (num(p.numberOfShares) / totalShares) * 100 : 0, bankAccountId: p.bankAccountId, equityAccountId: p.equityAccountId,
@@ -106,7 +106,7 @@ export async function PUT(req: Request) {
     await prisma.$transaction(async (tx) => {
       await tx.shareholder.update({ where: { id: existing.shareholderId }, data: {
         name: (b.name || existing.shareholder.name).trim(), tin: b.tin?.trim() || null,
-        birthdate: b.birthdate ? new Date(b.birthdate) : null, email: b.email?.trim() || null, address: b.address?.trim() || null,
+        birthdate: b.birthdate ? new Date(b.birthdate) : null, email: b.email?.trim() || null, mobile: b.mobile?.trim() || null, address: b.address?.trim() || null,
       } })
       await reverseEquityJournal(tx, 'EQUITY_PREFERRED', b.id)
       await tx.preferredShare.update({ where: { id: b.id }, data: dataFrom(b) })

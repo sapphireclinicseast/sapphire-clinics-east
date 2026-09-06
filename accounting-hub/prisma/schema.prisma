@@ -2706,6 +2706,7 @@ model Shareholder {
   tin         String?
   birthdate   DateTime?
   email       String?
+  mobile      String?
   address     String?
   createdById String?
   createdAt   DateTime  @default(now())
@@ -2757,11 +2758,34 @@ model CommonShare {
   buybackProofUrls        Json?
   buybackJournalEntryId   String?
   buybacks                ShareBuyback[]
+  // Who the shares are really held for. A holding can be split across several
+  // beneficial owners; allocations are registry info only (no GL impact).
+  beneficialOwners        BeneficialOwner[]
   createdById             String?
   createdAt               DateTime        @default(now())
   updatedAt               DateTime        @updatedAt
 
   @@index([shareholderId])
+}
+
+// A beneficial owner of (part of) a common shareholding — the registered holder
+// holds the shares, but some or all are beneficially owned by someone else.
+// Allocations across a holding's owners may not exceed its net (post-buyback)
+// shares. Registry information only: no journal entries are posted from this.
+model BeneficialOwner {
+  id            String      @id @default(cuid())
+  commonShareId String
+  commonShare   CommonShare @relation(fields: [commonShareId], references: [id], onDelete: Cascade)
+  name          String
+  tin           String?
+  email         String?
+  address       String?
+  shares        Decimal
+  notes         String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([commonShareId])
 }
 
 // A single buyback event against a common shareholding. A shareholder may have

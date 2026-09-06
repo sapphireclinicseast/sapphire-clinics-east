@@ -8,7 +8,7 @@ const num = (v: unknown) => Number(v || 0)
 
 // Resolve an existing shareholder (by id or name) or create a new one with the next SH number.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function resolveShareholder(tx: any, body: { shareholderId?: string; name?: string; tin?: string; birthdate?: string; email?: string; address?: string }, createdById: string) {
+async function resolveShareholder(tx: any, body: { shareholderId?: string; name?: string; tin?: string; birthdate?: string; email?: string; mobile?: string; address?: string }, createdById: string) {
   if (body.shareholderId) {
     const sh = await tx.shareholder.findUnique({ where: { id: body.shareholderId } })
     if (sh) return sh
@@ -24,9 +24,24 @@ async function resolveShareholder(tx: any, body: { shareholderId?: string; name?
     data: {
       shNumber: `SH${String(seq).padStart(4, '0')}`, shSeq: seq, name: name || 'Unnamed',
       tin: body.tin?.trim() || null, birthdate: body.birthdate ? new Date(body.birthdate) : null,
-      email: body.email?.trim() || null, address: body.address?.trim() || null, createdById,
+      email: body.email?.trim() || null, mobile: body.mobile?.trim() || null, address: body.address?.trim() || null, createdById,
     },
   })
+}
+
+// Beneficial-owner allocations riding on a holding. Registry info only (no GL).
+// Returns null when the payload has no beneficialOwners array (older callers) —
+// the existing rows are then left untouched.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function parseBeneficialOwners(raw: any) {
+  if (!Array.isArray(raw)) return null
+  return raw
+    .map(o => ({
+      name: String(o?.name || '').trim(), tin: String(o?.tin || '').trim() || null,
+      email: String(o?.email || '').trim() || null, address: String(o?.address || '').trim() || null,
+      shares: num(o?.shares), notes: String(o?.notes || '').trim() || null,
+    }))
+    .filter(o => o.name && o.shares > 0)
 }
 
 export async function GET() {
@@ -34,9 +49,9 @@ export async function GET() {
   if (!session?.user || !ADMIN.includes(session.user.role as string)) return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
 
   const [commons, preferreds, shareholders, settings] = await Promise.all([
-    prisma.commonShare.findMany({ include: { shareholder: true, buybacks: { orderBy: { date: 'asc' } }, deposits: { orderBy: { date: 'asc' } } }, orderBy: { createdAt: 'asc' } }),
-    prisma.preferredShare.findMany({ select: { numberOfShares: true, pricePerShare: true } }),
-    prisma.shareholder.findMany({ orderBy: { shSeq: 'asc' }, select: { id: true, shNumber: true, name: true, tin: true, birthdate: true, email: true, address: true } }),
+    prisma.commonShare.findMany({ include: { shareholder: true, buybacks: { orderBy: { date: 'asc' } }, deposits: { orderBy: { date: 'asc' } }, beneficialOwners: { orderBy: { createdAt: 'asc' } } }, orderBy: { createdAt: 'asc' } }),
+    prisma.preferredShare.findMany({ select: { shareholderId: true, numberOfShares: true, retiredShares: true, pricePerShare: true } }),
+    prisma.shareholder.findMany({ orderBy: { shSeq: 'asc' }, select: { id: true, shNumber: true, name: true, tin: true, birthdate: true, email: true, mobile: true, address: true } }),
     prisma.equitySettings.findUnique({ where: { id: 'singleton' } }),
   ])
   const authorizedShares = settings?.authorizedShares ?? 20000000
@@ -66,6 +81,19 @@ export async function GET() {
   void reissuedFromTreasury
   const treasuryShares = Math.max(0, authorizedShares - totalShares)
 
+  // Active shareholders = distinct people still holding outstanding shares:
+  // common/founders net of buybacks plus preferred net of retired/redeemed.
+  const heldByShareholder = new Map<string, number>()
+  for (const c of commons) {
+    const net = num(c.numberOfShares) - c.buybacks.reduce((t, b) => t + num(b.shares), 0)
+    heldByShareholder.set(c.shareholderId, (heldByShareholder.get(c.shareholderId) || 0) + net)
+  }
+  for (const p of preferreds) {
+    const net = num(p.numberOfShares) - num(p.retiredShares)
+    heldByShareholder.set(p.shareholderId, (heldByShareholder.get(p.shareholderId) || 0) + net)
+  }
+  const activeShareholders = [...heldByShareholder.values()].filter(v => v > 0).length
+
   const rows = commons.map(c => {
     const cap = num(c.numberOfShares) * num(c.pricePerShare)
     const buybacks = c.buybacks.map(b => ({
@@ -78,7 +106,8 @@ export async function GET() {
     const depositedAmount = deposits.reduce((s, d) => s + num(d.amount), 0)
     return {
       id: c.id, shareholderId: c.shareholderId, shNumber: c.shareholder.shNumber, name: c.shareholder.name,
-      tin: c.shareholder.tin, birthdate: c.shareholder.birthdate, email: c.shareholder.email, address: c.shareholder.address,
+      tin: c.shareholder.tin, birthdate: c.shareholder.birthdate, email: c.shareholder.email, mobile: c.shareholder.mobile, address: c.shareholder.address,
+      beneficialOwners: c.beneficialOwners.map(bo => ({ id: bo.id, name: bo.name, tin: bo.tin, email: bo.email, address: bo.address, shares: num(bo.shares), notes: bo.notes })),
       dateAcquired: c.dateAcquired, agreementType: c.agreementType, assignedToShareholderId: c.assignedToShareholderId,
       agreementUrls: c.agreementUrls, stockCertNumber: c.stockCertNumber, proofOfDepositUrls: c.proofOfDepositUrls, validIdUrls: c.validIdUrls, shareClass: c.shareClass,
       numberOfShares: num(c.numberOfShares), truePar: num(c.truePar), apic: num(c.apic), pricePerShare: num(c.pricePerShare), totalCapitalization: cap,
@@ -103,7 +132,7 @@ export async function GET() {
 
   return NextResponse.json({
     rows, shareholders,
-    figures: { totalCapitalization, totalShares, treasuryShares, authorizedShares, authorizedCommonShares, authorizedFounderShares },
+    figures: { totalCapitalization, totalShares, treasuryShares, authorizedShares, authorizedCommonShares, authorizedFounderShares, activeShareholders },
   })
 }
 
@@ -119,6 +148,9 @@ export async function POST(req: Request) {
     const price = (body.truePar != null || body.apic != null) ? truePar + apic : num(body.pricePerShare)
     if (!(shares > 0) || !(price > 0)) return NextResponse.json({ error: 'Number of shares and price are required' }, { status: 400 })
     if (!body.dateAcquired) return NextResponse.json({ error: 'Date acquired is required' }, { status: 400 })
+    const bos = parseBeneficialOwners(body.beneficialOwners)
+    const boTotal = (bos || []).reduce((s, o) => s + o.shares, 0)
+    if (boTotal > shares) return NextResponse.json({ error: `Beneficial-owner allocations (${boTotal.toLocaleString('en-PH')}) exceed the holding's ${shares.toLocaleString('en-PH')} shares` }, { status: 400 })
 
     const created = await prisma.$transaction(async (tx) => {
       const sh = await resolveShareholder(tx, body, userId)
@@ -136,6 +168,7 @@ export async function POST(req: Request) {
           createdById: userId,
         },
       })
+      if (bos?.length) await tx.beneficialOwner.createMany({ data: bos.map(o => ({ ...o, commonShareId: c.id })) })
       const jeId = await postEquityIssuance(tx, { kind: 'COMMON', refId: c.id, date: new Date(body.dateAcquired), amount: shares * price, bankAccountId: body.bankAccountId, equityAccountId: body.equityAccountId, investor: sh.name, createdById: userId })
       if (jeId) await tx.commonShare.update({ where: { id: c.id }, data: { journalEntryId: jeId } })
       return c
@@ -155,18 +188,28 @@ export async function PUT(req: Request) {
     const userId = session.user.id as string
     const id = body.id
     if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
-    const existing = await prisma.commonShare.findUnique({ where: { id }, include: { shareholder: true } })
+    const existing = await prisma.commonShare.findUnique({ where: { id }, include: { shareholder: true, buybacks: true } })
     if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
     const shares = num(body.numberOfShares)
     const truePar = num(body.truePar), apic = num(body.apic)
     const price = (body.truePar != null || body.apic != null) ? truePar + apic : num(body.pricePerShare)
+    // Allocations are bounded by the pool actually still held: net of buybacks.
+    const bos = parseBeneficialOwners(body.beneficialOwners)
+    const netPool = shares - existing.buybacks.reduce((s, b) => s + num(b.shares), 0)
+    const boTotal = (bos || []).reduce((s, o) => s + o.shares, 0)
+    if (bos && boTotal > netPool) return NextResponse.json({ error: `Beneficial-owner allocations (${boTotal.toLocaleString('en-PH')}) exceed the ${netPool.toLocaleString('en-PH')} shares still held (net of buybacks)` }, { status: 400 })
 
     await prisma.$transaction(async (tx) => {
       // Update shareholder profile fields
       await tx.shareholder.update({ where: { id: existing.shareholderId }, data: {
         name: (body.name || existing.shareholder.name).trim(), tin: body.tin?.trim() || null,
-        birthdate: body.birthdate ? new Date(body.birthdate) : null, email: body.email?.trim() || null, address: body.address?.trim() || null,
+        birthdate: body.birthdate ? new Date(body.birthdate) : null, email: body.email?.trim() || null, mobile: body.mobile?.trim() || null, address: body.address?.trim() || null,
       } })
+      // Replace the beneficial-owner set only when the payload carries one.
+      if (bos) {
+        await tx.beneficialOwner.deleteMany({ where: { commonShareId: id } })
+        if (bos.length) await tx.beneficialOwner.createMany({ data: bos.map(o => ({ ...o, commonShareId: id })) })
+      }
       // Reverse + re-post the issuance JE. Buybacks are managed separately (ShareBuyback
       // rows via /api/equity/buybacks) and are intentionally left untouched here.
       await tx.commonShare.update({ where: { id }, data: {
