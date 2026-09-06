@@ -998,7 +998,7 @@ function OrderFormModal({
   // Voucher redemption — scan/type a code, validate server-side, apply its
   // discount. A voucher replaces the other discounts while applied.
   const [voucherCode, setVoucherCode] = useState('')
-  const [voucher, setVoucher] = useState<{ id: string; code: string; discountKind: string; value: number; reason: string } | null>(null)
+  const [voucher, setVoucher] = useState<{ id: string; code: string; discountKind: string; value: number; reason: string; departments?: string[] } | null>(null)
   const [voucherError, setVoucherError] = useState('')
   const [voucherChecking, setVoucherChecking] = useState(false)
   const applyVoucher = async () => {
@@ -1196,14 +1196,20 @@ function OrderFormModal({
 
   if (voucher) {
     // Voucher wins over the other discounts while applied. FREE covers the
-    // entire service; FIXED can never exceed the subtotal.
+    // entire service; FIXED can never exceed the subtotal. A department-scoped
+    // batch discounts only the items in its departments (like DiscountSetting).
     discountType = 'CUSTOM'
+    const vDepts = voucher.departments || []
+    const voucherBase = vDepts.length
+      ? items.filter(it => !!it.department && vDepts.includes(it.department)).reduce((s, it) => s + toNum(it.lineTotal), 0)
+      : subtotal
     discountLabel = voucher.discountKind === 'FREE'
       ? `Voucher ${voucher.code} (Free Service)`
       : `Voucher ${voucher.code} (${voucher.discountKind === 'PERCENTAGE' ? `${voucher.value}%` : formatCurrency(voucher.value)})`
-    discountAmount = voucher.discountKind === 'FREE' ? subtotal
-      : voucher.discountKind === 'PERCENTAGE' ? subtotal * (voucher.value / 100)
-      : Math.min(voucher.value, subtotal)
+    if (vDepts.length) discountLabel += ` — ${vDepts.join('/')} only`
+    discountAmount = voucher.discountKind === 'FREE' ? voucherBase
+      : voucher.discountKind === 'PERCENTAGE' ? voucherBase * (voucher.value / 100)
+      : Math.min(voucher.value, voucherBase)
   } else if (pwdDiscount) {
     discountType = 'PWD_SC'
     discountLabel = 'PWD/Senior Citizen (20%)'
@@ -2029,7 +2035,7 @@ function OrderFormModal({
               <div className="flex items-center justify-between text-sm p-2 rounded-xl" style={{ background: '#f0fdf4', border: '1px solid #bbf7d0' }}>
                 <span style={{ color: '#166534' }}>
                   <Ticket size={13} className="inline mr-1" /> <span className="font-mono font-semibold">{voucher.code}</span> — {voucher.discountKind === 'FREE' ? 'entire service FREE' : voucher.discountKind === 'PERCENTAGE' ? `${voucher.value}% off` : `${formatCurrency(voucher.value)} off`}
-                  <span className="block text-[10px]" style={{ color: 'var(--mid-gray)' }}>{voucher.reason} · replaces other discounts · marked used on checkout</span>
+                  <span className="block text-[10px]" style={{ color: 'var(--mid-gray)' }}>{voucher.reason} · {(voucher.departments || []).length > 0 ? `covers ${(voucher.departments || []).join(', ')} services only · ` : ''}replaces other discounts · marked used on checkout</span>
                 </span>
                 <button type="button" onClick={() => setVoucher(null)} className="p-1 rounded hover:bg-red-50" title="Remove voucher"><X size={14} className="text-red-500" /></button>
               </div>
@@ -10164,9 +10170,12 @@ function RecordUnpaidPaymentModal({ order, onClose, onSaved }: { order: Order; o
 interface VoucherRow { id: string; code: string; status: string; usedAt: string | null; usedOrderId: string | null }
 interface VoucherBatchRow {
   id: string; reason: string; discountKind: string; value: number; validUntil: string; expired: boolean; createdAt: string
+  departments: string[]
   counts: { total: number; active: number; used: number; voided: number }
   vouchers: VoucherRow[]
 }
+
+const VOUCHER_DEPTS = ['PT', 'MD', 'OT', 'SLP', 'SPED', 'PSYCHOLOGY', 'ORTHOSIS_PROSTHESIS']
 
 function voucherDiscountLabel(b: { discountKind: string; value: number }): string {
   if (b.discountKind === 'FREE') return 'Entire service FREE'
@@ -10180,7 +10189,9 @@ function VouchersPanel() {
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState<string | null>(null)
   const [showGen, setShowGen] = useState(false)
-  const [gen, setGen] = useState({ count: '10', discountKind: 'PERCENTAGE', value: '', validUntil: '', reason: '' })
+  // When set, the form edits this existing batch instead of generating a new one.
+  const [editBatchId, setEditBatchId] = useState<string | null>(null)
+  const [gen, setGen] = useState({ count: '10', discountKind: 'PERCENTAGE', value: '', validUntil: '', reason: '', departments: [] as string[] })
   const [genBusy, setGenBusy] = useState(false)
   const [genError, setGenError] = useState('')
 
@@ -10196,21 +10207,28 @@ function VouchersPanel() {
   const generate = async () => {
     setGenError('')
     const count = Math.round(Number(gen.count) || 0)
-    if (!(count > 0)) { setGenError('Enter how many vouchers to generate.'); return }
+    if (!editBatchId && !(count > 0)) { setGenError('Enter how many vouchers to generate.'); return }
     if (gen.discountKind !== 'FREE' && !(Number(gen.value) > 0)) { setGenError(gen.discountKind === 'PERCENTAGE' ? 'Enter the discount percentage.' : 'Enter the discount amount.'); return }
     if (!gen.validUntil) { setGenError('Pick the validity date.'); return }
     if (!gen.reason.trim()) { setGenError('Enter the reason for creating these vouchers.'); return }
     setGenBusy(true)
     try {
-      const r = await fetch('/api/pos/vouchers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-        count, discountKind: gen.discountKind, value: Number(gen.value) || 0, validUntil: gen.validUntil, reason: gen.reason.trim(),
-      }) })
+      const body = editBatchId
+        ? { batchId: editBatchId, discountKind: gen.discountKind, value: Number(gen.value) || 0, validUntil: gen.validUntil, reason: gen.reason.trim(), departments: gen.departments }
+        : { count, discountKind: gen.discountKind, value: Number(gen.value) || 0, validUntil: gen.validUntil, reason: gen.reason.trim(), departments: gen.departments }
+      const r = await fetch('/api/pos/vouchers', { method: editBatchId ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       const d = await r.json()
-      if (!r.ok) { setGenError(d.error || 'Failed to generate vouchers'); return }
-      setShowGen(false); setGen({ count: '10', discountKind: 'PERCENTAGE', value: '', validUntil: '', reason: '' })
+      if (!r.ok) { setGenError(d.error || (editBatchId ? 'Failed to save the batch' : 'Failed to generate vouchers')); return }
+      setShowGen(false); setEditBatchId(null); setGen({ count: '10', discountKind: 'PERCENTAGE', value: '', validUntil: '', reason: '', departments: [] })
       load()
     } finally { setGenBusy(false) }
   }
+  const openEditBatch = (b: VoucherBatchRow) => {
+    setEditBatchId(b.id)
+    setGen({ count: String(b.counts.total), discountKind: b.discountKind, value: b.discountKind === 'FREE' ? '' : String(b.value), validUntil: String(b.validUntil).slice(0, 10), reason: b.reason, departments: b.departments || [] })
+    setGenError(''); setShowGen(true)
+  }
+  const toggleGenDept = (c: string) => setGen(p => ({ ...p, departments: p.departments.includes(c) ? p.departments.filter(x => x !== c) : [...p.departments, c] }))
 
   const voidVoucher = async (v: VoucherRow) => {
     if (!confirm(`Void voucher ${v.code}? It can no longer be redeemed.`)) return
@@ -10266,7 +10284,7 @@ function VouchersPanel() {
           {!canWrite && ' Viewing only — generating vouchers is limited to Admin, Accountant, and Bookkeeper accounts.'}
         </p>
         {canWrite && (
-          <button onClick={() => setShowGen(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium text-white shrink-0" style={{ background: 'var(--teal)' }}>
+          <button onClick={() => { setEditBatchId(null); setGen({ count: '10', discountKind: 'PERCENTAGE', value: '', validUntil: '', reason: '', departments: [] }); setShowGen(true) }} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium text-white shrink-0" style={{ background: 'var(--teal)' }}>
             <Ticket size={15} /> Generate Vouchers
           </button>
         )}
@@ -10274,10 +10292,10 @@ function VouchersPanel() {
 
       {showGen && (
         <div className="rounded-2xl border p-4 space-y-3" style={{ borderColor: '#93c5fd', background: '#eff6ff' }}>
-          <p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>Generate a voucher batch</p>
+          <p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>{editBatchId ? 'Edit voucher batch — changes apply to all not-yet-redeemed codes' : 'Generate a voucher batch'}</p>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div><label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>How many vouchers</label>
-              <input value={gen.count} onChange={e => setGen(p => ({ ...p, count: e.target.value }))} inputMode="numeric" className="w-full px-3 py-2 rounded-xl border text-sm font-mono" style={{ borderColor: 'var(--light-gray)' }} /></div>
+              <input value={gen.count} onChange={e => setGen(p => ({ ...p, count: e.target.value }))} disabled={!!editBatchId} inputMode="numeric" className="w-full px-3 py-2 rounded-xl border text-sm font-mono disabled:opacity-60" style={{ borderColor: 'var(--light-gray)', background: editBatchId ? 'var(--off-white)' : undefined }} /></div>
             <div><label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Discount</label>
               <select value={gen.discountKind} onChange={e => setGen(p => ({ ...p, discountKind: e.target.value }))} className="w-full px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }}>
                 <option value="PERCENTAGE">Percentage (%)</option>
@@ -10290,13 +10308,23 @@ function VouchersPanel() {
             )}
             <div><label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Valid until</label>
               <input type="date" value={gen.validUntil} onChange={e => setGen(p => ({ ...p, validUntil: e.target.value }))} className="w-full px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }} /></div>
+            <div className="col-span-2 sm:col-span-4">
+              <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Applies to departments <span className="font-normal">(none ticked = the whole order; ticked = only services under those departments are covered by the discount)</span></label>
+              <div className="flex flex-wrap gap-3">
+                {VOUCHER_DEPTS.map(d => (
+                  <label key={d} className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--charcoal)' }}>
+                    <input type="checkbox" checked={gen.departments.includes(d)} onChange={() => toggleGenDept(d)} /> {d === 'ORTHOSIS_PROSTHESIS' ? 'Orthosis & Prosthesis' : d === 'PSYCHOLOGY' ? 'Psychology' : d}
+                  </label>
+                ))}
+              </div>
+            </div>
             <div className="col-span-2 sm:col-span-4"><label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Reason for creating these vouchers *</label>
               <input value={gen.reason} onChange={e => setGen(p => ({ ...p, reason: e.target.value }))} placeholder="e.g. September open-house raffle prizes" className="w-full px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }} /></div>
           </div>
           {genError && <p className="text-xs" style={{ color: '#dc2626' }}>{genError}</p>}
           <div className="flex gap-2">
-            <button onClick={generate} disabled={genBusy} className="px-4 py-2 rounded-xl text-xs font-semibold text-white disabled:opacity-50 flex items-center gap-1.5" style={{ background: 'var(--teal)' }}>{genBusy && <Loader2 size={13} className="animate-spin" />} Generate</button>
-            <button onClick={() => setShowGen(false)} className="px-4 py-2 rounded-xl text-xs font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Cancel</button>
+            <button onClick={generate} disabled={genBusy} className="px-4 py-2 rounded-xl text-xs font-semibold text-white disabled:opacity-50 flex items-center gap-1.5" style={{ background: 'var(--teal)' }}>{genBusy && <Loader2 size={13} className="animate-spin" />} {editBatchId ? 'Save changes' : 'Generate'}</button>
+            <button onClick={() => { setShowGen(false); setEditBatchId(null); setGen({ count: '10', discountKind: 'PERCENTAGE', value: '', validUntil: '', reason: '', departments: [] }) }} className="px-4 py-2 rounded-xl text-xs font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Cancel</button>
           </div>
         </div>
       )}
@@ -10313,12 +10341,13 @@ function VouchersPanel() {
                 <Ticket size={14} className="inline mr-1" style={{ color: 'var(--teal)' }} /> {voucherDiscountLabel(b)}
                 {b.expired && <span className="ml-2 px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#fee2e2', color: '#b91c1c' }}>Expired</span>}
               </p>
-              <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>{b.reason} · valid until {String(b.validUntil).slice(0, 10)} · created {String(b.createdAt).slice(0, 10)}</p>
+              <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>{b.reason} · valid until {String(b.validUntil).slice(0, 10)} · created {String(b.createdAt).slice(0, 10)}{(b.departments || []).length > 0 && <span style={{ color: 'var(--teal)' }}> · covers {b.departments.join(', ')} services only</span>}</p>
               <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
                 {b.counts.total} voucher{b.counts.total === 1 ? '' : 's'} — <span style={{ color: '#166534' }}>{b.counts.active} active</span> · <span style={{ color: '#1e40af' }}>{b.counts.used} used</span> · <span style={{ color: '#b91c1c' }}>{b.counts.voided} voided</span>
               </p>
             </div>
             <div className="flex items-center gap-2">
+              {canWrite && <button onClick={() => openEditBatch(b)} className="px-3 py-1.5 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}>Edit</button>}
               <button onClick={() => printVouchers(b)} className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}><Printer size={13} /> Print active</button>
               {canWrite && b.counts.active > 0 && (
                 <button onClick={() => voidBatch(b)} className="px-3 py-1.5 rounded-xl text-xs font-semibold border" style={{ borderColor: '#fecaca', color: '#b91c1c' }}>Void remaining</button>

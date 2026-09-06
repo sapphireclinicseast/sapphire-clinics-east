@@ -1133,6 +1133,9 @@ model ServiceVoucherBatch {
   discountKind String // PERCENTAGE | FIXED | FREE (entire service free)
   value        Decimal   @default(0) // % for PERCENTAGE, ₱ for FIXED, unused for FREE
   validUntil   DateTime // vouchers expire at end of this date
+  // If set, the discount only covers order items in these departments (same
+  // semantics as DiscountSetting.departments); empty = every item qualifies.
+  departments  String[]  @default([])
   createdById  String?
   createdAt    DateTime  @default(now())
   vouchers     ServiceVoucher[]

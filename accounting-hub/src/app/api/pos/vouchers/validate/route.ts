@@ -22,5 +22,7 @@ export async function GET(req: Request) {
     id: v.id, code: v.code,
     discountKind: v.batch.discountKind, value: Number(v.batch.value || 0),
     validUntil: v.batch.validUntil, reason: v.batch.reason,
+    // Department scope — empty = the discount covers every item on the order.
+    departments: v.batch.departments,
   })
 }

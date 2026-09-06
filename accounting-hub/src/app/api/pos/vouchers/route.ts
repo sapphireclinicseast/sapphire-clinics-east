@@ -2,6 +2,8 @@
 //   GET   → list batches with their vouchers and counts
 //   POST  { count, discountKind: PERCENTAGE|FIXED|FREE, value, validUntil, reason }
 //         → generate `count` uniquely-coded vouchers in one batch
+//   PUT   { batchId, ... } → edit a batch (reason, discount, validity, departments);
+//         applies to all its not-yet-redeemed vouchers from then on
 //   PATCH { voucherId } | { batchId } → void one voucher / every unused voucher in a batch
 // Creating and voiding is restricted to ADMIN / ACCOUNTANT / BOOKKEEPER;
 // front desk and branch admins can view (redemption happens through order
@@ -25,6 +27,9 @@ function randomCode(): string {
 
 const num = (v: unknown) => Number(v || 0)
 
+// Service departments a batch can be scoped to (same set as DiscountSetting).
+const VALID_DEPARTMENTS = ['PT', 'MD', 'OT', 'SLP', 'SPED', 'PSYCHOLOGY', 'ORTHOSIS_PROSTHESIS']
+
 export async function GET() {
   const session = await auth()
   if (!session?.user || !READ_ROLES.includes(session.user.role as string)) return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
@@ -45,7 +50,7 @@ export async function GET() {
       }
       return {
         id: b.id, reason: b.reason, discountKind: b.discountKind, value: num(b.value),
-        validUntil: b.validUntil, expired, createdAt: b.createdAt, counts,
+        validUntil: b.validUntil, expired, departments: b.departments, createdAt: b.createdAt, counts,
         vouchers: b.vouchers.map(v => ({ id: v.id, code: v.code, status: v.status, usedAt: v.usedAt, usedOrderId: v.usedOrderId })),
       }
     }),
@@ -61,6 +66,7 @@ export async function POST(req: Request) {
     const discountKind = String(b.discountKind || '')
     const value = num(b.value)
     const reason = String(b.reason || '').trim()
+    const departments: string[] = Array.isArray(b.departments) ? b.departments.filter((x: string) => VALID_DEPARTMENTS.includes(x)) : []
     if (!(count > 0) || count > 1000) return NextResponse.json({ error: 'Number of vouchers must be between 1 and 1,000' }, { status: 400 })
     if (!['PERCENTAGE', 'FIXED', 'FREE'].includes(discountKind)) return NextResponse.json({ error: 'Pick a discount type' }, { status: 400 })
     if (discountKind === 'PERCENTAGE' && !(value > 0 && value <= 100)) return NextResponse.json({ error: 'Percentage must be between 1 and 100' }, { status: 400 })
@@ -84,13 +90,48 @@ export async function POST(req: Request) {
     }
 
     const batch = await prisma.serviceVoucherBatch.create({ data: {
-      reason, discountKind, value: discountKind === 'FREE' ? 0 : value, validUntil,
+      reason, discountKind, value: discountKind === 'FREE' ? 0 : value, validUntil, departments,
       createdById: (session.user.id as string) || null,
       vouchers: { create: [...codes].map(code => ({ code })) },
     }, include: { vouchers: true } })
     return NextResponse.json({ id: batch.id, count: batch.vouchers.length })
   } catch (e) {
     console.error('Voucher batch create error:', e)
+    return NextResponse.json({ error: e instanceof Error ? e.message : 'Failed' }, { status: 500 })
+  }
+}
+
+// Edit a batch after creation. Changes take effect for every voucher not yet
+// redeemed (validation always reads the batch); already-redeemed vouchers keep
+// the discount their order recorded at the time.
+export async function PUT(req: Request) {
+  const session = await auth()
+  if (!session?.user || !WRITE_ROLES.includes(session.user.role as string)) return NextResponse.json({ error: 'Only Admin, Accountant, and Bookkeeper accounts can edit vouchers' }, { status: 403 })
+  try {
+    const b = await req.json()
+    const batch = await prisma.serviceVoucherBatch.findUnique({ where: { id: String(b.batchId || '') } })
+    if (!batch) return NextResponse.json({ error: 'Batch not found' }, { status: 404 })
+    const discountKind = String(b.discountKind || batch.discountKind)
+    const value = b.value !== undefined ? num(b.value) : num(batch.value)
+    const reason = b.reason !== undefined ? String(b.reason).trim() : batch.reason
+    if (!['PERCENTAGE', 'FIXED', 'FREE'].includes(discountKind)) return NextResponse.json({ error: 'Pick a discount type' }, { status: 400 })
+    if (discountKind === 'PERCENTAGE' && !(value > 0 && value <= 100)) return NextResponse.json({ error: 'Percentage must be between 1 and 100' }, { status: 400 })
+    if (discountKind === 'FIXED' && !(value > 0)) return NextResponse.json({ error: 'Enter the peso amount of the discount' }, { status: 400 })
+    if (!reason) return NextResponse.json({ error: 'Reason is required' }, { status: 400 })
+    let validUntil = batch.validUntil
+    if (b.validUntil) {
+      validUntil = new Date(`${String(b.validUntil).slice(0, 10)}T23:59:59.999`)
+      if (isNaN(+validUntil)) return NextResponse.json({ error: 'Invalid validity date' }, { status: 400 })
+    }
+    const departments: string[] = Array.isArray(b.departments)
+      ? b.departments.filter((x: string) => VALID_DEPARTMENTS.includes(x))
+      : batch.departments
+    await prisma.serviceVoucherBatch.update({ where: { id: batch.id }, data: {
+      reason, discountKind, value: discountKind === 'FREE' ? 0 : value, validUntil, departments,
+    } })
+    return NextResponse.json({ success: true })
+  } catch (e) {
+    console.error('Voucher batch edit error:', e)
     return NextResponse.json({ error: e instanceof Error ? e.message : 'Failed' }, { status: 500 })
   }
 }
