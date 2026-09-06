@@ -769,6 +769,7 @@ BEGIN
       FOREIGN KEY ("batchId") REFERENCES "ServiceVoucherBatch"("id") ON DELETE CASCADE ON UPDATE CASCADE;
   END IF;
 END$$;
+ALTER TABLE "ServiceVoucherBatch" ADD COLUMN IF NOT EXISTS "departments" TEXT[] NOT NULL DEFAULT '{}';
 SQL
 
 # ── GL processor payout (Detailed GL → Pay GL Processor) ─────────────────────
