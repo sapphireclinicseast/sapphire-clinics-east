@@ -8440,7 +8440,7 @@ function SalesSection({ branch, canSelectBranch }: { branch: string; canSelectBr
    ══════════════════════════════════════════════════════════════ */
 function ScannedSalesRecords({ branch, canSelectBranch }: { branch: string; canSelectBranch: boolean }) {
   const BRANCH_OPTS = [
-    ['SANDBOX_EAST', 'East Branch'], ['SANDBOX_GREENHILLS', 'Greenhills Branch'], ['AURA_INSTITUTE', 'Aura Health Institute'],
+    ['SANDBOX_EAST', 'East Branch'], ['SANDBOX_GREENHILLS', 'Greenhills Branch'], ['VERDANA_STORE', 'Verdana Store'], ['AURA_INSTITUTE', 'Aura Health Institute'],
   ] as const
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
   const monthAgo = new Date(Date.now() - 30 * 864e5).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
@@ -8989,6 +8989,7 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
             className="px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
             <option value="SANDBOX_EAST">East Branch</option>
             <option value="SANDBOX_GREENHILLS">Greenhills Branch</option>
+            <option value="VERDANA_STORE">Verdana Store</option>
             <option value="AURA_INSTITUTE">Aura Health Institute</option>
           </select>
         )}
