@@ -44,6 +44,23 @@ function verify(token: string | undefined, typ: Typ): string | null {
 }
 
 // Provider session (kept the name signSession for existing routes).
+// Short-lived signed token for the QR "attach referral from your phone" flow.
+// Encodes a request id; lets a phone (no login) upload a referral to that request.
+const UPLOAD_TTL_MS = 30 * 60 * 1000 // 30 minutes
+export function signRequestUpload(requestId: string): string {
+  const body = b64url(Buffer.from(JSON.stringify({ id: requestId, k: 'requpload', exp: Date.now() + UPLOAD_TTL_MS })))
+  const sig = b64url(crypto.createHmac('sha256', secret()).update(body).digest())
+  return `${body}.${sig}`
+}
+export function verifyRequestUpload(token: string | undefined): string | null {
+  if (!token) return null
+  const [body, sig] = token.split('.')
+  if (!body || !sig) return null
+  const expected = b64url(crypto.createHmac('sha256', secret()).update(body).digest())
+  try { if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null } catch { return null }
+  try { const p = JSON.parse(fromB64url(body).toString('utf8')) as { id: string; k: string; exp: number }; if (!p.id || p.k !== 'requpload' || typeof p.exp !== 'number' || p.exp < Date.now()) return null; return p.id } catch { return null }
+}
+
 export function signSession(providerId: string): string { return sign(providerId, 'provider') }
 export function signPatientSession(patientId: string): string { return sign(patientId, 'patient') }
 export function signDoctorSession(doctorId: string): string { return sign(doctorId, 'doctor') }

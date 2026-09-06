@@ -54,7 +54,8 @@ enum BookingStatus {
 }
 
 enum RequestStatus {
-  OPEN      // posted by the patient, therapists can offer
+  PENDING_REFERRAL // posted, but NOT live to therapists until a doctor's referral is attached
+  OPEN      // referral attached — therapists can see it and offer
   MATCHED   // patient accepted an offer → a booking was created
   CANCELLED // patient cancelled the request
 }
@@ -639,7 +640,9 @@ model PatientRequest {
   preferredTime String?       // preferred start time "HH:MM", optional
   flexibility   String?       // free text, e.g. "weekday mornings work too"
   note          String?       // what they need help with
-  status        RequestStatus @default(OPEN)
+  status        RequestStatus @default(PENDING_REFERRAL)
+  referralFile      String?   // doctor's referral (data URI) — required to go live
+  referralConsultId String?   // or a referral issued by a Nickel rehab-doctor consult
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 

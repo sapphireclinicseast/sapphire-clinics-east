@@ -44,10 +44,12 @@ export async function POST(req: NextRequest) {
   if (preferredDate && preferredDate < manilaTodayYmd()) return NextResponse.json({ error: 'Pick a future date.' }, { status: 409 })
   const preferredTime = typeof b.preferredTime === 'string' && /^\d{2}:\d{2}$/.test(b.preferredTime) ? b.preferredTime : null
 
-  // Cap the number of open requests per patient to keep the board clean.
-  const open = await prisma.patientRequest.count({ where: { patientId, status: 'OPEN' } })
-  if (open >= 5) return NextResponse.json({ error: 'You already have several open requests. Cancel one first.' }, { status: 409 })
+  // Cap the number of active requests per patient to keep the board clean.
+  const open = await prisma.patientRequest.count({ where: { patientId, status: { in: ['OPEN', 'PENDING_REFERRAL'] } } })
+  if (open >= 5) return NextResponse.json({ error: 'You already have several active requests. Cancel one first.' }, { status: 409 })
 
+  // Posted immediately, but held as PENDING_REFERRAL — it does NOT appear to
+  // therapists until the patient attaches a doctor's referral.
   const created = await prisma.patientRequest.create({
     data: {
       patientId, city,
@@ -56,6 +58,7 @@ export async function POST(req: NextRequest) {
       preferredTime,
       flexibility: b.flexibility ? String(b.flexibility).slice(0, 300) : null,
       note: b.note ? String(b.note).slice(0, 800) : null,
+      status: 'PENDING_REFERRAL',
     },
     select: { id: true },
   })
