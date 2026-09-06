@@ -16,9 +16,9 @@ export default function NetCalculator({ defaultAmount }: { defaultAmount?: strin
     <section className="card">
       <h2 className="text-[16px] font-semibold">What you take home</h2>
       <p className="mb-3 mt-1 text-[12.5px] leading-relaxed text-[color:var(--slate)]">
-        Nickel keeps a flat <b className="text-[color:var(--ink)]">₱{APP_FEE_PHP}</b> per session. On top of that, our payment
-        channel partner <b className="text-[color:var(--ink)]">PayMongo</b> deducts a transaction fee that depends on how the
-        patient pays. <b className="text-[color:var(--ink)]">You receive your rate net of both.</b> Enter a rate to see your net by payment method.
+        {APP_FEE_PHP > 0
+          ? <>Nickel keeps a flat <b className="text-[color:var(--ink)]">₱{APP_FEE_PHP}</b> per session. On top of that, our payment channel partner <b className="text-[color:var(--ink)]">PayMongo</b> deducts a transaction fee that depends on how the patient pays. <b className="text-[color:var(--ink)]">You receive your rate net of both.</b> Enter a rate to see your net by payment method.</>
+          : <><b className="text-[color:var(--ink)]">Nickel is currently free to use</b> — no app fee. Our payment channel partner <b className="text-[color:var(--ink)]">PayMongo</b> deducts only its transaction fee, which depends on how the patient pays. <b className="text-[color:var(--ink)]">You receive your full rate net of that fee.</b> Enter a rate to see your net by payment method.</>}
       </p>
 
       <div className="mb-3 max-w-[220px]">

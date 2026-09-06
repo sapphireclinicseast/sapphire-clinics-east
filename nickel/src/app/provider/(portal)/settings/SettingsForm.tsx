@@ -79,7 +79,7 @@ export default function SettingsForm({ init }: { init: Init }) {
         </div>
         <div className="mt-3 flex items-start gap-2 rounded-xl border border-[color:var(--line)] bg-[color:var(--mist)] px-3 py-2.5 text-[12px] text-[color:var(--slate)]">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="mt-0.5 shrink-0"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/></svg>
-          <span>You&apos;ll receive this rate <b className="text-[color:var(--ink)]">net of a flat ₱20 app fee and PayMongo&apos;s payment fees</b> (our payment channel partner). The exact fee depends on how the patient pays — see the breakdown below.</span>
+          <span>Nickel is currently <b className="text-[color:var(--ink)]">free to use</b> — you&apos;ll receive this rate <b className="text-[color:var(--ink)]">net only of PayMongo&apos;s payment fees</b> (our payment channel partner). The exact fee depends on how the patient pays — see the breakdown below.</span>
         </div>
       </section>
 

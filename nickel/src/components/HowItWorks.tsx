@@ -19,7 +19,7 @@ const STEPS: Step[] = [
   { icon: 'rate', t: 'Set rate & schedule', d: 'Name your own rate and open the days and times you can do home visits.' },
   { icon: 'connect', t: 'Connect with clients', d: 'Two ways to match — clients book you, or you reach out to clients who posted a request.' },
   { icon: 'visit', t: 'Do the home visit', d: 'You travel to the client’s home at the agreed time and deliver the session.' },
-  { icon: 'wallet', t: 'Get paid', d: 'Mark the visit complete — your earnings (rate minus a flat ₱20 and payment fees) land in your Nickel wallet, paid out weekly.' },
+  { icon: 'wallet', t: 'Get paid', d: 'Mark the visit complete — your earnings (your full rate, less only payment fees) land in your Nickel wallet, paid out weekly.' },
 ]
 
 function Glyph({ icon }: { icon: keyof typeof I }) {

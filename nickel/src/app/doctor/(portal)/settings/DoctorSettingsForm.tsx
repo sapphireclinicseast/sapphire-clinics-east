@@ -45,7 +45,7 @@ export default function DoctorSettingsForm({ init }: { init: Init }) {
             <label className="flex items-center gap-2"><input type="checkbox" className="h-4 w-4" style={{ accentColor: 'var(--steel)' }} checked={f.inPersonEnabled} onChange={(e) => set('inPersonEnabled', e.target.checked)} /> Offer in-person clinic consults</label>
           </div>
         </div>
-        {fee > 0 && <p className="text-[12px] text-[color:var(--muted)]">Nickel keeps a flat ₱20 per consult; you receive the rest net of PayMongo fees. Example (GCash): you receive <b className="text-[color:var(--ink)]">{peso(net)}</b>.</p>}
+        {fee > 0 && <p className="text-[12px] text-[color:var(--muted)]">Nickel is currently free to use — you receive your full fee, net of PayMongo fees only. Example (GCash): you receive <b className="text-[color:var(--ink)]">{peso(net)}</b>.</p>}
       </section>
 
       {f.inPersonEnabled && (

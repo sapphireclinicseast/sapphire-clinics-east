@@ -21,7 +21,7 @@ const WHY = [
   { t: 'No self-advertising', d: 'You don’t have to market yourself on social media. Nickel puts you in front of clients looking for therapy.', icon: <><path d="M3 11l18-5v12L3 14v-3Z" /><path d="M11.6 16.8a3 3 0 0 1-5.8-1.6" /></> },
   { t: 'Clients come to you', d: 'Get found in the Nickel provider network, or reply to clients who post a request. Two easy ways to fill your schedule.', icon: <><circle cx="9" cy="7" r="4" /><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2M16 3.1a4 4 0 0 1 0 7.8M21 21v-2a4 4 0 0 0-3-3.9" /></> },
   { t: 'You control your time', d: 'Set your own rate and open only the days and hours you want. Accept or decline any booking.', icon: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></> },
-  { t: 'You set what you earn', d: 'Name your rate. Nickel takes only a flat ₱20 per session — you keep the rest, net of payment fees.', icon: <><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Z" /><path d="M9.5 9.5a2.5 2.5 0 0 1 5 0c0 2.5-3 2-3 4M12 17h.01" /></> },
+  { t: 'You set what you earn', d: 'Name your rate. Nickel is currently free to use — you keep your full rate, net of payment fees only.', icon: <><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Z" /><path d="M9.5 9.5a2.5 2.5 0 0 1 5 0c0 2.5-3 2-3 4M12 17h.01" /></> },
   { t: 'Weekly payouts', d: 'Your earnings land in your Nickel wallet on completion and are paid out to your bank or GCash every week.', icon: <><path d="M3 7a2 2 0 0 1 2-2h13a1 1 0 0 1 1 1v1M3 7v10a2 2 0 0 0 2 2h14a1 1 0 0 0 1-1v-3M21 12v-2a1 1 0 0 0-1-1h-4a2 2 0 0 0 0 4h4a1 1 0 0 0 1-1Z" /></> },
 ]
 
@@ -89,7 +89,18 @@ export default function NickelHome() {
             </a>
             <InstallButton />
           </div>
-          <p className="mt-4 text-[13px] text-white/80">
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <span className="text-[12px] font-medium text-white/70">Mobile apps coming soon:</span>
+            <span className="inline-flex items-center gap-1.5 rounded-lg border border-white/30 px-2.5 py-1 text-[12px] font-medium text-white/90">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M17.05 12.5c0-1.6.9-3 2.3-3.7-.8-1.1-2-1.8-3.4-1.9-1.4-.1-2.9.8-3.6.8-.8 0-2-.8-3.2-.8-1.7 0-3.2 1-4 2.5-1.7 3-.4 7.4 1.2 9.8.8 1.2 1.8 2.5 3 2.5 1.2-.1 1.7-.8 3.1-.8 1.5 0 1.9.8 3.2.8 1.3 0 2.2-1.2 3-2.4.6-.9.9-1.4 1.3-2.4-3.5-1.3-3.2-6.2 0-6.7-.9-.1-1.4-.1-2.9.2ZM14.8 5.6c.7-.9 1.2-2.1 1-3.3-1.1.1-2.3.7-3 1.6-.7.8-1.2 2-1 3.2 1.2.1 2.4-.6 3-1.5Z"/></svg>
+              App Store
+            </span>
+            <span className="inline-flex items-center gap-1.5 rounded-lg border border-white/30 px-2.5 py-1 text-[12px] font-medium text-white/90">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M3.6 2.3c-.3.3-.5.7-.5 1.3v16.8c0 .6.2 1 .5 1.3l.1.1L13 12.1v-.2L3.7 2.2l-.1.1ZM16.1 15.2l-3.1-3.1 3.1-3.1 3.7 2.1c1.1.6 1.1 1.6 0 2.2l-3.7 1.9ZM13.6 12.6l3.2 3.2-9.5 5.4c-.4.2-.8.2-1.1 0l7.4-8.6ZM6.2 2.5c.3-.2.7-.2 1.1 0l9.5 5.4-3.2 3.2L6.2 2.5Z"/></svg>
+              Google Play
+            </span>
+          </div>
+          <p className="mt-3 text-[13px] text-white/80">
             Prefer therapists to come to you? <a href="/requests" className="font-semibold text-white underline underline-offset-2">Post a request</a> with your preferred day and time, and licensed therapists near you will reach out.
           </p>
         </div>

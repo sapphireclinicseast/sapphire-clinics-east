@@ -373,6 +373,38 @@ export default function BookPage() {
               <p className="mt-2 text-[12px] text-[color:var(--muted)]">{provider.transpoIncluded ? 'Transportation is included in this rate.' : 'Transportation is not included — arrange it directly with your therapist.'}</p>
             </div>
 
+            {/* Doctor's referral — required for PT, shown up-front (before account too). */}
+            {provider.profession === 'PT' && (
+              <div className="mt-4 rounded-xl border border-[color:var(--line)] p-4">
+                <div className="flex items-center gap-2 text-[13.5px] font-semibold text-[color:var(--ink)]">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" /><path d="M14 2v6h6M9 15l2 2 4-4" /></svg>
+                  Doctor’s referral <span className="font-normal text-[color:var(--slate)]">(required for PT)</span>
+                </div>
+                <p className="mt-1 text-[12px] text-[color:var(--slate)]">Philippine practice requires a doctor’s referral for physical therapy. Attach yours{me ? ', pick a referral from a Nickel rehab-doctor consult,' : ''} or get one from a rehab-doctor consult.</p>
+
+                {me && referrals.length > 0 && (
+                  <div className="mt-2 space-y-1.5">
+                    {referrals.map((rf) => (
+                      <label key={rf.consultId} className="flex cursor-pointer items-center gap-2 rounded-lg border border-[color:var(--line)] px-3 py-2 text-[13px]">
+                        <input type="radio" name="ref" className="h-4 w-4" style={{ accentColor: 'var(--steel)' }} checked={referralConsultId === rf.consultId} onChange={() => { setReferralConsultId(rf.consultId); setReferralData(null); setReferralName('') }} />
+                        <span>Referral from {rf.doctorName} <span className="text-[color:var(--muted)]">· {rf.date}</span></span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <label className="cursor-pointer rounded-lg border border-dashed border-[color:var(--line-2)] px-3 py-2 text-[12.5px] font-medium text-[color:var(--steel)] hover:bg-[color:var(--mist)]">
+                    {referralData ? `Selected: ${referralName}` : 'Upload referral (photo/PDF)'}
+                    <input type="file" accept="image/*,application/pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onReferralFile(f) }} />
+                  </label>
+                  <span className="text-[12px] text-[color:var(--muted)]">or</span>
+                  <a href="/consult" className="rounded-lg border border-[color:var(--line-2)] px-3 py-2 text-[12.5px] font-medium text-[color:var(--ink)] hover:bg-[color:var(--mist)]">I don’t have one — see a rehab doctor →</a>
+                </div>
+                {(referralData || referralConsultId) && <p className="mt-2 text-[12px] font-medium text-emerald-700">✓ Referral attached.</p>}
+              </div>
+            )}
+
             {/* Account is only asked for here — after choosing a therapist & time. */}
             {!me ? (
               <div className="mt-4">
@@ -400,7 +432,10 @@ export default function BookPage() {
                   <input className="input" type="email" placeholder="Email" required value={af.email} onChange={(e) => setA('email', e.target.value)} />
                   <input className="input" type="password" placeholder="Password" required value={af.password} onChange={(e) => setA('password', e.target.value)} />
                   {mode === 'signup' && <input className="input" type="password" placeholder="Confirm password" required value={af.confirm} onChange={(e) => setA('confirm', e.target.value)} />}
-                  <button className="btn-primary w-full" disabled={busy}>{busy ? 'Please wait…' : mode === 'signup' ? 'Create account & continue' : 'Sign in & continue'}</button>
+                  {mode === 'signup' && provider.profession === 'PT' && !(referralData || referralConsultId) && (
+                    <p className="text-[12px] font-medium text-amber-700">Please attach the doctor’s referral above before creating your account.</p>
+                  )}
+                  <button className="btn-primary w-full" disabled={busy || (mode === 'signup' && provider.profession === 'PT' && !(referralData || referralConsultId))}>{busy ? 'Please wait…' : mode === 'signup' ? 'Create account & continue' : 'Sign in & continue'}</button>
                 </form>
               </div>
             ) : (() => {
@@ -411,35 +446,6 @@ export default function BookPage() {
               const hasReferral = !!(referralData || referralConsultId)
               return (
                 <>
-                  {needsReferral && (
-                    <div className="mt-4 rounded-xl border border-[color:var(--line)] p-4">
-                      <div className="flex items-center gap-2 text-[13.5px] font-semibold text-[color:var(--ink)]">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" /><path d="M14 2v6h6M9 15l2 2 4-4" /></svg>
-                        Doctor’s referral <span className="font-normal text-[color:var(--slate)]">(required for PT)</span>
-                      </div>
-                      <p className="mt-1 text-[12px] text-[color:var(--slate)]">Philippine practice requires a doctor’s referral for physical therapy. Attach yours, or get one from a rehab-doctor consult.</p>
-
-                      {referrals.length > 0 && (
-                        <div className="mt-2 space-y-1.5">
-                          {referrals.map((rf) => (
-                            <label key={rf.consultId} className="flex cursor-pointer items-center gap-2 rounded-lg border border-[color:var(--line)] px-3 py-2 text-[13px]">
-                              <input type="radio" name="ref" className="h-4 w-4" style={{ accentColor: 'var(--steel)' }} checked={referralConsultId === rf.consultId} onChange={() => { setReferralConsultId(rf.consultId); setReferralData(null); setReferralName('') }} />
-                              <span>Referral from {rf.doctorName} <span className="text-[color:var(--muted)]">· {rf.date}</span></span>
-                            </label>
-                          ))}
-                        </div>
-                      )}
-
-                      <div className="mt-2 flex flex-wrap items-center gap-2">
-                        <label className="cursor-pointer rounded-lg border border-dashed border-[color:var(--line-2)] px-3 py-2 text-[12.5px] font-medium text-[color:var(--steel)] hover:bg-[color:var(--mist)]">
-                          {referralData ? `Selected: ${referralName}` : 'Upload referral (photo/PDF)'}
-                          <input type="file" accept="image/*,application/pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onReferralFile(f) }} />
-                        </label>
-                        <span className="text-[12px] text-[color:var(--muted)]">or</span>
-                        <a href="/consult" className="rounded-lg border border-[color:var(--line-2)] px-3 py-2 text-[12.5px] font-medium text-[color:var(--ink)] hover:bg-[color:var(--mist)]">I don’t have one — see a rehab doctor →</a>
-                      </div>
-                    </div>
-                  )}
                   <p className="mt-3 text-[12px] text-[color:var(--slate)]">{due === 0 ? 'This visit is fully covered by your wallet credit — no card needed.' : 'You’ll be redirected to pay securely. Your booking is confirmed once payment is received.'}</p>
                   <div className="mt-4 flex justify-end">
                     <button className="btn-primary" disabled={busy || (needsReferral && !hasReferral)} onClick={pay}>{busy ? 'Please wait…' : needsReferral && !hasReferral ? 'Add a referral to continue' : due === 0 ? 'Confirm booking →' : `Pay ${peso(due)} →`}</button>

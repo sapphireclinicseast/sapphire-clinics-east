@@ -5,7 +5,10 @@
 // transaction fee (MDR) before the money reaches us — the exact amount depends
 // on how the patient paid. The therapist receives their rate net of both.
 
-export const APP_FEE_PHP = 20
+// Nickel is currently FREE to use — the platform fee is waived. Providers keep
+// their full rate, less only PayMongo's payment-processing fee. Set back to 20
+// (or any value) to re-enable the flat per-session app fee.
+export const APP_FEE_PHP = 0
 
 // Rolling payout hold. A completed session's earnings become payable only after
 // this many days — covering PayMongo's settlement clearing (up to ~3 days by

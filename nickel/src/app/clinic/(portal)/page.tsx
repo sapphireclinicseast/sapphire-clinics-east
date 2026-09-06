@@ -21,7 +21,7 @@ export default async function ClinicOverview() {
       </div>
 
       {Number(clinic.feesOwed) > 0 && (
-        <div className="card"><div className="text-[12px] font-semibold text-[color:var(--muted)]">Platform fees owed to Nickel</div><div className="mt-1 text-[20px] font-bold text-[color:var(--warn,#c9871a)]">{peso(Number(clinic.feesOwed))}</div><div className="text-[12px] text-[color:var(--slate)]">from visits you collected offline (₱20 per visit)</div></div>
+        <div className="card"><div className="text-[12px] font-semibold text-[color:var(--muted)]">Platform fees owed to Nickel</div><div className="mt-1 text-[20px] font-bold text-[color:var(--warn,#c9871a)]">{peso(Number(clinic.feesOwed))}</div><div className="text-[12px] text-[color:var(--slate)]">from visits you collected offline</div></div>
       )}
 
       <div className="card">
