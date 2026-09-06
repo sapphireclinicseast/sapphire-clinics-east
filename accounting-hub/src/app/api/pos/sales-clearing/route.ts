@@ -62,6 +62,37 @@ export async function PUT(req: Request) {
   return NextResponse.json(record)
 }
 
+// PATCH: attach/update the day's scanned deposit/sales proofs without touching
+// amounts or clearing state. proofUrls entries: { url, name?, note? } — the note
+// carries the disclaimer when one deposit slip covers several days and is
+// attached to each of them.
+export async function PATCH(req: Request) {
+  const session = await auth()
+  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const body = await req.json()
+  const { date, branch, proofUrls } = body
+  if (!date || !branch) {
+    return NextResponse.json({ error: 'date and branch are required' }, { status: 400 })
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const clean = (Array.isArray(proofUrls) ? proofUrls : []).map((e: any) =>
+    typeof e === 'string' ? { url: e } : e?.url ? { url: String(e.url), ...(e.name ? { name: String(e.name).slice(0, 200) } : {}), ...(e.note ? { note: String(e.note).slice(0, 500) } : {}) } : null
+  ).filter(Boolean)
+
+  const record = await prisma.salesDayClearing.upsert({
+    where: { date_branch: { date, branch } },
+    update: { proofUrls: clean },
+    create: {
+      date, branch,
+      clearedById: session.user.id as string,
+      isCleared: false,
+      proofUrls: clean,
+    },
+  })
+  return NextResponse.json(record)
+}
+
 // POST: mark a day as cleared (upsert)
 export async function POST(req: Request) {
   const session = await auth()

@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { normalizeSI } from '@/lib/sales-invoice'
+import { ScanUpload } from '@/components/ScanUpload'
 import { PaymongoAdvanceQueue } from './PaymongoAdvanceQueue'
 import { TiktokImportModal } from './TiktokImportModal'
 import Pagination from '@/components/ui/Pagination'
@@ -8397,14 +8398,19 @@ function ProductsSection({
    SALES SUMMARY SECTION
    ══════════════════════════════════════════════════════════════ */
 
+// One scanned deposit slip / sales proof on a day. A slip covering several days
+// is attached to each covered day; the note carries that disclaimer.
+interface SalesProofEntry { url: string; name?: string; note?: string }
+
 function SalesSection({ branch, canSelectBranch }: { branch: string; canSelectBranch: boolean }) {
-  const [salesTab, setSalesTab] = useState<'summary' | 'checking'>('summary')
+  const [salesTab, setSalesTab] = useState<'summary' | 'checking' | 'scans'>('summary')
   return (
     <div className="space-y-4">
       <div className="flex gap-1">
         {[
           { key: 'summary' as const, label: 'Sales Summary' },
           { key: 'checking' as const, label: 'Sales Checking' },
+          { key: 'scans' as const, label: 'Scanned Sales Records' },
         ].map(t => (
           <button key={t.key} onClick={() => setSalesTab(t.key)}
             className="px-4 py-2 text-sm rounded-xl font-medium transition-colors"
@@ -8420,6 +8426,117 @@ function SalesSection({ branch, canSelectBranch }: { branch: string; canSelectBr
       </div>
       <div style={{ display: salesTab === 'checking' ? 'block' : 'none' }}>
         <SalesCheckingPanel branch={branch} canSelectBranch={canSelectBranch} />
+      </div>
+      <div style={{ display: salesTab === 'scans' ? 'block' : 'none' }}>
+        <ScannedSalesRecords branch={branch} canSelectBranch={canSelectBranch} />
+      </div>
+    </div>
+  )
+}
+
+/* ══════════════════════════════════════════════════════════════
+   SCANNED SALES RECORDS — every per-day uploaded deposit/sales
+   proof lined up as one row per day, filterable by date + branch
+   ══════════════════════════════════════════════════════════════ */
+function ScannedSalesRecords({ branch, canSelectBranch }: { branch: string; canSelectBranch: boolean }) {
+  const BRANCH_OPTS = [
+    ['SANDBOX_EAST', 'East Branch'], ['SANDBOX_GREENHILLS', 'Greenhills Branch'], ['AURA_INSTITUTE', 'Aura Health Institute'],
+  ] as const
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
+  const monthAgo = new Date(Date.now() - 30 * 864e5).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
+  const [selBranch, setSelBranch] = useState(canSelectBranch ? '' : branch)
+  const [from, setFrom] = useState(monthAgo)
+  const [to, setTo] = useState(today)
+  const [rows, setRows] = useState<{ date: string; branch: string; isCleared: boolean; proofUrls: SalesProofEntry[] }[]>([])
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    const ctl = new AbortController()
+    setLoading(true)
+    const params = new URLSearchParams()
+    if (selBranch) params.set('branch', selBranch)
+    if (from) params.set('dateFrom', from)
+    if (to) params.set('dateTo', to)
+    fetch(`/api/pos/sales-clearing?${params}`, { signal: ctl.signal })
+      .then(r => r.json())
+      .then(data => {
+        if (!Array.isArray(data)) { setRows([]); return }
+        setRows(data
+          .filter(r => Array.isArray(r.proofUrls) && r.proofUrls.length > 0)
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          .map(r => ({ date: r.date, branch: r.branch, isCleared: !!r.isCleared, proofUrls: (r.proofUrls as any[]).map(e => typeof e === 'string' ? { url: e } : e).filter(e => e?.url) }))
+          .sort((a, b) => b.date.localeCompare(a.date)))
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+    return () => ctl.abort()
+  }, [selBranch, from, to])
+
+  const branchLabel = (b: string) => BRANCH_OPTS.find(o => o[0] === b)?.[1] || b
+  const fileLabel = (e: SalesProofEntry, i: number) => e.name || decodeURIComponent((e.url.split('/').pop() || `File ${i + 1}`).replace(/^\d+-/, ''))
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-base font-bold" style={{ color: 'var(--charcoal)' }}>Scanned Sales Records</h2>
+        <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+          Every deposit slip / sales proof uploaded on Sales Checking, one row per day. A slip covering several days appears on each covered day with a note.
+        </p>
+      </div>
+      <div className="flex items-center gap-3 flex-wrap">
+        {canSelectBranch && (
+          <select value={selBranch} onChange={e => setSelBranch(e.target.value)}
+            className="px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
+            <option value="">All Branches</option>
+            {BRANCH_OPTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+        )}
+        <input type="date" value={from} onChange={e => setFrom(e.target.value)}
+          className="px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+        <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>to</span>
+        <input type="date" value={to} onChange={e => setTo(e.target.value)}
+          className="px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+      </div>
+      <div className="rounded-2xl border overflow-x-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+        <table className="w-full text-sm">
+          <thead><tr className="text-left text-xs" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
+            <th className="px-4 py-2.5 font-semibold whitespace-nowrap">Date</th>
+            <th className="px-4 py-2.5 font-semibold whitespace-nowrap">Branch</th>
+            <th className="px-4 py-2.5 font-semibold">Scanned proofs</th>
+            <th className="px-4 py-2.5 font-semibold whitespace-nowrap">Day status</th>
+          </tr></thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan={4} className="px-4 py-10 text-center"><Loader2 size={16} className="inline animate-spin" style={{ color: 'var(--teal)' }} /></td></tr>
+            ) : rows.length === 0 ? (
+              <tr><td colSpan={4} className="px-4 py-10 text-center text-xs" style={{ color: 'var(--mid-gray)' }}>No scanned proofs in this period. Upload them per day on the Sales Checking tab.</td></tr>
+            ) : rows.map(r => (
+              <tr key={`${r.date}|${r.branch}`} className="border-t align-top" style={{ borderColor: 'var(--light-gray)' }}>
+                <td className="px-4 py-2.5 text-xs whitespace-nowrap font-medium" style={{ color: 'var(--charcoal)' }}>
+                  {new Date(r.date + 'T00:00:00').toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                </td>
+                <td className="px-4 py-2.5 text-xs whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{branchLabel(r.branch)}</td>
+                <td className="px-4 py-2.5">
+                  <div className="flex flex-col gap-1">
+                    {r.proofUrls.map((e, i) => (
+                      <div key={e.url + i} className="flex items-center gap-2 flex-wrap">
+                        <a href={e.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-medium hover:underline" style={{ color: 'var(--teal)' }}>
+                          <FileText size={11} /> {fileLabel(e, i)}
+                        </a>
+                        {e.note && <span className="text-[11px]" style={{ color: '#b45309' }}>— {e.note}</span>}
+                      </div>
+                    ))}
+                  </div>
+                </td>
+                <td className="px-4 py-2.5 text-xs whitespace-nowrap">
+                  {r.isCleared
+                    ? <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: '#dcfce7', color: '#166534' }}>Cleared</span>
+                    : <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>Not cleared</span>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   )
@@ -8459,6 +8576,18 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
   const [remarks, setRemarks] = useState<Record<string, Record<string, string>>>({}) // { date: { method: remark } }
   // cleared days: { "YYYY-MM-DD|branch": true }
   const [clearedDays, setClearedDays] = useState<Record<string, { clearedAt: string; clearedById: string }>>({})
+  // Scanned deposit/sales proofs per day: { url, name?, note? }. The note is the
+  // disclaimer when one deposit slip covers several days.
+  const [dayProofs, setDayProofs] = useState<Record<string, SalesProofEntry[]>>({})
+  const saveProofs = async (day: string, entries: SalesProofEntry[], br: string) => {
+    setDayProofs(prev => ({ ...prev, [day]: entries }))
+    try {
+      await fetch('/api/pos/sales-clearing', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date: day, branch: br, proofUrls: entries }),
+      })
+    } catch { /* local state stands; the next fetch reconciles */ }
+  }
   const [clearingInProgress, setClearingInProgress] = useState(false)
   const [clearingError, setClearingError] = useState<string | null>(null)
   // Which order payments a bank deposit has actually confirmed, and which none
@@ -8519,6 +8648,7 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
         const dbRemarks: Record<string, Record<string, string>> = {}
         const dbConfirmed: Record<string, Record<string, boolean>> = {}
         const dbAuto: Record<string, Record<string, boolean>> = {}
+        const dbProofs: Record<string, SalesProofEntry[]> = {}
         for (const rec of data) {
           if (rec.isCleared) {
             map[`${rec.date}|${rec.branch}`] = { clearedAt: rec.clearedAt, clearedById: rec.clearedById }
@@ -8543,8 +8673,13 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
               if (item.source === 'BANK_REC') dbAuto[rec.date][item.method] = true
             }
           }
+          if (Array.isArray(rec.proofUrls)) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            dbProofs[rec.date] = (rec.proofUrls as any[]).map(e => typeof e === 'string' ? { url: e } : e).filter(e => e?.url)
+          }
         }
         setClearedDays(map)
+        setDayProofs(dbProofs)
         setConfirmed(prev => {
           const merged = { ...prev }
           for (const [d, methods] of Object.entries(dbConfirmed)) {
@@ -8939,6 +9074,40 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
                     })}
                   </tbody>
                 </table>
+                {/* Scanned deposit/sales proof for the day — file upload or QR
+                    (phone photographs the slip). One deposit covering several
+                    days: attach the same slip to EACH covered day with a note. */}
+                {br && (
+                  <div className="px-4 py-3 border-t" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                    <div className="flex items-center justify-between gap-3 flex-wrap mb-1.5">
+                      <span className="text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>Deposit / sales proof for this day</span>
+                      <ScanUpload compact section="sales-checking" prefix={`SALESPROOF-${br.slice(8, 12) || br.slice(0, 4)}-${day}`}
+                        existingCount={(dayProofs[day] || []).length} label={(dayProofs[day] || []).length ? '+ Add' : 'Upload'}
+                        onUploaded={u => saveProofs(day, [...(dayProofs[day] || []), { url: u, name: decodeURIComponent((u.split('/').pop() || '').replace(/^\d+-/, '')) }], br)} />
+                    </div>
+                    {(dayProofs[day] || []).length > 0 && (
+                      <div className="rounded-lg border divide-y bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+                        {(dayProofs[day] || []).map((e, i) => (
+                          <div key={e.url + i} className="flex items-center gap-2 px-2 py-1.5 flex-wrap">
+                            <a href={e.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-medium hover:underline whitespace-nowrap" style={{ color: 'var(--teal)' }}>
+                              <FileText size={11} /> {e.name || `File ${i + 1}`}
+                            </a>
+                            <input value={e.note || ''} placeholder="Note — e.g. one deposit covering Jul 5–8"
+                              onChange={ev => setDayProofs(prev => ({ ...prev, [day]: (prev[day] || []).map(x => x.url === e.url ? { ...x, note: ev.target.value } : x) }))}
+                              onBlur={() => saveProofs(day, dayProofs[day] || [], br)}
+                              className="flex-1 min-w-[180px] px-2 py-1 rounded border text-[11px] outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                            <button title="Remove this proof"
+                              onClick={() => { if (confirm('Remove this proof file from this day?')) saveProofs(day, (dayProofs[day] || []).filter(x => x.url !== e.url), br) }}
+                              className="p-0.5 rounded hover:bg-red-50"><X size={11} className="text-red-400" /></button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <p className="text-[10px] mt-1" style={{ color: 'var(--mid-gray)' }}>
+                      One deposit covering several days? Attach the same slip to each covered day and note the covered dates (they&apos;re in the filename).
+                    </p>
+                  </div>
+                )}
                 {/* Cleared for the day button */}
                 {br && (
                   <div className="px-4 py-3 border-t" style={{ borderColor: 'var(--light-gray)' }}>

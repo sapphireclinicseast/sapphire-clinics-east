@@ -2359,6 +2359,10 @@ model SalesDayClearing {
   // the tick was set automatically because every one of that day's payments on
   // that method is linked to a reconciled bank line; 'USER' means hand-ticked.
   confirmed     Json?
+  // Scanned deposit slips / sales proofs for the day: [{ url, name?, note? }].
+  // A deposit covering several days is attached to each covered day with a note
+  // saying so (covered dates are in the filename). Drives Scanned Sales Records.
+  proofUrls     Json?
   updatedAt     DateTime @updatedAt
 
   @@unique([date, branch])
