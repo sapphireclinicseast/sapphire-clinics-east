@@ -43,6 +43,10 @@ import { downloadXlsx, downloadPdf } from '@/lib/export'
 // Per-share values (par, APIC, price/share) can carry sub-centavo precision, so
 // show up to 3 decimals; whole/2-decimal amounts still render with 2.
 const peso = (n: number) => '₱' + n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 3 })
+// Dashboard-card formats: whole numbers only — fractional shares (from buybacks
+// and rescissions) stay exact in the tables below, but the top cards round.
+const wholeNum = (n: number) => Math.round(n).toLocaleString('en-PH')
+const wholePeso = (n: number) => '₱' + Math.round(n).toLocaleString('en-PH')
 
 interface Bank { id: string; accountNumber: string; accountTitle: string; isActive?: boolean; bankRetiredAt?: string | null }
 // Equity fetches banks with includeRetired=1 — historical issuances are often
@@ -330,7 +334,7 @@ export default function EquityPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'var(--pale-teal)' }}>
           <p className="text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>Total Capitalization</p>
-          <p className="text-2xl font-bold" style={{ color: 'var(--deep-teal)' }}>{peso(fig?.totalCapitalization || 0)}</p>
+          <p className="text-2xl font-bold" style={{ color: 'var(--deep-teal)' }}>{wholePeso(fig?.totalCapitalization || 0)}</p>
         </div>
         <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
           <div className="flex items-center justify-between">
@@ -367,19 +371,19 @@ export default function EquityPage() {
         </div>
         <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
           <p className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Total Number of Shares <span className="font-normal text-gray-400">(outstanding)</span></p>
-          <p className="text-2xl font-bold" style={{ color: 'var(--charcoal)' }}>{(fig?.totalShares || 0).toLocaleString('en-PH')}</p>
+          <p className="text-2xl font-bold" style={{ color: 'var(--charcoal)' }}>{wholeNum(fig?.totalShares || 0)}</p>
         </div>
         <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
           <p className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Total Common Shares <span className="font-normal text-gray-400">(outstanding)</span></p>
-          <p className="text-2xl font-bold" style={{ color: 'var(--charcoal)' }}>{commonClassShares.toLocaleString('en-PH')}</p>
+          <p className="text-2xl font-bold" style={{ color: 'var(--charcoal)' }}>{wholeNum(commonClassShares)}</p>
         </div>
         <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
           <p className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Total Founders Shares <span className="font-normal text-gray-400">(outstanding)</span></p>
-          <p className="text-2xl font-bold" style={{ color: 'var(--charcoal)' }}>{foundersShares.toLocaleString('en-PH')}</p>
+          <p className="text-2xl font-bold" style={{ color: 'var(--charcoal)' }}>{wholeNum(foundersShares)}</p>
         </div>
         <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: '#fef2f2' }}>
           <p className="text-xs font-semibold" style={{ color: '#b91c1c' }}>Total Treasury Shares <span className="font-normal" style={{ color: '#d4a0a0' }}>(available for sale)</span></p>
-          <p className="text-2xl font-bold" style={{ color: '#b91c1c' }}>{(fig?.treasuryShares || 0).toLocaleString('en-PH')}</p>
+          <p className="text-2xl font-bold" style={{ color: '#b91c1c' }}>{wholeNum(fig?.treasuryShares || 0)}</p>
         </div>
         <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
           <p className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Active Shareholders <span className="font-normal text-gray-400">(holding outstanding shares)</span></p>
