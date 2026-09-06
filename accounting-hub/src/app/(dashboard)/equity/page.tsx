@@ -44,8 +44,12 @@ import { downloadXlsx, downloadPdf } from '@/lib/export'
 // show up to 3 decimals; whole/2-decimal amounts still render with 2.
 const peso = (n: number) => '₱' + n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 3 })
 
-interface Bank { id: string; accountNumber: string; accountTitle: string }
-interface Shareholder { id: string; shNumber: string; name: string; tin: string | null; birthdate: string | null; email: string | null; address: string | null }
+interface Bank { id: string; accountNumber: string; accountTitle: string; isActive?: boolean; bankRetiredAt?: string | null }
+// Equity fetches banks with includeRetired=1 — historical issuances are often
+// tagged to a since-closed account (e.g. the old SCI accounts). Flag them.
+const bankName = (b: Bank) => `${b.accountNumber} — ${b.accountTitle}${b.bankRetiredAt || b.isActive === false ? ' (closed)' : ''}`
+interface Shareholder { id: string; shNumber: string; name: string; tin: string | null; birthdate: string | null; email: string | null; mobile: string | null; address: string | null }
+interface BeneficialOwnerRow { id?: string; name: string; tin: string | null; email: string | null; address: string | null; shares: number; notes: string | null }
 const COMMON_SHARE_CLASSES = [
   'Common – Voting – with Par',
   'Common – Voting – without Par',
@@ -69,7 +73,7 @@ interface Transfer { id: string; date: string; shares: number; price: number; am
 // asset account. A holding may have many.
 interface Deposit { id: string; date: string; amount: number; kind: 'CASH' | 'NON_CASH'; bankAccountId: string | null; assetAccountId: string | null; note: string | null; proofUrls: string[] | null }
 interface CommonRow {
-  id: string; shareholderId: string; shNumber: string; name: string; tin: string | null; birthdate: string | null; email: string | null; address: string | null
+  id: string; shareholderId: string; shNumber: string; name: string; tin: string | null; birthdate: string | null; email: string | null; mobile: string | null; address: string | null
   dateAcquired: string; agreementType: string; assignedToShareholderId: string | null; agreementUrls: string[] | null
   stockCertNumber: string | null; proofOfDepositUrls: string[] | null; validIdUrls: string[] | null; shareClass: string | null; numberOfShares: number; truePar: number; apic: number; pricePerShare: number
   totalCapitalization: number; equityStake: number; equityStakeCurrent: number; equityStakeTotal: number; bankAccountId: string | null; equityAccountId: string | null
@@ -80,9 +84,10 @@ interface CommonRow {
   acquiredViaTransfer: boolean; transferFromName: string | null; transferFromShNumber: string | null
   retired: boolean
   receivableAccountId: string | null; deposits: Deposit[]; depositedAmount: number; unaccountedAmount: number
+  beneficialOwners: BeneficialOwnerRow[]
 }
 interface EquityAcct { id: string; accountNumber: string; accountTitle: string }
-interface Figures { totalCapitalization: number; totalShares: number; treasuryShares: number; authorizedShares: number; authorizedCommonShares: number | null; authorizedFounderShares: number | null }
+interface Figures { totalCapitalization: number; totalShares: number; treasuryShares: number; authorizedShares: number; authorizedCommonShares: number | null; authorizedFounderShares: number | null; activeShareholders: number }
 
 const EQUITY_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 
@@ -114,7 +119,7 @@ export default function EquityPage() {
     catch { setData(null) } finally { setLoading(false) }
   }, [isAdmin])
   useEffect(() => { load() }, [load])
-  useEffect(() => { fetch('/api/bank-accounts').then(r => r.ok ? r.json() : []).then(setBanks).catch(() => setBanks([])) }, [])
+  useEffect(() => { fetch('/api/bank-accounts?includeRetired=1').then(r => r.ok ? r.json() : []).then(setBanks).catch(() => setBanks([])) }, [])
   useEffect(() => {
     fetch('/api/chart-of-accounts?accountType=EQUITY&pageSize=1000').then(r => r.ok ? r.json() : { data: [] })
       .then(j => setEquityAccts(((j.data || j.items || j || []) as EquityAcct[]).map(a => ({ id: a.id, accountNumber: a.accountNumber, accountTitle: a.accountTitle }))))
@@ -141,7 +146,7 @@ export default function EquityPage() {
     if (!confirm(`Delete ${row.shNumber} — ${row.name}'s common shares? Its journal entries are reversed.`)) return
     await fetch(`/api/equity/common?id=${row.id}`, { method: 'DELETE' }); load()
   }
-  const bankLabel = (id: string | null) => { const b = banks.find(x => x.id === id); return b ? `${b.accountNumber} ${b.accountTitle}` : '—' }
+  const bankLabel = (id: string | null) => { const b = banks.find(x => x.id === id); return b ? bankName(b) : '—' }
 
   const cs = useSortFilter('shNumber')
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -376,6 +381,10 @@ export default function EquityPage() {
           <p className="text-xs font-semibold" style={{ color: '#b91c1c' }}>Total Treasury Shares <span className="font-normal" style={{ color: '#d4a0a0' }}>(available for sale)</span></p>
           <p className="text-2xl font-bold" style={{ color: '#b91c1c' }}>{(fig?.treasuryShares || 0).toLocaleString('en-PH')}</p>
         </div>
+        <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+          <p className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Active Shareholders <span className="font-normal text-gray-400">(holding outstanding shares)</span></p>
+          <p className="text-2xl font-bold" style={{ color: 'var(--charcoal)' }}>{(fig?.activeShareholders || 0).toLocaleString('en-PH')}</p>
+        </div>
       </div>
       )}
 
@@ -508,7 +517,7 @@ export default function EquityPage() {
 function CommonModal({ row, rows, authCommon, authFounder, shareholders, banks, equityAccts, assetAccts, onClose, onReload, onSaved }: { row: CommonRow | null; rows: CommonRow[]; authCommon: number | null; authFounder: number | null; shareholders: Shareholder[]; banks: Bank[]; equityAccts: EquityAcct[]; assetAccts: EquityAcct[]; onClose: () => void; onReload: () => void; onSaved: () => void }) {
   const [f, setF] = useState({
     shareholderId: row?.shareholderId || '', name: row?.name || '', tin: row?.tin || '', birthdate: row?.birthdate ? String(row.birthdate).slice(0, 10) : '',
-    email: row?.email || '', address: row?.address || '', dateAcquired: row?.dateAcquired ? String(row.dateAcquired).slice(0, 10) : new Date().toISOString().slice(0, 10),
+    email: row?.email || '', mobile: row?.mobile || '', address: row?.address || '', dateAcquired: row?.dateAcquired ? String(row.dateAcquired).slice(0, 10) : new Date().toISOString().slice(0, 10),
     agreementType: row?.agreementType || 'SUBSCRIPTION', assignedToShareholderId: row?.assignedToShareholderId || '', shareClass: row?.shareClass || '',
     stockCertNumber: row?.stockCertNumber || '', numberOfShares: row ? String(row.numberOfShares) : '', truePar: row?.truePar != null ? String(row.truePar) : '', apic: row?.apic != null ? String(row.apic) : '',
     bankAccountId: row?.bankAccountId || '', equityAccountId: row?.equityAccountId || '', receivableAccountId: row?.receivableAccountId || '', soldFromTreasury: row?.soldFromTreasury || false, rescinded: row?.rescinded || false,
@@ -518,6 +527,9 @@ function CommonModal({ row, rows, authCommon, authFounder, shareholders, banks, 
   const [validIdUrls, setValidIdUrls] = useState<string[]>(row?.validIdUrls || [])
   // Open the Sold Shares panel automatically when sales already exist.
   const [showSold, setShowSold] = useState((row?.transfers?.length || 0) > 0)
+  // Beneficial owners of this holding — editable rows; shares kept as strings while typing.
+  const [bos, setBos] = useState<{ name: string; tin: string; email: string; shares: string; notes: string }[]>(
+    (row?.beneficialOwners || []).map(o => ({ name: o.name, tin: o.tin || '', email: o.email || '', shares: String(o.shares), notes: o.notes || '' })))
   const [busy, setBusy] = useState(false)
   // Next free certificate number for the chosen class's series (SCEIF for
   // Founders, SCEIC otherwise); gaps below the highest are not reused.
@@ -534,6 +546,20 @@ function CommonModal({ row, rows, authCommon, authFounder, shareholders, banks, 
   const n = (v: string) => Number(v) || 0
   const pricePerShare = n(f.truePar) + n(f.apic)
   const cap = n(f.numberOfShares) * pricePerShare
+  // Amount-first entry: the investor hands over a peso amount (e.g. ₱200,000) and
+  // the share count is solved from it, instead of whole shares leaving a residual.
+  // Shares are carried to 3 decimals across the cap table; at that precision the
+  // residual vs the target amount is under half a centavo, i.e. rounds out.
+  const [amountInput, setAmountInput] = useState('')
+  const targetAmount = Number(amountInput.replace(/[, ]/g, '')) || 0
+  const solveShares = (amt: number, price: number) => Math.round((amt / price) * 1000) / 1000
+  const amountResidual = targetAmount > 0 && pricePerShare > 0 ? cap - targetAmount : 0
+  // While an amount is set it drives the share count (re-solving when par/APIC
+  // change); typing in Number of Shares directly clears the amount and detaches.
+  useEffect(() => {
+    if (targetAmount > 0 && pricePerShare > 0) set('numberOfShares', String(solveShares(targetAmount, pricePerShare)))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetAmount, pricePerShare])
   const prefix = f.stockCertNumber || f.name || 'SHARE'
   // Over-authorization check for the selected class group (excludes the row being edited).
   const cls = (f.shareClass || '').toLowerCase()
@@ -553,22 +579,31 @@ function CommonModal({ row, rows, authCommon, authFounder, shareholders, banks, 
   const unaccounted = hasDeposits ? Math.max(0, cap - depositTotal) : 0
   const receivableAccts = assetAccts
 
+  // Beneficial-owner pool: what this holding still holds, net of buybacks.
+  const boPool = n(f.numberOfShares) - (row?.buybackShares || 0)
+  const boAllocated = bos.reduce((s, o) => s + n(o.shares), 0)
+  const boRemaining = boPool - boAllocated
+  const boOver = bos.some(o => o.name.trim() && n(o.shares) > 0) && boRemaining < 0
+  const setBo = (i: number, k: string, v: string) => setBos(p => p.map((o, j) => j === i ? { ...o, [k]: v } : o))
+
   const pickShareholder = (id: string) => {
     const sh = shareholders.find(s => s.id === id)
-    if (sh) setF(p => ({ ...p, shareholderId: id, name: sh.name, tin: sh.tin || '', birthdate: sh.birthdate ? String(sh.birthdate).slice(0, 10) : '', email: sh.email || '', address: sh.address || '' }))
+    if (sh) setF(p => ({ ...p, shareholderId: id, name: sh.name, tin: sh.tin || '', birthdate: sh.birthdate ? String(sh.birthdate).slice(0, 10) : '', email: sh.email || '', mobile: sh.mobile || '', address: sh.address || '' }))
     else setF(p => ({ ...p, shareholderId: '' }))
   }
 
   const save = async () => {
     if (!(n(f.numberOfShares) > 0) || !(pricePerShare > 0)) { alert('Enter shares and True Par / APIC.'); return }
     if (!f.name.trim()) { alert('Investor name is required.'); return }
+    if (boOver) { alert(`Beneficial-owner allocations (${boAllocated.toLocaleString('en-PH')}) exceed the ${boPool.toLocaleString('en-PH')} shares available on this holding.`); return }
     if (overLimit) {
       if (!window.confirm(`⚠ This exceeds the authorized ${limitLabel} shares.\n\nAuthorized ${limitLabel}: ${classLimit!.toLocaleString('en-PH')}\nAfter this: ${projectedClass.toLocaleString('en-PH')} (over by ${(projectedClass - classLimit!).toLocaleString('en-PH')})\n\nSave anyway?`)) return
     }
     setBusy(true)
     try {
       const body = { ...(row ? { id: row.id } : {}), ...f, numberOfShares: n(f.numberOfShares), truePar: n(f.truePar), apic: n(f.apic), pricePerShare,
-        agreementUrls, proofOfDepositUrls: proofUrls, validIdUrls }
+        agreementUrls, proofOfDepositUrls: proofUrls, validIdUrls,
+        beneficialOwners: bos.filter(o => o.name.trim() && n(o.shares) > 0).map(o => ({ name: o.name, tin: o.tin, email: o.email, shares: n(o.shares), notes: o.notes })) }
       const r = await fetch('/api/equity/common', { method: row ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       if (!r.ok) { alert((await r.json()).error || 'Failed'); return }
       onSaved()
@@ -603,6 +638,7 @@ function CommonModal({ row, rows, authCommon, authFounder, shareholders, banks, 
           <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>TIN Number</label><input value={f.tin} onChange={e => set('tin', e.target.value)} className={inp} style={{ borderColor: 'var(--light-gray)' }} /></div>
           <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Birthdate</label><input type="date" value={f.birthdate} onChange={e => set('birthdate', e.target.value)} className={inp} style={{ borderColor: 'var(--light-gray)' }} /></div>
           <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Email</label><input value={f.email} onChange={e => set('email', e.target.value)} className={inp} style={{ borderColor: 'var(--light-gray)' }} /></div>
+          <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Mobile Number</label><input value={f.mobile} onChange={e => set('mobile', e.target.value)} inputMode="tel" placeholder="09xx xxx xxxx" className={inp} style={{ borderColor: 'var(--light-gray)' }} /></div>
           <div className="col-span-2 sm:col-span-3"><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Complete Address</label><input value={f.address} onChange={e => set('address', e.target.value)} className={inp} style={{ borderColor: 'var(--light-gray)' }} /></div>
 
           <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Class <span className="text-red-500">*</span></label>
@@ -631,14 +667,25 @@ function CommonModal({ row, rows, authCommon, authFounder, shareholders, banks, 
               </p>
             )}
           </div>
-          <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Number of Shares</label><input value={f.numberOfShares} onChange={e => set('numberOfShares', e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={{ borderColor: 'var(--light-gray)' }} /></div>
+          <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Number of Shares</label><input value={f.numberOfShares} onChange={e => { set('numberOfShares', e.target.value); setAmountInput('') }} inputMode="decimal" className={inp + ' font-mono'} style={{ borderColor: 'var(--light-gray)' }} /></div>
+          <div>
+            <label className={lbl} style={{ color: 'var(--mid-gray)' }}>…or Investment Amount (PHP) <span className="font-normal text-gray-400">(solves shares)</span></label>
+            <input value={amountInput} onChange={e => setAmountInput(e.target.value)} placeholder="e.g. 200,000" inputMode="decimal" className={inp + ' font-mono'} style={{ borderColor: 'var(--light-gray)' }} />
+            {targetAmount > 0 && pricePerShare > 0 && (
+              <p className="text-[10px] mt-1" style={{ color: Math.abs(amountResidual) > 0.005 ? '#b91c1c' : 'var(--mid-gray)' }}>
+                {Math.abs(amountResidual) > 0.005
+                  ? `Off by ₱${amountResidual.toFixed(4)} — shares are kept to 3 decimals`
+                  : `= ${n(f.numberOfShares).toLocaleString('en-PH', { maximumFractionDigits: 3 })} shares @ ${peso(pricePerShare)} — rounds out to ${peso(targetAmount)}`}
+              </p>
+            )}
+          </div>
           <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>True Par (PHP)</label><input value={f.truePar} onChange={e => set('truePar', e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={{ borderColor: 'var(--light-gray)' }} /></div>
           <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>APIC (PHP)</label><input value={f.apic} onChange={e => set('apic', e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={{ borderColor: 'var(--light-gray)' }} /></div>
           <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Price/Share (PHP) <span className="font-normal text-gray-400">(par + APIC)</span></label><div className="px-3 py-2 rounded-xl text-sm font-mono font-bold" style={{ background: 'var(--off-white)', color: 'var(--charcoal)' }}>{peso(pricePerShare)}</div></div>
           <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Total Capitalization</label><div className="px-3 py-2 rounded-xl text-sm font-mono font-bold" style={{ background: 'var(--off-white)', color: 'var(--charcoal)' }}>{peso(cap)}</div></div>
           <div className="col-span-2 sm:col-span-1"><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Bank account where the equity was debited</label>
             <select value={f.bankAccountId} onChange={e => set('bankAccountId', e.target.value)} disabled={hasDeposits} className={inp} style={{ borderColor: 'var(--light-gray)', background: hasDeposits ? 'var(--off-white)' : undefined }}>
-              <option value="">— Not recorded —</option>{banks.map(b => <option key={b.id} value={b.id}>{b.accountNumber} — {b.accountTitle}</option>)}
+              <option value="">— Not recorded —</option>{banks.map(b => <option key={b.id} value={b.id}>{bankName(b)}</option>)}
             </select>
             {hasDeposits && <p className="text-[10px] mt-1" style={{ color: 'var(--mid-gray)' }}>Superseded by the itemised deposits below.</p>}
           </div>
@@ -709,6 +756,29 @@ function CommonModal({ row, rows, authCommon, authFounder, shareholders, banks, 
             ))}
               <ScanUpload compact section="equity" prefix={`${prefix}-VALIDID`} existingCount={validIdUrls.length} label="Add" onUploaded={u => setValidIdUrls(p => [...p, u])} /></div>
           </div>
+        </div>
+
+        {/* Beneficial owners — registry only, no GL impact. Allocations draw from
+            this holding's net-of-buyback pool. */}
+        <div className="mt-4 rounded-xl border p-3" style={{ borderColor: 'var(--light-gray)' }}>
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-sm font-semibold text-gray-700">Beneficial Owners <span className="font-normal text-gray-400">(who the shares are held for; one or more)</span></p>
+            <p className="text-xs font-mono" style={{ color: boRemaining < 0 ? '#b91c1c' : 'var(--mid-gray)' }}>
+              {boAllocated.toLocaleString('en-PH', { maximumFractionDigits: 3 })} / {boPool.toLocaleString('en-PH', { maximumFractionDigits: 3 })} allocated · {boRemaining.toLocaleString('en-PH', { maximumFractionDigits: 3 })} unallocated
+            </p>
+          </div>
+          {bos.map((o, i) => (
+            <div key={i} className="grid grid-cols-2 sm:grid-cols-12 gap-2 mb-2 items-start">
+              <div className="col-span-2 sm:col-span-4"><input value={o.name} onChange={e => setBo(i, 'name', e.target.value)} placeholder="Full name" className={inp} style={{ borderColor: 'var(--light-gray)' }} /></div>
+              <div className="sm:col-span-2"><input value={o.shares} onChange={e => setBo(i, 'shares', e.target.value)} placeholder="Shares" inputMode="decimal" className={inp + ' font-mono'} style={{ borderColor: 'var(--light-gray)' }} /></div>
+              <div className="sm:col-span-2"><input value={o.tin} onChange={e => setBo(i, 'tin', e.target.value)} placeholder="TIN (optional)" className={inp} style={{ borderColor: 'var(--light-gray)' }} /></div>
+              <div className="sm:col-span-3"><input value={o.email} onChange={e => setBo(i, 'email', e.target.value)} placeholder="Email (optional)" className={inp} style={{ borderColor: 'var(--light-gray)' }} /></div>
+              <button type="button" onClick={() => setBos(p => p.filter((_, j) => j !== i))} title="Remove" className="sm:col-span-1 p-2 rounded-lg hover:bg-red-50 justify-self-start"><X size={14} className="text-red-400" /></button>
+            </div>
+          ))}
+          {boOver && <p className="text-xs mb-2" style={{ color: '#b91c1c' }}>⚠ Allocations exceed the shares available on this holding.</p>}
+          <button type="button" onClick={() => setBos(p => [...p, { name: '', tin: '', email: '', shares: boRemaining > 0 ? String(boRemaining) : '', notes: '' }])}
+            className="px-3 py-1.5 rounded-lg border text-xs font-semibold" style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}>+ Add beneficial owner</button>
         </div>
 
         <label className="mt-4 flex items-center gap-2 text-sm font-medium text-gray-700 cursor-pointer">
@@ -854,7 +924,7 @@ function DepositManager({ share, banks, assetAccts, capitalization, onChanged, h
             </div>
             {d.kind === 'CASH' ? (
               <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Bank account</label>
-                <select value={d.bankAccountId} onChange={e => set('bankAccountId', e.target.value)} className={inp} style={{ borderColor: 'var(--light-gray)' }}><option value="">— Select —</option>{banks.map(b => <option key={b.id} value={b.id}>{b.accountNumber} — {b.accountTitle}</option>)}</select>
+                <select value={d.bankAccountId} onChange={e => set('bankAccountId', e.target.value)} className={inp} style={{ borderColor: 'var(--light-gray)' }}><option value="">— Select —</option>{banks.map(b => <option key={b.id} value={b.id}>{bankName(b)}</option>)}</select>
               </div>
             ) : (
               <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Debit to</label>
@@ -942,7 +1012,7 @@ function BuybackManager({ share, banks, equityAccts, onChanged }: { share: Commo
             <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Shares bought back</label><input value={d.shares} onChange={e => set('shares', e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={{ borderColor: 'var(--light-gray)' }} /></div>
             <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Price at buyback</label><input value={d.price} onChange={e => set('price', e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={{ borderColor: 'var(--light-gray)' }} /></div>
             <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Bank account used to pay</label>
-              <select value={d.bankAccountId} onChange={e => set('bankAccountId', e.target.value)} className={inp} style={{ borderColor: 'var(--light-gray)' }}><option value="">— Select —</option>{banks.map(b => <option key={b.id} value={b.id}>{b.accountNumber} — {b.accountTitle}</option>)}</select>
+              <select value={d.bankAccountId} onChange={e => set('bankAccountId', e.target.value)} className={inp} style={{ borderColor: 'var(--light-gray)' }}><option value="">— Select —</option>{banks.map(b => <option key={b.id} value={b.id}>{bankName(b)}</option>)}</select>
             </div>
             <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Treasury account to debit <span className="font-normal text-gray-400">(CoA)</span></label>
               <select value={d.treasuryAccountId} onChange={e => set('treasuryAccountId', e.target.value)} className={inp} style={{ borderColor: 'var(--light-gray)' }}><option value="">— Select equity account —</option>{equityAccts.map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}</select>
@@ -1107,7 +1177,7 @@ function TransferManager({ share, shareholders, equityAccts, onChanged }: { shar
 // ── Preferred Shares ──────────────────────────────────────────
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 interface PrefRow {
-  id: string; shareholderId: string; shNumber: string; name: string; tin: string | null; birthdate: string | null; email: string | null; address: string | null
+  id: string; shareholderId: string; shNumber: string; name: string; tin: string | null; birthdate: string | null; email: string | null; mobile: string | null; address: string | null
   dateAcquired: string; agreementType: string; agreementUrls: string[] | null; stockCertNumber: string | null; proofOfDepositUrls: string[] | null; validIdUrls: string[] | null; shareClass: string | null
   numberOfShares: number; retiredShares: number; truePar: number; apic: number; pricePerShare: number; totalCapitalization: number; equityStake: number; bankAccountId: string | null; equityAccountId: string | null
   annualInterest: number | null; maturityYears: number | null; buybackPrice: number | null
@@ -1128,7 +1198,7 @@ function PreferredTab({ banks, equityAccts, assetAccts = [], onChanged, canWrite
   const load = useCallback(async () => { setLoading(true); try { const r = await fetch('/api/equity/preferred'); const j = r.ok ? await r.json() : null; setRows(j?.rows || []); setShareholders(j?.shareholders || []); setFig(j?.figures || null) } catch { setRows([]) } finally { setLoading(false) } }, [])
   useEffect(() => { load() }, [load])
   const del = async (r: PrefRow) => { if (!confirm(`Delete ${r.shNumber} — ${r.name}'s preferred shares?`)) return; await fetch(`/api/equity/preferred?id=${r.id}`, { method: 'DELETE' }); load(); onChanged() }
-  const bankLabel = (id: string | null) => { const b = banks.find(x => x.id === id); return b ? `${b.accountNumber} ${b.accountTitle}` : '—' }
+  const bankLabel = (id: string | null) => { const b = banks.find(x => x.id === id); return b ? bankName(b) : '—' }
 
   const ps = useSortFilter('shNumber')
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1247,7 +1317,7 @@ function PreferredTab({ banks, equityAccts, assetAccts = [], onChanged, canWrite
 
 function PreferredModal({ row, shareholders, banks, equityAccts, assetAccts = [], onClose, onSaved }: { row: PrefRow | null; shareholders: Shareholder[]; banks: Bank[]; equityAccts: EquityAcct[]; assetAccts?: EquityAcct[]; onClose: () => void; onSaved: () => void }) {
   const [f, setF] = useState({
-    shareholderId: row?.shareholderId || '', name: row?.name || '', tin: row?.tin || '', birthdate: row?.birthdate ? String(row.birthdate).slice(0, 10) : '', email: row?.email || '', address: row?.address || '',
+    shareholderId: row?.shareholderId || '', name: row?.name || '', tin: row?.tin || '', birthdate: row?.birthdate ? String(row.birthdate).slice(0, 10) : '', email: row?.email || '', mobile: row?.mobile || '', address: row?.address || '',
     dateAcquired: row?.dateAcquired ? String(row.dateAcquired).slice(0, 10) : new Date().toISOString().slice(0, 10), agreementType: row?.agreementType || 'SUBSCRIPTION', stockCertNumber: row?.stockCertNumber || '', shareClass: row?.shareClass || '',
     numberOfShares: row ? String(row.numberOfShares) : '', retiredShares: row?.retiredShares ? String(row.retiredShares) : '', truePar: row?.truePar != null ? String(row.truePar) : '', apic: row?.apic != null ? String(row.apic) : '', bankAccountId: row?.bankAccountId || '', equityAccountId: row?.equityAccountId || '',
     annualInterest: row?.annualInterest != null ? String(row.annualInterest) : '', maturityYears: row?.maturityYears ? String(row.maturityYears) : '', buybackPrice: row?.buybackPrice != null ? String(row.buybackPrice) : '',
@@ -1263,7 +1333,7 @@ function PreferredModal({ row, shareholders, banks, equityAccts, assetAccts = []
   const pricePerShare = n(f.truePar) + n(f.apic)
   const cap = n(f.numberOfShares) * pricePerShare
   const prefix = f.stockCertNumber || f.name || 'PREF'
-  const pickSh = (id: string) => { const sh = shareholders.find(s => s.id === id); if (sh) setF(p => ({ ...p, shareholderId: id, name: sh.name, tin: sh.tin || '', birthdate: sh.birthdate ? String(sh.birthdate).slice(0, 10) : '', email: sh.email || '', address: sh.address || '' })); else set('shareholderId', '') }
+  const pickSh = (id: string) => { const sh = shareholders.find(s => s.id === id); if (sh) setF(p => ({ ...p, shareholderId: id, name: sh.name, tin: sh.tin || '', birthdate: sh.birthdate ? String(sh.birthdate).slice(0, 10) : '', email: sh.email || '', mobile: sh.mobile || '', address: sh.address || '' })); else set('shareholderId', '') }
   const save = async () => {
     if (!(n(f.numberOfShares) > 0) || !(pricePerShare > 0) || !f.name.trim()) { alert('Enter name, shares and True Par / APIC.'); return }
     setBusy(true)
@@ -1286,6 +1356,7 @@ function PreferredModal({ row, shareholders, banks, equityAccts, assetAccts = []
           <div><label className={lbl} style={mg}>TIN Number</label><input value={f.tin} onChange={e => set('tin', e.target.value)} className={inp} style={bc} /></div>
           <div><label className={lbl} style={mg}>Birthdate</label><input type="date" value={f.birthdate} onChange={e => set('birthdate', e.target.value)} className={inp} style={bc} /></div>
           <div><label className={lbl} style={mg}>Email</label><input value={f.email} onChange={e => set('email', e.target.value)} className={inp} style={bc} /></div>
+          <div><label className={lbl} style={mg}>Mobile Number</label><input value={f.mobile} onChange={e => set('mobile', e.target.value)} inputMode="tel" placeholder="09xx xxx xxxx" className={inp} style={bc} /></div>
           <div className="col-span-2 sm:col-span-3"><label className={lbl} style={mg}>Complete Address</label><input value={f.address} onChange={e => set('address', e.target.value)} className={inp} style={bc} /></div>
           <div><label className={lbl} style={mg}>Class <span className="text-red-500">*</span></label><select value={f.shareClass} onChange={e => set('shareClass', e.target.value)} className={inp} style={bc}><option value="">— Select Type of Share —</option>{PREFERRED_SHARE_CLASSES.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
           <div><label className={lbl} style={mg}>Agreement type</label><select value={f.agreementType} onChange={e => set('agreementType', e.target.value)} className={inp} style={bc}><option value="SUBSCRIPTION">Subscription</option><option value="DEED_OF_ASSIGNMENT">Deed of Assignment</option></select></div>
@@ -1299,7 +1370,7 @@ function PreferredModal({ row, shareholders, banks, equityAccts, assetAccts = []
           <div><label className={lbl} style={mg}>Annual Interest %</label><input value={f.annualInterest} onChange={e => set('annualInterest', e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={bc} /></div>
           <div><label className={lbl} style={mg}>Maturity for buyback (years)</label><input value={f.maturityYears} onChange={e => set('maturityYears', e.target.value)} inputMode="numeric" className={inp + ' font-mono'} style={bc} /></div>
           <div><label className={lbl} style={mg}>Price to buyback at maturity</label><input value={f.buybackPrice} onChange={e => set('buybackPrice', e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={bc} /></div>
-          <div><label className={lbl} style={mg}>Bank account debited</label><select value={f.bankAccountId} onChange={e => set('bankAccountId', e.target.value)} className={inp} style={bc}><option value="">— Not recorded —</option>{banks.map(b => <option key={b.id} value={b.id}>{b.accountNumber} — {b.accountTitle}</option>)}</select></div>
+          <div><label className={lbl} style={mg}>Bank account debited</label><select value={f.bankAccountId} onChange={e => set('bankAccountId', e.target.value)} className={inp} style={bc}><option value="">— Not recorded —</option>{banks.map(b => <option key={b.id} value={b.id}>{bankName(b)}</option>)}</select></div>
           <div className="col-span-2 sm:col-span-2"><label className={lbl} style={mg}>Equity account to credit <span className="font-normal text-gray-400">(CoA)</span></label><select value={f.equityAccountId} onChange={e => set('equityAccountId', e.target.value)} className={inp} style={bc}><option value="">— Select —</option>{equityAccts.map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}</select></div>
         </div>
         {f.bankAccountId && f.equityAccountId && <p className="text-[11px] mt-1 font-mono px-2 py-1 rounded" style={{ background: '#f8fafc', color: '#334155' }}>DR {banks.find(b => b.id === f.bankAccountId)?.accountTitle} {peso(cap)} / CR {equityAccts.find(a => a.id === f.equityAccountId)?.accountTitle} {peso(cap)}</p>}
@@ -1456,7 +1527,7 @@ function DividendDetail({ release, banks, equityAccts, totalCommon, onClose, onC
             <p className="text-xs mb-2" style={mg}>Finalize to build the per-shareholder payout table and (optionally) post the journal entry.</p>
             <div className="grid grid-cols-2 gap-3 mb-2">
               <div><label className={lbl} style={mg}>Retained Earnings account (DR)</label><select value={retainedAccountId} onChange={e => setRet(e.target.value)} className={inp} style={bc}><option value="">— none —</option>{equityAccts.map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}</select></div>
-              <div><label className={lbl} style={mg}>Bank account paid from (CR)</label><select value={bankAccountId} onChange={e => setBank(e.target.value)} className={inp} style={bc}><option value="">— none —</option>{banks.map(b => <option key={b.id} value={b.id}>{b.accountNumber} — {b.accountTitle}</option>)}</select></div>
+              <div><label className={lbl} style={mg}>Bank account paid from (CR)</label><select value={bankAccountId} onChange={e => setBank(e.target.value)} className={inp} style={bc}><option value="">— none —</option>{banks.map(b => <option key={b.id} value={b.id}>{bankName(b)}</option>)}</select></div>
             </div>
             <button onClick={finalize} disabled={busy === 'finalize'} className="px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: '#166534' }}>{busy === 'finalize' ? 'Finalizing…' : 'Finalize Changes'}</button>
           </div>
@@ -1639,7 +1710,7 @@ function BatchPreferredDividendModal({ cells, banks, equityAccts, onClose, onSav
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           <div><label className={lbl} style={mg}>Date paid</label><input type="date" value={date} onChange={e => setDate(e.target.value)} className={inp} style={bc} /></div>
           <div><label className={lbl} style={mg}>Retained Earnings (DR)</label><select value={expenseAccountId} onChange={e => setExp(e.target.value)} className={inp} style={bc}><option value="">— none —</option>{equityAccts.map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}</select></div>
-          <div><label className={lbl} style={mg}>Bank paid from (CR)</label><select value={bankAccountId} onChange={e => setBank(e.target.value)} className={inp} style={bc}><option value="">— none —</option>{banks.map(b => <option key={b.id} value={b.id}>{b.accountNumber} — {b.accountTitle}</option>)}</select></div>
+          <div><label className={lbl} style={mg}>Bank paid from (CR)</label><select value={bankAccountId} onChange={e => setBank(e.target.value)} className={inp} style={bc}><option value="">— none —</option>{banks.map(b => <option key={b.id} value={b.id}>{bankName(b)}</option>)}</select></div>
         </div>
         <div className="mt-3"><label className={lbl} style={mg}>Proof of deposit <span className="font-normal text-gray-400">(applied to all)</span></label><div className="flex flex-wrap items-center gap-2">{proofUrls.map((u, i) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="text-xs inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>)}<ScanUpload compact section="equity" prefix="PREFDIV-BATCH-PROOF" existingCount={proofUrls.length} label="Add proof" onUploaded={u => setProofUrls(p => [...p, u])} /></div></div>
         {bankAccountId && expenseAccountId && total > 0 && <p className="text-[11px] mt-2 font-mono" style={{ color: '#334155' }}>DR {equityAccts.find(a => a.id === expenseAccountId)?.accountTitle} {peso(total)} / CR {banks.find(b => b.id === bankAccountId)?.accountTitle} {peso(total)}</p>}
@@ -1691,7 +1762,7 @@ function AddPreferredDividendModal({ shareholders, banks, equityAccts, onClose, 
           <div><label className={lbl} style={mg}>Year</label><select value={year} onChange={e => pickQuarter(Number(e.target.value), quarter)} className={inp} style={bc}>{years.map(y => <option key={y} value={y}>{y}</option>)}</select></div>
           <div><label className={lbl} style={mg}>Payout date</label><input type="date" value={date} onChange={e => setDate(e.target.value)} className={inp} style={bc} /></div>
           <div><label className={lbl} style={mg}>Retained Earnings / interest (DR)</label><select value={expenseAccountId} onChange={e => setExp(e.target.value)} className={inp} style={bc}><option value="">— none —</option>{equityAccts.map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}</select></div>
-          <div className="sm:col-span-4"><label className={lbl} style={mg}>Bank paid from (CR)</label><select value={bankAccountId} onChange={e => setBank(e.target.value)} className={inp} style={bc}><option value="">— none —</option>{banks.map(b => <option key={b.id} value={b.id}>{b.accountNumber} — {b.accountTitle}</option>)}</select></div>
+          <div className="sm:col-span-4"><label className={lbl} style={mg}>Bank paid from (CR)</label><select value={bankAccountId} onChange={e => setBank(e.target.value)} className={inp} style={bc}><option value="">— none —</option>{banks.map(b => <option key={b.id} value={b.id}>{bankName(b)}</option>)}</select></div>
         </div>
         <div className="rounded-xl border overflow-auto mb-3" style={{ borderColor: 'var(--light-gray)', maxHeight: 320 }}>
           <table className="w-full text-xs"><thead><tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
