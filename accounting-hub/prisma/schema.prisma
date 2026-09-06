@@ -1344,6 +1344,12 @@ model Voucher {
   endDate        DateTime?
   // Branch scope (PayMongo account codes: AHEA | AHGH | VERDANA | AHI). Empty = all.
   branches       String[]  @default([])
+  // Department scope (Service.department codes: PT | MD | OT | SLP | SPED |
+  // PSYCHOLOGY | ORTHOSIS_PROSTHESIS). Empty = everything. When set, only
+  // services under a ticked department are covered — products and services in
+  // other departments are refused (a service whose department is ALL counts as
+  // every department).
+  departments    String[]  @default([])
   // Usage cap: UNLIMITED | ONCE_PER_CUSTOMER (by email) | MAX_USES (see maxUses).
   usageLimitType String    @default("UNLIMITED")
   maxUses        Int?

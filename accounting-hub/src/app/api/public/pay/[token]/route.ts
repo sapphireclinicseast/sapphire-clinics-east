@@ -55,7 +55,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
   // don't ask the payer for a code in that case.
   let linkDiscount = 0
   if (link.voucherCode) {
-    const chk = await checkVoucher(prisma, { code: link.voucherCode, account: link.account, amountPhp: gross, atCreation: true })
+    const chk = await checkVoucher(prisma, { code: link.voucherCode, account: link.account, amountPhp: gross, department: link.serviceId ? link.department : null, atCreation: true })
     if (chk.ok) linkDiscount = chk.discount || 0
   }
   return NextResponse.json({
@@ -101,6 +101,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
       if (!link.voucherCode && !link.allowVoucher) return NextResponse.json({ error: 'Vouchers are not accepted on this link.' }, { status: 400 })
       const chk = await checkVoucher(prisma, {
         code: rawCode, account: link.account, amountPhp: gross, customerEmail: email,
+        department: link.serviceId ? link.department : null,
         customerFirstName: firstName, customerLastName: lastName, customerPhone: phone,
       })
       if (!chk.ok) return NextResponse.json({ error: chk.reason || 'That voucher code is not valid.' }, { status: 400 })

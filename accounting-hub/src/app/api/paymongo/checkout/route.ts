@@ -41,10 +41,11 @@ export async function POST(req: Request) {
     let unitPrice = 0
     let serviceId: string | null = null
     let inventoryItemId: string | null = null
+    let serviceDepartment: string | null = null
     if (kind === 'SERVICE') {
-      const svc = await prisma.service.findUnique({ where: { id: itemId }, select: { id: true, name: true, price: true, isActive: true } })
+      const svc = await prisma.service.findUnique({ where: { id: itemId }, select: { id: true, name: true, price: true, department: true, isActive: true } })
       if (!svc || !svc.isActive) return NextResponse.json({ error: 'Service not found' }, { status: 404 })
-      serviceId = svc.id; itemName = svc.name; unitPrice = Number(svc.price)
+      serviceId = svc.id; itemName = svc.name; unitPrice = Number(svc.price); serviceDepartment = svc.department
     } else {
       const inv = await prisma.inventoryItem.findUnique({ where: { id: itemId }, select: { id: true, name: true, sellingPrice: true, isActive: true } })
       if (!inv || !inv.isActive) return NextResponse.json({ error: 'Product not found' }, { status: 404 })
@@ -61,7 +62,7 @@ export async function POST(req: Request) {
     let discountAmount = 0
     let amountPhp = grossAmount
     if (b.voucherCode && String(b.voucherCode).trim()) {
-      const chk = await checkVoucher(prisma, { code: String(b.voucherCode), account, amountPhp: grossAmount, atCreation: true })
+      const chk = await checkVoucher(prisma, { code: String(b.voucherCode), account, amountPhp: grossAmount, department: serviceDepartment, atCreation: true })
       if (!chk.ok) return NextResponse.json({ error: chk.reason || 'Invalid voucher' }, { status: 400 })
       voucherId = chk.voucher!.id
       voucherCode = chk.voucher!.code

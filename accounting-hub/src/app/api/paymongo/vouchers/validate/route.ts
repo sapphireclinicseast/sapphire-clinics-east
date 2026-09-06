@@ -16,6 +16,9 @@ export async function POST(req: Request) {
     code: String(b.code || ''),
     account: String(b.account || '').toUpperCase(),
     amountPhp: Number(b.amountPhp) || 0,
+    // Item context for a department-scoped voucher: the service's department,
+    // or null for products. Omitting it refuses department-scoped codes.
+    department: b.department === undefined ? undefined : (b.department || null),
     customerEmail: b.email || null,
   })
   return NextResponse.json(res)

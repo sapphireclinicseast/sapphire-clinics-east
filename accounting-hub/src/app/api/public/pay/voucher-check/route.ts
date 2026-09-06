@@ -30,6 +30,7 @@ export async function POST(req: Request) {
       code: String(b.code || ''),
       account: link.account,
       amountPhp: gross,
+      department: link.serviceId ? link.department : null,
       customerEmail: b.email || null,
       // Needed by a PWD/Senior-gated code, which is matched against Patient CRM.
       customerFirstName: b.firstName || null,

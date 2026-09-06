@@ -102,7 +102,7 @@ interface LivePayment { paymentId: string; amount: number; fee: number; net: num
 interface Item { id: string; name: string; price: number; sku?: string; stock?: number; department?: string }
 interface Voucher {
   id: string; name: string; code: string; discountType: string; discountValue: number
-  isLifetime: boolean; startDate: string | null; endDate: string | null; branches: string[]
+  isLifetime: boolean; startDate: string | null; endDate: string | null; branches: string[]; departments: string[]
   usageLimitType: string; maxUses: number | null; accountId: string | null; accountLabel: string | null
   requiresPwdId: boolean
   isActive: boolean; uses: number
@@ -652,6 +652,12 @@ function BranchPanel({ account, label, canWrite }: { account: string; label: str
 }
 
 /* ══════════════════ Voucher Discounts ══════════════════ */
+const VOUCHER_DEPTS = [
+  { code: 'PT', label: 'PT' }, { code: 'MD', label: 'MD' }, { code: 'OT', label: 'OT' },
+  { code: 'SLP', label: 'SLP' }, { code: 'SPED', label: 'SPED' }, { code: 'PSYCHOLOGY', label: 'Psychology' },
+  { code: 'ORTHOSIS_PROSTHESIS', label: 'Orthosis & Prosthesis' },
+]
+
 function VouchersPanel({ canWrite }: { canWrite: boolean }) {
   const [rows, setRows] = useState<Voucher[]>([])
   const [coa, setCoa] = useState<Coa[]>([])
@@ -662,7 +668,7 @@ function VouchersPanel({ canWrite }: { canWrite: boolean }) {
   const [f, setF] = useState({
     name: '', code: '', discountType: 'PERCENTAGE', discountValue: '',
     isLifetime: false, startDate: todayStr(), endDate: todayStr(),
-    branches: [] as string[], usageLimitType: 'UNLIMITED', maxUses: '', accountId: '', isActive: true,
+    branches: [] as string[], departments: [] as string[], usageLimitType: 'UNLIMITED', maxUses: '', accountId: '', isActive: true,
     requiresPwdId: false,
   })
   const [saving, setSaving] = useState(false)
@@ -680,7 +686,7 @@ function VouchersPanel({ canWrite }: { canWrite: boolean }) {
 
   const openNew = () => {
     setEditId(null)
-    setF({ name: '', code: '', discountType: 'PERCENTAGE', discountValue: '', isLifetime: false, startDate: todayStr(), endDate: todayStr(), branches: [], usageLimitType: 'UNLIMITED', maxUses: '', accountId: '', isActive: true, requiresPwdId: false })
+    setF({ name: '', code: '', discountType: 'PERCENTAGE', discountValue: '', isLifetime: false, startDate: todayStr(), endDate: todayStr(), branches: [], departments: [], usageLimitType: 'UNLIMITED', maxUses: '', accountId: '', isActive: true, requiresPwdId: false })
     setOpen(true); setError('')
   }
   const openEdit = (v: Voucher) => {
@@ -688,12 +694,13 @@ function VouchersPanel({ canWrite }: { canWrite: boolean }) {
     setF({
       name: v.name, code: v.code, discountType: v.discountType, discountValue: String(v.discountValue),
       isLifetime: v.isLifetime, startDate: v.startDate || todayStr(), endDate: v.endDate || todayStr(),
-      branches: v.branches || [], usageLimitType: v.usageLimitType, maxUses: v.maxUses ? String(v.maxUses) : '',
+      branches: v.branches || [], departments: v.departments || [], usageLimitType: v.usageLimitType, maxUses: v.maxUses ? String(v.maxUses) : '',
       accountId: v.accountId || '', isActive: v.isActive, requiresPwdId: !!v.requiresPwdId,
     })
     setOpen(true); setError('')
   }
   const toggleBranch = (c: string) => setF(p => ({ ...p, branches: p.branches.includes(c) ? p.branches.filter(x => x !== c) : [...p.branches, c] }))
+  const toggleDept = (c: string) => setF(p => ({ ...p, departments: p.departments.includes(c) ? p.departments.filter(x => x !== c) : [...p.departments, c] }))
 
   const save = async () => {
     setSaving(true); setError('')
@@ -760,7 +767,7 @@ function VouchersPanel({ canWrite }: { canWrite: boolean }) {
                 </td>
                 <td className="px-3 py-2 text-right font-mono" style={{ color: 'var(--charcoal)' }}>{v.discountType === 'FIXED' ? peso(v.discountValue) : `${v.discountValue}%`}</td>
                 <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{v.isLifetime ? <span className="font-medium" style={{ color: 'var(--deep-teal)' }}>Lifetime</span> : `${v.startDate} → ${v.endDate}`}</td>
-                <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{v.branches.length ? v.branches.join(', ') : 'All'}</td>
+                <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{v.branches.length ? v.branches.join(', ') : 'All'}{v.departments.length > 0 && <span className="block text-[10px]" style={{ color: 'var(--teal)' }}>{v.departments.map(c => VOUCHER_DEPTS.find(d => d.code === c)?.label || c).join(', ')} only</span>}</td>
                 <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{LIMIT_LABEL[v.usageLimitType] || v.usageLimitType}{v.usageLimitType === 'MAX_USES' && v.maxUses ? ` (${v.maxUses})` : ''}</td>
                 <td className="px-3 py-2 text-right font-semibold" style={{ color: 'var(--charcoal)' }}>{v.uses}</td>
                 <td className="px-3 py-2 text-[11px]" style={{ color: 'var(--mid-gray)' }}>{v.accountLabel || '—'}</td>
@@ -822,6 +829,18 @@ function VouchersPanel({ canWrite }: { canWrite: boolean }) {
                     </label>
                   ))}
                 </div>
+              </div>
+
+              <div>
+                <label className="font-medium mb-1 block" style={{ color: 'var(--charcoal)' }}>Applies to departments <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>(none ticked = everything; ticked = only services under those departments are covered)</span></label>
+                <div className="flex flex-wrap gap-3">
+                  {VOUCHER_DEPTS.map(d => (
+                    <label key={d.code} className="flex items-center gap-1.5" style={{ color: 'var(--charcoal)' }}>
+                      <input type="checkbox" checked={f.departments.includes(d.code)} onChange={() => toggleDept(d.code)} /> {d.label}
+                    </label>
+                  ))}
+                </div>
+                {f.departments.length > 0 && <p className="text-[10px] mt-1" style={{ color: 'var(--mid-gray)' }}>Products and services outside {f.departments.map(c => VOUCHER_DEPTS.find(d => d.code === c)?.label || c).join(', ')} will be refused this voucher.</p>}
               </div>
 
               <div className="grid grid-cols-2 gap-3">

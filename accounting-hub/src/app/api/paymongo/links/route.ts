@@ -34,7 +34,7 @@ export async function GET(req: Request) {
     const gross = Math.round(Number(l.unitPrice) * l.quantity * 100) / 100
     let discount = 0
     if (l.voucherCode) {
-      const chk = await checkVoucher(prisma, { code: l.voucherCode, account: l.account, amountPhp: gross, atCreation: true })
+      const chk = await checkVoucher(prisma, { code: l.voucherCode, account: l.account, amountPhp: gross, department: l.serviceId ? l.department : null, atCreation: true })
       discount = chk.ok ? (chk.discount || 0) : 0
     }
     return {
@@ -85,7 +85,7 @@ export async function POST(req: Request) {
     const rawCode = String(b.voucherCode || '').trim()
     if (rawCode) {
       const gross = Math.round(unitPrice * quantity * 100) / 100
-      const chk = await checkVoucher(prisma, { code: rawCode, account, amountPhp: gross, atCreation: true })
+      const chk = await checkVoucher(prisma, { code: rawCode, account, amountPhp: gross, department: serviceId ? department : null, atCreation: true })
       if (!chk.ok) return NextResponse.json({ error: chk.reason || 'Invalid voucher' }, { status: 400 })
       if ((chk.netAmount ?? gross) <= 0) return NextResponse.json({ error: 'That voucher covers the full amount — nothing would be charged.' }, { status: 400 })
       voucherId = chk.voucher!.id; voucherCode = chk.voucher!.code

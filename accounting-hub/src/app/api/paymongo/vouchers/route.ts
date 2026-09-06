@@ -6,6 +6,7 @@ const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER', 'AHEA_ADMIN',
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 const ACCOUNTS = ['AHEA', 'AHGH', 'VERDANA', 'AHI']
 const LIMIT_TYPES = ['UNLIMITED', 'ONCE_PER_CUSTOMER', 'MAX_USES']
+const DEPARTMENTS = ['PT', 'MD', 'OT', 'SLP', 'SPED', 'PSYCHOLOGY', 'ORTHOSIS_PROSTHESIS']
 
 // GET — list vouchers (with redemption counts)
 export async function GET() {
@@ -26,7 +27,7 @@ export async function GET() {
     isLifetime: v.isLifetime,
     startDate: v.startDate ? v.startDate.toISOString().slice(0, 10) : null,
     endDate: v.endDate ? v.endDate.toISOString().slice(0, 10) : null,
-    branches: v.branches, usageLimitType: v.usageLimitType, maxUses: v.maxUses,
+    branches: v.branches, departments: v.departments, usageLimitType: v.usageLimitType, maxUses: v.maxUses,
     requiresPwdId: v.requiresPwdId,
     accountId: v.accountId, accountLabel: v.account ? `${v.account.accountNumber} ${v.account.accountTitle}` : null,
     isActive: v.isActive, uses: v._count.redemptions, createdAt: v.createdAt,
@@ -39,6 +40,9 @@ function normalise(b: any) {
   const discountValue = Number(b.discountValue) || 0
   const usageLimitType = LIMIT_TYPES.includes(b.usageLimitType) ? b.usageLimitType : 'UNLIMITED'
   const branches: string[] = Array.isArray(b.branches) ? b.branches.filter((x: string) => ACCOUNTS.includes(x)) : []
+  // Department scope — empty means everything; ticked means only services under
+  // those departments are covered by the discount.
+  const departments: string[] = Array.isArray(b.departments) ? b.departments.filter((x: string) => DEPARTMENTS.includes(x)) : []
   const isLifetime = !!b.isLifetime
   return {
     name: String(b.name || '').trim(),
@@ -48,6 +52,7 @@ function normalise(b: any) {
     startDate: !isLifetime && b.startDate ? new Date(b.startDate) : null,
     endDate: !isLifetime && b.endDate ? new Date(b.endDate) : null,
     branches,
+    departments,
     usageLimitType,
     maxUses: usageLimitType === 'MAX_USES' ? (parseInt(String(b.maxUses), 10) || null) : null,
     // Only honoured for a payer whose Patient CRM record holds a PWD/Senior ID + photo.
