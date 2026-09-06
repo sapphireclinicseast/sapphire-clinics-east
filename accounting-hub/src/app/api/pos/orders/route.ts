@@ -94,13 +94,18 @@ export async function GET(req: Request) {
   }
 
   if (search) {
-    const num = parseInt(search, 10)
+    // orderNumber is int4 — only match it when the whole term is a number that
+    // fits. Long all-digit terms (18–19-digit TikTok references) overflow int4
+    // and lose precision through parseInt; they still match referenceNumber as
+    // text below.
+    const num = /^\d+$/.test(search) ? Number(search) : NaN
+    const isInt4 = Number.isSafeInteger(num) && num <= 2147483647
     where.OR = [
       { patientName: { contains: search, mode: 'insensitive' } },
       { clinicianName: { contains: search, mode: 'insensitive' } },
       { referenceNumber: { contains: search, mode: 'insensitive' } },
       { items: { some: { name: { contains: search, mode: 'insensitive' } } } },
-      ...(!isNaN(num) ? [{ orderNumber: num }] : []),
+      ...(isInt4 ? [{ orderNumber: num }] : []),
     ]
   }
 
