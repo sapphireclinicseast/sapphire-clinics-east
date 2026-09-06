@@ -44,11 +44,21 @@ const round2 = (n: number) => Math.round(n * 100) / 100
 const manilaDay = (d: Date) => new Date(+d + 8 * 3600_000).toISOString().slice(0, 10)
 
 export async function POST(req: Request) {
-  const session = await auth()
-  if (!session?.user || !WRITE_ROLES.includes(session.user.role as string)) {
+  // Internal ops (settlement-link repairs) re-run the tagging server-side with
+  // the shared secret; everything else needs a signed-in write role.
+  const internalSecret = process.env.NEXTAUTH_SECRET
+  const isInternal = Boolean(internalSecret) && req.headers.get('x-internal-secret') === internalSecret
+  const session = isInternal ? null : await auth()
+  if (!isInternal && (!session?.user || !WRITE_ROLES.includes(session.user.role as string))) {
     return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
   }
   try {
+    // Who the resulting rows are attributed to: the signed-in user, or for an
+    // internal run the first admin account (SalesDayClearing.clearedById is
+    // required).
+    const actorId = session?.user?.id
+      ?? (await prisma.user.findFirst({ where: { role: 'ADMIN' }, orderBy: { createdAt: 'asc' }, select: { id: true } }))?.id
+    if (!actorId) return NextResponse.json({ error: 'No admin user to attribute the run to' }, { status: 500 })
     const { branch, dateFrom, dateTo, dryRun } = await req.json()
     if (!branch) return NextResponse.json({ error: 'branch is required' }, { status: 400 })
     if (!/^\d{4}-\d{2}-\d{2}$/.test(dateFrom || '') || !/^\d{4}-\d{2}-\d{2}$/.test(dateTo || '')) {
@@ -223,11 +233,11 @@ export async function POST(req: Request) {
             actualAmounts: amounts,
             remarks: remarks.length ? remarks : undefined,
             confirmed,
-            ...(willClear ? { isCleared: true, clearedAt: new Date(), clearedById: session.user.id as string } : {}),
+            ...(willClear ? { isCleared: true, clearedAt: new Date(), clearedById: actorId } : {}),
           },
           create: {
             date, branch,
-            clearedById: session.user.id as string,
+            clearedById: actorId,
             isCleared: willClear,
             actualAmounts: amounts,
             remarks: remarks.length ? remarks : undefined,
