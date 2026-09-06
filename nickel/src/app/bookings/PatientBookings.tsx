@@ -11,6 +11,7 @@ const DOC_LABEL: Record<string, string> = { INITIAL_EVAL: 'Initial Evaluation', 
 
 interface B {
   id: string; date: string; startTime: string; city: string; status: string; amount: number
+  checkoutUrl?: string | null
   providerName: string; profession: string; proposedDate: string | null; proposedStartTime: string | null
   rating: number | null; rated: boolean
   priceProgressReport: number | null; priceHEP: number | null
@@ -18,7 +19,7 @@ interface B {
 interface WalletTxn { id: string; amount: number; type: string; note: string | null; createdAt: string }
 interface Wallet { balance: number; txns: WalletTxn[] }
 interface Consult { id: string; date: string; startTime: string; status: string; mode: string; doctorName: string; clinic: string | null; referralIssued: boolean }
-const LEDGER_LABEL: Record<string, string> = { REFUND: 'Refund', REDEEM: 'Applied to booking', ADJUSTMENT: 'Adjustment' }
+const LEDGER_LABEL: Record<string, string> = { REFUND: 'Refund', REDEEM: 'Applied to booking', ADJUSTMENT: 'Adjustment', TOPUP: 'Top-up' }
 const PROF: Record<string, string> = { PT: 'Physical Therapist', OT: 'Occupational Therapist', SLP: 'Speech-Language Pathologist', SPED: 'Special Education', PSYCHOLOGY: 'Psychologist', MD: 'Medical Doctor', ORTHOSIS: 'Orthosis / Prosthesis' }
 const peso = (n: number) => `₱${Math.round(n).toLocaleString('en-PH')}`
 const fmtDate = (ymd: string) => new Date(ymd).toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric' })
@@ -37,6 +38,19 @@ export default function PatientBookings({ bookings, wallet, consults = [], docum
   const [stars, setStars] = useState(0)
   const [hover, setHover] = useState(0)
   const [reviewText, setReviewText] = useState('')
+  const [topupOpen, setTopupOpen] = useState(false)
+  const [topupAmt, setTopupAmt] = useState('500')
+
+  async function topUp() {
+    const amt = Math.floor(Number(topupAmt))
+    if (!(amt >= 100)) return
+    setBusy('topup')
+    try {
+      const r = await fetch('/api/patient/wallet/topup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ amount: amt }) })
+      const d = await r.json(); if (!r.ok || !d.checkoutUrl) throw new Error(d.error ?? 'Failed')
+      window.location.href = d.checkoutUrl
+    } catch { setBusy(null) }
+  }
 
   async function cancelBooking(id: string) {
     if (!confirm('Cancel this booking? Any amount paid is refunded to your Nickel wallet.')) return
@@ -83,9 +97,9 @@ export default function PatientBookings({ bookings, wallet, consults = [], docum
       <h1 className="mb-1 text-[24px] font-semibold text-[color:var(--ink)]">My bookings</h1>
       <p className="mb-4 text-[13px] text-[color:var(--slate)]">Your home therapy visits, messages with your therapist, and any rescheduling requests.</p>
 
-      {(wallet.balance > 0 || wallet.txns.length > 0) && (
+      {(
         <div className="card mb-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <div className="flex items-center gap-1.5 text-[12px] font-semibold text-[color:var(--muted)]">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7a2 2 0 0 1 2-2h13a1 1 0 0 1 1 1v1"/><path d="M3 7v10a2 2 0 0 0 2 2h14a1 1 0 0 0 1-1v-3"/><path d="M21 12v-2a1 1 0 0 0-1-1h-4a2 2 0 0 0 0 4h4a1 1 0 0 0 1-1Z"/></svg>
@@ -94,8 +108,25 @@ export default function PatientBookings({ bookings, wallet, consults = [], docum
               <div className="mt-1 text-[26px] font-bold text-[color:var(--steel)]">₱{Math.round(wallet.balance).toLocaleString('en-PH')}</div>
               <div className="text-[12px] text-[color:var(--slate)]">store credit — applied automatically at checkout</div>
             </div>
-            <a href="/book" className="btn-primary !px-4 !py-2 !text-[13px]">Book a visit</a>
+            <div className="flex gap-2">
+              <button onClick={() => setTopupOpen((s) => !s)} className="btn-outline !px-4 !py-2 !text-[13px]">Top up</button>
+              <a href="/book" className="btn-primary !px-4 !py-2 !text-[13px]">Book a visit</a>
+            </div>
           </div>
+          {topupOpen && (
+            <div className="mt-3 rounded-xl border border-[color:var(--line)] bg-[color:var(--mist)] p-3">
+              <div className="text-[12.5px] font-semibold text-[color:var(--ink)]">Add wallet credit</div>
+              <p className="mt-0.5 text-[12px] text-[color:var(--slate)]">Pay via PayMongo (card, GCash, Maya, and more). Credit is refundable and applied automatically at checkout.</p>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                {['300', '500', '1000', '2000'].map((v) => (
+                  <button key={v} onClick={() => setTopupAmt(v)} className={`rounded-lg border px-3 py-1.5 text-[13px] font-medium ${topupAmt === v ? 'border-[color:var(--steel)] bg-white text-[color:var(--steel)]' : 'border-[color:var(--line-2)] text-[color:var(--slate)]'}`}>₱{Number(v).toLocaleString('en-PH')}</button>
+                ))}
+                <input className="input !w-28" inputMode="numeric" value={topupAmt} onChange={(e) => setTopupAmt(e.target.value.replace(/[^0-9]/g, ''))} placeholder="Amount" />
+                <button onClick={topUp} disabled={busy === 'topup' || Number(topupAmt) < 100} className="btn-primary !px-4 !py-2 !text-[13px]">{busy === 'topup' ? 'Please wait…' : 'Top up →'}</button>
+              </div>
+              <p className="mt-1.5 text-[11.5px] text-[color:var(--muted)]">Minimum ₱100.</p>
+            </div>
+          )}
           {wallet.txns.length > 0 && (
             <>
               <button onClick={() => setShowLedger((s) => !s)} className="mt-3 text-[12.5px] font-semibold text-[color:var(--steel)] hover:underline">{showLedger ? 'Hide activity' : 'View activity'}</button>
@@ -172,6 +203,13 @@ export default function PatientBookings({ bookings, wallet, consults = [], docum
                   <div className="mt-1 text-[13px] font-bold text-[color:var(--steel-deep)]">{peso(b.amount)}</div>
                 </div>
               </div>
+
+              {b.status === 'PENDING' && b.checkoutUrl && (
+                <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                  <span className="min-w-0 flex-1 text-[12.5px] text-amber-900">This visit is reserved but <b>not yet confirmed</b> — complete payment to lock it in.</span>
+                  <a href={b.checkoutUrl} className="shrink-0 rounded-lg bg-[color:var(--steel)] px-4 py-2 text-[12.5px] font-semibold text-white hover:bg-[color:var(--steel-deep)]">Pay now →</a>
+                </div>
+              )}
 
               {b.proposedDate && b.proposedStartTime && (
                 <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3">

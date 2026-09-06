@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { verifyPaymongoSignature, hasWebhookSecret } from '@/lib/paymongo'
 import { computeSplit, normalizeMethod } from '@/lib/earnings'
+import { patientWalletMove } from '@/lib/wallet'
 import { notify } from '@/lib/notify'
 
 export async function POST(req: NextRequest) {
@@ -57,7 +58,17 @@ export async function POST(req: NextRequest) {
     if (!consult) {
       // Not a consult either — maybe a patient document request (Progress Report / HEP).
       const dr = await prisma.docRequest.findFirst({ where: { paymongoLinkId: linkId }, select: { id: true, paidAt: true, providerId: true, type: true, patient: { select: { firstName: true, lastName: true } } } })
-      if (!dr) return NextResponse.json({ ok: true, skipped: 'unknown link id' })
+      if (!dr) {
+        // Not a doc request either — maybe a wallet top-up.
+        const topup = await prisma.walletTopup.findFirst({ where: { paymongoLinkId: linkId }, select: { id: true, status: true, amount: true, patientId: true } })
+        if (!topup) return NextResponse.json({ ok: true, skipped: 'unknown link id' })
+        if (topup.status !== 'PAID') {
+          await prisma.walletTopup.update({ where: { id: topup.id }, data: { status: 'PAID', paidAt: new Date() } })
+          await patientWalletMove(prisma, topup.patientId, { amount: Number(topup.amount), type: 'TOPUP', note: 'Wallet top-up' })
+          await notify({ to: 'PATIENT', patientId: topup.patientId, type: 'WALLET_TOPUP', title: 'Wallet topped up', body: `₱${Number(topup.amount).toLocaleString('en-PH')} was added to your Nickel wallet.` })
+        }
+        return NextResponse.json({ ok: true })
+      }
       if (!dr.paidAt) {
         await prisma.docRequest.update({ where: { id: dr.id }, data: { paidAt: new Date(), status: 'REQUESTED' } })
         const label = dr.type === 'PROGRESS_REPORT' ? 'Progress Report' : 'Home Exercise Program'

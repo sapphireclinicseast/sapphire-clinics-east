@@ -36,6 +36,7 @@ export default function BookPage() {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [useWallet, setUseWallet] = useState(true)
+  const [reserved, setReserved] = useState<string | null>(null) // checkout URL after booking is held
   // PT doctor's-referral gate
   const [referralData, setReferralData] = useState<string | null>(null)
   const [referralName, setReferralName] = useState<string>('')
@@ -119,7 +120,8 @@ export default function BookPage() {
       // Fully covered by wallet credit → no PayMongo step.
       if (d.paid) { window.location.href = d.redirect ?? '/bookings'; return }
       if (!d.checkoutUrl) throw new Error('Could not start payment.')
-      window.location.href = d.checkoutUrl
+      // Don't auto-redirect — let them Pay now or Pay later.
+      setReserved(d.checkoutUrl); setBusy(false)
     } catch (e) { setErr(e instanceof Error ? e.message : 'Could not start payment.'); setBusy(false) }
   }
 
@@ -129,6 +131,22 @@ export default function BookPage() {
   const byDate: [string, Slot[]][] = provider
     ? Object.entries(provider.slots.reduce((acc, s) => { (acc[s.date] ??= []).push(s); return acc }, {} as Record<string, Slot[]>))
     : []
+
+  if (reserved) return (
+    <div className="animate-fade-up mx-auto max-w-md">
+      <div className="card text-center">
+        <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-[color:var(--mist-2)] text-[color:var(--steel)]">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
+        </div>
+        <h1 className="text-[20px] font-semibold text-[color:var(--ink)]">Your visit is reserved</h1>
+        <p className="mx-auto mt-2 max-w-sm text-[13.5px] text-[color:var(--slate)]">Complete payment to confirm it with {provider?.name}. Not ready yet? You can pay later — we&apos;ll hold it under <b>My bookings</b> as “Awaiting payment.”</p>
+        <div className="mt-5 flex flex-col gap-2">
+          <a href={reserved} className="btn-primary w-full">Pay now →</a>
+          <a href="/bookings" className="btn-outline w-full">Pay later</a>
+        </div>
+      </div>
+    </div>
+  )
 
   return (
     <div className="animate-fade-up mx-auto max-w-2xl">

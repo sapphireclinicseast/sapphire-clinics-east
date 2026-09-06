@@ -262,8 +262,25 @@ model Patient {
   consults     Consult[]
   documents    SessionDocument[]
   docRequests  DocRequest[]
+  walletTopups WalletTopup[]
 
   @@index([city])
+}
+
+// A patient adding refundable store credit to their Nickel wallet via PayMongo.
+model WalletTopup {
+  id             String    @id @default(cuid())
+  patientId      String
+  patient        Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  amount         Decimal   // PHP added on success
+  status         String    @default("PENDING") // PENDING | PAID
+  paymongoLinkId String?
+  checkoutUrl    String?
+  paidAt         DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@index([patientId])
+  @@index([paymongoLinkId])
 }
 
 // ── Booking ──────────────────────────────────────────────────────────────────

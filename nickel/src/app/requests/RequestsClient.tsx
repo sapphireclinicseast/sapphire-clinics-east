@@ -61,6 +61,17 @@ export default function RequestsClient({ loggedIn, walletBalance, defaultCity }:
     try { await postRequest() } catch (e) { setErr(e instanceof Error ? e.message : 'Failed') } finally { setBusy(false) }
   }
 
+  // Returning patient: sign in just to view their requests & offers (no posting).
+  const [viewLogin, setViewLogin] = useState(false)
+  async function signInToView(e: React.FormEvent) {
+    e.preventDefault(); setErr(null); setBusy(true)
+    try {
+      const r = await fetch('/api/patient/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: af.email, password: af.password }) })
+      const d = await r.json(); if (!r.ok) throw new Error(d.error ?? 'Could not sign in')
+      setMe(true); setViewLogin(false); await load()
+    } catch (e) { setErr(e instanceof Error ? e.message : 'Failed') } finally { setBusy(false) }
+  }
+
   async function doAuth(e: React.FormEvent) {
     e.preventDefault(); setErr(null)
     if (amode === 'signup') { if (af.password.length < 8) return setErr('Password must be at least 8 characters.'); if (af.password !== af.confirm) return setErr('Passwords do not match.') }
@@ -129,6 +140,23 @@ export default function RequestsClient({ loggedIn, walletBalance, defaultCity }:
       </div>
 
       {err && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{err}</div>}
+
+      {/* Returning patient — sign in to see existing requests & offers */}
+      {!me && (
+        <div className="card">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="text-[13.5px] text-[color:var(--slate)]">Already posted a request? <b className="text-[color:var(--ink)]">Sign in</b> to see your requests and the therapists who reached out.</div>
+            <button type="button" onClick={() => setViewLogin((s) => !s)} className="btn-outline shrink-0 !px-4 !py-2 !text-[13px]">{viewLogin ? 'Close' : 'Sign in'}</button>
+          </div>
+          {viewLogin && (
+            <form onSubmit={signInToView} className="mt-3 space-y-2">
+              <input className="input" type="email" placeholder="Email" required value={af.email} onChange={(e) => setA('email', e.target.value)} />
+              <input className="input" type="password" placeholder="Password" required value={af.password} onChange={(e) => setA('password', e.target.value)} />
+              <button className="btn-primary w-full" disabled={busy}>{busy ? 'Signing in…' : 'Sign in & see my requests'}</button>
+            </form>
+          )}
+        </div>
+      )}
 
       {/* Create */}
       <form onSubmit={create} className="card space-y-3">

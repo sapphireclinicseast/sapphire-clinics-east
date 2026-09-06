@@ -36,6 +36,7 @@ export default async function BookingsPage() {
     city: b.city,
     status: b.status,
     amount: Number(b.amount),
+    checkoutUrl: b.status === 'PENDING' && !b.paidAt ? b.checkoutUrl : null,
     providerName: `${b.provider.firstName} ${b.provider.lastName}${b.provider.postNominals ? `, ${b.provider.postNominals}` : ''}`,
     profession: b.provider.profession,
     proposedDate: b.proposedDate ? b.proposedDate.toISOString().slice(0, 10) : null,
