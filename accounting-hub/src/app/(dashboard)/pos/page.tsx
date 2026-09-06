@@ -11,7 +11,7 @@ import {
   Loader2, AlertCircle, ScanLine, UserPlus,
   Pencil, PlusCircle, ToggleLeft, ToggleRight, Eye, CheckCircle, Gift,
   Globe, Truck, Phone, MapPin, Package, Clock, Upload, DollarSign, Wand2, MonitorSmartphone,
-  CalendarCheck,
+  CalendarCheck, Ticket,
 } from 'lucide-react'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { normalizeSI } from '@/lib/sales-invoice'
@@ -575,7 +575,7 @@ export default function POSPage() {
   // ── Top-level tab: Services | Orders | Products | Sales Summary
   const [mainTab, setMainTab] = useState<'services' | 'orders' | 'products' | 'sales'>('services')
   // ── Services sub-tab
-  const [serviceTab, setServiceTab] = useState<'cashier' | 'wallet' | 'discounts' | 'payment-modes'>('cashier')
+  const [serviceTab, setServiceTab] = useState<'cashier' | 'wallet' | 'discounts' | 'payment-modes' | 'vouchers'>('cashier')
   const [loading, setLoading] = useState(true)
   // ── Deep link (?tab=orders&focus=<orderId>): a SALE/ORDER hit in the global
   // search lands on the Orders tab with that order's detail modal open. The
@@ -684,8 +684,8 @@ function ServicesSection({
 }: {
   branch: string
   canSelectBranch: boolean
-  serviceTab: 'cashier' | 'wallet' | 'discounts' | 'payment-modes'
-  setServiceTab: (t: 'cashier' | 'wallet' | 'discounts' | 'payment-modes') => void
+  serviceTab: 'cashier' | 'wallet' | 'discounts' | 'payment-modes' | 'vouchers'
+  setServiceTab: (t: 'cashier' | 'wallet' | 'discounts' | 'payment-modes' | 'vouchers') => void
   session: { user?: Record<string, unknown> } | null
 }) {
   const subTabs = [
@@ -693,6 +693,7 @@ function ServicesSection({
     { key: 'wallet' as const, label: 'Digital Wallet' },
     { key: 'discounts' as const, label: 'Discount Settings' },
     { key: 'payment-modes' as const, label: 'Payment Mode Settings' },
+    { key: 'vouchers' as const, label: 'Vouchers' },
   ]
 
   return (
@@ -725,6 +726,9 @@ function ServicesSection({
       )}
       {serviceTab === 'payment-modes' && (
         <PaymentModeSettingsPanel />
+      )}
+      {serviceTab === 'vouchers' && (
+        <VouchersPanel />
       )}
     </div>
   )
@@ -990,6 +994,24 @@ function OrderFormModal({
   const [freeformDiscountAmt, setFreeformDiscountAmt] = useState(0)
   const [freeformDiscountType, setFreeformDiscountType] = useState<'PERCENTAGE' | 'FIXED'>('FIXED')
   const [freeformDiscountRemarks, setFreeformDiscountRemarks] = useState('')
+  // Voucher redemption — scan/type a code, validate server-side, apply its
+  // discount. A voucher replaces the other discounts while applied.
+  const [voucherCode, setVoucherCode] = useState('')
+  const [voucher, setVoucher] = useState<{ id: string; code: string; discountKind: string; value: number; reason: string } | null>(null)
+  const [voucherError, setVoucherError] = useState('')
+  const [voucherChecking, setVoucherChecking] = useState(false)
+  const applyVoucher = async () => {
+    const code = voucherCode.trim().toUpperCase()
+    if (!code) return
+    setVoucherChecking(true); setVoucherError('')
+    try {
+      const r = await fetch(`/api/pos/vouchers/validate?code=${encodeURIComponent(code)}`)
+      const d = await r.json()
+      if (!r.ok) { setVoucherError(d.error || 'Voucher not valid'); setVoucher(null); return }
+      setVoucher(d); setVoucherCode('')
+    } catch { setVoucherError('Unable to validate the voucher') }
+    finally { setVoucherChecking(false) }
+  }
   const [discountSettings, setDiscountSettings] = useState<DiscountSetting[]>([])
   const [referrers, setReferrers] = useState<Referrer[]>([])
   const [referrerId, setReferrerId] = useState('')
@@ -1171,7 +1193,17 @@ function OrderFormModal({
   let discountLabel = ''
   let pwdNote = ''
 
-  if (pwdDiscount) {
+  if (voucher) {
+    // Voucher wins over the other discounts while applied. FREE covers the
+    // entire service; FIXED can never exceed the subtotal.
+    discountType = 'CUSTOM'
+    discountLabel = voucher.discountKind === 'FREE'
+      ? `Voucher ${voucher.code} (Free Service)`
+      : `Voucher ${voucher.code} (${voucher.discountKind === 'PERCENTAGE' ? `${voucher.value}%` : formatCurrency(voucher.value)})`
+    discountAmount = voucher.discountKind === 'FREE' ? subtotal
+      : voucher.discountKind === 'PERCENTAGE' ? subtotal * (voucher.value / 100)
+      : Math.min(voucher.value, subtotal)
+  } else if (pwdDiscount) {
     discountType = 'PWD_SC'
     discountLabel = 'PWD/Senior Citizen (20%)'
     // Apply 20% only to items that allow PWD discount (skip noPwdDiscount items)
@@ -1635,6 +1667,7 @@ function OrderFormModal({
         referenceNumber: referenceNumber.trim() || null,
         notes: orderNotes.trim() || null,
         unpaid: asUnpaid,
+        voucherId: voucher?.id || null,
       }
       const res = await fetch('/api/pos/orders', {
         method: 'POST',
@@ -1990,11 +2023,34 @@ function OrderFormModal({
           {/* Discount Section */}
           <div className="rounded-xl border p-3 space-y-3" style={{ borderColor: 'var(--light-gray)' }}>
             <h4 className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>Discounts</h4>
+            {/* Voucher — scan the barcode into the field (scanners type + Enter) or enter the code. */}
+            {voucher ? (
+              <div className="flex items-center justify-between text-sm p-2 rounded-xl" style={{ background: '#f0fdf4', border: '1px solid #bbf7d0' }}>
+                <span style={{ color: '#166534' }}>
+                  <Ticket size={13} className="inline mr-1" /> <span className="font-mono font-semibold">{voucher.code}</span> — {voucher.discountKind === 'FREE' ? 'entire service FREE' : voucher.discountKind === 'PERCENTAGE' ? `${voucher.value}% off` : `${formatCurrency(voucher.value)} off`}
+                  <span className="block text-[10px]" style={{ color: 'var(--mid-gray)' }}>{voucher.reason} · replaces other discounts · marked used on checkout</span>
+                </span>
+                <button type="button" onClick={() => setVoucher(null)} className="p-1 rounded hover:bg-red-50" title="Remove voucher"><X size={14} className="text-red-500" /></button>
+              </div>
+            ) : (
+              <div>
+                <div className="flex gap-2">
+                  <input value={voucherCode} onChange={e => { setVoucherCode(e.target.value); setVoucherError('') }}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); applyVoucher() } }}
+                    placeholder="Voucher code — scan barcode or type (e.g. VC-XXXXXXXX)"
+                    className="flex-1 px-3 py-2 rounded-xl border text-sm outline-none font-mono" style={{ borderColor: 'var(--light-gray)' }} />
+                  <button type="button" onClick={applyVoucher} disabled={voucherChecking || !voucherCode.trim()}
+                    className="px-3 py-2 rounded-xl text-xs font-semibold border disabled:opacity-50" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+                    {voucherChecking ? <Loader2 size={13} className="animate-spin" /> : 'Apply voucher'}
+                  </button>
+                </div>
+                {voucherError && <p className="text-xs mt-1" style={{ color: '#dc2626' }}>{voucherError}</p>}
+              </div>
+            )}
             <div className="flex items-center gap-3">
-              <label className={`flex items-center gap-2 text-sm ${pwdBlocked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`} style={{ color: 'var(--charcoal)' }}>
-                <input type="checkbox" checked={pwdDiscount && !pwdBlocked}
+              <label className={`flex items-center gap-2 text-sm ${pwdBlocked || voucher ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`} style={{ color: 'var(--charcoal)' }}>
+                <input type="checkbox" checked={pwdDiscount && !pwdBlocked && !voucher} disabled={pwdBlocked || !!voucher}
                   onChange={e => { if (!pwdBlocked) { setPwdDiscount(e.target.checked); if (e.target.checked) setCustomDiscountId('') } }}
-                  disabled={pwdBlocked}
                   className="rounded" />
                 PWD / Senior Citizen (20%)
               </label>
@@ -2012,7 +2068,7 @@ function OrderFormModal({
             {pwdNote && (
               <p className="text-xs px-2 py-1 rounded-lg" style={{ background: '#fef3c7', color: '#92400e' }}>{pwdNote}</p>
             )}
-            {!pwdDiscount && (
+            {!pwdDiscount && !voucher && (
               <div className="space-y-2">
                 <select value={customDiscountId} onChange={e => {
                   const newId = e.target.value
@@ -8971,12 +9027,15 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
                     else if (hasSales) { bg = '#fef9c3'; color = '#92400e' }
                     if (isToday) border = '1.5px solid var(--teal)'
                     return (
-                      <div key={d} className="rounded-lg flex flex-col items-center justify-center py-1.5 text-xs font-medium"
-                        style={{ background: bg, color, border, minHeight: '36px' }}>
+                      <button key={d} type="button"
+                        className="rounded-lg flex flex-col items-center justify-center py-1.5 text-xs font-medium"
+                        style={{ background: bg, color, border, minHeight: '36px', cursor: 'pointer' }}
+                        title={`Open ${dateStr} — see the day's per-method amounts and what was matched`}
+                        onClick={() => { setDateFrom(dateStr); setDateTo(dateStr); window.scrollTo({ top: 0, behavior: 'smooth' }) }}>
                         <span>{d}</span>
                         {isCleared && <span style={{ fontSize: '9px', lineHeight: 1 }}>✓</span>}
                         {!isCleared && hasSales && <span style={{ fontSize: '9px', lineHeight: 1 }}>•</span>}
-                      </div>
+                      </button>
                     )
                   })}
                 </div>
