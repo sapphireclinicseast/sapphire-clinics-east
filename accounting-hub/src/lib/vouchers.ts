@@ -24,10 +24,22 @@ const r2 = (n: number) => Math.round(n * 100) / 100
  * Returns the computed discount so callers charge a consistent amount. Discount is capped
  * at the gross amount so a fixed voucher larger than the price can never make it negative.
  */
+const DEPT_LABEL: Record<string, string> = {
+  PT: 'PT', MD: 'MD', OT: 'OT', SLP: 'SLP', SPED: 'SPED',
+  PSYCHOLOGY: 'Psychology', ORTHOSIS_PROSTHESIS: 'Orthosis & Prosthesis',
+}
+
 export async function checkVoucher(
   tx: Tx,
   opts: {
     code: string; account: string; amountPhp: number; customerEmail?: string | null
+    /**
+     * The item's service department, for a department-scoped voucher. Pass the
+     * service's department for services and null for products (a scoped voucher
+     * covers services only). Omit (undefined) when there is no item context —
+     * a scoped voucher is then refused rather than silently applied to anything.
+     */
+    department?: string | null
     // Identify the payer for a PWD/Senior-gated voucher (matched against Patient CRM).
     customerFirstName?: string | null; customerLastName?: string | null; customerPhone?: string | null
     /**
@@ -48,6 +60,19 @@ export async function checkVoucher(
   // Branch scope — empty list means all branches.
   if (v.branches.length > 0 && !v.branches.includes(opts.account)) {
     return { ok: false, reason: 'This voucher is not valid for this branch' }
+  }
+
+  // Department scope — empty list means everything. When set, only services
+  // under a ticked department qualify: products (department null) and services
+  // in other departments are refused. A service whose department is ALL counts
+  // as every department. No item context (undefined) is refused too, so a
+  // scoped voucher never applies through a path that can't tell what's bought.
+  if (v.departments.length > 0) {
+    const dept = (opts.department || '').toUpperCase()
+    if (dept !== 'ALL' && !v.departments.includes(dept)) {
+      const list = v.departments.map(d => DEPT_LABEL[d] || d).join(', ')
+      return { ok: false, reason: `This voucher only applies to ${list} services` }
+    }
   }
 
   // Effectivity — lifetime vouchers skip the window entirely. Compare on date only so a
