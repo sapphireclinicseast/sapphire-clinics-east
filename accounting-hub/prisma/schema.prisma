@@ -1121,6 +1121,40 @@ model OrderPayment {
   @@index([paymentModeId])
 }
 
+// ── Vouchers ─────────────────────────────────────────────
+// A batch of discount vouchers generated at once (POS → Services → Vouchers).
+// Each batch fixes the discount (percentage, fixed peso amount, or the entire
+// service free), a validity date, and the reason it was created; the batch
+// then owns N individually-coded vouchers. Creation is restricted to
+// ADMIN / ACCOUNTANT / BOOKKEEPER; front desk can view and redeem at checkout.
+model ServiceVoucherBatch {
+  id           String    @id @default(cuid())
+  reason       String // why the vouchers were created (marketing push, apology, raffle …)
+  discountKind String // PERCENTAGE | FIXED | FREE (entire service free)
+  value        Decimal   @default(0) // % for PERCENTAGE, ₱ for FIXED, unused for FREE
+  validUntil   DateTime // vouchers expire at end of this date
+  createdById  String?
+  createdAt    DateTime  @default(now())
+  vouchers     ServiceVoucher[]
+}
+
+// One voucher: a unique CODE128-scannable code. Redeemed (status USED) when an
+// order applies it; voiding pulls it from circulation without deleting the record.
+model ServiceVoucher {
+  id          String       @id @default(cuid())
+  code        String       @unique // e.g. VC-7K3M9XPQ — printed under the barcode
+  batchId     String
+  batch       ServiceVoucherBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  status      String       @default("ACTIVE") // ACTIVE | USED | VOIDED
+  usedAt      DateTime?
+  usedOrderId String? // POS order that redeemed it
+  usedById    String?
+  createdAt   DateTime     @default(now())
+
+  @@index([batchId])
+  @@index([status])
+}
+
 model DiscountSetting {
   id          String   @id @default(cuid())
   name        String

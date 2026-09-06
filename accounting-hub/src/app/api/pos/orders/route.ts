@@ -164,6 +164,7 @@ export async function POST(req: Request) {
       soldTo,
       isBusiness, businessName, businessTin, issuedSalesInvoice,
       buyerIsPatient, buyerName, buyerIsBusiness, buyerBusinessName, buyerTin, buyerAddress,
+      voucherId,
     } = body
 
     if (!orderType || !branch || !items?.length) {
@@ -235,7 +236,22 @@ export async function POST(req: Request) {
       }
     }
 
-    const order = await prisma.order.create({
+    // Claim the voucher BEFORE creating the order — the status guard makes the
+    // claim atomic, so the same code scanned at two counters can only redeem
+    // once. Released again if order creation fails below.
+    if (voucherId) {
+      const claim = await prisma.serviceVoucher.updateMany({
+        where: { id: String(voucherId), status: 'ACTIVE', batch: { validUntil: { gte: new Date() } } },
+        data: { status: 'USED', usedAt: new Date(), usedById: session.user.id },
+      })
+      if (claim.count === 0) {
+        return NextResponse.json({ error: 'This voucher is no longer valid — it may have just been redeemed, voided, or expired.' }, { status: 400 })
+      }
+    }
+
+    let order
+    try {
+      order = await prisma.order.create({
       data: {
         buyerIsPatient: !!buyerIsPatient,
         buyerName: buyerName ? String(buyerName).trim() : null,
@@ -318,6 +334,17 @@ export async function POST(req: Request) {
         referrer: true,
       },
     })
+    } catch (e) {
+      // Order creation failed after the voucher was claimed — put it back.
+      if (voucherId) {
+        await prisma.serviceVoucher.updateMany({ where: { id: String(voucherId), status: 'USED', usedOrderId: null }, data: { status: 'ACTIVE', usedAt: null, usedById: null } }).catch(() => {})
+      }
+      throw e
+    }
+    // Tie the redeemed voucher to the order it paid for.
+    if (voucherId) {
+      await prisma.serviceVoucher.updateMany({ where: { id: String(voucherId), status: 'USED', usedOrderId: null }, data: { usedOrderId: order.id } }).catch(() => {})
+    }
 
     // Receivable sale → create the AR → Others entry the collections live on.
     if (hasReceivable) {

@@ -9946,3 +9946,205 @@ function RecordUnpaidPaymentModal({ order, onClose, onSaved }: { order: Order; o
     </div>
   )
 }
+
+/* ══════════════════════════════════════════════════════════════
+   VOUCHERS PANEL — POS → Services → Vouchers
+   Batches of discount vouchers: unique CODE128 codes, a validity
+   date, and a discount (% / ₱ / entire service free), generated N
+   at a time with a reason. Creation and voiding are restricted to
+   ADMIN / ACCOUNTANT / BOOKKEEPER (the API enforces it and reports
+   canWrite); front desk views, prints, and redeems at checkout.
+   ══════════════════════════════════════════════════════════════ */
+
+interface VoucherRow { id: string; code: string; status: string; usedAt: string | null; usedOrderId: string | null }
+interface VoucherBatchRow {
+  id: string; reason: string; discountKind: string; value: number; validUntil: string; expired: boolean; createdAt: string
+  counts: { total: number; active: number; used: number; voided: number }
+  vouchers: VoucherRow[]
+}
+
+function voucherDiscountLabel(b: { discountKind: string; value: number }): string {
+  if (b.discountKind === 'FREE') return 'Entire service FREE'
+  if (b.discountKind === 'PERCENTAGE') return `${b.value}% off`
+  return `${formatCurrency(b.value)} off`
+}
+
+function VouchersPanel() {
+  const [batches, setBatches] = useState<VoucherBatchRow[]>([])
+  const [canWrite, setCanWrite] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [expanded, setExpanded] = useState<string | null>(null)
+  const [showGen, setShowGen] = useState(false)
+  const [gen, setGen] = useState({ count: '10', discountKind: 'PERCENTAGE', value: '', validUntil: '', reason: '' })
+  const [genBusy, setGenBusy] = useState(false)
+  const [genError, setGenError] = useState('')
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const r = await fetch('/api/pos/vouchers')
+      if (r.ok) { const d = await r.json(); setBatches(d.batches || []); setCanWrite(!!d.canWrite) }
+    } catch { /* keep */ } finally { setLoading(false) }
+  }, [])
+  useEffect(() => { load() }, [load])
+
+  const generate = async () => {
+    setGenError('')
+    const count = Math.round(Number(gen.count) || 0)
+    if (!(count > 0)) { setGenError('Enter how many vouchers to generate.'); return }
+    if (gen.discountKind !== 'FREE' && !(Number(gen.value) > 0)) { setGenError(gen.discountKind === 'PERCENTAGE' ? 'Enter the discount percentage.' : 'Enter the discount amount.'); return }
+    if (!gen.validUntil) { setGenError('Pick the validity date.'); return }
+    if (!gen.reason.trim()) { setGenError('Enter the reason for creating these vouchers.'); return }
+    setGenBusy(true)
+    try {
+      const r = await fetch('/api/pos/vouchers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+        count, discountKind: gen.discountKind, value: Number(gen.value) || 0, validUntil: gen.validUntil, reason: gen.reason.trim(),
+      }) })
+      const d = await r.json()
+      if (!r.ok) { setGenError(d.error || 'Failed to generate vouchers'); return }
+      setShowGen(false); setGen({ count: '10', discountKind: 'PERCENTAGE', value: '', validUntil: '', reason: '' })
+      load()
+    } finally { setGenBusy(false) }
+  }
+
+  const voidVoucher = async (v: VoucherRow) => {
+    if (!confirm(`Void voucher ${v.code}? It can no longer be redeemed.`)) return
+    const r = await fetch('/api/pos/vouchers', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ voucherId: v.id }) })
+    if (!r.ok) alert((await r.json()).error || 'Failed')
+    load()
+  }
+  const voidBatch = async (b: VoucherBatchRow) => {
+    if (!confirm(`Void all ${b.counts.active} unused voucher(s) in this batch? Redeemed ones keep their history.`)) return
+    const r = await fetch('/api/pos/vouchers', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ batchId: b.id }) })
+    if (!r.ok) alert((await r.json()).error || 'Failed')
+    load()
+  }
+
+  // Print a sheet of voucher slips (active only by default) — barcode per voucher.
+  const printVouchers = (b: VoucherBatchRow, only?: VoucherRow) => {
+    const list = only ? [only] : b.vouchers.filter(v => v.status === 'ACTIVE')
+    if (!list.length) { alert('No active vouchers to print in this batch.'); return }
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const JsBarcodeLib = require('jsbarcode')
+    const slips = list.map(v => {
+      const canvas = document.createElement('canvas')
+      try {
+        JsBarcodeLib(canvas, v.code, { format: 'CODE128', width: 2, height: 48, displayValue: true, fontSize: 13, margin: 6, font: 'monospace' })
+      } catch { /* invalid */ }
+      return `<div style="border:1px dashed #999;border-radius:10px;padding:10px 14px;width:270px;text-align:center;page-break-inside:avoid">
+        <div style="font-weight:700;font-size:13px;letter-spacing:.4px">AURA HEALTH — SERVICE VOUCHER</div>
+        <div style="font-size:15px;font-weight:700;margin:4px 0">${voucherDiscountLabel(b)}</div>
+        <img src="${canvas.toDataURL('image/png')}" style="max-width:100%" />
+        <div style="font-size:11px;color:#444">Valid until ${String(b.validUntil).slice(0, 10)} · one-time use</div>
+      </div>`
+    }).join('')
+    const win = window.open('', '_blank')
+    if (!win) return
+    win.document.write(`<html><head><title>Vouchers</title></head>
+      <body style="font-family:Arial,sans-serif;display:flex;flex-wrap:wrap;gap:10px;padding:16px">${slips}
+      <script>window.onload=function(){window.print()}<\/script></body></html>`)
+    win.document.close()
+  }
+
+  const statusChip = (v: VoucherRow) => {
+    const cfg = v.status === 'USED' ? { bg: '#dbeafe', color: '#1e40af', label: 'Used' }
+      : v.status === 'VOIDED' ? { bg: '#fee2e2', color: '#b91c1c', label: 'Voided' }
+      : { bg: '#dcfce7', color: '#166534', label: 'Active' }
+    return <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: cfg.bg, color: cfg.color }}>{cfg.label}</span>
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+          Vouchers are redeemed at checkout — scan the barcode (or type the code) in the New Payment discount section. Each code works once.
+          {!canWrite && ' Viewing only — generating vouchers is limited to Admin, Accountant, and Bookkeeper accounts.'}
+        </p>
+        {canWrite && (
+          <button onClick={() => setShowGen(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium text-white shrink-0" style={{ background: 'var(--teal)' }}>
+            <Ticket size={15} /> Generate Vouchers
+          </button>
+        )}
+      </div>
+
+      {showGen && (
+        <div className="rounded-2xl border p-4 space-y-3" style={{ borderColor: '#93c5fd', background: '#eff6ff' }}>
+          <p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>Generate a voucher batch</p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div><label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>How many vouchers</label>
+              <input value={gen.count} onChange={e => setGen(p => ({ ...p, count: e.target.value }))} inputMode="numeric" className="w-full px-3 py-2 rounded-xl border text-sm font-mono" style={{ borderColor: 'var(--light-gray)' }} /></div>
+            <div><label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Discount</label>
+              <select value={gen.discountKind} onChange={e => setGen(p => ({ ...p, discountKind: e.target.value }))} className="w-full px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }}>
+                <option value="PERCENTAGE">Percentage (%)</option>
+                <option value="FIXED">Fixed amount (₱)</option>
+                <option value="FREE">Entire service free</option>
+              </select></div>
+            {gen.discountKind !== 'FREE' && (
+              <div><label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>{gen.discountKind === 'PERCENTAGE' ? 'Percent off' : 'Amount off (₱)'}</label>
+                <input value={gen.value} onChange={e => setGen(p => ({ ...p, value: e.target.value }))} inputMode="decimal" className="w-full px-3 py-2 rounded-xl border text-sm font-mono" style={{ borderColor: 'var(--light-gray)' }} /></div>
+            )}
+            <div><label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Valid until</label>
+              <input type="date" value={gen.validUntil} onChange={e => setGen(p => ({ ...p, validUntil: e.target.value }))} className="w-full px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }} /></div>
+            <div className="col-span-2 sm:col-span-4"><label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Reason for creating these vouchers *</label>
+              <input value={gen.reason} onChange={e => setGen(p => ({ ...p, reason: e.target.value }))} placeholder="e.g. September open-house raffle prizes" className="w-full px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }} /></div>
+          </div>
+          {genError && <p className="text-xs" style={{ color: '#dc2626' }}>{genError}</p>}
+          <div className="flex gap-2">
+            <button onClick={generate} disabled={genBusy} className="px-4 py-2 rounded-xl text-xs font-semibold text-white disabled:opacity-50 flex items-center gap-1.5" style={{ background: 'var(--teal)' }}>{genBusy && <Loader2 size={13} className="animate-spin" />} Generate</button>
+            <button onClick={() => setShowGen(false)} className="px-4 py-2 rounded-xl text-xs font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="flex items-center justify-center py-12"><Loader2 className="animate-spin" size={20} style={{ color: 'var(--teal)' }} /></div>
+      ) : batches.length === 0 ? (
+        <div className="text-center py-12 text-sm rounded-2xl border bg-white" style={{ color: 'var(--mid-gray)', borderColor: 'var(--light-gray)' }}>No vouchers yet.{canWrite ? ' Generate the first batch above.' : ''}</div>
+      ) : batches.map(b => (
+        <div key={b.id} className="rounded-2xl border bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+          <div className="px-4 py-3 flex flex-wrap items-center gap-3 justify-between">
+            <div>
+              <p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>
+                <Ticket size={14} className="inline mr-1" style={{ color: 'var(--teal)' }} /> {voucherDiscountLabel(b)}
+                {b.expired && <span className="ml-2 px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#fee2e2', color: '#b91c1c' }}>Expired</span>}
+              </p>
+              <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>{b.reason} · valid until {String(b.validUntil).slice(0, 10)} · created {String(b.createdAt).slice(0, 10)}</p>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+                {b.counts.total} voucher{b.counts.total === 1 ? '' : 's'} — <span style={{ color: '#166534' }}>{b.counts.active} active</span> · <span style={{ color: '#1e40af' }}>{b.counts.used} used</span> · <span style={{ color: '#b91c1c' }}>{b.counts.voided} voided</span>
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={() => printVouchers(b)} className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}><Printer size={13} /> Print active</button>
+              {canWrite && b.counts.active > 0 && (
+                <button onClick={() => voidBatch(b)} className="px-3 py-1.5 rounded-xl text-xs font-semibold border" style={{ borderColor: '#fecaca', color: '#b91c1c' }}>Void remaining</button>
+              )}
+              <button onClick={() => setExpanded(expanded === b.id ? null : b.id)} className="px-3 py-1.5 rounded-xl text-xs font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                {expanded === b.id ? 'Hide codes' : 'Show codes'}
+              </button>
+            </div>
+          </div>
+          {expanded === b.id && (
+            <div className="border-t overflow-x-auto" style={{ borderColor: 'var(--light-gray)' }}>
+              <table className="w-full text-xs">
+                <thead><tr className="text-left" style={{ color: 'var(--mid-gray)' }}>{['Code', 'Status', 'Used on', ''].map(h => <th key={h} className="px-4 py-2 font-semibold">{h}</th>)}</tr></thead>
+                <tbody>
+                  {b.vouchers.map(v => (
+                    <tr key={v.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                      <td className="px-4 py-1.5 font-mono font-semibold" style={{ color: v.status === 'VOIDED' ? '#b91c1c' : 'var(--charcoal)' }}>{v.code}</td>
+                      <td className="px-4 py-1.5">{statusChip(v)}</td>
+                      <td className="px-4 py-1.5" style={{ color: 'var(--mid-gray)' }}>{v.usedAt ? String(v.usedAt).slice(0, 10) : '—'}</td>
+                      <td className="px-4 py-1.5 text-right whitespace-nowrap">
+                        {v.status === 'ACTIVE' && <button onClick={() => printVouchers(b, v)} className="p-1 rounded hover:bg-gray-100" title="Print this voucher"><Printer size={13} style={{ color: 'var(--teal)' }} /></button>}
+                        {canWrite && v.status === 'ACTIVE' && <button onClick={() => voidVoucher(v)} className="p-1 rounded hover:bg-red-50" title="Void this voucher"><Ban size={13} className="text-red-400" /></button>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}

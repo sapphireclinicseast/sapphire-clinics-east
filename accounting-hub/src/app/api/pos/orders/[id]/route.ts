@@ -146,6 +146,12 @@ export async function PUT(
 
       // When voiding or returning, reverse ALL wallet changes
       if (body.action === 'void' || isReturn) {
+        // A voucher redeemed by this order goes back into circulation (it may
+        // have expired in the meantime — validation at re-use handles that).
+        await prisma.serviceVoucher.updateMany({
+          where: { usedOrderId: id, status: 'USED' },
+          data: { status: 'ACTIVE', usedAt: null, usedOrderId: null, usedById: null },
+        }).catch(() => {})
         for (const p of updated.payments) {
           if (!p.walletId) continue
           // Allow PACKAGE through even at amount=0 — session still needs to be restored

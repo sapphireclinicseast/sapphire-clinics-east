@@ -736,6 +736,39 @@ BEGIN
       FOREIGN KEY ("toShareholderId") REFERENCES "Shareholder"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
   END IF;
 END$$;
+-- Discount vouchers (POS → Services → Vouchers): batches of one-time-use
+-- coded vouchers (% / fixed / entire-service-free), redeemed at checkout.
+CREATE TABLE IF NOT EXISTS "ServiceVoucherBatch" (
+  "id" TEXT NOT NULL,
+  "reason" TEXT NOT NULL,
+  "discountKind" TEXT NOT NULL,
+  "value" DECIMAL(65,30) NOT NULL DEFAULT 0,
+  "validUntil" TIMESTAMP(3) NOT NULL,
+  "createdById" TEXT,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "ServiceVoucherBatch_pkey" PRIMARY KEY ("id")
+);
+CREATE TABLE IF NOT EXISTS "ServiceVoucher" (
+  "id" TEXT NOT NULL,
+  "code" TEXT NOT NULL,
+  "batchId" TEXT NOT NULL,
+  "status" TEXT NOT NULL DEFAULT 'ACTIVE',
+  "usedAt" TIMESTAMP(3),
+  "usedOrderId" TEXT,
+  "usedById" TEXT,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "ServiceVoucher_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "ServiceVoucher_code_key" ON "ServiceVoucher"("code");
+CREATE INDEX IF NOT EXISTS "ServiceVoucher_batchId_idx" ON "ServiceVoucher"("batchId");
+CREATE INDEX IF NOT EXISTS "ServiceVoucher_status_idx" ON "ServiceVoucher"("status");
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ServiceVoucher_batchId_fkey') THEN
+    ALTER TABLE "ServiceVoucher" ADD CONSTRAINT "ServiceVoucher_batchId_fkey"
+      FOREIGN KEY ("batchId") REFERENCES "ServiceVoucherBatch"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+END$$;
 SQL
 
 # ── GL processor payout (Detailed GL → Pay GL Processor) ─────────────────────
