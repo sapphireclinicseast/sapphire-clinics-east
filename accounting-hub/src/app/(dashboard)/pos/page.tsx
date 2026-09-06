@@ -8475,6 +8475,24 @@ function ScannedSalesRecords({ branch, canSelectBranch }: { branch: string; canS
   const branchLabel = (b: string) => BRANCH_OPTS.find(o => o[0] === b)?.[1] || b
   const fileLabel = (e: SalesProofEntry, i: number) => e.name || decodeURIComponent((e.url.split('/').pop() || `File ${i + 1}`).replace(/^\d+-/, ''))
 
+  // Header sort + per-column filters
+  const [sortKey, setSortKey] = useState<'date' | 'branch' | 'proofs' | 'status'>('date')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+  const [colFilter, setColFilter] = useState<{ branch: string; proofs: string; status: string }>({ branch: '', proofs: '', status: '' })
+  const toggleSort = (k: typeof sortKey) => {
+    if (sortKey === k) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortKey(k); setSortDir(k === 'date' ? 'desc' : 'asc') }
+  }
+  const displayRows = rows
+    .filter(r => !colFilter.branch || branchLabel(r.branch).toLowerCase().includes(colFilter.branch.toLowerCase()))
+    .filter(r => !colFilter.proofs || r.proofUrls.some((e, i) => (fileLabel(e, i) + ' ' + (e.note || '')).toLowerCase().includes(colFilter.proofs.toLowerCase())))
+    .filter(r => !colFilter.status || (colFilter.status === 'cleared') === r.isCleared)
+    .sort((a, b) => {
+      const va = sortKey === 'date' ? a.date : sortKey === 'branch' ? branchLabel(a.branch) : sortKey === 'proofs' ? (fileLabel(a.proofUrls[0] || { url: '' }, 0)) : (a.isCleared ? 1 : 0)
+      const vb = sortKey === 'date' ? b.date : sortKey === 'branch' ? branchLabel(b.branch) : sortKey === 'proofs' ? (fileLabel(b.proofUrls[0] || { url: '' }, 0)) : (b.isCleared ? 1 : 0)
+      return (va < vb ? -1 : va > vb ? 1 : 0) * (sortDir === 'asc' ? 1 : -1)
+    })
+
   return (
     <div className="space-y-4">
       <div>
@@ -8500,17 +8518,34 @@ function ScannedSalesRecords({ branch, canSelectBranch }: { branch: string; canS
       <div className="rounded-2xl border overflow-x-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
         <table className="w-full text-sm">
           <thead><tr className="text-left text-xs" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
-            <th className="px-4 py-2.5 font-semibold whitespace-nowrap">Date</th>
-            <th className="px-4 py-2.5 font-semibold whitespace-nowrap">Branch</th>
-            <th className="px-4 py-2.5 font-semibold">Scanned proofs</th>
-            <th className="px-4 py-2.5 font-semibold whitespace-nowrap">Day status</th>
+            {([['date', 'Date'], ['branch', 'Branch'], ['proofs', 'Scanned proofs'], ['status', 'Day status']] as const).map(([k, label]) => (
+              <th key={k} className="px-4 py-2.5 font-semibold whitespace-nowrap cursor-pointer select-none align-top" onClick={() => toggleSort(k)} title="Click to sort">
+                {label} {sortKey === k ? (sortDir === 'asc' ? '▲' : '▼') : <span style={{ color: 'var(--light-gray)' }}>↕</span>}
+                {k === 'branch' && (
+                  <input value={colFilter.branch} onChange={e => setColFilter(f => ({ ...f, branch: e.target.value }))} onClick={e => e.stopPropagation()}
+                    placeholder="filter…" className="mt-1 block w-full px-2 py-0.5 rounded border text-xs outline-none font-normal" style={{ borderColor: 'var(--light-gray)' }} />
+                )}
+                {k === 'proofs' && (
+                  <input value={colFilter.proofs} onChange={e => setColFilter(f => ({ ...f, proofs: e.target.value }))} onClick={e => e.stopPropagation()}
+                    placeholder="filter…" className="mt-1 block w-full px-2 py-0.5 rounded border text-xs outline-none font-normal" style={{ borderColor: 'var(--light-gray)' }} />
+                )}
+                {k === 'status' && (
+                  <select value={colFilter.status} onChange={e => setColFilter(f => ({ ...f, status: e.target.value }))} onClick={e => e.stopPropagation()}
+                    className="mt-1 block w-full px-1 py-0.5 rounded border text-xs outline-none font-normal bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+                    <option value="">All</option>
+                    <option value="cleared">Cleared</option>
+                    <option value="not">Not cleared</option>
+                  </select>
+                )}
+              </th>
+            ))}
           </tr></thead>
           <tbody>
             {loading ? (
               <tr><td colSpan={4} className="px-4 py-10 text-center"><Loader2 size={16} className="inline animate-spin" style={{ color: 'var(--teal)' }} /></td></tr>
-            ) : rows.length === 0 ? (
+            ) : displayRows.length === 0 ? (
               <tr><td colSpan={4} className="px-4 py-10 text-center text-xs" style={{ color: 'var(--mid-gray)' }}>No scanned proofs in this period. Upload them per day on the Sales Checking tab.</td></tr>
-            ) : rows.map(r => (
+            ) : displayRows.map(r => (
               <tr key={`${r.date}|${r.branch}`} className="border-t align-top" style={{ borderColor: 'var(--light-gray)' }}>
                 <td className="px-4 py-2.5 text-xs whitespace-nowrap font-medium" style={{ color: 'var(--charcoal)' }}>
                   {new Date(r.date + 'T00:00:00').toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
