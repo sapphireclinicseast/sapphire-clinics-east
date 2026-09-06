@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { candidates, forDirection, remainingOn, type Candidate } from '@/lib/bank-rec-candidates'
+import { candidates, forDirection, remainingOn, recordAmountById, type Candidate } from '@/lib/bank-rec-candidates'
 
 /**
  * POST /api/bank-rec/auto-match-report — internal ops (x-internal-secret).
@@ -18,7 +18,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
   }
   try {
-    const { before } = await req.json().catch(() => ({})) as { before?: string }
+    const { before, apply } = await req.json().catch(() => ({})) as { before?: string; apply?: boolean }
     const cutoff = before ? new Date(`${before}T23:59:59.999Z`) : new Date()
 
     const pending = await prisma.bankTransaction.findMany({
@@ -62,7 +62,46 @@ export async function POST(req: Request) {
       const interbankSameCcy = interbank.filter(l => (accts.get(l.bankAccountId)?.currency || 'PHP') === myCcy)
 
       const fmt = (c: Candidate) => ({ type: c.type, id: c.id, label: c.label.slice(0, 90), date: c.date.toISOString().slice(0, 10), amount: c.amount })
+
+      // ── apply mode: confirm the single exact match, exactly the way the
+      // Bank Rec screen's match action does — POSTED + matchType/matchId, no
+      // JE (the record already posted its own). A/P bills are skipped: their
+      // confirmation posts a settlement JE, so they go through the screen.
+      let applied: string | null = null
+      if (apply && exact.length === 1) {
+        const c = exact[0]
+        if (c.type === 'AP_BILL') {
+          applied = 'skipped — A/P bill settlement posts a JE; confirm it in Bank Reconciliation'
+        } else {
+          // No-double-claim: what other POSTED lines already consumed of this
+          // record in this direction (mirrors the transactions PATCH check).
+          const posted = await prisma.bankTransaction.findMany({
+            where: {
+              status: 'POSTED', id: { not: t.id },
+              AND: [
+                { OR: [{ matchType: null }, { matchType: { not: 'PETTY_CASH_WITHDRAWAL' } }] },
+                { OR: [{ matchId: c.id }, { matchId: { contains: ',' } }] },
+              ],
+            },
+            select: { spent: true, received: true, matchId: true },
+          })
+          const used = posted
+            .filter(b => (b.matchId || '').split(',').some(x => x.trim() === c.id))
+            .reduce((s2, b) => s2 + Number(isSpent ? b.spent : b.received), 0)
+          const recordTotal = (await recordAmountById(c.id, isSpent)) ?? c.amount
+          if (used + amount > recordTotal + 0.01) {
+            applied = `skipped — record already matched for ${used.toFixed(2)} of ${recordTotal.toFixed(2)}`
+          } else {
+            await prisma.bankTransaction.update({
+              where: { id: t.id },
+              data: { status: 'POSTED', matchType: c.type, matchId: c.id, matchLabel: c.label.slice(0, 200), categoryAccountId: null },
+            })
+            applied = 'matched'
+          }
+        }
+      }
       report.push({
+        applied,
         lineId: t.id,
         date: t.date.toISOString().slice(0, 10),
         account: `${accts.get(t.bankAccountId)?.accountTitle || t.bankAccountId}`,
