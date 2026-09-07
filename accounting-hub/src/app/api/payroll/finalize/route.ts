@@ -13,7 +13,7 @@ const branchDisplay = (b: string) => BRANCH_DISPLAY[b] ?? b
 // Ledger-facing branch codes: JournalEntry.branch must use the chart/report codes
 // (SANDBOX_EAST etc.) so branch-filtered financial statements include these entries.
 // Payroll's own tables keep their stored codes (SBEA/SBGH).
-const LEDGER_BRANCH: Record<string, string> = { SBEA: 'SANDBOX_EAST', SBGH: 'SANDBOX_GREENHILLS', SBVR: 'VERDANA_STORE' }
+const LEDGER_BRANCH: Record<string, string> = { SBEA: 'SANDBOX_EAST', SBGH: 'SANDBOX_GREENHILLS', SBVR: 'VERDANA_STORE', VERDANA: 'VERDANA_STORE' }
 const ledgerBranch = (b: string) => LEDGER_BRANCH[b] ?? b
 
 

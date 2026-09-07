@@ -209,7 +209,10 @@ export async function computeLedgerStatements(
     return dt.getUTCMonth() + 1
   }
   const orderBranch = BRANCH_MAP[branch] || branch
-  const branchValues = branch === 'ALL' ? null : Array.from(new Set([branch, orderBranch]))
+  // Payroll tables (and some historical JEs) carry their own short branch codes,
+  // so the Verdana view must also match VERDANA/SBVR-coded rows.
+  const branchValues = branch === 'ALL' ? null
+    : Array.from(new Set([branch, orderBranch, ...(orderBranch === 'VERDANA_STORE' ? ['VERDANA', 'SBVR'] : [])]))
 
   const validation: V2Statements['validation'] = {
     openingPlug: 0, imbalancePlugs: [], unclassified: [], synthesized: [], fromLedger: [],
