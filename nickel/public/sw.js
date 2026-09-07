@@ -4,7 +4,7 @@
 // network is unavailable. This keeps content always-fresh (a new deploy shows
 // immediately) while still satisfying the installability criteria.
 const OFFLINE_URL = '/offline.html'
-const CACHE = 'nickel-shell-v1'
+const CACHE = 'nickel-shell-v2'
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((c) => c.addAll([OFFLINE_URL, '/icons/icon-192.png'])))
@@ -41,9 +41,10 @@ self.addEventListener('notificationclick', (event) => {
 self.addEventListener('fetch', (event) => {
   const req = event.request
   if (req.method !== 'GET') return
-  // Navigations: network-first, fall back to the offline page.
+  // Navigations: always fetch fresh HTML from the network (bypass the browser
+  // HTTP cache so a new deploy shows immediately), fall back to the offline page.
   if (req.mode === 'navigate') {
-    event.respondWith(fetch(req).catch(() => caches.match(OFFLINE_URL)))
+    event.respondWith(fetch(req.url, { cache: 'no-store', credentials: 'include' }).catch(() => caches.match(OFFLINE_URL)))
     return
   }
   // Cached shell assets (icons) — cache-first for speed.

@@ -35,7 +35,18 @@ export default function PwaSetup() {
   }, [])
 
   useEffect(() => {
-    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {})
+    if ('serviceWorker' in navigator) {
+      // Reload once when a NEW service worker takes control (new deploy), so the
+      // page picks up the latest HTML/JS without the user clearing their cache.
+      const hadController = !!navigator.serviceWorker.controller
+      let reloaded = false
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (!hadController || reloaded) return // skip first-ever install; reload only once
+        reloaded = true
+        window.location.reload()
+      })
+      navigator.serviceWorker.register('/sw.js').then((reg) => { reg.update().catch(() => {}) }).catch(() => {})
+    }
 
     // Install prompt
     const inStandalone = window.matchMedia?.('(display-mode: standalone)').matches || (navigator as unknown as { standalone?: boolean }).standalone
