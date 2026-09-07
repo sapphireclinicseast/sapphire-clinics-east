@@ -199,19 +199,27 @@ function DrillDown({ year, branch, account, title, month, cumulative, onClose }:
 
   useEffect(() => {
     let live = true
-    const params = new URLSearchParams({ year: String(year), branch, account })
-    if (month) params.set('month', String(month))
-    if (month && cumulative) params.set('cumulative', '1')
-    fetch(`/api/reports/v2?${params}`)
-      .then(async r => {
-        const j = await r.json()
+    // A combined view (e.g. "VERDANA_STORE+AURA_INSTITUTE") is served by one
+    // engine run per branch — same as the statement export — merged here.
+    const parts = branch.split('+')
+    Promise.all(parts.map(p => {
+      const params = new URLSearchParams({ year: String(year), branch: p, account })
+      if (month) params.set('month', String(month))
+      if (month && cumulative) params.set('cumulative', '1')
+      return fetch(`/api/reports/v2?${params}`).then(async r => ({ ok: r.ok, j: await r.json() }))
+    }))
+      .then(resps => {
         if (!live) return
-        if (!r.ok) setError(j.error || 'Failed to load')
-        else {
-          setLines(j.collected || [])
-          setTotals(j.collectedTotals || null)
-          setTruncated(!!j.collectedTruncated)
-        }
+        const bad = resps.find(r => !r.ok)
+        if (bad) { setError(bad.j.error || 'Failed to load'); return }
+        const all = resps.flatMap(r => (r.j.collected || []) as V2CollectedLine[])
+        all.sort((a, b) => a.month - b.month)
+        setLines(all)
+        const tt = resps.map(r => r.j.collectedTotals).filter(Boolean)
+        setTotals(tt.length === resps.length
+          ? tt.reduce((s, t) => ({ debit: s.debit + t.debit, credit: s.credit + t.credit }), { debit: 0, credit: 0 })
+          : null)
+        setTruncated(resps.some(r => !!r.j.collectedTruncated))
       })
       .catch(() => live && setError('Failed to load'))
     return () => { live = false }
