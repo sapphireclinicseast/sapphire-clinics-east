@@ -344,7 +344,17 @@ export async function POST(req: Request) {
   const payslips = []
   const errors: string[] = []
 
+  // A LOCKED payslip is frozen with its journal entry — bulk regeneration must
+  // never reset it to DRAFT (the upserts below would). Skip those employees.
+  const lockedSlips = await prisma.employeePayslip.findMany({
+    where: { cutoffPeriod, branch: qBranch, status: 'LOCKED' },
+    select: { employeeId: true },
+  })
+  const lockedEmployeeIds = new Set(lockedSlips.map(s => s.employeeId))
+  let skippedLocked = 0
+
   for (const emp of employees) {
+    if (lockedEmployeeIds.has(emp.id)) { skippedLocked++; continue }
     const empRecords = recByEmp.get(emp.id) || []
     const dailyRate = emp.rateType === 'DAILY' ? Number(emp.dailyRate) : Number(emp.monthlyRate) / 22 // 22 working days
     const hourlyRate = dailyRate / standardHours
@@ -701,7 +711,7 @@ export async function POST(req: Request) {
     }
   }
 
-  return NextResponse.json({ generated: payslips.length, payslips, errors })
+  return NextResponse.json({ generated: payslips.length, payslips, errors, skippedLocked })
 }
 
 // Finalize payslips
@@ -717,13 +727,21 @@ export async function PUT(req: Request) {
   if (!ids || !Array.isArray(ids) || !status) {
     return NextResponse.json({ error: 'Missing ids or status' }, { status: 400 })
   }
+  // LOCKED is set/cleared only by the lock/unlock flow (which owns the journal
+  // entry and payable record). A stale tab once demoted a locked cutoff to FINAL
+  // through this endpoint (2026-09-07, AHEA 2026-08-1) — the JE stayed behind and
+  // the page wedged with no Lock/Unlock button. Only DRAFT↔FINAL moves here, and
+  // locked rows are never touched.
+  if (!['DRAFT', 'FINAL'].includes(status)) {
+    return NextResponse.json({ error: 'Only DRAFT or FINAL can be set here — locking goes through Lock & Finalize Payroll.' }, { status: 400 })
+  }
 
-  await prisma.employeePayslip.updateMany({
-    where: { id: { in: ids } },
+  const res = await prisma.employeePayslip.updateMany({
+    where: { id: { in: ids }, status: { not: 'LOCKED' } },
     data: { status },
   })
 
-  return NextResponse.json({ updated: ids.length })
+  return NextResponse.json({ updated: res.count, skippedLocked: ids.length - res.count })
 }
 
 // Regenerate a single employee's payslip — re-reads schedules, timekeeping, and adjustments
