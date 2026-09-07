@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import { BUILD_VERSION } from '@/lib/version'
 
 interface BIPEvent extends Event { prompt: () => Promise<void>; userChoice: Promise<{ outcome: string }> }
 
@@ -55,6 +56,19 @@ export default function PwaSetup() {
     const onPrompt = (e: Event) => { e.preventDefault(); setDeferred(e as BIPEvent); if (!inStandalone && !dismissed) setInstallHidden(false) }
     window.addEventListener('beforeinstallprompt', onPrompt)
 
+    // Self-heal stale builds: if the running page is an older build than the
+    // server, reload once — including when iOS restores a page from bfcache.
+    let vReloaded = false
+    const checkVersion = () => {
+      fetch('/api/version', { cache: 'no-store' }).then((r) => r.json()).then((d) => {
+        if (d?.version && d.version !== BUILD_VERSION && !vReloaded) { vReloaded = true; window.location.reload() }
+      }).catch(() => {})
+    }
+    const onPageShow = (e: PageTransitionEvent) => { if (e.persisted) checkVersion() }
+    window.addEventListener('pageshow', onPageShow)
+    window.addEventListener('focus', checkVersion)
+    checkVersion()
+
     // Push: only for signed-in users
     fetch('/api/notifications').then((r) => r.json()).then((d) => {
       if (!d.role) return
@@ -68,7 +82,11 @@ export default function PwaSetup() {
       }
     }).catch(() => {})
 
-    return () => window.removeEventListener('beforeinstallprompt', onPrompt)
+    return () => {
+      window.removeEventListener('beforeinstallprompt', onPrompt)
+      window.removeEventListener('pageshow', onPageShow)
+      window.removeEventListener('focus', checkVersion)
+    }
   }, [subscribePush])
 
   async function enableNotifs() {
