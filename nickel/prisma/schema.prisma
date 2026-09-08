@@ -559,6 +559,12 @@ model Doctor {
   termsVersion    String?
   termsAcceptedAt DateTime?
 
+  // Account lifecycle (self-service). Deactivation reversible; deletion is a soft
+  // delete — data retained 3 years then disposed (see dataRetainUntil).
+  deactivatedAt   DateTime?
+  deletedAt       DateTime?
+  dataRetainUntil DateTime?
+
   // Verification (SCEI approves before the doctor is bookable)
   verificationStatus VerificationStatus @default(UNVERIFIED)
   prcLicenseFile   String?  // photo/scan of PRC licence (data URI)

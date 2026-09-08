@@ -11,11 +11,14 @@ const peso = (n: number) => `₱${Math.round(n).toLocaleString('en-PH')}`
 export default async function AdminOverview() {
   if (!(await isAdmin())) redirect('/admin/login')
 
-  const [provCounts, provTotal, provDeactivated, provDeleted, patients, bkCounts, earnedRows, payoutAgg, providerWalletAgg, patientWalletAgg] = await Promise.all([
+  const [provCounts, provTotal, provDeactivated, provDeleted, docTotal, docDeactivated, docDeleted, patients, bkCounts, earnedRows, payoutAgg, providerWalletAgg, patientWalletAgg] = await Promise.all([
     prisma.provider.groupBy({ by: ['verificationStatus'], _count: true }),
     prisma.provider.count(),
     prisma.provider.count({ where: { deactivatedAt: { not: null }, deletedAt: null } }),
     prisma.provider.count({ where: { deletedAt: { not: null } } }),
+    prisma.doctor.count(),
+    prisma.doctor.count({ where: { deactivatedAt: { not: null }, deletedAt: null } }),
+    prisma.doctor.count({ where: { deletedAt: { not: null } } }),
     prisma.patient.count(),
     prisma.booking.groupBy({ by: ['status'], _count: true }),
     prisma.booking.findMany({ where: { status: { in: ['PAID', 'CONFIRMED', 'COMPLETED'] } }, select: { amount: true, appFee: true, providerNet: true } }),
@@ -61,12 +64,22 @@ export default async function AdminOverview() {
         <Tile k="Rejected" v={String(pc('REJECTED'))} />
       </div>
 
-      <div className="mb-3 text-[12px] font-semibold uppercase tracking-wide text-[color:var(--muted)]">Account lifecycle</div>
-      <div className="mb-5 grid gap-3 sm:grid-cols-3">
-        <Tile k="Total providers" v={String(provTotal)} d="all-time accounts" />
-        <Tile k="Deactivated" v={`${provDeactivated}`} d={`${provTotal ? Math.round((provDeactivated / provTotal) * 1000) / 10 : 0}% of providers · reversible`} accent="var(--warn,#c9871a)" />
-        <Tile k="Deleted" v={`${provDeleted}`} d={`${provTotal ? Math.round((provDeleted / provTotal) * 1000) / 10 : 0}% · data kept 3 yrs`} accent="#a12" />
-      </div>
+      {(() => {
+        const total = provTotal + docTotal
+        const deact = provDeactivated + docDeactivated
+        const del = provDeleted + docDeleted
+        const pct = (n: number) => total ? Math.round((n / total) * 1000) / 10 : 0
+        return (
+          <>
+            <div className="mb-3 text-[12px] font-semibold uppercase tracking-wide text-[color:var(--muted)]">Account lifecycle · therapists + doctors</div>
+            <div className="mb-5 grid gap-3 sm:grid-cols-3">
+              <Tile k="Total professionals" v={String(total)} d={`${provTotal} therapists · ${docTotal} doctors`} />
+              <Tile k="Deactivated" v={`${deact}`} d={`${pct(deact)}% · reversible (${provDeactivated} PT · ${docDeactivated} MD)`} accent="var(--warn,#c9871a)" />
+              <Tile k="Deleted" v={`${del}`} d={`${pct(del)}% · data kept 3 yrs (${provDeleted} PT · ${docDeleted} MD)`} accent="#a12" />
+            </div>
+          </>
+        )
+      })()}
 
       <div className="mb-3 text-[12px] font-semibold uppercase tracking-wide text-[color:var(--muted)]">Patients & bookings</div>
       <div className="grid gap-3 sm:grid-cols-4">
