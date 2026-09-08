@@ -23,6 +23,12 @@ export default async function SettlementsPage() {
     prisma.walletTransaction.findMany({ where: { providerId: provider.id }, orderBy: { createdAt: 'desc' }, take: 30 }),
   ])
 
+  // For EARNING ledger rows, look up the session's gross rate + PayMongo fee so
+  // the take-home net is transparent (rate − PayMongo fee = what you received).
+  const earnIds = txns.filter((t) => t.type === 'EARNING' && t.bookingId).map((t) => t.bookingId!) as string[]
+  const feeRows = earnIds.length ? await prisma.booking.findMany({ where: { id: { in: earnIds } }, select: { id: true, amount: true, processingFee: true } }) : []
+  const feeMap = new Map(feeRows.map((b) => [b.id, { rate: Number(b.amount), fee: b.processingFee != null ? Number(b.processingFee) : 0 }]))
+
   const summary = await payoutSummary({ providerId: provider.id })
   const nextRun = nextPayoutRun()
   const inEscrow = escrowRows.reduce((s, b) => s + netOf(b), 0)
@@ -76,7 +82,12 @@ export default async function SettlementsPage() {
               {txns.map((t) => (
                 <tr key={t.id} className="border-t border-[color:var(--line)]">
                   <td className="px-5 py-3 tabular-nums text-[color:var(--slate)]">{fmt(t.createdAt)}</td>
-                  <td className="px-3 py-3">{t.note || LEDGER_LABEL[t.type] || t.type}</td>
+                  <td className="px-3 py-3">
+                    {t.note || LEDGER_LABEL[t.type] || t.type}
+                    {t.type === 'EARNING' && t.bookingId && feeMap.has(t.bookingId) && (() => { const f = feeMap.get(t.bookingId!)!; return (
+                      <div className="text-[11px] text-[color:var(--muted)]">{f.fee > 0 ? `Rate ${peso(f.rate)} − PayMongo fee ${peso(f.fee)}` : `Rate ${peso(f.rate)} · no processing fee (paid from wallet credit)`}</div>
+                    ) })()}
+                  </td>
                   <td className={`px-3 py-3 text-right font-semibold tabular-nums ${Number(t.amount) < 0 ? 'text-[color:var(--slate)]' : 'text-emerald-700'}`}>{Number(t.amount) < 0 ? '−' : '+'}{peso(Math.abs(Number(t.amount)))}</td>
                   <td className="px-3 py-3 text-right tabular-nums text-[color:var(--slate)]">{t.balance != null ? peso(Number(t.balance)) : ''}</td>
                 </tr>

@@ -11,7 +11,7 @@ export default async function PatientsPage() {
     where: { providerId: p.id },
     distinct: ['patientId'],
     orderBy: { createdAt: 'desc' },
-    include: { patient: { select: { firstName: true, lastName: true, phone: true, city: true } } },
+    include: { patient: { select: { firstName: true, lastName: true, phone: true, city: true, photo: true } } },
   })
 
   return (
@@ -23,15 +23,17 @@ export default async function PatientsPage() {
       ) : (
         <div className="divide-y divide-[color:var(--line)]">
           {rows.map((r) => (
-            <div key={r.patientId} className="flex items-center gap-3 py-2.5 text-[13px]">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[color:var(--mist-2)] text-[12px] font-semibold text-[color:var(--slate)]">
-                {(r.patient.firstName[0] ?? '') + (r.patient.lastName[0] ?? '')}
+            <a key={r.patientId} href={`/provider/patients/${r.patientId}`} className="flex items-center gap-3 py-2.5 text-[13px] hover:bg-[color:var(--mist)]">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[color:var(--mist-2)] text-[12px] font-semibold text-[color:var(--slate)]">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                {r.patient.photo ? <img src={r.patient.photo} alt="" className="h-full w-full object-cover" /> : (r.patient.firstName[0] ?? '') + (r.patient.lastName[0] ?? '')}
               </div>
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <div className="font-medium text-[color:var(--ink)]">{r.patient.firstName} {r.patient.lastName}</div>
                 <div className="text-[12px] text-[color:var(--slate)]">{[r.patient.city, r.patient.phone].filter(Boolean).join(' · ')}</div>
               </div>
-            </div>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-[color:var(--muted)]"><path d="M9 6l6 6-6 6" /></svg>
+            </a>
           ))}
         </div>
       )}

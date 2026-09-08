@@ -5,6 +5,16 @@ import { useRouter } from 'next/navigation'
 import Chat from '@/components/Chat'
 import Stars from '@/components/Stars'
 import ViewDocButton from '@/components/ViewDocButton'
+import CameraCapture from '@/components/CameraCapture'
+
+// Downscale a photo to a small square-ish JPEG before upload.
+function resizePhoto(file: File, max = 480): Promise<string> {
+  return new Promise((res, rej) => {
+    const r = new FileReader()
+    r.onload = () => { const img = new Image(); img.onload = () => { const s = Math.min(1, max / Math.max(img.width, img.height)); const c = document.createElement('canvas'); c.width = Math.round(img.width * s); c.height = Math.round(img.height * s); c.getContext('2d')?.drawImage(img, 0, 0, c.width, c.height); res(c.toDataURL('image/jpeg', 0.85)) }; img.onerror = rej; img.src = String(r.result) }
+    r.onerror = rej; r.readAsDataURL(file)
+  })
+}
 
 interface Doc { id: string; type: string; bookingId: string | null; date: string; providerName: string }
 const DOC_LABEL: Record<string, string> = { INITIAL_EVAL: 'Initial Evaluation', RE_EVAL: 'Re-evaluation', TREATMENT: 'Session Notes', PROGRESS_REPORT: 'Progress Report', HEP: 'Home Exercise Program', MD_INITIAL: 'Initial Evaluation (Doctor)', MD_FOLLOWUP: 'Follow-up (Doctor)', MED_CERT: 'Medical Certificate', PRESCRIPTION: 'Prescription' }
@@ -29,8 +39,14 @@ const STATUS: Record<string, [string, string]> = {
   CONFIRMED: ['Confirmed', 'bg-emerald-50 text-emerald-700'], COMPLETED: ['Completed', 'bg-emerald-50 text-emerald-700'], CANCELLED: ['Cancelled', 'bg-red-50 text-red-700'],
 }
 
-export default function PatientBookings({ bookings, wallet, consults = [], documents = [] }: { bookings: B[]; wallet: Wallet; consults?: Consult[]; documents?: Doc[] }) {
+export default function PatientBookings({ bookings, wallet, consults = [], documents = [], profile }: { bookings: B[]; wallet: Wallet; consults?: Consult[]; documents?: Doc[]; profile?: { name: string; photo: string | null } }) {
   const router = useRouter()
+  const [photoCam, setPhotoCam] = useState(false)
+  async function savePhoto(dataUri: string) {
+    setBusy('photo')
+    try { const r = await fetch('/api/patient/update', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ photo: dataUri }) }); if (!r.ok) throw new Error(); router.refresh() }
+    catch { /* noop */ } finally { setBusy(null) }
+  }
   const [openChat, setOpenChat] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [showLedger, setShowLedger] = useState(false)
@@ -96,6 +112,27 @@ export default function PatientBookings({ bookings, wallet, consults = [], docum
     <div className="animate-fade-up mx-auto max-w-2xl">
       <h1 className="mb-1 text-[24px] font-semibold text-[color:var(--ink)]">My bookings</h1>
       <p className="mb-4 text-[13px] text-[color:var(--slate)]">Your home therapy visits, messages with your therapist, and any rescheduling requests.</p>
+
+      {profile && (
+        <div className="mb-4 flex items-center gap-3 rounded-2xl border border-[color:var(--line)] bg-white p-3">
+          <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[color:var(--mist-2)] text-[16px] font-semibold text-[color:var(--slate)]">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            {profile.photo ? <img src={profile.photo} alt="" className="h-full w-full object-cover" /> : profile.name.split(' ').map((x) => x[0]).slice(0, 2).join('')}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="text-[14px] font-semibold text-[color:var(--ink)]">{profile.name}</div>
+            <div className="text-[12px] text-[color:var(--slate)]">A photo helps your therapist recognize you at the door.</div>
+          </div>
+          <div className="flex shrink-0 gap-2">
+            <label className="cursor-pointer rounded-lg border border-[color:var(--line-2)] px-3 py-1.5 text-[12.5px] font-medium text-[color:var(--ink)] hover:bg-[color:var(--mist)]">
+              {profile.photo ? 'Change' : 'Add photo'}
+              <input type="file" accept="image/*" className="hidden" disabled={busy === 'photo'} onChange={async (e) => { const f = e.target.files?.[0]; if (f) savePhoto(await resizePhoto(f)) }} />
+            </label>
+            <button type="button" onClick={() => setPhotoCam(true)} disabled={busy === 'photo'} className="rounded-lg border border-[color:var(--line-2)] px-3 py-1.5 text-[12.5px] font-medium text-[color:var(--ink)] hover:bg-[color:var(--mist)]">Take photo</button>
+          </div>
+        </div>
+      )}
+      <CameraCapture open={photoCam} onClose={() => setPhotoCam(false)} onCapture={(uri) => { setPhotoCam(false); savePhoto(uri) }} />
 
       {(
         <div className="card mb-4">

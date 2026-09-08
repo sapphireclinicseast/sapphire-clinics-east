@@ -65,5 +65,7 @@ export default async function BookingsPage() {
     providerName: d.doctor ? `Dr. ${d.doctor.firstName} ${d.doctor.lastName}` : d.provider ? `${d.provider.firstName} ${d.provider.lastName}` : '',
   }))
 
-  return <PatientBookings bookings={bookings} wallet={wallet} consults={consults} documents={docs} />
+  const profile = { name: `${patient.firstName} ${patient.lastName}`, photo: patient.photo ?? null }
+
+  return <PatientBookings bookings={bookings} wallet={wallet} consults={consults} documents={docs} profile={profile} />
 }
