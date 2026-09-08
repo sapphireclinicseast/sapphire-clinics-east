@@ -21,7 +21,7 @@ export default async function PatientDetailPage({ params }: { params: Promise<{ 
   // Authorization: only a therapist who has actually had this patient book them
   // can view their chart.
   const link = await prisma.booking.findFirst({ where: { providerId: provider.id, patientId }, select: { id: true } })
-  if (!link) return <div className="card text-[13px] text-[color:var(--slate)]">Patient not found. <a href="/provider/patients" className="text-[color:var(--steel)] hover:underline">Back to patients</a></div>
+  if (!link) return <div className="card text-[13px] text-[color:var(--slate)]">Patient not found. <a href="/provider" className="text-[color:var(--steel)] hover:underline">Back to patients</a></div>
 
   const [patient, bookings, docs] = await Promise.all([
     prisma.patient.findUnique({ where: { id: patientId }, select: { firstName: true, lastName: true, email: true, phone: true, address: true, city: true, dob: true, sex: true, photo: true } }),
@@ -38,7 +38,7 @@ export default async function PatientDetailPage({ params }: { params: Promise<{ 
 
   return (
     <div className="space-y-4">
-      <a href="/provider/patients" className="text-[12px] text-[color:var(--steel)] hover:underline">← All patients</a>
+      <a href="/provider" className="text-[12px] text-[color:var(--steel)] hover:underline">← All patients</a>
 
       {/* Demographics + photo */}
       <section className="card">

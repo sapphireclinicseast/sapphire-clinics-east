@@ -199,6 +199,12 @@ model Provider {
   termsVersion    String?
   termsAcceptedAt DateTime?
 
+  // Account lifecycle (self-service). Deactivation is reversible; deletion is a
+  // soft delete — data is retained for 3 years then disposed (see dataRetainUntil).
+  deactivatedAt   DateTime?
+  deletedAt       DateTime?
+  dataRetainUntil DateTime?
+
   // Nickel wallet — net earnings released here on session completion; payouts draw it down.
   walletBalance Decimal @default(0)
 

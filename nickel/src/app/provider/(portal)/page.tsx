@@ -1,40 +1,43 @@
 import { getSessionProvider } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { upcomingSlots, ymdToDate, manilaTodayYmd } from '@/lib/availability'
-import ScheduleManager from './ScheduleManager'
 
 export const dynamic = 'force-dynamic'
 
-export default async function SchedulePage() {
+// Default provider view: My patients. Tap a patient to open their chart.
+export default async function ProviderHome() {
   const p = await getSessionProvider()
   if (!p) return null
 
-  const slots = await prisma.providerSlot.findMany({
+  const rows = await prisma.booking.findMany({
     where: { providerId: p.id },
-    orderBy: [{ dayOfWeek: 'asc' }, { startTime: 'asc' }],
+    distinct: ['patientId'],
+    orderBy: { createdAt: 'desc' },
+    include: { patient: { select: { firstName: true, lastName: true, phone: true, city: true, photo: true } } },
   })
 
-  const today = new Date()
-  today.setUTCHours(0, 0, 0, 0)
-  const bookings = await prisma.booking.findMany({
-    where: { providerId: p.id, date: { gte: today }, status: { in: ['PENDING', 'PAID', 'CONFIRMED'] } },
-    orderBy: [{ date: 'asc' }, { startTime: 'asc' }], take: 60,
-    include: { patient: { select: { firstName: true, lastName: true } } },
-  })
-  const map = (b: (typeof bookings)[number]) => ({
-    id: b.id, date: b.date.toISOString().slice(0, 10), startTime: b.startTime, endTime: b.endTime,
-    city: b.city, status: b.status, patientName: `${b.patient.firstName} ${b.patient.lastName}`,
-    proposedDate: b.proposedDate ? b.proposedDate.toISOString().slice(0, 10) : null,
-    proposedStartTime: b.proposedStartTime,
-  })
-
-  // Provider's own open upcoming slots — offered as choices when proposing a new time.
-  const bookedRows = await prisma.booking.findMany({
-    where: { providerId: p.id, date: { gte: ymdToDate(manilaTodayYmd()) }, status: { notIn: ['CANCELLED'] } },
-    select: { date: true, startTime: true },
-  })
-  const booked = new Set(bookedRows.map((r) => `${r.date.toISOString().slice(0, 10)}|${r.startTime}`))
-  const availableSlots = upcomingSlots(slots.map((s) => ({ dayOfWeek: s.dayOfWeek, startTime: s.startTime, endTime: s.endTime })), booked, 14, p.travelBuffer ? 120 : 60)
-
-  return <ScheduleManager slots={slots} bookings={bookings.map(map)} availableSlots={availableSlots} travelBuffer={p.travelBuffer} />
+  return (
+    <section className="card">
+      <h2 className="text-[16px] font-semibold">My patients</h2>
+      <p className="mb-3 mt-1 text-[12px] text-[color:var(--slate)]">Clients who have booked you through Nickel. Tap a patient to see their chart, sessions and notes.</p>
+      {rows.length === 0 ? (
+        <p className="text-[13px] text-[color:var(--slate)]">No patients yet — they&apos;ll appear here once clients book you.</p>
+      ) : (
+        <div className="divide-y divide-[color:var(--line)]">
+          {rows.map((r) => (
+            <a key={r.patientId} href={`/provider/patients/${r.patientId}`} className="flex items-center gap-3 py-2.5 text-[13px] hover:bg-[color:var(--mist)]">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[color:var(--mist-2)] text-[12px] font-semibold text-[color:var(--slate)]">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                {r.patient.photo ? <img src={r.patient.photo} alt="" className="h-full w-full object-cover" /> : (r.patient.firstName[0] ?? '') + (r.patient.lastName[0] ?? '')}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="font-medium text-[color:var(--ink)]">{r.patient.firstName} {r.patient.lastName}</div>
+                <div className="text-[12px] text-[color:var(--slate)]">{[r.patient.city, r.patient.phone].filter(Boolean).join(' · ')}</div>
+              </div>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-[color:var(--muted)]"><path d="M9 6l6 6-6 6" /></svg>
+            </a>
+          ))}
+        </div>
+      )}
+    </section>
+  )
 }

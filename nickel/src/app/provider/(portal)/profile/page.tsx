@@ -1,5 +1,6 @@
 import { getSessionProvider } from '@/lib/auth'
 import ProfileForm from './ProfileForm'
+import AccountActions from './AccountActions'
 import type { CoverageArea } from './CityCoveragePicker'
 
 export default async function ProfilePage() {
@@ -19,16 +20,19 @@ export default async function ProfilePage() {
   }
 
   return (
-    <ProfileForm
-      email={p.email}
-      init={{
-        firstName: p.firstName,
-        lastName: p.lastName,
-        phone: p.phone ?? '',
-        profession: p.profession,
-        photo: p.photo ?? '',
-        coverageAreas,
-      }}
-    />
+    <div className="space-y-4">
+      <ProfileForm
+        email={p.email}
+        init={{
+          firstName: p.firstName,
+          lastName: p.lastName,
+          phone: p.phone ?? '',
+          profession: p.profession,
+          photo: p.photo ?? '',
+          coverageAreas,
+        }}
+      />
+      <AccountActions deactivated={!!p.deactivatedAt} />
+    </div>
   )
 }

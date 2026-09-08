@@ -9,7 +9,7 @@
 
 import type { ReactNode } from 'react'
 
-export const TERMS_VERSION = '1.0'
+export const TERMS_VERSION = '1.1'
 export const TERMS_EFFECTIVE = 'Effective 28 August 2026'
 
 interface Section { n: string; title: string; body: string[] }
@@ -210,6 +210,7 @@ const SECTIONS: Section[] = [
     '23.4  Fair process. Except where immediate action is needed to protect a person, JUO will tell you the ground for suspension, give you a reasonable opportunity to respond, consider your response, and inform you of the outcome and its reasons. A suspension pending investigation is not a finding against you.',
     '23.5  Review. You may ask JUO to review a deactivation decision by writing to main@sapphireclinicseast.org within [fifteen (15)] days of notice of the decision. JUO will respond within [fifteen (15)] days of receiving your request.',
     '23.6  Effect of deactivation. Your access to the Platform ends; confirmed Bookings are cancelled or reassigned; payouts for completed Homecare Sessions are released on the next payout cycle, less any set-off under Clause 10.6; and you will return or securely dispose of any Client Information in your possession.',
+    '23.6A  Data retention on deactivation or deletion. If you deactivate or delete your account (whether by you or by JUO), JUO retains your account data and the records associated with it for three (3) years from the date of deactivation or deletion — for clinical continuity, and to meet legal, tax, regulatory and dispute-resolution obligations — after which that data is securely and permanently disposed of, except where a longer period is required by law, by a DOH issuance, or by a pending or reasonably anticipated claim (and except Client records, which follow the longer retention in Clause 9.3). Deletion removes you from the Platform and hides you from Clients; it is not an immediate erasure of the underlying records.',
     '23.7  Continuity of Client care. You will not abandon a Client in the middle of an episode of care. You will complete outstanding documentation and cooperate in an orderly handover, and JUO may use your handover notes for that purpose.',
     '23.8  Survival. Sections 9, 12, 13, 14, 15, 17, 21, 22, 26, 27 and this Clause survive the termination of these Terms.',
   ] },

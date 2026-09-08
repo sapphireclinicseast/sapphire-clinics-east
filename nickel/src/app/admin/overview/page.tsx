@@ -11,8 +11,11 @@ const peso = (n: number) => `₱${Math.round(n).toLocaleString('en-PH')}`
 export default async function AdminOverview() {
   if (!(await isAdmin())) redirect('/admin/login')
 
-  const [provCounts, patients, bkCounts, earnedRows, payoutAgg, providerWalletAgg, patientWalletAgg] = await Promise.all([
+  const [provCounts, provTotal, provDeactivated, provDeleted, patients, bkCounts, earnedRows, payoutAgg, providerWalletAgg, patientWalletAgg] = await Promise.all([
     prisma.provider.groupBy({ by: ['verificationStatus'], _count: true }),
+    prisma.provider.count(),
+    prisma.provider.count({ where: { deactivatedAt: { not: null }, deletedAt: null } }),
+    prisma.provider.count({ where: { deletedAt: { not: null } } }),
     prisma.patient.count(),
     prisma.booking.groupBy({ by: ['status'], _count: true }),
     prisma.booking.findMany({ where: { status: { in: ['PAID', 'CONFIRMED', 'COMPLETED'] } }, select: { amount: true, appFee: true, providerNet: true } }),
@@ -56,6 +59,13 @@ export default async function AdminOverview() {
         <Tile k="Pending review" v={String(pc('PENDING'))} accent="var(--warn,#c9871a)" />
         <Tile k="Unverified" v={String(pc('UNVERIFIED'))} />
         <Tile k="Rejected" v={String(pc('REJECTED'))} />
+      </div>
+
+      <div className="mb-3 text-[12px] font-semibold uppercase tracking-wide text-[color:var(--muted)]">Account lifecycle</div>
+      <div className="mb-5 grid gap-3 sm:grid-cols-3">
+        <Tile k="Total providers" v={String(provTotal)} d="all-time accounts" />
+        <Tile k="Deactivated" v={`${provDeactivated}`} d={`${provTotal ? Math.round((provDeactivated / provTotal) * 1000) / 10 : 0}% of providers · reversible`} accent="var(--warn,#c9871a)" />
+        <Tile k="Deleted" v={`${provDeleted}`} d={`${provTotal ? Math.round((provDeleted / provTotal) * 1000) / 10 : 0}% · data kept 3 yrs`} accent="#a12" />
       </div>
 
       <div className="mb-3 text-[12px] font-semibold uppercase tracking-wide text-[color:var(--muted)]">Patients & bookings</div>

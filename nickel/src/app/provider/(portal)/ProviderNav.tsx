@@ -3,10 +3,10 @@
 import { usePathname } from 'next/navigation'
 
 const TABS: [string, string][] = [
-  ['/provider', 'Schedule'],
+  ['/provider', 'Patients'],
   ['/provider/sessions', 'Sessions'],
   ['/provider/requests', 'Requests'],
-  ['/provider/patients', 'Patients'],
+  ['/provider/schedule', 'Schedule'],
   ['/provider/settlements', 'Wallet'],
   ['/provider/verification', 'Verification'],
   ['/provider/settings', 'Settings'],
