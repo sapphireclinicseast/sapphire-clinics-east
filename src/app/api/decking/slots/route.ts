@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { canWriteSlot, CROSS_BRANCH_DENIED } from '@/lib/decking-access'
 
 const PAYMENT_TYPES = ['CASH', 'HMO', 'GL'] as const
 
@@ -31,7 +32,7 @@ export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { staffId, patientId, dayOfWeek, startTime, endTime, branch, department, notes, disabled, paymentType, isClass } = await req.json()
+  const { staffId, patientId, dayOfWeek, startTime, endTime, branch, department, notes, disabled, paymentType, isClass , deliveryMode } = await req.json()
   if (!staffId || !dayOfWeek || !startTime || !endTime)
     return NextResponse.json({ error: 'staffId, dayOfWeek, startTime, endTime are required' }, { status: 400 })
 
@@ -62,6 +63,12 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  const postRole = (session.user as { role?: string })?.role ?? ''
+  const postMode = ['ONSITE', 'TELETHERAPY', 'HOMECARE'].includes(deliveryMode) ? deliveryMode : null
+  if (!canWriteSlot(postRole, branch, postMode)) {
+    return NextResponse.json({ error: CROSS_BRANCH_DENIED }, { status: 403 })
+  }
+
   const slot = await prisma.deckingSlot.create({
     data: {
       staffId, dayOfWeek, startTime, endTime, branch, department,
@@ -72,6 +79,9 @@ export async function POST(req: NextRequest) {
       // that looks like plain cash.
       paymentType: PAYMENT_TYPES.includes(paymentType) ? paymentType : 'CASH',
       isClass: isClass === true,
+      // Only the three known modes are stored; anything else lands as null
+      // (unclassified) rather than as a value no board knows how to place.
+      deliveryMode: ['ONSITE', 'TELETHERAPY', 'HOMECARE'].includes(deliveryMode) ? deliveryMode : null,
       disabled: isDisabled,
     },
     include: {
@@ -88,7 +98,7 @@ export async function PATCH(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { id, paymentType, staffId } = await req.json()
+  const { id, paymentType, staffId, deliveryMode } = await req.json()
   if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
 
   // Reassigning the consultant a slot belongs to. Needed because every SPED
@@ -96,6 +106,15 @@ export async function PATCH(req: NextRequest) {
   // whichever consultant happened to be first on the roster — at East that is
   // 45 children all filed under one teacher, and there was no way to correct it
   // from the board.
+  const patchRole = (session.user as { role?: string })?.role ?? ''
+  const target = await prisma.deckingSlot.findUnique({
+    where: { id }, select: { branch: true, deliveryMode: true },
+  })
+  if (!target) return NextResponse.json({ error: 'Slot not found' }, { status: 404 })
+  if (!canWriteSlot(patchRole, target.branch, target.deliveryMode)) {
+    return NextResponse.json({ error: CROSS_BRANCH_DENIED }, { status: 403 })
+  }
+
   if (staffId !== undefined) {
     if (typeof staffId !== 'string' || !staffId.trim()) {
       return NextResponse.json({ error: 'staffId must be a staff id' }, { status: 400 })
@@ -132,6 +151,21 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json(moved)
   }
 
+  // Classifying an existing slot — how the session is delivered. Separate from
+  // the payment branch below so a slot can be classified without touching how
+  // it is paid for.
+  if (deliveryMode !== undefined) {
+    if (!['ONSITE', 'TELETHERAPY', 'HOMECARE'].includes(deliveryMode)) {
+      return NextResponse.json({ error: 'deliveryMode must be ONSITE, TELETHERAPY or HOMECARE' }, { status: 400 })
+    }
+    const updated = await prisma.deckingSlot.update({
+      where: { id },
+      data: { deliveryMode },
+      include: { patient: { select: { id: true, firstName: true, lastName: true } } },
+    })
+    return NextResponse.json(updated)
+  }
+
   if (!PAYMENT_TYPES.includes(paymentType)) {
     return NextResponse.json({ error: `paymentType must be one of ${PAYMENT_TYPES.join(', ')}` }, { status: 400 })
   }
@@ -149,6 +183,14 @@ export async function DELETE(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { id } = await req.json()
+  const delRole = (session.user as { role?: string })?.role ?? ''
+  const doomed = await prisma.deckingSlot.findUnique({
+    where: { id }, select: { branch: true, deliveryMode: true },
+  })
+  if (!doomed) return NextResponse.json({ error: 'Slot not found' }, { status: 404 })
+  if (!canWriteSlot(delRole, doomed.branch, doomed.deliveryMode)) {
+    return NextResponse.json({ error: CROSS_BRANCH_DENIED }, { status: 403 })
+  }
   if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
 
   await prisma.deckingSlot.delete({ where: { id } })

@@ -743,6 +743,18 @@ model DeckingSlot {
   // Defaults false: everything that existed before this column is a 1-on-1,
   // which is what it was created as.
   isClass    Boolean  @default(false)
+  /// How this session is delivered: "ONSITE" | "TELETHERAPY" | "HOMECARE".
+  ///
+  /// The service sections were a cut of the CONSULTANT roster, not of the
+  /// sessions — so a consultant tagged "On-site + Teletherapy" had her one
+  /// weekly grid rendered under BOTH, and an on-site booking showed up under
+  /// Teletherapy because nothing in the row said otherwise.
+  ///
+  /// Null means unclassified, which is every row that existed before this
+  /// column. Those keep appearing in both of a dual-tagged consultant's
+  /// sections rather than being guessed into one: a guess would silently move
+  /// real sessions between the section counts.
+  deliveryMode String?
   disabled   Boolean  @default(false)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
