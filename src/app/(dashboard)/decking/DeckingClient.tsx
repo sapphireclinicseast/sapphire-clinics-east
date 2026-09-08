@@ -5,7 +5,7 @@ import { ChevronDown, ChevronUp, Plus, X, Settings2, Layers, Ban } from 'lucide-
 import PatientRequestsPanel from './PatientRequestsPanel'
 import { DAY_KEYS, DAY_LABEL, DAY_SHORT, sortDays } from '@/lib/decking-days'
 import SlotLoaPanel, { type LoaLite } from './SlotLoaPanel'
-import { DECK_SECTIONS, DECK_GROUPS, inSection, arrangementFor, type DeckSection } from '@/lib/work-arrangement'
+import { DECK_SECTIONS, DECK_GROUPS, inSection, arrangementFor, slotInSection, isDualTagged, soleDeliveryMode, DELIVERY_MODES, type DeckSection } from '@/lib/work-arrangement'
 import DeckingPerDay from './DeckingPerDay'
 import SpedClassBoard from './SpedClassBoard'
 import InterdepartmentBoard from './InterdepartmentBoard'
@@ -28,7 +28,7 @@ const DEFAULT_HOURS: Record<string, { startTime: string; endTime: string }> = {
 interface StaffMember { id: string; firstName: string; lastName: string; department: string; branch: string; extraBranches?: string[]; employmentType?: string | null; workArrangement?: string | null; branchEmployment?: Record<string, { arrangement?: string | null } | null> }
 interface Patient { id: string; firstName: string; lastName: string }
 interface TherapistConfig { id: string; staffId: string; workDays: string[]; startTime: string; endTime: string; useDefault: boolean; branch: string; department: string }
-interface DeckingSlot { id: string; staffId: string; patientId: string | null; patient: Patient | null; dayOfWeek: string; startTime: string; endTime: string; branch: string; department: string; notes: string | null; disabled: boolean; paymentType?: string; isClass?: boolean }
+interface DeckingSlot { id: string; staffId: string; patientId: string | null; patient: Patient | null; dayOfWeek: string; startTime: string; endTime: string; branch: string; department: string; notes: string | null; disabled: boolean; paymentType?: string; isClass?: boolean; deliveryMode?: string | null }
 
 // Cell colouring, the way front desk reads their spreadsheet: what needs
 // paperwork chased before the session stands out from what doesn't.
@@ -88,10 +88,19 @@ function generateHourlySlots(startTime: string, endTime: string): string[] {
   return slots
 }
 
-function visibleBranches(role: string): string[] {
-  if (role.startsWith('SBEA_') || role.startsWith('AHEA_')) return ['SBEA']
-  if (role.startsWith('SBGH_') || role.startsWith('AHGH_')) return ['SBGH']
+// Everyone sees both boards. A patient gets coordinated across branches, and
+// front desk cannot do that while the other branch's week is hidden from them.
+// What changes across branches is EDITING, not looking — see homeBranch below
+// and canWriteSlot on the server, which is what actually enforces it.
+function visibleBranches(_role: string): string[] {
   return ['SBEA', 'SBGH']
+}
+
+/** The branch this role decks for, or null for an unrestricted admin. */
+function homeBranch(role: string): string | null {
+  if (role.startsWith('SBEA_') || role.startsWith('AHEA_')) return 'SBEA'
+  if (role.startsWith('SBGH_') || role.startsWith('AHGH_')) return 'SBGH'
+  return null
 }
 
 // ─── Patient Search (inline cell use) ─────────────────────────────────────────
@@ -268,7 +277,7 @@ function TherapistRow({ staff, activeBranch, config, slots, defaultHours, onSave
   slots: DeckingSlot[]
   defaultHours: { startTime: string; endTime: string }
   onSaveConfig: (staffId: string, data: { workDays: string[]; startTime: string; endTime: string; useDefault: boolean; branch: string; department: string }) => Promise<void>
-  onSaveSlot: (data: { staffId: string; patientId: string | null; dayOfWeek: string; startTime: string; endTime: string; branch: string; department: string; notes: string | null; disabled?: boolean; isClass?: boolean }) => Promise<void>
+  onSaveSlot: (data: { staffId: string; patientId: string | null; dayOfWeek: string; startTime: string; endTime: string; branch: string; department: string; notes: string | null; disabled?: boolean; isClass?: boolean; deliveryMode?: string | null }) => Promise<void>
   onDeleteSlot: (id: string) => Promise<void>
   /** Raise / open the Letter of Authorization for an HMO slot. */
   onOpenLoa?: (slot: DeckingSlot) => void
@@ -285,6 +294,19 @@ function TherapistRow({ staff, activeBranch, config, slots, defaultHours, onSave
   // Which cell currently has the patient-search input open (for adding a new patient)
   const [addingCell, setAddingCell] = useState<{ dayOfWeek: string; startTime: string } | null>(null)
   const [showCustomModal, setShowCustomModal] = useState(false)
+  // Set when a patient is picked for a dual-tagged consultant: the booking waits
+  // here until the kind of session is chosen. Asking after the patient — rather
+  // than before — keeps the common path (search, pick, done) unchanged for the
+  // consultants who only do one thing.
+  const [pendingPatient, setPendingPatient] = useState<
+    { dayOfWeek: string; slotTime: string; patient: Patient } | null
+  >(null)
+  const dualTagged = isDualTagged(arrangementFor(staff, activeBranch))
+
+  function onPatientPicked(dayOfWeek: string, slotTime: string, patient: Patient) {
+    if (dualTagged) setPendingPatient({ dayOfWeek, slotTime, patient })
+    else void handlePatientSelect(dayOfWeek, slotTime, patient)
+  }
 
   useEffect(() => {
     if (config) {
@@ -313,6 +335,35 @@ function TherapistRow({ staff, activeBranch, config, slots, defaultHours, onSave
   // Calendar order, not the order the checkboxes were saved in — that is what
   // put Friday before Thursday on a consultant's board.
   const configuredDays = config ? sortDays(config.workDays as string[]) : []
+
+  // Asked once per booking, only for a consultant who serves more than one
+  // section. Rendered inline rather than as a modal so the answer sits next to
+  // the grid the booking was just made on.
+  const modePrompt = pendingPatient && (
+    <div style={{
+      display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.5rem',
+      padding: '0.6rem 0.85rem', background: '#FFF7E6', borderBottom: '1px solid #F3D9A5',
+    }}>
+      <span style={{ fontSize: '0.8rem', color: '#8A5A00' }}>
+        <strong>{pendingPatient.patient.lastName}, {pendingPatient.patient.firstName}</strong>{' '}
+        at {formatTime(pendingPatient.slotTime)} &mdash; which kind of session?
+      </span>
+      {DELIVERY_MODES.filter(m => inSection(arrangementFor(staff, activeBranch), m.section)).map(m => (
+        <button key={m.key}
+          onClick={() => handlePatientSelect(pendingPatient.dayOfWeek, pendingPatient.slotTime, pendingPatient.patient, m.key)}
+          style={{
+            padding: '0.3rem 0.8rem', borderRadius: '0.4rem', border: '1.5px solid #ED6823',
+            background: '#ED6823', color: '#fff', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
+          }}>
+          {m.label}
+        </button>
+      ))}
+      <button onClick={() => setPendingPatient(null)}
+        style={{ background: 'none', border: 'none', color: '#8A5A00', fontSize: '0.75rem', cursor: 'pointer', textDecoration: 'underline' }}>
+        Cancel
+      </button>
+    </div>
+  )
   const timeSlots = config ? generateHourlySlots(config.startTime, config.endTime) : []
 
   // Returns ALL patients assigned to this time slot (up to 3)
@@ -343,7 +394,9 @@ function TherapistRow({ staff, activeBranch, config, slots, defaultHours, onSave
     await onDeleteSlot(disabledSlot.id)
   }
 
-  async function handlePatientSelect(dayOfWeek: string, slotTime: string, patient: Patient) {
+  async function handlePatientSelect(
+    dayOfWeek: string, slotTime: string, patient: Patient, mode?: string | null,
+  ) {
     await onSaveSlot({
       staffId: staff.id,
       patientId: patient.id,
@@ -353,9 +406,15 @@ function TherapistRow({ staff, activeBranch, config, slots, defaultHours, onSave
       branch: activeBranch,
       department: staff.department,
       notes: null,
+      // A consultant who serves one section has only one thing this can be, so
+      // it is set without asking. A dual-tagged consultant is asked, because
+      // nothing else in the booking says which kind of session it is.
+      deliveryMode: mode ?? soleDeliveryMode(arrangementFor(staff, activeBranch)),
     })
     setAddingCell(null)
+    setPendingPatient(null)
   }
+
 
   async function handlePayChange(slot: DeckingSlot, next: PayType) {
     const previous = payOf(slot)
@@ -498,6 +557,8 @@ function TherapistRow({ staff, activeBranch, config, slots, defaultHours, onSave
         </div>
       )}
 
+      {modePrompt}
+
       {/* Weekly decking table */}
       {config && configuredDays.length > 0 && (
         <div style={{ overflowX: 'auto' }}>
@@ -574,7 +635,7 @@ function TherapistRow({ staff, activeBranch, config, slots, defaultHours, onSave
                           <div style={{ padding: '2px 3px' }}>
                             <PatientCellSearch
                               current={null}
-                              onSelect={p => handlePatientSelect(day, slot, p)}
+                              onSelect={p => onPatientPicked(day, slot, p)}
                               onClear={() => setAddingCell(null)}
                               onClose={() => setAddingCell(null)}
                             />
@@ -842,6 +903,15 @@ export default function DeckingClient({ role }: { role: string }) {
   const [activeMainTab, setActiveMainTab] = useState<'decking' | 'settings'>('decking')
   const [nameFilter, setNameFilter] = useState('')
   const [activeSection, setActiveSection] = useState<DeckSection>('onsite')
+
+  // Viewing another branch's board. Face-to-face sessions there belong to that
+  // branch's rooms, so they are read-only here; teletherapy is not tied to a
+  // room and stays editable from either side. The server enforces the same rule
+  // — this only keeps the UI from offering an action that would be refused.
+  const myBranch = homeBranch(role)
+  const viewingOtherBranch = !!myBranch && myBranch !== activeBranch
+  const readOnlyHere = viewingOtherBranch && activeSection !== 'teletherapy'
+
   // LOA raised from an HMO slot — kept on the board rather than routing to the
   // LOA module, because front desk are mid-scan of the grid when they need it.
   const [loaPanel, setLoaPanel] = useState<{ loa: LoaLite; slot: DeckingSlot } | null>(null)
@@ -897,7 +967,17 @@ export default function DeckingClient({ role }: { role: string }) {
   // Build maps
   const configMap = new Map(configs.map(c => [c.staffId, c]))
   const slotsByStaff = new Map<string, DeckingSlot[]>()
-  for (const slot of slots.filter(s => s.department === activeDept && !s.isClass)) {
+  // Sessions are filtered by how they are DELIVERED, not only by which sections
+  // their consultant serves. Before this, a consultant tagged for two sections
+  // had her one grid rendered under both, so an on-site booking appeared under
+  // Teletherapy — nothing in the row said which it was.
+  const staffArrangement = new Map(staff.map(st => [st.id, arrangementFor(st, activeBranch)]))
+  const sectionIsService = activeSection === 'onsite' || activeSection === 'teletherapy' || activeSection === 'homecare'
+  for (const slot of slots.filter(s =>
+    s.department === activeDept
+    && !s.isClass
+    && (!sectionIsService || slotInSection(s.deliveryMode, staffArrangement.get(s.staffId), activeSection))
+  )) {
     const arr = slotsByStaff.get(slot.staffId) ?? []
     arr.push(slot)
     slotsByStaff.set(slot.staffId, arr)
@@ -1022,7 +1102,7 @@ export default function DeckingClient({ role }: { role: string }) {
     await loadBranchData(activeBranch)
   }
 
-  async function handleSaveSlot(data: { staffId: string; patientId: string | null; dayOfWeek: string; startTime: string; endTime: string; branch: string; department: string; notes: string | null; disabled?: boolean; isClass?: boolean }) {
+  async function handleSaveSlot(data: { staffId: string; patientId: string | null; dayOfWeek: string; startTime: string; endTime: string; branch: string; department: string; notes: string | null; disabled?: boolean; isClass?: boolean; deliveryMode?: string | null }) {
     await fetch('/api/decking/slots', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1230,6 +1310,20 @@ export default function DeckingClient({ role }: { role: string }) {
                     {slotSummary.blocked} marked unavailable, not counted as open.
                   </p>
                 )}
+              </div>
+            )}
+            {viewingOtherBranch && (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem',
+                background: readOnlyHere ? '#F7F9FA' : '#E6F2F4',
+                border: `1px solid ${readOnlyHere ? '#D6DCE2' : '#A9CBEC'}`,
+                borderRadius: '0.6rem', padding: '0.55rem 0.85rem',
+              }}>
+                <span style={{ fontSize: '0.8rem', color: readOnlyHere ? '#5A6470' : '#14507F', lineHeight: 1.5 }}>
+                  {readOnlyHere
+                    ? <>Viewing <strong>{branchLabel(activeBranch) ?? activeBranch}</strong> — read only. Face-to-face sessions are decked by the branch that runs them; switch to <strong>Teletherapy</strong> to book across branches.</>
+                    : <>Viewing <strong>{branchLabel(activeBranch) ?? activeBranch}</strong> — teletherapy can be booked from either branch, so this board is editable.</>}
+                </span>
               </div>
             )}
             {/* Staff list */}

@@ -142,3 +142,57 @@ export function arrangementFor(
   const perBranch = be && typeof be === 'object' ? be[branch]?.arrangement : null
   return normalizeArrangement(perBranch ?? s.workArrangement)
 }
+
+
+/** Delivery mode stored on a slot. Null on a slot means unclassified. */
+export type DeliveryMode = 'ONSITE' | 'TELETHERAPY' | 'HOMECARE'
+
+export const DELIVERY_MODES: { key: DeliveryMode; label: string; section: DeckSection }[] = [
+  { key: 'ONSITE',      label: 'On-site',     section: 'onsite' },
+  { key: 'TELETHERAPY', label: 'Teletherapy', section: 'teletherapy' },
+  { key: 'HOMECARE',    label: 'Homecare',    section: 'homecare' },
+]
+
+/**
+ * The service sections a consultant's arrangement puts them in.
+ *
+ * More than one means the board cannot tell, from the consultant alone, which
+ * kind of session a booking is — which is exactly when the slot has to say so
+ * itself.
+ */
+export function sectionsFor(arrangement: string | null | undefined): DeckSection[] {
+  return (['onsite', 'teletherapy', 'homecare'] as DeckSection[])
+    .filter(sec => inSection(arrangement, sec))
+}
+
+/** True when a consultant serves more than one service section. */
+export function isDualTagged(arrangement: string | null | undefined): boolean {
+  return sectionsFor(arrangement).length > 1
+}
+
+/** The delivery mode implied by an arrangement that serves exactly one section. */
+export function soleDeliveryMode(arrangement: string | null | undefined): DeliveryMode | null {
+  const secs = sectionsFor(arrangement)
+  if (secs.length !== 1) return null
+  return DELIVERY_MODES.find(m => m.section === secs[0])?.key ?? null
+}
+
+/**
+ * Does a slot belong on this section's board?
+ *
+ * A classified slot answers for itself. An UNCLASSIFIED slot falls back to the
+ * consultant: single-section consultants have only one thing it could be, and a
+ * dual-tagged consultant's unclassified slots appear under BOTH — the same
+ * behaviour as before this column existed. Hiding them from one side would
+ * silently remove real sessions from a board on the strength of a guess.
+ */
+export function slotInSection(
+  slotMode: string | null | undefined,
+  arrangement: string | null | undefined,
+  section: DeckSection,
+): boolean {
+  if (slotMode) {
+    return DELIVERY_MODES.find(m => m.key === slotMode)?.section === section
+  }
+  return inSection(arrangement, section)
+}
