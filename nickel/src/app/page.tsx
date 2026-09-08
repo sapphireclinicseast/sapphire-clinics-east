@@ -226,6 +226,15 @@ export default function NickelHome() {
         </div>
         <a href="/doctor/login?mode=signup" className="btn-primary shrink-0">Join as a rehab doctor</a>
       </section>
+
+      {/* Clinic / hospital partner CTA */}
+      <section className="card flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-[200px] flex-1">
+          <div className="text-[16px] font-semibold text-[color:var(--ink)]">Are you a clinic or hospital?</div>
+          <p className="text-[13px] text-[color:var(--slate)]">Partner with Nickel to arrange home visits for your patients — create patient and therapist accounts, set rates, and collect payment online or offline. Bring rehab into your patients’ homes.</p>
+        </div>
+        <a href="/clinic/login?mode=signup" className="btn-primary shrink-0">Partner with Nickel</a>
+      </section>
     </div>
     </>
   )
