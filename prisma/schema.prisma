@@ -711,10 +711,25 @@ model DeckingTherapistConfig {
   useDefault Boolean  @default(true)
   branch     String
   department String
+  /// Which service this schedule is for: "ONSITE" | "TELETHERAPY" | "HOMECARE".
+  ///
+  /// NULL is the consultant's general schedule, used by any service they have
+  /// not set separate days for — and it is what every config held before this
+  /// column, so nothing changes for a consultant who works the same days
+  /// whatever the service.
+  ///
+  /// A row with a mode OVERRIDES the general one for that service, which is how
+  /// a consultant comes in on Monday and Tuesday but takes teletherapy on
+  /// Thursday and Friday.
+  deliveryMode String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  @@unique([staffId, branch])
+  // Was (staffId, branch). A consultant now has one row per service they
+  // schedule separately, plus the general one — so the mode is part of the key
+  // or saving teletherapy days would overwrite the on-site days, which is the
+  // same bug the branch column was added to fix.
+  @@unique([staffId, branch, deliveryMode])
 }
 
 model DeckingSlot {

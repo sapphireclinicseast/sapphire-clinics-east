@@ -27,7 +27,7 @@ const DEFAULT_HOURS: Record<string, { startTime: string; endTime: string }> = {
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface StaffMember { id: string; firstName: string; lastName: string; department: string; branch: string; extraBranches?: string[]; employmentType?: string | null; workArrangement?: string | null; branchEmployment?: Record<string, { arrangement?: string | null } | null> }
 interface Patient { id: string; firstName: string; lastName: string }
-interface TherapistConfig { id: string; staffId: string; workDays: string[]; startTime: string; endTime: string; useDefault: boolean; branch: string; department: string }
+interface TherapistConfig { id: string; staffId: string; workDays: string[]; startTime: string; endTime: string; useDefault: boolean; branch: string; department: string; deliveryMode?: string | null }
 interface DeckingSlot { id: string; staffId: string; patientId: string | null; patient: Patient | null; dayOfWeek: string; startTime: string; endTime: string; branch: string; department: string; notes: string | null; disabled: boolean; paymentType?: string; isClass?: boolean; deliveryMode?: string | null }
 
 // Cell colouring, the way front desk reads their spreadsheet: what needs
@@ -270,13 +270,15 @@ function CustomSlotModal({ staff, activeBranch, workDays, onClose, onSave }: {
 }
 
 // ─── Therapist Row ─────────────────────────────────────────────────────────────
-function TherapistRow({ staff, activeBranch, config, slots, defaultHours, onSaveConfig, onSaveSlot, onDeleteSlot, onOpenLoa }: {
+function TherapistRow({ staff, activeBranch, sectionMode, config, slots, defaultHours, onSaveConfig, onSaveSlot, onDeleteSlot, onOpenLoa }: {
   staff: StaffMember
   activeBranch: string
+  /** The service this board is showing, or null on an aggregate view. */
+  sectionMode: string | null
   config: TherapistConfig | undefined
   slots: DeckingSlot[]
   defaultHours: { startTime: string; endTime: string }
-  onSaveConfig: (staffId: string, data: { workDays: string[]; startTime: string; endTime: string; useDefault: boolean; branch: string; department: string }) => Promise<void>
+  onSaveConfig: (staffId: string, data: { workDays: string[]; startTime: string; endTime: string; useDefault: boolean; branch: string; department: string; deliveryMode?: string | null }) => Promise<void>
   onSaveSlot: (data: { staffId: string; patientId: string | null; dayOfWeek: string; startTime: string; endTime: string; branch: string; department: string; notes: string | null; disabled?: boolean; isClass?: boolean; deliveryMode?: string | null }) => Promise<void>
   onDeleteSlot: (id: string) => Promise<void>
   /** Raise / open the Letter of Authorization for an HMO slot. */
@@ -327,7 +329,15 @@ function TherapistRow({ staff, activeBranch, config, slots, defaultHours, onSave
 
   async function saveConfig() {
     setSaving(true)
-    await onSaveConfig(staff.id, { workDays, startTime, endTime, useDefault, branch: activeBranch, department: staff.department })
+    // Saved against the SERVICE being viewed. Configuring while On-site is on
+    // screen writes the on-site days; doing it under Teletherapy writes
+    // teletherapy's, leaving the clinic days alone. Aggregate views have no
+    // single service, so they write the general schedule.
+    await onSaveConfig(staff.id, {
+      workDays, startTime, endTime, useDefault,
+      branch: activeBranch, department: staff.department,
+      deliveryMode: sectionMode,
+    })
     setSaving(false)
     if (workDays.length > 0) setConfigOpen(false)
   }
@@ -965,7 +975,32 @@ export default function DeckingClient({ role }: { role: string }) {
     : branchStaff
 
   // Build maps
-  const configMap = new Map(configs.map(c => [c.staffId, c]))
+  // The schedule that applies to the section being viewed. A consultant may set
+  // separate days for a service — teletherapy on Thursday and Friday while the
+  // clinic days are Monday and Tuesday — and that row overrides the general one
+  // HERE ONLY. Anywhere without a service-specific row falls back to the
+  // general schedule, which is what every config was before this existed.
+  const sectionMode: string | null =
+    activeSection === 'onsite' ? 'ONSITE'
+    : activeSection === 'teletherapy' ? 'TELETHERAPY'
+    : activeSection === 'homecare' ? 'HOMECARE'
+    : null
+
+  const configMap = (() => {
+    const general = new Map<string, TherapistConfig>()
+    const forService = new Map<string, TherapistConfig>()
+    for (const c of configs) {
+      if (c.deliveryMode == null) general.set(c.staffId, c)
+      else if (c.deliveryMode === sectionMode) forService.set(c.staffId, c)
+    }
+    // Aggregate views (All, Per Day, History) have no single service, so they
+    // read the general schedule — mixing one service's days into a total that
+    // claims to cover them all would misreport capacity.
+    if (!sectionMode) return general
+    const merged = new Map(general)
+    for (const [staffId, c] of forService) merged.set(staffId, c)
+    return merged
+  })()
   const slotsByStaff = new Map<string, DeckingSlot[]>()
   // Sessions are filtered by how they are DELIVERED, not only by which sections
   // their consultant serves. Before this, a consultant tagged for two sections
@@ -1093,7 +1128,7 @@ export default function DeckingClient({ role }: { role: string }) {
     }
   }
 
-  async function handleSaveConfig(staffId: string, data: { workDays: string[]; startTime: string; endTime: string; useDefault: boolean; branch: string; department: string }) {
+  async function handleSaveConfig(staffId: string, data: { workDays: string[]; startTime: string; endTime: string; useDefault: boolean; branch: string; department: string; deliveryMode?: string | null }) {
     await fetch('/api/decking/therapists', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1397,6 +1432,7 @@ export default function DeckingClient({ role }: { role: string }) {
                     key={s.id}
                     staff={s}
                     activeBranch={activeBranch}
+                    sectionMode={sectionMode}
                     config={configMap.get(s.id)}
                     slots={slotsByStaff.get(s.id) ?? []}
                     defaultHours={resolvedDefaultHours}
