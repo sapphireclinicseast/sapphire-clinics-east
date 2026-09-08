@@ -140,7 +140,7 @@ export default function AdminPage() {
   }
 
   async function removeCcEmail(branch: string) {
-    if (!confirm(`Remove CC email for ${branch}?`)) return
+    if (!confirm(`Remove CC email for ${branchLabel(branch) ?? branch}?`)) return
     try {
       await fetch(`/api/admin/branch-cc-emails?branch=${encodeURIComponent(branch)}`, { method: 'DELETE' })
       fetchData()

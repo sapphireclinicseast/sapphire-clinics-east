@@ -1421,7 +1421,7 @@ export default function DeckingClient({ role }: { role: string }) {
             ) : filteredStaff.length === 0 ? (
               <div style={{ background: '#fff', border: '1px solid var(--light-gray)', borderRadius: '0.75rem', padding: '3rem', textAlign: 'center' }}>
                 <p style={{ color: 'var(--charcoal)', fontWeight: 600, fontSize: '0.875rem' }}>
-                  {nameFilter ? `No ${activeDept} staff match "${nameFilter}" in ${activeBranch}` : `No ${activeDept} staff in ${activeBranch}`}
+                  {nameFilter ? `No ${activeDept} staff match "${nameFilter}" in ${branchLabel(activeBranch) ?? activeBranch}` : `No ${activeDept} staff in ${branchLabel(activeBranch) ?? activeBranch}`}
                 </p>
                 <p style={{ color: 'var(--mid-gray)', fontSize: '0.8rem', marginTop: '0.35rem' }}>Add staff in the Staff Module first.</p>
               </div>

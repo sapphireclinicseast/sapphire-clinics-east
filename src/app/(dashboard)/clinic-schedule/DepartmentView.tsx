@@ -1198,7 +1198,7 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
                   style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
                   <p className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>No clinicians scheduled tomorrow</p>
                   <p className="text-xs text-center px-4" style={{ color: 'var(--mid-gray)' }}>
-                    No {activeBranch} clinician has a {WEEKDAY_FULL[tomorrowCode]} in the Decking Module. Add a make-up session on the right if needed.
+                    No {branchLabel(activeBranch) ?? activeBranch} clinician has a {WEEKDAY_FULL[tomorrowCode]} in the Decking Module. Add a make-up session on the right if needed.
                   </p>
                 </div>
               ) : (
@@ -1291,7 +1291,7 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
                 )}
                 {makeupQuery.trim().length > 0 && makeupMatches.length === 0 && (
                   <p className="text-xs mt-1.5" style={{ color: 'var(--mid-gray)' }}>
-                    No matching clinician in {activeBranch} (already-scheduled clinicians are hidden).
+                    No matching clinician in {branchLabel(activeBranch) ?? activeBranch} (already-scheduled clinicians are hidden).
                   </p>
                 )}
               </div>
@@ -1308,7 +1308,7 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
         <div className="rounded-xl py-16 flex flex-col items-center gap-3"
           style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
           <p className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>
-            {activeDept === 'All' ? `No ${activeBranch} staff found` : `No ${activeDept} staff in ${activeBranch}`}
+            {activeDept === 'All' ? `No ${branchLabel(activeBranch) ?? activeBranch} staff found` : `No ${activeDept} staff in ${branchLabel(activeBranch) ?? activeBranch}`}
           </p>
           <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
             {activeDept === 'All' ? 'Add staff in the Staff Module first.' : 'Try a different department filter.'}
