@@ -15,6 +15,7 @@
 // to its own mailbox; keep that account out of campaign sends.
 
 import { prisma } from '@/lib/prisma'
+import { branchLabel } from '@/lib/branch-label'
 import { formatFromHeader } from '@/lib/email-headers'
 import { getGmailClient } from '@/lib/email'
 
@@ -148,7 +149,10 @@ export function renderApprovalEmail(params: {
   payUrl: string
   meetLink?: string | null
 }): { subject: string; html: string } {
-  const branchName = params.branch === 'SBEA' ? 'East Branch' : 'Greenhills Branch'
+  // Through the shared map rather than a two-way ternary: the ternary called
+  // every non-East branch "Greenhills Branch", so a third branch would have
+  // told the patient to turn up at the wrong clinic.
+  const branchName = branchLabel(params.branch)
   const subject = 'Your appointment is approved — please pay ₱' + params.downpaymentPhp.toLocaleString() + ' to confirm'
   const tele = params.meetLink
     ? '<p style="margin:16px 0 0"><strong>Teletherapy link (available after payment):</strong><br><a href="' + params.meetLink + '">' + params.meetLink + '</a></p>'

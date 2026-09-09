@@ -306,7 +306,12 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
   const dualTagged = isDualTagged(arrangementFor(staff, activeBranch))
 
   function onPatientPicked(dayOfWeek: string, slotTime: string, patient: Patient) {
-    if (dualTagged) setPendingPatient({ dayOfWeek, slotTime, patient })
+    // Only ask when the board itself cannot answer. On a service board the
+    // section IS the answer — booking under Teletherapy is a teletherapy
+    // session — so asking there was both a pointless click and a trap: picking
+    // "On-site" filed the session onto a board the operator was not looking at,
+    // and across branches the server refused it outright.
+    if (dualTagged && !sectionMode) setPendingPatient({ dayOfWeek, slotTime, patient })
     else void handlePatientSelect(dayOfWeek, slotTime, patient)
   }
 
@@ -397,6 +402,11 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
       department: staff.department,
       notes: null,
       disabled: true,
+      // Blocking an hour is a write like any other, so it has to say which
+      // service it belongs to. Without this it arrived unclassified and the
+      // cross-branch check refused it — the other branch's teletherapy board
+      // was editable for bookings but not for blocking out an hour.
+      deliveryMode: sectionMode ?? soleDeliveryMode(arrangementFor(staff, activeBranch)),
     })
   }
 
@@ -416,10 +426,11 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
       branch: activeBranch,
       department: staff.department,
       notes: null,
-      // A consultant who serves one section has only one thing this can be, so
-      // it is set without asking. A dual-tagged consultant is asked, because
-      // nothing else in the booking says which kind of session it is.
-      deliveryMode: mode ?? soleDeliveryMode(arrangementFor(staff, activeBranch)),
+      // In order: the answer to the prompt, then the service board being
+      // viewed, then the consultant's own single section. Only when all three
+      // are silent — an aggregate board, a dual-tagged consultant, prompt
+      // cancelled — does this stay unclassified.
+      deliveryMode: mode ?? sectionMode ?? soleDeliveryMode(arrangementFor(staff, activeBranch)),
     })
     setAddingCell(null)
     setPendingPatient(null)
@@ -938,7 +949,11 @@ export default function DeckingClient({ role }: { role: string }) {
   // Load staff + clinic hours on mount
   useEffect(() => {
     Promise.all([
-      fetch('/api/staff').then(r => r.json()),
+      // Not /api/staff — that route is scoped to the caller's own branch, so a
+      // branch account got an empty roster the moment it switched to the other
+      // branch's board. /api/decking/staff returns both branches, limited to
+      // the columns a schedule grid needs.
+      fetch('/api/decking/staff').then(r => r.json()),
       fetch('/api/decking/settings').then(r => r.json()),
     ]).then(([staffData, hoursData]) => {
       setStaff(staffData)
@@ -1137,21 +1152,34 @@ export default function DeckingClient({ role }: { role: string }) {
     await loadBranchData(activeBranch)
   }
 
+  // Both of these used to throw the response away. A refusal — the cross-branch
+  // rule, the 3-per-slot cap — then looked exactly like success: the board
+  // reloaded and the name simply was not there, with nothing on screen saying
+  // why. Say what the server said instead.
+  async function reportIfRefused(res: Response): Promise<boolean> {
+    if (res.ok) return true
+    const body = await res.json().catch(() => null)
+    alert(body?.error ?? 'That change could not be saved.')
+    return false
+  }
+
   async function handleSaveSlot(data: { staffId: string; patientId: string | null; dayOfWeek: string; startTime: string; endTime: string; branch: string; department: string; notes: string | null; disabled?: boolean; isClass?: boolean; deliveryMode?: string | null }) {
-    await fetch('/api/decking/slots', {
+    const res = await fetch('/api/decking/slots', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     })
+    await reportIfRefused(res)
     await loadBranchData(activeBranch)
   }
 
   async function handleDeleteSlot(id: string) {
-    await fetch('/api/decking/slots', {
+    const res = await fetch('/api/decking/slots', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id }),
     })
+    await reportIfRefused(res)
     await loadBranchData(activeBranch)
   }
 
