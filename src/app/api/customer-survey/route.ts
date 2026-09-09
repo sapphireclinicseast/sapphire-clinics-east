@@ -373,7 +373,9 @@ export async function GET(req: NextRequest) {
     const yearEnd = new Date(`${year + 1}-01-01`)
 
     const responses = await prisma.surveyResponse.findMany({
-      where: { submittedAt: { gte: yearStart, lt: yearEnd } },
+      // Highlights are praise quoted back with the therapist's name attached,
+      // so they follow the leaderboard: nobody who has left is named here.
+      where: { submittedAt: { gte: yearStart, lt: yearEnd }, staff: { active: true } },
       include: {
         staff: { select: { firstName: true, lastName: true, department: true, branch: true } },
         assignment: { select: { patientName: true, surveyType: true } },
@@ -452,6 +454,10 @@ export async function GET(req: NextRequest) {
     // Front desk users only see FRONT_DESK department staff
     const isFrontDesk = role === 'AHEA_FRONT_DESK' || role === 'AHGH_FRONT_DESK'
     const whereClause = {
+      // Assessment targets are set for people who are here to be assessed.
+      // Without this, a departed therapist stayed on the list all year and
+      // counted against the branch's coverage.
+      active: true,
       ...(userBranch
         ? { OR: [{ branch: userBranch }, { extraBranches: { has: userBranch } }] }
         : {}),
@@ -501,7 +507,10 @@ export async function GET(req: NextRequest) {
       select: { responsesJson: true, branch: true, staff: { select: { department: true } }, submittedAt: true },
     }),
     prisma.assessmentTarget.aggregate({
-      where: { year, staff: branchFilter },
+      // Matches the staff list above, which now excludes leavers. Counting a
+      // departed therapist's target here while omitting her from the list made
+      // the coverage figure disagree with the rows it summarises.
+      where: { year, staff: { ...branchFilter, active: true } },
       _sum: { completed: true, targetCount: true },
     }),
     prisma.surveyAssignment.count({
