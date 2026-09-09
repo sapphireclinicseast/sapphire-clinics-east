@@ -5,7 +5,7 @@ import { ChevronDown, ChevronUp, Plus, X, Settings2, Layers, Ban } from 'lucide-
 import PatientRequestsPanel from './PatientRequestsPanel'
 import { DAY_KEYS, DAY_LABEL, DAY_SHORT, sortDays } from '@/lib/decking-days'
 import SlotLoaPanel, { type LoaLite } from './SlotLoaPanel'
-import { DECK_SECTIONS, DECK_GROUPS, inSection, arrangementFor, slotInSection, isDualTagged, soleDeliveryMode, DELIVERY_MODES, type DeckSection } from '@/lib/work-arrangement'
+import { DECK_SECTIONS, DECK_GROUPS, inSection, arrangementFor, servesSectionAnywhere, slotInSection, isDualTagged, soleDeliveryMode, DELIVERY_MODES, type DeckSection } from '@/lib/work-arrangement'
 import DeckingPerDay from './DeckingPerDay'
 import SpedClassBoard from './SpedClassBoard'
 import InterdepartmentBoard from './InterdepartmentBoard'
@@ -94,6 +94,27 @@ function generateHourlySlots(startTime: string, endTime: string): string[] {
 // and canWriteSlot on the server, which is what actually enforces it.
 function visibleBranches(_role: string): string[] {
   return ['SBEA', 'SBGH']
+}
+
+/**
+ * Does this consultant belong on the roster for this branch + section?
+ *
+ * On-site and Homecare are cut by branch — those sessions occupy a room or a
+ * travel radius that belongs to one clinic. Teletherapy is not: a remote
+ * session can be run for either branch's patients, so that board lists every
+ * teletherapy-tagged consultant from both branches, and each one carries a
+ * separate set of days per branch (see the Configure panel).
+ *
+ * "All" deliberately skips the arrangement test entirely: untagged, hybrid and
+ * WFH consultants match no service section, so All is the only board they
+ * appear on. Filtering them everywhere would drop most of the roster off
+ * Decking while HR tagging catches up.
+ */
+function onThisRoster(s: StaffMember, branch: string, section: DeckSection): boolean {
+  const here = s.branch === branch || (s.extraBranches ?? []).includes(branch)
+  if (section === 'all') return here
+  if (section === 'teletherapy') return servesSectionAnywhere(s, 'teletherapy')
+  return here && inSection(arrangementFor(s, branch), section)
 }
 
 /** The branch this role decks for, or null for an unrestricted admin. */
@@ -270,7 +291,7 @@ function CustomSlotModal({ staff, activeBranch, workDays, onClose, onSave }: {
 }
 
 // ─── Therapist Row ─────────────────────────────────────────────────────────────
-function TherapistRow({ staff, activeBranch, sectionMode, config, slots, defaultHours, onSaveConfig, onSaveSlot, onDeleteSlot, onOpenLoa }: {
+function TherapistRow({ staff, activeBranch, sectionMode, config, slots, defaultHours, onSaveConfig, onClearServiceConfig, onSaveSlot, onDeleteSlot, onOpenLoa }: {
   staff: StaffMember
   activeBranch: string
   /** The service this board is showing, or null on an aggregate view. */
@@ -279,6 +300,8 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
   slots: DeckingSlot[]
   defaultHours: { startTime: string; endTime: string }
   onSaveConfig: (staffId: string, data: { workDays: string[]; startTime: string; endTime: string; useDefault: boolean; branch: string; department: string; deliveryMode?: string | null }) => Promise<void>
+  /** Drop this service's own days so it follows the general schedule again. */
+  onClearServiceConfig: (staffId: string, branch: string, deliveryMode: string) => Promise<void>
   onSaveSlot: (data: { staffId: string; patientId: string | null; dayOfWeek: string; startTime: string; endTime: string; branch: string; department: string; notes: string | null; disabled?: boolean; isClass?: boolean; deliveryMode?: string | null }) => Promise<void>
   onDeleteSlot: (id: string) => Promise<void>
   /** Raise / open the Letter of Authorization for an HMO slot. */
@@ -350,6 +373,20 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
   // Calendar order, not the order the checkboxes were saved in — that is what
   // put Friday before Thursday on a consultant's board.
   const configuredDays = config ? sortDays(config.workDays as string[]) : []
+
+  // The service this panel writes, and whether this consultant already has a
+  // row for it. `config` is the resolved schedule — a service row if one
+  // exists, otherwise the general one — so its own deliveryMode is what says
+  // which of the two is on screen.
+  const serviceLabel = DELIVERY_MODES.find(m => m.key === sectionMode)?.label ?? null
+  const isHomeBranch = staff.branch === activeBranch || (staff.extraBranches ?? []).includes(activeBranch)
+  const hasServiceRow = !!sectionMode && config?.deliveryMode === sectionMode
+
+  async function resetToGeneral() {
+    if (!sectionMode) return
+    await onClearServiceConfig(staff.id, activeBranch, sectionMode)
+    setConfigOpen(false)
+  }
 
   // Asked once per booking, only for a consultant who serves more than one
   // section. Rendered inline rather than as a modal so the answer sits next to
@@ -472,7 +509,18 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
           <span style={{ color: '#ED6823', fontWeight: 700, fontSize: '0.75rem' }}>{staff.firstName[0]}{staff.lastName[0]}</span>
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <p style={{ fontWeight: 600, fontSize: '0.875rem', color: 'var(--charcoal)' }}>{staff.lastName}, {staff.firstName}</p>
+          <p style={{ fontWeight: 600, fontSize: '0.875rem', color: 'var(--charcoal)', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.4rem' }}>
+            {staff.lastName}, {staff.firstName}
+            {/* A teletherapy consultant based at the other branch. Says so
+                plainly — front desk are otherwise booking someone they have
+                never seen on this board with nothing explaining why she is
+                here, or which branch to coordinate with. */}
+            {!isHomeBranch && (
+              <span style={{ background: '#EFE4FA', color: '#5B2A86', padding: '1px 6px', borderRadius: 99, fontWeight: 700, fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                {branchLabel(staff.branch) ?? staff.branch}
+              </span>
+            )}
+          </p>
           {config && configuredDays.length > 0 && (
             <p style={{ fontSize: '0.68rem', color: 'var(--mid-gray)', marginTop: '0.05rem' }}>
               {configuredDays.map(d => DAY_SHORT[d]).join(' · ')}
@@ -495,7 +543,26 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
         <div style={{ padding: '1rem', background: '#FFFAF6', borderBottom: '1px solid #FDE4CC' }}>
           {/* Work days */}
           <div style={{ marginBottom: '0.875rem' }}>
-            <p style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--mid-gray)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.4rem' }}>Work Days</p>
+            {/* Which schedule this panel writes. Without it the days look like
+                one setting per consultant, and someone setting teletherapy days
+                would believe they had changed the clinic days too. */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '0.4rem', marginBottom: '0.4rem' }}>
+              <p style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--mid-gray)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                {serviceLabel ? `${serviceLabel} days — ${branchLabel(activeBranch) ?? activeBranch}` : 'Work days — all services'}
+              </p>
+              {hasServiceRow && (
+                <button onClick={resetToGeneral}
+                  style={{ fontSize: '0.66rem', fontWeight: 600, color: '#8A5A00', background: 'none', border: 'none', textDecoration: 'underline', cursor: 'pointer', padding: 0 }}>
+                  use the general schedule instead
+                </button>
+              )}
+            </div>
+            {serviceLabel && !hasServiceRow && (
+              <p style={{ fontSize: '0.68rem', color: 'var(--mid-gray)', marginBottom: '0.4rem', lineHeight: 1.5 }}>
+                Following the general schedule. Saving here sets {serviceLabel.toLowerCase()} days
+                for {branchLabel(activeBranch) ?? activeBranch} only — the other services keep theirs.
+              </p>
+            )}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
               {DAYS.map(day => {
                 const checked = workDays.includes(day)
@@ -979,12 +1046,7 @@ export default function DeckingClient({ role }: { role: string }) {
   // Filtered staff for display — interbranch staff (secondary branch in
   // extraBranches) must show up here too, not just under their primary branch.
   const branchStaff = staff
-    .filter(s => !isIntern(s) && (s.branch === activeBranch || (s.extraBranches ?? []).includes(activeBranch)) && s.department === activeDept)
-    // "All" is the consolidated board and deliberately skips the arrangement
-    // filter: untagged, hybrid and WFH consultants match no service section, so
-    // All is the only place they appear. Filtering them everywhere would drop
-    // most of the roster off Decking entirely while HR tagging catches up.
-    .filter(s => activeSection === 'all' || inSection(arrangementFor(s, activeBranch), activeSection))
+    .filter(s => !isIntern(s) && s.department === activeDept && onThisRoster(s, activeBranch, activeSection))
   const filteredStaff = nameFilter.trim()
     ? branchStaff.filter(s => `${s.firstName} ${s.lastName}`.toLowerCase().includes(nameFilter.toLowerCase()))
     : branchStaff
@@ -1033,7 +1095,10 @@ export default function DeckingClient({ role }: { role: string }) {
     slotsByStaff.set(slot.staffId, arr)
   }
 
-  const presentDepts = DEPARTMENTS.filter(d => staff.some(s => !isIntern(s) && (s.branch === activeBranch || (s.extraBranches ?? []).includes(activeBranch)) && s.department === d))
+  // Same roster rule as the board below, or the department chip for a visiting
+  // teletherapy consultant would be missing and there would be no way to
+  // navigate to the board she is on.
+  const presentDepts = DEPARTMENTS.filter(d => staff.some(s => !isIntern(s) && s.department === d && onThisRoster(s, activeBranch, activeSection)))
   const defaultHours = clinicHoursData[activeBranch]
     ? (() => {
         const schedule = clinicHoursData[activeBranch]
@@ -1149,6 +1214,16 @@ export default function DeckingClient({ role }: { role: string }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ staffId, ...data }),
     })
+    await loadBranchData(activeBranch)
+  }
+
+  async function handleClearServiceConfig(staffId: string, branch: string, deliveryMode: string) {
+    const res = await fetch('/api/decking/therapists', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ staffId, branch, deliveryMode }),
+    })
+    await reportIfRefused(res)
     await loadBranchData(activeBranch)
   }
 
@@ -1465,6 +1540,7 @@ export default function DeckingClient({ role }: { role: string }) {
                     slots={slotsByStaff.get(s.id) ?? []}
                     defaultHours={resolvedDefaultHours}
                     onSaveConfig={handleSaveConfig}
+                    onClearServiceConfig={handleClearServiceConfig}
                     onSaveSlot={handleSaveSlot}
                     onDeleteSlot={handleDeleteSlot}
                     onOpenLoa={openLoaForSlot}
