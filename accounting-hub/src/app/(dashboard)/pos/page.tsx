@@ -8805,6 +8805,22 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
   const sortedDates = Array.from(byDate.keys()).sort()
   const CHECKING_METHODS = ['CASH', 'CREDIT_CARD', 'DEBIT', 'GCASH', 'PAYMAYA', 'PAYMONGO']
   const sortedMethods = CHECKING_METHODS
+  // Rows come from Payment Mode Settings: every method that has an active mode
+  // for this branch (or an all-branch mode) ALWAYS renders, showing 0.00 on a
+  // day without sales — so a GCash/PayMaya day can't hide inside another method
+  // unnoticed. Methods with data but no configured mode still render too.
+  const configuredMethods = Array.from(new Set(
+    modes
+      .filter(m => m.isActive && m.paymentMethod && (!m.branch || m.branch === selectedBranch))
+      .map(m => m.paymentMethod as string)
+  ))
+  const rowMethodsFor = (methods: Map<string, number>) => {
+    const wanted = new Set([...configuredMethods, ...CHECKING_METHODS.filter(m => methods.has(m))])
+    return [
+      ...CHECKING_METHODS.filter(m => wanted.has(m)),
+      ...Array.from(wanted).filter(m => !CHECKING_METHODS.includes(m)).sort(),
+    ]
+  }
 
   const getActual = (day: string, method: string) => actualAmounts[day]?.[method] ?? ''
   const setActual = (day: string, method: string, val: number) => {
@@ -9047,7 +9063,7 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
                     </tr>
                   </thead>
                   <tbody>
-                    {sortedMethods.filter(m => methods.has(m)).map(method => {
+                    {rowMethodsFor(methods).map(method => {
                       const systemAmt = methods.get(method) || 0
                       const actualAmt = typeof getActual(day, method) === 'number' ? getActual(day, method) as number : 0
                       const diff = actualAmt - systemAmt
