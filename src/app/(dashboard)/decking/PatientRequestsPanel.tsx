@@ -207,7 +207,10 @@ export default function PatientRequestsPanel({ branch, service, compact }: Props
       loadingStaff: true,
     })
     try {
-      const r = await fetch('/api/staff')
+      // Same reason as the board itself: /api/staff is scoped to the caller's
+      // own branch, so viewing the other branch's requests left this dropdown
+      // with no clinicians to pick from and no explanation.
+      const r = await fetch('/api/decking/staff')
       const data = await r.json()
       const list: StaffOption[] = (data as StaffOption[]).filter(
         (s) => !branch || branch === 'ALL' || s.branch === branch
