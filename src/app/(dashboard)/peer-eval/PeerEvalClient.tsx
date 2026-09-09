@@ -2017,7 +2017,7 @@ function PerDepartmentRankings({
               padding: '12px 16px', background: '#FFF3E8', borderBottom: '1px solid #FDE4CC',
             }}>
               <div style={{ fontSize: '0.62rem', fontWeight: 700, color: '#9a3412', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                Department{filterBranch ? ` · ${filterBranch}` : ''}
+                Department{filterBranch ? ` · ${branchLabel(filterBranch)}` : ''}
               </div>
               <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
                 <div style={{ fontSize: '1rem', fontWeight: 700, color: '#7c2d12' }}>{dept}</div>

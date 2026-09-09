@@ -1,6 +1,8 @@
 // Shared PDF generators for Peer Evaluation and Customer Survey per-staff results.
 // Uses jsPDF — dynamically imported on the client so it is never bundled server-side.
 
+import { branchLabel } from '@/lib/branch-label'
+
 export interface PeerEvalPDFInput {
   assesseeName: string
   department: string
@@ -79,7 +81,7 @@ export async function generatePeerEvalResultPDF(input: PeerEvalPDFInput): Promis
   y += 5
   doc.setFontSize(9); doc.setFont('helvetica', 'normal')
   doc.setTextColor(107, 114, 128)
-  const subtitle = [input.department, input.branch, `${input.responses.length} evaluation${input.responses.length !== 1 ? 's' : ''}`]
+  const subtitle = [input.department, branchLabel(input.branch), `${input.responses.length} evaluation${input.responses.length !== 1 ? 's' : ''}`]
     .filter(Boolean).join('  ·  ')
   doc.text(subtitle, margin, y)
   y += 3
@@ -259,7 +261,7 @@ export async function generateSurveyResultPDF(input: SurveyPDFInput): Promise<vo
   doc.text(input.staffName, margin, y)
   y += 5
   doc.setFontSize(9); doc.setFont('helvetica', 'normal'); doc.setTextColor(107, 114, 128)
-  doc.text(`${input.department}  ·  ${input.branch}${input.filterMonthLabel ? '  ·  ' + input.filterMonthLabel : ''}`, margin, y)
+  doc.text(`${input.department}  ·  ${branchLabel(input.branch)}${input.filterMonthLabel ? '  ·  ' + input.filterMonthLabel : ''}`, margin, y)
   y += 3
 
   // Composite score top-right

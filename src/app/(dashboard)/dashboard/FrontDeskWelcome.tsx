@@ -5,6 +5,7 @@ import React from 'react'
 import { useEffect, useState } from 'react'
 import Image from 'next/image'
 import DeskShortcutCard from '@/components/DeskShortcutCard'
+import { branchLabel } from '@/lib/branch-label'
 
 type BirthdayPatient = { id: string; firstName: string; lastName: string; birthday: string; hasPhone: boolean }
 type SmsState = 'idle' | 'sending' | 'sent' | 'error'
@@ -972,7 +973,7 @@ function PlushToyEligible({ branch, seesAllBranches }: { branch?: string; seesAl
                   )}
                   {seesAllBranches && c.branch && (
                     <span style={{ background: '#F1F5F9', color: '#475569', padding: '1px 6px', borderRadius: 99, fontWeight: 700, fontSize: '0.6rem', textTransform: 'uppercase' }}>
-                      {c.branch}
+                      {branchLabel(c.branch)}
                     </span>
                   )}
                 </div>

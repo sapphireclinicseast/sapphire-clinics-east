@@ -536,7 +536,7 @@ function CampaignHistory({ branch, setBranch }: { branch: Branch; setBranch: (b:
             <div className="px-5 py-4 border-b" style={{ borderColor: 'var(--light-gray)' }}>
               <h3 className="text-sm font-bold" style={{ color: 'var(--ink)' }}>{preview.subject}</h3>
               <p className="text-[11px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>
-                {preview.recipientGroup} · {preview.branch} · {preview.recipientCount} recipients
+                {preview.recipientGroup} · {branchLabel(preview.branch)} · {preview.recipientCount} recipients
               </p>
             </div>
             <div className="px-5 py-4">
