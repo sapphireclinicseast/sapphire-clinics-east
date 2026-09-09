@@ -56,12 +56,32 @@ export async function computeDeckingSnapshot(): Promise<SnapshotRow[]> {
     return acc.get(k)!
   }
 
-  // Capacity: work days x configured hours, per consultant.
+  // Capacity: the distinct hour cells a consultant has offered this branch.
+  //
+  // NOT a sum over config rows. A consultant can hold several rows for one
+  // branch — a general schedule plus per-service ones, so on-site days and
+  // teletherapy days can differ — and adding them up counts an hour twice
+  // whenever two services name the same day. Nobody runs an on-site and a
+  // remote session in the same hour, so the union of the cells is the real
+  // figure, and it still picks up a teletherapy Tuesday that no other row
+  // mentions.
+  const cellsOffered = new Map<string, Set<string>>()   // "branch||dept" → "DAY|HH:MM"
   for (const cfg of configs) {
     const dept = cfg.department || deptOfStaff.get(cfg.staffId) || 'UNKNOWN'
-    const hours = hoursBetween(cfg.startTime, cfg.endTime).length
-    const days = Array.isArray(cfg.workDays) ? (cfg.workDays as string[]).length : 0
-    row(cfg.branch, dept).totalSlots += days * hours
+    const k = key(cfg.branch, dept)
+    const set = cellsOffered.get(k) ?? new Set<string>()
+    for (const day of (Array.isArray(cfg.workDays) ? cfg.workDays as string[] : [])) {
+      for (const hour of hoursBetween(cfg.startTime, cfg.endTime)) {
+        // Scoped by staff too: two consultants offering the same Tuesday 10am
+        // are two slots, and only one consultant's own duplicates collapse.
+        set.add(`${cfg.staffId}|${day}|${hour}`)
+      }
+    }
+    cellsOffered.set(k, set)
+  }
+  for (const [k, set] of cellsOffered) {
+    const [branch, department] = k.split('||')
+    row(branch, department).totalSlots += set.size
   }
 
   // Booked and blocked, collapsed to CELLS: a cell holding three children is
