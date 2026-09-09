@@ -900,6 +900,10 @@ interface PlushToyCandidate {
 
 function PlushToyEligible({ branch, seesAllBranches }: { branch?: string; seesAllBranches?: boolean }) {
   const [list, setList] = useState<PlushToyCandidate[]>([])
+  // VIP wallets in Accounting that match no patient record here — usually a
+  // patient re-registered under a new id. Shown rather than dropped: front desk
+  // were told a name was VIP and then never saw it on this list.
+  const [unplaceable, setUnplaceable] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [busyId, setBusyId] = useState<string | null>(null)
 
@@ -913,6 +917,7 @@ function PlushToyEligible({ branch, seesAllBranches }: { branch?: string; seesAl
       const r = await fetch(`/api/plush-toy-eligible?branch=${scope}`)
       const d = await r.json()
       setList(d.eligible || [])
+      setUnplaceable(d.unplaceableVip || [])
     } finally { setLoading(false) }
   }
   React.useEffect(() => { load() }, [branch, seesAllBranches]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -943,6 +948,17 @@ function PlushToyEligible({ branch, seesAllBranches }: { branch?: string; seesAl
       <div style={{ fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#6D28D9', marginBottom: '0.55rem' }}>
         🧸 Plush Toy Perk ({pendingCount})
       </div>
+      {!loading && unplaceable.length > 0 && (
+        <div style={{ background: '#FFF7E6', border: '1px solid #F3D9A5', borderRadius: '0.6rem', padding: '0.5rem 0.6rem', marginBottom: '0.5rem' }}>
+          <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#8A5A00' }}>
+            {unplaceable.length} VIP wallet{unplaceable.length === 1 ? '' : 's'} not matched to a patient record
+          </div>
+          <div style={{ fontSize: '0.72rem', color: '#8A5A00', marginTop: '0.15rem', lineHeight: 1.45 }}>
+            {unplaceable.join(', ')} — the wallet in Accounting points at a patient record that no longer
+            exists here, usually because they were registered again. Ask Accounting to re-link the wallet.
+          </div>
+        </div>
+      )}
       {loading ? (
         <div style={{ fontSize: '0.75rem', color: '#6D28D9', fontStyle: 'italic' }}>Loading…</div>
       ) : list.length === 0 ? (
