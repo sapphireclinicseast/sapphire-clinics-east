@@ -73,8 +73,12 @@ export default function BudgetsPage() {
     for (const [m, map] of Object.entries(budgetsByMonth)) for (const [k, v] of Object.entries(map)) seed[`${m}:${k}`] = String(v)
     setInputs(seed)
   }, [budgetsByMonth])
-  // Keep the vs-actual month pointed at a locked month.
-  useEffect(() => { if (lockedMonths.length && !lockedSet.has(vsMonth)) setVsMonth(lockedMonths[0]) }, [lockedMonths]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Keep the vs-actual month pointed at a locked month; 0 = the Full Year view,
+  // which is always available (and the only option before any month is locked).
+  useEffect(() => {
+    if (!lockedMonths.length) setVsMonth(0)
+    else if (vsMonth !== 0 && !lockedSet.has(vsMonth)) setVsMonth(lockedMonths[0])
+  }, [lockedMonths]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const { revLines, cogsLine, expLines, capexLines } = useMemo(() => {
     const revAccts = Object.values(report?.accounts?.REVENUE || {}).flat()
@@ -155,15 +159,19 @@ export default function BudgetsPage() {
 
   // ── Budget vs Actual (locked months only) ───────────────────────
   const vs = useMemo(() => {
-    const m = report?.monthly?.[vsMonth] || {}
-    const rev = m.revenueByAccount || {}, exp = m.expenseByAccount || {}
-    const bud = budgetsByMonth[vsMonth] || {}
+    // vsMonth 0 = Full Year: every line is the 12-month sum of both budget and
+    // actual, so the annual plan reads against the year to date in one table.
+    const months = vsMonth === 0 ? MS : [vsMonth]
     const row = (l: Line) => {
-      const actual = l.type === 'REVENUE' ? (rev[l.key] || 0)
-        : l.type === 'COGS' ? (m.cogs || 0)
-        : l.type === 'CAPEX' ? ((capexActual[vsMonth] || {})[l.key.split(' ')[0]] || 0)
-        : (exp[l.key] || 0)
-      const budget = bud[l.key] || 0
+      let actual = 0, budget = 0
+      for (const mm of months) {
+        const m = report?.monthly?.[mm] || {}
+        actual += l.type === 'REVENUE' ? ((m.revenueByAccount || {})[l.key] || 0)
+          : l.type === 'COGS' ? (m.cogs || 0)
+          : l.type === 'CAPEX' ? ((capexActual[mm] || {})[l.key.split(' ')[0]] || 0)
+          : ((m.expenseByAccount || {})[l.key] || 0)
+        budget += (budgetsByMonth[mm] || {})[l.key] || 0
+      }
       const variance = actual - budget
       const favorable = l.type === 'REVENUE' ? actual >= budget : actual <= budget
       return { l, actual, budget, variance, favorable }
@@ -192,7 +200,7 @@ export default function BudgetsPage() {
       <div className="overflow-x-auto rounded-2xl border" style={{ borderColor: 'var(--light-gray)' }}>
         <table className="w-full text-sm">
           <thead><tr style={{ background: 'var(--charcoal)' }}>
-            {['{M} {Y} — Line Item'.replace('{M}', MONTHS[vsMonth - 1]).replace('{Y}', String(year)), 'Budget', 'Actual', 'Variance'].map((h, i) =>
+            {['{M} {Y} — Line Item'.replace('{M}', vsMonth === 0 ? 'Full Year' : MONTHS[vsMonth - 1]).replace('{Y}', String(year)), 'Budget', 'Actual', 'Variance'].map((h, i) =>
               <th key={h} className={`px-4 py-3 text-xs font-semibold uppercase tracking-wide text-white ${i === 0 ? 'text-left' : 'text-right'}`}>{h}</th>)}
           </tr></thead>
           <tbody>
@@ -296,26 +304,29 @@ export default function BudgetsPage() {
           </p>
         </>
       ) : (
-        // Budget vs Actual
-        lockedMonths.length === 0 ? (
-          <div className="rounded-2xl border px-6 py-12 text-center text-sm" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
-            No months are locked yet. Complete a month&apos;s budget in <strong>Enter Budget</strong> and <strong>lock</strong> it — its Budget vs Actual will appear here.
+        // Budget vs Actual — one locked month, or the Full Year roll-up
+        <>
+          <div className="flex items-center gap-1.5 flex-wrap mb-3">
+            <span className="text-xs font-semibold mr-1" style={{ color: 'var(--mid-gray)' }}>View:</span>
+            <button onClick={() => setVsMonth(0)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border flex items-center gap-1"
+              style={vsMonth === 0 ? { background: 'var(--teal)', color: '#fff', borderColor: 'var(--teal)' } : { background: '#fff', color: 'var(--mid-gray)', borderColor: 'var(--light-gray)' }}>
+              <LineChart size={10} /> Full Year {year}
+            </button>
+            {[...lockedMonths].sort((a, b) => a - b).map(m => (
+              <button key={m} onClick={() => setVsMonth(m)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border flex items-center gap-1"
+                style={vsMonth === m ? { background: 'var(--teal)', color: '#fff', borderColor: 'var(--teal)' } : { background: '#fff', color: 'var(--mid-gray)', borderColor: 'var(--light-gray)' }}>
+                <Lock size={10} /> {MON[m - 1]} {year}
+              </button>
+            ))}
           </div>
-        ) : (
-          <>
-            <div className="flex items-center gap-1.5 flex-wrap mb-3">
-              <span className="text-xs font-semibold mr-1" style={{ color: 'var(--mid-gray)' }}>Locked month:</span>
-              {[...lockedMonths].sort((a, b) => a - b).map(m => (
-                <button key={m} onClick={() => setVsMonth(m)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border flex items-center gap-1"
-                  style={vsMonth === m ? { background: 'var(--teal)', color: '#fff', borderColor: 'var(--teal)' } : { background: '#fff', color: 'var(--mid-gray)', borderColor: 'var(--light-gray)' }}>
-                  <Lock size={10} /> {MON[m - 1]} {year}
-                </button>
-              ))}
-            </div>
-            <VsTable />
-            <p className="text-[11px] mt-3" style={{ color: 'var(--mid-gray)' }}>Actuals are the Income-Statement figures for {MONTHS[vsMonth - 1]} {year}{branch !== 'ALL' ? ` · ${BRANCHES.find(b => b.value === branch)?.label}` : ''}. Variance is <span style={{ color: '#16a34a' }}>green</span> when favorable (revenue at/over target, cost/expense at/under budget), <span style={{ color: '#dc2626' }}>red</span> when unfavorable.</p>
-          </>
-        )
+          <VsTable />
+          <p className="text-[11px] mt-3" style={{ color: 'var(--mid-gray)' }}>
+            {vsMonth === 0
+              ? <>Full Year compares the entire {year} budget (all twelve months as entered) against the year&apos;s actual Income-Statement figures to date{branch !== 'ALL' ? ` · ${BRANCHES.find(b => b.value === branch)?.label}` : ''}.</>
+              : <>Actuals are the Income-Statement figures for {MONTHS[vsMonth - 1]} {year}{branch !== 'ALL' ? ` · ${BRANCHES.find(b => b.value === branch)?.label}` : ''}.</>}
+            {' '}Variance is <span style={{ color: '#16a34a' }}>green</span> when favorable (revenue at/over target, cost/expense at/under budget), <span style={{ color: '#dc2626' }}>red</span> when unfavorable.
+          </p>
+        </>
       )}
     </div>
   )
