@@ -101,36 +101,118 @@ export async function GET(req: NextRequest) {
   // NO VIP patient ever surfaced). Batching keeps each request body small
   // regardless of branch size.
   const vipIds = new Set<string>()
+  // VIP wallets that exist but could not be tied to any patient record here.
+  // Surfaced rather than dropped — see below.
+  const unplaceableVip: string[] = []
   const acctUrl = process.env.ACCOUNTING_HUB_URL ?? 'https://accounting.sapphireclinicseast.org'
   const acctKey = process.env.EXTERNAL_API_KEY ?? ''
+
   if (acctKey) {
-    const BATCH_SIZE = 300
-    const batches: string[][] = []
-    for (let i = 0; i < candidateIds.length; i += BATCH_SIZE) {
-      batches.push(candidateIds.slice(i, i + BATCH_SIZE))
-    }
-    await Promise.all(batches.map(async batch => {
-      try {
-        const res = await fetch(`${acctUrl}/api/internal/vip-status`, {
-          method:  'POST',
-          headers: { Authorization: `Bearer ${acctKey}`, 'Content-Type': 'application/json' },
-          body:    JSON.stringify({ patientIds: batch }),
-          cache:   'no-store',
-          signal:  AbortSignal.timeout(5000),
-        })
-        if (res.ok) {
-          const data = await res.json()
-          for (const id of (data.vipPatientIds as string[] ?? [])) vipIds.add(id)
-        } else {
-          console.error('[plush-toy-eligible] Accounting Hub VIP check returned', res.status)
-        }
-      } catch (err) {
-        // Non-fatal — front desk still sees milestone-eligible patients even
-        // if Accounting Hub is briefly unreachable; VIP-only patients in
-        // this batch would just not show up until the next reachable check.
-        console.error('[plush-toy-eligible] Accounting Hub VIP check failed:', err)
+    let wallets: { patientId: string; patientName: string | null }[] | null = null
+    try {
+      const res = await fetch(`${acctUrl}/api/internal/vip-status`, {
+        method:  'POST',
+        headers: { Authorization: `Bearer ${acctKey}`, 'Content-Type': 'application/json' },
+        // The whole active VIP list — about a dozen rows — rather than asking
+        // "are any of these 1,400 ids VIP?". Matching moves here, where the
+        // patient records are, so a wallet can also be matched by NAME.
+        body:    JSON.stringify({ includeAllActive: true }),
+        cache:   'no-store',
+        signal:  AbortSignal.timeout(8000),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        if (Array.isArray(data.activeVipWallets)) wallets = data.activeVipWallets
+      } else {
+        console.error('[plush-toy-eligible] Accounting Hub VIP check returned', res.status)
       }
-    }))
+    } catch (err) {
+      console.error('[plush-toy-eligible] Accounting Hub VIP check failed:', err)
+    }
+
+    if (wallets) {
+      // ── Resolve each wallet to a patient here: by id, then by name ──
+      //
+      // The two hubs' patient ids drift apart. When a patient is re-registered
+      // in this hub they get a new id while the wallet keeps the old one, and
+      // an id-only match then silently reports "not VIP" — which is how a real
+      // VIP patient came to be missing from the front-desk list entirely. 233
+      // of the 1,264 active wallets point at an id that no longer exists here.
+      const norm = (s: string) => s.trim().toUpperCase().replace(/\s+/g, ' ')
+      const walletIds = wallets.map(w => w.patientId)
+      const walletNames = wallets.map(w => norm(w.patientName ?? '')).filter(Boolean)
+
+      // Deliberately NOT restricted to this branch's candidates: a wallet must
+      // be judged unplaceable against the whole patient list, or every other
+      // branch's VIPs would be reported as errors on this one's dashboard.
+      // The name lookup is raw SQL and the id lookup is not, so they are
+      // allowed to fail independently: a broken name match degrades to the
+      // id-only behaviour this endpoint already had, rather than throwing and
+      // taking the whole widget — milestone patients included — down with it.
+      const [byIdRows, byNameRows] = await Promise.all([
+        walletIds.length
+          ? prisma.patient.findMany({ where: { id: { in: walletIds } }, select: { id: true } })
+              .catch(() => [] as { id: string }[])
+          : Promise.resolve([] as { id: string }[]),
+        walletNames.length
+          ? prisma.$queryRawUnsafe<{ id: string; fullName: string }[]>(
+              // regexp_replace mirrors norm() above — collapsing runs of
+              // whitespace, so "MA.  CASSANDRA" matches "MA. CASSANDRA".
+              `SELECT id,
+                      regexp_replace(UPPER(TRIM("firstName") || ' ' || TRIM("lastName")), '\\s+', ' ', 'g') AS "fullName"
+               FROM "Patient"
+               WHERE regexp_replace(UPPER(TRIM("firstName") || ' ' || TRIM("lastName")), '\\s+', ' ', 'g') = ANY($1::text[])`,
+              walletNames,
+            ).catch(err => {
+              console.error('[plush-toy-eligible] VIP name match failed:', err)
+              return [] as { id: string; fullName: string }[]
+            })
+          : Promise.resolve([] as { id: string; fullName: string }[]),
+      ])
+
+      const knownIds = new Set(byIdRows.map(r => r.id))
+      const idsByName = new Map<string, string[]>()
+      for (const r of byNameRows) {
+        idsByName.set(r.fullName, [...(idsByName.get(r.fullName) ?? []), r.id])
+      }
+
+      for (const w of wallets) {
+        if (knownIds.has(w.patientId)) { vipIds.add(w.patientId); continue }
+        const name = norm(w.patientName ?? '')
+        const hits = name ? idsByName.get(name) ?? [] : []
+        // Exactly one match, or none. Two patients sharing a name is not a
+        // match this may guess at — the outcome is a physical gift handed to a
+        // person, so an ambiguous wallet is reported, never resolved by luck.
+        if (hits.length === 1) vipIds.add(hits[0])
+        else unplaceableVip.push(w.patientName || w.patientId)
+      }
+    } else {
+      // Accounting Hub unreachable, or running a build without
+      // includeAllActive. Fall back to the id-only batch check so the widget
+      // keeps working exactly as it did rather than showing no VIPs at all.
+      const BATCH_SIZE = 300
+      const batches: string[][] = []
+      for (let i = 0; i < candidateIds.length; i += BATCH_SIZE) {
+        batches.push(candidateIds.slice(i, i + BATCH_SIZE))
+      }
+      await Promise.all(batches.map(async batch => {
+        try {
+          const res = await fetch(`${acctUrl}/api/internal/vip-status`, {
+            method:  'POST',
+            headers: { Authorization: `Bearer ${acctKey}`, 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ patientIds: batch }),
+            cache:   'no-store',
+            signal:  AbortSignal.timeout(5000),
+          })
+          if (res.ok) {
+            const data = await res.json()
+            for (const id of (data.vipPatientIds as string[] ?? [])) vipIds.add(id)
+          }
+        } catch {
+          // Non-fatal: milestone-eligible patients still list.
+        }
+      }))
+    }
   }
 
   const eligible = candidates
@@ -157,5 +239,8 @@ export async function GET(req: NextRequest) {
       (a.givenAt ? 1 : 0) - (b.givenAt ? 1 : 0) ||
       a.lastName.localeCompare(b.lastName))
 
-  return NextResponse.json({ eligible })
+  // Reported alongside the list so a VIP wallet that cannot be tied to a
+  // patient record is visible to front desk instead of being a name they
+  // expect and never see.
+  return NextResponse.json({ eligible, unplaceableVip })
 }
