@@ -71,6 +71,9 @@ export async function GET(req: NextRequest) {
           submittedAt: { gte: yearStart, lt: yearEnd },
           ...branchWhere,
           ...(filterStaff ? { staffId: filterStaff } : {}),
+          // Departed staff are not ranked — the same rule the in-app
+          // leaderboard has had since #4879e18e. This external copy never got it.
+          staff: { active: true },
         },
         include: {
           staff: { select: { id: true, firstName: true, lastName: true, department: true, branch: true } },

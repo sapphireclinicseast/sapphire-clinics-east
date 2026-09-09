@@ -33,6 +33,10 @@ export async function GET(req: NextRequest) {
         submittedAt: { gte: yearStart, lt: yearEnd },
         ...branchWhere,
         ...(filterStaff ? { staffId: filterStaff } : {}),
+        // Same rule as every other copy of this leaderboard: someone who has
+        // left is not ranked against the people still here. This is the copy
+        // HR Platform reads, and it was the one still showing them.
+        staff: { active: true },
       },
       include: {
         staff: { select: { id: true, firstName: true, lastName: true, department: true, branch: true } },
@@ -193,7 +197,7 @@ export async function GET(req: NextRequest) {
   // ── Staff details ───────────────────────────────────────────────────────
   if (view === 'staff') {
     const filterBranch = searchParams.get('branch') || null
-    const whereClause = filterBranch ? { branch: filterBranch } : {}
+    const whereClause = { active: true, ...(filterBranch ? { branch: filterBranch } : {}) }
 
     const staff = await prisma.staff.findMany({
       where: whereClause,
