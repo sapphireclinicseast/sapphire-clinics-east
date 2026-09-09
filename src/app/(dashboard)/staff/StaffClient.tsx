@@ -304,7 +304,9 @@ export default function StaffClient({ role }: { role: string }) {
 
   // HR Sync
   const [syncing, setSyncing] = useState(false)
-  const [syncResult, setSyncResult] = useState<{ synced: number; created: number; updated: number; total: number } | null>(null)
+  const [syncResult, setSyncResult] = useState<
+    { synced: number; created: number; updated: number; deactivated: number; total: number; errors?: string[] } | null
+  >(null)
 
   async function handleSync() {
     setSyncing(true)
@@ -459,13 +461,27 @@ export default function StaffClient({ role }: { role: string }) {
         </div>
       </div>
 
+      {/* Anything the sync could not do. Previously discarded: the endpoint has
+          always returned errors[] and nothing rendered it, so a sync that
+          skipped work still showed a plain green "complete". */}
+      {syncResult && (syncResult.errors?.length ?? 0) > 0 && (
+        <div className="rounded-xl px-5 py-3" style={{ background: '#FEF2F2', border: '1px solid #FCA5A5' }}>
+          <p className="text-xs font-bold mb-1" style={{ color: '#991B1B' }}>
+            {syncResult.errors!.length} thing{syncResult.errors!.length === 1 ? '' : 's'} the sync did not do
+          </p>
+          <ul className="text-[11px] list-disc pl-4" style={{ color: '#7F1D1D' }}>
+            {syncResult.errors!.slice(0, 8).map((e, i) => <li key={i}>{e}</li>)}
+          </ul>
+        </div>
+      )}
+
       {/* Sync result banner */}
       {syncResult && (
         <div className="rounded-xl px-5 py-3 flex items-center gap-2"
           style={{ background: '#ECFDF5', border: '1px solid #BBF7D0' }}>
           <CheckCircle2 size={15} style={{ color: '#065F46' }} />
           <span className="text-xs font-semibold" style={{ color: '#065F46' }}>
-            Sync complete: {syncResult.created} created, {syncResult.updated} updated{syncResult.deleted > 0 ? `, ${syncResult.deleted} removed` : ''} ({syncResult.total} staff from HR Platform)
+            Sync complete: {syncResult.created} created, {syncResult.updated} updated{syncResult.deactivated > 0 ? `, ${syncResult.deactivated} deactivated (no longer in HR — records kept)` : ''} ({syncResult.total} staff from HR Platform)
           </span>
           <button onClick={() => setSyncResult(null)} className="ml-auto p-1 rounded hover:bg-green-100">
             <X size={13} style={{ color: '#065F46' }} />
