@@ -144,6 +144,29 @@ export function arrangementFor(
 }
 
 
+/**
+ * Does this consultant serve the section AT ANY BRANCH they work?
+ *
+ * `arrangementFor` asks about one branch, which is right for On-site and
+ * Homecare — those are tied to a room and to a travel radius, so they belong to
+ * the branch that runs them. Teletherapy is tied to neither: a consultant
+ * running remote sessions can take either branch's patients, and in practice
+ * does. Yap is tagged on-site+teletherapy at Greenhills and nothing at East, so
+ * a per-branch question hid her from East's teletherapy board entirely.
+ *
+ * Checks the per-branch records first and the staff-level value as a fallback,
+ * the same two sources `arrangementFor` reads.
+ */
+export function servesSectionAnywhere(
+  s: { workArrangement?: string | null; branchEmployment?: unknown },
+  section: DeckSection,
+): boolean {
+  if (inSection(s.workArrangement, section)) return true
+  const be = s.branchEmployment as Record<string, { arrangement?: string | null } | null> | null | undefined
+  if (!be || typeof be !== 'object') return false
+  return Object.values(be).some(v => inSection(v?.arrangement, section))
+}
+
 /** Delivery mode stored on a slot. Null on a slot means unclassified. */
 export type DeliveryMode = 'ONSITE' | 'TELETHERAPY' | 'HOMECARE'
 
