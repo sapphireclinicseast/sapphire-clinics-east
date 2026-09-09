@@ -140,8 +140,8 @@ export async function POST() {
   const matchedIds = new Set<string>()
   const nameChanges: string[] = []
   // HR's own staff id -> this table's local Staff.id. Built during the main
-  // loop below, consumed after the delete pass (so it reflects final
-  // post-sync state) to translate menteeIds — see the pass after `toDelete`.
+  // loop below, consumed after the leaver pass (so it reflects final
+  // post-sync state) to translate menteeIds — see the pass after `missing`.
   const hrIdToLocalId = new Map<string, string>()
 
   for (const hr of hrStaff) {
@@ -217,6 +217,11 @@ export async function POST() {
       bankName:         hr.bankName,
       bankAccountNo:    hr.bankAccountNo,
       hrPlatformId:     hr.hrId,
+      // In the feed = employed. HR is the source of truth for this (the staff
+      // handbook has said so all along) but the payload never carried it, so a
+      // deactivation in HR never reached here and the person stayed on the
+      // Decking board indefinitely. Also brings a returning consultant back.
+      active:           true,
       isInternshipSupervisor: !!hr.isInternshipSupervisor,
       isClinicalMentor: !!hr.isClinicalMentor,
       // Raw HR slug — the Decking board owns the grouping, so a label reword
@@ -243,24 +248,55 @@ export async function POST() {
     }
   }
 
-  // Self-registered providers (from the patient app) are NOT in the HR feed,
-  // so they'd always look "unmatched" — never prune them.
-  const toDelete = existing.filter(s => !matchedIds.has(s.id) && s.source !== 'SELF_SIGNUP')
-  let deleted = 0
-  for (const s of toDelete) {
-    try {
-      await prisma.staff.delete({ where: { id: s.id } })
-      deleted++
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      errors.push('Delete ' + s.firstName + ' ' + s.lastName + ': ' + msg)
+  // ── Leavers ──────────────────────────────────────────────────────
+  // HR omits deactivated staff from the feed entirely — there is no status
+  // field to read — so "absent from the feed" is how a leaver arrives here.
+  //
+  // They are DEACTIVATED, not deleted. This used to call staff.delete(), and
+  // every relation onto Staff cascades: Schedule, DeckingSlot,
+  // DeckingTherapistConfig, SurveyResponse, PeerEval. At the time this was
+  // written that meant one click of Sync would have destroyed 4,933 clinical
+  // schedule rows, 143 decked sessions and 29 survey responses belonging to 13
+  // people who had simply left. A consultant leaving does not un-happen the
+  // sessions she ran.
+  //
+  // active:false is enough to achieve what the delete was for: every roster
+  // read — /api/staff, /api/decking/staff, the Decking boards — filters on it.
+  //
+  // Self-registered providers (from the patient app) are never in the HR feed,
+  // so they would always look like leavers. Left alone.
+  const missing = existing.filter(s => !matchedIds.has(s.id) && s.source !== 'SELF_SIGNUP')
+
+  // A partial feed must not empty the roster. HR returning a handful of staff
+  // because of a bad query or a half-finished migration would otherwise
+  // deactivate everyone, and the sync reports success either way.
+  const activeLocal = existing.filter(s => s.active).length
+  const feedTooSmall = activeLocal > 0 && hrStaff.length < activeLocal / 2
+
+  let deactivated = 0
+  if (feedTooSmall) {
+    errors.push(
+      'Skipped deactivating ' + missing.length + ' staff: HR returned only ' + hrStaff.length +
+      ' against ' + activeLocal + ' active here, which looks like a partial feed rather than ' +
+      missing.length + ' departures. Nothing was changed for them.',
+    )
+  } else {
+    for (const s of missing) {
+      if (!s.active) continue                 // already gone; nothing to do
+      try {
+        await prisma.staff.update({ where: { id: s.id }, data: { active: false } })
+        deactivated++
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        errors.push('Deactivate ' + s.firstName + ' ' + s.lastName + ': ' + msg)
+      }
     }
   }
 
   // ── menteeIds translation ────────────────────────────────────────
-  // Must run after the delete pass above: hrIdToLocalId needs to reflect
+  // Must run after the leaver pass above: hrIdToLocalId needs to reflect
   // the FINAL post-sync state (a just-created mentee's local id, and no
-  // stale id for anyone just deleted). HR sends its own staff ids; the
+  // stale id for anyone just deactivated). HR sends its own staff ids; the
   // notes-visibility queries in Teletherapy key off local Staff.id, so
   // every id gets translated (or dropped if unresolvable — e.g. a mentee
   // who left and was never synced this run) before being written here.
@@ -281,6 +317,6 @@ export async function POST() {
     }
   }
 
-  console.log('[staff-sync] Done:', { created, updated, deleted, menteesSynced, nameChanges, errors: errors.length })
-  return NextResponse.json({ synced: created + updated, created, updated, deleted, menteesSynced, nameChanges, errors, total: hrStaff.length })
+  console.log('[staff-sync] Done:', { created, updated, deactivated, menteesSynced, nameChanges, errors: errors.length })
+  return NextResponse.json({ synced: created + updated, created, updated, deactivated, menteesSynced, nameChanges, errors, total: hrStaff.length })
 }
