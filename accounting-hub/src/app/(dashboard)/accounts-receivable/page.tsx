@@ -613,6 +613,8 @@ export default function AccountsReceivablePage() {
   // Clinician — inline editing state per order (blank POS entries, corrections)
   const [clinicianEditId, setClinicianEditId] = useState<string | null>(null)
   const [clinicianValue, setClinicianValue] = useState('')
+  // Set when the edit is being cancelled (Escape / ✕) so the blur-save skips.
+  const clinCancelRef = useRef(false)
   const [clinicianBusy, setClinicianBusy] = useState<string | null>(null)
 
   // Approved-SOA recompute (one-shot data correction for the 2026-04-08
@@ -1098,6 +1100,7 @@ export default function AccountsReceivablePage() {
   }
 
   const saveClinician = async (orderId: string, name: string | null) => {
+    if (clinicianBusy) return // blur + ✓ can both fire — save once
     setClinicianBusy(orderId)
     try {
       const res = await fetch('/api/accounts-receivable/clinician', {
@@ -2815,7 +2818,13 @@ export default function AccountsReceivablePage() {
                                 onChange={e => setClinicianValue(e.target.value)}
                                 onKeyDown={e => {
                                   if (e.key === 'Enter') saveClinician(o.id, clinicianValue || o.clinicianName || null)
-                                  if (e.key === 'Escape') { setClinicianEditId(null); setClinicianValue('') }
+                                  if (e.key === 'Escape') { clinCancelRef.current = true; setClinicianEditId(null); setClinicianValue('') }
+                                }}
+                                // Chrome's datalist popup swallows the first click on the ✓
+                                // while it is open — the blur commits the edit regardless.
+                                onBlur={() => {
+                                  if (clinCancelRef.current) { clinCancelRef.current = false; return }
+                                  saveClinician(o.id, clinicianValue || o.clinicianName || null)
                                 }}
                                 placeholder="Clinician name"
                                 className="px-1.5 py-0.5 rounded border text-xs outline-none"
@@ -2832,6 +2841,7 @@ export default function AccountsReceivablePage() {
                                 {clinicianBusy === o.id ? '…' : '✓'}
                               </button>
                               <button
+                                onMouseDown={() => { clinCancelRef.current = true }}
                                 onClick={() => { setClinicianEditId(null); setClinicianValue('') }}
                                 className="text-[10px] px-1 py-0.5 rounded"
                                 style={{ color: 'var(--mid-gray)' }}>
