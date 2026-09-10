@@ -1,13 +1,17 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import type { Prisma } from '@prisma/client'
+import { PPE_CLASSIFICATION_LABELS, NON_DEPRECIATING_CLASSIFICATION_LABELS } from '@/lib/asset-classification'
 
 // GET /api/budgets/capex-actual?year=&branch=
-// Actual asset purchases for the year, grouped by month and classification, so the
-// budget's Capital Expenditure section can be compared against what was really bought.
-// Uses totalAmount (price x quantity) on dateBought — the same figure the acquisition
-// journal entry debits to the classification account.
+// Actual asset purchases for the year, grouped by month and classification.
+//
+// Read from the LEDGER — the journal lines on the classification accounts
+// (2020…2100), net of reversals and disposals, filtered by JournalEntry.branch —
+// exactly the rows and totals the Subsidiary Ledger shows for those accounts.
+// The Asset table is deliberately not used here: an asset row without a
+// branch-tagged journal (or vice versa) would make Budget vs Actual disagree
+// with the Subsidiary Ledger, and the ledger is the book of record.
 export async function GET(req: Request) {
   const session = await auth()
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -17,23 +21,31 @@ export async function GET(req: Request) {
   const branch = searchParams.get('branch') || 'ALL'
   if (!year) return NextResponse.json({ error: 'year is required' }, { status: 400 })
 
-  const where: Prisma.AssetWhereInput = {
-    dateBought: { gte: new Date(year, 0, 1), lt: new Date(year + 1, 0, 1) },
-  }
-  if (branch !== 'ALL') where.branch = branch as Prisma.AssetWhereInput['branch']
+  const codes = Object.keys({ ...PPE_CLASSIFICATION_LABELS, ...NON_DEPRECIATING_CLASSIFICATION_LABELS })
 
-  const assets = await prisma.asset.findMany({
-    where,
-    select: { classification: true, totalAmount: true, dateBought: true },
+  const lines = await prisma.journalEntryLine.findMany({
+    where: {
+      account: { accountNumber: { in: codes } },
+      journalEntry: {
+        entryDate: { gte: new Date(Date.UTC(year, 0, 1)), lt: new Date(Date.UTC(year + 1, 0, 1)) },
+        ...(branch !== 'ALL' ? { branch } : {}),
+      },
+    },
+    select: {
+      debit: true, credit: true,
+      account: { select: { accountNumber: true } },
+      journalEntry: { select: { entryDate: true } },
+    },
   })
 
   // { month: { "2050": amount } } — keyed by classification code alone; the page
   // matches it against its "<code> <label>" budget lines.
   const byMonth: Record<number, Record<string, number>> = {}
-  for (const a of assets) {
-    const m = a.dateBought.getMonth() + 1
+  for (const l of lines) {
+    const m = l.journalEntry.entryDate.getUTCMonth() + 1
+    const code = l.account.accountNumber
     byMonth[m] ??= {}
-    byMonth[m][a.classification] = (byMonth[m][a.classification] || 0) + Number(a.totalAmount)
+    byMonth[m][code] = (byMonth[m][code] || 0) + Number(l.debit) - Number(l.credit)
   }
 
   return NextResponse.json({ year, branch, capexByMonth: byMonth })
