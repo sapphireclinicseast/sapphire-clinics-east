@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { MessageSquareHeart, MessageSquareWarning, Gift, ArrowLeft, Search, X } from 'lucide-react'
+import { MessageSquareHeart, MessageSquareWarning, Gift, UserPlus, ArrowLeft, Search, X } from 'lucide-react'
 import CheckoutScreen, { type CheckoutPayload } from './CheckoutScreen'
 
 /**
@@ -18,6 +18,7 @@ interface FeedData {
   survey: { count: number; invitations: Invitation[]; error: string | null }
   complaintFormUrl: string
   rewardPointsUrl: string
+  patientRegisterUrl: string
   /** Set while the till is ringing up a sale at this branch. */
   checkout: CheckoutPayload | null
 }
@@ -113,7 +114,15 @@ export default function PatientViewClient({ slug, branchName, shortName }: { slu
               </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
+              <Card
+                tone="moss"
+                icon={<UserPlus size={30} />}
+                title="Register as a patient"
+                body="New to Aura Health Rehab? Set up your patient record right here — it only takes a few minutes."
+                cta="Start registration"
+                onClick={() => openEmbed(data?.patientRegisterUrl, 'Register as a patient')}
+              />
               <Card
                 tone="teal"
                 icon={<MessageSquareHeart size={30} />}
@@ -218,6 +227,7 @@ const TONES = {
   teal:   { bg: '#0f766e', soft: '#e6f2ef', ring: '#0f766e' },
   amber:  { bg: '#b45309', soft: '#fdf3e3', ring: '#b45309' },
   violet: { bg: '#6d5192', soft: '#f1ecf7', ring: '#6d5192' },
+  moss:   { bg: '#4d7c0f', soft: '#eef6e2', ring: '#4d7c0f' },
 } as const
 
 function Card({ tone, icon, title, body, cta, badge, disabled, onClick }: {

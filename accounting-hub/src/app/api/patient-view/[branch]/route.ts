@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { resolvePatientViewBranch, COMPLAINT_FORM_URL, REWARD_POINTS_URL } from '@/lib/patient-view'
+import { resolvePatientViewBranch, COMPLAINT_FORM_URL, REWARD_POINTS_URL, PATIENT_REGISTER_URL } from '@/lib/patient-view'
 import { fetchSurveyInvitations, matchInvitation } from '@/lib/patient-view-survey'
 
 /**
@@ -66,6 +66,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ branch:
     survey: { count: invitations.length, invitations, error: surveyError },
     complaintFormUrl: COMPLAINT_FORM_URL,
     rewardPointsUrl: REWARD_POINTS_URL,
+    patientRegisterUrl: PATIENT_REGISTER_URL,
     serverTime: new Date().toISOString(),
   })
 }

@@ -41,9 +41,21 @@ const nextConfig: NextConfig = {
     return [
       {
         // Apply security headers to all routes EXCEPT /api/uploads (must be publicly
-        // fetchable by Meta's servers for Facebook/Instagram image posting)
-        source: '/((?!api/uploads).*)',
+        // fetchable by Meta's servers for Facebook/Instagram image posting) and
+        // /patient-register (framed by the patient tablet — its rule is below)
+        source: '/((?!api/uploads|patient-register).*)',
         headers: securityHeaders,
+      },
+      {
+        // The accounting hub's patient tablet embeds the registration page in
+        // its kiosk iframe. X-Frame-Options has no allow-list, so this path
+        // swaps it for CSP frame-ancestors naming exactly that origin —
+        // everything else on this host keeps the global DENY.
+        source: '/patient-register/:path*',
+        headers: [
+          ...securityHeaders.filter(h => h.key !== 'X-Frame-Options'),
+          { key: 'Content-Security-Policy', value: "frame-ancestors 'self' https://accounting.sapphireclinicseast.org" },
+        ],
       },
       {
         // Uploaded media: allow Meta's servers to fetch without restrictive headers

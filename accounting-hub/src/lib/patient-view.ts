@@ -53,9 +53,13 @@ export function patientViewPath(branchEnum: string): string | null {
 }
 
 /**
- * Both of these are owned elsewhere and simply linked to. Rewards in particular
+ * All of these are owned elsewhere and simply linked to. Rewards in particular
  * already has a public page — re-implementing the lookup here would have meant
  * a second, publicly reachable copy of cardholder balances to keep in step.
+ * Registration lives in the Operations Hub, which owns the patient records;
+ * its /patient-register path is the one Ops route allowed to be framed by
+ * this app's tablet (see the ops hub's next.config.ts headers).
  */
 export const COMPLAINT_FORM_URL = 'https://hr.sapphireclinicseast.org/patient-complaint-form.html'
 export const REWARD_POINTS_URL = 'https://client.sapphireclinicseast.org/rewards'
+export const PATIENT_REGISTER_URL = 'https://operations.sapphireclinicseast.org/patient-register'
