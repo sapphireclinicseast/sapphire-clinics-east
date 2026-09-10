@@ -239,13 +239,33 @@ export default function PatientRequestsPanel({ branch, service, compact }: Props
     } catch (e) { alert('Error: ' + (e as Error).message) } finally { setBusy(null) }
   }
 
-  async function markRecorded(b: BookingRow) {
+  async function markRecorded(b: BookingRow, force = false) {
     setBusy(b.id)
     doMarkSeen(b.id)
     try {
-      const r = await fetch(`/api/decking/bookings/${b.id}/recorded-in-accounting`, { method: 'POST' })
+      const r = await fetch(`/api/decking/bookings/${b.id}/recorded-in-accounting`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(force ? { force: true } : {}),
+      })
       const data = await r.json().catch(() => ({}))
-      if (!r.ok) throw new Error(data.error || 'Recording failed')
+      if (!r.ok) {
+        // Teletherapy verification: the hub found no payment for this booking, or
+        // found one still sitting unconverted in the Convert-to-Order queue.
+        // Bookings paid before booking-linked pay links existed can never verify
+        // automatically, so allow an explicit eyes-on override.
+        const verifyFailed =
+          (r.status === 409 && (data.code === 'NO_PAYMENT' || data.code === 'NOT_CONVERTED')) ||
+          r.status === 502 // lookup unreachable — the error text offers "mark anyway" too
+        if (verifyFailed && !force && b.isTeletherapy) {
+          setBusy(null)
+          if (confirm(`${data.error}\n\nMark as recorded anyway? Only do this if you verified in the Accounting Hub yourself that this payment exists AND was converted to an order.`)) {
+            return markRecorded(b, true)
+          }
+          return
+        }
+        throw new Error(data.error || 'Recording failed')
+      }
       if (data.orderNumber) {
         alert(`POS Order #${data.orderNumber} created in Accounting Hub.`)
       }
@@ -387,6 +407,8 @@ export default function PatientRequestsPanel({ branch, service, compact }: Props
                         ? 'Patient has not paid yet.'
                         : b.accountingRecorded
                         ? 'Already marked as recorded in accounting-hub'
+                        : b.isTeletherapy
+                        ? 'Checks with the Accounting Hub that this booking\'s PayMongo payment was converted to an order, then marks it recorded'
                         : 'Mark that the downpayment was logged in accounting-hub'
                     }
                   >

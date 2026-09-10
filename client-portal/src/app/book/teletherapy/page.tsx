@@ -31,26 +31,44 @@ function BookTeletherapyInner() {
 
   useEffect(() => { if (!getSession()) router.push('/') }, [router])
 
-  function handleBookAndPay(item: { id: string; name: string }, dept: 'OT' | 'SLP') {
+  async function handleBookAndPay(item: { id: string; name: string }, dept: 'OT' | 'SLP') {
     const url = checkoutUrlFor(branch, dept, item.id)
     if (!url) return
-    // Open payment window immediately (must be synchronous in the click handler)
-    window.open(url, '_blank', 'noopener,noreferrer')
-    // Fire-and-forget: create a tracking record in the ops hub so this booking
-    // appears in the Decking Module for the front desk to confirm and schedule.
+    // Open a blank window synchronously (popup blockers require it inside the click
+    // handler), then point it at the pay link once the tracking booking exists so the
+    // payment carries ?ref=<bookingId>. That ref lands on the accounting-hub checkout
+    // and lets the Decking Module verify the payment was recorded there — without it
+    // there is no machine link between this booking and the PayMongo payment.
+    // NOTE: cannot pass 'noopener' here — window.open would return null and we could
+    // not navigate the tab; opener is severed by hand below instead.
+    const w = window.open('about:blank', '_blank')
+    let target = url
     const session = getSession()
     if (session?.token) {
-      fetch('/api/booking-proxy/bookings-tele', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          token: session.token,
-          branch,
-          department: dept,
-          serviceId: item.id,
-          serviceName: item.name,
-        }),
-      }).catch(() => {}) // non-fatal — front desk can handle manually if this fails
+      try {
+        const r = await fetch('/api/booking-proxy/bookings-tele', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            token: session.token,
+            branch,
+            department: dept,
+            serviceId: item.id,
+            serviceName: item.name,
+          }),
+        })
+        const j = await r.json().catch(() => ({}))
+        if (r.ok && j.bookingId) {
+          target = `${url}${url.includes('?') ? '&' : '?'}ref=${encodeURIComponent(j.bookingId)}`
+        }
+      } catch {} // non-fatal — payment proceeds unlinked; front desk records manually
+    }
+    if (w) {
+      try { w.opener = null } catch {}
+      w.location.href = target
+    } else {
+      // Popup was blocked before we could grab a handle — fall back to a fresh open.
+      window.open(target, '_blank', 'noopener,noreferrer')
     }
   }
 

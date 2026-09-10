@@ -86,6 +86,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
     const lastName = String(b.lastName || '').trim()
     const phone = String(b.phone || '').trim()
     const email = String(b.email || '').trim()
+    // Optional cross-system reference (?ref= on the pay page — e.g. the ops-hub
+    // teletherapy PatientBooking id). Shape-checked, never trusted for anything
+    // beyond lookup; a malformed value is dropped rather than rejected so a
+    // tampered query string can't block a legitimate payment.
+    const refRaw = String(b.ref || '').trim()
+    const externalRef = /^[A-Za-z0-9_-]{8,40}$/.test(refRaw) ? refRaw : null
     if (!firstName || !lastName) return NextResponse.json({ error: 'Please enter your first and last name.' }, { status: 400 })
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return NextResponse.json({ error: 'Please enter a valid email address.' }, { status: 400 })
     if (phone.replace(/\D/g, '').length < 7) return NextResponse.json({ error: 'Please enter a valid contact number.' }, { status: 400 })
@@ -132,6 +138,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
         ...(voucherCode ? { voucherCode } : {}),
         // Whose registered PWD/Senior ID granted the discount — the audit trail for it.
         ...(pwdPatientName ? { pwdPatient: pwdPatientName } : {}),
+        ...(externalRef ? { bookingRef: externalRef } : {}),
       },
     })
 
@@ -139,7 +146,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
       await tx.paymongoCheckout.create({
         data: {
           checkoutId: cs.id, referenceCode, account: link.account, branch: link.branch,
-          paymentLinkId: link.id,
+          paymentLinkId: link.id, externalRef,
           serviceId: link.serviceId, inventoryItemId: link.inventoryItemId,
           itemName, quantity: link.quantity,
           customerFirstName: firstName, customerLastName: lastName, customerPhone: phone, customerEmail: email,

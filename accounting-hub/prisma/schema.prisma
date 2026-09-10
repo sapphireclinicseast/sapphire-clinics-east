@@ -1298,6 +1298,10 @@ model PaymongoCheckout {
   customerEmail     String?
   // Voucher applied (if any). grossAmount = list price before discount; amount = charged.
   paymentLinkId     String? // the reusable PaymentLink this payment came through
+  // Reference handed in by the payer's origin flow (?ref= on the public pay page) —
+  // today the ops-hub PatientBooking id for teletherapy Book & Pay. Lets the ops hub
+  // verify this payment was actually recorded before marking its booking accounted.
+  externalRef       String?
   // Which instrument the payer actually used: CARD | GCASH | PAYMAYA | QRPH.
   // Read from the PayMongo payment payload and used to pick the matching POS PaymentMode.
   paymentMethodUsed String?
@@ -1330,6 +1334,7 @@ model PaymongoCheckout {
   @@index([payoutId])
   @@index([account])
   @@index([voucherId])
+  @@index([externalRef])
 }
 
 // Promo voucher codes applied to PayMongo checkout links (and reusable elsewhere).

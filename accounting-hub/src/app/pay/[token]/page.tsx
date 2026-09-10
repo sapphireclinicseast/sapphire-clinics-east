@@ -30,7 +30,11 @@ interface LinkInfo {
 
 export default function PayPage() {
   const { token } = useParams<{ token: string }>()
-  const statusParam = useSearchParams().get('status')
+  const search = useSearchParams()
+  const statusParam = search.get('status')
+  // Cross-system reference the origin flow appended (e.g. the ops-hub teletherapy
+  // booking id) — forwarded on the checkout so that system can find this payment.
+  const refParam = search.get('ref')
 
   const [info, setInfo] = useState<LinkInfo | null>(null)
   const [loading, setLoading] = useState(true)
@@ -74,7 +78,7 @@ export default function PayPage() {
     try {
       const r = await fetch(`/api/public/pay/${token}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ firstName, lastName, phone, email, voucherCode: code.trim() || undefined }),
+        body: JSON.stringify({ firstName, lastName, phone, email, voucherCode: code.trim() || undefined, ref: refParam || undefined }),
       })
       const j = await r.json()
       if (!r.ok) throw new Error(j.error || 'Could not start your payment.')
