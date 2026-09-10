@@ -325,9 +325,11 @@ export default function SoaReport({ wallets, isAdmin, canWrite = true }: SoaRepo
       const d = await r.json()
       const all: AROrder[] = d.orders || []
       // Excluded: sessions already in a submitted batch, AND sessions sitting on
-      // a generated SOA that is still awaiting its Submitted date.
+      // a generated SOA that is still awaiting its Submitted date. EXCEPT: a
+      // session the HMO disapproved comes back so it can go on a new SOA
+      // (resubmission) — it shows red with a "Previously disapproved" tag.
       const pendingCovered = new Set(records.filter(r => r.walletId === genWallet && !r.submittedDate).flatMap(r => r.orderIds || []))
-      const eligible = all.filter(o => !(o.soaSubmissionItems?.length) && !pendingCovered.has(o.id))
+      const eligible = all.filter(o => (!(o.soaSubmissionItems?.length) || o.soaApprovalStatus === 'DISAPPROVED') && !pendingCovered.has(o.id))
       setAlreadySubmittedCount(all.length - eligible.length)
       setPreviewOrders(eligible)
       setUnticked(new Set())
@@ -633,14 +635,24 @@ export default function SoaReport({ wallets, isAdmin, canWrite = true }: SoaRepo
                       <tbody>
                         {previewOrders.map(o => {
                           const on = !unticked.has(o.id)
+                          const wasDisapproved = o.soaApprovalStatus === 'DISAPPROVED' && (o.soaSubmissionItems?.length || 0) > 0
                           return (
-                            <tr key={o.id} className="border-t cursor-pointer" style={{ borderColor: 'var(--light-gray)', opacity: on ? 1 : 0.45 }}
+                            <tr key={o.id} className="border-t cursor-pointer" style={{ borderColor: 'var(--light-gray)', opacity: on ? 1 : 0.45, background: wasDisapproved ? '#fef2f2' : undefined }}
                               onClick={() => setUnticked(prev => { const n = new Set(prev); n.has(o.id) ? n.delete(o.id) : n.add(o.id); return n })}>
                               <td className="px-3 py-2"><input type="checkbox" checked={on} readOnly /></td>
-                              <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>
+                              <td className="px-3 py-2 whitespace-nowrap" style={{ color: wasDisapproved ? '#b91c1c' : 'var(--mid-gray)' }}>
                                 {new Date(o.arCustomDate || o.transactionDate).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
                               </td>
-                              <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{o.patientName || '—'}</td>
+                              <td className="px-3 py-2" style={{ color: wasDisapproved ? '#b91c1c' : 'var(--charcoal)' }}>
+                                {o.patientName || '—'}
+                                {wasDisapproved && (
+                                  <span className="ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-semibold whitespace-nowrap align-middle"
+                                    title="The HMO disapproved this session on an earlier SOA — including it here resubmits the claim"
+                                    style={{ background: '#fee2e2', color: '#b91c1c', border: '1px solid #fecaca' }}>
+                                    Previously disapproved
+                                  </span>
+                                )}
+                              </td>
                               <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{o.items.map(i => i.name).join(', ')}</td>
                               <td className="px-3 py-2 text-right font-medium whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{formatCurrency(previewAmount(o))}</td>
                             </tr>

@@ -36,6 +36,9 @@ export interface SoaOrder {
   // Present when already tagged in an SOA Submissions batch (or a previously
   // generated SOA Report) — such orders are excluded from a new SOA Report.
   soaSubmissionItems?: { submission: { submittedDate: string } }[]
+  // APPROVED | DISAPPROVED | null — a DISAPPROVED session is allowed back onto
+  // a new SOA (resubmission) even though it already sits in an old batch.
+  soaApprovalStatus?: string | null
 }
 
 /* ─── Month options ────────────────────────────────────────── */

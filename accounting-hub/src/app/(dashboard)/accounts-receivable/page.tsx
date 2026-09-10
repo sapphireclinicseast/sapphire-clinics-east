@@ -2323,7 +2323,8 @@ export default function AccountsReceivablePage() {
           // approved reads Approved; disapproved; everything else Pending.
           const resolved = (o: AROrder) => o.arPaymentItems.length > 0 ? 'approved'
             : o.soaApprovalStatus === 'APPROVED' ? 'approved'
-            : o.soaApprovalStatus === 'DISAPPROVED' ? 'disapproved' : 'pending'
+            : o.soaApprovalStatus === 'DISAPPROVED' ? ((o.soaSubmissionItems?.length || 0) >= 2 ? 'resubmitted' : 'disapproved')
+            : 'pending'
           perHmoOrders = perHmoOrders.filter(o => resolved(o) === perHmoColSearch.substat)
         }
         if (perHmoColSearch.hmo) {
@@ -2441,7 +2442,7 @@ export default function AccountsReceivablePage() {
                 ...(isFollowUp ? { 'Running AR Days': arDaysOf(o) } : {}),
                 'Submission Status': o.arPaymentItems.length > 0 ? 'Approved'
                   : o.soaApprovalStatus === 'APPROVED' ? 'Approved'
-                  : o.soaApprovalStatus === 'DISAPPROVED' ? 'Disapproved' : 'Pending',
+                  : o.soaApprovalStatus === 'DISAPPROVED' ? ((o.soaSubmissionItems?.length || 0) >= 2 ? 'Resubmitted' : 'Disapproved') : 'Pending',
                 Proof: o.arProofUrl || '',
               }
             })
@@ -2607,6 +2608,7 @@ export default function AccountsReceivablePage() {
                             <option value="">All</option>
                             <option value="approved">Approved</option>
                             <option value="disapproved">Disapproved</option>
+                            <option value="resubmitted">Resubmitted</option>
                             <option value="pending">Pending</option>
                           </select>
                         )}
@@ -2858,20 +2860,28 @@ export default function AccountsReceivablePage() {
                                     Approved
                                   </span>
                                 ) : (
+                                  (() => {
+                                    // Disapproved AND on a second submission batch = the claim
+                                    // went back out — show it as Resubmitted (still adjustable).
+                                    const isResub = o.soaApprovalStatus === 'DISAPPROVED' && (o.soaSubmissionItems?.length || 0) >= 2
+                                    return (
                                   <select
                                     value={o.soaApprovalStatus || ''}
                                     disabled={soaStatusBusy === o.id}
                                     onChange={e => saveSoaStatus(o.id, e.target.value)}
+                                    title={isResub ? 'Disapproved earlier, now included in a new SOA submission' : undefined}
                                     className="px-1.5 py-1 rounded-lg border text-xs outline-none disabled:opacity-50"
                                     style={{
                                       borderColor: 'var(--light-gray)',
-                                      color: o.soaApprovalStatus === 'APPROVED' ? '#166534' : o.soaApprovalStatus === 'DISAPPROVED' ? '#b91c1c' : 'var(--mid-gray)',
-                                      background: o.soaApprovalStatus === 'APPROVED' ? '#dcfce7' : o.soaApprovalStatus === 'DISAPPROVED' ? '#fee2e2' : 'white',
+                                      color: o.soaApprovalStatus === 'APPROVED' ? '#166534' : isResub ? '#1d4ed8' : o.soaApprovalStatus === 'DISAPPROVED' ? '#b91c1c' : 'var(--mid-gray)',
+                                      background: o.soaApprovalStatus === 'APPROVED' ? '#dcfce7' : isResub ? '#dbeafe' : o.soaApprovalStatus === 'DISAPPROVED' ? '#fee2e2' : 'white',
                                     }}>
                                     <option value="">Pending</option>
                                     <option value="APPROVED">Approved</option>
-                                    <option value="DISAPPROVED">Disapproved</option>
+                                    <option value="DISAPPROVED">{isResub ? 'Resubmitted' : 'Disapproved'}</option>
                                   </select>
+                                    )
+                                  })()
                                 )}
                               </td>
                             </>
