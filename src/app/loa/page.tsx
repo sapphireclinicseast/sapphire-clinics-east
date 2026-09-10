@@ -10,7 +10,7 @@
 // see /api/loa-form/patients.
 
 import { useEffect, useRef, useState } from 'react'
-import LoaPhotoCapture from '@/components/LoaPhotoCapture'
+import PhotoCapture from '@/components/PhotoCapture'
 import { PaperclipIcon, CameraIcon, ButtonLabel } from '@/components/loa-upload-icons'
 
 type Stage = 'form' | 'submitting' | 'success'
@@ -281,7 +281,7 @@ export default function LoaStandingFormPage() {
 
         {/* Phone: rear camera. Laptop: in-page webcam, since the capture
             attribute is ignored there and this used to open a file picker. */}
-        <LoaPhotoCapture onCapture={handleFile} buttonStyle={bigButton} />
+        <PhotoCapture onCapture={handleFile} buttonStyle={bigButton} />
         <button style={ghostButton} onClick={() => galleryRef.current?.click()}>
           <ButtonLabel icon={<PaperclipIcon />}>Choose a photo or PDF of LOA</ButtonLabel>
         </button>
@@ -312,7 +312,7 @@ export default function LoaStandingFormPage() {
           <input ref={idGalleryRef} type="file" accept="image/*,application/pdf" style={{ display: 'none' }}
             onChange={e => { const f = e.target.files?.[0]; if (f) handleIdFile(f) }} />
 
-          <LoaPhotoCapture
+          <PhotoCapture
             onCapture={handleIdFile}
             label={<ButtonLabel icon={<CameraIcon />}>Take a photo of ID</ButtonLabel>}
             buttonStyle={bigButton}

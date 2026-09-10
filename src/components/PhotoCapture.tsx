@@ -1,6 +1,11 @@
 'use client'
 
-// Photo capture for the LOA upload pages.
+// Photo capture for any page that asks a patient to photograph a document.
+//
+// Started life on the LOA pages; patient registration needs the same thing for
+// the doctor's referral and the PWD/Senior ID, so the LOA wording moved out
+// into props rather than the component being copied with three strings
+// changed.
 //
 // `<input type="file" accept="image/*" capture="environment">` opens the camera
 // on a phone and is ignored on a laptop — there it silently degrades to an
@@ -25,12 +30,21 @@ interface Props {
   /** Rendered as the primary button. A node, so it can carry an icon. */
   label?: React.ReactNode
   buttonStyle?: React.CSSProperties
+  /** Modal title — name the document, so the patient knows what to hold up. */
+  heading?: string
+  /** One line under the title telling them how to frame it. */
+  hint?: string
+  /** Start of the generated filename; front desk read these in the file list. */
+  filePrefix?: string
 }
 
-export default function LoaPhotoCapture({
+export default function PhotoCapture({
   onCapture,
   label = <ButtonLabel icon={<CameraIcon />}>Take a photo of LOA</ButtonLabel>,
   buttonStyle,
+  heading = 'Photograph your LOA',
+  hint = 'Hold the letter flat and fill the frame, then press Capture.',
+  filePrefix = 'loa-photo',
 }: Props) {
   const [open, setOpen] = useState(false)
   const [error, setError] = useState('')
@@ -93,7 +107,7 @@ export default function LoaPhotoCapture({
     canvas.toBlob(
       blob => {
         if (!blob) { setError('Could not save the photo. Please try again.'); return }
-        onCapture(new File([blob], `loa-photo-${Date.now()}.jpg`, { type: 'image/jpeg' }))
+        onCapture(new File([blob], `${filePrefix}-${Date.now()}.jpg`, { type: 'image/jpeg' }))
         stop(); setOpen(false)
       },
       'image/jpeg',
@@ -116,7 +130,12 @@ export default function LoaPhotoCapture({
         onChange={e => { const f = e.target.files?.[0]; if (f) onCapture(f) }}
       />
 
+      {/* type="button" on every button here: this component is dropped inside
+          <form> elements (patient registration is one), and a button with no
+          type defaults to submit — "Take a photo" would have submitted the
+          form instead of opening the camera. */}
       <button
+        type="button"
         style={primary}
         onClick={() => (prefersNativeCamera() ? nativeRef.current?.click() : start())}
       >
@@ -133,14 +152,14 @@ export default function LoaPhotoCapture({
         >
           <div style={{ width: '100%', maxWidth: 640, background: '#fff', borderRadius: 16, padding: '1rem', textAlign: 'center' }}>
             <p style={{ fontWeight: 800, color: '#1C2B30', marginBottom: '0.6rem' }}>
-              Photograph your LOA
+              {heading}
             </p>
 
             {error ? (
               <p style={{ color: '#991B1B', fontSize: '0.9rem', lineHeight: 1.5, margin: '0.5rem 0 1rem' }}>{error}</p>
             ) : (
               <p style={{ color: '#667', fontSize: '0.85rem', lineHeight: 1.5, margin: '0 0 0.7rem' }}>
-                Hold the letter flat and fill the frame, then press Capture.
+                {hint}
               </p>
             )}
 
@@ -155,6 +174,7 @@ export default function LoaPhotoCapture({
 
             <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.85rem' }}>
               <button
+                type="button"
                 onClick={() => { stop(); setOpen(false) }}
                 style={{
                   flex: 1, padding: '0.85rem', borderRadius: 10, border: '1.5px solid #D6DCE2',
@@ -165,6 +185,7 @@ export default function LoaPhotoCapture({
               </button>
               {!error && (
                 <button
+                  type="button"
                   onClick={shoot}
                   disabled={!ready}
                   style={{
