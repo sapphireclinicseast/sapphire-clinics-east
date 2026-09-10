@@ -586,6 +586,9 @@ export default function AccountsReceivablePage() {
   const [perHmoSortField, setPerHmoSortField] = useState('transactionDate')
   const [perHmoSortDir, setPerHmoSortDir] = useState<'asc' | 'desc'>('desc')
   const [perHmoColSearch, setPerHmoColSearch] = useState<Record<string, string>>({})
+  // HMO column: tick-box multi-select of provider names
+  const [perHmoHmoTicks, setPerHmoHmoTicks] = useState<string[]>([])
+  const [perHmoHmoOpen, setPerHmoHmoOpen] = useState(false)
   // Per HMO fetches its own period rather than sifting the page list. That list
   // is the 500 newest orders, which reaches back only a few months, so every
   // imported QuickBooks order sat outside it and the tab showed
@@ -1081,9 +1084,11 @@ export default function AccountsReceivablePage() {
         body: JSON.stringify({ orderId, arCustomDate: newDate }),
       })
       if (res.ok) {
-        setOrders(prev => prev.map(o =>
-          o.id === orderId ? { ...o, arCustomDate: newDate } : o
-        ))
+        // Per HMO renders from its own fetched list when a range is set, so a
+        // save must land in BOTH lists or the edit looks like it didn't stick.
+        const apply = (list: AROrder[]) => list.map(o => o.id === orderId ? { ...o, arCustomDate: newDate } : o)
+        setOrders(apply)
+        setPerHmoFetched(prev => prev ? apply(prev) : prev)
       }
     } catch { /* ignore */ }
     finally {
@@ -1102,7 +1107,9 @@ export default function AccountsReceivablePage() {
       })
       if (res.ok) {
         const clean = name?.trim() || ''
-        setOrders(prev => prev.map(o => o.id === orderId ? { ...o, clinicianName: clean } : o))
+        const apply = (list: AROrder[]) => list.map(o => o.id === orderId ? { ...o, clinicianName: clean } : o)
+        setOrders(apply)
+        setPerHmoFetched(prev => prev ? apply(prev) : prev)
       } else {
         alert((await res.json().catch(() => ({}))).error || 'Failed to save clinician')
       }
@@ -1126,9 +1133,9 @@ export default function AccountsReceivablePage() {
         body: JSON.stringify({ orderId, status: status || null }),
       })
       if (res.ok) {
-        setOrders(prev => prev.map(o =>
-          o.id === orderId ? { ...o, soaApprovalStatus: status || null } : o
-        ))
+        const apply = (list: AROrder[]) => list.map(o => o.id === orderId ? { ...o, soaApprovalStatus: status || null } : o)
+        setOrders(apply)
+        setPerHmoFetched(prev => prev ? apply(prev) : prev)
       }
     } catch { /* ignore */ }
     finally { setSoaStatusBusy(null) }
@@ -2327,12 +2334,12 @@ export default function AccountsReceivablePage() {
             : 'pending'
           perHmoOrders = perHmoOrders.filter(o => resolved(o) === perHmoColSearch.substat)
         }
-        if (perHmoColSearch.hmo) {
-          const q = perHmoColSearch.hmo.toLowerCase()
-          perHmoOrders = perHmoOrders.filter(o => {
-            const w = wallets.find(w => w.id === o.payments[0]?.walletId)
-            return (w?.patientName || '').toLowerCase().includes(q)
-          })
+        // HMO tick-box options come from the rows BEFORE this filter, so ticking
+        // one provider doesn't erase the rest from the list.
+        const hmoNameOf = (o: AROrder) => wallets.find(w => w.id === o.payments[0]?.walletId)?.patientName || '—'
+        const perHmoHmoOptions = Array.from(new Set(perHmoOrders.map(hmoNameOf))).sort((x, y) => x === '—' ? -1 : y === '—' ? 1 : x.localeCompare(y))
+        if (perHmoHmoTicks.length) {
+          perHmoOrders = perHmoOrders.filter(o => perHmoHmoTicks.includes(hmoNameOf(o)))
         }
 
         // Sort
@@ -2660,7 +2667,32 @@ export default function AccountsReceivablePage() {
                             {clinicianOptions.map(name => <option key={name} value={name}>{name}</option>)}
                           </select>
                         )}
-                        {col.searchKey && ['service', 'patient', 'hmo'].includes(col.searchKey) && (
+                        {col.searchKey === 'hmo' && (
+                          <div className="relative mt-1 font-normal" onClick={e => e.stopPropagation()}>
+                            <button type="button" onClick={() => setPerHmoHmoOpen(v => !v)}
+                              className="w-full min-w-[100px] px-2 py-0.5 rounded border text-xs text-left bg-white"
+                              style={{ borderColor: perHmoHmoTicks.length ? 'var(--teal)' : 'var(--light-gray)', color: perHmoHmoTicks.length ? 'var(--teal)' : 'var(--charcoal)' }}>
+                              {perHmoHmoTicks.length === 0 ? 'All' : `${perHmoHmoTicks.length} ticked`} ▾
+                            </button>
+                            {perHmoHmoOpen && (<>
+                              <div className="fixed inset-0 z-40" onClick={() => setPerHmoHmoOpen(false)} />
+                              <div className="absolute left-0 top-full mt-1 z-50 rounded-xl border bg-white shadow-lg py-1 max-h-72 overflow-y-auto" style={{ borderColor: 'var(--light-gray)', minWidth: 200 }}>
+                                <button type="button" onClick={() => setPerHmoHmoTicks([])}
+                                  className="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 font-semibold" style={{ color: 'var(--teal)' }}>
+                                  Show all{perHmoHmoTicks.length > 0 ? ' (clear ticks)' : ''}
+                                </button>
+                                {perHmoHmoOptions.map(name => (
+                                  <label key={name} className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-gray-50 cursor-pointer" style={{ color: 'var(--charcoal)' }}>
+                                    <input type="checkbox" checked={perHmoHmoTicks.includes(name)}
+                                      onChange={() => setPerHmoHmoTicks(prev => prev.includes(name) ? prev.filter(n => n !== name) : [...prev, name])} />
+                                    <span>{name === '—' ? '(No HMO)' : name}</span>
+                                  </label>
+                                ))}
+                              </div>
+                            </>)}
+                          </div>
+                        )}
+                        {col.searchKey && ['service', 'patient'].includes(col.searchKey) && (
                           <input
                             className="mt-1 w-full px-2 py-0.5 rounded border text-xs outline-none"
                             style={{ borderColor: 'var(--light-gray)' }}
@@ -2934,7 +2966,7 @@ export default function AccountsReceivablePage() {
                         </td>
                         <td className="px-3 py-2 text-center">
                           <ProofCell orderId={o.id} currentUrl={o.arProofUrl || null}
-                            onChange={(url) => setOrders(prev => prev.map(x => x.id === o.id ? { ...x, arProofUrl: url } : x))} />
+                            onChange={(url) => { const apply = (list: AROrder[]) => list.map(x => x.id === o.id ? { ...x, arProofUrl: url } : x); setOrders(apply); setPerHmoFetched(prev => prev ? apply(prev) : prev) }} />
                         </td>
                       </tr>
                     )
