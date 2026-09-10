@@ -59,9 +59,28 @@ export async function POST(req: Request) {
         }
       }
     } else if (type === 'payment.failed') {
-      const checkoutId: string = resource?.id || ''
-      if (checkoutId) {
-        await prisma.paymongoCheckout.updateMany({ where: { checkoutId, status: 'PENDING' }, data: { status: 'FAILED', raw: event as object } })
+      // The resource here is a *payment* (pay_…), not a checkout session, so its id never
+      // matches PaymongoCheckout.checkoutId. Link back to our checkout via the session's
+      // payment intent (a PENDING row's `raw` is still the creation payload, which embeds
+      // payment_intent), falling back to the metadata referenceCode that checkout sessions
+      // copy onto their payments. Only PENDING rows are touched: a delayed failed event
+      // must not clobber a PAID row, and a retried payment that later succeeds still lands
+      // via checkout_session.payment.paid, which matches by checkoutId regardless of status.
+      const attrs = resource?.attributes || {}
+      const intentId: string = attrs.payment_intent_id || ''
+      const ref: string = attrs.metadata?.referenceCode || attrs.description || ''
+      let match = intentId
+        ? await prisma.paymongoCheckout.findFirst({
+            where: { status: 'PENDING', raw: { path: ['attributes', 'payment_intent', 'id'], equals: intentId } },
+          })
+        : null
+      if (!match && ref) {
+        match = await prisma.paymongoCheckout.findFirst({ where: { referenceCode: ref, status: 'PENDING' } })
+      }
+      if (match) {
+        await prisma.paymongoCheckout.update({ where: { id: match.id }, data: { status: 'FAILED', raw: event as object } })
+      } else {
+        console.warn('PayMongo webhook: payment.failed with no matching pending checkout', resource?.id || '')
       }
     }
 
