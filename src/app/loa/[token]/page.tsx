@@ -7,7 +7,7 @@
 // Modelled on /referral/[token], which patients already use for referrals.
 
 import { useEffect, useRef, useState } from 'react'
-import LoaPhotoCapture from '@/components/LoaPhotoCapture'
+import PhotoCapture from '@/components/PhotoCapture'
 import { PaperclipIcon, CameraIcon, ButtonLabel } from '@/components/loa-upload-icons'
 import { useParams } from 'next/navigation'
 
@@ -259,7 +259,7 @@ export default function LoaUploadPage() {
 
         {/* On a phone this opens the rear camera; on a laptop, where the
             capture attribute is ignored, it opens an in-page webcam instead. */}
-        <LoaPhotoCapture onCapture={handleFile} buttonStyle={bigButton} />
+        <PhotoCapture onCapture={handleFile} buttonStyle={bigButton} />
         <button style={ghostButton} onClick={() => galleryRef.current?.click()}>
           <ButtonLabel icon={<PaperclipIcon />}>Choose a photo or PDF of LOA</ButtonLabel>
         </button>
@@ -289,7 +289,7 @@ export default function LoaUploadPage() {
           <input ref={idGalleryRef} type="file" accept="image/*,application/pdf" style={{ display: 'none' }}
             onChange={e => { const f = e.target.files?.[0]; if (f) handleIdFile(f) }} />
 
-          <LoaPhotoCapture
+          <PhotoCapture
             onCapture={handleIdFile}
             label={<ButtonLabel icon={<CameraIcon />}>Take a photo of ID</ButtonLabel>}
             buttonStyle={bigButton}

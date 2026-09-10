@@ -1,7 +1,22 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { CheckCircle2, Loader2, Upload, FileText, X } from 'lucide-react'
+import { CheckCircle2, Loader2, Upload, FileText, X, Camera } from 'lucide-react'
+import PhotoCapture from '@/components/PhotoCapture'
+
+// The two document fields offer the same pair of buttons, so the styles are
+// declared once here rather than inline twice and drifting apart.
+const docBtnBase: React.CSSProperties = {
+  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+  padding: '10px 14px', borderRadius: 8, fontSize: '0.82rem', fontWeight: 600,
+  cursor: 'pointer', flex: 1, margin: 0,
+}
+const uploadBtn: React.CSSProperties = {
+  ...docBtnBase, border: '1.5px dashed #d1d5db', background: '#f9fafb', color: '#374151',
+}
+const cameraBtn: React.CSSProperties = {
+  ...docBtnBase, border: '1.5px solid #1a7b8a', background: '#f0f9fa', color: '#1a7b8a',
+}
 
 const BRANCHES = [
   { value: 'SANDBOX_EAST',       label: 'Aura Health East' },
@@ -215,10 +230,22 @@ export default function PatientRegisterClient({ defaultBranch }: { defaultBranch
                 </button>
               </div>
             ) : (
-              <button type="button" onClick={() => referralInputRef.current?.click()}
-                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 14px', borderRadius: 8, border: '1.5px dashed #d1d5db', background: '#f9fafb', color: '#374151', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer', width: '100%', justifyContent: 'center' }}>
-                <Upload size={14} /> Upload Doctor&apos;s Referral
-              </button>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button type="button" onClick={() => referralInputRef.current?.click()} style={uploadBtn}>
+                  <Upload size={14} /> Choose file
+                </button>
+                {/* Most people register on a phone with the referral in their
+                    hand — photographing it there beats finding it in a gallery
+                    it is not in yet. */}
+                <PhotoCapture
+                  onCapture={setReferralFile}
+                  buttonStyle={cameraBtn}
+                  heading="Photograph the referral"
+                  hint="Lay the document flat and fill the frame, then press Capture."
+                  filePrefix="referral-photo"
+                  label={<><Camera size={14} /> Take a photo</>}
+                />
+              </div>
             )}
             <input ref={referralInputRef} type="file" accept="image/jpeg,image/png,image/webp,application/pdf" style={{ display: 'none' }}
               onChange={e => { const f = e.target.files?.[0]; if (f) setReferralFile(f); e.target.value = '' }} />
@@ -238,10 +265,19 @@ export default function PatientRegisterClient({ defaultBranch }: { defaultBranch
                 </button>
               </div>
             ) : (
-              <button type="button" onClick={() => pwdIdInputRef.current?.click()}
-                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 14px', borderRadius: 8, border: '1.5px dashed #d1d5db', background: '#f9fafb', color: '#374151', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer', width: '100%', justifyContent: 'center' }}>
-                <Upload size={14} /> Upload PWD ID / Senior ID Photo
-              </button>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button type="button" onClick={() => pwdIdInputRef.current?.click()} style={uploadBtn}>
+                  <Upload size={14} /> Choose file
+                </button>
+                <PhotoCapture
+                  onCapture={setPwdIdFile}
+                  buttonStyle={cameraBtn}
+                  heading="Photograph the ID"
+                  hint="Fill the frame with the card and make sure the name and ID number are readable."
+                  filePrefix="pwd-senior-id"
+                  label={<><Camera size={14} /> Take a photo</>}
+                />
+              </div>
             )}
             <input ref={pwdIdInputRef} type="file" accept="image/jpeg,image/png,image/webp,application/pdf" style={{ display: 'none' }}
               onChange={e => { const f = e.target.files?.[0]; if (f) setPwdIdFile(f); e.target.value = '' }} />
