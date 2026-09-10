@@ -1,11 +1,11 @@
 'use client'
 
 import { branchForRole } from '@/lib/role-branch'
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, Fragment } from 'react'
 import { localTodayStr } from '@/lib/utils'
 import {
   BarChart2, CalendarDays, Users, Settings, Star,
-  Filter, Lock, Activity, ChevronDown, ChevronUp, User,
+  Filter, Lock, Activity, ChevronDown, ChevronUp, User, Columns2,
 } from 'lucide-react'
 import {
   AreaChart, Area, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
@@ -296,6 +296,74 @@ function DashboardContent({ role }: { role: string }) {
   // date / branch / department filters that drive totalSessions.
   const avgPerDay = workingDays > 0 ? totalSessions / workingDays : 0
 
+  // ── Branch Comparison ──────────────────────────────────────────────────────
+  // The same cut the filter bar describes, split by branch and shown side by
+  // side, so the two boards can be read against each other without switching
+  // the branch filter back and forth and holding the first set of numbers in
+  // your head.
+  //
+  // Hidden for a branch-scoped account. The API overrides the requested branch
+  // from the role, so the other column could only ever come back empty — and an
+  // empty column reads as "Greenhills ran nothing", not "you cannot see
+  // Greenhills". Same reasoning as the Slot Utilization branch selector.
+  const canCompare = !scopedBranch
+
+  // Comparison needs BOTH branches. When the page filter is already 'all' the
+  // rows on screen are exactly that, so they are reused rather than fetched a
+  // second time; only a narrowed filter needs its own request.
+  const [compareRows, setCompareRows] = useState<ScheduleRow[]>([])
+  const [compareLoading, setCompareLoading] = useState(false)
+  const [compareError, setCompareError] = useState('')
+
+  const deptParam = allDepts ? 'all' : selectedDepts.join(',')
+  useEffect(() => {
+    if (!canCompare || branch === 'all') { setCompareRows([]); setCompareError(''); return }
+    const ctl = new AbortController()
+    setCompareLoading(true); setCompareError('')
+    const params = new URLSearchParams({ startDate, endDate, status, branch: 'all', departments: deptParam })
+    fetch(`/api/scheduling-dashboard?${params}`, { signal: ctl.signal })
+      .then(async r => {
+        if (!r.ok) throw new Error('Could not load the other branch')
+        const d = await r.json()
+        setCompareRows(d.schedules ?? [])
+      })
+      .catch(err => { if (err.name !== 'AbortError') { setCompareError(err.message); setCompareRows([]) } })
+      .finally(() => setCompareLoading(false))
+    return () => ctl.abort()
+  }, [canCompare, branch, startDate, endDate, status, deptParam])
+
+  const rowsForCompare = branch === 'all' ? schedules : compareRows
+
+  const branchMetrics = useMemo(() => {
+    return BRANCHES.map(b => {
+      const rows = rowsForCompare.filter(r => r.branch === b && activeDepts.includes(r.department))
+      const sessions = rows.length
+      // Counted from the rows rather than the API's uniqueStaffCount, which is
+      // one figure for the whole filtered set and cannot be split. A row's
+      // branch is the CONSULTANT's branch (api/scheduling-dashboard sets it
+      // from s.staff.branch), not where the session was held, so every
+      // consultant lands in exactly one column and the two columns add back up
+      // to the headline figures above.
+      const staff = new Set(rows.map(r => r.staffId)).size
+      const capacity = activeDepts.reduce((sum, d) => sum + (maxSessions[b]?.[d] || 8) * workingDays, 0)
+      const byDept: Record<string, { sessions: number; utilization: number }> = {}
+      for (const d of activeDepts) {
+        const n = rows.filter(r => r.department === d).length
+        const cap = (maxSessions[b]?.[d] || 8) * workingDays
+        byDept[d] = { sessions: n, utilization: cap > 0 ? (n / cap) * 100 : 0 }
+      }
+      return {
+        branch: b,
+        sessions,
+        staff,
+        utilization: capacity > 0 ? (sessions / capacity) * 100 : 0,
+        perTherapist: staff > 0 ? sessions / staff : 0,
+        perDay: workingDays > 0 ? sessions / workingDays : 0,
+        byDept,
+      }
+    })
+  }, [rowsForCompare, activeDepts, maxSessions, workingDays])
+
   // ── Day options for daily table ──
   const dayOptions = useMemo(() => {
     const options: { value: string; label: string }[] = []
@@ -553,6 +621,122 @@ function DashboardContent({ role }: { role: string }) {
         <KpiCard icon={<Users size={20} />} value={avgPerTherapist.toFixed(1)} label="Avg Sessions per Therapist" color="amber" />
         <KpiCard icon={<Activity size={20} />} value={avgPerDay.toFixed(1)} label="Avg Sessions per Day" color="purple" />
       </div>
+
+      {/* ── Branch Comparison ──────────────────────────────────────────────
+          The cards above, once per branch, side by side. Reads the same date
+          range, status and departments as the filter bar — only the branch
+          filter is bypassed, because comparing needs both. */}
+      {canCompare && (
+        <div className={`${cardStyle} p-5 mb-6`}>
+          <div className="flex flex-wrap items-end justify-between gap-4 mb-4">
+            <div>
+              <h3 className={sectionH}><Columns2 size={16} /> Branch Comparison</h3>
+              <p className="text-xs text-gray-500 mt-1">
+                Same range, status and departments as the filters above &mdash; both branches at once,
+                whatever the Branch filter is set to. A session counts to the consultant&apos;s own
+                branch, not to where it was held.
+              </p>
+            </div>
+            {(() => {
+              const [a, b] = branchMetrics
+              if (!a || !b || a.sessions + b.sessions === 0) return null
+              const gap = a.utilization - b.utilization
+              if (Math.abs(gap) < 0.05) {
+                return <span className="text-xs font-semibold text-gray-500">Both branches level on utilization</span>
+              }
+              const lead = gap > 0 ? a : b
+              return (
+                <span className="text-xs font-semibold" style={{ color: 'var(--teal)' }}>
+                  {BRANCH_LABELS[lead.branch]} leads by {Math.abs(gap).toFixed(1)} pp utilization
+                </span>
+              )
+            })()}
+          </div>
+
+          {compareError ? (
+            <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-md px-3 py-2">{compareError}</p>
+          ) : compareLoading && rowsForCompare.length === 0 ? (
+            <p className="text-sm text-gray-400 py-6 text-center">Loading both branches…</p>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {branchMetrics.map(m => {
+                  const other = branchMetrics.find(x => x.branch !== m.branch)
+                  return (
+                    <div key={m.branch} className="border border-gray-200 rounded-xl overflow-hidden">
+                      <div className="px-4 py-2.5 border-b border-gray-200" style={{ background: '#F1F7F8' }}>
+                        <span className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>{BRANCH_LABELS[m.branch]}</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-px" style={{ background: '#e5e7eb' }}>
+                        {[
+                          { label: 'Clinic Utilization', value: `${m.utilization.toFixed(1)}%`, delta: other ? m.utilization - other.utilization : null, unit: 'pp' },
+                          { label: 'Total Sessions', value: m.sessions.toLocaleString(), delta: other ? m.sessions - other.sessions : null, unit: '' },
+                          { label: 'Avg per Therapist', value: m.perTherapist.toFixed(1), delta: other ? m.perTherapist - other.perTherapist : null, unit: '' },
+                          { label: 'Avg per Day', value: m.perDay.toFixed(1), delta: other ? m.perDay - other.perDay : null, unit: '' },
+                        ].map(k => (
+                          <div key={k.label} className="bg-white px-4 py-3">
+                            <div className="text-lg font-extrabold tabular-nums" style={{ color: 'var(--charcoal)' }}>{k.value}</div>
+                            <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">{k.label}</div>
+                            {/* Signed against the other branch, so each card says
+                                where it stands rather than leaving the reader to
+                                subtract two columns by eye. */}
+                            {k.delta !== null && Math.abs(k.delta) >= 0.05 && (
+                              <div className="text-[10px] font-semibold mt-0.5" style={{ color: k.delta > 0 ? '#166534' : '#9a3412' }}>
+                                {k.delta > 0 ? '▲' : '▼'} {Math.abs(k.delta).toFixed(k.unit === 'pp' ? 1 : 1)}{k.unit} vs {BRANCH_LABELS[other!.branch].replace(' Branch', '')}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                      <div className="px-4 py-2 border-t border-gray-200 text-[11px] text-gray-500">
+                        {m.staff} {m.staff === 1 ? 'therapist' : 'therapists'} with sessions in range
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+
+              {/* Per department — where a headline gap actually comes from. */}
+              <div className="overflow-x-auto mt-5">
+                <table className="w-full text-sm" style={{ minWidth: 520 }}>
+                  <thead>
+                    <tr className="bg-gray-50">
+                      <th className="text-left px-4 py-2 text-[11px] font-bold text-gray-500 uppercase">Department</th>
+                      {branchMetrics.map(m => (
+                        <th key={m.branch} colSpan={2} className="px-3 py-2 text-center text-[11px] font-bold text-gray-500 uppercase border-l border-gray-200">
+                          {BRANCH_LABELS[m.branch]}
+                        </th>
+                      ))}
+                    </tr>
+                    <tr className="bg-gray-50">
+                      <th />
+                      {branchMetrics.map(m => (
+                        <Fragment key={m.branch}>
+                          <th className="px-3 py-1 text-center text-[10px] font-semibold text-gray-400 uppercase border-l border-gray-200">Sessions</th>
+                          <th className="px-3 py-1 text-center text-[10px] font-semibold text-gray-400 uppercase">Util.</th>
+                        </Fragment>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {activeDepts.map(d => (
+                      <tr key={d} className="border-t border-gray-100">
+                        <td className="px-4 py-2 font-semibold text-gray-700">{DEPT_LABELS[d]}</td>
+                        {branchMetrics.map(m => (
+                          <Fragment key={m.branch}>
+                            <td className="px-3 py-2 text-center tabular-nums border-l border-gray-200">{m.byDept[d]?.sessions ?? 0}</td>
+                            <td className="px-3 py-2 text-center tabular-nums text-gray-500">{(m.byDept[d]?.utilization ?? 0).toFixed(1)}%</td>
+                          </Fragment>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Daily Table */}
       <div className={`${cardStyle} mb-6`}>

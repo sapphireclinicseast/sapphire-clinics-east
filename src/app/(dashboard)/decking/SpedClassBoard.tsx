@@ -49,6 +49,157 @@ function durationLabel(start: string, end: string): string {
   return m === 0 ? `${h}h` : h === 0 ? `${m}m` : `${h}h ${m}m`
 }
 
+// ─── Week calendar ───────────────────────────────────────────────────────────
+// The table stacks each class block on its own row, which is the right shape
+// for editing but hides concurrency: Ponce 1–4 and Abarca 2–4 are two rows, and
+// nothing on screen says both classes are in the building between 2 and 4.
+//
+// This lays the week out against a real time axis instead. Classes that overlap
+// sit side by side in the same day, so the 2–4 pile-up is visible, and each day
+// carries the peak number of children present at once — which is the number
+// that decides whether the room works.
+
+interface Run {
+  day: string
+  start: number
+  end: number
+  startTime: string
+  endTime: string
+  staffId: string
+  children: number
+  lane: number
+}
+
+/**
+ * Assign overlapping runs to side-by-side lanes.
+ *
+ * Greedy: reuse the first lane whose previous class has already finished,
+ * otherwise open a new one. `end <= start` rather than `<` so a class ending at
+ * 12:00 and one starting at 12:00 share a lane — they do not overlap, they are
+ * back to back, and giving them separate columns would claim a clash.
+ */
+function packLanes(runs: Omit<Run, 'lane'>[]): { runs: Run[]; lanes: number } {
+  const sorted = [...runs].sort((a, b) => a.start - b.start || a.end - b.end)
+  const laneEnds: number[] = []
+  const out: Run[] = []
+  for (const r of sorted) {
+    let lane = laneEnds.findIndex(end => end <= r.start)
+    if (lane === -1) { lane = laneEnds.length; laneEnds.push(r.end) }
+    else laneEnds[lane] = r.end
+    out.push({ ...r, lane })
+  }
+  return { runs: out, lanes: Math.max(laneEnds.length, 1) }
+}
+
+/**
+ * The most children in the building at one moment on this day.
+ *
+ * Only class boundaries can change the count, so sweeping those instants is
+ * exact — no need to walk every minute. Each instant is measured as [start,end)
+ * so a class ending at 2:00 is not counted against one starting at 2:00.
+ */
+function peakChildren(runs: { start: number; end: number; children: number }[]): number {
+  let peak = 0
+  for (const t of [...new Set(runs.map(r => r.start))]) {
+    const n = runs.reduce((sum, r) => sum + (r.start <= t && t < r.end ? r.children : 0), 0)
+    if (n > peak) peak = n
+  }
+  return peak
+}
+
+function WeekCalendar({ runs, teacherName }: {
+  runs: Omit<Run, 'lane'>[]
+  teacherName: (staffId: string) => string
+}) {
+  if (runs.length === 0) {
+    return <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--mid-gray)', fontSize: '0.82rem' }}>
+      Nothing scheduled yet.
+    </div>
+  }
+
+  // One axis for the whole week, so a bar at the same height means the same
+  // time in every column. Padded to whole hours to keep the tick labels round.
+  const dayStart = Math.floor(Math.min(...runs.map(r => r.start)) / 60) * 60
+  const dayEnd = Math.ceil(Math.max(...runs.map(r => r.end)) / 60) * 60
+  const PX_PER_MIN = 0.95
+  const height = Math.max((dayEnd - dayStart) * PX_PER_MIN, 120)
+  const ticks: number[] = []
+  for (let t = dayStart; t <= dayEnd; t += 60) ticks.push(t)
+
+  const byDay = DAYS.map(d => {
+    const packed = packLanes(runs.filter(r => r.day === d.key))
+    return { day: d, ...packed, peak: peakChildren(packed.runs) }
+  })
+
+  const tickLabel = (t: number) => {
+    const h = Math.floor(t / 60)
+    return `${h % 12 || 12}${h >= 12 ? 'pm' : 'am'}`
+  }
+
+  return (
+    <div style={{ overflowX: 'auto', padding: '0 1rem 1rem' }}>
+      <div style={{ display: 'flex', minWidth: 900 }}>
+        {/* Time axis */}
+        <div style={{ width: 52, flexShrink: 0, position: 'relative', height, marginTop: 44 }}>
+          {ticks.map(t => (
+            <div key={t} style={{
+              position: 'absolute', top: (t - dayStart) * PX_PER_MIN - 6, right: 6,
+              fontSize: '0.64rem', color: 'var(--mid-gray)', fontVariantNumeric: 'tabular-nums',
+            }}>{tickLabel(t)}</div>
+          ))}
+        </div>
+
+        {byDay.map(({ day, runs: dayRuns, lanes, peak }) => (
+          <div key={day.key} style={{ flex: 1, minWidth: 110, borderLeft: '1px solid #E4E8EC' }}>
+            <div style={{ height: 44, padding: '0.3rem 0.4rem', textAlign: 'center', borderBottom: '1px solid #E4E8EC' }}>
+              <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--charcoal)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{day.short}</div>
+              {/* The point of the view: how many children are in at once. */}
+              <div style={{ fontSize: '0.63rem', color: peak > 0 ? '#8A5A00' : 'var(--mid-gray)', fontWeight: peak > 0 ? 700 : 400 }}>
+                {peak > 0 ? `${peak} at peak` : '—'}
+              </div>
+            </div>
+            <div style={{ position: 'relative', height, background: '#FCFDFD' }}>
+              {ticks.map(t => (
+                <div key={t} style={{
+                  position: 'absolute', top: (t - dayStart) * PX_PER_MIN, left: 0, right: 0,
+                  borderTop: '1px solid #EEF1F3',
+                }} />
+              ))}
+              {dayRuns.map(r => {
+                const top = (r.start - dayStart) * PX_PER_MIN
+                const h = Math.max((r.end - r.start) * PX_PER_MIN, 20)
+                const w = 100 / lanes
+                return (
+                  <div key={`${r.staffId}|${r.startTime}|${r.endTime}`}
+                    title={`${teacherName(r.staffId)} · ${fmt(r.startTime)}–${fmt(r.endTime)} · ${r.children} ${r.children === 1 ? 'child' : 'children'}`}
+                    style={{
+                      position: 'absolute', top, height: h,
+                      left: `calc(${r.lane * w}% + 2px)`, width: `calc(${w}% - 4px)`,
+                      background: '#EDE4FA', border: '1px solid #C9B6E8', borderRadius: 6,
+                      padding: '0.2rem 0.3rem', overflow: 'hidden',
+                    }}>
+                    <div style={{ fontSize: '0.62rem', fontWeight: 700, color: '#4C1D95', lineHeight: 1.15, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {teacherName(r.staffId).split(',')[0]}
+                    </div>
+                    <div style={{ fontSize: '0.58rem', color: '#6D28D9', fontVariantNumeric: 'tabular-nums' }}>
+                      {fmt(r.startTime).replace(':00', '')}–{fmt(r.endTime).replace(':00', '')}
+                    </div>
+                    {h > 44 && (
+                      <div style={{ fontSize: '0.58rem', color: '#6D28D9', marginTop: 1 }}>
+                        {r.children} {r.children === 1 ? 'child' : 'children'}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export default function SpedClassBoard({
   slots, staff, branchName, onAddChild, onRemove, onReassign, onCreateBlock,
 }: {
@@ -69,6 +220,10 @@ export default function SpedClassBoard({
   const [busy, setBusy] = useState(false)
   const [newGroupStaff, setNewGroupStaff] = useState('')
   const [error, setError] = useState<string | null>(null)
+  // Table edits; Calendar answers "how many children are in at once". Two jobs,
+  // two shapes — the table cannot show overlap and the calendar cannot take a
+  // child out of a class.
+  const [view, setView] = useState<'table' | 'calendar'>('table')
 
   const live = slots.filter(s => !s.disabled)
 
@@ -108,6 +263,22 @@ export default function SpedClassBoard({
       .map(([staffId, kids]) => ({ staffId, kids }))
       .sort((x, y) => teacherName(x.staffId).localeCompare(teacherName(y.staffId)))
   }
+
+  // One entry per teacher's class per day, which is what the calendar draws.
+  // Counted on patient rather than row: an empty "(slot)" placeholder is a
+  // class with nobody in it yet, and counting it as a child would inflate the
+  // peak the room is being judged against.
+  const calendarRuns = DAYS.flatMap(d =>
+    blocks.flatMap(b => groupsIn(d.key, b).map(g => ({
+      day: d.key,
+      start: mins(b.startTime),
+      end: mins(b.endTime),
+      startTime: b.startTime,
+      endTime: b.endTime,
+      staffId: g.staffId,
+      children: g.kids.filter(k => k.patientId).length,
+    }))),
+  )
 
   /** Move every child in one teacher's card to another teacher. */
   async function reassign(kids: { id: string }[], staffId: string) {
@@ -178,6 +349,17 @@ export default function SpedClassBoard({
             One board for the whole branch. A class holds as many children as it needs, and a block can run longer than an hour.
           </p>
         </div>
+        <div style={{ display: 'flex', border: '1.5px solid #D6DCE2', borderRadius: '0.5rem', overflow: 'hidden' }}>
+          {(['table', 'calendar'] as const).map(v => (
+            <button key={v} onClick={() => setView(v)}
+              style={{
+                padding: '0.35rem 0.8rem', fontSize: '0.76rem', fontWeight: 700, border: 'none', cursor: 'pointer',
+                background: view === v ? 'var(--teal)' : '#fff', color: view === v ? '#fff' : 'var(--mid-gray)',
+              }}>
+              {v === 'table' ? 'Table' : 'Calendar'}
+            </button>
+          ))}
+        </div>
         <button onClick={() => { setShowBlockForm(v => !v); setError(null) }}
           style={{
             padding: '0.4rem 0.9rem', borderRadius: '0.5rem', fontSize: '0.8rem', fontWeight: 700,
@@ -235,6 +417,8 @@ export default function SpedClassBoard({
             Use &ldquo;+ Class block&rdquo; to set the first class time &mdash; for example Monday 9:00 to 11:00.
           </p>
         </div>
+      ) : view === 'calendar' ? (
+        <WeekCalendar teacherName={teacherName} runs={calendarRuns} />
       ) : (
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 900 }}>
