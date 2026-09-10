@@ -94,15 +94,46 @@ export async function PATCH(req: Request) {
 }
 
 // POST: mark a day as cleared (upsert)
+// body.noSales === true marks a day cleared as "no sales this day". The claim is
+// validated here, not trusted from the client: any non-voided order landing on that
+// day (by paymentDate, falling back to transactionDate) rejects the request, so a
+// green no-sales day can never hide actual revenue.
 export async function POST(req: Request) {
   const session = await auth()
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json()
-  const { date, branch, actualAmounts, remarks, confirmed } = body
+  let { actualAmounts, remarks, confirmed } = body
+  const { date, branch } = body
 
   if (!date || !branch) {
     return NextResponse.json({ error: 'date and branch are required' }, { status: 400 })
+  }
+
+  if (body.noSales === true) {
+    // The day boundary the Sales Checking UI groups by: Asia/Manila (UTC+8).
+    const dayStart = new Date(`${date}T00:00:00+08:00`)
+    const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000)
+    const inDay = { gte: dayStart, lt: dayEnd }
+    const salesCount = await prisma.order.count({
+      where: {
+        branch,
+        status: { not: 'VOIDED' },
+        OR: [
+          { paymentDate: inDay },
+          { paymentDate: null, transactionDate: inDay },
+        ],
+      },
+    })
+    if (salesCount > 0) {
+      return NextResponse.json(
+        { error: `${salesCount} order(s) found on ${date} — this day has sales and cannot be marked "no sales".` },
+        { status: 400 },
+      )
+    }
+    actualAmounts = []
+    remarks = [{ method: 'ALL', remarks: 'No sales this day — validated: no POS orders.' }]
+    confirmed = []
   }
 
   const record = await prisma.salesDayClearing.upsert({

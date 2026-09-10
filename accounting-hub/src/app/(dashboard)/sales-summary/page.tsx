@@ -8,6 +8,7 @@ import {
   CheckCircle2, XCircle, X, Search,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
+import { parseMonitoringRemark } from '@/lib/si-monitoring'
 import { applySortFilter, SortFilterHead, type SortCol } from '@/components/SortFilterHead'
 
 /* ─────────────────────────────────────────────
@@ -25,6 +26,9 @@ interface SalesSummaryRow {
   branch: string
   issuedOfficialInvoice: boolean
   itemIssuedOfficialInvoice?: boolean
+  // Pre-hub invoice surfaced from the manual SI monitoring workbook (a
+  // SalesInvoiceFlag, not an Order) — rendered without an order number.
+  migrated?: boolean
 }
 
 const BRANCHES = [
@@ -61,7 +65,7 @@ function downloadCsv(rows: SalesSummaryRow[], filename: string) {
     headers.map(escapeCsv).join(','),
     ...rows.map(r => [
       escapeCsv(r.date),
-      escapeCsv(r.orderNumber),
+      escapeCsv(r.migrated ? '—' : r.orderNumber),
       escapeCsv(r.patientName),
       escapeCsv(r.serviceAvailed),
       escapeCsv(r.quantity),
@@ -108,7 +112,7 @@ const reportSortVal = (r: SalesSummaryRow, k: string): string | number => {
 // Filter accessor — the displayed text a user types against.
 const reportFilterVal = (r: SalesSummaryRow, k: string): string => {
   switch (k) {
-    case 'orderNumber': return `#${r.orderNumber}`
+    case 'orderNumber': return r.migrated ? '—' : `#${r.orderNumber}`
     case 'grossAmount': return formatCurrency(r.grossAmount)
     case 'netAmount': return formatCurrency(r.netAmount)
     case 'quantity': return String(r.quantity)
@@ -152,7 +156,7 @@ function ReportTable({
     const head = REPORT_COLS.map((c, i) => `<th class="${i === 4 ? 'center' : i >= 6 ? 'right' : ''}">${c.label}</th>`).join('')
     const body = displayRows.map(r => `<tr>
       <td>${escHtml(r.date)}</td>
-      <td class="mono">#${r.orderNumber}</td>
+      <td class="mono">${r.migrated ? '—' : `#${r.orderNumber}`}</td>
       <td>${escHtml(r.patientName)}</td>
       <td>${escHtml(r.serviceAvailed)}</td>
       <td class="center">${r.quantity}</td>
@@ -240,9 +244,10 @@ function ReportTable({
                     <tr><td colSpan={8} className="px-4 py-8 text-center text-sm" style={{ color: 'var(--mid-gray)' }}>No rows match the current filters.</td></tr>
                   )}
                   {displayRows.map((row, i) => (
-                    <tr key={i} style={{ borderBottom: '1px solid var(--light-gray)' }} className="hover:bg-gray-50">
+                    <tr key={i} style={{ borderBottom: '1px solid var(--light-gray)', background: row.migrated ? '#fffbeb' : undefined }} className="hover:bg-gray-50"
+                      title={row.migrated ? 'Migrated from the manual SI monitoring workbook (pre-hub invoice — no POS order)' : undefined}>
                       <td className="px-4 py-3" style={{ color: 'var(--mid-gray)' }}>{row.date}</td>
-                      <td className="px-4 py-3 font-mono text-xs" style={{ color: 'var(--charcoal)' }}>#{row.orderNumber}</td>
+                      <td className="px-4 py-3 font-mono text-xs" style={{ color: 'var(--charcoal)' }}>{row.migrated ? '—' : `#${row.orderNumber}`}</td>
                       <td className="px-4 py-3 font-medium" style={{ color: 'var(--charcoal)' }}>{row.patientName}</td>
                       <td className="px-4 py-3" style={{ color: 'var(--charcoal)' }}>
                         <span className="flex items-center gap-1">
@@ -596,7 +601,11 @@ interface Flag { siNumber: string; count?: number; flag: { status: string; remar
 interface OrderHit { id: string; orderNumber: number; date: string; patientName: string; services: string; amount: number; payment: string }
 const siDigits = (s: string) => parseInt(String(s).replace(/\D/g, '') || '0', 10)
 
-type LeftItem = { kind: string; si: string; siN: number; order: SiRow | null; amount: number; remarks: string }
+type LeftItem = {
+  kind: string; si: string; siN: number; order: SiRow | null; amount: number; remarks: string
+  // Parsed from a migrated monitoring flag's remark (see lib/si-monitoring).
+  mDate?: string | null; mCustomer?: string | null
+}
 const LEFT_COLS: SortCol[] = [
   { key: 'si', label: 'SI No.' },
   { key: 'date', label: 'Date' },
@@ -606,8 +615,8 @@ const LEFT_COLS: SortCol[] = [
 const leftSortVal = (it: LeftItem, k: string): string | number => {
   switch (k) {
     case 'si': return it.siN
-    case 'date': return it.order?.date ? (new Date(it.order.date).getTime() || 0) : 0
-    case 'patient': return (it.order?.patientName || it.remarks || '').toLowerCase()
+    case 'date': return it.order?.date ? (new Date(it.order.date).getTime() || 0) : it.mDate ? (new Date(it.mDate).getTime() || 0) : 0
+    case 'patient': return (it.order?.patientName || it.mCustomer || it.remarks || '').toLowerCase()
     case 'amount': return it.amount
     default: return ''
   }
@@ -615,8 +624,8 @@ const leftSortVal = (it: LeftItem, k: string): string | number => {
 const leftFilterVal = (it: LeftItem, k: string): string => {
   switch (k) {
     case 'si': return it.si
-    case 'date': return it.order?.date || ''
-    case 'patient': return it.order?.patientName || it.remarks || ''
+    case 'date': return it.order?.date || it.mDate || ''
+    case 'patient': return it.order?.patientName || it.mCustomer || it.remarks || ''
     case 'amount': return it.amount ? peso(it.amount) : ''
     default: return ''
   }
@@ -630,6 +639,7 @@ function WithSiTab({ branch: initialBranch, scopeEnum }: { branch: string; scope
   const [sortKey, setSortKey] = useState('si')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [filters, setFilters] = useState<Record<string, string>>({})
+  const [flagQ, setFlagQ] = useState('')
   const toggleSort = (k: string) => {
     if (sortKey === k) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'))
     else { setSortKey(k); setSortDir('asc') }
@@ -657,9 +667,25 @@ function WithSiTab({ branch: initialBranch, scopeEnum }: { branch: string; scope
   const tagged = (si: string) => flagBySi.get(si)?.status === 'TAGGED'
 
   // LEFT — valid SIs (orders) plus items resolved from the right (tagged / cancelled / remarks).
+  // Migrated monitoring flags carry date/customer/amount inside their remark — parse it so
+  // the columns show real values, and honor the page's date range for dated flags (an
+  // undated flag stays visible: hiding it would silently drop a real invoice).
   const leftItems: LeftItem[] = data ? [
     ...data.rows.map(r => ({ kind: tagged(r.siNumber) ? 'tagged' : 'si', si: r.siNumber, siN: siDigits(r.siNumber), order: r as SiRow | null, amount: r.amount, remarks: '' })),
-    ...data.flags.filter(f => f.status === 'CANCELLED' || f.status === 'REMARKS').map(f => ({ kind: f.status.toLowerCase(), si: f.siNumber, siN: siDigits(f.siNumber), order: null as SiRow | null, amount: 0, remarks: f.remarks || '' })),
+    ...data.flags.filter(f => f.status === 'CANCELLED' || f.status === 'REMARKS').flatMap(f => {
+      const info = parseMonitoringRemark(f.remarks)
+      if (info?.date) {
+        if (from && info.date < from) return []
+        if (to && info.date > to) return []
+      }
+      return [{
+        kind: f.status.toLowerCase(), si: f.siNumber, siN: siDigits(f.siNumber),
+        order: null as SiRow | null,
+        amount: f.status === 'REMARKS' ? (info?.amount || 0) : 0,
+        remarks: f.remarks || '',
+        mDate: info?.date ?? null, mCustomer: info?.customer ?? null,
+      }]
+    }),
   ] : []
   const displayLeft = applySortFilter(leftItems, leftSortVal, sortKey, sortDir, filters, leftFilterVal)
   const leftTotal = displayLeft.reduce((s, it) => s + it.amount, 0)
@@ -670,7 +696,15 @@ function WithSiTab({ branch: initialBranch, scopeEnum }: { branch: string; scope
     ...data.gaps.filter(g => !g.flag).map(g => ({ type: 'gap' as const, siNumber: g.siNumber, count: 0 })),
     ...data.duplicates.filter(d => !d.flag).map(d => ({ type: 'dup' as const, siNumber: d.siNumber, count: d.count || 0 })),
   ].sort((a, b) => siDigits(a.siNumber) - siDigits(b.siNumber)) : []
-  const rightTotal = data ? rightItems.reduce((s, it) => it.type === 'dup'
+  // Search within the flagged list: by SI number (raw or digits-only) or by kind ("missing"/"duplicate").
+  const flagQNorm = flagQ.trim().toLowerCase()
+  const flagQDigits = flagQNorm.replace(/\D/g, '')
+  const displayRight = flagQNorm ? rightItems.filter(it =>
+    it.siNumber.toLowerCase().includes(flagQNorm)
+    || (it.type === 'gap' ? 'missing' : 'duplicate').startsWith(flagQNorm)
+    || (flagQDigits !== '' && String(siDigits(it.siNumber)).includes(flagQDigits))
+  ) : rightItems
+  const rightTotal = data ? displayRight.reduce((s, it) => it.type === 'dup'
     ? s + data.rows.filter(r => r.siNumber === it.siNumber).reduce((x, r) => x + r.amount, 0) : s, 0) : 0
 
   const resolvedBg = '#fffbeb', resolvedBorder = '#fde68a'
@@ -736,9 +770,9 @@ function WithSiTab({ branch: initialBranch, scopeEnum }: { branch: string; scope
                     return (
                       <tr key={`${it.kind}-${it.si}-${it.order?.id || ''}`} className="border-t" style={{ borderColor: 'var(--light-gray)', background: isResolved ? resolvedBg : undefined }}>
                         <td className="px-3 py-2 font-mono font-semibold" style={{ color: 'var(--charcoal)' }}>{it.si}</td>
-                        <td className="px-3 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>{it.order?.date || '—'}</td>
-                        <td className="px-3 py-2 text-xs" style={{ color: 'var(--charcoal)' }}>
-                          {it.order ? it.order.patientName : <span style={{ color: 'var(--mid-gray)' }}>{it.remarks || '—'}</span>}
+                        <td className="px-3 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>{it.order?.date || it.mDate || '—'}</td>
+                        <td className="px-3 py-2 text-xs" style={{ color: 'var(--charcoal)' }} title={it.remarks || undefined}>
+                          {it.order ? it.order.patientName : <span style={{ color: it.mCustomer ? 'var(--charcoal)' : 'var(--mid-gray)' }}>{it.mCustomer || it.remarks || '—'}</span>}
                           {b && <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: b.bg, color: b.c }}>{b.t}</span>}
                           {isResolved && <button onClick={() => clearFlag(it.si)} className="ml-1.5 underline text-[10px]" style={{ color: 'var(--mid-gray)' }}>undo</button>}
                         </td>
@@ -755,13 +789,24 @@ function WithSiTab({ branch: initialBranch, scopeEnum }: { branch: string; scope
           {/* RIGHT — Flagged Sales Invoices */}
           <div className="rounded-2xl border overflow-hidden" style={{ borderColor: resolvedBorder, background: resolvedBg }}>
             <div className="flex items-center justify-between px-3 py-2.5 border-b" style={{ borderColor: resolvedBorder }}>
-              <p className="text-sm font-bold" style={{ color: '#92400e' }}>Flagged Sales Invoices <span className="font-normal">· {rightItems.length}</span></p>
+              <p className="text-sm font-bold" style={{ color: '#92400e' }}>Flagged Sales Invoices <span className="font-normal">· {flagQNorm ? `${displayRight.length} of ${rightItems.length}` : rightItems.length}</span></p>
               {rightTotal > 0 && <p className="text-sm font-bold" style={{ color: '#92400e' }}>₱{peso(rightTotal)}</p>}
             </div>
+            {rightItems.length > 0 && (
+              <div className="px-3 pt-3">
+                <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg border bg-white" style={{ borderColor: resolvedBorder }}>
+                  <Search size={12} style={{ color: '#92400e' }} />
+                  <input value={flagQ} onChange={e => setFlagQ(e.target.value)} placeholder="Search SI number, or “missing” / “duplicate”…" className="flex-1 text-xs outline-none bg-transparent" />
+                  {flagQ && <button onClick={() => setFlagQ('')} aria-label="Clear search"><X size={12} style={{ color: '#92400e' }} /></button>}
+                </div>
+              </div>
+            )}
             <div className="overflow-auto p-3 space-y-1.5" style={{ maxHeight: '68vh' }}>
               {rightItems.length === 0 ? (
                 <p className="text-xs text-center py-8" style={{ color: '#92400e' }}>No unresolved flags — every Sales Invoice number is accounted for. 🎉</p>
-              ) : rightItems.map(it => (
+              ) : displayRight.length === 0 ? (
+                <p className="text-xs text-center py-8" style={{ color: '#92400e' }}>No flags match “{flagQ.trim()}”.</p>
+              ) : displayRight.map(it => (
                 <FlagRow key={`${it.type}${it.siNumber}`} branch={branch}
                   label={it.type === 'gap' ? `Missing #${it.siNumber}` : `Duplicate #${it.siNumber} (×${it.count})`}
                   siNumber={it.siNumber} onSave={saveFlag} onTag={tagOrder} />

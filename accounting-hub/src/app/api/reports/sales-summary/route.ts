@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { enforceBranch } from '@/lib/branch-scope'
+import { parseMonitoringRemark } from '@/lib/si-monitoring'
 
 export async function GET(req: Request) {
   const session = await auth()
@@ -95,7 +96,46 @@ export async function GET(req: Request) {
       })
     })
 
-    return NextResponse.json({ rows, count: rows.length })
+    /* ── Migrated invoices from the manual SI monitoring workbook ──────
+       Pre-hub sales exist only as SalesInvoiceFlag REMARKS rows (no Order),
+       with date/customer/amount encoded in the standardized remark text.
+       Surface them here so the report covers the SI series from the very
+       start. CANCELLED and TAGGED flags are skipped (not sales / already an
+       order). Rows whose remark carries no amount (blank workbook lines)
+       are skipped too — there is nothing to report.
+       Date filter: a dated row must fall inside the window; an undated row
+       (a handful of corporate SIs) is always included rather than silently
+       dropping real invoiced amounts. */
+    const flags = await prisma.salesInvoiceFlag.findMany({
+      where: { status: 'REMARKS', ...(branch && branch !== 'ALL' ? { branch } : {}) },
+    })
+    const migratedRows = flags.flatMap(f => {
+      const info = parseMonitoringRemark(f.remarks)
+      if (!info || info.amount == null || info.amount <= 0) return []
+      if (info.date) {
+        if (dateFrom && info.date < dateFrom) return []
+        if (dateTo && info.date > dateTo) return []
+      }
+      const date = info.date
+        ? new Date(`${info.date}T12:00:00+08:00`).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' })
+        : '—'
+      return [{
+        date,
+        orderNumber: 0,
+        patientName: info.customer || '—',
+        serviceAvailed: `Migrated — manual SI monitoring (${info.tab})`,
+        quantity: 1,
+        salesInvoiceNumber: f.siNumber,
+        grossAmount: info.amount,
+        netAmount: info.netAmount ?? info.amount,
+        branch: f.branch,
+        issuedOfficialInvoice: true,
+        itemIssuedOfficialInvoice: false,
+        migrated: true,
+      }]
+    })
+
+    return NextResponse.json({ rows: [...rows, ...migratedRows], count: rows.length + migratedRows.length, migratedCount: migratedRows.length })
   } catch (err) {
     console.error('Sales summary error:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
