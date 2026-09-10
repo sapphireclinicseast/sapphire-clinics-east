@@ -1097,12 +1097,16 @@ export async function computeLedgerStatements(
     const d = new Date(a.dateBought)
     if (d < start || d >= end) continue
     if (hasRef('ASSET_PURCHASE', a.id)) continue
+    // Petty-cash-sourced assets already enter the ledger through their voucher —
+    // the PCV posts to the classification account (or an expense account) in the
+    // petty-cash pass above. Synthesizing a purchase on top booked the same
+    // money twice (Dr classification twice, Cr petty cash twice).
+    if (a.fromPettyCash) continue
     const amt = Number(a.totalAmount)
     if (!amt) continue
     synthesizedAssets++
     const ppe = byNumber.get(a.classification) || virt(a.classification || '1500', `PPE (${a.classification})`, 'ASSET', 'PPE', 'DEBIT')
-    const creditA = a.fromPettyCash ? pcCashFor(a.branch)
-      : a.sourceAccountId ? (byId.get(a.sourceAccountId) || defaultCash(a.branch))
+    const creditA = a.sourceAccountId ? (byId.get(a.sourceAccountId) || defaultCash(a.branch))
       : defaultCash(a.branch)
     postBalanced('asset-purchases', monthOf(a.dateBought), `Asset purchase — ${a.name}`, [
       { acct: ppe, debit: amt },
