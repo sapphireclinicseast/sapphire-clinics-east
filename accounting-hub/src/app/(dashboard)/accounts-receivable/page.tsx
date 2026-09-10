@@ -2318,6 +2318,14 @@ export default function AccountsReceivablePage() {
           perHmoOrders = perHmoOrders.filter(o =>
             (o.soaSubmissionItems || []).some(i => (i.submission.referenceNo || '').toLowerCase().includes(q)))
         }
+        if (perHmoColSearch.substat) {
+          // Same resolution as the Submission Status cell: paid or manually
+          // approved reads Approved; disapproved; everything else Pending.
+          const resolved = (o: AROrder) => o.arPaymentItems.length > 0 ? 'approved'
+            : o.soaApprovalStatus === 'APPROVED' ? 'approved'
+            : o.soaApprovalStatus === 'DISAPPROVED' ? 'disapproved' : 'pending'
+          perHmoOrders = perHmoOrders.filter(o => resolved(o) === perHmoColSearch.substat)
+        }
         if (perHmoColSearch.hmo) {
           const q = perHmoColSearch.hmo.toLowerCase()
           perHmoOrders = perHmoOrders.filter(o => {
@@ -2552,7 +2560,7 @@ export default function AccountsReceivablePage() {
                       { label: 'SOA Submitted', field: '', searchKey: 'soasub' },
                       { label: 'Date SOA Submitted', field: '', searchKey: '' },
                       { label: 'SOA Ref', field: '', searchKey: 'soaref' },
-                      { label: 'Submission Status', field: '', searchKey: '' },
+                      { label: 'Submission Status', field: '', searchKey: 'substat' },
                       { label: 'Invoice', field: '', searchKey: '' },
                       { label: 'Proof', field: '', searchKey: '' },
                     ].map(col => (
@@ -2587,6 +2595,19 @@ export default function AccountsReceivablePage() {
                             <option value="">All</option>
                             <option value="yes">Yes</option>
                             <option value="no">No</option>
+                          </select>
+                        )}
+                        {col.searchKey === 'substat' && (
+                          <select
+                            className="mt-1 w-full px-1 py-0.5 rounded border text-xs outline-none bg-white font-normal"
+                            style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}
+                            value={perHmoColSearch.substat || ''}
+                            onChange={e => setPerHmoColSearch(prev => ({ ...prev, substat: e.target.value }))}
+                            onClick={e => e.stopPropagation()}>
+                            <option value="">All</option>
+                            <option value="approved">Approved</option>
+                            <option value="disapproved">Disapproved</option>
+                            <option value="pending">Pending</option>
                           </select>
                         )}
                         {col.searchKey === 'soaref' && (
