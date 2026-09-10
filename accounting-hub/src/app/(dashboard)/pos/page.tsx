@@ -12,6 +12,7 @@ import {
   Pencil, PlusCircle, ToggleLeft, ToggleRight, Eye, CheckCircle, Gift,
   Globe, Truck, Phone, MapPin, Package, Clock, Upload, DollarSign, Wand2, MonitorSmartphone,
   CalendarCheck, Ticket,
+  ArrowUpDown,
 } from 'lucide-react'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { normalizeSI } from '@/lib/sales-invoice'
@@ -2913,6 +2914,10 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
   const [showOrdDownload, setShowOrdDownload] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [ordSortField, setOrdSortField] = useState('orderNumber')
+  // Per-column filters for the orders table; clinician is a multi-select.
+  const [ordColFilter, setOrdColFilter] = useState<Record<string, string>>({})
+  const [ordClinFilter, setOrdClinFilter] = useState<string[]>([])
+  const [ordClinOpen, setOrdClinOpen] = useState(false)
   const [ordSortDir, setOrdSortDir] = useState<'asc' | 'desc'>('desc')
   const [viewOrder, setViewOrder] = useState<Order | null>(null)
   const [editOrder, setEditOrder] = useState<Order | null>(null)
@@ -3447,7 +3452,21 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
         ) : (() => {
           // Search is server-side; apply voided toggle + date + branch guards client-side
           // Guards ensure correct results even if the API returns unfiltered data (e.g. old server code)
-          const displayOrders = applyOrderGuards(orders)
+          const guarded = applyOrderGuards(orders)
+          // Clinician options come from the rows BEFORE the clinician filter, so
+          // ticking one name doesn't erase the rest from the list.
+          const ordClinOptions = Array.from(new Set(guarded.map(o => formatClinicianName(o.clinicianName)))).sort((x, y) => x === '\u2014' ? -1 : y === '\u2014' ? 1 : x.localeCompare(y))
+          const cf = ordColFilter
+          const has = (v: string | null | undefined, q?: string) => !q || (v || '').toLowerCase().includes(q.toLowerCase())
+          const displayOrders = guarded.filter(o =>
+            has(String(o.orderNumber), cf.orderNumber)
+            && (!cf.orderType || o.orderType === cf.orderType)
+            && has(o.patientName, cf.patient)
+            && has(o.items.map(it => it.name).join(', '), cf.items)
+            && has(o.referenceNumber, cf.ref)
+            && has(o.payments.map(pm => pm.method).join(', '), cf.payment)
+            && (!cf.status || (cf.status === 'RETURNED' ? !!o.returnedByBuyer : o.status === cf.status && !o.returnedByBuyer))
+            && (ordClinFilter.length === 0 || ordClinFilter.includes(formatClinicianName(o.clinicianName))))
           return displayOrders.length === 0 ? (
           <div className="text-center py-12 text-sm" style={{ color: 'var(--mid-gray)' }}>No orders found.</div>
         ) : (
@@ -3455,26 +3474,75 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
             <thead>
               <tr className="border-b" style={{ borderColor: 'var(--light-gray)' }}>
                 {[
-                  { label: 'Order #', field: 'orderNumber' },
-                  { label: 'Date', field: 'transactionDate' },
-                  { label: 'Branch', field: 'branch' },
-                  { label: 'Type', field: 'orderType' },
-                  { label: 'Patient', field: 'patientName' },
-                  { label: 'Item(s)', field: '' },
-                  { label: 'Clinician', field: 'clinicianName' },
-                  { label: 'Ref #', field: 'referenceNumber' },
-                  { label: 'Net Amount', field: 'netAmount' },
-                  { label: 'Payment', field: '' },
-                  { label: 'Status', field: 'status' },
-                  { label: 'Actions', field: '' },
+                  { label: 'Order #', field: 'orderNumber', fkey: 'orderNumber' },
+                  { label: 'Date', field: 'transactionDate', fkey: '' },
+                  { label: 'Branch', field: 'branch', fkey: '' },
+                  { label: 'Type', field: 'orderType', fkey: 'type' },
+                  { label: 'Patient', field: 'patientName', fkey: 'patient' },
+                  { label: 'Item(s)', field: '', fkey: 'items' },
+                  { label: 'Clinician', field: 'clinicianName', fkey: 'clinician' },
+                  { label: 'Ref #', field: 'referenceNumber', fkey: 'ref' },
+                  { label: 'Net Amount', field: 'netAmount', fkey: '' },
+                  { label: 'Payment', field: '', fkey: 'payment' },
+                  { label: 'Status', field: 'status', fkey: 'statussel' },
+                  { label: 'Actions', field: '', fkey: '' },
                 ].map(h => (
-                  <th key={h.label} className={`px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider ${h.field ? 'cursor-pointer select-none hover:bg-gray-50' : ''}`}
-                    style={{ color: ordSortField === h.field ? 'var(--teal)' : 'var(--mid-gray)' }}
-                    onClick={() => { if (!h.field) return; if (ordSortField === h.field) { setOrdSortDir(d => d === 'asc' ? 'desc' : 'asc') } else { setOrdSortField(h.field); setOrdSortDir('asc') } }}>
-                    <span className="flex items-center gap-1">
+                  <th key={h.label} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider align-top"
+                    style={{ color: ordSortField === h.field ? 'var(--teal)' : 'var(--mid-gray)' }}>
+                    <span className={`flex items-center gap-1 ${h.field ? 'cursor-pointer select-none' : ''}`}
+                      onClick={() => { if (!h.field) return; if (ordSortField === h.field) { setOrdSortDir(d => d === 'asc' ? 'desc' : 'asc') } else { setOrdSortField(h.field); setOrdSortDir('asc') } }}>
                       {h.label}
                       {h.field && ordSortField === h.field && <span className="text-[10px]">{ordSortDir === 'asc' ? '▲' : '▼'}</span>}
+                      {h.field && ordSortField !== h.field && <ArrowUpDown size={10} style={{ color: 'var(--light-gray)' }} />}
                     </span>
+                    {['orderNumber', 'patient', 'items', 'ref', 'payment'].includes(h.fkey) && (
+                      <input value={ordColFilter[h.fkey === 'orderNumber' ? 'orderNumber' : h.fkey] || ''} placeholder="filter…"
+                        onChange={e => { const k = h.fkey === 'orderNumber' ? 'orderNumber' : h.fkey; setOrdColFilter(prev => ({ ...prev, [k]: e.target.value })); setOrdPage(1) }}
+                        onClick={e => e.stopPropagation()}
+                        className="mt-1 block w-full min-w-[70px] px-1.5 py-0.5 rounded border text-xs font-normal normal-case outline-none"
+                        style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }} />
+                    )}
+                    {h.fkey === 'type' && (
+                      <select value={ordColFilter.orderType || ''} onChange={e => { setOrdColFilter(prev => ({ ...prev, orderType: e.target.value })); setOrdPage(1) }}
+                        onClick={e => e.stopPropagation()}
+                        className="mt-1 block w-full px-1 py-0.5 rounded border text-xs font-normal normal-case outline-none bg-white"
+                        style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+                        <option value="">All</option><option value="SERVICE">Service</option><option value="PRODUCT">Product</option>
+                      </select>
+                    )}
+                    {h.fkey === 'statussel' && (
+                      <select value={ordColFilter.status || ''} onChange={e => { setOrdColFilter(prev => ({ ...prev, status: e.target.value })); setOrdPage(1) }}
+                        onClick={e => e.stopPropagation()}
+                        className="mt-1 block w-full px-1 py-0.5 rounded border text-xs font-normal normal-case outline-none bg-white"
+                        style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+                        <option value="">All</option><option value="COMPLETED">Completed</option><option value="REOPENED">Reopened</option><option value="VOIDED">Voided</option><option value="RETURNED">Returned</option>
+                      </select>
+                    )}
+                    {h.fkey === 'clinician' && (
+                      <div className="relative mt-1 font-normal normal-case" onClick={e => e.stopPropagation()}>
+                        <button type="button" onClick={() => setOrdClinOpen(v => !v)}
+                          className="w-full min-w-[110px] px-1.5 py-0.5 rounded border text-xs text-left bg-white"
+                          style={{ borderColor: ordClinFilter.length ? 'var(--teal)' : 'var(--light-gray)', color: ordClinFilter.length ? 'var(--teal)' : 'var(--charcoal)' }}>
+                          {ordClinFilter.length === 0 ? 'All clinicians' : `${ordClinFilter.length} selected`} ▾
+                        </button>
+                        {ordClinOpen && (<>
+                          <div className="fixed inset-0 z-40" onClick={() => setOrdClinOpen(false)} />
+                          <div className="absolute left-0 top-full mt-1 z-50 rounded-xl border bg-white shadow-lg py-1 max-h-72 overflow-y-auto" style={{ borderColor: 'var(--light-gray)', minWidth: 220 }}>
+                            <button type="button" onClick={() => { setOrdClinFilter([]); setOrdPage(1) }}
+                              className="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 font-semibold" style={{ color: 'var(--teal)' }}>
+                              Show all {ordClinFilter.length > 0 && '(clear ticks)'}
+                            </button>
+                            {ordClinOptions.map(name => (
+                              <label key={name} className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-gray-50 cursor-pointer" style={{ color: 'var(--charcoal)' }}>
+                                <input type="checkbox" checked={ordClinFilter.includes(name)}
+                                  onChange={() => { setOrdClinFilter(prev => prev.includes(name) ? prev.filter(n => n !== name) : [...prev, name]); setOrdPage(1) }} />
+                                <span>{name === '\u2014' ? '(No clinician)' : name}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </>)}
+                      </div>
+                    )}
                   </th>
                 ))}
               </tr>
