@@ -2490,6 +2490,20 @@ export default function AccountsReceivablePage() {
                 <input type="date" value={perHmoTo} onChange={e => setPerHmoTo(e.target.value)}
                   className="px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
               </div>
+              {/* Quick ranges */}
+              <div className="flex items-end gap-1.5 pb-0.5">
+                {([
+                  ['Today', () => { const d = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }); setPerHmoFrom(d); setPerHmoTo(d) }],
+                  ['This month', () => { const n = new Date(); const y = n.getFullYear(), m = n.getMonth(); setPerHmoFrom(`${y}-${String(m + 1).padStart(2, '0')}-01`); setPerHmoTo(new Date(y, m + 1, 0).toLocaleDateString('en-CA')) }],
+                  ['Last month', () => { const n = new Date(); const y = n.getFullYear(), m = n.getMonth() - 1; const d0 = new Date(y, m, 1); setPerHmoFrom(d0.toLocaleDateString('en-CA')); setPerHmoTo(new Date(y, m + 1, 0).toLocaleDateString('en-CA')) }],
+                ] as const).map(([label, fn]) => (
+                  <button key={label} onClick={fn}
+                    className="px-3 py-2 rounded-xl border text-xs font-medium"
+                    style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)', background: 'white' }}>
+                    {label}
+                  </button>
+                ))}
+              </div>
               </>)}
               <div className="relative ml-auto flex items-center gap-2">
                 <button
