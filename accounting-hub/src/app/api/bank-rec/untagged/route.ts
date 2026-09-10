@@ -38,8 +38,10 @@ export async function GET(req: Request) {
   })
   const tagged = new Set(matched.map(m => `${m.matchType}|${m.matchId}`))
   // Match ids alone as well: a record tagged under a different type still counts
-  // as accounted for, and flagging it again would be a false alarm.
-  const taggedIds = new Set(matched.map(m => m.matchId as string))
+  // as accounted for, and flagging it again would be a false alarm. A matchId
+  // can carry several ids comma-joined (a combination match, or an interbank
+  // pair that also settles an RFP) — each constituent is accounted for.
+  const taggedIds = new Set(matched.flatMap(m => String(m.matchId).split(',').map(s => s.trim()).filter(Boolean)))
 
   const untagged = all.filter(c => !tagged.has(`${c.type}|${c.id}`) && !taggedIds.has(c.id))
 

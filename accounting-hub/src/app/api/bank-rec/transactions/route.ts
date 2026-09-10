@@ -374,6 +374,45 @@ export async function PATCH(req: Request) {
       }
       const amount = Number(out.spent)
 
+      // The pair may also BE the payment of a recorded RFP (a petty cash
+      // replenishment paying a report out of checking into the passbook). When
+      // the caller names one, the legs carry "<transferId>,<rfpId>" — the
+      // double-claim guard and markSettled already read joined ids apart and
+      // count directions separately, so the report is consumed once each way
+      // and stops showing as untagged, while the transfer still posts its JE.
+      let rfp: { id: string; refNumber: string; payableTo: string | null } | null = null
+      if (body.rfpId) {
+        const r = await prisma.reimbursementReport.findUnique({
+          where: { id: String(body.rfpId) },
+          select: { id: true, refNumber: true, payableTo: true, status: true, grossTotal: true, debitAccount: true, depositAccount: true },
+        })
+        if (!r || r.status !== 'PAID') return NextResponse.json({ error: 'That RFP is not on file as paid.' }, { status: 400 })
+        if (Math.abs(Number(r.grossTotal) - amount) > 0.01) {
+          return NextResponse.json({ error: `${r.refNumber} is for ${money(Number(r.grossTotal))} but the transfer moves ${money(amount)} — they cannot settle each other.` }, { status: 400 })
+        }
+        if (r.debitAccount && fromAcct?.accountNumber && !r.debitAccount.startsWith(fromAcct.accountNumber)) {
+          return NextResponse.json({ error: `${r.refNumber} was recorded as paid out of ${r.debitAccount}, not ${fromAcct.accountNumber}.` }, { status: 400 })
+        }
+        if (r.depositAccount && toAcct?.accountNumber && !r.depositAccount.startsWith(toAcct.accountNumber)) {
+          return NextResponse.json({ error: `${r.refNumber} was recorded as deposited to ${r.depositAccount}, not ${toAcct.accountNumber}.` }, { status: 400 })
+        }
+        const elsewhere = await prisma.bankTransaction.findMany({
+          where: {
+            status: 'POSTED', id: { notIn: [txn.id, other.id] },
+            AND: [
+              { OR: [{ matchType: null }, { matchType: { not: 'PETTY_CASH_WITHDRAWAL' } }] },
+              { OR: [{ matchId: r.id }, { matchId: { contains: ',' } }] },
+            ],
+          },
+          select: { matchId: true },
+        })
+        if (elsewhere.some(b => (b.matchId || '').split(',').some(p => p.trim() === r.id))) {
+          return NextResponse.json({ error: `${r.refNumber} is already matched to another bank line — unmatch that line first.` }, { status: 409 })
+        }
+        rfp = { id: r.id, refNumber: r.refNumber, payableTo: r.payableTo }
+      }
+      const rfpSuffix = rfp ? ` · settles ${rfp.refNumber}${rfp.payableTo ? ` · ${rfp.payableTo}` : ''}` : ''
+
       const transfer = await prisma.$transaction(async (tx) => {
         // The transfer may already be on file, entered from its voucher with the
         // cheque number and branch reference on it. Creating a second record for
@@ -401,18 +440,23 @@ export async function PATCH(req: Request) {
         })
         const free: { id: string; refNumber: string }[] = []
         for (const r of reuse) {
+          // A leg that also settles an RFP stores "<transferId>,<rfpId>", so a
+          // plain equality check would call a consumed transfer "free".
           const legs = await tx.bankTransaction.count({
-            where: { matchId: r.id, matchType: { in: ['FUND_TRANSFER', 'INTERBANK', 'FOREX'] } },
+            where: {
+              matchType: { in: ['FUND_TRANSFER', 'INTERBANK', 'FOREX'] },
+              OR: [{ matchId: r.id }, { matchId: { startsWith: `${r.id},` } }],
+            },
           })
           if (legs === 0) free.push(r)
         }
         if (free.length === 1) {
           const existing = free[0]
-          const label = `${existing.refNumber} · transfer ${fromAcct?.accountNumber || ''} → ${toAcct?.accountNumber || ''}`
+          const label = `${existing.refNumber} · transfer ${fromAcct?.accountNumber || ''} → ${toAcct?.accountNumber || ''}${rfpSuffix}`
           for (const t of [out, inn]) {
             await tx.bankTransaction.update({
               where: { id: t.id },
-              data: { status: 'POSTED', matchType: 'INTERBANK', matchId: existing.id, matchLabel: label, categoryAccountId: null },
+              data: { status: 'POSTED', matchType: 'INTERBANK', matchId: rfp ? `${existing.id},${rfp.id}` : existing.id, matchLabel: label, categoryAccountId: null },
             })
           }
           // Idempotent — leaves the entry alone if the existing record already posted one.
@@ -438,11 +482,11 @@ export async function PATCH(req: Request) {
             createdById: session.user!.id ?? null,
           },
         })
-        const label = `${created.refNumber} · transfer ${fromAcct?.accountNumber || ''} → ${toAcct?.accountNumber || ''}`
+        const label = `${created.refNumber} · transfer ${fromAcct?.accountNumber || ''} → ${toAcct?.accountNumber || ''}${rfpSuffix}`
         for (const t of [out, inn]) {
           await tx.bankTransaction.update({
             where: { id: t.id },
-            data: { status: 'POSTED', matchType: 'INTERBANK', matchId: created.id, matchLabel: label, categoryAccountId: null },
+            data: { status: 'POSTED', matchType: 'INTERBANK', matchId: rfp ? `${created.id},${rfp.id}` : created.id, matchLabel: label, categoryAccountId: null },
           })
         }
         // The transfer moves cash in the ledger, not just between the two lines.
@@ -669,14 +713,18 @@ export async function PATCH(req: Request) {
       // transfer they created — otherwise the other line stays posted against
       // a record that is gone.
       if ((txn.matchType === 'FOREX' || txn.matchType === 'INTERBANK') && txn.matchId) {
+        // A leg that also settled an RFP stores "<transferId>,<rfpId>"; the
+        // transfer id leads. Both legs carry the identical string, so releasing
+        // by equality still frees the pair — and the report with it.
+        const ftId = txn.matchId.split(',')[0].trim()
         const both = await prisma.bankTransaction.findMany({ where: { matchType: txn.matchType, matchId: txn.matchId } })
         await prisma.$transaction(async (tx) => {
           await tx.bankTransaction.updateMany({
             where: { id: { in: both.map(b => b.id) } },
             data: { status: 'PENDING', journalEntryId: null, categoryAccountId: null, matchType: null, matchId: null, matchLabel: null },
           })
-          await removeFundTransferJE(tx, txn.matchId!)
-          await tx.fundTransfer.delete({ where: { id: txn.matchId! } }).catch(() => {})
+          await removeFundTransferJE(tx, ftId)
+          await tx.fundTransfer.delete({ where: { id: ftId } }).catch(() => {})
         })
         return NextResponse.json({ success: true, released: both.length })
       }

@@ -78,9 +78,11 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
     // `module` says which. When Record-as-Paid captured the paying bank account
     // (debitAccount, "<number> <title>"), the RFP is offered only against that
     // account; RFPs paid before that field existed stay offered everywhere.
+    // depositAccount names where the money landed, so a transfer-paid RFP is
+    // also offered as money-in on the receiving account (its deposit leg).
     prisma.reimbursementReport.findMany({
       where: { status: 'PAID', paidAt: range },
-      select: { id: true, refNumber: true, grossTotal: true, paidAt: true, module: true, payableTo: true, debitAccount: true },
+      select: { id: true, refNumber: true, grossTotal: true, paidAt: true, module: true, payableTo: true, debitAccount: true, depositAccount: true },
     }),
     prisma.order.findMany({
       where: { status: 'COMPLETED', transactionDate: range },
@@ -236,10 +238,18 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
   }
   for (const r of rfps) {
     if (!r.paidAt) continue
-    // Paid via a known bank account → only eligible against that account.
-    if (reconAcct?.accountNumber && r.debitAccount && !r.debitAccount.startsWith(reconAcct.accountNumber)) continue
     const kind = (r.module || 'RFP').replace(/_/g, ' ').toLowerCase()
-    out.push({ type: 'RFP', id: r.id, label: `${r.refNumber} · ${kind}${r.payableTo ? ` · ${r.payableTo}` : ''}`, date: r.paidAt, amount: num(r.grossTotal), dir: 'out' })
+    const label = `${r.refNumber} · ${kind}${r.payableTo ? ` · ${r.payableTo}` : ''}`
+    // Paid via a known bank account → the payment leg is only eligible against
+    // that account. An RFP settled by transfer also LANDS somewhere: a petty
+    // cash replenishment leaves the checking account and arrives in the petty
+    // cash passbook, so the receiving account is offered the same report as
+    // money-in — consumed once on each side, exactly as a fund transfer is
+    // (markSettled counts the directions apart).
+    const paysHere = !reconAcct?.accountNumber || !r.debitAccount || r.debitAccount.startsWith(reconAcct.accountNumber)
+    const landsHere = !!(reconAcct?.accountNumber && r.depositAccount && r.depositAccount.startsWith(reconAcct.accountNumber))
+    if (paysHere) out.push({ type: 'RFP', id: r.id, label, date: r.paidAt, amount: num(r.grossTotal), dir: 'out' })
+    if (landsHere) out.push({ type: 'RFP', id: r.id, label: `${label} · deposit leg`, date: r.paidAt, amount: num(r.grossTotal), dir: 'in' })
   }
   for (const o of orders) {
     if (bankAccountId) {

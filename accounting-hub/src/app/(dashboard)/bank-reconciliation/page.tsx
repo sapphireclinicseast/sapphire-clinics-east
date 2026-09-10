@@ -1009,12 +1009,16 @@ function MatchModal({ txn, coa, onClose, onDone, onCategorise }: { txn: Txn; coa
       // record is often months from the deposit (a subscription recorded at
       // year end, paid in June) and is then reached by search rather than by
       // the suggestions.
-      const isPart = m.type !== 'INTERBANK' && m.type !== 'POS_SALE' && m.type !== 'POS_DAY' && m.amount > target + 0.01
+      const isPart = m.type !== 'INTERBANK' && m.type !== 'INTERBANK_RFP' && m.type !== 'POS_SALE' && m.type !== 'POS_DAY' && m.amount > target + 0.01
       const partLabel = isPart
         ? `Part payment ₱${peso(target)} of ₱${peso(m.amount)} · ${m.label}`.slice(0, 500)
         : m.label
+      // An INTERBANK_RFP candidate pairs the two legs AND settles the named
+      // RFP in one confirmation — its id carries "<counterpartLineId>|<rfpId>".
       const body = m.type === 'INTERBANK'
         ? { id: txn.id, action: 'match-interbank', counterpartId: m.id }
+        : m.type === 'INTERBANK_RFP'
+        ? { id: txn.id, action: 'match-interbank', counterpartId: m.id.split('|')[0], rfpId: m.id.split('|')[1] }
         : { id: txn.id, action: 'match', matchType: m.type, matchId: m.id, matchLabel: partLabel }
       const r = await fetch('/api/bank-rec/transactions', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d.error || 'Failed to match'); return }
@@ -1026,7 +1030,7 @@ function MatchModal({ txn, coa, onClose, onDone, onCategorise }: { txn: Txn; coa
   // as one cheque. Ticking them accumulates a running total against the bank
   // amount so the combination can be confirmed only once it actually adds up.
   const key = (m: Match) => `${m.type}-${m.id}`
-  const combinable = (m: Match) => m.type !== 'POS_SALE' && m.type !== 'POS_DAY' && m.type !== 'INTERBANK'
+  const combinable = (m: Match) => m.type !== 'POS_SALE' && m.type !== 'POS_DAY' && m.type !== 'INTERBANK' && m.type !== 'INTERBANK_RFP'
   const toggle = (m: Match) => setSel(prev => {
     const next = { ...prev }
     if (next[key(m)]) delete next[key(m)]; else next[key(m)] = m

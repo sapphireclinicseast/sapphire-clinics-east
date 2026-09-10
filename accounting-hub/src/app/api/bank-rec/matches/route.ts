@@ -86,7 +86,7 @@ async function interbankCandidates(txn: Txn) {
   const isSpent = Number(txn.spent) > 0
   const amount = isSpent ? Number(txn.spent) : Number(txn.received)
   if (!amount) return []
-  const account = await prisma.account.findUnique({ where: { id: txn.bankAccountId }, select: { currency: true } })
+  const account = await prisma.account.findUnique({ where: { id: txn.bankAccountId }, select: { currency: true, accountNumber: true } })
 
   const lo = new Date(txn.date); lo.setUTCDate(lo.getUTCDate() - 5)
   const hi = new Date(txn.date); hi.setUTCDate(hi.getUTCDate() + 6)
@@ -110,15 +110,60 @@ async function interbankCandidates(txn: Txn) {
   })
   // Nearest date first — with a multi-day window the same-day leg should lead.
   lines.sort((a, b) => Math.abs(+a.date - +txn.date) - Math.abs(+b.date - +txn.date))
-  return lines.map(l => {
-    const acct = sameCcy.find(a => a.id === l.bankAccountId)!
-    return {
-      type: 'INTERBANK', id: l.id,
-      label: `Internal transfer ${isSpent ? '→' : '←'} ${acct.accountNumber} ${acct.accountTitle} · ${l.description}`,
-      date: l.date.toISOString().slice(0, 10),
-      amount,
+
+  // An internal transfer often IS the payment of a recorded RFP — a petty cash
+  // replenishment paying AHEA-RFP26-… out of checking into the petty cash
+  // passbook. When a paid report names these two accounts for this exact
+  // amount, offer pairing the legs AND settling the report in one confirmation,
+  // so neither the deposit leg nor the RFP is left dangling.
+  let rfps: { id: string; refNumber: string; payableTo: string | null; debitAccount: string | null; depositAccount: string | null }[] = []
+  if (lines.length) {
+    const rfpLo = new Date(txn.date); rfpLo.setUTCDate(rfpLo.getUTCDate() - 14)
+    const rfpHi = new Date(txn.date); rfpHi.setUTCDate(rfpHi.getUTCDate() + 15)
+    const found = await prisma.reimbursementReport.findMany({
+      where: { status: 'PAID', grossTotal: amount, paidAt: { gte: rfpLo, lt: rfpHi } },
+      select: { id: true, refNumber: true, payableTo: true, debitAccount: true, depositAccount: true },
+    })
+    if (found.length) {
+      // A report some other bank line already settles is not offered again.
+      const used = await prisma.bankTransaction.findMany({
+        where: {
+          status: 'POSTED',
+          AND: [
+            { OR: [{ matchType: null }, { matchType: { not: 'PETTY_CASH_WITHDRAWAL' } }] },
+            { OR: [{ matchId: { in: found.map(r => r.id) } }, { matchId: { contains: ',' } }] },
+          ],
+        },
+        select: { matchId: true },
+      })
+      const taken = new Set(used.flatMap(u => (u.matchId || '').split(',').map(s => s.trim())))
+      rfps = found.filter(r => !taken.has(r.id))
     }
-  })
+  }
+
+  const out: { type: string; id: string; label: string; date: string; amount: number }[] = []
+  for (const l of lines) {
+    const acct = sameCcy.find(a => a.id === l.bankAccountId)!
+    const base = `Internal transfer ${isSpent ? '→' : '←'} ${acct.accountNumber} ${acct.accountTitle} · ${l.description}`
+    const date = l.date.toISOString().slice(0, 10)
+    // The paying and receiving account numbers of THIS pair, whichever side the
+    // reconciled line is on — the report must name the same two (when it names
+    // any at all) for the combined offer to be honest.
+    const outNo = isSpent ? account?.accountNumber : acct.accountNumber
+    const inNo = isSpent ? acct.accountNumber : account?.accountNumber
+    for (const r of rfps) {
+      const paysFrom = !r.debitAccount || (!!outNo && r.debitAccount.startsWith(outNo))
+      const landsIn = !r.depositAccount || (!!inNo && r.depositAccount.startsWith(inNo))
+      if (!paysFrom || !landsIn) continue
+      out.push({
+        type: 'INTERBANK_RFP', id: `${l.id}|${r.id}`,
+        label: `${base} — settles ${r.refNumber}${r.payableTo ? ` · ${r.payableTo}` : ''}`,
+        date, amount,
+      })
+    }
+    out.push({ type: 'INTERBANK', id: l.id, label: base, date, amount })
+  }
+  return out
 }
 
 // GET ?txnId=... → suggested matches (already-recorded Hub records) for a bank line.
