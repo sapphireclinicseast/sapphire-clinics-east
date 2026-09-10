@@ -18,17 +18,19 @@ export interface SurveyInvite { name: string; surveyUrl: string }
 export interface CheckoutPayload {
   patientName: string
   patientId?: string | null
-  /** ACTIVE while the cashier is ringing up; COMPLETED once the sale is saved. */
-  status?: 'ACTIVE' | 'COMPLETED'
+  /** ACTIVE while the cashier is ringing up; COMPLETED once the sale is saved;
+   *  FEEDBACK after the cashier closed the bill for one of today's survey
+   *  picks — the invitation alone stays up, with no amounts behind it. */
+  status?: 'ACTIVE' | 'COMPLETED' | 'FEEDBACK'
   /** Present only when this patient is one of today's randomly chosen. */
   surveyInvite?: SurveyInvite | null
-  clinicianName: string
-  items: CheckoutLine[]
-  discountLabel: string
-  subtotal: number
-  discountAmount: number
-  netAmount: number
-  payments: CheckoutPayment[]
+  clinicianName?: string
+  items?: CheckoutLine[]
+  discountLabel?: string
+  subtotal?: number
+  discountAmount?: number
+  netAmount?: number
+  payments?: CheckoutPayment[]
 }
 
 const peso = (n: number) =>
@@ -54,8 +56,17 @@ export default function CheckoutScreen({
 }) {
   const [scanning, setScanning] = useState(false)
   const done = data.status === 'COMPLETED'
-  const paid = data.payments.reduce((s, p) => s + (Number(p.amount) || 0), 0)
+  const items = data.items ?? []
+  const payments = data.payments ?? []
+  const paid = payments.reduce((s, p) => s + (Number(p.amount) || 0), 0)
   const due = Math.max(0, (Number(data.netAmount) || 0) - paid)
+
+  // The bill is gone; only the invitation remains. Loud on purpose — this is
+  // the one moment the tablet asks for the patient's attention across the
+  // counter, and it carries no amounts for a bystander to read.
+  if (data.status === 'FEEDBACK') {
+    return <FeedbackFlash data={data} onOpenSurvey={onOpenSurvey} />
+  }
 
   return (
     <div className="w-full max-w-3xl">
@@ -73,12 +84,12 @@ export default function CheckoutScreen({
         <div className="px-8 py-6">
           {/* Services */}
           <div className="space-y-3">
-            {data.items.length === 0 && (
+            {items.length === 0 && (
               <p className="text-sm py-4 text-center" style={{ color: '#8aa39b' }}>
                 Your cashier is preparing your bill…
               </p>
             )}
-            {data.items.map((it, i) => (
+            {items.map((it, i) => (
               <div key={`${it.name}-${i}`} className="flex items-start justify-between gap-4">
                 <span>
                   <span className="block text-base" style={{ color: '#1c3f38' }}>{it.name}</span>
@@ -95,28 +106,28 @@ export default function CheckoutScreen({
 
           {/* Totals */}
           <div className="mt-6 pt-5 space-y-2" style={{ borderTop: '1px solid #e6efeb' }}>
-            <Row label="Subtotal" value={peso(data.subtotal)} />
-            {data.discountAmount > 0 && (
+            <Row label="Subtotal" value={peso(data.subtotal ?? 0)} />
+            {(data.discountAmount ?? 0) > 0 && (
               <Row
                 label={data.discountLabel ? `Discount — ${data.discountLabel}` : 'Discount'}
-                value={`− ${peso(data.discountAmount)}`}
+                value={`− ${peso(data.discountAmount ?? 0)}`}
                 tone="#15803d"
               />
             )}
             <div className="flex items-center justify-between pt-3" style={{ borderTop: '1px solid #e6efeb' }}>
               <span className="text-lg font-bold" style={{ color: '#1c3f38' }}>Total</span>
-              <span className="text-3xl font-extrabold tabular-nums" style={{ color: '#0f766e' }}>{peso(data.netAmount)}</span>
+              <span className="text-3xl font-extrabold tabular-nums" style={{ color: '#0f766e' }}>{peso(data.netAmount ?? 0)}</span>
             </div>
           </div>
 
           {/* Payments — every form, so a split or a downpayment is visible */}
-          {data.payments.length > 0 && (
+          {payments.length > 0 && (
             <div className="mt-6 rounded-2xl p-5" style={{ background: '#f4f8f6' }}>
               <p className="text-[11px] uppercase tracking-[0.16em] mb-3" style={{ color: '#6f8b83' }}>
                 How this is being paid
               </p>
               <div className="space-y-2">
-                {data.payments.map((p, i) => (
+                {payments.map((p, i) => (
                   <Row key={`${p.method}-${i}`} label={methodLabel(p)} value={peso(p.amount)} />
                 ))}
               </div>
@@ -191,6 +202,59 @@ function Row({ label, value, tone }: { label: string; value: string; tone?: stri
     <div className="flex items-center justify-between">
       <span className="text-sm" style={{ color: tone || '#5b7a72' }}>{label}</span>
       <span className="text-sm tabular-nums" style={{ color: tone || '#1c3f38' }}>{value}</span>
+    </div>
+  )
+}
+
+/* ── Feedback flash ──────────────────────────────────────────────────────── */
+
+/**
+ * Shown when the cashier closes a completed bill for one of today's survey
+ * picks. Bright yellow and gently pulsing so it reads across the counter;
+ * dark brown text throughout — white on this yellow is unreadable at arm's
+ * length. If the invitation list is briefly unavailable the button is the one
+ * thing withheld; the message still shows, and the front desk can point the
+ * patient to "Share your experience" on the welcome screen.
+ */
+function FeedbackFlash({ data, onOpenSurvey }: { data: CheckoutPayload; onOpenSurvey: (inv: SurveyInvite) => void }) {
+  return (
+    <div className="w-full max-w-3xl">
+      <style>{`@keyframes pv-feedback-flash {
+        0%, 100% { background: #fde047; box-shadow: 0 18px 54px rgba(202,138,4,0.35); }
+        50%      { background: #facc15; box-shadow: 0 18px 70px rgba(202,138,4,0.55); }
+      }`}</style>
+      <div className="rounded-3xl p-10 sm:p-12 text-center"
+        style={{ animation: 'pv-feedback-flash 1.6s ease-in-out infinite', border: '2px solid #eab308' }}>
+        <span className="inline-flex items-center justify-center rounded-3xl"
+          style={{ width: 76, height: 76, background: '#ffffff', color: '#a16207' }}>
+          <MessageSquareHeart size={40} />
+        </span>
+        <h1 className="mt-6 text-4xl sm:text-5xl font-extrabold tracking-tight" style={{ color: '#3f2a04' }}>
+          You were chosen to give us feedback!
+        </h1>
+        {data.patientName && (
+          <p className="mt-3 text-xl font-semibold" style={{ color: '#6b5316' }}>{data.patientName}</p>
+        )}
+        <p className="mt-3 text-base sm:text-lg" style={{ color: '#6b5316' }}>
+          We pick a few patients at random each day. Would you tell us how your visit went?
+          It takes about a minute.
+        </p>
+        {data.surveyInvite ? (
+          <button
+            onClick={() => onOpenSurvey(data.surveyInvite!)}
+            className="mt-7 w-full max-w-md py-5 rounded-2xl text-xl font-bold"
+            style={{ background: '#3f2a04', color: '#fde047' }}>
+            Yes, I&apos;ll answer
+          </button>
+        ) : (
+          <p className="mt-6 text-sm" style={{ color: '#8a7333' }}>
+            Please ask our front desk, or tap &quot;Share your experience&quot; on the welcome screen.
+          </p>
+        )}
+        <p className="mt-3 text-xs" style={{ color: '#8a7333' }}>
+          Not now? Just leave the tablet — this clears on its own.
+        </p>
+      </div>
     </div>
   )
 }

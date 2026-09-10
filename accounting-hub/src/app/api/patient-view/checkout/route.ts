@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { resolvePatientViewBranch } from '@/lib/patient-view'
+import { fetchSurveyInvitations, matchInvitation } from '@/lib/patient-view-survey'
 
 /**
  * The till's side of the patient tablet.
@@ -118,6 +119,13 @@ export async function GET(req: Request) {
 /**
  * Take the checkout down, and optionally consume a scanned code in the same
  * call (`?consumeScan=1`) so the till does not apply the same card twice.
+ *
+ * `?mode=close` is the cashier's "Close Patient View" after a completed sale:
+ * the bill comes down either way, but when this patient is one of today's
+ * survey picks the tablet is handed a FEEDBACK flash — name and invitation
+ * only, no amounts — instead of going straight back to the welcome screen.
+ * Decided here rather than at the till so the invitee list (and the key that
+ * fetches it) stays server-side and matches the tablet feed exactly.
  */
 export async function DELETE(req: Request) {
   const session = await auth()
@@ -130,13 +138,39 @@ export async function DELETE(req: Request) {
 
   const scanOnly = sp.get('consumeScan') === '1'
   try {
+    if (!scanOnly && sp.get('mode') === 'close') {
+      const row = await prisma.patientViewCheckout.findUnique({
+        where: { branch: branch.branch },
+        select: { active: true, payload: true },
+      })
+      const p = row?.payload as Record<string, unknown> | null
+      const patientName = String(p?.patientName ?? '').trim()
+      const patientId = String(p?.patientId ?? '').trim()
+      if (row?.active && (patientName || patientId)) {
+        const { invitations } = await fetchSurveyInvitations(branch)
+        const invite = matchInvitation(invitations, patientId, patientName)
+        if (invite) {
+          await prisma.patientViewCheckout.update({
+            where: { branch: branch.branch },
+            data: {
+              active: true,
+              // Only what the flash needs. The tablet feed re-matches the
+              // invitation itself, so no survey URL is stored here either.
+              payload: { status: 'FEEDBACK', patientName, patientId: patientId || null },
+              scannedCode: null, scannedAt: null,
+            },
+          })
+          return NextResponse.json({ cleared: true, feedback: true })
+        }
+      }
+    }
     await prisma.patientViewCheckout.updateMany({
       where: { branch: branch.branch },
       data: scanOnly
         ? { scannedCode: null, scannedAt: null }
         : { active: false, scannedCode: null, scannedAt: null },
     })
-    return NextResponse.json({ cleared: true })
+    return NextResponse.json({ cleared: true, feedback: false })
   } catch (e) {
     console.error('[patient-view] clear failed:', e)
     return NextResponse.json({ cleared: false }, { status: 500 })

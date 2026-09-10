@@ -1275,15 +1275,25 @@ function OrderFormModal({
   }, 0)
   const changeDue = totalPayments - netAmount
 
-  /* ── Mirror this sale to the branch's patient tablet ──────────────────────
-     Published as the cart changes, cleared when the form closes. Debounced so
-     typing an amount is one request at the end rather than one per keystroke.
-     Every call is best-effort: a tablet that is off, or a branch that has none,
-     must never interfere with taking a payment. */
+  /* ── The branch's patient tablet ──────────────────────────────────────────
+     Nothing is mirrored until the cashier chooses to show it: ringing up can
+     take a while, and whoever is next in the queue should not spend that time
+     reading this patient's name and bill. Once shown, the tablet follows the
+     cart (debounced so typing an amount is one request at the end rather than
+     one per keystroke) until the sale completes or the cashier hides it.
+     Every call is best-effort: a tablet that is off, or a branch that has
+     none, must never interfere with taking a payment. */
   const patientTabletBranch = patientViewPath(branch) ? branch : null
+  const [tabletLive, setTabletLive] = useState(false)
+  const tabletLiveRef = useRef(false)
+  useEffect(() => { tabletLiveRef.current = tabletLive }, [tabletLive])
+  // The cashier's two moments of choice: putting the bill up, and — after
+  // Complete Order — taking it down again.
+  const [showTabletConfirm, setShowTabletConfirm] = useState(false)
+  const [showCloseTablet, setShowCloseTablet] = useState(false)
 
   useEffect(() => {
-    if (!patientTabletBranch) return
+    if (!patientTabletBranch || !tabletLive || showCloseTablet) return
     const t = setTimeout(() => {
       fetch('/api/patient-view/checkout', {
         method: 'PUT',
@@ -1300,7 +1310,26 @@ function OrderFormModal({
       }).catch(() => {})
     }, 400)
     return () => clearTimeout(t)
-  }, [patientTabletBranch, patientName, patientId, clinicianName, items, discountLabel, subtotal, discountAmount, netAmountDisplay, payments])
+  }, [patientTabletBranch, tabletLive, showCloseTablet, patientName, patientId, clinicianName, items, discountLabel, subtotal, discountAmount, netAmountDisplay, payments])
+
+  const hideFromTablet = () => {
+    setTabletLive(false)
+    if (patientTabletBranch) {
+      fetch(`/api/patient-view/checkout?branch=${encodeURIComponent(patientTabletBranch)}`, { method: 'DELETE' }).catch(() => {})
+    }
+  }
+
+  // The answer to "Close Patient View in Tablet?" after a completed sale.
+  // Yes closes the bill with mode=close — the server flashes the survey
+  // invitation instead if this patient is one of today's picks. No leaves the
+  // thank-you up; the tablet clears it on its own timer either way.
+  const finishAfterTablet = (closeTablet: boolean) => {
+    setShowCloseTablet(false)
+    if (closeTablet && patientTabletBranch) {
+      fetch(`/api/patient-view/checkout?branch=${encodeURIComponent(patientTabletBranch)}&mode=close`, { method: 'DELETE' }).catch(() => {})
+    }
+    onSuccess()
+  }
 
   // Take the bill off the tablet when this form goes away — unless the sale
   // completed, in which case the thank-you screen owns the tablet and clears
@@ -1309,15 +1338,17 @@ function OrderFormModal({
   useEffect(() => {
     if (!patientTabletBranch) return
     return () => {
-      if (skipClearRef.current) return
+      if (skipClearRef.current || !tabletLiveRef.current) return
       fetch(`/api/patient-view/checkout?branch=${encodeURIComponent(patientTabletBranch)}`, { method: 'DELETE' }).catch(() => {})
     }
   }, [patientTabletBranch])
 
   // A card the patient scanned on the tablet, waiting to be applied here.
+  // Scanning only works while a checkout is live on the tablet, so the poll
+  // only runs then.
   const [scannedCard, setScannedCard] = useState<string | null>(null)
   useEffect(() => {
-    if (!patientTabletBranch) return
+    if (!patientTabletBranch || !tabletLive) return
     const poll = setInterval(async () => {
       try {
         const r = await fetch(`/api/patient-view/checkout?branch=${encodeURIComponent(patientTabletBranch)}`)
@@ -1331,7 +1362,7 @@ function OrderFormModal({
       } catch { /* the tablet is optional; never surface this */ }
     }, 2500)
     return () => clearInterval(poll)
-  }, [patientTabletBranch])
+  }, [patientTabletBranch, tabletLive])
 
   // Snap net to displayed 2-dp precision so floating-point arithmetic in stacked
   // discounts never creates a sub-cent gap between what's shown and what's compared.
@@ -1759,11 +1790,11 @@ function OrderFormModal({
         }
       }
 
-      // Turn the tablet into the thank-you — and the survey prompt, if this
-      // patient is one of today's. Published rather than cleared, because the
-      // unmount handler below would otherwise wipe the screen the instant the
-      // form closes and the patient would never see it.
-      if (patientTabletBranch) {
+      // If the cashier had the bill up on the tablet, turn it into the
+      // thank-you — and ask them whether to close the patient view now,
+      // instead of closing the form under them. onSuccess is deferred until
+      // they answer; a tablet that was never shown skips all of this.
+      if (patientTabletBranch && tabletLiveRef.current) {
         fetch('/api/patient-view/checkout', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -1779,6 +1810,8 @@ function OrderFormModal({
         }).catch(() => {})
         // The unmount clear would undo what was just published, so skip it once.
         skipClearRef.current = true
+        setShowCloseTablet(true)
+        return
       }
 
       onSuccess()
@@ -2726,6 +2759,30 @@ function OrderFormModal({
             )}
           </div>
 
+          {/* Patient tablet — nothing shows there until the cashier flashes it */}
+          {patientTabletBranch && (
+            tabletLive ? (
+              <div className="w-full mb-2 px-3 py-2 rounded-xl border flex items-center justify-between gap-2"
+                style={{ borderColor: '#16a34a', background: '#f0fdf4' }}>
+                <span className="flex items-center gap-2 text-xs font-semibold" style={{ color: '#166534' }}>
+                  <MonitorSmartphone size={15} /> Bill is showing on the patient tablet
+                </span>
+                <button type="button" onClick={hideFromTablet} className="text-xs font-semibold underline" style={{ color: '#166534' }}>
+                  Hide
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setShowTabletConfirm(true)}
+                className="w-full mb-2 py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 border"
+                style={{ borderColor: 'var(--teal)', color: 'var(--teal)', background: 'transparent' }}
+              >
+                <MonitorSmartphone size={16} /> Show bill on patient tablet
+              </button>
+            )
+          )}
+
           {/* Submit */}
           <button
             onClick={() => handleSubmit(false)}
@@ -2746,6 +2803,58 @@ function OrderFormModal({
             Save as Unpaid (collect later)
           </button>
         </div>
+
+        {/* Flash-to-tablet confirmation */}
+        {showTabletConfirm && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-5" style={{ background: 'rgba(12,32,28,0.55)' }}>
+            <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-xl">
+              <p className="font-bold flex items-center gap-2" style={{ color: 'var(--charcoal)' }}>
+                <MonitorSmartphone size={18} style={{ color: 'var(--teal)' }} /> Show on patient tablet?
+              </p>
+              <p className="mt-2 text-sm" style={{ color: 'var(--mid-gray)' }}>
+                The bill{patientName ? <> for <strong>{patientName}</strong></> : null} will appear on the patient
+                tablet and follow this checkout until the order is completed or you hide it.
+              </p>
+              <div className="mt-5 flex gap-2 justify-end">
+                <button type="button" onClick={() => setShowTabletConfirm(false)}
+                  className="px-4 py-2 rounded-xl text-sm font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                  Cancel
+                </button>
+                <button type="button" autoFocus
+                  onClick={() => { setShowTabletConfirm(false); setTabletLive(true) }}
+                  className="px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}>
+                  Show on tablet
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* After Complete Order: take the patient view down? Default is Yes. */}
+        {showCloseTablet && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-5" style={{ background: 'rgba(12,32,28,0.55)' }}>
+            <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-xl">
+              <p className="font-bold flex items-center gap-2" style={{ color: 'var(--charcoal)' }}>
+                <MonitorSmartphone size={18} style={{ color: 'var(--teal)' }} /> Close Patient View in Tablet?
+              </p>
+              <p className="mt-2 text-sm" style={{ color: 'var(--mid-gray)' }}>
+                The order is saved. Closing takes the bill off the tablet — and if this patient is one of
+                today&apos;s survey picks, the tablet will invite them to give feedback instead.
+              </p>
+              <div className="mt-5 flex gap-2 justify-end">
+                <button type="button" onClick={() => finishAfterTablet(false)}
+                  className="px-4 py-2 rounded-xl text-sm font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                  No, leave it up
+                </button>
+                <button type="button" autoFocus
+                  onClick={() => finishAfterTablet(true)}
+                  className="px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}>
+                  Yes, close it
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Existing Wallet Popup */}
         {walletPopup.show && walletPopup.wallet && (
@@ -8631,6 +8740,8 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
   }
   const [clearingInProgress, setClearingInProgress] = useState(false)
   const [clearingError, setClearingError] = useState<string | null>(null)
+  const [noSalesBusy, setNoSalesBusy] = useState<Record<string, boolean>>({})
+  const [noSalesError, setNoSalesError] = useState<string | null>(null)
   // Which order payments a bank deposit has actually confirmed, and which none
   // has. Read from PosSettlementPayment — the same link the bank-rec Match
   // modal writes for a BDO cash deposit or an AUB card/e-wallet settlement — so
@@ -8956,6 +9067,34 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
     await fetchClearing()
   }
 
+  // Tick/untick "No sales this day". The server re-validates the claim against POS
+  // orders before clearing, so a stale page can't green a day that gained sales.
+  const toggleNoSalesDay = async (day: string, currentlyCleared: boolean) => {
+    const br = selectedBranch || branch
+    if (!br) return
+    setNoSalesError(null)
+    setNoSalesBusy(prev => ({ ...prev, [day]: true }))
+    try {
+      if (currentlyCleared) {
+        await fetch(`/api/pos/sales-clearing?date=${day}&branch=${br}`, { method: 'DELETE' })
+      } else {
+        const res = await fetch('/api/pos/sales-clearing', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ date: day, branch: br, noSales: true }),
+        })
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}))
+          setNoSalesError((d as { error?: string }).error || `Server error (${res.status})`)
+        }
+      }
+      await fetchClearing()
+    } catch (e) {
+      setNoSalesError(e instanceof Error ? e.message : 'Network error — please try again')
+    }
+    setNoSalesBusy(prev => ({ ...prev, [day]: false }))
+  }
+
   // Fill this range from what bank reconciliation already accounts for: a day's
   // method is ticked only when every one of its payments is linked to a
   // reconciled bank line, and figures the accountant typed are never overwritten.
@@ -8987,6 +9126,20 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
 
   // Calendar: days that have sales data
   const daysWithSales = new Set(Array.from(byDate.keys()))
+
+  // Days in the selected range with no sales at all — candidates for the
+  // "No sales this day" tick. Capped so an accidental multi-year range doesn't
+  // render thousands of chips (the monthly workflow this serves is ≤31 days).
+  const noSaleDays: string[] = []
+  if (dateFrom && dateTo && dateFrom <= dateTo) {
+    const cur = new Date(dateFrom + 'T00:00:00')
+    const last = new Date(dateTo + 'T00:00:00')
+    while (cur <= last && noSaleDays.length < 92) {
+      const d = cur.toLocaleDateString('en-CA')
+      if (!byDate.has(d)) noSaleDays.push(d)
+      cur.setDate(cur.getDate() + 1)
+    }
+  }
 
   // Days in calendar month with clearing status
   const calDaysInMonth = new Date(calYear, calMonth + 1, 0).getDate()
@@ -9210,6 +9363,61 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
           })}
         </div>
       )}
+
+      {/* Days with no sales — tick to validate & clear */}
+      {!loading && noSaleDays.length > 0 && (() => {
+        const br = selectedBranch || branch
+        const unticked = br ? noSaleDays.filter(d => !isClearedInDB(d, br)) : []
+        return (
+          <div className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+            <div className="px-4 py-3 border-b flex items-center justify-between" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+              <div>
+                <span className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>Days with no sales</span>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+                  Tick “No sales this day” to mark it cleared. Each tick is re-checked against POS orders before it saves.
+                </p>
+              </div>
+              {unticked.length > 1 && (
+                <button
+                  onClick={async () => { for (const d of unticked) await toggleNoSalesDay(d, false) }}
+                  disabled={Object.values(noSalesBusy).some(Boolean)}
+                  className="px-3 py-1.5 rounded-xl text-xs font-semibold text-white shrink-0"
+                  style={{ background: 'var(--teal)', opacity: Object.values(noSalesBusy).some(Boolean) ? 0.6 : 1 }}>
+                  Tick all {unticked.length}
+                </button>
+              )}
+            </div>
+            <div className="p-4 flex flex-wrap gap-2">
+              {noSaleDays.map(d => {
+                const ticked = br ? isClearedInDB(d, br) : false
+                const busy = !!noSalesBusy[d]
+                const label = new Date(d + 'T00:00:00').toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric' })
+                return (
+                  <button key={d} type="button" onClick={() => toggleNoSalesDay(d, ticked)} disabled={busy}
+                    title={ticked ? `Cleared as no-sales — click to unmark` : `Mark ${d} as "No sales this day"`}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs font-medium"
+                    style={{
+                      borderColor: ticked ? '#16a34a' : 'var(--light-gray)',
+                      background: ticked ? '#dcfce7' : 'white',
+                      color: ticked ? '#166534' : 'var(--mid-gray)',
+                      opacity: busy ? 0.5 : 1,
+                      cursor: busy ? 'wait' : 'pointer',
+                    }}>
+                    <span className="inline-flex items-center justify-center rounded"
+                      style={{ width: 14, height: 14, border: ticked ? 'none' : '1.5px solid var(--light-gray)', background: ticked ? '#16a34a' : 'white', color: 'white', fontSize: 10, lineHeight: 1 }}>
+                      {ticked ? '✓' : ''}
+                    </span>
+                    {label}
+                  </button>
+                )
+              })}
+            </div>
+            {noSalesError && (
+              <p className="px-4 pb-3 text-xs" style={{ color: '#dc2626' }}>⚠ {noSalesError}</p>
+            )}
+          </div>
+        )
+      })()}
 
       {/* Calendar Summary */}
       <div className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
