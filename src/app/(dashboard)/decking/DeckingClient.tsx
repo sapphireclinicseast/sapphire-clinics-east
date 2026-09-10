@@ -1244,8 +1244,16 @@ export default function DeckingClient({ role }: { role: string }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     })
-    await reportIfRefused(res)
-    await loadBranchData(activeBranch)
+    const ok = await reportIfRefused(res)
+    if (!ok) return
+    // Splice the new row into state rather than refetching the whole branch.
+    // loadBranchData replaces every config and slot on the board, so adding one
+    // child to a SPED class rebuilt the entire page — the table flashed and the
+    // scroll position jumped, on every single add. The POST already returns the
+    // created slot in the same shape the list holds, patient included.
+    const created = await res.json().catch(() => null)
+    if (created?.id) setSlots(prev => [...prev, created as DeckingSlot])
+    else await loadBranchData(activeBranch)   // shape unexpected — fall back
   }
 
   async function handleDeleteSlot(id: string) {
@@ -1254,8 +1262,10 @@ export default function DeckingClient({ role }: { role: string }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id }),
     })
-    await reportIfRefused(res)
-    await loadBranchData(activeBranch)
+    const ok = await reportIfRefused(res)
+    if (!ok) return
+    // Same reason as the add above: drop the one row instead of rebuilding.
+    setSlots(prev => prev.filter(s => s.id !== id))
   }
 
   async function handleSaveClinicHours(branch: string, schedule: ClinicSchedule) {
@@ -1501,7 +1511,11 @@ export default function DeckingClient({ role }: { role: string }) {
                     body: JSON.stringify({ id: slotId, staffId }),
                   })
                   if (!r.ok) throw new Error((await r.json()).error ?? 'Could not move the child')
-                  await loadBranchData(activeBranch)
+                  // Swap the one row. Reassigning a class moves each child in
+                  // turn, so a refetch per child rebuilt the board N times over.
+                  const moved = await r.json().catch(() => null)
+                  if (moved?.id) setSlots(prev => prev.map(s => (s.id === moved.id ? moved as DeckingSlot : s)))
+                  else await loadBranchData(activeBranch)
                 }}
                 onCreateBlock={async (block) => {
                   // An empty block: the row has to exist before children can be
