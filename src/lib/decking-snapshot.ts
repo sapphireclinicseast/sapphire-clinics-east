@@ -79,18 +79,14 @@ export async function computeDeckingSnapshot(): Promise<SnapshotRow[]> {
     }
     cellsOffered.set(k, set)
   }
-  for (const [k, set] of cellsOffered) {
-    const [branch, department] = k.split('||')
-    row(branch, department).totalSlots += set.size
-  }
-
   // Booked and blocked, collapsed to CELLS: a cell holding three children is
   // one filled slot, which is how the board reads and how the card counts.
-  const cells = new Map<string, { branch: string; dept: string; booked: boolean; blocked: boolean }>()
+  const cells = new Map<string, { branch: string; dept: string; cell: string; booked: boolean; blocked: boolean }>()
   for (const s of slots) {
     const dept = s.department || deptOfStaff.get(s.staffId) || 'UNKNOWN'
-    const k = `${s.branch}||${dept}||${s.staffId}||${s.dayOfWeek}||${s.startTime}`
-    const cur = cells.get(k) ?? { branch: s.branch, dept, booked: false, blocked: false }
+    const cell = `${s.staffId}|${s.dayOfWeek}|${s.startTime}`
+    const k = `${s.branch}||${dept}||${cell}`
+    const cur = cells.get(k) ?? { branch: s.branch, dept, cell, booked: false, blocked: false }
     if (s.disabled) cur.blocked = true
     else if (s.patientId) cur.booked = true
     cells.set(k, cur)
@@ -100,18 +96,33 @@ export async function computeDeckingSnapshot(): Promise<SnapshotRow[]> {
     // total = booked + blocked + open holds.
     if (c.booked) row(c.branch, c.dept).booked += 1
     else if (c.blocked) row(c.branch, c.dept).blocked += 1
+
+    // An hour with a row against it IS a slot that exists, whether or not the
+    // consultant's stored schedule mentions it, and whether or not anyone is in
+    // it yet. Front desk book what the consultant agreed to and the config is
+    // not always updated to match — at East OT, 84 of the 321 occupied hours
+    // sit outside any configured window.
+    //
+    // Folding them into the same set is the whole correction here. This used to
+    // read `totalSlots = Math.max(configured, booked + blocked)`, which is only
+    // right when the occupied hours are a SUBSET of the configured ones. They
+    // are not: with 304 configured and 321 occupied, the clamp reported 321 and
+    // therefore ZERO open on a board showing 65 — because it compared two sets
+    // by size instead of counting their union (388, so 67 open).
+    const k = key(c.branch, c.dept)
+    const set = cellsOffered.get(k) ?? new Set<string>()
+    set.add(c.cell)
+    cellsOffered.set(k, set)
+  }
+
+  for (const [k, set] of cellsOffered) {
+    const [branch, department] = k.split('||')
+    row(branch, department).totalSlots = set.size
   }
 
   for (const r of acc.values()) {
-    // A session can be decked onto a consultant with no configured work days,
-    // or outside the hours they did configure — front desk book what the
-    // consultant agreed to, and the config is not always updated to match. That
-    // leaves booked + blocked exceeding the declared capacity.
-    //
-    // The recorded total is therefore the greater of the two. A stacked chart
-    // whose parts sum past its own total is simply wrong, and reporting less
-    // capacity than is demonstrably in use would be the bigger lie of the two.
-    r.totalSlots = Math.max(r.totalSlots, r.booked + r.blocked)
+    // No clamp needed: the total is now a superset of the occupied cells by
+    // construction, so this can never go negative.
     r.open = r.totalSlots - r.booked - r.blocked
   }
 
