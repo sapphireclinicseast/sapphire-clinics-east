@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { branchForRole } from '@/lib/role-branch'
+import { computeDeckingSnapshot } from '@/lib/decking-snapshot'
 
 export async function GET(req: NextRequest) {
   const session = await auth()
@@ -54,7 +55,33 @@ export async function GET(req: NextRequest) {
     byDate.set(key, cur)
   }
 
-  const points = [...byDate.values()].map(p => ({
+  // ── Today is read from the board, not from this morning's row ────────────
+  // History is meant to follow the board: put a name in and the filled count
+  // should move. The stored row for today was written by the 23:50 cron, so
+  // until this it showed yesterday's shape all day and every change front desk
+  // made was invisible until the next night.
+  //
+  // Computed live and substituted in, rather than written — the cron still owns
+  // what gets frozen for the day, so a reload cannot rewrite an earlier day.
+  const todayKey = new Date().toISOString().slice(0, 10)
+  const wantsToday = (!to || to >= todayKey) && (!from || from <= todayKey)
+  if (wantsToday) {
+    const live = await computeDeckingSnapshot()
+    const mine = live.filter(r =>
+      (!branch || branch === 'all' || r.branch === branch) &&
+      (!department || department === 'all' || r.department === department))
+    if (mine.length > 0) {
+      byDate.set(todayKey, mine.reduce((acc, r) => ({
+        date: todayKey,
+        totalSlots: acc.totalSlots + r.totalSlots,
+        booked: acc.booked + r.booked,
+        blocked: acc.blocked + r.blocked,
+        open: acc.open + r.open,
+      }), { date: todayKey, totalSlots: 0, booked: 0, blocked: 0, open: 0 }))
+    }
+  }
+
+  const points = [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)).map(p => ({
     ...p,
     label: new Date(`${p.date}T00:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }),
     fillRate: p.totalSlots > 0 ? Math.round((p.booked / p.totalSlots) * 100) : null,
