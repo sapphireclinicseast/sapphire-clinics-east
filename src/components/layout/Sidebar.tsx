@@ -9,7 +9,7 @@ import {
   Users, Mail, BookOpen, Clock, ChevronRight, Link2, ChevronDown, X, BarChart2,
   UserCog, ListOrdered, CalendarDays, ClipboardCheck, Layers, HeartHandshake,
   UsersRound, FileText, Activity, FileCheck,
-  MessageSquare,
+  MessageSquare, Building2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useBrand } from '@/contexts/BrandContext'
@@ -30,6 +30,7 @@ const CLINIC_TOOLS_ALL = [
   { href: '/loa-submissions', icon: FileCheck, label: 'LOA Submission' },
   { href: '/patient-relationship', icon: HeartHandshake, label: 'Patient Relationship' },
   { href: '/peer-eval', icon: UsersRound, label: 'Peer Evaluation' },
+  { href: '/partner-institutions', icon: Building2, label: 'Partner Institutions' },
 ]
 
 // Marketing Admin: no Clinic Schedule, no Decking, no Patient Relationship
@@ -39,6 +40,7 @@ const CLINIC_TOOLS_NO_SCHEDULE = [
   { href: '/customer-survey', icon: ClipboardCheck, label: 'Customer Survey' },
   { href: '/registration-forms', icon: FileText, label: 'Registration Forms' },
   { href: '/peer-eval', icon: UsersRound, label: 'Peer Evaluation' },
+  { href: '/partner-institutions', icon: Building2, label: 'Partner Institutions' },
 ]
 
 // Full access nav — built dynamically per role
@@ -115,6 +117,7 @@ const FRONT_DESK_NAV = [
       { href: '/loa-submissions', icon: FileCheck, label: 'LOA Submission' },
       { href: '/patient-relationship', icon: HeartHandshake, label: 'Patient Relationship' },
       { href: '/peer-eval', icon: UsersRound, label: 'Peer Evaluation' },
+      { href: '/partner-institutions', icon: Building2, label: 'Partner Institutions' },
     ],
   },
 ]
