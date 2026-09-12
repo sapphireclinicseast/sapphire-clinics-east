@@ -584,6 +584,50 @@ model Staff {
   patientBookings     PatientBooking[]
 }
 
+// ── Partner Institutions ──────────────────────────────────────────────────────
+// Read-only mirror of HR Platform's Partner Institutions module (schools,
+// clinics, NGOs, athletic groups, etc. with a referral/discount/MOA-MOU
+// arrangement) — synced one-way, same pull-from-HR pattern as Staff. Exists so
+// Front Desk can see partnership status (discounts, referral commission) for
+// every branch without an HR Platform login; there is deliberately no
+// create/edit/delete on this side — management stays in HR Platform, this is
+// view-only.
+model PartnerInstitution {
+  id              String   @id @default(cuid())
+  hrPlatformId    String   @unique // id from HR Platform for sync matching
+  name            String
+  type            String   // HR's institution-type slug ("school", "clinic", "ngo", "government", "athletic-group", "other", ...)
+  typeLabel       String   // resolved label at sync time, so this reads fine even if HR's type list changes later
+  pointOfContact  String?
+  email           String?
+  mobile          String?
+  telephone       String?
+  // [{ id, label }] — departments/services this partnership covers.
+  services        Json     @default("[]")
+  // [{ serviceId, serviceLabel, discountType: "percent"|"fixed", value, note }]
+  // — per-department discount, only for services listed above.
+  discounts       Json     @default("[]")
+  agreementType   String   // "MOA" | "MOU" | "NA"
+  effectivityFrom DateTime?
+  effectivityTo   DateTime?
+  hasCommission   Boolean  @default(false)
+  commissionType  String   @default("percent") // "percent" | "fixed"
+  commissionValue Float    @default(0)
+  commissionNote  String?
+  hasDocument     Boolean  @default(false) // MOA/MOU on file in HR Platform (not mirrored here)
+  photoCount      Int      @default(0)     // ceremonial-signing photos on file in HR Platform
+  remarks         String?
+  // Absent from HR's feed = the institution was deleted there. Deactivated,
+  // not deleted here, on the same reasoning as Staff leavers: cheap to keep,
+  // and a sync glitch that empties the feed should never look like every
+  // partnership ended at once.
+  active          Boolean  @default(true)
+  syncedAt        DateTime @default(now())
+  hrUpdatedAt     DateTime // HR's own updatedAt — lets a viewer see how fresh HR's copy was, not just when we last polled it
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
 // ── Satisfaction Survey ──────────────────────────────────────────────────────
 
 enum SurveyType {
