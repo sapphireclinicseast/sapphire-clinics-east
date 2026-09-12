@@ -84,8 +84,45 @@ export async function backendFetch(path: string, init: RequestInit = {}): Promis
   return fetch(url, { ...init, headers })
 }
 
+/** Session-scoped guard so a burst of failing requests only triggers
+ *  ONE alert + redirect. Without this a page that fires N parallel
+ *  fetches on load would show N alert() modals in a row. */
+let sessionExpiredHandled = false
+
+/** Central handler for "your token is no longer valid" responses. Clears
+ *  the stale token, tells the user in plain language, and pushes them
+ *  to /sign-in. Called from backendJson AND from any bare backendFetch
+ *  caller that checks the response explicitly. */
+export function handleSessionExpired(reason?: string) {
+  if (typeof window === 'undefined') return
+  if (sessionExpiredHandled) return
+  sessionExpiredHandled = true
+  try { clearToken() } catch { /* ignore */ }
+  const explain = reason
+    ? `\n\n(Diagnostic: ${reason})`
+    : ''
+  try {
+    // eslint-disable-next-line no-alert
+    alert(`Your class-portal session has expired.\n\nSign in again and try that action once more — the token this device is holding is no longer accepted by the server.${explain}`)
+  } catch { /* alert() blocked — still redirect */ }
+  const next = encodeURIComponent(window.location.pathname + window.location.search)
+  window.location.href = `/sign-in?next=${next}`
+}
+
 export async function backendJson<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await backendFetch(path, init)
+  // 401 from an authenticated call almost always means the stored token
+  // is stale (past 30-day TTL or signed under a rotated CLASS_PORTAL_JWT
+  // _SECRET). Every UI path used to catch the resulting error and show a
+  // generic "Could not save. Retry?" — retrying did nothing because the
+  // token stayed invalid, and the user had no signal to sign back in.
+  // Detect it once, at the source.
+  if (res.status === 401 && getToken()) {
+    handleSessionExpired(`HTTP 401 on ${path}`)
+    // Throw so any awaiting caller resolves as a failure rather than
+    // hanging while the redirect kicks in.
+    throw new Error('Session expired — please sign in again.')
+  }
   let body: unknown
   try { body = await res.json() } catch { body = null }
   if (!res.ok) {
