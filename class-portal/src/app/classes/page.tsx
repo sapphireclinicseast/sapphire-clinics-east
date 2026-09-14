@@ -324,14 +324,16 @@ function ClassEditor({ existing, students, defaultBranch, onClose, onSaved }: {
             scheduleStartTime: startTime || null,
             scheduleEndTime: endTime || null,
           })
-      if (!saved) { setErr('Could not save. Retry?'); return }
+      // createClass/updateClass now throw with the real server message
+      // on failure, so the catch below renders it into the red banner.
+      // No null-guard needed here.
       if (photoFile) {
         const ok = await uploadClassPhoto(saved.id, photoFile)
         if (!ok) console.warn('Photo upload failed; class still saved')
       }
       await onSaved()
     } catch (e) {
-      setErr((e as Error).message)
+      setErr((e as Error).message || 'Could not save. Retry?')
     } finally {
       setBusy(false)
     }

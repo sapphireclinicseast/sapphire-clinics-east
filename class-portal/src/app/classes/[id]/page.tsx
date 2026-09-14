@@ -430,11 +430,13 @@ function ClassMetaEditor({ klass, canEdit, teacherName, onUpdated }: {
         scheduleStartTime: startTime || null,
         scheduleEndTime: endTime || null,
       })
-      if (!updated) { setErr('Could not save. Retry?'); return }
+      // updateClass now throws on failure (so the real server message
+      // reaches the red banner via the catch below), so `updated` is
+      // always a fresh ClassRecord here.
       onUpdated(updated)
       setEditing(false)
     } catch (e) {
-      setErr((e as Error).message)
+      setErr((e as Error).message || 'Could not save. Retry?')
     } finally {
       setBusy(false)
     }

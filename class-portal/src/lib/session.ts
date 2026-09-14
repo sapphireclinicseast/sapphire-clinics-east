@@ -2571,17 +2571,17 @@ export async function createClass(args: {
   scheduleDays?: ClassDay[]
   scheduleStartTime?: string | null
   scheduleEndTime?: string | null
-}): Promise<ClassRecord | null> {
-  try {
-    const { class: row } = await backendJson<{ class: ClassRecord }>('/api/public/class-portal/classes', {
-      method: 'POST',
-      body: JSON.stringify(args),
-    })
-    return row
-  } catch (e) {
-    console.warn('[createClass]', e)
-    return null
-  }
+}): Promise<ClassRecord> {
+  // Let the error propagate so the caller can display the real server
+  // message (e.g. "Only teachers and admins can create classes.",
+  // "branch, level, and name are required.", or a Prisma constraint
+  // error) instead of a generic "Could not save. Retry?". The caller's
+  // existing catch block already renders e.message into the red banner.
+  const { class: row } = await backendJson<{ class: ClassRecord }>('/api/public/class-portal/classes', {
+    method: 'POST',
+    body: JSON.stringify(args),
+  })
+  return row
 }
 
 export async function updateClass(id: string, patch: Partial<{
@@ -2592,17 +2592,14 @@ export async function updateClass(id: string, patch: Partial<{
   scheduleDays: ClassDay[]
   scheduleStartTime: string | null
   scheduleEndTime: string | null
-}>): Promise<ClassRecord | null> {
-  try {
-    const { class: row } = await backendJson<{ class: ClassRecord }>(`/api/public/class-portal/classes/${encodeURIComponent(id)}`, {
-      method: 'PATCH',
-      body: JSON.stringify(patch),
-    })
-    return row
-  } catch (e) {
-    console.warn('[updateClass]', e)
-    return null
-  }
+}>): Promise<ClassRecord> {
+  // Same rationale as createClass — surface the server's message rather
+  // than swallow it into a generic "Could not save. Retry?".
+  const { class: row } = await backendJson<{ class: ClassRecord }>(`/api/public/class-portal/classes/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
+  })
+  return row
 }
 
 export async function deleteClass(id: string): Promise<boolean> {
