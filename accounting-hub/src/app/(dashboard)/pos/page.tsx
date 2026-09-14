@@ -7248,7 +7248,11 @@ interface OnlineOrder {
   customerPhone: string
   customerEmail: string
   customerAddress: string
+  customerAddressLine1?: string
+  customerAddressLine2?: string
   customerCity: string
+  customerProvince?: string
+  customerRegion?: string
   customerZip: string
   shippingFee: number
   items: Array<{ productId: string; title: string; variantLabel?: string; quantity: number; price: number }>
@@ -7381,10 +7385,11 @@ function OnlineOrdersWidget() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-xs" style={{ minWidth: 820 }}>
+              <table className="w-full text-xs" style={{ minWidth: 1000 }}>
                 <thead>
                   <tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
                     <th className="px-4 py-2.5 font-semibold">Customer</th>
+                    <th className="px-3 py-2.5 font-semibold">Delivery Address</th>
                     <th className="px-3 py-2.5 font-semibold whitespace-nowrap">Date</th>
                     <th className="px-3 py-2.5 font-semibold">Items Purchased</th>
                     <th className="px-3 py-2.5 font-semibold text-right whitespace-nowrap">Total</th>
@@ -7401,11 +7406,30 @@ function OnlineOrdersWidget() {
                         <p className="mt-0.5 flex items-center gap-1" style={{ color: 'var(--mid-gray)' }}>
                           <Phone size={10} /> {order.customerPhone}
                         </p>
-                        <p className="mt-0.5 flex items-start gap-1" style={{ color: 'var(--mid-gray)' }} title={`${order.customerAddress}, ${order.customerCity} ${order.customerZip}`}>
-                          <MapPin size={10} className="mt-0.5 shrink-0" />
-                          <span>{order.customerCity}</span>
-                        </p>
+                        {order.customerEmail && (
+                          <p className="mt-0.5 truncate" style={{ color: 'var(--mid-gray)', maxWidth: 180 }} title={order.customerEmail}>{order.customerEmail}</p>
+                        )}
                         <p className="mt-0.5 font-mono" style={{ color: 'var(--light-gray)' }}>{order.id}</p>
+                      </td>
+                      <td className="px-3 py-3 align-top" style={{ maxWidth: 240 }}>
+                        {(() => {
+                          const line1 = order.customerAddressLine1 || order.customerAddress || ''
+                          const cityProv = [order.customerCity, order.customerProvince].filter(Boolean).join(', ')
+                          const regionZip = [order.customerRegion, order.customerZip].filter(Boolean).join(' ')
+                          const hasAny = line1 || order.customerAddressLine2 || cityProv || regionZip
+                          if (!hasAny) return <span style={{ color: 'var(--light-gray)' }}>—</span>
+                          return (
+                            <div className="flex items-start gap-1 leading-snug" style={{ color: 'var(--charcoal)' }}>
+                              <MapPin size={11} className="mt-0.5 shrink-0" style={{ color: 'var(--mid-gray)' }} />
+                              <div>
+                                {line1 && <p>{line1}</p>}
+                                {order.customerAddressLine2 && <p style={{ color: 'var(--mid-gray)' }}>{order.customerAddressLine2}</p>}
+                                {cityProv && <p>{cityProv}</p>}
+                                {regionZip && <p style={{ color: 'var(--mid-gray)' }}>{regionZip}</p>}
+                              </div>
+                            </div>
+                          )
+                        })()}
                       </td>
                       <td className="px-3 py-3 whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>
                         {new Date(order.paidAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
