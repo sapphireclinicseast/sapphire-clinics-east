@@ -106,7 +106,16 @@ export default function RegistrationFormsClient({ role }: Props) {
   const [sortCol, setSortCol]   = useState<string>('submitted')
   const [sortDir, setSortDir]   = useState<'asc' | 'desc'>('desc')
   const [colFilters, setColFilters] = useState<Record<string, string>>({})
-  const [partnerOnly, setPartnerOnly] = useState(false)
+  // Ticked values per column, for the columns that offer a dropdown. Free-text
+  // columns keep colFilters above — a name or an email has as many distinct
+  // values as it has rows, so a tick list there would be the table again.
+  const [colPicks, setColPicks] = useState<Record<string, string[]>>({})
+  // Which column's dropdown is open. One at a time, so opening a second closes
+  // the first rather than leaving two panels over the table.
+  const [openPick, setOpenPick] = useState<string | null>(null)
+  // Row status filter. Empty set = show everything; ticks are OR-ed, so
+  // Converted + For prioritization shows either.
+  const [statusPicks, setStatusPicks] = useState<string[]>([])
   const [colWidths, setColWidths] = useState<Record<string, number>>({})
   const resizing = useRef<{ key: string; startX: number; startW: number } | null>(null)
 
@@ -596,15 +605,89 @@ export default function RegistrationFormsClient({ role }: Props) {
                   // Filter, then sort. Both read a column through answerFor(),
                   // the same accessor the cell uses, so what is filtered on is
                   // exactly what is displayed.
+                  // A "contact" question stores first name, last name, phone
+                  // and email separately and the form flattens them into one
+                  // string — "Zydney , Mercado, 09657412812, …@gmail.com" in a
+                  // single cell. The parts are all there in answer.contact, so
+                  // the column is split into three instead of being read as one
+                  // run-on line. Detected from the answers rather than the field
+                  // definition, since the merged column carries an id per branch.
+                  const contactIds = new Set<string>()
+                  for (const it of results.items)
+                    for (const a of (it.answers || []))
+                      if (a?.contact && a.field?.id) contactIds.add(String(a.field.id))
+                  const isContact = (f: any) =>
+                    (f?.ids ?? [f?.id]).some((id: any) => contactIds.has(String(id)))
+
+                  type DisplayCol = { key: string; label: string; field?: any; part?: 'name' | 'phone' | 'email'; w: number }
+                  const displayCols: DisplayCol[] = results.fields.flatMap((f: any) => isContact(f)
+                    ? [
+                        { key: `${f.id}::name`,  label: `${f.title} — Name`,  field: f, part: 'name'  as const, w: 190 },
+                        { key: `${f.id}::phone`, label: `${f.title} — Phone`, field: f, part: 'phone' as const, w: 140 },
+                        { key: `${f.id}::email`, label: `${f.title} — Email`, field: f, part: 'email' as const, w: 220 },
+                      ]
+                    : [{ key: String(f.id), label: String(f.title ?? ''), field: f, w: 200 }])
+
+                  const colByKey = new Map(displayCols.map(c => [c.key, c]))
+
                   const val = (item: ResponseItem, key: string): string => {
                     if (key === 'submitted') return item.submitted_at ?? ''
                     if (key === 'branch') return item._branch === 'SBEA' ? 'East Branch' : 'Greenhills Branch'
-                    const f = results.fields.find((x: any) => String(x.id) === key)
-                    return f ? (extractAnswer(answerFor(item, f)) || '') : ''
+                    const col = colByKey.get(key)
+                    if (!col?.field) return ''
+                    const ans = answerFor(item, col.field)
+                    if (col.part) {
+                      const c = ans?.contact
+                      if (!c) return ''
+                      if (col.part === 'name') return `${c.first_name ?? ''} ${c.last_name ?? ''}`.replace(/\s+/g, ' ').trim()
+                      if (col.part === 'phone') return c.phone_number ?? ''
+                      return c.email ?? ''
+                    }
+                    return extractAnswer(ans) || ''
+                  }
+
+                  // Distinct values for a column, for the tick-list. A question
+                  // answered from a fixed set has a handful; a name or a
+                  // birthday has one per row, so those fall back to the text box
+                  // rather than offering a 300-line dropdown.
+                  const MAX_PICKS = 30
+                  const optionsFor = (key: string): string[] => {
+                    if (key === 'submitted') return []
+                    const set = new Set<string>()
+                    for (const it of results.items) {
+                      const v = val(it, key)
+                      if (!v || v === '—') continue
+                      // "may choose more than 1" answers arrive comma-joined;
+                      // offer the individual options so ticking one finds every
+                      // row that includes it.
+                      for (const part of v.split(',')) {
+                        const t = part.trim()
+                        if (t) set.add(t)
+                      }
+                      if (set.size > MAX_PICKS) return []
+                    }
+                    return [...set].sort((a, b) => a.localeCompare(b))
                   }
 
                   let rows = results.items
-                  if (partnerOnly) rows = rows.filter(it => isPartnerResponse(it, partnerNames))
+                  if (statusPicks.length > 0) {
+                    rows = rows.filter(it => {
+                      const n = getResponsePatientName(it, results.fields).toLowerCase().trim()
+                      const conv = n !== '' && patientNames.has(n)
+                      const prio = isPartnerResponse(it, partnerNames)
+                      return statusPicks.some(sp =>
+                        sp === 'converted' ? conv
+                        : sp === 'not-converted' ? !conv
+                        : prio)
+                    })
+                  }
+                  for (const [key, picks] of Object.entries(colPicks)) {
+                    if (!picks?.length) continue
+                    rows = rows.filter(it => {
+                      const v = val(it, key).toLowerCase()
+                      return picks.some(o => v.includes(o.toLowerCase()))
+                    })
+                  }
                   for (const [key, q] of Object.entries(colFilters)) {
                     const needle = q.trim().toLowerCase()
                     if (!needle) continue
@@ -630,10 +713,10 @@ export default function RegistrationFormsClient({ role }: Props) {
                     W_INDEX + W_ACTIONS
                     + wOf('submitted', 170)
                     + (isAdmin && selectedForm.sbgh ? wOf('branch', 130) : 0)
-                    + results.fields.reduce((t: number, f: any) => t + wOf(String(f.id), 200), 0)
+                    + displayCols.reduce((t: number, c: DisplayCol) => t + wOf(c.key, c.w), 0)
 
                   const sortMark = (key: string) => sortCol === key ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''
-                  const filterInput = (key: string) => (
+                  const textFilter = (key: string) => (
                     <input
                       value={colFilters[key] ?? ''}
                       onChange={e => setColFilters(f => ({ ...f, [key]: e.target.value }))}
@@ -645,6 +728,61 @@ export default function RegistrationFormsClient({ role }: Props) {
                         textTransform: 'none', letterSpacing: 0,
                       }} />
                   )
+
+                  // A tick list for columns answered from a fixed set, a text
+                  // box for everything else. Chosen from the data rather than a
+                  // hardcoded column list, so a new multiple-choice question on
+                  // the form gets one without anybody wiring it up.
+                  const pickFilter = (key: string, opts: string[]) => {
+                    const picked = colPicks[key] ?? []
+                    const open = openPick === key
+                    const toggle = (o: string) => setColPicks(f => {
+                      const cur = f[key] ?? []
+                      return { ...f, [key]: cur.includes(o) ? cur.filter(x => x !== o) : [...cur, o] }
+                    })
+                    return (
+                      <div style={{ position: 'relative', marginTop: 4 }} onClick={e => e.stopPropagation()}>
+                        <button
+                          onClick={() => setOpenPick(open ? null : key)}
+                          style={{
+                            width: '100%', padding: '2px 5px', fontSize: '0.7rem', textAlign: 'left',
+                            border: '1px solid var(--border, #e5e7eb)', borderRadius: 4, fontWeight: 400,
+                            textTransform: 'none', letterSpacing: 0, background: '#fff', cursor: 'pointer',
+                            color: picked.length ? 'var(--teal)' : 'var(--text-secondary)',
+                            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                          }}>
+                          {picked.length === 0 ? 'All ▾' : `${picked.length} selected ▾`}
+                        </button>
+                        {open && (
+                          <div style={{
+                            position: 'absolute', zIndex: 30, top: '100%', left: 0, minWidth: '100%', maxWidth: 320,
+                            maxHeight: 260, overflowY: 'auto', background: '#fff', borderRadius: 6,
+                            border: '1px solid var(--border, #e5e7eb)', boxShadow: '0 6px 20px rgba(0,0,0,0.12)',
+                            padding: 6, textTransform: 'none', letterSpacing: 0, fontWeight: 400,
+                          }}>
+                            {picked.length > 0 && (
+                              <button onClick={() => setColPicks(f => ({ ...f, [key]: [] }))}
+                                style={{ display: 'block', width: '100%', textAlign: 'left', fontSize: '0.68rem',
+                                  color: 'var(--teal)', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px' }}>
+                                Clear
+                              </button>
+                            )}
+                            {opts.map(o => (
+                              <label key={o} style={{ display: 'flex', gap: 6, alignItems: 'flex-start', padding: '3px 4px', fontSize: '0.7rem', cursor: 'pointer' }}>
+                                <input type="checkbox" checked={picked.includes(o)} onChange={() => toggle(o)} style={{ marginTop: 2, flexShrink: 0 }} />
+                                <span style={{ wordBreak: 'break-word' }}>{o}</span>
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  }
+
+                  const filterInput = (key: string) => {
+                    const opts = optionsFor(key)
+                    return opts.length > 0 ? pickFilter(key, opts) : textFilter(key)
+                  }
                   const resizeHandle = (key: string, w: number) => (
                     <span onMouseDown={e => startResize(key, e, w)} title="Drag to resize"
                       style={{ position: 'absolute', top: 0, right: 0, width: 5, height: '100%', cursor: 'col-resize', userSelect: 'none' }} />
@@ -657,15 +795,27 @@ export default function RegistrationFormsClient({ role }: Props) {
                       every answer, which is how a Greenhills registration gets
                       caught even though its question has its own id. */}
                   <div className="flex flex-wrap items-center gap-3 mb-2">
-                    <label className="flex items-center gap-1.5 text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>
-                      <input type="checkbox" checked={partnerOnly} onChange={e => setPartnerOnly(e.target.checked)} />
-                      Partner institutions only
-                    </label>
+                    {/* Replaces the old "Partner institutions only" checkbox —
+                        that was the same question as "For prioritization" asked
+                        twice, in two places, with two different names. */}
+                    {[
+                      { key: 'converted',     label: 'Converted' },
+                      { key: 'not-converted', label: 'Not Converted' },
+                      { key: 'priority',      label: 'For prioritization' },
+                    ].map(o => (
+                      <label key={o.key} className="flex items-center gap-1.5 text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>
+                        <input type="checkbox" checked={statusPicks.includes(o.key)}
+                          onChange={e => setStatusPicks(p => e.target.checked ? [...p, o.key] : p.filter(x => x !== o.key))} />
+                        {o.label}
+                      </label>
+                    ))}
                     <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
                       Showing <strong>{rows.length}</strong> of {results.items.length}
                     </span>
-                    {(partnerOnly || Object.values(colFilters).some(v => v.trim())) && (
-                      <button onClick={() => { setPartnerOnly(false); setColFilters({}) }}
+                    {(statusPicks.length > 0
+                      || Object.values(colPicks).some(v => v?.length)
+                      || Object.values(colFilters).some(v => v.trim())) && (
+                      <button onClick={() => { setStatusPicks([]); setColPicks({}); setColFilters({}) }}
                         className="text-xs font-semibold px-2 py-1 rounded-lg border"
                         style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}>
                         Clear filters
@@ -701,22 +851,22 @@ export default function RegistrationFormsClient({ role }: Props) {
                               {resizeHandle('branch', 130)}
                             </th>
                           )}
-                          {results.fields.map((f: any) => (
-                            <th key={f.id}
+                          {displayCols.map((c: DisplayCol) => (
+                            <th key={c.key}
                               className="text-left px-3 py-2 font-semibold text-xs uppercase tracking-wider align-top"
                               style={{
                                 color: 'var(--text-secondary)', fontFamily: 'var(--font-display)',
                                 position: 'relative', cursor: 'pointer',
-                                width: wOf(String(f.id), 200),
+                                width: wOf(c.key, c.w),
                                 // Wraps now: a fixed width plus nowrap would clip
                                 // a long question title with no way to read it.
                                 whiteSpace: 'normal',
                               }}
-                              onClick={() => toggleSort(String(f.id))}
-                              title={`${f.title} — click to sort`}>
-                              {f.title}{sortMark(String(f.id))}
-                              {filterInput(String(f.id))}
-                              {resizeHandle(String(f.id), 200)}
+                              onClick={() => toggleSort(c.key)}
+                              title={`${c.label} — click to sort`}>
+                              {c.label}{sortMark(c.key)}
+                              {filterInput(c.key)}
+                              {resizeHandle(c.key, c.w)}
                             </th>
                           ))}
                           <th className="px-3 py-2" style={{ width: 90 }} />
@@ -737,10 +887,12 @@ export default function RegistrationFormsClient({ role }: Props) {
                             className="transition-colors"
                             style={{
                               borderTop: '1px solid var(--border)',
-                              // Priority: converted → green; partner institution → yellow (prioritize);
-                              // new only → pale yellow; else plain.
-                              background: converted ? '#F0FDF4' : partner ? '#FEF9C3' : isNew ? '#FEFCE8' : undefined,
-                              borderLeft: converted ? '3px solid #16A34A' : partner ? '3px solid #F59E0B' : isNew ? '3px solid #EAB308' : '3px solid transparent',
+                              // Converted AND from a partner institution is its
+                              // own state, not a tie between green and yellow —
+                              // it used to fall through to plain green, which
+                              // hid that the row was also one to prioritise.
+                              background: converted && partner ? '#F5F3FF' : converted ? '#F0FDF4' : partner ? '#FEF9C3' : isNew ? '#FEFCE8' : undefined,
+                              borderLeft: converted && partner ? '3px solid #7C3AED' : converted ? '3px solid #16A34A' : partner ? '3px solid #F59E0B' : isNew ? '3px solid #EAB308' : '3px solid transparent',
                             }}
                           >
                             <td className="px-3 py-2" style={{ color: converted ? '#15803D' : isNew ? '#854D0E' : undefined, fontWeight: (isNew || converted) ? 600 : undefined }}>{i + 1}</td>
@@ -752,15 +904,24 @@ export default function RegistrationFormsClient({ role }: Props) {
                                     NEW
                                   </span>
                                 )}
-                                {converted && (
-                                  <span style={{ background: '#DCFCE7', color: '#15803D', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 9999, letterSpacing: '0.05em', flexShrink: 0 }}>
-                                    CONVERTED
+                                {converted && partner ? (
+                                  <span style={{ background: '#EDE9FE', color: '#6D28D9', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 9999, letterSpacing: '0.05em', flexShrink: 0 }}
+                                    title="Already a patient, and from a partner institution">
+                                    Converted Priority
                                   </span>
-                                )}
-                                {partner && (
-                                  <span style={{ background: '#FDE047', color: '#854D0E', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 9999, letterSpacing: '0.05em', flexShrink: 0 }} title="Registrant is from a partner institution">
-                                    For prioritization
-                                  </span>
+                                ) : (
+                                  <>
+                                    {converted && (
+                                      <span style={{ background: '#DCFCE7', color: '#15803D', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 9999, letterSpacing: '0.05em', flexShrink: 0 }}>
+                                        CONVERTED
+                                      </span>
+                                    )}
+                                    {partner && (
+                                      <span style={{ background: '#FDE047', color: '#854D0E', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 9999, letterSpacing: '0.05em', flexShrink: 0 }} title="Registrant is from a partner institution">
+                                        For prioritization
+                                      </span>
+                                    )}
+                                  </>
                                 )}
                               </div>
                             </td>
@@ -777,11 +938,11 @@ export default function RegistrationFormsClient({ role }: Props) {
                                 </span>
                               </td>
                             )}
-                            {results.fields.map((field: any) => {
-                              const ans = answerFor(item, field)
+                            {displayCols.map((c: DisplayCol) => {
+                              const v = val(item, c.key)
                               return (
-                                <td key={field.id} className="px-3 py-2 max-w-[200px] truncate" title={extractAnswer(ans)}>
-                                  {extractAnswer(ans)}
+                                <td key={c.key} className="px-3 py-2 truncate" title={v}>
+                                  {v || '—'}
                                 </td>
                               )
                             })}
