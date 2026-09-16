@@ -10,7 +10,7 @@
 // /api/partner-institutions, which is the thing actually holding the shared key.
 
 import { useEffect, useMemo, useState } from 'react'
-import { Search, Building2, ExternalLink, RefreshCw, Percent, Info } from 'lucide-react'
+import { Search, Building2, ExternalLink, RefreshCw, Info } from 'lucide-react'
 
 interface Discount {
   serviceId: string; serviceLabel: string; discountType: string; value: number; note: string
@@ -296,7 +296,11 @@ export default function PartnerInstitutionsPage() {
                           <span key={`${d.serviceId}-${n}`}
                             style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: '#DCFCE7', color: '#166534',
                                      border: '1px solid #86EFAC', borderRadius: 8, padding: '4px 9px', fontSize: '0.82rem', fontWeight: 800 }}>
-                            <Percent size={12} />{discountLabel(d)}
+                            {/* No icon: the label already reads "5% off", and a
+                                percent glyph beside it showed the sign twice.
+                                It would also be wrong outright on a peso
+                                discount, where the label is "₱500 off". */}
+                            {discountLabel(d)}
                             <span style={{ fontWeight: 600 }}>on {d.serviceLabel}</span>
                           </span>
                         ))}
@@ -320,11 +324,17 @@ export default function PartnerInstitutionsPage() {
                               ))}
                             </div>
                           ) : i.discounts.length === 0 && (
-                            <div style={{ background: '#FFF7E6', border: '1px solid #F3D9A5', borderRadius: 8, padding: '0.6rem 0.75rem' }}>
-                              <p style={{ fontSize: '0.8rem', color: '#8A5A00', lineHeight: 1.5 }}>
-                                No discount or rate recorded for this partner. Check the agreement in HR Hub before promising one.
-                              </p>
-                            </div>
+                            // A quiet marker, not a warning panel. Most partners
+                            // are in this state, and a block of amber on each of
+                            // them competes with the green on the ones that DO
+                            // have a rate — which is the thing worth spotting.
+                            <span style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 5,
+                              background: '#F1F5F9', color: '#64748B', border: '1px solid #E2E8F0',
+                              borderRadius: 99, padding: '3px 10px', fontSize: '0.76rem', fontWeight: 600,
+                            }}>
+                              No discount set
+                            </span>
                           )}
 
                           {rest.length > 0 && (
