@@ -388,6 +388,14 @@ function WaitlistTab({ branch }: { branch: string }) {
     { key: 'expand', label: '' },                                   // chevron
     { key: 'name',   label: 'Name', get: r => getName(r), filter: 'text' },
     { key: 'form',   label: 'Form', get: r => r._formTitle ?? '', filter: 'select' },
+    // Which branch's form this came in on. The API already stamps every
+    // response with _branch from the HR form it was pulled from, so this is
+    // the submission's own origin, not the branch filter currently applied —
+    // it stays correct when the filter is set to all branches.
+    //
+    // Sorted and filtered on the LABEL rather than the code so the select reads
+    // "East Branch", and so ordering matches what is on screen.
+    { key: 'branch', label: 'Branch', get: r => sharedBranchLabel(r._branch) || r._branch || '', filter: 'select' },
     // Raw ISO timestamp, not the formatted cell — "Mar" vs "Apr" would sort alphabetically.
     { key: 'date',   label: 'Date', get: r => r.submitted_at ?? '', filter: 'text' },
   ]
@@ -503,7 +511,7 @@ function WaitlistTab({ branch }: { branch: string }) {
           </thead>
           <tbody>
             {paginated.length === 0 ? (
-              <tr><td colSpan={4} className="text-center py-10" style={{ color: '#9ca3af' }}>{activeCount > 0 ? 'No responses match these filters.' : 'No responses found.'}</td></tr>
+              <tr><td colSpan={5} className="text-center py-10" style={{ color: '#9ca3af' }}>{activeCount > 0 ? 'No responses match these filters.' : 'No responses found.'}</td></tr>
             ) : paginated.map((item: any) => {
               const converted = isConverted(item)
               return (
@@ -518,6 +526,17 @@ function WaitlistTab({ branch }: { branch: string }) {
                     {converted && <span className="ml-2 text-xs px-2 py-0.5 rounded-full" style={{ background: '#DCFCE7', color: '#15803D', fontWeight: 600, fontSize: '0.65rem' }}>Converted</span>}
                   </td>
                   <td className="px-4 py-3" style={{ color: '#6B7280' }}>{item._formTitle}</td>
+                  <td className="px-4 py-3">
+                    {item._branch ? (
+                      <span className="text-xs px-2 py-0.5 rounded-full" style={{
+                        background: item._branch === 'SBEA' ? '#E6F2F4' : '#FEF3E2',
+                        color: item._branch === 'SBEA' ? '#12606C' : '#92400E',
+                        fontWeight: 600, whiteSpace: 'nowrap',
+                      }}>
+                        {sharedBranchLabel(item._branch) || item._branch}
+                      </span>
+                    ) : <span style={{ color: '#9CA3AF' }}>&mdash;</span>}
+                  </td>
                   <td className="px-4 py-3 flex items-center gap-2" style={{ color: '#374151' }}>
                     {new Date(item.submitted_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                     <button onClick={(e) => { e.stopPropagation(); deleteResponse(item) }} disabled={deleting === item.landing_id}
@@ -529,14 +548,20 @@ function WaitlistTab({ branch }: { branch: string }) {
                 </tr>
                 {expanded === item.landing_id && (
                   <tr key={item.landing_id + '-detail'}>
-                    <td colSpan={4} className="px-6 py-4" style={{ background: '#F8FAFC' }}>
+                    <td colSpan={5} className="px-6 py-4" style={{ background: '#F8FAFC' }}>
                       <div className="space-y-2">
                         <p className="text-xs font-bold uppercase" style={{ color: 'var(--teal)', letterSpacing: '0.05em' }}>Form Responses</p>
                         {(item.answers || []).map((a: any, i: number) => {
                           const title = getFieldTitle(item, a) || `Question ${i + 1}`
                           let value = a.text || ''
                           if (a.contact) value = `${a.contact.first_name || ''} ${a.contact.last_name || ''} ${a.contact.phone_number ? '| ' + a.contact.phone_number : ''} ${a.contact.email ? '| ' + a.contact.email : ''}`.trim()
-                          if (a.choices?.labels) value = a.choices.labels.join(', ')
+                          // Drop empty entries before joining: a choice with no
+                          // label came through as the literal string
+                          // "undefined" on screen (Question 1 on several
+                          // registration submissions), which reads like a real
+                          // answer rather than a missing one. Filtering leaves
+                          // value empty, so the em-dash below shows instead.
+                          if (a.choices?.labels) value = a.choices.labels.filter(Boolean).join(', ')
                           if (a.choice?.label) value = a.choice.label
                           return (
                             <div key={i} className="flex gap-2 text-xs">
