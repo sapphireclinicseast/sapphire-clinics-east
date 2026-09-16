@@ -521,24 +521,17 @@ jobs:
           cd "$TELE_DIR"
 
           # ── Hold the source-guard lock for the whole deploy ──────────
-          # /usr/local/bin/teletherapy-source-guard.sh runs every minute and
-          # treats a mid-install tree as a regression: while our npm ci is
-          # rebuilding node_modules it sees node_modules/.bin/next missing and
-          # launches a competing `npm ci` in this same directory. The two
-          # installs then corrupt each other — TAR_ENTRY_ERROR storms, and
-          # `prisma generate` dying with "Could not resolve @prisma/client"
-          # (runs 34834968145 and 35057104090; guard log fired at 11:03:01Z /
-          # 05:05:01Z, exactly inside each run's npm ci window). The guard
-          # takes `flock -n 9` on this lock, so holding it here makes the
-          # guard skip instead of fighting us — same pattern as the
-          # accounting-hub deploy below. Wait up to 10 min in case the guard
-          # is mid-recovery (its own npm ci + rebuild takes ~5 min).
+          # teletherapy-source-guard.sh (cron, every minute) sees the
+          # mid-install tree (missing node_modules/.bin/next) as a regression
+          # and launches a competing npm ci that corrupts ours — runs
+          # 34834968145/35057104090 died that way. It takes `flock -n 9` on
+          # this lock, so hold it for the whole script (same pattern as the
+          # accounting deploy). Wait up to 10 min for an in-flight recovery.
           exec 9>/var/run/teletherapy-source-guard.lock
           if flock -w 600 9; then
-            echo "→ Teletherapy source-guard lock held for the duration of this deploy."
+            echo "→ Teletherapy source-guard lock held."
           else
-            echo "❌ Could not acquire the teletherapy source-guard lock within 600s — aborting"
-            echo "   rather than racing the guard. Check for a stuck guard run."
+            echo "❌ No source-guard lock in 600s — aborting rather than racing the guard."
             exit 1
           fi
 
@@ -882,6 +875,19 @@ jobs:
 
           echo ""
           echo "✅ Teletherapy deployed."
+          REMOTE_SCRIPT
+
+      # ── 8b. Deploy client-portal + Nickel ──────────────────────────
+      # Split out of "Deploy Teletherapy" 2026-09-16: a run block containing
+      # ${{ }} expressions is one GitHub "expression", capped at 21000
+      # characters, and the combined step exceeded it. These two deploys
+      # only touch /opt/sapphire, so they need neither the teletherapy
+      # tree nor its source-guard lock.
+      - name: Deploy Client Portal & Nickel
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} 'bash -s' << 'REMOTE_SCRIPT'
+          set -e
 
           # ── Rebuild + restart client-portal Docker container ──────────
           # Same problem as teletherapy: rsync updates the source on disk
