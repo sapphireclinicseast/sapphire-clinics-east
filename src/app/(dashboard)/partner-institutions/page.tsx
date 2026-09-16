@@ -64,6 +64,46 @@ function isExpired(inst: Institution) {
   return inst.effectivityTo < new Date().toISOString().slice(0, 10)
 }
 
+/**
+ * Sentences from the agreement text that carry a figure — a percentage or a
+ * peso amount.
+ *
+ * These are pulled out and shown first because "what do they get" is the
+ * question this page is opened to answer, and today it is buried mid-paragraph.
+ *
+ * Deliberately the WHOLE sentence, not the number: "₱20,000 per enrolled
+ * student to LBCA" is money the clinic PAYS, and "5% discount on psych services
+ * for LBCA students" is one the clinic GIVES. A badge reading "₱20,000 off"
+ * would be read as a discount and honoured as one. The figure is emphasised
+ * inside its sentence instead, so it catches the eye without being restated as
+ * something it is not.
+ */
+function moneySentences(remarks: string): string[] {
+  if (!remarks) return []
+  return remarks
+    .split(/(?<=[.;])\s+/)
+    .map(t => t.trim())
+    .filter(t => t.length > 0 && /\d\s*%|₱\s*[\d,]/.test(t))
+}
+
+/** The rest of the agreement text, once the figure sentences are lifted out. */
+function otherSentences(remarks: string): string[] {
+  if (!remarks) return []
+  return remarks
+    .split(/(?<=[.;])\s+/)
+    .map(t => t.trim())
+    .filter(t => t.length > 0 && !/\d\s*%|₱\s*[\d,]/.test(t))
+}
+
+/** Bold just the figures inside a sentence, leaving the wording intact. */
+function withFiguresBold(text: string): React.ReactNode[] {
+  const parts = text.split(/(\d+(?:\.\d+)?\s*%|₱\s*[\d,]+(?:\.\d+)?)/g)
+  return parts.map((part, i) =>
+    /^(\d+(?:\.\d+)?\s*%|₱\s*[\d,]+(?:\.\d+)?)$/.test(part)
+      ? <strong key={i} style={{ color: '#166534', fontSize: '0.95em' }}>{part}</strong>
+      : <span key={i}>{part}</span>)
+}
+
 export default function PartnerInstitutionsPage() {
   const [list, setList] = useState<Institution[]>([])
   const [loading, setLoading] = useState(true)
@@ -111,6 +151,18 @@ export default function PartnerInstitutionsPage() {
 
   return (
     <div style={{ padding: '1.5rem', maxWidth: 1200, margin: '0 auto' }}>
+      {/* The two-column card needs a media query, which inline styles cannot
+          express — below 820px the contact column would squeeze the entitlement
+          text into a ribbon. */}
+      <style>{`
+        @media (max-width: 820px) {
+          .pi-card { grid-template-columns: 1fr !important; }
+          .pi-card > div:first-child {
+            border-right: none !important;
+            border-bottom: 1px solid var(--light-gray);
+          }
+        }
+      `}</style>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
         <div>
           <p style={{ fontSize: '0.68rem', fontWeight: 800, letterSpacing: '0.08em', color: 'var(--teal)', textTransform: 'uppercase' }}>
@@ -176,63 +228,122 @@ export default function PartnerInstitutionsPage() {
           {shown.map(i => {
             const expired = isExpired(i)
             return (
-              <div key={i.id} style={{ ...card, padding: '0.9rem 1rem', opacity: expired ? 0.75 : 1 }}>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', flexWrap: 'wrap' }}>
-                  <span style={{ fontWeight: 800, color: 'var(--charcoal)', fontSize: '0.95rem' }}>{i.name}</span>
-                  {i.typeLabel && <span style={chip}>{i.typeLabel}</span>}
-                  {expired && (
-                    <span style={{ ...chip, background: '#FEE2E2', color: '#991B1B' }}>
-                      Expired {fmtDate(i.effectivityTo)}
-                    </span>
-                  )}
-                </div>
+              <div key={i.id} style={{ ...card, opacity: expired ? 0.75 : 1, overflow: 'hidden' }}>
+                {/* Two columns: who to contact on the left, what they get on the
+                    right. The entitlement is the thing front desk open this page
+                    for, so it gets the wider half and its own panel instead of
+                    being the tail of a paragraph. Collapses to one column on a
+                    narrow screen. */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 300px) 1fr', gap: 0, alignItems: 'stretch' }}
+                     className="pi-card">
+                  {/* ── Left: who they are, who to call ── */}
+                  <div style={{ padding: '0.9rem 1rem', borderRight: '1px solid var(--light-gray)', background: '#FCFDFD' }}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.4rem', flexWrap: 'wrap' }}>
+                      <span style={{ fontWeight: 800, color: 'var(--charcoal)', fontSize: '0.95rem', lineHeight: 1.25 }}>{i.name}</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: '0.35rem' }}>
+                      {i.typeLabel && <span style={chip}>{i.typeLabel}</span>}
+                      {expired && (
+                        <span style={{ ...chip, background: '#FEE2E2', color: '#991B1B' }}>
+                          Expired {fmtDate(i.effectivityTo)}
+                        </span>
+                      )}
+                    </div>
 
-                {(i.pointOfContact || i.email || i.mobile || i.telephone) && (
-                  <p style={{ fontSize: '0.8rem', color: 'var(--mid-gray)', marginTop: '0.3rem' }}>
-                    {[i.pointOfContact, i.email, i.mobile || i.telephone].filter(Boolean).join(' · ')}
-                  </p>
-                )}
-
-                {i.services.length > 0 && (
-                  <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: '0.5rem' }}>
-                    {i.services.map(s => <span key={s.id} style={{ ...chip, background: '#EDE4FA', color: '#5B2A86' }}>{s.label}</span>)}
-                  </div>
-                )}
-
-                {i.discounts.length > 0 && (
-                  <div style={{ marginTop: '0.55rem', display: 'flex', flexDirection: 'column', gap: 3 }}>
-                    {i.discounts.map((d, n) => (
-                      <div key={`${d.serviceId}-${n}`} style={{ fontSize: '0.8rem', color: 'var(--charcoal)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <Percent size={12} style={{ color: '#166534', flexShrink: 0 }} />
-                        <strong>{discountLabel(d)}</strong>
-                        <span style={{ color: 'var(--mid-gray)' }}>on {d.serviceLabel}</span>
-                        {d.note && <span style={{ color: 'var(--mid-gray)' }}>&mdash; {d.note}</span>}
+                    {(i.pointOfContact || i.email || i.mobile || i.telephone) ? (
+                      <div style={{ marginTop: '0.7rem', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        <p style={{ fontSize: '0.62rem', fontWeight: 800, letterSpacing: '0.06em', color: 'var(--mid-gray)', textTransform: 'uppercase' }}>Contact</p>
+                        {i.pointOfContact && <p style={{ fontSize: '0.82rem', color: 'var(--charcoal)', fontWeight: 600 }}>{i.pointOfContact}</p>}
+                        {/* Clickable: the desk is usually mid-call when they look. */}
+                        {i.email && <a href={`mailto:${i.email}`} style={{ fontSize: '0.78rem', color: 'var(--teal)', wordBreak: 'break-all' }}>{i.email}</a>}
+                        {(i.mobile || i.telephone) && (
+                          <a href={`tel:${(i.mobile || i.telephone).replace(/\s+/g, '')}`} style={{ fontSize: '0.78rem', color: 'var(--teal)' }}>
+                            {i.mobile || i.telephone}
+                          </a>
+                        )}
                       </div>
-                    ))}
+                    ) : (
+                      <p style={{ fontSize: '0.76rem', color: 'var(--mid-gray)', marginTop: '0.7rem', fontStyle: 'italic' }}>No contact recorded</p>
+                    )}
+
+                    <div style={{ marginTop: '0.7rem' }}>
+                      <p style={{ fontSize: '0.62rem', fontWeight: 800, letterSpacing: '0.06em', color: 'var(--mid-gray)', textTransform: 'uppercase' }}>Agreement</p>
+                      <p style={{ fontSize: '0.76rem', color: 'var(--mid-gray)', lineHeight: 1.5, marginTop: 2 }}>
+                        {i.agreementType && i.agreementType !== 'NA' ? <>{i.agreementType}<br /></> : null}
+                        {i.effectivityFrom ? `From ${fmtDate(i.effectivityFrom)}` : 'No start date recorded'}
+                        {i.effectivityTo ? ` to ${fmtDate(i.effectivityTo)}` : i.effectivityFrom ? ' · open-ended' : ''}
+                        {i.hasDocument ? <><br />Signed document on file in HR Hub</> : null}
+                        {i.photoCount > 0 ? <><br />{i.photoCount} photo{i.photoCount === 1 ? '' : 's'}</> : null}
+                      </p>
+                    </div>
                   </div>
-                )}
 
-                {i.hasCommission && (
-                  <p style={{ fontSize: '0.78rem', color: '#93460B', marginTop: '0.4rem' }}>
-                    Commission: {i.commissionType === 'percent' ? `${i.commissionValue}%` : `₱${Number(i.commissionValue).toLocaleString()}`}
-                    {i.commissionNote ? ` — ${i.commissionNote}` : ''}
-                  </p>
-                )}
+                  {/* ── Right: what they are entitled to ── */}
+                  <div style={{ padding: '0.9rem 1rem' }}>
+                    {i.services.length > 0 && (
+                      <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: '0.6rem' }}>
+                        {i.services.map(s => <span key={s.id} style={{ ...chip, background: '#EDE4FA', color: '#5B2A86' }}>{s.label}</span>)}
+                      </div>
+                    )}
 
-                <p style={{ fontSize: '0.74rem', color: 'var(--mid-gray)', marginTop: '0.5rem' }}>
-                  {i.agreementType && i.agreementType !== 'NA' ? `${i.agreementType} · ` : ''}
-                  {i.effectivityFrom ? `From ${fmtDate(i.effectivityFrom)}` : 'No start date recorded'}
-                  {i.effectivityTo ? ` to ${fmtDate(i.effectivityTo)}` : i.effectivityFrom ? ' · open-ended' : ''}
-                  {/* Said rather than linked: the files stay in HR on purpose. */}
-                  {i.hasDocument ? ' · signed document on file in HR Hub' : ''}
-                  {i.photoCount > 0 ? ` · ${i.photoCount} photo${i.photoCount === 1 ? '' : 's'}` : ''}
-                </p>
+                    {/* Structured discounts are the good case — an exact figure
+                        against an exact service. None of the seven records carry
+                        them yet, so this is usually empty and the sentences
+                        below carry the weight. */}
+                    {i.discounts.length > 0 && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: '0.6rem' }}>
+                        {i.discounts.map((d, n) => (
+                          <span key={`${d.serviceId}-${n}`}
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: '#DCFCE7', color: '#166534',
+                                     border: '1px solid #86EFAC', borderRadius: 8, padding: '4px 9px', fontSize: '0.82rem', fontWeight: 800 }}>
+                            <Percent size={12} />{discountLabel(d)}
+                            <span style={{ fontWeight: 600 }}>on {d.serviceLabel}</span>
+                          </span>
+                        ))}
+                      </div>
+                    )}
 
-                {i.remarks && (
-                  <p style={{ fontSize: '0.8rem', color: 'var(--charcoal)', marginTop: '0.45rem', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
-                    {i.remarks}
-                  </p>
-                )}
+                    {(() => {
+                      const money = moneySentences(i.remarks)
+                      const rest = otherSentences(i.remarks)
+                      return (
+                        <>
+                          {money.length > 0 ? (
+                            <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 8, padding: '0.6rem 0.75rem' }}>
+                              <p style={{ fontSize: '0.62rem', fontWeight: 800, letterSpacing: '0.06em', color: '#166534', textTransform: 'uppercase', marginBottom: 4 }}>
+                                What the agreement says on rates
+                              </p>
+                              {money.map((t, n) => (
+                                <p key={n} style={{ fontSize: '0.84rem', color: '#14532D', lineHeight: 1.55, marginTop: n ? 5 : 0 }}>
+                                  {withFiguresBold(t)}
+                                </p>
+                              ))}
+                            </div>
+                          ) : i.discounts.length === 0 && (
+                            <div style={{ background: '#FFF7E6', border: '1px solid #F3D9A5', borderRadius: 8, padding: '0.6rem 0.75rem' }}>
+                              <p style={{ fontSize: '0.8rem', color: '#8A5A00', lineHeight: 1.5 }}>
+                                No discount or rate recorded for this partner. Check the agreement in HR Hub before promising one.
+                              </p>
+                            </div>
+                          )}
+
+                          {rest.length > 0 && (
+                            <p style={{ fontSize: '0.79rem', color: 'var(--mid-gray)', marginTop: '0.6rem', lineHeight: 1.55 }}>
+                              {rest.join(' ')}
+                            </p>
+                          )}
+                        </>
+                      )
+                    })()}
+
+                    {i.hasCommission && (
+                      <p style={{ fontSize: '0.78rem', color: '#93460B', marginTop: '0.5rem' }}>
+                        Commission: {i.commissionType === 'percent' ? `${i.commissionValue}%` : `₱${Number(i.commissionValue).toLocaleString()}`}
+                        {i.commissionNote ? ` — ${i.commissionNote}` : ''}
+                      </p>
+                    )}
+                  </div>
+                </div>
               </div>
             )
           })}
