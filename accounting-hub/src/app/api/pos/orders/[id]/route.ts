@@ -599,8 +599,8 @@ export async function PUT(
 
     // Keep the GL in sync: reopening posted a POS_ORDER_REVERSAL that cancels the
     // original forward JE, so completing the order again must post a fresh forward
-    // entry — postOrderJournal's forwardCount>reversalCount check makes this call
-    // idempotent, so it runs on every re-complete, not just item/payment edits
+    // entry — postOrderJournal's net-standing idempotency check makes this call
+    // safe to repeat, so it runs on every re-complete, not just item/payment edits
     // (a name/date/discount-only edit still needs its revenue re-posted).
     // The old forward JE must NOT be deleted: it pairs with the reopen reversal,
     // and deleting it leaves that reversal dangling — the fresh forward then nets

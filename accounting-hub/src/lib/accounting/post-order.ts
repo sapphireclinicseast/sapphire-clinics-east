@@ -35,6 +35,24 @@ export interface PostOrderResult {
   alreadyPosted?: boolean
 }
 
+/**
+ * Signed GL net for an order, in integer centavos: the line totals of every
+ * POS_ORDER forward minus every POS_ORDER_REVERSAL. This is the one question
+ * idempotency actually needs answered — "does the ledger currently carry this
+ * sale?" — and the balance answers it where the history can't (see the
+ * rationale at each call site).
+ */
+async function orderGlNetCents(prisma: PrismaClient, orderId: string): Promise<number> {
+  const jes = await prisma.journalEntry.findMany({
+    where: { referenceId: orderId, referenceType: { in: ['POS_ORDER', 'POS_ORDER_REVERSAL'] } },
+    select: { referenceType: true, lines: { select: { debit: true } } },
+  })
+  return jes.reduce((net, je) => {
+    const totalCents = je.lines.reduce((s, l) => s + Math.round(Number(l.debit) * 100), 0)
+    return net + (je.referenceType === 'POS_ORDER' ? totalCents : -totalCents)
+  }, 0)
+}
+
 export async function postOrderJournal(
   prisma: PrismaClient,
   orderId: string,
@@ -44,23 +62,23 @@ export async function postOrderJournal(
     return { posted: false, reason: 'ENABLE_GL_POSTING flag is off' }
   }
 
-  // Idempotency: skip while an ACTIVE forward JE exists for this order. A forward JE
-  // cancelled by a POS_ORDER_REVERSAL (void → reopen → complete again) no longer
-  // counts, so the re-completed sale posts a fresh JE — determined by which posting
-  // happened LAST, not by comparing raw counts. Raw counts (forwardCount >
-  // reversalCount) look equivalent but aren't: any order reopened exactly once before
-  // its revenue account existed (so the fresh forward posts only once, after the
-  // reversal) lands at forwardCount === reversalCount == 1 the moment the backfill
-  // that finally posts it runs a second time — indistinguishable, by count alone,
-  // from "already caught up" and "still needs its post-reversal repost". Ordering by
-  // createdAt resolves it correctly either way and self-heals any order already
-  // double-posted by the count-based check (its last JE is still the newer forward).
-  const lastJe = await prisma.journalEntry.findFirst({
-    where: { referenceId: orderId, referenceType: { in: ['POS_ORDER', 'POS_ORDER_REVERSAL'] } },
-    orderBy: { createdAt: 'desc' },
-    select: { referenceType: true },
-  })
-  if (lastJe?.referenceType === 'POS_ORDER') return { posted: false, alreadyPosted: true }
+  // Idempotency: skip only while the order's GL net actually carries the sale.
+  // Two earlier rules read the HISTORY instead of the BALANCE, and each had a
+  // blind spot:
+  //   · raw counts (forwardCount > reversalCount) — ambiguous whenever the first
+  //     forward posts only AFTER a reversal: "already caught up" and "still needs
+  //     its repost" both land at equal counts;
+  //   · newest-JE-by-createdAt (the fix for the above) — an order whose history
+  //     STARTS with an orphan reversal (its original forward never posted, so the
+  //     set stays one forward short forever after) alternates R,F,R,F… through
+  //     every reopen/re-complete cycle: the newest JE is always a forward, so this
+  //     rule answers "already posted" while the whole set nets to ZERO and the
+  //     sale is invisible in the GL, unreachable even by backfill (GH orders
+  //     #40929 and #41091 — ₱38,520 of Aug 2026 deposits).
+  // The balance can't be fooled by ordering: net > 0 ⇔ an un-reversed forward
+  // stands. A net-NEGATIVE set (a lone orphan reversal) also reposts — one pass
+  // nets it to zero, and the customary second backfill pass restores the sale.
+  if (await orderGlNetCents(prisma, orderId) > 0) return { posted: false, alreadyPosted: true }
 
   // Pull everything we need in one round-trip.
   const order = await prisma.order.findUnique({
@@ -418,10 +436,15 @@ export async function postOrderJournal(
 
 /**
  * Reverse an order's forward JE when the sale stops standing (void, buyer
- * return, reopen). Posts a mirrored POS_ORDER_REVERSAL dated now — the
- * original entry is left untouched so the ledger keeps the full history,
- * and JE-based reports (Ledger dataset, Subsidiary Ledger) net to zero.
- * Idempotent: skips when there is no un-reversed forward JE.
+ * return, reopen). Posts a mirrored POS_ORDER_REVERSAL entry-dated AT THE
+ * ORIGINAL ENTRY'S DATE — the original entry is left untouched so the ledger
+ * keeps the full history, and the pair nets to zero INSIDE the month the sale
+ * was booked. Dating the reversal "now" instead put the negative in the
+ * current month while the original month kept the sale (and, after a
+ * re-completion repost, counted it twice): the 2026-09-13 mass-reopen wave
+ * turned September's SPED/Psychology revenue negative at Greenhills that way.
+ * WHEN the void/reopen happened is still recorded — on createdAt and in the
+ * line descriptions. Idempotent: skips when there is no un-reversed forward JE.
  */
 export async function reverseOrderJournal(
   prisma: PrismaClient,
@@ -438,16 +461,13 @@ export async function reverseOrderJournal(
     orderBy: { createdAt: 'desc' },
   })
   if (!original) return { posted: false, reason: 'no forward JE to reverse' }
-  // Idempotency: mirrors postOrderJournal's fix above — ordering by createdAt, not
-  // raw counts, since forwardCount===reversalCount is ambiguous (could mean "fully
-  // reversed" or "freshly reposted after a reversal") and raw counts read that
-  // ambiguous case as "already reversed", silently skipping a genuine new void/reopen.
-  const lastJe = await prisma.journalEntry.findFirst({
-    where: { referenceId: orderId, referenceType: { in: ['POS_ORDER', 'POS_ORDER_REVERSAL'] } },
-    orderBy: { createdAt: 'desc' },
-    select: { referenceType: true },
-  })
-  if (lastJe?.referenceType !== 'POS_ORDER') return { posted: false, alreadyPosted: true }
+  // Idempotency: mirrors postOrderJournal's net-based rule above — reverse only
+  // while the GL net still carries the sale. The old newest-JE-by-createdAt check
+  // would happily add a THIRD reversal to an orphan-reversal set like #40929's
+  // R,F,R,F (its newest JE is a forward), pushing an already-invisible sale to
+  // net-negative; a genuinely standing sale always has net > 0, whatever order
+  // its JEs were created in.
+  if (await orderGlNetCents(prisma, orderId) <= 0) return { posted: false, alreadyPosted: true }
 
   const lines: PostingLine[] = original.lines.map(l => ({
     accountId: l.accountId,
@@ -457,7 +477,7 @@ export async function reverseOrderJournal(
   }))
   try {
     const je = await postJournalEntry(prisma, {
-      entryDate:     new Date(),
+      entryDate:     original.entryDate,
       description:   `Reversal of ${original.description} — ${reason}`,
       referenceType: 'POS_ORDER_REVERSAL',
       referenceId:   orderId,
