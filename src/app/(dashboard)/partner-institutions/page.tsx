@@ -346,12 +346,11 @@ export default function PartnerInstitutionsPage() {
                       )
                     })()}
 
-                    {i.hasCommission && (
-                      <p style={{ fontSize: '0.78rem', color: '#93460B', marginTop: '0.5rem' }}>
-                        Commission: {i.commissionType === 'percent' ? `${i.commissionValue}%` : `₱${Number(i.commissionValue).toLocaleString()}`}
-                        {i.commissionNote ? ` — ${i.commissionNote}` : ''}
-                      </p>
-                    )}
+                    {/* Commission is deliberately NOT shown. This page is open
+                        at the front desk, often with the patient across the
+                        counter, and what the clinic pays a partner per referral
+                        is not part of answering "what discount do they get". It
+                        stays in HR Hub for whoever negotiates the agreement. */}
                   </div>
                 </div>
               </div>

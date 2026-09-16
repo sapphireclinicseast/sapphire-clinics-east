@@ -39,6 +39,7 @@ export interface PartnerInstitution {
   agreementType: string
   effectivityFrom: string
   effectivityTo: string
+  // Present in the HR feed; deliberately NOT forwarded — see the strip below.
   hasCommission: boolean
   commissionType: string
   commissionValue: number
@@ -74,7 +75,15 @@ export async function GET() {
       })
       if (!res.ok) { lastErr = `HR returned ${res.status}`; continue }
       const data = await res.json()
-      const institutions = (data.institutions ?? []) as PartnerInstitution[]
+      // Commission is dropped here, not just hidden in the page: what the
+      // clinic pays a partner per referral is a commercial term, and this
+      // endpoint is read by every signed-in user including the front desk.
+      // Leaving it in the payload would keep it one devtools panel away from
+      // anyone standing at the counter. It stays in HR Hub, where the people
+      // who negotiate these agreements already work.
+      const institutions = ((data.institutions ?? []) as PartnerInstitution[])
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars -- named only to drop them
+        .map(({ hasCommission, commissionType, commissionValue, commissionNote, ...rest }) => rest)
       // Alphabetical: this is a list someone scans for one name, and HR's own
       // order is whenever the record happened to be created.
       institutions.sort((a, b) => a.name.localeCompare(b.name))
