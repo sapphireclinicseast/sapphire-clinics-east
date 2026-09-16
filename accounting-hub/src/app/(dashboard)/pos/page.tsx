@@ -8360,7 +8360,7 @@ function ProductsSection({
               className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none bg-white"
               style={{ borderColor: 'var(--light-gray)' }}
             >
-              {['Website', 'Shopee', 'Lazada', 'Tiktok', 'Clinic'].map(opt => (
+              {['Website', 'Shopee', 'Lazada', 'Tiktok', 'Clinic', 'Bazaar/Event'].map(opt => (
                 <option key={opt} value={opt}>{opt}</option>
               ))}
             </select>
@@ -8782,6 +8782,19 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
   const [selectedBranch, setSelectedBranch] = useState(canSelectBranch ? 'SANDBOX_EAST' : branch)
   const [dateFrom, setDateFrom] = useState(today())
   const [dateTo, setDateTo] = useState(today())
+  // Draft values for the date inputs. Nothing refetches while the user types —
+  // the range (and everything that hangs off it: cards, calendar, fetches) only
+  // changes when Okay is clicked. Typing "2024" used to fire a fetch per
+  // keystroke ("0002-06-01", "0020-06-01", …).
+  const [pendingFrom, setPendingFrom] = useState(today())
+  const [pendingTo, setPendingTo] = useState(today())
+  const applyDates = () => {
+    if (!pendingFrom || !pendingTo) return
+    const [lo, hi] = pendingFrom <= pendingTo ? [pendingFrom, pendingTo] : [pendingTo, pendingFrom]
+    setPendingFrom(lo); setPendingTo(hi)
+    setDateFrom(lo); setDateTo(hi)
+  }
+  const datesDirty = pendingFrom !== dateFrom || pendingTo !== dateTo
   const [orders, setOrders] = useState<Order[]>([])
   const [modes, setModes] = useState<PaymentModeType[]>([])
   const [loading, setLoading] = useState(false)
@@ -8809,7 +8822,7 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
   const [clearingInProgress, setClearingInProgress] = useState(false)
   const [clearingError, setClearingError] = useState<string | null>(null)
   const [noSalesBusy, setNoSalesBusy] = useState<Record<string, boolean>>({})
-  const [noSalesError, setNoSalesError] = useState<string | null>(null)
+  const [noSalesError, setNoSalesError] = useState<{ day: string; msg: string } | null>(null)
   // Which order payments a bank deposit has actually confirmed, and which none
   // has. Read from PosSettlementPayment — the same link the bank-rec Match
   // modal writes for a BDO cash deposit or an AUB card/e-wallet settlement — so
@@ -8818,9 +8831,6 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
   const [untagged, setUntagged] = useState<SettlementRow[]>([])
   const [savingDay, setSavingDay] = useState<Record<string, boolean>>({})
   const [savedDayFeedback, setSavedDayFeedback] = useState<Record<string, boolean>>({})
-  // Calendar month for summary
-  const [calYear, setCalYear] = useState(new Date().getFullYear())
-  const [calMonth, setCalMonth] = useState(new Date().getMonth()) // 0-indexed
   // Debounce timers: auto-save 800 ms after the user stops typing in any field for a given day
   const saveDayTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
 
@@ -8846,20 +8856,14 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
     finally { setLoading(false) }
   }, [selectedBranch, dateFrom, dateTo])
 
-  // Fetch clearing records for current view (date range) + calendar month
+  // Fetch clearing records for the applied date range. The calendar is derived
+  // from the same range, so one fetch covers cards and calendar alike.
   const fetchClearing = useCallback(async () => {
     try {
-      // Fetch for selected range + calendar month
-      const firstOfMonth = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-01`
-      const lastOfMonth = new Date(calYear, calMonth + 1, 0)
-      const lastDate = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(lastOfMonth.getDate()).padStart(2, '0')}`
       const params = new URLSearchParams()
       if (selectedBranch) params.set('branch', selectedBranch)
-      // Fetch a wide range covering both filters + calendar
-      const earliest = [dateFrom, firstOfMonth].filter(Boolean).sort()[0]
-      const latest = [dateTo, lastDate].filter(Boolean).sort().reverse()[0]
-      if (earliest) params.set('dateFrom', earliest)
-      if (latest) params.set('dateTo', latest)
+      if (dateFrom) params.set('dateFrom', dateFrom)
+      if (dateTo) params.set('dateTo', dateTo)
       const r = await fetch(`/api/pos/sales-clearing?${params}`)
       const data = await r.json()
       if (Array.isArray(data)) {
@@ -8947,7 +8951,7 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
         })
       }
     } catch { /* ignore */ }
-  }, [selectedBranch, dateFrom, dateTo, calYear, calMonth])
+  }, [selectedBranch, dateFrom, dateTo])
 
   const fetchSettlement = useCallback(async () => {
     if (!dateFrom || !dateTo) return
@@ -9153,12 +9157,12 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
         })
         if (!res.ok) {
           const d = await res.json().catch(() => ({}))
-          setNoSalesError((d as { error?: string }).error || `Server error (${res.status})`)
+          setNoSalesError({ day, msg: (d as { error?: string }).error || `Server error (${res.status})` })
         }
       }
       await fetchClearing()
     } catch (e) {
-      setNoSalesError(e instanceof Error ? e.message : 'Network error — please try again')
+      setNoSalesError({ day, msg: e instanceof Error ? e.message : 'Network error — please try again' })
     }
     setNoSalesBusy(prev => ({ ...prev, [day]: false }))
   }
@@ -9195,9 +9199,9 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
   // Calendar: days that have sales data
   const daysWithSales = new Set(Array.from(byDate.keys()))
 
-  // Days in the selected range with no sales at all — candidates for the
-  // "No sales this day" tick. Capped so an accidental multi-year range doesn't
-  // render thousands of chips (the monthly workflow this serves is ≤31 days).
+  // Days in the selected range with no sales at all — they render as their own
+  // card with a "No sales this day" tick. Capped so an accidental multi-year
+  // range doesn't render thousands of cards (the monthly workflow is ≤31 days).
   const noSaleDays: string[] = []
   if (dateFrom && dateTo && dateFrom <= dateTo) {
     const cur = new Date(dateFrom + 'T00:00:00')
@@ -9208,10 +9212,26 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
       cur.setDate(cur.getDate() + 1)
     }
   }
+  const noSaleDaySet = new Set(noSaleDays)
+  // One chronological list: sales days and no-sales days, each as a card.
+  const allCheckingDays = Array.from(new Set([...sortedDates, ...noSaleDays])).sort()
+  const brForCards = selectedBranch || branch
+  const untickedNoSales = brForCards ? noSaleDays.filter(d => !isClearedInDB(d, brForCards)) : []
 
   // Days in calendar month with clearing status
-  const calDaysInMonth = new Date(calYear, calMonth + 1, 0).getDate()
-  const calFirstDow = new Date(calYear, calMonth, 1).getDay() // 0=Sun
+  // Calendar months derived from the applied range — the calendar always shows
+  // exactly the filtered period, one grid per month (capped at 6 grids).
+  const calMonths: { y: number; m: number }[] = []
+  {
+    const f = new Date(dateFrom + 'T00:00:00'); const t = new Date(dateTo + 'T00:00:00')
+    if (!isNaN(+f) && !isNaN(+t) && f <= t) {
+      let y = f.getFullYear(); let m = f.getMonth()
+      while ((y < t.getFullYear() || (y === t.getFullYear() && m <= t.getMonth())) && calMonths.length < 6) {
+        calMonths.push({ y, m })
+        m++; if (m > 11) { m = 0; y++ }
+      }
+    }
+  }
 
   // selectedBranch is always a specific branch (no All Branches option)
   const calBranches = [selectedBranch || branch]
@@ -9236,11 +9256,19 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
             <option value="AURA_INSTITUTE">Aura Health Institute</option>
           </select>
         )}
-        <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
-          className="px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+        <input type="date" value={pendingFrom} onChange={e => setPendingFrom(e.target.value)}
+          className="px-3 py-2 rounded-xl border text-sm outline-none"
+          style={{ borderColor: datesDirty ? 'var(--teal)' : 'var(--light-gray)' }} />
         <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>to</span>
-        <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
-          className="px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+        <input type="date" value={pendingTo} onChange={e => setPendingTo(e.target.value)}
+          className="px-3 py-2 rounded-xl border text-sm outline-none"
+          style={{ borderColor: datesDirty ? 'var(--teal)' : 'var(--light-gray)' }} />
+        <button onClick={applyDates} disabled={!datesDirty || !pendingFrom || !pendingTo}
+          title="Apply the date range — cards and calendar below will show exactly these dates"
+          className="px-4 py-2 rounded-xl text-xs font-semibold text-white"
+          style={{ background: datesDirty ? 'var(--deep-teal)' : 'var(--light-gray)', cursor: datesDirty ? 'pointer' : 'default' }}>
+          Okay
+        </button>
         <button onClick={runAutoTag} disabled={autoTagging}
           title="Fill Actual Amounts and tick OK for every day whose payments are already matched to a bank line in Bank Reconciliation"
           className="px-4 py-2 rounded-xl text-xs font-semibold text-white flex items-center gap-1.5"
@@ -9253,17 +9281,161 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
         <p className="text-xs -mt-2" style={{ color: 'var(--deep-teal)' }}>{autoResult}</p>
       )}
 
+      {/* Clearing Summary calendar — mirrors the applied from–to range exactly */}
+      {calMonths.length > 0 && (
+        <div className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+          <div className="px-4 py-3 border-b" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+            <span className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>
+              Clearing Summary — {calMonths.length === 1
+                ? new Date(calMonths[0].y, calMonths[0].m).toLocaleDateString('en-PH', { month: 'long', year: 'numeric' })
+                : `${new Date(dateFrom + 'T00:00:00').toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })} to ${new Date(dateTo + 'T00:00:00').toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}`}
+            </span>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+              Shows exactly the filtered dates — days outside the range are greyed out. Click a day to open just that day below.
+            </p>
+          </div>
+          <div className="p-4">
+            {calBranches.map(br => {
+              const brLabel = br === 'SANDBOX_EAST' ? 'East Branch' : br === 'SANDBOX_GREENHILLS' ? 'Greenhills Branch' : br
+              return (
+                <div key={br} className={calBranches.length > 1 ? 'mb-6' : ''}>
+                  {calBranches.length > 1 && (
+                    <div className="text-xs font-semibold mb-2" style={{ color: 'var(--deep-teal)' }}>{brLabel}</div>
+                  )}
+                  <div className="grid gap-6" style={{ gridTemplateColumns: calMonths.length > 1 ? 'repeat(auto-fit, minmax(300px, 1fr))' : '1fr' }}>
+                    {calMonths.map(({ y, m }) => {
+                      const daysInMonth = new Date(y, m + 1, 0).getDate()
+                      const firstDow = new Date(y, m, 1).getDay() // 0=Sun
+                      return (
+                        <div key={`${y}-${m}`}>
+                          {calMonths.length > 1 && (
+                            <div className="text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>
+                              {new Date(y, m).toLocaleDateString('en-PH', { month: 'long', year: 'numeric' })}
+                            </div>
+                          )}
+                          <div className="grid grid-cols-7 mb-1">
+                            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
+                              <div key={d} className="text-center text-xs font-semibold py-1" style={{ color: 'var(--mid-gray)' }}>{d}</div>
+                            ))}
+                          </div>
+                          <div className="grid grid-cols-7 gap-1">
+                            {Array.from({ length: firstDow }).map((_, i) => <div key={`e${i}`} />)}
+                            {Array.from({ length: daysInMonth }).map((_, i) => {
+                              const d = i + 1
+                              const dateStr = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+                              const inRange = dateStr >= dateFrom && dateStr <= dateTo
+                              if (!inRange) {
+                                return (
+                                  <div key={d} className="rounded-lg flex items-center justify-center py-1.5 text-xs"
+                                    style={{ color: 'var(--light-gray)', minHeight: '36px' }}>
+                                    {d}
+                                  </div>
+                                )
+                              }
+                              const isCleared = !!clearedDays[`${dateStr}|${br}`]
+                              const hasSales = daysWithSales.has(dateStr)
+                              const isToday = dateStr === today()
+                              let bg = 'transparent'
+                              let color = 'var(--mid-gray)'
+                              let border = '1px solid transparent'
+                              if (isCleared) { bg = '#dcfce7'; color = '#166534' }
+                              else if (hasSales) { bg = '#fef9c3'; color = '#92400e' }
+                              if (isToday) border = '1.5px solid var(--teal)'
+                              return (
+                                <button key={d} type="button"
+                                  className="rounded-lg flex flex-col items-center justify-center py-1.5 text-xs font-medium"
+                                  style={{ background: bg, color, border, minHeight: '36px', cursor: 'pointer' }}
+                                  title={`Open ${dateStr} — see the day's per-method amounts and what was matched`}
+                                  onClick={() => { setPendingFrom(dateStr); setPendingTo(dateStr); setDateFrom(dateStr); setDateTo(dateStr) }}>
+                                  <span>{d}</span>
+                                  {isCleared && <span style={{ fontSize: '9px', lineHeight: 1 }}>✓</span>}
+                                  {!isCleared && hasSales && <span style={{ fontSize: '9px', lineHeight: 1 }}>•</span>}
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                  <div className="flex gap-4 mt-3">
+                    <span className="flex items-center gap-1 text-xs" style={{ color: '#166534' }}>
+                      <span className="inline-block w-3 h-3 rounded" style={{ background: '#dcfce7' }} /> Cleared
+                    </span>
+                    <span className="flex items-center gap-1 text-xs" style={{ color: '#92400e' }}>
+                      <span className="inline-block w-3 h-3 rounded" style={{ background: '#fef9c3' }} /> Pending
+                    </span>
+                    <span className="flex items-center gap-1 text-xs" style={{ color: 'var(--light-gray)' }}>
+                      <span className="inline-block w-3 h-3 rounded border" style={{ borderColor: 'var(--light-gray)' }} /> Outside range
+                    </span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <div className="py-12 text-center"><Loader2 size={20} className="animate-spin mx-auto" style={{ color: 'var(--teal)' }} /></div>
-      ) : sortedDates.length === 0 ? (
+      ) : allCheckingDays.length === 0 ? (
         <div className="py-12 text-center" style={{ color: 'var(--mid-gray)' }}>No sales data for this period.</div>
       ) : (
         <div className="space-y-4">
-          {sortedDates.map(day => {
-            const methods = byDate.get(day)!
+          {untickedNoSales.length > 1 && (
+            <div className="flex items-center justify-between rounded-2xl border px-4 py-2.5" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+              <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+                {untickedNoSales.length} day(s) in this range have no sales and are not yet cleared.
+              </span>
+              <button
+                onClick={async () => { for (const d of untickedNoSales) await toggleNoSalesDay(d, false) }}
+                disabled={Object.values(noSalesBusy).some(Boolean)}
+                className="px-3 py-1.5 rounded-xl text-xs font-semibold text-white shrink-0"
+                style={{ background: 'var(--teal)', opacity: Object.values(noSalesBusy).some(Boolean) ? 0.6 : 1 }}>
+                Mark all {untickedNoSales.length} as “No sales this day”
+              </button>
+            </div>
+          )}
+          {allCheckingDays.map(day => {
             const dayLabel = new Date(day + 'T00:00:00').toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
             const br = selectedBranch || branch
             const cleared = br ? isClearedInDB(day, br) : false
+            if (noSaleDaySet.has(day)) {
+              const busy = !!noSalesBusy[day]
+              return (
+                <div key={day} className="rounded-2xl border overflow-hidden" style={{ borderColor: cleared ? '#16a34a' : 'var(--light-gray)' }}>
+                  <div className="px-4 py-2.5 flex items-center justify-between"
+                    style={{ background: cleared ? '#dcfce7' : 'var(--pale-teal)', color: cleared ? '#166534' : 'var(--deep-teal)' }}>
+                    <span className="font-semibold text-xs">{dayLabel}</span>
+                    {cleared && <span className="text-xs font-semibold flex items-center gap-1"><CheckCircle size={12} /> Cleared</span>}
+                  </div>
+                  <div className="px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
+                    <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+                      No sales recorded for this day.
+                      {cleared && <span className="ml-2" style={{ color: '#166534' }}>Marked as a no-sales day — validated against POS orders.</span>}
+                    </span>
+                    {cleared ? (
+                      <button onClick={() => toggleNoSalesDay(day, true)} disabled={busy}
+                        className="px-4 py-1.5 rounded-xl text-xs font-semibold border"
+                        style={{ borderColor: '#dc2626', color: '#dc2626', background: 'white', opacity: busy ? 0.5 : 1, cursor: busy ? 'wait' : 'pointer' }}>
+                        Undo Clearing
+                      </button>
+                    ) : (
+                      <label className="flex items-center gap-2 text-xs font-semibold" style={{ color: 'var(--deep-teal)', opacity: busy ? 0.5 : 1, cursor: busy ? 'wait' : 'pointer' }}>
+                        <input type="checkbox" checked={false} disabled={busy} readOnly={busy}
+                          onChange={() => toggleNoSalesDay(day, false)}
+                          style={{ width: 15, height: 15, accentColor: '#16a34a', cursor: busy ? 'wait' : 'pointer' }} />
+                        No sales this day
+                      </label>
+                    )}
+                  </div>
+                  {noSalesError?.day === day && (
+                    <p className="px-4 pb-3 text-xs" style={{ color: '#dc2626' }}>⚠ {noSalesError.msg}</p>
+                  )}
+                </div>
+              )
+            }
+            const methods = byDate.get(day)!
             return (
               <div key={day} className="rounded-2xl border overflow-hidden" style={{ borderColor: cleared ? '#16a34a' : 'var(--light-gray)' }}>
                 <div className="px-4 py-2.5 flex items-center justify-between"
@@ -9431,130 +9603,6 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
           })}
         </div>
       )}
-
-      {/* Days with no sales — tick to validate & clear */}
-      {!loading && noSaleDays.length > 0 && (() => {
-        const br = selectedBranch || branch
-        const unticked = br ? noSaleDays.filter(d => !isClearedInDB(d, br)) : []
-        return (
-          <div className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
-            <div className="px-4 py-3 border-b flex items-center justify-between" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
-              <div>
-                <span className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>Days with no sales</span>
-                <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
-                  Tick “No sales this day” to mark it cleared. Each tick is re-checked against POS orders before it saves.
-                </p>
-              </div>
-              {unticked.length > 1 && (
-                <button
-                  onClick={async () => { for (const d of unticked) await toggleNoSalesDay(d, false) }}
-                  disabled={Object.values(noSalesBusy).some(Boolean)}
-                  className="px-3 py-1.5 rounded-xl text-xs font-semibold text-white shrink-0"
-                  style={{ background: 'var(--teal)', opacity: Object.values(noSalesBusy).some(Boolean) ? 0.6 : 1 }}>
-                  Tick all {unticked.length}
-                </button>
-              )}
-            </div>
-            <div className="p-4 flex flex-wrap gap-2">
-              {noSaleDays.map(d => {
-                const ticked = br ? isClearedInDB(d, br) : false
-                const busy = !!noSalesBusy[d]
-                const label = new Date(d + 'T00:00:00').toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric' })
-                return (
-                  <button key={d} type="button" onClick={() => toggleNoSalesDay(d, ticked)} disabled={busy}
-                    title={ticked ? `Cleared as no-sales — click to unmark` : `Mark ${d} as "No sales this day"`}
-                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs font-medium"
-                    style={{
-                      borderColor: ticked ? '#16a34a' : 'var(--light-gray)',
-                      background: ticked ? '#dcfce7' : 'white',
-                      color: ticked ? '#166534' : 'var(--mid-gray)',
-                      opacity: busy ? 0.5 : 1,
-                      cursor: busy ? 'wait' : 'pointer',
-                    }}>
-                    <span className="inline-flex items-center justify-center rounded"
-                      style={{ width: 14, height: 14, border: ticked ? 'none' : '1.5px solid var(--light-gray)', background: ticked ? '#16a34a' : 'white', color: 'white', fontSize: 10, lineHeight: 1 }}>
-                      {ticked ? '✓' : ''}
-                    </span>
-                    {label}
-                  </button>
-                )
-              })}
-            </div>
-            {noSalesError && (
-              <p className="px-4 pb-3 text-xs" style={{ color: '#dc2626' }}>⚠ {noSalesError}</p>
-            )}
-          </div>
-        )
-      })()}
-
-      {/* Calendar Summary */}
-      <div className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
-        <div className="px-4 py-3 border-b flex items-center justify-between" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
-          <span className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>
-            Clearing Summary — {new Date(calYear, calMonth).toLocaleDateString('en-PH', { month: 'long', year: 'numeric' })}
-          </span>
-          <div className="flex items-center gap-2">
-            <button onClick={() => { const d = new Date(calYear, calMonth - 1); setCalYear(d.getFullYear()); setCalMonth(d.getMonth()) }}
-              className="p-1 rounded-lg hover:bg-gray-100 text-sm" style={{ color: 'var(--mid-gray)' }}>‹</button>
-            <button onClick={() => { const d = new Date(calYear, calMonth + 1); setCalYear(d.getFullYear()); setCalMonth(d.getMonth()) }}
-              className="p-1 rounded-lg hover:bg-gray-100 text-sm" style={{ color: 'var(--mid-gray)' }}>›</button>
-          </div>
-        </div>
-        <div className="p-4">
-          {calBranches.map(br => {
-            const brLabel = br === 'SANDBOX_EAST' ? 'East Branch' : br === 'SANDBOX_GREENHILLS' ? 'Greenhills Branch' : br
-            return (
-              <div key={br} className={calBranches.length > 1 ? 'mb-6' : ''}>
-                {calBranches.length > 1 && (
-                  <div className="text-xs font-semibold mb-2" style={{ color: 'var(--deep-teal)' }}>{brLabel}</div>
-                )}
-                {/* Day-of-week headers */}
-                <div className="grid grid-cols-7 mb-1">
-                  {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
-                    <div key={d} className="text-center text-xs font-semibold py-1" style={{ color: 'var(--mid-gray)' }}>{d}</div>
-                  ))}
-                </div>
-                <div className="grid grid-cols-7 gap-1">
-                  {/* Empty cells before first day */}
-                  {Array.from({ length: calFirstDow }).map((_, i) => <div key={`e${i}`} />)}
-                  {Array.from({ length: calDaysInMonth }).map((_, i) => {
-                    const d = i + 1
-                    const dateStr = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
-                    const isCleared = !!clearedDays[`${dateStr}|${br}`]
-                    const hasSales = daysWithSales.has(dateStr)
-                    const isToday = dateStr === today()
-                    let bg = 'transparent'
-                    let color = 'var(--mid-gray)'
-                    let border = '1px solid transparent'
-                    if (isCleared) { bg = '#dcfce7'; color = '#166534' }
-                    else if (hasSales) { bg = '#fef9c3'; color = '#92400e' }
-                    if (isToday) border = '1.5px solid var(--teal)'
-                    return (
-                      <button key={d} type="button"
-                        className="rounded-lg flex flex-col items-center justify-center py-1.5 text-xs font-medium"
-                        style={{ background: bg, color, border, minHeight: '36px', cursor: 'pointer' }}
-                        title={`Open ${dateStr} — see the day's per-method amounts and what was matched`}
-                        onClick={() => { setDateFrom(dateStr); setDateTo(dateStr); window.scrollTo({ top: 0, behavior: 'smooth' }) }}>
-                        <span>{d}</span>
-                        {isCleared && <span style={{ fontSize: '9px', lineHeight: 1 }}>✓</span>}
-                        {!isCleared && hasSales && <span style={{ fontSize: '9px', lineHeight: 1 }}>•</span>}
-                      </button>
-                    )
-                  })}
-                </div>
-                <div className="flex gap-4 mt-3">
-                  <span className="flex items-center gap-1 text-xs" style={{ color: '#166534' }}>
-                    <span className="inline-block w-3 h-3 rounded" style={{ background: '#dcfce7' }} /> Cleared
-                  </span>
-                  <span className="flex items-center gap-1 text-xs" style={{ color: '#92400e' }}>
-                    <span className="inline-block w-3 h-3 rounded" style={{ background: '#fef9c3' }} /> Pending
-                  </span>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      </div>
 
       <UntaggedOrders rows={untagged} settledCount={settled.length} />
     </div>
