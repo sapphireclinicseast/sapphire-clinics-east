@@ -23,6 +23,9 @@ interface HRDiscount {
   discountType: string
   value: number
   note: string
+  // This institution's referrals for this service get scheduling priority —
+  // independent of the discount amount.
+  priority: boolean
 }
 
 interface HRService {

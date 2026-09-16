@@ -4,7 +4,15 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { Building2, RefreshCw, X, CheckCircle2, AlertTriangle, HeartHandshake } from 'lucide-react'
 
 interface Service { id: string; label: string }
-interface Discount { serviceId: string; serviceLabel: string; discountType: string; value: number; note: string }
+interface Discount {
+  serviceId: string
+  serviceLabel: string
+  discountType: string
+  value: number
+  note: string
+  // This institution's referrals for this service get scheduling priority.
+  priority: boolean
+}
 
 interface PartnerInstitution {
   id: string
@@ -52,7 +60,7 @@ function termsSummary(inst: PartnerInstitution) {
   const withValue = inst.discounts.filter(d => d.value > 0)
   if (withValue.length) {
     const first = withValue[0]
-    const label = `${first.serviceLabel} ${valueText(first.discountType, first.value)}`
+    const label = `${first.serviceLabel} ${valueText(first.discountType, first.value)}${first.priority ? ' ★' : ''}`
     bits.push(withValue.length > 1 ? `${label} +${withValue.length - 1} more` : label)
   }
   if (inst.hasCommission) bits.push(`Commission ${valueText(inst.commissionType, inst.commissionValue)}`)
@@ -229,7 +237,7 @@ export default function PartnerInstitutionsClient({ role }: { role: string }) {
                       {inst.email && <div className="text-xs" style={{ color: 'var(--mid-gray)' }}>{inst.email}</div>}
                     </td>
                     <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
-                      {terms.length ? terms.map((t, i) => <div key={i}>{t}</div>) : <span>None</span>}
+                      {terms.length ? terms.map((t, i) => <div key={i} title={t.includes('★') ? 'This service gets scheduling priority' : undefined}>{t}</div>) : <span>None</span>}
                     </td>
                     <td className="px-4 py-3">
                       <span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={{
