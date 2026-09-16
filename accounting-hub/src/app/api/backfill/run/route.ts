@@ -10,7 +10,9 @@
  *     body: {
  *       year?:   number    // restrict to a specific fiscal year (default: all)
  *       branch?: string    // 'ALL' | 'SANDBOX_EAST' | …
- *       only?:   string[]  // ['orders'|'ar'|'inventory'|'assets'] (default: all)
+ *       only?:   string[]  // ['orders'|'ar'|'inventory'|'assets'] (default: all four);
+ *                          // 'redate-reversals' is a maintenance bucket that runs
+ *                          // ONLY when named explicitly — see its block below
  *     }
  *
  * Required: ENABLE_GL_POSTING=true (otherwise the helpers no-op).
@@ -55,6 +57,7 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => ({})) as { year?: number; branch?: string; only?: string[]; orderIds?: string[] }
   const branch = body.branch || 'ALL'
   const orderIds = Array.isArray(body.orderIds) && body.orderIds.length ? body.orderIds : undefined
+  // 'redate-reversals' is maintenance-only and never part of the default sweep.
   const only = new Set(body.only?.length ? body.only : ['orders', 'ar', 'inventory', 'assets'])
 
   const dateFilter: { gte?: Date; lt?: Date } = {}
@@ -70,6 +73,7 @@ export async function POST(req: Request) {
     ar:        newBucket(),
     inventory: newBucket(),
     assets:    newBucket(),
+    'redate-reversals': newBucket(),
   }
 
   /* ── Orders ─────────────────────────────────────────────────── */
@@ -183,6 +187,69 @@ export async function POST(req: Request) {
     }
   }
 
+  /* ── Redate reversals (one-time maintenance; opt-in only) ─────
+     Reversals used to be entry-dated at posting time ("now") while the
+     re-completion repost lands back at the order's transactionDate, so the
+     original month double-counted the sale and the reversal month went
+     negative — the 2026-09-05..16 mass reopen wave (192+ orders) pushed GH
+     September SPED and Psychology revenue below zero this way. New reversals
+     are dated at the mirrored forward's entryDate since 667ca40e; this bucket
+     pins each EXISTING reversal to the entryDate of the forward it mirrored:
+     the newest POS_ORDER JE for the same order created before the reversal
+     (exactly what reverseOrderJournal mirrored at posting time). Every
+     forward/reversal pair then nets inside one month — year-to-date totals
+     are unchanged by construction, and the reversal cash legs return beside
+     their forwards, healing month-end bank positions too. Idempotent: a
+     reversal already on its forward's date counts as alreadyPosted. */
+  if (only.has('redate-reversals')) {
+    const bucket = result['redate-reversals']
+    const reversals = await prisma.journalEntry.findMany({
+      where: {
+        referenceType: 'POS_ORDER_REVERSAL',
+        ...(orderIds ? { referenceId: { in: orderIds } } : {}),
+        ...(Object.keys(dateFilter).length ? { entryDate: dateFilter } : {}),
+        ...(branch !== 'ALL' ? { branch } : {}),
+      },
+      select: { id: true, referenceId: true, entryDate: true, createdAt: true },
+      orderBy: { createdAt: 'asc' },
+    })
+    bucket.scanned = reversals.length
+    const refIds = [...new Set(reversals.map(r => r.referenceId).filter((x): x is string => !!x))]
+    const forwards = refIds.length ? await prisma.journalEntry.findMany({
+      where: { referenceType: 'POS_ORDER', referenceId: { in: refIds } },
+      select: { referenceId: true, entryDate: true, createdAt: true },
+      orderBy: { createdAt: 'asc' },
+    }) : []
+    const forwardsByRef = new Map<string, { entryDate: Date; createdAt: Date }[]>()
+    for (const f of forwards) {
+      if (!f.referenceId) continue
+      if (!forwardsByRef.has(f.referenceId)) forwardsByRef.set(f.referenceId, [])
+      forwardsByRef.get(f.referenceId)!.push(f)
+    }
+    for (const r of reversals) {
+      // The forward this reversal mirrored: newest one created before it.
+      const mirrored = (r.referenceId ? forwardsByRef.get(r.referenceId) || [] : [])
+        .filter(f => f.createdAt < r.createdAt)
+        .pop()
+      if (!mirrored) {
+        bucket.failed++
+        bucket.failures.push({ id: r.id, reason: 'no forward JE created before this reversal' })
+        continue
+      }
+      if (mirrored.entryDate.getTime() === r.entryDate.getTime()) {
+        bucket.alreadyPosted++
+        continue
+      }
+      try {
+        await prisma.journalEntry.update({ where: { id: r.id }, data: { entryDate: mirrored.entryDate } })
+        bucket.posted++
+      } catch (e) {
+        bucket.failed++
+        bucket.failures.push({ id: r.id, reason: e instanceof Error ? e.message : String(e) })
+      }
+    }
+  }
+
   await prisma.auditLog.create({
     data: {
       userId: actorId,
@@ -194,6 +261,7 @@ export async function POST(req: Request) {
         arScanned:        result.ar.scanned,        arPosted:        result.ar.posted,        arAlready:        result.ar.alreadyPosted,        arFailed:        result.ar.failed,
         inventoryScanned: result.inventory.scanned, inventoryPosted: result.inventory.posted, inventoryAlready: result.inventory.alreadyPosted, inventoryFailed: result.inventory.failed,
         assetsScanned:    result.assets.scanned,    assetsPosted:    result.assets.posted,    assetsAlready:    result.assets.alreadyPosted,    assetsFailed:    result.assets.failed,
+        redateScanned:    result['redate-reversals'].scanned, redatePosted: result['redate-reversals'].posted, redateAlready: result['redate-reversals'].alreadyPosted, redateFailed: result['redate-reversals'].failed,
       },
     },
   })
