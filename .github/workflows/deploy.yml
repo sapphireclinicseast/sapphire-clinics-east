@@ -520,6 +520,28 @@ jobs:
           if [ ! -d "$TELE_DIR" ]; then echo "⚠ Teletherapy dir not found, skipping."; exit 0; fi
           cd "$TELE_DIR"
 
+          # ── Hold the source-guard lock for the whole deploy ──────────
+          # /usr/local/bin/teletherapy-source-guard.sh runs every minute and
+          # treats a mid-install tree as a regression: while our npm ci is
+          # rebuilding node_modules it sees node_modules/.bin/next missing and
+          # launches a competing `npm ci` in this same directory. The two
+          # installs then corrupt each other — TAR_ENTRY_ERROR storms, and
+          # `prisma generate` dying with "Could not resolve @prisma/client"
+          # (runs 34834968145 and 35057104090; guard log fired at 11:03:01Z /
+          # 05:05:01Z, exactly inside each run's npm ci window). The guard
+          # takes `flock -n 9` on this lock, so holding it here makes the
+          # guard skip instead of fighting us — same pattern as the
+          # accounting-hub deploy below. Wait up to 10 min in case the guard
+          # is mid-recovery (its own npm ci + rebuild takes ~5 min).
+          exec 9>/var/run/teletherapy-source-guard.lock
+          if flock -w 600 9; then
+            echo "→ Teletherapy source-guard lock held for the duration of this deploy."
+          else
+            echo "❌ Could not acquire the teletherapy source-guard lock within 600s — aborting"
+            echo "   rather than racing the guard. Check for a stuck guard run."
+            exit 1
+          fi
+
           # Always recreate .env to ensure correct DATABASE_URL
           if true; then
             echo "→ Creating teletherapy .env..."
