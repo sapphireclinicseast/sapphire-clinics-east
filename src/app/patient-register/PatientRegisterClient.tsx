@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { CheckCircle2, Loader2, Upload, FileText, X, Camera } from 'lucide-react'
 import PhotoCapture from '@/components/PhotoCapture'
 
@@ -39,21 +39,40 @@ interface FormState {
   diagnosis: string
   pwdSeniorId: string
   branches: string[]
+  partnerInstitution: string
+  referringDoctor: string
 }
 
 const EMPTY: FormState = {
   firstName: '', lastName: '', email: '', phone: '', dob: '',
   sex: '', civilStatus: '', religion: '', nationality: '',
   address: '', city: '', diagnosis: '', pwdSeniorId: '', branches: [],
+  partnerInstitution: '', referringDoctor: '',
 }
 
 export default function PatientRegisterClient({ defaultBranch }: { defaultBranch: string }) {
   const initial: FormState = { ...EMPTY, branches: defaultBranch ? [defaultBranch] : [] }
   const [form, setForm] = useState<FormState>(initial)
+  useEffect(() => {
+    fetch('/api/public/register-options')
+      .then(r => r.json())
+      .then(d => setOpts({ partners: d.partners ?? [], doctors: d.doctors ?? [] }))
+      .catch(() => { /* leave both empty — the fields fall back to free text */ })
+  }, [])
+
   const [submitting, setSubmitting] = useState(false)
   const [submitStage, setSubmitStage] = useState<'idle' | 'creating' | 'uploading'>('idle')
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
+  // Both lists come from elsewhere — partners from HR Hub, doctors from the
+  // Accounting Hub referrer list — so a name added there appears here on the
+  // next page load with nothing to sync. Either can come back empty; the
+  // fields stay usable as free text when they do.
+  const [opts, setOpts] = useState<{ partners: string[]; doctors: string[] }>({ partners: [], doctors: [] })
+  const [fromPartner, setFromPartner] = useState(false)
+  // "Not listed" is its own flag rather than a sentinel value in the field:
+  // encoding it as a magic string meant an untouched box submitted that string.
+  const [partnerOther, setPartnerOther] = useState(false)
   const [referralFile, setReferralFile] = useState<File | null>(null)
   const [pwdIdFile, setPwdIdFile] = useState<File | null>(null)
   const referralInputRef = useRef<HTMLInputElement>(null)
@@ -213,6 +232,50 @@ export default function PatientRegisterClient({ defaultBranch }: { defaultBranch
             You may upload a photo or scan of your documents now, or bring them to the clinic.
           </p>
 
+          {/* Partner school / institution */}
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.82rem', fontWeight: 600, color: '#374151', cursor: 'pointer' }}>
+              <input type="checkbox" checked={fromPartner}
+                onChange={e => {
+                  setFromPartner(e.target.checked)
+                  // Clearing on untick matters: leaving a name behind would file
+                  // the patient as a partner referral after the box was cleared.
+                  if (!e.target.checked) { upd('partnerInstitution', ''); setPartnerOther(false) }
+                }} />
+              I am from one of Sapphire&apos;s partner schools or institutions
+            </label>
+            {fromPartner && (
+              <div style={{ marginTop: 8 }}>
+                {opts.partners.length > 0 ? (
+                  <>
+                    <select value={partnerOther ? '__other' : form.partnerInstitution}
+                      onChange={e => {
+                        const other = e.target.value === '__other'
+                        setPartnerOther(other)
+                        upd('partnerInstitution', other ? '' : e.target.value)
+                      }}
+                      style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1.5px solid #d1d5db', fontSize: '0.85rem', background: '#fff' }}>
+                      <option value="">Select your school or institution…</option>
+                      {opts.partners.map(n => <option key={n} value={n}>{n}</option>)}
+                      {/* A partner the clinic has not recorded yet still gets
+                          captured rather than turned away at the form. */}
+                      <option value="__other">Not listed — let me type it</option>
+                    </select>
+                    {partnerOther && (
+                      <input value={form.partnerInstitution} onChange={e => upd('partnerInstitution', e.target.value)}
+                        placeholder="Name of your school or institution"
+                        style={{ width: '100%', marginTop: 6, padding: '10px 12px', borderRadius: 8, border: '1.5px solid #d1d5db', fontSize: '0.85rem' }} />
+                    )}
+                  </>
+                ) : (
+                  <input value={form.partnerInstitution} onChange={e => upd('partnerInstitution', e.target.value)}
+                    placeholder="Name of your school or institution"
+                    style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1.5px solid #d1d5db', fontSize: '0.85rem' }} />
+                )}
+              </div>
+            )}
+          </div>
+
           {/* Doctor's Referral */}
           <div style={{ marginBottom: 12 }}>
             <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: '#6b7280', marginBottom: 2 }}>
@@ -221,6 +284,22 @@ export default function PatientRegisterClient({ defaultBranch }: { defaultBranch
             <p style={{ fontSize: '0.72rem', color: '#9ca3af', marginBottom: 6, lineHeight: 1.5 }}>
               e.g. doctor&apos;s prescription, medical abstract, medical certificate, or doctor&apos;s report
             </p>
+            {/* Who referred them, as well as the document. A name is worth more
+                than a scan here: the clinic pays referral commissions on these,
+                and a PDF nobody has opened cannot be matched to a referrer.
+                Typed OR chosen — see the datalist below. */}
+            <input
+              list="referring-doctors"
+              value={form.referringDoctor}
+              onChange={e => upd('referringDoctor', e.target.value)}
+              placeholder="Name of referring doctor (optional)"
+              style={{ width: '100%', marginBottom: 8, padding: '10px 12px', borderRadius: 8, border: '1.5px solid #d1d5db', fontSize: '0.85rem' }} />
+            {/* A datalist rather than a <select>: it suggests the known doctors
+                while still accepting a name that is not on the list, which is
+                the common case for a doctor the clinic has not recorded yet. */}
+            <datalist id="referring-doctors">
+              {opts.doctors.map(n => <option key={n} value={n} />)}
+            </datalist>
             {referralFile ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', background: '#f0f9fa', border: '1.5px solid #1a7b8a', borderRadius: 8 }}>
                 <FileText size={14} style={{ color: '#1a7b8a', flexShrink: 0 }} />
