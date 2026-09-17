@@ -53,13 +53,6 @@ const EMPTY: FormState = {
 export default function PatientRegisterClient({ defaultBranch }: { defaultBranch: string }) {
   const initial: FormState = { ...EMPTY, branches: defaultBranch ? [defaultBranch] : [] }
   const [form, setForm] = useState<FormState>(initial)
-  useEffect(() => {
-    fetch('/api/public/register-options')
-      .then(r => r.json())
-      .then(d => setOpts({ partners: d.partners ?? [], doctors: d.doctors ?? [] }))
-      .catch(() => { /* leave both empty — the fields fall back to free text */ })
-  }, [])
-
   const [submitting, setSubmitting] = useState(false)
   const [submitStage, setSubmitStage] = useState<'idle' | 'creating' | 'uploading'>('idle')
   const [error, setError] = useState('')
@@ -68,7 +61,33 @@ export default function PatientRegisterClient({ defaultBranch }: { defaultBranch
   // Accounting Hub referrer list — so a name added there appears here on the
   // next page load with nothing to sync. Either can come back empty; the
   // fields stay usable as free text when they do.
-  const [opts, setOpts] = useState<{ partners: string[]; doctors: string[] }>({ partners: [], doctors: [] })
+  const [opts, setOpts] = useState<{ partners: string[] }>({ partners: [] })
+  // Suggestions for whatever has been typed so far. Fetched per keystroke
+  // rather than held as a list: the full roster of referring doctors is not
+  // something a public page should carry, even hidden behind a datalist.
+  const [doctorHits, setDoctorHits] = useState<string[]>([])
+
+  useEffect(() => {
+    fetch('/api/public/register-options')
+      .then(r => r.json())
+      .then(d => setOpts({ partners: d.partners ?? [] }))
+      .catch(() => { /* leave both empty — the fields fall back to free text */ })
+  }, [])
+
+  // Debounced so a name is one lookup rather than one per letter — the
+  // endpoint is rate limited and per-keystroke calls would trip it.
+  useEffect(() => {
+    const q = form.referringDoctor.trim()
+    if (q.length < 3) { setDoctorHits([]); return }
+    const t = setTimeout(() => {
+      fetch(`/api/public/referring-doctors?q=${encodeURIComponent(q)}`)
+        .then(r => r.json())
+        .then(d => setDoctorHits(d.names ?? []))
+        .catch(() => setDoctorHits([]))
+    }, 250)
+    return () => clearTimeout(t)
+  }, [form.referringDoctor])
+
   const [fromPartner, setFromPartner] = useState(false)
   // "Not listed" is its own flag rather than a sentinel value in the field:
   // encoding it as a magic string meant an untouched box submitted that string.
@@ -292,13 +311,13 @@ export default function PatientRegisterClient({ defaultBranch }: { defaultBranch
               list="referring-doctors"
               value={form.referringDoctor}
               onChange={e => upd('referringDoctor', e.target.value)}
-              placeholder="Name of referring doctor (optional)"
+              placeholder="Name of referring doctor (optional) — start typing to search"
               style={{ width: '100%', marginBottom: 8, padding: '10px 12px', borderRadius: 8, border: '1.5px solid #d1d5db', fontSize: '0.85rem' }} />
             {/* A datalist rather than a <select>: it suggests the known doctors
                 while still accepting a name that is not on the list, which is
                 the common case for a doctor the clinic has not recorded yet. */}
             <datalist id="referring-doctors">
-              {opts.doctors.map(n => <option key={n} value={n} />)}
+              {doctorHits.map(n => <option key={n} value={n} />)}
             </datalist>
             {referralFile ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', background: '#f0f9fa', border: '1.5px solid #1a7b8a', borderRadius: 8 }}>

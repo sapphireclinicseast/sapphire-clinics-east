@@ -1,28 +1,22 @@
 // GET /api/public/register-options
 //
-// The two lists the public patient-registration form offers: partner schools
-// and referring doctors.
+// The partner-school list the public patient-registration form offers.
+//
+// Referring doctors used to be here too and deliberately are not: see
+// /api/public/referring-doctors, which matches a few typed characters instead
+// of handing over every name.
 //
 // Public because the form is — a parent filling it in has no account. Both
 // lists are therefore trimmed to bare names before they leave here:
 //
-//   partners — the names HR already publishes on the registration forms, which
-//              the form itself has always shown as answer choices
-//   doctors  — names only, no affiliation, specialization or branch scope
+// Partner names are the ones HR already publishes as answer choices on the
+// registration forms themselves, so this exposes nothing the form did not.
 //
-// Named lists on a public form are a disclosure either way: it makes the
-// clinic's referring doctors enumerable by anyone who opens the page. The
-// alternative is a free-text box and the desk retyping every name later, which
-// is what this replaces. Flagged rather than decided quietly — see the PR.
-//
-// Neither list is fatal to the form: a failure returns an empty array and the
-// field falls back to free text, because a registration lost to a dropdown
-// that would not load is worse than a name typed by hand.
+// A failure returns an empty array and the field falls back to free text: a
+// registration lost to a picker that would not load is worse than a name typed
+// by hand.
 
 import { NextResponse } from 'next/server'
-
-const ACCT_URL = process.env.ACCOUNTING_HUB_URL ?? 'https://accounting.sapphireclinicseast.org'
-const ACCT_KEY = process.env.EXTERNAL_API_KEY ?? ''
 
 const HR_URLS = [
   process.env.HR_PLATFORM_URL,
@@ -65,24 +59,11 @@ async function partnerNames(): Promise<string[]> {
   return [...new Set(all)].sort((a, b) => a.localeCompare(b))
 }
 
-/** Active DOCTOR referrers, by name, from Accounting Hub. */
-async function doctorNames(): Promise<string[]> {
-  if (!ACCT_KEY) return []
-  try {
-    const res = await fetch(`${ACCT_URL}/api/internal/referrers?type=DOCTOR`, {
-      headers: { Authorization: `Bearer ${ACCT_KEY}` },
-      cache: 'no-store',
-      signal: AbortSignal.timeout(5000),
-    })
-    if (!res.ok) return []
-    const data = await res.json()
-    return Array.isArray(data.names) ? data.names : []
-  } catch {
-    return []
-  }
-}
-
 export async function GET() {
-  const [partners, doctors] = await Promise.all([partnerNames(), doctorNames()])
-  return NextResponse.json({ partners, doctors })
+  // Doctors are NOT here any more. Shipping 154 names to a public page made the
+  // clinic's referral network readable in view-source even though the datalist
+  // only *displayed* matches. They are searched a few characters at a time
+  // through /api/public/referring-doctors instead.
+  const partners = await partnerNames()
+  return NextResponse.json({ partners })
 }
