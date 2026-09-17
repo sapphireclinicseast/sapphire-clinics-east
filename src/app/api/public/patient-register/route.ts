@@ -5,6 +5,13 @@ import { prisma } from '@/lib/prisma'
 // No auth required. Called by the public form at /patient-register.
 // Creates a Patient record with the provided fields. Front desk can review later.
 
+/** Trim only — for values compared against lists kept in normal case. */
+function trimOrNull(v: unknown): string | null {
+  if (typeof v !== 'string') return null
+  const t = v.trim()
+  return t.length > 0 ? t : null
+}
+
 function uc(v: string | null | undefined): string | null {
   if (!v) return null
   return v.trim().toUpperCase()
@@ -31,6 +38,7 @@ export async function POST(req: NextRequest) {
       firstName, lastName, email, phone, dob,
       sex, civilStatus, religion, nationality,
       address, city, diagnosis, pwdSeniorId, branches,
+      partnerInstitution, referringDoctor,
     } = body
 
     // ── Basic validation ──
@@ -91,6 +99,16 @@ export async function POST(req: NextRequest) {
         city:        uc(city)        || null,
         diagnosis:   uc(diagnosis)   || null,
         pwdSeniorId: uc(pwdSeniorId) || null,
+        // Both accepted as free text. The form offers a list for each, but a
+        // parent can name a school or doctor the clinic has not recorded yet,
+        // and rejecting that would lose the referral rather than capture it —
+        // front desk can tidy the spelling in the CRM afterwards.
+        // Trimmed, NOT uppercased like the name fields above. These are stored
+        // to be read back and matched against the HR partner list and the
+        // Accounting referrer list, both of which keep normal capitalisation —
+        // "ASIAN INSTITUTE OF MANAGEMENT" would neither match nor read well.
+        partnerInstitution: trimOrNull(partnerInstitution),
+        referringDoctor:    trimOrNull(referringDoctor),
         notes:       'Self-registered via QR code',
       },
     })

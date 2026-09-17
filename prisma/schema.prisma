@@ -276,6 +276,16 @@ model Patient {
   pwdIdUrl           String?    // optional PWD ID photo URL
   firstDayOfConsult  DateTime?  // manual override: first day of consult/session (basis for cancellation reset & follow-up rules)
   pwdSeniorId        String?    // PWD or Senior Citizen ID Number (optional, for discount eligibility)
+  // Partner school / institution the patient is affiliated with, as picked on
+  // the registration form from the list HR maintains. Stored as the NAME, not
+  // an id: the partner list lives in HR Hub and is matched by name everywhere
+  // else in this app (registration-form responses do the same), so an id here
+  // would be a foreign key to a table this database does not have.
+  partnerInstitution String?
+  // Referring doctor, typed or chosen from the Accounting Hub referrer list.
+  // Free text by design — a parent may name a doctor the clinic has never
+  // recorded, and refusing that would lose the referral rather than capture it.
+  referringDoctor    String?
   username           String?    @unique  // portal login handle (siblings sharing an email get distinct usernames)
   profilePhoto       String?             // portal avatar, stored as a base64 data URL
   unsubscribed       Boolean    @default(false)  // opt-out from email campaigns
