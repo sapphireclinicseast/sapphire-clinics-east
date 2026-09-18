@@ -87,7 +87,8 @@ export default function DeckingHistory({ branch }: { branch: string }) {
             </p>
             <p style={{ color: 'var(--mid-gray)', fontSize: '0.78rem', marginTop: '0.15rem' }}>
               Filled and open stack to the slots that were sellable that day. Blocked
-              hours are not drawn, so the top of the chart sits below “slots offered”.
+              hours are not drawn, so the top of the chart sits below “slots offered”,
+              and fill rate is filled ÷ (filled + open).
             </p>
           </div>
           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
