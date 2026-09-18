@@ -114,7 +114,7 @@ export default function PatientViewClient({ slug, branchName, shortName }: { slu
               </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
               <Card
                 tone="moss"
                 icon={<UserPlus size={30} />}
