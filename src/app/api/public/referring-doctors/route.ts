@@ -21,6 +21,10 @@ import { NextRequest, NextResponse } from 'next/server'
 const ACCT_URL = process.env.ACCOUNTING_HUB_URL ?? 'https://accounting.sapphireclinicseast.org'
 const ACCT_KEY = process.env.EXTERNAL_API_KEY ?? ''
 
+// A cheap floor to save a round trip, not the matching rule: Accounting Hub
+// counts the same three characters over the name part alone, so "dr. a" passes
+// here and is still correctly answered with nothing there. Nothing that would
+// match upstream is short enough to be blocked here.
 const MIN_QUERY = 3
 const WINDOW_MS = 60 * 1000
 const MAX_PER_WINDOW = 40   // generous for one person typing, useless for a scrape
