@@ -47,7 +47,20 @@ export async function computeDeckingSnapshot(): Promise<SnapshotRow[]> {
     prisma.staff.findMany({ where: { active: true }, select: { id: true, department: true } }),
   ])
 
+  // Only consultants who still work here. The board's own roster is
+  // `active: true` (/api/decking/staff), so anyone who has left is already
+  // invisible there — but their config rows and their old cells survive, and
+  // counting them made the card disagree with the board it is supposed to
+  // mirror. East SLP read 10 open against 6 on the screen: four Friday hours
+  // belonging to two therapists who had left.
+  //
+  // This also removes their booked and blocked cells, which is the same rule
+  // applied honestly — a leaver's Thursday is not capacity we can sell, and it
+  // is not a session we are running either. See the leavers note in the PR:
+  // those bookings are real children who need moving, and hiding them in a
+  // total was never the same as handling them.
   const deptOfStaff = new Map(staff.map(s => [s.id, s.department]))
+  const employed = new Set(staff.map(s => s.id))
   const key = (b: string, d: string) => `${b}||${d}`
   const acc = new Map<string, SnapshotRow>()
   const row = (b: string, d: string) => {
@@ -67,6 +80,7 @@ export async function computeDeckingSnapshot(): Promise<SnapshotRow[]> {
   // mentions.
   const cellsOffered = new Map<string, Set<string>>()   // "branch||dept" → "DAY|HH:MM"
   for (const cfg of configs) {
+    if (!employed.has(cfg.staffId)) continue
     const dept = cfg.department || deptOfStaff.get(cfg.staffId) || 'UNKNOWN'
     const k = key(cfg.branch, dept)
     const set = cellsOffered.get(k) ?? new Set<string>()
@@ -83,6 +97,7 @@ export async function computeDeckingSnapshot(): Promise<SnapshotRow[]> {
   // one filled slot, which is how the board reads and how the card counts.
   const cells = new Map<string, { branch: string; dept: string; cell: string; booked: boolean; blocked: boolean }>()
   for (const s of slots) {
+    if (!employed.has(s.staffId)) continue
     const dept = s.department || deptOfStaff.get(s.staffId) || 'UNKNOWN'
     const cell = `${s.staffId}|${s.dayOfWeek}|${s.startTime}`
     const k = `${s.branch}||${dept}||${cell}`

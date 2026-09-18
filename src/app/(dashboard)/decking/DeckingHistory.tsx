@@ -1,15 +1,24 @@
 'use client'
 
-// The decking board over time: filled and open stacked to the total slots the
-// consultants offered that day.
+// The decking board over time: filled and open stacked to the slots that were
+// actually sellable that day.
 //
 // Stacked rather than two separate lines, because the question is "of what we
-// were given, how much are we selling" — and a stack makes the total the top
-// edge, so growth in capacity and growth in bookings are visibly different
-// things rather than two lines that happen to move together.
+// could sell, how much did we sell" — and a stack makes the total the top edge,
+// so growth in capacity and growth in bookings are visibly different things
+// rather than two lines that happen to move together.
 //
-// Blocked hours are stacked too. Leaving them out would make filled + open fall
-// short of the total and the chart would look like it had lost slots.
+// Blocked hours are deliberately NOT drawn. They used to be, so the top edge met
+// "Slots offered" exactly; but they dominated the picture — well over half the
+// height on some days — and buried the two numbers the desk actually acts on.
+// The consequence to remember: the top edge is filled + open, which is LESS than
+// the "Slots offered" figure above it whenever anything is blocked. The tiles
+// carry that total, and the caption says so.
+//
+// Green/gold rather than green/yellow-green: green against yellow is the
+// red-green confusion, and a bright yellow cannot hold 3:1 against white. This
+// pair separates by ΔE 16.3 under protanopia and clears contrast — checked with
+// the palette validator, not by eye.
 
 import { useEffect, useState } from 'react'
 import {
@@ -77,7 +86,8 @@ export default function DeckingHistory({ branch }: { branch: string }) {
               Decking history
             </p>
             <p style={{ color: 'var(--mid-gray)', fontSize: '0.78rem', marginTop: '0.15rem' }}>
-              Filled, blocked and open stack to the slots the consultants gave us that day.
+              Filled and open stack to the slots that were sellable that day. Blocked
+              hours are not drawn, so the top of the chart sits below “slots offered”.
             </p>
           </div>
           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
@@ -124,10 +134,13 @@ export default function DeckingHistory({ branch }: { branch: string }) {
             {latest && (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.5rem', marginBottom: '0.9rem' }}>
                 {[
+                  // Only the two plotted series wear a series colour; the other
+                  // two are ink, so a colour on this row always means "that band
+                  // in the chart".
                   { label: 'Slots offered', value: latest.totalSlots, fg: '#1F2937' },
-                  { label: 'Filled', value: latest.booked, fg: '#14507F' },
-                  { label: 'Open', value: latest.open, fg: '#166534' },
-                  { label: 'Fill rate', value: latest.fillRate === null ? '—' : `${latest.fillRate}%`, fg: '#93460B' },
+                  { label: 'Filled', value: latest.booked, fg: '#166534' },
+                  { label: 'Open', value: latest.open, fg: '#B8860B' },
+                  { label: 'Fill rate', value: latest.fillRate === null ? '—' : `${latest.fillRate}%`, fg: '#475569' },
                 ].map(k => (
                   <div key={k.label}>
                     <div style={{ fontSize: '1.25rem', fontWeight: 800, color: k.fg, lineHeight: 1.1, fontVariantNumeric: 'tabular-nums' }}>{k.value}</div>
@@ -147,16 +160,14 @@ export default function DeckingHistory({ branch }: { branch: string }) {
                 <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
                 <Tooltip />
                 <Legend wrapperStyle={{ fontSize: '0.75rem' }} />
-                {/* stackId ties the three areas into one column per day, so the
-                    top edge is the total slots offered. Animation off for the
-                    same reason as the Slot Utilization line — it stalled on the
-                    first frame there and drew nothing. */}
+                {/* stackId ties the two areas into one column per day, so the top
+                    edge is what was sellable — filled plus open. Animation off
+                    for the same reason as the Slot Utilization line — it stalled
+                    on the first frame there and drew nothing. */}
                 <Area type="monotone" dataKey="booked" stackId="1" name="Filled"
-                  stroke="#14507F" fill="#A9CBEC" isAnimationActive={false} />
-                <Area type="monotone" dataKey="blocked" stackId="1" name="Unavailable"
-                  stroke="#94A3B8" fill="#DBE2E7" isAnimationActive={false} />
-                <Area type="monotone" dataKey="open" stackId="1" name="Open"
                   stroke="#166534" fill="#B7E4C4" isAnimationActive={false} />
+                <Area type="monotone" dataKey="open" stackId="1" name="Open"
+                  stroke="#B8860B" fill="#FDE68A" isAnimationActive={false} />
               </AreaChart>
             </ResponsiveContainer>
 
