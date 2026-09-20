@@ -165,7 +165,14 @@ export async function reverseAssetJournal(
 
   try {
     const je = await postJournalEntry(prisma, {
-      entryDate:     new Date(),
+      // Date the reversal AT THE ORIGINAL ENTRY'S DATE so the pair nets inside
+      // the period the purchase was booked. Dating it "now" put the credit in
+      // the edit month while the repost went back to dateBought — an asset
+      // bought in a PRIOR year (already embodied in the opening balance) then
+      // showed as a naked current-year credit, and its repost (prior-year
+      // dated, created after the opening balances were seeded) never reached
+      // current-year balances at all. Same fix as POS reversals (667ca40e).
+      entryDate:     original.entryDate,
       description:   `Reversal of asset purchase ${assetId} — ${reason}`,
       referenceType: 'ASSET_PURCHASE_REVERSAL',
       referenceId:   assetId,
