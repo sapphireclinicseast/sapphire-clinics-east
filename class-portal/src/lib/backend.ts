@@ -3,6 +3,14 @@
 // sent as Bearer on each request.
 
 const TOKEN_KEY = 'scei_class_token_v1'
+// The session record (role, email, userId, branch) that the page-level
+// redirect gates read. Owned by session.ts, but re-declared here so
+// handleSessionExpired can wipe it too — without this key getting cleared
+// alongside the token, a tab that was ALREADY past its mount-time auth
+// gate would keep rendering the signed-in UI with an empty Bearer header
+// and every fetch would come back as "Missing bearer token." from the
+// server. That is the SPED-teacher class-create bug this file re-fixes.
+const AUTH_KEY = 'scei_class_auth_v1'
 // Per-tab impersonation token. Lives in sessionStorage so the admin's main
 // localStorage session is preserved; closing the tab automatically ends
 // the impersonation without needing a server round-trip.
@@ -90,35 +98,57 @@ export async function backendFetch(path: string, init: RequestInit = {}): Promis
 let sessionExpiredHandled = false
 
 /** Central handler for "your token is no longer valid" responses. Clears
- *  the stale token, tells the user in plain language, and pushes them
- *  to /sign-in. Called from backendJson AND from any bare backendFetch
+ *  BOTH the token AND the auth-session record (so the page-level redirect
+ *  gate that reads getAuth() also sees a signed-out state on the next
+ *  navigation), tells the user in plain language, and pushes them to
+ *  /sign-in. Called from backendJson AND from any bare backendFetch
  *  caller that checks the response explicitly. */
 export function handleSessionExpired(reason?: string) {
   if (typeof window === 'undefined') return
   if (sessionExpiredHandled) return
   sessionExpiredHandled = true
   try { clearToken() } catch { /* ignore */ }
-  const explain = reason
-    ? `\n\n(Diagnostic: ${reason})`
-    : ''
-  try {
-    // eslint-disable-next-line no-alert
-    alert(`Your class-portal session has expired.\n\nSign in again and try that action once more — the token this device is holding is no longer accepted by the server.${explain}`)
-  } catch { /* alert() blocked — still redirect */ }
+  // Also wipe the AuthSession record. Without this, a tab that has
+  // already passed its mount-time router.replace('/sign-in') gate keeps
+  // rendering the signed-in UI while every backend call goes out with
+  // no Bearer header — server returns "Missing bearer token." and the
+  // user is stuck. Wiping the auth record makes the very next mount of
+  // any authenticated page bounce to /sign-in.
+  try { localStorage.removeItem(AUTH_KEY) } catch { /* ignore */ }
+  // Distinguish "token was there, server rejected it" (real expiry /
+  // rotated secret) from "no token to send in the first place" (the
+  // desync case). Both need a redirect to /sign-in, but only the first
+  // deserves an "your session expired" popup — the second is a silent
+  // recovery so we don't scare a fresh visitor.
+  const hadToken = reason?.includes('had-token') ?? true
+  if (hadToken) {
+    const explain = reason
+      ? `\n\n(Diagnostic: ${reason})`
+      : ''
+    try {
+      // eslint-disable-next-line no-alert
+      alert(`Your class-portal session has expired.\n\nSign in again and try that action once more — the token this device is holding is no longer accepted by the server.${explain}`)
+    } catch { /* alert() blocked — still redirect */ }
+  }
   const next = encodeURIComponent(window.location.pathname + window.location.search)
   window.location.href = `/sign-in?next=${next}`
 }
 
 export async function backendJson<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await backendFetch(path, init)
-  // 401 from an authenticated call almost always means the stored token
-  // is stale (past 30-day TTL or signed under a rotated CLASS_PORTAL_JWT
-  // _SECRET). Every UI path used to catch the resulting error and show a
-  // generic "Could not save. Retry?" — retrying did nothing because the
-  // token stayed invalid, and the user had no signal to sign back in.
-  // Detect it once, at the source.
-  if (res.status === 401 && getToken()) {
-    handleSessionExpired(`HTTP 401 on ${path}`)
+  // 401 from an authenticated call almost always means EITHER the stored
+  // token is stale (past 30-day TTL or signed under a rotated
+  // CLASS_PORTAL_JWT_SECRET) OR the token localStorage key was cleared
+  // (by an earlier handleSessionExpired() call whose redirect the browser
+  // deferred, or by a sign-out in a second tab) while getAuth() stayed
+  // populated. Either way: redirect to /sign-in so the user can recover.
+  // Earlier we required getToken() to be truthy to fire this branch —
+  // that let the "no token but auth present" desync case bubble up as a
+  // raw "Missing bearer token." red banner (the exact SPED-teacher
+  // class-create bug).
+  if (res.status === 401) {
+    const marker = getToken() ? 'had-token' : 'no-token'
+    handleSessionExpired(`HTTP 401 on ${path} (${marker})`)
     // Throw so any awaiting caller resolves as a failure rather than
     // hanging while the redirect kicks in.
     throw new Error('Session expired — please sign in again.')
