@@ -13,10 +13,11 @@ import {
   uploadClassPhoto, fetchClassPhotoBlob,
   getAssignments, hydrateAssignments,
   levelLabel, branchLabel, ALL_BRANCHES,
-  CLASS_DAY_OPTIONS,
+  CLASS_DAY_OPTIONS, signOut,
   type AuthSession, type StoredUser, type ClassRecord, type ClassDay,
   type EnrollmentLevel, type Branch,
 } from '@/lib/session'
+import { getToken } from '@/lib/backend'
 import { Portal } from '@/components/Modal'
 
 const ALL_LEVELS: EnrollmentLevel[] = ['NURSERY', 'KINDER', 'GRADE_1', 'GRADE_2', 'GRADE_3', 'GRADE_4', 'GRADE_5', 'GRADE_6', 'GRADE_7', 'GRADE_8', 'GRADE_9', 'GRADE_10', 'GRADE_11', 'GRADE_12']
@@ -45,6 +46,14 @@ export default function ClassesPage() {
   useEffect(() => {
     const a = getAuth()
     if (!a) { router.replace('/sign-in'); return }
+    // Gate for the auth/token desync case: if the AuthSession record is
+    // populated but the Bearer token has been cleared (by an earlier
+    // 401 whose redirect the browser deferred, or by a sign-out in a
+    // second tab), every authenticated fetch on this page would come
+    // back "Missing bearer token." Wipe the stale AuthSession and force
+    // a fresh sign-in instead of letting the user fill a form that
+    // will silently fail (the SPED-teacher class-create bug).
+    if (!getToken()) { signOut(); router.replace('/sign-in'); return }
     if (a.role === 'FRONTDESK') { router.replace('/frontdesk'); return }
     setAuth(a)
     setReady(true)
