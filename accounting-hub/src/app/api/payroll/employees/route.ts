@@ -330,6 +330,7 @@ function buildUpdateData(data: Record<string, unknown>): Record<string, unknown>
   if (data.daySchedules !== undefined) updateData.daySchedules = data.daySchedules || null
   if (data.restDay !== undefined) updateData.restDay = data.restDay
   if (data.ignoreTimekeeping !== undefined) updateData.ignoreTimekeeping = data.ignoreTimekeeping === true
+  if (data.isMWE !== undefined) updateData.isMWE = data.isMWE === true
   if (data.isActive !== undefined) updateData.isActive = data.isActive
   return updateData
 }

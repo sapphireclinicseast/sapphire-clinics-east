@@ -1837,6 +1837,7 @@ model Employee {
   daySchedules       Json? // Per-day overrides: { "THURSDAY": { "in": "09:00", "out": "18:00" } }
   restDay            String    @default("SUNDAY") // e.g. "SUNDAY", "SATURDAY"
   ignoreTimekeeping  Boolean   @default(false) // If true: pays fixed half-month salary regardless of biometric attendance
+  isMWE              Boolean   @default(false) // Statutory Minimum Wage Earner — tax-exempt; drives the 1601-C MWE vs AMWE split
   isActive           Boolean   @default(true)
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt

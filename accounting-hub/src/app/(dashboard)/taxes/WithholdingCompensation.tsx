@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
-import { Loader2, FileText, Download, CheckCircle2, Trash2, RefreshCw, X, Eye, Pencil } from 'lucide-react'
+import { Loader2, FileText, Download, CheckCircle2, Trash2, RefreshCw, X, Eye, Pencil, Calculator, ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { SortFilterHead, applySortFilter } from '@/components/SortFilterHead'
@@ -219,6 +219,9 @@ export default function WithholdingCompensation() {
         )}
       </div>
 
+      {/* 1601-C Computation panel — live derivation from finalized payroll */}
+      <WcComputationPanel branch={branch} year={year} month={month} monthTo={monthTo} canWrite={canWrite} />
+
       {/* Entries table */}
       <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
         <table className="w-full text-sm">
@@ -296,6 +299,149 @@ export default function WithholdingCompensation() {
 
       {payTarget && <RecordPaidModal rfp={payTarget} onClose={() => setPayTarget(null)} onSaved={async () => { setPayTarget(null); await fetchRfps() }} />}
       {bv && <BillingVoucherModal refNumber={bv.refNumber} date={bv.date} lines={bv.lines} branch={bv.branch} payment={bv.payment} onClose={() => setBv(null)} />}
+    </div>
+  )
+}
+
+// ─── 1601-C Computation panel ──────────────────────────────────────────────
+interface WcRow {
+  employeeId: string; name: string; isMWE: boolean; month: string
+  grossTaxable: number; sss: number; phic: number; hdmf: number; govCon: number
+  netTaxable: number; recordedTax: number; tableTax: number; discrepancy: number
+}
+interface WcComputation {
+  totalGross: number; mweGross: number; amweGovCon: number; thirteenth: number; taxableIncome: number
+  amwesWithoutTax: number; amwesWithTax: number; totalTaxDue: number; tableTaxDue: number; discrepancy: number
+}
+const monthLabel = (ym: string) => { const [y, m] = ym.split('-'); return `${MONTHS[parseInt(m) - 1]} ${y}` }
+
+function WcComputationPanel({ branch, year, month, monthTo, canWrite }: { branch: string; year: string; month: string; monthTo: string; canWrite: boolean }) {
+  const [open, setOpen] = useState(true)
+  const [loading, setLoading] = useState(false)
+  const [rows, setRows] = useState<WcRow[]>([])
+  const [comp, setComp] = useState<WcComputation | null>(null)
+  const [savingId, setSavingId] = useState<string | null>(null)
+
+  const fetchComp = useCallback(async () => {
+    setLoading(true)
+    try {
+      const qs = new URLSearchParams({ branch, year })
+      if (month) qs.set('month', month)
+      if (month && monthTo) qs.set('monthTo', monthTo)
+      const res = await fetch(`/api/taxes/wc-computation?${qs.toString()}`)
+      if (res.ok) { const d = await res.json(); setRows(d.rows || []); setComp(d.computation || null) }
+      else { setRows([]); setComp(null) }
+    } catch { setRows([]); setComp(null) } finally { setLoading(false) }
+  }, [branch, year, month, monthTo])
+
+  useEffect(() => { if (open) fetchComp() }, [open, fetchComp])
+
+  const toggleMwe = async (employeeId: string, next: boolean) => {
+    setSavingId(employeeId)
+    try {
+      await fetch('/api/payroll/employees', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: employeeId, isMWE: next }) })
+      await fetchComp()
+    } finally { setSavingId(null) }
+  }
+
+  const periodLabel = month ? (monthTo && monthTo !== month ? `${MONTHS[parseInt(month) - 1]}–${MONTHS[parseInt(monthTo) - 1]} ${year}` : `${MONTHS[parseInt(month) - 1]} ${year}`) : `FY ${year} (all months)`
+  const branchName = BRANCH_FULL[branch] || branch
+  // A computation-vs-recorded row: label | computed | recorded | discrepancy
+  const CompRow = ({ label, sub, value, indent, strong, highlight }: { label: string; sub?: string; value: number; indent?: boolean; strong?: boolean; highlight?: boolean }) => (
+    <div className="flex items-center justify-between px-3 py-1.5 text-xs" style={{ background: highlight ? '#fffbeb' : undefined, borderTop: strong ? '1px solid var(--light-gray)' : undefined }}>
+      <span style={{ paddingLeft: indent ? 16 : 0, color: strong ? 'var(--charcoal)' : 'var(--mid-gray)', fontWeight: strong ? 700 : 400 }}>{label}{sub && <span className="ml-1" style={{ color: 'var(--mid-gray)', fontWeight: 400 }}>· {sub}</span>}</span>
+      <span className="font-mono tabular-nums" style={{ color: 'var(--charcoal)', fontWeight: strong ? 700 : 500 }}>₱{peso(value)}</span>
+    </div>
+  )
+
+  return (
+    <div className="rounded-2xl border bg-white overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+      <button onClick={() => setOpen(o => !o)} className="w-full flex items-center justify-between px-4 py-3" style={{ background: 'var(--off-white)' }}>
+        <span className="flex items-center gap-2 text-sm font-bold" style={{ color: 'var(--charcoal)' }}>
+          <Calculator size={16} style={{ color: 'var(--teal)' }} /> 1601-C Computation
+          <span className="text-xs font-medium" style={{ color: 'var(--mid-gray)' }}>· {branchName} · {periodLabel}</span>
+        </span>
+        <span className="flex items-center gap-2">
+          {comp && Math.abs(comp.discrepancy) >= 0.005 && (
+            <span className="flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ background: '#fef3c7', color: '#92400e' }}>
+              <AlertTriangle size={11} /> Δ ₱{peso(comp.discrepancy)}
+            </span>
+          )}
+          {open ? <ChevronDown size={16} style={{ color: 'var(--mid-gray)' }} /> : <ChevronRight size={16} style={{ color: 'var(--mid-gray)' }} />}
+        </span>
+      </button>
+
+      {open && (
+        <div className="p-4 space-y-4">
+          {loading ? (
+            <div className="text-center py-8 text-sm" style={{ color: 'var(--mid-gray)' }}><Loader2 size={16} className="inline animate-spin" /> Computing…</div>
+          ) : !comp || rows.length === 0 ? (
+            <div className="text-center py-8 text-sm" style={{ color: 'var(--mid-gray)' }}>No finalized (locked) payroll for this branch and period.</div>
+          ) : (
+            <>
+              {/* Aggregate 1601-C computation */}
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+                  <div className="px-3 py-2 text-xs font-bold" style={{ background: 'var(--deep-teal)', color: '#fff' }}>Tax Due Computation</div>
+                  <CompRow label="Total Gross Compensation" value={comp.totalGross} />
+                  <CompRow label="less: MWEs Gross Compensation" value={comp.mweGross} indent />
+                  <CompRow label="less: AMWEs Gov't Contributions" sub="SSS · PhilHealth · Pag-IBIG" value={comp.amweGovCon} indent />
+                  <CompRow label="less: 13th Month Pay & Benefits" value={comp.thirteenth} indent />
+                  <CompRow label="Taxable Income" value={comp.taxableIncome} strong />
+                  <CompRow label="AMWEs — without tax (≤ ₱20,833/mo)" value={comp.amwesWithoutTax} indent />
+                  <CompRow label="AMWEs — with tax" value={comp.amwesWithTax} indent />
+                  <CompRow label="Total Tax Due" value={comp.totalTaxDue} strong highlight />
+                </div>
+                <div className="rounded-xl border overflow-hidden h-fit" style={{ borderColor: 'var(--light-gray)' }}>
+                  <div className="px-3 py-2 text-xs font-bold" style={{ background: 'var(--off-white)', color: 'var(--charcoal)' }}>Check vs. BIR Graduated Table</div>
+                  <CompRow label="Total Tax Due — withheld (to remit)" value={comp.totalTaxDue} />
+                  <CompRow label="Per BIR graduated table (recompute)" value={comp.tableTaxDue} />
+                  <div className="flex items-center justify-between px-3 py-2 text-xs" style={{ borderTop: '1px solid var(--light-gray)', background: Math.abs(comp.discrepancy) < 0.005 ? '#f0fdf4' : '#fffbeb' }}>
+                    <span className="font-bold flex items-center gap-1" style={{ color: Math.abs(comp.discrepancy) < 0.005 ? '#166534' : '#92400e' }}>
+                      {Math.abs(comp.discrepancy) < 0.005 ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />} Discrepancy
+                    </span>
+                    <span className="font-mono font-bold tabular-nums" style={{ color: Math.abs(comp.discrepancy) < 0.005 ? '#166534' : '#92400e' }}>₱{peso(comp.discrepancy)}</span>
+                  </div>
+                  <p className="px-3 py-2 text-[11px]" style={{ color: 'var(--mid-gray)' }}>A positive discrepancy means the graduated table would withhold more than payroll actually did (possible under-withholding); negative means over-withheld. Small residuals are normal from rounding and mid-month adjustments.</p>
+                </div>
+              </div>
+
+              {/* Per-employee register */}
+              <div className="rounded-xl border overflow-auto" style={{ borderColor: 'var(--light-gray)' }}>
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr style={{ background: 'var(--off-white)' }}>
+                      {['MWE', 'Employee', 'Month', 'Gross Taxable', 'SSS', 'PhilHealth', 'Pag-IBIG', 'Taxable Income', 'Withheld', 'BIR table', 'Δ'].map((h, i) => (
+                        <th key={i} className={`px-2.5 py-2 font-semibold whitespace-nowrap ${i >= 3 ? 'text-right' : 'text-left'}`} style={{ color: 'var(--charcoal)' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map(r => (
+                      <tr key={`${r.employeeId}-${r.month}`} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                        <td className="px-2.5 py-1.5">
+                          <input type="checkbox" checked={r.isMWE} disabled={!canWrite || savingId === r.employeeId} onChange={() => toggleMwe(r.employeeId, !r.isMWE)} title={canWrite ? 'Mark as Minimum Wage Earner (tax-exempt)' : 'MWE status'} />
+                        </td>
+                        <td className="px-2.5 py-1.5 font-medium" style={{ color: 'var(--charcoal)' }}>{r.name}{r.isMWE && <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: '#e0f2fe', color: '#075985' }}>MWE</span>}</td>
+                        <td className="px-2.5 py-1.5" style={{ color: 'var(--mid-gray)' }}>{monthLabel(r.month)}</td>
+                        <td className="px-2.5 py-1.5 text-right font-mono tabular-nums" style={{ color: 'var(--charcoal)' }}>{peso(r.grossTaxable)}</td>
+                        <td className="px-2.5 py-1.5 text-right font-mono tabular-nums" style={{ color: 'var(--mid-gray)' }}>{peso(r.sss)}</td>
+                        <td className="px-2.5 py-1.5 text-right font-mono tabular-nums" style={{ color: 'var(--mid-gray)' }}>{peso(r.phic)}</td>
+                        <td className="px-2.5 py-1.5 text-right font-mono tabular-nums" style={{ color: 'var(--mid-gray)' }}>{peso(r.hdmf)}</td>
+                        <td className="px-2.5 py-1.5 text-right font-mono tabular-nums" style={{ color: 'var(--charcoal)' }}>{peso(r.netTaxable)}</td>
+                        <td className="px-2.5 py-1.5 text-right font-mono tabular-nums font-semibold" style={{ color: r.recordedTax > 0 ? '#c44b00' : 'var(--mid-gray)' }}>{peso(r.recordedTax)}</td>
+                        <td className="px-2.5 py-1.5 text-right font-mono tabular-nums" style={{ color: 'var(--mid-gray)' }}>{r.isMWE ? '—' : peso(r.tableTax)}</td>
+                        <td className="px-2.5 py-1.5 text-right font-mono tabular-nums" style={{ color: Math.abs(r.discrepancy) < 0.005 ? 'var(--mid-gray)' : '#b91c1c' }}>{Math.abs(r.discrepancy) < 0.005 ? '—' : peso(r.discrepancy)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>Derived live from finalized (locked) payslips. Tick <strong>MWE</strong> for statutory minimum-wage earners — their compensation is tax-exempt and reported separately on the 1601-C.</p>
+            </>
+          )}
+        </div>
+      )}
     </div>
   )
 }
