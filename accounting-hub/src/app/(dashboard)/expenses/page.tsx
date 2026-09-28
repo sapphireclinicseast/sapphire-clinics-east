@@ -18,6 +18,7 @@ import { ScanUpload } from '@/components/ScanUpload'
 import { DownloadBar } from '@/components/DownloadBar'
 import { downloadXlsx, downloadPdf, inDateRange, type ExportFormat } from '@/lib/export'
 import type { BVLine } from '@/lib/billing-voucher'
+import { isPayrollItem } from '@/lib/payroll-item-guard'
 
 // ── Constants ──────────────────────────────────────────────────
 const BRANCHES = [
@@ -172,12 +173,8 @@ interface Rfp {
 
 // ── Computed helpers ───────────────────────────────────────────
 // Employee/consultant compensation items don't belong in One-Time Expense —
-// they bypass payslips, statutory deductions and the payroll GL mapping
-// (a maternity benefit hand-built here is what broke the May–July balance
-// sheet). Detect them by wording so the UI can warn before they get tagged.
-const PAYROLL_ITEM_RX = /final\s*pay|last\s*pay|back\s*pay|13(th)?\s*month|thirteenth\s*month|maternity|paternity|sickness\s*benefit|separation\s*pay|salar(y|ies)|payroll/i
-const payrollHint = (e: { description?: string | null; accountTitle?: string | null }) =>
-  PAYROLL_ITEM_RX.test(`${e.description || ''} ${e.accountTitle || ''}`)
+// hard-blocked (Hannah, 2026-09-29); the same guard runs server-side.
+const payrollHint = isPayrollItem
 const digitsOnly = (s: string | null) => (s || '').replace(/\D/g, '')
 const formatTin = (raw: string) => {
   const d = digitsOnly(raw).slice(0, 14)
@@ -629,8 +626,8 @@ function ExpensesInner() {
   const cancelCc = () => { setCcMode(false); setSelected(new Set()) }
   const createSoa = async (cardId: string) => {
     const payrollish = entries.filter(e => selected.has(e.id) && payrollHint(e))
-    if (payrollish.length && !confirm(
-      `These entries look like employee/consultant pay:\n\n${payrollish.map(e => `• ${e.pcvNumber} — ${e.description || e.accountTitle}`).join('\n')}\n\nCompensation should be processed through Payroll, not One-Time Expense. Include them in this SOA anyway?`)) {
+    if (payrollish.length) {
+      alert(`These entries are employee/consultant pay and must be processed through Payroll, not a One-Time SOA:\n\n${payrollish.map(e => `• ${e.pcvNumber} — ${e.description || e.accountTitle}`).join('\n')}\n\nUnselect them to continue. (If one is genuinely NOT compensation, reword its description.)`)
       return
     }
     setCreatingSoa(true)
@@ -653,8 +650,8 @@ function ExpensesInner() {
       const ids = [...selected]
       const sel = entries.filter(e => selected.has(e.id))
       const payrollish = sel.filter(payrollHint)
-      if (payrollish.length && !confirm(
-        `These entries look like employee/consultant pay (Final Pay, 13th Month, Maternity, salaries):\n\n${payrollish.map(e => `• ${e.pcvNumber} — ${e.description || e.accountTitle}`).join('\n')}\n\nCompensation should be processed through Payroll, not One-Time Expense. Include them in this RFP anyway?`)) {
+      if (payrollish.length) {
+        alert(`These entries are employee/consultant pay and must be processed through Payroll, not a One-Time RFP:\n\n${payrollish.map(e => `• ${e.pcvNumber} — ${e.description || e.accountTitle}`).join('\n')}\n\nUnselect them to continue. (If one is genuinely NOT compensation, reword its description.)`)
         setGeneratingRfp(false); return
       }
       const res = await fetch('/api/expenses/rfp', {
@@ -878,6 +875,19 @@ function ExpensesInner() {
     }
     // Asset-classification entries are added to Asset Management via the dedicated
     // "Add to Asset Management" button under the Account Title (works anytime).
+  }
+
+  // Move a one-time entry to Petty Cash (same row, record type flips): it then
+  // settles against the branch float and joins the PCF replenishment flow.
+  const transferToPettyCash = async (e: Entry) => {
+    if (!confirm(`Move ${e.pcvNumber} to Petty Cash? It leaves this tab and will settle against the branch petty-cash float.`)) return
+    try {
+      const r = await fetch('/api/petty-cash/entries/transfer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: e.id }) })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) { alert(j.error || 'Failed to transfer'); return }
+      await reload(branch, recordType)
+      alert(`${e.pcvNumber} moved to Petty Cash.`)
+    } catch { alert('Failed to transfer') }
   }
 
   // Distributed recurring entry → create a one-time payment copy (full amount) for RFP.
@@ -1546,6 +1556,11 @@ function ExpensesInner() {
                               {isRecurringTab && e.distributeMonthly && (
                                 <button onClick={() => addToOneTime(e)} title="Add a one-time copy (full amount) for RFP — this recurring entry stays and keeps amortizing monthly" className="inline-flex items-center justify-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold" style={{ background: 'var(--pale-teal)', color: 'var(--teal)', whiteSpace: 'nowrap', flexShrink: 0 }}>
                                   <FileText size={12} style={{ flexShrink: 0 }} /> To One-time
+                                </button>
+                              )}
+                              {e.recordType === 'ONE_TIME' && !e.soaId && !e.finalized && (
+                                <button onClick={() => transferToPettyCash(e)} title="Move this entry to Petty Cash — it keeps its number and will settle against the branch petty-cash float instead of a bank account" className="inline-flex items-center justify-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold" style={{ background: 'var(--pale-teal)', color: 'var(--teal)', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                                  <FileText size={12} style={{ flexShrink: 0 }} /> To Petty Cash
                                 </button>
                               )}
                             </div>

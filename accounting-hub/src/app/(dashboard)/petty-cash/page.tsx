@@ -700,6 +700,19 @@ function PettyCashInner() {
     // Asset-classification entries are added to Asset Management via the dedicated
     // "Add to Asset Management" button under the Account Title (works anytime).
   }
+  // Move a petty-cash entry to One-Time Expense (same row, record type flips):
+  // it becomes RFP-payable from a bank account instead of the branch float.
+  const transferToOneTime = async (e: Entry) => {
+    if (!confirm(`Move ${e.pcvNumber} to One-Time Expense? It leaves Petty Cash and becomes payable through an Expenses RFP (bank account) instead of the float replenishment.`)) return
+    try {
+      const r = await fetch('/api/petty-cash/entries/transfer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: e.id }) })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) { alert(j.error || 'Failed to transfer'); return }
+      await loadEntries(branch)
+      alert(`${e.pcvNumber} moved to One-Time Expense — find it under Expenses → One-time expense.`)
+    } catch { alert('Failed to transfer') }
+  }
+
   const confirmAddAsset = async () => {
     if (!assetPrompt) return
     setAssetBusy(true)
@@ -1250,6 +1263,13 @@ function PettyCashInner() {
                               <button onClick={() => deleteRow(e.id)} title="Delete" className="p-1 rounded hover:bg-red-50">
                                 <Trash2 size={13} style={{ color: '#dc2626' }} />
                               </button>
+                              {!e.finalized && (
+                                <button onClick={() => transferToOneTime(e)}
+                                  title="Move this entry to One-Time Expense — it keeps its number and becomes RFP-payable from a bank account instead of the petty-cash float"
+                                  className="p-1 rounded hover:bg-teal-50">
+                                  <FileText size={13} style={{ color: 'var(--teal)' }} />
+                                </button>
+                              )}
                             </div>
                           ) : e.finalized ? (
                             // Locked (in an RFP): keep the finalized ✓ visible as a read-only state.

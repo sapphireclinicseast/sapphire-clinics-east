@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { isPayrollItem } from '@/lib/payroll-item-guard'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 const VALID_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE', 'AURA_INSTITUTE']
@@ -95,6 +96,9 @@ export async function POST(req: Request) {
       // refuse the SOA and name the rows so they can be fixed first.
       const untitled = entries.filter(e => !(e.accountTitle || '').trim())
       if (untitled.length) throw new Error(`Set the Account Title first — blank on: ${untitled.map(e => e.pcvNumber).join(', ')}`)
+      // Compensation items are paid through Payroll, never a One-Time SOA.
+      const payrollish = entries.filter(isPayrollItem)
+      if (payrollish.length) throw new Error(`Employee/consultant pay must go through Payroll, not One-Time Expense: ${payrollish.map(e => e.pcvNumber).join(', ')}`)
 
       const last = await tx.creditCardSOA.findFirst({ where: { branch, bankCode: card.bankCode }, orderBy: { refSeq: 'desc' } })
       const seq = (last?.refSeq || 0) + 1
