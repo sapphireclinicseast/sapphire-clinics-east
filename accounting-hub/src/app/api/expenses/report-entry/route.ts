@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { assetClassFromAccountTitle } from '@/lib/asset-classification'
+import { deleteAssetWithReversal } from '@/lib/accounting/post-asset'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 
@@ -21,6 +23,21 @@ export async function PATCH(req: Request) {
     if ('accountTitle' in body) data.accountTitle = body.accountTitle || null
     if ('description' in body) data.description = body.description || null
     if ('grossAmount' in body) data.grossAmount = Number(body.grossAmount) || 0
+    // Asset withdrawal on re-tag (same rule as the main entries PUT): a row
+    // whose Account Title moves off an asset classification takes its
+    // auto-created assets out of the register, reversing any acquisition JE.
+    if ('accountTitle' in data) {
+      const existing = await prisma.pettyCashEntry.findUnique({ where: { id }, select: { accountTitle: true, assetAddedAt: true, pcvNumber: true } })
+      if (existing?.assetAddedAt
+        && assetClassFromAccountTitle(existing.accountTitle)
+        && !assetClassFromAccountTitle(data.accountTitle)) {
+        const linked = await prisma.asset.findMany({ where: { sourceEntryId: id }, select: { id: true } })
+        for (const a of linked) {
+          await deleteAssetWithReversal(prisma, a.id, session.user.id as string, `source entry ${existing.pcvNumber} re-tagged from asset to expense`)
+        }
+        data.assetAddedAt = null
+      }
+    }
     await prisma.pettyCashEntry.update({ where: { id }, data })
     return NextResponse.json({ ok: true })
   } catch (e) {

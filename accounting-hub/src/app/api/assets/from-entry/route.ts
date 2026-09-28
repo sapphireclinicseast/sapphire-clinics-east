@@ -27,8 +27,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
   }
   try {
-    const { entryId } = await req.json()
+    const body = await req.json()
+    const { entryId } = body
     if (!entryId) return NextResponse.json({ error: 'entryId is required' }, { status: 400 })
+    // Optional details from the creation dialog.
+    const userRemarks = typeof body.remarks === 'string' ? body.remarks.trim().slice(0, 500) : ''
+    const accountableName = typeof body.accountableName === 'string' ? body.accountableName.trim().slice(0, 200) || null : null
+    const photoUrl = typeof body.photoUrl === 'string' && body.photoUrl.trim() ? body.photoUrl.trim() : null
+    const photoUrls = Array.isArray(body.photoUrls) ? body.photoUrls.filter((u: unknown) => typeof u === 'string' && u).slice(0, 20) : (photoUrl ? [photoUrl] : [])
     const e = await prisma.pettyCashEntry.findUnique({ where: { id: entryId } })
     if (!e) return NextResponse.json({ error: 'Entry not found' }, { status: 404 })
 
@@ -93,7 +99,13 @@ export async function POST(req: Request) {
           departments,
           controlNumber,
           fromPettyCash: true,   // cash handled by petty-cash replenishment — no bank credit on the BS
-          remarks: `Auto-created from petty cash / expense ${e.pcvNumber}`,
+          remarks: userRemarks
+            ? `${userRemarks} — auto-created from petty cash / expense ${e.pcvNumber}`
+            : `Auto-created from petty cash / expense ${e.pcvNumber}`,
+          accountableName,
+          photoUrl,
+          photoUrls,
+          sourceEntryId: e.id,   // lets an entry edit that re-tags the row as an expense find and remove its assets
           createdById: session.user.id as string,
         },
         select: { id: true, branch: true, name: true, controlNumber: true, totalAmount: true },

@@ -33,7 +33,10 @@ export async function POST(req: Request) {
     const entry = await prisma.$transaction(async (tx) => {
       let settings = await tx.pettyCashSettings.findUnique({ where: { branch } })
       if (!settings) settings = await tx.pettyCashSettings.create({ data: { branch, nextPcvSeq: 1 } })
-      const seq = settings.nextPcvSeq
+      // Same numbering rule as POST /entries: the settings counter can lag the
+      // table (forced numbers, imports), which hit the unique constraint.
+      const maxRow = await tx.pettyCashEntry.findFirst({ where: { branch }, orderBy: { pcvSeq: 'desc' }, select: { pcvSeq: true } })
+      const seq = Math.max(settings.nextPcvSeq, (maxRow?.pcvSeq || 0) + 1)
       await tx.pettyCashSettings.update({ where: { branch }, data: { nextPcvSeq: seq + 1 } })
       const yy = new Date().getFullYear() % 100
       const pcvNumber = `${PCV_BRANCH_CODE[branch] || branch}-PCV${yy}-${String(seq).padStart(6, '0')}`

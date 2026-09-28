@@ -130,6 +130,10 @@ export async function POST(req: Request) {
         },
       })
       if (entries.length === 0) throw new Error(`No eligible audited ${k === 'VALID' ? 'valid' : 'invalid'} expense entries (already in an RFP / not audited?)`)
+      // An untitled row would vanish from the P&L while still getting paid —
+      // refuse the whole RFP and name the rows so they can be fixed first.
+      const untitled = entries.filter(e => !(e.accountTitle || '').trim())
+      if (untitled.length) throw new Error(`Set the Account Title first — blank on: ${untitled.map(e => e.pcvNumber).join(', ')}`)
       const grossTotal = entries.reduce((s, e) => s + Number(e.grossAmount), 0)
       // Auto-fill "Payable to" = the Payee (requestor) of the first line item in the
       // group; fall back to its supplier (registeredName) only if that Payee is blank.

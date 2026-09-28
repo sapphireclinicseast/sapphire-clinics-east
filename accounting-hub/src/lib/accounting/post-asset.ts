@@ -140,6 +140,30 @@ export async function postAssetJournal(
   }
 }
 
+/**
+ * Delete an asset the safe way: reverse its acquisition JE first (if one was
+ * ever posted — assets born from petty-cash/expense entries usually have none,
+ * but the backfill or a material edit in Asset Management can have posted one),
+ * then remove the row. Shared by the Asset Management DELETE and by the
+ * entry-edit auto-removal (an expense row re-tagged from an asset account to
+ * an expense account withdraws its auto-created assets).
+ */
+export async function deleteAssetWithReversal(
+  prisma: PrismaClient,
+  assetId: string,
+  userId: string,
+  reason: string,
+): Promise<void> {
+  try {
+    await reverseAssetJournal(prisma, assetId, userId, reason)
+  } catch (e) {
+    // Non-fatal by design: a missing original JE already comes back as
+    // { posted: false }; anything thrown here should not strand the deletion.
+    console.error('[ASSET_DELETE] reversal failed for asset', assetId, '—', e instanceof Error ? e.message : e)
+  }
+  await prisma.asset.delete({ where: { id: assetId } })
+}
+
 /** Reverse a previously-posted asset acquisition JE. */
 export async function reverseAssetJournal(
   prisma: PrismaClient,

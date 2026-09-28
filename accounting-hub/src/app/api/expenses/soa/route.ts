@@ -91,6 +91,10 @@ export async function POST(req: Request) {
         where: { id: { in: entryIds }, branch, recordType: 'ONE_TIME', reimbursementId: null, soaId: null, paidAt: null },
       })
       if (entries.length === 0) throw new Error('No eligible one-time entries (already in an SOA/RFP or paid?)')
+      // An untitled row would vanish from the P&L while still getting paid —
+      // refuse the SOA and name the rows so they can be fixed first.
+      const untitled = entries.filter(e => !(e.accountTitle || '').trim())
+      if (untitled.length) throw new Error(`Set the Account Title first — blank on: ${untitled.map(e => e.pcvNumber).join(', ')}`)
 
       const last = await tx.creditCardSOA.findFirst({ where: { branch, bankCode: card.bankCode }, orderBy: { refSeq: 'desc' } })
       const seq = (last?.refSeq || 0) + 1

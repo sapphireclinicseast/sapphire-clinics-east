@@ -266,7 +266,16 @@ export async function DELETE(req: Request) {
       console.error(`[GL] Asset reversal threw for ${id}:`, postErr)
     }
 
+    const sourceEntryId = (await prisma.asset.findUnique({ where: { id }, select: { sourceEntryId: true } }))?.sourceEntryId
     await prisma.asset.delete({ where: { id } })
+    // If this was the last asset born from a petty-cash/expense entry, release
+    // the entry's "Added to Asset Management" stamp so the button reappears.
+    if (sourceEntryId) {
+      const remaining = await prisma.asset.count({ where: { sourceEntryId } })
+      if (remaining === 0) {
+        await prisma.pettyCashEntry.update({ where: { id: sourceEntryId }, data: { assetAddedAt: null } }).catch(() => {})
+      }
+    }
     return NextResponse.json({ success: true })
   } catch (err) {
     console.error('[DELETE /api/assets]', err)

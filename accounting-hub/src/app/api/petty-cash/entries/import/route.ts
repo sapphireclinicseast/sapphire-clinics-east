@@ -35,6 +35,16 @@ export async function POST(req: Request) {
     if (rows.length > 2000) {
       return NextResponse.json({ error: 'Too many rows (max 2000 per import)' }, { status: 400 })
     }
+    // Control Reference No. (stored on referenceNumber) is required per row —
+    // the physical voucher's control reference is what the audit keys on.
+    const missingRef = rows
+      .map((r: { referenceNumber?: unknown }, i: number) => (!String(r?.referenceNumber ?? '').trim() ? i + 1 : 0))
+      .filter(Boolean)
+    if (missingRef.length) {
+      return NextResponse.json({
+        error: `Control Reference No. is required on every row — missing on row(s): ${missingRef.slice(0, 20).join(', ')}${missingRef.length > 20 ? '…' : ''}`,
+      }, { status: 400 })
+    }
 
     const created = await prisma.$transaction(async (tx) => {
       let settings = await tx.pettyCashSettings.findUnique({ where: { branch } })

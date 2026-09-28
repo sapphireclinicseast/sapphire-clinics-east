@@ -171,6 +171,13 @@ interface Rfp {
 }
 
 // ── Computed helpers ───────────────────────────────────────────
+// Employee/consultant compensation items don't belong in One-Time Expense —
+// they bypass payslips, statutory deductions and the payroll GL mapping
+// (a maternity benefit hand-built here is what broke the May–July balance
+// sheet). Detect them by wording so the UI can warn before they get tagged.
+const PAYROLL_ITEM_RX = /final\s*pay|last\s*pay|back\s*pay|13(th)?\s*month|thirteenth\s*month|maternity|paternity|sickness\s*benefit|separation\s*pay|salar(y|ies)|payroll/i
+const payrollHint = (e: { description?: string | null; accountTitle?: string | null }) =>
+  PAYROLL_ITEM_RX.test(`${e.description || ''} ${e.accountTitle || ''}`)
 const digitsOnly = (s: string | null) => (s || '').replace(/\D/g, '')
 const formatTin = (raw: string) => {
   const d = digitsOnly(raw).slice(0, 14)
@@ -275,6 +282,8 @@ function ExpensesInner() {
   const [assetBusy, setAssetBusy] = useState(false)
   const [assetResult, setAssetResult] = useState<{ count: number } | null>(null)
   const [assetReAddWarn, setAssetReAddWarn] = useState<Entry | null>(null)
+  // Details typed into the "Add to Asset Management" dialog (photos, custodian, remarks).
+  const [assetForm, setAssetForm] = useState<{ accountableName: string; remarks: string; photoUrls: string[] }>({ accountableName: '', remarks: '', photoUrls: [] })
   const [invPrompt, setInvPrompt] = useState<Entry | null>(null)
   const [invReAddWarn, setInvReAddWarn] = useState<Entry | null>(null)   // "already recorded" confirmation
   const goToInventory = (e: Entry, action: 'create' | 'adjust' | 'freight') => {
@@ -601,10 +610,16 @@ function ExpensesInner() {
 
   // ── RFP (replaces the old per-entry "For Payment") ──
   const rfpValidity = rfpMode === 'VALID' ? 'Valid' : rfpMode === 'INVALID' ? 'Invalid' : null
-  const isSelectable = (e: Entry) => ccMode
+  // A row without an Account Title cannot be tagged into an RFP or SOA — the
+  // reports drop untitled rows entirely, so tagging one buries the expense.
+  const isSelectable = (e: Entry) => !!(e.accountTitle || '').trim() && (ccMode
     ? (!e.reimbursementId && !e.soaId && !e.paidAt && e.recordType === 'ONE_TIME')
-    : (!e.reimbursementId && !e.soaId && !!e.audited && rfpValidity != null && e.validity === rfpValidity)
+    : (!e.reimbursementId && !e.soaId && !!e.audited && rfpValidity != null && e.validity === rfpValidity))
   const setAudited = async (id: string, audited: boolean) => {
+    if (audited) {
+      const row = entries.find(e => e.id === id)
+      if (row && !(row.accountTitle || '').trim()) { alert('Set the Account Title first — a row cannot be tagged as audited while it is blank.'); return }
+    }
     patchLocal(id, { audited })
     try { await fetch('/api/petty-cash/audited', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, audited }) }) } catch { /* ignore */ }
   }
@@ -613,6 +628,11 @@ function ExpensesInner() {
   const startCc = () => { setCcMode(true); setRfpMode(null); setSelected(new Set()) }
   const cancelCc = () => { setCcMode(false); setSelected(new Set()) }
   const createSoa = async (cardId: string) => {
+    const payrollish = entries.filter(e => selected.has(e.id) && payrollHint(e))
+    if (payrollish.length && !confirm(
+      `These entries look like employee/consultant pay:\n\n${payrollish.map(e => `• ${e.pcvNumber} — ${e.description || e.accountTitle}`).join('\n')}\n\nCompensation should be processed through Payroll, not One-Time Expense. Include them in this SOA anyway?`)) {
+      return
+    }
     setCreatingSoa(true)
     try {
       const res = await fetch('/api/expenses/soa', {
@@ -632,6 +652,11 @@ function ExpensesInner() {
     try {
       const ids = [...selected]
       const sel = entries.filter(e => selected.has(e.id))
+      const payrollish = sel.filter(payrollHint)
+      if (payrollish.length && !confirm(
+        `These entries look like employee/consultant pay (Final Pay, 13th Month, Maternity, salaries):\n\n${payrollish.map(e => `• ${e.pcvNumber} — ${e.description || e.accountTitle}`).join('\n')}\n\nCompensation should be processed through Payroll, not One-Time Expense. Include them in this RFP anyway?`)) {
+        setGeneratingRfp(false); return
+      }
       const res = await fetch('/api/expenses/rfp', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ branch, entryIds: ids, kind: rfpMode || 'VALID', manualSeq: manualSeq || null }),
@@ -639,7 +664,7 @@ function ExpensesInner() {
       if (!res.ok) { alert((await res.json()).error || 'Failed to generate RFP'); setGeneratingRfp(false); return }
       const { id, refNumber } = await res.json()
       try {
-        const pdfData = await buildRfpPdf(refNumber, branch, sel, { preparedBy: preparedByName })
+        const pdfData = await buildRfpPdf(refNumber, branch, sel, { preparedBy: preparedByName, download: false })
         await fetch('/api/expenses/rfp', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, pdfData }) })
       } catch { /* pdf best-effort */ }
       setShowRfpModal(false); setRfpMode(null); setSelected(new Set()); setRfpManualSeq('')
@@ -787,7 +812,7 @@ function ExpensesInner() {
     } catch { /* ignore */ }
   }
 
-  const buildRfpPdf = async (refNumber: string, br: string, rows: Entry[], opts?: { payableTo?: string; preparedBy?: string }): Promise<string> => {
+  const buildRfpPdf = async (refNumber: string, br: string, rows: Entry[], opts?: { payableTo?: string; preparedBy?: string; download?: boolean }): Promise<string> => {
     const { jsPDF } = await import('jspdf')
     const autoTable = (await import('jspdf-autotable')).default
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
@@ -835,12 +860,15 @@ function ExpensesInner() {
     doc.setFont('helvetica', 'bold').setFontSize(9).setTextColor(30, 30, 30).text(opts?.preparedBy || '', 14, sigY - 1)
     doc.setDrawColor(120, 120, 120).setLineWidth(0.3).line(14, sigY, 74, sigY)
     doc.setFont('helvetica', 'normal').setFontSize(7.5).setTextColor(120, 120, 120).text('Prepared By (signature over printed name)', 14, sigY + 4)
-    doc.save(`RFP-Summary-${refNumber}.pdf`)
+    // Download only when the user asked for the file (the "RFP Summary" button).
+    // Generating an RFP stores the PDF without also dropping it into Downloads.
+    if (opts?.download !== false) doc.save(`RFP-Summary-${refNumber}.pdf`)
     return doc.output('datauristring')
   }
 
   const supplierByName = new Map(suppliers.map(s => [s.registeredName.trim().toLowerCase(), s]))
   const finalizeEntry = (e: Entry) => {
+    if (!(e.accountTitle || '').trim()) { alert('Set the Account Title first — a row cannot be finalized while it is blank.'); return }
     saveField(e.id, { finalized: true }, false)
     const name = (e.registeredName || '').trim()
     // On save (finalize), offer to add a new supplier to the Suppliers list.
@@ -867,7 +895,13 @@ function ExpensesInner() {
     try {
       const r = await fetch('/api/assets/from-entry', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ entryId: assetPrompt.id }),
+        body: JSON.stringify({
+          entryId: assetPrompt.id,
+          accountableName: assetForm.accountableName,
+          remarks: assetForm.remarks,
+          photoUrl: assetForm.photoUrls[0] || null,
+          photoUrls: assetForm.photoUrls,
+        }),
       })
       const d = await r.json()
       if (!r.ok) { alert(d.error || 'Failed to add asset'); setAssetBusy(false); return }
@@ -895,6 +929,11 @@ function ExpensesInner() {
   const [gridSort, setGridSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: '', dir: 'asc' })
   const [gridFilters, setGridFilters] = useState<Record<string, string>>({})
   const gridToggleSort = (k: string) => setGridSort(s => s.key === k ? { key: k, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key: k, dir: 'asc' })
+  // Option: keep unpaid rows at the bottom of the table (paid work floats up,
+  // rows still being worked on stay by the entry point). Sticky per browser.
+  const [unpaidLast, setUnpaidLast] = useState(false)
+  useEffect(() => { try { setUnpaidLast(localStorage.getItem('exp-unpaid-last') === '1') } catch { /* ignore */ } }, [])
+  const toggleUnpaidLast = () => setUnpaidLast(v => { const nv = !v; try { localStorage.setItem('exp-unpaid-last', nv ? '1' : '0') } catch { /* ignore */ } return nv })
   // Recurring entries are setups (no payment), so a stale paidAt shouldn't lock them.
   const locked = (e: Entry) => !!e.reimbursementId || !!e.soaId || (e.recordType !== 'RECURRING' && !!e.paidAt) || !!e.finalized || !canWrite
   const vatEditable = (e: Entry) => e.vatable === 'VAT' || e.vatable === 'Non-VAT' || e.vatable === 'NV'
@@ -961,7 +1000,12 @@ function ExpensesInner() {
       default: return ''
     }
   }
-  const displayed = applySortFilter(shown, gridGet, gridSort.key, gridSort.dir, gridFilters)
+  const sorted = applySortFilter(shown, gridGet, gridSort.key, gridSort.dir, gridFilters)
+  // Stable partition: paid (and in-RFP/SOA) rows float up, open rows sink to the
+  // bottom near where new rows are added. Order within each group is untouched.
+  const displayed = unpaidLast && recordType === 'ONE_TIME'
+    ? [...sorted.filter(e => e.paidAt || e.reimbursementId || e.soaId), ...sorted.filter(e => !e.paidAt && !e.reimbursementId && !e.soaId)]
+    : sorted
   const totalGross = displayed.reduce((s, e) => s + num(e.grossAmount), 0)
 
   const selectableIds = displayed.filter(isSelectable).map(e => e.id)
@@ -1117,6 +1161,14 @@ function ExpensesInner() {
                   style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
                   {PERIODS.map(p => <option key={p.key} value={p.key}>{p.label}</option>)}
                 </select>
+              )}
+              {recordType === 'ONE_TIME' && (
+                <label className="flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold cursor-pointer select-none"
+                  title="Keep unpaid rows at the bottom of the table (paid and in-RFP/SOA rows float to the top)"
+                  style={{ borderColor: unpaidLast ? 'var(--teal)' : 'var(--light-gray)', color: unpaidLast ? 'var(--teal)' : 'var(--mid-gray)' }}>
+                  <input type="checkbox" checked={unpaidLast} onChange={toggleUnpaidLast} className="accent-[var(--teal)]" />
+                  Unpaid at bottom
+                </label>
               )}
               <button onClick={() => scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
                 className="flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
@@ -1309,13 +1361,16 @@ function ExpensesInner() {
                             const ac = assetClassFromAccountTitle(e.accountTitle)
                             if (!canWrite || e.recordType !== 'ONE_TIME' || !ac || !isDepreciatingClassification(ac)) return null
                             return e.assetAddedAt ? (
-                              <button onClick={() => setAssetReAddWarn(e)} title={`Already added to Asset Management on ${String(e.assetAddedAt).slice(0, 10)}`}
-                                className="mt-1 flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold border whitespace-nowrap"
-                                style={{ borderColor: '#16a34a', color: '#16a34a', background: '#f0fdf4' }}>
-                                <CheckCircle2 size={11} /> Added to Asset Management
-                              </button>
+                              // Already in the register: plain status, no button — re-adding
+                              // created duplicate assets. Deleting the asset (or re-tagging the
+                              // entry as an expense) releases the stamp and brings the button back.
+                              <span title={`Added to Asset Management on ${String(e.assetAddedAt).slice(0, 10)}`}
+                                className="mt-1 flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold whitespace-nowrap"
+                                style={{ color: '#16a34a', background: '#f0fdf4' }}>
+                                <CheckCircle2 size={11} /> In Asset Management
+                              </span>
                             ) : (
-                              <button onClick={() => setAssetPrompt(e)} title="Add this asset to Asset Management"
+                              <button onClick={() => { setAssetForm({ accountableName: '', remarks: '', photoUrls: [] }); setAssetPrompt(e) }} title="Add this asset to Asset Management"
                                 className="mt-1 flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold border whitespace-nowrap"
                                 style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
                                 <Plus size={11} /> Add to Asset Management
@@ -1771,7 +1826,9 @@ function ExpensesInner() {
 
       {payTarget && (
         <ForPaymentModal count={payTarget._count.entries} bankOptions={bankOptions} cards={cards} paying={paying}
-          title={`Record RFP as Paid — ${payTarget.refNumber}`} confirmLabel="Confirm Payment" proofPrefix={payTarget.refNumber}
+          title={`${payTarget.paidAt ? 'Edit RFP Payment' : 'Record RFP as Paid'} — ${payTarget.refNumber}`}
+          confirmLabel={payTarget.paidAt ? 'Save Changes' : 'Confirm Payment'} proofPrefix={payTarget.refNumber}
+          initial={payTarget.paidAt ? payTarget : null}
           onClose={() => setPayTarget(null)} onAddCard={addCard} onSubmit={p => recordRfpPaid(payTarget, p)} />
       )}
 
@@ -1820,7 +1877,34 @@ function ExpensesInner() {
                     <span className="font-mono font-semibold">₱{peso(Math.round(t.price * 100) / 100)}</span>
                   </div>
                 ))}
-                <div className="text-xs pt-1" style={{ color: 'var(--mid-gray)' }}>Amounts are net of VAT · depreciation, supplier &amp; department are pre-filled.</div>
+                <div className="text-xs pt-1" style={{ color: 'var(--mid-gray)' }}>Amounts are net of VAT · depreciation, supplier &amp; department are pre-filled · Control No. is auto-assigned.</div>
+              </div>
+              <div className="space-y-3 mb-4">
+                <div>
+                  <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Accountability <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>— staff accountable / custodian</span></label>
+                  <input value={assetForm.accountableName} onChange={ev => setAssetForm(f => ({ ...f, accountableName: ev.target.value }))}
+                    className="w-full border rounded-lg px-3 py-2 text-sm" style={{ borderColor: 'var(--light-gray)' }} placeholder="e.g. JUAN DELA CRUZ" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Remarks</label>
+                  <textarea value={assetForm.remarks} onChange={ev => setAssetForm(f => ({ ...f, remarks: ev.target.value }))} rows={2}
+                    className="w-full border rounded-lg px-3 py-2 text-sm" style={{ borderColor: 'var(--light-gray)' }} placeholder="Condition, location, serial no.…" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Photos <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>— first is the main photo</span></label>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {assetForm.photoUrls.map(url => (
+                      <div key={url} className="relative">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={url} alt="" className="w-12 h-12 object-cover rounded-lg border" style={{ borderColor: 'var(--light-gray)' }} />
+                        <button onClick={() => setAssetForm(f => ({ ...f, photoUrls: f.photoUrls.filter(u => u !== url) }))} title="Remove"
+                          className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-500 text-white text-[9px] flex items-center justify-center">×</button>
+                      </div>
+                    ))}
+                    <ScanUpload compact section="asset" prefix={assetPrompt.pcvNumber || 'ASSET'} existingCount={assetForm.photoUrls.length}
+                      label="Add photo" onUploaded={url => setAssetForm(f => ({ ...f, photoUrls: [...f.photoUrls, url] }))} />
+                  </div>
+                </div>
               </div>
               <div className="flex gap-2">
                 <button onClick={() => setAssetPrompt(null)} className="flex-1 py-2.5 rounded-xl text-sm font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>No, skip</button>
@@ -1905,18 +1989,21 @@ function ExpensesInner() {
 }
 
 // ── For Payment modal ──────────────────────────────────────────
-function ForPaymentModal({ count, bankOptions, cards, paying, title, confirmLabel, proofPrefix, onClose, onAddCard, onSubmit }: {
+function ForPaymentModal({ count, bankOptions, cards, paying, title, confirmLabel, proofPrefix, initial, onClose, onAddCard, onSubmit }: {
   count: number; bankOptions: string[]; cards: Card[]; paying: boolean; title?: string; confirmLabel?: string; proofPrefix?: string
+  // Editing an already-paid RFP: seed the form from what was recorded, so a
+  // partial edit never forces the user to re-type every field.
+  initial?: { paidAt: string | null; paymentMethod: string | null; checkNumber: string | null; debitAccount: string | null; creditCardId: string | null; proofUrl: string | null } | null
   onClose: () => void; onAddCard: (bank: string, cardNumber: string, bankCode: string) => Promise<Card | null>
   onSubmit: (p: { datePaid: string; paymentMethod: string; checkNumber: string; paymentBankAccount: string; creditCard: string; creditCardId: string; payrollAccount: string; proofUrl: string | null }) => void
 }) {
-  const [datePaid, setDatePaid] = useState(new Date().toISOString().slice(0, 10))
-  const [method, setMethod] = useState('')
-  const [checkNumber, setCheckNumber] = useState('')
-  const [bankAccount, setBankAccount] = useState('')
-  const [cardId, setCardId] = useState('')
+  const [datePaid, setDatePaid] = useState(initial?.paidAt ? String(initial.paidAt).slice(0, 10) : new Date().toISOString().slice(0, 10))
+  const [method, setMethod] = useState(initial?.paymentMethod || '')
+  const [checkNumber, setCheckNumber] = useState(initial?.checkNumber || '')
+  const [bankAccount, setBankAccount] = useState(initial?.debitAccount || '')
+  const [cardId, setCardId] = useState(initial?.creditCardId || '')
   const [payrollAccount, setPayrollAccount] = useState('')
-  const [proofUrl, setProofUrl] = useState('')
+  const [proofUrl, setProofUrl] = useState(initial?.proofUrl || '')
   const [showAddCard, setShowAddCard] = useState(false)
   const [nb, setNb] = useState(''); const [nn, setNn] = useState(''); const [nc, setNc] = useState('')
 
@@ -1943,7 +2030,8 @@ function ForPaymentModal({ count, bankOptions, cards, paying, title, confirmLabe
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+    // No backdrop-close: a stray click outside must not throw away a half-filled form.
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="bg-white rounded-2xl p-6 w-full max-w-md max-h-[88vh] overflow-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>{title || 'For Payment'}</h2>
@@ -1974,6 +2062,8 @@ function ForPaymentModal({ count, bankOptions, cards, paying, title, confirmLabe
             <select value={bankAccount} onChange={e => setBankAccount(e.target.value)}
               className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }}>
               <option value="">Select account…</option>
+              {/* A saved account that has since been retired still shows, so an edit keeps it. */}
+              {bankAccount && !bankOptions.includes(bankAccount) && <option value={bankAccount}>{bankAccount}</option>}
               {bankOptions.map(a => <option key={a} value={a}>{a}</option>)}
             </select>
           </>
@@ -1988,6 +2078,8 @@ function ForPaymentModal({ count, bankOptions, cards, paying, title, confirmLabe
             <select value={bankAccount} onChange={e => setBankAccount(e.target.value)}
               className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }}>
               <option value="">Select account…</option>
+              {/* A saved account that has since been retired still shows, so an edit keeps it. */}
+              {bankAccount && !bankOptions.includes(bankAccount) && <option value={bankAccount}>{bankAccount}</option>}
               {bankOptions.map(a => <option key={a} value={a}>{a}</option>)}
             </select>
           </>

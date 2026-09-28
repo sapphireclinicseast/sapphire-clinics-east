@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { branchAllowed, canViewPettyCashCeoVerdana, PETTY_CASH_VIEW_ONLY_BRANCHES } from '@/lib/branch-scope'
+import { assetClassFromAccountTitle } from '@/lib/asset-classification'
+import { deleteAssetWithReversal } from '@/lib/accounting/post-asset'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 const VALID_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE', 'AURA_INSTITUTE', 'CEO']
@@ -224,6 +226,24 @@ export async function PUT(req: Request) {
     }
     if ('branchAllocations' in body) data.branchAllocations = body.branchAllocations ?? null
     if ('proofUrls' in body) data.proofUrls = body.proofUrls ?? null
+
+    // Asset withdrawal: this entry had assets auto-created from it ("Add to
+    // Asset Management") and the Account Title is moving OFF an asset
+    // classification (e.g. the fire extinguisher first tagged 2060, later
+    // corrected to an expense account). The register must not keep — and keep
+    // depreciating — an asset whose cost is now expensed, so remove the linked
+    // assets (reversing any acquisition JE) and release the stamp.
+    if ('accountTitle' in data && existing.assetAddedAt) {
+      const wasAsset = !!assetClassFromAccountTitle(existing.accountTitle)
+      const isAsset = !!assetClassFromAccountTitle(data.accountTitle)
+      if (wasAsset && !isAsset) {
+        const linked = await prisma.asset.findMany({ where: { sourceEntryId: id }, select: { id: true, name: true } })
+        for (const a of linked) {
+          await deleteAssetWithReversal(prisma, a.id, session.user.id as string, `source entry ${existing.pcvNumber} re-tagged from asset to expense`)
+        }
+        data.assetAddedAt = null
+      }
+    }
     const entry = await prisma.pettyCashEntry.update({ where: { id }, data })
     return NextResponse.json(entry)
   } catch (e) {

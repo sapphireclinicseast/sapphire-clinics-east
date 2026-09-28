@@ -4,13 +4,19 @@ import { prisma } from '@/lib/prisma'
 
 const CADENCE: Record<string, number> = { MONTHLY: 1, QUARTERLY: 3, BIANNUALLY: 6, ANNUALLY: 12 }
 const EXPENSE_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE', 'AURA_INSTITUTE']
-// main admin / accountant see all branches; branch admins see only their own.
+// Branch admins see their own branch's reminders (they never saw the pop-up at
+// all before — this map only listed the company-wide roles, so a Greenhills
+// admin got an empty list). A branch-locked accountant/bookkeeper is scoped to
+// their branch too; unscoped ones see everything.
 const ROLE_BRANCHES: Record<string, string[]> = {
   ADMIN: EXPENSE_BRANCHES,
   ACCOUNTANT: EXPENSE_BRANCHES,
   BOOKKEEPER: EXPENSE_BRANCHES,
+  AHEA_ADMIN: ['SANDBOX_EAST'],
+  AHGH_ADMIN: ['SANDBOX_GREENHILLS'],
+  VERDANA_ADMIN: ['VERDANA_STORE'],
 }
-const BRANCH_LABEL: Record<string, string> = { SANDBOX_EAST: 'AHEA', SANDBOX_GREENHILLS: 'AHGH', VERDANA_STORE: 'VERDANA' }
+const BRANCH_LABEL: Record<string, string> = { SANDBOX_EAST: 'AHEA', SANDBOX_GREENHILLS: 'AHGH', VERDANA_STORE: 'VERDANA', AURA_INSTITUTE: 'AHI' }
 const WINDOW_DAYS = 5
 
 export const dynamic = 'force-dynamic'
@@ -26,8 +32,12 @@ export async function GET() {
   const session = await auth()
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const role = (session.user.role as string) || ''
-  const branches = ROLE_BRANCHES[role]
+  let branches = ROLE_BRANCHES[role]
   if (!branches) return NextResponse.json({ reminders: [] })
+  // A user pinned to one branch only gets that branch's reminders.
+  const userBranch = (session.user as { branch?: string | null }).branch
+  if (userBranch && EXPENSE_BRANCHES.includes(userBranch)) branches = branches.filter(b => b === userBranch)
+  if (!branches.length) return NextResponse.json({ reminders: [] })
 
   const now = new Date()
   const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())

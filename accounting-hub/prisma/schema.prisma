@@ -2414,6 +2414,7 @@ model Asset {
   controlNumber       String?
   accountableName     String? // staff accountable/custodian (from HR Hub)
   remarks             String?
+  sourceEntryId       String? // PettyCashEntry the asset was auto-created from ("Add to Asset Management") — lets an entry edit that re-tags the row as an expense find and remove its assets
   createdById         String
   createdBy           User      @relation("AssetCreatedBy", fields: [createdById], references: [id])
   createdAt           DateTime  @default(now())
@@ -2422,6 +2423,7 @@ model Asset {
   @@index([branch])
   @@index([classification])
   @@index([createdById])
+  @@index([sourceEntryId])
 }
 
 // Annual physical asset audit. Snapshots the assets in scope at creation time,

@@ -23,7 +23,12 @@ export async function POST(req: Request) {
     const entry = await prisma.$transaction(async (tx) => {
       let settings = await tx.pettyCashSettings.findUnique({ where: { branch } })
       if (!settings) settings = await tx.pettyCashSettings.create({ data: { branch, nextPcvSeq: 1 } })
-      const seq = settings.nextPcvSeq
+      // The settings counter can LAG the real table (forced PCV numbers and
+      // imports bump pcvSeq without touching settings) — Greenhills hit the
+      // [branch, pcvNumber] unique constraint here and only ever saw "Failed
+      // to generate entry". Number from whichever is ahead, like POST /entries.
+      const maxRow = await tx.pettyCashEntry.findFirst({ where: { branch }, orderBy: { pcvSeq: 'desc' }, select: { pcvSeq: true } })
+      const seq = Math.max(settings.nextPcvSeq, (maxRow?.pcvSeq || 0) + 1)
       await tx.pettyCashSettings.update({ where: { branch }, data: { nextPcvSeq: seq + 1 } })
       const yy = new Date().getFullYear() % 100
       const pcvNumber = `${PCV_BRANCH_CODE[branch] || branch}-PCV${yy}-${String(seq).padStart(6, '0')}`

@@ -252,6 +252,8 @@ function PettyCashInner() {
   const [assetPrompt, setAssetPrompt] = useState<Entry | null>(null)
   const [assetBusy, setAssetBusy] = useState(false)
   const [assetResult, setAssetResult] = useState<{ count: number } | null>(null)
+  // Details typed into the "Add to Asset Management" dialog (photos, custodian, remarks).
+  const [assetForm, setAssetForm] = useState<{ accountableName: string; remarks: string; photoUrls: string[] }>({ accountableName: '', remarks: '', photoUrls: [] })
   const [assetReAddWarn, setAssetReAddWarn] = useState<Entry | null>(null)   // "already added" confirmation
   // "Record in Inventory & Procurement" prompt for inventory-classification entries.
   const [invPrompt, setInvPrompt] = useState<Entry | null>(null)
@@ -414,9 +416,9 @@ function PettyCashInner() {
 
   const downloadTemplate = async () => {
     const XLSX = await import('xlsx')
-    const headers = ['Requestor', 'Department', 'PCF Status', 'Date', 'Description', 'Valid/Invalid', 'Vatable',
+    const headers = ['Control Reference No.', 'Requestor', 'Department', 'PCF Status', 'Date', 'Description', 'Valid/Invalid', 'Vatable',
       'SI Number', 'TIN Number', 'Registered Name', 'Registered Address', 'Gross Amount', 'Account Title']
-    const example = ['JUAN DELA CRUZ', 'ADMIN', 'For Replenishment', '2026-06-29', 'Sample expense (delete this row)',
+    const example = ['CTRL-0001', 'JUAN DELA CRUZ', 'ADMIN', 'For Replenishment', '2026-06-29', 'Sample expense (delete this row)',
       'Valid', 'VAT', 'SI-0001', '000-000-000-00000', 'SAMPLE VENDOR INC', 'SAMPLE ADDRESS, CITY', 1120, '8050 Courier and Shipping Expense']
     const ws = XLSX.utils.aoa_to_sheet([headers, example])
     const wb = XLSX.utils.book_new()
@@ -430,6 +432,10 @@ function PettyCashInner() {
     tinnumber: 'tinNumber', registeredname: 'registeredName', registeredaddress: 'registeredAddress',
     grossamount: 'grossAmount', gross: 'grossAmount', accounttitle: 'accountTitle',
     referencenumber: 'referenceNumber', reference: 'referenceNumber',
+    // "Control Reference No." (and spelling variants) lands on the same
+    // referenceNumber column — it is the control reference of the hard copy.
+    controlreferenceno: 'referenceNumber', controlrefno: 'referenceNumber',
+    controlreferencenumber: 'referenceNumber', controlref: 'referenceNumber', controlno: 'referenceNumber',
     validinvalid: 'validity', valid: 'validity', validity: 'validity',
   }
 
@@ -456,6 +462,15 @@ function PettyCashInner() {
         return out
       }).filter(r => Object.values(r).some(v => v !== '' && v !== null && v !== undefined))
       if (rows.length === 0) { alert('No data rows found in the file.'); setImporting(false); return }
+      // Control Reference No. is required on every imported row.
+      const missingRef = rows
+        .map((r, i) => (!String(r.referenceNumber ?? '').trim() ? i + 2 : 0))  // +2: header row + 1-based
+        .filter(Boolean)
+      if (missingRef.length) {
+        alert(`Control Reference No. is required on every row. Missing on file row(s): ${missingRef.slice(0, 20).join(', ')}${missingRef.length > 20 ? '…' : ''}`)
+        setImporting(false)
+        return
+      }
       const res = await fetch('/api/petty-cash/entries/import', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ branch, rows }),
@@ -691,7 +706,13 @@ function PettyCashInner() {
     try {
       const r = await fetch('/api/assets/from-entry', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ entryId: assetPrompt.id }),
+        body: JSON.stringify({
+          entryId: assetPrompt.id,
+          accountableName: assetForm.accountableName,
+          remarks: assetForm.remarks,
+          photoUrl: assetForm.photoUrls[0] || null,
+          photoUrls: assetForm.photoUrls,
+        }),
       })
       const d = await r.json()
       if (!r.ok) { alert(d.error || 'Failed to add asset'); setAssetBusy(false); return }
@@ -1127,13 +1148,16 @@ function PettyCashInner() {
                             const ac = assetClassFromAccountTitle(e.accountTitle)
                             if (!canWrite || !ac || !isDepreciatingClassification(ac)) return null
                             return e.assetAddedAt ? (
-                              <button onClick={() => setAssetReAddWarn(e)} title={`Already added to Asset Management on ${String(e.assetAddedAt).slice(0, 10)}`}
-                                className="mt-1 flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold border whitespace-nowrap"
-                                style={{ borderColor: '#16a34a', color: '#16a34a', background: '#f0fdf4' }}>
-                                <CheckCircle2 size={11} /> Added to Asset Management
-                              </button>
+                              // Already in the register: plain status, no button — re-adding
+                              // created duplicate assets. Deleting the asset (or re-tagging the
+                              // entry as an expense) releases the stamp and brings the button back.
+                              <span title={`Added to Asset Management on ${String(e.assetAddedAt).slice(0, 10)}`}
+                                className="mt-1 flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold whitespace-nowrap"
+                                style={{ color: '#16a34a', background: '#f0fdf4' }}>
+                                <CheckCircle2 size={11} /> In Asset Management
+                              </span>
                             ) : (
-                              <button onClick={() => setAssetPrompt(e)} title="Add this asset to Asset Management"
+                              <button onClick={() => { setAssetForm({ accountableName: '', remarks: '', photoUrls: [] }); setAssetPrompt(e) }} title="Add this asset to Asset Management"
                                 className="mt-1 flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold border whitespace-nowrap"
                                 style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
                                 <Plus size={11} /> Add to Asset Management
@@ -1478,7 +1502,34 @@ function PettyCashInner() {
                     <span className="font-mono font-semibold">₱{peso(Math.round(t.price * 100) / 100)}</span>
                   </div>
                 ))}
-                <div className="text-xs pt-1" style={{ color: 'var(--mid-gray)' }}>Amounts are net of VAT · depreciation, supplier &amp; department are pre-filled.</div>
+                <div className="text-xs pt-1" style={{ color: 'var(--mid-gray)' }}>Amounts are net of VAT · depreciation, supplier &amp; department are pre-filled · Control No. is auto-assigned.</div>
+              </div>
+              <div className="space-y-3 mb-4">
+                <div>
+                  <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Accountability <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>— staff accountable / custodian</span></label>
+                  <input value={assetForm.accountableName} onChange={ev => setAssetForm(f => ({ ...f, accountableName: ev.target.value }))}
+                    className="w-full border rounded-lg px-3 py-2 text-sm" style={{ borderColor: 'var(--light-gray)' }} placeholder="e.g. JUAN DELA CRUZ" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Remarks</label>
+                  <textarea value={assetForm.remarks} onChange={ev => setAssetForm(f => ({ ...f, remarks: ev.target.value }))} rows={2}
+                    className="w-full border rounded-lg px-3 py-2 text-sm" style={{ borderColor: 'var(--light-gray)' }} placeholder="Condition, location, serial no.…" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Photos <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>— first is the main photo</span></label>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {assetForm.photoUrls.map(url => (
+                      <div key={url} className="relative">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={url} alt="" className="w-12 h-12 object-cover rounded-lg border" style={{ borderColor: 'var(--light-gray)' }} />
+                        <button onClick={() => setAssetForm(f => ({ ...f, photoUrls: f.photoUrls.filter(u => u !== url) }))} title="Remove"
+                          className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-500 text-white text-[9px] flex items-center justify-center">×</button>
+                      </div>
+                    ))}
+                    <ScanUpload compact section="asset" prefix={assetPrompt.pcvNumber || 'ASSET'} existingCount={assetForm.photoUrls.length}
+                      label="Add photo" onUploaded={url => setAssetForm(f => ({ ...f, photoUrls: [...f.photoUrls, url] }))} />
+                  </div>
+                </div>
               </div>
               <div className="flex gap-2">
                 <button onClick={() => setAssetPrompt(null)} className="flex-1 py-2.5 rounded-xl text-sm font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>No, skip</button>

@@ -16,10 +16,15 @@ export async function PATCH(req: Request) {
   try {
     const { id, audited } = await req.json()
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
-    const existing = await prisma.pettyCashEntry.findUnique({ where: { id }, select: { branch: true } })
+    const existing = await prisma.pettyCashEntry.findUnique({ where: { id }, select: { branch: true, accountTitle: true } })
     if (!existing) return NextResponse.json({ error: 'Entry not found' }, { status: 404 })
     if (!branchAllowed((session.user as { branch?: string }).branch, existing.branch)) {
       return NextResponse.json({ error: 'Access denied for this branch' }, { status: 403 })
+    }
+    // Auditing certifies the row is bookable — impossible while the Account
+    // Title (the account the P&L books it to) is still blank.
+    if (audited && !(existing.accountTitle || '').trim()) {
+      return NextResponse.json({ error: 'Set the Account Title first — a row cannot be tagged as audited while it is blank.' }, { status: 400 })
     }
     await prisma.pettyCashEntry.update({ where: { id }, data: { audited: !!audited } })
     return NextResponse.json({ ok: true })
