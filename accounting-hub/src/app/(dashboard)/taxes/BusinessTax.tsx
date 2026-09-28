@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
-import { Loader2, Download, CheckCircle2, Trash2, RefreshCw, X, Eye, Pencil, FileText } from 'lucide-react'
+import { Loader2, Download, CheckCircle2, Trash2, RefreshCw, X, Eye, Pencil, FileText, Calculator, ChevronDown, ChevronRight } from 'lucide-react'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { SortFilterHead, applySortFilter } from '@/components/SortFilterHead'
@@ -17,7 +17,7 @@ const BRANCH_FULL: Record<string, string> = { ALL: 'Sapphire Clinics East Inc. (
 const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const num = (v: string | number) => (typeof v === 'number' ? v : parseFloat(v) || 0)
 
-interface Summary { outputGross: number; outputVat: number; orderCount: number; inputGross: number; inputVat: number; expenseCount: number; computedPayable: number }
+interface Summary { outputGross: number; outputVat: number; orderCount: number; siVatableSales: number; siExemptSales: number; inputGross: number; inputVat: number; expenseCount: number; computedPayable: number }
 interface TaxRfp { id: string; refNumber: string; grossTotal: string | number; status: string; paidAt: string | null; paymentMethod: string | null; checkNumber: string | null; transferRef: string | null; proofUrl: string | null; meta: { taxType: string; period?: { from: string; to: string } | null; vatAmount?: number; otherFees?: CleanRfpFee[]; feesTotal?: number } | null; createdAt: string }
 
 // Default to the current calendar quarter.
@@ -155,9 +155,11 @@ export default function BusinessTax() {
             <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--deep-teal)', background: 'var(--pale-teal)' }}>
               <p className="text-xs mb-1" style={{ color: 'var(--deep-teal)' }}>Computed VAT Payable (Output − Input)</p>
               <p className="text-xl font-bold" style={{ color: 'var(--deep-teal)' }}>₱{peso(sum.computedPayable)}</p>
-              <p className="text-[11px] mt-1" style={{ color: 'var(--deep-teal)' }}>Estimate — confirm against 2550Q before filing.</p>
+              <p className="text-[11px] mt-1" style={{ color: 'var(--deep-teal)' }}>Before input-tax carryover — see the 2550Q computation below.</p>
             </div>
           </div>
+
+          <Vat2550QPanel sum={sum} from={from} to={to} branch={branch} />
 
           {canWrite && (
             <div className="rounded-2xl border bg-white p-4 flex items-end gap-3 flex-wrap" style={{ borderColor: 'var(--light-gray)' }}>
@@ -215,6 +217,97 @@ export default function BusinessTax() {
       )}
       {payTarget && <RecordPaidModal rfp={payTarget} onClose={() => setPayTarget(null)} onSaved={async () => { setPayTarget(null); await fetchRfps() }} />}
       {bv && <BillingVoucherModal refNumber={bv.refNumber} date={bv.date} lines={bv.lines} branch={bv.branch} payment={bv.payment} onClose={() => setBv(null)} />}
+    </div>
+  )
+}
+
+// ─── 2550Q computation panel ───────────────────────────────────────────────
+function Vat2550QPanel({ sum, from, to, branch }: { sum: Summary; from: string; to: string; branch: string }) {
+  const [open, setOpen] = useState(true)
+  const [priorExcess, setPriorExcess] = useState<number | null>(null)
+  // Editable lines — default to app data (SI sales / paid input VAT / carryover
+  // suggestion) and let the accountant override to match the exact filing.
+  const [vatSales, setVatSales] = useState(''); const [vatT, setVatT] = useState(false)
+  const [exSales, setExSales] = useState(''); const [exT, setExT] = useState(false)
+  const [inVat, setInVat] = useState(''); const [inT, setInT] = useState(false)
+  const [carry, setCarry] = useState(''); const [carryT, setCarryT] = useState(false)
+
+  const yr = from.slice(0, 4)
+  const qLabel = `Q${Math.floor(new Date(from + 'T00:00:00Z').getUTCMonth() / 3) + 1} ${yr}`
+  const branchName = BRANCH_FULL[branch] || branch
+
+  useEffect(() => { if (!vatT) setVatSales((sum.siVatableSales || 0).toFixed(2)) }, [sum.siVatableSales, vatT])
+  useEffect(() => { if (!exT) setExSales((sum.siExemptSales || 0).toFixed(2)) }, [sum.siExemptSales, exT])
+  useEffect(() => { if (!inT) setInVat((sum.inputVat || 0).toFixed(2)) }, [sum.inputVat, inT])
+
+  // Carryover suggestion = cumulative excess input VAT from the start of the
+  // year to the day before this quarter. Excess can predate the year, so this
+  // is only a starting point — the accountant confirms vs the prior 2550Q.
+  useEffect(() => {
+    const start = `${yr}-01-01`
+    const d = new Date(from + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() - 1)
+    const priorEnd = d.toISOString().slice(0, 10)
+    if (priorEnd < start) { setPriorExcess(0); return }
+    let cancelled = false
+    fetch(`/api/taxes/vat-summary?payrollBranch=${branch === 'ALL' ? '' : branch}&from=${start}&to=${priorEnd}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (!cancelled && d) setPriorExcess(Math.max(0, (d.inputVat || 0) - (d.outputVat || 0))) })
+      .catch(() => { if (!cancelled) setPriorExcess(0) })
+    return () => { cancelled = true }
+  }, [from, branch, yr])
+  useEffect(() => { if (!carryT && priorExcess != null) setCarry(priorExcess.toFixed(2)) }, [priorExcess, carryT])
+
+  const vatSalesN = num(vatSales), inVatN = num(inVat), carryN = num(carry)
+  const outNet = vatSalesN / 1.12
+  const outputVat = vatSalesN * (0.12 / 1.12)
+  const allowable = inVatN + carryN
+  const netPayable = Math.max(0, outputVat - allowable)
+  const excess = Math.max(0, allowable - outputVat)
+
+  // A row with an editable ₱ amount on the right and an optional computed VAT.
+  const money = { borderColor: 'var(--light-gray)', width: 128 } as const
+  const EditRow = ({ label, sub, value, onChange, onTouch, computed, computedTone }: { label: string; sub?: string; value: string; onChange: (v: string) => void; onTouch: () => void; computed?: number; computedTone?: string }) => (
+    <div className="grid grid-cols-[1fr_auto_auto] gap-3 items-center px-3 py-1.5 text-xs border-t" style={{ borderColor: 'var(--light-gray)' }}>
+      <span style={{ color: 'var(--mid-gray)' }}>{label}{sub && <span className="block text-[10px]">{sub}</span>}</span>
+      <span className="text-right whitespace-nowrap"><span className="text-[10px] mr-1" style={{ color: 'var(--mid-gray)' }}>₱</span><input value={value} onChange={e => { onChange(e.target.value); onTouch() }} inputMode="decimal" className="px-2 py-1 rounded-lg border text-xs font-mono text-right" style={money} /></span>
+      <span className="font-mono tabular-nums text-right" style={{ minWidth: 96, color: computed == null ? 'transparent' : (computedTone || 'var(--charcoal)') }}>{computed == null ? '' : `₱${peso(computed)}`}</span>
+    </div>
+  )
+  const TotalRow = ({ label, value, tone, highlight }: { label: string; value: number; tone?: string; highlight?: boolean }) => (
+    <div className="grid grid-cols-[1fr_auto] gap-3 items-center px-3 py-2 text-xs border-t" style={{ borderColor: 'var(--light-gray)', background: highlight ? '#fffbeb' : undefined }}>
+      <span className="font-bold" style={{ color: tone || 'var(--charcoal)' }}>{label}</span>
+      <span className="font-mono tabular-nums font-bold text-right" style={{ color: tone || 'var(--charcoal)' }}>₱{peso(value)}</span>
+    </div>
+  )
+
+  return (
+    <div className="rounded-2xl border bg-white overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+      <button onClick={() => setOpen(o => !o)} className="w-full flex items-center justify-between px-4 py-3" style={{ background: 'var(--off-white)' }}>
+        <span className="flex items-center gap-2 text-sm font-bold" style={{ color: 'var(--charcoal)' }}>
+          <Calculator size={16} style={{ color: 'var(--teal)' }} /> 2550Q Computation
+          <span className="text-xs font-medium" style={{ color: 'var(--mid-gray)' }}>· {branchName} · {qLabel}</span>
+        </span>
+        {open ? <ChevronDown size={16} style={{ color: 'var(--mid-gray)' }} /> : <ChevronRight size={16} style={{ color: 'var(--mid-gray)' }} />}
+      </button>
+
+      {open && (
+        <div className="p-4 space-y-3">
+          <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+            <div className="grid grid-cols-[1fr_auto_auto] gap-3 px-3 py-2 text-[11px] font-bold" style={{ background: 'var(--deep-teal)', color: '#fff' }}>
+              <span>Quarterly VAT — {qLabel}</span><span className="text-right" style={{ minWidth: 128 }}>Amount</span><span className="text-right" style={{ minWidth: 96 }}>VAT (12%)</span>
+            </div>
+            <EditRow label="Vatable sales (VAT-inclusive)" sub={`net ₱${peso(outNet)} · auto-filled from SI sales`} value={vatSales} onChange={setVatSales} onTouch={() => setVatT(true)} computed={outputVat} />
+            <EditRow label="VAT-exempt sales" sub="services / SI'd collections" value={exSales} onChange={setExSales} onTouch={() => setExT(true)} />
+            <EditRow label="less: Creditable input VAT" sub="paid VATable expenses" value={inVat} onChange={setInVat} onTouch={() => setInT(true)} computed={-inVatN} computedTone="var(--mid-gray)" />
+            <EditRow label="less: Input tax carried over from prior quarter" sub={`suggested ${yr} YTD excess ${priorExcess == null ? '…' : `₱${peso(priorExcess)}`} — verify vs prior 2550Q`} value={carry} onChange={setCarry} onTouch={() => setCarryT(true)} computed={-carryN} computedTone="var(--mid-gray)" />
+            <TotalRow label="Total allowable input tax" value={allowable} />
+            {netPayable > 0
+              ? <TotalRow label="Net VAT Payable" value={netPayable} tone="#c44b00" highlight />
+              : <TotalRow label="Excess input tax — carry to next quarter" value={excess} tone="#166534" highlight />}
+          </div>
+          <p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>Sales are pre-filled from the app&apos;s SI / Sales-Summary data for {from} – {to} — <strong>edit any line to match your exact 2550Q</strong>. Output VAT = 12/112 of vatable sales; input VAT is your paid VATable expenses; the carryover starts from this year&apos;s accumulated excess (confirm vs the prior quarter&apos;s 2550Q). Key the resulting VAT payable into the field below to generate the RFP.</p>
+        </div>
+      )}
     </div>
   )
 }
