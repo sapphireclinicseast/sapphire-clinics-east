@@ -309,6 +309,10 @@ export default function SoaReport({ wallets, isAdmin, canWrite = true }: SoaRepo
   const [previewOrders, setPreviewOrders] = useState<AROrder[] | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [unticked, setUnticked] = useState<Set<string>>(new Set())
+  // Header search + sort for the preview list
+  const [pvFilter, setPvFilter] = useState({ date: '', patient: '', service: '' })
+  const [pvSortField, setPvSortField] = useState<'date' | 'patient' | 'service' | 'amount'>('date')
+  const [pvSortDir, setPvSortDir] = useState<'asc' | 'desc'>('asc')
   const [alreadySubmittedCount, setAlreadySubmittedCount] = useState(0)
 
   const loadPreview = useCallback(async () => {
@@ -374,6 +378,28 @@ export default function SoaReport({ wallets, isAdmin, canWrite = true }: SoaRepo
 
   const previewAmount = (o: AROrder) =>
     o.payments.reduce((s, p) => (!p.walletId || p.walletId === genWallet) ? s + (Number(p.amount) || 0) : s, 0)
+
+  const pvDateLabel = (o: AROrder) =>
+    new Date(o.arCustomDate || o.transactionDate).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
+  const pvOrders = (previewOrders || [])
+    .filter(o => !pvFilter.date || pvDateLabel(o).toLowerCase().includes(pvFilter.date.toLowerCase()))
+    .filter(o => !pvFilter.patient || (o.patientName || '').toLowerCase().includes(pvFilter.patient.toLowerCase()))
+    .filter(o => !pvFilter.service || o.items.map(i => i.name).join(', ').toLowerCase().includes(pvFilter.service.toLowerCase()))
+    .sort((a2, b2) => {
+      const va = pvSortField === 'date' ? String(a2.arCustomDate || a2.transactionDate)
+        : pvSortField === 'patient' ? (a2.patientName || '')
+        : pvSortField === 'service' ? a2.items.map(i => i.name).join(', ')
+        : previewAmount(a2)
+      const vb = pvSortField === 'date' ? String(b2.arCustomDate || b2.transactionDate)
+        : pvSortField === 'patient' ? (b2.patientName || '')
+        : pvSortField === 'service' ? b2.items.map(i => i.name).join(', ')
+        : previewAmount(b2)
+      return (va < vb ? -1 : va > vb ? 1 : 0) * (pvSortDir === 'asc' ? 1 : -1)
+    })
+  const pvToggleSort = (f: typeof pvSortField) => {
+    if (pvSortField === f) setPvSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setPvSortField(f); setPvSortDir('asc') }
+  }
 
   // History filters
   const [histWallet, setHistWallet] = useState('')
@@ -618,22 +644,46 @@ export default function SoaReport({ wallets, isAdmin, canWrite = true }: SoaRepo
                     <table className="w-full text-xs">
                       <thead>
                         <tr className="text-left sticky top-0" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
-                          <th className="px-3 py-2">
+                          <th className="px-3 py-2 align-top">
                             <input
                               type="checkbox"
-                              checked={unticked.size === 0}
-                              onChange={() => setUnticked(unticked.size === 0 ? new Set(previewOrders.map(o => o.id)) : new Set())}
-                              title={unticked.size === 0 ? 'Untick all' : 'Tick all'}
+                              checked={pvOrders.length > 0 && pvOrders.every(o => !unticked.has(o.id))}
+                              onChange={() => {
+                                // Operates on the rows the filters are showing.
+                                const allOn = pvOrders.every(o => !unticked.has(o.id))
+                                setUnticked(prev => {
+                                  const n = new Set(prev)
+                                  pvOrders.forEach(o => allOn ? n.add(o.id) : n.delete(o.id))
+                                  return n
+                                })
+                              }}
+                              title="Tick / untick the rows currently shown"
                             />
                           </th>
-                          <th className="px-3 py-2 font-semibold whitespace-nowrap">Date</th>
-                          <th className="px-3 py-2 font-semibold">Patient</th>
-                          <th className="px-3 py-2 font-semibold">Service</th>
-                          <th className="px-3 py-2 font-semibold text-right whitespace-nowrap">Amount</th>
+                          {([['date', 'Date'], ['patient', 'Patient'], ['service', 'Service']] as const).map(([f, label]) => (
+                            <th key={f} className="px-3 py-2 font-semibold align-top">
+                              <span className="cursor-pointer select-none whitespace-nowrap" onClick={() => pvToggleSort(f)}>
+                                {label} {pvSortField === f ? (pvSortDir === 'asc' ? '▲' : '▼') : <span style={{ color: 'var(--light-gray)' }}>↕</span>}
+                              </span>
+                              <input
+                                value={pvFilter[f]} placeholder="Search…"
+                                onChange={e => setPvFilter(prev => ({ ...prev, [f]: e.target.value }))}
+                                onClick={e => e.stopPropagation()}
+                                className="mt-1 block w-full min-w-[80px] px-1.5 py-0.5 rounded border text-xs font-normal outline-none"
+                                style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}
+                              />
+                            </th>
+                          ))}
+                          <th className="px-3 py-2 font-semibold text-right whitespace-nowrap align-top cursor-pointer select-none" onClick={() => pvToggleSort('amount')}>
+                            Amount {pvSortField === 'amount' ? (pvSortDir === 'asc' ? '▲' : '▼') : <span style={{ color: 'var(--light-gray)' }}>↕</span>}
+                          </th>
                         </tr>
                       </thead>
                       <tbody>
-                        {previewOrders.map(o => {
+                        {pvOrders.length === 0 && (
+                          <tr><td colSpan={5} className="px-3 py-4 text-center" style={{ color: 'var(--mid-gray)' }}>No sessions match the search — clear the header filters.</td></tr>
+                        )}
+                        {pvOrders.map(o => {
                           const on = !unticked.has(o.id)
                           const wasDisapproved = o.soaApprovalStatus === 'DISAPPROVED' && (o.soaSubmissionItems?.length || 0) > 0
                           return (

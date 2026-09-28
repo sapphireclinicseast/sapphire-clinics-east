@@ -586,6 +586,20 @@ export default function AccountsReceivablePage() {
   const [perHmoSortField, setPerHmoSortField] = useState('transactionDate')
   const [perHmoSortDir, setPerHmoSortDir] = useState<'asc' | 'desc'>('desc')
   const [perHmoColSearch, setPerHmoColSearch] = useState<Record<string, string>>({})
+  // Orders sitting on a GENERATED SOA that has not been marked Submitted yet —
+  // the Per HMO column shows these as "On SOA" so nobody regenerates them.
+  const [pendingSoaIds, setPendingSoaIds] = useState<Set<string>>(new Set())
+  useEffect(() => {
+    if (tab !== 'HMO' || (hmoSubTab !== 'per-hmo' && hmoSubTab !== 'follow-up')) return
+    const ctl = new AbortController()
+    fetch('/api/accounts-receivable/soa', { signal: ctl.signal })
+      .then(r => r.ok ? r.json() : [])
+      .then((recs: { submittedDate?: string | null; orderIds?: string[] }[]) => {
+        setPendingSoaIds(new Set((Array.isArray(recs) ? recs : []).filter(r => !r.submittedDate).flatMap(r => r.orderIds || [])))
+      })
+      .catch(() => {})
+    return () => ctl.abort()
+  }, [tab, hmoSubTab])
   // HMO column: tick-box multi-select of provider names
   const [perHmoHmoTicks, setPerHmoHmoTicks] = useState<string[]>([])
   const [perHmoHmoOpen, setPerHmoHmoOpen] = useState(false)
@@ -2320,8 +2334,13 @@ export default function AccountsReceivablePage() {
           perHmoOrders = perHmoOrders.filter(o => (o.arPaymentItems.length > 0) === wantPaid)
         }
         if (perHmoColSearch.soasub) {
-          const wantYes = perHmoColSearch.soasub === 'yes'
-          perHmoOrders = perHmoOrders.filter(o => ((o.soaSubmissionItems?.length || 0) > 0) === wantYes)
+          const v = perHmoColSearch.soasub
+          perHmoOrders = perHmoOrders.filter(o => {
+            const submitted = (o.soaSubmissionItems?.length || 0) > 0
+            if (v === 'yes') return submitted
+            if (v === 'generated') return !submitted && pendingSoaIds.has(o.id)
+            return !submitted && !pendingSoaIds.has(o.id)
+          })
         }
         if (perHmoColSearch.soaref) {
           const q = perHmoColSearch.soaref.toLowerCase()
@@ -2446,7 +2465,7 @@ export default function AccountsReceivablePage() {
                 Clinician: o.clinicianName || '—',
                 HMO: wallet?.patientName || '—',
                 Amount: amt,
-                'SOA Submitted': soaDates.length ? 'Yes' : 'No',
+                'SOA Submitted': soaDates.length ? 'Yes' : pendingSoaIds.has(o.id) ? 'On SOA (not submitted)' : 'No',
                 'Date SOA Submitted': soaDates.length ? formatDate(soaDates[soaDates.length - 1]) : '',
                 'SOA Ref': (() => { const subs = [...(o.soaSubmissionItems || [])].sort((a, b) => a.submission.submittedDate.localeCompare(b.submission.submittedDate)); return subs.length ? (subs[subs.length - 1].submission.referenceNo || '') : '' })(),
                 ...(isFollowUp ? { 'Running AR Days': arDaysOf(o) } : {}),
@@ -2619,6 +2638,7 @@ export default function AccountsReceivablePage() {
                             onClick={e => e.stopPropagation()}>
                             <option value="">All</option>
                             <option value="yes">Yes</option>
+                            <option value="generated">On SOA (not submitted)</option>
                             <option value="no">No</option>
                           </select>
                         )}
@@ -2898,8 +2918,11 @@ export default function AccountsReceivablePage() {
                             <>
                               <td className="px-3 py-2 text-center">
                                 <span className="px-2 py-0.5 rounded-full text-xs font-semibold"
-                                  style={soaSubmitted ? { background: '#dcfce7', color: '#166534' } : { background: '#f3f4f6', color: '#6b7280' }}>
-                                  {soaSubmitted ? 'Yes' : 'No'}
+                                  title={!soaSubmitted && pendingSoaIds.has(o.id) ? 'Already on a generated SOA - click Submitted on that SOA in Generate SOA to log the filing' : undefined}
+                                  style={soaSubmitted ? { background: '#dcfce7', color: '#166534' }
+                                    : pendingSoaIds.has(o.id) ? { background: '#fef3c7', color: '#92400e' }
+                                    : { background: '#f3f4f6', color: '#6b7280' }}>
+                                  {soaSubmitted ? 'Yes' : pendingSoaIds.has(o.id) ? 'On SOA' : 'No'}
                                 </span>
                               </td>
                               <td className="px-3 py-2 text-xs text-center whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>
