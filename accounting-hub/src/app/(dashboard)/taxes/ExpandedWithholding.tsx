@@ -39,6 +39,7 @@ export default function ExpandedWithholding() {
   const [showRfpModal, setShowRfpModal] = useState(false)
   const [showOtherIncome, setShowOtherIncome] = useState(false)
   const [siStatus, setSiStatus] = useState<Record<string, string>>({}) // `${ym}|${NAME}` → Submitted|Pending|No SI
+  const [tinMap, setTinMap] = useState<Record<string, string>>({}) // normName → TIN (from HR Hub staff profile)
   const [syncing, setSyncing] = useState(false)
   const [syncedAt, setSyncedAt] = useState('')
   const [manualSeq, setManualSeq] = useState('')
@@ -120,16 +121,21 @@ export default function ExpandedWithholding() {
     setSyncing(true)
     try {
       const map: Record<string, string> = {}
+      const tins: Record<string, string> = {}
       let reached = false
       for (const m of months) {
         const r = await fetch(`/api/taxes/ewt-si-status?month=${m}`)
         if (!r.ok) continue
         reached = true
         const d = await r.json()
-        for (const s of (d.statuses || [])) map[`${m}|${normName(s.name)}`] = s.status
+        for (const s of (d.statuses || [])) {
+          map[`${m}|${normName(s.name)}`] = s.status
+          if (s.tin) tins[normName(s.name)] = s.tin // TIN is stable per person → key by name
+        }
       }
       if (!reached) { alert('Could not reach the HR Hub. Check the connection / API key.'); return }
       setSiStatus(prev => ({ ...prev, ...map }))
+      setTinMap(prev => ({ ...prev, ...tins }))
       setSyncedAt(new Date().toLocaleTimeString('en-PH'))
     } finally { setSyncing(false) }
   }
@@ -226,7 +232,7 @@ export default function ExpandedWithholding() {
       </div>
 
       {/* 0619-E / 1601-EQ computation — live from the EWT items above */}
-      <EwtComputationPanel items={items} year={year} month={month} branch={branch} />
+      <EwtComputationPanel items={items} year={year} month={month} branch={branch} tinMap={tinMap} />
 
       <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
         <table className="w-full text-sm">
@@ -317,9 +323,10 @@ export default function ExpandedWithholding() {
 type EwtForm = '0619E' | '1601EQ'
 const QUARTER_LABEL = ['Q1 (Jan–Mar)', 'Q2 (Apr–Jun)', 'Q3 (Jul–Sep)', 'Q4 (Oct–Dec)']
 
-function EwtComputationPanel({ items, year, month, branch }: { items: Item[]; year: string; month: string; branch: string }) {
+function EwtComputationPanel({ items, year, month, branch, tinMap }: { items: Item[]; year: string; month: string; branch: string; tinMap: Record<string, string> }) {
   const [open, setOpen] = useState(true)
   const [form, setForm] = useState<EwtForm>('0619E')
+  const nn = (s: string) => s.toUpperCase().replace(/\s+/g, ' ').trim()
   const nowM = String(new Date().getMonth() + 1).padStart(2, '0')
   const selMonth = month || nowM
   const mNum = parseInt(selMonth)
@@ -433,28 +440,31 @@ function EwtComputationPanel({ items, year, month, branch }: { items: Item[]; ye
                 <table className="w-full text-xs">
                   <thead>
                     <tr style={{ background: '#fff' }}>
-                      {['Payee', 'Rate(s)', 'Tax Base', 'EWT'].map((h, i) => (
-                        <th key={i} className={`px-2.5 py-2 font-semibold whitespace-nowrap ${i >= 2 ? 'text-right' : 'text-left'}`} style={{ color: 'var(--charcoal)' }}>{h}</th>
+                      {['Payee', 'TIN', 'Rate(s)', 'Tax Base', 'EWT'].map((h, i) => (
+                        <th key={i} className={`px-2.5 py-2 font-semibold whitespace-nowrap ${i >= 3 ? 'text-right' : 'text-left'}`} style={{ color: 'var(--charcoal)' }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {alphalist.length === 0 ? (
-                      <tr><td colSpan={4} className="text-center py-4" style={{ color: 'var(--mid-gray)' }}>No EWT items for this quarter.</td></tr>
-                    ) : alphalist.map(p => (
+                      <tr><td colSpan={5} className="text-center py-4" style={{ color: 'var(--mid-gray)' }}>No EWT items for this quarter.</td></tr>
+                    ) : alphalist.map(p => {
+                      const tin = tinMap[nn(p.name)]
+                      return (
                       <tr key={p.name} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
                         <td className="px-2.5 py-1.5 font-medium" style={{ color: 'var(--charcoal)' }}>{p.name}</td>
+                        <td className="px-2.5 py-1.5 font-mono" style={{ color: tin ? 'var(--mid-gray)' : 'var(--light-gray)' }}>{tin || '—'}</td>
                         <td className="px-2.5 py-1.5" style={{ color: 'var(--mid-gray)' }}>{[...p.rates].sort((a, b) => a - b).map(r => `${r}%`).join(', ') || '—'}</td>
                         <td className="px-2.5 py-1.5 text-right font-mono tabular-nums" style={{ color: 'var(--charcoal)' }}>{peso(r2(p.base))}</td>
                         <td className="px-2.5 py-1.5 text-right font-mono tabular-nums font-semibold" style={{ color: '#c44b00' }}>{peso(r2(p.ewt))}</td>
                       </tr>
-                    ))}
+                    )})}
                   </tbody>
                 </table>
               </div>
             </>
           )}
-          <p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>Computed live from the EWT items above (consultant professional fees + expense withholding), using the tab&apos;s branch &amp; year and the selected month{form === '1601EQ' ? "'s quarter" : ''}. Pick a month in the filters to change the period.</p>
+          <p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>Computed live from the EWT items above (consultant professional fees + expense withholding), using the tab&apos;s branch &amp; year and the selected month{form === '1601EQ' ? "'s quarter" : ''}. Pick a month in the filters to change the period.{form === '1601EQ' && <> Professional TINs come from the HR Hub staff profiles — click <strong>Sync with HR Hub</strong> to fill them in.</>}</p>
         </div>
       )}
     </div>
