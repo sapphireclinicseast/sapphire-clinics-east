@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
-import { Loader2, Download, CheckCircle2, Trash2, RefreshCw, X, Eye, Pencil, FileText } from 'lucide-react'
+import { Loader2, Download, CheckCircle2, Trash2, RefreshCw, X, Eye, Pencil, FileText, Calculator, ChevronDown, ChevronRight } from 'lucide-react'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { SortFilterHead, applySortFilter } from '@/components/SortFilterHead'
@@ -225,6 +225,9 @@ export default function ExpandedWithholding() {
         )}
       </div>
 
+      {/* 0619-E / 1601-EQ computation — live from the EWT items above */}
+      <EwtComputationPanel items={items} year={year} month={month} branch={branch} />
+
       <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
         <table className="w-full text-sm">
           <SortFilterHead cols={cols} sortKey={sort.key} sortDir={sort.dir} filters={colFilters}
@@ -305,6 +308,154 @@ export default function ExpandedWithholding() {
           expenseIds={shown.filter(e => selected.has(e.id) && e.source === 'EXPENSE').map(e => e.id)}
           onClose={() => setShowOtherIncome(false)}
           onDone={async () => { setShowOtherIncome(false); setSelected(new Set()); await fetchItems() }} />
+      )}
+    </div>
+  )
+}
+
+// ─── 0619-E / 1601-EQ computation panel ────────────────────────────────────
+type EwtForm = '0619E' | '1601EQ'
+const QUARTER_LABEL = ['Q1 (Jan–Mar)', 'Q2 (Apr–Jun)', 'Q3 (Jul–Sep)', 'Q4 (Oct–Dec)']
+
+function EwtComputationPanel({ items, year, month, branch }: { items: Item[]; year: string; month: string; branch: string }) {
+  const [open, setOpen] = useState(true)
+  const [form, setForm] = useState<EwtForm>('0619E')
+  const nowM = String(new Date().getMonth() + 1).padStart(2, '0')
+  const selMonth = month || nowM
+  const mNum = parseInt(selMonth)
+  const q = Math.ceil(mNum / 3)
+  const qMonthNums = [(q - 1) * 3 + 1, (q - 1) * 3 + 2, (q - 1) * 3 + 3]
+  const isThirdMonth = mNum === qMonthNums[2]
+  const branchName = BRANCH_FULL[branch] || branch
+  const r2 = (n: number) => Math.round(n * 100) / 100
+  const sum = (arr: Item[], f: (i: Item) => number) => r2(arr.reduce((s, i) => s + f(i), 0))
+  const inYear = (it: Item) => it.ym.startsWith(`${year}-`)
+
+  const monthItems = useMemo(() => items.filter(it => inYear(it) && it.ym.slice(5, 7) === selMonth), [items, year, selMonth]) // eslint-disable-line react-hooks/exhaustive-deps
+  const quarterItems = useMemo(() => items.filter(it => inYear(it) && qMonthNums.includes(parseInt(it.ym.slice(5, 7)))), [items, year, q]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 0619-E (monthly)
+  const mEwt = sum(monthItems, i => i.ewt), mBase = sum(monthItems, i => i.base)
+  const byRate = useMemo(() => {
+    const m = new Map<number, { base: number; ewt: number; n: number }>()
+    monthItems.forEach(i => { const k = i.rate ?? 0; const g = m.get(k) || { base: 0, ewt: 0, n: 0 }; g.base += i.base; g.ewt += i.ewt; g.n++; m.set(k, g) })
+    return [...m.entries()].sort((a, b) => a[0] - b[0])
+  }, [monthItems])
+  const mConsult = sum(monthItems.filter(i => i.source === 'CONSULTANT'), i => i.ewt)
+  const mExpense = sum(monthItems.filter(i => i.source === 'EXPENSE'), i => i.ewt)
+
+  // 1601-EQ (quarterly)
+  const qEwt = sum(quarterItems, i => i.ewt)
+  const firstTwo = [qMonthNums[0], qMonthNums[1]]
+  const remittedM1M2 = sum(quarterItems.filter(i => firstTwo.includes(parseInt(i.ym.slice(5, 7))) && i.remitted), i => i.ewt)
+  const stillDue = r2(qEwt - remittedM1M2)
+  const alphalist = useMemo(() => {
+    const m = new Map<string, { name: string; base: number; ewt: number; rates: Set<number>; n: number }>()
+    quarterItems.forEach(i => { const g = m.get(i.name) || { name: i.name, base: 0, ewt: 0, rates: new Set<number>(), n: 0 }; g.base += i.base; g.ewt += i.ewt; if (i.rate != null) g.rates.add(i.rate); g.n++; m.set(i.name, g) })
+    return [...m.values()].sort((a, b) => b.ewt - a.ewt)
+  }, [quarterItems])
+
+  const Line = ({ label, sub, value, strong, highlight, indent }: { label: string; sub?: string; value: number; strong?: boolean; highlight?: boolean; indent?: boolean }) => (
+    <div className="flex items-center justify-between px-3 py-1.5 text-xs" style={{ background: highlight ? '#fffbeb' : undefined, borderTop: strong ? '1px solid var(--light-gray)' : undefined }}>
+      <span style={{ paddingLeft: indent ? 16 : 0, color: strong ? 'var(--charcoal)' : 'var(--mid-gray)', fontWeight: strong ? 700 : 400 }}>{label}{sub && <span className="ml-1" style={{ color: 'var(--mid-gray)', fontWeight: 400 }}>· {sub}</span>}</span>
+      <span className="font-mono tabular-nums" style={{ color: 'var(--charcoal)', fontWeight: strong ? 700 : 500 }}>₱{peso(value)}</span>
+    </div>
+  )
+
+  return (
+    <div className="rounded-2xl border bg-white overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+      <button onClick={() => setOpen(o => !o)} className="w-full flex items-center justify-between px-4 py-3" style={{ background: 'var(--off-white)' }}>
+        <span className="flex items-center gap-2 text-sm font-bold" style={{ color: 'var(--charcoal)' }}>
+          <Calculator size={16} style={{ color: 'var(--teal)' }} /> Expanded Withholding Computation
+          <span className="text-xs font-medium" style={{ color: 'var(--mid-gray)' }}>· {branchName}</span>
+        </span>
+        {open ? <ChevronDown size={16} style={{ color: 'var(--mid-gray)' }} /> : <ChevronRight size={16} style={{ color: 'var(--mid-gray)' }} />}
+      </button>
+
+      {open && (
+        <div className="p-4 space-y-4">
+          {/* form toggle */}
+          <div className="flex rounded-xl overflow-hidden border w-fit" style={{ borderColor: 'var(--light-gray)' }}>
+            {([['0619E', '0619-E · Monthly'], ['1601EQ', '1601-EQ · Quarterly']] as [EwtForm, string][]).map(([k, lbl]) => (
+              <button key={k} onClick={() => setForm(k)} className="px-4 py-1.5 text-xs font-semibold" style={form === k ? { background: 'var(--deep-teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' }}>{lbl}</button>
+            ))}
+          </div>
+
+          {form === '0619E' ? (
+            <>
+              <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+                <strong style={{ color: 'var(--charcoal)' }}>{MONTHS[mNum - 1]} {year}</strong> — monthly remittance of Expanded Withholding Tax (due the 10th of the following month).
+                {isThirdMonth && <span style={{ color: '#92400e' }}> Note: this is the 3rd month of {QUARTER_LABEL[q - 1]} — it is filed with the quarterly 1601-EQ, not a 0619-E.</span>}
+              </p>
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="rounded-xl border overflow-hidden h-fit" style={{ borderColor: 'var(--light-gray)' }}>
+                  <div className="px-3 py-2 text-xs font-bold" style={{ background: 'var(--deep-teal)', color: '#fff' }}>Tax to Remit — {MONTHS[mNum - 1]} {year}</div>
+                  <Line label="Total tax base" value={mBase} />
+                  <Line label="Consultant professional fees" value={mConsult} indent />
+                  <Line label="Expense withholding (rent, services, etc.)" value={mExpense} indent />
+                  <Line label="Total EWT to Remit" value={mEwt} strong highlight />
+                </div>
+                <div className="rounded-xl border overflow-hidden h-fit" style={{ borderColor: 'var(--light-gray)' }}>
+                  <div className="px-3 py-2 text-xs font-bold" style={{ background: 'var(--off-white)', color: 'var(--charcoal)' }}>Breakdown by rate</div>
+                  {byRate.length === 0 ? <p className="px-3 py-3 text-[11px]" style={{ color: 'var(--mid-gray)' }}>No EWT items for this month.</p> :
+                    byRate.map(([rate, g]) => (
+                      <div key={rate} className="flex items-center justify-between px-3 py-1.5 text-xs border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                        <span style={{ color: 'var(--mid-gray)' }}>{rate}% <span className="text-[10px]">· {g.n} payee{g.n === 1 ? '' : 's'} · base ₱{peso(r2(g.base))}</span></span>
+                        <span className="font-mono tabular-nums" style={{ color: 'var(--charcoal)' }}>₱{peso(r2(g.ewt))}</span>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+                <strong style={{ color: 'var(--charcoal)' }}>{QUARTER_LABEL[q - 1]} {year}</strong> — quarterly return with the alphalist of payees (QAP). Tax still due = quarter total less the two 0619-E monthly remittances.
+              </p>
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="rounded-xl border overflow-hidden h-fit" style={{ borderColor: 'var(--light-gray)' }}>
+                  <div className="px-3 py-2 text-xs font-bold" style={{ background: 'var(--deep-teal)', color: '#fff' }}>Tax Still Due — {QUARTER_LABEL[q - 1]} {year}</div>
+                  <Line label="Total EWT — quarter" sub={`${MONTHS[qMonthNums[0] - 1]}–${MONTHS[qMonthNums[2] - 1]}`} value={qEwt} />
+                  <Line label={`less: remitted via 0619-E (${MONTHS[qMonthNums[0] - 1]} & ${MONTHS[qMonthNums[1] - 1]})`} value={remittedM1M2} indent />
+                  <Line label="Tax Still Due (remit with 1601-EQ)" value={stillDue} strong highlight />
+                </div>
+                <div className="rounded-xl border overflow-hidden h-fit" style={{ borderColor: 'var(--light-gray)' }}>
+                  <div className="px-3 py-2 text-xs font-bold" style={{ background: 'var(--off-white)', color: 'var(--charcoal)' }}>Quarter at a glance</div>
+                  <Line label="Payees" value={alphalist.length} />
+                  <Line label="Total tax base" value={sum(quarterItems, i => i.base)} />
+                  <Line label="Total EWT withheld" value={qEwt} />
+                </div>
+              </div>
+
+              {/* Alphalist (QAP) preview */}
+              <div className="rounded-xl border overflow-auto" style={{ borderColor: 'var(--light-gray)' }}>
+                <div className="px-3 py-2 text-xs font-bold" style={{ background: 'var(--off-white)', color: 'var(--charcoal)' }}>Alphalist of Payees (QAP) — {QUARTER_LABEL[q - 1]} {year}</div>
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr style={{ background: '#fff' }}>
+                      {['Payee', 'Rate(s)', 'Tax Base', 'EWT'].map((h, i) => (
+                        <th key={i} className={`px-2.5 py-2 font-semibold whitespace-nowrap ${i >= 2 ? 'text-right' : 'text-left'}`} style={{ color: 'var(--charcoal)' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {alphalist.length === 0 ? (
+                      <tr><td colSpan={4} className="text-center py-4" style={{ color: 'var(--mid-gray)' }}>No EWT items for this quarter.</td></tr>
+                    ) : alphalist.map(p => (
+                      <tr key={p.name} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                        <td className="px-2.5 py-1.5 font-medium" style={{ color: 'var(--charcoal)' }}>{p.name}</td>
+                        <td className="px-2.5 py-1.5" style={{ color: 'var(--mid-gray)' }}>{[...p.rates].sort((a, b) => a - b).map(r => `${r}%`).join(', ') || '—'}</td>
+                        <td className="px-2.5 py-1.5 text-right font-mono tabular-nums" style={{ color: 'var(--charcoal)' }}>{peso(r2(p.base))}</td>
+                        <td className="px-2.5 py-1.5 text-right font-mono tabular-nums font-semibold" style={{ color: '#c44b00' }}>{peso(r2(p.ewt))}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+          <p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>Computed live from the EWT items above (consultant professional fees + expense withholding), using the tab&apos;s branch &amp; year and the selected month{form === '1601EQ' ? "'s quarter" : ''}. Pick a month in the filters to change the period.</p>
+        </div>
       )}
     </div>
   )
