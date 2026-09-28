@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { encodeHeaderWord, formatFromHeader } from '@/lib/email-headers'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { blockIfRenterNotify } from '@/lib/renter-notify-guard'
 import { getGmailClient } from '@/lib/email'
 import { getBranchNotifyConfig, getBranchSender, type BranchNotifyConfig } from '@/lib/branch-notify-config'
 
@@ -205,6 +206,11 @@ export async function POST(req: NextRequest) {
   if (!staffId || !date) {
     return NextResponse.json({ error: 'staffId and date are required' }, { status: 400 })
   }
+  // Renters bring their own private clients and pay us for the room, so the
+  // clinic does not message those patients. Checked before any recipient is
+  // gathered, and here rather than only on the button — see the guard.
+  const renterBlock = await blockIfRenterNotify({ staffId, branch: callerBranch })
+  if (renterBlock) return renterBlock
 
   const staffMember = await prisma.staff.findUnique({ where: { id: staffId } })
   if (!staffMember) return NextResponse.json({ error: 'Staff not found' }, { status: 404 })

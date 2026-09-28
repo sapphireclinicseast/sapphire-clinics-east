@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { encodeHeaderWord, formatFromHeader } from '@/lib/email-headers'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { blockIfRenterNotify } from '@/lib/renter-notify-guard'
 import { getGmailClient } from '@/lib/email'
 import { getBranchNotifyConfig, getBranchSender, branchCc, type BranchNotifyConfig } from '@/lib/branch-notify-config'
 
@@ -216,6 +217,12 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { scheduleId, staffId, date, branch: reqBranch } = await req.json()
+
+  // Renters bring their own private clients and pay us for the room, so the
+  // clinic does not message those patients. Checked before any recipient is
+  // gathered, and here rather than only on the button — see the guard.
+  const renterBlock = await blockIfRenterNotify({ staffId, scheduleId, branch: reqBranch })
+  if (renterBlock) return renterBlock
 
   // ── Single schedule reminder ──────────────────────────────────────────────
   if (scheduleId) {

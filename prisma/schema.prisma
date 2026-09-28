@@ -543,7 +543,14 @@ model Staff {
                                    // HR Platform; gates the Clinic Schedule intern picker to only
                                    // currently-active interns
   jobTitle        String?         // HR Platform job title slug (e.g. "front-desk-officer")
-  employmentType  String?         // "employee" | "consultant" | "intern"
+  // HR slug: "employee" | "consultant" | "intern" | "renter".
+  // "renter" = not paid by us at all — the clinician pays SCEI a monthly
+  // facility fee and brings their own private clients. They are scheduled and
+  // queued like anyone else; what differs is that the clinic does not message
+  // their patients (see lib/employment.ts). Read it through employmentTypeFor()
+  // rather than directly: an interbranch person can be a renter at one branch
+  // and on staff at the other.
+  employmentType  String?
   tin             String?         // TIN from HR Platform
   sss             String?         // SSS No. from HR Platform
   pagibig         String?         // Pag-IBIG No. from HR Platform
