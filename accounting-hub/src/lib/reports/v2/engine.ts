@@ -1437,7 +1437,13 @@ export async function computeLedgerStatements(
       // NOTE: on balance-sheet rows, `monthly` carries statement-signed
       // MONTH-END BALANCES (opening + cumulative movement), unlike income-
       // statement rows where it carries period movements.
-      rows: secRows.filter(r => Math.abs(r.closing) >= 0.005 || Math.abs(r.opening) >= 0.005).map(r => {
+      // A row must also survive on mid-year activity alone: an account that
+      // opens AND closes at zero can still hold a balance in between (1165
+      // held Solar's P70,768.58 maternity receivable May-Jul; 1090 held
+      // P20,500 prepaid rent in July). Dropping it left those months' TOTAL
+      // ASSETS short and broke A = L + E on the monthly sheet only.
+      rows: secRows.filter(r => Math.abs(r.closing) >= 0.005 || Math.abs(r.opening) >= 0.005
+        || (r.monthly || []).some(v => Math.abs(v) >= 0.005)).map(r => {
         const f = bsFactor(r)
         let run = r.opening
         const monthlyBal = (r.monthly || Array(12).fill(0)).map(mv => { run += mv; return round2(run * f) })
@@ -1738,14 +1744,20 @@ export async function computeLedgerStatements(
   const actualChange = round2(endingCash - beginningCash)
   validation.cfTies = Math.abs(netChange - actualChange) < 0.02
 
+  // Same mid-year-activity rule as the balance-sheet sections: a P&L account
+  // whose year nets to zero can still carry offsetting month movements (an
+  // expense booked one month and reversed the next); dropping it made the
+  // monthly income statement disagree with the balance sheet's month columns.
+  const isActive = (r: V2AccountRow) =>
+    Math.abs(r.closing - r.opening) >= 0.005 || (r.monthly || []).some(v => Math.abs(v) >= 0.005)
   const isSections = [
-    { key: 'REVENUE', label: 'Gross Revenue', rows: revRows.filter(r => Math.abs(r.closing - r.opening) >= 0.005), total: grossRevenue },
-    { key: 'DISCOUNTS', label: 'Discounts and Refunds', rows: discRows.filter(r => Math.abs(r.closing - r.opening) >= 0.005), total: totalDiscounts },
-    { key: 'COGS', label: 'Cost of Sales', rows: cogsRows.filter(r => Math.abs(r.closing - r.opening) >= 0.005), total: totalCOGS },
-    { key: 'OPEX', label: 'Operating Expenses', rows: opexRows.filter(r => Math.abs(r.closing - r.opening) >= 0.005), total: totalOpex },
-    { key: 'DEPRECIATION', label: 'Depreciation', rows: depRows.filter(r => Math.abs(r.closing - r.opening) >= 0.005), total: depreciation },
-    { key: 'INTEREST', label: 'Interest', rows: intRows.filter(r => Math.abs(r.closing - r.opening) >= 0.005), total: interest },
-    { key: 'NON_OPERATING', label: 'Non-Operating Expenses', rows: nonopRows.filter(r => Math.abs(r.closing - r.opening) >= 0.005), total: nonOperating },
+    { key: 'REVENUE', label: 'Gross Revenue', rows: revRows.filter(isActive), total: grossRevenue },
+    { key: 'DISCOUNTS', label: 'Discounts and Refunds', rows: discRows.filter(isActive), total: totalDiscounts },
+    { key: 'COGS', label: 'Cost of Sales', rows: cogsRows.filter(isActive), total: totalCOGS },
+    { key: 'OPEX', label: 'Operating Expenses', rows: opexRows.filter(isActive), total: totalOpex },
+    { key: 'DEPRECIATION', label: 'Depreciation', rows: depRows.filter(isActive), total: depreciation },
+    { key: 'INTEREST', label: 'Interest', rows: intRows.filter(isActive), total: interest },
+    { key: 'NON_OPERATING', label: 'Non-Operating Expenses', rows: nonopRows.filter(isActive), total: nonOperating },
   ].filter(s => s.rows.length > 0)
 
   /* ── Per-person detail for the two payroll expense accounts ──────────
