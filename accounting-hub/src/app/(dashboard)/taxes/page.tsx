@@ -16,7 +16,7 @@ type Tab = 'guide' | 'compensation' | 'ewt' | 'business' | 'income-tax' | 'rfp' 
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'guide', label: 'Guide & Summary' },
-  { key: 'compensation', label: 'Withholding on Compensation' },
+  { key: 'compensation', label: 'Withholding on Compensation (1601-C)' },
   { key: 'ewt', label: 'Expanded Withholding (EWT)' },
   { key: 'business', label: 'Business Tax (VAT)' },
   { key: 'income-tax', label: 'Income Tax (Corporate)' },
