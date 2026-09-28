@@ -169,6 +169,7 @@ export async function POST(req: Request) {
   }
 
   try {
+    const body = await req.json()
     const {
       salarySplitIds,       // instalments of a split salary
       payrollEntryIds,      // for CONSULTANT per-person
@@ -177,12 +178,12 @@ export async function POST(req: Request) {
       paymentDate,
       fromAccountId,
       proofUrl,
-      notes,
+      notes: notesRaw,
       remarks,
       feeAmount,
       feeExpenseAccountId,
       feeCashAccountId,
-    } = await req.json()
+    } = body
 
     if (!paymentDate || !fromAccountId) {
       return NextResponse.json({ error: 'paymentDate and fromAccountId are required' }, { status: 400 })
@@ -194,6 +195,60 @@ export async function POST(req: Request) {
     const mapping = await prisma.payrollCOAMapping.findFirst()
     if (!mapping?.salariesPayableAccountId) {
       return NextResponse.json({ error: 'Salaries Payable account not configured in Payroll Settings' }, { status: 400 })
+    }
+
+    /* ── Deposit adjustments (optional) ──
+       When the amount actually deposited differs from the recorded net pay
+       (net pay 2,300 but 2,305 hit the bank), the payable still clears at
+       the FULL net pay and the difference is carried on its own account:
+         deposited MORE  → DR 1160 Due from Employees (they owe the excess)
+         deposited LESS  → CR 4100 Due to Employee (still owed the shortfall)
+       so the bank credit equals the true transfer and Bank Rec matches it
+       to the centavo. adjustments: [{ name, expected, actual }]. */
+    const round2 = (n: number) => Math.round(n * 100) / 100
+    const adjustments = (Array.isArray(body.adjustments) ? body.adjustments : [])
+      .map((a: { name?: unknown; expected?: unknown; actual?: unknown }) => ({
+        name: String(a?.name ?? '').slice(0, 80),
+        diff: round2((Number(a?.actual) || 0) - (Number(a?.expected) || 0)),
+      }))
+      .filter((a: { diff: number }) => Number.isFinite(a.diff) && Math.abs(a.diff) >= 0.01)
+    const adjOver = round2(adjustments.filter((a: { diff: number }) => a.diff > 0).reduce((s: number, a: { diff: number }) => s + a.diff, 0))
+    const adjUnder = round2(adjustments.filter((a: { diff: number }) => a.diff < 0).reduce((s: number, a: { diff: number }) => s - a.diff, 0))
+    const adjNet = round2(adjOver - adjUnder)
+    const adjSummary = adjustments.map((a: { name: string; diff: number }) => `${a.name || '—'} ${a.diff > 0 ? '+' : ''}${a.diff.toFixed(2)}`).join(', ')
+    let dueFromAcctId = '', dueToAcctId = ''
+    if (adjOver > 0) {
+      const acct = await prisma.account.findFirst({
+        where: { OR: [{ accountTitle: { contains: 'Due from Employee', mode: 'insensitive' } }, { accountNumber: '1160' }] },
+        orderBy: { accountNumber: 'asc' }, select: { id: true },
+      })
+      if (!acct) return NextResponse.json({ error: 'No "Due from Employees" (1160) account found for the deposit excess' }, { status: 400 })
+      dueFromAcctId = acct.id
+    }
+    if (adjUnder > 0) {
+      const acct = await prisma.account.findFirst({
+        where: { OR: [{ accountTitle: { contains: 'Due to Employee', mode: 'insensitive' } }, { accountNumber: '4100' }] },
+        orderBy: { accountNumber: 'asc' }, select: { id: true },
+      })
+      if (!acct) return NextResponse.json({ error: 'No "Due to Employee" (4100) account found for the deposit shortfall' }, { status: 400 })
+      dueToAcctId = acct.id
+    }
+    // Fold the adjustment trail into the payment notes so the record explains itself.
+    const notes = adjustments.length
+      ? (notesRaw ? `${notesRaw} | Deposit adj: ${adjSummary}` : `Deposit adj: ${adjSummary}`)
+      : notesRaw
+    // Mutates a path's JE lines: bank credit becomes the actual transfer and
+    // the difference lands on 1160 / 4100. No-op without adjustments.
+    const applyAdjustments = (lines: { accountId: string; debit: number; credit: number; description: string }[]) => {
+      if (!adjustments.length) return
+      const bank = lines.find(l => l.credit > 0 && l.accountId === fromAccountId)
+      if (!bank) return
+      const newCredit = round2(bank.credit + adjNet)
+      if (newCredit <= 0) throw new Error('Deposit adjustments exceed the payment amount — check the actual amounts.')
+      bank.credit = newCredit
+      bank.description += ' (actual deposited)'
+      if (adjOver > 0) lines.push({ accountId: dueFromAcctId, debit: adjOver, credit: 0, description: `Due from Employees — deposit exceeded net pay (${adjSummary})` })
+      if (adjUnder > 0) lines.push({ accountId: dueToAcctId, debit: 0, credit: adjUnder, description: `Due to Employee — deposit short of net pay (${adjSummary})` })
     }
 
     // ── SPLIT path — paying selected instalments of split salaries ──
@@ -229,13 +284,14 @@ export async function POST(req: Request) {
           lines.push({ accountId: feeExpenseAccountId, debit: feeAmt, credit: 0, description: 'Remittance Fee Expense' })
           lines.push({ accountId: feeCashAccountId || fromAccountId, debit: 0, credit: feeAmt, description: 'Cash/Bank — Remittance Fee' })
         }
+        applyAdjustments(lines)
         const journalEntry = await tx.journalEntry.create({
           data: {
             entryDate: new Date(paymentDate),
             description: `Salary Payment (instalment)${hasFee ? ` (+ PHP ${feeAmt} fee)` : ''} — ${descriptions}`,
             referenceType: 'SALARY_PAYMENT',
             referenceId: splits.map(x => x.id).join(';'),
-            totalAmount: totalNet + feeAmt,
+            totalAmount: totalNet + feeAmt + adjOver,
             branch: ledgerBranch(branchOf),
             createdById: session.user.id as string,
             lines: { create: lines },
@@ -244,7 +300,7 @@ export async function POST(req: Request) {
         const payment = await tx.salaryPayment.create({
           data: {
             paymentDate: new Date(paymentDate),
-            totalAmount: totalNet + feeAmt,
+            totalAmount: totalNet + feeAmt + adjNet,
             fromAccountId,
             proofUrl: proofUrl || null,
             notes: notes ? `${notes}${hasFee ? ` | Fee: PHP ${feeAmt}` : ''}` : (hasFee ? `Fee: PHP ${feeAmt}` : null),
@@ -338,13 +394,14 @@ export async function POST(req: Request) {
           lines.push({ accountId: feeExpenseAccountId, debit: feeAmt, credit: 0, description: 'Remittance Fee Expense' })
           lines.push({ accountId: feeCashAccountId || fromAccountId, debit: 0, credit: feeAmt, description: 'Cash/Bank — Remittance Fee' })
         }
+        applyAdjustments(lines)
         const journalEntry = await tx.journalEntry.create({
           data: {
             entryDate: new Date(paymentDate),
             description: `Salary Payment${hasFee ? ` (+ PHP ${feeAmt} fee)` : ''} — ${descriptions}`,
             referenceType: 'SALARY_PAYMENT',
             referenceId: [...splits.map(x => x.id), ...entries.map(e => e.id), ...payslips.map(p => p.id)].join(';'),
-            totalAmount: totalNet + feeAmt,
+            totalAmount: totalNet + feeAmt + adjOver,
             branch: ledgerBranch(branchOf),
             createdById: session.user.id as string,
             lines: { create: lines },
@@ -353,7 +410,7 @@ export async function POST(req: Request) {
         const payment = await tx.salaryPayment.create({
           data: {
             paymentDate: new Date(paymentDate),
-            totalAmount: totalNet + feeAmt,
+            totalAmount: totalNet + feeAmt + adjNet,
             fromAccountId,
             proofUrl: proofUrl || null,
             notes: notes ? `${notes}${hasFee ? ` | Fee: PHP ${feeAmt}` : ''}` : (hasFee ? `Fee: PHP ${feeAmt}` : null),
@@ -434,6 +491,7 @@ export async function POST(req: Request) {
           lines.push({ accountId: feeExpenseAccountId, debit: feeAmt, credit: 0, description: 'Remittance Fee Expense' })
           lines.push({ accountId: feeCashAccountId || fromAccountId, debit: 0, credit: feeAmt, description: 'Cash/Bank — Remittance Fee' })
         }
+        applyAdjustments(lines)
 
         const journalEntry = await tx.journalEntry.create({
           data: {
@@ -441,7 +499,7 @@ export async function POST(req: Request) {
             description: `Salary Payment${hasFee ? ` (+ ₱${feeAmt} fee)` : ''} — ${descriptions}`,
             referenceType: 'SALARY_PAYMENT',
             referenceId: entries.map(e => e.id).join(';'),
-            totalAmount: totalNet + feeAmt,
+            totalAmount: totalNet + feeAmt + adjOver,
             branch: ledgerBranch(entries[0].branch),
             createdById: session.user.id as string,
             lines: { create: lines },
@@ -451,7 +509,7 @@ export async function POST(req: Request) {
         const payment = await tx.salaryPayment.create({
           data: {
             paymentDate: new Date(paymentDate),
-            totalAmount: totalNet + feeAmt,
+            totalAmount: totalNet + feeAmt + adjNet,
             fromAccountId,
             proofUrl: proofUrl || null,
             notes: notes ? `${notes}${hasFee ? ` | Fee: ₱${feeAmt}` : ''}` : (hasFee ? `Fee: ₱${feeAmt}` : null),
@@ -511,6 +569,7 @@ export async function POST(req: Request) {
           lines.push({ accountId: feeExpenseAccountId, debit: feeAmt, credit: 0, description: 'Remittance Fee Expense' })
           lines.push({ accountId: feeCashAccountId || fromAccountId, debit: 0, credit: feeAmt, description: 'Cash/Bank — Remittance Fee' })
         }
+        applyAdjustments(lines)
 
         const journalEntry = await tx.journalEntry.create({
           data: {
@@ -518,7 +577,7 @@ export async function POST(req: Request) {
             description: `Salary Payment${hasFee ? ` (+ ₱${feeAmt} fee)` : ''} — ${descriptions}`,
             referenceType: 'SALARY_PAYMENT',
             referenceId: payslips.map(p => p.id).join(';'),
-            totalAmount: totalNet + feeAmt,
+            totalAmount: totalNet + feeAmt + adjOver,
             branch: ledgerBranch(payslips[0].branch),
             createdById: session.user.id as string,
             lines: { create: lines },
@@ -528,7 +587,7 @@ export async function POST(req: Request) {
         const payment = await tx.salaryPayment.create({
           data: {
             paymentDate: new Date(paymentDate),
-            totalAmount: totalNet + feeAmt,
+            totalAmount: totalNet + feeAmt + adjNet,
             fromAccountId,
             proofUrl: proofUrl || null,
             notes: notes ? `${notes}${hasFee ? ` | Fee: ₱${feeAmt}` : ''}` : (hasFee ? `Fee: ₱${feeAmt}` : null),

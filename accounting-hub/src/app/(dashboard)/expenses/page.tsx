@@ -165,7 +165,7 @@ interface Supplier { id: string | null; registeredName: string; registeredAddres
 interface SupTxn { date: string | null; pcvNumber: string; description: string; validity: string; gross: number; vat: number; netVat: number }
 interface Rfp {
   id: string; refNumber: string; grossTotal: string | number; payableTotal: string | number; status: string; kind: string | null
-  module?: string; meta?: { source?: string; payableType?: string; idKind?: string; ids?: string[]; splitIds?: string[]; rowIds?: string[]; entryIds?: string[]; payslipIds?: string[]; cutoffPeriod?: string; netTotal?: number; paymentId?: string } | null
+  module?: string; meta?: { source?: string; payableType?: string; idKind?: string; ids?: string[]; splitIds?: string[]; rowIds?: string[]; entryIds?: string[]; payslipIds?: string[]; cutoffPeriod?: string; netTotal?: number; paymentId?: string; items?: { id: string; name: string; amount: number }[] } | null
   paidAt: string | null; paymentMethod: string | null; checkNumber: string | null; transferRef?: string | null; debitAccount: string | null
   creditCardId: string | null; proofUrl: string | null; payableTo: string | null; createdAt: string; _count: { entries: number }
 }
@@ -3212,6 +3212,17 @@ function RecordPayrollPaymentModal({ rfp, onClose, onDone }: { rfp: Rfp; onClose
   const [feeAmount, setFeeAmount] = useState('')
   const [feeExpenseAccountId, setFeeExpenseAccountId] = useState('')
   const [busy, setBusy] = useState(false)
+  // Per-person deposit adjustments: what actually hit each bank account when it
+  // differs from the recorded net pay (e.g. net pay 2,300 but 2,305 deposited).
+  // The difference posts to 1160 Due from Employees / 4100 Due to Employee so
+  // the bank line matches the true transfer in Bank Rec.
+  const adjItems = (isSalary && rfp.meta?.items) || []
+  const [adjOpen, setAdjOpen] = useState(false)
+  const [adjActuals, setAdjActuals] = useState<Record<string, string>>({})
+  const adjustments = adjItems
+    .map(it => ({ name: it.name, expected: it.amount, actual: parseFloat(adjActuals[it.id] ?? '') }))
+    .filter(a => Number.isFinite(a.actual) && Math.abs(a.actual - a.expected) >= 0.01)
+  const adjNet = adjustments.reduce((s, a) => s + (a.actual - a.expected), 0)
 
   useEffect(() => {
     fetch('/api/chart-of-accounts?pageSize=1000').then(r => r.ok ? r.json() : { data: [] }).then(d => {
@@ -3259,6 +3270,7 @@ function RecordPayrollPaymentModal({ rfp, onClose, onDone }: { rfp: Rfp; onClose
           ...idBody, paymentDate: datePaid, fromAccountId, proofUrl: proofUrl || null,
           notes: bankRef || null, remarks: remarks || null,
           ...(hasFee ? { feeAmount: Number(feeAmount), feeExpenseAccountId, feeCashAccountId: fromAccountId } : {}),
+          ...(adjustments.length ? { adjustments } : {}),
         }),
       })
       const data = await res.json()
@@ -3332,9 +3344,42 @@ function RecordPayrollPaymentModal({ rfp, onClose, onDone }: { rfp: Rfp; onClose
             </>)}
           </div>
         )}
+        {adjItems.length > 0 && (
+          <div className="rounded-xl border p-3 mb-4" style={{ borderColor: adjustments.length ? 'var(--teal)' : 'var(--light-gray)' }}>
+            <button type="button" onClick={() => setAdjOpen(v => !v)} className="w-full flex items-center justify-between text-left">
+              <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--mid-gray)' }}>
+                Deposit differences (optional){adjustments.length ? ` — ${adjustments.length} adjusted, net ${adjNet >= 0 ? '+' : ''}₱${peso(Math.abs(adjNet) < 0.005 ? 0 : adjNet)}` : ''}
+              </span>
+              <span className="text-xs" style={{ color: 'var(--teal)' }}>{adjOpen ? 'Hide' : 'Open'}</span>
+            </button>
+            {adjOpen && (
+              <div className="mt-2 space-y-1 max-h-52 overflow-auto">
+                <p className="text-[11px] mb-1" style={{ color: 'var(--mid-gray)' }}>
+                  Enter what was actually deposited only where it differs from the net pay. Excess posts to 1160 Due from Employees; a shortfall posts to 4100 Due to Employee — the bank line then matches the real transfer.
+                </p>
+                {adjItems.map(it => {
+                  const v = adjActuals[it.id] ?? ''
+                  const parsed = parseFloat(v)
+                  const differs = Number.isFinite(parsed) && Math.abs(parsed - it.amount) >= 0.01
+                  return (
+                    <div key={it.id} className="flex items-center gap-2 text-xs">
+                      <span className="flex-1 truncate" style={{ color: 'var(--charcoal)' }} title={it.name}>{it.name}</span>
+                      <span className="font-mono w-20 text-right" style={{ color: 'var(--mid-gray)' }}>₱{peso(it.amount)}</span>
+                      <input value={v} inputMode="decimal" placeholder={peso(it.amount)}
+                        onChange={e => setAdjActuals(p => ({ ...p, [it.id]: e.target.value }))}
+                        className="w-24 px-2 py-1 rounded-lg border text-xs font-mono text-right"
+                        style={{ borderColor: differs ? 'var(--teal)' : 'var(--light-gray)' }} />
+                      {differs && <span className="font-mono w-14 text-right" style={{ color: parsed > it.amount ? '#b45309' : '#b91c1c' }}>{parsed > it.amount ? '+' : ''}{(parsed - it.amount).toFixed(2)}</span>}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
         <div className="flex gap-2">
           <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>Cancel</button>
-          <button onClick={submit} disabled={busy} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>{busy ? <Loader2 size={15} className="inline animate-spin" /> : `Record Payment — ₱${peso(total)}`}</button>
+          <button onClick={submit} disabled={busy} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>{busy ? <Loader2 size={15} className="inline animate-spin" /> : `Record Payment — ₱${peso(total + adjNet)}`}</button>
         </div>
       </div>
     </div>

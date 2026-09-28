@@ -8844,14 +8844,26 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
   const fetchOrders = useCallback(async () => {
     setLoading(true)
     try {
-      const params = new URLSearchParams()
-      if (selectedBranch) params.set('branch', selectedBranch)
-      if (dateFrom) params.set('dateFrom', dateFrom)
-      if (dateTo) params.set('dateTo', dateTo)
-      params.set('pageSize', '500')
-      const r = await fetch(`/api/pos/orders?${params}`)
-      const d = await r.json()
-      setOrders(normalize(d) as Order[])
+      // The API pages newest-first, so a single 500-row page silently dropped
+      // the OLDER days of a busy range — Sales Checking then showed real sales
+      // days as "No sales recorded for this day". Walk every page until the
+      // reported total is in hand (sanity-capped at 20k orders).
+      const all: Order[] = []
+      for (let page = 1; page <= 20; page++) {
+        const params = new URLSearchParams()
+        if (selectedBranch) params.set('branch', selectedBranch)
+        if (dateFrom) params.set('dateFrom', dateFrom)
+        if (dateTo) params.set('dateTo', dateTo)
+        params.set('pageSize', '1000')
+        params.set('page', String(page))
+        const r = await fetch(`/api/pos/orders?${params}`)
+        const d = await r.json()
+        const batch = normalize(d) as Order[]
+        all.push(...batch)
+        const total = typeof d?.total === 'number' ? d.total : batch.length
+        if (all.length >= total || batch.length === 0) break
+      }
+      setOrders(all)
     } catch { setOrders([]) }
     finally { setLoading(false) }
   }, [selectedBranch, dateFrom, dateTo])
