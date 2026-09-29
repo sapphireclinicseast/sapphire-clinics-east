@@ -31,6 +31,21 @@ export async function GET(req: Request) {
   const outputGross = orders.reduce((s, o) => s + Number(o.netAmount), 0)
   const outputVat = outputGross * (VAT_RATE / (1 + VAT_RATE))
 
+  // SI-based (invoiced) sales — the correct 2550Q sales source: only sales that
+  // carry an official Sales Invoice. PRODUCT = vatable; Services / SI'd AR
+  // collections = VAT-exempt. Used to pre-fill the (editable) 2550Q sales lines.
+  const siOrders = await prisma.order.findMany({
+    where: { ...branchWhere, status: { in: ['COMPLETED', 'REOPENED'] }, issuedOfficialInvoice: true, salesInvoiceNumber: { not: null }, ...(from || to ? { transactionDate: range } : {}) },
+    select: { netAmount: true, orderType: true },
+  })
+  const siVatableSales = siOrders.filter(o => o.orderType === 'PRODUCT').reduce((s, o) => s + Number(o.netAmount), 0)
+  let siExemptSales = siOrders.filter(o => o.orderType !== 'PRODUCT').reduce((s, o) => s + Number(o.netAmount), 0)
+  const siArPayments = await prisma.aRPayment.findMany({
+    where: { ...branchWhere, salesInvoiceNumber: { not: null }, ...(from || to ? { paymentDate: range } : {}) },
+    select: { amount: true, discount: true },
+  })
+  siExemptSales += siArPayments.reduce((s, p) => s + Number(p.amount) + Number(p.discount), 0)
+
   // Input VAT: paid VATable expenses in the period (VAT-inclusive gross).
   const exps = await prisma.pettyCashEntry.findMany({
     where: { ...branchWhere, recordType: { in: ['ONE_TIME', 'RECURRING'] }, vatable: 'VAT', paidAt: { not: null }, ...(from || to ? { date: range } : {}) },
@@ -41,6 +56,7 @@ export async function GET(req: Request) {
 
   return NextResponse.json({
     outputGross, outputVat, orderCount: orders.length,
+    siVatableSales, siExemptSales, // SI-based sales for the 2550Q (editable defaults)
     inputGross, inputVat, expenseCount: exps.length,
     computedPayable: outputVat - inputVat,
   })
