@@ -84,7 +84,17 @@ export async function GET(req: NextRequest) {
   const points = [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)).map(p => ({
     ...p,
     label: new Date(`${p.date}T00:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }),
-    fillRate: p.totalSlots > 0 ? Math.round((p.booked / p.totalSlots) * 100) : null,
+    // Of what could be sold, how much was sold — so blocked hours are out of
+    // the denominator. They were in it, which punished a department for hours
+    // its consultants never offered: East SLP read 19% while 34% of its
+    // sellable hours were filled.
+    //
+    // Deliberately a different basis from the board's Slots card, which shows
+    // "% of total" and says so on the tile. Same numbers, two questions: that
+    // card asks how the day breaks down, this asks how well we sold it.
+    fillRate: (p.booked + p.open) > 0
+      ? Math.round((p.booked / (p.booked + p.open)) * 100)
+      : null,
   }))
 
   const departments = [...new Set(rows.map(r => r.department))].sort()
