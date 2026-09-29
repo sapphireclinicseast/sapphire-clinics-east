@@ -71,6 +71,32 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-seri
 .cover h1{font-size:1.72rem;font-weight:800;color:#fff;line-height:1.22;margin-bottom:9px}
 .cover p{font-size:0.87rem;color:rgba(255,255,255,0.6);max-width:520px}
 
+/* Connected-systems map. Inline SVG rather than an image so it stays sharp,
+   scales with the column, and prints. */
+.diagram{border:1px solid var(--border);border-radius:var(--radius);background:var(--bg);padding:14px 14px 8px;margin:12px 0 16px}
+.diagram svg{width:100%;height:auto;display:block}
+.diagram .node rect{fill:#fff;stroke:#CBD9D6;stroke-width:1.5}
+.diagram .hub rect{fill:#1E4D4A;stroke:#1E4D4A}
+.diagram .nt{font:700 17px -apple-system,Segoe UI,system-ui,sans-serif;fill:var(--text);text-anchor:middle}
+.diagram .ns{font:400 13px -apple-system,Segoe UI,system-ui,sans-serif;fill:var(--text3);text-anchor:middle}
+.diagram .ht{font:800 19px -apple-system,Segoe UI,system-ui,sans-serif;fill:#fff;text-anchor:middle;letter-spacing:0.04em}
+.diagram .hs{font:400 12px -apple-system,Segoe UI,system-ui,sans-serif;fill:rgba(255,255,255,0.6);text-anchor:middle}
+.diagram .edge{stroke:#8FA8A5;stroke-width:2;fill:none}
+.diagram .edge.one{stroke-dasharray:none}
+/* Halo so a label crossing its own arrow stays readable */
+.diagram .el{font:500 11.5px -apple-system,Segoe UI,system-ui,sans-serif;fill:var(--text2);paint-order:stroke;stroke:var(--bg);stroke-width:4px;stroke-linejoin:round}
+.diagram .legend{text-align:center;font-size:0.74rem;color:var(--text3);margin:2px 0 4px}
+.diagram .sw{display:inline-block;width:20px;height:0;border-top:2px solid #8FA8A5;vertical-align:middle;margin-right:3px}
+.diagram .sw.one{border-top-style:solid;opacity:0.55}
+
+/* Static contents page — plain links, no script, survives Print and Word */
+.toc-static h4{margin:0 0 6px}
+.toc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:15px 22px;margin-top:10px}
+.toc-block h4{font-size:0.7rem;font-weight:800;letter-spacing:0.09em;text-transform:uppercase;color:var(--orange);margin:0 0 6px}
+.toc-block a{display:block;font-size:0.79rem;color:var(--text2);text-decoration:none;padding:2px 0;border-bottom:1px dotted transparent}
+.toc-block a:hover{color:var(--teal);border-bottom-color:var(--teal)}
+@media print{.toc-grid{grid-template-columns:repeat(2,1fr)}}
+
 /* ── Chapters & sections ──────────────────────────────────────────────── */
 .chapter{margin:40px 0 14px;padding-bottom:7px;border-bottom:2px solid var(--border)}
 .chapter .num{font-size:0.6rem;font-weight:800;letter-spacing:0.2em;text-transform:uppercase;color:var(--orange)}
@@ -106,13 +132,13 @@ ol.steps li b,.sec p b,.sec ul li b{color:var(--text);font-weight:700}
 .pill{display:inline-flex;font-size:0.62rem;font-weight:800;letter-spacing:0.06em;padding:2px 8px;border-radius:20px;text-transform:uppercase}
 .pill.admin{background:var(--teal-l);color:var(--admin)}.pill.hr{background:#EDE9FE;color:var(--hr)}
 .pill.desk{background:#D1FAE5;color:var(--desk)}.pill.mktg{background:var(--orange-l);color:var(--mktg)}
-.pill.all{background:#E8EDF5;color:#44506A}
+.pill.all{background:#E8EDF5;color:#44506A}.pill.inv{background:#FEF3C7;color:#92400E}
 .who{display:flex;gap:5px;flex-wrap:wrap;margin:2px 0 11px}
 
 .rolegrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:12px;margin:12px 0}
 .rolecard{border:1px solid var(--border);border-radius:9px;padding:13px 15px;background:var(--bg)}
 .rolecard.admin{border-top:3px solid var(--admin)}.rolecard.hr{border-top:3px solid var(--hr)}
-.rolecard.desk{border-top:3px solid var(--desk)}.rolecard.mktg{border-top:3px solid var(--mktg)}
+.rolecard.desk{border-top:3px solid var(--desk)}.rolecard.mktg{border-top:3px solid var(--mktg)}.rolecard.inv{border-top:3px solid #B45309}
 .rolecard h5{font-size:0.85rem;font-weight:800;color:var(--text);margin-bottom:2px}
 .rolecard .code{font-size:0.64rem;font-family:'SF Mono',Consolas,monospace;color:var(--text3);margin-bottom:6px}
 .rolecard p{font-size:0.77rem;color:var(--text2);margin:0}
@@ -166,11 +192,75 @@ table.matrix td:first-child{font-weight:700;color:var(--text)}
      button does, and the order to do things in.</p>
 </div>
 
+<!-- A REAL contents page, written out rather than generated.
+     The Contents button builds its list with script; that list is not in the
+     document, so it was missing from the printed copy and from anyone whose
+     browser did not run the script — and a handbook with no contents page is
+     not a handbook. This one is plain links and always there. -->
+<div class="sec toc-static" id="contents">
+  <h3>Table of contents</h3>
+  <p class="lede">Six chapters, 33 sections. Click any line to jump; the Contents button at the top does the same thing without scrolling back here.</p>
+
+  <div class="toc-grid">
+    <div class="toc-block">
+      <h4>1 &middot; Start here</h4>
+      <a href="#about">How to use this handbook</a>
+      <a href="#roles">Your role decides what you see</a>
+      <a href="#layout">The screen, explained</a>
+      <a href="#controls">Controls you will meet everywhere</a>
+      <a href="#first-day">Your first fifteen minutes</a>
+    </div>
+    <div class="toc-block">
+      <h4>2 &middot; Home and patient records</h4>
+      <a href="#dashboard">Home Dashboard</a>
+      <a href="#patient-crm">Patient CRM</a>
+      <a href="#patient-profile">Patient Profile</a>
+      <a href="#patient-dashboard">Patient Dashboard</a>
+      <a href="#self-register">Patient self-registration</a>
+    </div>
+    <div class="toc-block">
+      <h4>3 &middot; Clinic Tools</h4>
+      <a href="#staff">Staff Module</a>
+      <a href="#queueing">Queueing</a>
+      <a href="#clinic-schedule">Clinic Schedule</a>
+      <a href="#utilization">Clinic Utilization</a>
+      <a href="#survey">Customer Survey</a>
+      <a href="#reg-forms">Registration Forms</a>
+      <a href="#decking">Decking Module</a>
+      <a href="#loa">LOA Submission</a>
+      <a href="#patient-rel">Patient Relationship</a>
+      <a href="#peer-eval">Peer Evaluation</a>
+      <a href="#partners">Partner Institutions</a>
+    </div>
+    <div class="toc-block">
+      <h4>4 &middot; Social and marketing</h4>
+      <a href="#social">Social Media Suite</a>
+      <a href="#templates">Post Templates</a>
+      <a href="#email">Email Campaigns</a>
+      <a href="#sms">SMS Campaigns</a>
+    </div>
+    <div class="toc-block">
+      <h4>5 &middot; Settings and reference</h4>
+      <a href="#investor">Investor View</a>
+      <a href="#accounts">Connected Accounts</a>
+      <a href="#team">Team</a>
+      <a href="#brand">Brand Guide</a>
+      <a href="#hubs">How the Hub connects to the other systems</a>
+      <a href="#matrix">Who can see what</a>
+    </div>
+    <div class="toc-block">
+      <h4>6 &middot; Help</h4>
+      <a href="#search">Word search</a>
+      <a href="#faq">Frequently asked questions</a>
+    </div>
+  </div>
+</div>
+
 <!-- ══════════════ 1. START HERE ══════════════ -->
 <div class="chapter" id="ch-start">
   <div class="num">Chapter 1</div>
   <h2>Start here</h2>
-  <p>Read this chapter once. Everything after it assumes you know these four things.</p>
+  <p>Read this chapter once. Everything after it assumes you know what is in it.</p>
 </div>
 
 <div class="sec" id="about">
@@ -186,7 +276,7 @@ table.matrix td:first-child{font-weight:700;color:var(--text)}
 
 <div class="sec" id="roles">
   <h3>Your role decides what you see</h3>
-  <p class="lede">Every account has exactly one role. If a module named in this handbook is missing from your menu, your role does not have it — that is not a fault.</p>
+  <p class="lede">Every account has exactly one role — five of them. If a module named in this handbook is missing from your menu, your role does not have it; that is not a fault.</p>
   <div class="rolegrid">
     <div class="rolecard admin"><h5>Clinic Manager</h5><div class="code">ADMIN</div>
       <p>Everything, both branches, plus Team (user accounts). If you can read this handbook and also see <b>Team</b> in the menu, you are this.</p></div>
@@ -196,6 +286,8 @@ table.matrix td:first-child{font-weight:700;color:var(--text)}
       <p>Clinic Tools only — no social media, email or analytics. Locked to one branch: an East account cannot see Greenhills data.</p></div>
     <div class="rolecard mktg"><h5>Marketing Admin</h5><div class="code">MARKETING_ADMIN</div>
       <p>The full marketing suite plus patient analytics and staff tools. No Clinic Schedule, Decking or Patient Relationship.</p></div>
+    <div class="rolecard inv"><h5>Investor</h5><div class="code">INVESTOR</div>
+      <p>Two pages, read-only: Patient Dashboard and Customer Satisfaction Survey. No patient names, and therapist names shown as initials. See <a href="#investor" style="color:inherit;text-decoration:underline">Investor View</a>.</p></div>
   </div>
   <div class="tip warn"><b>Branch lock:</b> Front Desk accounts only ever see their own branch. Where this handbook says "switch branch", that applies to Clinic Manager and HR Officer accounts.</div>
 </div>
@@ -241,7 +333,7 @@ table.matrix td:first-child{font-weight:700;color:var(--text)}
   <p class="lede">If you have never opened the Hub before, do these in order.</p>
   <ol class="steps">
     <li>Sign in with the email address your manager registered. If it is refused, your account may not exist yet — a Clinic Manager creates it under <b>Settings &rarr; Team</b>.</li>
-    <li>Look at the left menu and compare it with the four roles above. That tells you which account type you have.</li>
+    <li>Look at the left menu and compare it with the five roles above. That tells you which account type you have.</li>
     <li>Open <b>Home Dashboard</b>. Nothing here changes any data — it is safe to click around.</li>
     <li>Open <b>Clinic Schedule</b> and switch between the four view tabs without editing anything, to see the same day four ways.</li>
     <li>Open <b>Decking Module</b> and click each chip in the two cards at the top. Again, looking changes nothing.</li>
@@ -700,6 +792,37 @@ table.matrix td:first-child{font-weight:700;color:var(--text)}
   <p>Configuration, accounts, and how the Hub connects to the other systems.</p>
 </div>
 
+<div class="sec" id="investor">
+  <h3>Investor View <span class="path">/patients/dashboard</span></h3>
+  <div class="who"><span class="pill inv">Investor only</span></div>
+  <p class="lede">A deliberately narrow, read-only account for people who should see how the clinic is performing without seeing who the patients are.</p>
+  <h4>What an investor account can reach</h4>
+  <p>Exactly two pages, and nothing else:</p>
+  <ul>
+    <li><b>Patient Dashboard</b> — patient numbers, growth and mix, plus the therapist leaderboard and positive feedback highlights. This is the landing page.</li>
+    <li><b>Customer Satisfaction Survey</b> — the leaderboard and patient feedback on a page of their own.</li>
+  </ul>
+  <p>The left menu shows only those two, under the heading <b>Investor View</b>. Typing any other address into the browser lands back on the Patient Dashboard rather than opening the page.</p>
+  <h4>What is deliberately hidden</h4>
+  <table class="btns">
+    <thead><tr><th>Hidden</th><th>How</th></tr></thead>
+    <tbody>
+      <tr><td>Patient identity</td><td>Respondent names, emails and phone numbers are never fetched from the database for this view at all — not merely left off the screen.</td></tr>
+      <tr><td>Therapist names</td><td>Masked to initials. An investor sees the ranking and the scores, not who is who.</td></tr>
+      <tr><td>Every other module</td><td>Blocked on the server. Adding a link to the menu would not grant access; the allowed list is enforced behind it.</td></tr>
+    </tbody>
+  </table>
+  <div class="tip"><b>Why masking sits in the API, not the page:</b> if the names were only hidden by the screen, the full names would still arrive in the browser and be readable by anyone who looked. They are removed before the data is sent.</div>
+  <h4>Setting one up</h4>
+  <ol class="steps">
+    <li>Go to <b>Settings &rarr; Team</b> as a Clinic Manager.</li>
+    <li>Create the account and set the role to <b>Investor</b>.</li>
+    <li>No branch is needed — the view already spans the clinic.</li>
+    <li>Sign in as them once to confirm they land on the Patient Dashboard and the menu shows only the two entries.</li>
+  </ol>
+  <div class="tip warn"><b>Do not use an admin account as a stand-in.</b> Handing an investor a Clinic Manager login exposes every patient record in the clinic. The Investor role exists so that never has to happen.</div>
+</div>
+
 <div class="sec" id="accounts">
   <h3>Connected Accounts <span class="path">/settings/accounts</span></h3>
   <div class="who"><span class="pill admin">Clinic Manager</span><span class="pill hr">HR Officer</span><span class="pill mktg">Marketing Admin</span></div>
@@ -713,7 +836,7 @@ table.matrix td:first-child{font-weight:700;color:var(--text)}
   <p class="lede">Hub user accounts. This is the only place accounts are created, and only Clinic Managers can open it.</p>
   <ol class="steps">
     <li>Enter the person's <b>Name</b> and <b>Email</b>.</li>
-    <li>Choose the <b>Role</b> — the four in Chapter 1. <b>Admin — all branches, all modules</b> is the unrestricted one.</li>
+    <li>Choose the <b>Role</b> — the five in Chapter 1. <b>Admin — all branches, all modules</b> is the unrestricted one.</li>
     <li>Set the <b>Branch</b> for a branch-locked role.</li>
     <li>Set a <b>Password</b> and pass it to them privately.</li>
   </ol>
@@ -727,47 +850,103 @@ table.matrix td:first-child{font-weight:700;color:var(--text)}
 </div>
 
 <div class="sec" id="hubs">
-  <h3>How the Hub connects to the other systems</h3>
-  <p class="lede">The Operations Hub does not hold everything. Knowing who owns what saves editing in the wrong place.</p>
+  <h3>Connected systems — where the data flows</h3>
+  <p class="lede">The Operations Hub is one of several connected systems. They share data automatically over secure
+     system-to-system links, so information typed once does not have to be typed again elsewhere. This map shows
+     what the Operations Hub <b>supplies</b> to each system and what it <b>receives</b> back.</p>
+
+  <div class="diagram">
+    <svg viewBox="0 0 820 470" role="img" aria-label="Operations Hub at the centre, exchanging data with HR Hub, Accounting Hub, Client Portal and Staff Portal">
+      <defs>
+        <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" fill="#8FA8A5"/>
+        </marker>
+      </defs>
+
+      <!-- outer systems -->
+      <g class="node">
+        <rect x="30" y="34" width="290" height="76" rx="12"/>
+        <text class="nt" x="175" y="68">HR Hub</text>
+        <text class="ns" x="175" y="90">staff &middot; employment &middot; partners</text>
+      </g>
+      <g class="node">
+        <rect x="500" y="34" width="290" height="76" rx="12"/>
+        <text class="nt" x="645" y="68">Accounting Hub</text>
+        <text class="ns" x="645" y="90">billing &middot; referrers &middot; finance</text>
+      </g>
+      <g class="node">
+        <rect x="30" y="360" width="290" height="76" rx="12"/>
+        <text class="nt" x="175" y="394">Client Portal</text>
+        <text class="ns" x="175" y="416">what families see</text>
+      </g>
+      <g class="node">
+        <rect x="500" y="360" width="290" height="76" rx="12"/>
+        <text class="nt" x="645" y="394">Staff Portal</text>
+        <text class="ns" x="645" y="416">what clinicians see</text>
+      </g>
+
+      <!-- centre -->
+      <g class="hub">
+        <rect x="265" y="192" width="290" height="86" rx="14"/>
+        <text class="ht" x="410" y="228">OPERATIONS HUB</text>
+        <text class="hs" x="410" y="252">operations.sapphireclinicseast.org</text>
+      </g>
+
+      <!-- flows: two-way above, one-way below -->
+      <path class="edge two" d="M195 118 L330 184" marker-end="url(#ah)" marker-start="url(#ah)"/>
+      <path class="edge two" d="M625 118 L490 184" marker-end="url(#ah)" marker-start="url(#ah)"/>
+      <path class="edge one" d="M330 286 L195 352" marker-end="url(#ah)"/>
+      <path class="edge one" d="M490 286 L625 352" marker-end="url(#ah)"/>
+
+      <text class="el" x="222" y="162">staff in &middot; results out</text>
+      <text class="el" x="598" y="162" text-anchor="end">doctors in &middot; bookings out</text>
+      <text class="el" x="222" y="330">patients &middot; sessions</text>
+      <text class="el" x="598" y="330" text-anchor="end">schedules &middot; queue</text>
+    </svg>
+    <p class="legend"><span class="sw two"></span> two-way automatic sync &nbsp;&middot;&nbsp;
+       <span class="sw one"></span> one-way (Operations publishes out)</p>
+  </div>
+
+  <h4>What moves, and which way</h4>
   <table class="btns">
-    <thead><tr><th>System</th><th>Owns</th></tr></thead>
+    <thead><tr><th>System</th><th>Operations receives / supplies</th></tr></thead>
     <tbody>
-      <tr><td>HR Hub</td><td>Staff records, employment type, work arrangement, partner institutions. Flows one way into Operations.</td></tr>
-      <tr><td>Accounting Hub</td><td>Billing, and the referring-doctor list used by the registration form. Read live.</td></tr>
-      <tr><td>Client Portal</td><td>What families see: their sessions, documents and progress.</td></tr>
-      <tr><td>Staff Portal</td><td>What clinicians see: their own schedule and session notes.</td></tr>
+      <tr><td>HR Hub</td><td><b>Receives</b> staff records, employment type, work arrangement and partner institutions — HR owns all of these. <b>Supplies</b> survey and peer-evaluation results back.</td></tr>
+      <tr><td>Accounting Hub</td><td><b>Receives</b> the referring-doctor list used by the registration form, read live. <b>Supplies</b> booking and payment markers for reconciliation.</td></tr>
+      <tr><td>Client Portal</td><td><b>Supplies</b> what families see: their patient record, sessions and documents.</td></tr>
+      <tr><td>Staff Portal</td><td><b>Supplies</b> what clinicians see: their own schedule and the day queue.</td></tr>
     </tbody>
   </table>
-  <div class="tip"><b>One-way means one-way.</b> Editing a staff name in Operations does not reach HR Hub, and the next sync will overwrite it. Change it at the source.</div>
+  <div class="tip warn"><b>One-way means one-way.</b> Editing a staff name in Operations does not reach HR Hub, and the next sync will overwrite it. Change it where it is owned — the table above says where that is.</div>
 </div>
 
 <div class="sec" id="matrix">
   <h3>Who can see what</h3>
   <div class="matrix-wrap">
   <table class="matrix">
-    <thead><tr><th>Module</th><th>Clinic Mgr</th><th>HR Officer</th><th>Front Desk</th><th>Marketing</th></tr></thead>
+    <thead><tr><th>Module</th><th>Clinic Mgr</th><th>HR Officer</th><th>Front Desk</th><th>Marketing</th><th>Investor</th></tr></thead>
     <tbody>
       <tr><td>Home Dashboard</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
       <tr><td>Patient CRM / Profile</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
       <tr><td>Patient Dashboard</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td><td class="yes">Yes</td></tr>
-      <tr><td>Staff Module</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
-      <tr><td>Queueing</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td></tr>
-      <tr><td>Clinic Schedule</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td></tr>
-      <tr><td>Clinic Utilization</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td></tr>
+      <tr><td>Staff Module</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td></tr>
+      <tr><td>Queueing</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td></tr>
+      <tr><td>Clinic Schedule</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td></tr>
+      <tr><td>Clinic Utilization</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td><td class="no">No</td></tr>
       <tr><td>Customer Survey</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="part">Satisfaction only</td></tr>
-      <tr><td>Registration Forms</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
-      <tr><td>Decking Module</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td></tr>
-      <tr><td>LOA Submission</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td></tr>
-      <tr><td>Patient Relationship</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td></tr>
-      <tr><td>Peer Evaluation</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
-      <tr><td>Partner Institutions</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
-      <tr><td>Social / Templates / Email / SMS</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td><td class="yes">Yes</td></tr>
-      <tr><td>Connected Accounts</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td><td class="yes">Yes</td></tr>
-      <tr><td>Team</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td><td class="no">No</td></tr>
+      <tr><td>Registration Forms</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td></tr>
+      <tr><td>Decking Module</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td></tr>
+      <tr><td>LOA Submission</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td></tr>
+      <tr><td>Patient Relationship</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td></tr>
+      <tr><td>Peer Evaluation</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td></tr>
+      <tr><td>Partner Institutions</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td></tr>
+      <tr><td>Social / Templates / Email / SMS</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td><td class="yes">Yes</td><td class="no">No</td></tr>
+      <tr><td>Connected Accounts</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td><td class="yes">Yes</td><td class="no">No</td></tr>
+      <tr><td>Team</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td><td class="no">No</td><td class="no">No</td></tr>
     </tbody>
   </table>
   </div>
-  <div class="tip"><b>Branch lock sits on top of this.</b> A Front Desk account with Yes in this table still only sees its own branch.</div>
+  <div class="tip"><b>Branch lock sits on top of this.</b> A Front Desk account with Yes in this table still only sees its own branch. Investor accounts span both branches but see no names.</div>
 </div>
 
 <!-- ══════════════ 6. HELP ══════════════ -->
@@ -863,6 +1042,9 @@ table.matrix td:first-child{font-weight:700;color:var(--text)}
     <p>If all three are right and it still disagrees, say so — a count that contradicts the board is worth investigating rather than working around.</p></div></details>
   <details class="faq"><summary>The leaderboard looks unfair.</summary><div class="a">
     <p>Check the response count beside each score. A clinician with three responses can outrank one with ninety. <b>Leaderboard Scoring Weights</b> controls how much rating counts against volume.</p></div></details>
+  <details class="faq"><summary>Can I give an investor a login without showing them patient names?</summary><div class="a">
+    <p>Yes — that is exactly what the <b>Investor</b> role is for. It reaches two read-only pages, patient identities are never sent to it, and therapist names appear as initials.</p>
+    <p>Create it under <b>Settings &rarr; Team</b> and set the role to Investor. Never hand an investor an admin login instead; that exposes every patient record in the clinic.</p></div></details>
   <details class="faq"><summary>Who do I ask when the answer is not here?</summary><div class="a">
     <p>Anything about staff records, employment type or partner agreements — HR Hub, because it owns them. Anything about billing or referrers — Accounting Hub. Anything else, your Clinic Manager.</p></div></details>
 </div>
