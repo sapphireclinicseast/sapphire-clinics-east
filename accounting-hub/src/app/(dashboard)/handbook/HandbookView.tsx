@@ -113,9 +113,11 @@ export function HandbookBody() {
       {!query && (
         <nav className="no-print mb-8 rounded-xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
           <p className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--mid-gray)' }}>Contents</p>
-          <div className="grid sm:grid-cols-2 gap-x-6 gap-y-4">
+          {/* Flowing columns (not a grid): a tall group packs against the next
+              group instead of stretching its row and leaving a gap beside it. */}
+          <div className="sm:columns-2 gap-6">
             {groups.map((g) => (
-              <div key={g}>
+              <div key={g} className="mb-4 break-inside-avoid">
                 <p className="text-[11px] font-bold uppercase tracking-wider mb-1.5" style={{ color: 'var(--deep-teal)' }}>{g}</p>
                 <ul className="space-y-1">
                   {SECTIONS.filter((s) => s.group === g).map((s) => (
