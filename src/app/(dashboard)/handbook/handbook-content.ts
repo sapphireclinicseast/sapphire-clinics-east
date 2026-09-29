@@ -1,16 +1,19 @@
-// The handbook document itself, kept apart from the page that frames it.
+// The Operations Hub handbook, built to the same pattern as the HR portal
+// handbook at hr.sapphireclinicseast.org/modules/handbook — masthead, sticky
+// contents, module cards, connected-systems map, role playbooks, golden rules,
+// help. Same structure and the same component vocabulary; Operations' own
+// palette and its own modules.
 //
-// One column, no sidebar. The page is already inside the Hub's own left rail,
-// and the old build carried a second dark rail of its own — two nav columns
-// side by side, which read as a layout fault rather than as navigation. Moving
-// around now happens through the sticky bar at the top: a search box and a
-// Contents panel that drops over the page instead of sitting beside it.
+// The contents list is WRITTEN OUT, not generated. A script-built list exists
+// only in the live DOM, so it disappears from the printed copy and from anyone
+// whose browser did not run it.
 //
-// Written for somebody on their first day. Every module says where it is, what
-// each control does, and what to do in order — not just what the module is for.
+// Print and Word live in the masthead here, as they do in the HR handbook, so
+// the document carries its own actions rather than depending on the page that
+// frames it. Anything marked data-noexport is dropped from the Word copy.
 //
-// NOTE: this is a template literal. No backticks and no dollar-brace in the
-// content, or the build breaks.
+// NOTE: template literal — no backticks, and no dollar immediately followed by
+// a brace anywhere in the content, or the build breaks.
 
 export const HANDBOOK_HTML = `<!DOCTYPE html>
 <html lang="en">
@@ -19,1103 +22,1303 @@ export const HANDBOOK_HTML = `<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Operations Hub — User Handbook</title>
 <style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{
-  --bg:#F2F5F9;--surface:#FFFFFF;--border:#DDE4EF;--text:#1C2535;--text2:#4E5C74;--text3:#8A96A8;
-  --ink:#141B2D;--teal:#1A7B8A;--teal-l:#E5F4F6;--orange:#ED6823;--orange-l:#FEF0E8;
-  --admin:#1A7B8A;--hr:#6D28D9;--desk:#047857;--mktg:#ED6823;
-  --warn-bg:#FEF6E7;--warn-br:#F3D9A4;--warn-tx:#7A4E08;
-  --radius:10px;
-}
-html{scroll-behavior:smooth;font-size:15px}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.62}
-.wrap{max-width:900px;margin:0 auto;padding:0 28px 120px}
+  *,*::before,*::after{box-sizing:border-box;}
+  :root{
+    --ink:#132A33; --body:#2E4049; --muted:#6B7C85;
+    --teal:#1A7B8A; --teal-deep:#0E4C57; --teal-soft:#E3F1F3;
+    --line:#D7E3E6; --line-soft:#E9F1F2;
+    --paper:#F2F6F7; --card:#FFFFFF;
+    --orange:#ED6823; --orange-soft:#FEF0E8;
+    /* role accents, deliberately distinct from the brand teal */
+    --mgr:#7E4CC4; --mgr-bg:#F1EAFB;
+    --hro:#1F6FB2; --hro-bg:#E7F0F9;
+    --desk:#2E8B57; --desk-bg:#E6F3EC;
+    --mktg:#C2571C; --mktg-bg:#FDEDE2;
+    --inv:#8A6A18; --inv-bg:#FAF2DC;
+    --warn:#B7791F; --warn-bg:#FBF4E4;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --measure:70ch;
+  }
+  html{scroll-behavior:smooth;}
+  body{margin:0;font-family:var(--sans);font-size:15.5px;line-height:1.62;
+    color:var(--body);background:var(--paper);-webkit-font-smoothing:antialiased;}
+  a{color:var(--teal);text-underline-offset:2px;}
+  h1,h2,h3,h4{color:var(--ink);text-wrap:balance;line-height:1.2;margin:0;}
+  p{margin:0 0 12px;}
+  code{font-family:var(--mono);font-size:.86em;background:var(--teal-soft);
+    color:var(--teal-deep);padding:.08em .4em;border-radius:4px;white-space:nowrap;}
+  /* A named on-screen control: a button, tab, menu item, or field label. */
+  kbd{font-family:var(--sans);font-size:.88em;font-weight:600;color:var(--ink);
+    background:#fff;border:1px solid var(--line);border-bottom-width:2px;
+    border-radius:6px;padding:.05em .45em;white-space:nowrap;}
+  mark{background:#FFF1A8;color:inherit;padding:0 .1em;border-radius:3px;}
 
-/* ── Sticky bar: the only navigation furniture ─────────────────────────── */
-.topbar{position:sticky;top:0;z-index:60;background:rgba(242,245,249,0.94);backdrop-filter:blur(8px);border-bottom:1px solid var(--border)}
-.topbar-in{max-width:900px;margin:0 auto;padding:10px 28px;display:flex;align-items:center;gap:10px}
-.tb-title{font-size:0.72rem;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;color:var(--teal);white-space:nowrap}
-.tb-spacer{flex:1}
-.tb-search{position:relative;flex:1;max-width:330px}
-.tb-search input{width:100%;padding:7px 30px 7px 30px;border:1.5px solid var(--border);border-radius:8px;font-size:0.8rem;background:#fff;color:var(--text);outline:none;font-family:inherit}
-.tb-search input:focus{border-color:var(--teal)}
-.tb-search .mag{position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--text3);font-size:0.82rem;pointer-events:none}
-.tb-search .clr{position:absolute;right:6px;top:50%;transform:translateY(-50%);border:none;background:none;color:var(--text3);cursor:pointer;font-size:0.95rem;line-height:1;padding:2px 4px;display:none}
-.tb-btn{padding:7px 13px;border:1.5px solid var(--border);border-radius:8px;background:#fff;color:var(--text);font-size:0.78rem;font-weight:700;cursor:pointer;white-space:nowrap;font-family:inherit}
-.tb-btn:hover{border-color:var(--teal);color:var(--teal)}
-.tb-btn.on{background:var(--teal);border-color:var(--teal);color:#fff}
+  /* ── Shell ─────────────────────────────────────── */
+  .wrap{max-width:1160px;margin:0 auto;padding:0 24px;}
+  .shell{display:grid;grid-template-columns:236px minmax(0,1fr);gap:52px;align-items:start;}
+  @media(max-width:980px){.shell{grid-template-columns:1fr;gap:0;}}
 
-/* Contents drops OVER the page, full width — never a second column */
-.toc{display:none;border-top:1px solid var(--border);background:#fff;box-shadow:0 12px 28px rgba(20,27,45,0.1)}
-.toc.open{display:block}
-.toc-in{max-width:900px;margin:0 auto;padding:18px 28px 22px;display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:16px 24px}
-.toc-col h4{font-size:0.6rem;font-weight:800;letter-spacing:0.16em;text-transform:uppercase;color:var(--text3);margin-bottom:7px}
-.toc-col a{display:block;font-size:0.79rem;color:var(--text2);text-decoration:none;padding:3px 0;border-radius:4px}
-.toc-col a:hover{color:var(--teal)}
+  /* ── Masthead ─────────────────────────────────── */
+  header.mast{background:
+      radial-gradient(120% 140% at 100% 0%, rgba(26,123,138,.16), transparent 60%),
+      linear-gradient(180deg,#0E4C57,#126673);
+    color:#DCEBEE;padding:52px 0 46px;}
+  .mast .wrap{display:flex;flex-direction:column;gap:18px;}
+  .kicker{font-family:var(--mono);font-size:12.5px;letter-spacing:.22em;
+    text-transform:uppercase;color:#7FC0C9;}
+  .mast h1{color:#FFFFFF;font-size:clamp(30px,4.6vw,46px);font-weight:800;
+    letter-spacing:-.02em;max-width:20ch;}
+  .mast p.lede{margin:0;max-width:62ch;color:#CDE4E8;font-size:17px;}
+  .mast .meta{display:flex;flex-wrap:wrap;gap:10px 22px;margin-top:6px;font-size:13.5px;color:#A9D0D6;}
+  .mast .meta b{color:#EAF5F6;font-weight:600;}
+  .mast .meta code{background:rgba(255,255,255,.12);color:#EAF5F6;}
+  .mast-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:4px;}
+  .hb-btn{font-family:var(--sans);font-size:13.5px;font-weight:600;cursor:pointer;
+    display:inline-flex;align-items:center;gap:7px;padding:9px 16px;border-radius:9px;
+    border:1px solid transparent;background:#EAF5F6;color:#0E4C57;transition:transform .12s,background .15s;}
+  .hb-btn:hover{background:#FFFFFF;transform:translateY(-1px);}
+  .hb-btn.ghost{background:rgba(255,255,255,.10);color:#EAF5F6;border-color:rgba(255,255,255,.35);}
+  .hb-btn.ghost:hover{background:rgba(255,255,255,.18);}
+  .hb-btn:focus-visible{outline:2px solid #FFFFFF;outline-offset:2px;}
 
-/* ── Search results ───────────────────────────────────────────────────── */
-.results{display:none;background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:14px 18px;margin:18px 0 0}
-.results.show{display:block}
-.results h3{font-size:0.82rem;font-weight:800;margin-bottom:9px;color:var(--text)}
-.res{display:block;padding:9px 11px;border-radius:8px;text-decoration:none;border:1px solid var(--border);margin-bottom:6px;background:var(--bg)}
-.res:hover{border-color:var(--teal)}
-.res .rt{font-size:0.79rem;font-weight:700;color:var(--teal);margin-bottom:2px}
-.res .rs{font-size:0.75rem;color:var(--text2);line-height:1.5}
-.res mark,mark.hit{background:#FDE68A;color:#5B3A00;border-radius:2px;padding:0 1px}
-.no-res{font-size:0.8rem;color:var(--text2);padding:6px 2px}
+  /* ── Body layout ──────────────────────────────── */
+  main{padding:44px 0 90px;}
+  nav.toc{position:sticky;top:20px;font-size:13.5px;max-height:calc(100vh - 40px);overflow:auto;}
+  @media(max-width:980px){nav.toc{position:static;margin-bottom:28px;max-height:none;
+    border:1px solid var(--line);border-radius:12px;background:var(--card);padding:14px 16px;}}
+  nav.toc .toc-h{font-family:var(--mono);font-size:11px;letter-spacing:.18em;
+    text-transform:uppercase;color:var(--muted);margin:0 0 10px;}
+  nav.toc ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:1px;}
+  nav.toc a{display:block;padding:5px 10px;border-radius:7px;color:var(--body);
+    text-decoration:none;border-left:2px solid transparent;transition:background .15s,color .15s;}
+  nav.toc a:hover{background:var(--teal-soft);color:var(--teal-deep);}
+  nav.toc a.sub{padding-left:20px;font-size:12.5px;color:var(--muted);}
 
-/* ── Cover ────────────────────────────────────────────────────────────── */
-.cover{background:var(--ink);border-radius:var(--radius);padding:34px 34px 30px;margin:24px 0 30px;position:relative;overflow:hidden}
-.cover::before{content:'';position:absolute;right:-60px;top:-60px;width:240px;height:240px;background:radial-gradient(circle,rgba(26,123,138,0.28) 0%,transparent 70%)}
-.cover-eye{font-size:0.62rem;font-weight:800;letter-spacing:0.22em;text-transform:uppercase;color:var(--teal);margin-bottom:9px}
-.cover h1{font-size:1.72rem;font-weight:800;color:#fff;line-height:1.22;margin-bottom:9px}
-.cover p{font-size:0.87rem;color:rgba(255,255,255,0.6);max-width:520px}
+  section{margin-bottom:52px;scroll-margin-top:20px;}
+  .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--teal);margin-bottom:8px;}
+  section > h2{font-size:26px;font-weight:800;letter-spacing:-.015em;
+    padding-bottom:12px;border-bottom:2px solid var(--line);margin-bottom:20px;}
+  section p{max-width:var(--measure);}
+  h3.blockh{font-size:18px;font-weight:700;margin:26px 0 8px;}
 
-/* Connected-systems map. Inline SVG rather than an image so it stays sharp,
-   scales with the column, and prints. */
-.diagram{border:1px solid var(--border);border-radius:var(--radius);background:var(--bg);padding:14px 14px 8px;margin:12px 0 16px}
-.diagram svg{width:100%;height:auto;display:block}
-.diagram .node rect{fill:#fff;stroke:#CBD9D6;stroke-width:1.5}
-.diagram .hub rect{fill:#1E4D4A;stroke:#1E4D4A}
-.diagram .nt{font:700 17px -apple-system,Segoe UI,system-ui,sans-serif;fill:var(--text);text-anchor:middle}
-.diagram .ns{font:400 13px -apple-system,Segoe UI,system-ui,sans-serif;fill:var(--text3);text-anchor:middle}
-.diagram .ht{font:800 19px -apple-system,Segoe UI,system-ui,sans-serif;fill:#fff;text-anchor:middle;letter-spacing:0.04em}
-.diagram .hs{font:400 12px -apple-system,Segoe UI,system-ui,sans-serif;fill:rgba(255,255,255,0.6);text-anchor:middle}
-.diagram .edge{stroke:#8FA8A5;stroke-width:2;fill:none}
-.diagram .edge.one{stroke-dasharray:none}
-/* Halo so a label crossing its own arrow stays readable */
-.diagram .el{font:500 11.5px -apple-system,Segoe UI,system-ui,sans-serif;fill:var(--text2);paint-order:stroke;stroke:var(--bg);stroke-width:4px;stroke-linejoin:round}
-.diagram .legend{text-align:center;font-size:0.74rem;color:var(--text3);margin:2px 0 4px}
-.diagram .sw{display:inline-block;width:20px;height:0;border-top:2px solid #8FA8A5;vertical-align:middle;margin-right:3px}
-.diagram .sw.one{border-top-style:solid;opacity:0.55}
+  /* Role badges & legend */
+  .badge{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;
+    padding:3px 9px 3px 7px;border-radius:999px;line-height:1;white-space:nowrap;}
+  .badge .dot{width:14px;height:14px;border-radius:50%;color:#fff;font-size:9px;
+    font-weight:800;display:grid;place-items:center;}
+  .b-mgr{background:var(--mgr-bg);color:#5B2E96;}  .b-mgr .dot{background:var(--mgr);}
+  .b-hr{background:var(--hro-bg);color:#154C7E;}   .b-hr .dot{background:var(--hro);}
+  .b-desk{background:var(--desk-bg);color:#1F6340;} .b-desk .dot{background:var(--desk);}
+  .b-mktg{background:var(--mktg-bg);color:#8C3D12;} .b-mktg .dot{background:var(--mktg);}
+  .b-inv{background:var(--inv-bg);color:#6B5212;}  .b-inv .dot{background:var(--inv);}
 
-/* Static contents page — plain links, no script, survives Print and Word */
-.toc-static h4{margin:0 0 6px}
-.toc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:15px 22px;margin-top:10px}
-.toc-block h4{font-size:0.7rem;font-weight:800;letter-spacing:0.09em;text-transform:uppercase;color:var(--orange);margin:0 0 6px}
-.toc-block a{display:block;font-size:0.79rem;color:var(--text2);text-decoration:none;padding:2px 0;border-bottom:1px dotted transparent}
-.toc-block a:hover{color:var(--teal);border-bottom-color:var(--teal)}
-@media print{.toc-grid{grid-template-columns:repeat(2,1fr)}}
+  .legend{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:22px 0 8px;}
+  @media(max-width:820px){.legend{grid-template-columns:1fr 1fr;}}
+  @media(max-width:560px){.legend{grid-template-columns:1fr;}}
+  .legend .rc{background:var(--card);border:1px solid var(--line);border-radius:12px;
+    padding:16px 16px 15px;border-top:3px solid var(--rc);}
+  .legend .rc.mgr{--rc:var(--mgr);} .legend .rc.hr{--rc:var(--hro);}
+  .legend .rc.desk{--rc:var(--desk);} .legend .rc.mktg{--rc:var(--mktg);}
+  .legend .rc.inv{--rc:var(--inv);}
+  .legend .rc h4{font-size:15.5px;margin-bottom:2px;display:flex;align-items:center;gap:8px;}
+  .legend .rc .who{font-family:var(--mono);font-size:11.5px;color:var(--muted);margin-bottom:9px;}
+  .legend .rc p{font-size:13.5px;margin:0;color:var(--body);}
 
-/* ── Chapters & sections ──────────────────────────────────────────────── */
-.chapter{margin:40px 0 14px;padding-bottom:7px;border-bottom:2px solid var(--border)}
-.chapter .num{font-size:0.6rem;font-weight:800;letter-spacing:0.2em;text-transform:uppercase;color:var(--orange)}
-.chapter h2{font-size:1.22rem;font-weight:800;color:var(--text);margin-top:2px}
-.chapter p{font-size:0.83rem;color:var(--text2);margin-top:4px}
+  /* Module cards */
+  .cards{display:flex;flex-direction:column;gap:16px;}
+  .mod{background:var(--card);border:1px solid var(--line);border-radius:14px;
+    padding:20px 22px;scroll-margin-top:20px;}
+  .mod-top{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 12px;margin-bottom:4px;}
+  .mod-top h3{font-size:17.5px;font-weight:750;}
+  .mod-top .loc{font-family:var(--mono);font-size:12px;color:var(--muted);}
+  .mod-roles{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 12px;}
+  .mod .desc{max-width:var(--measure);margin:0 0 4px;}
+  .mod ul{margin:8px 0 0;padding-left:0;list-style:none;max-width:var(--measure);
+    display:flex;flex-direction:column;gap:7px;}
+  .mod ul li{position:relative;padding-left:22px;font-size:14.5px;}
+  .mod ul li::before{content:"";position:absolute;left:4px;top:9px;width:6px;height:6px;
+    border-radius:50%;background:var(--teal);}
+  .mod .note{margin-top:12px;font-size:13.5px;background:var(--teal-soft);border-radius:9px;
+    padding:10px 13px;color:var(--teal-deep);max-width:var(--measure);}
+  .mod .note b{color:var(--teal-deep);}
+  .mod .note.care{background:var(--warn-bg);color:#6F4A0F;}
+  .mod h4{font-size:14px;font-weight:700;margin:16px 0 6px;color:var(--ink);
+    display:flex;align-items:center;gap:8px;}
+  .mod h4 .tag{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;
+    text-transform:uppercase;color:var(--muted);font-weight:600;}
+  .mod ol.steps{margin:6px 0 0;padding-left:0;counter-reset:s;list-style:none;
+    display:flex;flex-direction:column;gap:8px;max-width:var(--measure);}
+  .mod ol.steps li{position:relative;padding-left:32px;counter-increment:s;font-size:14.5px;}
+  .mod ol.steps li::before{content:counter(s);position:absolute;left:0;top:1px;
+    width:21px;height:21px;border-radius:50%;background:var(--teal);color:#fff;
+    font-size:11.5px;font-weight:700;display:grid;place-items:center;font-variant-numeric:tabular-nums;}
+  .fields{width:100%;border-collapse:collapse;font-size:13.5px;margin:6px 0 4px;max-width:var(--measure);}
+  .fields td{padding:6px 10px 6px 0;border-bottom:1px solid var(--line-soft);vertical-align:top;}
+  .fields td:first-child{font-weight:600;color:var(--ink);width:34%;}
+  .fields tr:last-child td{border-bottom:none;}
 
-.sec{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:22px 24px;margin-bottom:16px}
-.sec > h3{font-size:1rem;font-weight:800;color:var(--text);margin-bottom:3px;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
-.path{font-size:0.68rem;font-weight:600;color:var(--text3);font-family:'SF Mono',Consolas,monospace;background:var(--bg);border:1px solid var(--border);padding:1px 6px;border-radius:4px}
-.lede{font-size:0.83rem;color:var(--text2);margin:6px 0 13px}
-.sec h4{font-size:0.78rem;font-weight:800;color:var(--text);margin:16px 0 7px;letter-spacing:0.01em}
-.sec p{font-size:0.82rem;color:var(--text2);margin-bottom:9px}
-.sec ul{margin:0 0 9px 18px}
-.sec ul li{font-size:0.82rem;color:var(--text2);margin-bottom:4px}
-ol.steps{margin:0 0 10px;padding:0;list-style:none;counter-reset:s}
-ol.steps li{counter-increment:s;position:relative;padding:0 0 9px 30px;font-size:0.82rem;color:var(--text2)}
-ol.steps li::before{content:counter(s);position:absolute;left:0;top:0;width:20px;height:20px;border-radius:50%;background:var(--teal-l);color:var(--teal);font-size:0.68rem;font-weight:800;display:flex;align-items:center;justify-content:center}
-ol.steps li b,.sec p b,.sec ul li b{color:var(--text);font-weight:700}
+  .grouphead{font-size:13px;font-family:var(--mono);letter-spacing:.12em;text-transform:uppercase;
+    color:var(--muted);margin:30px 0 12px;display:flex;align-items:center;gap:12px;scroll-margin-top:20px;}
+  .grouphead::after{content:"";flex:1;height:1px;background:var(--line);}
 
-/* Button reference table */
-.btns{width:100%;border-collapse:collapse;margin:4px 0 12px;font-size:0.79rem}
-.btns th{background:var(--ink);color:rgba(255,255,255,0.72);padding:7px 11px;text-align:left;font-size:0.64rem;font-weight:700;letter-spacing:0.09em;text-transform:uppercase}
-.btns th:first-child{border-radius:7px 0 0 0;width:32%}.btns th:last-child{border-radius:0 7px 0 0}
-.btns td{padding:7px 11px;border-bottom:1px solid var(--border);color:var(--text2);vertical-align:top}
-.btns tr:last-child td{border-bottom:none}
-.btns td:first-child{color:var(--text);font-weight:700;white-space:nowrap}
-.k{display:inline-block;font-family:'SF Mono',Consolas,monospace;font-size:0.72rem;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:0 5px;color:var(--text)}
+  /* Connected systems */
+  .hubwrap{background:var(--card);border:1px solid var(--line);border-radius:14px;
+    padding:20px;margin:6px 0 22px;overflow-x:auto;}
+  .hubwrap svg{display:block;margin:0 auto;max-width:100%;height:auto;}
+  .hub-legend{text-align:center;font-size:12px;color:var(--muted);margin-top:6px;}
+  .hub-legend b{color:var(--body);font-weight:600;}
+  .conn{background:var(--card);border:1px solid var(--line);border-radius:14px;
+    padding:20px 22px;margin-bottom:16px;}
+  .conn-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 12px;margin-bottom:4px;}
+  .conn-head h3{font-size:17.5px;font-weight:750;}
+  .conn-head .loc{font-family:var(--mono);font-size:12px;color:var(--muted);}
+  .flowgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px;}
+  @media(max-width:620px){.flowgrid{grid-template-columns:1fr;}}
+  .flowcol{border-radius:10px;padding:12px 14px 13px;border:1px solid var(--line-soft);}
+  .flowcol.supplies{background:#EAF4EF;border-color:#CBE5D8;}
+  .flowcol.receives{background:#EAF0F8;border-color:#CFDDF0;}
+  .flow-lbl{font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+    font-weight:700;margin-bottom:8px;}
+  .flowcol.supplies .flow-lbl{color:#1F6340;}
+  .flowcol.receives .flow-lbl{color:#154C7E;}
+  .flowcol ul{margin:0;padding-left:0;list-style:none;display:flex;flex-direction:column;gap:8px;}
+  .flowcol li{font-size:13px;line-height:1.5;position:relative;padding-left:15px;}
+  .flowcol li::before{content:"";position:absolute;left:1px;top:8px;width:5px;height:5px;border-radius:50%;}
+  .flowcol.supplies li::before{background:#2E8B57;}
+  .flowcol.receives li::before{background:#1F6FB2;}
+  .flownone{font-size:13px;color:var(--muted);font-style:italic;}
 
-.tip{display:flex;gap:9px;padding:9px 12px;border-radius:8px;font-size:0.79rem;margin:10px 0;background:var(--bg);border-left:3px solid var(--teal);color:var(--text2)}
-.tip.warn{background:var(--warn-bg);border-left-color:var(--orange);color:var(--warn-tx)}
-.tip b{font-weight:800;white-space:nowrap}
+  /* Callouts */
+  .call{border-radius:12px;padding:15px 18px;margin:18px 0;max-width:var(--measure);
+    font-size:14.5px;border:1px solid var(--line-soft);}
+  .call b{color:var(--ink);}
+  .call.rule{background:var(--warn-bg);border-color:#EAD9AE;}
+  .call.rule .lbl{color:var(--warn);}
+  .call.tip{background:var(--teal-soft);border-color:#BFDBD5;}
+  .call.tip .lbl{color:var(--teal-deep);}
+  .call .lbl{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+    display:block;margin-bottom:5px;font-weight:700;}
 
-.pill{display:inline-flex;font-size:0.62rem;font-weight:800;letter-spacing:0.06em;padding:2px 8px;border-radius:20px;text-transform:uppercase}
-.pill.admin{background:var(--teal-l);color:var(--admin)}.pill.hr{background:#EDE9FE;color:var(--hr)}
-.pill.desk{background:#D1FAE5;color:var(--desk)}.pill.mktg{background:var(--orange-l);color:var(--mktg)}
-.pill.all{background:#E8EDF5;color:#44506A}.pill.inv{background:#FEF3C7;color:#92400E}
-.who{display:flex;gap:5px;flex-wrap:wrap;margin:2px 0 11px}
+  /* Playbooks */
+  .play{background:var(--card);border:1px solid var(--line);border-radius:14px;
+    padding:20px 22px;margin-bottom:16px;border-left:4px solid var(--pc);}
+  .play.mgr{--pc:var(--mgr);} .play.hr{--pc:var(--hro);} .play.desk{--pc:var(--desk);}
+  .play.mktg{--pc:var(--mktg);} .play.inv{--pc:var(--inv);}
+  .play h3{font-size:16.5px;display:flex;align-items:center;gap:9px;margin-bottom:12px;}
+  .play ol{margin:0;padding-left:0;counter-reset:s;list-style:none;display:flex;
+    flex-direction:column;gap:9px;max-width:var(--measure);}
+  .play ol li{position:relative;padding-left:34px;counter-increment:s;font-size:14.5px;}
+  .play ol li::before{content:counter(s);position:absolute;left:0;top:-1px;width:22px;height:22px;
+    border-radius:50%;background:var(--pc);color:#fff;font-size:12px;font-weight:700;
+    display:grid;place-items:center;font-variant-numeric:tabular-nums;}
 
-.rolegrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:12px;margin:12px 0}
-.rolecard{border:1px solid var(--border);border-radius:9px;padding:13px 15px;background:var(--bg)}
-.rolecard.admin{border-top:3px solid var(--admin)}.rolecard.hr{border-top:3px solid var(--hr)}
-.rolecard.desk{border-top:3px solid var(--desk)}.rolecard.mktg{border-top:3px solid var(--mktg)}.rolecard.inv{border-top:3px solid #B45309}
-.rolecard h5{font-size:0.85rem;font-weight:800;color:var(--text);margin-bottom:2px}
-.rolecard .code{font-size:0.64rem;font-family:'SF Mono',Consolas,monospace;color:var(--text3);margin-bottom:6px}
-.rolecard p{font-size:0.77rem;color:var(--text2);margin:0}
+  /* Tables */
+  .tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;margin-top:8px;}
+  table.access{border-collapse:collapse;width:100%;font-size:13.5px;min-width:560px;}
+  table.access th{background:var(--teal-deep);color:#DCEBEE;text-align:left;padding:9px 12px;
+    font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;}
+  table.access td{padding:8px 12px;border-bottom:1px solid var(--line-soft);}
+  table.access tr:last-child td{border-bottom:none;}
+  table.access td:first-child{font-weight:600;color:var(--ink);}
+  .y{color:#1F6340;font-weight:700;} .n{color:#9AA7AD;} .p{color:#8C3D12;font-weight:600;}
 
-/* FAQ */
-.faq{border:1px solid var(--border);border-radius:9px;margin-bottom:7px;background:var(--bg);overflow:hidden}
-.faq summary{cursor:pointer;padding:11px 14px;font-size:0.83rem;font-weight:700;color:var(--text);list-style:none;display:flex;justify-content:space-between;gap:10px}
-.faq summary::-webkit-details-marker{display:none}
-.faq summary::after{content:'+';color:var(--teal);font-weight:800;flex-shrink:0}
-.faq[open] summary::after{content:'–'}
-.faq[open] summary{background:#fff;border-bottom:1px solid var(--border)}
-.faq .a{padding:11px 14px;background:#fff;font-size:0.81rem;color:var(--text2)}
-.faq .a p{margin-bottom:7px}.faq .a p:last-child{margin-bottom:0}
+  /* FAQ + search */
+  .faq details{background:var(--card);border:1px solid var(--line);border-radius:11px;
+    margin-bottom:8px;overflow:hidden;}
+  .faq summary{cursor:pointer;padding:13px 16px;font-weight:650;color:var(--ink);font-size:14.5px;
+    list-style:none;display:flex;justify-content:space-between;gap:12px;}
+  .faq summary::-webkit-details-marker{display:none;}
+  .faq summary::after{content:"+";color:var(--teal);font-weight:800;}
+  .faq details[open] summary::after{content:"\\2013";}
+  .faq details[open] summary{border-bottom:1px solid var(--line-soft);}
+  .faq .a{padding:13px 16px;font-size:14px;}
+  .faq .a p{margin:0 0 8px;max-width:var(--measure);} .faq .a p:last-child{margin:0;}
+  .hb-search{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px;}
+  .hb-search label{display:block;font-weight:650;color:var(--ink);font-size:14.5px;margin-bottom:8px;}
+  .hb-search input{width:100%;max-width:520px;padding:10px 13px;border:1px solid var(--line);
+    border-radius:9px;font-family:inherit;font-size:14.5px;color:var(--ink);background:var(--paper);}
+  .hb-search input:focus{outline:2px solid var(--teal);outline-offset:1px;}
+  .hb-search .hint{font-size:13px;color:var(--muted);margin:8px 0 0;}
+  .sr-list{list-style:none;margin:14px 0 0;padding:0;display:flex;flex-direction:column;gap:6px;}
+  .sr-list li a{display:block;padding:10px 12px;border-radius:9px;border:1px solid var(--line-soft);
+    text-decoration:none;color:var(--body);background:var(--paper);}
+  .sr-list li a:hover{border-color:var(--teal);background:var(--teal-soft);}
+  .sr-list .where{font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--teal-deep);display:block;margin-bottom:3px;}
+  .sr-list .snip{font-size:13.5px;line-height:1.5;}
+  .sr-empty{font-size:13.5px;color:var(--muted);margin-top:12px;}
 
-table.matrix{width:100%;border-collapse:collapse;font-size:0.75rem;margin-top:6px}
-table.matrix th{background:var(--ink);color:rgba(255,255,255,0.72);padding:7px 9px;text-align:left;font-size:0.62rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase}
-table.matrix td{padding:6px 9px;border-bottom:1px solid var(--border)}
-table.matrix td:first-child{font-weight:700;color:var(--text)}
-.yes{color:var(--desk);font-weight:800}.no{color:#C2410C;font-weight:800}.part{color:var(--text3);font-weight:700}
-.matrix-wrap{overflow-x:auto}
-:target > h3, :target.sec{scroll-margin-top:74px}
-.sec{scroll-margin-top:74px}
-.chapter{scroll-margin-top:74px}
-@media print{.topbar,.toc,.results{display:none!important}.sec{break-inside:avoid}}
+  footer{border-top:1px solid var(--line);padding:26px 0 40px;color:var(--muted);font-size:13px;}
+  footer .wrap{display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;}
+
+  @media(prefers-reduced-motion:reduce){*{transition:none!important;}}
+  @media print{
+    body{background:#fff;font-size:11.5pt;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+    header.mast{background:#0E4C57!important;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+    nav.toc,.mast-actions,.hb-search{display:none!important;} .shell{grid-template-columns:1fr;}
+    .mod,.play,.legend .rc,.conn,.hubwrap,.call,.tablewrap,.faq details{break-inside:avoid;}
+    .faq details{padding-bottom:0;} .faq details:not([open]) .a{display:block;}
+    section{margin-bottom:26px;}
+    a{text-decoration:none;color:inherit;}
+  }
 </style>
 </head>
 <body>
-
-<div class="topbar">
-  <div class="topbar-in">
-    <span class="tb-title">Handbook</span>
-    <div class="tb-spacer"></div>
-    <div class="tb-search">
-      <span class="mag">&#128269;</span>
-      <input id="q" type="search" placeholder="Search the handbook…" autocomplete="off">
-      <button class="clr" id="qclr" title="Clear">&times;</button>
+<header class="mast">
+  <div class="wrap">
+    <span class="kicker">Operations Hub &middot; User Handbook</span>
+    <h1>How to Use the Sapphire Operations Hub</h1>
+    <p class="lede">One system for patients, scheduling, decking, surveys and marketing — built so a clinic manager,
+      an HR officer, the front desk, marketing and an investor each see exactly what they need. This handbook is a
+      step-by-step guide: it assumes you have never opened the Hub before, and it walks through every screen, every
+      tab, and every button.</p>
+    <div class="meta">
+      <span>Address: <code>operations.sapphireclinicseast.org</code></span>
+      <span>Sign in with your <b>work email &amp; password</b></span>
+      <span>Audience: <b>Clinic Managers &middot; HR &middot; Front Desk &middot; Marketing &middot; Investors</b></span>
     </div>
-    <button class="tb-btn" id="toctog">Contents</button>
-  </div>
-  <div class="toc" id="toc"><div class="toc-in" id="tocin"></div></div>
-</div>
-
-<div class="wrap">
-<div class="results" id="results"></div>
-
-<div class="cover">
-  <div class="cover-eye">Internal Documentation &middot; 2026</div>
-  <h1>Operations Hub<br>User Handbook</h1>
-  <p>A step-by-step guide to every module, written for someone opening the Hub
-     for the first time. Each section says where to find the module, what every
-     button does, and the order to do things in.</p>
-</div>
-
-<!-- A REAL contents page, written out rather than generated.
-     The Contents button builds its list with script; that list is not in the
-     document, so it was missing from the printed copy and from anyone whose
-     browser did not run the script — and a handbook with no contents page is
-     not a handbook. This one is plain links and always there. -->
-<div class="sec toc-static" id="contents">
-  <h3>Table of contents</h3>
-  <p class="lede">Six chapters, 33 sections. Click any line to jump; the Contents button at the top does the same thing without scrolling back here.</p>
-
-  <div class="toc-grid">
-    <div class="toc-block">
-      <h4>1 &middot; Start here</h4>
-      <a href="#about">How to use this handbook</a>
-      <a href="#roles">Your role decides what you see</a>
-      <a href="#layout">The screen, explained</a>
-      <a href="#controls">Controls you will meet everywhere</a>
-      <a href="#first-day">Your first fifteen minutes</a>
-    </div>
-    <div class="toc-block">
-      <h4>2 &middot; Home and patient records</h4>
-      <a href="#dashboard">Home Dashboard</a>
-      <a href="#patient-crm">Patient CRM</a>
-      <a href="#patient-profile">Patient Profile</a>
-      <a href="#patient-dashboard">Patient Dashboard</a>
-      <a href="#self-register">Patient self-registration</a>
-    </div>
-    <div class="toc-block">
-      <h4>3 &middot; Clinic Tools</h4>
-      <a href="#staff">Staff Module</a>
-      <a href="#queueing">Queueing</a>
-      <a href="#clinic-schedule">Clinic Schedule</a>
-      <a href="#utilization">Clinic Utilization</a>
-      <a href="#survey">Customer Survey</a>
-      <a href="#reg-forms">Registration Forms</a>
-      <a href="#decking">Decking Module</a>
-      <a href="#loa">LOA Submission</a>
-      <a href="#patient-rel">Patient Relationship</a>
-      <a href="#peer-eval">Peer Evaluation</a>
-      <a href="#partners">Partner Institutions</a>
-    </div>
-    <div class="toc-block">
-      <h4>4 &middot; Social and marketing</h4>
-      <a href="#social">Social Media Suite</a>
-      <a href="#templates">Post Templates</a>
-      <a href="#email">Email Campaigns</a>
-      <a href="#sms">SMS Campaigns</a>
-    </div>
-    <div class="toc-block">
-      <h4>5 &middot; Settings and reference</h4>
-      <a href="#investor">Investor View</a>
-      <a href="#accounts">Connected Accounts</a>
-      <a href="#team">Team</a>
-      <a href="#brand">Brand Guide</a>
-      <a href="#hubs">How the Hub connects to the other systems</a>
-      <a href="#matrix">Who can see what</a>
-    </div>
-    <div class="toc-block">
-      <h4>6 &middot; Help</h4>
-      <a href="#search">Word search</a>
-      <a href="#faq">Frequently asked questions</a>
+    <div class="mast-actions" data-noexport>
+      <button type="button" class="hb-btn" onclick="window.print()">&#128424;&nbsp; Save as PDF</button>
+      <button type="button" class="hb-btn ghost" onclick="downloadHandbookWord()">&#11015;&nbsp; Download as Word</button>
+      <a class="hb-btn ghost" href="#search" style="text-decoration:none;">&#128269;&nbsp; Search this handbook</a>
     </div>
   </div>
-</div>
+</header>
 
-<!-- ══════════════ 1. START HERE ══════════════ -->
-<div class="chapter" id="ch-start">
-  <div class="num">Chapter 1</div>
-  <h2>Start here</h2>
-  <p>Read this chapter once. Everything after it assumes you know what is in it.</p>
-</div>
+<main class="wrap">
+<div class="shell">
 
-<div class="sec" id="about">
-  <h3>How to use this handbook</h3>
-  <p class="lede">Three ways to find what you need.</p>
-  <ul>
-    <li><b>Contents</b> — the button at the top right. It drops a full list of chapters over the page. Click any entry to jump.</li>
-    <li><b>Search</b> — the box at the top. Type a word and matching sections appear with the phrase highlighted. This is the fastest route when you know what the thing is called but not where it lives.</li>
-    <li><b>Read straight through</b> — the chapters run in the same order as the menu down the left of the Hub.</li>
-  </ul>
-  <div class="tip"><b>Print it:</b> the <span class="k">Print / PDF</span> and <span class="k">Download Word</span> buttons sit above this page, outside the handbook itself. The Word copy is handy for onboarding packs.</div>
-</div>
+  <nav class="toc" aria-label="Contents" data-noexport>
+    <p class="toc-h">Contents</p>
+    <ol>
+      <li><a href="#start">1 &middot; Getting started</a></li>
+      <li><a href="#s-signin" class="sub">Signing in</a></li>
+      <li><a href="#s-home" class="sub">Your home screen</a></li>
+      <li><a href="#s-nav" class="sub">Moving around</a></li>
+      <li><a href="#s-controls" class="sub">Controls you will meet everywhere</a></li>
+      <li><a href="#roles">2 &middot; Know your role</a></li>
+      <li><a href="#access" class="sub">Who sees what</a></li>
+      <li><a href="#modules">3 &middot; The modules, step by step</a></li>
+      <li><a href="#g-patients" class="sub">Patients &amp; records</a></li>
+      <li><a href="#g-clinic" class="sub">Running the clinic day</a></li>
+      <li><a href="#g-capacity" class="sub">Capacity &amp; analysis</a></li>
+      <li><a href="#g-relations" class="sub">Relationships &amp; quality</a></li>
+      <li><a href="#g-mktg" class="sub">Social &amp; marketing</a></li>
+      <li><a href="#g-setup" class="sub">Settings &amp; access</a></li>
+      <li><a href="#connect">4 &middot; Connected systems</a></li>
+      <li><a href="#play">5 &middot; Role playbooks</a></li>
+      <li><a href="#rules">6 &middot; Golden rules</a></li>
+      <li><a href="#help">7 &middot; Help</a></li>
+      <li><a href="#faq" class="sub">FAQ</a></li>
+      <li><a href="#search" class="sub">Word search</a></li>
+    </ol>
+  </nav>
 
-<div class="sec" id="roles">
-  <h3>Your role decides what you see</h3>
-  <p class="lede">Every account has exactly one role — five of them. If a module named in this handbook is missing from your menu, your role does not have it; that is not a fault.</p>
-  <div class="rolegrid">
-    <div class="rolecard admin"><h5>Clinic Manager</h5><div class="code">ADMIN</div>
-      <p>Everything, both branches, plus Team (user accounts). If you can read this handbook and also see <b>Team</b> in the menu, you are this.</p></div>
-    <div class="rolecard hr"><h5>HR Officer</h5><div class="code">AHEA_ADMIN &middot; AHGH_ADMIN</div>
-      <p>The same as Clinic Manager except managing user accounts. Tied to one branch in the scheduling tools.</p></div>
-    <div class="rolecard desk"><h5>Front Desk</h5><div class="code">AHEA_FRONT_DESK &middot; AHGH_FRONT_DESK</div>
-      <p>Clinic Tools only — no social media, email or analytics. Locked to one branch: an East account cannot see Greenhills data.</p></div>
-    <div class="rolecard mktg"><h5>Marketing Admin</h5><div class="code">MARKETING_ADMIN</div>
-      <p>The full marketing suite plus patient analytics and staff tools. No Clinic Schedule, Decking or Patient Relationship.</p></div>
-    <div class="rolecard inv"><h5>Investor</h5><div class="code">INVESTOR</div>
-      <p>Two pages, read-only: Patient Dashboard and Customer Satisfaction Survey. No patient names, and therapist names shown as initials. See <a href="#investor" style="color:inherit;text-decoration:underline">Investor View</a>.</p></div>
+  <div class="content">
+
+    <!-- ══ 1 ══ -->
+    <section id="start">
+      <p class="eyebrow">Section 1</p>
+      <h2>Getting started</h2>
+      <p>Read this section once. Everything after it assumes you know what is in it.</p>
+
+      <h3 class="blockh" id="s-signin">Signing in</h3>
+      <p>Go to <code>operations.sapphireclinicseast.org</code> and sign in with your work email and password.
+        Accounts are created by a Clinic Manager under <kbd>Settings</kbd> &rsaquo; <kbd>Team</kbd> — if your email is
+        refused, yours has probably not been made yet.</p>
+      <div class="call tip"><span class="lbl">Tip</span>
+        Your account already knows your role and your branch. There is nothing to choose at sign-in, and nothing to set up.</div>
+
+      <h3 class="blockh" id="s-home">Your home screen</h3>
+      <p>You land on the <b>Home Dashboard</b>: a summary of today across the clinic. Nothing on it is editable,
+        so it is a safe place to look around. Each card is a link — click one to open the module it came from,
+        already filtered to today.</p>
+
+      <h3 class="blockh" id="s-nav">Moving around</h3>
+      <ul class="mod-nav-list">
+      </ul>
+      <table class="fields">
+        <tr><td>Left menu</td><td>Grouped by job: <b>Home</b>, <b>Social &amp; Marketing</b>, <b>Patients</b>,
+          <b>Clinic Tools</b>, <b>Settings</b>. A group with a chevron expands when clicked; your current page is highlighted.</td></tr>
+        <tr><td>Brand switcher</td><td>Top-left, above the menu. Changes which social accounts and templates you work
+          with. It does <b>not</b> change clinic data.</td></tr>
+        <tr><td>Branch tabs</td><td>Inside a module, <kbd>East Branch</kbd> and <kbd>Greenhills Branch</kbd>. The active
+          one is filled dark. Nearly every figure on the page obeys this tab.</td></tr>
+        <tr><td>Saving</td><td>There is no global Save. Each panel saves itself with its own button and confirms at the
+          bottom of the screen. No message means nothing saved.</td></tr>
+      </table>
+      <div class="call rule"><span class="lbl">Check this first</span>
+        When a number looks wrong, the cause is almost always the <b>branch tab</b>, a <b>date range</b> left over from
+        last time, or a <b>department filter</b> still set. Check those three before reporting a fault.</div>
+
+      <h3 class="blockh" id="s-controls">Controls you will meet everywhere</h3>
+      <p>These behave identically in every module, so they are explained once here rather than repeated.</p>
+      <table class="fields">
+        <tr><td>Filter row</td><td>Dropdowns above a table — Department, Status, dates. They combine: two set means rows
+          matching both.</td></tr>
+        <tr><td>Tick-list dropdown</td><td>A dropdown of checkboxes rather than one choice. Tick several values to see
+          all of them; click outside to close.</td></tr>
+        <tr><td>Filter by name</td><td>A free-text box that narrows the list as you type. Clear it to see everything.</td></tr>
+        <tr><td>From / To dates</td><td>Both inclusive. A range left wide is the usual reason a page feels slow.</td></tr>
+        <tr><td>Column headers</td><td>Click to sort, click again to reverse.</td></tr>
+        <tr><td>Pencil icon</td><td>Edit in place — opens the row as a form.</td></tr>
+        <tr><td>Bin icon</td><td>Delete. Always asks first. Red means it cannot be undone.</td></tr>
+        <tr><td>Envelope / speech bubble</td><td>Email or text that one person.</td></tr>
+        <tr><td>Greyed-out button</td><td>Unavailable. Hover it — the tooltip says why.</td></tr>
+      </table>
+      <div class="call tip"><span class="lbl">Rule of thumb</span>
+        Teal buttons make something happen. White buttons change what you are looking at. Red buttons destroy something.</div>
+    </section>
+
+    <!-- ══ 2 ══ -->
+    <section id="roles">
+      <p class="eyebrow">Section 2</p>
+      <h2>Know your role</h2>
+      <p>Every account has exactly one of five roles. Your role decides which modules appear in the left menu and what
+        you may do in them. If a module named in this handbook is missing from your menu, your role does not include
+        it — nothing is hidden by accident.</p>
+
+      <div class="legend">
+        <div class="rc mgr"><h4><span class="badge b-mgr"><span class="dot">M</span>Clinic Manager</span></h4>
+          <div class="who">ADMIN</div>
+          <p>Everything, both branches, plus <b>Team</b> — the only role that can create user accounts.</p></div>
+        <div class="rc hr"><h4><span class="badge b-hr"><span class="dot">H</span>HR Officer</span></h4>
+          <div class="who">AHEA_ADMIN &middot; AHGH_ADMIN</div>
+          <p>As Clinic Manager, except managing user accounts. Tied to one branch in the scheduling tools.</p></div>
+        <div class="rc desk"><h4><span class="badge b-desk"><span class="dot">F</span>Front Desk</span></h4>
+          <div class="who">AHEA_FRONT_DESK &middot; AHGH_FRONT_DESK</div>
+          <p>Clinic Tools only — no social, email or analytics. Locked to one branch.</p></div>
+        <div class="rc mktg"><h4><span class="badge b-mktg"><span class="dot">K</span>Marketing Admin</span></h4>
+          <div class="who">MARKETING_ADMIN</div>
+          <p>Full marketing suite plus patient analytics and staff tools. No Clinic Schedule, Decking or Patient Relationship.</p></div>
+        <div class="rc inv"><h4><span class="badge b-inv"><span class="dot">I</span>Investor</span></h4>
+          <div class="who">INVESTOR</div>
+          <p>Two read-only pages. No patient identities at all, and therapist names shown as initials.</p></div>
+      </div>
+
+      <div class="call rule"><span class="lbl">Branch lock</span>
+        A Front Desk account only ever sees its own branch — an East account cannot open Greenhills data. Where this
+        handbook says &ldquo;switch branch&rdquo;, that applies to Clinic Manager and HR Officer accounts.</div>
+
+      <h3 class="blockh" id="access">Who sees what</h3>
+      <div class="tablewrap">
+        <table class="access">
+          <thead><tr><th>Module</th><th>Clinic Mgr</th><th>HR Officer</th><th>Front Desk</th><th>Marketing</th><th>Investor</th></tr></thead>
+          <tbody>
+            <tr><td>Home Dashboard</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td><td class="n">—</td></tr>
+            <tr><td>Patient CRM / Profile</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td><td class="n">—</td></tr>
+            <tr><td>Patient Dashboard</td><td class="y">Yes</td><td class="y">Yes</td><td class="n">—</td><td class="y">Yes</td><td class="p">Read-only, masked</td></tr>
+            <tr><td>Staff Module</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td><td class="n">—</td></tr>
+            <tr><td>Queueing</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td><td class="n">—</td><td class="n">—</td></tr>
+            <tr><td>Clinic Schedule</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td><td class="n">—</td><td class="n">—</td></tr>
+            <tr><td>Clinic Utilization</td><td class="y">Yes</td><td class="y">Yes</td><td class="n">—</td><td class="n">—</td><td class="n">—</td></tr>
+            <tr><td>Customer Survey</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td><td class="p">Satisfaction only</td><td class="p">Satisfaction only, masked</td></tr>
+            <tr><td>Registration Forms</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td><td class="n">—</td></tr>
+            <tr><td>Decking Module</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td><td class="n">—</td><td class="n">—</td></tr>
+            <tr><td>LOA Submission</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td><td class="n">—</td><td class="n">—</td></tr>
+            <tr><td>Patient Relationship</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td><td class="n">—</td><td class="n">—</td></tr>
+            <tr><td>Peer Evaluation</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td><td class="n">—</td></tr>
+            <tr><td>Partner Institutions</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td><td class="n">—</td></tr>
+            <tr><td>Social / Templates / Email / SMS</td><td class="y">Yes</td><td class="y">Yes</td><td class="n">—</td><td class="y">Yes</td><td class="n">—</td></tr>
+            <tr><td>Connected Accounts</td><td class="y">Yes</td><td class="y">Yes</td><td class="n">—</td><td class="y">Yes</td><td class="n">—</td></tr>
+            <tr><td>Team</td><td class="y">Yes</td><td class="n">—</td><td class="n">—</td><td class="n">—</td><td class="n">—</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="call tip"><span class="lbl">Note</span>
+        Branch lock sits on top of this table. A Front Desk account with <b>Yes</b> still sees only its own branch.
+        Investor accounts span both branches but see no names.</div>
+    </section>
+    <!-- SECTION 3 -->
+    <section id="modules">
+      <p class="eyebrow">Section 3</p>
+      <h2>The modules, step by step</h2>
+      <p>Every module you can open, in the order they appear in the left menu. Each card says where it lives, who may
+        use it, what you will see, and what to do in order.</p>
+
+      <div class="grouphead" id="g-patients">Patients &amp; records</div>
+      <div class="cards">
+
+        <div class="mod" id="m-dashboard">
+          <div class="mod-top"><h3>Home Dashboard</h3><span class="loc">/dashboard</span></div>
+          <div class="mod-roles"><span class="badge b-mgr"><span class="dot">M</span>Manager</span><span class="badge b-hr"><span class="dot">H</span>HR</span><span class="badge b-desk"><span class="dot">F</span>Front Desk</span><span class="badge b-mktg"><span class="dot">K</span>Marketing</span></div>
+          <p class="desc">The landing page &mdash; a summary of today across the clinic. Read-only.</p>
+          <h4>Step by step</h4>
+          <ol class="steps">
+            <li>Check the branch tab first. Every figure below it belongs to that branch.</li>
+            <li>Read the cards across the top: today's sessions, patients in the queue, open slots.</li>
+            <li>Click any card to open the module it came from, already filtered to today.</li>
+          </ol>
+        </div>
+
+        <div class="mod" id="m-crm">
+          <div class="mod-top"><h3>Patient CRM</h3><span class="loc">/patients</span></div>
+          <div class="mod-roles"><span class="badge b-mgr"><span class="dot">M</span>Manager</span><span class="badge b-hr"><span class="dot">H</span>HR</span><span class="badge b-desk"><span class="dot">F</span>Front Desk</span><span class="badge b-mktg"><span class="dot">K</span>Marketing</span></div>
+          <p class="desc">The master list of every patient. If somebody is not here they do not exist anywhere else in
+            the Hub &mdash; no schedule, no queue entry, no survey.</p>
+          <h4>Finding one person <span class="tag">Step by step</span></h4>
+          <ol class="steps">
+            <li>Type any part of the name into the search box &mdash; it matches first and last name.</li>
+            <li>Narrow with <kbd>All Branches</kbd>, <kbd>All Types</kbd> (Pediatric / Adult) and the indicator filters.</li>
+            <li>Click the row to open the full record.</li>
+          </ol>
+          <h4>Reading the indicators <span class="tag">What you will see</span></h4>
+          <table class="fields">
+            <tr><td>Star</td><td>Filipino-Chinese, identified from the surname &mdash; used for greetings and campaign targeting.</td></tr>
+            <tr><td>ID on file</td><td>A PWD or Senior ID photo is held, so the discount can be applied.</td></tr>
+            <tr><td>Referral on file</td><td>A doctor referral document has been uploaded.</td></tr>
+            <tr><td>Existing in DB</td><td>They already had a record when they submitted a form.</td></tr>
+            <tr><td>Email Newsletter</td><td>They consented to marketing email. Campaigns go only to these.</td></tr>
+          </table>
+          <h4>Getting patients in</h4>
+          <ul>
+            <li><b>They register themselves</b> &mdash; <kbd>Patient Registration QR</kbd> prints a code for the counter.</li>
+            <li><b>A registration form</b> &mdash; submissions arrive in Registration Forms and are converted.</li>
+            <li><b>Front desk adds them</b> &mdash; during walk-in booking in Queueing.</li>
+          </ul>
+          <div class="note care"><b>Always search before creating.</b> Two records for one child split the history in
+            half, and neither one looks wrong on its own.</div>
+        </div>
+
+        <div class="mod" id="m-profile">
+          <div class="mod-top"><h3>Patient Profile</h3><span class="loc">/patients/profile</span></div>
+          <div class="mod-roles"><span class="badge b-mgr"><span class="dot">M</span>Manager</span><span class="badge b-hr"><span class="dot">H</span>HR</span><span class="badge b-desk"><span class="dot">F</span>Front Desk</span><span class="badge b-mktg"><span class="dot">K</span>Marketing</span></div>
+          <p class="desc">One patient, everything about them, on a single page.</p>
+          <h4>What you will see</h4>
+          <table class="fields">
+            <tr><td>Details</td><td>Name, birthday, sex, contact numbers, address, branch.</td></tr>
+            <tr><td>Documents</td><td>Doctor referral and PWD/Senior ID &mdash; uploaded, or photographed at the counter.</td></tr>
+            <tr><td>Session history</td><td>Every appointment with its status.</td></tr>
+            <tr><td>Discount flags</td><td>What they are entitled to, and the proof held.</td></tr>
+          </table>
+          <h4>Editing <span class="tag">Step by step</span></h4>
+          <ol class="steps">
+            <li>Click the pencil beside the field group you want to change.</li>
+            <li>Change the fields and press <kbd>Save</kbd>.</li>
+            <li>Wait for the confirmation before leaving the page.</li>
+          </ol>
+          <div class="note care"><b>Birthdays matter.</b> The date of birth drives automatic birthday greetings and
+            decides Pediatric versus Adult. A wrong one greets a real family on the wrong day.</div>
+        </div>
+
+        <div class="mod" id="m-pdash">
+          <div class="mod-top"><h3>Patient Dashboard</h3><span class="loc">/patients/dashboard</span></div>
+          <div class="mod-roles"><span class="badge b-mgr"><span class="dot">M</span>Manager</span><span class="badge b-hr"><span class="dot">H</span>HR</span><span class="badge b-mktg"><span class="dot">K</span>Marketing</span><span class="badge b-inv"><span class="dot">I</span>Investor</span></div>
+          <p class="desc">Patient numbers as charts &mdash; who they are and where they come from. Read-only.</p>
+          <ul>
+            <li><b>Age and sex</b> &mdash; stacked bars, Female / Male / Other.</li>
+            <li><b>Growth</b> &mdash; new patients over time.</li>
+            <li><b>Source</b> &mdash; how they found the clinic.</li>
+            <li><b>Customer Satisfaction</b> &mdash; therapist leaderboard and positive feedback.</li>
+          </ul>
+          <div class="note">Set the branch tab and date range at the top; every chart follows them. Hover a bar to read
+            the exact figure rather than estimating from the axis.</div>
+        </div>
+
+        <div class="mod" id="m-selfreg">
+          <div class="mod-top"><h3>Patient self-registration</h3><span class="loc">/patient-register</span></div>
+          <div class="mod-roles"><span class="badge b-desk"><span class="dot">P</span>Public page &mdash; no sign-in</span></div>
+          <p class="desc">The form a family fills in themselves, on their phone or a tablet at the counter. Reachable by
+            QR code from Patient CRM.</p>
+          <h4>What the family fills in <span class="tag">Step by step</span></h4>
+          <ol class="steps">
+            <li>Patient and guardian details, contact number, address.</li>
+            <li><b>Branch</b> &mdash; Aura Health East, Aura Health Greenhills, or Verdana Rehab Store.</li>
+            <li><b>Partner school tickbox</b> &mdash; ticking it reveals a dropdown of partner schools. That list is
+              maintained in <b>Registration Forms &rsaquo; Settings</b>.</li>
+            <li><b>Doctor's Referral</b> &mdash; they start typing the referring doctor and matching names appear, read
+              live from Accounting Hub. If their doctor is not listed they simply type the name.</li>
+            <li><b>Documents</b> &mdash; <kbd>Choose file</kbd> to upload, or <kbd>Take a photo</kbd> to use the camera.</li>
+          </ol>
+          <div class="note"><b>At the counter,</b> Take a photo is faster and cleaner than a family emailing a scan
+            later &mdash; the photo attaches to the record immediately.</div>
+          <div class="note care"><b>Three characters minimum.</b> Doctor suggestions appear only after three letters of
+            the name itself; the honorific does not count, so "dr. a" shows nothing and "dr. aid" shows the match.
+            That is deliberate &mdash; it stops the referrer list being harvested from a public page.</div>
+        </div>
+      </div>
+
+      <div class="grouphead" id="g-clinic">Running the clinic day</div>
+      <div class="cards">
+
+        <div class="mod" id="m-staff">
+          <div class="mod-top"><h3>Staff Module</h3><span class="loc">/staff</span></div>
+          <div class="mod-roles"><span class="badge b-mgr"><span class="dot">M</span>Manager</span><span class="badge b-hr"><span class="dot">H</span>HR</span><span class="badge b-desk"><span class="dot">F</span>Front Desk</span><span class="badge b-mktg"><span class="dot">K</span>Marketing</span></div>
+          <p class="desc">The clinician roster. Everything here comes from HR Hub &mdash; this is a mirror, not the original.</p>
+          <div class="note care"><b>You cannot add or delete staff here.</b> Names, departments, branches, job titles,
+            employment type and contact details are owned by HR Hub. Change them there and re-sync. Only a few
+            Operations-owned fields (extra branches, sex) are editable here, and the sync deliberately leaves those alone.</div>
+          <h4>Reading a row <span class="tag">What you will see</span></h4>
+          <table class="fields">
+            <tr><td>Branch</td><td><b>AHEA</b> is East, <b>AHGH</b> is Greenhills.</td></tr>
+            <tr><td>Also at Branch</td><td>Extra branches an interbranch consultant covers.</td></tr>
+            <tr><td>Employment</td><td>Employee, Consultant, Intern or Renter.</td></tr>
+          </table>
+          <h4>Employment types, and what each changes</h4>
+          <table class="fields">
+            <tr><td>Employee</td><td>Salaried. Appears everywhere normally.</td></tr>
+            <tr><td>Consultant</td><td>Paid per session. Appears everywhere normally.</td></tr>
+            <tr><td>Intern</td><td>Kept out of the bookable clinician lists; picked separately as a supervised intern on
+              a session, and only while their internship dates are current.</td></tr>
+            <tr><td>Renter</td><td>Not paid by us at all &mdash; they pay the clinic a monthly facility fee and bring
+              their own private clients. Book and queue them normally, but the clinic does not message their patients,
+              so the reminder buttons in Clinic Schedule are switched off for them.</td></tr>
+          </table>
+          <h4>Syncing from HR <span class="tag">Step by step</span></h4>
+          <ol class="steps">
+            <li>Change the person in HR Hub first and save there.</li>
+            <li>Come back to Staff Module and run the sync.</li>
+            <li>Check the row updated. A leaver should now read as inactive rather than disappearing.</li>
+          </ol>
+          <div class="note"><b>Leavers are deactivated, never deleted.</b> Deleting would take their whole appointment
+            history with them. An inactive person drops off the boards and pickers; their past sessions stay intact.</div>
+        </div>
+
+        <div class="mod" id="m-queue">
+          <div class="mod-top"><h3>Queueing</h3><span class="loc">/queueing</span></div>
+          <div class="mod-roles"><span class="badge b-mgr"><span class="dot">M</span>Manager</span><span class="badge b-hr"><span class="dot">H</span>HR</span><span class="badge b-desk"><span class="dot">F</span>Front Desk</span></div>
+          <p class="desc">The live waiting room: who has arrived, who is in session, and what the TV screen shows.</p>
+          <h4>Booking a walk-in <span class="tag">Step by step</span></h4>
+          <ol class="steps">
+            <li>Press <kbd>Search Existing Patient</kbd> first &mdash; most walk-ins already have a record. Use
+              <kbd>New Patient</kbd> only if they genuinely do not.</li>
+            <li>For a new patient fill in name, <kbd>Date of Birth</kbd>, <kbd>Sex</kbd>, <kbd>Email</kbd>,
+              <kbd>Address / Barangay</kbd> and <kbd>Diagnosis</kbd>.</li>
+            <li>Choose <kbd>Clinician</kbd>, <kbd>Date</kbd>, <kbd>Start Time</kbd> and <kbd>Duration</kbd> &mdash;
+              <kbd>End Time</kbd> fills itself. Pick <kbd>Custom</kbd> for an unusual length.</li>
+            <li>Set <kbd>Session Type</kbd>, and <kbd>Select Intern</kbd> if a student is sitting in.</li>
+            <li>Save. The patient joins the queue and appears on the TV screen.</li>
+          </ol>
+          <h4>Moving people through</h4>
+          <p>A patient moves <b>Pending</b> &rarr; <b>Confirmed</b> as they arrive and are seen. Change the status on
+            their row; the TV display follows within seconds.</p>
+          <h4>The TV display</h4>
+          <table class="fields">
+            <tr><td>Upload Ad</td><td>Adds a picture or video to the rotation between queue screens. Use portrait images
+              sized for the screen or they letterbox.</td></tr>
+            <tr><td>Leaderboard</td><td>Shows the clinician satisfaction leaderboard on the TV, alternating with ads.</td></tr>
+          </table>
+          <div class="note care"><b>The leaderboard is public.</b> Anyone in the waiting room can read it, including the
+            families of the clinicians on it. Turn it on deliberately, not by accident.</div>
+        </div>
+
+        <div class="mod" id="m-schedule">
+          <div class="mod-top"><h3>Clinic Schedule</h3><span class="loc">/clinic-schedule</span></div>
+          <div class="mod-roles"><span class="badge b-mgr"><span class="dot">M</span>Manager</span><span class="badge b-hr"><span class="dot">H</span>HR</span><span class="badge b-desk"><span class="dot">F</span>Front Desk</span></div>
+          <p class="desc">Individual appointments: booking them, changing them, and telling people about them. The
+            module front desk spends the most time in.</p>
+          <h4>Four views of the same day <span class="tag">Tabs</span></h4>
+          <table class="fields">
+            <tr><td>Department View</td><td>The default. One card per clinician, grouped by department. Where you book,
+              edit and send reminders.</td></tr>
+            <tr><td>Calendar View</td><td>The shape of a week rather than a list of a day.</td></tr>
+            <tr><td>Daily View</td><td>One day as a time-ordered list &mdash; good for printing a day sheet.</td></tr>
+            <tr><td>Status View</td><td>Chasing attendance: Pending, Confirmed, Cancelled, No-Show, Rescheduled.</td></tr>
+          </table>
+          <h4>Booking a session <span class="tag">Step by step</span></h4>
+          <ol class="steps">
+            <li>Set the branch tab and the date.</li>
+            <li>Find the clinician's card and click to expand. Narrow a long list with <kbd>All Departments</kbd> /
+              <kbd>All Staff</kbd>.</li>
+            <li>Press the add button on that card.</li>
+            <li>Choose <kbd>Patient</kbd>, <kbd>Start Time</kbd>, <kbd>Duration</kbd> and <kbd>Session Type</kbd>.
+              <kbd>Mode</kbd> sets in-clinic or teletherapy.</li>
+            <li>If a student attends, use <kbd>Select Intern</kbd> &mdash; only interns whose dates are current appear.</li>
+            <li>If a mentor sits in, tick <kbd>With Mentor</kbd> and pick them.</li>
+            <li>Save. The session appears on the card, in the queue, and on the clinician's own portal.</li>
+          </ol>
+          <h4>Telling people about it <span class="tag">Buttons</span></h4>
+          <table class="fields">
+            <tr><td>Envelope on a row</td><td>Email that one patient. Shown only if they have an email address.</td></tr>
+            <tr><td>Speech bubble on a row</td><td>Text that one patient. Viber where possible, otherwise SMS.</td></tr>
+            <tr><td>Email All Patients</td><td>Every patient on that clinician's list for that day.</td></tr>
+            <tr><td>Text All Patients</td><td>The same, by text.</td></tr>
+            <tr><td>Text / Email: Clinician Absent Notice</td><td>Tells every patient booked with that clinician today
+              that the session is off. Red, because families act on it immediately.</td></tr>
+            <tr><td>Text / Email Clinician</td><td>Sends the clinician their own schedule for the day.</td></tr>
+          </table>
+          <div class="note care"><b>These leave the building.</b> Absent notices reach real families within seconds and
+            cannot be recalled. Check the branch tab, the date and the clinician before pressing one.</div>
+          <div class="note"><b>Greyed-out reminder buttons</b> mean either the clinician has no mobile number on file,
+            or they are a <b>Renter</b> &mdash; renters look after their own private clients, so the clinic does not
+            message their patients. Hover the button; the tooltip says which.</div>
+          <h4>Make-up sessions</h4>
+          <p>Lists clinicians not normally on tomorrow but covering. Add one here and they appear alongside the regular
+            list for that day only.</p>
+        </div>
+
+        <div class="mod" id="m-loa">
+          <div class="mod-top"><h3>LOA Submission</h3><span class="loc">/loa-submissions</span></div>
+          <div class="mod-roles"><span class="badge b-mgr"><span class="dot">M</span>Manager</span><span class="badge b-hr"><span class="dot">H</span>HR</span><span class="badge b-desk"><span class="dot">F</span>Front Desk</span></div>
+          <p class="desc">Letters of Authorization from HMOs &mdash; submitted by families through a public form, then
+            worked here.</p>
+          <h4>Working the queue <span class="tag">Step by step</span></h4>
+          <ol class="steps">
+            <li>Filter with <kbd>All branches</kbd>, <kbd>All HMOs</kbd> and <kbd>Any status</kbd>.</li>
+            <li>Open a submission and check the uploaded letter against the patient record.</li>
+            <li>Match it to the patient in <b>Patient CRM</b> &mdash; the search here matches on name.</li>
+            <li>Set the status. <kbd>Not yet</kbd> marks one still waiting on the HMO.</li>
+          </ol>
+          <div class="note"><kbd>LOA form</kbd> opens the public form as a family sees it; <kbd>LOA form settings</kbd>
+            controls what it asks. The HMO list mirrors the POS digital wallets, so an HMO added there appears here
+            without being typed twice.</div>
+        </div>
+      </div>
+
+      <div class="grouphead" id="g-capacity">Capacity &amp; analysis</div>
+      <div class="cards">
+
+        <div class="mod" id="m-decking">
+          <div class="mod-top"><h3>Decking Module</h3><span class="loc">/decking</span></div>
+          <div class="mod-roles"><span class="badge b-mgr"><span class="dot">M</span>Manager</span><span class="badge b-hr"><span class="dot">H</span>HR</span><span class="badge b-desk"><span class="dot">F</span>Front Desk</span></div>
+          <p class="desc">The weekly grid of who is available and which hours are sold. Clinic Schedule books one
+            appointment on one date; Decking is the repeating shape of the week behind it.</p>
+          <h4>Two cards, two jobs <span class="tag">Chips</span></h4>
+          <p>The chips at the top sit in two cards, and the split is the point: the left card is where the week gets
+            filled in, the right card reads the same slots back as a report. Hover any chip for its description.</p>
+          <table class="fields">
+            <tr><td>On-site</td><td>Consultants seeing patients in clinic.</td></tr>
+            <tr><td>Teletherapy</td><td>Consultants running remote sessions.</td></tr>
+            <tr><td>Homecare</td><td>Consultants travelling to patients.</td></tr>
+            <tr><td>SPED Class</td><td>One board for the branch rather than a grid per consultant, because SPED runs
+              classes &mdash; many children in a block, blocks longer than an hour.</td></tr>
+            <tr><td>All</td><td>Every consultant however they are tagged. Use this when someone is missing from the
+              section you expected.</td></tr>
+            <tr><td>Per Day</td><td>Weekly totals by day across all departments, for setting a daily target.</td></tr>
+            <tr><td>Interdepartment</td><td>Patients already seeing more than one department, and those who could be.</td></tr>
+            <tr><td>History</td><td>Filled and open slots over time, per department.</td></tr>
+          </table>
+          <div class="note"><b>Why somebody appears twice:</b> a consultant tagged "On-site + Teletherapy" genuinely
+            appears under both. Two roles, not a mistake and not a third category.</div>
+          <h4>Booking a slot <span class="tag">Step by step</span></h4>
+          <ol class="steps">
+            <li>Pick the branch tab, then a section chip, then a department chip.</li>
+            <li>Find the consultant's column and the hour. Use <kbd>Filter by name</kbd> if the board is wide.</li>
+            <li>Click the empty cell and choose the patient.</li>
+            <li>Set how it is paid: <kbd>Cash</kbd>, <kbd>HMO</kbd> or <kbd>Guarantee Letter</kbd>.</li>
+            <li>Save. The cell fills with the patient's name.</li>
+          </ol>
+          <h4>Reading the cells <span class="tag">What you will see</span></h4>
+          <table class="fields">
+            <tr><td>Named cell</td><td>Booked &mdash; the patient is in that hour.</td></tr>
+            <tr><td>Empty cell</td><td>Open, available to sell.</td></tr>
+            <tr><td>Greyed cell</td><td>Unavailable &mdash; outside the consultant's hours, or deliberately blocked.</td></tr>
+            <tr><td>Slots card</td><td>Total / Booked / Open, each percentage stated as a share <b>of total</b>, and the
+              tile says so.</td></tr>
+          </table>
+          <h4>Working Hours and Settings</h4>
+          <p>Hours are set per branch <i>and</i> per service. <kbd>Use clinic default hours</kbd> adopts the standard
+            day; untick it to set a <kbd>Start Time</kbd> and <kbd>End Time</kbd> of their own. Because hours are per
+            service, one consultant can be on-site Thursdays at one branch and teletherapy Tuesdays at the other
+            &mdash; enter those as separate rows rather than describing both in one.</p>
+          <h4>SPED Class board</h4>
+          <p>Switch between <kbd>Day</kbd> and <kbd>Week</kbd>. The weekly view lays overlapping classes side by side,
+            so you can see how many groups share the clinic at once and plan the spacing. Adding or removing a child
+            updates in place without reloading.</p>
+          <h4>History</h4>
+          <p>Two panels sharing one date axis &mdash; <b>Filled</b> in green above, <b>Open</b> in gold below. Each
+            panel is zoomed to its own range so a change of two or three slots is visible; read the numbers on the left
+            rather than judging by the height of the line. Hovering either panel reads both at that date.</p>
+          <div class="note care"><b>The chart does not reach "Slots offered".</b> Blocked hours are counted in that tile
+            but deliberately not drawn, so the top of the chart sits below it. <b>Fill rate</b> is filled divided by
+            (filled + open) &mdash; of what could be sold, how much was.</div>
+          <div class="note"><b>History starts at the first reading.</b> The board is a weekly template holding no dates,
+            so earlier days genuinely cannot be reconstructed. The page says where history begins rather than drawing a
+            flat line through a past it does not have.</div>
+        </div>
+
+        <div class="mod" id="m-util">
+          <div class="mod-top"><h3>Clinic Utilization</h3><span class="loc">/scheduling-dashboard</span></div>
+          <div class="mod-roles"><span class="badge b-mgr"><span class="dot">M</span>Manager</span><span class="badge b-hr"><span class="dot">H</span>HR</span></div>
+          <p class="desc">How full the clinic is, as charts &mdash; the management view of what front desk books.</p>
+          <h4>What each chart answers</h4>
+          <table class="fields">
+            <tr><td>Slot Utilization</td><td>Of the hours consultants offered, how many were sold.</td></tr>
+            <tr><td>Clinic Utilization Rate Over Time</td><td>The same figure tracked across the range.</td></tr>
+            <tr><td>Total Number of Sessions Over Time</td><td>Volume rather than fullness. A clinic can be busier and
+              emptier at once if capacity grew faster.</td></tr>
+            <tr><td>Therapist</td><td>The same broken down per clinician.</td></tr>
+          </table>
+          <h4>Comparing both branches side by side <span class="tag">Step by step</span></h4>
+          <ol class="steps">
+            <li>Set <kbd>Start Date</kbd> and <kbd>End Date</kbd>.</li>
+            <li>Switch the branch selector to the comparison view.</li>
+            <li>Both branches render in one panel on the same scale, so the difference is read directly rather than by
+              flipping tabs and remembering.</li>
+          </ol>
+          <div class="note">Where both are genuinely close the page says <b>Both branches level on utilization</b>
+            rather than inviting you to read a difference that is not there.
+            <b>Dashboard Settings</b> sets the capacity assumptions behind every percentage &mdash; a management
+            decision, not a display preference.</div>
+        </div>
+      </div>
+
+      <div class="grouphead" id="g-relations">Relationships &amp; quality</div>
+      <div class="cards">
+
+        <div class="mod" id="m-prel">
+          <div class="mod-top"><h3>Patient Relationship</h3><span class="loc">/patient-relationship</span></div>
+          <div class="mod-roles"><span class="badge b-mgr"><span class="dot">M</span>Manager</span><span class="badge b-hr"><span class="dot">H</span>HR</span><span class="badge b-desk"><span class="dot">F</span>Front Desk</span></div>
+          <p class="desc">The people who are not currently in a chair: waiting for a slot, needing a follow-up, or who
+            did not turn up.</p>
+          <h4>Four tabs</h4>
+          <table class="fields">
+            <tr><td>Waitlist</td><td>Families waiting for a slot. The <b>Branch</b> column shows where they filled the
+              form in, so you know which clinic they asked about.</td></tr>
+            <tr><td>Follow Up</td><td>Patients due a check-in. Log the outcome of each call.</td></tr>
+            <tr><td>No-Show</td><td>Missed appointments, with a log per patient.</td></tr>
+            <tr><td>Cancellations</td><td>Cancelled sessions and whether a fee applies.</td></tr>
+          </table>
+          <p>Within a tab, the department chips &mdash; <kbd>PT</kbd>, <kbd>OT</kbd>, <kbd>SLP</kbd>, <kbd>SPED</kbd>,
+            <kbd>Psych</kbd>, <kbd>MD</kbd> &mdash; narrow the list further.</p>
+          <h4>Fees and repeated misses</h4>
+          <p>A row marked <b>Fee applies</b> has passed the threshold in policy. <b>SUBJECT TO SLOT REMOVAL</b> means
+            they have missed often enough that their standing slot is at risk &mdash; a conversation, not an automatic
+            action.</p>
+          <div class="note"><b>Scan to Upload Proof</b> gives the family a QR code to send evidence for a waived fee,
+            such as a medical certificate. <b>Form Responses</b> shows what they originally submitted &mdash; useful
+            context before a difficult call.</div>
+        </div>
+
+        <div class="mod" id="m-survey">
+          <div class="mod-top"><h3>Customer Survey</h3><span class="loc">/customer-survey</span></div>
+          <div class="mod-roles"><span class="badge b-mgr"><span class="dot">M</span>Manager</span><span class="badge b-hr"><span class="dot">H</span>HR</span><span class="badge b-desk"><span class="dot">F</span>Front Desk</span></div>
+          <p class="desc">Patient satisfaction: sending surveys out, reading what comes back, and the clinician
+            leaderboard built from it.</p>
+          <h4>Getting a survey to a patient <span class="tag">Step by step</span></h4>
+          <ol class="steps">
+            <li><kbd>Scan to Take Survey</kbd> shows a QR code &mdash; the normal route, printed at the counter.</li>
+            <li><kbd>Manual Survey Assignment</kbd> assigns one to a named patient.</li>
+            <li><kbd>Assessment Schedule</kbd> sets the automatic rhythm, so most go out without anyone pressing anything.</li>
+          </ol>
+          <h4>Reading the results</h4>
+          <table class="fields">
+            <tr><td>Completion Rate &middot; Avg Rating</td><td>The two headline numbers.</td></tr>
+            <tr><td>Monthly Rating Trend</td><td>The direction of travel, which matters more than any single month.</td></tr>
+            <tr><td>Strengths &middot; Areas for Improvement &middot; Other Comments</td><td>The written answers. Read
+              these before drawing conclusions from the score.</td></tr>
+            <tr><td>Manage Survey Entries</td><td>Correct or remove a specific response.</td></tr>
+          </table>
+          <div class="note care"><b>Small numbers mislead.</b> A clinician with three responses can outrank one with
+            ninety. Check the response count beside the score before acting on a ranking.
+            <b>Leaderboard Scoring Weights</b> sets how much rating counts against volume; only active clinicians appear.</div>
+        </div>
+
+        <div class="mod" id="m-peer">
+          <div class="mod-top"><h3>Peer Evaluation</h3><span class="loc">/peer-eval</span></div>
+          <div class="mod-roles"><span class="badge b-mgr"><span class="dot">M</span>Manager</span><span class="badge b-hr"><span class="dot">H</span>HR</span><span class="badge b-desk"><span class="dot">F</span>Front Desk</span><span class="badge b-mktg"><span class="dot">K</span>Marketing</span></div>
+          <p class="desc">Staff evaluating each other on the HR08 and HR09 instruments. Annual, and largely automatic
+            once generated.</p>
+          <h4>Running a round <span class="tag">Step by step</span></h4>
+          <ol class="steps">
+            <li>Choose <kbd>Period</kbd>, <kbd>Branch</kbd> and <kbd>Evaluation Type</kbd> &mdash; HR08 Peer, HR08 Admin
+              or HR09.</li>
+            <li>Generate the assignments. <b>Generation Complete</b> confirms who was assigned to whom;
+              <b>Assignment Logic Reference</b> explains the pairing rules if one looks odd.</li>
+            <li>Distribute with <kbd>QR Codes</kbd>, or <kbd>Open Survey</kbd> to see what evaluators will see.</li>
+            <li>Track Pending, Answered, Completed and Expired with the status filters.</li>
+            <li>Read results under <kbd>Scores</kbd> and <kbd>Score Entry</kbd>.</li>
+          </ol>
+          <div class="note"><b>Work Days in Clinic</b> feeds the pairing &mdash; people are matched with colleagues they
+            actually work alongside. If that is wrong, fix the work days before regenerating rather than reassigning by hand.</div>
+        </div>
+
+        <div class="mod" id="m-regforms">
+          <div class="mod-top"><h3>Registration Forms</h3><span class="loc">/registration-forms</span></div>
+          <div class="mod-roles"><span class="badge b-mgr"><span class="dot">M</span>Manager</span><span class="badge b-hr"><span class="dot">H</span>HR</span><span class="badge b-desk"><span class="dot">F</span>Front Desk</span><span class="badge b-mktg"><span class="dot">K</span>Marketing</span></div>
+          <p class="desc">Everything submitted through the public forms, and the settings behind those forms.</p>
+          <h4>Working the list <span class="tag">Step by step</span></h4>
+          <ol class="steps">
+            <li>Use the status tickboxes at the top to show only what you are working on: <kbd>Converted</kbd>,
+              <kbd>Not Converted</kbd>, <kbd>For prioritization</kbd>. Ticking more than one shows all of them.</li>
+            <li>Narrow further with the tick-list dropdowns on each column.</li>
+            <li>Read the contact columns &mdash; name, email and number are separate columns, so the table sorts and scans.</li>
+            <li>Open a submission and use <kbd>Edit Response</kbd> to correct a typo before converting it.</li>
+          </ol>
+          <div class="note">A row that is both converted and flagged for prioritization shows as <b>Converted
+            Priority</b> in purple, so the combination stands out.
+            <b>Settings</b> holds the partner schools offered on the public registration form &mdash; add one there and
+            it appears on the form; there is no second place to update.</div>
+        </div>
+
+        <div class="mod" id="m-partners">
+          <div class="mod-top"><h3>Partner Institutions</h3><span class="loc">/partner-institutions</span></div>
+          <div class="mod-roles"><span class="badge b-mgr"><span class="dot">M</span>Manager</span><span class="badge b-hr"><span class="dot">H</span>HR</span><span class="badge b-desk"><span class="dot">F</span>Front Desk</span><span class="badge b-mktg"><span class="dot">K</span>Marketing</span></div>
+          <p class="desc">Schools and institutions we hold agreements with, and what discount each gets. View-only here
+            &mdash; HR Hub owns the records.</p>
+          <h4>Reading a card <span class="tag">What you will see</span></h4>
+          <table class="fields">
+            <tr><td>Left side</td><td>The contact &mdash; who to call and how. <b>No contact recorded</b> means nobody
+              has been named yet.</td></tr>
+            <tr><td>Right side</td><td>The discount terms in plain sentences with figures in bold, because this is what
+              front desk needs at the counter.</td></tr>
+            <tr><td>No discount set</td><td>An agreement exists but carries no discount &mdash; different from one
+              nobody has entered, so it is stated rather than left blank.</td></tr>
+          </table>
+          <div class="note"><b>To change anything</b> &mdash; a contact, a discount, a new partner &mdash; edit it in
+            HR Hub. This page updates on its own. Commission terms are deliberately not shown here.</div>
+        </div>
+      </div>
+
+      <div class="grouphead" id="g-mktg">Social &amp; marketing</div>
+      <div class="cards">
+
+        <div class="mod" id="m-social">
+          <div class="mod-top"><h3>Social Media Suite</h3><span class="loc">/social</span></div>
+          <div class="mod-roles"><span class="badge b-mgr"><span class="dot">M</span>Manager</span><span class="badge b-hr"><span class="dot">H</span>HR</span><span class="badge b-mktg"><span class="dot">K</span>Marketing</span></div>
+          <p class="desc">Writing, scheduling and reviewing posts to the connected Facebook and Instagram accounts.</p>
+          <h4>Posting <span class="tag">Step by step</span></h4>
+          <ol class="steps">
+            <li>Go to <kbd>New Post</kbd>.</li>
+            <li>Write the caption, then add artwork &mdash; <kbd>Click to upload image or video</kbd>, or
+              <kbd>Import from Canva</kbd> to pull a finished design in. <kbd>Add more</kbd> attaches further images
+              for a carousel.</li>
+            <li>Choose which accounts it goes to.</li>
+            <li>Publish now, or set a date and time to schedule it.</li>
+          </ol>
+          <p><kbd>Scheduled</kbd> lists queued posts &mdash; edit or remove one before it goes.
+            <kbd>Published</kbd> shows what went out and how it performed.</p>
+          <div class="note care"><b>Scheduled means scheduled.</b> Once the time passes the post is public. If you are
+            unsure about wording, leave it as a draft rather than scheduling it and planning to check later.</div>
+        </div>
+
+        <div class="mod" id="m-templates">
+          <div class="mod-top"><h3>Post Templates</h3><span class="loc">/templates</span></div>
+          <div class="mod-roles"><span class="badge b-mgr"><span class="dot">M</span>Manager</span><span class="badge b-hr"><span class="dot">H</span>HR</span><span class="badge b-mktg"><span class="dot">K</span>Marketing</span></div>
+          <p class="desc">Reusable artwork for the two things posted most often: <b>Birthday Posts</b> and
+            <b>Holiday Posts</b>.</p>
+          <p>Add artwork with <kbd>Upload Photo or Video</kbd> (JPG, PNG, MP4, MOV) or <kbd>Use a Canva design</kbd>.
+            Saved templates are offered when composing rather than rebuilt each time.</p>
+        </div>
+
+        <div class="mod" id="m-email">
+          <div class="mod-top"><h3>Email Campaigns</h3><span class="loc">/email</span></div>
+          <div class="mod-roles"><span class="badge b-mgr"><span class="dot">M</span>Manager</span><span class="badge b-hr"><span class="dot">H</span>HR</span><span class="badge b-mktg"><span class="dot">K</span>Marketing</span></div>
+          <p class="desc">Bulk email to patients, from a branch address.</p>
+          <h4>Sending one <span class="tag">Step by step</span></h4>
+          <ol class="steps">
+            <li>Choose the sending identity &mdash; Aura Health Rehab Clinic or Sapphire Clinics East.</li>
+            <li>Write the <kbd>Subject</kbd> and body.</li>
+            <li>Choose <kbd>Recipients</kbd>. Only patients who consented to the newsletter are included.</li>
+            <li>Use <kbd>Email Preview</kbd> and read it once more.</li>
+            <li>Send now or schedule, then track under <kbd>Past Campaigns</kbd>.</li>
+          </ol>
+          <p>Statuses run Draft, Scheduled, Sending, Sent, Failed. One stuck on <b>Sending</b> is still working through
+            the list; <b>Failed</b> needs looking at.</p>
+          <div class="note care"><b>There is no unsend.</b> Preview, check the recipient count, then send.</div>
+        </div>
+
+        <div class="mod" id="m-sms">
+          <div class="mod-top"><h3>SMS Campaigns</h3><span class="loc">/sms</span></div>
+          <div class="mod-roles"><span class="badge b-mgr"><span class="dot">M</span>Manager</span><span class="badge b-hr"><span class="dot">H</span>HR</span><span class="badge b-mktg"><span class="dot">K</span>Marketing</span></div>
+          <p class="desc">Bulk text messages. The same shape as email, with two differences worth knowing.</p>
+          <ol class="steps">
+            <li>Pick <kbd>Branch</kbd> &mdash; or <kbd>Both branches</kbd>. Messages send from that branch's own number.</li>
+            <li>Choose the recipient <kbd>Group</kbd>.</li>
+            <li>Write the <kbd>Message</kbd>. Keep it short: long messages split into several and each part is charged.</li>
+            <li>Send or schedule, then follow it in <kbd>Past Campaigns</kbd>.</li>
+          </ol>
+          <div class="note">A campaign can finish as <b>Partial</b> &mdash; some delivered, some not, usually bad
+            numbers. Open it to see which, and correct those records in Patient CRM.</div>
+        </div>
+      </div>
+
+      <div class="grouphead" id="g-setup">Settings &amp; access</div>
+      <div class="cards">
+
+        <div class="mod" id="m-investor">
+          <div class="mod-top"><h3>Investor View</h3><span class="loc">/patients/dashboard</span></div>
+          <div class="mod-roles"><span class="badge b-inv"><span class="dot">I</span>Investor</span></div>
+          <p class="desc">A deliberately narrow, read-only account for people who should see how the clinic is
+            performing without seeing who the patients are.</p>
+          <h4>What it can reach</h4>
+          <ul>
+            <li><b>Patient Dashboard</b> &mdash; numbers, growth and mix, plus the therapist leaderboard and positive
+              feedback. This is the landing page.</li>
+            <li><b>Customer Satisfaction Survey</b> &mdash; the leaderboard and patient feedback on its own page.</li>
+          </ul>
+          <p>The left menu shows only those two, under the heading <b>Investor View</b>. Typing any other address lands
+            back on the Patient Dashboard.</p>
+          <h4>What is deliberately hidden</h4>
+          <table class="fields">
+            <tr><td>Patient identity</td><td>Respondent names, emails and phone numbers are never fetched from the
+              database for this view at all &mdash; not merely left off the screen.</td></tr>
+            <tr><td>Therapist names</td><td>Masked to initials. An investor sees the ranking and the scores, not who is who.</td></tr>
+            <tr><td>Every other module</td><td>Blocked on the server. Adding a menu link would not grant access.</td></tr>
+          </table>
+          <div class="note"><b>Why masking sits in the API, not the page:</b> if names were only hidden by the screen,
+            the full names would still arrive in the browser and be readable by anyone who looked. They are removed
+            before the data is sent.</div>
+          <div class="note care"><b>Do not use an admin account as a stand-in.</b> Handing an investor a Clinic Manager
+            login exposes every patient record in the clinic. The Investor role exists so that never has to happen.</div>
+        </div>
+
+        <div class="mod" id="m-accounts">
+          <div class="mod-top"><h3>Connected Accounts</h3><span class="loc">/settings/accounts</span></div>
+          <div class="mod-roles"><span class="badge b-mgr"><span class="dot">M</span>Manager</span><span class="badge b-hr"><span class="dot">H</span>HR</span><span class="badge b-mktg"><span class="dot">K</span>Marketing</span></div>
+          <p class="desc">The external accounts the Hub posts through: Facebook Page, Instagram Business and Canva.</p>
+          <p>Each row shows <kbd>Platform</kbd>, <kbd>Status</kbd> and <kbd>Last Synced</kbd>. If social posting fails,
+            check here first &mdash; a <b>Page Access Token</b> expires periodically and must be reconnected.
+            <b>No accounts connected</b> means nothing can post at all.</p>
+        </div>
+
+        <div class="mod" id="m-team">
+          <div class="mod-top"><h3>Team</h3><span class="loc">/settings/users</span></div>
+          <div class="mod-roles"><span class="badge b-mgr"><span class="dot">M</span>Manager</span></div>
+          <p class="desc">Hub user accounts. The only place accounts are created, and only Clinic Managers can open it.</p>
+          <ol class="steps">
+            <li>Enter the person's <kbd>Name</kbd> and <kbd>Email</kbd>.</li>
+            <li>Choose the <kbd>Role</kbd> &mdash; the five in Section 2.</li>
+            <li>Set the <kbd>Branch</kbd> for a branch-locked role.</li>
+            <li>Set a <kbd>Password</kbd> and pass it to them privately.</li>
+          </ol>
+          <div class="note care"><b>Staff accounts are not clinician records.</b> Creating someone here does not add
+            them to the roster &mdash; that comes from HR Hub. A clinician who never signs in needs no account here.</div>
+        </div>
+
+        <div class="mod" id="m-brand">
+          <div class="mod-top"><h3>Brand Guide</h3><span class="loc">/brand</span></div>
+          <div class="mod-roles"><span class="badge b-mgr"><span class="dot">M</span>Manager</span><span class="badge b-hr"><span class="dot">H</span>HR</span><span class="badge b-mktg"><span class="dot">K</span>Marketing</span></div>
+          <p class="desc">The reference for anything public-facing: <b>Colors</b>, <b>Typography</b>, <b>Brand Tone</b>
+            and <b>Design Notes</b>. Check it before publishing artwork made outside the Hub.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 4 -->
+    <section id="connect">
+      <p class="eyebrow">Section 4</p>
+      <h2>Connected systems &mdash; where the data flows</h2>
+      <p>The Operations Hub is one of several connected systems. They share data automatically over secure
+        system-to-system links, so information typed once does not have to be typed again elsewhere. This map shows
+        what the Operations Hub <b>supplies</b> to each system and what it <b>receives</b> back.</p>
+
+      <div class="hubwrap">
+        <svg viewBox="0 0 820 470" role="img" aria-label="Operations Hub at the centre, exchanging data with HR Hub, Accounting Hub, Client Portal and Staff Portal">
+          <defs>
+            <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0 0 L10 5 L0 10 z" fill="#8FA8AD"/>
+            </marker>
+          </defs>
+          <g>
+            <rect x="30" y="34" width="290" height="76" rx="12" fill="#fff" stroke="#CBD9DC" stroke-width="1.5"/>
+            <text x="175" y="68" text-anchor="middle" font-size="17" font-weight="700" fill="#132A33">HR Hub</text>
+            <text x="175" y="90" text-anchor="middle" font-size="13" fill="#6B7C85">staff &middot; employment &middot; partners</text>
+          </g>
+          <g>
+            <rect x="500" y="34" width="290" height="76" rx="12" fill="#fff" stroke="#CBD9DC" stroke-width="1.5"/>
+            <text x="645" y="68" text-anchor="middle" font-size="17" font-weight="700" fill="#132A33">Accounting Hub</text>
+            <text x="645" y="90" text-anchor="middle" font-size="13" fill="#6B7C85">billing &middot; referrers &middot; finance</text>
+          </g>
+          <g>
+            <rect x="30" y="360" width="290" height="76" rx="12" fill="#fff" stroke="#CBD9DC" stroke-width="1.5"/>
+            <text x="175" y="394" text-anchor="middle" font-size="17" font-weight="700" fill="#132A33">Client Portal</text>
+            <text x="175" y="416" text-anchor="middle" font-size="13" fill="#6B7C85">what families see</text>
+          </g>
+          <g>
+            <rect x="500" y="360" width="290" height="76" rx="12" fill="#fff" stroke="#CBD9DC" stroke-width="1.5"/>
+            <text x="645" y="394" text-anchor="middle" font-size="17" font-weight="700" fill="#132A33">Staff Portal</text>
+            <text x="645" y="416" text-anchor="middle" font-size="13" fill="#6B7C85">what clinicians see</text>
+          </g>
+          <g>
+            <rect x="265" y="192" width="290" height="86" rx="14" fill="#0E4C57"/>
+            <text x="410" y="228" text-anchor="middle" font-size="19" font-weight="800" fill="#fff" letter-spacing="1">OPERATIONS HUB</text>
+            <text x="410" y="252" text-anchor="middle" font-size="12" fill="rgba(255,255,255,0.62)">operations.sapphireclinicseast.org</text>
+          </g>
+          <path d="M195 118 L330 184" stroke="#8FA8AD" stroke-width="2" fill="none" marker-end="url(#ah)" marker-start="url(#ah)"/>
+          <path d="M625 118 L490 184" stroke="#8FA8AD" stroke-width="2" fill="none" marker-end="url(#ah)" marker-start="url(#ah)"/>
+          <path d="M330 286 L195 352" stroke="#8FA8AD" stroke-width="2" fill="none" marker-end="url(#ah)"/>
+          <path d="M490 286 L625 352" stroke="#8FA8AD" stroke-width="2" fill="none" marker-end="url(#ah)"/>
+          <text x="222" y="162" font-size="11.5" fill="#2E4049" paint-order="stroke" stroke="#fff" stroke-width="4" stroke-linejoin="round">staff in &middot; results out</text>
+          <text x="598" y="162" text-anchor="end" font-size="11.5" fill="#2E4049" paint-order="stroke" stroke="#fff" stroke-width="4" stroke-linejoin="round">doctors in &middot; bookings out</text>
+          <text x="222" y="330" font-size="11.5" fill="#2E4049" paint-order="stroke" stroke="#fff" stroke-width="4" stroke-linejoin="round">patients &middot; sessions</text>
+          <text x="598" y="330" text-anchor="end" font-size="11.5" fill="#2E4049" paint-order="stroke" stroke="#fff" stroke-width="4" stroke-linejoin="round">schedules &middot; queue</text>
+        </svg>
+        <p class="hub-legend"><b>&#8646;</b> two-way automatic sync &nbsp;&middot;&nbsp; <b>&rarr;</b> one-way (Operations publishes out)</p>
+      </div>
+
+      <div class="conn">
+        <div class="conn-head"><h3>HR Hub</h3><span class="loc">hr.sapphireclinicseast.org</span></div>
+        <p>The system of record for people. Anything about a person is changed there, not here.</p>
+        <div class="flowgrid">
+          <div class="flowcol receives"><div class="flow-lbl">Operations receives</div>
+            <ul><li>Staff records, departments and branches</li><li>Employment type &mdash; Employee, Consultant, Intern, Renter</li>
+              <li>Work arrangement, which decides the Decking sections</li><li>Partner institutions and their discount terms</li></ul></div>
+          <div class="flowcol supplies"><div class="flow-lbl">Operations supplies</div>
+            <ul><li>Customer survey results</li><li>Peer evaluation results</li></ul></div>
+        </div>
+      </div>
+
+      <div class="conn">
+        <div class="conn-head"><h3>Accounting Hub</h3><span class="loc">accounting.sapphireclinicseast.org</span></div>
+        <p>Billing and the referral network.</p>
+        <div class="flowgrid">
+          <div class="flowcol receives"><div class="flow-lbl">Operations receives</div>
+            <ul><li>The referring-doctor list used by the registration form, read live &mdash; a doctor added there is
+              findable on the next keystroke</li></ul></div>
+          <div class="flowcol supplies"><div class="flow-lbl">Operations supplies</div>
+            <ul><li>Booking and payment markers for reconciliation</li></ul></div>
+        </div>
+      </div>
+
+      <div class="conn">
+        <div class="conn-head"><h3>Client Portal &amp; Staff Portal</h3><span class="loc">what families and clinicians see</span></div>
+        <p>Both read from Operations. Neither writes back into it.</p>
+        <div class="flowgrid">
+          <div class="flowcol receives"><div class="flow-lbl">Operations receives</div>
+            <p class="flownone">Nothing &mdash; these are one-way.</p></div>
+          <div class="flowcol supplies"><div class="flow-lbl">Operations supplies</div>
+            <ul><li>Client Portal: the patient record, sessions and documents</li>
+              <li>Staff Portal: each clinician's own schedule and the day queue</li></ul></div>
+        </div>
+      </div>
+
+      <div class="call rule"><span class="lbl">One-way means one-way</span>
+        Editing a staff name in Operations does not reach HR Hub, and the next sync overwrites it. Change it where it
+        is owned &mdash; the cards above say where that is.</div>
+    </section>
+
+    <!-- SECTION 5 -->
+    <section id="play">
+      <p class="eyebrow">Section 5</p>
+      <h2>Role playbooks</h2>
+      <p>If you only read one thing, read the playbook for your own role. Each is the shape of an ordinary day.</p>
+
+      <div class="play desk">
+        <h3><span class="badge b-desk"><span class="dot">F</span>Front Desk</span> A day at the counter</h3>
+        <ol>
+          <li>Open <b>Queueing</b> and check the branch tab is yours.</li>
+          <li>As families arrive, move their row from <b>Pending</b> to <b>Confirmed</b>.</li>
+          <li>Take walk-ins with <kbd>Search Existing Patient</kbd> first, <kbd>New Patient</kbd> only if they are genuinely new.</li>
+          <li>In <b>Clinic Schedule</b>, send the day's reminders &mdash; per patient, or <kbd>Email All Patients</kbd> for a whole list.</li>
+          <li>If a clinician calls in sick, use <kbd>Text: Clinician Absent Notice</kbd> after checking the date and the name.</li>
+          <li>Fill gaps from <b>Patient Relationship &rsaquo; Waitlist</b>, and log any no-shows.</li>
+          <li>Hand new families the <b>Patient Registration QR</b> rather than typing their details for them.</li>
+        </ol>
+      </div>
+
+      <div class="play mgr">
+        <h3><span class="badge b-mgr"><span class="dot">M</span>Clinic Manager</span> A week of oversight</h3>
+        <ol>
+          <li>Open <b>Clinic Utilization</b> and set the week. Compare both branches side by side.</li>
+          <li>Open <b>Decking &rsaquo; History</b> for the departments that look thin, and read the fill rate.</li>
+          <li>Check <b>Decking &rsaquo; Interdepartment</b> for patients who could be seeing a second department.</li>
+          <li>Read <b>Customer Survey</b> &mdash; the written comments before the scores.</li>
+          <li>Review <b>Patient Relationship</b> for fees due and repeated no-shows.</li>
+          <li>Create or retire accounts in <b>Settings &rsaquo; Team</b>, and never lend one.</li>
+        </ol>
+      </div>
+
+      <div class="play hr">
+        <h3><span class="badge b-hr"><span class="dot">H</span>HR Officer</span> Keeping the roster true</h3>
+        <ol>
+          <li>Make every staff change in <b>HR Hub</b> first &mdash; it is the system of record.</li>
+          <li>Run the sync in <b>Staff Module</b> and confirm the row changed.</li>
+          <li>Check leavers read as inactive, not missing.</li>
+          <li>Confirm work arrangement is right, or the consultant lands in the wrong Decking section.</li>
+          <li>Run <b>Peer Evaluation</b> rounds and chase the Pending ones.</li>
+        </ol>
+      </div>
+
+      <div class="play mktg">
+        <h3><span class="badge b-mktg"><span class="dot">K</span>Marketing Admin</span> A campaign, start to finish</h3>
+        <ol>
+          <li>Check <b>Settings &rsaquo; Connected Accounts</b> shows the socials still connected.</li>
+          <li>Build artwork in <b>Post Templates</b>, or import a Canva design.</li>
+          <li>Schedule posts in <b>Social &rsaquo; New Post</b>.</li>
+          <li>For email or SMS, check the recipient count and preview before sending &mdash; neither can be recalled.</li>
+          <li>Read results in <b>Patient Dashboard</b> and <b>Published</b>.</li>
+        </ol>
+      </div>
+
+      <div class="play inv">
+        <h3><span class="badge b-inv"><span class="dot">I</span>Investor</span> What you will see</h3>
+        <ol>
+          <li>You land on <b>Patient Dashboard</b>. It is the whole clinic, both branches.</li>
+          <li>Read patient growth and mix, then the therapist leaderboard.</li>
+          <li>Open <b>Customer Satisfaction Survey</b> for feedback in more detail.</li>
+          <li>Therapists appear as initials and patients are never named &mdash; that is by design, not a fault.</li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- SECTION 6 -->
+    <section id="rules">
+      <p class="eyebrow">Section 6</p>
+      <h2>Golden rules</h2>
+      <p>Six habits that prevent almost every avoidable problem in this system.</p>
+      <div class="call rule"><span class="lbl">Rule 1</span>
+        <b>Search before you create.</b> Two records for one child split the history in half, and neither looks wrong
+        on its own.</div>
+      <div class="call rule"><span class="lbl">Rule 2</span>
+        <b>Check the branch tab before reading any number.</b> It is the single most common reason a figure looks wrong.</div>
+      <div class="call rule"><span class="lbl">Rule 3</span>
+        <b>Change people in HR Hub, not here.</b> Staff edits made in Operations are overwritten at the next sync.</div>
+      <div class="call rule"><span class="lbl">Rule 4</span>
+        <b>Nothing sent can be recalled.</b> Reminders, absent notices, campaigns and social posts all reach real people
+        within seconds. Read it twice.</div>
+      <div class="call rule"><span class="lbl">Rule 5</span>
+        <b>Never lend an account.</b> Roles exist so each person sees only what they should &mdash; especially the
+        Investor role. Ask a Clinic Manager for the right account instead.</div>
+      <div class="call rule"><span class="lbl">Rule 6</span>
+        <b>If a number contradicts the board, say so.</b> The board is what front desk acts on. A count that disagrees
+        with it is worth investigating, not working around.</div>
+    </section>
+
+    <!-- SECTION 7 -->
+    <section id="help">
+      <p class="eyebrow">Section 7</p>
+      <h2>Help</h2>
+      <p>Answers to the questions people ask most, and a search box that finds any word in this handbook and takes
+        you to it.</p>
+
+      <h3 class="blockh" id="faq">Frequently asked questions</h3>
+      <div class="faq">
+        <details><summary>A module I need isn't in my menu.</summary><div class="a">
+          <p>The menu shows only what your role may open &mdash; nothing is hidden by accident. Compare against
+            <a href="#access">Who sees what</a>. If you genuinely need it, ask a Clinic Manager, who can change your
+            role in <b>Settings &rsaquo; Team</b>.</p></div></details>
+        <details><summary>I can only see one branch.</summary><div class="a">
+          <p>Front Desk accounts are locked to their own branch by design. Clinic Manager and HR Officer accounts see
+            both and switch with the branch tabs inside each module.</p></div></details>
+        <details><summary>Someone changed something, but I still see the old version.</summary><div class="a">
+          <p>Reload the page, or press <b>Cmd/Ctrl + Shift + R</b> for a full refresh. A tab open since before the
+            change may be showing an old copy.</p></div></details>
+        <details><summary>A patient exists twice.</summary><div class="a">
+          <p>Usually because they registered themselves and were also added at the counter. Their history is now split
+            and neither record looks wrong on its own. Ask a Clinic Manager to merge them &mdash; do not delete one, or
+            you delete half the history.</p></div></details>
+        <details><summary>How do I get a family to register themselves?</summary><div class="a">
+          <p>In Patient CRM open <b>Patient Registration QR</b> and show or print the code. They fill the form in
+            themselves and can photograph their referral and PWD/Senior ID with their own phone, which removes
+            transcription errors.</p></div></details>
+        <details><summary>The doctor's name will not come up on the registration form.</summary><div class="a">
+          <p>Type at least three letters <b>of the name itself</b> &mdash; the honorific does not count, so "dr. a" is
+            one letter and shows nothing, while "dr. aid" finds the match. Matching is on the start of a word, so a
+            surname works as well as a first name.</p>
+          <p>If the doctor is genuinely not listed, the family can just type the name. To add them permanently, add them
+            in Accounting Hub under <b>Referral &rsaquo; Referrers &rsaquo; Doctors</b>.</p></div></details>
+        <details><summary>A partner school is missing from the registration form.</summary><div class="a">
+          <p>Add it in <b>Registration Forms &rsaquo; Settings</b>. That list is what the public form offers; there is
+            no second place to update.</p></div></details>
+        <details><summary>What is the difference between Clinic Schedule and Decking?</summary><div class="a">
+          <p><b>Clinic Schedule</b> is individual appointments on a specific date &mdash; booking, changing, reminding.
+            <b>Decking</b> is the repeating weekly shape behind it: which consultant offers which hours, and how much
+            of that is sold.</p>
+          <p>Book a one-off in Clinic Schedule. Ask "how full is Tuesday?" in Decking.</p></div></details>
+        <details><summary>The reminder buttons are greyed out.</summary><div class="a">
+          <p>Two possible reasons, and the tooltip says which. Either the clinician has no mobile number on file
+            &mdash; fix that in HR Hub &mdash; or they are a <b>Renter</b>.</p>
+          <p>Renters pay the clinic a monthly facility fee and bring their own private clients, so the clinic does not
+            message those patients. You can still book their sessions and they still appear in the queue.</p></div></details>
+        <details><summary>A consultant is missing from the Decking board.</summary><div class="a">
+          <p>Click the <b>All</b> chip. On-site, Teletherapy and Homecare are driven by work arrangement in HR Hub, and
+            someone untagged appears in none of the three but does appear under All. Fix the work arrangement in HR Hub
+            and re-sync. If they are missing from All too, they are probably inactive in HR Hub.</p></div></details>
+        <details><summary>Someone appears in two Decking sections at once.</summary><div class="a">
+          <p>That is correct. A consultant tagged "On-site + Teletherapy" genuinely does both, so they appear under
+            both. Two roles, not a duplicate.</p></div></details>
+        <details><summary>Why does the History chart not reach the "Slots offered" number?</summary><div class="a">
+          <p>Because blocked hours are counted in that tile but deliberately not drawn. The chart shows only what was
+            sellable &mdash; filled plus open &mdash; so its top edge sits below the total whenever anything is
+            blocked.</p></div></details>
+        <details><summary>Fill rate jumped. Did we get better?</summary><div class="a">
+          <p>Not necessarily. Fill rate is filled divided by (filled + open) &mdash; of what could be sold, how much
+            was. Blocked hours are not in the denominator, so a department is not marked down for time its consultants
+            never offered. The same work measured against a fairer base gives a higher number.</p></div></details>
+        <details><summary>Someone has left but still appears.</summary><div class="a">
+          <p>Mark them inactive in HR Hub, then re-sync in Staff Module. They drop out of the boards and pickers but
+            keep their history. They are never deleted &mdash; that would take thousands of past appointments with
+            them.</p></div></details>
+        <details><summary>I changed a staff name here and it reverted.</summary><div class="a">
+          <p>Expected. HR Hub owns staff data and the sync overwrites the local copy. Change it in HR Hub.</p></div></details>
+        <details><summary>What is a Renter?</summary><div class="a">
+          <p>A clinician we do not pay. They pay the clinic a fixed monthly fee for use of the facility and see their
+            own private clients here. Schedule and queue them as normal; the clinic just does not send messages to
+            their patients.</p></div></details>
+        <details><summary>Can I give an investor a login without showing them patient names?</summary><div class="a">
+          <p>Yes &mdash; that is exactly what the <b>Investor</b> role is for. Two read-only pages, patient identities
+            never sent to it, therapist names as initials. Create it under <b>Settings &rsaquo; Team</b>. Never hand an
+            investor an admin login instead; that exposes every patient record in the clinic.</p></div></details>
+        <details><summary>I sent something by mistake. Can it be recalled?</summary><div class="a">
+          <p>No. Emails, texts and social posts leave immediately. If it was an Absent Notice, ring the affected
+            families &mdash; they will have read it within minutes.</p></div></details>
+        <details><summary>An SMS campaign finished as "Partial".</summary><div class="a">
+          <p>Some messages delivered and some did not, nearly always bad or missing mobile numbers. Open the campaign
+            to see which failed, then correct those numbers in Patient CRM.</p></div></details>
+        <details><summary>A patient says they never get our emails.</summary><div class="a">
+          <p>Check they are marked <b>Email Newsletter</b> in Patient CRM &mdash; campaigns go only to patients who
+            consented. Then check the address for a typo.</p></div></details>
+        <details><summary>Social posting has stopped working.</summary><div class="a">
+          <p>Check <b>Settings &rsaquo; Connected Accounts</b>. Page access tokens expire periodically and the account
+            needs reconnecting; the <b>Last Synced</b> column usually shows the problem.</p></div></details>
+        <details><summary>A figure does not match what I can see on the board.</summary><div class="a">
+          <p>Check three things in order: the <b>branch tab</b>, the <b>date range</b>, and any <b>department
+            filter</b> still set from last time. If all three are right and it still disagrees, say so &mdash; a count
+            that contradicts the board is worth investigating.</p></div></details>
+        <details><summary>The leaderboard looks unfair.</summary><div class="a">
+          <p>Check the response count beside each score. A clinician with three responses can outrank one with ninety.
+            <b>Leaderboard Scoring Weights</b> controls how much rating counts against volume.</p></div></details>
+        <details><summary>Who do I ask when the answer is not here?</summary><div class="a">
+          <p>Staff records, employment type or partner agreements &mdash; HR Hub, because it owns them. Billing or
+            referrers &mdash; Accounting Hub. Anything else, your Clinic Manager.</p></div></details>
+      </div>
+
+      <h3 class="blockh" id="search">Word search</h3>
+      <div class="hb-search" data-noexport>
+        <label for="hbq">Type a word or phrase &mdash; a button name, a module, a field, anything.</label>
+        <input id="hbq" type="search" placeholder="e.g. Renter, Absent Notice, fill rate, QR, Investor, waitlist…" autocomplete="off">
+        <p class="hint">Results list every place the words appear, with the section they are in. Click one to jump
+          there; matches are highlighted on the page.</p>
+        <ul class="sr-list" id="hbres" aria-live="polite"></ul>
+        <p class="sr-empty" id="hbempty" hidden>No matches. Try a shorter word, or the name as it appears on screen.</p>
+      </div>
+    </section>
+
+</div>
+</div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Sapphire Clinics East &middot; Operations Hub &mdash; internal documentation</span>
+    <span>Questions this handbook does not answer go to your Clinic Manager.</span>
   </div>
-  <div class="tip warn"><b>Branch lock:</b> Front Desk accounts only ever see their own branch. Where this handbook says "switch branch", that applies to Clinic Manager and HR Officer accounts.</div>
-</div>
-
-<div class="sec" id="layout">
-  <h3>The screen, explained</h3>
-  <p class="lede">Every page shares the same frame. Learn it once.</p>
-  <h4>The left menu</h4>
-  <p>Grouped by job: <b>Home</b>, <b>Social &amp; Marketing</b>, <b>Patients</b>, <b>Clinic Tools</b>, <b>Settings</b>. A group with a chevron expands when you click it. Your current page is highlighted.</p>
-  <h4>The brand switcher</h4>
-  <p>Top-left, above the menu. Sapphire Clinics East is the default. Switching brand changes which social accounts and templates you are working with — it does not change clinic data.</p>
-  <h4>Branch tabs</h4>
-  <p>Inside a module, branch appears as two tabs near the top — <b>East Branch</b> and <b>Greenhills Branch</b>. The active tab is filled dark. Nearly every number on the page obeys this tab, so check it before reading any figure.</p>
-  <h4>Saving</h4>
-  <p>There is no global Save. Each panel saves its own changes with its own button, and a short message appears at the bottom of the screen to confirm. If no message appears, the change did not save.</p>
-</div>
-
-<div class="sec" id="controls">
-  <h3>Controls you will meet everywhere</h3>
-  <p class="lede">These behave the same in every module, so they are explained once here rather than repeated.</p>
-  <table class="btns">
-    <thead><tr><th>Control</th><th>What it does</th></tr></thead>
-    <tbody>
-      <tr><td>Branch tabs</td><td>Two buttons at the top of a module. Filters the whole page to one clinic. Front Desk accounts see only their own.</td></tr>
-      <tr><td>Filter row</td><td>A row of dropdowns above a table — typically Department, Status, Date range. They combine: setting two narrows to rows matching both.</td></tr>
-      <tr><td>Tick-list dropdown</td><td>A dropdown with checkboxes rather than one choice. Tick several values to see all of them. Click outside to close. Used for filters where more than one answer is normal.</td></tr>
-      <tr><td>Filter by name</td><td>A free-text box. Type part of a name; the list narrows as you type. Clear it to see everything again.</td></tr>
-      <tr><td>From / To dates</td><td>Two date pickers. Both are inclusive. Leaving a long range set is the usual cause of "this is slow".</td></tr>
-      <tr><td>Column headers</td><td>Click to sort. Click again to reverse.</td></tr>
-      <tr><td><span class="k">+</span> / <b>Add</b></td><td>Opens a form for a new record. Teal buttons create or confirm.</td></tr>
-      <tr><td>Pencil icon</td><td>Edit in place. Opens the row as a form.</td></tr>
-      <tr><td>Bin icon</td><td>Delete. Always asks first. Red means it cannot be undone.</td></tr>
-      <tr><td>Envelope icon</td><td>Send an email to that one person.</td></tr>
-      <tr><td>Speech-bubble icon</td><td>Send a text message to that one person.</td></tr>
-      <tr><td>Greyed-out button</td><td>Not available. Hover it — the tooltip says why (no mobile number on file, no permission, nothing selected).</td></tr>
-    </tbody>
-  </table>
-  <div class="tip"><b>Rule of thumb:</b> teal buttons make something happen, white buttons change what you are looking at, red buttons destroy something.</div>
-</div>
-
-<div class="sec" id="first-day">
-  <h3>Your first fifteen minutes</h3>
-  <p class="lede">If you have never opened the Hub before, do these in order.</p>
-  <ol class="steps">
-    <li>Sign in with the email address your manager registered. If it is refused, your account may not exist yet — a Clinic Manager creates it under <b>Settings &rarr; Team</b>.</li>
-    <li>Look at the left menu and compare it with the five roles above. That tells you which account type you have.</li>
-    <li>Open <b>Home Dashboard</b>. Nothing here changes any data — it is safe to click around.</li>
-    <li>Open <b>Clinic Schedule</b> and switch between the four view tabs without editing anything, to see the same day four ways.</li>
-    <li>Open <b>Decking Module</b> and click each chip in the two cards at the top. Again, looking changes nothing.</li>
-    <li>Come back here and read the chapter for whichever module you were hired to use.</li>
-  </ol>
-  <div class="tip warn"><b>Before you edit anything real:</b> the two actions that reach patients are sending reminders in Clinic Schedule and sending campaigns in Email/SMS. Everything else stays inside the Hub. Take extra care with those two.</div>
-</div>
-<!-- ══════════════ 2. HOME & PATIENTS ══════════════ -->
-<div class="chapter" id="ch-patients">
-  <div class="num">Chapter 2</div>
-  <h2>Home and patient records</h2>
-  <p>Where a patient exists in the system, and everything that reads from that record.</p>
-</div>
-
-<div class="sec" id="dashboard">
-  <h3>Home Dashboard <span class="path">/dashboard</span></h3>
-  <div class="who"><span class="pill all">All roles</span></div>
-  <p class="lede">The landing page. A summary of today across the clinic — nothing here is edited, only read.</p>
-  <h4>What to do with it</h4>
-  <ol class="steps">
-    <li>Check the branch tab first. Every figure below it belongs to that branch.</li>
-    <li>Read the cards across the top: today's sessions, patients in the queue, open slots.</li>
-    <li>Click any card to jump straight to the module it came from, already filtered to today.</li>
-  </ol>
-  <div class="tip"><b>If a number looks wrong:</b> it is almost always the branch tab or a date range left over from your last visit. Check those two before reporting a fault.</div>
-</div>
-
-<div class="sec" id="patient-crm">
-  <h3>Patient CRM <span class="path">/patients</span></h3>
-  <div class="who"><span class="pill admin">Clinic Manager</span><span class="pill hr">HR Officer</span><span class="pill desk">Front Desk</span><span class="pill mktg">Marketing Admin</span></div>
-  <p class="lede">The master list of every patient. If somebody is not here, they do not exist anywhere else in the Hub — no schedule, no queue entry, no survey.</p>
-  <h4>Finding one person</h4>
-  <ol class="steps">
-    <li>Type any part of the name into the search box. It matches first and last name.</li>
-    <li>Narrow further with the dropdowns: <b>All Branches</b>, <b>All Types</b> (Pediatric / Adult), and the indicator filters.</li>
-    <li>Click the row to open the full record.</li>
-  </ol>
-  <h4>Reading the indicators</h4>
-  <p>Small marks on a row tell you something about the patient without opening them:</p>
-  <table class="btns">
-    <thead><tr><th>Mark</th><th>Meaning</th></tr></thead>
-    <tbody>
-      <tr><td>Star</td><td>Filipino-Chinese, identified from the surname. Used for greetings and campaign targeting.</td></tr>
-      <tr><td>ID on file</td><td>A PWD or Senior ID photo has been uploaded — the discount can be applied.</td></tr>
-      <tr><td>Referral on file</td><td>A doctor referral document has been uploaded.</td></tr>
-      <tr><td>Existing in DB</td><td>The person already had a record when they submitted a form, rather than being newly created.</td></tr>
-      <tr><td>Email Newsletter</td><td>They have consented to marketing email. Campaigns only go to these.</td></tr>
-    </tbody>
-  </table>
-  <h4>Getting patients in</h4>
-  <p>Three routes, in order of how common they are:</p>
-  <ul>
-    <li><b>They register themselves</b> — the public form at <span class="k">/patient-register</span>. Use <b>Patient Registration QR</b> to print a code for the counter; a parent scans it and types their own details, which removes transcription errors.</li>
-    <li><b>A registration form</b> — submissions arrive under Registration Forms and can be converted into a patient.</li>
-    <li><b>Front desk adds them</b> — during walk-in booking in Queueing.</li>
-  </ul>
-  <div class="tip"><b>Duplicates:</b> always search before creating. Two records for one child split their history in half and neither one looks wrong on its own.</div>
-</div>
-
-<div class="sec" id="patient-profile">
-  <h3>Patient Profile <span class="path">/patients/profile</span></h3>
-  <div class="who"><span class="pill admin">Clinic Manager</span><span class="pill hr">HR Officer</span><span class="pill desk">Front Desk</span><span class="pill mktg">Marketing Admin</span></div>
-  <p class="lede">One patient, everything about them, on a single page.</p>
-  <h4>What is on it</h4>
-  <ul>
-    <li><b>Details</b> — name, birthday, sex, contact numbers, address, branch.</li>
-    <li><b>Documents</b> — the doctor referral and PWD/Senior ID, either uploaded as a file or photographed at the counter.</li>
-    <li><b>Session history</b> — every appointment, with status.</li>
-    <li><b>Discount flags</b> — what they are entitled to and the proof held on file.</li>
-  </ul>
-  <h4>Editing</h4>
-  <ol class="steps">
-    <li>Click the pencil beside the field group you want to change.</li>
-    <li>Change the fields and press <b>Save</b>.</li>
-    <li>Wait for the confirmation message before leaving the page.</li>
-  </ol>
-  <div class="tip warn"><b>Birthdays matter:</b> the date of birth drives automatic birthday greetings and decides Pediatric versus Adult. A wrong birthday sends a greeting on the wrong day to a real family.</div>
-</div>
-
-<div class="sec" id="patient-dashboard">
-  <h3>Patient Dashboard <span class="path">/patients/dashboard</span></h3>
-  <div class="who"><span class="pill admin">Clinic Manager</span><span class="pill hr">HR Officer</span><span class="pill mktg">Marketing Admin</span></div>
-  <p class="lede">Patient numbers as charts — who they are and where they come from. Reading only.</p>
-  <ul>
-    <li><b>Age and sex</b> — stacked bars, split Female / Male / Other.</li>
-    <li><b>Growth</b> — new patients over time.</li>
-    <li><b>Source</b> — how they found the clinic.</li>
-  </ul>
-  <p>Set the branch tab and date range at the top; every chart follows them. Hover any bar or point to read the exact figure rather than estimating from the axis.</p>
-</div>
-
-<div class="sec" id="self-register">
-  <h3>Patient self-registration <span class="path">/patient-register</span></h3>
-  <div class="who"><span class="pill all">Public page — no sign-in</span></div>
-  <p class="lede">The form a family fills in themselves, on their own phone or on a tablet at the counter. Reachable by QR code from Patient CRM.</p>
-  <h4>What the family fills in</h4>
-  <ol class="steps">
-    <li>Patient and guardian details, contact number, address.</li>
-    <li><b>Branch</b> — they tick which clinic (Aura Health East, Aura Health Greenhills, or Verdana Rehab Store).</li>
-    <li><b>Partner school tickbox</b> — if they tick "I am from one of Sapphire's partner schools or institutions", a dropdown of partner schools appears. The list is maintained in Registration Forms &rarr; Settings, so adding a school there makes it appear here.</li>
-    <li><b>Doctor's Referral</b> — they start typing the referring doctor's name and matching names appear. The list comes live from Accounting Hub, so a doctor added there is findable immediately. If their doctor is not listed they simply type the name.</li>
-    <li><b>Documents</b> — either <b>Choose file</b> to upload, or <b>Take a photo</b> to use the device camera for the referral and the PWD/Senior ID.</li>
-  </ol>
-  <div class="tip"><b>At the counter:</b> Take a photo is usually faster and cleaner than a family emailing a scan later. The photo is attached to the record immediately.</div>
-  <div class="tip warn"><b>Three characters minimum:</b> doctor suggestions only appear after three letters of the actual name. Typing "dr. a" shows nothing; "dr. aid" shows the match. This is deliberate — it stops the full referrer list being harvested from a public page.</div>
-</div>
-
-<!-- ══════════════ 3. CLINIC TOOLS ══════════════ -->
-<div class="chapter" id="ch-clinic">
-  <div class="num">Chapter 3</div>
-  <h2>Clinic Tools</h2>
-  <p>The day-to-day of running the clinic: who works, who is booked, who is waiting, and how full the week is.</p>
-</div>
-
-<div class="sec" id="staff">
-  <h3>Staff Module <span class="path">/staff</span></h3>
-  <div class="who"><span class="pill admin">Clinic Manager</span><span class="pill hr">HR Officer</span><span class="pill desk">Front Desk</span><span class="pill mktg">Marketing Admin</span></div>
-  <p class="lede">The clinician roster. Everything here comes from HR Hub — this is a mirror, not the original.</p>
-  <h4>What you can and cannot change</h4>
-  <div class="tip warn"><b>Read this first:</b> you cannot add or delete staff here. Names, departments, branches, job titles, employment type and contact details are all owned by HR Hub. To change any of them, change them in HR Hub and re-sync. Only a few Operations-owned fields (such as extra branches and sex) are editable here, and the sync deliberately leaves those alone.</div>
-  <h4>Reading a row</h4>
-  <ul>
-    <li><b>Branch</b> — the home branch, shown as <b>AHEA</b> (East) or <b>AHGH</b> (Greenhills).</li>
-    <li><b>Also at Branch</b> — the extra branches an interbranch consultant covers.</li>
-    <li><b>Employment</b> — Employee, Consultant, Intern, or Renter.</li>
-  </ul>
-  <h4>Employment types, and why they matter</h4>
-  <table class="btns">
-    <thead><tr><th>Type</th><th>What it changes elsewhere</th></tr></thead>
-    <tbody>
-      <tr><td>Employee</td><td>Salaried staff. Appears everywhere normally.</td></tr>
-      <tr><td>Consultant</td><td>Paid per session. Appears everywhere normally.</td></tr>
-      <tr><td>Intern</td><td>Excluded from the bookable clinician lists. Picked separately as a supervised intern on a session, and only while their internship dates are current.</td></tr>
-      <tr><td>Renter</td><td>Not paid by us at all — they pay the clinic a monthly facility fee and bring their own private clients. Book their sessions as normal and they show in the queue as normal, but the clinic does not message their patients, so the reminder buttons in Clinic Schedule are switched off for them.</td></tr>
-    </tbody>
-  </table>
-  <h4>Syncing from HR</h4>
-  <ol class="steps">
-    <li>Change the person in HR Hub first and save there.</li>
-    <li>Come back to Staff Module and run the sync.</li>
-    <li>Check the row updated. If the person has left, they should now show as inactive rather than disappearing.</li>
-  </ol>
-  <div class="tip"><b>Leavers are deactivated, never deleted.</b> Deleting would take their whole appointment history with them. An inactive person drops out of the boards and pickers but their past sessions stay intact.</div>
-</div>
-
-<div class="sec" id="queueing">
-  <h3>Queueing <span class="path">/queueing</span></h3>
-  <div class="who"><span class="pill admin">Clinic Manager</span><span class="pill hr">HR Officer</span><span class="pill desk">Front Desk</span></div>
-  <p class="lede">The live waiting room: who has arrived, who is in session, and what the TV screen shows.</p>
-  <h4>Booking a walk-in</h4>
-  <ol class="steps">
-    <li>Press <b>New Patient</b> — or <b>Search Existing Patient</b> first, because most walk-ins already have a record.</li>
-    <li>If they are new, fill in name, <b>Date of Birth</b>, <b>Sex</b>, <b>Email</b>, <b>Address / Barangay</b> and <b>Diagnosis</b>.</li>
-    <li>Choose <b>Clinician</b>, <b>Date</b>, <b>Start Time</b> and <b>Duration</b> — the <b>End Time</b> fills in for you. Choose <b>Custom</b> if the session is an unusual length.</li>
-    <li>Set <b>Session Type</b>, and <b>Select Intern</b> if a student is sitting in.</li>
-    <li>Save. The patient joins the queue and appears on the TV screen.</li>
-  </ol>
-  <h4>Moving people through</h4>
-  <p>A patient moves <b>Pending &rarr; Confirmed</b> as they arrive and are seen. Change the status on their row; the TV display follows within seconds.</p>
-  <h4>The TV display</h4>
-  <p>The waiting-room screen runs from the same data. Two things are controlled here:</p>
-  <ul>
-    <li><b>Upload Ad</b> — adds a picture or video to the rotation between queue screens. Use portrait images sized for the screen or they will letterbox.</li>
-    <li><b>Leaderboard</b> — a switch that shows the clinician satisfaction leaderboard on the TV, alternating with the ads.</li>
-  </ul>
-  <div class="tip warn"><b>The leaderboard is public.</b> Anyone in the waiting room can read it, including the families of the clinicians on it. Turn it on deliberately, not by accident.</div>
-</div>
-
-<div class="sec" id="clinic-schedule">
-  <h3>Clinic Schedule <span class="path">/clinic-schedule</span></h3>
-  <div class="who"><span class="pill admin">Clinic Manager</span><span class="pill hr">HR Officer</span><span class="pill desk">Front Desk</span></div>
-  <p class="lede">Individual appointments: booking them, changing them, and telling people about them. This is the module front desk spends the most time in.</p>
-  <h4>Four views of the same day</h4>
-  <table class="btns">
-    <thead><tr><th>Tab</th><th>Use it when</th></tr></thead>
-    <tbody>
-      <tr><td>Department View</td><td>The default. One card per clinician, grouped by department. This is where you book, edit and send reminders.</td></tr>
-      <tr><td>Calendar View</td><td>You want the shape of a week rather than a list of a day.</td></tr>
-      <tr><td>Daily View</td><td>You want one day as a straight time-ordered list — good for printing a day sheet.</td></tr>
-      <tr><td>Status View</td><td>You are chasing attendance: who is Pending, Confirmed, Cancelled, No-Show or Rescheduled.</td></tr>
-    </tbody>
-  </table>
-  <h4>Booking a session</h4>
-  <ol class="steps">
-    <li>Set the branch tab and the date.</li>
-    <li>Find the clinician's card and click it to expand. Use <b>All Departments</b> / <b>All Staff</b> at the top to narrow a long list.</li>
-    <li>Press the add button on that card.</li>
-    <li>Choose the <b>Patient</b>, <b>Start Time</b>, <b>Duration</b> and <b>Session Type</b>. <b>Mode</b> sets whether it is in clinic or teletherapy.</li>
-    <li>If a student is attending, use <b>Select Intern</b>. Only interns whose dates are current appear.</li>
-    <li>If a mentor is sitting in, tick <b>With Mentor</b> and pick them.</li>
-    <li>Save. The session appears on the card, in the queue, and on the clinician's own portal.</li>
-  </ol>
-  <h4>Telling people about it</h4>
-  <p>Reminders are grouped by who receives them — <b>Patients</b> in one row, <b>Clinician</b> in the other.</p>
-  <table class="btns">
-    <thead><tr><th>Button</th><th>Who gets it</th></tr></thead>
-    <tbody>
-      <tr><td>Envelope on a row</td><td>Email to that one patient. Only shown if they have an email address.</td></tr>
-      <tr><td>Speech bubble on a row</td><td>Text to that one patient. Only shown if they have a mobile number. Sent over Viber where possible, otherwise SMS.</td></tr>
-      <tr><td>Email All Patients</td><td>Every patient on that clinician's list for that day.</td></tr>
-      <tr><td>Text All Patients</td><td>The same, by text.</td></tr>
-      <tr><td>Text / Email: Clinician Absent Notice</td><td>Tells every patient booked with that clinician today that the session is off. Red, because families act on it immediately.</td></tr>
-      <tr><td>Text Clinician / Email Clinician</td><td>Sends the clinician their own schedule for the day.</td></tr>
-    </tbody>
-  </table>
-  <div class="tip warn"><b>These leave the building.</b> Absent notices in particular reach real families within seconds and cannot be recalled. Check the branch tab, the date and the clinician before pressing one.</div>
-  <div class="tip"><b>Greyed-out reminder buttons:</b> either the clinician has no mobile number on file, or they are a <b>Renter</b> — renters look after their own private clients, so the clinic does not message their patients. Hover the button and the tooltip will say which.</div>
-  <h4>Make-up sessions</h4>
-  <p>The <b>Make-up sessions</b> area lists clinicians who are not normally on tomorrow but are covering. Add a clinician here and they appear alongside the regular list for that day only.</p>
-</div>
-
-<div class="sec" id="utilization">
-  <h3>Clinic Utilization <span class="path">/scheduling-dashboard</span></h3>
-  <div class="who"><span class="pill admin">Clinic Manager</span><span class="pill hr">HR Officer</span></div>
-  <p class="lede">How full the clinic is, as charts. The management view of the same data front desk books.</p>
-  <h4>What each chart answers</h4>
-  <ul>
-    <li><b>Slot Utilization</b> — of the hours consultants offered, how many were sold.</li>
-    <li><b>Clinic Utilization Rate Over Time</b> — the same figure tracked across the range.</li>
-    <li><b>Total Number of Sessions Over Time</b> — volume rather than fullness. A clinic can be busier and emptier at once if capacity grew faster.</li>
-    <li><b>Therapist</b> breakdown — per clinician.</li>
-  </ul>
-  <h4>Comparing the two branches side by side</h4>
-  <ol class="steps">
-    <li>Set <b>Start Date</b> and <b>End Date</b>.</li>
-    <li>Switch the branch selector to the comparison view.</li>
-    <li>Both branches render in the same panel on the same scale, so the difference is read directly rather than by flipping tabs and remembering.</li>
-  </ol>
-  <p>Where both branches are genuinely close, the page says <b>Both branches level on utilization</b> rather than inviting you to read a difference that is not there.</p>
-  <h4>Dashboard Settings</h4>
-  <p>Sets the capacity assumptions the percentages are measured against. Changing them changes every historical figure on the page, so treat it as a management decision rather than a display preference.</p>
-  <div class="tip"><b>Not enough days in range to fit a trend</b> means exactly that — widen the date range and the trend line returns.</div>
-</div>
-
-<div class="sec" id="survey">
-  <h3>Customer Survey <span class="path">/customer-survey</span></h3>
-  <div class="who"><span class="pill admin">Clinic Manager</span><span class="pill hr">HR Officer</span><span class="pill desk">Front Desk</span></div>
-  <p class="lede">Patient satisfaction: sending the surveys out, reading what comes back, and the clinician leaderboard built from it.</p>
-  <h4>Getting a survey to a patient</h4>
-  <ol class="steps">
-    <li><b>Scan to Take Survey</b> shows a QR code — the normal route, printed at the counter or shown on a phone.</li>
-    <li><b>Manual Survey Assignment</b> assigns one to a named patient when you want a specific person asked.</li>
-    <li><b>Assessment Schedule</b> controls the automatic rhythm so most surveys go out without anyone pressing anything.</li>
-  </ol>
-  <h4>Reading the results</h4>
-  <ul>
-    <li><b>Completion Rate</b> and <b>Avg Rating</b> — the two headline numbers.</li>
-    <li><b>Monthly Rating Trend</b> — the direction of travel, which matters more than any single month.</li>
-    <li><b>Patient Feedback Summary</b>, <b>Strengths</b>, <b>Areas for Improvement</b> and <b>Other Comments</b> — the written answers. Read these before drawing conclusions from the score.</li>
-    <li><b>Manage Survey Entries</b> — correct or remove a specific response.</li>
-  </ul>
-  <h4>The leaderboard</h4>
-  <p><b>Leaderboard Scoring Weights</b> sets how the ranking is calculated — how much rating counts against how much volume counts. Only currently active clinicians appear; somebody who has left drops off rather than sitting frozen at the top.</p>
-  <div class="tip warn"><b>Small numbers mislead:</b> a clinician with three responses can outrank one with ninety. Look at the response count beside the score before acting on a ranking.</div>
-</div>
-
-<div class="sec" id="reg-forms">
-  <h3>Registration Forms <span class="path">/registration-forms</span></h3>
-  <div class="who"><span class="pill admin">Clinic Manager</span><span class="pill hr">HR Officer</span><span class="pill desk">Front Desk</span><span class="pill mktg">Marketing Admin</span></div>
-  <p class="lede">Everything submitted through the public forms, and the settings behind those forms.</p>
-  <h4>Working the list</h4>
-  <ol class="steps">
-    <li>Use the <b>status tickboxes</b> at the top to show only what you are working on: <b>Converted</b>, <b>Not Converted</b>, <b>For prioritization</b>. Ticking more than one shows all of them.</li>
-    <li>Use the tick-list dropdowns on each column to narrow further. These are checkbox lists — tick several values at once.</li>
-    <li>Contact details are split into their own columns — name, email, number — rather than crammed into one, so the table can be scanned and sorted.</li>
-    <li>Open a submission and use <b>Edit Response</b> to correct a typo before converting it.</li>
-  </ol>
-  <h4>Colour on a row</h4>
-  <p>A row that is both converted and flagged for prioritization shows as <b>Converted Priority</b> in purple, so the combination stands out from ordinary converted rows.</p>
-  <h4>Settings</h4>
-  <p>The partner schools and institutions offered on the public registration form are maintained here. Add a school here and it appears in the tickbox list on the patient registration page — there is no second place to update.</p>
-  <div class="tip"><b>About this program</b> holds the description families read before filling the form in. Worth re-reading whenever the offering changes.</div>
-</div>
-
-<div class="sec" id="decking">
-  <h3>Decking Module <span class="path">/decking</span></h3>
-  <div class="who"><span class="pill admin">Clinic Manager</span><span class="pill hr">HR Officer</span><span class="pill desk">Front Desk</span></div>
-  <p class="lede">The weekly grid of who is available and which hours are sold. Clinic Schedule books one appointment on one date; Decking is the repeating shape of the week behind it.</p>
-  <h4>Two cards, two jobs</h4>
-  <p>The chips at the top sit in two cards, and the split is the point: the left card is where the week gets filled in, the right card reads the same slots back as a report. Hover any chip for its one-line description.</p>
-  <table class="btns">
-    <thead><tr><th>Chip</th><th>What it shows</th></tr></thead>
-    <tbody>
-      <tr><td colspan="2" style="background:var(--bg);font-weight:800;color:var(--text)">Decking — filling the week</td></tr>
-      <tr><td>On-site</td><td>Consultants seeing patients in clinic.</td></tr>
-      <tr><td>Teletherapy</td><td>Consultants running remote sessions.</td></tr>
-      <tr><td>Homecare</td><td>Consultants travelling to patients.</td></tr>
-      <tr><td>SPED Class</td><td>One board for the whole branch rather than a grid per consultant, because SPED runs classes — many children in a block, and blocks longer than an hour.</td></tr>
-      <tr><td>All</td><td>Every consultant, however they are tagged. Use this when somebody is missing from the section you expected.</td></tr>
-      <tr><td colspan="2" style="background:var(--bg);font-weight:800;color:var(--text)">Analysis — reading it back</td></tr>
-      <tr><td>Per Day</td><td>Weekly totals by day across all departments, for setting a daily target.</td></tr>
-      <tr><td>Interdepartment</td><td>Patients already seeing more than one department, and the ones who could be.</td></tr>
-      <tr><td>History</td><td>Filled and open slots over time, per department.</td></tr>
-    </tbody>
-  </table>
-  <div class="tip"><b>Why somebody appears twice:</b> a consultant tagged "On-site + Teletherapy" genuinely appears under both. That is two roles, not a mistake and not a third category.</div>
-  <h4>Booking a slot</h4>
-  <ol class="steps">
-    <li>Pick the branch tab, then a section chip, then a department chip.</li>
-    <li>Find the consultant's column and the hour you want. Use <b>Filter by name</b> if the board is wide.</li>
-    <li>Click the empty cell and choose the patient.</li>
-    <li>Set how the session is paid: <b>Cash</b>, <b>HMO</b> or <b>Guarantee Letter</b>.</li>
-    <li>Save. The cell fills with the patient's name.</li>
-  </ol>
-  <h4>Reading the cells and the Slots card</h4>
-  <table class="btns">
-    <thead><tr><th>Cell / figure</th><th>Meaning</th></tr></thead>
-    <tbody>
-      <tr><td>Named cell</td><td>Booked. The patient is in that hour.</td></tr>
-      <tr><td>Empty cell</td><td>Open — available to sell.</td></tr>
-      <tr><td>Greyed cell</td><td>Unavailable. Outside the consultant's hours, or deliberately blocked.</td></tr>
-      <tr><td>Total / Booked / Open</td><td>The Slots card. Each percentage is stated as a share <b>of total</b>, and the tile says so.</td></tr>
-    </tbody>
-  </table>
-  <h4>Working Hours and Settings</h4>
-  <p>Each consultant's available hours are set per branch and per service. <b>Use clinic default hours</b> adopts the standard day; untick it to set a <b>Start Time</b> and <b>End Time</b> of their own. Because the hours are per service, one consultant can be on-site Thursdays at one branch and teletherapy Tuesdays at the other — set them as separate entries rather than trying to describe both in one.</p>
-  <h4>SPED Class board</h4>
-  <p>Switch between <b>Day</b> and <b>Week</b>. The weekly view shows classes as blocks laid side by side where they overlap, so you can see how many groups share the clinic at the same time and plan the spacing. Adding or removing a child updates the board in place without reloading the page.</p>
-  <h4>History</h4>
-  <p>Two panels sharing one date axis — <b>Filled</b> in green above, <b>Open</b> in gold below. Each panel is zoomed to its own range so a change of two or three slots is visible; read the numbers on the left rather than judging by the height of the line. Hovering either panel reads both at that date.</p>
-  <div class="tip warn"><b>The chart does not reach "Slots offered".</b> Blocked hours are counted in the Slots offered tile but deliberately not drawn, so the top of the chart sits below that number. <b>Fill rate</b> is filled divided by (filled + open) — of what could be sold, how much was.</div>
-  <div class="tip"><b>History only goes back to the first reading.</b> The board is a weekly template holding no dates, so earlier days genuinely cannot be reconstructed. The page says where history begins rather than drawing a flat line through a past it does not have.</div>
-</div>
-
-<div class="sec" id="loa">
-  <h3>LOA Submission <span class="path">/loa-submissions</span></h3>
-  <div class="who"><span class="pill admin">Clinic Manager</span><span class="pill hr">HR Officer</span><span class="pill desk">Front Desk</span></div>
-  <p class="lede">Letters of Authorization from HMOs — submitted by families through a public form, then worked here.</p>
-  <h4>Working the queue</h4>
-  <ol class="steps">
-    <li>Filter with <b>All branches</b>, <b>All HMOs</b> and <b>Any status</b> to reach the ones you are handling.</li>
-    <li>Open a submission and check the uploaded letter against the patient record.</li>
-    <li>Match it to the patient in <b>Patient CRM</b> — the search here matches on name.</li>
-    <li>Set the status. <b>Not yet</b> marks one still waiting on the HMO.</li>
-  </ol>
-  <h4>Settings</h4>
-  <p><b>LOA form</b> opens the public form as a family sees it. <b>LOA form settings</b> controls what it asks. The HMO list mirrors the digital wallets used in the POS, so an HMO added there appears here without being typed twice.</p>
-</div>
-
-<div class="sec" id="patient-rel">
-  <h3>Patient Relationship <span class="path">/patient-relationship</span></h3>
-  <div class="who"><span class="pill admin">Clinic Manager</span><span class="pill hr">HR Officer</span><span class="pill desk">Front Desk</span></div>
-  <p class="lede">The people who are not currently in a chair: waiting for a slot, needing a follow-up, or who did not turn up.</p>
-  <h4>Four tabs</h4>
-  <table class="btns">
-    <thead><tr><th>Tab</th><th>What it holds</th></tr></thead>
-    <tbody>
-      <tr><td>Waitlist</td><td>Families waiting for a slot. The <b>Branch</b> column shows where they filled the form in, so you know which clinic they were asking about.</td></tr>
-      <tr><td>Follow Up</td><td>Patients due a check-in. Log the outcome of each call.</td></tr>
-      <tr><td>No-Show</td><td>Missed appointments, with a log per patient.</td></tr>
-      <tr><td>Cancellations</td><td>Cancelled sessions and whether a fee applies.</td></tr>
-    </tbody>
-  </table>
-  <p>Within a tab, the department chips — <b>PT</b>, <b>OT</b>, <b>SLP</b>, <b>SPED</b>, <b>Psych</b>, <b>MD</b> — narrow the list further.</p>
-  <h4>Fees and repeated misses</h4>
-  <p>A row marked <b>Fee applies</b> has passed the threshold in policy. A patient marked <b>SUBJECT TO SLOT REMOVAL</b> has missed often enough that their standing slot is at risk — a conversation, not an automatic action.</p>
-  <h4>Logs and proof</h4>
-  <p><b>No-Show Logs</b> and <b>Cancellation Logs</b> hold the history behind a row; both can be deleted, which asks first. <b>Scan to Upload Proof</b> gives the family a QR code to send in evidence for a waived fee, such as a medical certificate.</p>
-  <div class="tip"><b>Form Responses</b> shows what the family originally submitted — useful context before a difficult call about a fee.</div>
-</div>
-
-<div class="sec" id="peer-eval">
-  <h3>Peer Evaluation <span class="path">/peer-eval</span></h3>
-  <div class="who"><span class="pill admin">Clinic Manager</span><span class="pill hr">HR Officer</span><span class="pill desk">Front Desk</span><span class="pill mktg">Marketing Admin</span></div>
-  <p class="lede">Staff evaluating each other on the HR08 and HR09 instruments. Annual, and largely automatic once generated.</p>
-  <h4>Running a round</h4>
-  <ol class="steps">
-    <li>Choose the <b>Period</b>, <b>Branch</b> and <b>Evaluation Type</b> — <b>HR08 Peer</b>, <b>HR08 Admin</b> or <b>HR09</b>.</li>
-    <li>Generate the assignments. <b>Generation Complete</b> confirms who was assigned to whom. <b>Assignment Logic Reference</b> explains the pairing rules if a pairing looks odd.</li>
-    <li>Distribute using <b>QR Codes</b> — one per evaluator — or <b>Open Survey</b> to check what they will see.</li>
-    <li>Track <b>Pending</b>, <b>Answered</b>, <b>Completed</b> and <b>Expired</b> using the status filters.</li>
-    <li>Read results under <b>Scores</b> and <b>Score Entry</b>, including <b>Strengths</b> and <b>Areas for Improvement</b>.</li>
-  </ol>
-  <div class="tip"><b>Work Days in Clinic</b> feeds the pairing — people are matched with colleagues they actually work alongside. If that is wrong, fix the work days before regenerating rather than reassigning by hand.</div>
-</div>
-
-<div class="sec" id="partners">
-  <h3>Partner Institutions <span class="path">/partner-institutions</span></h3>
-  <div class="who"><span class="pill admin">Clinic Manager</span><span class="pill hr">HR Officer</span><span class="pill desk">Front Desk</span><span class="pill mktg">Marketing Admin</span></div>
-  <p class="lede">Schools and institutions we hold agreements with, and what discount each one gets. View-only here — HR Hub owns the records.</p>
-  <h4>Reading a card</h4>
-  <ul>
-    <li><b>Left</b> — the contact: who to call and how. <b>No contact recorded</b> means nobody has been named yet.</li>
-    <li><b>Right</b> — the discount terms, in plain sentences with the figures in bold, because this is what front desk needs at the counter.</li>
-    <li><b>No discount set</b> — an agreement exists but carries no discount. That is different from a discount nobody has entered, so it is stated rather than left blank.</li>
-  </ul>
-  <p>Filter by <b>All types</b> to narrow to schools, clinics or corporate partners. <b>Signed document on file in HR Hub</b> tells you the contract scan exists without exposing it here.</p>
-  <div class="tip"><b>To change anything</b> — a contact, a discount, a new partner — edit it in HR Hub. This page updates on its own. Commission terms are deliberately not shown here.</div>
-</div>
-
-<!-- ══════════════ 4. SOCIAL & MARKETING ══════════════ -->
-<div class="chapter" id="ch-mktg">
-  <div class="num">Chapter 4</div>
-  <h2>Social and marketing</h2>
-  <p>Everything that speaks to the public. Front Desk accounts do not have this chapter.</p>
-</div>
-
-<div class="sec" id="social">
-  <h3>Social Media Suite <span class="path">/social</span></h3>
-  <div class="who"><span class="pill admin">Clinic Manager</span><span class="pill hr">HR Officer</span><span class="pill mktg">Marketing Admin</span></div>
-  <p class="lede">Writing, scheduling and reviewing posts to the connected Facebook and Instagram accounts.</p>
-  <h4>Posting</h4>
-  <ol class="steps">
-    <li>Go to <b>New Post</b>.</li>
-    <li>Write the caption, then add artwork — <b>Click to upload image or video</b> from your computer, or <b>Import from Canva</b> to pull a finished design straight in. <b>Add more</b> attaches further images for a carousel.</li>
-    <li>Choose which accounts it goes to.</li>
-    <li>Publish now, or set a date and time to schedule it.</li>
-  </ol>
-  <h4>The other two pages</h4>
-  <ul>
-    <li><b>Scheduled</b> — queued posts. Edit or remove one before it goes out; <b>No posts scheduled</b> means the queue is empty.</li>
-    <li><b>Published</b> — what has gone out, with how it performed.</li>
-  </ul>
-  <div class="tip warn"><b>Scheduled means scheduled.</b> Once the time passes the post is public. If you are unsure about wording, leave it as a draft rather than scheduling it and planning to check later.</div>
-</div>
-
-<div class="sec" id="templates">
-  <h3>Post Templates <span class="path">/templates</span></h3>
-  <div class="who"><span class="pill admin">Clinic Manager</span><span class="pill hr">HR Officer</span><span class="pill mktg">Marketing Admin</span></div>
-  <p class="lede">Reusable artwork for the two things posted most often: <b>Birthday Posts</b> and <b>Holiday Posts</b>.</p>
-  <p>Add artwork with <b>Upload Photo or Video</b> (JPG, PNG, MP4 or MOV) or <b>Use a Canva design</b> and <b>Browse your designs</b>. Saved templates are offered when composing rather than rebuilt each time.</p>
-</div>
-
-<div class="sec" id="email">
-  <h3>Email Campaigns <span class="path">/email</span></h3>
-  <div class="who"><span class="pill admin">Clinic Manager</span><span class="pill hr">HR Officer</span><span class="pill mktg">Marketing Admin</span></div>
-  <p class="lede">Bulk email to patients, from a branch address.</p>
-  <ol class="steps">
-    <li>Choose the sending identity — <b>Aura Health Rehab Clinic</b> or <b>Sapphire Clinics East</b>.</li>
-    <li>Write the <b>Subject</b> and body.</li>
-    <li>Choose <b>Recipients</b>. Only patients who consented to the newsletter are included.</li>
-    <li>Use <b>Email Preview</b> and read it once more.</li>
-    <li>Send now, or schedule. Track it under <b>Past Campaigns</b> and <b>Sent / Scheduled</b>.</li>
-  </ol>
-  <p>Statuses run <b>Draft</b>, <b>Scheduled</b>, <b>Sending</b>, <b>Sent</b>, <b>Failed</b>. A campaign stuck on Sending is still working through the list; Failed needs looking at.</p>
-  <div class="tip warn"><b>There is no unsend.</b> Preview, check the recipient count, then send.</div>
-</div>
-
-<div class="sec" id="sms">
-  <h3>SMS Campaigns <span class="path">/sms</span></h3>
-  <div class="who"><span class="pill admin">Clinic Manager</span><span class="pill hr">HR Officer</span><span class="pill mktg">Marketing Admin</span></div>
-  <p class="lede">Bulk text messages. Same shape as email, with two differences worth knowing.</p>
-  <ol class="steps">
-    <li>Pick <b>Branch</b> — or <b>Both branches</b>. Messages send from that branch's own number.</li>
-    <li>Choose the recipient <b>Group</b>.</li>
-    <li>Write the <b>Message</b>. Keep it short: long messages split into several and each part is charged.</li>
-    <li>Send or schedule, then follow it in <b>Past Campaigns</b>.</li>
-  </ol>
-  <p>A campaign can finish as <b>Partial</b> — some delivered, some not, usually bad numbers. Open it to see which, and correct those records in Patient CRM.</p>
-</div>
-
-<!-- ══════════════ 5. SETTINGS & REFERENCE ══════════════ -->
-<div class="chapter" id="ch-settings">
-  <div class="num">Chapter 5</div>
-  <h2>Settings and reference</h2>
-  <p>Configuration, accounts, and how the Hub connects to the other systems.</p>
-</div>
-
-<div class="sec" id="investor">
-  <h3>Investor View <span class="path">/patients/dashboard</span></h3>
-  <div class="who"><span class="pill inv">Investor only</span></div>
-  <p class="lede">A deliberately narrow, read-only account for people who should see how the clinic is performing without seeing who the patients are.</p>
-  <h4>What an investor account can reach</h4>
-  <p>Exactly two pages, and nothing else:</p>
-  <ul>
-    <li><b>Patient Dashboard</b> — patient numbers, growth and mix, plus the therapist leaderboard and positive feedback highlights. This is the landing page.</li>
-    <li><b>Customer Satisfaction Survey</b> — the leaderboard and patient feedback on a page of their own.</li>
-  </ul>
-  <p>The left menu shows only those two, under the heading <b>Investor View</b>. Typing any other address into the browser lands back on the Patient Dashboard rather than opening the page.</p>
-  <h4>What is deliberately hidden</h4>
-  <table class="btns">
-    <thead><tr><th>Hidden</th><th>How</th></tr></thead>
-    <tbody>
-      <tr><td>Patient identity</td><td>Respondent names, emails and phone numbers are never fetched from the database for this view at all — not merely left off the screen.</td></tr>
-      <tr><td>Therapist names</td><td>Masked to initials. An investor sees the ranking and the scores, not who is who.</td></tr>
-      <tr><td>Every other module</td><td>Blocked on the server. Adding a link to the menu would not grant access; the allowed list is enforced behind it.</td></tr>
-    </tbody>
-  </table>
-  <div class="tip"><b>Why masking sits in the API, not the page:</b> if the names were only hidden by the screen, the full names would still arrive in the browser and be readable by anyone who looked. They are removed before the data is sent.</div>
-  <h4>Setting one up</h4>
-  <ol class="steps">
-    <li>Go to <b>Settings &rarr; Team</b> as a Clinic Manager.</li>
-    <li>Create the account and set the role to <b>Investor</b>.</li>
-    <li>No branch is needed — the view already spans the clinic.</li>
-    <li>Sign in as them once to confirm they land on the Patient Dashboard and the menu shows only the two entries.</li>
-  </ol>
-  <div class="tip warn"><b>Do not use an admin account as a stand-in.</b> Handing an investor a Clinic Manager login exposes every patient record in the clinic. The Investor role exists so that never has to happen.</div>
-</div>
-
-<div class="sec" id="accounts">
-  <h3>Connected Accounts <span class="path">/settings/accounts</span></h3>
-  <div class="who"><span class="pill admin">Clinic Manager</span><span class="pill hr">HR Officer</span><span class="pill mktg">Marketing Admin</span></div>
-  <p class="lede">The external accounts the Hub posts through: <b>Facebook Page</b>, <b>Instagram Business</b> and <b>Canva</b>.</p>
-  <p>Each row shows <b>Platform</b>, <b>Status</b> and <b>Last Synced</b>. If social posting fails, check here first — a <b>Page Access Token</b> expires periodically and must be reconnected. <b>No accounts connected</b> means nothing can post at all.</p>
-</div>
-
-<div class="sec" id="team">
-  <h3>Team <span class="path">/settings/users</span></h3>
-  <div class="who"><span class="pill admin">Clinic Manager only</span></div>
-  <p class="lede">Hub user accounts. This is the only place accounts are created, and only Clinic Managers can open it.</p>
-  <ol class="steps">
-    <li>Enter the person's <b>Name</b> and <b>Email</b>.</li>
-    <li>Choose the <b>Role</b> — the five in Chapter 1. <b>Admin — all branches, all modules</b> is the unrestricted one.</li>
-    <li>Set the <b>Branch</b> for a branch-locked role.</li>
-    <li>Set a <b>Password</b> and pass it to them privately.</li>
-  </ol>
-  <div class="tip warn"><b>Staff accounts are not clinician records.</b> Creating someone here does not add them to the roster — that comes from HR Hub. A clinician who never signs in does not need an account here at all.</div>
-</div>
-
-<div class="sec" id="brand">
-  <h3>Brand Guide <span class="path">/brand</span></h3>
-  <div class="who"><span class="pill admin">Clinic Manager</span><span class="pill hr">HR Officer</span><span class="pill mktg">Marketing Admin</span></div>
-  <p class="lede">The reference for anything public-facing: <b>Colors</b>, <b>Typography</b>, <b>Brand Tone</b> and <b>Design Notes</b>. Check it before publishing artwork made outside the Hub.</p>
-</div>
-
-<div class="sec" id="hubs">
-  <h3>Connected systems — where the data flows</h3>
-  <p class="lede">The Operations Hub is one of several connected systems. They share data automatically over secure
-     system-to-system links, so information typed once does not have to be typed again elsewhere. This map shows
-     what the Operations Hub <b>supplies</b> to each system and what it <b>receives</b> back.</p>
-
-  <div class="diagram">
-    <svg viewBox="0 0 820 470" role="img" aria-label="Operations Hub at the centre, exchanging data with HR Hub, Accounting Hub, Client Portal and Staff Portal">
-      <defs>
-        <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-          <path d="M0 0 L10 5 L0 10 z" fill="#8FA8A5"/>
-        </marker>
-      </defs>
-
-      <!-- outer systems -->
-      <g class="node">
-        <rect x="30" y="34" width="290" height="76" rx="12"/>
-        <text class="nt" x="175" y="68">HR Hub</text>
-        <text class="ns" x="175" y="90">staff &middot; employment &middot; partners</text>
-      </g>
-      <g class="node">
-        <rect x="500" y="34" width="290" height="76" rx="12"/>
-        <text class="nt" x="645" y="68">Accounting Hub</text>
-        <text class="ns" x="645" y="90">billing &middot; referrers &middot; finance</text>
-      </g>
-      <g class="node">
-        <rect x="30" y="360" width="290" height="76" rx="12"/>
-        <text class="nt" x="175" y="394">Client Portal</text>
-        <text class="ns" x="175" y="416">what families see</text>
-      </g>
-      <g class="node">
-        <rect x="500" y="360" width="290" height="76" rx="12"/>
-        <text class="nt" x="645" y="394">Staff Portal</text>
-        <text class="ns" x="645" y="416">what clinicians see</text>
-      </g>
-
-      <!-- centre -->
-      <g class="hub">
-        <rect x="265" y="192" width="290" height="86" rx="14"/>
-        <text class="ht" x="410" y="228">OPERATIONS HUB</text>
-        <text class="hs" x="410" y="252">operations.sapphireclinicseast.org</text>
-      </g>
-
-      <!-- flows: two-way above, one-way below -->
-      <path class="edge two" d="M195 118 L330 184" marker-end="url(#ah)" marker-start="url(#ah)"/>
-      <path class="edge two" d="M625 118 L490 184" marker-end="url(#ah)" marker-start="url(#ah)"/>
-      <path class="edge one" d="M330 286 L195 352" marker-end="url(#ah)"/>
-      <path class="edge one" d="M490 286 L625 352" marker-end="url(#ah)"/>
-
-      <text class="el" x="222" y="162">staff in &middot; results out</text>
-      <text class="el" x="598" y="162" text-anchor="end">doctors in &middot; bookings out</text>
-      <text class="el" x="222" y="330">patients &middot; sessions</text>
-      <text class="el" x="598" y="330" text-anchor="end">schedules &middot; queue</text>
-    </svg>
-    <p class="legend"><span class="sw two"></span> two-way automatic sync &nbsp;&middot;&nbsp;
-       <span class="sw one"></span> one-way (Operations publishes out)</p>
-  </div>
-
-  <h4>What moves, and which way</h4>
-  <table class="btns">
-    <thead><tr><th>System</th><th>Operations receives / supplies</th></tr></thead>
-    <tbody>
-      <tr><td>HR Hub</td><td><b>Receives</b> staff records, employment type, work arrangement and partner institutions — HR owns all of these. <b>Supplies</b> survey and peer-evaluation results back.</td></tr>
-      <tr><td>Accounting Hub</td><td><b>Receives</b> the referring-doctor list used by the registration form, read live. <b>Supplies</b> booking and payment markers for reconciliation.</td></tr>
-      <tr><td>Client Portal</td><td><b>Supplies</b> what families see: their patient record, sessions and documents.</td></tr>
-      <tr><td>Staff Portal</td><td><b>Supplies</b> what clinicians see: their own schedule and the day queue.</td></tr>
-    </tbody>
-  </table>
-  <div class="tip warn"><b>One-way means one-way.</b> Editing a staff name in Operations does not reach HR Hub, and the next sync will overwrite it. Change it where it is owned — the table above says where that is.</div>
-</div>
-
-<div class="sec" id="matrix">
-  <h3>Who can see what</h3>
-  <div class="matrix-wrap">
-  <table class="matrix">
-    <thead><tr><th>Module</th><th>Clinic Mgr</th><th>HR Officer</th><th>Front Desk</th><th>Marketing</th><th>Investor</th></tr></thead>
-    <tbody>
-      <tr><td>Home Dashboard</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
-      <tr><td>Patient CRM / Profile</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
-      <tr><td>Patient Dashboard</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td><td class="yes">Yes</td></tr>
-      <tr><td>Staff Module</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td></tr>
-      <tr><td>Queueing</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td></tr>
-      <tr><td>Clinic Schedule</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td></tr>
-      <tr><td>Clinic Utilization</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td><td class="no">No</td></tr>
-      <tr><td>Customer Survey</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="part">Satisfaction only</td></tr>
-      <tr><td>Registration Forms</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td></tr>
-      <tr><td>Decking Module</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td></tr>
-      <tr><td>LOA Submission</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td></tr>
-      <tr><td>Patient Relationship</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td></tr>
-      <tr><td>Peer Evaluation</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td></tr>
-      <tr><td>Partner Institutions</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td></tr>
-      <tr><td>Social / Templates / Email / SMS</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td><td class="yes">Yes</td><td class="no">No</td></tr>
-      <tr><td>Connected Accounts</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td><td class="yes">Yes</td><td class="no">No</td></tr>
-      <tr><td>Team</td><td class="yes">Yes</td><td class="no">No</td><td class="no">No</td><td class="no">No</td><td class="no">No</td></tr>
-    </tbody>
-  </table>
-  </div>
-  <div class="tip"><b>Branch lock sits on top of this.</b> A Front Desk account with Yes in this table still only sees its own branch. Investor accounts span both branches but see no names.</div>
-</div>
-
-<!-- ══════════════ 6. HELP ══════════════ -->
-<div class="chapter" id="ch-help">
-  <div class="num">Chapter 6</div>
-  <h2>Help</h2>
-  <p>Search this handbook, and the questions that come up most often.</p>
-</div>
-
-<div class="sec" id="search">
-  <h3>Word search</h3>
-  <p class="lede">Type a word and every section containing it is listed, with the word highlighted where it sits.</p>
-  <div class="tb-search" style="max-width:none;margin-bottom:8px">
-    <span class="mag">&#128269;</span>
-    <input id="q2" type="search" placeholder="Search for a word — try: renter, no-show, QR, fill rate…" autocomplete="off">
-  </div>
-  <div id="results2" class="results" style="margin:0"></div>
-  <h4>Getting better results</h4>
-  <ul>
-    <li>Search what the thing is <b>called on screen</b> — "Absent Notice" rather than "cancel message".</li>
-    <li>One or two words beat a sentence. "fill rate" works; "how do I work out the fill rate" does not.</li>
-    <li>Part of a word is enough — "regist" finds registration, registered and Registration Forms.</li>
-    <li>Nothing found? Try the other name for it. Decking and Clinic Schedule both deal with appointments but use different words.</li>
-  </ul>
-  <div class="tip">The same box sits in the bar at the top of every page, so you can search without scrolling back here.</div>
-</div>
-
-<div class="sec" id="faq">
-  <h3>Frequently asked questions</h3>
-  <p class="lede">Click a question to open the answer.</p>
-
-  <h4>Getting in and getting around</h4>
-  <details class="faq"><summary>A module in this handbook is missing from my menu.</summary><div class="a">
-    <p>Your role does not include it. Check Chapter 1 against the four role cards. Front Desk accounts have no social, email or analytics modules; Marketing Admin accounts have no Clinic Schedule, Decking or Patient Relationship.</p>
-    <p>If you believe you have the wrong role, a Clinic Manager can change it under <b>Settings &rarr; Team</b>.</p></div></details>
-  <details class="faq"><summary>I can only see one branch.</summary><div class="a">
-    <p>Front Desk accounts are locked to their own branch by design — an East account cannot see Greenhills data. Clinic Manager and HR Officer accounts see both and switch with the branch tabs inside each module.</p></div></details>
-  <details class="faq"><summary>The page looks out of date after someone else changed something.</summary><div class="a">
-    <p>Refresh the page. If it still looks old, hold Shift and refresh, which bypasses the browser cache.</p></div></details>
-
-  <h4>Patients</h4>
-  <details class="faq"><summary>A patient exists twice.</summary><div class="a">
-    <p>Usually because they registered themselves and were also added at the counter. Their history is now split across two records and neither looks wrong on its own. Always search before creating. Ask a Clinic Manager to merge them — do not simply delete one, or you delete half the history with it.</p></div></details>
-  <details class="faq"><summary>How do I get a family to register themselves?</summary><div class="a">
-    <p>In Patient CRM, open <b>Patient Registration QR</b> and show or print the code. They scan it, fill the form in themselves, and can photograph their referral and PWD/Senior ID with their own phone. This removes transcription errors.</p></div></details>
-  <details class="faq"><summary>The doctor's name will not come up on the registration form.</summary><div class="a">
-    <p>Type at least three letters <b>of the name itself</b> — the honorific does not count, so "dr. a" is one letter and shows nothing, while "dr. aid" finds the match. Matching is on the start of a word, so a surname works as well as a first name.</p>
-    <p>If the doctor genuinely is not listed, the family can just type the name — the field accepts anything. To add them permanently, add them in Accounting Hub under Referral &rarr; Referrers &rarr; Doctors and they are findable immediately.</p></div></details>
-  <details class="faq"><summary>A partner school is missing from the registration form.</summary><div class="a">
-    <p>Add it in <b>Registration Forms &rarr; Settings</b>. That list is what the public form offers; there is no second place to update.</p></div></details>
-
-  <h4>Scheduling</h4>
-  <details class="faq"><summary>What is the difference between Clinic Schedule and Decking?</summary><div class="a">
-    <p><b>Clinic Schedule</b> is individual appointments on a specific date — booking, changing and reminding. <b>Decking</b> is the repeating weekly shape behind it: which consultant offers which hours, and how much of that is sold.</p>
-    <p>Book a one-off in Clinic Schedule. Ask "how full is Tuesday?" in Decking.</p></div></details>
-  <details class="faq"><summary>The reminder buttons are greyed out.</summary><div class="a">
-    <p>Two possible reasons, and the tooltip on the button says which. Either the clinician has no mobile number on file — fix that in HR Hub — or they are a <b>Renter</b>.</p>
-    <p>Renters pay the clinic a monthly facility fee and bring their own private clients, so the clinic does not message those patients. You can still book their sessions normally and they still appear in the queue.</p></div></details>
-  <details class="faq"><summary>A consultant is missing from the Decking board.</summary><div class="a">
-    <p>Click the <b>All</b> chip. The On-site, Teletherapy and Homecare sections are driven by each person's work arrangement in HR Hub, and somebody untagged will not appear in any of the three but will appear under All. Fix the work arrangement in HR Hub and re-sync.</p>
-    <p>If they are missing from All too, they are probably inactive in HR Hub.</p></div></details>
-  <details class="faq"><summary>Someone appears in two Decking sections at once.</summary><div class="a">
-    <p>That is correct. A consultant tagged "On-site + Teletherapy" genuinely does both, so they appear under both. It is two roles, not a duplicate.</p></div></details>
-  <details class="faq"><summary>Why does the History chart not reach the "Slots offered" number?</summary><div class="a">
-    <p>Because blocked hours are counted in that tile but deliberately not drawn. The chart shows only what was sellable — filled plus open — so its top edge sits below the total whenever anything is blocked.</p></div></details>
-  <details class="faq"><summary>Fill rate jumped. Did we get better?</summary><div class="a">
-    <p>Not necessarily. Fill rate is filled divided by (filled + open) — of what could be sold, how much was. Blocked hours are not in the denominator, so a department is not marked down for time its consultants never offered. The same work measured against a fairer base gives a higher number.</p></div></details>
-  <details class="faq"><summary>History does not go back far enough.</summary><div class="a">
-    <p>It starts at the first reading ever taken, and the page says that date. The board is a weekly template holding no dates, so earlier days genuinely cannot be reconstructed — they were never recorded.</p></div></details>
-
-  <h4>Staff</h4>
-  <details class="faq"><summary>Someone has left but still appears.</summary><div class="a">
-    <p>Mark them inactive in HR Hub, then re-sync in Staff Module. They drop out of the boards and pickers but keep their history. They are never deleted — deleting would take thousands of past appointments with them.</p>
-    <p>If they still show after a sync, check they are actually inactive in HR Hub rather than merely finished.</p></div></details>
-  <details class="faq"><summary>I changed a staff name here and it reverted.</summary><div class="a">
-    <p>Expected. HR Hub owns staff data and the sync overwrites the local copy. Change it in HR Hub.</p></div></details>
-  <details class="faq"><summary>What is a Renter?</summary><div class="a">
-    <p>A clinician we do not pay. They pay the clinic a fixed monthly fee for use of the facility and see their own private clients here. Schedule and queue them as normal; the clinic just does not send messages to their patients.</p></div></details>
-
-  <h4>Messages and campaigns</h4>
-  <details class="faq"><summary>I sent something by mistake. Can it be recalled?</summary><div class="a">
-    <p>No. Emails, texts and social posts leave immediately and cannot be pulled back. If it was an Absent Notice, ring the affected families — they will have read it within minutes.</p></div></details>
-  <details class="faq"><summary>An SMS campaign finished as "Partial".</summary><div class="a">
-    <p>Some messages delivered and some did not, nearly always bad or missing mobile numbers. Open the campaign to see which failed, then correct those numbers in Patient CRM.</p></div></details>
-  <details class="faq"><summary>A patient says they never get our emails.</summary><div class="a">
-    <p>Check they are marked <b>Email Newsletter</b> in Patient CRM — campaigns only go to patients who consented. Then check the address itself for a typo.</p></div></details>
-  <details class="faq"><summary>Social posting has stopped working.</summary><div class="a">
-    <p>Check <b>Settings &rarr; Connected Accounts</b>. Page access tokens expire periodically and the account needs reconnecting. The <b>Last Synced</b> column usually shows the problem.</p></div></details>
-
-  <h4>Numbers that look wrong</h4>
-  <details class="faq"><summary>A figure does not match what I can see on the board.</summary><div class="a">
-    <p>Check three things in order: the <b>branch tab</b>, the <b>date range</b>, and any <b>department filter</b> still set from last time. These explain most mismatches.</p>
-    <p>If all three are right and it still disagrees, say so — a count that contradicts the board is worth investigating rather than working around.</p></div></details>
-  <details class="faq"><summary>The leaderboard looks unfair.</summary><div class="a">
-    <p>Check the response count beside each score. A clinician with three responses can outrank one with ninety. <b>Leaderboard Scoring Weights</b> controls how much rating counts against volume.</p></div></details>
-  <details class="faq"><summary>Can I give an investor a login without showing them patient names?</summary><div class="a">
-    <p>Yes — that is exactly what the <b>Investor</b> role is for. It reaches two read-only pages, patient identities are never sent to it, and therapist names appear as initials.</p>
-    <p>Create it under <b>Settings &rarr; Team</b> and set the role to Investor. Never hand an investor an admin login instead; that exposes every patient record in the clinic.</p></div></details>
-  <details class="faq"><summary>Who do I ask when the answer is not here?</summary><div class="a">
-    <p>Anything about staff records, employment type or partner agreements — HR Hub, because it owns them. Anything about billing or referrers — Accounting Hub. Anything else, your Clinic Manager.</p></div></details>
-</div>
-
-</div><!-- /.wrap -->
+</footer>
 
 <script>
 (function () {
-  // Contents is built from the document itself, so a new section cannot be
-  // added without appearing in the menu.
-  var CHAPTERS = [
-    ['ch-start',    'Start here'],
-    ['ch-patients', 'Home & patients'],
-    ['ch-clinic',   'Clinic Tools'],
-    ['ch-mktg',     'Social & marketing'],
-    ['ch-settings', 'Settings & reference'],
-    ['ch-help',     'Help']
-  ];
-
-  var secs = [];
-  Array.prototype.forEach.call(document.querySelectorAll('.sec[id]'), function (el) {
-    var h = el.querySelector('h3');
-    if (!h) return;
-    // The path chip is part of the heading; drop it from the menu label.
-    var label = h.textContent.replace(/\s*\/[a-z0-9/_-]+\s*$/i, '').trim();
-    secs.push({ id: el.id, label: label, el: el, text: el.innerText || el.textContent || '' });
+  // ── Word search ───────────────────────────────────────────────────────
+  // Indexes the rendered document, so a section added to the HTML is
+  // searchable without touching this script.
+  var blocks = [];
+  document.querySelectorAll('section').forEach(function (sec) {
+    var secName = (sec.querySelector('h2') || {}).textContent || sec.id;
+    var units = sec.querySelectorAll('.mod, .conn, .play, .faq details, .call, .legend .rc');
+    if (units.length) {
+      units.forEach(function (u) {
+        var t = (u.querySelector('h3, summary, h4') || {}).textContent || secName;
+        blocks.push({ el: u, where: secName.trim(), title: t.trim(), text: u.innerText || '' });
+      });
+    }
+    // Loose prose in the section, so nothing is unreachable.
+    blocks.push({ el: sec, where: secName.trim(), title: secName.trim(), text: sec.innerText || '' });
   });
 
-  // Group each section under the chapter heading that precedes it.
-  var order = [], nodes = document.querySelectorAll('.chapter[id], .sec[id]'), cur = null;
-  Array.prototype.forEach.call(nodes, function (n) {
-    if (n.classList.contains('chapter')) { cur = n.id; order.push({ chapter: cur, items: [] }); }
-    else if (order.length) { order[order.length - 1].items.push(n.id); }
-  });
+  var q = document.getElementById('hbq');
+  var res = document.getElementById('hbres');
+  var empty = document.getElementById('hbempty');
+  if (!q) return;
 
-  var tocin = document.getElementById('tocin');
-  order.forEach(function (grp) {
-    var name = '';
-    CHAPTERS.forEach(function (c) { if (c[0] === grp.chapter) name = c[1]; });
-    if (!name) return;
-    var col = document.createElement('div');
-    col.className = 'toc-col';
-    var h4 = document.createElement('h4'); h4.textContent = name; col.appendChild(h4);
-    grp.items.forEach(function (id) {
-      var found = null;
-      secs.forEach(function (x) { if (x.id === id) found = x; });
-      if (!found) return;
-      var a = document.createElement('a');
-      a.href = '#' + id; a.textContent = found.label;
-      a.addEventListener('click', function () { closeToc(); });
-      col.appendChild(a);
-    });
-    tocin.appendChild(col);
-  });
-
-  var toc = document.getElementById('toc'), tog = document.getElementById('toctog');
-  function closeToc() { toc.classList.remove('open'); tog.classList.remove('on'); }
-  tog.addEventListener('click', function () {
-    toc.classList.toggle('open'); tog.classList.toggle('on', toc.classList.contains('open'));
-  });
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { closeToc(); } });
-
-  // ── Search ──────────────────────────────────────────────────────────────
-  // Character class deliberately ends with the dollar: a dollar immediately
-  // followed by a brace would open an interpolation in the template literal
-  // this file is written inside, and the build would fail.
+  // Character class ends with the dollar on purpose: a dollar followed by a
+  // brace would open an interpolation in the template literal this lives in.
   function esc(t) { return t.replace(/[.*+?^()|[\]\\{}$]/g, '\\$&'); }
   function safe(t) { return t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 
   function clearMarks() {
-    Array.prototype.forEach.call(document.querySelectorAll('mark.hit'), function (m) {
+    document.querySelectorAll('mark.hit').forEach(function (m) {
       var p = m.parentNode; p.replaceChild(document.createTextNode(m.textContent), m); p.normalize();
     });
   }
@@ -1123,13 +1326,13 @@ table.matrix td:first-child{font-weight:700;color:var(--text)}
   function highlight(root, term) {
     var re = new RegExp(esc(term), 'gi');
     var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
-    var targets = [], n;
+    var hits = [], n;
     while ((n = walker.nextNode())) {
-      if (n.parentNode && n.parentNode.nodeName === 'SCRIPT') continue;
-      if (re.test(n.nodeValue)) targets.push(n);
+      if (n.parentNode && (n.parentNode.nodeName === 'SCRIPT' || n.parentNode.nodeName === 'STYLE')) continue;
       re.lastIndex = 0;
+      if (re.test(n.nodeValue)) hits.push(n);
     }
-    targets.forEach(function (node) {
+    hits.forEach(function (node) {
       var span = document.createElement('span');
       span.innerHTML = safe(node.nodeValue).replace(new RegExp(esc(safe(term)), 'gi'), function (m) {
         return '<mark class="hit">' + m + '</mark>';
@@ -1138,64 +1341,83 @@ table.matrix td:first-child{font-weight:700;color:var(--text)}
     });
   }
 
-  function snippet(text, term) {
+  function snip(text, term) {
     var i = text.toLowerCase().indexOf(term.toLowerCase());
-    if (i < 0) return text.slice(0, 120);
-    var a = Math.max(0, i - 55), b = Math.min(text.length, i + term.length + 75);
+    if (i < 0) return text.slice(0, 130);
+    var a = Math.max(0, i - 60), b = Math.min(text.length, i + term.length + 85);
     return (a > 0 ? '…' : '') + text.slice(a, b).replace(/\s+/g, ' ') + (b < text.length ? '…' : '');
   }
 
-  function run(term, box) {
+  function run() {
     clearMarks();
-    if (!term || term.trim().length < 2) { box.classList.remove('show'); box.innerHTML = ''; return; }
-    term = term.trim();
-    var hits = secs.filter(function (s) { return s.text.toLowerCase().indexOf(term.toLowerCase()) > -1; });
+    var term = q.value.trim();
+    res.innerHTML = '';
+    if (term.length < 2) { empty.hidden = true; return; }
 
-    var html = '<h3>' + hits.length + ' section' + (hits.length === 1 ? '' : 's') +
-               ' mention “' + safe(term) + '”</h3>';
-    if (!hits.length) {
-      html += '<p class="no-res">Nothing found. Try the words used on screen — for example “Absent Notice”, ' +
-              '“Renter”, “fill rate” — or a shorter fragment such as “regist”.</p>';
-    } else {
-      hits.forEach(function (h) {
-        var sn = safe(snippet(h.text, term)).replace(new RegExp(esc(safe(term)), 'gi'), function (m) {
-          return '<mark>' + m + '</mark>';
-        });
-        html += '<a class="res" href="#' + h.id + '"><div class="rt">' + safe(h.label) +
-                '</div><div class="rs">' + sn + '</div></a>';
+    var seen = {}, found = [];
+    blocks.forEach(function (b) {
+      if (b.text.toLowerCase().indexOf(term.toLowerCase()) === -1) return;
+      var id = b.el.id || b.title;
+      if (seen[id]) return;
+      seen[id] = 1; found.push(b);
+    });
+    // Prefer the specific card over the whole section it sits in.
+    found = found.filter(function (b) {
+      return b.el.tagName !== 'SECTION' || !found.some(function (o) {
+        return o.el !== b.el && b.el.contains(o.el);
       });
-    }
-    box.innerHTML = html;
-    box.classList.add('show');
-    hits.forEach(function (h) { highlight(h.el, term); });
+    });
+
+    empty.hidden = found.length > 0;
+    found.slice(0, 25).forEach(function (b) {
+      if (!b.el.id) b.el.id = 'hit-' + Math.random().toString(36).slice(2, 8);
+      var li = document.createElement('li');
+      li.innerHTML = '<a href="#' + b.el.id + '"><span class="where">' + safe(b.where) + '</span>' +
+        '<span class="snip">' + safe(snip(b.text, term))
+          .replace(new RegExp(esc(safe(term)), 'gi'), function (m) { return '<mark>' + m + '</mark>'; }) +
+        '</span></a>';
+      res.appendChild(li);
+    });
+    found.forEach(function (b) { highlight(b.el, term); });
   }
 
-  function wire(inputId, boxId, clearId) {
-    var input = document.getElementById(inputId), box = document.getElementById(boxId);
-    if (!input || !box) return;
-    var t;
-    input.addEventListener('input', function () {
-      clearTimeout(t);
-      var v = input.value;
-      if (clearId) {
-        var c = document.getElementById(clearId);
-        if (c) c.style.display = v ? 'block' : 'none';
-      }
-      t = setTimeout(function () { run(v, box); }, 160);
-    });
-    input.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') { input.value = ''; run('', box); }
-    });
-  }
-  wire('q', 'results', 'qclr');
-  wire('q2', 'results2', null);
-
-  var clr = document.getElementById('qclr');
-  if (clr) clr.addEventListener('click', function () {
-    var i = document.getElementById('q');
-    i.value = ''; clr.style.display = 'none'; run('', document.getElementById('results')); i.focus();
-  });
+  var t;
+  q.addEventListener('input', function () { clearTimeout(t); t = setTimeout(run, 160); });
+  q.addEventListener('keydown', function (e) { if (e.key === 'Escape') { q.value = ''; run(); } });
 })();
+
+// ── Word export ─────────────────────────────────────────────────────────
+// Clones the masthead and body as rendered, then drops anything marked
+// data-noexport — the contents rail, the action buttons and the search box,
+// none of which mean anything in a Word file.
+function downloadHandbookWord() {
+  try {
+    var mast = document.querySelector('header.mast').cloneNode(true);
+    var main = document.querySelector('main').cloneNode(true);
+    [mast, main].forEach(function (n) {
+      n.querySelectorAll('[data-noexport]').forEach(function (x) { x.remove(); });
+    });
+    main.querySelectorAll('details').forEach(function (d) { d.setAttribute('open', 'open'); });
+    var style = '<style>body{font-family:Calibri,sans-serif;font-size:11pt;color:#2E4049;}' +
+      'h1,h2,h3,h4{color:#132A33;} table{border-collapse:collapse;width:100%;}' +
+      'td,th{border:1px solid #D7E3E6;padding:6px 8px;vertical-align:top;}' +
+      '.mod,.conn,.play,.call{border:1px solid #D7E3E6;padding:10px 12px;margin:10px 0;}' +
+      'header.mast{background:#0E4C57;color:#fff;padding:18px;}' +
+      'header.mast h1,header.mast .kicker,header.mast .lede{color:#fff;}</style>';
+    var html = '<!DOCTYPE html><html xmlns:o="urn:schemas-microsoft-com:office:office" ' +
+      'xmlns:w="urn:schemas-microsoft-com:office:word"><head><meta charset="UTF-8">' +
+      '<title>Operations Hub Handbook</title>' + style + '</head><body>' +
+      mast.outerHTML + main.outerHTML + '</body></html>';
+    var blob = new Blob(['\ufeff', html], { type: 'application/msword' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = 'Operations-Hub-Handbook.doc';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1500);
+  } catch (e) {
+    alert('Could not build the Word file. Use Save as PDF instead.');
+  }
+}
 </script>
 </body>
 </html>`
