@@ -682,7 +682,25 @@ export const SECTIONS: Section[] = [
     ],
   },
   {
-    id: 'investor-subsidiary-ledger', num: '5.2', group: 'Planning & Analysis', title: 'Investor · Subsidiary Ledger', tag: 'Planning & Analysis',
+    id: 'investor-view', num: '5.2', group: 'Planning & Analysis', title: 'The Investor View', tag: 'Planning & Analysis',
+    blocks: [
+      { k: 'p', t: `A user with the **Investor** role sees a deliberately small, read-only slice of the Hub — enough to verify the business, nothing that identifies a patient or a staff member. Signing in takes them straight to **Reports** (no dashboard tiles), and their sidebar carries only **Reports** and the **Investor Subsidiary Ledger**.` },
+      { k: 'sub', t: 'What an investor can see' },
+      { k: 'ul', items: [
+        `**Financial statements** — Balance Sheet, Income Statement, Cash Flow and Graphs, view-only. The income statement can be filtered per branch; the balance sheet and cash flow are whole-company only.`,
+        `**No drill-downs** — amounts are never clickable for investors, because drill-downs reach patient-level lines. This is enforced on the server too, not just hidden on screen.`,
+        `**Investor Subsidiary Ledger** — the per-account roll-up described in the next section, with patient and personnel names withheld and an on-screen "Ties to the statements" proof.`,
+      ] },
+      { k: 'sub', t: 'Setting one up' },
+      { k: 'steps', items: [
+        `Go to **Users**, create the account, and set the role to **Investor**.`,
+        `Nothing else to configure — every other module refuses the role automatically.`,
+      ] },
+      { k: 'note', label: 'Privacy line.', t: `The investor view never shows who was treated or who was paid. Where a ledger line would carry a name, the investor copy keeps the reference (order number, voucher, cutoff) and drops the free text.` },
+    ],
+  },
+  {
+    id: 'investor-subsidiary-ledger', num: '5.3', group: 'Planning & Analysis', title: 'Investor · Subsidiary Ledger', tag: 'Planning & Analysis',
     blocks: [
       { k: 'p', t: `An **investor-safe** subsidiary ledger. It's built from the very same data as the financial statements, so it can't disagree with them — each account shows an on-screen **"Ties to the statements"** check. Patient and personnel names are withheld. It differs from the finance team's **Subsidiary Ledger** (which shows every posting line, arbitrary date ranges and full drill-down).` },
       { k: 'sub', t: 'How to use it' },
@@ -694,7 +712,7 @@ export const SECTIONS: Section[] = [
     ],
   },
   {
-    id: 'sales-summary', num: '5.3', group: 'Planning & Analysis', title: 'Sales Summary', tag: 'Planning & Analysis',
+    id: 'sales-summary', num: '5.4', group: 'Planning & Analysis', title: 'Sales Summary', tag: 'Planning & Analysis',
     blocks: [
       { k: 'p', t: `A **transaction-level sales report with invoice tracking** — it splits sales into invoiced vs non-invoiced, checks your Sales Invoice (SI) booklet for gaps and duplicates, and compares sales against a target.` },
       { k: 'sub', t: 'Tabs' },
@@ -711,7 +729,7 @@ export const SECTIONS: Section[] = [
     ],
   },
   {
-    id: 'mentorship-audit', num: '5.4', group: 'Planning & Analysis', title: 'Mentorship Audit', tag: 'Planning & Analysis',
+    id: 'mentorship-audit', num: '5.5', group: 'Planning & Analysis', title: 'Mentorship Audit', tag: 'Planning & Analysis',
     blocks: [
       { k: 'p', t: `A **read-only check** that reconciles clinic sessions booked **"With Mentor"** against whether a **Mentorship** service was actually billed on the POS order — so payroll only pays the mentor when the session was billed. It's the safety net for the (non-blocking) cashier prompt.` },
       { k: 'sub', t: 'How to use it' },
@@ -723,7 +741,7 @@ export const SECTIONS: Section[] = [
     ],
   },
   {
-    id: 'products-analysis', num: '5.5', group: 'Planning & Analysis', title: 'Products Analysis', tag: 'Planning & Analysis',
+    id: 'products-analysis', num: '5.6', group: 'Planning & Analysis', title: 'Products Analysis', tag: 'Planning & Analysis',
     blocks: [
       { k: 'p', t: `Analytics on **physical product sales** — movement (fast/slow), samples, reward redemptions, payment modes, refunds and cancellations, and purchase timing.` },
       { k: 'sub', t: 'How to use it' },
@@ -736,7 +754,7 @@ export const SECTIONS: Section[] = [
     ],
   },
   {
-    id: 'sales-analysis', num: '5.6', group: 'Planning & Analysis', title: 'Sales Analysis', tag: 'Planning & Analysis',
+    id: 'sales-analysis', num: '5.7', group: 'Planning & Analysis', title: 'Sales Analysis', tag: 'Planning & Analysis',
     blocks: [
       { k: 'p', t: `Sales analytics by **branch, department, payment method, unearned revenue and patient age**.` },
       { k: 'sub', t: 'How to use it' },
