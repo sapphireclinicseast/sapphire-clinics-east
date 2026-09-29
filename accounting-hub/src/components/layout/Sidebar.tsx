@@ -132,7 +132,7 @@ const NAV_SECTIONS: NavSection[] = [
     label: 'Administration',
     items: [
       { href: '/users', icon: Users, label: 'Users', roles: ['ADMIN'] },
-      { href: '/handbook', icon: BookOpen, label: 'Handbook', roles: ['ADMIN'] },
+      { href: '/handbook', icon: BookOpen, label: 'Handbook' }, // visible to every signed-in role
     ],
   },
 ]
