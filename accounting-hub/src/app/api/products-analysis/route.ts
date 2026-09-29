@@ -140,7 +140,9 @@ export async function GET(req: Request) {
         const td = new Date(order.transactionDate)
         const wd = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(td.toLocaleDateString('en-US', { timeZone: 'Asia/Manila', weekday: 'short' }))
         const timeStr = td.toLocaleTimeString('en-GB', { timeZone: 'Asia/Manila', hour12: false })
-        if (timeStr === '00:00:00') heatNoTime++
+        // 00:00:00 = date-only source; 08:00:00 sharp = the POS's synthetic
+        // 8 AM anchor for onsite sales — neither is a real purchase time.
+        if (timeStr === '00:00:00' || timeStr === '08:00:00') heatNoTime++
         else if (wd >= 0) heatGrid[wd][parseInt(timeStr.slice(0, 2), 10) % 24]++
       }
 

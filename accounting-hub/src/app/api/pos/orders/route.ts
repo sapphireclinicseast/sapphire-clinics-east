@@ -269,7 +269,12 @@ export async function POST(req: Request) {
         patientId: patientId || null,
         patientName: patientName || null,
         clinicianName: clinicianName || null,
-        transactionDate: new Date(`${transactionDate}T08:00:00+08:00`),
+        // A bare date (onsite POS) keeps the legacy 8 AM Manila anchor; an ISO
+        // datetime (marketplace imports carry the real purchase time) is stored
+        // as-is so the purchase-time analysis reflects reality.
+        transactionDate: String(transactionDate).includes('T')
+          ? new Date(transactionDate)
+          : new Date(`${transactionDate}T08:00:00+08:00`),
         subtotal,
         discountType,
         discountAmount: Number(discountAmount),
@@ -436,7 +441,7 @@ export async function POST(req: Request) {
           if (orderItem) {
             if (isFreeSample) {
               // Free sample: FIFO cost → 8120 Marketing Expense journal entry, cogsCost = 0 (not COGS)
-              await createFreeSampleJournalEntry(session.user.id, branch, transactionDate, orderItem.id, item.name, bundleCogs)
+              await createFreeSampleJournalEntry(session.user.id, branch, String(transactionDate).slice(0, 10), orderItem.id, item.name, bundleCogs)
               await prisma.orderItem.update({ where: { id: orderItem.id }, data: { cogsCost: 0 } })
             } else {
               await prisma.orderItem.update({ where: { id: orderItem.id }, data: { cogsCost: bundleCogs } })
@@ -484,7 +489,7 @@ export async function POST(req: Request) {
           if (orderItem) {
             if (isFreeSample) {
               // Free sample: FIFO cost → 8120 Marketing Expense journal entry, cogsCost = 0 (not COGS)
-              await createFreeSampleJournalEntry(session.user.id, branch, transactionDate, orderItem.id, item.name, fifo.totalCost)
+              await createFreeSampleJournalEntry(session.user.id, branch, String(transactionDate).slice(0, 10), orderItem.id, item.name, fifo.totalCost)
               await prisma.orderItem.update({ where: { id: orderItem.id }, data: { cogsCost: 0 } })
             } else {
               await prisma.orderItem.update({ where: { id: orderItem.id }, data: { cogsCost: fifo.totalCost } })

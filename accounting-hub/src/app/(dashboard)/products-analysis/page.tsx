@@ -403,7 +403,7 @@ export default function ProductsAnalysisPage() {
                   </div>
                   {data.purchaseHeatmap.noTime > 0 && (
                     <p className="text-[11px] mt-2" style={{ color: 'var(--mid-gray)' }}>
-                      {data.purchaseHeatmap.noTime} order{data.purchaseHeatmap.noTime !== 1 ? 's' : ''} carried a date with no time of day (older imports) and are not on the grid.
+                      {data.purchaseHeatmap.noTime} order{data.purchaseHeatmap.noTime !== 1 ? 's' : ''} have no recorded time of day (onsite sales and older imports store only the date) and are not on the grid.
                     </p>
                   )}
                 </Section>

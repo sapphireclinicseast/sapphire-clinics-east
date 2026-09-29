@@ -16,6 +16,9 @@ interface Item { id: string; sku: string; name: string; sellingPrice?: number | 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const numAt = (r: any, k: string) => { const v = parseFloat(String(r[k] ?? '').replace(/[^0-9.-]/g, '')); return isNaN(v) ? 0 : v }
 const toYmd = (v: unknown) => { const d = new Date(String(v)); return isNaN(+d) ? '' : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
+// Full purchase timestamp (the export's Created/Paid Time is Manila local, and
+// so is the cashier's browser) — the API stores it as the order's real time.
+const toIsoTime = (v: unknown) => { const d = new Date(String(v)); return isNaN(+d) ? '' : d.toISOString() }
 
 export function TiktokImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
   const [coa, setCoa] = useState<Coa[]>([])
@@ -150,7 +153,7 @@ export function TiktokImportModal({ onClose, onDone }: { onClose: () => void; on
         const fullAfter = lines.reduce((s, l) => s + l._after, 0)        // full after discount
         const totalRefund = lines.reduce((s, l) => s + l.refundAmount, 0)
         const net = fullAfter - totalRefund                              // actually collected (after discount, less refunds)
-        const txnDate = toYmd(rs[0]['Paid Time'] || rs[0]['Created Time']) || new Date().toISOString().slice(0, 10)
+        const txnDate = toIsoTime(rs[0]['Paid Time'] || rs[0]['Created Time']) || new Date().toISOString()
         const orderItemIds = [...new Set(lines.map(l => l.inventoryItemId))].sort()
         const orderNames = [...new Set(lines.map(l => norm(l.name)))].sort()
         // Replace a matching legacy (non-Tiktok) order first — voids it (reverses inventory).
