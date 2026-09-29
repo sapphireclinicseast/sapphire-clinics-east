@@ -46,6 +46,7 @@ interface AnalysisData {
   rewardPoints: NamedQty[]
   paymentModes: PayMode[]
   topPlatforms: PlatformRow[]
+  purchaseHeatmap?: { grid: number[][]; noTime: number }
   cancellations: {
     total: number
     topReasons: { reason: string; count: number; orderAmount: number }[]
@@ -345,6 +346,70 @@ export default function ProductsAnalysisPage() {
               </p>
             </div>
           )}
+
+          {/* ── Purchase-time heatmap: hour-of-day rows x day-of-week columns ── */}
+          {data.purchaseHeatmap && (() => {
+            const grid = data.purchaseHeatmap.grid
+            const dayOrder = [1, 2, 3, 4, 5, 6, 0] // Mon..Sun (grid is Sun-first)
+            const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+            const max = Math.max(1, ...grid.flat())
+            const total = grid.flat().reduce((x, y) => x + y, 0)
+            if (total === 0) return null
+            const hourLabel = (h: number) => {
+              const f = (v: number) => `${v % 12 === 0 ? 12 : v % 12}:00`
+              const mer = (v: number) => (v % 24) < 12 ? 'AM' : 'PM'
+              return mer(h) === mer(h + 1)
+                ? `${f(h)}–${f(h + 1)} ${mer(h)}`
+                : `${f(h)} ${mer(h)}–${f(h + 1)} ${mer(h + 1)}`
+            }
+            // Peak cell for the caption
+            let peak = { d: 0, h: 0, n: 0 }
+            grid.forEach((row, d) => row.forEach((n, h) => { if (n > peak.n) peak = { d, h, n } }))
+            return (
+              <div className="mb-4">
+                <Section icon={<CalendarDays size={16} />} title="Purchase Times — Heatmap" count={total}>
+                  <p className="text-xs mb-2" style={{ color: 'var(--mid-gray)' }}>
+                    Orders by hour of purchase (rows) and day of the week (columns) — darker means more purchases.
+                    {peak.n > 0 && <> Busiest: <strong style={{ color: 'var(--charcoal)' }}>{DAY_LABELS[peak.d]} {hourLabel(peak.h)}</strong> ({peak.n} order{peak.n !== 1 ? 's' : ''}).</>}
+                  </p>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs" style={{ borderCollapse: 'separate', borderSpacing: 2 }}>
+                      <thead><tr>
+                        <th className="py-1 pr-2 text-left font-semibold" style={{ color: 'var(--mid-gray)', minWidth: 118 }}>Time</th>
+                        {dayOrder.map(d => <th key={d} className="py-1 text-center font-semibold" style={{ color: 'var(--mid-gray)', minWidth: 52 }}>{DAY_LABELS[d]}</th>)}
+                      </tr></thead>
+                      <tbody>
+                        {Array.from({ length: 24 }, (_, h) => (
+                          <tr key={h}>
+                            <td className="py-0.5 pr-2 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{hourLabel(h)}</td>
+                            {dayOrder.map(d => {
+                              const n = grid[d][h]
+                              const t = n / max
+                              return (
+                                <td key={d} className="py-1 text-center rounded font-medium"
+                                  title={`${DAY_LABELS[d]} ${hourLabel(h)} — ${n} order${n !== 1 ? 's' : ''}`}
+                                  style={{
+                                    background: n === 0 ? 'var(--off-white)' : `rgba(13, 115, 119, ${0.12 + 0.88 * t})`,
+                                    color: n === 0 ? 'var(--light-gray)' : t > 0.55 ? '#fff' : 'var(--deep-teal)',
+                                  }}>
+                                  {n || ''}
+                                </td>
+                              )
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {data.purchaseHeatmap.noTime > 0 && (
+                    <p className="text-[11px] mt-2" style={{ color: 'var(--mid-gray)' }}>
+                      {data.purchaseHeatmap.noTime} order{data.purchaseHeatmap.noTime !== 1 ? 's' : ''} carried a date with no time of day (older imports) and are not on the grid.
+                    </p>
+                  )}
+                </Section>
+              </div>
+            )
+          })()}
 
           {/* ── Monthly products sold: overall + per SKU classification ── */}
           {(() => {

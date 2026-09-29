@@ -116,6 +116,11 @@ export async function GET(req: Request) {
     const platformRefund = new Map<string, { gross: number; grossUnits: number; refund: number; returnedUnits: number }>()  // refund rate per channel
     // Monthly product sales: overall per month + per SKU classification (Dept · Category) per month.
     const monthTotals = new Map<string, { units: number; gross: number; net: number }>()
+    // Purchase-time heatmap: product orders per Manila (day-of-week, hour).
+    // Rows land exactly at midnight only when the source carried a date with no
+    // time (older imports), so those are counted separately, not as 12 AM sales.
+    const heatGrid: number[][] = Array.from({ length: 7 }, () => Array(24).fill(0))
+    let heatNoTime = 0
     const classByMonth = new Map<string, Map<string, { units: number; gross: number; net: number }>>()  // label → month → totals
 
     for (const order of orders) {
@@ -123,9 +128,21 @@ export async function GET(req: Request) {
       const discountRatio = orderGross > 0 ? Number(order.discountAmount) / orderGross : 0
       const hasProduct = order.items.length > 0
       const usesRewardPoints = order.payments.some(p => p.method === 'REWARD_POINTS')
-      const platformKey = (order.platform && order.platform.trim()) || 'Unspecified'
+      // Imported marketplace orders (TikTok/Shopee/Lazada bulk uploads) never set
+      // the platform field — infer the channel from their payment method so the
+      // platform ranking includes the online stores instead of "Unspecified".
+      const METHOD_PLATFORM: Record<string, string> = { TIKTOK: 'Tiktok', SHOPEE: 'Shopee', LAZADA: 'Lazada' }
+      const inferredPlatform = order.payments.map(pp => METHOD_PLATFORM[pp.method]).find(Boolean)
+      const platformKey = (order.platform && order.platform.trim()) || inferredPlatform || 'Unspecified'
       // Month bucket in clinic time (Asia/Manila), matching how the rest of the app dates orders.
       const monthKey = new Date(order.transactionDate).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }).slice(0, 7)
+      if (hasProduct) {
+        const td = new Date(order.transactionDate)
+        const wd = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(td.toLocaleDateString('en-US', { timeZone: 'Asia/Manila', weekday: 'short' }))
+        const timeStr = td.toLocaleTimeString('en-GB', { timeZone: 'Asia/Manila', hour12: false })
+        if (timeStr === '00:00:00') heatNoTime++
+        else if (wd >= 0) heatGrid[wd][parseInt(timeStr.slice(0, 2), 10) % 24]++
+      }
 
       for (const item of order.items) {
         // Branch consignment copies roll up under their pool item — same
@@ -294,6 +311,7 @@ export async function GET(req: Request) {
       paymentModes: [...payModes.entries()]
         .map(([method, v]) => ({ method, label: PAYMENT_LABELS[method] || method, amount: round2(v.amount), count: v.count }))
         .sort((a, b) => b.amount - a.amount),
+      purchaseHeatmap: { grid: heatGrid, noTime: heatNoTime },
       cancellations: await tiktokCancellationSummary(branch, dateFrom, dateTo,
         orders.filter(o => (o.platform || '').trim().toLowerCase() === 'tiktok').length),
     })
