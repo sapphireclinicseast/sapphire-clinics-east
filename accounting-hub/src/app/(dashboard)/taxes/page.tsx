@@ -19,7 +19,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'compensation', label: 'Withholding on Compensation (1601-C)' },
   { key: 'ewt', label: 'Expanded Withholding (0619E / 1601EQ)' },
   { key: 'business', label: 'Business Tax (2550Q)' },
-  { key: 'income-tax', label: 'Income Tax (Corporate)' },
+  { key: 'income-tax', label: 'Income Tax (1702Q)' },
   { key: 'rfp', label: 'RFP' },
   { key: 'paid', label: 'Taxes Paid' },
   { key: 'report', label: 'Taxes Report' },

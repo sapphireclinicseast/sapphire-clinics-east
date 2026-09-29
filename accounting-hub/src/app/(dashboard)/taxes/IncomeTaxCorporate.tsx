@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
-import { Loader2, Download, CheckCircle2, Trash2, RefreshCw, X, Eye, Pencil, FileText } from 'lucide-react'
+import { Loader2, Download, CheckCircle2, Trash2, RefreshCw, X, Eye, Pencil, FileText, Calculator, ChevronDown, ChevronRight } from 'lucide-react'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { SortFilterHead, applySortFilter } from '@/components/SortFilterHead'
@@ -110,8 +110,10 @@ export default function IncomeTaxCorporate() {
           {BRANCHES.map(b => <button key={b.value} onClick={() => setBranch(b.value)} className="px-4 py-2 text-xs font-semibold" style={branch === b.value ? { background: 'var(--teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' }}>{b.label}</button>)}
         </div>
         <button onClick={fetchRfps} className="p-1.5 rounded-lg hover:bg-gray-100"><RefreshCw size={14} style={{ color: 'var(--mid-gray)' }} /></button>
-        <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Corporate Income Tax (BIR 1702) — filed as one corporation. Record the payable and raise an RFP; paid ones show in Taxes Paid / Taxes Report.</p>
+        <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Corporate Income Tax (BIR 1702Q, quarterly) — filed as one corporation. Compute below, then record the payable and raise an RFP; paid ones show in Taxes Paid / Taxes Report.</p>
       </div>
+
+      <IncomeTax1702QPanel branch={branch} onUseAmount={(v, f, t) => { setAmount(v); setFrom(f); setTo(t) }} />
 
       {canWrite && (
         <div className="rounded-2xl border bg-white p-4 flex items-end gap-3 flex-wrap" style={{ borderColor: 'var(--light-gray)' }}>
@@ -170,6 +172,106 @@ export default function IncomeTaxCorporate() {
       )}
       {payTarget && <ITRecordPaidModal rfp={payTarget} onClose={() => setPayTarget(null)} onSaved={async () => { setPayTarget(null); await fetchRfps() }} />}
       {bv && <BillingVoucherModal refNumber={bv.refNumber} date={bv.date} lines={bv.lines} branch={bv.branch} payment={bv.payment} preparedBy={session?.user?.name || ''} onClose={() => setBv(null)} />}
+    </div>
+  )
+}
+
+// ─── 1702Q computation panel ───────────────────────────────────────────────
+const QLABEL = ['Q1 (Jan–Mar)', 'Q2 (Apr–Jun)', 'Q3 (Jul–Sep)', 'Q4 (Oct–Dec)']
+const CORP_RATE = 0.20
+
+function IncomeTax1702QPanel({ branch, onUseAmount }: { branch: string; onUseAmount: (amount: string, from: string, to: string) => void }) {
+  const [open, setOpen] = useState(true)
+  const nowY = new Date().getFullYear()
+  const [year, setYear] = useState(String(nowY))
+  const [quarter, setQuarter] = useState(String(Math.floor(new Date().getMonth() / 3) + 1))
+  const [engineNi, setEngineNi] = useState<number | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [ni, setNi] = useState(''); const [niT, setNiT] = useState(false)
+  const [prior, setPrior] = useState('')
+  const [wht, setWht] = useState('')
+
+  const q = parseInt(quarter)
+  const months = q * 3
+  const fromDate = `${year}-01-01`
+  const toDate = `${year}-${String(months).padStart(2, '0')}-${new Date(Number(year), months, 0).getDate()}`
+  const branchName: Record<string, string> = { ALL: 'Sapphire Clinics East Inc. (all branches)', SBEA: 'East', SBGH: 'Greenhills', VERDANA: 'Verdana' }
+
+  // Cumulative net income (pre-tax; tax provision is 0) through the quarter, from
+  // the Income Statement engine — corporate income tax is a cumulative YTD return.
+  useEffect(() => {
+    setLoading(true); setEngineNi(null)
+    let cancelled = false
+    fetch(`/api/reports/v2?year=${year}&branch=${branch}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (cancelled) return
+        const arr: number[] = d?.cashFlow?.monthly?.netIncome || []
+        setEngineNi(Math.round(arr.slice(0, months).reduce((s, v) => s + (v || 0), 0) * 100) / 100)
+      })
+      .catch(() => { if (!cancelled) setEngineNi(null) })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [year, branch, months])
+
+  useEffect(() => { if (!niT && engineNi != null) setNi(engineNi.toFixed(2)) }, [engineNi, niT])
+
+  const niN = num(ni), priorN = num(prior), whtN = num(wht)
+  const taxDue = Math.max(0, niN * CORP_RATE)
+  const stillDue = Math.max(0, taxDue - priorN - whtN)
+  const isLoss = niN < 0
+
+  const years = [nowY, nowY - 1, nowY - 2].map(String)
+  const inputCls = 'px-2 py-1 rounded-lg border text-xs font-mono text-right'
+  const EditRow = ({ label, sub, value, onChange, onTouch }: { label: string; sub?: string; value: string; onChange: (v: string) => void; onTouch?: () => void }) => (
+    <div className="flex items-center justify-between px-3 py-1.5 text-xs border-t" style={{ borderColor: 'var(--light-gray)' }}>
+      <span style={{ color: 'var(--mid-gray)' }}>{label}{sub && <span className="block text-[10px]">{sub}</span>}</span>
+      <span className="whitespace-nowrap"><span className="text-[10px] mr-1" style={{ color: 'var(--mid-gray)' }}>₱</span><input value={value} onChange={e => { onChange(e.target.value); onTouch?.() }} inputMode="decimal" className={inputCls} style={{ borderColor: 'var(--light-gray)', width: 140 }} /></span>
+    </div>
+  )
+  const CalcRow = ({ label, value, strong, highlight, tone }: { label: string; value: number; strong?: boolean; highlight?: boolean; tone?: string }) => (
+    <div className="flex items-center justify-between px-3 py-2 text-xs border-t" style={{ borderColor: 'var(--light-gray)', background: highlight ? '#fffbeb' : undefined }}>
+      <span style={{ fontWeight: strong ? 700 : 400, color: tone || (strong ? 'var(--charcoal)' : 'var(--mid-gray)') }}>{label}</span>
+      <span className="font-mono tabular-nums" style={{ fontWeight: strong ? 700 : 500, color: tone || 'var(--charcoal)' }}>₱{peso(value)}</span>
+    </div>
+  )
+
+  return (
+    <div className="rounded-2xl border bg-white overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+      <button onClick={() => setOpen(o => !o)} className="w-full flex items-center justify-between px-4 py-3" style={{ background: 'var(--off-white)' }}>
+        <span className="flex items-center gap-2 text-sm font-bold" style={{ color: 'var(--charcoal)' }}>
+          <Calculator size={16} style={{ color: 'var(--teal)' }} /> 1702Q Computation
+          <span className="text-xs font-medium" style={{ color: 'var(--mid-gray)' }}>· {branchName[branch] || branch} · {QLABEL[q - 1]} {year} (cumulative)</span>
+        </span>
+        {open ? <ChevronDown size={16} style={{ color: 'var(--mid-gray)' }} /> : <ChevronRight size={16} style={{ color: 'var(--mid-gray)' }} />}
+      </button>
+
+      {open && (
+        <div className="p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <select value={year} onChange={e => { setYear(e.target.value); setNiT(false) }} className="px-3 py-1.5 rounded-lg border text-xs font-semibold" style={{ borderColor: 'var(--light-gray)' }}>{years.map(y => <option key={y} value={y}>{y}</option>)}</select>
+            <select value={quarter} onChange={e => { setQuarter(e.target.value); setNiT(false) }} className="px-3 py-1.5 rounded-lg border text-xs font-semibold" style={{ borderColor: 'var(--light-gray)' }}>{QLABEL.map((l, i) => <option key={i} value={i + 1}>{l}</option>)}</select>
+            <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>cumulative {fromDate} – {toDate}</span>
+          </div>
+
+          <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+            <div className="px-3 py-2 text-xs font-bold flex items-center justify-between" style={{ background: 'var(--deep-teal)', color: '#fff' }}>
+              <span>Corporate Income Tax — {QLABEL[q - 1]} {year}</span>
+              {loading && <Loader2 size={12} className="animate-spin" />}
+            </div>
+            <EditRow label="Net taxable income (cumulative, YTD)" sub={loading ? 'loading from Income Statement…' : `auto-filled from Income Statement${engineNi != null ? ` · ₱${peso(engineNi)}` : ''}`} value={ni} onChange={setNi} onTouch={() => setNiT(true)} />
+            <CalcRow label={`Income Tax Due @ 20%${isLoss ? ' (net loss → ₱0)' : ''}`} value={taxDue} strong />
+            <EditRow label="less: Income tax paid, prior quarters" value={prior} onChange={setPrior} />
+            <EditRow label="less: Creditable withholding tax (2307)" value={wht} onChange={setWht} />
+            <CalcRow label="Income Tax Still Due" value={stillDue} strong highlight tone="#c44b00" />
+          </div>
+
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <p className="text-[11px]" style={{ color: 'var(--mid-gray)', maxWidth: 560 }}>Net taxable income is auto-filled from the app&apos;s Income Statement (cumulative through the quarter, pre-tax) — <strong>edit it to your tax-adjusted figure</strong>. 20% is the small-corporation rate; the quarterly 1702Q is cumulative, so deduct prior quarters&apos; payments and creditable 2307 withholding.</p>
+            <button onClick={() => onUseAmount(stillDue.toFixed(2), fromDate, toDate)} className="px-3 py-2 rounded-xl text-xs font-semibold text-white" style={{ background: 'var(--teal)' }}>Use ₱{peso(stillDue)} in RFP →</button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
