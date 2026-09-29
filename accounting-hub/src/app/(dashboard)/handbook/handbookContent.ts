@@ -13,6 +13,7 @@ export type Block =
   | { k: 'note'; label: string; t: string }
   | { k: 'table'; head: string[]; rows: string[][] }
   | { k: 'faq'; q: string; a: string }
+  | { k: 'diagram' } // the connected-systems map, drawn by HandbookView
 
 export type Section = { id: string; num: string; group: string; title: string; tag?: string; blocks: Block[] }
 
@@ -792,7 +793,9 @@ export const SECTIONS: Section[] = [
   {
     id: 'connections', num: '7', group: 'Reference', title: 'How the Accounting Hub connects to the other systems',
     blocks: [
-      { k: 'p', t: `The clinics run on several connected systems that share data automatically, so you never re-type staff or patient lists. Here's what flows where:` },
+      { k: 'p', t: `The Accounting Hub is one of several connected systems. They share data automatically through secure system-to-system links, so information entered once doesn't have to be re-typed elsewhere. This map shows what each system **supplies** to (or **receives** from) the Accounting Hub:` },
+      { k: 'diagram' },
+      { k: 'p', t: `In detail, here's what flows where:` },
       { k: 'table', head: ['Information', 'Direction', 'Used in Accounting for'], rows: [
         ['Patients (CRM)', 'Operations Hub → Accounting', 'Referral patient search, per-patient session drill-downs, patient lookup in POS'],
         ['Staff & consultants — East / Greenhills', 'Operations Hub → Accounting', 'Payroll register and payslips for the two Aura Health branches'],

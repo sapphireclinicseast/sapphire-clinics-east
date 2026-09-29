@@ -165,6 +165,7 @@ export function HandbookBody() {
                         <strong style={{ color: 'var(--deep-teal)' }}>{rt(b.label)} </strong>{rt(b.t)}
                       </div>
                     )
+                    if (b.k === 'diagram') return <ConnectionsDiagram key={bi} />
                     if (b.k === 'faq') return (
                       <div key={bi} className="mb-3">
                         <p className="text-sm font-semibold" style={{ color: 'var(--deep-teal)' }}>{rt(b.q)}</p>
@@ -201,6 +202,64 @@ export function HandbookBody() {
           <p className="text-sm text-center py-10" style={{ color: 'var(--mid-gray)' }}>Nothing matches “{q.trim()}”. Try a shorter or different word, or clear the search.</p>
         )}
       </div>
+    </div>
+  )
+}
+
+
+/* ── Connected-systems map (Reference §7) ─────────────────────────────
+   Pure inline SVG so it prints and needs no library. The Accounting Hub
+   sits in the middle; arrowheads show which way data flows, and the two
+   double-headed links (HR Hub, Staff Portal) sync both ways. */
+function ConnectionsDiagram() {
+  const box = (x: number, y: number, w: number, title: string, sub: string, dark = false) => (
+    <g>
+      <rect x={x} y={y} width={w} height={54} rx={12}
+        fill={dark ? 'var(--deep-teal)' : 'white'} stroke={dark ? 'var(--deep-teal)' : 'var(--light-gray)'} strokeWidth={1.5} />
+      <text x={x + w / 2} y={y + 23} textAnchor="middle" fontSize={13} fontWeight={700}
+        fill={dark ? 'white' : 'var(--charcoal, #2b2f33)'}>{title}</text>
+      <text x={x + w / 2} y={y + 40} textAnchor="middle" fontSize={10}
+        fill={dark ? '#cfe6e4' : 'var(--mid-gray)'}>{sub}</text>
+    </g>
+  )
+  const arrow = (x1: number, y1: number, x2: number, y2: number, both = false) => (
+    <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#8aa8a3" strokeWidth={1.6}
+      markerEnd="url(#hb-arr)" markerStart={both ? 'url(#hb-arr-r)' : undefined} />
+  )
+  return (
+    <div className="overflow-x-auto mb-4 rounded-xl border p-3" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+      <svg viewBox="0 0 880 420" style={{ minWidth: 660, width: '100%', height: 'auto' }} role="img"
+        aria-label="Map of the systems connected to the Accounting Hub and the direction data flows">
+        <defs>
+          <marker id="hb-arr" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+            <path d="M0,0 L8,4.5 L0,9 z" fill="#8aa8a3" />
+          </marker>
+          <marker id="hb-arr-r" markerWidth="9" markerHeight="9" refX="1" refY="4.5" orient="auto">
+            <path d="M8,0 L0,4.5 L8,9 z" fill="#8aa8a3" />
+          </marker>
+        </defs>
+        {/* top row */}
+        {box(20, 20, 250, 'Operations Hub', 'patients (CRM) · East/GH staff · LOAs')}
+        {box(315, 20, 250, 'HR Hub', 'Verdana staff · SI status & TINs · branches', false)}
+        {box(610, 20, 250, 'Staff Portal (Teletherapy)', 'IE/PR documents · mentorship meetings')}
+        {/* center */}
+        {box(290, 183, 300, 'ACCOUNTING HUB', 'accounting.sapphireclinicseast.org', true)}
+        {/* bottom row */}
+        {box(20, 346, 250, 'Scholarship Portal', 'approved scholars feed')}
+        {box(315, 346, 250, 'Class Portal', 'tuition payments → POS orders')}
+        {box(610, 346, 250, 'Online & marketplaces', 'PayMongo checkouts · TikTok/Shopee uploads')}
+        {/* arrows: top three point in; HR Hub and Staff Portal are two-way */}
+        {arrow(145, 74, 330, 183)}
+        {arrow(440, 74, 440, 183, true)}
+        {arrow(735, 74, 550, 183, true)}
+        {/* bottom three point in */}
+        {arrow(145, 346, 330, 237)}
+        {arrow(440, 346, 440, 237)}
+        {arrow(735, 346, 550, 237)}
+        <text x={440} y={412} textAnchor="middle" fontSize={11} fill="var(--mid-gray)">
+          ⇄ two-way automatic sync (equity figures out to HR Hub; mentorship marked Paid back to the Staff Portal) · → one-way into Accounting
+        </text>
+      </svg>
     </div>
   )
 }
