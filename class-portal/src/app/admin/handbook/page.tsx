@@ -20,20 +20,86 @@ function Illustration({ caption, children }: { caption: string; children: React.
   )
 }
 
+/** FAQ collapsible. Renders as a native <details> so it works in the
+ *  Word / PDF export unchanged and is fully searchable by the handbook
+ *  search bar (browsers include the summary + inner text in
+ *  textContent regardless of open/closed state). */
+function Faq({ q, children }: { q: string; children: React.ReactNode }) {
+  return (
+    <details className="handbook-faq">
+      <summary>{q}</summary>
+      <div className="handbook-faq-body">{children}</div>
+    </details>
+  )
+}
+
 /**
- * Main-admin-only user handbook. Non-admins are redirected on mount.
- * The content mirrors the standalone HTML handbook the operators can
- * bookmark externally, but living inside the portal shell means it
- * follows the sidebar auth state + brand chrome.
+ * Main-admin-only user handbook (v4 — comprehensive step-by-step guide).
+ *
+ * Non-admins are redirected on mount. The content mirrors the standalone
+ * HTML handbook the operators can bookmark externally, but living inside
+ * the portal shell means it follows the sidebar auth state + brand chrome.
  *
  * Kept in one file (no separate content component) so the handbook is
  * easy to edit — the whole thing is scannable in a single view.
+ *
+ * v4 changes vs v3:
+ *   • Every section rewritten as click-by-click steps (assumes no prior
+ *     experience with the portal).
+ *   • New chapters for Meetings, Classes deep-dive, Calendar, Admission
+ *     tracker, Enrollment funnel, Impersonation, and Intern accounts.
+ *   • Added a Help chapter with a keyword search bar (client-side —
+ *     hides sections whose text doesn't match) and an FAQ.
  */
 export default function HandbookPage() {
   const router = useRouter()
   const [ready, setReady] = useState(false)
   const [downloadingWord, setDownloadingWord] = useState(false)
   const bodyRef = useRef<HTMLDivElement | null>(null)
+
+  // ── Handbook search state ─────────────────────────────────────────
+  // Client-side keyword filter. Each h2 chapter is wrapped in a
+  // `.handbook-section[data-searchable]` block; when the query is
+  // non-empty, any block whose textContent doesn't include the query
+  // (case-insensitive) is hidden. The Table of Contents rows carry
+  // the same data attribute keyed by the section slug so they
+  // collapse in step with their target.
+  const [search, setSearch] = useState('')
+
+  useEffect(() => {
+    const body = bodyRef.current
+    if (!body) return
+    const q = search.trim().toLowerCase()
+    const sections = body.querySelectorAll<HTMLElement>('.handbook-section')
+    const tocRows = body.querySelectorAll<HTMLElement>('.handbook-toc-row')
+    let matches = 0
+    if (!q) {
+      sections.forEach(s => { s.hidden = false })
+      tocRows.forEach(r => { r.hidden = false })
+    } else {
+      const visibleSlugs = new Set<string>()
+      sections.forEach(s => {
+        const text = (s.textContent || '').toLowerCase()
+        const hit = text.includes(q)
+        s.hidden = !hit
+        if (hit) {
+          matches++
+          const slug = s.dataset.slug
+          if (slug) visibleSlugs.add(slug)
+        }
+      })
+      tocRows.forEach(r => {
+        const slug = r.dataset.slug
+        r.hidden = !slug || !visibleSlugs.has(slug)
+      })
+    }
+    const counter = body.querySelector<HTMLElement>('#handbook-search-count')
+    if (counter) {
+      counter.textContent = q
+        ? `${matches} matching section${matches === 1 ? '' : 's'}`
+        : ''
+    }
+  }, [search])
 
   useEffect(() => {
     const auth = getAuth()
@@ -56,7 +122,12 @@ export default function HandbookPage() {
    *  document. Our print CSS below hides the sidebar / download bar
    *  and breaks each h2 onto a fresh page. */
   function handleDownloadPDF() {
-    if (typeof window !== 'undefined') window.print()
+    // Clear the search first so the exported PDF contains every section
+    // and not a filtered subset.
+    setSearch('')
+    if (typeof window !== 'undefined') {
+      setTimeout(() => window.print(), 100)
+    }
   }
 
   /** Word (.docx) export — pulls html-docx-js from a CDN on demand so
@@ -66,11 +137,11 @@ export default function HandbookPage() {
    *  keeps our typography, converts to a Blob, triggers a download. */
   async function handleDownloadWord() {
     if (downloadingWord || !bodyRef.current) return
+    // Same rationale as PDF: export the FULL handbook, not the search
+    // filter's view.
+    setSearch('')
     setDownloadingWord(true)
     try {
-      // Dynamic import from CDN. html-docx-js exposes `htmlDocx` as a
-      // global via UMD; we add it to the window once so subsequent
-      // exports don't re-download.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const w = window as any
       if (!w.htmlDocx) {
@@ -107,6 +178,8 @@ export default function HandbookPage() {
         .handbook-fig-frame { border: 0.5pt solid #d1d5db; padding: 6pt; }
         .handbook-fig figcaption { font-size: 9pt; color: #64748b; margin-top: 4pt; }
         .task-step { margin: 5pt 0; }
+        .handbook-faq { border: 0.5pt solid #d1d5db; padding: 4pt 8pt; margin: 4pt 0; }
+        .handbook-faq summary { font-weight: 600; color: #244952; }
       `
       const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${wordCss}</style></head><body>${bodyRef.current.outerHTML}</body></html>`
       const blob = w.htmlDocx.asBlob(html) as Blob
@@ -129,8 +202,6 @@ export default function HandbookPage() {
 
   return (
     <div className="animate-fade-up max-w-4xl mx-auto handbook-root">
-      {/* Handbook-specific styles. Scoped via .handbook-root so they
-          don't leak into the rest of the portal. */}
       <style>{`
         .handbook-root h1 { font-size: 28px; letter-spacing: -0.02em; margin: 0 0 4px; font-weight: 600; color: var(--deep-teal); }
         .handbook-root h2 { font-size: 22px; margin: 2.5rem 0 0.75rem; font-weight: 600; color: var(--deep-teal); letter-spacing: -0.01em; }
@@ -232,18 +303,81 @@ export default function HandbookPage() {
           color: var(--mid-gray); margin-left: 6px;
           text-transform: uppercase; letter-spacing: 0.05em;
         }
+        /* ── Search bar ────────────────────────────────────────────── */
+        .handbook-root .handbook-search {
+          display: flex; align-items: center; gap: 8px;
+          background: #fff; border: 1px solid var(--paper-3);
+          border-radius: 999px; padding: 6px 14px;
+          margin: 0 0 1.5rem;
+          transition: border-color 0.15s ease, box-shadow 0.15s ease;
+        }
+        .handbook-root .handbook-search:focus-within {
+          border-color: var(--sage);
+          box-shadow: 0 0 0 3px rgba(74, 128, 115, 0.14);
+        }
+        .handbook-root .handbook-search input {
+          flex: 1; border: none; outline: none; background: transparent;
+          font-size: 14.5px; padding: 4px 0;
+          color: var(--deep-teal);
+        }
+        .handbook-root .handbook-search input::placeholder { color: var(--mid-gray); }
+        .handbook-root .handbook-search-icon {
+          width: 16px; height: 16px; flex-shrink: 0; color: var(--mid-gray);
+        }
+        .handbook-root .handbook-search-clear {
+          border: none; background: transparent; cursor: pointer;
+          color: var(--mid-gray); font-size: 18px; line-height: 1;
+          padding: 0 2px;
+        }
+        .handbook-root .handbook-search-clear:hover { color: var(--clay); }
+        .handbook-root #handbook-search-count {
+          font-size: 12px; color: var(--sage); font-weight: 500;
+          white-space: nowrap;
+        }
+        /* ── FAQ collapsibles ──────────────────────────────────────── */
+        .handbook-root .handbook-faq {
+          background: #fff;
+          border: 1px solid var(--paper-3);
+          border-radius: 10px;
+          padding: 0.6rem 1rem;
+          margin: 0.6rem 0;
+        }
+        .handbook-root .handbook-faq[open] {
+          border-color: var(--sage);
+          background: #fafffe;
+        }
+        .handbook-root .handbook-faq summary {
+          cursor: pointer; font-weight: 600; color: var(--deep-teal);
+          font-size: 14.5px; padding: 0.3rem 0;
+          list-style: none; position: relative; padding-left: 1.4rem;
+        }
+        .handbook-root .handbook-faq summary::-webkit-details-marker { display: none; }
+        .handbook-root .handbook-faq summary::before {
+          content: '▸'; position: absolute; left: 0; top: 0.35rem;
+          font-size: 12px; color: var(--sage);
+          transition: transform 0.15s ease;
+        }
+        .handbook-root .handbook-faq[open] summary::before {
+          transform: rotate(90deg);
+        }
+        .handbook-root .handbook-faq-body {
+          padding: 0.4rem 0 0.6rem;
+          font-size: 14px; line-height: 1.6;
+          border-top: 1px solid var(--paper-3);
+          margin-top: 0.4rem;
+        }
+        .handbook-root .handbook-faq-body > *:first-child { margin-top: 0.5rem; }
+        .handbook-root .handbook-faq-body > *:last-child { margin-bottom: 0; }
+        /* Print CSS -------------------------------------------------- */
         @media print {
-          .handbook-root .role-card, .handbook-root .callout, .handbook-root .handbook-fig { break-inside: avoid; }
+          .handbook-root .role-card, .handbook-root .callout, .handbook-root .handbook-fig, .handbook-root .handbook-faq { break-inside: avoid; }
           .handbook-root h2 { break-before: page; }
           .handbook-root h2:first-of-type { break-before: auto; }
-          .handbook-download-bar { display: none !important; }
+          .handbook-download-bar, .handbook-root .handbook-search { display: none !important; }
+          .handbook-root .handbook-faq[open] { background: #fff; }
+          .handbook-root .handbook-faq summary::before { display: none; }
         }
-
-        /* ── Illustration frames ───────────────────────────────────
-         * Stylised UI mockups that live inside the handbook. They use
-         * the same brand tokens as the real portal so what the reader
-         * sees here matches what they'll see on screen — just without
-         * live data. Wrapped in a subtle chrome frame + caption. */
+        /* ── Illustration frames ───────────────────────────────────── */
         .handbook-root .handbook-fig { margin: 1.25rem 0; }
         .handbook-root .handbook-fig-frame {
           background: #fff;
@@ -331,46 +465,107 @@ export default function HandbookPage() {
       </div>
 
       <div ref={bodyRef}>
-      <p className="lead">A practical guide to <code>class.sapphireclinicseast.org</code> for the clinic manager, HR officer, front desk, SPED teacher, and student roles.</p>
+      <p className="lead">
+        A step-by-step guide to <code>class.sapphireclinicseast.org</code> for the clinic manager, HR officer, front desk, SPED teacher, and parent/student roles. Written for someone who has never touched the portal before — every button, every menu, every field is described in the order you'll click them. If you're looking for something specific, use the search box or jump to <a href="#help">Help &amp; FAQ</a>.
+      </p>
+
+      {/* ── Search bar ─────────────────────────────────────────────── */}
+      <div className="handbook-search" role="search">
+        <svg className="handbook-search-icon" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <circle cx="9" cy="9" r="6" stroke="currentColor" strokeWidth="1.8" />
+          <path d="m17 17-3.5-3.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        </svg>
+        <input
+          type="search"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search the handbook — try 'record payment', 'PayMongo', 'waiver', 'intern'…"
+          aria-label="Search the handbook"
+        />
+        <span id="handbook-search-count" aria-live="polite" />
+        {search && (
+          <button
+            type="button"
+            className="handbook-search-clear"
+            onClick={() => setSearch('')}
+            aria-label="Clear search"
+            title="Clear search"
+          >
+            ×
+          </button>
+        )}
+      </div>
 
       <div className="quick-nav">
         <h4>Table of contents</h4>
         <ol>
-          <li><a href="#getting-started">Getting started</a> — signing in, portal layout, roles at a glance</li>
-          <li><a href="#main-admin">Clinic manager</a><span className="toc-role">Main admin</span></li>
-          <li><a href="#branch-admin">HR officer</a><span className="toc-role">Branch admin</span></li>
-          <li><a href="#frontdesk">Front desk</a><span className="toc-role">Frontdesk</span></li>
-          <li><a href="#teacher">SPED teacher</a><span className="toc-role">Teacher</span></li>
-          <li><a href="#student">Student / parent</a><span className="toc-role">Student</span></li>
-          <li><a href="#common">Common workflows</a> — payments, vouchers, plan switches</li>
-          <li><a href="#hubs">Connections to the other hubs</a> — Operations, Accounting, HR</li>
-          <li><a href="#troubleshooting">Troubleshooting</a></li>
+          <li className="handbook-toc-row" data-slug="getting-started"><a href="#getting-started">Getting started</a> — signing in, portal layout, roles at a glance, impersonation</li>
+          <li className="handbook-toc-row" data-slug="sidebar"><a href="#sidebar">The sidebar</a> — every nav item and who sees it</li>
+          <li className="handbook-toc-row" data-slug="main-admin"><a href="#main-admin">Clinic manager — every admin tab</a><span className="toc-role">Main admin</span></li>
+          <li className="handbook-toc-row" data-slug="branch-admin"><a href="#branch-admin">HR officer — what's different</a><span className="toc-role">Branch admin</span></li>
+          <li className="handbook-toc-row" data-slug="frontdesk"><a href="#frontdesk">Front desk — every tab</a><span className="toc-role">Frontdesk</span></li>
+          <li className="handbook-toc-row" data-slug="teacher"><a href="#teacher">SPED teacher hub</a><span className="toc-role">Teacher</span></li>
+          <li className="handbook-toc-row" data-slug="student"><a href="#student">Student / parent portal</a><span className="toc-role">Student</span></li>
+          <li className="handbook-toc-row" data-slug="classes"><a href="#classes">Classes — full walkthrough</a> — list, create, lessons, projects, activities</li>
+          <li className="handbook-toc-row" data-slug="meetings"><a href="#meetings">Meetings</a> — LiveKit video rooms with Cloud Record</li>
+          <li className="handbook-toc-row" data-slug="calendar"><a href="#calendar">Calendar</a> — events, per-branch scoping, PDFs</li>
+          <li className="handbook-toc-row" data-slug="payments"><a href="#payments">Payments — deep dive</a> — the period picker, plan switches, back balance</li>
+          <li className="handbook-toc-row" data-slug="documents"><a href="#documents">Documents, waiver, registration letter, fee schedule</a></li>
+          <li className="handbook-toc-row" data-slug="announcements"><a href="#announcements">Announcements</a> — posters, PDFs, email blasts</li>
+          <li className="handbook-toc-row" data-slug="vouchers"><a href="#vouchers">Vouchers</a> — shared codes and personal early-bird</li>
+          <li className="handbook-toc-row" data-slug="enrollment"><a href="#enrollment">Enrollment funnel</a> — what a new parent sees</li>
+          <li className="handbook-toc-row" data-slug="admission"><a href="#admission">Admission tracker</a> — partner-school view</li>
+          <li className="handbook-toc-row" data-slug="interns"><a href="#interns">Intern accounts</a> — auto-disable lifecycle</li>
+          <li className="handbook-toc-row" data-slug="hubs"><a href="#hubs">Connections to the other hubs</a> — Operations, Accounting, HR</li>
+          <li className="handbook-toc-row" data-slug="help"><a href="#help">Help &amp; FAQ</a></li>
         </ol>
       </div>
 
+      {/* ─────────────────────────────────────────────────────────────
+       * 1. GETTING STARTED
+       * ────────────────────────────────────────────────────────── */}
+      <section className="handbook-section" data-slug="getting-started">
       <h2 id="getting-started">1. Getting started</h2>
 
       <h3>Signing in</h3>
-      <ol>
-        <li>Open <a href="https://class.sapphireclinicseast.org">class.sapphireclinicseast.org</a> in Chrome, Safari, or Edge.</li>
-        <li>Click <strong>Sign In</strong> in the top-right.</li>
-        <li>Enter the email and password issued to you by the main admin.</li>
+      <p>The class portal lives at <a href="https://class.sapphireclinicseast.org">class.sapphireclinicseast.org</a>. Any modern browser works — Chrome, Safari, Edge, or Firefox on desktop, tablet, or phone.</p>
+
+      <ol className="task-steps">
+        <li className="task-step">Open the site. If you land on the marketing homepage (with "Enroll your child" in the hero), click <strong>Sign In</strong> in the top-right or the <em>Sign In (for existing student)</em> tab in the "Get started" card.</li>
+        <li className="task-step">You'll see the sign-in screen with the heading <em>Sign in to your account</em>. Under <strong>Choose your role to continue</strong>, tap the tile that matches you:
+          <ul>
+            <li><strong>Parent / Student</strong> — for enrolled families</li>
+            <li><strong>Teacher</strong> — for classroom staff and SPED teacher interns</li>
+            <li><strong>Front desk</strong> — for the clinic reception at either branch</li>
+            <li><strong>Branch admin</strong> — for per-branch HR / operations leads</li>
+            <li><strong>Main admin</strong> — for SCEI HQ (only <code>main@sapphireclinicseast.org</code>)</li>
+          </ul>
+        </li>
+        <li className="task-step">The email and password fields activate once a role is picked. Type your email and the password the main admin gave you.</li>
+        <li className="task-step">Click <strong>Continue as &lt;your role&gt;</strong>. If the credentials match, you're redirected to the right home screen (<code>/admin</code>, <code>/frontdesk</code>, or <code>/profile</code>).</li>
       </ol>
 
       <div className="callout">
-        <span className="label">If you can’t sign in</span>
-        Ask the main admin (<code>main@sapphireclinicseast.org</code>) to reset your password from <em>Admin → Users</em>. If the whole site is down, check that <code>class.sapphireclinicseast.org</code> loads at all — a domain-level outage looks identical to a bad password.
+        <span className="label">Forgot your password?</span>
+        Click <strong>Forgot?</strong> next to the password field to open <code>/reset</code>. You'll need a reset token — ask the main admin (or your branch admin) to email you one from <em>Admin → Users → Email reset link</em>. The link expires 24 hours after it's issued.
+      </div>
+
+      <div className="callout callout-warn">
+        <span className="label">"Missing bearer token." red banner?</span>
+        This means your device had a signed-in session (name still showing in the sidebar) but the login token got cleared behind the scenes — usually because a second tab signed out, or an earlier request expired the session. Fix: sign out (bottom-left of the sidebar) and sign back in. As of 2026-09, the classes and admin pages automatically detect this and bounce you to sign-in before you can hit the error.
       </div>
 
       <h3>What you see once signed in</h3>
       <ul>
-        <li><strong>Left sidebar</strong> — always visible on desktop, hamburger menu on mobile. Contains your role-scoped nav (Dashboard, Classes, Calendar, Documents, Pay tuition) plus a user chip with a <strong>Sign out</strong> button.</li>
-        <li><strong>Main area</strong> — the current page. Cards are compact; tables scroll internally when they get long.</li>
-        <li><strong>Payment badges</strong> — every student profile shows their tuition status as one or more badges:
+        <li><strong>Left sidebar</strong> — fixed on desktop, hamburger menu (☰ icon top-left) on mobile. Contains your role-scoped navigation plus a user chip at the bottom with your name, role, and a <strong>Sign out</strong> link.</li>
+        <li><strong>Top of the sidebar</strong> — the Aura Academy logo and "Class Portal" caption. Click it to return to the marketing homepage (or to your dashboard if you're already there).</li>
+        <li><strong>Main content area</strong> — everything else. Cards are compact; long tables scroll internally rather than pushing the whole page down.</li>
+        <li><strong>Payment badges</strong> — every student profile shows tuition status as one or more colored pill badges:
           <ul>
-            <li><span className="tag tag-sage">Paid for July 2026</span> — this month is settled.</li>
-            <li><span className="tag tag-amber">Owes for June 2026</span> — a past month was skipped.</li>
+            <li><span className="tag tag-sage">Paid for July 2026</span> — this period is settled.</li>
+            <li><span className="tag tag-amber">Owes for June 2026</span> — a past period was skipped.</li>
             <li><span className="tag tag-rose">Due for July 2026</span> — the current period is unpaid.</li>
+            <li><span className="tag tag-info">Pending</span> — a payment was recorded but the front desk hasn't clicked <em>Confirm payment</em> yet.</li>
           </ul>
         </li>
       </ul>
@@ -385,6 +580,7 @@ export default function HandbookPage() {
             <div className="mk-nav-item active"><span className="mk-nav-icon" />Admin dashboard</div>
             <div className="mk-nav-item"><span className="mk-nav-icon" />Classes</div>
             <div className="mk-nav-item"><span className="mk-nav-icon" />Calendar</div>
+            <div className="mk-nav-item"><span className="mk-nav-icon" />Meetings</div>
             <div className="mk-nav-item"><span className="mk-nav-icon" />Handbook</div>
             <div style={{ marginTop: 24, padding: 8, borderRadius: 8, background: 'var(--paper-2)', fontSize: 11 }}>
               <div style={{ color: 'var(--mid-gray)', fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 2 }}>Signed in</div>
@@ -399,12 +595,16 @@ export default function HandbookPage() {
               <div className="mk-title">Admin dashboard</div>
               <div style={{ fontSize: 11, color: 'var(--mid-gray)' }}>main@sapphireclinicseast.org</div>
             </div>
-            <div style={{ display: 'flex', gap: 4, background: 'var(--paper-2)', padding: 4, borderRadius: 8, fontSize: 11, fontWeight: 600 }}>
+            <div style={{ display: 'flex', gap: 4, background: 'var(--paper-2)', padding: 4, borderRadius: 8, fontSize: 11, fontWeight: 600, flexWrap: 'wrap' }}>
               <span style={{ padding: '4px 10px', background: '#fff', borderRadius: 5, color: 'var(--deep-teal)' }}>Users</span>
               <span style={{ padding: '4px 10px', color: 'var(--mid-gray)' }}>Students</span>
+              <span style={{ padding: '4px 10px', color: 'var(--mid-gray)' }}>Grade Levels</span>
+              <span style={{ padding: '4px 10px', color: 'var(--mid-gray)' }}>Curriculum</span>
+              <span style={{ padding: '4px 10px', color: 'var(--mid-gray)' }}>Templates</span>
+              <span style={{ padding: '4px 10px', color: 'var(--mid-gray)' }}>Notifications</span>
               <span style={{ padding: '4px 10px', color: 'var(--mid-gray)' }}>Payments</span>
               <span style={{ padding: '4px 10px', color: 'var(--mid-gray)' }}>Fees</span>
-              <span style={{ padding: '4px 10px', color: 'var(--mid-gray)' }}>…</span>
+              <span style={{ padding: '4px 10px', color: 'var(--mid-gray)' }}>Assignments</span>
             </div>
           </main>
         </div>
@@ -424,341 +624,822 @@ export default function HandbookPage() {
           </tr>
         </thead>
         <tbody>
-          <tr><td>See students across both branches</td><td className="yes">Yes</td><td className="no">Own branch only</td><td className="no">Own branch only</td><td className="no">Their classes only</td><td className="no">Themselves only</td></tr>
-          <tr><td>Create / disable staff accounts</td><td className="yes">Yes</td><td className="partial">Own branch</td><td className="no">—</td><td className="no">—</td><td className="no">—</td></tr>
+          <tr><td>See students across both branches</td><td className="yes">Yes</td><td className="no">Own branch only</td><td className="no">Own branch only</td><td className="no">Their assigned grades only</td><td className="no">Themselves only</td></tr>
+          <tr><td>Create / disable staff accounts</td><td className="yes">Yes</td><td className="partial">Own branch (Teachers + Front desk only)</td><td className="no">—</td><td className="no">—</td><td className="no">—</td></tr>
+          <tr><td>Impersonate other users ("View as")</td><td className="yes">Yes (except other branch admins)</td><td className="no">—</td><td className="no">—</td><td className="no">—</td><td className="no">—</td></tr>
           <tr><td>Record cash / bank / PayMongo payments</td><td className="yes">Yes</td><td className="yes">Yes</td><td className="yes">Yes</td><td className="no">—</td><td className="no">—</td></tr>
           <tr><td>Confirm pending payments</td><td className="yes">Yes</td><td className="yes">Yes</td><td className="yes">Yes</td><td className="no">—</td><td className="no">—</td></tr>
+          <tr><td>Delete confirmed payment rows</td><td className="yes">Yes</td><td className="no">Read only</td><td className="no">Read only</td><td className="no">—</td><td className="no">—</td></tr>
           <tr><td>Edit shared voucher codes (AURA30, etc.)</td><td className="yes">Yes</td><td className="no">Read only</td><td className="no">—</td><td className="no">—</td><td className="no">—</td></tr>
           <tr><td>Issue personal early-bird voucher</td><td className="yes">Yes</td><td className="yes">Yes</td><td className="yes">Yes</td><td className="no">—</td><td className="no">—</td></tr>
           <tr><td>Edit fee schedule</td><td className="yes">Yes</td><td className="partial">Own branch only</td><td className="no">Read only</td><td className="no">—</td><td className="no">—</td></tr>
-          <tr><td>Create / edit classes</td><td className="yes">Yes</td><td className="yes">Yes</td><td className="no">—</td><td className="yes">Own classes</td><td className="no">—</td></tr>
+          <tr><td>Create / edit classes</td><td className="yes">Yes</td><td className="yes">Own branch</td><td className="no">—</td><td className="yes">Own classes</td><td className="no">—</td></tr>
+          <tr><td>Create meetings + Cloud Record</td><td className="yes">Yes</td><td className="yes">Yes</td><td className="no">—</td><td className="yes">Own students</td><td className="partial">Join guest link only</td></tr>
           <tr><td>Post announcements</td><td className="yes">Yes</td><td className="yes">Yes</td><td className="no">—</td><td className="partial">To their classes</td><td className="no">—</td></tr>
+          <tr><td>Countersign waiver as SCEI</td><td className="yes">Yes</td><td className="no">—</td><td className="no">—</td><td className="no">Witness sig only</td><td className="no">—</td></tr>
+          <tr><td>Generate registration letter + fee schedule PDFs</td><td className="yes">Yes</td><td className="no">—</td><td className="no">—</td><td className="no">—</td><td className="no">—</td></tr>
           <tr><td>Pay own tuition (PayMongo)</td><td className="no">—</td><td className="no">—</td><td className="no">—</td><td className="no">—</td><td className="yes">Yes</td></tr>
         </tbody>
       </table>
       </div>
 
-      <h2 id="main-admin">2. Clinic manager <span className="tag tag-sage">Main admin</span></h2>
+      <h3>Impersonation — "View as"</h3>
+      <p>When a parent or teacher reports something you can't reproduce, sign in <em>as them</em> for a few minutes to see exactly what they see. Only the main admin can do this.</p>
+      <ol className="task-steps">
+        <li className="task-step">Open <strong>Admin → Users</strong>. Find the row for the person you want to view as.</li>
+        <li className="task-step">Click <strong>View as</strong> on the far right of their row. Confirm the popup ("Open &lt;email&gt;'s portal as them? A red banner across the top will let you return to your admin session. This is logged for audit.").</li>
+        <li className="task-step">The whole browser tab reloads into <em>their</em> view — you land on <code>/profile</code> for a student/teacher or <code>/frontdesk</code> for a front-desk user. Every action you take is logged as coming from them.</li>
+        <li className="task-step">A red banner across the top of the screen says <strong>VIEWING AS &lt;name&gt; (&lt;email&gt;) · &lt;role&gt;</strong> with a <strong>Return to admin →</strong> button.</li>
+        <li className="task-step">Click <strong>Return to admin →</strong> to end the impersonation. You land back on <code>/admin</code>. The session is bounded — closing the tab also ends it.</li>
+      </ol>
+      <div className="callout callout-note">
+        <span className="label">Branch admins can't be impersonated</span>
+        The <strong>View as</strong> button is hidden on branch-admin rows. Every impersonation is logged with a start-time and end-time in the impersonation audit table — even if you close the tab, the row records "session closed at &lt;time&gt;" from the next login.
+      </div>
+      </section>
 
-      <p>The clinic manager account (<code>main@sapphireclinicseast.org</code>) sees every branch, every student, every payment, every reminder. Everything below is inherited by branch admins on their own branch.</p>
+      {/* ─────────────────────────────────────────────────────────────
+       * 2. THE SIDEBAR
+       * ────────────────────────────────────────────────────────── */}
+      <section className="handbook-section" data-slug="sidebar">
+      <h2 id="sidebar">2. The sidebar</h2>
+      <p>Every signed-in page has the same left sidebar. What appears in it depends on your role. On mobile the sidebar collapses into a hamburger (☰) menu you tap open.</p>
 
-      <h3>Where you land</h3>
-      <p>Signing in redirects you to <code>/admin</code>. Below the header you’ll see nine tabs:</p>
-      <ul>
-        <li><strong>Users</strong> — every staff and student account, filterable by role.</li>
-        <li><strong>Students</strong> — a searchable roster with plan (Monthly / Bi-annual / Annual), branch, and current-period payment badge.</li>
-        <li><strong>Classes</strong> — every class across both branches. Click <strong>+ Add Class</strong> to create one.</li>
-        <li><strong>Curriculum</strong> — per-grade curriculum documents you upload for the whole school.</li>
-        <li><strong>Templates</strong> — free-form template library (IEP forms, lesson plans, parent forms).</li>
-        <li><strong>Notifications</strong> — the announcement composer.</li>
-        <li><strong>Payments</strong> — pending confirmations, confirmed payments, pending-by-deadline, the consolidated <em>Paying students</em> table, and the automated <em>Notifications</em> log.</li>
-        <li><strong>Fees</strong> — annual / bi-annual / monthly tuition and misc for each branch, plus shared voucher codes.</li>
-        <li><strong>Assignments</strong> — the teacher ↔ class assignment matrix.</li>
-      </ul>
-
-      <div className="role-card">
-        <h3>Key workflows</h3>
-
-        <h4>Add a new staff account</h4>
-        <ol className="task-steps">
-          <li className="task-step">Open <strong>Users</strong>. Click <strong>+ New user</strong>.</li>
-          <li className="task-step">Pick a role — <code>BRANCH_ADMIN</code>, <code>FRONTDESK</code>, or <code>TEACHER</code> — set their branch (East or Greenhills), enter their email, and generate a password.</li>
-          <li className="task-step">Hand the password over out-of-band (in person or on a signed sticky note). Never email it. Passwords rotate on next login when the user changes it themselves.</li>
-        </ol>
-
-        <h4>Change a student’s payment plan</h4>
-        <p>Use this when a parent decides to switch from monthly to bi-annual (or any other combo) mid-year.</p>
-        <ol className="task-steps">
-          <li className="task-step">Open the student’s profile (<em>Admin → Students → click a row</em>).</li>
-          <li className="task-step">Scroll to the <strong>Plan change — Switch payment plan</strong> card. Pick the target plan; the card shows the exact balance to collect, net of any 30% voucher and cash already paid.</li>
-          <li className="task-step">Go to <em>Payments → + Record payment</em>, enter that balance under the target plan, and confirm once the parent pays.</li>
-          <li className="task-step">Once confirmed, the student’s inferred plan flips to the new one and all future badges use the new period logic.</li>
-        </ol>
-
-        <Illustration caption="Plan change card — appears on every student profile for admin viewers.">
-          <div className="mk-card">
-            <div className="mk-label">Plan change</div>
-            <div className="mk-title" style={{ marginBottom: 2 }}>Switch payment plan</div>
-            <div style={{ fontSize: 11, color: 'var(--mid-gray)', marginBottom: 10 }}>Current plan: <span style={{ fontWeight: 600, color: 'var(--deep-teal)' }}>Monthly</span></div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10, fontSize: 11.5, color: 'var(--mid-gray)' }}>
-              <span>Switch to</span>
-              <span className="mk-pill" style={{ background: 'var(--sage-tint)', color: 'var(--deep-teal)', fontWeight: 600 }}>Bi-annual</span>
-              <span>·</span>
-              <span>☑ Apply 30% voucher (AURA30-BRUCE-A4K7Q9)</span>
-            </div>
-            <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
-              <tbody>
-                <tr><td style={{ padding: '4px 0', color: 'var(--mid-gray)' }}>Bi-annual tuition</td><td style={{ padding: '4px 0', textAlign: 'right' }}>₱45,000.00</td></tr>
-                <tr><td style={{ padding: '4px 0', color: 'var(--mid-gray)' }}>Less 30% voucher</td><td style={{ padding: '4px 0', textAlign: 'right', color: '#059669' }}>−₱13,500.00</td></tr>
-                <tr><td style={{ padding: '4px 0', color: 'var(--mid-gray)' }}>+ Misc fee</td><td style={{ padding: '4px 0', textAlign: 'right' }}>+₱2,500.00</td></tr>
-                <tr style={{ background: 'var(--paper-2)' }}><td style={{ padding: '4px 6px', fontWeight: 600 }}>Gross on new plan</td><td style={{ padding: '4px 6px', textAlign: 'right', fontWeight: 600 }}>₱34,000.00</td></tr>
-                <tr><td style={{ padding: '4px 0', color: 'var(--mid-gray)' }}>Less already paid</td><td style={{ padding: '4px 0', textAlign: 'right', color: '#059669' }}>−₱7,150.00</td></tr>
-                <tr style={{ background: '#f0fdf4' }}><td style={{ padding: '6px', fontWeight: 700, color: 'var(--deep-teal)' }}>Balance to collect</td><td style={{ padding: '6px', textAlign: 'right', fontWeight: 700, color: 'var(--deep-teal)', fontSize: 14 }}>₱26,850.00</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </Illustration>
-
-        <h4>Set up fees for the new school year</h4>
-        <ol className="task-steps">
-          <li className="task-step">Open <strong>Fees</strong>. Pick a branch tab.</li>
-          <li className="task-step">Update annual, bi-annual, and monthly tuition + misc figures (all in PHP, no comma).</li>
-          <li className="task-step">Save. Every <em>/pay</em> checkout and every plan-switch calculator on that branch picks up the new numbers immediately.</li>
-        </ol>
-
-        <h4>Edit the shared voucher codes</h4>
-        <ol className="task-steps">
-          <li className="task-step"><em>Fees → Voucher codes</em>. Add a code like <code>AURA30</code>, set a discount percent, and an expiry (end-of-day, Manila time).</li>
-          <li className="task-step">To pause a code, untick <strong>Active</strong> instead of deleting — the audit trail is worth keeping.</li>
-          <li className="task-step">Personal early-bird vouchers (per-student) are edited from the student profile, not here — see the personal voucher workflow below.</li>
-        </ol>
-
-        <h4>Post an announcement</h4>
-        <ol className="task-steps">
-          <li className="task-step"><em>Notifications tab → + New announcement</em>. Write the title and body.</li>
-          <li className="task-step">Optionally attach a PDF (parent letter, calendar) and pick which grade levels see it. Leave grades blank for a school-wide post.</li>
-          <li className="task-step">Tick <strong>Email everyone</strong> if you want it blasted; otherwise it only appears in the recipient portals.</li>
-        </ol>
+      <div className="overflow-x-auto">
+      <table className="matrix">
+        <thead>
+          <tr>
+            <th>Nav item</th>
+            <th>What it opens</th>
+            <th>Main admin</th>
+            <th>Branch admin</th>
+            <th>Front desk</th>
+            <th>Teacher</th>
+            <th>Student</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td><strong>Admin dashboard</strong> (main + branch admin) / <strong>Front desk</strong> / <strong>Teacher hub</strong> / <strong>My profile</strong></td><td>Your role's home screen. The label and destination change with your role.</td><td className="yes">/admin</td><td className="yes">/admin</td><td className="yes">/frontdesk</td><td className="yes">/profile</td><td className="yes">/profile</td></tr>
+          <tr><td><strong>Classes</strong></td><td>Card grid of classes you can see (teacher = your own; admin/branch admin = all). Create new + open detail.</td><td className="yes">Yes</td><td className="yes">Yes</td><td className="no">Not shown (goes to /frontdesk)</td><td className="yes">Yes</td><td className="yes">Yes</td></tr>
+          <tr><td><strong>Calendar</strong></td><td>Month grid of events + branch-scoped PDF upload.</td><td className="yes">Yes</td><td className="yes">Yes</td><td className="yes">Yes (via Front desk tab)</td><td className="yes">Yes</td><td className="yes">Yes</td></tr>
+          <tr><td><strong>Meetings</strong></td><td>LiveKit video-room list. Create meetings, copy links, cancel/delete.</td><td className="yes">Yes</td><td className="yes">Yes</td><td className="no">—</td><td className="yes">Yes</td><td className="yes">Own tagged meetings</td></tr>
+          <tr><td><strong>Pay tuition</strong></td><td>PayMongo checkout / cash notify / bank-deposit upload.</td><td className="no">—</td><td className="no">—</td><td className="no">—</td><td className="no">—</td><td className="yes">Yes</td></tr>
+          <tr><td><strong>Class Portal Handbook</strong></td><td>This page.</td><td className="yes">Yes</td><td className="no">—</td><td className="no">—</td><td className="no">—</td><td className="no">—</td></tr>
+        </tbody>
+      </table>
       </div>
 
-      <h2 id="branch-admin">3. HR officer <span className="tag tag-info">Branch admin</span></h2>
-      <p>The HR officer is a branch-scoped mirror of the main admin. Everything you see is filtered to your branch (East or Greenhills) at the server level, so cross-branch data never reaches your screen.</p>
-
-      <h3>Where you land</h3>
-      <p>Same landing as the main admin: <code>/admin</code> with the same nine tabs. Differences:</p>
+      <h3>The user chip (bottom of the sidebar)</h3>
+      <p>Always shows:</p>
       <ul>
-        <li><strong>Students</strong> — only your branch.</li>
-        <li><strong>Payments → Confirmed / Pending / Reminders</strong> — only your branch.</li>
-        <li><strong>Fees</strong> — you see all branches’ fees but can only edit your own.</li>
-        <li><strong>Users</strong> — you can add teachers and front desk for your branch. You cannot create another branch admin or a main admin.</li>
-        <li><strong>Shared vouchers</strong> — read-only. Ask the main admin to add or edit a shared code.</li>
+        <li>The word <code>Signed in</code></li>
+        <li>Your display name (usually the part of your email before <code>@</code>)</li>
+        <li>Your role label — <em>Main admin</em>, <em>Branch admin · East</em>, <em>Branch admin · Greenhills</em>, <em>Front desk · East</em>, <em>Front desk · Greenhills</em>, <em>Teacher</em>, or <em>Student</em></li>
+        <li><strong>Sign out</strong> — clears your session and returns to the marketing homepage. Use this any time you're on a shared device, or when a "Missing bearer token." error is stuck.</li>
       </ul>
+      </section>
 
+      {/* ─────────────────────────────────────────────────────────────
+       * 3. MAIN ADMIN — nine tabs, exhaustive
+       * ────────────────────────────────────────────────────────── */}
+      <section className="handbook-section" data-slug="main-admin">
+      <h2 id="main-admin">3. Clinic manager — every admin tab <span className="tag tag-sage">Main admin</span></h2>
+      <p>The clinic manager account (<code>main@sapphireclinicseast.org</code>) is the only role that sees every branch, every student, every payment, every reminder. Signing in as main admin lands you on <code>/admin</code>. Below the page header ("Admin dashboard" with your email) sits a horizontal row of nine tabs — click one to switch panels. The active tab is highlighted; the other eight stay one click away.</p>
+
+      <p><strong>The nine tabs, in order:</strong> Users · Students · Grade Levels · Curriculum · Templates · Notifications · Payments · Fees · Assignments.</p>
+
+      {/* ---- Users tab -------------------------------------------- */}
       <div className="role-card">
-        <h3>Key workflows</h3>
+        <h3>Tab 1 — Users</h3>
+        <p>The users tab has three stacked cards: the users table, the "Create staff account" form, and "Add teacher from Staff Module".</p>
 
-        <h4>Add a new teacher to your branch</h4>
+        <h4>Users table (top card)</h4>
+        <p>Above the table you'll see live counts like <code>84 total · 62 students · 12 teachers · 6 front desk · 4 branch admins</code>, a <strong>Show passwords</strong> checkbox on the right (only reveals passwords that were set or reset on <em>this</em> device — bcrypt one-way encryption means a password set on another device is stored as bullets and a "Last set by … on …" note), and a role-filter pill bar: <strong>All · Students · Teachers · Front desk · Branch admins</strong>.</p>
+        <p>Table columns: <em>Role · Name · Email · Branch · Password · Level · Created</em>, plus a row-action cell on the right. Extras you'll see in specific rows:</p>
+        <ul>
+          <li><span className="tag tag-amber">Intern</span> badge next to the role for interns (tooltip explains the auto-disable date).</li>
+          <li><span className="tag tag-rose">Disabled</span> badge for accounts that can't sign in (either main admin disabled them or the intern-lifecycle cron did).</li>
+        </ul>
+        <p>Row action buttons (right-most column):</p>
         <ol className="task-steps">
-          <li className="task-step"><em>Users → + New user</em>. Role: <code>TEACHER</code>. Branch: yours.</li>
-          <li className="task-step">After the account is created, go to <em>Assignments</em> and tick the classes they’ll handle. Only assigned teachers can grade or take attendance for a class.</li>
+          <li className="task-step"><strong>Edit</strong> — opens the Edit user modal. Fields: <em>First name · Last name · Email (required) · Branch · Grade level (students only) · New password (blank = keep current, min 6)</em>. Bottom buttons: <strong>Cancel</strong> and <strong>Save changes</strong>.</li>
+          <li className="task-step"><strong>View as</strong> — impersonation (see the <a href="#getting-started">Impersonation</a> section above). Hidden on branch-admin rows.</li>
+          <li className="task-step"><strong>Email reset link</strong> — sends the user a one-shot password-reset link with a 24-hour token. Use this when a parent has lost their password.</li>
+          <li className="task-step"><strong>Enable</strong> / <strong>Disable</strong> — main-admin only. Disabling hides the row from teacher and front-desk listings and blocks sign-in. Confirm dialog explains the effect. Re-enable any time.</li>
+          <li className="task-step"><strong>Delete</strong> — main-admin only. Hard-deletes the row and every payment/document/enrollment tied to it. Use <strong>Disable</strong> instead when a student is just leaving the school and you want to keep their history.</li>
         </ol>
 
-        <h4>Issue a personal early-bird voucher</h4>
-        <p>Use this for a monthly / bi-annual parent who availed of the 30% AURA30 promo before the public code expired but still needs to redeem it on future installments.</p>
-        <ol className="task-steps">
-          <li className="task-step">Open the student’s profile. Scroll to <strong>Personal vouchers</strong>.</li>
-          <li className="task-step">Click <strong>+ Issue AURA30 early-bird voucher</strong>. A code like <code>AURA30-BRUCE-A4K7Q9</code> is minted, locked to that student, valid through May 31.</li>
-          <li className="task-step">Share the code with the parent. Their <em>/pay</em> page will auto-apply it next time they open it; they don’t need to type it.</li>
-        </ol>
+        <h4>Reset Password modal</h4>
+        <p>Reached by clicking the <strong>Reset</strong> link in the Password column. Body copy warns "The current password can't be retrieved. Setting a new one will overwrite it. Copy the value before closing — it's only shown to you." The <em>New password</em> field is pre-filled with a random value from the <strong>Generate</strong> button — click Generate again to spin a new one. Save with <strong>Save new password</strong>. Hand the value to the user out-of-band (in person or via a secure messaging channel). <strong>Never email a password.</strong></p>
 
-        <h4>See who has been auto-emailed a payment reminder</h4>
+        <h4>Create staff account (middle card)</h4>
+        <p>For quickly minting a new class-portal account that isn't already in HR Hub. Main admin sees <em>Role</em> options: <strong>Teacher · Front desk · Branch admin</strong>. Branch admin sees only Teacher + Front desk.</p>
+        <p>Fields: <em>Role · Branch · First name · Last name · Email · Password</em> (with a <strong>Generate</strong> button next to it). Click <strong>Create &lt;role&gt;</strong> (e.g. "Create teacher"). The success toast shows the plaintext password one time — copy it before dismissing.</p>
+
+        <h4>Add teacher from Staff Module (bottom card)</h4>
+        <p>This card mirrors HR Hub's active SPED teacher + intern roster so you don't have to retype anyone. It shows a search box (matches name / job title / email), a <em>Branch</em> select (<strong>All branches · East Branch · Greenhills Branch</strong>), and a table with columns <em>Name · Role · Job title · Branch · Email · Contract end · (action)</em>. The <em>Role</em> cell tags interns with an amber <span className="tag tag-amber">Intern</span> pill.</p>
+        <p>To create a class-portal account for someone in the list:</p>
         <ol className="task-steps">
-          <li className="task-step"><em>Payments tab</em> → scroll to <strong>Notifications: Automated payment reminders</strong>.</li>
-          <li className="task-step">Pick a window (7 / 30 / 90 / 365 days). Rows are grouped by period (e.g. August 2026) so you can see everyone contacted about the same billing period at once.</li>
-          <li className="task-step">Reminder types: <em>5-day heads-up</em>, <em>Due tomorrow</em>, <em>Past due</em>. The cron fires them automatically — you don’t need to click anything to send.</li>
+          <li className="task-step">Find the row. If they already have an account, the action cell shows <em>Account exists</em> in muted text.</li>
+          <li className="task-step">Otherwise click <strong>Create account</strong>. The action cell expands into a password input (placeholder "password (min 6)") plus <strong>Save</strong> and <strong>Cancel</strong> buttons.</li>
+          <li className="task-step">Type or generate a password, click <strong>Save</strong>. The success toast reads <em>"Intern teacher account created for &lt;name&gt; (&lt;branch&gt;). Auto-disables &lt;date&gt;. Password: &lt;pw&gt;"</em> for interns, or "Teacher account …" for regular staff.</li>
         </ol>
+        <p>Interns auto-disable 15 days after the end of their internship-end month (see <a href="#interns">chapter 15 — Intern accounts</a>).</p>
       </div>
 
-      <h2 id="frontdesk">4. Front desk <span className="tag tag-amber">Frontdesk</span></h2>
-      <p>The front desk is a payment-focused, branch-scoped account. You take cash, confirm bank deposits, generate paperwork, and keep the enrollment register clean.</p>
-
-      <h3>Where you land</h3>
-      <p><code>/frontdesk</code> with six tabs:</p>
-      <ul>
-        <li><strong>Students</strong> — your branch’s active roster with search, plan pill, branch badge, and current-period payment status.</li>
-        <li><strong>Calendar</strong> — your branch’s events, embedded from the shared calendar.</li>
-        <li><strong>Payments</strong> — the heart of your day. Contains four cards: Pending confirmations, Confirmed payments (scrollable with search), Pending-by-deadline, and the consolidated Paying students table.</li>
-        <li><strong>Enrollment register</strong> — one row per PAID student with LRN, LSEN, PSA birth cert, remittance status, and every DepEd field you file at year-end. Excel and PDF export in the top-right.</li>
-        <li><strong>Curriculum</strong> and <strong>Templates</strong> — read + upload access for materials you hand out to parents.</li>
-      </ul>
-
+      {/* ---- Students tab ---------------------------------------- */}
       <div className="role-card">
-        <h3>Key workflows</h3>
+        <h3>Tab 2 — Students</h3>
+        <p>Header: <em>Students · All enrolled students.</em> On the right, a search input placeholder <em>"Search by name or email"</em>.</p>
 
-        <h4>Record a cash payment from a parent</h4>
+        <h4>Students table</h4>
+        <p>Columns: <em>Name · Email · Level · Branch · Plan · Enrolled · Payment · (View)</em>. The whole row is clickable — anywhere on it opens the student detail drawer. The <strong>Plan</strong> column shows a coloured pill (<em>Annual</em> / <em>Bi-annual</em> / <em>Monthly</em> / <em>—</em> if there's no payment on file yet). The <strong>Payment</strong> column shows one of <em>Paid · Due · Pending · No payment yet</em>.</p>
+
+        <h4>Student detail drawer</h4>
+        <p>Opens as a full-screen modal. The header has <strong>← Back to list</strong> on the left, the student's name in the middle, and (main admin only) either a <strong>Sign as SCEI</strong> button (when the waiver is not yet countersigned) or a <span className="tag tag-sage">SCEI countersigned</span> badge, plus an <strong>×</strong> close button in the top-right.</p>
+        <p>The body is a stack of five cards:</p>
         <ol className="task-steps">
-          <li className="task-step"><em>Payments → + Record payment</em>.</li>
-          <li className="task-step">Pick the student from the branch-scoped picker. Pick method: <strong>Frontdesk payment</strong> with sub-option Cash / GCash / PayMaya / Credit / Debit.</li>
-          <li className="task-step">Pick the plan (Monthly / Bi-annual / Annual). Enter the amount in PHP. Type the period as an explicit month or half — for example <code>August 2026</code> or <code>First half SY 2026–2027</code>. Don’t use <code>2026-2027</code> or <code>AY 2026-2027</code> — the badge logic won’t know which month that was for.</li>
-          <li className="task-step">Click <strong>Record</strong>. The row lands in <em>Pending confirmations</em>. Once you have the cash in hand, click <strong>Confirm payment</strong> on that row — it moves to <em>Confirmed Payments</em> and the student’s badge flips to <span className="tag tag-sage">Paid for &lt;that period&gt;</span>.</li>
+          <li className="task-step"><strong>Identity + tuition status.</strong> Headshot on the left (main admin sees it read-only; the student themselves can edit it via <em>Change photo</em>). Name, email, and an inline grade-level editor <em>Enrolled in &lt;level&gt; · Change</em>. Right side shows the tuition badge stack (past-paid, past-due, current period).</li>
+          <li className="task-step"><strong>Record PayMongo payment</strong> button (main-admin only, and only when this student has zero prior payments). Opens the PayMongo recorder modal — fields: <em>Amount paid (PHP) · Plan · Period covered · PayMongo reference / receipt no. (optional)</em>. Bottom buttons: <strong>Cancel</strong> · <strong>Record payment</strong>.</li>
+          <li className="task-step"><strong>Learner profile</strong> card. Definition list of school year, LRN status, LRN, PSA Birth Cert No., DOB, sex, mother tongue, religion, diagnosis, LSEN, full address, both parents, guardian, phone numbers. Header actions:
+            <ul>
+              <li><strong>Update LRN</strong> — inline form with LRN Status radio (<em>No LRN · With LRN · Returning (Balik-Aral)</em>) and a 12-digit LRN input.</li>
+              <li><strong>Set / Update LSEN classification</strong> — grouped select using the DepEd LIS rubric. Only trained staff should fill this.</li>
+              <li><strong>Edit enrollment</strong> — opens the full enrollment-form editor (same form the parent filled at signup).</li>
+            </ul>
+          </li>
+          <li className="task-step"><strong>Submitted documents</strong> card. Each existing document has <strong>View · Download · Re-upload</strong>. At the bottom is a picker (<em>Choose a document to upload…</em>) with <em>Upload file</em> / <em>Replace file</em> buttons. Doc keys: PSA Birth Certificate · Child's 1×1 Photo · Parent/Guardian Valid ID · PWD ID · Latest Report Card (SF9) · Certificate of Good Moral Character · Medical / therapy reports · DepEd Affidavit of Undertaking · Form 137 / SF10 (staff only).</li>
+          <li className="task-step"><strong>Other Documents</strong> card — auto-generated PDFs. Each sub-card has <strong>View</strong> and <strong>Download PDF</strong>:
+            <ul>
+              <li><em>Enrollment Form (Annex 2)</em></li>
+              <li><em>Parent / Guardian Waiver</em> — three states (signed with witness / signed without witness / not yet signed). Students see a <strong>Sign waiver →</strong> link that opens <code>/waiver</code>.</li>
+              <li><em>School ID</em> — main admin can <strong>Upload School ID</strong> or <strong>Replace</strong>; everyone else can View / Download.</li>
+              <li><em>School Registration Letter</em> (main-admin only) — see <a href="#documents">chapter 12</a>.</li>
+              <li><em>Schedule of Fees</em> (main-admin only) — see <a href="#documents">chapter 12</a>.</li>
+              <li><em>Personal Vouchers</em> — see <a href="#vouchers">chapter 14</a>.</li>
+              <li><em>Plan-switch balance calculator</em> (main-admin only) — see <a href="#payments">chapter 11</a>.</li>
+              <li><em>Form 137 / SF10</em> — main admin + teacher can upload/replace.</li>
+            </ul>
+          </li>
+          <li className="task-step"><strong>Grades</strong> card — only appears when a grade record exists. Quarter tiles Q1 / Q2 / Q3 / Q4 / Year Avg.</li>
         </ol>
 
-        <Illustration caption="Record payment modal — reached via '+ Record payment' on the Payments tab.">
-          <div className="mk-card">
-            <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--deep-teal)', marginBottom: 10 }}>Record a payment</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '110px 1fr', rowGap: 8, columnGap: 12, fontSize: 12 }}>
-              <div style={{ color: 'var(--mid-gray)' }}>Student</div>
-              <div style={{ border: '1px solid var(--paper-3)', borderRadius: 6, padding: '5px 8px', background: 'var(--paper-2)' }}>Bruce Inigo Pelagio · Grade 1 · East</div>
-              <div style={{ color: 'var(--mid-gray)' }}>Method</div>
-              <div style={{ border: '1px solid var(--paper-3)', borderRadius: 6, padding: '5px 8px' }}>Frontdesk payment · Cash</div>
-              <div style={{ color: 'var(--mid-gray)' }}>Plan</div>
-              <div style={{ border: '1px solid var(--paper-3)', borderRadius: 6, padding: '5px 8px' }}>Monthly</div>
-              <div style={{ color: 'var(--mid-gray)' }}>Amount (PHP)</div>
-              <div style={{ border: '1px solid var(--paper-3)', borderRadius: 6, padding: '5px 8px', fontFamily: 'JetBrains Mono, monospace' }}>7,150.00</div>
-              <div style={{ color: 'var(--mid-gray)' }}>Period</div>
-              <div style={{ border: '1px solid var(--paper-3)', borderRadius: 6, padding: '5px 8px' }}>August 2026 <span style={{ fontSize: 10, color: 'var(--mid-gray)', marginLeft: 6 }}>← name a specific month</span></div>
-            </div>
-            <div style={{ marginTop: 12, textAlign: 'right' }}>
-              <span className="mk-btn-secondary mk-btn">Cancel</span>{' '}
-              <span className="mk-btn">Record</span>
-            </div>
-          </div>
-        </Illustration>
+        <h4>Sign as SCEI form</h4>
+        <p>Clicking the header's <strong>Sign as SCEI</strong> button opens the SceiAckForm. Fields: <em>Printed name</em> and a <em>Signature</em> canvas (mouse, finger, or stylus). Buttons: <strong>Cancel</strong> · <strong>Sign &amp; regenerate PDF</strong>. Signing regenerates the waiver PDF with SCEI's acknowledgment embedded and re-uploads it to the server — the badge in the drawer header flips to <span className="tag tag-sage">SCEI countersigned</span> with a hover-tooltip showing the signer + date.</p>
+      </div>
+
+      {/* ---- Grade Levels tab ------------------------------------ */}
+      <div className="role-card">
+        <h3>Tab 3 — Grade Levels</h3>
+        <p>Header: <em>Classes · Disabling hides the tile on the enrollment landing page. Existing students at the level stay enrolled and are unaffected.</em></p>
+        <p>Below the header, a grid of 14 tiles — one per grade (<em>Nursery, Kinder, Grade 1 … Grade 12</em>). Each tile shows:</p>
+        <ul>
+          <li>The grade label</li>
+          <li>Live count + status: <em>4 enrolled · Open for enrollment</em> (green) or <em>4 enrolled · Closed for new enrollees</em> (red)</li>
+          <li>A toggle button — <strong>Disable</strong> when the level is open, <strong>Enable</strong> when closed, <strong>Saving…</strong> while pending.</li>
+        </ul>
+        <p>Use this to close Grade 11 to new enrollees mid-year without deleting anything.</p>
+      </div>
+
+      {/* ---- Curriculum tab -------------------------------------- */}
+      <div className="role-card">
+        <h3>Tab 4 — Curriculum</h3>
+        <p>Two stacked cards.</p>
+
+        <h4>Upload curriculum template (top card)</h4>
+        <ol className="task-steps">
+          <li className="task-step">Type a <em>Title</em>.</li>
+          <li className="task-step">Pick a <em>Grade level</em> from the 14-level dropdown.</li>
+          <li className="task-step">Attach up to three file variants — each has <strong>Choose</strong> / <strong>Change</strong> / <strong>Remove</strong> buttons:
+            <ul>
+              <li><em>PDF version</em> (.pdf)</li>
+              <li><em>Word version</em> (.doc / .docx)</li>
+              <li><em>Excel version</em> (.xls / .xlsx / .csv)</li>
+            </ul>
+          </li>
+          <li className="task-step">Click <strong>Save curriculum</strong>.</li>
+        </ol>
+
+        <h4>All curriculum templates (bottom card)</h4>
+        <p>Search input <em>"Search by title, file name, uploader, or grade"</em> and a <strong>Reset &amp; resync</strong> button (wipes the local cache and re-fetches). Below, curricula are grouped by grade into collapsible sections. Each row has format chips: <em>PDF</em> / <em>Word</em> / <em>Excel</em> / <em>File</em> with a small <strong>↗</strong> to open in a new tab and <strong>↓</strong> to download, plus a <strong>Delete</strong> button (main admin or the uploader).</p>
+      </div>
+
+      {/* ---- Templates tab --------------------------------------- */}
+      <div className="role-card">
+        <h3>Tab 5 — Templates</h3>
+        <p>Same layout as Curriculum but for free-form templates (IEP forms, lesson plans, parent letters). Only two file slots: <em>PDF version</em> and <em>Word version</em>. No grade level.</p>
+      </div>
+
+      {/* ---- Notifications tab ----------------------------------- */}
+      <div className="role-card">
+        <h3>Tab 6 — Notifications</h3>
+        <p>The announcement composer + list, plus (when active) an admin aggregate view of the payment-reminder log.</p>
+
+        <h4>Compose an announcement</h4>
+        <ol className="task-steps">
+          <li className="task-step">Click <strong>New announcement</strong>.</li>
+          <li className="task-step">Type a <em>Title</em> and a body in <em>Details</em>.</li>
+          <li className="task-step">Optionally attach a poster (image or PDF) via <strong>+ Add poster or PDF</strong>. To swap it out, click <strong>Replace attachment</strong>; to drop it, click <strong>Remove</strong>. The preview appears below.</li>
+          <li className="task-step">Pick the <em>Grade levels</em> to target using the 14 pill toggles. Leave all blank = school-wide.</li>
+          <li className="task-step">Tick <strong>Also notify teachers</strong> if you want the announcement to reach teachers too (main admin only).</li>
+          <li className="task-step">Click <strong>Publish</strong>. The announcement appears in the recipient portals and in the Announcements list below.</li>
+        </ol>
+
+        <h4>Announcements list</h4>
+        <p>Each row shows the title with 📎 <em>Poster</em> chip (if attached) and ✉ <em>Emailed · N</em> chip (if an email blast has been sent). Click <strong>View</strong> to open the announcement modal.</p>
+
+        <h4>Announcement modal actions</h4>
+        <ul>
+          <li><strong>Send Email</strong> / <strong>Send email again</strong> — main admin and teacher can click; front desk cannot. Confirm dialog notes if already emailed. On success a toast lists the per-role / per-level breakdown of recipients.</li>
+          <li><strong>Delete announcement</strong> — main admin can delete anything; teachers can only delete what they authored.</li>
+          <li><strong>Close</strong> — top-right.</li>
+        </ul>
+      </div>
+
+      {/* ---- Payments tab ---------------------------------------- */}
+      <div className="role-card">
+        <h3>Tab 7 — Payments</h3>
+        <p>The busiest tab. Six stacked sub-panels in order: <em>Pending confirmations · Confirmed Payments · Pending payments — by deadline · Paying students (consolidated table) · No payment record yet · Automated payment reminders (log)</em>.</p>
+
+        <h4>Pending confirmations</h4>
+        <p>Rows are payments the front desk has recorded but not yet confirmed. Top-right buttons: <strong>+ Record payment</strong> and <strong>Refresh</strong>. Columns: <em>Student · Plan · Period · Method · Branch · Amount · Submitted · Action</em>.</p>
+        <p>The <strong>Method</strong> column is an inline <em>select</em> — change it any time before confirming. Options: <em>Frontdesk: Cash / Credit Card / Debit Card / GCash / PayMaya · Bank deposit · PayMongo</em>. Legacy null shows "— Unspecified —".</p>
+        <p>Row actions:</p>
+        <ul>
+          <li><strong>Confirm payment</strong> — flips status to Paid, moves the row to Confirmed Payments below, and lights up the student's badge.</li>
+          <li><strong>Edit</strong> — opens the Edit payment modal (see below).</li>
+          <li><strong>Delete</strong> — main-admin only. Different confirm dialogs for PENDING vs CONVERTED rows; for CONVERTED, a warning that deleting here does NOT void the corresponding Order in the accounting hub.</li>
+        </ul>
+
+        <h4>Confirmed Payments</h4>
+        <p>Search input <em>"Search name, email, plan, period, method, branch"</em> and a live counter <em>N/total total</em>. Same columns as Pending plus a <em>Confirmed at</em> timestamp; status badge is always <span className="tag tag-sage">Paid</span>. Row actions: <strong>Edit</strong> and <strong>Delete</strong> (main-admin only).</p>
+
+        <h4>Record payment modal</h4>
+        <p>Opened by <strong>+ Record payment</strong>. Header: <em>Record payment on behalf of student · Front-desk override</em>. Body copy explains this creates a PENDING row that still needs <em>Confirm payment</em> before the student's badge flips.</p>
+        <ol className="task-steps">
+          <li className="task-step">Pick the <strong>Student</strong> from the searchable dropdown. If your branch is scoped, only in-branch active students appear. Options are formatted <em>Last, First · Branch · Level</em>.</li>
+          <li className="task-step">Pick the <strong>Payment method</strong>: <em>Frontdesk payment</em> / <em>Bank deposit</em> / <em>PayMongo</em>.</li>
+          <li className="task-step">When method = <em>Frontdesk payment</em>, a second dropdown appears — <strong>Frontdesk payment type</strong>: <em>Cash · Credit Card · Debit Card · GCash · PayMaya</em>.</li>
+          <li className="task-step">Pick the <strong>Plan</strong>: <em>Monthly · Bi-annual · Annual</em>.</li>
+          <li className="task-step">Type the <strong>Amount paid (PHP)</strong> as a plain number (no commas).</li>
+          <li className="task-step">Use the <strong>Period covered</strong> picker — see <a href="#payments">chapter 11</a> for why the period text matters so much.</li>
+          <li className="task-step">Optionally type a <em>Receipt no.</em> / <em>Deposit slip reference</em> / <em>PayMongo reference</em> in the reference field (its label morphs to match the method).</li>
+          <li className="task-step">Click <strong>Record payment</strong>. The success alert reminds you to click <em>Confirm payment</em> once the money is actually verified.</li>
+        </ol>
 
         <div className="callout callout-warn">
-          <span className="label">The period text matters</span>
-          The system attributes a payment to a specific month <em>only</em> when the period explicitly names the month. So <code>July 2026</code> counts as July, and <code>Back balance · June–September 2026</code> covers all four. Vague periods like <code>2026-2027</code> stay in the payment history but do <strong>not</strong> mark any specific month as paid. If a parent hands you cash for June, type <code>June 2026</code> — anything else silently drops the attribution.
+          <span className="label">PayMongo payments do NOT auto-confirm from this flow</span>
+          When the parent completes a real PayMongo checkout via <code>/pay</code>, the webhook flips the row automatically. But when <em>staff</em> record a PayMongo payment via <strong>+ Record payment</strong>, that's a bookkeeping entry for a receipt already collected elsewhere — it lands as PENDING and you must still click <strong>Confirm payment</strong>. Forgetting this step is the #1 cause of "the parent paid via PayMongo but the portal still says Due" tickets.
         </div>
 
-        <h4>Handle a late enrollee’s back balance</h4>
-        <ol className="task-steps">
-          <li className="task-step">When a parent signs up in July on the Monthly plan, their first <em>/pay</em> visit already shows a lump-sum callout — for example “2-month back balance (June–July) ₱14,300”. They can pay that lump via PayMongo or over the counter.</li>
-          <li className="task-step">If you’re recording it in <em>+ Record payment</em>, enter the amount as the lump and use the period <code>Back balance · June–July 2026</code>. Both months light up as paid.</li>
-          <li className="task-step">If a late enrollee already paid for the current month but skipped an earlier one, their profile shows an amber <span className="tag tag-due">Owes for June 2026</span> badge and the Pending-by-deadline list surfaces them with a Jun 5 deadline flagged <em>overdue</em>. Coordinate with the parent to collect that missing installment separately.</li>
-        </ol>
+        <h4>Edit payment modal</h4>
+        <p>Reached by <strong>Edit</strong> on any pending or confirmed row. Header: <em>Edit payment · reconcile with accounting hub · &lt;student name&gt;</em> with a sub-line showing email, branch, current status, and the internal payment ID (useful when cross-referencing with the accounting hub).</p>
+        <p>Fields: <em>Amount paid (PHP) · Method · Frontdesk payment type · Plan · Period covered · Submitted at · Confirmed at · Remarks / accounting-hub reference</em>. Setting <strong>Confirmed at</strong> on a pending row auto-flips its status to CONVERTED. Bottom buttons: <strong>Cancel</strong> · <strong>Save changes</strong>.</p>
 
-        <h4>Switch a student’s plan (monthly → bi-annual)</h4>
-        <p>Same flow as the main admin. On the student’s profile, use the <strong>Plan change — Switch payment plan</strong> card to compute the balance owed (accounting for the 30% voucher and what they’ve already paid), then <em>Record payment</em> that exact amount under the new plan. Recording it as <em>Bi-annual</em> flips their inferred plan going forward.</p>
+        <h4>Pending payments — by deadline</h4>
+        <p>Shows every student who owes something, closest deadline first. Search input <em>"Search by name, email, plan, or branch"</em>. Columns: <em>Student · Branch · Plan · Period · Deadline · Amount · Method · Proof · Remind</em> + a <em>Action</em> column (main-admin only). Overdue rows go rose with an "overdue" tag.</p>
+        <ul>
+          <li><strong>Proof</strong> column has a <strong>View</strong> button if the parent uploaded a bank slip; otherwise "—".</li>
+          <li><strong>Remind</strong> cell shows <strong>🔔 Remind</strong> for overdue rows only — clicking sends a manual overdue-reminder email immediately, then shows <strong>Sending…</strong> → <strong>✓ Sent</strong> for 4 seconds. Every send is logged below.</li>
+          <li><strong>Delete</strong> column (main admin) hard-deletes the student's account — the confirm dialog offers <em>Disable instead</em> as the safer path.</li>
+        </ul>
 
-        <h4>Fix a payment that was recorded with the wrong period</h4>
-        <ol className="task-steps">
-          <li className="task-step">Open <em>Payments → Confirmed Payments</em>. Find the row (use the search box).</li>
-          <li className="task-step">Click <strong>Edit</strong>. Adjust the period text, amount, or date. Save.</li>
-          <li className="task-step">If the student’s badge doesn’t update immediately, hard-refresh (Cmd/Ctrl + Shift + R).</li>
-        </ol>
+        <h4>Paying students (consolidated table)</h4>
+        <p>Header <em>Payments · Paying students · Showing: &lt;slice&gt; · N paid · M pending</em>. Filter pills: <strong>All · Annual · Bi-annual · Monthly</strong>. Selecting <em>Bi-annual</em> reveals sub-pills <strong>1st Biannual</strong> / <strong>2nd Biannual</strong>; selecting <em>Monthly</em> reveals a month dropdown (June … May) preselected to the current month. Status pill recomputes per slice.</p>
 
-        <h4>Generate a school registration letter or fee schedule</h4>
-        <ol className="task-steps">
-          <li className="task-step">Open the student’s profile. Scroll to <strong>Documents</strong>.</li>
-          <li className="task-step">Click <strong>Generate registration letter</strong>. Fill in the Purpose field (e.g. “DepEd enrollment verification”), then <strong>Download PDF</strong>. The letter carries HANNAH JARA’s pre-embedded signature.</li>
-          <li className="task-step">The <strong>Schedule of Fees</strong> PDF is generated the same way and shows the correct paid / balance rows based on the student’s history.</li>
-        </ol>
+        <h4>No payment record yet</h4>
+        <p>Students who haven't started any checkout. Each row: name + email + level, plus a <strong>Delete</strong> (main admin).</p>
 
-        <h4>Keep the enrollment register clean</h4>
-        <ol className="task-steps">
-          <li className="task-step">Open <strong>Enrollment register</strong> tab. Every cell is click-to-edit and saves automatically.</li>
-          <li className="task-step">Fill in LRN once the parent brings the document; if they don’t have one yet, use the LRN Status dropdown and mark it <code>NO_LRN</code>.</li>
-          <li className="task-step">For SPED / IEP-flagged students, use the LSEN classification cell. Only trained staff should fill this.</li>
-          <li className="task-step">Export to Excel or PDF for DepEd filings from the top-right buttons.</li>
-        </ol>
+        <h4>Automated payment reminders (log)</h4>
+        <p>Filters: <em>Window</em> dropdown (<em>Last 7 days · Last 30 days · Last 90 days · Last 12 months</em>) and a <em>Search name / email / period</em> input. Below, a collapsible <em>&lt;details&gt;</em> block per period (e.g. "August 2026") with a table of every reminder sent: <em>Student · Branch · Plan · Reminder</em> (5-day heads-up / Due tomorrow / Past due / Manual reminder) · <em>Sent at</em>.</p>
       </div>
 
-      <h2 id="teacher">5. SPED teacher <span className="tag tag-info">Teacher</span></h2>
-      <p>Teachers see students, classes, and materials — no payment data, no user administration.</p>
+      {/* ---- Fees tab -------------------------------------------- */}
+      <div className="role-card">
+        <h3>Tab 8 — Fees</h3>
+        <p>Two panels: <em>Tuition + fees</em> (both roles can see) and <em>Voucher codes</em> (main-admin only).</p>
 
-      <h3>Where you land</h3>
-      <p><code>/profile</code> with tabs for your own profile, your assigned <em>Classes</em>, <em>Calendar</em>, and <em>Documents</em>.</p>
+        <h4>Tuition + fees</h4>
+        <p>One card per branch you can edit. Each card has an H3 with the branch name, a "Last updated &lt;timestamp&gt; by &lt;email&gt;" line, and a grid of six ₱ inputs:</p>
+        <ul>
+          <li><em>Tuition — Annual · Bi-annual · Monthly</em></li>
+          <li><em>Misc — Annual · Bi-annual · Monthly</em></li>
+        </ul>
+        <p>Below the six, an <em>Other line items</em> section with <strong>+ Add item</strong> — each extra item has <em>Label · Amount (₱) · Notes (optional)</em> and a <strong>Remove</strong> button. Save with <strong>Save fees</strong> at the bottom. Every <code>/pay</code> checkout and every plan-switch calculator on that branch picks up the new numbers on the next page load.</p>
+
+        <h4>Voucher codes (main-admin only)</h4>
+        <p>Bulk editor with a grid of rows: <em>Code · Discount % · Valid until · Active</em> checkbox · <strong>Remove</strong>. Footer buttons: <strong>+ Add voucher</strong> · <strong>Save vouchers</strong>. Codes are case-insensitive; expired ones display an "expired" label.</p>
+        <p>Below a divider, the <em>Personal early-bird vouchers</em> table lists every per-student code minted across the school — columns <em>Student · Branch · Code (click to copy) · Discount · Valid until · Status · Issued by</em>. See <a href="#vouchers">chapter 14</a>.</p>
+      </div>
+
+      {/* ---- Assignments tab ------------------------------------- */}
+      <div className="role-card">
+        <h3>Tab 9 — Assignments</h3>
+        <p>The teacher ↔ grade matrix. Only the main admin can edit; branch admins see it read-only.</p>
+        <p>Header: <em>Teacher assignments · Tick the grade levels each teacher handles, per branch. Teachers only see students enrolled in the branches and grades they're assigned to.</em></p>
+        <p>Table: teacher name in the first column, branch in the second, then 14 short-labelled columns <em>N · K · G1 … G12</em>. Each cell is a checkbox — clicking auto-saves. Every teacher gets one row per branch you can see (both branches for main admin; one for branch admin).</p>
+      </div>
+      </section>
+
+      {/* ─────────────────────────────────────────────────────────────
+       * 4. BRANCH ADMIN
+       * ────────────────────────────────────────────────────────── */}
+      <section className="handbook-section" data-slug="branch-admin">
+      <h2 id="branch-admin">4. HR officer — what's different <span className="tag tag-info">Branch admin</span></h2>
+      <p>The HR officer / branch admin lands on the same <code>/admin</code> dashboard with the same nine tabs. Everything is filtered to your branch (East or Greenhills) at the server level, so cross-branch data never reaches your screen.</p>
+
+      <h3>Practical differences vs main admin</h3>
+      <ul>
+        <li><strong>Students, Payments (all sub-tabs)</strong> — only your branch.</li>
+        <li><strong>Fees</strong> — you see the fee schedule for every branch but can only edit your own.</li>
+        <li><strong>Users → Create staff account</strong> — the <em>Role</em> dropdown only offers <em>Teacher</em> and <em>Front desk</em>; the <em>Branch</em> field is disabled and preset to yours.</li>
+        <li><strong>Users table</strong> — <em>Enable / Disable</em> and <em>Delete</em> row buttons are hidden. If you need to disable someone, ask the main admin.</li>
+        <li><strong>Voucher codes panel</strong> — hidden entirely. Shared codes (AURA30 etc.) are main-admin only. You can still issue <em>personal</em> early-bird vouchers from student profiles.</li>
+        <li><strong>Payments → row actions</strong> — <em>Delete</em> buttons are hidden across all four payment sub-panels.</li>
+        <li><strong>Assignments tab</strong> — you can see it, but the checkboxes are disabled with a tooltip <em>"Only the main admin can edit teacher assignments."</em></li>
+        <li><strong>Student detail drawer</strong> — the following are hidden or read-only: <em>Record PayMongo payment</em> button, <em>+ Issue AURA30 early-bird voucher</em> button, <em>School Registration Letter</em> card, <em>Schedule of Fees</em> card, <em>Plan-switch balance calculator</em>, <em>Upload School ID</em>.</li>
+      </ul>
+
+      <p>Everything else — reset passwords, edit users in your branch, add teachers from the Staff Module, use the Curriculum / Templates / Notifications tabs — you have full access to.</p>
+      </section>
+
+      {/* ─────────────────────────────────────────────────────────────
+       * 5. FRONT DESK
+       * ────────────────────────────────────────────────────────── */}
+      <section className="handbook-section" data-slug="frontdesk">
+      <h2 id="frontdesk">5. Front desk — every tab <span className="tag tag-amber">Frontdesk</span></h2>
+      <p>Signing in as front desk lands you on <code>/frontdesk</code>. Header shows <em>Aura Academy · Clinic front desk · Front desk dashboard · &lt;your email&gt;</em>. Below the header, six tabs: <strong>Students · Calendar · Payments · Enrollment register · Curriculum · Templates</strong>.</p>
 
       <div className="role-card">
-        <h3>Key workflows</h3>
+        <h3>Tab 1 — Students</h3>
+        <p>Uses the same StudentListPanel as main admin, scoped to your branch. Search by name or email. Click any row to open the detail drawer (see <a href="#main-admin">chapter 3 → Tab 2</a> — you have main-admin-equivalent access to every card <em>except</em> the ADMIN-only auto-generated PDFs).</p>
+      </div>
 
-        <h4>Open a class</h4>
+      <div className="role-card">
+        <h3>Tab 2 — Calendar</h3>
+        <p>Embeds the shared calendar page, scoped to your branch. See <a href="#calendar">chapter 9</a>.</p>
+      </div>
+
+      <div className="role-card">
+        <h3>Tab 3 — Payments</h3>
+        <p>Two stacked components. First, <strong>FrontDeskPaymentConfirmations</strong> — the Pending queue + Confirmed list + Record modal + Edit modal (identical to the main admin's Payments tab). Second, <strong>PaymentsGrouped</strong> — the "Pending payments — by deadline" table, the consolidated "Paying students" filter table, and the automated reminder log.</p>
+        <p>Row actions:</p>
+        <ul>
+          <li><strong>+ Record payment</strong> and <strong>Refresh</strong> (top-right of Pending confirmations).</li>
+          <li><strong>Confirm payment</strong> · <strong>Edit</strong> · <strong>Delete</strong> per pending row (Delete is main-admin only server-side; you'll see it disabled or hidden).</li>
+          <li><strong>🔔 Remind</strong> on overdue rows in the by-deadline table.</li>
+        </ul>
+      </div>
+
+      <div className="role-card">
+        <h3>Tab 4 — Enrollment register (aka "Spreadsheet")</h3>
+        <p>The DepEd-compliant enrollment register. Every cell is click-to-edit and saves automatically. Columns include full name, LRN status, LRN, PSA Birth Cert No., DOB, sex, address, both parents, LSEN classification, LIS status, remittance, comments, plus six document-status columns.</p>
+        <p>Toolbar: search input, grade-level filter dropdown, <strong>Clear</strong> link, <strong>Refresh</strong>, <strong>Excel</strong> export button, and <strong>Sign out</strong>.</p>
+        <p>For <em>NO_LRN</em> rows, the LRN cell is an inline 12-digit input. Type the LRN and click away — on blur it validates against <code>^\d{'{'}12{'}'}$</code>. Valid LRNs auto-flip the status to <em>WITH_LRN</em>.</p>
+      </div>
+
+      <div className="role-card">
+        <h3>Tab 5 — Curriculum</h3>
+        <p>Same as main admin's Curriculum tab — upload + view + delete curriculum templates.</p>
+      </div>
+
+      <div className="role-card">
+        <h3>Tab 6 — Templates</h3>
+        <p>Same as main admin's Templates tab — upload + view + delete free-form templates.</p>
+      </div>
+      </section>
+
+      {/* ─────────────────────────────────────────────────────────────
+       * 6. SPED TEACHER HUB
+       * ────────────────────────────────────────────────────────── */}
+      <section className="handbook-section" data-slug="teacher">
+      <h2 id="teacher">6. SPED teacher hub <span className="tag tag-info">Teacher</span></h2>
+      <p>Signing in as a teacher lands you on <code>/profile</code>, which the sidebar labels <strong>Teacher hub</strong>. You have four sidebar nav items: <em>Teacher hub · Classes · Calendar · Meetings</em>.</p>
+
+      <h3>Where you land — Teacher hub</h3>
+      <p>Renders your own profile summary (headshot, name, email) plus a card for every class you've been assigned (a click on any card opens the class dashboard — see <a href="#classes">chapter 7</a>). No payment data, no user administration.</p>
+
+      <h3>Key workflows</h3>
+      <div className="role-card">
+        <h4>Sign a student's waiver as witness</h4>
         <ol className="task-steps">
-          <li className="task-step">Sidebar → <strong>Classes</strong>. You see cards for every class assigned to you.</li>
-          <li className="task-step">Click <strong>Open</strong>. Inside you can see the roster, schedule (days + time), photo, and the lesson / activity feed.</li>
+          <li className="task-step">Open <strong>Classes → Open</strong> any class you handle → click a student to open their detail drawer.</li>
+          <li className="task-step">Header shows <strong>Sign as witness</strong> button (or <span className="tag tag-sage">Waiver witness signed</span> badge if you already did).</li>
+          <li className="task-step">Click <strong>Sign as witness</strong>, draw your signature, save. Your signature gets embedded into the waiver PDF alongside the parent's.</li>
         </ol>
+        <div className="callout">
+          <span className="label">Waiver signatures sync across devices</span>
+          As of 2026-08, when you sign a waiver on your phone and then open the same student on your laptop, the laptop's copy auto-syncs. You don't have to re-sign per device.
+        </div>
 
-        <h4>Add a lesson with a proof photo</h4>
-        <ol className="task-steps">
-          <li className="task-step">In the class dashboard, click <strong>+ Lesson</strong>. Fill in the name, score, and the tickbox for “Completed today”.</li>
-          <li className="task-step">Attach a proof — a photo of the child’s work. You can pick multiple photos at once; each shows as a chip while it uploads.</li>
-          <li className="task-step">Save. The lesson appears on every enrolled student’s profile under <em>Lessons</em>.</li>
-        </ol>
-
-        <h4>Record an activity (SPED session, therapy, etc.)</h4>
-        <ol className="task-steps">
-          <li className="task-step">Click <strong>+ Activity</strong>. Pick the activity type from the dropdown.</li>
-          <li className="task-step">Attach photos (multiple OK). While they upload, the activity shows a <span className="tag tag-amber">PENDING</span> badge; once all photos flush it flips to saved.</li>
-        </ol>
-
-        <h4>Edit a student’s LRN or upload their Form 137 / SF10</h4>
+        <h4>Edit a student's LRN or upload their Form 137 / SF10</h4>
         <p>Teachers, front desk, and admins share this permission. On the student profile, use the <strong>Update LRN</strong> button in Learner profile, or the <strong>Form 137 / SF10</strong> upload slot in Other documents.</p>
 
         <h4>Post an announcement to your classes</h4>
         <ol className="task-steps">
-          <li className="task-step">From the class dashboard, use the announcements section.</li>
-          <li className="task-step">Title, body, optional PDF attachment. Recipients are the class roster’s parents.</li>
+          <li className="task-step">Open the Notifications section of your assigned class dashboard.</li>
+          <li className="task-step">Click <strong>New announcement</strong>. Title, body, optional PDF attachment. Recipients auto-scope to the class roster's parents.</li>
+          <li className="task-step">Click <strong>Publish</strong>. Optionally hit <strong>Send Email</strong> from the announcement modal to blast the email version.</li>
         </ol>
       </div>
+      </section>
 
-      <h2 id="student">6. Student / parent <span className="tag tag-sage">Student</span></h2>
-      <p>The student account is what parents sign in to. The child is technically the “student user”; the parent normally holds the credentials and pays on the child’s behalf.</p>
+      {/* ─────────────────────────────────────────────────────────────
+       * 7. STUDENT / PARENT
+       * ────────────────────────────────────────────────────────── */}
+      <section className="handbook-section" data-slug="student">
+      <h2 id="student">7. Student / parent portal <span className="tag tag-sage">Student</span></h2>
+      <p>The student account is what parents sign in to. The child is technically the "student user"; the parent normally holds the credentials and pays on the child's behalf. Signing in lands you on <code>/profile</code>. Sidebar: <em>My profile · Classes · Calendar · Meetings · Pay tuition</em>.</p>
 
-      <h3>Where you land</h3>
-      <p><code>/profile</code>. On mobile the sidebar becomes a hamburger.</p>
+      <h3>Profile tabs</h3>
+      <p>At the top of <code>/profile</code>, a tab bar with four buttons:</p>
+      <ol className="task-steps">
+        <li className="task-step"><strong>Profile</strong> — your identity card (headshot + name + level with a <em>Change</em> link), a <em>Pay tuition fee →</em> shortcut button, the Learner profile card (which parents can edit via <strong>Edit profile</strong>), Submitted documents, Other Documents (auto-generated PDFs, Personal Vouchers, Form 137 / SF10), and Grades preview when populated.</li>
+          <li className="task-step"><strong>Payment</strong> — either the "Tuition not yet paid" prompt with a big <em>Pay tuition fee →</em> button, or the payment history table. Columns: <em>Date · Plan · Period · Total · Method · Status · Proof</em>.</li>
+        <li className="task-step"><strong>Grades</strong> — Q1 / Q2 / Q3 / Q4 / Year Avg tiles once the teacher has recorded them, or an empty state.</li>
+        <li className="task-step"><strong>Notifications</strong> — announcements the school has posted, filtered to your grade level.</li>
+      </ol>
 
-      <div className="role-card">
-        <h3>Key workflows</h3>
+      <h3>Check what tuition you owe</h3>
+      <p>Open your profile. The badge in the top-right of the identity card is authoritative:</p>
+      <ul>
+        <li><span className="tag tag-sage">Paid for July 2026</span> — you're current.</li>
+        <li><span className="tag tag-rose">Due for July 2026</span> — click <strong>Pay tuition fee →</strong> to open <code>/pay</code>.</li>
+        <li><span className="tag tag-amber">Owes for June 2026</span> alongside <span className="tag tag-sage">Paid for July 2026</span> — you paid this month but skipped an earlier one. Contact the front desk to settle the missing month, or open <code>/pay</code> where a callout lists the past-due months.</li>
+      </ul>
 
-        <h4>Check what tuition you owe</h4>
-        <p>Open your profile. The badge in the top-right of the profile card is authoritative:</p>
-        <ul>
-          <li><span className="tag tag-sage">Paid for July 2026</span> — you’re current.</li>
-          <li><span className="tag tag-rose">Due for July 2026</span> — click <strong>Pay tuition fee →</strong> to open <em>/pay</em>.</li>
-          <li><span className="tag tag-amber">Owes for June 2026</span> alongside <span className="tag tag-sage">Paid for July 2026</span> — you paid this month but skipped an earlier one. Contact the front desk to settle the missing month, or open <em>/pay</em> where a callout will tell you which months are past-due.</li>
-        </ul>
-
-        <Illustration caption="Student profile card — badges stack from oldest paid month down to the current period.">
-          <div className="mk-card" style={{ padding: 14 }}>
-            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14 }}>
-              <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-                <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'var(--paper-2)', flexShrink: 0 }} />
-                <div>
-                  <div className="mk-label">Student profile</div>
-                  <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--deep-teal)' }}>BRUCE INIGO PELAGIO</div>
-                  <div style={{ fontSize: 11, color: 'var(--mid-gray)' }}>gladys.selosa@gmail.com</div>
-                  <div style={{ fontSize: 11, color: 'var(--mid-gray)', marginTop: 2 }}>Enrolled in <strong>Grade 1</strong></div>
-                </div>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
-                <span className="tag tag-sage">Paid for June 2026</span>
-                <span className="tag tag-sage">Paid for July 2026</span>
+      <Illustration caption="Student profile card — badges stack from oldest paid month down to the current period.">
+        <div className="mk-card" style={{ padding: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 14 }}>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+              <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'var(--paper-2)', flexShrink: 0 }} />
+              <div>
+                <div className="mk-label">Student profile</div>
+                <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--deep-teal)' }}>BRUCE INIGO PELAGIO</div>
+                <div style={{ fontSize: 11, color: 'var(--mid-gray)' }}>gladys.selosa@gmail.com</div>
+                <div style={{ fontSize: 11, color: 'var(--mid-gray)', marginTop: 2 }}>Enrolled in <strong>Grade 1</strong></div>
               </div>
             </div>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+              <span className="tag tag-sage">Paid for June 2026</span>
+              <span className="tag tag-sage">Paid for July 2026</span>
+            </div>
           </div>
-        </Illustration>
+        </div>
+      </Illustration>
 
-        <h4>Pay your tuition</h4>
+      <h3>Common parent tasks</h3>
+      <div className="role-card">
+        <h4>Pay tuition (deep dive in <a href="#payments">chapter 11</a>)</h4>
         <ol className="task-steps">
-          <li className="task-step">Sidebar → <strong>Pay tuition</strong>, or click the <strong>Pay tuition fee →</strong> button on your profile.</li>
-          <li className="task-step">Pick a plan (Annual / Bi-annual / Monthly). The page shows the amount for that plan for your branch.</li>
-          <li className="task-step">If you have a personal voucher (the front desk issued you one when you availed of the AURA30 early bird), it’s applied automatically. You’ll see “✓ Code AURA30-YOURNAME-XXXXXX applied — 30% off tuition”. You can remove it if you don’t want the discount, but on the next visit it will re-apply.</li>
-          <li className="task-step">Pick a method: <strong>Pay online (PayMongo)</strong> for instant confirmation via GCash/Maya/card/bank; <strong>Front desk cash</strong> to pay at the clinic; <strong>Bank deposit</strong> to deposit at BDO and upload the slip.</li>
-          <li className="task-step">Once confirmed, your profile badge flips to Paid.</li>
+          <li className="task-step">Sidebar → <strong>Pay tuition</strong> (or the button on your profile).</li>
+          <li className="task-step">Read the tuition fee schedule + the red tuition obligation policy panel.</li>
+          <li className="task-step">Pick a plan (Annual / Bi-annual / Monthly).</li>
+          <li className="task-step">If you have a personal early-bird voucher, it's applied automatically — you can <strong>Remove</strong> it if you don't want the discount (it'll re-apply next visit).</li>
+          <li className="task-step">Pick a method: <strong>PayMongo checkout</strong> (card / GCash / Maya / GrabPay), <strong>Pay at front desk</strong> (cash), or <strong>Direct bank deposit</strong> (BDO, upload the slip).</li>
+          <li className="task-step">For PayMongo, click <strong>Proceed to PayMongo checkout — ₱X,XXX</strong>. You're redirected to the PayMongo hosted checkout, complete payment, and return. Your badge flips to Paid within seconds.</li>
         </ol>
 
-        <h4>Sign your parent’s waiver</h4>
+        <h4>Sign the waiver</h4>
         <ol className="task-steps">
-          <li className="task-step">Sidebar → <strong>Documents</strong>. Look for the waiver card.</li>
-          <li className="task-step">Read the terms. Draw your signature in the pad (mouse, finger, or stylus). Save.</li>
-          <li className="task-step">The waiver PDF is generated and stored on your profile. The main admin countersigns from their end.</li>
+          <li className="task-step">From <em>/profile → Other Documents</em>, click <strong>Sign waiver →</strong>. A popup window opens <code>/waiver</code>.</li>
+          <li className="task-step">Fill in every section: Student info · Parent/Guardian info · Authorized fetchers · Emergency contact + medical · Acknowledgments (initial each of the 15 clauses) · Photo-release radio · Signatures.</li>
+          <li className="task-step">Click <strong>Sign &amp; generate waiver PDF</strong>. The PDF downloads automatically and lands on your profile. The assigned SPED teacher will countersign as witness when she next signs in.</li>
         </ol>
 
-        <h4>Upload a required document (birth cert, medical record, etc.)</h4>
+        <h4>Upload a required document</h4>
         <ol className="task-steps">
-          <li className="task-step">Sidebar → <strong>Documents</strong>. Each expected document has its own card.</li>
-          <li className="task-step">Click <strong>Upload</strong>, pick the file (PDF or photo), and save. The front desk sees it appear in the student’s profile.</li>
+          <li className="task-step">On <em>/profile</em>, scroll to <strong>Submitted documents</strong>.</li>
+          <li className="task-step">At the bottom of the card, pick a document from the dropdown (PSA Birth Certificate, 1×1 Photo, Parent ID, PWD ID, Report Card / SF9, etc.).</li>
+          <li className="task-step">Click <strong>Upload file</strong>. Files under 30 MB, PDF / JPG / PNG. To swap, click <strong>Re-upload</strong> on an existing row.</li>
         </ol>
 
         <h4>See class announcements</h4>
-        <p>Sidebar → <strong>Classes</strong>. Click your class. Announcements appear in a feed with any attached PDFs opening inline.</p>
+        <p>Sidebar → <strong>Classes</strong>, click your class. Announcements appear in a feed with any attached PDFs opening inline. Or use the Notifications tab on your profile for the full list.</p>
+      </div>
+      </section>
+
+      {/* ─────────────────────────────────────────────────────────────
+       * 8. CLASSES — full walkthrough
+       * ────────────────────────────────────────────────────────── */}
+      <section className="handbook-section" data-slug="classes">
+      <h2 id="classes">8. Classes — full walkthrough</h2>
+      <p>Sidebar → <strong>Classes</strong>. The page shows every class you can see as a 2-column card grid (not a table). Teachers see only their assigned classes; admins see everything. Front desk cannot access this page (they're bounced to <code>/frontdesk</code>).</p>
+
+      <h3>The class list</h3>
+      <p>Top-right: <strong>+ Add Class</strong> button (main admin, branch admin, teacher only). Each class card has a 16:9 cover photo (or "No cover photo" placeholder), the class title, section (if set), meta line <em>Grade level · Branch · Teacher name</em>, and a schedule line like <em>"Mon, Wed · 08:00–09:30 · 12 students"</em> or <em>"No schedule set"</em>. Row buttons: <strong>Open</strong> (primary), <strong>Edit</strong> (if you can edit this class), <strong>Delete</strong> (with a confirm dialog).</p>
+
+      <h3>Create / Edit class modal</h3>
+      <p>Opens as a full-viewport modal on dark backdrop when you click <strong>+ Add Class</strong> or <strong>Edit</strong> on a card. Top-left: eyebrow (<em>Edit class</em> or <em>Add class</em>) + the current class name (or <em>New class</em>). Top-right: <strong>Cancel</strong> button.</p>
+
+      <p>Fields, top-to-bottom:</p>
+      <ol className="task-steps">
+        <li className="task-step"><strong>Class name</strong> — placeholder <em>"e.g. Math A"</em>.</li>
+        <li className="task-step"><strong>Section (optional)</strong> — placeholder <em>"e.g. Falcons"</em>.</li>
+        <li className="task-step"><strong>Branch</strong> — dropdown (East / Greenhills). Disabled when editing an existing class.</li>
+        <li className="task-step"><strong>Grade level</strong> — 14 options (Nursery, Kinder, Grade 1 … Grade 12).</li>
+        <li className="task-step"><strong>Schedule</strong> — day pills (Mon / Tue / Wed / Thu / Fri / Sat / Sun). Tap to select each day the class meets.</li>
+        <li className="task-step"><strong>Start time</strong> / <strong>End time</strong> — time inputs.</li>
+        <li className="task-step"><strong>Cover photo (optional)</strong> — button label swaps between <strong>Choose photo</strong> and <strong>Replace photo</strong>. Once picked, a <strong>Clear</strong> text button appears.</li>
+        <li className="task-step"><strong>Roster — N selected</strong> — helper text <em>"Showing students enrolled at &lt;branch&gt; · &lt;level&gt;. Change branch or level above to see other learners."</em> Below, a scrollable checkbox list. Empty state: <em>"No students match this branch + level yet."</em></li>
+      </ol>
+      <p>Footer: <strong>Cancel</strong> · <strong>Create class</strong> (or <strong>Save changes</strong> when editing; <strong>Saving…</strong> while busy). If the save fails, the red banner at the top of the modal now shows the actual server error message (as of 2026-09) — no more silent "Could not save. Retry?" mysteries.</p>
+
+      <h3>The class detail page</h3>
+      <p>Clicking <strong>Open</strong> on a class card takes you to <code>/classes/&lt;id&gt;</code>. It's a single dashboard with four inline sections in a two-column layout — no tabs.</p>
+
+      <h4>Top row</h4>
+      <p>Left (2/3 width): the class overview card — 200 px cover thumbnail, <strong>← All classes</strong> back button, class name with section, meta lines (level + branch, teacher, schedule), and a small <strong>Edit</strong> button next to the name that opens the inline meta editor. In inline-edit mode you can change name, section, days, and times — but not branch or level.</p>
+      <p>Below overview: the <strong>Students (N)</strong> panel — bulleted list of student names, scrolls at 180 px.</p>
+      <p>Right (1/3 width): three KPI tiles — <em>Classes completed · Students · Avg attendance</em>.</p>
+
+      <h4>Left column (3/5 width) — Day's lessons</h4>
+      <p>Feed of lessons. Header <em>"Day's lessons · Add a lesson, take attendance, mark grades, collect proofs."</em> + <strong>+ Add Day's Lesson</strong> button (teacher/admin only). Each lesson card shows date, title, description, and (staff view) a stats line <em>"N/roster present · Graded out of X · Outputs collected"</em>. Row buttons: <strong>Edit</strong> (or <strong>View</strong> for read-only viewers) and <strong>Delete</strong>.</p>
+
+      <div className="role-card">
+        <h4>Lesson editor modal</h4>
+        <p>Opens as a full-page portal modal with several collapsible sections:</p>
+        <ol className="task-steps">
+          <li className="task-step"><strong>Details</strong> — <em>Date</em> (with scheduled-day hint), <em>Title</em>, <em>Description</em> textarea.</li>
+          <li className="task-step"><strong>Attachments</strong> — visible only after the lesson has been saved once. <strong>+ Add files</strong> supports multiple PDFs / Word / Excel. Each row: <strong>View</strong> · <strong>Delete</strong>.</li>
+          <li className="task-step"><strong>Attendance</strong> — hidden for students. Per-student row with <strong>Present</strong> / <strong>Absent</strong> pill toggles.</li>
+          <li className="task-step"><strong>Class output / test</strong> — checkbox <em>"Has class output / test?"</em>. When ticked, a <em>Total points</em> field appears, plus a per-student row: score <code>[  ] / total</code> + a <strong>Proof</strong> upload button (<strong>Replace</strong> once uploaded) + a <span className="tag tag-amber">Pending</span> badge for queued-but-not-yet-uploaded photos + a <strong>View</strong> button. Absent students appear below a divider with an extra <em>makeup date</em> input.</li>
+          <li className="task-step"><strong>Tests / Exams</strong> — only after saving. <strong>+ Add test / exam</strong> reveals a mini form: title + total points + <strong>Add</strong> / <strong>Cancel</strong>. Each test card has a per-student score grid with autosave-on-blur, proof upload, and makeup date for absentees.</li>
+        </ol>
+        <p>Bottom buttons: <strong>Cancel</strong> · <strong>Create lesson</strong> (or <strong>Save changes</strong>).</p>
       </div>
 
-      <h2 id="common">7. Common workflows</h2>
+      <h4>Right column top — Projects</h4>
+      <p>Card header <em>"Projects · Standalone graded projects with deadlines and per-student proof uploads."</em> + <strong>+ Add Project</strong>. Each project card: title, meta <em>"Total: X pts · Due &lt;date&gt;"</em>, description, buttons <strong>View</strong> / <strong>Edit</strong> / <strong>Delete</strong>.</p>
+      <p>Project editor: <em>Title · Total score · Deadline · Description</em>, then a per-student row (name + makeup date + score input + <strong>Proof</strong> upload + <strong>View</strong>). Draft-mode helper reminds you that scores save after you create the project — proof uploads become available immediately after.</p>
 
-      <h3 id="common-vouchers">Personal early-bird vouchers</h3>
-      <p>The AURA30 public code expired mid-year, but monthly / bi-annual parents who availed of the early bird still need to keep discounting their remaining installments. That’s what personal vouchers solve. Admin, branch admin, and front desk can all issue them.</p>
+      <h4>Right column bottom — Activities</h4>
+      <p>Card header <em>"Activities · School events, field trips, IEP reviews, holidays — anything that's not a graded lesson."</em> + <strong>+ Add Activity</strong>. Each card: name + optional type pill, meta <em>date range · N photos</em>, description, 6-photo thumbnail preview with <strong>+N more</strong> if there are more.</p>
+      <p>Activity editor: <em>Name · Type</em> (dropdown with the option <em>Other (specify)…</em> that reveals a free-text input), <em>From date · To date · Description</em>. <strong>+ Add photos</strong> supports multiple images and pre-save queuing — queued tiles show a black "Pending" badge until the activity is created and the uploads flush.</p>
+      </section>
 
-      <h4>Issuing one</h4>
+      {/* ─────────────────────────────────────────────────────────────
+       * 9. MEETINGS
+       * ────────────────────────────────────────────────────────── */}
+      <section className="handbook-section" data-slug="meetings">
+      <h2 id="meetings">9. Meetings</h2>
+      <p>Sidebar → <strong>Meetings</strong>. Video meetings are hosted on <a href="https://meet.sapphireclinicseast.org">meet.sapphireclinicseast.org</a> (our own LiveKit deployment). Anyone with the link joins straight into the room; the in-meeting toolbar offers <em>Cloud Record</em> (server-side, saved to the meet app), <em>Broadcast</em> (host only), and a <em>Whiteboard</em>. Tag students so the meeting shows up on their own class portal.</p>
+
+      <h3>The meetings list</h3>
+      <p>Top-right: <strong>+ New meeting</strong> (teacher / admin / branch admin only). Under that, a search input (<em>"Title, teacher, tagged student, or date"</em>) and a <strong>Show cancelled (N)</strong> checkbox (only appears when at least one meeting is cancelled).</p>
+      <p>Columns: <em>Title · Scheduled · Teacher · Tagged · Link · (actions)</em>.</p>
+      <ul>
+        <li><strong>Title</strong> — bold title, notes below, red <em>Cancelled</em> badge when applicable.</li>
+        <li><strong>Scheduled</strong> — date on top, time on the second line.</li>
+        <li><strong>Teacher</strong> — creator's name.</li>
+        <li><strong>Tagged</strong> — either <em>"— everyone with link"</em> or <em>"N student(s)"</em> with a hover-tooltip listing names.</li>
+        <li><strong>Link</strong> column has <strong>Open meeting</strong> (target="_blank") plus copy buttons:
+          <ul>
+            <li><strong>🎥 Copy host link</strong> (sage highlight, staff only) — tooltip <em>"Host link (KEEP PRIVATE): join as moderator — unlocks Broadcast + Cloud Record + Whiteboard controls."</em></li>
+            <li><strong>Copy guest link</strong> — tooltip <em>"Guest link — safe to share with students/parents. They can Cloud Record from inside the meeting."</em></li>
+          </ul>
+        </li>
+        <li><strong>(actions)</strong> column — for the meeting's owner + admins:
+          <ul>
+            <li><strong>Cancel</strong> (soft cancel) — keeps the row, drops the join links, shows the Cancelled badge.</li>
+            <li><strong>Delete</strong> (hard delete) — removes the row entirely from history.</li>
+          </ul>
+          Both actions show detailed confirm dialogs.
+        </li>
+      </ul>
+
+      <div className="callout callout-note">
+        <span className="label">LiveKit tokens can't be recalled</span>
+        Once you've shared a join link with someone, cancelling or deleting the meeting doesn't invalidate the signed token — the meet app will keep accepting it until it expires (usually the meeting's end time). To be sure someone can't join, cancel BEFORE sharing, or share the guest link only through the class-portal Meetings page (which re-fetches a fresh, revocable link each time).
+      </div>
+
+      <h3>Create meeting modal</h3>
+      <p>Header eyebrow: <em>"New meeting · meet.sapphireclinicseast.org"</em>. Title: <em>Schedule a video meeting</em>.</p>
       <ol className="task-steps">
-        <li className="task-step">Open the student’s profile.</li>
-        <li className="task-step">Scroll to <strong>Personal vouchers</strong> in the Other documents grid.</li>
-        <li className="task-step">Click <strong>+ Issue AURA30 early-bird voucher</strong>. A unique code (format <code>AURA30-FIRSTNAME-6RAND</code>) is minted, locked to that one student, valid through May 31 of the SY.</li>
-        <li className="task-step">The code auto-applies on the student’s /pay page. You can also share it verbally.</li>
+        <li className="task-step"><strong>Title</strong> — placeholder <em>"e.g. Grade 1 Math review"</em>.</li>
+        <li className="task-step"><strong>Notes (optional)</strong> — placeholder <em>"Anything students should know before joining"</em>.</li>
+        <li className="task-step"><strong>Starts at</strong> — datetime picker, defaults to 5 minutes from now.</li>
+        <li className="task-step"><strong>Duration</strong> — 30 min / 45 min / 1 hour / 1½ hours / 2 hours / 3 hours.</li>
+        <li className="task-step"><strong>Tag students (optional)</strong> — scrollable checkbox list scoped to your assigned branch × level pairs. Each row shows the student name + right-aligned branch · level. Leave empty and just share the guest link manually.</li>
+        <li className="task-step">Click <strong>Create meeting</strong>. Success toast: <em>"Meeting '&lt;title&gt;' created. Share the link with your students or copy it from the row."</em></li>
       </ol>
 
-      <h4>Reviewing all issued vouchers</h4>
-      <p>Main admin: <em>Admin → Fees → scroll to Personal early-bird vouchers</em>. Every dedicated code is listed with student name, branch, discount, expiry, and who issued it.</p>
+      <h3>Inside the meeting (cloud recording)</h3>
+      <p>Once inside the LiveKit room, the in-meeting toolbar offers:</p>
+      <ul>
+        <li><strong>Cloud Record</strong> — server-side recording saved to the meet app. Available to everyone, hosts and guests alike. Starts / stops with one click.</li>
+        <li><strong>Broadcast</strong> — host-only. Puts a specific participant's video on the main stage for everyone else.</li>
+        <li><strong>Whiteboard</strong> — a shared drawing surface (host-controlled).</li>
+      </ul>
+      </section>
+
+      {/* ─────────────────────────────────────────────────────────────
+       * 10. CALENDAR
+       * ────────────────────────────────────────────────────────── */}
+      <section className="handbook-section" data-slug="calendar">
+      <h2 id="calendar">10. Calendar</h2>
+      <p>Sidebar → <strong>Calendar</strong>. Displays a 7-column month grid. Every event is branch-scoped — branch admins, front desk, and students see only their own branch; main admin and teachers can toggle between East and Greenhills.</p>
+
+      <h3>Month grid</h3>
+      <ul>
+        <li>7-column week grid, cells 88 px tall.</li>
+        <li>Today's date is highlighted with a white-on-narra pill.</li>
+        <li>Up to 3 event pills per cell, each colored by type; more show as <em>"+N more"</em>.</li>
+        <li>Click any cell to open the <strong>Day view</strong> panel below the grid.</li>
+      </ul>
+
+      <h3>Legend</h3>
+      <p>Coloured dots under the grid for the five event types: <em>Event · Field trip · Holiday · Classes cancelled · IEP review</em>.</p>
+
+      <h3>Day view panel</h3>
+      <p>Header: <em>Day view · &lt;date&gt;</em>. Buttons: <strong>+ Add event</strong> (admin/teacher) and <strong>Close</strong>. Each event card shows title, type label, optional date range (for multi-day), "by &lt;creator&gt;", and (admin/teacher) <strong>Edit</strong> · <strong>Delete</strong>.</p>
+
+      <h3>Add / Edit event modal</h3>
+      <p>Header: <em>New event · &lt;branch&gt;</em> or <em>Edit event · &lt;branch&gt;</em>.</p>
+      <ol className="task-steps">
+        <li className="task-step"><strong>Title</strong> (required).</li>
+        <li className="task-step"><strong>Type</strong> — Event · Field trip · Holiday · Classes cancelled · IEP review.</li>
+        <li className="task-step"><strong>Date</strong> (date input).</li>
+        <li className="task-step"><strong>End date (optional)</strong> — for multi-day events. Must be ≥ start date.</li>
+        <li className="task-step"><strong>Description (optional)</strong> — textarea, placeholder <em>"Notes parents should see…"</em>.</li>
+        <li className="task-step">Click <strong>Add event</strong> or <strong>Save changes</strong>.</li>
+      </ol>
+
+      <h3>Branch toggle</h3>
+      <p>Main admin and teachers see a pill segmented control near the top: <strong>East</strong> / <strong>Greenhills</strong>. Other roles have this locked to their branch (server-side).</p>
+
+      <h3>Per-branch calendar PDF</h3>
+      <p>Below the calendar, a meta line shows the branch's uploaded PDF (name, upload date, uploader) or "Not uploaded yet." Buttons: <strong>View / download</strong> · <strong>Upload PDF</strong> (or <strong>Replace PDF</strong>) · <strong>Remove</strong> (with confirm). This is the official branch academic calendar handed out at enrollment.</p>
+      </section>
+
+      {/* ─────────────────────────────────────────────────────────────
+       * 11. PAYMENTS DEEP DIVE
+       * ────────────────────────────────────────────────────────── */}
+      <section className="handbook-section" data-slug="payments">
+      <h2 id="payments">11. Payments — deep dive</h2>
+      <p>This chapter is the reference for anything payment-related that isn't a plain "click Record payment" workflow.</p>
+
+      <h3>The period-text rule</h3>
+      <p>When you record a payment, the system infers what tuition period it covers by parsing the free-text <em>Period covered</em> field. The rules are:</p>
+      <ul>
+        <li><strong>MONTHLY plan</strong> — the period text must name a specific month (e.g. <code>June 2026</code>, <code>Aug 2026</code>, <code>August 2026</code>). Anything vague (like <code>2026-2027</code> or <code>AY 2026-2027</code>) means the system falls back to the payment's created-at month.</li>
+        <li><strong>BI-ANNUAL plan</strong> — the period should read <code>First half SY 2026–2027</code> or <code>Second half SY 2026–2027</code>. If it doesn't, the system uses a timestamp-window fallback: any PAID biannual row whose paidAt / createdAt is inside the current tranche window is credited.</li>
+        <li><strong>ANNUAL plan</strong> — the period text doesn't matter. Any PAID annual row on the account counts as the whole SY covered.</li>
+      </ul>
+
+      <div className="callout callout-warn">
+        <span className="label">The most common bug we see</span>
+        A parent hands over cash for June, the front desk types <code>2026-2027</code> or leaves the default <code>AY 2026-2027</code>, and later the student's badge still says <em>Owes for June 2026</em>. Fix: <em>Payments → Confirmed Payments → Edit</em> on that row → change the period to <code>June 2026</code> → Save.
+      </div>
+
+      <h3>The period picker</h3>
+      <p>The Record and Edit modals both use a plan-aware <em>PeriodPicker</em>:</p>
+      <ul>
+        <li>MONTHLY → dropdown of the 12 months of the current SY (June … May), auto-formatted "August 2026".</li>
+        <li>BIANNUAL → two options: "First half SY 2026–2027" or "Second half SY 2026–2027".</li>
+        <li>ANNUAL → "Annual SY 2026–2027".</li>
+        <li>All plans also expose an <em>Other</em> option that lets you type a free-text period for one-offs like <code>Back balance · June–September 2026</code>.</li>
+      </ul>
+
+      <h3>Late-enrollee back balance</h3>
+      <p>The system assumes every monthly / bi-annual student was on the plan for the whole SY. So a student who enrolls in September on the Monthly plan will show a back balance for June, July, and August. Two ways to settle:</p>
+      <ol className="task-steps">
+        <li className="task-step"><strong>Parent pays the lump sum</strong> — the <code>/pay</code> page auto-detects this and shows a callout like <em>"3-month back balance (June–August) ₱21,450"</em>. They pay it via PayMongo/cash/bank in one shot. When you record it, use a period like <code>Back balance · June–August 2026</code> — the system flags all three months as paid.</li>
+        <li className="task-step"><strong>Parent has a waiver</strong> — record a zero-amount payment for the month with the period naming that month and notes explaining the waiver. This clears the badge and leaves an audit trail.</li>
+      </ol>
+
+      <h3>Plan switches (monthly → bi-annual, etc.)</h3>
+      <p>When a parent asks to switch plans mid-year, use the <strong>Plan-switch balance calculator</strong> card on the student's profile (main-admin only).</p>
+      <ol className="task-steps">
+        <li className="task-step">Open the student's profile → scroll to <strong>Plan change · Switch payment plan</strong>.</li>
+        <li className="task-step">Pick the target plan. The card recalculates live: target-plan tuition, less any personal voucher, plus misc, gross on new plan, less already paid, = <strong>Balance to collect</strong>.</li>
+        <li className="task-step">Take that number to <em>Payments → + Record payment</em>. Pick the target plan, enter the balance, use a clear period (e.g. <em>First half SY 2026–2027 (plan change credit)</em>).</li>
+        <li className="task-step">Confirm the row. The student's inferred plan flips to the new one and every future badge, reminder, and Pending-by-deadline entry uses the new logic.</li>
+      </ol>
+
+      <Illustration caption="Plan change card — appears on every student profile for admin viewers.">
+        <div className="mk-card">
+          <div className="mk-label">Plan change</div>
+          <div className="mk-title" style={{ marginBottom: 2 }}>Switch payment plan</div>
+          <div style={{ fontSize: 11, color: 'var(--mid-gray)', marginBottom: 10 }}>Current plan: <span style={{ fontWeight: 600, color: 'var(--deep-teal)' }}>Monthly</span></div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10, fontSize: 11.5, color: 'var(--mid-gray)' }}>
+            <span>Switch to</span>
+            <span className="mk-pill" style={{ background: 'var(--sage-tint)', color: 'var(--deep-teal)', fontWeight: 600 }}>Bi-annual</span>
+            <span>·</span>
+            <span>☑ Apply 30% voucher (AURA30-BRUCE-A4K7Q9)</span>
+          </div>
+          <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+            <tbody>
+              <tr><td style={{ padding: '4px 0', color: 'var(--mid-gray)' }}>Bi-annual tuition</td><td style={{ padding: '4px 0', textAlign: 'right' }}>₱45,000.00</td></tr>
+              <tr><td style={{ padding: '4px 0', color: 'var(--mid-gray)' }}>Less 30% voucher</td><td style={{ padding: '4px 0', textAlign: 'right', color: '#059669' }}>−₱13,500.00</td></tr>
+              <tr><td style={{ padding: '4px 0', color: 'var(--mid-gray)' }}>+ Misc fee</td><td style={{ padding: '4px 0', textAlign: 'right' }}>+₱2,500.00</td></tr>
+              <tr style={{ background: 'var(--paper-2)' }}><td style={{ padding: '4px 6px', fontWeight: 600 }}>Gross on new plan</td><td style={{ padding: '4px 6px', textAlign: 'right', fontWeight: 600 }}>₱34,000.00</td></tr>
+              <tr><td style={{ padding: '4px 0', color: 'var(--mid-gray)' }}>Less already paid</td><td style={{ padding: '4px 0', textAlign: 'right', color: '#059669' }}>−₱7,150.00</td></tr>
+              <tr style={{ background: '#f0fdf4' }}><td style={{ padding: '6px', fontWeight: 700, color: 'var(--deep-teal)' }}>Balance to collect</td><td style={{ padding: '6px', textAlign: 'right', fontWeight: 700, color: 'var(--deep-teal)', fontSize: 14 }}>₱26,850.00</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </Illustration>
+
+      <h3>Automated reminder cadence</h3>
+      <p>A daily cron at ~9 AM Manila time walks every active monthly / bi-annual student. Up to three reminder emails go out per period:</p>
+      <ul>
+        <li><strong>5-day heads-up</strong> — when the payment window opens (30th of prior month for monthly, May 5 / Nov 5 for bi-annual).</li>
+        <li><strong>Due tomorrow</strong> — the day before the 5th of the due month.</li>
+        <li><strong>Past due</strong> — the day after the 5th if still unpaid.</li>
+      </ul>
+      <p>Every send is logged in <em>Payments → Automated payment reminders</em>. Disabled students are skipped by the cron and hidden from active listings.</p>
+
+      <h3>Manual reminder — the 🔔 button</h3>
+      <p>For overdue rows in the <em>Pending payments — by deadline</em> table, click <strong>🔔 Remind</strong> to fire an ad-hoc reminder email right now. The button shows <em>Sending…</em> → <em>✓ Sent</em> and the send is logged as <em>Manual reminder</em> in the notifications panel below.</p>
+
+      <h3>Payment methods</h3>
+      <p>Three top-level methods appear across every payment surface:</p>
+      <ul>
+        <li><strong>Frontdesk payment</strong> — has five sub-options: Cash · Credit Card · Debit Card · GCash · PayMaya. Creates a PENDING row that must be confirmed.</li>
+        <li><strong>Bank deposit</strong> — parent uploads a slip, front desk verifies against the BDO account and confirms.</li>
+        <li><strong>PayMongo</strong> — when the parent finishes a real PayMongo checkout via <code>/pay</code>, the webhook auto-flips PENDING → CONVERTED. When staff records a PayMongo payment via <strong>+ Record payment</strong>, it's a bookkeeping entry that must still be confirmed manually.</li>
+      </ul>
+      </section>
+
+      {/* ─────────────────────────────────────────────────────────────
+       * 12. DOCUMENTS, WAIVER, LETTER, FEE SCHEDULE
+       * ────────────────────────────────────────────────────────── */}
+      <section className="handbook-section" data-slug="documents">
+      <h2 id="documents">12. Documents, waiver, registration letter, fee schedule</h2>
+      <p>Every student's <em>Submitted documents</em> and <em>Other Documents</em> cards live inside the student detail drawer (see <a href="#main-admin">chapter 3 → Tab 2</a>). This chapter focuses on the specialised documents.</p>
+
+      <h3>Waiver flow</h3>
+      <ol className="task-steps">
+        <li className="task-step"><strong>Parent signs</strong> — via <code>/waiver</code>. Fills in 8 sections (student, guardian, fetchers, emergency + medical, initials for 15 acknowledgments, photo-release radio, signatures), clicks <strong>Sign &amp; generate waiver PDF</strong>. The PDF downloads automatically.</li>
+        <li className="task-step"><strong>Teacher countersigns as witness</strong> — on the student's detail drawer, the assigned SPED teacher clicks <strong>Sign as witness</strong>, draws her signature, saves.</li>
+        <li className="task-step"><strong>Main admin countersigns for SCEI</strong> — on the same drawer, main admin clicks <strong>Sign as SCEI</strong>, fills in printed name + signature, clicks <strong>Sign &amp; regenerate PDF</strong>. The header badge flips to <span className="tag tag-sage">SCEI countersigned</span>.</li>
+      </ol>
+
+      <h3>Registration Letter (main-admin only)</h3>
+      <p>Auto-generated PDF for DepEd / school-transfer requests. Signed by HANNAH JARA (CEO). On the student's profile:</p>
+      <ol className="task-steps">
+        <li className="task-step">Open the <strong>School Registration Letter</strong> sub-card in Other Documents.</li>
+        <li className="task-step">Type a <em>Purpose</em> — the field is staff-editable, default is <code>reimbursement purposes</code>. The live preview updates the certification line: <em>"…issued upon the request of the parent / guardian for &lt;purpose&gt; only and not for any other intent."</em></li>
+        <li className="task-step">Tick <strong>Student availed of the 30% Early Bird Discount</strong> if applicable — the tuition breakdown will show base → less 30% → net.</li>
+        <li className="task-step">Click <strong>View</strong> to preview in a new tab, or <strong>Download PDF</strong> to save. Each press mints a fresh <code>AURA-REG-YYYY-NNNN</code> reference number and the sub-card's footer shows <em>"Last issued: AURA-REG-… on &lt;date&gt;"</em>.</li>
+      </ol>
+      <div className="callout callout-note">
+        <span className="label">Precondition</span>
+        Both PDFs require the student to have at least one payment record for the current SY. Without it, the card shows "No payment records yet…" and the buttons are disabled.
+      </div>
+
+      <h3>Schedule of Fees (main-admin only)</h3>
+      <p>Annual breakdown (tuition + ₱5,000 misc) plus the three payment plan options with each tranche pre-computed. Same buttons: <strong>View</strong> · <strong>Download PDF</strong>. No purpose field, no reference number.</p>
+      </section>
+
+      {/* ─────────────────────────────────────────────────────────────
+       * 13. ANNOUNCEMENTS
+       * ────────────────────────────────────────────────────────── */}
+      <section className="handbook-section" data-slug="announcements">
+      <h2 id="announcements">13. Announcements</h2>
+      <p>The Notifications tab (main admin, branch admin) or its per-class equivalent (teachers). Reach: everyone in the target grade levels; optionally teachers too.</p>
+
+      <h3>Compose</h3>
+      <ol className="task-steps">
+        <li className="task-step">Click <strong>New announcement</strong>.</li>
+        <li className="task-step">Type a <strong>Title</strong>.</li>
+        <li className="task-step">Type the body in <strong>Details</strong>.</li>
+        <li className="task-step">Optionally attach a poster image or PDF: <strong>+ Add poster or PDF</strong>. The preview appears below.</li>
+        <li className="task-step">Pick target <strong>Grade levels</strong> (leave empty = school-wide).</li>
+        <li className="task-step">(Main admin) Tick <strong>Also notify teachers</strong>.</li>
+        <li className="task-step">Click <strong>Publish</strong>.</li>
+      </ol>
+
+      <h3>View + email</h3>
+      <p>Click any announcement in the list to open the modal. Buttons in the modal:</p>
+      <ul>
+        <li><strong>Send Email</strong> — main admin + teacher only. Confirm dialog notes if already emailed (and when). Success toast shows the per-role / per-level breakdown of who got emailed.</li>
+        <li><strong>Send email again</strong> — same button label after the first send. Idempotent to a point but every send is logged.</li>
+        <li><strong>Delete announcement</strong> — main admin can delete anything; teachers can delete only what they authored.</li>
+      </ul>
+      </section>
+
+      {/* ─────────────────────────────────────────────────────────────
+       * 14. VOUCHERS
+       * ────────────────────────────────────────────────────────── */}
+      <section className="handbook-section" data-slug="vouchers">
+      <h2 id="vouchers">14. Vouchers — shared codes vs personal early-bird</h2>
+
+      <h3>Shared codes (main-admin only)</h3>
+      <p><em>Admin → Fees → Voucher codes</em>. Add a code like <code>AURA30</code>, set a discount %, an expiry date, and an <strong>Active</strong> checkbox. Untick Active to pause a code without deleting it — the audit trail is worth keeping.</p>
+
+      <h3>Personal early-bird vouchers</h3>
+      <p>The public AURA30 code expired mid-year, but monthly / bi-annual parents who availed of the early bird still need to keep discounting their remaining installments. Personal vouchers solve that. Main admin, branch admin, and front desk can all issue them.</p>
+      <ol className="task-steps">
+        <li className="task-step">Open the student's profile.</li>
+        <li className="task-step">Scroll to <strong>Personal Vouchers</strong> in the Other Documents grid.</li>
+        <li className="task-step">Click <strong>+ Issue AURA30 early-bird voucher</strong>. A unique code (format <code>AURA30-FIRSTNAME-6RAND</code>) is minted, locked to that one student, valid through May 31.</li>
+        <li className="task-step">The code auto-applies on the student's <code>/pay</code> page. Parents don't need to type it. You can also share it verbally.</li>
+      </ol>
+
+      <h3>Reviewing all issued vouchers</h3>
+      <p>Main admin: <em>Admin → Fees → scroll to Personal early-bird vouchers</em>. Every code across the school is listed: <em>Student · Branch · Code · Discount · Valid until · Status · Issued by</em>.</p>
 
       <Illustration caption="Personal vouchers card on the student profile — admin sees an Issue button; students see only their own live codes.">
         <div className="mk-card">
@@ -779,55 +1460,99 @@ export default function HandbookPage() {
           </div>
         </div>
       </Illustration>
+      </section>
 
-      <h3 id="common-reminders">Automated payment reminders</h3>
-      <p>Nobody sends reminders manually anymore. A daily cron at ~9 AM Manila time walks every active monthly / bi-annual student and emails up to three times per period:</p>
-      <ul>
-        <li><strong>5-day heads-up</strong> — window opens (30th of previous month for monthly, May 5 / Nov 5 for bi-annual).</li>
-        <li><strong>Due tomorrow</strong> — the day before the 5th of the due month.</li>
-        <li><strong>Past due</strong> — the day after the 5th if still unpaid.</li>
-      </ul>
-      <p>Every send is logged. To see who’s been reminded: <em>Payments → Notifications: Automated payment reminders</em>. Pick your window (7 / 30 / 90 / 365 days) and, if you like, search by name.</p>
-
-      <Illustration caption="Notifications card — one row per email the cron sent, grouped by billing period.">
-        <div className="mk-card">
-          <div className="mk-label">Notifications</div>
-          <div className="mk-title" style={{ marginBottom: 4 }}>Automated payment reminders</div>
-          <div style={{ fontSize: 11, color: 'var(--mid-gray)', marginBottom: 10 }}>Students who’ve been emailed by the daily cron. No manual action required.</div>
-          <div style={{ background: 'var(--paper-2)', padding: '6px 10px', borderRadius: 6, fontSize: 11.5, fontWeight: 600, color: 'var(--deep-teal)', marginBottom: 6 }}>
-            August 2026 <span style={{ float: 'right', fontWeight: 400, color: 'var(--mid-gray)' }}>4 emails sent</span>
-          </div>
-          <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>
-                <th className="mk-th" style={{ textAlign: 'left' }}>Student</th>
-                <th className="mk-th" style={{ textAlign: 'left' }}>Reminder</th>
-                <th className="mk-th" style={{ textAlign: 'left' }}>Sent at</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr><td className="mk-td">Bruce Pelagio</td><td className="mk-td"><span className="tag tag-sage">5-day heads-up</span></td><td className="mk-td" style={{ color: 'var(--mid-gray)' }}>Jul 30, 9:02 AM</td></tr>
-              <tr><td className="mk-td">Cloud Regadillo</td><td className="mk-td"><span className="tag tag-amber">Due tomorrow</span></td><td className="mk-td" style={{ color: 'var(--mid-gray)' }}>Aug 4, 9:03 AM</td></tr>
-              <tr><td className="mk-td">Myla Sta. Ana</td><td className="mk-td"><span className="tag tag-due">Past due</span></td><td className="mk-td" style={{ color: 'var(--mid-gray)' }}>Aug 6, 9:01 AM</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </Illustration>
-
-      <div className="callout callout-note">
-        <span className="label">If you don’t want a specific student emailed</span>
-        Mark their account as disabled from <em>Users → Edit</em>. Disabled students are skipped by the cron and hidden from active listings. Re-enable when you want them back in the flow.
-      </div>
-
-      <h3 id="common-plan-switch">Switching a student’s payment plan mid-year</h3>
+      {/* ─────────────────────────────────────────────────────────────
+       * 15. ENROLLMENT FUNNEL
+       * ────────────────────────────────────────────────────────── */}
+      <section className="handbook-section" data-slug="enrollment">
+      <h2 id="enrollment">15. Enrollment funnel — what a new parent sees</h2>
+      <p>Whenever you're helping a new parent onboard, or troubleshooting a stuck registration, walk them through these steps:</p>
       <ol className="task-steps">
-        <li className="task-step">Open the student’s profile. Scroll to the <strong>Plan change — Switch payment plan</strong> card (admin viewers only).</li>
-        <li className="task-step">Pick the target plan. The card shows a live breakdown: target-plan tuition, less N% voucher (tuition only), + misc fee (not discounted), = gross on new plan, less already paid, = <strong>Balance to collect</strong>.</li>
-        <li className="task-step">Open <em>Payments → + Record payment</em>. Pick the target plan, enter the balance number the card gave you, use a clear period (e.g. <code>First half SY 2026–2027 (plan change credit)</code>).</li>
-        <li className="task-step">Take the payment. Confirm the row. The student is now on the new plan; every future badge, reminder, and Pending-by-deadline entry uses the new logic.</li>
+        <li className="task-step"><strong>Step 1 — Landing (<code>/</code>)</strong>. The parent picks a branch tile (East / Greenhills) and a grade level. Tiles for closed grades are disabled with a tooltip <em>"&lt;level&gt; is closed for new enrollment"</em>. Click <strong>Create profile &amp; continue</strong>.</li>
+        <li className="task-step"><strong>Step 2 — Learner profile (<code>/enroll</code>)</strong>. Long single-page form with 6 sections: School year &amp; LRN · Student info · Address · Parent/Guardian info · Returning/transferee · Certification. All text auto-uppercases as they type. Click <strong>Continue to documents →</strong>.</li>
+        <li className="task-step"><strong>Step 3 — Documents (<code>/documents</code>)</strong>. Upload PSA Birth Cert, 1×1 Photo, Parent ID, PWD ID (if applicable), and (for graded levels) Report Card + Good Moral. Also opens the waiver popup for the parent to sign. Each row has <strong>Upload</strong> (or <strong>Change</strong>) plus a <strong>QR upload</strong> button that generates a per-device QR code — the parent scans it on their phone, uploads there, and the file appears on the desktop within seconds.</li>
+        <li className="task-step"><strong>Step 4 — Account setup (<code>/account-setup</code>)</strong>. Parent sets a password. Then a "Pay tuition fee →" / "Go to my profile" choice.</li>
+        <li className="task-step"><strong>Step 5 — Pay (<code>/pay</code>)</strong>. Fee schedule + tuition-obligation policy + plan picker + voucher + method (PayMongo / cash / bank).</li>
       </ol>
 
-      <h2 id="hubs">8. Connections to the other hubs</h2>
+      <div className="callout">
+        <span className="label">QR upload details</span>
+        The parent's phone scans the QR, opens the public <code>/upload/&lt;token&gt;</code> page, takes a photo or picks a PDF, and uploads. The desktop polls and shows a live status — <em>Waiting for upload… (link expires in 30 minutes)</em> → <em>Receiving file from your phone…</em> → <em>✓ Got it. Closing…</em>
+      </div>
+      </section>
+
+      {/* ─────────────────────────────────────────────────────────────
+       * 16. ADMISSION TRACKER
+       * ────────────────────────────────────────────────────────── */}
+      <section className="handbook-section" data-slug="admission">
+      <h2 id="admission">16. Admission tracker</h2>
+      <p><code>class.sapphireclinicseast.org/admission</code>. Not sign-in gated — uses a partner-school access code stored in the browser's localStorage. This is the view LBCA (Light Bearer Christian Academy — our DepEd partner school) uses to see the enrollment roster.</p>
+
+      <h3>Access-code gate</h3>
+      <p>First visit shows a password-type input <em>"Enter code"</em>. The partner types the shared access code and clicks <strong>View admission list</strong>. Once accepted, the code is remembered on that browser.</p>
+
+      <h3>Toolbar</h3>
+      <p>Search input (name / email / LRN), grade-level filter dropdown, <strong>Clear</strong>, <strong>Refresh</strong>, <strong>Excel</strong> export, <strong>Sign out</strong>.</p>
+
+      <h3>Branch tabs</h3>
+      <p><strong>East Branch (N)</strong> / <strong>Greenhills Branch (N)</strong>. Only PAID students appear; disabled accounts are hidden. Every row is a full DepEd enrollment record with inline editors:</p>
+      <ul>
+        <li><strong>LRN</strong> — for NO_LRN rows, an inline 12-digit input that validates on blur.</li>
+        <li><strong>LSEN classification</strong> — grouped select using the DepEd rubric.</li>
+        <li><strong>LIS status</strong> — inline select.</li>
+        <li><strong>Remittance</strong> — inline select.</li>
+        <li><strong>Comments / Remarks</strong> — inline text.</li>
+      </ul>
+
+      <p>Documents columns (yellow-tinted): <em>Enrollment Form · Parent Waiver · DepEd Affidavit · Report Card / SF9 · PSA Birth Cert · Form 137 / SF10</em> — each with <strong>View</strong> + <strong>↓</strong> download when the server has the blob.</p>
+      </section>
+
+      {/* ─────────────────────────────────────────────────────────────
+       * 17. INTERN ACCOUNTS
+       * ────────────────────────────────────────────────────────── */}
+      <section className="handbook-section" data-slug="interns">
+      <h2 id="interns">17. Intern accounts — auto-disable lifecycle</h2>
+      <p>SPED teacher interns get the same class-portal permissions as regular teachers — they can create classes, log lessons, run meetings, sign waivers as witness. What's different is they auto-disable 15 days after the end of their internship-end month.</p>
+
+      <h3>Creating an intern account</h3>
+      <ol className="task-steps">
+        <li className="task-step">First: make sure HR has created their staff record in HR Hub with employment type = <em>Intern</em> and a contract-end date filled in.</li>
+        <li className="task-step">In the class portal: <em>Admin → Users → Add teacher from Staff Module</em>.</li>
+        <li className="task-step">Filter by branch, find their row. The Role cell shows a <span className="tag tag-amber">Intern</span> badge. The Contract end column shows their contract-end date with a hover-tooltip: <em>"Auto-disables &lt;date&gt;"</em>.</li>
+        <li className="task-step">Click <strong>Create account</strong>. Type or generate a password. Click <strong>Save</strong>. Success toast: <em>"Intern teacher account created for &lt;name&gt; (&lt;branch&gt;). Auto-disables &lt;date&gt;. Password: &lt;pw&gt;"</em>.</li>
+      </ol>
+
+      <div className="callout">
+        <span className="label">Auto-disable math</span>
+        <strong>Auto-disable date</strong> = first day of the month AFTER the contract-end month, PLUS 15 days.
+        For example: contract ends <em>August 31, 2026</em> → auto-disable on <em>September 15, 2026</em> at 00:00 Manila time.
+      </div>
+
+      <h3>What the cron does</h3>
+      <p>A daily cron endpoint (<code>/api/public/class-portal/cron/intern-lifecycle</code>) runs and:</p>
+      <ul>
+        <li>Selects every intern (isIntern=true, role=TEACHER, linkedStaffId present).</li>
+        <li>Skips already-disabled accounts (idempotent — safe to run multiple times a day).</li>
+        <li>Skips interns without a contract end on file (with a warning counter).</li>
+        <li>Disables interns whose contract-end month + 15-day grace has passed. Stamps <code>disabledAt = now</code> and <code>disabledBy = "cron:intern-lifecycle"</code>.</li>
+        <li>Also disables interns whose HR record was set to inactive early (early termination).</li>
+      </ul>
+      <p>The admin UI signal after the cron flips someone: the amber <span className="tag tag-amber">Intern</span> badge stays, plus a rose <span className="tag tag-rose">Disabled</span> badge with hover-tooltip <em>"Cannot sign in. Hidden from teacher and front-desk lists."</em> The row's overall hover tooltip says <em>"Disabled by cron:intern-lifecycle on &lt;date&gt;"</em>.</p>
+
+      <h3>Re-enabling</h3>
+      <p>If HR extends the intern's contract:</p>
+      <ol className="task-steps">
+        <li className="task-step">HR updates the contract-end date in HR Hub.</li>
+        <li className="task-step">Main admin: <em>Admin → Users → find the row → Enable</em>. The intern can sign in again. The new contract-end date is respected — next cron pass won't touch them until the new end + 15.</li>
+      </ol>
+      </section>
+
+      {/* ─────────────────────────────────────────────────────────────
+       * 18. CROSS-HUB CONNECTIONS
+       * ────────────────────────────────────────────────────────── */}
+      <section className="handbook-section" data-slug="hubs">
+      <h2 id="hubs">18. Connections to the other hubs</h2>
 
       <p>The class portal doesn&rsquo;t stand alone — three sister apps handle the moving parts around it. Sign in to each with the credentials the main admin issues (same person, three tabs).</p>
 
@@ -857,14 +1582,13 @@ export default function HandbookPage() {
             <td><strong>HR Hub</strong></td>
             <td><code>hr.sapphireclinicseast.org</code></td>
             <td>Staff directory, payroll cutoffs, uniforms, seminars, peer evaluations, forms library, shareholder registry. Vanilla HTML/JS app, separate from the Next.js hubs above.</td>
-            <td>Teachers and front-desk staff exist in HR Hub as employees; in the class portal they exist as users. Not auto-synced today — when you add a new teacher in the class portal, mirror the record in HR Hub for payroll.</td>
+            <td>Teachers and front-desk staff exist in HR Hub as employees; in the class portal they exist as users. The Staff Module card on Users tab pulls the active list, but hiring/leaving still needs a mirror update in HR.</td>
           </tr>
         </tbody>
       </table>
 
       <Illustration caption="Architecture at a glance — class portal is a client of Operations Hub, which hands off finalised payments to Accounting Hub. HR Hub is parallel.">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '4px 0' }}>
-          {/* Row 1: the class portal + HR hub side by side */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div style={{ background: 'var(--sage-tint)', border: '1px solid var(--sage)', borderRadius: 10, padding: 10, textAlign: 'center' }}>
               <div style={{ fontSize: 10, color: 'var(--sage)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em' }}>Frontend</div>
@@ -877,21 +1601,17 @@ export default function HandbookPage() {
               <div style={{ fontSize: 10, color: 'var(--mid-gray)' }}>hr.sapphireclinicseast.org</div>
             </div>
           </div>
-          {/* Arrow down from class portal */}
           <div style={{ textAlign: 'center', color: 'var(--mid-gray)', fontSize: 18, lineHeight: 1 }}>
             ↓ <span style={{ fontSize: 11, verticalAlign: 'middle' }}>API calls &nbsp;/api/public/class-portal/*</span>
           </div>
-          {/* Row 2: Operations Hub (spans wider) */}
           <div style={{ background: '#dbeafe', border: '1px solid #1e40af', borderRadius: 10, padding: 12, textAlign: 'center' }}>
             <div style={{ fontSize: 10, color: '#1e3a8a', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em' }}>Backend + database</div>
             <div style={{ fontSize: 14, fontWeight: 600, color: '#1e3a8a' }}>Operations Hub</div>
-            <div style={{ fontSize: 10, color: 'var(--mid-gray)' }}>operations.sapphireclinicseast.org &nbsp;·&nbsp; owns ClassPortalUser, ClassPortalFrontDeskPayment, ClassPortalVoucher, ClassPortalPaymentReminderLog</div>
+            <div style={{ fontSize: 10, color: 'var(--mid-gray)' }}>operations.sapphireclinicseast.org &nbsp;·&nbsp; owns ClassPortalUser, ClassPortalFrontDeskPayment, ClassPortalVoucher, ClassPortalPaymentReminderLog, ClassPortalMeeting</div>
           </div>
-          {/* Arrow down from ops hub */}
           <div style={{ textAlign: 'center', color: 'var(--mid-gray)', fontSize: 18, lineHeight: 1 }}>
             ↓ <span style={{ fontSize: 11, verticalAlign: 'middle' }}>Confirmed payment → POS Order</span>
           </div>
-          {/* Row 3: Accounting Hub */}
           <div style={{ background: '#dcfce7', border: '1px solid #166534', borderRadius: 10, padding: 12, textAlign: 'center' }}>
             <div style={{ fontSize: 10, color: '#166534', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em' }}>Books + POS</div>
             <div style={{ fontSize: 14, fontWeight: 600, color: '#166534' }}>Accounting Hub</div>
@@ -907,9 +1627,10 @@ export default function HandbookPage() {
         <p>Same app family, same database. Everything the class portal reads or writes goes through Operations Hub&rsquo;s API. The class portal container (<code>sapphire_class_portal</code>) is a UI shell; the Operations Hub container (<code>sapphire_app</code>) is the source of truth.</p>
         <ul>
           <li><strong>Sign-in tokens</strong> — issued by Operations Hub; carried by every request from the class portal.</li>
-          <li><strong>Payment records</strong> — created by the class portal (record, PayMongo, or self-serve) and stored in Operations Hub&rsquo;s <code>ClassPortalFrontDeskPayment</code> table. Confirmed payments trigger the accounting hand-off (see below).</li>
+          <li><strong>Payment records</strong> — created by the class portal (record, PayMongo, or self-serve) and stored in Operations Hub&rsquo;s <code>ClassPortalFrontDeskPayment</code> table. Confirmed payments trigger the accounting hand-off.</li>
           <li><strong>Reminder cron</strong> — runs on the Operations Hub container. Reads the same payment table, writes to <code>ClassPortalPaymentReminderLog</code>, and sends emails via Resend.</li>
-          <li><strong>File uploads</strong> — headshots, waiver PDFs, Form 137 / SF10, birth certificates — all stored in Operations Hub&rsquo;s file storage.</li>
+          <li><strong>File uploads</strong> — headshots, waiver PDFs, Form 137 / SF10, birth certificates, meeting cover photos — all stored in Operations Hub&rsquo;s file storage.</li>
+          <li><strong>LiveKit meeting rooms</strong> — <code>ClassPortalMeeting</code> rows carry the room id + host/guest signed URLs.</li>
         </ul>
       </div>
 
@@ -928,11 +1649,12 @@ export default function HandbookPage() {
       </div>
 
       <div className="role-card">
-        <h4>↔ HR Hub (manual sync today)</h4>
-        <p>HR Hub tracks the staff person &mdash; contract, payroll, uniform, seminars, peer evals. The class portal tracks the same person as a <em>user account</em> with a role and a branch. There is no auto-sync between the two right now, so whenever you change a staff member&rsquo;s status in one place, mirror it in the other:</p>
+        <h4>↔ HR Hub (manual + Staff Module mirror)</h4>
+        <p>HR Hub tracks the staff person &mdash; contract, payroll, uniform, seminars, peer evals. The class portal tracks the same person as a <em>user account</em> with a role and a branch. The class portal's <em>Add teacher from Staff Module</em> card reads active teachers + interns from HR Hub, but nothing auto-syncs the other way.</p>
         <ul>
-          <li><strong>Hiring a new SPED teacher</strong> — create the HR record first (contract, tax, SSS), then create the class-portal user (Users → + New user, role TEACHER). Assign them classes from <em>Assignments</em>.</li>
-          <li><strong>Teacher resigns</strong> — set their HR status to <em>Separated</em> in HR Hub, then <em>Disable</em> their class-portal user (Users tab → edit). Disabled accounts can&rsquo;t sign in and are hidden from active listings.</li>
+          <li><strong>Hiring a new SPED teacher / intern</strong> — create the HR record first (contract, tax, SSS), then create the class-portal user via <em>Users → Add teacher from Staff Module</em>.</li>
+          <li><strong>Teacher resigns</strong> — set their HR status to <em>Separated</em> in HR Hub, then <em>Disable</em> their class-portal user (Users tab → edit).</li>
+          <li><strong>Intern contract extended</strong> — update the HR contract end date, then <em>Enable</em> the class-portal user if the cron already disabled them.</li>
           <li><strong>Uniform / seminar admin</strong> — stays entirely in HR Hub. The class portal doesn&rsquo;t know about those.</li>
         </ul>
       </div>
@@ -941,29 +1663,146 @@ export default function HandbookPage() {
         <span className="label">Why three separate hubs?</span>
         Each hub has its own database and its own deploy pipeline, so an outage in one doesn&rsquo;t take down the others. Class-portal downtime doesn&rsquo;t stop payroll; an Accounting Hub deploy doesn&rsquo;t block parents from paying tuition. The trade-off is that a person&rsquo;s data lives in multiple places — hence the manual sync notes above.
       </div>
+      </section>
 
-      <h2 id="troubleshooting">9. Troubleshooting</h2>
+      {/* ─────────────────────────────────────────────────────────────
+       * 19. HELP & FAQ
+       * ────────────────────────────────────────────────────────── */}
+      <section className="handbook-section" data-slug="help">
+      <h2 id="help">19. Help &amp; FAQ</h2>
+      <p>Use the search bar at the top of this page to jump to any keyword. Below, the most common questions we get about the class portal — payment quirks, sign-in gotchas, and cross-hub gotchas.</p>
 
-      <h3>I don’t see a change I know was deployed</h3>
-      <p>Your browser cached the old JS bundle. Hard-refresh: <kbd>Cmd</kbd> + <kbd>Shift</kbd> + <kbd>R</kbd> on Mac, <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>R</kbd> on Windows / Linux. On iOS Safari, close the tab and re-open it. If it still doesn’t work after a hard-refresh, the deploy actually hasn’t landed yet — give it another 5 minutes.</p>
+      <h3>Sign-in and access</h3>
 
-      <h3>A payment badge says the student is Due but they clearly paid</h3>
-      <p>Almost always a period-text problem. Open the payment row (<em>Payments → Confirmed Payments</em>, click Edit) and check the period text. If it says <code>2026-2027</code>, <code>AY 2026-2027</code>, or anything else that doesn’t name a specific month, the system correctly refuses to attribute it. Change the period to <code>June 2026</code> (or whichever month the payment actually covered) and save.</p>
+      <Faq q="I get 'Missing bearer token.' or 'Session expired' when I click a button.">
+        <p>Your device's saved sign-in token was cleared behind the scenes (usually a second tab signed out, or an earlier request expired the session). The pages will auto-redirect you to sign-in as of the 2026-09 fix, but if you're stuck:</p>
+        <ol>
+          <li>Click <strong>Sign out</strong> at the bottom of the sidebar.</li>
+          <li>Sign back in with your usual credentials.</li>
+          <li>The action you tried before will now work.</li>
+        </ol>
+        <p>If it keeps happening, open DevTools → Application → Local Storage → <code>class.sapphireclinicseast.org</code>, delete both <code>scei_class_token_v1</code> and <code>scei_class_auth_v1</code>, then sign in fresh.</p>
+      </Faq>
 
-      <h3>A student’s badge shows “Owes for June 2026” but they never enrolled in June</h3>
-      <p>The system assumes every monthly student was on the plan for the whole SY. For a late July enrollee, that means June looks unpaid. If the parent has a signed agreement waiving June, the fix is to record a zero-amount payment for June with the period <code>June 2026</code> and notes explaining the waiver — that clears the badge and leaves an audit trail.</p>
+      <Faq q="A teacher says she can't create a class — 'Could not save. Retry?' or a red banner appears.">
+        <p>As of 2026-09, the red banner now shows the actual server error instead of a generic message. Read the wording — it tells you exactly what to fix:</p>
+        <ul>
+          <li><em>"Missing bearer token."</em> — session desync. Sign out + back in (see above).</li>
+          <li><em>"Only teachers and admins can create classes."</em> — the user's role isn't TEACHER. Have main admin check their role in Users → Edit.</li>
+          <li><em>"branch, level, and name are required."</em> — one of the dropdowns didn't submit a value. Refresh the page and retry.</li>
+          <li><em>"Out of branch scope."</em> — branch admin trying to create a class in a branch that isn't theirs.</li>
+          <li><em>"Server error."</em> with details — capture a screenshot of the browser console (Cmd/Ctrl + Option/Shift + J) and send it to the code maintainer.</li>
+        </ul>
+      </Faq>
 
-      <h3>I signed in as branch admin but I can’t create a main admin account</h3>
-      <p>By design. Only the current main admin can mint another main admin. Ask <code>main@sapphireclinicseast.org</code> to make the account.</p>
+      <Faq q="A branch admin says they can't create a main admin account.">
+        <p>By design. Only the current main admin (<code>main@sapphireclinicseast.org</code>) can mint another main admin. Ask them to do it from Users → Create staff account.</p>
+      </Faq>
 
-      <h3>Where do I find the class portal’s server logs?</h3>
-      <p>You don’t — logs live on the VPS. If something looks like a bug (a button that never saves, a payment that vanished), take a screenshot with the browser’s dev-tools console open (<kbd>Cmd/Ctrl</kbd> + <kbd>Option/Shift</kbd> + <kbd>J</kbd>) and hand it to the person maintaining the code. Screenshots with the console errors visible are worth ten written descriptions.</p>
+      <h3>Payments</h3>
+
+      <Faq q="A parent paid via PayMongo but the portal still says Due / their badge is red.">
+        <p>Two possible causes:</p>
+        <ol>
+          <li><strong>Front desk recorded the payment as PayMongo but forgot to click Confirm payment.</strong> When staff use <em>+ Record payment → PayMongo</em>, that's a bookkeeping entry for money already collected elsewhere — it creates a PENDING row, and you still have to click <strong>Confirm payment</strong> before the student's badge flips.
+            <br /><em>Fix:</em> Admin → Payments → Pending confirmations → find the row → click <strong>Confirm payment</strong>. The badge lights up on next refresh.</li>
+          <li><strong>The real PayMongo webhook didn't fire.</strong> If the parent completed a real checkout via <code>/pay</code>, the webhook should auto-confirm. If it didn't, check that PayMongo has the correct webhook URL for the branch, then manually confirm the row as above.</li>
+        </ol>
+      </Faq>
+
+      <Faq q="A payment badge says the student is Due for August 2026 but they paid in August.">
+        <p>Almost always a period-text problem. Open <em>Payments → Confirmed Payments</em>, find the row, click <strong>Edit</strong>, and check the period text. If it says <code>2026-2027</code>, <code>AY 2026-2027</code>, or anything else that doesn't name a specific month, the badge logic can't attribute it. Change the period to <code>August 2026</code> (or whichever month the payment actually covered) and save.</p>
+      </Faq>
+
+      <Faq q="A student's badge shows 'Owes for June 2026' but they only enrolled in July.">
+        <p>The system assumes every monthly student was on the plan for the whole SY. For a July enrollee, June looks unpaid. Two fixes:</p>
+        <ul>
+          <li>If the parent still owes June (late enrollment) — collect the back balance. On <code>/pay</code> they'll see a callout with the lump-sum amount.</li>
+          <li>If the parent has a signed agreement waiving June — record a zero-amount payment for June with the period <code>June 2026</code> and a note explaining the waiver. That clears the badge and leaves an audit trail.</li>
+        </ul>
+      </Faq>
+
+      <Faq q="How do I reverse a confirmed payment?">
+        <p>Deleting the row in the class portal does NOT void the corresponding accounting Order. If you're actually reversing (not just cleaning a test row):</p>
+        <ol>
+          <li>Delete the row in <em>Class portal → Payments → Confirmed Payments</em> (main admin only).</li>
+          <li>Open <em>Accounting Hub → POS</em>, find the same Order, and void it there too.</li>
+        </ol>
+        <p>The classPortalPaymentId in the Edit Payment modal is the cross-reference you use to find the matching accounting Order.</p>
+      </Faq>
+
+      <Faq q="How do I switch a student from Monthly to Bi-annual (or any other combo) mid-year?">
+        <p>Use the <strong>Plan-switch balance calculator</strong> on the student's profile (main admin only). See <a href="#payments">chapter 11 → Plan switches</a> for the full walkthrough.</p>
+      </Faq>
+
+      <h3>Waivers &amp; documents</h3>
+
+      <Faq q="A teacher signed the waiver as witness but the admin view still shows it as unsigned.">
+        <p>Fixed as of 2026-08 — waiver signatures now sync across devices. If it's still stuck for one specific student, ask the teacher to open that student's profile once from any device they're signed in on. The auto-sync will push the stranded signature to the server. If a device has been fully cleared (browser data wiped), the teacher will need to re-sign.</p>
+      </Faq>
+
+      <Faq q="Where does the registration letter's Purpose text come from?">
+        <p>Staff-editable. Open the student's profile → School Registration Letter sub-card → type your purpose in the field, then click View or Download PDF. The default is <code>reimbursement purposes</code>. See <a href="#documents">chapter 12</a>.</p>
+      </Faq>
+
+      <Faq q="The registration letter or fee schedule PDF won't generate — button is disabled.">
+        <p>Both PDFs require at least one payment record for the student in the current SY. If the student has no payments yet, record one first (even a small one), then generate.</p>
+      </Faq>
+
+      <h3>Meetings</h3>
+
+      <Faq q="I cancelled a meeting but people can still join.">
+        <p>LiveKit signed tokens can't be recalled. Once the guest link is shared, the meet app will keep accepting it until the meeting's scheduled end time. To be safe, cancel BEFORE you share, or only share the guest link through the Meetings page itself (which fetches a fresh, revocable link each time).</p>
+      </Faq>
+
+      <Faq q="Where's my recording?">
+        <p>Cloud recordings are stored on the meet app (meet.sapphireclinicseast.org). They don't currently appear inside the class portal's meeting row — check the meet app for playback and download. This is a planned follow-up.</p>
+      </Faq>
+
+      <Faq q="A student says they don't see the meeting on their portal.">
+        <p>Check the meeting's <em>Tagged</em> column. If it shows <em>"— everyone with link"</em>, the meeting isn't tagged to any specific student, so it won't appear on any student's portal (only via the shared link). If you want it to appear, edit the meeting and tick their name in the Tag students list.</p>
+      </Faq>
+
+      <h3>Interns</h3>
+
+      <Faq q="An intern got auto-disabled but their contract was extended.">
+        <ol>
+          <li>Ask HR to update the contract-end date in HR Hub.</li>
+          <li>Main admin: Users → find the intern's row → click <strong>Enable</strong>. They can sign in again.</li>
+          <li>The intern-lifecycle cron respects the new contract-end date — it won't touch them until the new end + 15 days.</li>
+        </ol>
+      </Faq>
+
+      <Faq q="Why don't I see the Intern badge on my Users list?">
+        <p>The badge only appears for accounts that were created via the "Add teacher from Staff Module" card AND had employment type = Intern in HR at the time of creation. If an intern was created via the plain "Create staff account" form, they won't be flagged. Ask HR to fix the employment type in HR Hub, then delete + re-create the class-portal account from Add teacher from Staff Module.</p>
+      </Faq>
+
+      <h3>Front desk</h3>
+
+      <Faq q="Front desk says they can't see a student they know is enrolled.">
+        <p>Front desk is branch-scoped. If the student is enrolled at the OTHER branch, front desk at their branch won't see them. Confirm the student's Branch in the admin's Users tab.</p>
+      </Faq>
+
+      <Faq q="Why can't front desk see the Handbook link in their sidebar?">
+        <p>The handbook is main-admin only — it's not shown to any other role. If front desk needs to reference something, they can ask the main admin to share the PDF export (top-right of this page → <strong>Download PDF</strong>).</p>
+      </Faq>
+
+      <h3>Deploy &amp; caching</h3>
+
+      <Faq q="I don't see a change I know was deployed.">
+        <p>Your browser cached the old JS bundle. Hard-refresh: <kbd>Cmd</kbd> + <kbd>Shift</kbd> + <kbd>R</kbd> on Mac, <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>R</kbd> on Windows / Linux. On iOS Safari, close the tab and re-open it. If it still doesn't work after a hard-refresh, the deploy actually hasn't landed yet — give it another 5 minutes.</p>
+      </Faq>
+
+      <Faq q="Where do I find the class portal's server logs?">
+        <p>You don't — logs live on the VPS. If something looks like a bug (a button that never saves, a payment that vanished), take a screenshot with the browser's dev-tools console open (Cmd/Ctrl + Option/Shift + J) and hand it to the person maintaining the code. Screenshots with the console errors visible are worth ten written descriptions.</p>
+      </Faq>
 
       <hr style={{ border: 'none', borderTop: '1px solid var(--paper-3)', margin: '3rem 0 1rem' }} />
       <p style={{ fontSize: 12, color: 'var(--mid-gray)', textAlign: 'center' }}>
         Aura Academy for Learning · Sapphire Clinics East, Inc.<br />
-        Handbook version 2 — reflects portal features as of the current deploy. Illustrations are stylised recreations of the real screens, not live captures.
+        Handbook version 4 — step-by-step guide + FAQ + search. Reflects portal features as of the current deploy. Illustrations are stylised recreations of the real screens, not live captures.
       </p>
+      </section>
       </div>
     </div>
   )
