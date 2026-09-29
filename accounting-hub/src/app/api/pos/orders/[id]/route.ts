@@ -510,9 +510,13 @@ export async function PUT(
         })
       }
 
-      // Delete and recreate payments if provided
+      // Update payments in place if provided. OrderPayment ids are load-bearing:
+      // PosSettlementPayment.orderPaymentId points at them with no FK, so a
+      // blanket delete+recreate silently orphaned every bank-rec settlement link
+      // on the order every time it was edited. Lines the client sends back with
+      // their id are updated; lines it dropped are deleted; new lines are created.
       if (payments?.length) {
-        // Reverse old wallet changes before deleting payments
+        // Reverse old wallet changes before applying the new lines
         // HMO: was incremented → decrement to reverse
         // GL: was decremented → increment to reverse (restore GL balance)
         const oldPayments = await tx.orderPayment.findMany({ where: { orderId: id } })
@@ -530,23 +534,32 @@ export async function PUT(
           }
         }
 
-        await tx.orderPayment.deleteMany({ where: { orderId: id } })
-        await tx.orderPayment.createMany({
-          data: payments.map((p: {
-            method: string
-            amount: number
-            paymentModeId?: string
-            walletId?: string
-            reference?: string
-          }) => ({
-            orderId: id,
-            method: p.method,
+        const oldById = new Map(oldPayments.map(op => [op.id, op]))
+        const keptIds: string[] = []
+        for (const p of payments as {
+          id?: string
+          method: string
+          amount: number
+          paymentModeId?: string
+          walletId?: string
+          reference?: string
+        }[]) {
+          const line = {
+            method: p.method as never,
             amount: Number(p.amount),
             paymentModeId: p.paymentModeId || null,
             walletId: p.walletId || null,
             reference: p.reference || null,
-          })),
-        })
+          }
+          const old = p.id ? oldById.get(p.id) : undefined
+          if (old) {
+            keptIds.push(old.id)
+            await tx.orderPayment.update({ where: { id: old.id }, data: line })
+          } else {
+            await tx.orderPayment.create({ data: { orderId: id, ...line } })
+          }
+        }
+        await tx.orderPayment.deleteMany({ where: { orderId: id, id: { notIn: keptIds } } })
 
         // Apply new wallet changes
         // HMO: increment (accumulate AR)
