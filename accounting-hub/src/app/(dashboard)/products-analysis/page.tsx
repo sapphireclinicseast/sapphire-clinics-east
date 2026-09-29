@@ -354,7 +354,15 @@ export default function ProductsAnalysisPage() {
             const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
             const max = Math.max(1, ...grid.flat())
             const total = grid.flat().reduce((x, y) => x + y, 0)
-            if (total === 0) return null
+            if (total === 0) {
+              return (
+                <div className="mb-4">
+                  <Section icon={<CalendarDays size={16} />} title="Purchase Times — Heatmap">
+                    <Empty text={`No orders with a recorded purchase time in this period yet${data.purchaseHeatmap.noTime > 0 ? ` — the ${data.purchaseHeatmap.noTime} order${data.purchaseHeatmap.noTime !== 1 ? 's' : ''} here carry only a date (onsite sales and older marketplace imports)` : ''}. New TikTok/marketplace bulk uploads record the actual purchase time and will fill this grid in.`} />
+                  </Section>
+                </div>
+              )
+            }
             const hourLabel = (h: number) => {
               const f = (v: number) => `${v % 12 === 0 ? 12 : v % 12}:00`
               const mer = (v: number) => (v % 24) < 12 ? 'AM' : 'PM'
