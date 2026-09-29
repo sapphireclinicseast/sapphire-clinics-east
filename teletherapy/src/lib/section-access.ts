@@ -31,6 +31,7 @@ export const ALL_SECTIONS = [
   '/mentorship',
   '/balik-tanaw',
   '/learning-outcomes',
+  '/handbook',
   '/settings',
 ]
 
@@ -43,7 +44,7 @@ const PRESETS: Record<'CLINICIAN' | 'FRONT_DESK' | 'ADMIN_STAFF' | 'INTERN', str
   CLINICIAN: [
     '/', '/clinic-schedule', '/patients', '/patients-love', '/peers-love',
     '/seminars', '/templates', '/manuals', '/directory', '/wellness-check',
-    '/payroll', '/loans-perks', '/intern-supervision', '/mentorship', '/settings',
+    '/payroll', '/loans-perks', '/intern-supervision', '/mentorship', '/handbook', '/settings',
   ],
   // Interns get a deliberately trimmed portal: the everyday reference sections
   // plus the Internship section (where their Learning Outcomes + Balik-Tanaw
@@ -52,16 +53,16 @@ const PRESETS: Record<'CLINICIAN' | 'FRONT_DESK' | 'ADMIN_STAFF' | 'INTERN', str
   // /learning-outcomes routes stay allowed for back-compat but aren't in nav.
   INTERN: [
     '/', '/clinic-schedule', '/seminars', '/templates', '/manuals',
-    '/directory', '/wellness-check', '/intern-supervision', '/settings',
+    '/directory', '/wellness-check', '/intern-supervision', '/handbook', '/settings',
     '/balik-tanaw', '/learning-outcomes',
   ],
   FRONT_DESK: [
     '/patients-love', '/peers-love', '/seminars', '/templates', '/manuals',
-    '/directory', '/wellness-check', '/payroll', '/loans-perks',
+    '/directory', '/wellness-check', '/payroll', '/loans-perks', '/handbook',
   ],
   ADMIN_STAFF: [
     '/peers-love', '/seminars', '/templates', '/manuals',
-    '/directory', '/wellness-check', '/payroll', '/loans-perks',
+    '/directory', '/wellness-check', '/payroll', '/loans-perks', '/handbook',
   ],
 }
 

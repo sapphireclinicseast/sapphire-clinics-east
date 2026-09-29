@@ -28,6 +28,7 @@ import {
   LifeBuoy,
   UserCog,
   Sparkles,
+  BookMarked,
 } from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
@@ -83,6 +84,7 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
     { href: '/loans-perks', label: 'Loans & Perks', icon: HandCoins },
     { href: '/intern-supervision', label: 'Internship', icon: UserCog },
     { href: '/mentorship', label: 'Mentorship', icon: Sparkles },
+    { href: '/handbook', label: 'Handbook', icon: BookMarked },
     { href: '/settings', label: 'Settings', icon: Settings },
   ]
 
