@@ -199,14 +199,20 @@ function ITCalcRow({ label, value, strong, highlight, tone }: { label: string; v
   )
 }
 
+interface ITBasis { sales: number; compensation: number; consultantFees: number; totalExpenses: number }
+
 function IncomeTax1702QPanel({ branch, onUseAmount }: { branch: string; onUseAmount: (amount: string, from: string, to: string) => void }) {
   const [open, setOpen] = useState(true)
   const nowY = new Date().getFullYear()
   const [year, setYear] = useState(String(nowY))
   const [quarter, setQuarter] = useState(String(Math.floor(new Date().getMonth() / 3) + 1))
-  const [engineNi, setEngineNi] = useState<number | null>(null)
+  const [basis, setBasis] = useState<ITBasis | null>(null)
   const [loading, setLoading] = useState(false)
-  const [ni, setNi] = useState(''); const [niT, setNiT] = useState(false)
+  // Editable lines — auto-filled from the referenced forms, overridable.
+  const [inc, setInc] = useState(''); const [incT, setIncT] = useState(false)
+  const [comp, setComp] = useState(''); const [compT, setCompT] = useState(false)
+  const [fees, setFees] = useState(''); const [feesT, setFeesT] = useState(false)
+  const [other, setOther] = useState(''); const [otherT, setOtherT] = useState(false)
   const [prior, setPrior] = useState('')
   const [wht, setWht] = useState('')
 
@@ -215,30 +221,31 @@ function IncomeTax1702QPanel({ branch, onUseAmount }: { branch: string; onUseAmo
   const fromDate = `${year}-01-01`
   const toDate = `${year}-${String(months).padStart(2, '0')}-${new Date(Number(year), months, 0).getDate()}`
   const branchName: Record<string, string> = { ALL: 'Sapphire Clinics East Inc. (all branches)', SBEA: 'East', SBGH: 'Greenhills', VERDANA: 'Verdana' }
+  const resetTouched = () => { setIncT(false); setCompT(false); setFeesT(false); setOtherT(false) }
 
-  // Cumulative net income (pre-tax; tax provision is 0) through the quarter, from
-  // the Income Statement engine — corporate income tax is a cumulative YTD return.
+  // Cumulative figures (YTD through the quarter) that build the taxable income
+  // from the same data as the 2550Q / 1601-C / 0619-E.
   useEffect(() => {
-    setLoading(true); setEngineNi(null)
+    setLoading(true); setBasis(null)
     let cancelled = false
-    fetch(`/api/reports/v2?year=${year}&branch=${branch}`)
+    fetch(`/api/taxes/income-tax-basis?year=${year}&quarter=${q}&branch=${branch}`)
       .then(r => r.ok ? r.json() : null)
-      .then(d => {
-        if (cancelled) return
-        const arr: number[] = d?.cashFlow?.monthly?.netIncome || []
-        setEngineNi(Math.round(arr.slice(0, months).reduce((s, v) => s + (v || 0), 0) * 100) / 100)
-      })
-      .catch(() => { if (!cancelled) setEngineNi(null) })
+      .then(d => { if (!cancelled) setBasis(d) })
+      .catch(() => { if (!cancelled) setBasis(null) })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [year, branch, months])
+  }, [year, q, branch])
 
-  useEffect(() => { if (!niT && engineNi != null) setNi(engineNi.toFixed(2)) }, [engineNi, niT])
+  useEffect(() => { if (basis && !incT) setInc(basis.sales.toFixed(2)) }, [basis, incT])
+  useEffect(() => { if (basis && !compT) setComp(basis.compensation.toFixed(2)) }, [basis, compT])
+  useEffect(() => { if (basis && !feesT) setFees(basis.consultantFees.toFixed(2)) }, [basis, feesT])
+  useEffect(() => { if (basis && !otherT) setOther(Math.max(0, basis.totalExpenses - basis.compensation - basis.consultantFees).toFixed(2)) }, [basis, otherT])
 
-  const niN = num(ni), priorN = num(prior), whtN = num(wht)
-  const taxDue = Math.max(0, niN * CORP_RATE)
+  const incN = num(inc), compN = num(comp), feesN = num(fees), otherN = num(other), priorN = num(prior), whtN = num(wht)
+  const netTaxable = incN - compN - feesN - otherN
+  const taxDue = Math.max(0, netTaxable * CORP_RATE)
   const stillDue = Math.max(0, taxDue - priorN - whtN)
-  const isLoss = niN < 0
+  const isLoss = netTaxable < 0
 
   const years = [nowY, nowY - 1, nowY - 2].map(String)
 
@@ -255,8 +262,8 @@ function IncomeTax1702QPanel({ branch, onUseAmount }: { branch: string; onUseAmo
       {open && (
         <div className="p-4 space-y-3">
           <div className="flex items-center gap-2">
-            <select value={year} onChange={e => { setYear(e.target.value); setNiT(false) }} className="px-3 py-1.5 rounded-lg border text-xs font-semibold" style={{ borderColor: 'var(--light-gray)' }}>{years.map(y => <option key={y} value={y}>{y}</option>)}</select>
-            <select value={quarter} onChange={e => { setQuarter(e.target.value); setNiT(false) }} className="px-3 py-1.5 rounded-lg border text-xs font-semibold" style={{ borderColor: 'var(--light-gray)' }}>{QLABEL.map((l, i) => <option key={i} value={i + 1}>{l}</option>)}</select>
+            <select value={year} onChange={e => { setYear(e.target.value); resetTouched() }} className="px-3 py-1.5 rounded-lg border text-xs font-semibold" style={{ borderColor: 'var(--light-gray)' }}>{years.map(y => <option key={y} value={y}>{y}</option>)}</select>
+            <select value={quarter} onChange={e => { setQuarter(e.target.value); resetTouched() }} className="px-3 py-1.5 rounded-lg border text-xs font-semibold" style={{ borderColor: 'var(--light-gray)' }}>{QLABEL.map((l, i) => <option key={i} value={i + 1}>{l}</option>)}</select>
             <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>cumulative {fromDate} – {toDate}</span>
           </div>
 
@@ -265,7 +272,11 @@ function IncomeTax1702QPanel({ branch, onUseAmount }: { branch: string; onUseAmo
               <span>Corporate Income Tax — {QLABEL[q - 1]} {year}</span>
               {loading && <Loader2 size={12} className="animate-spin" />}
             </div>
-            <ITEditRow label="Net taxable income (cumulative, YTD)" sub={loading ? 'loading from Income Statement…' : `auto-filled from Income Statement${engineNi != null ? ` · ₱${peso(engineNi)}` : ''}`} value={ni} onChange={setNi} onTouch={() => setNiT(true)} />
+            <ITEditRow label="Gross income (invoiced sales)" sub="from 2550Q — SI sales, vatable + exempt" value={inc} onChange={setInc} onTouch={() => setIncT(true)} />
+            <ITEditRow label="less: Compensation (salaries & wages)" sub="from 1601-C payroll" value={comp} onChange={setComp} onTouch={() => setCompT(true)} />
+            <ITEditRow label="less: Professional fees" sub="from 0619-E consultant base" value={fees} onChange={setFees} onTouch={() => setFeesT(true)} />
+            <ITEditRow label="less: Other operating expenses" sub="all other deductible costs" value={other} onChange={setOther} onTouch={() => setOtherT(true)} />
+            <ITCalcRow label="Net taxable income" value={netTaxable} strong />
             <ITCalcRow label={`Income Tax Due @ 20%${isLoss ? ' (net loss → ₱0)' : ''}`} value={taxDue} strong />
             <ITEditRow label="less: Income tax paid, prior quarters" value={prior} onChange={setPrior} />
             <ITEditRow label="less: Creditable withholding tax (2307)" value={wht} onChange={setWht} />
@@ -273,7 +284,7 @@ function IncomeTax1702QPanel({ branch, onUseAmount }: { branch: string; onUseAmo
           </div>
 
           <div className="flex items-center justify-between gap-2 flex-wrap">
-            <p className="text-[11px]" style={{ color: 'var(--mid-gray)', maxWidth: 560 }}>Net taxable income is auto-filled from the app&apos;s Income Statement (cumulative through the quarter, pre-tax) — <strong>edit it to your tax-adjusted figure</strong>. 20% is the small-corporation rate; the quarterly 1702Q is cumulative, so deduct prior quarters&apos; payments and creditable 2307 withholding.</p>
+            <p className="text-[11px]" style={{ color: 'var(--mid-gray)', maxWidth: 620 }}>Income &amp; expense lines are auto-filled from the same data as the other forms — invoiced sales (2550Q), compensation (1601-C), professional fees (0619-E), and remaining deductible expenses — cumulative through the quarter. <strong>Edit any line to your tax-adjusted figure.</strong> 20% is the small-corporation rate; the 1702Q is cumulative, so deduct prior quarters&apos; payments and creditable 2307 withholding.</p>
             <button onClick={() => onUseAmount(stillDue.toFixed(2), fromDate, toDate)} className="px-3 py-2 rounded-xl text-xs font-semibold text-white" style={{ background: 'var(--teal)' }}>Use ₱{peso(stillDue)} in RFP →</button>
           </div>
         </div>
