@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Landmark, ExternalLink, CalendarClock } from 'lucide-react'
+import { Landmark, ExternalLink, CalendarClock, Loader2 } from 'lucide-react'
 import { useResizableColumns, ResizableColgroup, ColResizeHandle } from '@/components/useResizableColumns'
 import { computeTaxDue, TAX_PORTALS, type TaxDueInfo } from '@/lib/taxes'
 import WithholdingCompensation from './WithholdingCompensation'
@@ -63,6 +63,9 @@ export default function TaxesPage() {
 
       {tab === 'guide' && (
         <div className="space-y-4">
+          {/* Current tax positions (live summary) */}
+          <TaxSummarySection />
+
           {/* Deadlines-soon banner */}
           {soon.length > 0 && (
             <div className="rounded-2xl border p-4 flex items-start gap-3" style={{ borderColor: '#fca5a5', background: '#fef2f2' }}>
@@ -149,6 +152,58 @@ export default function TaxesPage() {
       {tab === 'rfp' && <TaxesRfp />}
       {tab === 'paid' && <TaxesPaid />}
       {tab === 'report' && <TaxesReport />}
+    </div>
+  )
+}
+
+// ─── Current tax positions (live summary at the top of the Guide) ───────────
+const SUM_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const sumPeso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+interface TaxSummary { month: string; quarter: number; year: number; wc: number; ewt0619: number; ewt1601eq: number; vat: number; it: number }
+
+function TaxSummarySection() {
+  const [sum, setSum] = useState<TaxSummary | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [err, setErr] = useState(false)
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/taxes/summary')
+      .then(r => r.ok ? r.json() : Promise.reject(new Error('load')))
+      .then(d => { if (!cancelled) { setSum(d); setLoading(false) } })
+      .catch(() => { if (!cancelled) { setErr(true); setLoading(false) } })
+    return () => { cancelled = true }
+  }, [])
+
+  const monthLabel = sum ? `${SUM_MONTHS[parseInt(sum.month.slice(5, 7)) - 1]} ${sum.year}` : ''
+  const qLabel = sum ? `Q${sum.quarter} ${sum.year}` : ''
+  const cards = sum ? [
+    { code: '1601-C', name: 'Withholding on Compensation', period: monthLabel, amount: sum.wc, note: 'due 10th next month' },
+    { code: '0619-E', name: 'Expanded Withholding — monthly', period: monthLabel, amount: sum.ewt0619, note: 'due 10th next month' },
+    { code: '1601-EQ', name: 'Expanded Withholding — quarter', period: qLabel, amount: sum.ewt1601eq, note: 'quarter-to-date' },
+    { code: '2550Q', name: 'Value-Added Tax', period: qLabel, amount: sum.vat, note: 'before input-tax carryover' },
+    { code: '1702Q', name: 'Income Tax @ 20%', period: qLabel, amount: sum.it, note: 'cumulative · net loss → ₱0' },
+  ] : []
+
+  return (
+    <div className="rounded-2xl border bg-white p-4" style={{ borderColor: 'var(--light-gray)' }}>
+      <p className="text-xs font-semibold uppercase tracking-wide mb-3 flex items-center gap-2" style={{ color: 'var(--mid-gray)' }}>Current Tax Positions {loading && <Loader2 size={12} className="animate-spin" />}</p>
+      {err ? (
+        <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Could not load the tax summary right now.</p>
+      ) : loading ? (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">{Array.from({ length: 5 }).map((_, i) => <div key={i} className="rounded-xl border h-[86px] animate-pulse" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }} />)}</div>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          {cards.map(c => (
+            <div key={c.code} className="rounded-xl border p-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+              <p className="text-[11px] font-bold" style={{ color: 'var(--deep-teal)' }}>{c.code}</p>
+              <p className="text-[10px] leading-tight mb-1" style={{ color: 'var(--mid-gray)', minHeight: 24 }}>{c.name}</p>
+              <p className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>₱{sumPeso(c.amount)}</p>
+              <p className="text-[10px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>{c.period} · {c.note}</p>
+            </div>
+          ))}
+        </div>
+      )}
+      <p className="text-[11px] mt-3" style={{ color: 'var(--mid-gray)' }}>Live snapshot across all branches, from the same data as each form&apos;s computation tab. VAT is shown before the input-tax carryover; open a form&apos;s tab for its full computation and to file.</p>
     </div>
   )
 }
