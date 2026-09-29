@@ -110,7 +110,7 @@ interface Order {
   paymentStatus?: string
   paymentDate?: string | null
   items: { id: string; name: string; quantity: number; unitPrice: string | number; lineTotal: string | number; serviceId?: string; inventoryItemId?: string; service?: { department?: string; revenueType?: string } | null }[]
-  payments: { id: string; method: string; amount: string | number; walletId?: string; reference?: string }[]
+  payments: { id: string; method: string; amount: string | number; paymentModeId?: string | null; walletId?: string; reference?: string }[]
   arPaymentItems?: { paymentId: string }[]
   referrer?: { id: string; name: string } | null
   createdBy?: { name: string }
@@ -990,6 +990,15 @@ function OrderFormModal({
   const [services, setServices] = useState<ServiceItem[]>([])
   const [showServiceDrop, setShowServiceDrop] = useState(false)
   const [payments, setPayments] = useState<PaymentLine[]>([{ method: 'CASH', amount: 0 }])
+  // Add-or-replace a wallet payment line WITHOUT wiping the other payment rows,
+  // so two wallets (e.g. VIP + Advance) or wallet + cash can pay one order.
+  // An untouched zero-amount CASH placeholder is dropped; a row for the same
+  // wallet or same method is replaced instead of duplicated.
+  const upsertWalletPayment = (newPay: PaymentLine) => setPayments(prev => {
+    const base = prev.filter(pm => !(pm.method === 'CASH' && !toNum(pm.amount) && !pm.walletId))
+    const i = base.findIndex(pm => (newPay.walletId && pm.walletId === newPay.walletId) || pm.method === newPay.method)
+    return i >= 0 ? base.map((pm, j) => j === i ? newPay : pm) : [...base, newPay]
+  })
   const [configuredModes, setConfiguredModes] = useState<PaymentModeType[]>([])
   const [pwdDiscount, setPwdDiscount] = useState(false)
   const [customDiscountId, setCustomDiscountId] = useState('')
@@ -1538,7 +1547,7 @@ function OrderFormModal({
       // Replace primary payment with wallet — map walletType to PaymentMethod enum
       const walletMethodMap: Record<string, string> = { VIP: 'VIP_CARD', PREPAID_CARD: 'PREPAID_CARD', PACKAGE: 'PACKAGE', DOWNPAYMENT: 'DOWNPAYMENT', ADVANCE: 'ADVANCE', HMO: 'HMO', GL: 'GL' }
       const payMethod = walletMethodMap[d.walletType] || 'PREPAID_CARD'
-      setPayments([{ method: payMethod, amount: 0, walletId: d.id, reference: d.barcode }])
+      upsertWalletPayment({ method: payMethod, amount: 0, walletId: d.id, reference: d.barcode })
       setShowWalletPay(false)
       setWalletBarcode('')
       // Auto-apply wallet discount
@@ -2366,7 +2375,7 @@ function OrderFormModal({
                       const wPayMethod = wMethodMap[w.walletType] || 'PREPAID_CARD'
                       return (
                       <button key={w.id} onClick={() => {
-                        setPayments([{ method: wPayMethod, amount: 0, walletId: w.id, reference: w.barcode }])
+                        upsertWalletPayment({ method: wPayMethod, amount: 0, walletId: w.id, reference: w.barcode })
                         setShowWalletPay(false)
                         applyWalletDiscount(w)
                       }}
@@ -2393,7 +2402,7 @@ function OrderFormModal({
                   <div className="max-h-32 overflow-y-auto space-y-1">
                     {dpWallets.map(w => (
                       <button key={w.id} onClick={() => {
-                        setPayments([{ method: 'DOWNPAYMENT', amount: 0, walletId: w.id, reference: w.patientName }])
+                        upsertWalletPayment({ method: 'DOWNPAYMENT', amount: 0, walletId: w.id, reference: w.patientName })
                         setShowDownpayment(false)
                         setDpSearch('')
                         setDpWallets([])
@@ -2552,7 +2561,7 @@ function OrderFormModal({
                   <div className="max-h-32 overflow-y-auto space-y-1">
                     {hmoWallets.map(w => (
                       <button key={w.id} onClick={() => {
-                        setPayments([{ method: 'HMO', amount: 0, walletId: w.id, reference: w.patientName }])
+                        upsertWalletPayment({ method: 'HMO', amount: 0, walletId: w.id, reference: w.patientName })
                         setShowHmoPay(false)
                         setHmoSearch('')
                         setHmoWallets([])
@@ -2922,7 +2931,7 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
   const [viewOrder, setViewOrder] = useState<Order | null>(null)
   const [editOrder, setEditOrder] = useState<Order | null>(null)
   const [editItems, setEditItems] = useState<{ name: string; quantity: number; unitPrice: number; lineTotal: number; serviceId?: string; inventoryItemId?: string }[]>([])
-  const [editPayments, setEditPayments] = useState<{ method: string; amount: number; paymentModeId?: string; walletId?: string; reference?: string }[]>([])
+  const [editPayments, setEditPayments] = useState<{ id?: string; method: string; amount: number; paymentModeId?: string; walletId?: string; reference?: string }[]>([])
   const [editPatient, setEditPatient] = useState('')
   const [editClinician, setEditClinician] = useState('')
   const [editDate, setEditDate] = useState('')
@@ -3276,7 +3285,19 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
     })))
     setEditItemResults(o.items.map(() => []))
     editItemTimers.current = o.items.map(() => null)
-    setEditPayments(o.payments.map(p => ({ method: p.method, amount: toNum(p.amount), walletId: p.walletId })))
+    // Keep id / paymentModeId / reference on every seeded line. Dropping them
+    // here meant ANY save — even one that never touched the payments — resent
+    // each payment with paymentModeId: null, so the GL either skipped the JE
+    // ("no payment-mode account configured") or fell back to the branch default
+    // account, and bank-rec settlement links died with the recreated rows.
+    setEditPayments(o.payments.map(p => ({
+      id: p.id,
+      method: p.method,
+      amount: toNum(p.amount),
+      paymentModeId: p.paymentModeId || undefined,
+      walletId: p.walletId,
+      reference: p.reference,
+    })))
     setEditDate(o.transactionDate ? o.transactionDate.split('T')[0] : today())
     setEditDateReason('')
     const dAmt = toNum(o.discountAmount)
@@ -3346,6 +3367,7 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
           lineTotal: it.lineTotal,
         })),
         payments: editPayments.filter(p => p.amount > 0).map(p => ({
+          id: p.id || undefined,
           method: p.method,
           amount: p.amount,
           paymentModeId: p.paymentModeId || null,
@@ -3985,6 +4007,14 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
                           editConfiguredModes.map(m => <option key={m.id} value={m.id}>{m.name}</option>)
                         ) : (
                           PAYMENT_METHODS_SERVICE.map(m => <option key={m.value} value={m.value}>{m.label}</option>)
+                        )}
+                        {/* A payment saved without a mode must say so — otherwise the
+                            browser silently displays the first configured mode while the
+                            state (and the saved row) still has no paymentModeId. */}
+                        {editConfiguredModes.length > 0 && !p.paymentModeId && !p.walletId && !editConfiguredModes.some(m => m.id === p.method) && (
+                          <option value={p.method}>
+                            {(PAYMENT_METHODS_SERVICE.find(m => m.value === p.method)?.label || p.method)} — no payment mode set
+                          </option>
                         )}
                         {/* Digital wallet payment type options */}
                         {p.walletId && (
@@ -10454,11 +10484,29 @@ function RecordUnpaidPaymentModal({ order, onClose, onSaved }: { order: Order; o
   const net = toNum(order.netAmount)
   const [payDate, setPayDate] = useState(today())
   const [method, setMethod] = useState('CASH')
+  const [paymentModeId, setPaymentModeId] = useState<string | undefined>(undefined)
+  const [modes, setModes] = useState<PaymentModeType[]>([])
   const [amount, setAmount] = useState(String(net))
   const [issueSI, setIssueSI] = useState(!!order.issuedOfficialInvoice)
   const [si, setSi] = useState(order.salesInvoiceNumber || '')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
+
+  // Without a paymentModeId the GL has no cash account for the payment, so the
+  // collected order silently never posts (or posts to the branch fallback).
+  // Offer the branch's configured modes and default to its cash mode.
+  useEffect(() => {
+    fetch(`/api/pos/payment-modes?branch=${encodeURIComponent(order.branch)}`)
+      .then(r => r.json())
+      .then(d => {
+        const active = Array.isArray(d) ? (d as PaymentModeType[]).filter(m => m.isActive) : []
+        setModes(active)
+        const cash = active.find(m => m.paymentMethod === 'CASH' && m.branch === order.branch)
+          || active.find(m => m.paymentMethod === 'CASH')
+        if (cash) { setMethod('CASH'); setPaymentModeId(cash.id) }
+      })
+      .catch(() => {})
+  }, [order.branch])
 
   const save = async () => {
     if (!(toNum(amount) > 0)) { setErr('Enter the amount collected'); return }
@@ -10466,7 +10514,7 @@ function RecordUnpaidPaymentModal({ order, onClose, onSaved }: { order: Order; o
     try {
       const r = await fetch(`/api/pos/orders/${order.id}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'recordPayment', paymentDate: payDate, payments: [{ method, amount: toNum(amount) }], issuedOfficialInvoice: issueSI, salesInvoiceNumber: issueSI ? si.trim() : null }),
+        body: JSON.stringify({ action: 'recordPayment', paymentDate: payDate, payments: [{ method, amount: toNum(amount), paymentModeId: paymentModeId || null }], issuedOfficialInvoice: issueSI, salesInvoiceNumber: issueSI ? si.trim() : null }),
       })
       if (!r.ok) { setErr((await r.json()).error || 'Failed'); return }
       onSaved()
@@ -10493,8 +10541,20 @@ function RecordUnpaidPaymentModal({ order, onClose, onSaved }: { order: Order; o
           </div>
         </div>
         <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Payment method</label>
-        <select value={method} onChange={e => setMethod(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }}>
-          {PAYMENT_METHODS_SERVICE.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+        <select value={paymentModeId || method} onChange={e => {
+          const val = e.target.value
+          const cm = modes.find(m => m.id === val)
+          if (cm) { setMethod(cm.paymentMethod || 'CASH'); setPaymentModeId(cm.id) }
+          else { setMethod(val); setPaymentModeId(undefined) }
+        }} className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }}>
+          {modes.length > 0 ? (
+            modes.map(m => <option key={m.id} value={m.id}>{m.name}</option>)
+          ) : (
+            PAYMENT_METHODS_SERVICE.map(m => <option key={m.value} value={m.value}>{m.label}</option>)
+          )}
+          {modes.length > 0 && !paymentModeId && !modes.some(m => m.id === method) && (
+            <option value={method}>{(PAYMENT_METHODS_SERVICE.find(m => m.value === method)?.label || method)} — no payment mode set</option>
+          )}
         </select>
         <label className="inline-flex items-center gap-2 text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>
           <input type="checkbox" checked={issueSI} onChange={e => setIssueSI(e.target.checked)} /> Issue Sales Invoice
