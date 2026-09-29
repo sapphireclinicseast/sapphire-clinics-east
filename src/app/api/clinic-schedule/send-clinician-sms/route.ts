@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { blockIfRenterNotify } from '@/lib/renter-notify-guard'
 
 const BRANCH_CONFIG: Record<string, { httpSmsKey: string; phone: string }> = {
   SBEA: { httpSmsKey: process.env.HTTPSMS_API_KEY_SBEA ?? '', phone: '+639171189289' },
@@ -29,6 +30,12 @@ export async function POST(req: NextRequest) {
   const { staffId, date, branch: callerBranch } = await req.json()
   if (!staffId || !date)
     return NextResponse.json({ error: 'staffId and date are required' }, { status: 400 })
+
+  // Renters bring their own private clients and pay us for the room, so the
+  // clinic does not message those patients. Checked before any recipient is
+  // gathered, and here rather than only on the button — see the guard.
+  const renterBlock = await blockIfRenterNotify({ staffId, branch: callerBranch })
+  if (renterBlock) return renterBlock
 
   // Look up the clinician including their phone
   const staff = await prisma.staff.findUnique({ where: { id: staffId } })

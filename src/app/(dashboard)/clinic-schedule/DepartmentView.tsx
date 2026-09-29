@@ -6,6 +6,7 @@ import { Plus, Pencil, Trash2, Mail, MailCheck, MessageSquare, ChevronDown, Chev
 import DeskShortcutCard from '@/components/DeskShortcutCard'
 import { localTodayStr, localTomorrowStr } from '@/lib/utils'
 import { branchLabel } from '@/lib/branch-label'
+import { isRenter, RENTER_NOTIFY_REASON } from '@/lib/employment'
 
 
 // ─── Session types per department ────────────────────────────────────────────
@@ -52,6 +53,11 @@ interface StaffMember {
   id: string; firstName: string; lastName: string; department: string; branch: string
   extraBranches: string[]; phone: string | null
   employmentType: string | null; active: boolean
+  // Per-branch classification. /api/staff returns whole rows, so both arrive
+  // without asking; they are what makes "renter at East, consultant at
+  // Greenhills" answerable. See lib/employment.
+  employmentByBranch?: unknown
+  branchEmployment?: unknown
   dateHired: string | null; contractExpiry: string | null // interns: Start Month / End Month
   // Supervision and mentorship roles from HR. Shown on the card because a
   // decked slot means different things depending on them: a supervisor's
@@ -401,6 +407,16 @@ function ScheduleForm({ dept, allStaff, values, onChange, onSubmit, onCancel, er
 // ─── Staff card with schedules ─────────────────────────────────────────────────
 function StaffCard({ staff, allStaff, selectedDate, schedulingBranch }: { staff: StaffMember; allStaff: StaffMember[]; selectedDate: string; schedulingBranch: string }) {
   const [open, setOpen] = useState(false)
+  // Renting clinicians can still be BOOKED here — the room is ours to schedule,
+  // and the queue shows their sessions like anyone else's. What stops is the
+  // clinic messaging their patients, who are the clinician's own private
+  // clients. Per-branch, so someone who rents at one clinic and is on staff at
+  // the other is only restricted where they rent.
+  //
+  // The buttons are disabled rather than removed, so the desk can see the rule
+  // exists and why, instead of wondering where the button went. The routes
+  // refuse independently — this is the explanation, not the enforcement.
+  const renter = isRenter(staff, schedulingBranch)
   // Mentee status has no field of its own: HR stores menteeIds on the MENTOR,
   // so the only way to answer "is this person mentored?" is to scan the roster.
   const mentorName = useMemo(() => {
@@ -890,15 +906,15 @@ function StaffCard({ staff, allStaff, selectedDate, schedulingBranch }: { staff:
                               <Trash2 size={13} style={{ color: '#DC2626' }} />
                             </button>
                             {s.patient?.email && (
-                              <button onClick={() => sendReminder(s.id)} disabled={sendingId === s.id}
-                                className="p-1 rounded hover:bg-blue-50" title="Send reminder email">
-                                <Mail size={13} style={{ color: sendingId === s.id ? 'var(--mid-gray)' : '#2563EB' }} />
+                              <button onClick={() => sendReminder(s.id)} disabled={renter || sendingId === s.id}
+                                className="p-1 rounded hover:bg-blue-50" title={renter ? RENTER_NOTIFY_REASON : 'Send reminder email'}>
+                                <Mail size={13} style={{ color: (renter || sendingId === s.id) ? 'var(--mid-gray)' : '#2563EB' }} />
                               </button>
                             )}
                             {s.patient?.phone && (
-                              <button onClick={() => sendSmsReminder(s.id)} disabled={sendingSmsId === s.id}
-                                className="p-1 rounded hover:bg-green-50" title="Send mobile text reminder">
-                                <MessageSquare size={13} style={{ color: sendingSmsId === s.id ? 'var(--mid-gray)' : '#16A34A' }} />
+                              <button onClick={() => sendSmsReminder(s.id)} disabled={renter || sendingSmsId === s.id}
+                                className="p-1 rounded hover:bg-green-50" title={renter ? RENTER_NOTIFY_REASON : 'Send mobile text reminder'}>
+                                <MessageSquare size={13} style={{ color: (renter || sendingSmsId === s.id) ? 'var(--mid-gray)' : '#16A34A' }} />
                               </button>
                             )}
                           </div>
@@ -919,32 +935,46 @@ function StaffCard({ staff, allStaff, selectedDate, schedulingBranch }: { staff:
               </table>
               {/* Send all buttons — grouped by recipient */}
               <div className="px-3 py-3 space-y-2" style={{ borderTop: '1px solid var(--light-gray)', background: 'var(--off-white)' }}>
+                {renter && (
+                  // Said once, plainly, above the whole block: a row of greyed
+                  // buttons with no explanation reads as a bug, and the desk
+                  // would ring HR about it.
+                  <div className="flex items-start gap-2 px-2.5 py-2 rounded-lg text-[11px]"
+                    style={{ background: '#FEF6E7', border: '1px solid #F3D9A4', color: '#7A4E08' }}>
+                    <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>Renter</span>
+                    <span>
+                      {staff.firstName} rents the facility for their own private clients.
+                      Book their sessions here as usual — they appear in the queue — but
+                      the clinic does not message their patients, so the buttons below are off.
+                    </span>
+                  </div>
+                )}
                 {/* Patients section */}
                 <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>Patients</p>
                 <div className="flex flex-wrap gap-2">
-                  <button onClick={sendAllReminders} disabled={sendingAll}
+                  <button onClick={sendAllReminders} disabled={renter || sendingAll}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
-                    style={{ background: '#2563EB', color: '#fff', opacity: sendingAll ? 0.6 : 1 }}>
+                    style={{ background: '#2563EB', color: '#fff', opacity: (renter || sendingAll) ? 0.5 : 1 }}>
                     <MailCheck size={13} />
                     {sendingAll ? 'Sending…' : 'Email All Patients'}
                   </button>
-                  <button onClick={sendAllSmsReminders} disabled={sendingSmsAll}
+                  <button onClick={sendAllSmsReminders} disabled={renter || sendingSmsAll}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
-                    style={{ background: '#2563EB', color: '#fff', opacity: sendingSmsAll ? 0.6 : 1 }}>
+                    style={{ background: '#2563EB', color: '#fff', opacity: (renter || sendingSmsAll) ? 0.5 : 1 }}>
                     <MessageSquare size={13} />
                     {sendingSmsAll ? 'Sending…' : 'Text All Patients'}
                   </button>
-                  <button onClick={sendAbsentSms} disabled={sendingAbsentSms}
+                  <button onClick={sendAbsentSms} disabled={renter || sendingAbsentSms}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
-                    title={`Notify all of ${staff.firstName}'s patients today via SMS that they are absent`}
-                    style={{ background: '#DC2626', color: '#fff', opacity: sendingAbsentSms ? 0.5 : 1 }}>
+                    title={renter ? RENTER_NOTIFY_REASON : `Notify all of ${staff.firstName}'s patients today via SMS that they are absent`}
+                    style={{ background: '#DC2626', color: '#fff', opacity: (renter || sendingAbsentSms) ? 0.5 : 1 }}>
                     <Smartphone size={13} />
                     {sendingAbsentSms ? 'Sending…' : 'Text: Clinician Absent Notice'}
                   </button>
-                  <button onClick={sendAbsentEmail} disabled={sendingAbsentEmail}
+                  <button onClick={sendAbsentEmail} disabled={renter || sendingAbsentEmail}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
-                    title={`Notify all of ${staff.firstName}'s patients today via email that they are absent`}
-                    style={{ background: '#DC2626', color: '#fff', opacity: sendingAbsentEmail ? 0.5 : 1 }}>
+                    title={renter ? RENTER_NOTIFY_REASON : `Notify all of ${staff.firstName}'s patients today via email that they are absent`}
+                    style={{ background: '#DC2626', color: '#fff', opacity: (renter || sendingAbsentEmail) ? 0.5 : 1 }}>
                     <Mail size={13} />
                     {sendingAbsentEmail ? 'Sending…' : 'Email: Clinician Absent Notice'}
                   </button>
@@ -952,22 +982,24 @@ function StaffCard({ staff, allStaff, selectedDate, schedulingBranch }: { staff:
                 {/* Clinician section */}
                 <p className="text-[10px] font-bold uppercase tracking-wider pt-1" style={{ color: 'var(--mid-gray)' }}>Clinician</p>
                 <div className="flex flex-wrap items-center gap-2">
-                  <button onClick={sendClinicianSms} disabled={sendingClinicianSms || !staff.phone}
+                  <button onClick={sendClinicianSms} disabled={renter || sendingClinicianSms || !staff.phone}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
-                    title={!staff.phone ? 'No mobile number on file for this clinician' : `Send schedule to ${staff.firstName}`}
-                    style={{ background: '#16A34A', color: '#fff', opacity: (sendingClinicianSms || !staff.phone) ? 0.5 : 1 }}>
+                    title={renter ? RENTER_NOTIFY_REASON : !staff.phone ? 'No mobile number on file for this clinician' : `Send schedule to ${staff.firstName}`}
+                    style={{ background: '#16A34A', color: '#fff', opacity: (renter || sendingClinicianSms || !staff.phone) ? 0.5 : 1 }}>
                     <Smartphone size={13} />
                     {sendingClinicianSms ? 'Sending…' : 'Text Clinician'}
                   </button>
-                  <button onClick={sendClinicianEmail} disabled={sendingClinicianEmail}
+                  <button onClick={sendClinicianEmail} disabled={renter || sendingClinicianEmail}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
-                    title={`Email schedule to ${staff.firstName}`}
-                    style={{ background: '#16A34A', color: '#fff', opacity: sendingClinicianEmail ? 0.5 : 1 }}>
+                    title={renter ? RENTER_NOTIFY_REASON : `Email schedule to ${staff.firstName}`}
+                    style={{ background: '#16A34A', color: '#fff', opacity: (renter || sendingClinicianEmail) ? 0.5 : 1 }}>
                     <Mail size={13} />
                     {sendingClinicianEmail ? 'Sending…' : 'Email Clinician'}
                   </button>
                   <span className="text-[10px] italic" style={{ color: 'var(--mid-gray)' }}>
-                    *Patient status change will automatically send SMS to clinician
+                    {renter
+                      ? '*No automatic SMS either — nothing is sent for a renting clinician'
+                      : '*Patient status change will automatically send SMS to clinician'}
                   </span>
                 </div>
               </div>
