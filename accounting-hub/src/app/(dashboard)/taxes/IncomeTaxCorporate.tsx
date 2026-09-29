@@ -180,6 +180,25 @@ export default function IncomeTaxCorporate() {
 const QLABEL = ['Q1 (Jan–Mar)', 'Q2 (Apr–Jun)', 'Q3 (Jul–Sep)', 'Q4 (Oct–Dec)']
 const CORP_RATE = 0.20
 
+// Declared at MODULE scope so the <input> keeps focus while typing (a component
+// re-created inside the panel remounts its input on every keystroke).
+function ITEditRow({ label, sub, value, onChange, onTouch }: { label: string; sub?: string; value: string; onChange: (v: string) => void; onTouch?: () => void }) {
+  return (
+    <div className="flex items-center justify-between px-3 py-1.5 text-xs border-t" style={{ borderColor: 'var(--light-gray)' }}>
+      <span style={{ color: 'var(--mid-gray)' }}>{label}{sub && <span className="block text-[10px]">{sub}</span>}</span>
+      <span className="whitespace-nowrap"><span className="text-[10px] mr-1" style={{ color: 'var(--mid-gray)' }}>₱</span><input value={value} onChange={e => { onChange(e.target.value); onTouch?.() }} inputMode="decimal" className="px-2 py-1 rounded-lg border text-xs font-mono text-right" style={{ borderColor: 'var(--light-gray)', width: 140 }} /></span>
+    </div>
+  )
+}
+function ITCalcRow({ label, value, strong, highlight, tone }: { label: string; value: number; strong?: boolean; highlight?: boolean; tone?: string }) {
+  return (
+    <div className="flex items-center justify-between px-3 py-2 text-xs border-t" style={{ borderColor: 'var(--light-gray)', background: highlight ? '#fffbeb' : undefined }}>
+      <span style={{ fontWeight: strong ? 700 : 400, color: tone || (strong ? 'var(--charcoal)' : 'var(--mid-gray)') }}>{label}</span>
+      <span className="font-mono tabular-nums" style={{ fontWeight: strong ? 700 : 500, color: tone || 'var(--charcoal)' }}>₱{peso(value)}</span>
+    </div>
+  )
+}
+
 function IncomeTax1702QPanel({ branch, onUseAmount }: { branch: string; onUseAmount: (amount: string, from: string, to: string) => void }) {
   const [open, setOpen] = useState(true)
   const nowY = new Date().getFullYear()
@@ -222,19 +241,6 @@ function IncomeTax1702QPanel({ branch, onUseAmount }: { branch: string; onUseAmo
   const isLoss = niN < 0
 
   const years = [nowY, nowY - 1, nowY - 2].map(String)
-  const inputCls = 'px-2 py-1 rounded-lg border text-xs font-mono text-right'
-  const EditRow = ({ label, sub, value, onChange, onTouch }: { label: string; sub?: string; value: string; onChange: (v: string) => void; onTouch?: () => void }) => (
-    <div className="flex items-center justify-between px-3 py-1.5 text-xs border-t" style={{ borderColor: 'var(--light-gray)' }}>
-      <span style={{ color: 'var(--mid-gray)' }}>{label}{sub && <span className="block text-[10px]">{sub}</span>}</span>
-      <span className="whitespace-nowrap"><span className="text-[10px] mr-1" style={{ color: 'var(--mid-gray)' }}>₱</span><input value={value} onChange={e => { onChange(e.target.value); onTouch?.() }} inputMode="decimal" className={inputCls} style={{ borderColor: 'var(--light-gray)', width: 140 }} /></span>
-    </div>
-  )
-  const CalcRow = ({ label, value, strong, highlight, tone }: { label: string; value: number; strong?: boolean; highlight?: boolean; tone?: string }) => (
-    <div className="flex items-center justify-between px-3 py-2 text-xs border-t" style={{ borderColor: 'var(--light-gray)', background: highlight ? '#fffbeb' : undefined }}>
-      <span style={{ fontWeight: strong ? 700 : 400, color: tone || (strong ? 'var(--charcoal)' : 'var(--mid-gray)') }}>{label}</span>
-      <span className="font-mono tabular-nums" style={{ fontWeight: strong ? 700 : 500, color: tone || 'var(--charcoal)' }}>₱{peso(value)}</span>
-    </div>
-  )
 
   return (
     <div className="rounded-2xl border bg-white overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
@@ -259,11 +265,11 @@ function IncomeTax1702QPanel({ branch, onUseAmount }: { branch: string; onUseAmo
               <span>Corporate Income Tax — {QLABEL[q - 1]} {year}</span>
               {loading && <Loader2 size={12} className="animate-spin" />}
             </div>
-            <EditRow label="Net taxable income (cumulative, YTD)" sub={loading ? 'loading from Income Statement…' : `auto-filled from Income Statement${engineNi != null ? ` · ₱${peso(engineNi)}` : ''}`} value={ni} onChange={setNi} onTouch={() => setNiT(true)} />
-            <CalcRow label={`Income Tax Due @ 20%${isLoss ? ' (net loss → ₱0)' : ''}`} value={taxDue} strong />
-            <EditRow label="less: Income tax paid, prior quarters" value={prior} onChange={setPrior} />
-            <EditRow label="less: Creditable withholding tax (2307)" value={wht} onChange={setWht} />
-            <CalcRow label="Income Tax Still Due" value={stillDue} strong highlight tone="#c44b00" />
+            <ITEditRow label="Net taxable income (cumulative, YTD)" sub={loading ? 'loading from Income Statement…' : `auto-filled from Income Statement${engineNi != null ? ` · ₱${peso(engineNi)}` : ''}`} value={ni} onChange={setNi} onTouch={() => setNiT(true)} />
+            <ITCalcRow label={`Income Tax Due @ 20%${isLoss ? ' (net loss → ₱0)' : ''}`} value={taxDue} strong />
+            <ITEditRow label="less: Income tax paid, prior quarters" value={prior} onChange={setPrior} />
+            <ITEditRow label="less: Creditable withholding tax (2307)" value={wht} onChange={setWht} />
+            <ITCalcRow label="Income Tax Still Due" value={stillDue} strong highlight tone="#c44b00" />
           </div>
 
           <div className="flex items-center justify-between gap-2 flex-wrap">

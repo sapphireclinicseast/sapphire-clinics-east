@@ -222,6 +222,27 @@ export default function BusinessTax() {
 }
 
 // ─── 2550Q computation panel ───────────────────────────────────────────────
+// Row components are declared at MODULE scope (not inside the panel) so their
+// component identity is stable across renders — otherwise React remounts the
+// <input> on every keystroke and it loses focus after one character.
+function VatEditRow({ label, sub, value, onChange, onTouch, computed, computedTone }: { label: string; sub?: string; value: string; onChange: (v: string) => void; onTouch: () => void; computed?: number; computedTone?: string }) {
+  return (
+    <div className="grid grid-cols-[1fr_auto_auto] gap-3 items-center px-3 py-1.5 text-xs border-t" style={{ borderColor: 'var(--light-gray)' }}>
+      <span style={{ color: 'var(--mid-gray)' }}>{label}{sub && <span className="block text-[10px]">{sub}</span>}</span>
+      <span className="text-right whitespace-nowrap"><span className="text-[10px] mr-1" style={{ color: 'var(--mid-gray)' }}>₱</span><input value={value} onChange={e => { onChange(e.target.value); onTouch() }} inputMode="decimal" className="px-2 py-1 rounded-lg border text-xs font-mono text-right" style={{ borderColor: 'var(--light-gray)', width: 128 }} /></span>
+      <span className="font-mono tabular-nums text-right" style={{ minWidth: 96, color: computed == null ? 'transparent' : (computedTone || 'var(--charcoal)') }}>{computed == null ? '' : `₱${peso(computed)}`}</span>
+    </div>
+  )
+}
+function VatTotalRow({ label, value, tone, highlight }: { label: string; value: number; tone?: string; highlight?: boolean }) {
+  return (
+    <div className="grid grid-cols-[1fr_auto] gap-3 items-center px-3 py-2 text-xs border-t" style={{ borderColor: 'var(--light-gray)', background: highlight ? '#fffbeb' : undefined }}>
+      <span className="font-bold" style={{ color: tone || 'var(--charcoal)' }}>{label}</span>
+      <span className="font-mono tabular-nums font-bold text-right" style={{ color: tone || 'var(--charcoal)' }}>₱{peso(value)}</span>
+    </div>
+  )
+}
+
 function Vat2550QPanel({ sum, from, to, branch }: { sum: Summary; from: string; to: string; branch: string }) {
   const [open, setOpen] = useState(true)
   const [priorExcess, setPriorExcess] = useState<number | null>(null)
@@ -264,22 +285,6 @@ function Vat2550QPanel({ sum, from, to, branch }: { sum: Summary; from: string; 
   const netPayable = Math.max(0, outputVat - allowable)
   const excess = Math.max(0, allowable - outputVat)
 
-  // A row with an editable ₱ amount on the right and an optional computed VAT.
-  const money = { borderColor: 'var(--light-gray)', width: 128 } as const
-  const EditRow = ({ label, sub, value, onChange, onTouch, computed, computedTone }: { label: string; sub?: string; value: string; onChange: (v: string) => void; onTouch: () => void; computed?: number; computedTone?: string }) => (
-    <div className="grid grid-cols-[1fr_auto_auto] gap-3 items-center px-3 py-1.5 text-xs border-t" style={{ borderColor: 'var(--light-gray)' }}>
-      <span style={{ color: 'var(--mid-gray)' }}>{label}{sub && <span className="block text-[10px]">{sub}</span>}</span>
-      <span className="text-right whitespace-nowrap"><span className="text-[10px] mr-1" style={{ color: 'var(--mid-gray)' }}>₱</span><input value={value} onChange={e => { onChange(e.target.value); onTouch() }} inputMode="decimal" className="px-2 py-1 rounded-lg border text-xs font-mono text-right" style={money} /></span>
-      <span className="font-mono tabular-nums text-right" style={{ minWidth: 96, color: computed == null ? 'transparent' : (computedTone || 'var(--charcoal)') }}>{computed == null ? '' : `₱${peso(computed)}`}</span>
-    </div>
-  )
-  const TotalRow = ({ label, value, tone, highlight }: { label: string; value: number; tone?: string; highlight?: boolean }) => (
-    <div className="grid grid-cols-[1fr_auto] gap-3 items-center px-3 py-2 text-xs border-t" style={{ borderColor: 'var(--light-gray)', background: highlight ? '#fffbeb' : undefined }}>
-      <span className="font-bold" style={{ color: tone || 'var(--charcoal)' }}>{label}</span>
-      <span className="font-mono tabular-nums font-bold text-right" style={{ color: tone || 'var(--charcoal)' }}>₱{peso(value)}</span>
-    </div>
-  )
-
   return (
     <div className="rounded-2xl border bg-white overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
       <button onClick={() => setOpen(o => !o)} className="w-full flex items-center justify-between px-4 py-3" style={{ background: 'var(--off-white)' }}>
@@ -296,14 +301,14 @@ function Vat2550QPanel({ sum, from, to, branch }: { sum: Summary; from: string; 
             <div className="grid grid-cols-[1fr_auto_auto] gap-3 px-3 py-2 text-[11px] font-bold" style={{ background: 'var(--deep-teal)', color: '#fff' }}>
               <span>Quarterly VAT — {qLabel}</span><span className="text-right" style={{ minWidth: 128 }}>Amount</span><span className="text-right" style={{ minWidth: 96 }}>VAT (12%)</span>
             </div>
-            <EditRow label="Vatable sales (VAT-inclusive)" sub={`net ₱${peso(outNet)} · auto-filled from SI sales`} value={vatSales} onChange={setVatSales} onTouch={() => setVatT(true)} computed={outputVat} />
-            <EditRow label="VAT-exempt sales" sub="services / SI'd collections" value={exSales} onChange={setExSales} onTouch={() => setExT(true)} />
-            <EditRow label="less: Creditable input VAT" sub="paid VATable expenses" value={inVat} onChange={setInVat} onTouch={() => setInT(true)} computed={-inVatN} computedTone="var(--mid-gray)" />
-            <EditRow label="less: Input tax carried over from prior quarter" sub={`suggested ${yr} YTD excess ${priorExcess == null ? '…' : `₱${peso(priorExcess)}`} — verify vs prior 2550Q`} value={carry} onChange={setCarry} onTouch={() => setCarryT(true)} computed={-carryN} computedTone="var(--mid-gray)" />
-            <TotalRow label="Total allowable input tax" value={allowable} />
+            <VatEditRow label="Vatable sales (VAT-inclusive)" sub={`net ₱${peso(outNet)} · auto-filled from SI sales`} value={vatSales} onChange={setVatSales} onTouch={() => setVatT(true)} computed={outputVat} />
+            <VatEditRow label="VAT-exempt sales" sub="services / SI'd collections" value={exSales} onChange={setExSales} onTouch={() => setExT(true)} />
+            <VatEditRow label="less: Creditable input VAT" sub="paid VATable expenses" value={inVat} onChange={setInVat} onTouch={() => setInT(true)} computed={-inVatN} computedTone="var(--mid-gray)" />
+            <VatEditRow label="less: Input tax carried over from prior quarter" sub={`suggested ${yr} YTD excess ${priorExcess == null ? '…' : `₱${peso(priorExcess)}`} — verify vs prior 2550Q`} value={carry} onChange={setCarry} onTouch={() => setCarryT(true)} computed={-carryN} computedTone="var(--mid-gray)" />
+            <VatTotalRow label="Total allowable input tax" value={allowable} />
             {netPayable > 0
-              ? <TotalRow label="Net VAT Payable" value={netPayable} tone="#c44b00" highlight />
-              : <TotalRow label="Excess input tax — carry to next quarter" value={excess} tone="#166534" highlight />}
+              ? <VatTotalRow label="Net VAT Payable" value={netPayable} tone="#c44b00" highlight />
+              : <VatTotalRow label="Excess input tax — carry to next quarter" value={excess} tone="#166534" highlight />}
           </div>
           <p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>Sales are pre-filled from the app&apos;s SI / Sales-Summary data for {from} – {to} — <strong>edit any line to match your exact 2550Q</strong>. Output VAT = 12/112 of vatable sales; input VAT is your paid VATable expenses; the carryover starts from this year&apos;s accumulated excess (confirm vs the prior quarter&apos;s 2550Q). Key the resulting VAT payable into the field below to generate the RFP.</p>
         </div>
