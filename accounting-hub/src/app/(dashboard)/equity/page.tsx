@@ -91,7 +91,7 @@ interface CommonRow {
   beneficialOwners: BeneficialOwnerRow[]
 }
 interface EquityAcct { id: string; accountNumber: string; accountTitle: string }
-interface Figures { totalCapitalization: number; totalShares: number; treasuryShares: number; authorizedShares: number; authorizedCommonShares: number | null; authorizedFounderShares: number | null; activeShareholders: number }
+interface Figures { totalCapitalization: number; totalShares: number; treasuryShares: number; authorizedShares: number; authorizedCommonShares: number | null; authorizedFounderShares: number | null; activeShareholders: number; activeCommonShareholders?: number; activePreferredShareholders?: number }
 
 const EQUITY_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 
@@ -388,6 +388,10 @@ export default function EquityPage() {
         <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
           <p className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Active Shareholders <span className="font-normal text-gray-400">(holding outstanding shares)</span></p>
           <p className="text-2xl font-bold" style={{ color: 'var(--charcoal)' }}>{(fig?.activeShareholders || 0).toLocaleString('en-PH')}</p>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+            <span className="font-semibold" style={{ color: 'var(--deep-teal)' }}>{(fig?.activeCommonShareholders ?? 0).toLocaleString('en-PH')}</span> common / founders
+            {' '}· <span className="font-semibold" style={{ color: '#7c3aed' }}>{(fig?.activePreferredShareholders ?? 0).toLocaleString('en-PH')}</span> preferred
+          </p>
         </div>
       </div>
       )}

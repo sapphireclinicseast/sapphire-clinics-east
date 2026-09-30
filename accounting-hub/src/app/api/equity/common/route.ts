@@ -104,17 +104,25 @@ export async function GET() {
   // common/founders net of buybacks and shares transferred on to someone else
   // (the buyer's own transfer-in holding carries them instead), plus preferred
   // net of retired/redeemed. Rescinded holdings count toward nothing.
-  const heldByShareholder = new Map<string, number>()
+  // Counted per class too: one person can be active in both, so the split
+  // figures may sum to more than the combined head-count.
+  const heldCommon = new Map<string, number>()
   for (const c of live) {
     const net = num(c.numberOfShares)
       - c.buybacks.reduce((t, b) => t + num(b.shares), 0)
       - c.transfersOut.reduce((t, x) => t + num(x.shares), 0)
-    heldByShareholder.set(c.shareholderId, (heldByShareholder.get(c.shareholderId) || 0) + net)
+    heldCommon.set(c.shareholderId, (heldCommon.get(c.shareholderId) || 0) + net)
   }
+  const heldPreferred = new Map<string, number>()
   for (const p of preferreds) {
     const net = num(p.numberOfShares) - num(p.retiredShares)
-    heldByShareholder.set(p.shareholderId, (heldByShareholder.get(p.shareholderId) || 0) + net)
+    heldPreferred.set(p.shareholderId, (heldPreferred.get(p.shareholderId) || 0) + net)
   }
+  const activeCommonShareholders = [...heldCommon.values()].filter(v => v > 0).length
+  const activePreferredShareholders = [...heldPreferred.values()].filter(v => v > 0).length
+  const heldByShareholder = new Map<string, number>()
+  for (const [id, v] of heldCommon) heldByShareholder.set(id, v)
+  for (const [id, v] of heldPreferred) heldByShareholder.set(id, (heldByShareholder.get(id) || 0) + v)
   const activeShareholders = [...heldByShareholder.values()].filter(v => v > 0).length
 
   const rows = commons.map(c => {
@@ -169,7 +177,7 @@ export async function GET() {
 
   return NextResponse.json({
     rows, shareholders,
-    figures: { totalCapitalization, totalShares, treasuryShares, authorizedShares, authorizedCommonShares, authorizedFounderShares, activeShareholders },
+    figures: { totalCapitalization, totalShares, treasuryShares, authorizedShares, authorizedCommonShares, authorizedFounderShares, activeShareholders, activeCommonShareholders, activePreferredShareholders },
   })
 }
 
