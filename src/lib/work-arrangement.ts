@@ -10,7 +10,7 @@
 // service delivery, so none of them belong on a service board. They surface
 // under All so nobody silently disappears from Decking.
 
-export type DeckSection = 'onsite' | 'teletherapy' | 'homecare' | 'all' | 'perday' | 'sped' | 'crosssell' | 'history'
+export type DeckSection = 'onsite' | 'teletherapy' | 'homecare' | 'all' | 'perday' | 'sped' | 'crosssell' | 'history' | 'departed'
 
 /**
  * The board is two different jobs: filling the week, and reading it back.
@@ -40,6 +40,10 @@ export const DECK_SECTIONS: { key: DeckSection; label: string; blurb: string; gr
   { key: 'perday',      label: 'Per Day',     blurb: 'Weekly totals by day, all departments — for setting a daily target', group: 'analysis' },
   { key: 'crosssell',   label: 'Interdepartment', blurb: 'Patients seeing more than one department, and the ones who could be', group: 'analysis' },
   { key: 'history',     label: 'History',     blurb: 'Filled and open slots over time, per department', group: 'analysis' },
+  // Not a cut of the board but a list of what fell off it: bookings still
+  // attached to consultants who have left, which the board cannot show
+  // precisely because it hides inactive staff.
+  { key: 'departed',   label: 'Departed staff', blurb: 'Children still booked under consultants who have left', group: 'analysis' },
 ]
 
 // HR's slugs. Kept as a literal list so an unrecognised value from HR falls
