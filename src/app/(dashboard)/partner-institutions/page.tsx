@@ -14,6 +14,9 @@ import { Search, Building2, ExternalLink, RefreshCw, Info } from 'lucide-react'
 
 interface Discount {
   serviceId: string; serviceLabel: string; discountType: string; value: number; note: string
+  // HR's "Priority" tick on a discount row: partner students get priority booking
+  // for that service, on top of (or instead of) a price cut.
+  priority?: boolean
 }
 interface Institution {
   id: string
@@ -302,6 +305,13 @@ export default function PartnerInstitutionsPage() {
                                 discount, where the label is "₱500 off". */}
                             {discountLabel(d)}
                             <span style={{ fontWeight: 600 }}>on {d.serviceLabel}</span>
+                            {d.priority && (
+                              <span title="Priority: students from this institution are prioritised for this service"
+                                    style={{ marginLeft: 2, background: '#FEF3C7', color: '#92400E', border: '1px solid #FCD34D',
+                                             borderRadius: 6, padding: '1px 6px', fontSize: '0.72rem', fontWeight: 800 }}>
+                                ★ Priority
+                              </span>
+                            )}
                           </span>
                         ))}
                       </div>
