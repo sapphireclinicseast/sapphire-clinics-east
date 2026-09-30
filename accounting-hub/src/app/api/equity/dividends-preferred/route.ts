@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { postDividend, reverseEquityJournal } from '@/lib/accounting/equity'
 import { sendInvestorEmail, dividendEmailHtml } from '@/lib/email'
 import { readFile } from 'fs/promises'
+import { notifyHrDividendRelease } from '@/lib/hr-notify'
 import { join } from 'path'
 
 const ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
@@ -121,6 +122,8 @@ export async function POST(req: Request) {
       }
       return rel
     })
+    // The payout is now green/ticked in the matrix — let HR send its thank-you notes.
+    notifyHrDividendRelease('preferred', created.id)
     return NextResponse.json({ id: created.id })
   } catch (e) {
     console.error('Preferred dividend create error:', e)

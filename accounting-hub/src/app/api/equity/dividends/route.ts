@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { postDividend, reverseEquityJournal } from '@/lib/accounting/equity'
 import { sendInvestorEmail, dividendEmailHtml } from '@/lib/email'
 import { readFile } from 'fs/promises'
+import { notifyHrDividendRelease } from '@/lib/hr-notify'
 import { join } from 'path'
 
 const ADMIN = ['ADMIN']
@@ -109,6 +110,8 @@ export async function PUT(req: Request) {
         const jeId = await postDividend(tx, { refType: 'DIVIDEND_COMMON', refId: id, date: base.date, amount: total, bankAccountId: base.bankAccountId, retainedAccountId: base.retainedAccountId, label: `Common dividend (${base.dividendType})`, createdById: session.user!.id as string })
         await tx.dividendRelease.update({ where: { id }, data: { ...base, totalAmountPaid: total, status: 'FINALIZED', finalizedAt: new Date(), journalEntryId: jeId } })
       })
+      // Finalized = released to every common shareholder — let HR send its thank-you notes.
+      notifyHrDividendRelease('common', id)
       return NextResponse.json({ success: true })
     }
 
