@@ -1785,6 +1785,8 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
   const emailPayslip = async (p: Payslip) => {
     const email = p.employee.email
     if (!email) { setError(`No email address for ${p.employee.firstName} ${p.employee.lastName}`); return }
+    // An empty payslip goes out only on purpose, never by accident.
+    if (toNum(p.netPay) <= 0 && !confirm(`${p.employee.firstName} ${p.employee.lastName} has a PHP ${toNum(p.netPay).toFixed(2)} payslip for this cutoff. Send the empty payslip anyway?`)) return
     setEmailSending(p.id)
     try {
       const doc = await buildEmployeePayslipPdf(p)
@@ -1830,6 +1832,8 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
     setEmailingAll(true)
     for (const p of payslips) {
       if (!p.employee.email) continue
+      // Bulk send never emails an empty payslip (the per-row button can, with a confirm).
+      if (toNum(p.netPay) <= 0) continue
       try { await emailPayslip(p); await new Promise(r => setTimeout(r, 800)) }
       catch (e) { console.error('Email error for', p.employee.lastName, e) }
     }

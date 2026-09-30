@@ -2517,6 +2517,11 @@ export default function PayrollPage() {
   }
 
   const emailClinician = async (p: PayrollPreview) => {
+    // An empty payslip goes out only on purpose, never by accident.
+    {
+      const { net } = computeTotals(p, extraUnitPays[p.consultantId] || [], adjustments[p.consultantId] || [])
+      if (net <= 0 && !confirm(`${p.consultantName} has a PHP ${net.toFixed(2)} payslip for this cutoff (no sessions). Send the empty payslip anyway?`)) return
+    }
     setSendingEmailFor(p.consultantId)
     setEmailStatus(prev => { const n = { ...prev }; delete n[p.consultantId]; return n })
     setEmailMsg(prev => { const n = { ...prev }; delete n[p.consultantId]; return n })
@@ -2583,7 +2588,14 @@ export default function PayrollPage() {
 
   const emailAllClinicians = async () => {
     setEmailingAll(true)
-    const visible = payrollPreviews.filter(p => p.grossPay > 0 || p.orderCount > 0 || p.existingStatus !== null)
+    // Only clinicians with something to show: an existing status row alone used
+    // to qualify, which emailed PHP 0.00 payslips to everyone who simply had no
+    // sessions in the cutoff. Empty payslips stay unsent (the per-row button
+    // still allows one deliberately, with a confirm).
+    const visible = payrollPreviews.filter(p => {
+      const { net } = computeTotals(p, extraUnitPays[p.consultantId] || [], adjustments[p.consultantId] || [])
+      return net > 0
+    })
     for (const p of visible) {
       try { await emailClinician(p) } catch (e) { console.error('Email error for', p.consultantName, e) }
       await new Promise(r => setTimeout(r, 800))
