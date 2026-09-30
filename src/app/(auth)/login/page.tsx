@@ -5,6 +5,7 @@ import { signIn } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { Eye, EyeOff } from 'lucide-react'
+import { scopeFor } from '@/lib/scoped-roles'
 
 type Mode = 'login' | 'forgot-email' | 'forgot-code' | 'reset-success'
 
@@ -76,7 +77,10 @@ export default function LoginPage() {
       try {
         const sessionRes = await fetch('/api/auth/session')
         const session = await sessionRes.json()
-        if (session?.user?.role === 'INVESTOR') dest = '/patients/dashboard'
+        // Scoped roles land on their own home; /dashboard is gated away from
+        // them, and bouncing through it is what produced the blank-until-refresh.
+        const scope = scopeFor(session?.user?.role)
+        if (scope) dest = scope.home
       } catch {
         // fall through to /dashboard — the layout gate still redirects
         // investor sessions correctly, just via the slower chained path.

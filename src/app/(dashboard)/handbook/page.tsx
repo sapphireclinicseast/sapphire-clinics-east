@@ -8,6 +8,9 @@ import { useRouter } from 'next/navigation'
 // thousand lines of HTML into the component made both hard to read.
 import { HANDBOOK_HTML } from './handbook-content'
 
+// Who may read the handbook. Kept as a set so adding a role is one edit.
+const HANDBOOK_ROLES = new Set(['ADMIN', 'MEDREP'])
+
 export default function HandbookPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
@@ -16,7 +19,11 @@ export default function HandbookPage() {
 
   useEffect(() => {
     if (status === 'loading') return
-    if (!session || (session.user as { role?: string })?.role !== 'ADMIN') {
+    // Medical Representatives are given the handbook deliberately: their four
+    // modules are the ones a new MedRep has to learn, and sending them to read
+    // it elsewhere defeats the point of having it in the Hub.
+    const role = (session?.user as { role?: string })?.role
+    if (!session || !HANDBOOK_ROLES.has(role ?? '')) {
       router.replace('/dashboard')
       return
     }

@@ -12,6 +12,7 @@ const ROLE_LABELS: Record<string, string> = {
   AHEA_FRONT_DESK: 'AHEA Front Desk',
   AHGH_FRONT_DESK: 'AHGH Front Desk',
   INVESTOR: 'Investor (read-only)',
+  MEDREP: 'Medical Representative',
 }
 
 function roleLabel(role: string) {
@@ -192,6 +193,7 @@ export default function UsersPage() {
                   <option value="AHEA_FRONT_DESK">AHEA Front Desk — clinic tools + East Branch patients</option>
                   <option value="AHGH_FRONT_DESK">AHGH Front Desk — clinic tools + Greenhills Branch patients</option>
                   <option value="INVESTOR">Investor — Patient Dashboard only, read-only</option>
+                  <option value="MEDREP">Medical Representative — registrations, relationships, partners</option>
                 </select>
               </div>
               <div>
@@ -349,6 +351,7 @@ export default function UsersPage() {
                           <option value="AHEA_FRONT_DESK">AHEA Front Desk — clinic tools + East Branch patients</option>
                           <option value="AHGH_FRONT_DESK">AHGH Front Desk — clinic tools + Greenhills Branch patients</option>
                           <option value="INVESTOR">Investor — Patient Dashboard only, read-only</option>
+                  <option value="MEDREP">Medical Representative — registrations, relationships, partners</option>
                         </select>
                       </div>
                       <div>
