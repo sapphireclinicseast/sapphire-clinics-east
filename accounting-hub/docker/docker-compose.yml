@@ -39,6 +39,9 @@ services:
       AUTH_TRUST_HOST: "true"
       MARKETING_HUB_URL: ${MARKETING_HUB_URL:-https://operations.sapphireclinicseast.org}
       HR_PLATFORM_URL: ${HR_PLATFORM_URL:-http://host.docker.internal:3457}
+      # Shared key for the HR ↔ Accounting internal endpoints (/api/internal/dividend-releases and the
+      # HR dividend-release ping). Set ACCOUNTING_INTERNAL_KEY in docker/.env to the same value HR uses.
+      ACCOUNTING_INTERNAL_KEY: ${ACCOUNTING_INTERNAL_KEY:-}
       EXTERNAL_API_KEY: ${EXTERNAL_API_KEY}
       RESEND_API_KEY: ${RESEND_API_KEY}
       # Gmail API for outbound mail (src/lib/gmail.ts), replacing Resend. As with
