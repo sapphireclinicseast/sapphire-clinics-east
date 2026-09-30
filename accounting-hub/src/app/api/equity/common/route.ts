@@ -61,6 +61,8 @@ export async function GET() {
   ])
   const authorizedShares = settings?.authorizedShares ?? 20000000
   const authorizedCommonShares = settings?.authorizedCommonShares ?? null
+  const incorporationDate = settings?.incorporationDate ? settings.incorporationDate.toISOString().slice(0, 10) : null
+  const secRegistrationNo = settings?.secRegistrationNo ?? null
   const authorizedFounderShares = settings?.authorizedFounderShares ?? null
 
   // A transfer duplicates the same issued capital across two rows (seller's
@@ -177,7 +179,7 @@ export async function GET() {
 
   return NextResponse.json({
     rows, shareholders,
-    figures: { totalCapitalization, totalShares, treasuryShares, authorizedShares, authorizedCommonShares, authorizedFounderShares, activeShareholders, activeCommonShareholders, activePreferredShareholders },
+    figures: { totalCapitalization, totalShares, treasuryShares, authorizedShares, authorizedCommonShares, authorizedFounderShares, activeShareholders, activeCommonShareholders, activePreferredShareholders, incorporationDate, secRegistrationNo },
   })
 }
 

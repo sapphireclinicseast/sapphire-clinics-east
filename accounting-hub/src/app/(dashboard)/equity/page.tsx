@@ -93,7 +93,7 @@ interface CommonRow {
   beneficialOwners: BeneficialOwnerRow[]
 }
 interface EquityAcct { id: string; accountNumber: string; accountTitle: string }
-interface Figures { totalCapitalization: number; totalShares: number; treasuryShares: number; authorizedShares: number; authorizedCommonShares: number | null; authorizedFounderShares: number | null; activeShareholders: number; activeCommonShareholders?: number; activePreferredShareholders?: number }
+interface Figures { totalCapitalization: number; totalShares: number; treasuryShares: number; authorizedShares: number; authorizedCommonShares: number | null; authorizedFounderShares: number | null; activeShareholders: number; activeCommonShareholders?: number; activePreferredShareholders?: number; incorporationDate?: string | null; secRegistrationNo?: string | null }
 
 const EQUITY_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 
@@ -115,6 +115,8 @@ export default function EquityPage() {
   const [authInput, setAuthInput] = useState('')
   const [authCommonInput, setAuthCommonInput] = useState('')
   const [authFounderInput, setAuthFounderInput] = useState('')
+  const [incDateInput, setIncDateInput] = useState('')
+  const [secRegInput, setSecRegInput] = useState('')
   const [savingAuth, setSavingAuth] = useState(false)
 
   const load = useCallback(async () => {
@@ -294,7 +296,7 @@ export default function EquityPage() {
     }
     setSavingAuth(true)
     try {
-      const r = await fetch('/api/equity/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ authorizedShares: val, authorizedCommonShares: common, authorizedFounderShares: founder }) })
+      const r = await fetch('/api/equity/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ authorizedShares: val, authorizedCommonShares: common, authorizedFounderShares: founder, incorporationDate: incDateInput || null, secRegistrationNo: secRegInput || null }) })
       if (!r.ok) { alert('Failed to save authorized shares.'); return }
       setEditAuth(false); load()
     } finally { setSavingAuth(false) }
@@ -341,7 +343,7 @@ export default function EquityPage() {
         <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
           <div className="flex items-center justify-between">
             <p className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Authorized Shares</p>
-            {!editAuth && <button onClick={() => { setAuthInput(String(fig?.authorizedShares ?? 20000000)); setAuthCommonInput(fig?.authorizedCommonShares != null ? String(fig.authorizedCommonShares) : ''); setAuthFounderInput(fig?.authorizedFounderShares != null ? String(fig.authorizedFounderShares) : ''); setEditAuth(true) }} className="p-1 rounded hover:bg-gray-100" title="Edit authorized shares"><Pencil size={13} className="text-blue-500" /></button>}
+            {!editAuth && <button onClick={() => { setAuthInput(String(fig?.authorizedShares ?? 20000000)); setAuthCommonInput(fig?.authorizedCommonShares != null ? String(fig.authorizedCommonShares) : ''); setAuthFounderInput(fig?.authorizedFounderShares != null ? String(fig.authorizedFounderShares) : ''); setIncDateInput(fig?.incorporationDate || ''); setSecRegInput(fig?.secRegistrationNo || ''); setEditAuth(true) }} className="p-1 rounded hover:bg-gray-100" title="Edit authorized shares"><Pencil size={13} className="text-blue-500" /></button>}
           </div>
           {editAuth ? (
             <div className="space-y-1.5 mt-1">
@@ -359,6 +361,14 @@ export default function EquityPage() {
                 <span className="text-[10px] w-14 shrink-0" style={{ color: 'var(--mid-gray)' }}>Founders</span>
                 <input value={authFounderInput} onChange={e => setAuthFounderInput(e.target.value)} placeholder="no sub-limit" className="w-full px-2 py-1 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} inputMode="numeric" />
               </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] w-14 shrink-0" style={{ color: 'var(--mid-gray)' }}>Inc. date</span>
+                <input type="date" value={incDateInput} onChange={e => setIncDateInput(e.target.value)} className="w-full px-2 py-1 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} />
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] w-14 shrink-0" style={{ color: 'var(--mid-gray)' }}>SEC Reg.</span>
+                <input value={secRegInput} onChange={e => setSecRegInput(e.target.value)} placeholder="e.g. 2024050012345-67" className="w-full px-2 py-1 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} />
+              </div>
             </div>
           ) : (
             <>
@@ -366,6 +376,11 @@ export default function EquityPage() {
               {(fig?.authorizedCommonShares != null || fig?.authorizedFounderShares != null) && (
                 <p className="text-[11px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>
                   Common: {fig?.authorizedCommonShares != null ? fig.authorizedCommonShares.toLocaleString('en-PH') : '—'} · Founders: {fig?.authorizedFounderShares != null ? fig.authorizedFounderShares.toLocaleString('en-PH') : '—'}
+                </p>
+              )}
+              {(fig?.secRegistrationNo || fig?.incorporationDate) && (
+                <p className="text-[11px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+                  {fig?.secRegistrationNo ? `SEC Reg. ${fig.secRegistrationNo}` : ''}{fig?.secRegistrationNo && fig?.incorporationDate ? ' · ' : ''}{fig?.incorporationDate ? `Incorporated ${new Date(fig.incorporationDate + 'T00:00:00').toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })}` : ''}
                 </p>
               )}
             </>
@@ -378,10 +393,16 @@ export default function EquityPage() {
         <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
           <p className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Total Common Shares <span className="font-normal text-gray-400">(outstanding)</span></p>
           <p className="text-2xl font-bold" style={{ color: 'var(--charcoal)' }}>{wholeNum(commonClassShares)}<span className="text-sm font-semibold" style={{ color: 'var(--mid-gray)' }}>{pctOfAuth(commonClassShares, (fig?.authorizedShares ?? 20000000))}</span></p>
+          {fig?.authorizedCommonShares != null && (
+            <p className="text-[11px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>of {fig.authorizedCommonShares.toLocaleString('en-PH')} max per SEC{fig.authorizedCommonShares > 0 ? ` (${((commonClassShares / fig.authorizedCommonShares) * 100).toLocaleString('en-PH', { maximumFractionDigits: 2 })}% used)` : ''}</p>
+          )}
         </div>
         <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
           <p className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Total Founders Shares <span className="font-normal text-gray-400">(outstanding)</span></p>
           <p className="text-2xl font-bold" style={{ color: 'var(--charcoal)' }}>{wholeNum(foundersShares)}<span className="text-sm font-semibold" style={{ color: 'var(--mid-gray)' }}>{pctOfAuth(foundersShares, (fig?.authorizedShares ?? 20000000))}</span></p>
+          {fig?.authorizedFounderShares != null && (
+            <p className="text-[11px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>of {fig.authorizedFounderShares.toLocaleString('en-PH')} max per SEC{fig.authorizedFounderShares > 0 ? ` (${((foundersShares / fig.authorizedFounderShares) * 100).toLocaleString('en-PH', { maximumFractionDigits: 2 })}% used)` : ''}</p>
+          )}
         </div>
         <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: '#fef2f2' }}>
           <p className="text-xs font-semibold" style={{ color: '#b91c1c' }}>Total Treasury Shares <span className="font-normal" style={{ color: '#d4a0a0' }}>(available for sale)</span></p>

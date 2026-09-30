@@ -12,6 +12,8 @@ export async function GET() {
     authorizedShares: s?.authorizedShares ?? 20000000,
     authorizedCommonShares: s?.authorizedCommonShares ?? null,
     authorizedFounderShares: s?.authorizedFounderShares ?? null,
+    incorporationDate: s?.incorporationDate ? s.incorporationDate.toISOString().slice(0, 10) : null,
+    secRegistrationNo: s?.secRegistrationNo ?? null,
   })
 }
 
@@ -34,10 +36,12 @@ export async function PUT(req: Request) {
   const data: any = { authorizedShares }
   if (common !== undefined) data.authorizedCommonShares = common
   if (founder !== undefined) data.authorizedFounderShares = founder
+  if (body.incorporationDate !== undefined) data.incorporationDate = body.incorporationDate ? new Date(String(body.incorporationDate)) : null
+  if (body.secRegistrationNo !== undefined) data.secRegistrationNo = String(body.secRegistrationNo || '').trim() || null
   const s = await prisma.equitySettings.upsert({
     where: { id: 'singleton' },
     update: data,
     create: { id: 'singleton', ...data },
   })
-  return NextResponse.json({ authorizedShares: s.authorizedShares, authorizedCommonShares: s.authorizedCommonShares, authorizedFounderShares: s.authorizedFounderShares })
+  return NextResponse.json({ authorizedShares: s.authorizedShares, authorizedCommonShares: s.authorizedCommonShares, authorizedFounderShares: s.authorizedFounderShares, incorporationDate: s.incorporationDate, secRegistrationNo: s.secRegistrationNo })
 }

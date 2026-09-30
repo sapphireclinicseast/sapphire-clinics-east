@@ -2586,6 +2586,8 @@ model EquitySettings {
   authorizedShares        Int      @default(20000000)
   authorizedCommonShares  Int? // sub-limit of authorized shares reserved for Common classes
   authorizedFounderShares Int? // sub-limit reserved for Founders classes
+  incorporationDate       DateTime? // as per SEC Certificate of Incorporation
+  secRegistrationNo       String? // SEC registration number
   updatedAt               DateTime @updatedAt
 }
 
