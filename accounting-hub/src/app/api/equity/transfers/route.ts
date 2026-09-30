@@ -97,7 +97,14 @@ export async function POST(req: Request) {
       // number moves to the buyer's holding and leaves the seller's. A partial
       // sale keeps the cert with the seller (the buyer's new cert, once issued,
       // is typed on their holding).
-      const isFullSale = shares >= remaining - 1e-9
+      //
+      // "Full" means ONE buyer takes the ENTIRE original block in ONE deed —
+      // when a holding is split across buyers (or nibbled by buybacks), the
+      // last transfer merely zeroes the remainder; the paper certificate must
+      // then be CANCELLED and each buyer issued a fresh number, so the cert
+      // stays with the seller's retired holding as the cancelled record
+      // (SCEIC-0013 Jahzeel→Tan+De Luna was the lesson).
+      const isFullSale = shares >= remaining - 1e-9 && gone < 1e-9
       const toShare = await tx.commonShare.create({ data: {
         shareholderId: buyer.id, dateAcquired: date, agreementType: 'DEED_OF_ASSIGNMENT',
         shareClass: share.shareClass, numberOfShares: shares,
