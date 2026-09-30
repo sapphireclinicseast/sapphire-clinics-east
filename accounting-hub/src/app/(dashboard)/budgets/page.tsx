@@ -27,11 +27,14 @@ const peso = (n: number) => formatCurrency(n)
 export default function BudgetsPage() {
   const { data: session } = useSession()
   const role = (session?.user as { role?: string })?.role || ''
-  const canEdit = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER'].includes(role)
 
   const now = new Date()
   const [year, setYear] = useState(now.getFullYear())
   const [branch, setBranch] = useState('ALL')
+  // "All Branches" is a read-only rollup: the API returns the SUM of every
+  // branch's budget, so there is nothing to type, save, or lock here.
+  const isRollup = branch === 'ALL'
+  const canEdit = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER'].includes(role) && !isRollup
   const [view, setView] = useState<'enter' | 'vs'>('enter')
 
   const [report, setReport] = useState<ReportData | null>(null)
@@ -300,7 +303,9 @@ export default function BudgetsPage() {
             </table>
           </div>
           <p className="text-[11px] mt-3" style={{ color: 'var(--mid-gray)' }}>
-            Enter each line&apos;s monthly budget. <Lock size={10} className="inline" /> locks a month (its figures are saved first); locked months turn grey and can&apos;t be edited until unlocked. Only Admin/Accountant/Bookkeeper can edit and lock.
+            {isRollup
+              ? <>All Branches shows the <strong>total of every branch&apos;s budget</strong> — read-only. Pick a branch above to enter amounts or lock months; a month shows as locked here once every branch has locked it.</>
+              : <>Enter each line&apos;s monthly budget. <Lock size={10} className="inline" /> locks a month (its figures are saved first); locked months turn grey and can&apos;t be edited until unlocked. Only Admin/Accountant/Bookkeeper can edit and lock.</>}
           </p>
         </>
       ) : (

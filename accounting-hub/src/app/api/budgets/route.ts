@@ -17,25 +17,44 @@ export async function GET(req: Request) {
   const branch = sp.get('branch') || 'ALL'
   if (!year) return NextResponse.json({ error: 'year is required' }, { status: 400 })
 
+  /* "All Branches" is a ROLLUP, not a budget of its own: it returns the SUM of
+     every branch's entries for the period (any legacy rows saved under 'ALL'
+     itself are included so no historical figure disappears — the 'ALL' bucket
+     can no longer be written to, see PUT/POST). A month reads as locked on the
+     rollup only when EVERY real branch has locked it. */
+  const REAL_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE', 'AURA_INSTITUTE']
+  const isRollup = branch === 'ALL'
+  const branchFilter = isRollup ? {} : { branch }
+  const rollupLocked = (locks: { month: number; branch: string }[]): number[] => {
+    const byMonth = new Map<number, Set<string>>()
+    for (const l of locks) { if (!byMonth.has(l.month)) byMonth.set(l.month, new Set()); byMonth.get(l.month)!.add(l.branch) }
+    return [...byMonth.entries()].filter(([, brs]) => REAL_BRANCHES.every(b => brs.has(b))).map(([m]) => m)
+  }
+
   // Whole-year mode (no month): budgets keyed by month + the set of locked months.
   if (!month) {
     const [entries, locks] = await Promise.all([
-      prisma.budgetEntry.findMany({ where: { year, branch }, select: { month: true, accountKey: true, amount: true } }),
-      prisma.budgetLock.findMany({ where: { year, branch }, select: { month: true } }),
+      prisma.budgetEntry.findMany({ where: { year, ...branchFilter }, select: { month: true, accountKey: true, amount: true } }),
+      prisma.budgetLock.findMany({ where: { year, ...branchFilter }, select: { month: true, branch: true } }),
     ])
     const byMonth: Record<number, Record<string, number>> = {}
-    for (const e of entries) { (byMonth[e.month] ||= {})[e.accountKey] = Number(e.amount) }
-    return NextResponse.json({ year, branch, budgetsByMonth: byMonth, lockedMonths: locks.map(l => l.month) })
+    for (const e of entries) {
+      const m = (byMonth[e.month] ||= {})
+      m[e.accountKey] = (m[e.accountKey] || 0) + Number(e.amount)
+    }
+    const lockedMonths = isRollup ? rollupLocked(locks) : locks.map(l => l.month)
+    return NextResponse.json({ year, branch, rollup: isRollup, budgetsByMonth: byMonth, lockedMonths })
   }
 
   if (month < 1 || month > 12) return NextResponse.json({ error: 'month must be 1-12' }, { status: 400 })
-  const [entries, lock] = await Promise.all([
-    prisma.budgetEntry.findMany({ where: { year, month, branch }, select: { accountKey: true, accountType: true, amount: true } }),
-    prisma.budgetLock.findUnique({ where: { year_month_branch: { year, month, branch } } }),
+  const [entries, locks] = await Promise.all([
+    prisma.budgetEntry.findMany({ where: { year, month, ...branchFilter }, select: { accountKey: true, accountType: true, amount: true } }),
+    prisma.budgetLock.findMany({ where: { year, month, ...branchFilter }, select: { month: true, branch: true } }),
   ])
   const map: Record<string, number> = {}
-  for (const e of entries) map[e.accountKey] = Number(e.amount)
-  return NextResponse.json({ year, month, branch, locked: !!lock, budgets: map })
+  for (const e of entries) map[e.accountKey] = (map[e.accountKey] || 0) + Number(e.amount)
+  const locked = isRollup ? rollupLocked(locks).includes(month) : locks.length > 0
+  return NextResponse.json({ year, month, branch, rollup: isRollup, locked, budgets: map })
 }
 
 // PUT { year, month, branch, entries:[{accountKey, accountType, amount}] } — upsert the budget (blocked when locked).
@@ -47,6 +66,9 @@ export async function PUT(req: Request) {
   const body = await req.json()
   const { year, branch = 'ALL' } = body
   if (!year) return NextResponse.json({ error: 'year is required' }, { status: 400 })
+  if (branch === 'ALL') {
+    return NextResponse.json({ error: 'All Branches is the total of each branch’s budget — pick a branch to enter its amounts.' }, { status: 400 })
+  }
   const uid = session.user.id as string
 
   const upsertOne = async (month: number, e: { accountKey?: string; accountType?: string; amount?: number }) => {
@@ -95,6 +117,9 @@ export async function POST(req: Request) {
   }
   const { action, year, month, branch = 'ALL' } = await req.json()
   if (!year || month < 1 || month > 12) return NextResponse.json({ error: 'year and month are required' }, { status: 400 })
+  if (branch === 'ALL') {
+    return NextResponse.json({ error: 'All Branches is the total of each branch’s budget — lock each branch’s own months instead.' }, { status: 400 })
+  }
   if (action === 'lock') {
     await prisma.budgetLock.upsert({
       where: { year_month_branch: { year, month, branch } },
