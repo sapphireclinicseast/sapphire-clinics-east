@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { formatDate } from '@/lib/utils'
 import FrontDeskWelcome from './FrontDeskWelcome'
+import { scopeFor } from '@/lib/scoped-roles'
 
 type BirthdayPatient = { id: string; firstName: string; lastName: string; birthday: string; hasPhone: boolean }
 
@@ -103,8 +104,9 @@ export default async function DashboardPage() {
   // being fresh on the very first post-login navigation, which is
   // unreliable during a client-side redirect chain and was causing a
   // blank page that only resolved on manual refresh.
-  if ((session?.user as { role?: string })?.role === 'INVESTOR') {
-    redirect('/patients/dashboard')
+  const scoped = scopeFor((session?.user as { role?: string })?.role)
+  if (scoped) {
+    redirect(scoped.home)
   }
 
   // ── Everyone sees the front-desk-style welcome dashboard ──

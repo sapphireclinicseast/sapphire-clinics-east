@@ -95,6 +95,13 @@ export async function GET() {
   // in TopBar.tsx (the API had no role check at all before this).
   if (role === 'INVESTOR') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
+  // Medical Representatives are scoped to Registration Forms, Patient
+  // Relationship and Partner Institutions. The feed also carries BOOKING rows
+  // from Decking and REGISTRATION rows that link into the patient CRM — both
+  // modules a MedRep cannot open — so it is narrowed to form responses, which
+  // are exactly the module they do own. Filtered here rather than in TopBar,
+  // or the rows a MedRep may not see would still arrive in the browser.
+
   const bookingBranches = bookingBranchesForRole(role)
 
   const since = new Date(Date.now() - 48 * 60 * 60 * 1000)
@@ -149,5 +156,9 @@ export async function GET() {
     ...formResponses,
   ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
 
-  return NextResponse.json({ items })
+  const scoped = role === 'MEDREP'
+    ? items.filter(i => i.type === 'FORM_RESPONSE')
+    : items
+
+  return NextResponse.json({ items: scoped })
 }
