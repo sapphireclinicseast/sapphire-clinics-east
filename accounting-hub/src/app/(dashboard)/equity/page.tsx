@@ -46,6 +46,8 @@ const peso = (n: number) => '₱' + n.toLocaleString('en-PH', { minimumFractionD
 // Dashboard-card formats: whole numbers only — fractional shares (from buybacks
 // and rescissions) stay exact in the tables below, but the top cards round.
 const wholeNum = (n: number) => Math.round(n).toLocaleString('en-PH')
+const pctOfAuth = (n: number, auth: number) =>
+  auth > 0 ? ` (${((n / auth) * 100).toLocaleString('en-PH', { maximumFractionDigits: 2 })}%)` : ''
 const wholePeso = (n: number) => '₱' + Math.round(n).toLocaleString('en-PH')
 
 interface Bank { id: string; accountNumber: string; accountTitle: string; isActive?: boolean; bankRetiredAt?: string | null }
@@ -371,19 +373,19 @@ export default function EquityPage() {
         </div>
         <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
           <p className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Total Number of Shares <span className="font-normal text-gray-400">(outstanding)</span></p>
-          <p className="text-2xl font-bold" style={{ color: 'var(--charcoal)' }}>{wholeNum(fig?.totalShares || 0)}</p>
+          <p className="text-2xl font-bold" style={{ color: 'var(--charcoal)' }}>{wholeNum(fig?.totalShares || 0)}<span className="text-sm font-semibold" style={{ color: 'var(--mid-gray)' }}>{pctOfAuth(fig?.totalShares || 0, (fig?.authorizedShares ?? 20000000))}</span></p>
         </div>
         <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
           <p className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Total Common Shares <span className="font-normal text-gray-400">(outstanding)</span></p>
-          <p className="text-2xl font-bold" style={{ color: 'var(--charcoal)' }}>{wholeNum(commonClassShares)}</p>
+          <p className="text-2xl font-bold" style={{ color: 'var(--charcoal)' }}>{wholeNum(commonClassShares)}<span className="text-sm font-semibold" style={{ color: 'var(--mid-gray)' }}>{pctOfAuth(commonClassShares, (fig?.authorizedShares ?? 20000000))}</span></p>
         </div>
         <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
           <p className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Total Founders Shares <span className="font-normal text-gray-400">(outstanding)</span></p>
-          <p className="text-2xl font-bold" style={{ color: 'var(--charcoal)' }}>{wholeNum(foundersShares)}</p>
+          <p className="text-2xl font-bold" style={{ color: 'var(--charcoal)' }}>{wholeNum(foundersShares)}<span className="text-sm font-semibold" style={{ color: 'var(--mid-gray)' }}>{pctOfAuth(foundersShares, (fig?.authorizedShares ?? 20000000))}</span></p>
         </div>
         <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: '#fef2f2' }}>
           <p className="text-xs font-semibold" style={{ color: '#b91c1c' }}>Total Treasury Shares <span className="font-normal" style={{ color: '#d4a0a0' }}>(available for sale)</span></p>
-          <p className="text-2xl font-bold" style={{ color: '#b91c1c' }}>{wholeNum(fig?.treasuryShares || 0)}</p>
+          <p className="text-2xl font-bold" style={{ color: '#b91c1c' }}>{wholeNum(fig?.treasuryShares || 0)}<span className="text-sm font-semibold" style={{ color: '#d4a0a0' }}>{pctOfAuth(fig?.treasuryShares || 0, (fig?.authorizedShares ?? 20000000))}</span></p>
         </div>
         <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
           <p className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Active Shareholders <span className="font-normal text-gray-400">(holding outstanding shares)</span></p>
