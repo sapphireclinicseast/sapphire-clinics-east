@@ -30,8 +30,13 @@ export async function GET(req: Request) {
   const monthFrom = searchParams.get('month') || '' // '01'..'12' or '' (all)
   const monthTo = searchParams.get('monthTo') || ''
 
+  // FINAL and LOCKED both mean the payslip figures are done — LOCKED only adds
+  // that the cutoff's payroll was posted to the GL. Counting LOCKED alone made
+  // a month show HALF its compensation whenever one of its two cutoffs hadn't
+  // been ledger-posted yet, right when the 1601-C is being prepared. DRAFT
+  // stays out: those figures are still being edited.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const where: any = { status: 'LOCKED' }
+  const where: any = { status: { in: ['FINAL', 'LOCKED'] } }
   if (branch) where.branch = branch
   if (year) where.cutoffPeriod = { startsWith: `${year}-` }
 

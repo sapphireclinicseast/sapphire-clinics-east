@@ -376,7 +376,7 @@ function WcComputationPanel({ branch, year, month, monthTo, canWrite }: { branch
           {loading ? (
             <div className="text-center py-8 text-sm" style={{ color: 'var(--mid-gray)' }}><Loader2 size={16} className="inline animate-spin" /> Computing…</div>
           ) : !comp || rows.length === 0 ? (
-            <div className="text-center py-8 text-sm" style={{ color: 'var(--mid-gray)' }}>No finalized (locked) payroll for this branch and period.</div>
+            <div className="text-center py-8 text-sm" style={{ color: 'var(--mid-gray)' }}>No finalized payroll for this branch and period.</div>
           ) : (
             <>
               {/* Aggregate 1601-C computation */}
@@ -437,7 +437,7 @@ function WcComputationPanel({ branch, year, month, monthTo, canWrite }: { branch
                   </tbody>
                 </table>
               </div>
-              <p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>Derived live from finalized (locked) payslips. Tick <strong>MWE</strong> for statutory minimum-wage earners — their compensation is tax-exempt and reported separately on the 1601-C.</p>
+              <p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>Derived live from finalized payslips (FINAL or locked). Tick <strong>MWE</strong> for statutory minimum-wage earners — their compensation is tax-exempt and reported separately on the 1601-C.</p>
             </>
           )}
         </div>
