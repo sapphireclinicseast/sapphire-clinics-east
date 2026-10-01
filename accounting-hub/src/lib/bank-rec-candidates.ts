@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma'
+import { netOfDeductions } from '@/lib/pos-settlement-shapes'
 
 /**
  * Everything the Hub has recorded that a bank line could correspond to.
@@ -88,7 +89,7 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
       where: { status: 'COMPLETED', transactionDate: range },
       select: {
         id: true, orderNumber: true, netAmount: true, transactionDate: true, patientName: true,
-        payments: { select: { paymentMode: { select: { accountId: true } } } },
+        payments: { select: { amount: true, paymentMode: { select: { accountId: true, deductions: { select: { rate: true, valueType: true, effectiveFrom: true, effectiveTo: true } } } } } },
       },
     }),
     // The rest name the bank account they moved through. Rows that never had one
@@ -261,9 +262,26 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
       const lodgedIn = o.payments.map(p => p.paymentMode?.accountId).filter(Boolean) as string[]
       if (lodgedIn.length && !lodgedIn.includes(bankAccountId)) continue
     }
+    // How much of this order lands in the account being reconciled: only the
+    // payments whose mode lodges here, each net of that mode's fees. A
+    // downpayment or wallet leg carries no bank mode — it was collected earlier
+    // and never arrives in this deposit — so the full order net over-states what
+    // the bank line can contain. A ₱3,300 order paid ₱1,000 downpayment + ₱2,300
+    // cash contributes only ₱2,300 to the cash deposit, which is what a combined
+    // day's-takings match must total against. With no account scope (the untagged
+    // view) the whole net stands, and an order whose modes were never set falls
+    // back to it too.
+    let amount = num(o.netAmount)
+    if (bankAccountId) {
+      const here = o.payments.filter(p => p.paymentMode?.accountId === bankAccountId)
+      if (here.length) {
+        amount = Math.round(here.reduce((s, p) =>
+          s + netOfDeductions(num(p.amount), p.paymentMode!.deductions, o.transactionDate), 0) * 100) / 100
+      }
+    }
     out.push({
       type: 'ORDER', id: o.id, label: `Order #${o.orderNumber}${o.patientName ? ` · ${o.patientName}` : ''}`,
-      date: o.transactionDate, amount: num(o.netAmount), dir: 'in',
+      date: o.transactionDate, amount, dir: 'in',
     })
   }
   for (const p of arPayments) {
