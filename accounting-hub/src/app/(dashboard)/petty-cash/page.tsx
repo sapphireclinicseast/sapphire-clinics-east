@@ -646,8 +646,7 @@ function PettyCashInner() {
       setRfpMode(null)
       setRfpBranch('')
       await loadEntries(branch)
-      await loadReimbursements(branch)
-      setTab('reimbursements')
+      alert(`RFP ${refNumber} created — find it under Expenses → RFP (all RFPs are now consolidated into one consecutive list).`)
     } catch { alert('Failed to generate reimbursement') }
     setGenerating(false)
   }
@@ -930,7 +929,8 @@ function PettyCashInner() {
       {/* Tabs + RFP actions */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: 'var(--light-gray)' }}>
-          {([['entries', 'Entries'], ['reimbursements', `RFP (${reimbursements.length})`], ['flowchart', 'Flowchart']] as const).map(([k, lbl]) => (
+          {/* PCF Reimbursements tab removed — all RFPs now live under Expenses → RFP as one consecutive list */}
+          {([['entries', 'Entries'], ['flowchart', 'Flowchart']] as const).map(([k, lbl]) => (
             <button key={k} onClick={() => setTab(k)}
               className="px-4 py-2 text-xs font-semibold transition-colors"
               style={tab === k ? { background: 'var(--deep-teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' }}>

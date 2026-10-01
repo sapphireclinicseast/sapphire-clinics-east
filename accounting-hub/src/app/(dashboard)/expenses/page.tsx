@@ -13,6 +13,7 @@ import { SortFilterHead, applySortFilter } from '@/components/SortFilterHead'
 import { useResizableColumns, ResizableColgroup, ColResizeHandle } from '@/components/useResizableColumns'
 import { assetClassFromAccountTitle, ASSET_CLASSIFICATION_LABELS, isDepreciatingClassification, inventoryClassFromAccountTitle, INVENTORY_CLASSIFICATION_LABELS } from '@/lib/asset-classification'
 import { BillingVoucherModal } from '@/components/BillingVoucherModal'
+import { ReimbursementPayModal } from '@/components/ReimbursementPayModal'
 import type { RfpMemoParts } from '@/lib/billing-voucher'
 import { ScanUpload } from '@/components/ScanUpload'
 import { DownloadBar } from '@/components/DownloadBar'
@@ -169,6 +170,7 @@ interface Rfp {
   module?: string; meta?: { source?: string; payableType?: string; idKind?: string; ids?: string[]; splitIds?: string[]; rowIds?: string[]; entryIds?: string[]; payslipIds?: string[]; cutoffPeriod?: string; netTotal?: number; paymentId?: string; items?: { id: string; name: string; amount: number }[] } | null
   paidAt: string | null; paymentMethod: string | null; checkNumber: string | null; transferRef?: string | null; debitAccount: string | null
   creditCardId: string | null; proofUrl: string | null; payableTo: string | null; createdAt: string; _count: { entries: number }
+  refSeq?: number; depositAccount?: string | null; filterBranch?: string | null // PETTY_CASH rows (merged from the PCF reimbursement API)
 }
 
 // ── Computed helpers ───────────────────────────────────────────
@@ -330,7 +332,7 @@ function ExpensesInner() {
   const [generatingRfp, setGeneratingRfp] = useState(false)
   const [rfps, setRfps] = useState<Rfp[]>([])
   // RFP list sort/filter
-  const [rfpSort, setRfpSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'date', dir: 'desc' })
+  const [rfpSort, setRfpSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'refNumber', dir: 'desc' })
   const [rfpFilters, setRfpFilters] = useState<Record<string, string>>({})
   const rfpToggleSort = (k: string) => setRfpSort(s => s.key === k ? { key: k, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key: k, dir: 'asc' })
   const rfpCols = [
@@ -344,7 +346,7 @@ function ExpensesInner() {
     { key: 'status', label: 'Status' },
   ]
   const rfpGet = (r: Rfp, k: string): string | number =>
-    k === 'refNumber' ? r.refNumber
+    k === 'refNumber' ? (r.refSeq ?? 0) // sort by the shared running number so PCF + expense RFPs read consecutively
       : k === 'date' ? new Date(r.createdAt).toISOString().slice(0, 10)
       : k === 'payableTo' ? (r.payableTo || '')
       : k === 'kind' ? (r.module === 'PAYROLL_SALARY' ? 'Salaries' : r.module === 'PAYROLL_BENEFIT' ? 'Benefits' : r.kind === 'INVALID' ? 'Invalid' : 'Valid')
@@ -356,12 +358,16 @@ function ExpensesInner() {
   // The RFP date range filters the list itself, not just the export — it sits
   // directly above the table with a "clear" link, so it reads as a table filter
   // (and the Credit Card Report's identical control already behaves this way).
-  const shownRfps = applySortFilter(rfps, rfpGet, rfpSort.key, rfpSort.dir, rfpFilters)
+  // Sort the Reference Number column numerically (refSeq) but filter it by the
+  // printed string, so typing "AHEA" / a number still narrows the list.
+  const rfpFilterGet = (r: Rfp, k: string): string | number => k === 'refNumber' ? r.refNumber : rfpGet(r, k)
+  const shownRfps = applySortFilter(rfps, rfpGet, rfpSort.key, rfpSort.dir, rfpFilters, rfpFilterGet)
     .filter(r => inDateRange(r.createdAt, dlFrom, dlTo))
   const [recurringDue, setRecurringDue] = useState<{ id: string; payee: string | null; accountTitle: string | null; description: string | null; grossAmount: number; frequency: string; nextDue: string; daysUntil: number; amountVaries?: boolean }[]>([])
   const [genFromRecurring, setGenFromRecurring] = useState('')
   const [payTarget, setPayTarget] = useState<Rfp | null>(null)
   const [payrollPayTarget, setPayrollPayTarget] = useState<Rfp | null>(null)
+  const [pcfPayTarget, setPcfPayTarget] = useState<Rfp | null>(null) // petty-cash reimbursement pay (debit/deposit accounts)
   const [bvTarget, setBvTarget] = useState<{ refNumber: string; date: string; lines: BVLine[]; branch: string; defaultBilledTo?: string; defaultMemo?: string; payment?: RfpMemoParts } | null>(null)
   const [paying, setPaying] = useState(false)
   const [search, setSearch] = useState('')
@@ -439,12 +445,26 @@ function ExpensesInner() {
     } catch { setSuppliers([]) }
   }, [])
 
+  // One unified RFP list: expense/payroll RFPs + petty-cash reimbursements (and
+  // CEO petty-cash RFPs allocated to this branch), sorted by the shared running
+  // number so they read consecutively. Each row keeps its `module` so actions
+  // route to the right backend (petty-cash replenishment vs expense payment).
   const loadRfps = useCallback(async (br: string) => {
     try {
-      const r = await fetch(`/api/expenses/rfp?branch=${br}`)
-      setRfps(r.ok ? await r.json() : [])
+      const [exp, pcf, ceo] = await Promise.all([
+        fetch(`/api/expenses/rfp?branch=${br}`).then(r => r.ok ? r.json() : []).catch(() => []),
+        fetch(`/api/petty-cash/reimbursements?branch=${br}`).then(r => r.ok ? r.json() : []).catch(() => []),
+        fetch(`/api/petty-cash/reimbursements?branch=CEO`).then(r => r.ok ? r.json() : []).catch(() => []),
+      ])
+      const ceoForBranch = (Array.isArray(ceo) ? ceo : []).filter((r: Rfp) => r.filterBranch === br)
+      const merged: Rfp[] = [...(Array.isArray(exp) ? exp : []), ...(Array.isArray(pcf) ? pcf : []), ...ceoForBranch]
+        .map((r: Rfp) => ({ ...r, module: r.module || 'PETTY_CASH' }))
+        .sort((a, b) => (b.refSeq ?? 0) - (a.refSeq ?? 0) || (new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()))
+      setRfps(merged)
     } catch { setRfps([]) }
   }, [])
+  const isPcfRfp = (r: Rfp) => r.module === 'PETTY_CASH'
+  const rfpApi = (r: Rfp) => isPcfRfp(r) ? '/api/petty-cash/reimbursements' : '/api/expenses/rfp'
 
   const loadRecurringDue = useCallback(async (br: string) => {
     try {
@@ -706,7 +726,7 @@ function ExpensesInner() {
     const v = value.trim()
     if ((rfp.payableTo || '') === v) return
     setRfps(prev => prev.map(r => r.id === rfp.id ? { ...r, payableTo: v || null } : r))
-    try { await fetch('/api/expenses/rfp', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: rfp.id, action: 'set-payable', payableTo: v }) }) } catch { /* ignore */ }
+    try { await fetch(rfpApi(rfp), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: rfp.id, action: 'set-payable', payableTo: v }) }) } catch { /* ignore */ }
   }
 
   // ── Downloads (Excel / PDF) with the From/To range ──
@@ -754,7 +774,7 @@ function ExpensesInner() {
 
   const openBillingVoucher = async (rfp: Rfp) => {
     try {
-      const res = await fetch(`/api/expenses/rfp?id=${rfp.id}&items=1`)
+      const res = await fetch(`${rfpApi(rfp)}?id=${rfp.id}&items=1`)
       const d = res.ok ? await res.json() : { lines: [] }
       const first = (d.lines || [])[0] as (BVLine & { payee?: string; memo?: string }) | undefined
       setBvTarget({
@@ -786,21 +806,25 @@ function ExpensesInner() {
   }
 
   const unpayRfp = async (rfp: Rfp) => {
-    if (!confirm(`Unmark ${rfp.refNumber} as paid?${isPayrollRfp(rfp) ? ' The recorded payment + its journal entry are reversed.' : ' Payment details on its entries are cleared.'}`)) return
+    const note = isPayrollRfp(rfp) ? ' The recorded payment + its journal entry are reversed.'
+      : isPcfRfp(rfp) ? ' Its entries return to "For Replenishment".' : ' Payment details on its entries are cleared.'
+    if (!confirm(`Unmark ${rfp.refNumber} as paid?${note}`)) return
     try {
       if (isPayrollRfp(rfp)) await reversePayrollPayment(rfp)
-      await fetch('/api/expenses/rfp', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: rfp.id, action: 'unpay' }) })
+      await fetch(rfpApi(rfp), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: rfp.id, action: 'unpay' }) })
       await loadRfps(branch); await reload(branch, recordType)
     } catch { /* ignore */ }
   }
 
   const deleteRfp = async (rfp: Rfp) => {
-    const payrollNote = isPayrollRfp(rfp) ? ' The payroll rows return to Payable (any recorded payment is reversed).' : ` Its ${rfp._count.entries} entr${rfp._count.entries === 1 ? 'y' : 'ies'} will be released back for a new RFP.`
+    const payrollNote = isPayrollRfp(rfp) ? ' The payroll rows return to Payable (any recorded payment is reversed).'
+      : isPcfRfp(rfp) ? ' Its petty-cash entries return to "For Replenishment".'
+      : ` Its ${rfp._count.entries} entr${rfp._count.entries === 1 ? 'y' : 'ies'} will be released back for a new RFP.`
     if (!confirm(`Delete RFP ${rfp.refNumber}?${payrollNote}`)) return
     try {
       if (isPayrollRfp(rfp) && rfp.status === 'PAID') await reversePayrollPayment(rfp)
       setRfps(prev => prev.filter(r => r.id !== rfp.id))
-      await fetch(`/api/expenses/rfp?id=${rfp.id}`, { method: 'DELETE' }); await reload(branch, recordType)
+      await fetch(`${rfpApi(rfp)}?id=${rfp.id}`, { method: 'DELETE' }); await reload(branch, recordType)
     } catch { /* ignore */ }
   }
 
@@ -815,8 +839,8 @@ function ExpensesInner() {
         await buildRfpPdf(rfp.refNumber, branch, d.entries as Entry[], { payableTo: d.payableTo || '', preparedBy: preparedByName })
         return
       }
-      // Payroll / other RFPs: serve the stored snapshot.
-      const r = await fetch(`/api/expenses/rfp?id=${rfp.id}`)
+      // Payroll / petty-cash / other RFPs: serve the stored snapshot (from the right backend).
+      const r = await fetch(`${rfpApi(rfp)}?id=${rfp.id}`)
       if (!r.ok) return
       const { pdfData } = await r.json()
       if (!pdfData) { alert('No PDF stored for this RFP.'); return }
@@ -1654,7 +1678,10 @@ function ExpensesInner() {
             <tbody>
               {shownRfps.map(r => (
                 <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
-                  <td className="px-4 py-2.5 font-mono font-semibold" style={{ color: 'var(--charcoal)' }}>{r.refNumber}</td>
+                  <td className="px-4 py-2.5 font-mono font-semibold" style={{ color: 'var(--charcoal)' }}>
+                    {r.refNumber}
+                    {isPcfRfp(r) && <span className="ml-1.5 align-middle text-[10px] font-sans font-semibold px-1.5 py-0.5 rounded-full" style={{ background: '#eff6ff', color: '#1e40af' }}>Petty Cash</span>}
+                  </td>
                   <td className="px-4 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{new Date(r.createdAt).toLocaleDateString('en-PH')}</td>
                   <td className="px-4 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{r.module === 'PAYROLL_SALARY' ? 'Salaries' : r.module === 'PAYROLL_BENEFIT' ? 'Benefits' : r.kind === 'INVALID' ? 'Invalid' : 'Valid'}</td>
                   <td className="px-4 py-2.5">
@@ -1692,13 +1719,13 @@ function ExpensesInner() {
                       </a>
                     )}
                     {canWrite && r.status !== 'PAID' && (
-                      <button onClick={() => isPayrollRfp(r) ? setPayrollPayTarget(r) : setPayTarget(r)} title="Record as Paid"
+                      <button onClick={() => isPayrollRfp(r) ? setPayrollPayTarget(r) : isPcfRfp(r) ? setPcfPayTarget(r) : setPayTarget(r)} title="Record as Paid"
                         className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium text-white mr-1" style={{ background: 'var(--teal)' }}>
                         <CreditCard size={13} /> {isPayrollRfp(r) ? 'Paid' : 'Record as Paid'}
                       </button>
                     )}
                     {canWrite && r.status === 'PAID' && !isPayrollRfp(r) && (
-                      <button onClick={() => setPayTarget(r)} title="Edit payment"
+                      <button onClick={() => isPcfRfp(r) ? setPcfPayTarget(r) : setPayTarget(r)} title="Edit payment"
                         className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border mr-1" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
                         <Pencil size={13} /> Edit
                       </button>
@@ -1890,6 +1917,12 @@ function ExpensesInner() {
         <RecordPayrollPaymentModal rfp={payrollPayTarget}
           onClose={() => setPayrollPayTarget(null)}
           onDone={async () => { setPayrollPayTarget(null); await loadRfps(branch) }} />
+      )}
+
+      {pcfPayTarget && (
+        <ReimbursementPayModal report={pcfPayTarget} bankOptions={bankOptions}
+          onClose={() => setPcfPayTarget(null)}
+          onDone={async () => { await loadRfps(branch); await reload(branch, recordType) }} />
       )}
 
       {bvTarget && <BillingVoucherModal refNumber={bvTarget.refNumber} date={bvTarget.date} lines={bvTarget.lines} branch={bvTarget.branch} defaultBilledTo={bvTarget.defaultBilledTo} defaultMemo={bvTarget.defaultMemo} payment={bvTarget.payment} preparedBy={session?.user?.name || ''} onClose={() => setBvTarget(null)} />}
