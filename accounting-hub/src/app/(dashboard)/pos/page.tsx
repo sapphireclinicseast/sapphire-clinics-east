@@ -37,6 +37,10 @@ interface QueueItem {
   // Ticked on the Clinic Schedule when a mentor sits in on a mentee's session.
   // Cashiering must add the "Mentorship" service so payroll can tag it.
   withMentor?: boolean
+  // "Last, First" of the intern who ran the session under the clinician's
+  // supervision (IE Intern / Session Intern on the Clinic Schedule); null
+  // for an ordinary session.
+  intern?: string | null
   [key: string]: unknown
 }
 
@@ -921,7 +925,16 @@ function CashierPanel({
                       )}
                     </td>
                     <td className="px-5 py-3" style={{ color: 'var(--mid-gray)' }}>{q.sessionType}</td>
-                    <td className="px-5 py-3" style={{ color: 'var(--mid-gray)' }}>{formatClinicianName(q.clinician)}</td>
+                    <td className="px-5 py-3" style={{ color: 'var(--mid-gray)' }}>
+                      {formatClinicianName(q.clinician)}
+                      {q.intern && (
+                        <span className="ml-2 px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap"
+                          style={{ background: '#E0E7FF', color: '#3730A3' }}
+                          title={`Supervised session — handled by intern ${formatClinicianName(q.intern)} under ${formatClinicianName(q.clinician)}'s clinical supervision`}>
+                          Intern: {formatClinicianName(q.intern)}
+                        </span>
+                      )}
+                    </td>
                     <td className="px-5 py-3">
                       {q.converted ? (
                         <span className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={{ background: '#dcfce7', color: '#166534' }}>

@@ -51,6 +51,10 @@ export async function GET(req: NextRequest) {
     },
     include: {
       staff:   { select: { firstName: true, lastName: true, department: true, branch: true } },
+      // The intern who actually ran the session (IE Intern / Session Intern) —
+      // staffId above stays the supervising clinician. Travels to the POS
+      // cashier queue so the cashier can see supervised sessions at a glance.
+      internStaff: { select: { firstName: true, lastName: true } },
       patient: { select: { id: true, firstName: true, lastName: true, branch: true, branches: true } },
     },
     orderBy: { startTime: 'asc' },
@@ -84,6 +88,8 @@ export async function GET(req: NextRequest) {
         // Travels to the Accounting Hub cashier queue, which highlights the row
         // and prompts for the "Mentorship" service so payroll can tag it.
         withMentor:  s.withMentor === true,
+        // Supervised session: the named intern ran it under the clinician above.
+        intern:      s.internStaff ? `${s.internStaff.lastName}, ${s.internStaff.firstName}` : null,
         status:      s.status,
         department:  s.staff.department,
         branch:      effectiveBranch,
@@ -162,6 +168,7 @@ export async function GET(req: NextRequest) {
           patientId:   patientIdByEmail.get(email) ?? null,
           patientName: p.studentName,
           withMentor:  false,   // class-portal tuition is never a mentorship session
+          intern:      null,
         }
       })
     } catch (e) {
@@ -228,6 +235,7 @@ export async function GET(req: NextRequest) {
         patientId:   b.patient?.id ?? null,
         patientName: b.patient ? `${b.patient.firstName} ${b.patient.lastName}` : '—',
         withMentor:  false,   // patient bookings carry no mentorship flag
+        intern:      null,
       }
     })
   } catch (e) {

@@ -62,6 +62,9 @@ export async function GET(req: Request) {
       // Set when the Clinic Schedule ticked "With Mentor": a mentor sat in on a
       // mentee's session, so it bills as a mentorship session.
       withMentor: item.withMentor === true,
+      // Supervised session from the Clinic Schedule: the named intern ran it
+      // under the listed clinician's supervision.
+      intern: typeof item.intern === 'string' && item.intern ? item.intern : null,
       converted: convertedIds.has(item.id as string),
     }))
 
