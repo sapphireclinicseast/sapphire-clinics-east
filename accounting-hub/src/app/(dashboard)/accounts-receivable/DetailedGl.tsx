@@ -72,7 +72,12 @@ export interface GlCaseRow {
 const num = (v: unknown) => Number(v ?? 0) || 0
 const fmtDate = (v?: string | null) =>
   v ? new Date(v).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'Asia/Manila' }) : ''
-const dayKey = (v?: string | null) => (v ? String(v).slice(0, 10) : '')
+// Manila calendar day, as YYYY-MM-DD. Dates are STORED as Manila midnight
+// (16:00Z of the previous day), so slicing the raw UTC ISO string gave the
+// PREVIOUS day — the edit forms then re-saved that shifted value, and every
+// open-and-save walked the dates one day earlier ("the dates keep changing").
+const dayKey = (v?: string | null) =>
+  (v ? new Date(v).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }) : '')
 
 /** POS stores GL proof as a JSON array, with a legacy single-URL field alongside. */
 /**

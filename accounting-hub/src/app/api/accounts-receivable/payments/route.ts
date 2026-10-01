@@ -221,28 +221,35 @@ export async function PUT(req: Request) {
       },
     })
 
-    // GL wallets: never touch balance — managed manually in POS.
-    // Non-GL: adjust balance for the difference.
-    const updatedWallet = await prisma.digitalWallet.findUnique({ where: { id: walletId }, select: { walletType: true } })
-    if (updatedWallet?.walletType !== 'GL') {
-      if (balanceDiff !== 0) {
+    // GL wallets: never touch balance — managed manually in POS. Each wallet is
+    // guarded by ITS OWN type: when a payment moves between wallets, the old
+    // wallet's restore and the new wallet's deduction are judged separately
+    // (gating everything on the new wallet's type let a move FROM a GL wallet
+    // "restore" a balance that was never deducted — the phantom pesos behind
+    // GL starting balances reverting to / doubling the Approved SOA).
+    const [newWalletType, oldWalletType] = await Promise.all([
+      prisma.digitalWallet.findUnique({ where: { id: walletId }, select: { walletType: true } }).then(w => w?.walletType),
+      walletId !== existing.walletId
+        ? prisma.digitalWallet.findUnique({ where: { id: existing.walletId }, select: { walletType: true } }).then(w => w?.walletType)
+        : Promise.resolve(undefined),
+    ])
+    if (walletId === existing.walletId) {
+      if (newWalletType !== 'GL' && balanceDiff !== 0) {
         await prisma.digitalWallet.update({
           where: { id: walletId },
           data: { balance: { decrement: balanceDiff } },
         })
       }
-      // If wallet changed, undo the same-wallet adjustment above, then restore old + deduct new
-      if (walletId !== existing.walletId) {
-        if (balanceDiff !== 0) {
-          await prisma.digitalWallet.update({
-            where: { id: walletId },
-            data: { balance: { increment: balanceDiff } },
-          })
-        }
+    } else {
+      // Wallet changed: restore the old wallet, deduct from the new — each only
+      // when that wallet's balance is ledger-managed (non-GL).
+      if (oldWalletType !== 'GL') {
         await prisma.digitalWallet.update({
           where: { id: existing.walletId },
           data: { balance: { increment: oldTotal } },
         })
+      }
+      if (newWalletType !== 'GL') {
         await prisma.digitalWallet.update({
           where: { id: walletId },
           data: { balance: { decrement: newTotal } },
@@ -327,11 +334,18 @@ export async function DELETE(req: Request) {
       console.error(`[GL] AR payment reversal threw for ${id}:`, postErr)
     }
 
-    // Restore wallet balance
-    await prisma.digitalWallet.update({
-      where: { id: payment.walletId },
-      data: { balance: { increment: totalSettled } },
-    })
+    // Restore wallet balance — but only where a payment DEDUCTED one. GL wallet
+    // balances are never touched by AR payments, so "restoring" on delete was
+    // pure phantom money: every deleted/corrected agency payment pumped the GL
+    // wallet's remaining balance up by the settled amount, which is how
+    // starting balances kept reverting to (or doubling past) the Approved SOA.
+    const delWallet = await prisma.digitalWallet.findUnique({ where: { id: payment.walletId }, select: { walletType: true } })
+    if (delWallet?.walletType !== 'GL') {
+      await prisma.digitalWallet.update({
+        where: { id: payment.walletId },
+        data: { balance: { increment: totalSettled } },
+      })
+    }
 
     // Delete linked order items first, then the payment
     await prisma.aRPaymentItem.deleteMany({ where: { paymentId: id } })
