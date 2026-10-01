@@ -602,7 +602,8 @@ function PettyCashInner() {
       columnStyles: { 7: { halign: 'right' }, 8: { halign: 'right' }, 9: { halign: 'right' } },
       margin: { left: 10, right: 10 },
     })
-    doc.save(`${refNumber}.pdf`)
+    // No automatic download — generating an RFP stores the PDF on the report
+    // row; the Download button on the Reimbursements tab serves it on demand.
     return doc.output('datauristring')
   }
 
@@ -755,6 +756,12 @@ function PettyCashInner() {
   // Per-column header sort/filter for the entries grid.
   const [gridSort, setGridSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: '', dir: 'asc' })
   const [gridFilters, setGridFilters] = useState<Record<string, string>>({})
+  // Replenished rows are hidden by default so the working set sits in view
+  // without scrolling; the tick box shows them, and any header filter
+  // (including the global-search deep link) searches hidden rows too.
+  const [showReplenished, setShowReplenished] = useState(false)
+  useEffect(() => { try { setShowReplenished(localStorage.getItem('pcf-show-replenished') === '1') } catch { /* ignore */ } }, [])
+  const toggleShowReplenished = () => setShowReplenished(v => { const nv = !v; try { localStorage.setItem('pcf-show-replenished', nv ? '1' : '0') } catch { /* ignore */ } return nv })
   // Deep link from global search — filter the grid to the PCV that was clicked.
   const { focus, done } = useFocusTarget()
   useEffect(() => { if (focus) { setGridFilters(f => ({ ...f, refNumber: focus })); done() } }, [focus, done])
@@ -797,7 +804,11 @@ function PettyCashInner() {
       default: return ''
     }
   }
-  const displayed = applySortFilter(entries, gridGet, gridSort.key, gridSort.dir, gridFilters)
+  // Hide replenished rows unless the tick box is on or any header filter is
+  // active — a filtered/searched grid always looks through the hidden rows.
+  const anyGridFilter = Object.values(gridFilters).some(v => (v || '').trim() !== '')
+  const gridRows = showReplenished || anyGridFilter ? entries : entries.filter(e => e.pcfStatus !== 'Replenished')
+  const displayed = applySortFilter(gridRows, gridGet, gridSort.key, gridSort.dir, gridFilters)
   const totalGross = displayed.reduce((s, e) => s + num(e.grossAmount), 0)
 
   // Entries are only selectable after an RFP button is clicked, and only those
@@ -808,6 +819,9 @@ function PettyCashInner() {
   // allocation to that branch and that branch portion hasn't been RFP'd yet — so
   // a shared entry can be ticked once per branch.
   const isSelectable = (e: Entry) => {
+    // A row without an Account Title cannot be tagged into an RFP — the reports
+    // drop untitled rows entirely, so tagging one buries the expense.
+    if (!(e.accountTitle || '').trim()) return false
     if (!e.audited || rfpValidity == null || e.validity !== rfpValidity) return false
     if (isCeo) {
       if (!rfpBranch) return false
@@ -830,6 +844,10 @@ function PettyCashInner() {
   const supplierByName = new Map(suppliers.map(s => [s.registeredName.trim().toLowerCase(), s]))
   // Audit status updates even on locked rows (audit happens after RFP).
   const setAudited = async (id: string, audited: boolean) => {
+    if (audited) {
+      const row = entries.find(e => e.id === id)
+      if (row && !(row.accountTitle || '').trim()) { alert('Set the Account Title first — a row cannot be tagged as audited while it is blank.'); return }
+    }
     patchLocal(id, { audited })
     try { await fetch('/api/petty-cash/audited', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, audited }) }) } catch { /* ignore */ }
   }
@@ -954,10 +972,18 @@ function PettyCashInner() {
               </div>
             ))}
           </div>
-          <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
-            {entries.length} entries · {selected.size} selected · Total Gross <strong style={{ color: 'var(--charcoal)' }}>₱{peso(totalGross)}</strong>
-            {' · '}Next PCV #{nextPcvSeq}
-          </p>
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+              {displayed.length}{displayed.length !== entries.length ? ` of ${entries.length}` : ''} entries · {selected.size} selected · Total Gross <strong style={{ color: 'var(--charcoal)' }}>₱{peso(totalGross)}</strong>
+              {' · '}Next PCV #{nextPcvSeq}
+            </p>
+            <label className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold cursor-pointer select-none"
+              title="Replenished rows are hidden by default so the working set stays in view. Tick to show them — header filters always search through hidden rows too."
+              style={{ borderColor: showReplenished ? 'var(--teal)' : 'var(--light-gray)', color: showReplenished ? 'var(--teal)' : 'var(--mid-gray)' }}>
+              <input type="checkbox" checked={showReplenished} onChange={toggleShowReplenished} className="accent-[var(--teal)]" />
+              Show replenished
+            </label>
+          </div>
 
           <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)', maxHeight: expanded ? 'calc(100vh - 210px)' : '70vh' }}>
             {loading ? (

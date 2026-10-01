@@ -944,6 +944,13 @@ function ExpensesInner() {
   const [unpaidLast, setUnpaidLast] = useState(false)
   useEffect(() => { try { setUnpaidLast(localStorage.getItem('exp-unpaid-last') === '1') } catch { /* ignore */ } }, [])
   const toggleUnpaidLast = () => setUnpaidLast(v => { const nv = !v; try { localStorage.setItem('exp-unpaid-last', nv ? '1' : '0') } catch { /* ignore */ } return nv })
+  // Paid rows are hidden by default on the one-time grid so open work sits in
+  // view without scrolling; the tick box shows them, and the search bar always
+  // looks through paid rows too (the windowed tab's search spans all history
+  // server-side). Sticky per browser.
+  const [showPaid, setShowPaid] = useState(false)
+  useEffect(() => { try { setShowPaid(localStorage.getItem('exp-show-paid') === '1') } catch { /* ignore */ } }, [])
+  const toggleShowPaid = () => setShowPaid(v => { const nv = !v; try { localStorage.setItem('exp-show-paid', nv ? '1' : '0') } catch { /* ignore */ } return nv })
   // Recurring entries are setups (no payment), so a stale paidAt shouldn't lock them.
   const locked = (e: Entry) => !!e.reimbursementId || !!e.soaId || (e.recordType !== 'RECURRING' && !!e.paidAt) || !!e.finalized || !canWrite
   const vatEditable = (e: Entry) => e.vatable === 'VAT' || e.vatable === 'Non-VAT' || e.vatable === 'NV'
@@ -1011,11 +1018,14 @@ function ExpensesInner() {
     }
   }
   const sorted = applySortFilter(shown, gridGet, gridSort.key, gridSort.dir, gridFilters)
+  // Paid rows are hidden by default on the one-time grid ("Show paid" reveals
+  // them); an active search always reaches them, so nothing is lost to the hide.
+  const visible = recordType === 'ONE_TIME' && !showPaid && !q ? sorted.filter(e => !e.paidAt) : sorted
   // Stable partition: paid (and in-RFP/SOA) rows float up, open rows sink to the
   // bottom near where new rows are added. Order within each group is untouched.
   const displayed = unpaidLast && recordType === 'ONE_TIME'
-    ? [...sorted.filter(e => e.paidAt || e.reimbursementId || e.soaId), ...sorted.filter(e => !e.paidAt && !e.reimbursementId && !e.soaId)]
-    : sorted
+    ? [...visible.filter(e => e.paidAt || e.reimbursementId || e.soaId), ...visible.filter(e => !e.paidAt && !e.reimbursementId && !e.soaId)]
+    : visible
   const totalGross = displayed.reduce((s, e) => s + num(e.grossAmount), 0)
 
   const selectableIds = displayed.filter(isSelectable).map(e => e.id)
@@ -1134,7 +1144,7 @@ function ExpensesInner() {
                 </div>
                 <div className="text-right whitespace-nowrap">
                   <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={d.daysUntil <= 0 ? { background: '#fee2e2', color: '#b91c1c' } : { background: '#fef3c7', color: '#92400e' }}>
-                    {d.daysUntil <= 0 ? 'Due now' : `Due in ${d.daysUntil}d`} · {d.nextDue}
+                    {d.daysUntil < 0 ? `Overdue ${-d.daysUntil}d` : d.daysUntil === 0 ? 'Due now' : `Due in ${d.daysUntil}d`} · {d.nextDue}
                   </span>
                   {canWrite && (
                     <button onClick={() => generateFromRecurring(d.id)} disabled={genFromRecurring === d.id}
@@ -1180,6 +1190,14 @@ function ExpensesInner() {
                   Unpaid at bottom
                 </label>
               )}
+              {recordType === 'ONE_TIME' && (
+                <label className="flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold cursor-pointer select-none"
+                  title="Paid rows are hidden by default so open work stays in view. Tick to show them — the search bar always looks through paid rows too."
+                  style={{ borderColor: showPaid ? 'var(--teal)' : 'var(--light-gray)', color: showPaid ? 'var(--teal)' : 'var(--mid-gray)' }}>
+                  <input type="checkbox" checked={showPaid} onChange={toggleShowPaid} className="accent-[var(--teal)]" />
+                  Show paid
+                </label>
+              )}
               <button onClick={() => scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
                 className="flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
                 <ArrowUp size={14} /> Top
@@ -1192,7 +1210,7 @@ function ExpensesInner() {
           </div>
 
           <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
-            {shown.length}{isWindowed && totalCount > shown.length ? ` of ${totalCount}` : q ? ` of ${entries.length}` : ''} entries
+            {displayed.length}{isWindowed && totalCount > displayed.length ? ` of ${totalCount}` : displayed.length !== entries.length ? ` of ${entries.length}` : ''} entries
             {' · '}{selected.size} selected · Total Gross <strong style={{ color: 'var(--charcoal)' }}>₱{peso(totalGross)}</strong>
             {' · '}Next PCV #{nextPcvSeq}
           </p>

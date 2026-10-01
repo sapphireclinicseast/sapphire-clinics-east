@@ -33,6 +33,32 @@ export async function GET(req: Request) {
 
   const now = new Date()
   const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
+  const DAY = 86400000
+
+  // One-time entries made recently, to recognize an occurrence that was already
+  // entered (recurring-generate copies requestor/description/accountTitle
+  // verbatim, so a loose key on those identifies the generated row). An entered
+  // occurrence leaves the list; an un-entered one that passed its deadline stays
+  // listed as OVERDUE through the grace window — it used to vanish the day after
+  // the deadline, which read as the whole reminder feature disappearing.
+  const GRACE_DAYS = 45
+  const since = new Date(today - (GRACE_DAYS + WINDOW_DAYS) * DAY)
+  const recent = await prisma.pettyCashEntry.findMany({
+    where: { branch, recordType: 'ONE_TIME', date: { gte: since } },
+    select: { requestor: true, description: true, accountTitle: true, date: true },
+  })
+  const norm = (s: string | null) => (s || '').trim().toLowerCase()
+  const keyOf = (r: { requestor: string | null; description: string | null; accountTitle: string | null }) =>
+    `${norm(r.requestor)}|${norm(r.description) || norm(r.accountTitle)}`
+  const enteredRows = recent.map(r => ({
+    k: keyOf(r),
+    t: r.date ? Date.UTC(new Date(r.date).getUTCFullYear(), new Date(r.date).getUTCMonth(), new Date(r.date).getUTCDate()) : 0,
+  }))
+  const wasEntered = (e: { requestor: string | null; description: string | null; accountTitle: string | null }, occTime: number) => {
+    const k = keyOf(e)
+    return enteredRows.some(x => x.k === k && x.t >= occTime - WINDOW_DAYS * DAY)
+  }
+
   const due: Record<string, unknown>[] = []
   for (const e of rows) {
     const cad = CADENCE[e.recurFrequency || '']
@@ -43,12 +69,17 @@ export async function GET(req: Request) {
     let idx = anchor.getUTCFullYear() * 12 + anchor.getUTCMonth()
     let nextDue = occ(idx, day), guard = 0
     while (nextDue < today && guard < 1200) { idx += cad; nextDue = occ(idx, day); guard++ }
-    const daysUntil = Math.round((nextDue - today) / 86400000)
-    if (daysUntil <= WINDOW_DAYS) {
+    // The occurrence that just passed is still the accountant's job if nothing
+    // was entered for it — surface it (negative daysUntil) before the next one.
+    const prevDue = guard > 0 ? occ(idx - cad, day) : null
+    let show: number | null = null
+    if (prevDue != null && (today - prevDue) / DAY <= GRACE_DAYS && !wasEntered(e, prevDue)) show = prevDue
+    else if ((nextDue - today) / DAY <= WINDOW_DAYS && !wasEntered(e, nextDue)) show = nextDue
+    if (show != null) {
       due.push({
         id: e.id, payee: e.requestor, accountTitle: e.accountTitle, description: e.description,
         grossAmount: Number(e.grossAmount), frequency: e.recurFrequency, amountVaries: e.amountVaries,
-        nextDue: new Date(nextDue).toISOString().slice(0, 10), daysUntil,
+        nextDue: new Date(show).toISOString().slice(0, 10), daysUntil: Math.round((show - today) / DAY),
       })
     }
   }
