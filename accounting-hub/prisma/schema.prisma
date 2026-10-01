@@ -1571,6 +1571,8 @@ model Consultant {
   phone            String?
   tinNumber        String?
   birAddress       String? // BIR registered address (for payroll XLSX export)
+  corUrl           String? // BIR Certificate of Registration (2303) upload — gates the Service Invoice tab
+  corUploadedAt    DateTime?
   sssNumber        String?
   philhealthNumber String?
   pagibigNumber    String?
@@ -1597,6 +1599,38 @@ model Consultant {
   @@index([isActive])
   mentorMeetingCharges MentorshipMeetingCharge[] @relation("MentorMeetingCharges")
   menteeMeetingCharges MentorshipMeetingCharge[] @relation("MenteeMeetingCharges")
+  siSubmissions     ConsultantSiSubmission[]
+}
+
+// BIR 2307 payor settings per payroll branch (SBEA / SBGH / VERDANA) — payor
+// company info plus the signatory printed on the certificate. Edited in
+// Payroll → Service Invoice → 2307 Settings. Rows are created on first save;
+// the API serves baked-in defaults until then.
+model Bir2307Settings {
+  branch         String   @id
+  payorName      String?
+  payorTin       String?
+  payorAddress   String?
+  payorZip       String?
+  signatoryName  String?
+  signatoryTitle String?
+  updatedAt      DateTime @updatedAt
+}
+
+// One row per consultant per month a BIR Service Invoice was received covering
+// that month. A single invoice spanning several months creates one row per
+// covered month (same siUrl), so the compliance matrix reads row-presence.
+model ConsultantSiSubmission {
+  id           String     @id @default(cuid())
+  consultantId String
+  consultant   Consultant @relation(fields: [consultantId], references: [id], onDelete: Cascade)
+  month        String     // "YYYY-MM" covered by the invoice
+  siUrl        String?    // uploaded copy of the service invoice
+  uploadedAt   DateTime   @default(now())
+  createdById  String?
+
+  @@unique([consultantId, month])
+  @@index([month])
 }
 
 model UnitPay {

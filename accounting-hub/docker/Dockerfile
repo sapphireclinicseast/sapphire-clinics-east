@@ -30,6 +30,9 @@ RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
 COPY --from=builder /app/public ./public
+# Auth-gated assets (BIR 2307 template + signatory e-signature) — deliberately
+# NOT in public/ so they are never served without a session.
+COPY --from=builder /app/server-assets ./server-assets
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder /app/prisma ./prisma
