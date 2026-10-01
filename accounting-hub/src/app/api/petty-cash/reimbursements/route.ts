@@ -92,7 +92,7 @@ export async function GET(req: Request) {
   const reports = await prisma.reimbursementReport.findMany({
     where: { branch, module: 'PETTY_CASH' },
     select: {
-      id: true, refNumber: true, grossTotal: true, status: true, kind: true, paidAt: true, paymentMethod: true, checkNumber: true, transferRef: true,
+      id: true, refNumber: true, refSeq: true, grossTotal: true, status: true, kind: true, module: true, paidAt: true, paymentMethod: true, checkNumber: true, transferRef: true,
       debitAccount: true, depositAccount: true, proofUrl: true, payableTo: true, createdAt: true, meta: true,
       _count: { select: { entries: true } },
       entries: { select: { vatable: true, grossAmount: true, hasEwt: true, ewtRate: true } },
