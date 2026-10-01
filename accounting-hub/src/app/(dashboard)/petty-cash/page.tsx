@@ -1704,14 +1704,24 @@ function RecordPaidModal({ report, bankOptions, onClose, onPay }: {
   onClose: () => void; onPay: (rep: Reimb, debit: string, deposit: string, file: File | null, datePaid: string, paymentMethod: string, checkNumber: string, transferRef: string) => Promise<void>
 }) {
   const isEdit = report.status === 'PAID'
-  const [debit, setDebit] = useState(report.debitAccount || '')
-  const [deposit, setDeposit] = useState(report.depositAccount || '')
-  const [datePaid, setDatePaid] = useState(report.paidAt ? String(report.paidAt).slice(0, 10) : new Date().toISOString().slice(0, 10))
-  const [paymentMethod, setPaymentMethod] = useState(report.paymentMethod || '')
-  const [checkNumber, setCheckNumber] = useState(report.checkNumber || '')
-  const [transferRef, setTransferRef] = useState(report.transferRef || '')
+  // Draft insurance: everything typed here is kept in sessionStorage per RFP,
+  // so accidentally closing the modal or leaving the page never costs the
+  // half-filled form. Cleared only on a successful submit.
+  const draftKey = `pc-rfp-pay-draft:${report.id}`
+  const draft: Record<string, string> | null = (() => {
+    try { return JSON.parse(sessionStorage.getItem(draftKey) || 'null') } catch { return null }
+  })()
+  const [debit, setDebit] = useState(draft?.debit ?? (report.debitAccount || ''))
+  const [deposit, setDeposit] = useState(draft?.deposit ?? (report.depositAccount || ''))
+  const [datePaid, setDatePaid] = useState(draft?.datePaid ?? (report.paidAt ? String(report.paidAt).slice(0, 10) : new Date().toISOString().slice(0, 10)))
+  const [paymentMethod, setPaymentMethod] = useState(draft?.paymentMethod ?? (report.paymentMethod || ''))
+  const [checkNumber, setCheckNumber] = useState(draft?.checkNumber ?? (report.checkNumber || ''))
+  const [transferRef, setTransferRef] = useState(draft?.transferRef ?? (report.transferRef || ''))
   const [file, setFile] = useState<File | null>(null)
   const [saving, setSaving] = useState(false)
+  useEffect(() => {
+    try { sessionStorage.setItem(draftKey, JSON.stringify({ debit, deposit, datePaid, paymentMethod, checkNumber, transferRef })) } catch { /* storage unavailable */ }
+  }, [draftKey, debit, deposit, datePaid, paymentMethod, checkNumber, transferRef])
   const isCheck = paymentMethod === 'Check deposit' || paymentMethod === 'Check encashment to deposit as cash'
   const isTransfer = paymentMethod === 'Online Fund Transfer'
   const submit = async () => {
@@ -1721,11 +1731,16 @@ function RecordPaidModal({ report, bankOptions, onClose, onPay }: {
     if (isTransfer && !transferRef.trim()) { alert('Enter the transfer Reference Number.'); return }
     if (!debit || !deposit) { alert('Select both the debit (from) and deposit (to) accounts.'); return }
     setSaving(true)
-    try { await onPay(report, debit, deposit, file, datePaid, paymentMethod, isCheck ? checkNumber.trim() : '', isTransfer ? transferRef.trim() : ''); onClose() } catch { /* handled in onPay */ }
+    try {
+      await onPay(report, debit, deposit, file, datePaid, paymentMethod, isCheck ? checkNumber.trim() : '', isTransfer ? transferRef.trim() : '')
+      try { sessionStorage.removeItem(draftKey) } catch { /* ignore */ }
+      onClose()
+    } catch { /* handled in onPay */ }
     setSaving(false)
   }
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+    // No backdrop-close: a stray click outside must not throw away a half-filled form.
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="bg-white rounded-2xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>{isEdit ? 'Edit Payment Details' : 'Record as Paid'} — {report.refNumber}</h2>

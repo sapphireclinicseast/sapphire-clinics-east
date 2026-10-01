@@ -2030,15 +2030,25 @@ function ForPaymentModal({ count, bankOptions, cards, paying, title, confirmLabe
   onClose: () => void; onAddCard: (bank: string, cardNumber: string, bankCode: string) => Promise<Card | null>
   onSubmit: (p: { datePaid: string; paymentMethod: string; checkNumber: string; paymentBankAccount: string; creditCard: string; creditCardId: string; payrollAccount: string; proofUrl: string | null }) => void
 }) {
-  const [datePaid, setDatePaid] = useState(initial?.paidAt ? String(initial.paidAt).slice(0, 10) : new Date().toISOString().slice(0, 10))
-  const [method, setMethod] = useState(initial?.paymentMethod || '')
-  const [checkNumber, setCheckNumber] = useState(initial?.checkNumber || '')
-  const [bankAccount, setBankAccount] = useState(initial?.debitAccount || '')
-  const [cardId, setCardId] = useState(initial?.creditCardId || '')
-  const [payrollAccount, setPayrollAccount] = useState('')
-  const [proofUrl, setProofUrl] = useState(initial?.proofUrl || '')
+  // Draft insurance: everything typed here is kept in sessionStorage per RFP,
+  // so accidentally closing the modal or leaving the page never costs the
+  // half-filled form. Cleared only on submit. Draft wins over saved payment.
+  const draftKey = `exp-rfp-pay-draft:${proofPrefix || 'new'}`
+  const draft: Record<string, string> | null = (() => {
+    try { return JSON.parse(sessionStorage.getItem(draftKey) || 'null') } catch { return null }
+  })()
+  const [datePaid, setDatePaid] = useState(draft?.datePaid ?? (initial?.paidAt ? String(initial.paidAt).slice(0, 10) : new Date().toISOString().slice(0, 10)))
+  const [method, setMethod] = useState(draft?.method ?? (initial?.paymentMethod || ''))
+  const [checkNumber, setCheckNumber] = useState(draft?.checkNumber ?? (initial?.checkNumber || ''))
+  const [bankAccount, setBankAccount] = useState(draft?.bankAccount ?? (initial?.debitAccount || ''))
+  const [cardId, setCardId] = useState(draft?.cardId ?? (initial?.creditCardId || ''))
+  const [payrollAccount, setPayrollAccount] = useState(draft?.payrollAccount ?? '')
+  const [proofUrl, setProofUrl] = useState(draft?.proofUrl ?? (initial?.proofUrl || ''))
   const [showAddCard, setShowAddCard] = useState(false)
   const [nb, setNb] = useState(''); const [nn, setNn] = useState(''); const [nc, setNc] = useState('')
+  useEffect(() => {
+    try { sessionStorage.setItem(draftKey, JSON.stringify({ datePaid, method, checkNumber, bankAccount, cardId, payrollAccount, proofUrl })) } catch { /* storage unavailable */ }
+  }, [draftKey, datePaid, method, checkNumber, bankAccount, cardId, payrollAccount, proofUrl])
 
   const isCheck = method === 'Check deposit' || method === 'Check encashment to deposit as cash'
   const isCard = method === 'Credit card'
@@ -2053,6 +2063,7 @@ function ForPaymentModal({ count, bankOptions, cards, paying, title, confirmLabe
     if (isCard && !cardId) { alert('Choose a credit card.'); return }
     if (isPayroll && !payrollAccount) { alert("Enter the admin officer's bank account number."); return }
     const selCard = cards.find(c => c.id === cardId)
+    try { sessionStorage.removeItem(draftKey) } catch { /* ignore */ }
     onSubmit({ datePaid, paymentMethod: method, checkNumber: (isCheck || isTT) ? checkNumber : '', paymentBankAccount: (isCheck || isTT) ? bankAccount : '', creditCard: isCard && selCard ? cardLabel(selCard) : '', creditCardId: isCard ? cardId : '', payrollAccount: isPayroll ? payrollAccount : '', proofUrl: proofUrl || null })
   }
 
