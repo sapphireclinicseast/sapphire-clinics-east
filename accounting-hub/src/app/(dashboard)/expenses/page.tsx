@@ -280,7 +280,23 @@ function ExpensesInner() {
   const [assetResult, setAssetResult] = useState<{ count: number } | null>(null)
   const [assetReAddWarn, setAssetReAddWarn] = useState<Entry | null>(null)
   // Details typed into the "Add to Asset Management" dialog (photos, custodian, remarks).
-  const [assetForm, setAssetForm] = useState<{ accountableName: string; remarks: string; photoUrls: string[] }>({ accountableName: '', remarks: '', photoUrls: [] })
+  // multi/quantity/unitNames: "more than 1 item" — one asset with per-piece custodians,
+  // each piece getting a sub control number (-01, -02, …) under one control number.
+  const [assetForm, setAssetForm] = useState<{ accountableName: string; remarks: string; photoUrls: string[]; multi: boolean; quantity: string; unitNames: string[] }>({ accountableName: '', remarks: '', photoUrls: [], multi: false, quantity: '2', unitNames: [] })
+  // HR-Hub staff names for the Accountability typeahead — same source as the Asset
+  // Management form, so typed custodians match staff records (and the Accountability
+  // summary tab) exactly instead of free-typed spellings.
+  const [assetStaffNames, setAssetStaffNames] = useState<string[]>([])
+  useEffect(() => {
+    if (!assetPrompt) return
+    const code = assetPrompt.branch === 'SANDBOX_EAST' ? 'SBEA' : assetPrompt.branch === 'SANDBOX_GREENHILLS' ? 'SBGH' : assetPrompt.branch === 'VERDANA_STORE' ? 'VERDANA' : ''
+    fetch(`/api/pos/staff${code ? `?branch=${code}` : ''}`).then(r => r.ok ? r.json() : [])
+      .then((d: unknown) => {
+        const list = (Array.isArray(d) ? d : ((d as { staff?: unknown[] })?.staff ?? [])) as { name?: string }[]
+        setAssetStaffNames([...new Set(list.map(s => s.name || '').filter(Boolean))])
+      })
+      .catch(() => setAssetStaffNames([]))
+  }, [assetPrompt])
   const [invPrompt, setInvPrompt] = useState<Entry | null>(null)
   const [invReAddWarn, setInvReAddWarn] = useState<Entry | null>(null)   // "already recorded" confirmation
   const goToInventory = (e: Entry, action: 'create' | 'adjust' | 'freight') => {
@@ -903,6 +919,7 @@ function ExpensesInner() {
     if (!assetPrompt) return
     setAssetBusy(true)
     try {
+      const qty = assetForm.multi ? Math.max(1, Math.min(200, parseInt(assetForm.quantity) || 1)) : 1
       const r = await fetch('/api/assets/from-entry', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -911,6 +928,10 @@ function ExpensesInner() {
           remarks: assetForm.remarks,
           photoUrl: assetForm.photoUrls[0] || null,
           photoUrls: assetForm.photoUrls,
+          quantity: qty,
+          units: qty > 1
+            ? Array.from({ length: qty }, (_, i) => ({ accountableName: (assetForm.unitNames[i] || '').trim() || null }))
+            : undefined,
         }),
       })
       const d = await r.json()
@@ -1398,7 +1419,7 @@ function ExpensesInner() {
                                 <CheckCircle2 size={11} /> In Asset Management
                               </span>
                             ) : (
-                              <button onClick={() => { setAssetForm({ accountableName: '', remarks: '', photoUrls: [] }); setAssetPrompt(e) }} title="Add this asset to Asset Management"
+                              <button onClick={() => { setAssetForm({ accountableName: '', remarks: '', photoUrls: [], multi: false, quantity: '2', unitNames: [] }); setAssetPrompt(e) }} title="Add this asset to Asset Management"
                                 className="mt-1 flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold border whitespace-nowrap"
                                 style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
                                 <Plus size={11} /> Add to Asset Management
@@ -1915,8 +1936,47 @@ function ExpensesInner() {
               <div className="space-y-3 mb-4">
                 <div>
                   <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Accountability <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>— staff accountable / custodian</span></label>
-                  <input value={assetForm.accountableName} onChange={ev => setAssetForm(f => ({ ...f, accountableName: ev.target.value }))}
-                    className="w-full border rounded-lg px-3 py-2 text-sm" style={{ borderColor: 'var(--light-gray)' }} placeholder="e.g. JUAN DELA CRUZ" />
+                  {!assetForm.multi && (
+                    <input value={assetForm.accountableName} onChange={ev => setAssetForm(f => ({ ...f, accountableName: ev.target.value }))}
+                      list="exp-asset-staff" className="w-full border rounded-lg px-3 py-2 text-sm" style={{ borderColor: 'var(--light-gray)' }} placeholder="Type or pick a staff name…" />
+                  )}
+                  <datalist id="exp-asset-staff">
+                    {assetStaffNames.map(n => <option key={n} value={n} />)}
+                  </datalist>
+                  <label className="flex items-center gap-2 text-xs mt-2 cursor-pointer" style={{ color: 'var(--charcoal)' }}>
+                    <input type="checkbox" checked={assetForm.multi}
+                      onChange={ev => setAssetForm(f => ({ ...f, multi: ev.target.checked }))} />
+                    More than 1 item — each piece gets a sub control number (-01, -02, …) and its own custodian
+                  </label>
+                  {assetForm.multi && (() => {
+                    const qty = Math.max(1, Math.min(200, parseInt(assetForm.quantity) || 1))
+                    return (
+                      <div className="mt-2 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>How many items?</span>
+                          <input type="number" min={1} max={200} value={assetForm.quantity}
+                            onChange={ev => setAssetForm(f => ({ ...f, quantity: ev.target.value }))}
+                            className="w-20 border rounded-lg px-2.5 py-1.5 text-sm" style={{ borderColor: 'var(--light-gray)' }} />
+                        </div>
+                        <div className="max-h-40 overflow-y-auto space-y-1.5 pr-1">
+                          {Array.from({ length: qty }, (_, i) => (
+                            <div key={i} className="flex items-center gap-2">
+                              <span className="w-9 shrink-0 font-mono text-[11px]" style={{ color: 'var(--mid-gray)' }}>-{String(i + 1).padStart(2, '0')}</span>
+                              <input value={assetForm.unitNames[i] ?? ''} list="exp-asset-staff"
+                                onChange={ev => setAssetForm(f => {
+                                  const unitNames = [...f.unitNames]
+                                  while (unitNames.length < qty) unitNames.push('')
+                                  unitNames[i] = ev.target.value
+                                  return { ...f, unitNames }
+                                })}
+                                className="flex-1 border rounded-lg px-2.5 py-1.5 text-sm" style={{ borderColor: 'var(--light-gray)' }}
+                                placeholder="Staff accountable for this piece…" />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })()}
                 </div>
                 <div>
                   <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Remarks</label>

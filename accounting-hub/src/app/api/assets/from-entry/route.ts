@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { assetClassFromAccountTitle, ASSET_CLASSIFICATION_LABELS, ENTRY_DEPT_TO_ASSET, isDepreciatingClassification } from '@/lib/asset-classification'
+import { sanitizeAssetUnits, summarizeAssetUnits } from '@/lib/asset-units'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
 const ASSET_BRANCH_CODE: Record<string, string> = { SANDBOX_EAST: 'AHEA', SANDBOX_GREENHILLS: 'AHGH', VERDANA_STORE: 'VERD' }
@@ -33,6 +34,9 @@ export async function POST(req: Request) {
     // Optional details from the creation dialog.
     const userRemarks = typeof body.remarks === 'string' ? body.remarks.trim().slice(0, 500) : ''
     const accountableName = typeof body.accountableName === 'string' ? body.accountableName.trim().slice(0, 200) || null : null
+    // Multi-pc entry ("more than 1 item" in the dialog): quantity + per-piece custodians.
+    const reqQuantity = Math.max(1, Math.min(200, parseInt(String(body.quantity)) || 1))
+    const reqUnits = sanitizeAssetUnits(body.units, reqQuantity)
     const photoUrl = typeof body.photoUrl === 'string' && body.photoUrl.trim() ? body.photoUrl.trim() : null
     const photoUrls = Array.isArray(body.photoUrls) ? body.photoUrls.filter((u: unknown) => typeof u === 'string' && u).slice(0, 20) : (photoUrl ? [photoUrl] : [])
     const e = await prisma.pettyCashEntry.findUnique({ where: { id: entryId } })
@@ -78,6 +82,13 @@ export async function POST(req: Request) {
       supplierId = sup?.id ?? null
     }
 
+    // Per-piece custody only makes sense for a single-branch entry — a CEO
+    // allocation already splits into one asset per branch, and spreading the same
+    // piece list across all of them would double-assign every custodian.
+    const applyUnits = targets.length === 1 && reqQuantity > 1
+    const qty = applyUnits ? reqQuantity : 1
+    const custodian = applyUnits ? summarizeAssetUnits(reqUnits, accountableName) : accountableName
+
     const created: { id: string; branch: string; name: string; controlNumber: string | null; totalAmount: number }[] = []
     for (const t of targets) {
       const total = Math.round(t.price * 100) / 100
@@ -87,8 +98,11 @@ export async function POST(req: Request) {
         data: {
           branch: t.branch as never,
           name,
-          purchasePrice: total,
-          quantity: 1,
+          // Indicative unit cost; totalAmount keeps the entry's exact net so the
+          // asset register matches the expense to the centavo.
+          purchasePrice: qty > 1 ? Math.round((total / qty) * 100) / 100 : total,
+          quantity: qty,
+          units: applyUnits && reqUnits ? reqUnits : undefined,
           totalAmount: total,
           dateBought,
           classification,
@@ -102,7 +116,7 @@ export async function POST(req: Request) {
           remarks: userRemarks
             ? `${userRemarks} — auto-created from petty cash / expense ${e.pcvNumber}`
             : `Auto-created from petty cash / expense ${e.pcvNumber}`,
-          accountableName,
+          accountableName: custodian,
           photoUrl,
           photoUrls,
           sourceEntryId: e.id,   // lets an entry edit that re-tags the row as an expense find and remove its assets

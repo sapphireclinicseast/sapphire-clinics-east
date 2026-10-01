@@ -62,6 +62,8 @@ interface Asset {
   utilized: boolean
   controlNumber: string | null
   accountableName: string | null
+  // quantity > 1: per-piece custodians; piece i shows sub control number `${controlNumber}-0${i+1}`
+  units?: { accountableName: string | null }[] | null
   remarks: string | null
   createdById: string
   createdBy: { id: string; name: string }
@@ -142,6 +144,13 @@ function classificationLabel(code: string) {
   return CLASSIFICATION_OPTIONS.find((c) => c.value === code)?.label ?? code
 }
 
+// Sub control number of piece i (0-based) of a multi-pc asset — derived from the
+// parent's control number, never stored.
+function subControlNo(controlNumber: string | null, i: number) {
+  const suffix = String(i + 1).padStart(2, '0')
+  return controlNumber ? `${controlNumber}-${suffix}` : `#${suffix}`
+}
+
 function computeEndDate(dateBought: string, years: number): string {
   if (!dateBought || !years) return ''
   const d = new Date(dateBought)
@@ -170,6 +179,8 @@ function emptyForm(branch: string) {
     utilized: true,
     controlNumber: '',
     accountableName: '',
+    // Per-piece custodian names when quantity > 1 (index = piece; '' = unassigned)
+    unitNames: [] as string[],
     remarks: '',
   }
 }
@@ -297,7 +308,7 @@ function AssetManagementInner() {
   // Lightbox + photo gallery
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
   const [galleryAsset, setGalleryAsset] = useState<Asset | null>(null)
-  const [tab, setTab] = useState<'assets' | 'auditable' | 'audit' | 'flowchart'>('assets')
+  const [tab, setTab] = useState<'assets' | 'auditable' | 'accountability' | 'audit' | 'flowchart'>('assets')
   const photosOf = (a: Asset): string[] => {
     const arr = Array.isArray(a.photoUrls) ? a.photoUrls : []
     if (arr.length) return arr
@@ -435,6 +446,9 @@ function AssetManagementInner() {
       utilized: asset.utilized,
       controlNumber: asset.controlNumber ?? '',
       accountableName: asset.accountableName ?? '',
+      unitNames: asset.quantity > 1
+        ? Array.from({ length: asset.quantity }, (_, i) => asset.units?.[i]?.accountableName ?? '')
+        : [],
       remarks: asset.remarks ?? '',
     })
     if (asset.photoUrl) {
@@ -568,6 +582,11 @@ function AssetManagementInner() {
         departments: form.departments,
         utilized: form.utilized,
         accountableName: form.accountableName.trim() || null,
+        // Per-piece custodians (quantity > 1): the server stores these and keeps
+        // accountableName as their summary for the one-line register views.
+        units: quantityNum > 1
+          ? Array.from({ length: quantityNum }, (_, i) => ({ accountableName: (form.unitNames[i] || '').trim() || null }))
+          : null,
         remarks: form.remarks.trim() || null,
       }
 
@@ -748,7 +767,7 @@ function AssetManagementInner() {
       // downpayments and part-payments, which are balances rather than objects.
       if (tab === 'auditable' && a.auditable === false) return false
       const q = search.toLowerCase()
-      if (q && ![a.name, a.classification, classificationLabel(a.classification), branchLabel(a.branch), a.controlNumber ?? '', a.remarks ?? ''].some((v) => v.toLowerCase().includes(q))) return false
+      if (q && ![a.name, a.classification, classificationLabel(a.classification), branchLabel(a.branch), a.controlNumber ?? '', a.accountableName ?? '', ...(a.units?.map(u => u.accountableName ?? '') ?? []), a.remarks ?? ''].some((v) => v.toLowerCase().includes(q))) return false
       if (colFilters.name && !a.name.toLowerCase().includes(colFilters.name.toLowerCase())) return false
       if (colFilters.classification && a.classification !== colFilters.classification) return false
       if (colFilters.branch && a.branch !== colFilters.branch) return false
@@ -854,12 +873,13 @@ function AssetManagementInner() {
 
       {/* Tabs */}
       <div className="flex items-center gap-1 border-b" style={{ borderColor: 'var(--light-gray)' }}>
-        {([['assets', 'Assets'], ['auditable', 'Auditable Assets'], ['audit', 'Asset Audit'], ['flowchart', 'Recording Flowchart']] as const).map(([v, label]) => (
+        {([['assets', 'Assets'], ['auditable', 'Auditable Assets'], ['accountability', 'Accountability'], ['audit', 'Asset Audit'], ['flowchart', 'Recording Flowchart']] as const).map(([v, label]) => (
           <button key={v} onClick={() => setTab(v)} className="px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors"
             style={{ borderColor: tab === v ? 'var(--teal)' : 'transparent', color: tab === v ? 'var(--teal)' : 'var(--mid-gray)' }}>{label}</button>
         ))}
       </div>
 
+      {tab === 'accountability' && <AccountabilityTab assets={assets} loading={loading} />}
       {tab === 'audit' && <AssetAuditTab canWrite={canManage} />}
       {tab === 'flowchart' && <AssetFlowchart />}
 
@@ -1162,8 +1182,16 @@ function AssetManagementInner() {
                         {asset.isDefective ? 'Defective' : 'OK'}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-gray-600 font-mono text-xs">{asset.controlNumber ?? '—'}</td>
-                    <td className="px-4 py-3 text-gray-600">{asset.accountableName ?? '—'}</td>
+                    <td className="px-4 py-3 text-gray-600 font-mono text-xs">
+                      {asset.controlNumber ?? '—'}
+                      {asset.quantity > 1 && (
+                        <span className="block text-[10px] text-gray-400">{asset.quantity} pcs · -01…-{String(asset.quantity).padStart(2, '0')}</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-gray-600"
+                      title={asset.units?.length ? asset.units.map((u, i) => `${subControlNo(asset.controlNumber, i)}: ${u.accountableName || '—'}`).join('\n') : undefined}>
+                      {asset.accountableName ?? '—'}
+                    </td>
                     <td className="px-4 py-3 text-gray-600 max-w-[160px]">
                       <span className="truncate block" title={(asset.departments as string[]).join(', ')}>
                         {(asset.departments as string[]).length > 0
@@ -1530,14 +1558,20 @@ function AssetManagementInner() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Accountability</label>
-                  <input
-                    type="text"
-                    list="asset-staff-list"
-                    value={form.accountableName}
-                    onChange={(e) => setForm((f) => ({ ...f, accountableName: e.target.value }))}
-                    placeholder="Type or pick a staff name…"
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                  />
+                  {quantityNum > 1 ? (
+                    <div className="border border-dashed border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-500 bg-gray-50">
+                      {quantityNum} items — assign a custodian per item below.
+                    </div>
+                  ) : (
+                    <input
+                      type="text"
+                      list="asset-staff-list"
+                      value={form.accountableName}
+                      onChange={(e) => setForm((f) => ({ ...f, accountableName: e.target.value }))}
+                      placeholder="Type or pick a staff name…"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    />
+                  )}
                   <datalist id="asset-staff-list">
                     {staffNames.map((n) => <option key={n} value={n} />)}
                   </datalist>
@@ -1550,9 +1584,42 @@ function AssetManagementInner() {
                     readOnly disabled
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-500 font-mono"
                   />
-                  <p className="text-[11px] text-gray-400 mt-1">Format: BRANCH-YEAR-000x (e.g. AHEA-2026-0001)</p>
+                  <p className="text-[11px] text-gray-400 mt-1">
+                    Format: BRANCH-YEAR-000x (e.g. AHEA-2026-0001)
+                    {quantityNum > 1 && <> · items get sub numbers -01…-{String(quantityNum).padStart(2, '0')}</>}
+                  </p>
                 </div>
               </div>
+
+              {/* Per-item custodians — each piece of a multi-pc asset carries its own
+                  sub control number and can be accountable to a different person. */}
+              {quantityNum > 1 && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Accountability per item</label>
+                  <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                    {Array.from({ length: quantityNum }, (_, i) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <span className="w-40 shrink-0 font-mono text-xs text-gray-500">
+                          {subControlNo(editingAsset ? (form.controlNumber || null) : null, i)}
+                        </span>
+                        <input
+                          type="text"
+                          list="asset-staff-list"
+                          value={form.unitNames[i] ?? ''}
+                          onChange={(e) => setForm((f) => {
+                            const unitNames = [...f.unitNames]
+                            while (unitNames.length < quantityNum) unitNames.push('')
+                            unitNames[i] = e.target.value
+                            return { ...f, unitNames }
+                          })}
+                          placeholder="Type or pick a staff name…"
+                          className="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Remarks */}
               <div className="grid grid-cols-1 gap-4">
@@ -2005,6 +2072,159 @@ function AssetFlowchart() {
           </div>
         ))}
       </div>
+    </div>
+  )
+}
+
+// ── Accountability tab ────────────────────────────────────────
+// Who holds what: every asset — or every piece of a multi-pc asset — grouped
+// under the staff member accountable for it. A multi-pc asset with per-piece
+// custodians contributes one row per piece (its sub control number, at the
+// per-piece share of the value); everything else contributes one row.
+
+interface CustodyRow {
+  assetId: string
+  controlNo: string
+  assetName: string
+  branch: string
+  classification: string
+  defective: boolean
+  pieces: number
+  value: number
+}
+
+function AccountabilityTab({ assets, loading }: { assets: Asset[]; loading: boolean }) {
+  const [staffSearch, setStaffSearch] = useState('')
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+
+  const groups = useMemo(() => {
+    const byKey = new Map<string, { name: string; rows: CustodyRow[] }>()
+    const push = (name: string | null, row: CustodyRow) => {
+      const display = (name || '').trim()
+      const key = display ? display.toLowerCase() : '\u0000unassigned'
+      const g = byKey.get(key) || { name: display || 'Unassigned', rows: [] }
+      g.rows.push(row)
+      byKey.set(key, g)
+    }
+    for (const a of assets) {
+      const base = {
+        assetId: a.id, assetName: a.name, branch: a.branch,
+        classification: a.classification, defective: !!a.isDefective,
+      }
+      if (a.quantity > 1 && a.units?.length) {
+        const share = a.totalAmount / a.quantity
+        a.units.forEach((u, i) => push(u.accountableName, {
+          ...base, controlNo: subControlNo(a.controlNumber, i), pieces: 1, value: share,
+        }))
+      } else {
+        push(a.accountableName, {
+          ...base, controlNo: a.controlNumber || '—', pieces: a.quantity || 1, value: a.totalAmount,
+        })
+      }
+    }
+    const list = [...byKey.entries()].map(([key, g]) => ({
+      key, name: g.name, rows: g.rows,
+      items: g.rows.reduce((s, r) => s + r.pieces, 0),
+      value: g.rows.reduce((s, r) => s + r.value, 0),
+    }))
+    // Alphabetical, with Unassigned last — it is the to-do pile, not a person.
+    return list.sort((a, b) => {
+      if (a.key === '\u0000unassigned') return 1
+      if (b.key === '\u0000unassigned') return -1
+      return a.name.localeCompare(b.name)
+    })
+  }, [assets])
+
+  const shown = staffSearch.trim()
+    ? groups.filter(g => g.name.toLowerCase().includes(staffSearch.trim().toLowerCase()))
+    : groups
+  const assignedStaff = groups.filter(g => g.key !== '\u0000unassigned')
+  const unassigned = groups.find(g => g.key === '\u0000unassigned')
+
+  const toggle = (key: string) => setExpanded(prev => {
+    const next = new Set(prev)
+    if (next.has(key)) next.delete(key); else next.add(key)
+    return next
+  })
+
+  const exportCustody = (fmt: 'xlsx' | 'pdf') => {
+    const headers = ['Accountable', 'Control No.', 'Asset', 'Branch', 'Classification', 'Pcs', 'Value', 'Condition']
+    const rows = shown.flatMap(g => g.rows.map(r => [
+      g.name, r.controlNo, r.assetName, branchLabel(r.branch), classificationLabel(r.classification),
+      String(r.pieces), r.value.toFixed(2), r.defective ? 'Defective' : 'OK',
+    ]))
+    if (fmt === 'xlsx') downloadXlsx('asset-accountability', [{ name: 'Accountability', headers, rows }])
+    else downloadPdf({ title: 'Asset Accountability', subtitle: `${assignedStaff.length} staff · ${rows.length} line(s)`, headers, rows, landscape: true })
+  }
+
+  if (loading) return <div className="flex items-center gap-2 text-sm text-gray-500 py-10 justify-center"><Loader2 size={16} className="animate-spin" /> Loading assets…</div>
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            value={staffSearch}
+            onChange={(e) => setStaffSearch(e.target.value)}
+            placeholder="Search staff…"
+            className="pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 w-64"
+          />
+        </div>
+        <p className="text-sm text-gray-500">
+          {assignedStaff.length} staff hold {assignedStaff.reduce((s, g) => s + g.items, 0)} item(s)
+          {unassigned ? <> · <span className="text-amber-600 font-medium">{unassigned.items} unassigned</span></> : null}
+        </p>
+        <div className="ml-auto flex items-center gap-2">
+          <button onClick={() => exportCustody('xlsx')} className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50"><FileDown size={15} /> Excel</button>
+          <button onClick={() => exportCustody('pdf')} className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50"><Printer size={15} /> PDF</button>
+        </div>
+      </div>
+
+      {shown.length === 0 ? (
+        <p className="text-center text-sm text-gray-400 py-10">No staff match your search.</p>
+      ) : shown.map(g => (
+        <div key={g.key} className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+          <button onClick={() => toggle(g.key)} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 text-left">
+            {expanded.has(g.key) ? <ChevronUp size={15} className="text-gray-400" /> : <ChevronDown size={15} className="text-gray-400" />}
+            <span className={`font-medium ${g.key === '\u0000unassigned' ? 'text-amber-600' : 'text-gray-900'}`}>{g.name}</span>
+            <span className="text-xs text-gray-500">{g.items} item(s)</span>
+            <span className="ml-auto text-sm font-medium text-gray-700">{formatCurrency(g.value)}</span>
+          </button>
+          {expanded.has(g.key) && (
+            <table className="w-full text-sm border-t border-gray-100">
+              <thead>
+                <tr className="bg-gray-50">
+                  <th className="text-left px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">Control No.</th>
+                  <th className="text-left px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">Asset</th>
+                  <th className="text-left px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">Branch</th>
+                  <th className="text-left px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">Classification</th>
+                  <th className="text-center px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">Pcs</th>
+                  <th className="text-right px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">Value</th>
+                  <th className="text-center px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">Condition</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {g.rows.map((r, i) => (
+                  <tr key={`${r.assetId}-${r.controlNo}-${i}`}>
+                    <td className="px-4 py-2 font-mono text-xs text-gray-600">{r.controlNo}</td>
+                    <td className="px-4 py-2 text-gray-900">{r.assetName}</td>
+                    <td className="px-4 py-2 text-gray-600">{branchLabel(r.branch)}</td>
+                    <td className="px-4 py-2 text-gray-600">{classificationLabel(r.classification)}</td>
+                    <td className="px-4 py-2 text-center text-gray-600">{r.pieces}</td>
+                    <td className="px-4 py-2 text-right text-gray-700">{formatCurrency(r.value)}</td>
+                    <td className="px-4 py-2 text-center">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium" style={r.defective ? { background: '#fee2e2', color: '#b91c1c' } : { background: '#dcfce7', color: '#166534' }}>
+                        {r.defective ? 'Defective' : 'OK'}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      ))}
     </div>
   )
 }

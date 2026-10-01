@@ -990,4 +990,9 @@ CREATE TABLE IF NOT EXISTS "HrBranch" (
 );
 SQL
 
+# ── Asset per-piece custody (multi-pc entries: sub control numbers + per-piece custodians) ──
+docker exec -i accounting_db psql -U sapphire -d sapphire_accounting <<'SQL'
+ALTER TABLE "Asset" ADD COLUMN IF NOT EXISTS "units" JSONB;
+SQL
+
 echo "Redeploy complete."

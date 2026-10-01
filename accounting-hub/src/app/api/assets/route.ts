@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server'
+import { Prisma } from '@prisma/client'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { postAssetJournal, reverseAssetJournal } from '@/lib/accounting/post-asset'
+import { sanitizeAssetUnits, summarizeAssetUnits } from '@/lib/asset-units'
 
 // Front-desk staff can add/edit assets (photos, renaming) but not delete them.
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
@@ -89,8 +91,16 @@ export async function POST(req: Request) {
       departments,
       utilized,
       accountableName,
+      units,
       remarks,
     } = body
+
+    // Multi-pc asset: per-piece custodians; the stored accountableName becomes
+    // the summary so the register/audit/CSV keep reading one line per asset.
+    const unitRows = sanitizeAssetUnits(units, Number(quantity) || 1)
+    const custodian = unitRows
+      ? summarizeAssetUnits(unitRows, typeof accountableName === 'string' ? accountableName : null)
+      : accountableName || null
 
     const controlNumber = await nextControlNumber(branch, dateBought)
     const asset = await prisma.asset.create({
@@ -114,7 +124,8 @@ export async function POST(req: Request) {
         departments: departments ?? [],
         utilized: utilized ?? true,
         controlNumber,
-        accountableName: accountableName || null,
+        accountableName: custodian,
+        units: unitRows ?? Prisma.DbNull,
         remarks: remarks || null,
         createdById: session.user.id,
       },
@@ -179,8 +190,14 @@ export async function PUT(req: Request) {
       departments,
       utilized,
       accountableName,
+      units,
       remarks,
     } = body
+
+    const unitRows = sanitizeAssetUnits(units, Number(quantity) || 1)
+    const custodian = unitRows
+      ? summarizeAssetUnits(unitRows, typeof accountableName === 'string' ? accountableName : null)
+      : accountableName || null
 
     // Capture pre-edit state to detect material changes affecting the JE.
     const prior = await prisma.asset.findUnique({
@@ -209,7 +226,10 @@ export async function PUT(req: Request) {
         auditable: auditable !== false,
         departments: departments ?? [],
         utilized: utilized ?? true,
-        accountableName: accountableName || null,
+        accountableName: custodian,
+        // Quantity back down to 1 clears the per-piece list — stale custody rows
+        // must not outlive the pieces they described.
+        units: unitRows ?? Prisma.DbNull,
         remarks: remarks || null,
       },
       include: {

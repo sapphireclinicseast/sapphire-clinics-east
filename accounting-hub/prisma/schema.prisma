@@ -2413,7 +2413,8 @@ model Asset {
   departments         Json      @default("[]") // string[] of dept names
   utilized            Boolean   @default(true)
   controlNumber       String?
-  accountableName     String? // staff accountable/custodian (from HR Hub)
+  accountableName     String? // staff accountable/custodian (from HR Hub); for multi-piece assets this is the summary of the per-piece names
+  units               Json? // quantity > 1: per-piece custody, [{ accountableName }] — piece i carries sub control number `${controlNumber}-${String(i+1).padStart(2,'0')}`
   remarks             String?
   sourceEntryId       String? // PettyCashEntry the asset was auto-created from ("Add to Asset Management") — lets an entry edit that re-tags the row as an expense find and remove its assets
   createdById         String
