@@ -16,6 +16,7 @@ import { applySortFilter, SortFilterHead, type SortCol } from '@/components/Sort
 ───────────────────────────────────────────── */
 interface SalesSummaryRow {
   date: string
+  orderId?: string
   orderNumber: number
   patientName: string
   serviceAvailed: string
@@ -129,6 +130,7 @@ function ReportTable({
   csvFilename,
   accentClass,
   badgeClass,
+  onConvert,
 }: {
   rows: SalesSummaryRow[]
   title: string
@@ -137,6 +139,8 @@ function ReportTable({
   csvFilename: string
   accentClass: string
   badgeClass: string
+  // Report 2 only: open the "Convert to have Sales Invoice" dialog for this row's order.
+  onConvert?: (row: SalesSummaryRow) => void
 }) {
   const [sortKey, setSortKey] = useState('date')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
@@ -265,6 +269,15 @@ function ReportTable({
                           <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${badgeClass}`}>
                             {row.salesInvoiceNumber}
                           </span>
+                        ) : onConvert && row.orderId && !row.migrated ? (
+                          <button
+                            onClick={() => onConvert(row)}
+                            className="px-2.5 py-1 rounded-lg text-[11px] font-semibold border whitespace-nowrap print:hidden"
+                            style={{ borderColor: '#fbbf24', color: '#92400e', background: '#fffbeb' }}
+                            title={`Issue a Sales Invoice to order #${row.orderNumber}`}
+                          >
+                            Convert to have SI
+                          </button>
                         ) : (
                           <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>—</span>
                         )}
@@ -335,6 +348,9 @@ export default function SalesSummaryPage() {
   const [error, setError] = useState('')
   const [view, setView] = useState<'summary' | 'with-si' | 'target'>('summary')
   const role = (session?.user as { role?: string })?.role || ''
+  // "Convert to have Sales Invoice" — same roles that may resolve SI flags; viewers only look.
+  const canConvert = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK'].includes(role)
+  const [convertRow, setConvertRow] = useState<SalesSummaryRow | null>(null)
 
   const fetchData = useCallback(async () => {
     if (!showWithInvoice && !showWithoutInvoice) {
@@ -571,6 +587,7 @@ export default function SalesSummaryPage() {
               csvFilename={`sales-without-invoice-${dateFrom}-to-${dateTo}.csv`}
               accentClass="text-amber-700"
               badgeClass="bg-amber-50 text-amber-700"
+              onConvert={canConvert ? setConvertRow : undefined}
             />
           )}
         </>
@@ -583,6 +600,92 @@ export default function SalesSummaryPage() {
         </div>
       )}
       </>)}
+
+      {convertRow && (
+        <ConvertSiModal
+          row={convertRow}
+          onClose={() => setConvertRow(null)}
+          onSaved={() => { setConvertRow(null); fetchData() }}
+        />
+      )}
+    </div>
+  )
+}
+
+/* ─────────────────────────────────────────────
+   "Convert to have Sales Invoice" — declare an uninvoiced sale on a chosen
+   date. Suggests the next number in the branch's SI series (orders + AR
+   collections, outlier-proof), overridable when reusing a cancelled number.
+   The order's session date and GL are untouched; With SI and the sales
+   target attribute the sale to the declared date.
+───────────────────────────────────────────── */
+function ConvertSiModal({ row, onClose, onSaved }: { row: SalesSummaryRow; onClose: () => void; onSaved: () => void }) {
+  const [declaredDate, setDeclaredDate] = useState(today())
+  const [siNumber, setSiNumber] = useState('')
+  const [suggested, setSuggested] = useState<string | null>(null)
+  const [currentMax, setCurrentMax] = useState<string | null>(null)
+  const [loadingNext, setLoadingNext] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+
+  useEffect(() => {
+    fetch(`/api/reports/with-si/next-number?branch=${encodeURIComponent(row.branch)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (d?.next) { setSiNumber(d.next); setSuggested(d.next); setCurrentMax(d.max || null) }
+      })
+      .catch(() => {})
+      .finally(() => setLoadingNext(false))
+  }, [row.branch])
+
+  const save = async () => {
+    if (!siNumber.trim()) { setErr('Enter the Sales Invoice number'); return }
+    if (!declaredDate) { setErr('Pick the declaration date'); return }
+    setBusy(true); setErr('')
+    try {
+      const r = await fetch(`/api/pos/orders/${row.orderId}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'declareSI', salesInvoiceNumber: siNumber.trim(), declaredDate }),
+      })
+      const d = await r.json()
+      if (!r.ok) { setErr(d.error || 'Failed to convert'); setBusy(false); return }
+      onSaved()
+    } catch { setErr('Network error'); setBusy(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>Convert to have Sales Invoice</h2>
+          <button onClick={onClose}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button>
+        </div>
+        <p className="text-xs mb-4" style={{ color: 'var(--mid-gray)' }}>
+          Order <strong>#{row.orderNumber}</strong> · {row.patientName} · session {row.date}. The Sales Invoice covers the <strong>whole order</strong> (every item line). The session date and the books stay as recorded — the sale is declared in the SI series on the date below.
+        </p>
+
+        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Date of declaration</label>
+        <input type="date" value={declaredDate} onChange={e => setDeclaredDate(e.target.value)}
+          className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }} />
+
+        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Sales Invoice number</label>
+        <input value={siNumber} onChange={e => setSiNumber(e.target.value)} placeholder={loadingNext ? 'Finding next number…' : 'e.g. 0042'}
+          className="w-full px-3 py-2 rounded-xl border text-sm font-mono mb-1" style={{ borderColor: 'var(--light-gray)' }} />
+        <p className="text-[11px] mb-4" style={{ color: 'var(--mid-gray)' }}>
+          {loadingNext ? 'Looking up the series…'
+            : suggested ? <>Auto-filled with the next number in the series{currentMax ? <> (highest in use: <span className="font-mono">{currentMax}</span>)</> : null}. Override it to reuse a cancelled SI number.</>
+            : 'Could not look up the series — type the SI number.'}
+        </p>
+
+        {err && <p className="text-xs mb-3" style={{ color: '#dc2626' }}>{err}</p>}
+
+        <div className="flex gap-2">
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Cancel</button>
+          <button onClick={save} disabled={busy || loadingNext} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2" style={{ background: 'var(--teal)' }}>
+            {busy && <Loader2 size={15} className="animate-spin" />} Declare with SI
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

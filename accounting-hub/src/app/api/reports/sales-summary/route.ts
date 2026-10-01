@@ -82,6 +82,7 @@ export async function GET(req: Request) {
         const itemNet = itemGross - itemDiscount
         return {
           date,
+          orderId: order.id,
           orderNumber: order.orderNumber,
           patientName: order.patientName || '—',
           serviceAvailed: item.name,

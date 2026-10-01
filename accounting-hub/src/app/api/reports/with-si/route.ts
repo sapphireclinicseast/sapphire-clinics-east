@@ -21,13 +21,24 @@ export async function GET(req: Request) {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const where: any = { branch, status: { in: ['COMPLETED', 'REOPENED'] }, issuedOfficialInvoice: true, salesInvoiceNumber: { not: null } }
-  if (dateFrom) where.transactionDate = { ...where.transactionDate, gte: new Date(`${dateFrom}T00:00:00+08:00`) }
-  if (dateTo) where.transactionDate = { ...where.transactionDate, lte: new Date(`${dateTo}T23:59:59.999+08:00`) }
+  // A converted sale ("Convert to have Sales Invoice") belongs to the SI book of
+  // its DECLARED date, not its session date — range-filter each order by
+  // siDeclaredDate when set, transactionDate otherwise.
+  if (dateFrom || dateTo) {
+    const range = {
+      ...(dateFrom ? { gte: new Date(`${dateFrom}T00:00:00+08:00`) } : {}),
+      ...(dateTo ? { lte: new Date(`${dateTo}T23:59:59.999+08:00`) } : {}),
+    }
+    where.OR = [
+      { siDeclaredDate: null, transactionDate: range },
+      { siDeclaredDate: range },
+    ]
+  }
 
   try {
     const orders = await prisma.order.findMany({
       where, orderBy: { transactionDate: 'asc' },
-      select: { id: true, orderNumber: true, orderType: true, transactionDate: true, patientName: true, netAmount: true, salesInvoiceNumber: true },
+      select: { id: true, orderNumber: true, orderType: true, transactionDate: true, siDeclaredDate: true, patientName: true, netAmount: true, salesInvoiceNumber: true },
     })
     const orderRows = orders.map(o => {
       const n = siInt(o.salesInvoiceNumber)
@@ -35,7 +46,7 @@ export async function GET(req: Request) {
       const isProduct = o.orderType === 'PRODUCT'
       return {
         id: o.id, orderNumber: o.orderNumber, siNumber: o.salesInvoiceNumber || '', siInt: n,
-        date: new Date(o.transactionDate).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }),
+        date: new Date(o.siDeclaredDate || o.transactionDate).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }),
         patientName: o.patientName || '—',
         vat: isProduct ? amt : 0, nonVat: isProduct ? 0 : amt, amount: amt,
         orderType: o.orderType,

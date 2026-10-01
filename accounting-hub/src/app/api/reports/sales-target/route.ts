@@ -21,7 +21,15 @@ export async function GET(req: Request) {
     const start = new Date(Date.UTC(year, month - 1, 1))
     const end = new Date(Date.UTC(year, month, 1))
     const orders = await prisma.order.findMany({
-      where: { branch, status: { in: ['COMPLETED', 'REOPENED'] }, issuedOfficialInvoice: true, salesInvoiceNumber: { not: null }, transactionDate: { gte: start, lt: end } },
+      where: {
+        branch, status: { in: ['COMPLETED', 'REOPENED'] }, issuedOfficialInvoice: true, salesInvoiceNumber: { not: null },
+        // A converted sale ("Convert to have Sales Invoice") counts toward the
+        // month it was DECLARED in, matching the With SI book.
+        OR: [
+          { siDeclaredDate: null, transactionDate: { gte: start, lt: end } },
+          { siDeclaredDate: { gte: start, lt: end } },
+        ],
+      },
       select: { netAmount: true },
     })
     const salesWithSI = orders.reduce((s, o) => s + Number(o.netAmount), 0)

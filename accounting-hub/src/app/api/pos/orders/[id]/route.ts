@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { restoreFifoLots, recalcWeightedUnitCost } from '@/lib/fifo'
 import { postOrderJournal, reverseOrderJournal } from '@/lib/accounting/post-order'
 import { linkReferredPatientFromOrder } from '@/lib/referral-link'
+import { normalizeSI } from '@/lib/sales-invoice'
 
 const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
 
@@ -124,6 +125,55 @@ export async function PUT(
       })
       try { await postOrderJournal(prisma, id, session.user.id) } catch (e) { console.error('[GL] recordPayment posting threw:', e) }
       return NextResponse.json({ ok: true, paid: true })
+    }
+
+    // "Convert to have Sales Invoice" (Sales Summary → Without SI): issue an SI
+    // to an uninvoiced order, declared on a chosen date. The session keeps its
+    // transactionDate (GL untouched); With SI and the sales target attribute the
+    // sale to siDeclaredDate so it lands in the SI book of the declared period.
+    if (body.action === 'declareSI') {
+      if (existing.issuedOfficialInvoice || existing.salesInvoiceNumber) {
+        return NextResponse.json({ error: `Order #${existing.orderNumber} already has Sales Invoice ${existing.salesInvoiceNumber || ''}`.trim() }, { status: 400 })
+      }
+      const si = normalizeSI(body.salesInvoiceNumber)
+      if (!si) return NextResponse.json({ error: 'Enter a valid Sales Invoice number' }, { status: 400 })
+      const declared = String(body.declaredDate || '')
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(declared)) {
+        return NextResponse.json({ error: 'Pick the date the sale is declared' }, { status: 400 })
+      }
+      // The SI series is one continuous book per branch, shared with AR-payment
+      // SIs — refuse a number that is already used on either side. A number
+      // previously flagged CANCELLED may be reused (the flag is cleared below);
+      // a TAGGED flag means the number already belongs to another order.
+      const [dupOrder, dupAr, flag] = await Promise.all([
+        prisma.order.findFirst({ where: { branch: existing.branch, salesInvoiceNumber: si, id: { not: id } }, select: { orderNumber: true } }),
+        prisma.aRPayment.findFirst({ where: { branch: existing.branch, salesInvoiceNumber: si }, select: { id: true } }),
+        prisma.salesInvoiceFlag.findUnique({ where: { branch_siNumber: { branch: existing.branch, siNumber: si } } }),
+      ])
+      if (dupOrder) return NextResponse.json({ error: `SI ${si} is already on order #${dupOrder.orderNumber}` }, { status: 400 })
+      if (dupAr) return NextResponse.json({ error: `SI ${si} is already on an AR collection` }, { status: 400 })
+      if (flag?.status === 'TAGGED') return NextResponse.json({ error: `SI ${si} is already tagged to another order` }, { status: 400 })
+
+      await prisma.order.update({
+        where: { id },
+        data: {
+          issuedOfficialInvoice: true,
+          salesInvoiceNumber: si,
+          siDeclaredDate: new Date(`${declared}T12:00:00+08:00`),
+        },
+      })
+      // Reusing a cancelled/remarked number: the flag resolution no longer applies.
+      if (flag) await prisma.salesInvoiceFlag.delete({ where: { branch_siNumber: { branch: existing.branch, siNumber: si } } }).catch(() => {})
+      await prisma.auditLog.create({
+        data: {
+          userId: session.user.id,
+          action: 'UPDATE',
+          entity: 'order',
+          entityId: id,
+          details: { orderNumber: existing.orderNumber, declareSI: si, declaredDate: declared, reusedCancelledFlag: !!flag },
+        },
+      })
+      return NextResponse.json({ ok: true, salesInvoiceNumber: si })
     }
 
     // Handle status change actions (reopen / void / returnByBuyer)

@@ -1036,6 +1036,7 @@ model Order {
   notes                 String?
   issuedOfficialInvoice Boolean      @default(false)
   salesInvoiceNumber    String?
+  siDeclaredDate        DateTime? // "Convert to have Sales Invoice": the date the sale is declared on the SI book — With SI & sales-target attribute by this when set, transactionDate otherwise
   referenceNumber       String?
   arProofUrl            String? // Per-transaction AR proof attachment (PDF or image)
   arCustomDate          DateTime? // Manually overridden transaction date for AR Invoice / SOA
