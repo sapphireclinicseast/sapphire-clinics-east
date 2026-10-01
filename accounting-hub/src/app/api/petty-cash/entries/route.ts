@@ -19,7 +19,11 @@ const EDITABLE = [
 
 // Departments this expense belongs to, for the contribution-margin analysis.
 // Empty array = "All" (allocated by the configured rent percentages).
-const VALID_DEPTS = new Set(['PT', 'OT', 'SLP', 'SPED', 'MD', 'PSYCHOLOGY', 'ORTHOSIS', 'TRAINING', 'RETAIL'])
+// ADMIN marks overhead/administrative spend. The Contribution Margin report
+// ignores unknown tags in its per-department charge, so ADMIN-tagged entries
+// stay in the rent-%-allocated pool (same math as untagged) — the tag is a
+// classification, not a new contribution column.
+const VALID_DEPTS = new Set(['PT', 'OT', 'SLP', 'SPED', 'MD', 'PSYCHOLOGY', 'ORTHOSIS', 'TRAINING', 'RETAIL', 'ADMIN'])
 
 const PCV_BRANCH_CODE: Record<string, string> = { SANDBOX_EAST: 'AHEA', SANDBOX_GREENHILLS: 'AHGH', VERDANA_STORE: 'VERD', CEO: 'CEO' }
 // Petty cash entries carry a "-NN" sub-sequence (entries sharing one PCV);

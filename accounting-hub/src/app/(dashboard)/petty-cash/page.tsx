@@ -33,7 +33,7 @@ const DEPARTMENTS = ['ADMIN', 'PT', 'OT', 'SLP', 'SPED', 'PSYCH', 'MD', 'ORTHOSI
 // Which department(s) an expense belongs to, for the Contribution Margin
 // analysis. "All" (nothing ticked) = allocated by the configured rent
 // percentages; tick one or more to charge those departments directly.
-const CM_DEPTS = ['PT', 'OT', 'SLP', 'SPED', 'MD', 'PSYCHOLOGY', 'ORTHOSIS', 'TRAINING', 'RETAIL'] as const
+const CM_DEPTS = ['PT', 'OT', 'SLP', 'SPED', 'MD', 'PSYCHOLOGY', 'ORTHOSIS', 'TRAINING', 'RETAIL', 'ADMIN'] as const
 function DeptTagCell({ value, disabled, onSave }: { value: string[]; disabled?: boolean; onSave: (next: string[]) => void }) {
   const [open, setOpen] = useState(false)
   // Portal positioning: the grid scrolls in an overflow container that clipped
@@ -74,7 +74,7 @@ function DeptTagCell({ value, disabled, onSave }: { value: string[]; disabled?: 
               <input type="checkbox" checked={value.includes(d)}
                 onChange={() => onSave(value.includes(d) ? value.filter(x => x !== d) : [...value, d])}
                 className="accent-current" />
-              {d === 'PSYCHOLOGY' ? 'Psychology' : d === 'ORTHOSIS' ? 'Orthosis' : d}
+              {d === 'PSYCHOLOGY' ? 'Psychology' : d === 'ORTHOSIS' ? 'Orthosis' : d === 'ADMIN' ? 'Admin' : d}
             </label>
           ))}
           <button type="button" onClick={() => setOpen(false)}
