@@ -87,7 +87,7 @@ const SITE_CONFIG = {
     east: {
       name:    'East Branch',
       address: 'Level 4, Robinsons Metro East, Marcos Highway, Brgy. Dela Paz, Santolan, Pasig',
-      email:   'east.sandboxclinic@gmail.com',
+      email:   'east@sapphireclinicseast.org',
       hrEmail: 'hr.sandboxcliniceast@gmail.com',
       phones:  ['+63 917 118 9289', '(02) 5310-4991'],
       services: [
@@ -123,7 +123,7 @@ const SITE_CONFIG = {
     greenhills: {
       name:    'Greenhills Branch',
       address: 'Level 8, GH Tower Offices, South Drive, Ortigas Avenue, Greenhills, San Juan City',
-      email:   'greenhills.sandboxclinic@gmail.com',
+      email:   'greenhills@sapphireclinicseast.org',
       hrEmail: 'hr.sandboxclinicgh@gmail.com',
       phones:  ['+63 917 770 1686', '(02) 8529-1590'],
       services: [
@@ -161,7 +161,7 @@ const SITE_CONFIG = {
   },
 
   /* ── Social Media (global / TikTok) ── */
-  tiktok: 'https://www.tiktok.com/@sandboxclinic',
+  tiktok: 'https://www.tiktok.com/@aurahealthrehab',
 
   /* ── Verdana Rehab ── */
   verdanaUrl: 'https://verdanarehab.com/',
