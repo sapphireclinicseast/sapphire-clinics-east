@@ -55,8 +55,12 @@ const cutoffLabel = (cp: string) => {
   return `${MON[parseInt(m) - 1]} ${y} · ${h === '1' ? '1st' : '2nd'} half`
 }
 
-export default function ServiceInvoiceTab({ branch, canWrite }: { branch: string; canWrite: boolean }) {
+export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { branch?: string; canWrite: boolean }) {
   const now = new Date()
+  // Mounted in the Taxes section with no parent branch selector — the tab
+  // carries its own ('' = all branches). A parent-provided branch still wins.
+  const [ownBranch, setOwnBranch] = useState('')
+  const branch = branchProp ?? ownBranch
   const [year, setYear] = useState(now.getFullYear())
   const [month, setMonth] = useState(now.getMonth() + 1)
   const [half, setHalf] = useState<0 | 1 | 2>(0) // 0 = whole month (both cutoffs)
@@ -339,7 +343,17 @@ export default function ServiceInvoiceTab({ branch, canWrite }: { branch: string
 
   return (
     <div className="space-y-4">
-      {/* View toggle */}
+      {/* View toggle + branch (own selector when no parent provides one) */}
+      {branchProp === undefined && (
+        <div className="flex rounded-xl overflow-hidden border w-fit float-right" style={{ borderColor: 'var(--light-gray)' }}>
+          {[['', 'All Branches'], ['SBEA', 'East'], ['SBGH', 'Greenhills']].map(([v, label]) => (
+            <button key={v} onClick={() => setOwnBranch(v)} className="px-3 py-2 text-xs font-semibold"
+              style={ownBranch === v ? { background: 'var(--deep-teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' }}>
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="flex rounded-xl overflow-hidden border w-fit" style={{ borderColor: 'var(--light-gray)' }}>
         <button onClick={() => setView('track')} className="px-4 py-2 text-xs font-semibold"
           style={view === 'track' ? { background: 'var(--teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' }}>

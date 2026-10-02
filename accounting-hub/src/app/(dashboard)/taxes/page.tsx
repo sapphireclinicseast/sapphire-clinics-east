@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useSession } from 'next-auth/react'
 import { Landmark, ExternalLink, CalendarClock, Loader2 } from 'lucide-react'
 import { useResizableColumns, ResizableColgroup, ColResizeHandle } from '@/components/useResizableColumns'
 import { computeTaxDue, TAX_PORTALS, type TaxDueInfo } from '@/lib/taxes'
@@ -9,10 +10,11 @@ import ExpandedWithholding from './ExpandedWithholding'
 import BusinessTax from './BusinessTax'
 import IncomeTaxCorporate from './IncomeTaxCorporate'
 import TaxesRfp from './TaxesRfp'
+import ServiceInvoiceTab from './ServiceInvoice'
 import TaxesPaid from './TaxesPaid'
 import TaxesReport from './TaxesReport'
 
-type Tab = 'guide' | 'compensation' | 'ewt' | 'business' | 'income-tax' | 'rfp' | 'paid' | 'report'
+type Tab = 'guide' | 'compensation' | 'ewt' | 'business' | 'income-tax' | 'service-invoice' | 'rfp' | 'paid' | 'report'
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'guide', label: 'Guide & Summary' },
@@ -20,6 +22,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'ewt', label: 'Expanded Withholding (0619E / 1601EQ)' },
   { key: 'business', label: 'Business Tax (2550Q)' },
   { key: 'income-tax', label: 'Income Tax (1702Q)' },
+  { key: 'service-invoice', label: 'Service Invoice (SI & 2307)' },
   { key: 'rfp', label: 'RFP' },
   { key: 'paid', label: 'Taxes Paid' },
   { key: 'report', label: 'Taxes Report' },
@@ -32,6 +35,10 @@ const dueBadge = (d: number) =>
     : { background: '#dcfce7', color: '#166534', text: `Due in ${d} days` }
 
 export default function TaxesPage() {
+  const { data: session } = useSession()
+  // Same write set as the payroll consultants side — the Service Invoice tab
+  // uploads CORs/invoices and sends reminders.
+  const canWrite = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN'].includes(((session?.user as { role?: string })?.role) || '')
   const [tab, setTab] = useState<Tab>('guide')
   const dueTableRef = useRef<HTMLTableElement>(null)
   const dueRz = useResizableColumns('taxes-due-list', dueTableRef)
@@ -149,6 +156,7 @@ export default function TaxesPage() {
       {tab === 'ewt' && <ExpandedWithholding />}
       {tab === 'business' && <BusinessTax />}
       {tab === 'income-tax' && <IncomeTaxCorporate />}
+      {tab === 'service-invoice' && <ServiceInvoiceTab canWrite={canWrite} />}
       {tab === 'rfp' && <TaxesRfp />}
       {tab === 'paid' && <TaxesPaid />}
       {tab === 'report' && <TaxesReport />}
