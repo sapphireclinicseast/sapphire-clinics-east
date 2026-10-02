@@ -116,8 +116,8 @@ const SITE_CONFIG = {
         { name: 'Pantry',               img: 'AHEA FACILITY PHOTOS/PANTRY.png' },
         { name: 'Feedback Board',       img: 'AHEA FACILITY PHOTOS/FEEDBACK BOARD.png' },
       ],
-      facebook:  'https://www.facebook.com/sandboxcliniceast',
-      instagram: 'https://www.instagram.com/sandboxcliniceast/',
+      facebook:  'https://www.facebook.com/aurahealthrehabeast',
+      instagram: 'https://www.instagram.com/aurahealthrehabeast/',
       linkedin:  'https://www.linkedin.com/company/sandbox-clinic-east/',
     },
     greenhills: {
@@ -155,8 +155,8 @@ const SITE_CONFIG = {
         { name: 'Reception',                img: 'AHGH FACILITY PHOTOS/RECEPTION.JPG' },
         { name: 'Hallway',                  img: 'AHGH FACILITY PHOTOS/HALLWAY.JPG' },
       ],
-      facebook:  'https://www.facebook.com/sandboxclinicgreenhills',
-      instagram: 'https://www.instagram.com/sandboxclinicgh/',
+      facebook:  'https://www.facebook.com/aurahealthrehabgh',
+      instagram: 'https://www.instagram.com/aurahealthrehabgh/',
     },
   },
 
