@@ -10,6 +10,7 @@ import DeckingPerDay from './DeckingPerDay'
 import SpedClassBoard from './SpedClassBoard'
 import InterdepartmentBoard from './InterdepartmentBoard'
 import DeckingHistory from './DeckingHistory'
+import DepartedBookings from './DepartedBookings'
 import { branchLabel } from '@/lib/branch-label'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -1374,7 +1375,7 @@ export default function DeckingClient({ role }: { role: string }) {
             )}
             {/* Name search — hidden on Per Day, which totals slots rather than
                 listing people, so filtering by name would change nothing. */}
-            {activeSection !== 'perday' && activeSection !== 'sped' && activeSection !== 'crosssell' && activeSection !== 'history' && (
+            {activeSection !== 'perday' && activeSection !== 'sped' && activeSection !== 'crosssell' && activeSection !== 'history' && activeSection !== 'departed' && (
             <input
               style={{ border: '1.5px solid rgba(26,123,138,0.3)', borderRadius: '0.5rem', padding: '0.4rem 0.75rem', fontSize: '0.82rem', outline: 'none', color: 'var(--charcoal)', minWidth: '180px' }}
               placeholder="Filter by name…"
@@ -1387,7 +1388,7 @@ export default function DeckingClient({ role }: { role: string }) {
           {/* Colour key. The grid is scanned, not read — without a key the fills
               are decoration, and front desk keeps going back to the sheet they
               already know how to interpret. */}
-          {activeSection !== 'perday' && activeSection !== 'sped' && activeSection !== 'crosssell' && activeSection !== 'history' && (
+          {activeSection !== 'perday' && activeSection !== 'sped' && activeSection !== 'crosssell' && activeSection !== 'history' && activeSection !== 'departed' && (
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.9rem', marginBottom: '0.85rem', fontSize: '0.72rem', color: 'var(--mid-gray)' }}>
               {([
                 { bg: OPEN_BG, border: OPEN_BORDER, label: 'Available' },
@@ -1406,7 +1407,7 @@ export default function DeckingClient({ role }: { role: string }) {
 
           {/* Department chips — hidden on Per Day, which is an all-department
               aggregate: a department filter there would contradict the table. */}
-          {activeSection !== 'perday' && activeSection !== 'sped' && activeSection !== 'crosssell' && activeSection !== 'history' && !loadingStaff && presentDepts.length > 0 && (
+          {activeSection !== 'perday' && activeSection !== 'sped' && activeSection !== 'crosssell' && activeSection !== 'history' && activeSection !== 'departed' && !loadingStaff && presentDepts.length > 0 && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1.25rem' }}>
               {presentDepts.map(d => (
                 <button key={d} onClick={() => setActiveDept(d)}
@@ -1423,7 +1424,7 @@ export default function DeckingClient({ role }: { role: string }) {
           {/* Single column until lg, so the requests panel drops below the
               board on laptops and tablets instead of squeezing it. */}
           <div className={`grid gap-4 items-start ${
-            activeSection === 'all' || activeSection === 'perday' || activeSection === 'sped' || activeSection === 'crosssell' || activeSection === 'history'
+            activeSection === 'all' || activeSection === 'perday' || activeSection === 'sped' || activeSection === 'crosssell' || activeSection === 'history' || activeSection === 'departed'
               ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]'
           }`}>
             <div style={{ minWidth: 0 }}>
@@ -1481,6 +1482,8 @@ export default function DeckingClient({ role }: { role: string }) {
               /* The board over time, from the daily snapshots — the board
                  itself keeps no dated record. */
               <DeckingHistory branch={activeBranch} />
+            ) : activeSection === 'departed' ? (
+              <DepartedBookings />
             ) : activeSection === 'crosssell' ? (
               /* A patient list, not a roster: which patients on this branch's
                  board see more than one department, and which do not yet. */
@@ -1563,7 +1566,7 @@ export default function DeckingClient({ role }: { role: string }) {
               </div>
             )}
             </div>
-            {activeSection !== 'all' && activeSection !== 'perday' && activeSection !== 'sped' && activeSection !== 'crosssell' && activeSection !== 'history' && (
+            {activeSection !== 'all' && activeSection !== 'perday' && activeSection !== 'sped' && activeSection !== 'crosssell' && activeSection !== 'history' && activeSection !== 'departed' && (
               <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                 {/* Capacity for the current branch / department / section, in the
                     space this column used to leave empty. Open is derived
