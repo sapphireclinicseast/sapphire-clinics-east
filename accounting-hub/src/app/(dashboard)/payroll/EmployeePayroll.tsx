@@ -5,8 +5,9 @@ import {
   Users, Settings, FileText, Plus, Pencil, Save, Search, X, AlertCircle,
   RefreshCw, Loader2, Upload, Download, Calendar, Clock, CheckCircle2,
   XCircle, ChevronDown, ChevronUp, Trash2, Eye, QrCode, ClipboardList,
-  DollarSign, Shield, ShieldOff, Star, Mail, FileDown, ArrowUpDown, Landmark
+  DollarSign, Shield, ShieldOff, Star, Mail, FileDown, ArrowUpDown, Landmark, Gift
 } from 'lucide-react'
+import SpecialPayRuns from './SpecialPayRuns'
 import { formatCurrency } from '@/lib/utils'
 import { BRANCH_INFO } from '@/lib/branch-info'
 
@@ -278,7 +279,7 @@ interface TkUploadRecord {
 export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoffMonth: parentCutoffMonth, cutoffYear: parentCutoffYear, cutoffHalf: parentCutoffHalf, cutoffPeriod: parentCutoffPeriod }: { canWrite: boolean; branch: string; cutoffMonth: number; cutoffYear: number; cutoffHalf: number; cutoffPeriod: string }) {
   const now = new Date()
 
-  const [subTab, setSubTab] = useState<'list' | 'settings' | 'requests' | 'tk-upload' | 'tk-data' | 'benefits' | 'leave-settings' | 'adjustments' | 'holidays' | 'payslips' | 'lates'>('list')
+  const [subTab, setSubTab] = useState<'list' | 'settings' | 'requests' | 'tk-upload' | 'tk-data' | 'benefits' | 'leave-settings' | 'adjustments' | 'holidays' | 'payslips' | 'special' | 'lates'>('list')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -2280,6 +2281,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
     { key: 'adjustments', label: 'Allowance/Deduction', icon: DollarSign },
     { key: 'holidays', label: 'Holiday Setting', icon: Calendar },
     { key: 'payslips', label: 'Payslip Generation', icon: FileText },
+    { key: 'special', label: '13th Month / Maternity / Final Pay', icon: Gift },
     { key: 'lates', label: 'Lates', icon: AlertCircle },
   ]
 
@@ -5150,6 +5152,11 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
       {/* ══════════════════════════════════════════════════════════════
           LATES TAB
           ══════════════════════════════════════════════════════════════ */}
+      {/* ═══════════ SPECIAL PAY RUNS — 13th month, maternity, final pay ═══════════ */}
+      {subTab === 'special' && (
+        <SpecialPayRuns canWrite={canWrite} branch={branch} cutoffMonth={cutoffMonth} cutoffYear={cutoffYear} />
+      )}
+
       {subTab === 'lates' && (() => {
         const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
         const fmtD = (s: string) => { const [,m,d] = s.split('-'); return `${MONTH_ABBR[parseInt(m)-1]} ${parseInt(d)}` }

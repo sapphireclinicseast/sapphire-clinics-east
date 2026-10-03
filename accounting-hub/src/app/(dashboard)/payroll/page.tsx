@@ -1,5 +1,6 @@
 'use client'
 
+import { specialPeriodLabel } from '@/lib/payroll/special-runs'
 import React, { Fragment, useState, useEffect, useCallback } from 'react'
 import { AccountPicker } from '@/components/AccountPicker'
 import { SCEI_LOGO_DATA_URI, SCEI_LOGO_W, SCEI_LOGO_H } from '@/lib/scei-logo'
@@ -317,6 +318,10 @@ const DEFAULT_SETTINGS: PayrollSettings = {
    HELPERS (outside component to avoid re-creation)
    ═══════════════════════════════════════════════════════════════ */
 function getCutoffLabel(period: string) {
+  // Special pay runs (13th month / maternity / final pay) and the gov-con catch-up
+  // carry a suffix instead of a cutoff number — never call them "2nd Cutoff".
+  const special = specialPeriodLabel(period)
+  if (special) return special
   const [y, m, h] = period.split('-')
   return `${MONTHS[parseInt(m) - 1]} ${y} — ${h === '1' ? '1st Cutoff' : '2nd Cutoff'}`
 }
