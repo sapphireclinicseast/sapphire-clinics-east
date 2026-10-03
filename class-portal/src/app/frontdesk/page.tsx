@@ -12,6 +12,7 @@ import { getAuth, type Branch } from '@/lib/session'
 import StudentListPanel from '@/components/StudentListPanel'
 import FrontDeskPaymentConfirmations from '@/components/FrontDeskPaymentConfirmations'
 import PaymentsGrouped from '@/components/PaymentsGrouped'
+import PromissoryNotesPanel from '@/components/PromissoryNotesPanel'
 import PaidStudentsSpreadsheet from '@/components/PaidStudentsSpreadsheet'
 import CurriculumPanel from '@/components/CurriculumPanel'
 import TemplatesPanel from '@/components/TemplatesPanel'
@@ -108,6 +109,9 @@ export default function FrontdeskPage() {
             senderName="Front desk"
             viewerBranch={viewerBranch}
           />
+          {/* Promissory notes — finance-office artefact, hidden from
+              teachers and students. Branch-scoped on the server. */}
+          <PromissoryNotesPanel viewerBranch={viewerBranch} />
         </div>
       )}
 

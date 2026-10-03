@@ -4183,3 +4183,107 @@ export async function deleteMeeting(id: string): Promise<boolean> {
     return false
   }
 }
+
+/* ─────────────────────────────────────────────────────────────
+   Promissory notes — finance-office artefact. Admin + branch
+   admin + front desk can upload / list / view / delete; teachers
+   and students never see this table. Up to 5 notes per student,
+   max 100 MB each, PDF or image.
+   ───────────────────────────────────────────────────────────── */
+
+export interface PromissoryNoteRecord {
+  id: string
+  studentId: string
+  studentEmail: string
+  studentName: string
+  branch: Branch
+  fileName: string
+  fileType: string
+  fileSize: number
+  notes?: string | null
+  uploadedBy?: string | null
+  createdAt: string
+}
+
+/** List every promissory note visible to the viewer (branch-scoped
+ *  server-side). Optionally filter to one student. */
+export async function listPromissoryNotes(opts?: { studentId?: string }): Promise<PromissoryNoteRecord[]> {
+  if (typeof window === 'undefined') return []
+  if (!getToken()) return []
+  const qs = opts?.studentId ? `?studentId=${encodeURIComponent(opts.studentId)}` : ''
+  try {
+    const { notes } = await backendJson<{ notes: PromissoryNoteRecord[] }>(
+      `/api/public/class-portal/promissory-notes${qs}`,
+    )
+    return notes
+  } catch (e) {
+    console.warn('[listPromissoryNotes]', e)
+    return []
+  }
+}
+
+export interface UploadPromissoryNoteArgs {
+  studentId: string
+  file: File
+  notes?: string
+}
+
+/** Multipart upload of one promissory note. Returns the created
+ *  record on success, or throws with the server's error message on
+ *  failure (over size / wrong mime / cap reached / branch mismatch). */
+export async function uploadPromissoryNote(args: UploadPromissoryNoteArgs): Promise<PromissoryNoteRecord> {
+  if (typeof window === 'undefined') throw new Error('uploadPromissoryNote is a browser-only helper.')
+  const tok = getToken()
+  if (!tok) throw new Error('Not signed in.')
+  const fd = new FormData()
+  fd.append('file', args.file)
+  fd.append('studentId', args.studentId)
+  if (args.notes) fd.append('notes', args.notes)
+  const res = await fetch(`${backendOrigin()}/api/public/class-portal/promissory-notes`, {
+    method: 'POST',
+    body: fd,
+    headers: { authorization: `Bearer ${tok}` },
+  })
+  let body: unknown = null
+  try { body = await res.json() } catch { /* ignore */ }
+  if (!res.ok) {
+    const msg = (body as { error?: string } | null)?.error || `Upload failed (${res.status}).`
+    throw new Error(msg)
+  }
+  return (body as { note: PromissoryNoteRecord }).note
+}
+
+/** Hard-delete one promissory note. Returns true on success. */
+export async function deletePromissoryNote(id: string): Promise<boolean> {
+  if (typeof window === 'undefined') return false
+  const tok = getToken()
+  if (!tok) return false
+  try {
+    const res = await fetch(`${backendOrigin()}/api/public/class-portal/promissory-notes/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: { authorization: `Bearer ${tok}` },
+    })
+    return res.ok
+  } catch (e) {
+    console.warn('[deletePromissoryNote]', e)
+    return false
+  }
+}
+
+/** Fetch one note's file bytes as a Blob so the UI can open it in a
+ *  new tab (object URL) or trigger a download. */
+export async function fetchPromissoryNoteBlob(id: string): Promise<Blob | null> {
+  if (typeof window === 'undefined') return null
+  const tok = getToken()
+  if (!tok) return null
+  try {
+    const res = await fetch(`${backendOrigin()}/api/public/class-portal/promissory-notes/${encodeURIComponent(id)}`, {
+      headers: { authorization: `Bearer ${tok}` },
+    })
+    if (!res.ok) return null
+    return await res.blob()
+  } catch (e) {
+    console.warn('[fetchPromissoryNoteBlob]', e)
+    return null
+  }
+}
