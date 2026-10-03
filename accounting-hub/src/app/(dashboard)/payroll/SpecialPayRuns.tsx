@@ -135,7 +135,7 @@ export default function SpecialPayRuns({ canWrite, branch, cutoffMonth, cutoffYe
 
   /* ══ 13th month ══ */
   const [t13, setT13] = useState<ThirteenthRow[]>([])
-  const [t13Edit, setT13Edit] = useState<Record<string, { include: boolean; extra: string; amount: string; touched: boolean }>>({})
+  const [t13Edit, setT13Edit] = useState<Record<string, { include: boolean; extra: string; amount: string; touched: boolean; tax: string }>>({})
   const [t13Loading, setT13Loading] = useState(false)
   const load13 = useCallback(async () => {
     setT13Loading(true); setError('')
@@ -154,13 +154,14 @@ export default function SpecialPayRuns({ canWrite, branch, cutoffMonth, cutoffYe
           extra: r.existing?.extraBasic ? String(r.existing.extraBasic) : '',
           amount: String(r.existing ? r.existing.amount : r.due),
           touched: !!r.existing,
+          tax: '',
         }
       }
       setT13Edit(ed)
     } catch (e) { setError(String(e)) } finally { setT13Loading(false) }
   }, [year, month, branch])
 
-  const set13 = (id: string, patch: Partial<{ include: boolean; extra: string; amount: string; touched: boolean }>) =>
+  const set13 = (id: string, patch: Partial<{ include: boolean; extra: string; amount: string; touched: boolean; tax: string }>) =>
     setT13Edit(prev => {
       const cur = prev[id]; if (!cur) return prev
       const next = { ...cur, ...patch }
@@ -176,6 +177,8 @@ export default function SpecialPayRuns({ canWrite, branch, cutoffMonth, cutoffYe
     const rows = t13.filter(r => t13Edit[r.employeeId]?.include && n(t13Edit[r.employeeId].amount) > 0).map(r => ({
       employeeId: r.employeeId, extraBasic: n(t13Edit[r.employeeId].extra),
       lines: [{ kind: 'THIRTEENTH', label: `13th month pay ${year}`, amount: n(t13Edit[r.employeeId].amount) }],
+      // Blank = let the hub compute the withholding; a typed figure (0 included) overrides it.
+      taxOverride: t13Edit[r.employeeId].tax === '' ? null : n(t13Edit[r.employeeId].tax),
     }))
     if (!rows.length) { setError('Tick at least one employee with an amount to pay.'); return }
     if (await save('THIRTEENTH', rows)) load13()
@@ -197,6 +200,7 @@ export default function SpecialPayRuns({ canWrite, branch, cutoffMonth, cutoffYe
   const [fin13, setFin13] = useState('')
   const [finLeaveDays, setFinLeaveDays] = useState('')
   const [finLeaveRate, setFinLeaveRate] = useState('')
+  const [finLeaveAmt, setFinLeaveAmt] = useState('')   // '' = days × rate; a typed figure overrides it
   const [finExtras, setFinExtras] = useState<ExtraLine[]>([])
   const [finDeds, setFinDeds] = useState<DedLine[]>([])
   const [finTax, setFinTax] = useState('')
@@ -213,6 +217,7 @@ export default function SpecialPayRuns({ canWrite, branch, cutoffMonth, cutoffYe
       const sil = (d.leave as FinalSheet['leave']).find(l => l.type === 'SIL')
       setFinLeaveDays(String(sil ? sil.remaining : 0))
       setFinLeaveRate(String(d.employee.dailyRate))
+      setFinLeaveAmt('')
       setFinExtras([])
       setFinDeds((d.loans as FinalSheet['loans']).map(l => ({ key: `loan-${l.id}`, label: l.label, amount: String(l.balance), staffLoanId: l.id })))
       setFinTax(''); setFinNotes('')
@@ -224,10 +229,11 @@ export default function SpecialPayRuns({ canWrite, branch, cutoffMonth, cutoffYe
     const out: SpecialLine[] = []
     if (n(fin13) > 0) out.push({ kind: 'THIRTEENTH', label: `Pro-rated 13th month pay ${year}`, amount: n(fin13) })
     const days = n(finLeaveDays), rate = n(finLeaveRate)
-    if (days > 0 && rate > 0) out.push({ kind: 'LEAVE_CONVERSION', label: `Unused leave converted to cash (${days} day${days === 1 ? '' : 's'})`, amount: r2(days * rate), days, rate })
+    const leaveAmt = finLeaveAmt === '' ? r2(days * rate) : n(finLeaveAmt)
+    if (leaveAmt > 0) out.push({ kind: 'LEAVE_CONVERSION', label: `Unused leave converted to cash (${days} day${days === 1 ? '' : 's'})`, amount: leaveAmt, days, rate })
     for (const x of finExtras) if (n(x.amount) > 0) out.push({ kind: x.taxable ? 'OTHER_TAXABLE' : 'OTHER_NONTAXABLE', label: x.label || 'Other pay', amount: n(x.amount) })
     return out
-  }, [fin13, finLeaveDays, finLeaveRate, finExtras, year])
+  }, [fin13, finLeaveDays, finLeaveRate, finLeaveAmt, finExtras, year])
   const finCalc = useMemo(() => classifyLines(finLines, fin?.exemptUsed || 0), [finLines, fin])
   const finDedTotal = finDeds.reduce((s, d) => s + n(d.amount), 0)
 
@@ -251,6 +257,7 @@ export default function SpecialPayRuns({ canWrite, branch, cutoffMonth, cutoffYe
   const [matFull, setMatFull] = useState('')
   const [matFullTouched, setMatFullTouched] = useState(false)
   const [matSss, setMatSss] = useState('')
+  const [matDiffOv, setMatDiffOv] = useState('')   // '' = full pay less SSS benefit; a typed figure overrides it
   const [matNotes, setMatNotes] = useState('')
   const loadMat = useCallback(async (employeeId: string) => {
     if (!employeeId) { setMat(null); return }
@@ -263,12 +270,13 @@ export default function SpecialPayRuns({ canWrite, branch, cutoffMonth, cutoffYe
       const lv = (d.maternityLeaves || [])[0]
       setMatFrom(lv?.startDate ? String(lv.startDate).slice(0, 10) : '')
       setMatTo(lv?.endDate ? String(lv.endDate).slice(0, 10) : '')
-      setMatDays('105'); setMatFullTouched(false); setMatFull(String(r2(d.calendarDayRate * 105))); setMatSss(''); setMatNotes('')
+      setMatDays('105'); setMatFullTouched(false); setMatFull(String(r2(d.calendarDayRate * 105))); setMatSss(''); setMatDiffOv(''); setMatNotes('')
     } catch (e) { setError(String(e)) } finally { setMatLoading(false) }
   }, [year, month])
   useEffect(() => { if (tab === 'MATERNITY') loadMat(matEmp) }, [tab, matEmp, loadMat])
   useEffect(() => { if (mat && !matFullTouched) setMatFull(String(r2(mat.calendarDayRate * n(matDays)))) }, [matDays, mat, matFullTouched])
-  const matDiff = r2(Math.max(0, n(matFull) - n(matSss)))
+  const matDiffComputed = r2(Math.max(0, n(matFull) - n(matSss)))
+  const matDiff = matDiffOv === '' ? matDiffComputed : r2(Math.max(0, n(matDiffOv)))
 
   const saveMat = async () => {
     if (!mat) return
@@ -338,7 +346,7 @@ export default function SpecialPayRuns({ canWrite, branch, cutoffMonth, cutoffYe
       {tab === 'THIRTEENTH' && (
         <div className="space-y-3">
           <Note>
-            <b>13th month = basic salary earned in {year} ÷ 12.</b> Basic salary is the basic pay and paid leave on the finalized or locked cutoff payslips, less tardiness and undertime — overtime, holiday and rest-day premiums, night differential and allowances are not included. Use <b>Add&apos;l basic pay</b> for basic salary that is not in the hub yet (e.g. cutoffs still to be run before year-end). 13th-month pay is tax-exempt up to {peso(THIRTEENTH_EXEMPT_CEILING)} a year; only the excess is taxed.
+            <b>13th month = basic salary earned in {year} ÷ 12.</b> Basic salary is the basic pay and paid leave on the finalized or locked cutoff payslips, less tardiness and undertime — overtime, holiday and rest-day premiums, night differential and allowances are not included. Use <b>Add&apos;l basic pay</b> for basic salary that is not in the hub yet (e.g. cutoffs still to be run before year-end). 13th-month pay is tax-exempt up to {peso(THIRTEENTH_EXEMPT_CEILING)} a year; only the excess is taxed. Every computed figure is a starting point: type over <b>Amount to pay</b> or <b>Withholding tax</b> to override it.
           </Note>
           <div className="flex items-center gap-2">
             <button onClick={load13} disabled={t13Loading} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white disabled:opacity-60" style={{ background: 'var(--teal)' }}>
@@ -357,7 +365,7 @@ export default function SpecialPayRuns({ canWrite, branch, cutoffMonth, cutoffYe
             <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--light-gray)' }}>
               <table className="w-full text-xs">
                 <thead><tr style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
-                  {['', 'Employee', 'Branch', 'Cutoffs', 'Basic salary earned', "Add'l basic pay", '13th month accrued', 'Already paid', 'Amount to pay', 'Taxable', 'Status'].map(h => <th key={h} className="px-3 py-2 text-left font-semibold whitespace-nowrap">{h}</th>)}
+                  {['', 'Employee', 'Branch', 'Cutoffs', 'Basic salary earned', "Add'l basic pay", '13th month accrued', 'Already paid', 'Amount to pay', 'Taxable', 'Withholding tax', 'Status'].map(h => <th key={h} className="px-3 py-2 text-left font-semibold whitespace-nowrap">{h}</th>)}
                 </tr></thead>
                 <tbody>
                   {t13.map(r => {
@@ -377,6 +385,7 @@ export default function SpecialPayRuns({ canWrite, branch, cutoffMonth, cutoffYe
                         <td className="px-3 py-2 font-mono whitespace-nowrap">{r.alreadyPaid ? peso(r.alreadyPaid) : '—'}</td>
                         <td className="px-3 py-2"><input type="number" value={ed.amount} disabled={locked || !canWrite} onChange={e => set13(r.employeeId, { amount: e.target.value, touched: true })} className={`${inputCls} w-28 text-right font-semibold`} style={inputStyle} /></td>
                         <td className="px-3 py-2 font-mono whitespace-nowrap" style={{ color: taxable > 0 ? '#dc2626' : 'var(--mid-gray)' }}>{taxable > 0 ? peso(taxable) : 'Exempt'}</td>
+                        <td className="px-3 py-2"><input type="number" value={ed.tax} disabled={locked || !canWrite} onChange={e => set13(r.employeeId, { tax: e.target.value })} placeholder="Computed" title="Leave blank to compute it on save; type a figure to override" className={`${inputCls} w-24 text-right`} style={inputStyle} /></td>
                         <td className="px-3 py-2">{r.existing ? statusPill(r.existing.status) : <span style={{ color: 'var(--mid-gray)' }}>Not saved</span>}</td>
                       </tr>
                     )
@@ -414,8 +423,8 @@ export default function SpecialPayRuns({ canWrite, branch, cutoffMonth, cutoffYe
                   <div className="text-[10px] mt-1" style={{ color: 'var(--mid-gray)' }}>{peso(mat.calendarDayRate)}/day × {n(matDays)} days = {peso(mat.calendarDayRate * n(matDays))}</div></div>
                 <div><label className="block text-[10px] font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>SSS maternity benefit</label><input type="number" value={matSss} onChange={e => setMatSss(e.target.value)} placeholder="From the SSS computation" className={`${inputCls} w-full text-right`} style={inputStyle} />
                   <div className="text-[10px] mt-1" style={{ color: 'var(--mid-gray)' }}>Advanced by the company, reimbursed by SSS</div></div>
-                <div><label className="block text-[10px] font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Salary differential (payroll)</label><div className="px-2.5 py-1.5 rounded-lg text-xs font-mono font-semibold text-right" style={{ background: 'var(--off-white)' }}>{peso(matDiff)}</div>
-                  <div className="text-[10px] mt-1" style={{ color: 'var(--mid-gray)' }}>Full pay less SSS benefit — tax-exempt</div></div>
+                <div><label className="block text-[10px] font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Salary differential (payroll)</label><input type="number" value={matDiffOv} onChange={e => setMatDiffOv(e.target.value)} placeholder={String(matDiffComputed)} className={`${inputCls} w-full text-right font-semibold`} style={inputStyle} />
+                  <div className="text-[10px] mt-1" style={{ color: 'var(--mid-gray)' }}>Full pay less SSS benefit = {peso(matDiffComputed)} — tax-exempt. Type a figure to override.</div></div>
                 <div><label className="block text-[10px] font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Total the employee receives</label><div className="px-2.5 py-1.5 rounded-lg text-xs font-mono font-semibold text-right" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>{peso(n(matSss) + matDiff)}</div></div>
               </div>
               <div><label className="block text-[10px] font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Notes</label><input value={matNotes} onChange={e => setMatNotes(e.target.value)} className={`${inputCls} w-full`} style={inputStyle} placeholder="e.g. SSS claim reference" /></div>
@@ -464,7 +473,8 @@ export default function SpecialPayRuns({ canWrite, branch, cutoffMonth, cutoffYe
                       <div className="flex items-center gap-2">
                         <input type="number" value={finLeaveDays} disabled={locked} onChange={e => setFinLeaveDays(e.target.value)} className={`${inputCls} w-20 text-right`} style={inputStyle} /> <span className="text-xs">days ×</span>
                         <input type="number" value={finLeaveRate} disabled={locked} onChange={e => setFinLeaveRate(e.target.value)} className={`${inputCls} w-28 text-right`} style={inputStyle} />
-                        <span className="text-xs font-mono">= {peso(n(finLeaveDays) * n(finLeaveRate))}</span>
+                        <span className="text-xs">=</span>
+                        <input type="number" value={finLeaveAmt} disabled={locked} onChange={e => setFinLeaveAmt(e.target.value)} placeholder={String(r2(n(finLeaveDays) * n(finLeaveRate)))} title="Leave blank to use days × rate; type a figure to override" className={`${inputCls} w-28 text-right`} style={inputStyle} />
                       </div>
                       <div className="text-[10px] mt-1" style={{ color: 'var(--mid-gray)' }}>
                         Unused this year: {fin.leave.map(l => `${l.type === 'VACATION' ? 'VL' : l.type === 'SICK' ? 'SL' : l.type} ${l.remaining}/${l.max}`).join(' · ')}. Defaults to unused SIL; change the days to follow company policy.
