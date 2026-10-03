@@ -952,18 +952,37 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
       const XLSX = await import('xlsx')
       const cutoffLabel = `${MONTHS[cutoffMonth - 1]} ${cutoffYear} — ${cutoffHalf === 1 ? '1st Half' : '2nd Half'}`
 
-      // Fetch adjustments for this cutoff
-      const adjParams = new URLSearchParams({ cutoffPeriod, branch: branch || 'SBEA' })
+      // Allowances & deductions for this cutoff.
+      // Source of truth is the payslip itself (details.adjustments = exactly what
+      // that payslip paid and withheld). The register used to re-fetch the
+      // Adjustments table instead, for ONE branch only (East when "All Branches"
+      // was selected) and then read just the allowance half of each row — so
+      // deductions never appeared and other branches' allowances were dropped.
+      // The table is still fetched, per branch actually on screen, as a fallback
+      // for older payslips saved before details.adjustments existed.
       // Outstanding staff loans, so the picker can offer a real balance.
       fetch('/api/staff-loans').then(r => r.ok ? r.json() : []).then(d => setStaffLoans(Array.isArray(d) ? d : [])).catch(() => {})
-      const adjRes = await fetch(`/api/payroll/cutoff-adjustments?${adjParams}`)
-      const adjData: { employeeId: string; allowance: number | string; allowanceType: string; deduction: number | string }[] = adjRes.ok ? await adjRes.json() : []
-
-      // Group adjustments by employee
-      const adjByEmp = new Map<string, { allowance: number; allowanceType: string; deduction: number }[]>()
-      for (const adj of adjData) {
-        if (!adjByEmp.has(adj.employeeId)) adjByEmp.set(adj.employeeId, [])
-        adjByEmp.get(adj.employeeId)!.push({ allowance: Number(adj.allowance) || 0, allowanceType: adj.allowanceType, deduction: Number(adj.deduction) || 0 })
+      type PayregAdj = { allowance: number; allowanceType: string; allowanceLabel: string; deduction: number; deductionType: string; deductionLabel: string }
+      const adjByEmp = new Map<string, PayregAdj[]>()
+      const needFallback = payslips.some(p => !Array.isArray(p.details?.adjustments))
+      if (needFallback) {
+        for (const b of [...new Set(payslips.map(p => p.branch).filter(Boolean))]) {
+          const adjRes = await fetch(`/api/payroll/cutoff-adjustments?${new URLSearchParams({ cutoffPeriod, branch: b })}`)
+          const adjData: { id?: string; suggested?: boolean; employeeId: string; allowance: number | string; allowanceType: string; allowanceLabel?: string | null; deduction: number | string; deductionType?: string; deductionLabel?: string | null }[] = adjRes.ok ? await adjRes.json() : []
+          for (const adj of adjData) {
+            if (adj.suggested || !adj.id) continue   // unsaved staff-loan suggestions are not part of any payslip
+            const key = `${adj.employeeId}|${b}`
+            if (!adjByEmp.has(key)) adjByEmp.set(key, [])
+            adjByEmp.get(key)!.push({ allowance: Number(adj.allowance) || 0, allowanceType: adj.allowanceType, allowanceLabel: adj.allowanceLabel || '', deduction: Number(adj.deduction) || 0, deductionType: adj.deductionType || 'NON_TAXABLE', deductionLabel: adj.deductionLabel || '' })
+          }
+        }
+      }
+      const adjsFor = (p: Payslip): PayregAdj[] => {
+        if (Array.isArray(p.details?.adjustments)) {
+          return (p.details.adjustments as { allowanceLabel?: string | null; allowanceType?: string; allowanceAmount?: number; deductionLabel?: string | null; deductionType?: string; deductionAmount?: number }[])
+            .map(a => ({ allowance: Number(a.allowanceAmount) || 0, allowanceType: a.allowanceType || 'NON_TAXABLE', allowanceLabel: a.allowanceLabel || '', deduction: Number(a.deductionAmount) || 0, deductionType: a.deductionType || 'NON_TAXABLE', deductionLabel: a.deductionLabel || '' }))
+        }
+        return adjByEmp.get(`${p.employee.id}|${p.branch}`) || []
       }
 
       // Fetch approved leave requests for this branch
@@ -1026,6 +1045,8 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
         'NET TAXABLE AMOUNT BEFORE TAX', 'WTAX',
         'NET TAXABLE AMOUNT AFTER TAX', 'NON TAXABLE ADJUSTMENT',
         'NET PAY', '13TH MONTH PAY',
+        // Detail behind the two ADJUSTMENT columns above (each is allowances less deductions).
+        'ALLOWANCES', 'ALLOWANCE DETAILS', 'DEDUCTIONS', 'DEDUCTION DETAILS',
       ]
 
       const data: (string | number)[][] = [[], [], [], headers]
@@ -1035,16 +1056,31 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
       let totRH = 0, totTardiness = 0, totOT = 0, totTaxAdj = 0, totGrossT = 0
       let totSSS = 0, totPHIC = 0, totHDMF = 0, totNetBeforeTax = 0, totWTax = 0
       let totNetAfterTax = 0, totNonTaxAdj = 0, totNetPay = 0, totThirteenth = 0
+      let totAllow = 0, totDed = 0
 
       for (const p of payslips) {
         const emp = p.employee
         const dailyRate = toNum(emp.rateType === 'DAILY' ? emp.dailyRate : Number(emp.monthlyRate) / 22)
 
-        // Split adjustments into taxable / non-taxable
-        let taxableAdj = 0, nonTaxableAdj = 0
-        for (const adj of (adjByEmp.get(emp.id) || [])) {
-          if (adj.allowanceType === 'TAXABLE') taxableAdj += adj.allowance
-          else nonTaxableAdj += adj.allowance
+        // Split adjustments into taxable / non-taxable — allowances add, deductions
+        // subtract, each on its own side (a TAXABLE deduction is pre-tax, exactly as
+        // the payslip computation treats it).
+        let taxableAdj = 0, nonTaxableAdj = 0, allowTotal = 0, dedTotal = 0
+        const allowNotes: string[] = [], dedNotes: string[] = []
+        const fmtAmt = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        for (const adj of adjsFor(p)) {
+          if (adj.allowance) {
+            if (adj.allowanceType === 'TAXABLE') taxableAdj += adj.allowance
+            else nonTaxableAdj += adj.allowance
+            allowTotal += adj.allowance
+            allowNotes.push(`${adj.allowanceLabel || 'Allowance'} ${fmtAmt(adj.allowance)} (${adj.allowanceType === 'TAXABLE' ? 'taxable' : 'non-taxable'})`)
+          }
+          if (adj.deduction) {
+            if (adj.deductionType === 'TAXABLE') taxableAdj -= adj.deduction
+            else nonTaxableAdj -= adj.deduction
+            dedTotal += adj.deduction
+            dedNotes.push(`${adj.deductionLabel || 'Deduction'} ${fmtAmt(adj.deduction)} (${adj.deductionType === 'TAXABLE' ? 'pre-tax' : 'after tax'})`)
+          }
         }
 
         // Leave pays
@@ -1080,6 +1116,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
         totGrossT += grossTaxable; totSSS += sss; totPHIC += phic; totHDMF += hdmf
         totNetBeforeTax += netBeforeTax; totWTax += wtax; totNetAfterTax += netAfterTax
         totNonTaxAdj += nonTaxableAdj; totNetPay += netPay; totThirteenth += thirteenthMonth
+        totAllow += allowTotal; totDed += dedTotal
 
         data.push([
           cutoffLabel, branchShort(p.branch),
@@ -1096,6 +1133,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
           netBeforeTax, wtax, netAfterTax,
           r(nonTaxableAdj),
           netPay, thirteenthMonth,
+          r(allowTotal), allowNotes.join('; '), r(dedTotal), dedNotes.join('; '),
         ])
       }
 
@@ -1105,10 +1143,11 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
         r(totRH), 0, r(totTardiness), r(totOT), r(totTaxAdj), r(totGrossT),
         r(totSSS), r(totPHIC), r(totHDMF), r(totNetBeforeTax), r(totWTax),
         r(totNetAfterTax), r(totNonTaxAdj), r(totNetPay), r(totThirteenth),
+        r(totAllow), '', r(totDed), '',
       ])
 
       const ws = XLSX.utils.aoa_to_sheet(data)
-      ws['!cols'] = headers.map(() => ({ wch: 22 }))
+      ws['!cols'] = headers.map(h => ({ wch: h.endsWith('DETAILS') ? 60 : 22 }))
 
       const wb = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(wb, ws, 'Employee')

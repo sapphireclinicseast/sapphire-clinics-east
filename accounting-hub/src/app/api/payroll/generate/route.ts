@@ -240,10 +240,41 @@ export async function GET(req: Request) {
         mmByConsultant.set(ch.menteeConsultantId, arr)
       }
     }
-    // Stale mm- lines out, current charge lines in. Manual lines untouched.
+    // ── Cutoff adjustments (Consultants → Adjustments subtab) ──────────────
+    // The Allowance / Deduction rows saved there were never read by payroll:
+    // they did not reach the payslip, the net pay, or the Payreg export. They
+    // are folded in here the same way mentorship charges are — as adjustment
+    // lines with a `ca-` id prefix, re-derived on every preview so an edit in
+    // the Adjustments subtab replaces the previous lines instead of stacking.
+    // The subtab writes the period unpadded ("2026-4-1") while payslips use
+    // the padded form ("2026-04-1"), so both spellings are matched.
+    const cpParts = cutoffPeriod.split('-')
+    const cpVariants = cpParts.length === 3
+      ? [...new Set([cutoffPeriod, `${cpParts[0]}-${String(parseInt(cpParts[1], 10))}-${cpParts[2]}`, `${cpParts[0]}-${String(parseInt(cpParts[1], 10)).padStart(2, '0')}-${cpParts[2]}`])]
+      : [cutoffPeriod]
+    const cutoffAdjs = await prisma.consultantCutoffAdjustment.findMany({
+      where: { cutoffPeriod: { in: cpVariants }, ...(branch ? { branch } : {}) },
+      orderBy: { createdAt: 'asc' },
+    })
+    const caByConsultant = new Map<string, { id: string; name: string; amount: number; isAddition: boolean; isTaxed: boolean; remarks: string }[]>()
+    for (const a of cutoffAdjs) {
+      const arr = caByConsultant.get(a.consultantId) || []
+      const allowance = Number(a.allowance) || 0
+      const deduction = Number(a.deduction) || 0
+      if (allowance > 0) arr.push({
+        id: `ca-${a.id}-allowance`, name: a.allowanceLabel || 'Allowance', amount: allowance,
+        isAddition: true, isTaxed: a.allowanceType === 'TAXABLE', remarks: 'Cutoff adjustment (Adjustments tab)',
+      })
+      if (deduction > 0) arr.push({
+        id: `ca-${a.id}-deduction`, name: a.deductionLabel || 'Deduction', amount: deduction,
+        isAddition: false, isTaxed: false, remarks: 'Cutoff adjustment (Adjustments tab)',
+      })
+      if (arr.length) caByConsultant.set(a.consultantId, arr)
+    }
+    // Stale mm-/ca- lines out, current ones in. Manual lines untouched.
     const mergeMentorship = (stored: unknown[], consultantId: string): unknown[] => {
-      const manual = (stored as { id?: string }[]).filter(l => !String(l?.id || '').startsWith('mm-'))
-      return [...manual, ...(mmByConsultant.get(consultantId) || [])]
+      const manual = (stored as { id?: string }[]).filter(l => { const id = String(l?.id || ''); return !id.startsWith('mm-') && !id.startsWith('ca-') })
+      return [...manual, ...(caByConsultant.get(consultantId) || []), ...(mmByConsultant.get(consultantId) || [])]
     }
     const existingDataMap = new Map(existingEntries.map(e => [e.consultantId, e]))
 
