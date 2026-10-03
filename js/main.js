@@ -118,7 +118,7 @@ const SITE_CONFIG = {
       ],
       facebook:  'https://www.facebook.com/aurahealthrehabeast',
       instagram: 'https://www.instagram.com/aurahealthrehabeast/',
-      linkedin:  'https://www.linkedin.com/company/sandbox-clinic-east/',
+      linkedin:  'https://www.linkedin.com/company/aurahealtheast/',
     },
     greenhills: {
       name:    'Greenhills Branch',
