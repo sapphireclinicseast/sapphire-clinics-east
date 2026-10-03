@@ -1267,6 +1267,44 @@ export default function HandbookPage() {
               </ol>
             </div>
 
+            <div className="mod" id="m-promissory">
+              <div className="mod-top"><h3>Promissory notes</h3><span className="loc">Admin › Payments · Front desk › Payments</span></div>
+              <div className="mod-roles">
+                <span className="badge b-a"><span className="dot">A</span></span>
+                <span className="badge b-b"><span className="dot">B</span></span>
+                <span className="badge b-f"><span className="dot">F</span></span>
+              </div>
+              <p className="desc">A finance-office artefact: signed PDF or photo notes a parent files when they can&rsquo;t settle a payment on time but commit to a specific catch-up schedule. The subsection sits at the bottom of the Payments tab and is <b>hidden from teachers and parents entirely</b> (both UI and server-side).</p>
+
+              <h4>What you&rsquo;ll see</h4>
+              <ul>
+                <li>One card per student in your branch who has at least one promissory note on file (branch admin + front desk see their own branch; main admin sees everyone).</li>
+                <li>A <kbd>Search student by name or email</kbd> box and a <kbd>+ Add note for a student</kbd> picker — tick a student from the dropdown and their card appears below with an <kbd>+ Upload note</kbd> button, even when they have no notes yet.</li>
+                <li>Per-student counter: <em>N/5 notes</em>. The system <b>hard-caps at 5 notes per student</b> — a sixth upload is rejected with a nudge to delete one first.</li>
+              </ul>
+
+              <h4>Step by step — upload a promissory note</h4>
+              <ol className="steps">
+                <li>Open <em>Admin › Payments</em> (or <em>Front desk › Payments</em>). Scroll to <b>Promissory notes</b> at the bottom of the tab.</li>
+                <li>If the student already has notes, their card is visible. Otherwise click <kbd>+ Add note for a student</kbd> and pick them from the dropdown.</li>
+                <li>Click <kbd>+ Upload note</kbd>. Pick a PDF or an image. Max <b>100 MB</b> per file.</li>
+                <li>The row appears immediately with <kbd>View</kbd>, <kbd>Download</kbd>, and <kbd>Delete</kbd> buttons. The counter ticks up.</li>
+              </ol>
+
+              <h4>Field reference</h4>
+              <table className="fields">
+                <tbody>
+                  <tr><td>Allowed file types</td><td>PDF (<code>application/pdf</code>) or any image MIME. The server rejects everything else with 415.</td></tr>
+                  <tr><td>Max file size</td><td>100 MB per note. Rejected with 413 above the cap.</td></tr>
+                  <tr><td>Max notes per student</td><td>5. Hard cap — the sixth upload is rejected with 409.</td></tr>
+                  <tr><td>Branch scoping</td><td>Branch admin + front desk can only touch notes for their own branch. Main admin sees every branch.</td></tr>
+                  <tr><td>Who sees it</td><td>Only ADMIN, BRANCH_ADMIN, and FRONTDESK. Teachers and parents are blocked both in the UI (the card isn&rsquo;t rendered) and server-side (the endpoint returns 403).</td></tr>
+                </tbody>
+              </table>
+
+              <div className="note"><b>Why cap at 5?</b> More than five commitments against the same tuition means we&rsquo;re accepting too many promises for the same balance. The cap is a forcing function to escalate the conversation instead of letting the file grow silently. Delete a settled note before uploading a new one.</div>
+            </div>
+
           </div>
 
           {/* ─────────── Documents & compliance ─────────── */}

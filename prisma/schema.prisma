@@ -1901,6 +1901,41 @@ model ClassPortalVoucher {
   @@index([dedicatedStudentId])
 }
 
+/// Promissory notes for tuition. Signed paper/PDF notes a parent files
+/// when they can't settle a payment on time but commit to a specific
+/// catch-up schedule. Front desk + admins upload the scan/photo; the
+/// student themselves and SPED teachers never see this table (it's a
+/// finance-office artefact). Up to 5 notes per student — more than
+/// that means we're accepting too many promises and need to escalate.
+/// Max 100 MB per file (same cap as teletherapy session notes), PDF
+/// or image.
+model ClassPortalPromissoryNote {
+  id           String   @id @default(cuid())
+  /// Target student (ClassPortalUser.id). Not a foreign key — same
+  /// reasoning as the Meeting / Assignment tables: a soft-disabled
+  /// student shouldn't cascade their notes away.
+  studentId    String
+  /// Snapshot at upload time, so the finance team can see who the note
+  /// was for even when the student row hasn't hydrated yet. Same trick
+  /// the FrontDeskPayment + Meeting tables use.
+  studentEmail String
+  studentName  String
+  branch       ClassPortalBranch
+  fileName     String
+  fileType     String
+  fileSize     Int
+  fileData     Bytes
+  /// Optional one-liner — the committed catch-up date, the parent's
+  /// phone number, "signed in triplicate", etc.
+  notes        String?
+  uploadedBy   String?  // uploader email snapshot
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([studentId])
+  @@index([branch, createdAt])
+}
+
 /// Admin-editable FAQ templates for the Sappy patient-portal chatbot.
 /// /api/public/chat checks these (keyword match) before falling back to
 /// Claude. Edited from the client-portal admin console. `label`, when set,

@@ -33,6 +33,7 @@ import CurriculumPanel from '@/components/CurriculumPanel'
 import NotificationPanel from '@/components/NotificationPanel'
 import PaymentsGrouped from '@/components/PaymentsGrouped'
 import FrontDeskPaymentConfirmations from '@/components/FrontDeskPaymentConfirmations'
+import PromissoryNotesPanel from '@/components/PromissoryNotesPanel'
 import AssignmentsPanel from '@/components/AssignmentsPanel'
 import ClassesPanel from '@/components/ClassesPanel'
 import TemplatesPanel from '@/components/TemplatesPanel'
@@ -104,6 +105,10 @@ export default function AdminPage() {
               Used to clear test rows that were never real payments. */}
           <FrontDeskPaymentConfirmations canDelete={isMainAdmin} />
           <PaymentsGrouped canSendReminders canDelete={isMainAdmin} senderEmail={adminEmail} senderName={isMainAdmin ? 'Main admin' : 'Branch admin'} senderRole="ADMIN" />
+          {/* Promissory notes — finance-office artefact, hidden from
+              teachers and students. Branch-scoped server-side; the
+              viewerBranch prop here only affects the empty-state label. */}
+          <PromissoryNotesPanel viewerBranch={isMainAdmin ? undefined : adminBranch} />
         </div>
       )}
       {tab === 'FEES'          && (
