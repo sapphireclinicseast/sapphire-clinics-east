@@ -23,6 +23,37 @@ function fmtDateStr(dt: Date): string {
 }
 
 /**
+ * The employee's own rest days. Employee.restDay is a comma-separated list
+ * ("SUNDAY", "THURSDAY", "SUNDAY,MONDAY"): clinic and store staff routinely
+ * work weekends and rest on weekdays, so a rest day is never assumed to be
+ * Saturday/Sunday.
+ */
+function restDaySet(restDay: string | null | undefined): Set<string> {
+  const set = new Set(String(restDay || 'SUNDAY').split(',').map(d => d.trim().toUpperCase()).filter(Boolean))
+  return set.size ? set : new Set(['SUNDAY'])
+}
+
+/**
+ * Is `dateStr` a rest day for leave-pay purposes?
+ *  1. An approved Change Schedule request for that exact date wins (it is
+ *     written onto the timekeeping record as source FILING).
+ *  2. Otherwise it is a rest day when it is one of the employee's rest days
+ *     and has no explicit per-day schedule (a daySchedules entry for a day
+ *     means the employee works it).
+ * Leave used to be skipped on every Saturday and Sunday instead, which paid
+ * nothing for weekend leave taken by staff whose rest days are weekdays, and
+ * paid leave on the actual weekday rest day.
+ */
+function isRestDayForLeave(
+  dateStr: string, dayName: string, restDays: Set<string>,
+  daySchedules: Record<string, { in: string; out: string }> | null,
+  filedRest: Map<string, boolean>,
+): boolean {
+  if (filedRest.has(dateStr)) return filedRest.get(dateStr) === true
+  return restDays.has(dayName) && !daySchedules?.[dayName]
+}
+
+/**
  * Re-mark timekeeping records' holiday flags from the branch-filtered Holiday
  * table at generation time. This makes payslip generation authoritative for
  * holidays so it self-corrects on "Regenerate": a record stamped as a holiday
@@ -379,6 +410,8 @@ export async function POST(req: Request) {
       lateDeduction: [], undertimeDeduction: [], leavePay: [], holidayOvertimePay: [],
     }
     const empDaySchedules = emp.daySchedules as Record<string, { in: string; out: string }> | null
+    // Pay docked per worked date for tardiness + undertime — what a half-day leave on that date covers.
+    const dayShortfall = new Map<string, number>()
 
     // ── Fixed-salary bypass: not dependent on biometrics ──────────────────
     // When ignoreTimekeeping is true, pay exactly half the monthly equivalent
@@ -439,6 +472,7 @@ export async function POST(req: Request) {
       const effectiveLate = Math.max(0, computedLate - lateGrace)
       totalLateMinutes += effectiveLate
       totalUndertimeMinutes += computedUndertime
+      dayShortfall.set(fmtDateStr(rec.date), ((effectiveLate + computedUndertime) / 60) * hourlyRate)
 
       let dayPay = dailyRate
 
@@ -512,6 +546,12 @@ export async function POST(req: Request) {
       const existingRecDates = new Set(
         empRecords.filter(r => Number(r.hoursWorked || 0) > 0).map(r => fmtDateStr(r.date))
       )
+      const empRestDays = restDaySet(emp.restDay)
+      // Dates whose rest/working status was set by an approved Change Schedule request.
+      const filedRest = new Map<string, boolean>()
+      for (const r of empRecords) {
+        if (r.source === 'FILING' && /^Schedule change/i.test(r.remarks || '')) filedRest.set(fmtDateStr(r.date), !!r.isRestDay)
+      }
       for (const leaveReq of empLeaveReqs) {
         if (!leaveReq.leaveType || leaveReq.leaveType === 'UNPAID') continue
         if (!leaveReq.startDate) continue
@@ -523,6 +563,20 @@ export async function POST(req: Request) {
         const cursor = new Date(leaveStart)
         while (cursor.getTime() <= leaveEnd.getTime()) {
           const dateStr = fmtDateStr(cursor)
+          // Half-day leave on a day the employee also worked. The day is already paid in
+          // full as basic pay and then docked for the hours not worked (late/undertime);
+          // the half-day leave gives that docked pay back, up to half a day. It never
+          // pays more than the day was docked, so the day totals at most one day's pay.
+          if (existingRecDates.has(dateStr) && leaveReq.isHalfDay) {
+            const cover = Math.min(dailyRate / 2, dayShortfall.get(dateStr) || 0)
+            if (cover > 0.005) {
+              leavePay += cover
+              dailyBreakdown.leavePay.push({
+                date: dateStr, leaveType: leaveReq.leaveType, isHalfDay: true, dailyRate, amount: cover,
+                note: 'Half-day leave — covers the hours not worked that day',
+              })
+            }
+          }
           if (!existingRecDates.has(dateStr)) {
             // Determine if this day is a rest day per employee schedule.
             // daySchedules is a PARTIAL override map (e.g. Saturday/Sunday with different hours,
@@ -531,10 +585,7 @@ export async function POST(req: Request) {
             // Only treat a day as rest if it is BOTH absent from daySchedules AND is a
             // standard weekend day (Saturday=6 or Sunday=0).
             const dayName = DAYS_NAMES[cursor.getUTCDay()]
-            const isWeekend = cursor.getUTCDay() === 0 || cursor.getUTCDay() === 6
-            const isRest = empDaySchedules
-              ? !empDaySchedules[dayName] && isWeekend
-              : isWeekend
+            const isRest = isRestDayForLeave(dateStr, dayName, empRestDays, empDaySchedules, filedRest)
             if (!isRest) {
               const leaveAmount = leaveReq.isHalfDay ? dailyRate / 2 : dailyRate
               leavePay += leaveAmount
@@ -866,6 +917,8 @@ export async function PATCH(req: Request) {
       lateDeduction: [], undertimeDeduction: [], leavePay: [], holidayOvertimePay: [],
     }
     const empDaySchedules = emp.daySchedules as Record<string, { in: string; out: string }> | null
+    // Pay docked per worked date for tardiness + undertime — what a half-day leave on that date covers.
+    const dayShortfall = new Map<string, number>()
 
     // ── Fixed-salary bypass: not dependent on biometrics ──────────────────
     if (emp.ignoreTimekeeping) {
@@ -915,6 +968,7 @@ export async function PATCH(req: Request) {
       const effectiveLate = Math.max(0, computedLate - lateGrace)
       totalLateMinutes += effectiveLate
       totalUndertimeMinutes += computedUndertime
+      dayShortfall.set(fmtDateStr(rec.date), ((effectiveLate + computedUndertime) / 60) * hourlyRate)
 
       let dayPay = dailyRate
 
@@ -962,6 +1016,12 @@ export async function PATCH(req: Request) {
       const existingRecDates = new Set(
         empRecords.filter(r => Number(r.hoursWorked || 0) > 0).map(r => fmtDateStr(r.date))
       )
+      const empRestDays = restDaySet(emp.restDay)
+      // Dates whose rest/working status was set by an approved Change Schedule request.
+      const filedRest = new Map<string, boolean>()
+      for (const r of empRecords) {
+        if (r.source === 'FILING' && /^Schedule change/i.test(r.remarks || '')) filedRest.set(fmtDateStr(r.date), !!r.isRestDay)
+      }
       for (const leaveReq of empLeaveRequests) {
         if (!leaveReq.leaveType || leaveReq.leaveType === 'UNPAID') continue
         if (!leaveReq.startDate) continue
@@ -972,14 +1032,25 @@ export async function PATCH(req: Request) {
         const cursor = new Date(leaveStart)
         while (cursor.getTime() <= leaveEnd.getTime()) {
           const dateStr = fmtDateStr(cursor)
+          // Half-day leave on a day the employee also worked. The day is already paid in
+          // full as basic pay and then docked for the hours not worked (late/undertime);
+          // the half-day leave gives that docked pay back, up to half a day. It never
+          // pays more than the day was docked, so the day totals at most one day's pay.
+          if (existingRecDates.has(dateStr) && leaveReq.isHalfDay) {
+            const cover = Math.min(dailyRate / 2, dayShortfall.get(dateStr) || 0)
+            if (cover > 0.005) {
+              leavePay += cover
+              dailyBreakdown.leavePay.push({
+                date: dateStr, leaveType: leaveReq.leaveType, isHalfDay: true, dailyRate, amount: cover,
+                note: 'Half-day leave — covers the hours not worked that day',
+              })
+            }
+          }
           if (!existingRecDates.has(dateStr)) {
             // daySchedules is a partial override map — absence of a weekday does NOT mean rest.
             // Only treat as rest when the day is BOTH absent from daySchedules AND a weekend.
             const dayName = DAYS_NAMES[cursor.getUTCDay()]
-            const isWeekend = cursor.getUTCDay() === 0 || cursor.getUTCDay() === 6
-            const isRest = empDaySchedules
-              ? !empDaySchedules[dayName] && isWeekend
-              : isWeekend
+            const isRest = isRestDayForLeave(dateStr, dayName, empRestDays, empDaySchedules, filedRest)
             if (!isRest) {
               const leaveAmount = leaveReq.isHalfDay ? dailyRate / 2 : dailyRate
               leavePay += leaveAmount
