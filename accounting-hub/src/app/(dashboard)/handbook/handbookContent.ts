@@ -528,6 +528,14 @@ export const SECTIONS: Section[] = [
         `**Payslip Generation** → **Generate Payslips**, review, then **Finalize All**.`,
         `**Lock & Finalize Payroll** (red) — this **posts the journal entry**. **Create Bank File** and **Download All PDFs** for release; **Generate Payreg** for the register.`,
       ] },
+      { k: 'sub', t: '13th month, maternity and final pay' },
+      { k: 'steps', items: [
+        `**Employees → 13th Month / Maternity / Final Pay**. Pick the type, and set **Paid in (month)** — the month it is released decides which month's payroll, ledger and withholding-tax return it falls under.`,
+        `**13th Month Pay** → **Compute 13th month**. Each employee's basic salary earned this year (basic pay and paid leave on finalized or locked payslips, less tardiness and undertime) ÷ 12, less any 13th month already paid. Use **Add'l basic pay** for salary not in the hub yet, tick who to include, then **Save ticked as draft**. Exempt from tax up to ₱90,000 a year; only the excess is taxed.`,
+        `**Maternity Pay** → choose the employee, the leave dates and days, the **full pay** for the leave and the **SSS maternity benefit**. The payslip is for the **salary differential** only; the SSS benefit the company advances is recorded under **Benefits Payable → Availments**, where its payment and reimbursement are tracked.`,
+        `**Final Pay** → choose the employee. The pro-rated 13th month, unused leave (defaults to unused SIL × daily rate) and outstanding staff loans are filled in; add other pay or deductions as needed. Leave **Withholding tax** blank to have it computed.`,
+        `Under **Saved runs**, **Lock & Post** (red) posts the journal entry and sends the net pay to **Salaries Payable**. The run then appears by itself in **Taxes → Withholding on Compensation**. **Unlock** reverses it, until it has been paid.`,
+      ] },
       { k: 'sub', t: 'Run consultant payroll' },
       { k: 'steps', items: [
         `**Consultants → Payslip Generation** → **Generate Payslips** → **Save All as Draft** → **Finalize All** → **Lock Payroll**.`,

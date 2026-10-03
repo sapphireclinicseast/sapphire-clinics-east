@@ -14,6 +14,7 @@
  *
  * Auth: Authorization: Bearer ${TELETHERAPY_INTERNAL_API_KEY}
  */
+import { specialPeriodLabel } from '@/lib/payroll/special-runs'
 import { NextRequest, NextResponse } from 'next/server'
 import { SCEI_LOGO_DATA_URI, SCEI_LOGO_W, SCEI_LOGO_H } from '@/lib/scei-logo'
 import { prisma } from '@/lib/prisma'
@@ -39,7 +40,8 @@ const CUTOFF = {
 }
 function fmtCutoffLabel(period: string): string {
   const m = period.match(/^(\d{4})-(\d{2})-([12])$/)
-  if (!m) return period
+  // 13th month / maternity / final pay runs: a named period, not a raw key.
+  if (!m) return specialPeriodLabel(period) || period
   const year = Number(m[1]); const month = Number(m[2]); const half = Number(m[3]) as 1 | 2
   const monthLabel = MONTHS[month - 1]
   const halfLabel = half === 1 ? 'First Cut-off' : 'Second Cut-off'

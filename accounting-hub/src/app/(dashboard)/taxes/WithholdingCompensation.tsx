@@ -1,5 +1,6 @@
 'use client'
 
+import { specialPeriodLabel } from '@/lib/payroll/special-runs'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { Loader2, FileText, Download, CheckCircle2, Trash2, RefreshCw, X, Eye, Pencil, Calculator, ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react'
@@ -15,7 +16,8 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 const BRANCHES = [{ value: 'SBEA', label: 'East' }, { value: 'SBGH', label: 'Greenhills' }, { value: 'VERDANA', label: 'Verdana' }]
 const BRANCH_FULL: Record<string, string> = { SBEA: 'Aura Health Rehab — East', SBGH: 'Aura Health Rehab — Greenhills', VERDANA: 'Verdana Store' }
 const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-const cutoffLabel = (p: string) => { const [y, m, h] = p.split('-'); return `${MONTHS[parseInt(m) - 1]} ${y} — ${h === '1' ? '1st' : '2nd'} cutoff` }
+// Special pay runs (13th month / maternity / final pay) and the gov-con catch-up are not a 1st/2nd cutoff — name them.
+const cutoffLabel = (p: string) => { const sp = specialPeriodLabel(p); if (sp) return sp; const [y, m, h] = p.split('-'); return `${MONTHS[parseInt(m) - 1]} ${y} — ${h === '1' ? '1st' : '2nd'} cutoff` }
 const num = (v: string | number) => (typeof v === 'number' ? v : parseFloat(v) || 0)
 
 interface Entry { payrollEntryId: string; consultantName: string; department: string; branch: string; cutoffPeriod: string; grossPay: number; taxAmount: number; netPay: number; taxRemitted: boolean; status: string }
@@ -310,7 +312,7 @@ interface WcRow {
   netTaxable: number; recordedTax: number; tableTax: number; discrepancy: number
 }
 interface WcComputation {
-  totalGross: number; mweGross: number; amweGovCon: number; thirteenth: number; taxableIncome: number
+  totalGross: number; mweGross: number; amweGovCon: number; thirteenth: number; otherNonTaxable?: number; taxableIncome: number
   amwesWithoutTax: number; amwesWithTax: number; totalTaxDue: number; tableTaxDue: number; discrepancy: number
 }
 const monthLabel = (ym: string) => { const [y, m] = ym.split('-'); return `${MONTHS[parseInt(m) - 1]} ${y}` }
@@ -386,7 +388,8 @@ function WcComputationPanel({ branch, year, month, monthTo, canWrite }: { branch
                   <CompRow label="Total Gross Compensation" value={comp.totalGross} />
                   <CompRow label="less: MWEs Gross Compensation" value={comp.mweGross} indent />
                   <CompRow label="less: AMWEs Gov't Contributions" sub="SSS · PhilHealth · Pag-IBIG" value={comp.amweGovCon} indent />
-                  <CompRow label="less: 13th Month Pay & Benefits" value={comp.thirteenth} indent />
+                  <CompRow label="less: 13th Month Pay & Benefits" sub="exempt up to ₱90,000 a year" value={comp.thirteenth} indent />
+                  <CompRow label="less: Other Non-Taxable Compensation" sub="maternity differential · leave conversion" value={comp.otherNonTaxable || 0} indent />
                   <CompRow label="Taxable Income" value={comp.taxableIncome} strong />
                   <CompRow label="AMWEs — without tax (≤ ₱20,833/mo)" value={comp.amwesWithoutTax} indent />
                   <CompRow label="AMWEs — with tax" value={comp.amwesWithTax} indent />

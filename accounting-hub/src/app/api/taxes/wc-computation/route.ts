@@ -59,6 +59,7 @@ export async function GET(req: Request) {
   type Acc = {
     employeeId: string; name: string; isMWE: boolean; month: string
     grossTaxable: number; sss: number; phic: number; hdmf: number; netTaxable: number; recordedTax: number
+    exempt13th: number; exemptOther: number
   }
   const groups = new Map<string, Acc>()
   for (const p of payslips) {
@@ -67,11 +68,11 @@ export async function GET(req: Request) {
     const key = `${p.employeeId}|${month}`
     let g = groups.get(key)
     if (!g) {
-      g = { employeeId: p.employeeId, name: `${p.employee.firstName} ${p.employee.lastName}`, isMWE: p.employee.isMWE, month, grossTaxable: 0, sss: 0, phic: 0, hdmf: 0, netTaxable: 0, recordedTax: 0 }
+      g = { employeeId: p.employeeId, name: `${p.employee.firstName} ${p.employee.lastName}`, isMWE: p.employee.isMWE, month, grossTaxable: 0, sss: 0, phic: 0, hdmf: 0, netTaxable: 0, recordedTax: 0, exempt13th: 0, exemptOther: 0 }
       groups.set(key, g)
     }
     const sss = Number(p.sssDeduction), phic = Number(p.philhealthDeduction), hdmf = Number(p.pagibigDeduction)
-    const details = (p.details ?? {}) as { taxableIncome?: number }
+    const details = (p.details ?? {}) as { taxableIncome?: number; exempt13th?: number; exemptOther?: number }
     // Net taxable = what payroll already computed per cutoff; fall back to
     // gross less the mandatory employee contributions when details are absent.
     const netT = typeof details.taxableIncome === 'number' ? details.taxableIncome : Math.max(0, Number(p.grossPay) - sss - phic - hdmf)
@@ -79,6 +80,12 @@ export async function GET(req: Request) {
     g.netTaxable += netT
     g.grossTaxable += netT + sss + phic + hdmf // reconstruct gross taxable comp (V = Z + GovCon)
     g.recordedTax += Number(p.taxDeduction)
+    // Special pay runs (Payroll › 13th Month / Maternity / Final Pay) carry their
+    // tax-exempt part in details: 13th-month pay within the ₱90,000 ceiling, and
+    // other exempt pay (maternity salary differential, the first 10 days of
+    // converted leave). Their taxable part is already in details.taxableIncome above.
+    g.exempt13th += Number(details.exempt13th) || 0
+    g.exemptOther += Number(details.exemptOther) || 0
   }
 
   const rows = [...groups.values()].map(g => {
@@ -93,17 +100,21 @@ export async function GET(req: Request) {
       employeeId: g.employeeId, name: g.name, isMWE: g.isMWE, month: g.month,
       grossTaxable: r2(g.grossTaxable), sss: r2(g.sss), phic: r2(g.phic), hdmf: r2(g.hdmf),
       govCon, netTaxable, recordedTax, tableTax, discrepancy: r2(tableTax - recordedTax),
+      exempt13th: r2(g.exempt13th), exemptOther: r2(g.exemptOther),
     }
   }).sort((a, b) => a.month.localeCompare(b.month) || a.name.localeCompare(b.name))
 
   const sum = (f: (r: typeof rows[number]) => number, filter?: (r: typeof rows[number]) => boolean) =>
     r2(rows.filter(r => !filter || filter(r)).reduce((s, r) => s + f(r), 0))
 
-  const totalGross = sum(r => r.grossTaxable)
+  // Exempt pay is part of total compensation and is then subtracted on its own
+  // line, exactly as the 1601-C lays it out — taxable income is unchanged by it.
+  const thirteenth = sum(r => r.exempt13th)
+  const otherNonTaxable = sum(r => r.exemptOther)
+  const totalGross = r2(sum(r => r.grossTaxable) + thirteenth + otherNonTaxable)
   const mweGross = sum(r => r.grossTaxable, r => r.isMWE)
   const amweGovCon = sum(r => r.govCon, r => !r.isMWE)
-  const thirteenth = 0 // 13th-month / de-minimis run not yet wired; regular months = 0
-  const taxableIncome = r2(totalGross - mweGross - amweGovCon - thirteenth)
+  const taxableIncome = r2(totalGross - mweGross - amweGovCon - thirteenth - otherNonTaxable)
   // Split AMWEs by whether payroll actually withheld tax (matches the BIR form's
   // "with tax" / "without tax" lines, which follow the withholding, not a re-run).
   const amwesWithoutTax = sum(r => r.netTaxable, r => !r.isMWE && r.recordedTax <= 0)
@@ -114,7 +125,7 @@ export async function GET(req: Request) {
   return NextResponse.json({
     rows,
     computation: {
-      totalGross, mweGross, amweGovCon, thirteenth, taxableIncome,
+      totalGross, mweGross, amweGovCon, thirteenth, otherNonTaxable, taxableIncome,
       amwesWithoutTax, amwesWithTax, totalTaxDue, tableTaxDue,
       discrepancy: r2(tableTaxDue - totalTaxDue),
     },
