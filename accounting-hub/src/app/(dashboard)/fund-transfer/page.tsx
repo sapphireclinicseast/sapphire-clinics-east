@@ -143,6 +143,8 @@ export default function FundTransferPage() {
 }
 
 interface CheckRow { id?: string; kind?: 'PETTY_CASH' | 'RFP' | 'FUND_TRANSFER' | 'CANCELLED'; source: string; checkNumber: string; date: string | null; amount: number; reference: string; payee: string; bankAccount: string; proofUrls?: string[]
+  /** Entry paid through an RFP in the same cheque — shown as breakdown, already inside the RFP line's amount. */
+  viaRfp?: boolean
   /** The expense lines that made up this cheque. Empty when the cheque is one record. */
   items?: CheckRow[]
   /** Sum of those lines, when the cheque also exists in the chequebook register. */
@@ -340,7 +342,15 @@ function CheckReleaseMonitoring({ canWrite }: { canWrite: boolean }) {
                   <td className="px-3 py-1.5 text-[11px]" style={{ color: 'var(--charcoal)' }}>{p.payee}</td>
                   <td></td>
                   <td></td>
-                  <td className="px-3 py-1.5 text-right text-[11px] font-semibold" style={{ color: 'var(--charcoal)' }}>₱{peso(p.amount)}</td>
+                  <td className="px-3 py-1.5 text-right text-[11px] font-semibold whitespace-nowrap" style={{ color: p.viaRfp ? 'var(--mid-gray)' : 'var(--charcoal)' }}>
+                    ₱{peso(p.amount)}
+                    {p.viaRfp && (
+                      <span className="ml-1 px-1.5 py-0.5 rounded-full text-[9px] font-semibold" style={{ background: '#e0e7ff', color: '#3730a3' }}
+                        title="Paid through the RFP on this cheque — this amount is already inside the RFP line, so it is not added to the cheque total again.">
+                        in RFP
+                      </span>
+                    )}
+                  </td>
                   {canWrite && <td></td>}
                 </tr>
               ))}

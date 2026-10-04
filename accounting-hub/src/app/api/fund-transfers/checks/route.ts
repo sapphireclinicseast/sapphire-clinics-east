@@ -50,13 +50,13 @@ export async function GET(req: Request) {
   const labelFor = (s: string | null) => (s && strMap.has(s) ? strMap.get(s)!.label : s || '')
 
   type Group = Omit<Row, 'id' | 'kind'> & { id?: string; kind?: Row['kind'] | 'REGISTER'; items: Row[]; registeredAmount?: number; registerStatus?: string; cleared?: boolean; clearedOn?: string | null }
-  type Row = { cleared?: boolean; clearedOn?: string | null; id?: string; kind?: 'PETTY_CASH' | 'RFP' | 'FUND_TRANSFER' | 'CANCELLED' | 'REGISTER'; source: string; checkNumber: string; date: string | null; amount: number; reference: string; payee: string; bankAccount: string; proofUrls?: string[] }
+  type Row = { cleared?: boolean; clearedOn?: string | null; id?: string; kind?: 'PETTY_CASH' | 'RFP' | 'FUND_TRANSFER' | 'CANCELLED' | 'REGISTER'; source: string; checkNumber: string; date: string | null; amount: number; reference: string; payee: string; bankAccount: string; proofUrls?: string[]; reimbursementId?: string | null; viaRfp?: boolean }
   const rows: Row[] = []
 
   // 1. Petty Cash + Expenses
   const pce = await prisma.pettyCashEntry.findMany({
     where: { checkNumber: { not: null }, paymentBankAccount: { in: strKeys }, paymentMethod: CHECK_METHOD },
-    select: { id: true, checkNumber: true, paidAt: true, date: true, grossAmount: true, requestor: true, registeredName: true, accountTitle: true, pcvNumber: true, recordType: true, paymentBankAccount: true },
+    select: { id: true, checkNumber: true, paidAt: true, date: true, grossAmount: true, requestor: true, registeredName: true, accountTitle: true, pcvNumber: true, recordType: true, paymentBankAccount: true, reimbursementId: true },
   })
   for (const e of pce) {
     rows.push({
@@ -68,6 +68,7 @@ export async function GET(req: Request) {
       reference: e.pcvNumber || '',
       payee: e.registeredName || e.requestor || e.accountTitle || '',
       bankAccount: labelFor(e.paymentBankAccount),
+      reimbursementId: e.reimbursementId,
     })
   }
 
@@ -208,6 +209,24 @@ export async function GET(req: Request) {
     g.id = undefined; g.kind = undefined
   }
 
+  // A cheque that paid an RFP appears once as the RFP (amount = sum of its
+  // entries) AND once per entry it covered — the RFP payment stamps its cheque
+  // number and bank onto every linked PettyCashEntry. Those entry rows are the
+  // RFP's breakdown, not additional payments: keep them visible in the items
+  // but take their amounts back out of the group total, which they doubled.
+  // Only entries whose own RFP is actually IN the group are deducted — an entry
+  // paid directly by its own cheque keeps its amount.
+  for (const g of byCheque.values()) {
+    const rfpIds = new Set(g.items.filter(x => x.kind === 'RFP' && x.id).map(x => x.id as string))
+    if (rfpIds.size === 0) continue
+    for (const it of g.items) {
+      if (it.kind === 'PETTY_CASH' && it.reimbursementId && rfpIds.has(it.reimbursementId)) {
+        g.amount -= it.amount
+        it.viaRfp = true
+      }
+    }
+  }
+
   // Fold the register in: a leaf with recorded payments keeps them as its
   // breakdown; a leaf with none is still listed, so gaps in the book show up.
   for (const [key, r] of regByNumber) {
@@ -242,7 +261,9 @@ export async function GET(req: Request) {
     const single = g.items.length === 1 && g.registeredAmount === undefined
     const base = single ? { ...g.items[0], items: [] as Row[] } : { ...g, reference: g.items.length > 1 ? `${g.items.length} entries` : g.reference }
     if (g.registeredAmount === undefined) return base
-    const lines = g.items.reduce((s, x) => s + x.amount, 0)
+    // viaRfp entry rows are already inside their RFP line's amount — counting
+    // them again here would false-flag a mismatch against the chequebook.
+    const lines = g.items.reduce((s, x) => s + (x.viaRfp ? 0 : x.amount), 0)
     return {
       ...base,
       // What the cheque was written for, per the chequebook.
