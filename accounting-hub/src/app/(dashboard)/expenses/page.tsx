@@ -27,6 +27,10 @@ const BRANCHES = [
   { code: 'AHGH', value: 'SANDBOX_GREENHILLS', label: 'AHGH' },
   { code: 'VER', value: 'VERDANA_STORE', label: 'VERDANA' },
   { code: 'AHI', value: 'AURA_INSTITUTE', label: 'AHI' },
+  // CEO petty-cash RFPs live here since the PCF/RFP unification removed the
+  // Reimbursements tab from Petty Cash — without this chip, CEO RFPs whose
+  // filterBranch is empty were reachable from nowhere.
+  { code: 'CEO', value: 'CEO', label: 'CEO' },
 ]
 const DEPARTMENTS = ['ADMIN', 'PT', 'OT', 'SLP', 'SPED', 'PSYCH', 'MD', 'ORTHOSIS']
 
@@ -395,8 +399,24 @@ function ExpensesInner() {
   const isRecording = recordType === 'RECURRING' || recordType === 'ONE_TIME'
   const isRecurringTab = recordType === 'RECURRING'
 
+  // Stale-response guards: rapid branch switches used to let the SLOWER of two
+  // in-flight responses win — the grid could spin forever behind a hung request
+  // while the meta line showed the previous branch's rows, and the recurring-due
+  // banner could display another branch's reminders. Every loader tags its
+  // request; only the newest one may touch state. A new entries load also
+  // aborts the previous fetch, and a 30s safety timeout turns a dead connection
+  // into an empty grid instead of an endless spinner.
+  const entriesReq = useRef<{ seq: number; ctrl: AbortController | null }>({ seq: 0, ctrl: null })
+  const rfpsReq = useRef(0)
+  const recurringReq = useRef(0)
+
   const loadEntries = useCallback(async (br: string, rt: string, per: PeriodKey, term: string) => {
     if (!rt) { setEntries([]); setLoading(false); return }
+    const seq = ++entriesReq.current.seq
+    entriesReq.current.ctrl?.abort()
+    const ctrl = new AbortController()
+    entriesReq.current.ctrl = ctrl
+    const safety = setTimeout(() => ctrl.abort(), 30000)
     setLoading(true)
     try {
       const qs = new URLSearchParams({ branch: br, recordType: rt })
@@ -408,12 +428,18 @@ function ExpensesInner() {
         const w = periodFrom(per)
         if (w) qs.set('from', w)
       }
-      const r = await fetch(`/api/petty-cash/entries?${qs}`)
+      const r = await fetch(`/api/petty-cash/entries?${qs}`, { signal: ctrl.signal })
+      if (seq !== entriesReq.current.seq) return   // a newer load owns the grid
       setEntries(r.ok ? await r.json() : [])
       setTotalCount(r.ok ? Number(r.headers.get('X-Total-Count') || 0) : 0)
       setSearchCapped(r.ok && r.headers.get('X-Search-Capped') === '1')
-    } catch { setEntries([]); setTotalCount(0); setSearchCapped(false) }
-    setLoading(false)
+    } catch {
+      if (seq !== entriesReq.current.seq) return
+      setEntries([]); setTotalCount(0); setSearchCapped(false)
+    } finally {
+      clearTimeout(safety)
+      if (seq === entriesReq.current.seq) setLoading(false)
+    }
   }, [])
 
   // Refs so the many `reload(...)` call sites below keep a stable identity while
@@ -450,28 +476,34 @@ function ExpensesInner() {
   // number so they read consecutively. Each row keeps its `module` so actions
   // route to the right backend (petty-cash replenishment vs expense payment).
   const loadRfps = useCallback(async (br: string) => {
+    const seq = ++rfpsReq.current
     try {
       const [exp, pcf, ceo] = await Promise.all([
         fetch(`/api/expenses/rfp?branch=${br}`).then(r => r.ok ? r.json() : []).catch(() => []),
         fetch(`/api/petty-cash/reimbursements?branch=${br}`).then(r => r.ok ? r.json() : []).catch(() => []),
-        fetch(`/api/petty-cash/reimbursements?branch=CEO`).then(r => r.ok ? r.json() : []).catch(() => []),
+        // On the CEO tab itself the per-branch fetch above already returns the
+        // CEO rows — skip the extra call instead of merging them twice.
+        br === 'CEO' ? Promise.resolve([]) : fetch(`/api/petty-cash/reimbursements?branch=CEO`).then(r => r.ok ? r.json() : []).catch(() => []),
       ])
+      if (seq !== rfpsReq.current) return   // a newer branch owns the list
       const ceoForBranch = (Array.isArray(ceo) ? ceo : []).filter((r: Rfp) => r.filterBranch === br)
       const merged: Rfp[] = [...(Array.isArray(exp) ? exp : []), ...(Array.isArray(pcf) ? pcf : []), ...ceoForBranch]
         .map((r: Rfp) => ({ ...r, module: r.module || 'PETTY_CASH' }))
         .sort((a, b) => (b.refSeq ?? 0) - (a.refSeq ?? 0) || (new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()))
       setRfps(merged)
-    } catch { setRfps([]) }
+    } catch { if (seq === rfpsReq.current) setRfps([]) }
   }, [])
   const isPcfRfp = (r: Rfp) => r.module === 'PETTY_CASH'
   const rfpApi = (r: Rfp) => isPcfRfp(r) ? '/api/petty-cash/reimbursements' : '/api/expenses/rfp'
 
   const loadRecurringDue = useCallback(async (br: string) => {
+    const seq = ++recurringReq.current
     try {
       const r = await fetch(`/api/expenses/recurring-due?branch=${br}`)
       const d = r.ok ? await r.json() : { due: [] }
+      if (seq !== recurringReq.current) return   // stale branch — drop it
       setRecurringDue(d.due || [])
-    } catch { setRecurringDue([]) }
+    } catch { if (seq === recurringReq.current) setRecurringDue([]) }
   }, [])
 
   useEffect(() => {
@@ -1677,7 +1709,9 @@ function ExpensesInner() {
               onToggleSort={rfpToggleSort} onFilter={(k, v) => setRfpFilters(f => ({ ...f, [k]: v }))} trailing />
             <tbody>
               {shownRfps.map(r => (
-                <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                // Paid rows tint green like the old PCF Reimbursements tab did —
+                // the status badge alone read as "not marked paid" to the team.
+                <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)', background: r.status === 'PAID' ? '#dcfce7' : undefined }}>
                   <td className="px-4 py-2.5 font-mono font-semibold" style={{ color: 'var(--charcoal)' }}>
                     {r.refNumber}
                     {isPcfRfp(r) && <span className="ml-1.5 align-middle text-[10px] font-sans font-semibold px-1.5 py-0.5 rounded-full" style={{ background: '#eff6ff', color: '#1e40af' }}>Petty Cash</span>}

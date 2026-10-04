@@ -4,7 +4,9 @@ import { prisma } from '@/lib/prisma'
 import { isPayrollItem } from '@/lib/payroll-item-guard'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
-const VALID_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE', 'AURA_INSTITUTE']
+// CEO: the CEO petty-cash fund's RFPs surface on the Expenses → RFP list
+// (its Reimbursements tab was removed in the PCF/RFP unification).
+const VALID_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE', 'AURA_INSTITUTE', 'CEO']
 const BRANCH_CODE: Record<string, string> = { SANDBOX_EAST: 'AHEA', SANDBOX_GREENHILLS: 'AHGH', VERDANA_STORE: 'VERD' }
 
 // GET ?branch=... → list expense RFP reports;  GET ?id=... → pdfData
