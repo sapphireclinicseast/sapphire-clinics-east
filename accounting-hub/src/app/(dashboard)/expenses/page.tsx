@@ -475,15 +475,20 @@ function ExpensesInner() {
   // CEO petty-cash RFPs allocated to this branch), sorted by the shared running
   // number so they read consecutively. Each row keeps its `module` so actions
   // route to the right backend (petty-cash replenishment vs expense payment).
-  const loadRfps = useCallback(async (br: string) => {
+  const loadRfps = useCallback(async (br: string, attempt = 0) => {
     const seq = ++rfpsReq.current
     try {
+      // Non-OK responses count as "no rows from that source", but a NETWORK
+      // failure rejects: the browser cancels in-flight fetches when the user
+      // clicks away mid-load (common while the site is slow), and swallowing
+      // that as [] rendered a convincing — and wrong — "No RFPs yet".
+      const get = (url: string) => fetch(url).then(r => r.ok ? r.json() : [])
       const [exp, pcf, ceo] = await Promise.all([
-        fetch(`/api/expenses/rfp?branch=${br}`).then(r => r.ok ? r.json() : []).catch(() => []),
-        fetch(`/api/petty-cash/reimbursements?branch=${br}`).then(r => r.ok ? r.json() : []).catch(() => []),
+        get(`/api/expenses/rfp?branch=${br}`),
+        get(`/api/petty-cash/reimbursements?branch=${br}`),
         // On the CEO tab itself the per-branch fetch above already returns the
         // CEO rows — skip the extra call instead of merging them twice.
-        br === 'CEO' ? Promise.resolve([]) : fetch(`/api/petty-cash/reimbursements?branch=CEO`).then(r => r.ok ? r.json() : []).catch(() => []),
+        br === 'CEO' ? Promise.resolve([]) : get(`/api/petty-cash/reimbursements?branch=CEO`),
       ])
       if (seq !== rfpsReq.current) return   // a newer branch owns the list
       const ceoForBranch = (Array.isArray(ceo) ? ceo : []).filter((r: Rfp) => r.filterBranch === br)
@@ -491,7 +496,12 @@ function ExpensesInner() {
         .map((r: Rfp) => ({ ...r, module: r.module || 'PETTY_CASH' }))
         .sort((a, b) => (b.refSeq ?? 0) - (a.refSeq ?? 0) || (new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()))
       setRfps(merged)
-    } catch { if (seq === rfpsReq.current) setRfps([]) }
+    } catch {
+      // Keep whatever is on screen and quietly retry a couple of times — the
+      // cancelled load self-heals once the page settles.
+      if (seq !== rfpsReq.current || attempt >= 2) return
+      setTimeout(() => { if (seq === rfpsReq.current) loadRfps(br, attempt + 1) }, 1500)
+    }
   }, [])
   const isPcfRfp = (r: Rfp) => r.module === 'PETTY_CASH'
   const rfpApi = (r: Rfp) => isPcfRfp(r) ? '/api/petty-cash/reimbursements' : '/api/expenses/rfp'
