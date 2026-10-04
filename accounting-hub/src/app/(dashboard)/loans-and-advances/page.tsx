@@ -854,6 +854,7 @@ function PaymentHistoryTab({ banks, accts }: { banks: Bank[]; accts: Acct[] }) {
   const [rows, setRows] = useState<PayRow[]>([])
   const [loading, setLoading] = useState(true)
   const [recordFor, setRecordFor] = useState<PayRow | null>(null)
+  const [undoFor, setUndoFor] = useState<PayRow | null>(null)
   const [year, setYear] = useState(new Date().getUTCFullYear())
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [batchOpen, setBatchOpen] = useState(false)
@@ -938,10 +939,21 @@ function PaymentHistoryTab({ banks, accts }: { banks: Bank[]; accts: Acct[] }) {
                 const on = selected.has(k)
                 return (
                   <td key={m} className="px-2 py-2 text-right whitespace-nowrap" style={{ background: paid ? '#dcfce7' : on ? 'var(--pale-teal)' : undefined }}>
-                    <label className="inline-flex items-center gap-1 justify-end cursor-pointer" title={`${p.name} · due ${String(o.dueDate).slice(0, 10)} · principal ${peso(o.principalPortion)} + interest ${peso(o.interestPortion)}`}>
-                      {!paid && <input type="checkbox" checked={on} onChange={() => toggle(o)} />}
-                      <span className="font-mono" style={{ color: paid ? '#166534' : 'var(--charcoal)' }}>{Number(o.amount).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{paid && ' ✓'}</span>
-                    </label>
+                    {paid ? (
+                      // A recorded payment can be a mis-click — clicking the green
+                      // cell opens the undo dialog (details + confirm) instead of
+                      // leaving the mistake carved into the books.
+                      <button type="button" onClick={() => setUndoFor(o)}
+                        className="inline-flex items-center gap-1 justify-end cursor-pointer hover:underline"
+                        title={`${p.name} · due ${String(o.dueDate).slice(0, 10)} · principal ${peso(o.principalPortion)} + interest ${peso(o.interestPortion)} · paid ${o.paidDate ? String(o.paidDate).slice(0, 10) : '—'} · click to review / undo`}>
+                        <span className="font-mono" style={{ color: '#166534' }}>{Number(o.amount).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ✓</span>
+                      </button>
+                    ) : (
+                      <label className="inline-flex items-center gap-1 justify-end cursor-pointer" title={`${p.name} · due ${String(o.dueDate).slice(0, 10)} · principal ${peso(o.principalPortion)} + interest ${peso(o.interestPortion)}`}>
+                        <input type="checkbox" checked={on} onChange={() => toggle(o)} />
+                        <span className="font-mono" style={{ color: 'var(--charcoal)' }}>{Number(o.amount).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      </label>
+                    )}
                   </td>
                 )
               })}
@@ -957,6 +969,7 @@ function PaymentHistoryTab({ banks, accts }: { banks: Bank[]; accts: Acct[] }) {
       </div>
       {recordFor && <RecordPaymentModal occ={recordFor} banks={banks} accts={accts} onClose={() => setRecordFor(null)} onSaved={() => { setRecordFor(null); load() }} />}
       {batchOpen && <BatchRecordModal occs={selectedOccs} banks={banks} accts={accts} onClose={() => setBatchOpen(false)} onSaved={() => { setBatchOpen(false); setSelected(new Set()); load() }} />}
+      {undoFor && <UndoPaymentModal occ={undoFor} onClose={() => setUndoFor(null)} onUndone={() => { setUndoFor(null); load() }} />}
     </div>
   )
 }
@@ -990,6 +1003,55 @@ function OtherExpensesSection({ rows, setRows, accts }: { rows: OtherExp[]; setR
           {total > 0 && <p className="text-[11px] font-mono text-right" style={{ color: '#334155' }}>Other expenses: {peso(total)}</p>}
         </div>
       )}
+    </div>
+  )
+}
+
+// Undo a recorded payment (mis-clicked cell / wrong amount): deletes the payout
+// record, its cash JE, and the split interest-accrual JE when one exists, so the
+// installment reverts to pending and can be re-recorded correctly. The API
+// refuses while the JE is matched to a bank line — unmatch in Bank Rec first.
+function UndoPaymentModal({ occ, onClose, onUndone }: { occ: PayRow; onClose: () => void; onUndone: () => void }) {
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const undo = async () => {
+    setBusy(true); setErr('')
+    try {
+      const r = await fetch(`/api/loans/payments?kind=${occ.kind}&id=${encodeURIComponent(occ.payoutId)}`, { method: 'DELETE' })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) { setErr(d.error || 'Failed to undo'); setBusy(false); return }
+      onUndone()
+    } catch { setErr('Network error'); setBusy(false) }
+  }
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>Undo this payment?</h2>
+          <button onClick={onClose}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button>
+        </div>
+        <div className="rounded-xl px-3 py-2.5 mb-3 text-sm space-y-1" style={{ background: 'var(--off-white)', color: 'var(--charcoal)' }}>
+          <div className="flex justify-between"><span>Payee</span><strong>{occ.name}</strong></div>
+          <div className="flex justify-between"><span>Installment due</span><span className="font-mono">{String(occ.dueDate).slice(0, 10)}</span></div>
+          <div className="flex justify-between"><span>Amount</span><strong className="font-mono">{peso(Number(occ.amount))}</strong></div>
+          <div className="flex justify-between text-xs" style={{ color: 'var(--mid-gray)' }}><span>Principal {peso(Number(occ.principalPortion))} + interest {peso(Number(occ.interestPortion))}</span><span>paid {occ.paidDate ? String(occ.paidDate).slice(0, 10) : '—'}</span></div>
+        </div>
+        <p className="text-xs mb-2" style={{ color: 'var(--mid-gray)' }}>
+          This removes the payment record <strong>and its journal entry</strong> from the books (plus the interest accrual, if the payment was settled in a later month). The installment turns back to pending so it can be recorded again with the right amount.
+        </p>
+        {occ.emailedAt && (
+          <p className="text-xs mb-2 px-3 py-2 rounded-lg" style={{ background: '#fffbeb', color: '#92400e' }}>
+            A payment confirmation was already emailed to the payee on {String(occ.emailedAt).slice(0, 10)} — undoing does not recall that email.
+          </p>
+        )}
+        {err && <p className="text-xs mb-2" style={{ color: '#dc2626' }}>{err}</p>}
+        <div className="flex gap-2">
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Keep payment</button>
+          <button onClick={undo} disabled={busy} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2" style={{ background: '#dc2626' }}>
+            {busy && <Loader2 size={15} className="animate-spin" />} Undo payment
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

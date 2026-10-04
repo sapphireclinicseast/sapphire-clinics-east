@@ -229,3 +229,77 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: e instanceof Error ? e.message : 'Failed to record payment' }, { status: 500 })
   }
 }
+
+// DELETE ?kind=advance|loan&id=<payoutId> — undo a recorded payment (wrong cell /
+// wrong amount). Removes the payout row, its cash JE, and the split interest-
+// accrual JE when one was posted, so the installment reverts to PENDING and can
+// be re-recorded. Refused while the JE is matched to a bank line — unmatching in
+// Bank Reconciliation must come first, or the bank side would point at nothing.
+export async function DELETE(req: Request) {
+  const session = await auth()
+  if (!session?.user || !ROLES.includes(session.user.role as string)) return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
+  try {
+    const sp = new URL(req.url).searchParams
+    const kind = sp.get('kind') || 'advance'
+    const id = sp.get('id') || ''
+    if (!id) return NextResponse.json({ error: 'Payment id is required' }, { status: 400 })
+    const isLoan = kind === 'loan'
+
+    const payout = isLoan
+      ? await prisma.loanPayout.findUnique({ where: { id } })
+      : await prisma.advancePayout.findUnique({ where: { id } })
+    if (!payout) return NextResponse.json({ error: 'Payment not found' }, { status: 404 })
+    const parentId = isLoan ? (payout as { loanId: string }).loanId : (payout as { advanceId: string }).advanceId
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const parent: any = isLoan ? await prisma.loan.findUnique({ where: { id: parentId } }) : await prisma.advance.findUnique({ where: { id: parentId } })
+
+    if (payout.journalEntryId) {
+      const matched = await prisma.bankTransaction.findFirst({
+        where: { OR: [{ journalEntryId: payout.journalEntryId }, { matchId: payout.journalEntryId }] },
+        select: { id: true, date: true, description: true },
+      })
+      if (matched) {
+        return NextResponse.json({ error: `This payment is matched to a bank line in Bank Reconciliation (${matched.date.toISOString().slice(0, 10)} — ${matched.description.slice(0, 60)}). Unmatch it there first, then undo the payment.` }, { status: 409 })
+      }
+    }
+
+    const due = new Date(payout.dueDate).toISOString().slice(0, 10)
+    // The split-accrual twin, when the payment was settled in a later month:
+    // same parent, accrual referenceType, and the due date baked into its
+    // description at posting time.
+    const accrual = Number(payout.interestPortion) > 0 ? await prisma.journalEntry.findFirst({
+      where: {
+        referenceType: isLoan ? 'LOAN_INTEREST_ACCRUAL' : 'ADVANCE_INTEREST_ACCRUAL',
+        referenceId: parentId,
+        description: { contains: `(due ${due})` },
+      },
+      select: { id: true },
+    }) : null
+
+    await prisma.$transaction(async (tx) => {
+      if (payout.journalEntryId) await tx.journalEntry.delete({ where: { id: payout.journalEntryId } }).catch(() => {})
+      if (accrual) await tx.journalEntry.delete({ where: { id: accrual.id } }).catch(() => {})
+      if (isLoan) await tx.loanPayout.delete({ where: { id } })
+      else await tx.advancePayout.delete({ where: { id } })
+      await tx.auditLog.create({
+        data: {
+          userId: session.user!.id as string,
+          action: 'DELETE',
+          entity: isLoan ? 'loanPayout' : 'advancePayout',
+          entityId: id,
+          details: {
+            undoPayment: true, parentId, parentName: parent?.name || null,
+            dueDate: due, amount: Number(payout.amount),
+            paidDate: payout.paidDate ? payout.paidDate.toISOString().slice(0, 10) : null,
+            deletedJournalEntryId: payout.journalEntryId, deletedAccrualJournalEntryId: accrual?.id || null,
+            wasEmailed: !!payout.emailedAt,
+          },
+        },
+      })
+    })
+    return NextResponse.json({ success: true })
+  } catch (e) {
+    console.error('Payment undo error:', e)
+    return NextResponse.json({ error: e instanceof Error ? e.message : 'Failed to undo payment' }, { status: 500 })
+  }
+}
