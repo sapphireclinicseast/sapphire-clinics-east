@@ -409,6 +409,13 @@ function ExpensesInner() {
   const entriesReq = useRef<{ seq: number; ctrl: AbortController | null }>({ seq: 0, ctrl: null })
   const rfpsReq = useRef(0)
   const recurringReq = useRef(0)
+  // The branch whose data may be shown RIGHT NOW. Guarding on request order
+  // alone was not enough: a remount can fire loads for two branches in the
+  // same tick, and "newest request wins" let the stale branch claim authority
+  // while the right branch's response got discarded — the CEO RFP list could
+  // end up permanently empty with all the data already in the browser.
+  const branchRef = useRef(branch)
+  useEffect(() => { branchRef.current = branch }, [branch])
 
   const loadEntries = useCallback(async (br: string, rt: string, per: PeriodKey, term: string) => {
     if (!rt) { setEntries([]); setLoading(false); return }
@@ -429,7 +436,7 @@ function ExpensesInner() {
         if (w) qs.set('from', w)
       }
       const r = await fetch(`/api/petty-cash/entries?${qs}`, { signal: ctrl.signal })
-      if (seq !== entriesReq.current.seq) return   // a newer load owns the grid
+      if (branchRef.current !== br || seq !== entriesReq.current.seq) return   // a newer load owns the grid
       setEntries(r.ok ? await r.json() : [])
       setTotalCount(r.ok ? Number(r.headers.get('X-Total-Count') || 0) : 0)
       setSearchCapped(r.ok && r.headers.get('X-Search-Capped') === '1')
@@ -490,7 +497,7 @@ function ExpensesInner() {
         // CEO rows — skip the extra call instead of merging them twice.
         br === 'CEO' ? Promise.resolve([]) : get(`/api/petty-cash/reimbursements?branch=CEO`),
       ])
-      if (seq !== rfpsReq.current) return   // a newer branch owns the list
+      if (branchRef.current !== br) return   // the user is on another branch now
       const ceoForBranch = (Array.isArray(ceo) ? ceo : []).filter((r: Rfp) => r.filterBranch === br)
       const merged: Rfp[] = [...(Array.isArray(exp) ? exp : []), ...(Array.isArray(pcf) ? pcf : []), ...ceoForBranch]
         .map((r: Rfp) => ({ ...r, module: r.module || 'PETTY_CASH' }))
@@ -499,8 +506,8 @@ function ExpensesInner() {
     } catch {
       // Keep whatever is on screen and quietly retry a couple of times — the
       // cancelled load self-heals once the page settles.
-      if (seq !== rfpsReq.current || attempt >= 2) return
-      setTimeout(() => { if (seq === rfpsReq.current) loadRfps(br, attempt + 1) }, 1500)
+      if (branchRef.current !== br || attempt >= 2) return
+      setTimeout(() => { if (branchRef.current === br) loadRfps(br, attempt + 1) }, 1500)
     }
   }, [])
   const isPcfRfp = (r: Rfp) => r.module === 'PETTY_CASH'
@@ -511,9 +518,9 @@ function ExpensesInner() {
     try {
       const r = await fetch(`/api/expenses/recurring-due?branch=${br}`)
       const d = r.ok ? await r.json() : { due: [] }
-      if (seq !== recurringReq.current) return   // stale branch — drop it
+      if (branchRef.current !== br || seq !== recurringReq.current) return   // stale — drop it
       setRecurringDue(d.due || [])
-    } catch { if (seq === recurringReq.current) setRecurringDue([]) }
+    } catch { if (branchRef.current === br && seq === recurringReq.current) setRecurringDue([]) }
   }, [])
 
   useEffect(() => {
