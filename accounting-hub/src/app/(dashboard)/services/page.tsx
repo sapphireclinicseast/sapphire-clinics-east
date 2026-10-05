@@ -180,17 +180,38 @@ export default function ServicesPage() {
 
   const canWrite = session?.user?.role && ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN'].includes(session.user.role as string)
 
+  // One fetch owns the table at a time. Filter/search changes fire a fetch per
+  // (debounced) change with no ordering guarantee — on a slow connection a big
+  // unfiltered response can land AFTER a small filtered one and vice versa, and
+  // whichever resolved last used to win, leaving the table showing results that
+  // don't match the visible filters ("No services found" under blank filters).
+  // Each new fetch aborts the previous one; an aborted or superseded response
+  // never touches state, and a FAILED load keeps the rows already shown instead
+  // of blanking the register behind an easy-to-miss banner.
+  const fetchAbortRef = useRef<AbortController | null>(null)
+  const fetchSeqRef = useRef(0)
   const fetchServices = useCallback(async () => {
+    fetchAbortRef.current?.abort()
+    const ctl = new AbortController()
+    fetchAbortRef.current = ctl
+    const seq = ++fetchSeqRef.current
     try {
       const params = new URLSearchParams({ pageSize: '500', sortField, sortDir })
       if (search) params.set('search', search)
       if (filterDept) params.set('department', filterDept)
       if (filterBranch) params.set('branch', filterBranch)
-      const res = await fetch(`/api/services?${params}`)
+      const res = await fetch(`/api/services?${params}`, { signal: ctl.signal })
       const data = await res.json()
+      if (seq !== fetchSeqRef.current) return
+      if (!res.ok) { setError(data.error || 'Failed to load services'); return }
       setServices(data.data || [])
-    } catch { setError('Failed to load services') }
-    finally { setLoading(false) }
+      setError('')
+    } catch (e) {
+      if ((e as Error)?.name === 'AbortError' || seq !== fetchSeqRef.current) return
+      setError('Failed to load services — check the connection and try again')
+    } finally {
+      if (seq === fetchSeqRef.current) setLoading(false)
+    }
   }, [search, filterDept, filterBranch, sortField, sortDir])
 
   // Lock branch filter for branch-locked users (single-branch assignment or front desk)
