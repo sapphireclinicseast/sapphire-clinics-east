@@ -20,6 +20,12 @@ import { Loader2, FileText, Mail, MessageSquare, CheckCircle2, Upload, X, Eye, C
 import { ScanUpload } from '@/components/ScanUpload'
 import { Bir2307Generator, Bir2307Settings } from './Bir2307'
 
+// Payroll stores the legacy Sandbox branch codes (SBEA/SBGH); everything the
+// clinics show outwardly is Aura Health branded — display the AHEA/AHGH codes
+// (same ones on control numbers and PCVs) without touching the stored values.
+const BRANCH_DISPLAY: Record<string, string> = { SBEA: 'AHEA', SBGH: 'AHGH', VERDANA: 'VER', AHI: 'AHI' }
+const branchCode = (b: string) => BRANCH_DISPLAY[b] || b
+
 interface Consultant {
   id: string
   name: string
@@ -233,7 +239,7 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
           <button onClick={() => toggleRow(c)} className="flex items-center gap-1.5 text-left flex-1 min-w-[220px]">
             <ChevronDown size={14} style={{ color: 'var(--mid-gray)', transform: open ? 'none' : 'rotate(-90deg)', transition: 'transform .15s' }} />
             <span className="font-semibold text-sm" style={{ color: 'var(--charcoal)' }}>{c.name}</span>
-            <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>{c.department} · {c.branch}</span>
+            <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>{c.department} · {branchCode(c.branch)}</span>
             {c.corUrl && (
               <span className="px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ background: '#dcfce7', color: '#166534' }}
                 title={`COR on file since ${String(c.corUploadedAt || '').slice(0, 10)} — expected to issue a Service Invoice monthly`}>
