@@ -79,8 +79,16 @@ export async function GET(req: Request) {
   }
   const branch = sp.get('branch') || ''
   if (!VALID_BRANCHES.includes(branch)) return NextResponse.json({ error: 'Valid branch is required' }, { status: 400 })
+  // ?status=unpaid|paid narrows the list server-side. The RFP tab hides settled
+  // rows by default, and shipping the 1,000+ PAID rows (each with its member
+  // entries fetched for the payable math) made this call ~457KB and seconds-slow
+  // under host load. No status param returns everything — existing callers keep
+  // their full list.
+  const statusParam = sp.get('status')
+  const statusWhere = statusParam === 'unpaid' ? { status: { not: 'PAID' } }
+    : statusParam === 'paid' ? { status: 'PAID' } : {}
   const reports = await prisma.reimbursementReport.findMany({
-    where: { branch, module: { in: ['EXPENSE', 'PAYROLL_SALARY', 'PAYROLL_BENEFIT'] } },
+    where: { branch, module: { in: ['EXPENSE', 'PAYROLL_SALARY', 'PAYROLL_BENEFIT'] }, ...statusWhere },
     select: {
       id: true, refNumber: true, refSeq: true, grossTotal: true, status: true, kind: true, module: true, meta: true, paidAt: true, paymentMethod: true,
       checkNumber: true, transferRef: true, debitAccount: true, creditCardId: true, proofUrl: true, payableTo: true, createdAt: true,

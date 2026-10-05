@@ -335,6 +335,21 @@ function ExpensesInner() {
   const [rfpManualSeq, setRfpManualSeq] = useState('')
   const [generatingRfp, setGeneratingRfp] = useState(false)
   const [rfps, setRfps] = useState<Rfp[]>([])
+  // Settled (paid) RFPs are hidden by default — and, more importantly, not even
+  // fetched: the paid backlog (1,000+ rows with their payable math) made the
+  // list call ~457KB and seconds-slow. "Show settled" refetches with them in.
+  // The ref keeps loadRfps' identity stable across the many reload call sites.
+  const [rfpShowSettled, setRfpShowSettled] = useState(false)
+  const rfpShowSettledRef = useRef(false)
+  // Restored before the first load effect below fires, so the initial fetch
+  // already honours the saved preference (no double fetch).
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem('exp-rfp-show-settled') === '1'
+      rfpShowSettledRef.current = v
+      setRfpShowSettled(v)
+    } catch { /* ignore */ }
+  }, [])
   // RFP list sort/filter
   const [rfpSort, setRfpSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'refNumber', dir: 'desc' })
   const [rfpFilters, setRfpFilters] = useState<Record<string, string>>({})
@@ -382,15 +397,6 @@ function ExpensesInner() {
   const { focus, done } = useFocusTarget()
   const urlParams = useSearchParams()
   const urlTab = urlParams.get('tab') || ''
-  useEffect(() => {
-    if (!focus) return
-    const t = TABS.find(x => x.key === urlTab)
-    if (t) setTab(t.key)
-    if (t?.key === 'rfp') setRfpFilters(f => ({ ...f, refNumber: focus }))
-    else if (t?.key === 'suppliers' || t?.key === 'cc-soa') setSearch(focus)
-    else setSearch(focus)
-    done()
-  }, [focus, urlTab, done])
   const scrollRef = useRef<HTMLDivElement>(null)
   const gridTableRef = useRef<HTMLTableElement>(null)
   const gridRz = useResizableColumns(`expenses-entries-grid-${tab}`, gridTableRef)
@@ -484,6 +490,7 @@ function ExpensesInner() {
   // route to the right backend (petty-cash replenishment vs expense payment).
   const loadRfps = useCallback(async (br: string, attempt = 0) => {
     const seq = ++rfpsReq.current
+    const showSettled = rfpShowSettledRef.current
     try {
       // Non-OK responses count as "no rows from that source", but a NETWORK
       // failure rejects: the browser cancels in-flight fetches when the user
@@ -491,25 +498,59 @@ function ExpensesInner() {
       // that as [] rendered a convincing — and wrong — "No RFPs yet".
       const get = (url: string) => fetch(url).then(r => r.ok ? r.json() : [])
       const [exp, pcf, ceo] = await Promise.all([
-        get(`/api/expenses/rfp?branch=${br}`),
+        // With settled hidden (the default), only the unpaid handful crosses
+        // the wire — the paid backlog stays on the server until asked for.
+        get(`/api/expenses/rfp?branch=${br}&status=${showSettled ? 'all' : 'unpaid'}`),
         get(`/api/petty-cash/reimbursements?branch=${br}`),
         // On the CEO tab itself the per-branch fetch above already returns the
         // CEO rows — skip the extra call instead of merging them twice.
         br === 'CEO' ? Promise.resolve([]) : get(`/api/petty-cash/reimbursements?branch=CEO`),
       ])
-      if (branchRef.current !== br) return   // the user is on another branch now
+      // Stale if the user is on another branch now, or a newer load (e.g. the
+      // settled toggle flipping mid-flight) owns the list.
+      if (branchRef.current !== br || seq !== rfpsReq.current) return
       const ceoForBranch = (Array.isArray(ceo) ? ceo : []).filter((r: Rfp) => r.filterBranch === br)
       const merged: Rfp[] = [...(Array.isArray(exp) ? exp : []), ...(Array.isArray(pcf) ? pcf : []), ...ceoForBranch]
         .map((r: Rfp) => ({ ...r, module: r.module || 'PETTY_CASH' }))
+        // Petty-cash sources still come back whole (they're a handful of rows);
+        // drop their paid rows here so the hidden-settled list is consistent.
+        .filter((r: Rfp) => showSettled || r.status !== 'PAID')
         .sort((a, b) => (b.refSeq ?? 0) - (a.refSeq ?? 0) || (new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()))
       setRfps(merged)
     } catch {
       // Keep whatever is on screen and quietly retry a couple of times — the
       // cancelled load self-heals once the page settles.
-      if (branchRef.current !== br || attempt >= 2) return
-      setTimeout(() => { if (branchRef.current === br) loadRfps(br, attempt + 1) }, 1500)
+      if (branchRef.current !== br || seq !== rfpsReq.current || attempt >= 2) return
+      setTimeout(() => { if (branchRef.current === br && seq === rfpsReq.current) loadRfps(br, attempt + 1) }, 1500)
     }
   }, [])
+  const toggleRfpShowSettled = () => {
+    const nv = !rfpShowSettledRef.current
+    rfpShowSettledRef.current = nv
+    setRfpShowSettled(nv)
+    try { localStorage.setItem('exp-rfp-show-settled', nv ? '1' : '0') } catch { /* ignore */ }
+    loadRfps(branchRef.current)
+  }
+  // Deep link from global search (declared here, after loadRfps, because the
+  // RFP branch may need to trigger a refetch with settled rows included).
+  useEffect(() => {
+    if (!focus) return
+    const t = TABS.find(x => x.key === urlTab)
+    if (t) setTab(t.key)
+    if (t?.key === 'rfp') {
+      setRfpFilters(f => ({ ...f, refNumber: focus }))
+      // The target may be a paid RFP, which the list neither shows nor fetches
+      // by default — reveal settled rows for this visit (without persisting).
+      if (!rfpShowSettledRef.current) {
+        rfpShowSettledRef.current = true
+        setRfpShowSettled(true)
+        loadRfps(branchRef.current)
+      }
+    }
+    else if (t?.key === 'suppliers' || t?.key === 'cc-soa') setSearch(focus)
+    else setSearch(focus)
+    done()
+  }, [focus, urlTab, done, loadRfps])
   const isPcfRfp = (r: Rfp) => r.module === 'PETTY_CASH'
   const rfpApi = (r: Rfp) => isPcfRfp(r) ? '/api/petty-cash/reimbursements' : '/api/expenses/rfp'
 
@@ -1720,6 +1761,14 @@ function ExpensesInner() {
         <>
         <DownloadBar from={dlFrom} to={dlTo} onFrom={setDlFrom} onTo={setDlTo} onExport={exportRfps}
           dateLabel="RFP date" note={`${shownRfps.length} in range`} />
+        <div className="flex items-center -mt-1 mb-2">
+          <label className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-medium cursor-pointer select-none"
+            title="Settled (paid) RFPs are hidden — and skipped from loading — by default so the list opens fast. Tick to fetch and show them; exports follow what's shown."
+            style={{ borderColor: rfpShowSettled ? 'var(--teal)' : 'var(--light-gray)', color: rfpShowSettled ? 'var(--teal)' : 'var(--mid-gray)' }}>
+            <input type="checkbox" checked={rfpShowSettled} onChange={toggleRfpShowSettled} className="accent-[var(--teal)]" />
+            Show settled
+          </label>
+        </div>
         <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
           <table className="w-full text-sm">
             <SortFilterHead cols={rfpCols} sortKey={rfpSort.key} sortDir={rfpSort.dir} filters={rfpFilters}
@@ -1799,7 +1848,9 @@ function ExpensesInner() {
               {shownRfps.length === 0 && (
                 <tr><td colSpan={9} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>
                   {rfps.length === 0
-                    ? 'No RFPs yet. In Recurring/One-time expense, click "RFP (Valid)" or "RFP (Invalid)", select entries, then Generate RFP.'
+                    ? (rfpShowSettled
+                      ? 'No RFPs yet. In Recurring/One-time expense, click "RFP (Valid)" or "RFP (Invalid)", select entries, then Generate RFP.'
+                      : 'No RFPs awaiting payment. Tick "Show settled" to include paid RFPs.')
                     : (dlFrom || dlTo)
                       ? `No RFPs dated ${dlFrom || 'start'} → ${dlTo || 'end'}. Clear the date range to see all ${rfps.length}.`
                       : 'No RFPs match the current filters.'}
