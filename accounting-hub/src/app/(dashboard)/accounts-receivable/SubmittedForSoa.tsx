@@ -28,6 +28,7 @@ interface Submission {
   transmittalUrls: unknown
   documentUrls: unknown
   notes?: string | null
+  remarks?: unknown
   createdAt: string
   createdBy: { name: string }
   wallet: { patientName: string }
@@ -49,6 +50,13 @@ interface TagOrder {
 const toNum = (v: unknown) => Number(v) || 0
 const fmtDate = (d: string) => new Date(d).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
 const urlList = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [])
+
+// Remarks are stored as a JSON array; the server stamps byName/at on append.
+interface SubmissionRemark { text: string; byId?: string; byName: string; at: string }
+const remarkList = (v: unknown): SubmissionRemark[] =>
+  Array.isArray(v) ? v.filter((x): x is SubmissionRemark => !!x && typeof x === 'object' && typeof (x as SubmissionRemark).text === 'string') : []
+const fmtStamp = (iso: string) =>
+  new Date(iso).toLocaleString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })
 
 export default function SubmittedForSoa({ wallets, canWrite }: { wallets: ARWallet[]; canWrite: boolean }) {
   const [submissions, setSubmissions] = useState<Submission[]>([])
@@ -170,6 +178,33 @@ export default function SubmittedForSoa({ wallets, canWrite }: { wallets: ARWall
     if (!confirm(`Delete the ${s.wallet.patientName} submission dated ${fmtDate(s.submittedDate)}?\n\nThe ${s.items.length} tagged session(s) stay in the system — only this submission record is removed.`)) return
     await fetch(`/api/accounts-receivable/soa-submissions?id=${s.id}`, { method: 'DELETE' })
     fetchSubmissions()
+  }
+
+  // ── Remarks: append-only thread per submission; the server stamps each one
+  // with the writer's name and the exact date/time.
+  const [remarkDrafts, setRemarkDrafts] = useState<Record<string, string>>({})
+  const [remarkBusyId, setRemarkBusyId] = useState<string | null>(null)
+  const [remarkError, setRemarkError] = useState<{ id: string; msg: string } | null>(null)
+  const addRemark = async (s: Submission) => {
+    const text = (remarkDrafts[s.id] || '').trim()
+    if (!text) return
+    setRemarkBusyId(s.id)
+    setRemarkError(null)
+    try {
+      const res = await fetch('/api/accounts-receivable/soa-submissions', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'add-remark', id: s.id, text }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to add the remark')
+      setSubmissions(prev => prev.map(x => x.id === s.id ? { ...x, remarks: data.remarks } : x))
+      setRemarkDrafts(prev => ({ ...prev, [s.id]: '' }))
+    } catch (e) {
+      setRemarkError({ id: s.id, msg: e instanceof Error ? e.message : 'Failed to add the remark' })
+    } finally {
+      setRemarkBusyId(null)
+    }
   }
 
   // ── Tag list filtering (view-only: never changes `selected`) ──
@@ -301,6 +336,12 @@ export default function SubmittedForSoa({ wallets, canWrite }: { wallets: ARWall
                               {urlList(s.transmittalUrls).length} proof{urlList(s.transmittalUrls).length !== 1 ? 's' : ''}
                             </span>
                           )}
+                          {remarkList(s.remarks).length > 0 && (
+                            <span className="text-[10px] px-2 py-0.5 rounded-full font-medium whitespace-nowrap" style={{ background: '#fef9c3', color: '#854d0e' }}
+                              title="Open the row to read the remarks">
+                              {remarkList(s.remarks).length} remark{remarkList(s.remarks).length !== 1 ? 's' : ''}
+                            </span>
+                          )}
                           {canWrite && (
                             <>
                               <button onClick={() => openEdit(s)} className="p-1.5 rounded hover:bg-gray-100" title="Edit">
@@ -345,6 +386,41 @@ export default function SubmittedForSoa({ wallets, canWrite }: { wallets: ARWall
                                 )}
                               </div>
                             )}
+                            <div>
+                              <p className="text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Remarks</p>
+                              {remarkList(s.remarks).length > 0 && (
+                                <div className="rounded-xl border divide-y bg-white mb-2" style={{ borderColor: 'var(--light-gray)' }}>
+                                  {remarkList(s.remarks).map((rm, i) => (
+                                    <div key={i} className="px-3 py-2">
+                                      <p className="text-xs whitespace-pre-wrap" style={{ color: 'var(--charcoal)' }}>{rm.text}</p>
+                                      <p className="text-[10px] mt-0.5 font-medium" style={{ color: 'var(--mid-gray)' }}>
+                                        {rm.byName} · {fmtStamp(rm.at)}
+                                      </p>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              {canWrite && (
+                                <div className="flex gap-2">
+                                  <input
+                                    value={remarkDrafts[s.id] || ''}
+                                    onChange={e => setRemarkDrafts(prev => ({ ...prev, [s.id]: e.target.value }))}
+                                    onKeyDown={e => { if (e.key === 'Enter') addRemark(s) }}
+                                    placeholder="Add a remark — your name, date and time are stamped automatically"
+                                    className="flex-1 px-3 py-2 rounded-xl border text-xs outline-none bg-white"
+                                    style={{ borderColor: 'var(--light-gray)' }} />
+                                  <button onClick={() => addRemark(s)}
+                                    disabled={remarkBusyId === s.id || !(remarkDrafts[s.id] || '').trim()}
+                                    className="px-3 py-2 rounded-xl text-xs font-semibold text-white disabled:opacity-50 whitespace-nowrap"
+                                    style={{ background: 'var(--teal)' }}>
+                                    {remarkBusyId === s.id ? 'Adding…' : 'Add remark'}
+                                  </button>
+                                </div>
+                              )}
+                              {remarkError?.id === s.id && (
+                                <p className="text-xs mt-1" style={{ color: '#dc2626' }}>{remarkError.msg}</p>
+                              )}
+                            </div>
                             <div className="rounded-xl border overflow-hidden bg-white" style={{ borderColor: 'var(--light-gray)' }}>
                               {s.items.map(({ order: o }) => (
                                 <div key={o.id} className="flex items-center gap-3 px-3 py-2 text-xs border-b last:border-b-0" style={{ borderColor: 'var(--light-gray)' }}>

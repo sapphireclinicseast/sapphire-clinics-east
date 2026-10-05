@@ -46,6 +46,7 @@ export async function GET(req: Request) {
         branch: true, isHighlighted: true, generatedAt: true,
         generatedById: true, generatedByName: true,
         orderIds: true, submittedDate: true, submissionId: true, referenceNo: true,
+        proofOfDeliveryUrls: true,
         // pdfData excluded from list for performance
       },
     })
@@ -146,6 +147,10 @@ export async function DELETE(req: Request) {
  *  Marks a generated SOA as actually submitted: creates an SoaSubmission batch
  *  over the record's covered orders (flipping their "SOA Submitted" flag and
  *  date in Per HMO) and stamps the record itself.
+ *
+ *  Body: { action: 'proof-of-delivery', id, urls: string[] }
+ *  Saves the delivery-proof file list on the record. Independent of the submit
+ *  flow above — it never creates a submission batch or stamps a date.
  */
 export async function PATCH(req: Request) {
   const session = await auth()
@@ -153,7 +158,20 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
   }
   try {
-    const { id, submittedDate, proofUrls } = await req.json()
+    const body = await req.json()
+
+    if (body?.action === 'proof-of-delivery') {
+      if (!body.id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
+      const record = await prisma.soaRecord.findUnique({ where: { id: body.id }, select: { id: true } })
+      if (!record) return NextResponse.json({ error: 'SOA record not found' }, { status: 404 })
+      const clean = Array.isArray(body.urls)
+        ? body.urls.filter((u: unknown): u is string => typeof u === 'string' && !!u)
+        : []
+      await prisma.soaRecord.update({ where: { id: body.id }, data: { proofOfDeliveryUrls: clean } })
+      return NextResponse.json({ ok: true, proofOfDeliveryUrls: clean })
+    }
+
+    const { id, submittedDate, proofUrls } = body
     if (!id || !submittedDate) {
       return NextResponse.json({ error: 'id and submittedDate are required' }, { status: 400 })
     }

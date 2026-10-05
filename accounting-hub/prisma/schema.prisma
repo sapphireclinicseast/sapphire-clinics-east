@@ -1527,6 +1527,9 @@ model SoaSubmission {
   transmittalUrls Json?
   documentUrls    Json?
   notes          String?
+  // Follow-up remarks, append-only. JSON array of { text, byId, byName, at } —
+  // the name/date/time stamp is set server-side, never taken from the client.
+  remarks        Json?
   branch         String?
   createdById    String
   createdBy      User          @relation("SoaSubmissionCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
@@ -2576,6 +2579,9 @@ model SoaRecord {
   submittedDate   DateTime? // when the user recorded this SOA as actually submitted
   submissionId    String? // the SoaSubmission batch created by the Submitted button
   referenceNo     String? // copy of the batch's SOA reference number, for display
+  // Proof the printed SOA physically reached the HMO (delivery receipt photo,
+  // courier tracking screenshot). JSON array of file URLs.
+  proofOfDeliveryUrls Json?
   generatedAt     DateTime @default(now())
   generatedById   String?
   generatedByName String?

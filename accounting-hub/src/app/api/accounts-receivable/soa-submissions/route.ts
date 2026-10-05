@@ -32,6 +32,7 @@ export async function GET(req: Request) {
         transmittalUrls: true,
         documentUrls: true,
         notes: true,
+        remarks: true,
         branch: true,
         createdAt: true,
         createdBy: { select: { name: true } },
@@ -142,7 +143,30 @@ export async function PATCH(req: Request) {
   }
 
   try {
-    const { id, submittedDate, transmittalUrls, documentUrls, notes, orderIds } = await req.json()
+    const body = await req.json()
+
+    // Append one remark. The who/when stamp comes from the session, never from
+    // the client, and existing remarks are never edited or removed — the thread
+    // stays a trustworthy audit trail.
+    if (body?.action === 'add-remark') {
+      const remarkId = body.id as string | undefined
+      const text = typeof body.text === 'string' ? body.text.trim() : ''
+      if (!remarkId) return NextResponse.json({ error: 'id is required' }, { status: 400 })
+      if (!text) return NextResponse.json({ error: 'Remark text is required' }, { status: 400 })
+      const sub = await prisma.soaSubmission.findUnique({ where: { id: remarkId }, select: { remarks: true } })
+      if (!sub) return NextResponse.json({ error: 'Submission not found' }, { status: 404 })
+      const prev = Array.isArray(sub.remarks) ? sub.remarks : []
+      const remarks = [...prev, {
+        text: text.slice(0, 2000),
+        byId: session.user.id as string,
+        byName: (session.user.name as string) || 'Unknown',
+        at: new Date().toISOString(),
+      }]
+      await prisma.soaSubmission.update({ where: { id: remarkId }, data: { remarks } })
+      return NextResponse.json({ ok: true, remarks })
+    }
+
+    const { id, submittedDate, transmittalUrls, documentUrls, notes, orderIds } = body
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
 
     const existing = await prisma.soaSubmission.findUnique({ where: { id }, select: { walletId: true } })

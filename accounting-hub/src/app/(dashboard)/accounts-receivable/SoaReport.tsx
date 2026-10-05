@@ -27,6 +27,7 @@ interface SoaListRecord {
   submittedDate?: string | null   // set once the Submitted button records the filing date
   submissionId?: string | null
   referenceNo?: string | null     // SOA reference number (assigned at submission)
+  proofOfDeliveryUrls?: string[] | null // delivery receipt photos, attached any time after generation
 }
 
 
@@ -373,6 +374,34 @@ export default function SoaReport({ wallets, isAdmin, canWrite = true }: SoaRepo
       setSubmitError(e instanceof Error ? e.message : 'Failed to record the submission')
     } finally {
       setSubmitBusy(false)
+    }
+  }
+
+  // Proof of delivery: photos showing the printed SOA physically reached the
+  // HMO (delivery receipt, courier tracking). Attached per record from the
+  // table; the whole list is saved on each change.
+  const [podFor, setPodFor] = useState<SoaListRecord | null>(null)
+  const [podUrls, setPodUrls] = useState<string[]>([])
+  const [podBusy, setPodBusy] = useState(false)
+  const [podError, setPodError] = useState('')
+  const savePod = async () => {
+    if (!podFor) return
+    setPodBusy(true)
+    setPodError('')
+    try {
+      const r = await fetch('/api/accounts-receivable/soa', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'proof-of-delivery', id: podFor.id, urls: podUrls }),
+      })
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.error || 'Failed to save the proof of delivery')
+      setPodFor(null)
+      await fetchRecords()
+    } catch (e) {
+      setPodError(e instanceof Error ? e.message : 'Failed to save the proof of delivery')
+    } finally {
+      setPodBusy(false)
     }
   }
 
@@ -797,16 +826,17 @@ export default function SoaReport({ wallets, isAdmin, canWrite = true }: SoaRepo
                 <th className="text-left px-4 py-3 text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>By</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>Submitted</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>SOA Ref</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>Delivery Proof</th>
                 <th className="text-right px-4 py-3 text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {loadingRecords ? (
-                <tr><td colSpan={7} className="px-4 py-10 text-center text-xs" style={{ color: 'var(--mid-gray)' }}>
+                <tr><td colSpan={8} className="px-4 py-10 text-center text-xs" style={{ color: 'var(--mid-gray)' }}>
                   <Loader2 size={16} className="animate-spin inline mr-2" />Loading…
                 </td></tr>
               ) : filteredRecords.length === 0 ? (
-                <tr><td colSpan={7} className="px-4 py-10 text-center text-xs" style={{ color: 'var(--mid-gray)' }}>
+                <tr><td colSpan={8} className="px-4 py-10 text-center text-xs" style={{ color: 'var(--mid-gray)' }}>
                   {canWrite ? 'No SOA records found. Generate your first SOA above.' : 'No SOA records found.'}
                 </td></tr>
               ) : filteredRecords.map(r => (
@@ -853,6 +883,26 @@ export default function SoaReport({ wallets, isAdmin, canWrite = true }: SoaRepo
                   </td>
                   <td className="px-4 py-3 text-xs font-mono whitespace-nowrap" style={{ color: r.referenceNo ? 'var(--deep-teal)' : 'var(--mid-gray)' }}>
                     {r.referenceNo || '—'}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-1.5">
+                      {(r.proofOfDeliveryUrls || []).map((u, i) => (
+                        <a key={u} href={u} target="_blank" rel="noopener noreferrer"
+                          className="text-xs font-medium underline whitespace-nowrap" style={{ color: 'var(--teal)' }}
+                          title={`Open delivery proof ${i + 1}`}>#{i + 1}</a>
+                      ))}
+                      {canWrite ? (
+                        <button
+                          onClick={() => { setPodFor(r); setPodUrls(Array.isArray(r.proofOfDeliveryUrls) ? r.proofOfDeliveryUrls : []); setPodError('') }}
+                          className="flex items-center gap-1 px-2 py-1 rounded-lg border text-[11px] font-medium hover:bg-gray-50"
+                          style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}
+                          title="Attach proof of delivery — upload a file or scan with your phone via QR">
+                          <Upload size={10} /> {(r.proofOfDeliveryUrls?.length || 0) > 0 ? 'Edit' : 'Attach'}
+                        </button>
+                      ) : (r.proofOfDeliveryUrls?.length || 0) === 0 ? (
+                        <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>—</span>
+                      ) : null}
+                    </div>
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1.5">
@@ -947,6 +997,49 @@ export default function SoaReport({ wallets, isAdmin, canWrite = true }: SoaRepo
               <button onClick={markSubmitted} disabled={submitBusy || !submitDate}
                 className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>
                 {submitBusy ? <><Loader2 size={13} className="animate-spin" /> Recording…</> : 'Record as Submitted'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Proof-of-delivery dialog (the Attach button in the Delivery Proof column) */}
+      {podFor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/40" onClick={() => !podBusy && setPodFor(null)} />
+          <div className="relative z-10 w-full max-w-sm rounded-2xl bg-white shadow-2xl p-5 space-y-4">
+            <h3 className="text-base font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>Proof of delivery</h3>
+            <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+              <strong>{podFor.walletName}</strong> — {periodLabel(podFor.period)}.
+              Attach proof this SOA reached the HMO (delivery receipt photo, courier tracking screenshot).
+              Upload a file or scan the QR with your phone to snap a photo.
+            </p>
+            {podUrls.length > 0 && (
+              <div className="rounded-lg border divide-y" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                {podUrls.map((u, i) => (
+                  <div key={u} className="flex items-center justify-between gap-1 px-2 py-1">
+                    <a href={u} target="_blank" rel="noopener noreferrer" className="text-[11px] font-medium hover:underline truncate" style={{ color: 'var(--teal)' }}>Proof {i + 1}</a>
+                    <button onClick={() => setPodUrls(prev => prev.filter(x => x !== u))} className="p-0.5 rounded hover:bg-red-50"><X size={10} className="text-red-400" /></button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <ScanUpload compact section="soa-delivery" prefix={`SOAPOD-${podFor.id.slice(-6).toUpperCase()}`}
+              existingCount={podUrls.length} onUploaded={u => setPodUrls(prev => [...prev, u])}
+              label={podUrls.length > 0 ? '+ Add' : 'Upload'} />
+            {podError && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs" style={{ background: '#fef2f2', color: '#dc2626' }}>
+                <AlertCircle size={13} /> {podError}
+              </div>
+            )}
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setPodFor(null)} disabled={podBusy}
+                className="px-4 py-2 rounded-xl text-sm font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                Cancel
+              </button>
+              <button onClick={savePod} disabled={podBusy}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>
+                {podBusy ? <><Loader2 size={13} className="animate-spin" /> Saving…</> : 'Save'}
               </button>
             </div>
           </div>
