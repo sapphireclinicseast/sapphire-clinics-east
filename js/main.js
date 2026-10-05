@@ -80,6 +80,9 @@ const SITE_CONFIG = {
     { name: 'Reedley International School',    imgSrc: 'PARTNERS/REEDLEY INTERNATIONAL SCHOOL.png' },
     { name: 'Immaculate Conception Academy',  imgSrc: 'PARTNERS/IMMACULATE CONCEPTION ACADEMY.png' },
     { name: 'Lourdes School Mandaluyong',     imgSrc: 'PARTNERS/LOURDES SCHOOL MANDALUYONG.png' },
+    { name: 'Lorenzo Ruiz de Manila School', imgSrc: 'PARTNERS/LORENZO RUIZ DE MANILA SCHOOL.png' },
+    { name: 'San Lorenzo Ruiz de Manila School', imgSrc: 'PARTNERS/SAN LORENZO RUIZ DE MANILA SCHOOL.png' },
+    { name: 'KILA',                           imgSrc: 'PARTNERS/KILA.png' },
   ],
 
   /* ── Branches ── */
