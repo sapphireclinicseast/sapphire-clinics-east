@@ -38,6 +38,7 @@ export default function ExpandedWithholding() {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [showRfpModal, setShowRfpModal] = useState(false)
   const [showOtherIncome, setShowOtherIncome] = useState(false)
+  const [showBulkNoSi, setShowBulkNoSi] = useState(false)
   const [siStatus, setSiStatus] = useState<Record<string, string>>({}) // `${ym}|${NAME}` → Submitted|Pending|No SI
   const [tinMap, setTinMap] = useState<Record<string, string>>({}) // normName → TIN (from HR Hub staff profile)
   const [syncing, setSyncing] = useState(false)
@@ -222,6 +223,13 @@ export default function ExpandedWithholding() {
             {syncing ? <Loader2 size={13} className="inline animate-spin" /> : <RefreshCw size={13} />} Sync with HR Hub
           </button>
           {syncedAt && <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>synced {syncedAt}</span>}
+          {canWrite && (
+            <button onClick={() => setShowBulkNoSi(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border"
+              title="Declare every unremitted no-SI EWT item up to a chosen month as Other Income — all branches, one entry per accrual month"
+              style={{ borderColor: '#6d28d9', color: '#6d28d9' }}>
+              Bulk: declare no-SI EWT…
+            </button>
+          )}
         </div>
         {canWrite && selected.size > 0 && (
           <div className="flex items-center gap-2">
@@ -308,6 +316,9 @@ export default function ExpandedWithholding() {
       )}
       {payTarget && <RecordPaidModal rfp={payTarget} onClose={() => setPayTarget(null)} onSaved={async () => { setPayTarget(null); await fetchRfps() }} />}
       {bv && <BillingVoucherModal refNumber={bv.refNumber} date={bv.date} lines={bv.lines} branch={bv.branch} payment={bv.payment} onClose={() => setBv(null)} />}
+      {showBulkNoSi && (
+        <BulkNoSiModal onClose={() => setShowBulkNoSi(false)} onDone={() => { setShowBulkNoSi(false); setSelected(new Set()); fetchItems(); fetchRfps() }} />
+      )}
       {showOtherIncome && (
         <OtherIncomeModal payrollBranch={branch} total={selectedTotal}
           consultantIds={shown.filter(e => selected.has(e.id) && e.source === 'CONSULTANT').map(e => e.id)}
@@ -523,6 +534,68 @@ function RecordPaidModal({ rfp, onClose, onSaved }: { rfp: TaxRfp; onClose: () =
           <button onClick={save} disabled={busy} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>{busy ? <Loader2 size={15} className="inline animate-spin" /> : 'Save payment'}</button>
           {rfp.status === 'PAID' && <button onClick={unpay} disabled={busy} className="px-4 py-2.5 rounded-xl text-sm font-semibold border" style={{ borderColor: '#fca5a5', color: '#b91c1c' }}>Unpay</button>}
         </div>
+      </div>
+    </div>
+  )
+}
+
+function BulkNoSiModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  const [throughMonth, setThroughMonth] = useState('2026-08')
+  const [preview, setPreview] = useState<{ byBranch: Record<string, { items: number; amount: number }>; total: number } | null>(null)
+  const [accts, setAccts] = useState<{ id: string; accountNumber: string; accountTitle: string }[]>([])
+  const [incomeAccountId, setAcct] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  useEffect(() => {
+    fetch('/api/chart-of-accounts?pageSize=1000').then(r => r.ok ? r.json() : { data: [] }).then(d => {
+      const revs = (d.data || []).filter((a: { accountType: string }) => a.accountType === 'REVENUE')
+      setAccts(revs)
+      // Default straight to 7220 Other Income — the account every past declaration used.
+      const seventy220 = revs.find((a: { accountNumber: string }) => a.accountNumber === '7220')
+      if (seventy220) setAcct(seventy220.id)
+    }).catch(() => {})
+  }, [])
+  useEffect(() => {
+    setPreview(null); setErr('')
+    if (!/^\d{4}-\d{2}$/.test(throughMonth)) return
+    fetch('/api/taxes/ewt-other-income', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'bulk-no-si', throughMonth, preview: true }) })
+      .then(r => r.json()).then(d => d.preview ? setPreview(d) : setErr(d.error || 'No preview'))
+      .catch(() => setErr('Preview failed'))
+  }, [throughMonth])
+  const chosen = accts.find(a => a.id === incomeAccountId)
+  const run = async () => {
+    if (!incomeAccountId) { setErr('Choose the income account.'); return }
+    setBusy(true); setErr('')
+    try {
+      const r = await fetch('/api/taxes/ewt-other-income', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'bulk-no-si', throughMonth, incomeAccountId }) })
+      const d = await r.json()
+      if (!r.ok) { setErr(d.error || 'Failed'); return }
+      alert(`Declared ₱${peso(d.totalAmount)} across ${d.entries.length} monthly entr${d.entries.length === 1 ? 'y' : 'ies'} (${d.items} items).`)
+      onDone()
+    } finally { setBusy(false) }
+  }
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-3"><h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>Bulk: declare no-SI EWT as Other Income</h2><button onClick={onClose}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button></div>
+        <p className="text-xs mb-3" style={{ color: 'var(--mid-gray)' }}>Every unremitted EWT item with <strong>no official sales invoice</strong> (consultants without a COR; expenses without an SI number), across <strong>all branches</strong>, up to and including the chosen month. Posts one entry per branch per accrual month, dated at that month&apos;s end — no bank movement.</p>
+        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Through month</label>
+        <input type="month" value={throughMonth} onChange={e => setThroughMonth(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }} />
+        {preview && (
+          <div className="rounded-xl border p-3 mb-3 text-xs space-y-1" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+            {Object.entries(preview.byBranch).map(([b, g]) => <div key={b} className="flex justify-between"><span>{b}</span><span>{g.items} item(s) · ₱{peso(g.amount)}</span></div>)}
+            <div className="flex justify-between font-bold pt-1 border-t" style={{ borderColor: 'var(--light-gray)' }}><span>Total</span><span>₱{peso(preview.total)}</span></div>
+          </div>
+        )}
+        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Income account</label>
+        <select value={incomeAccountId} onChange={e => setAcct(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }}>
+          <option value="">— choose —</option>
+          {accts.map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}
+        </select>
+        {err && <p className="text-xs mb-2" style={{ color: '#b91c1c' }}>{err}</p>}
+        <button onClick={run} disabled={busy || !preview || !incomeAccountId} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: '#6d28d9' }}>
+          {busy ? <Loader2 size={15} className="inline animate-spin" /> : `Declare ${preview ? `₱${peso(preview.total)}` : ''} as ${chosen ? chosen.accountNumber : 'Other Income'}`}
+        </button>
       </div>
     </div>
   )
