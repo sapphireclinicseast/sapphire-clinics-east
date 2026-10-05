@@ -200,11 +200,15 @@ export default function BudgetsPage() {
       ))}
     </>)
     return (
-      <div className="overflow-x-auto rounded-2xl border" style={{ borderColor: 'var(--light-gray)' }}>
+      <div className="rounded-2xl border" style={{ borderColor: 'var(--light-gray)' }}>
         <table className="w-full text-sm">
-          <thead><tr style={{ background: 'var(--charcoal)' }}>
+          {/* Sticky needs the wrapper free of overflow clipping (the header pins against
+              the dashboard <main> scroll, so no overflow-x-auto here — main scrolls if
+              narrow) AND must sit on the th cells: Chromium ignores sticky on tr/thead,
+              which is why the first attempt never locked. */}
+          <thead><tr>
             {['{M} {Y} — Line Item'.replace('{M}', vsMonth === 0 ? 'Full Year' : MONTHS[vsMonth - 1]).replace('{Y}', String(year)), 'Budget', 'Actual', 'Variance'].map((h, i) =>
-              <th key={h} className={`px-4 py-3 text-xs font-semibold uppercase tracking-wide text-white ${i === 0 ? 'text-left' : 'text-right'}`}>{h}</th>)}
+              <th key={h} className={`sticky top-0 z-10 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-white ${i === 0 ? 'text-left rounded-tl-2xl' : 'text-right'} ${i === 3 ? 'rounded-tr-2xl' : ''}`} style={{ background: 'var(--charcoal)' }}>{h}</th>)}
           </tr></thead>
           <tbody>
             <Sec title="Revenue" rs={vs.rev} />
@@ -263,13 +267,18 @@ export default function BudgetsPage() {
         <div className="py-20 text-center"><Loader2 size={22} className="inline animate-spin" style={{ color: 'var(--teal)' }} /></div>
       ) : view === 'enter' ? (
         <>
-          <div className="overflow-x-auto rounded-2xl border" style={{ borderColor: 'var(--light-gray)' }}>
+          {/* This grid must keep its own horizontal scroll (12 months + total), so the
+              sticky header pins inside the wrapper: cap its height and scroll both axes here. */}
+          <div className="overflow-auto rounded-2xl border max-h-[calc(100vh-210px)]" style={{ borderColor: 'var(--light-gray)' }}>
             <table className="text-sm border-collapse">
               <thead>
-                <tr style={{ background: 'var(--charcoal)' }}>
-                  <th className={`${stickyCol} px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-white`} style={{ background: 'var(--charcoal)' }}>{year} — Line Item</th>
+                {/* Sticky must be per-th (Chromium ignores it on tr/thead), and each th
+                    carries its own background: a row's paint doesn't follow a stuck cell.
+                    z order: corner (both axes) > month headers > body's sticky first col. */}
+                <tr>
+                  <th className="sticky left-0 top-0 z-30 min-w-[240px] max-w-[240px] px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-white" style={{ background: 'var(--charcoal)' }}>{year} — Line Item</th>
                   {MS.map(m => (
-                    <th key={m} className="px-1.5 py-2 text-center text-xs font-semibold text-white min-w-[92px]">
+                    <th key={m} className="sticky top-0 z-20 px-1.5 py-2 text-center text-xs font-semibold text-white min-w-[92px]" style={{ background: 'var(--charcoal)' }}>
                       <div className="flex flex-col items-center gap-0.5">
                         <span>{MON[m - 1]}</span>
                         {canEdit && (
@@ -280,7 +289,7 @@ export default function BudgetsPage() {
                       </div>
                     </th>
                   ))}
-                  <th className="px-2 py-3 text-right text-xs font-semibold uppercase tracking-wide text-white min-w-[96px]">Year Total</th>
+                  <th className="sticky top-0 z-20 px-2 py-3 text-right text-xs font-semibold uppercase tracking-wide text-white min-w-[96px]" style={{ background: 'var(--charcoal)' }}>Year Total</th>
                 </tr>
               </thead>
               <tbody>
