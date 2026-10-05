@@ -487,7 +487,7 @@ function OtherIncomeModal({ payrollBranch, total, consultantIds, expenseIds, onC
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3"><h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>Declare as Other Income</h2><button onClick={onClose}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button></div>
-        <p className="text-sm mb-3" style={{ color: 'var(--mid-gray)' }}>{consultantIds.length + expenseIds.length} item(s) · total <strong>₱{peso(total)}</strong>. Posts Dr Withholding Tax Payable / Cr the chosen income account — <strong>no bank movement</strong>.</p>
+        <p className="text-sm mb-3" style={{ color: 'var(--mid-gray)' }}>{consultantIds.length + expenseIds.length} item(s) · total <strong>₱{peso(total)}</strong>. Posts Dr Withholding Tax Payable / Cr the chosen income account — <strong>one entry per accrual month, dated at that month&apos;s end</strong>, no bank movement.</p>
         <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Other Income account title</label>
         <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search income accounts…" className="w-full px-3 py-2 rounded-xl border text-sm mb-1" style={{ borderColor: 'var(--light-gray)' }} />
         <div className="rounded-xl border overflow-auto mb-4" style={{ borderColor: 'var(--light-gray)', maxHeight: 220 }}>
