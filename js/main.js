@@ -83,6 +83,7 @@ const SITE_CONFIG = {
     { name: 'Lorenzo Ruiz de Manila School', imgSrc: 'PARTNERS/LORENZO RUIZ DE MANILA SCHOOL.png' },
     { name: 'San Lorenzo Ruiz de Manila School', imgSrc: 'PARTNERS/SAN LORENZO RUIZ DE MANILA SCHOOL.png' },
     { name: 'KILA',                           imgSrc: 'PARTNERS/KILA.png' },
+    { name: 'Siena College of Taytay',      imgSrc: 'PARTNERS/SIENA COLLEGE OF TAYTAY.png' },
   ],
 
   /* ── Branches ── */
