@@ -1041,6 +1041,9 @@ function OrderFormModal({
   const [referrerId, setReferrerId] = useState('')
   const [referrerSearch, setReferrerSearch] = useState('')
   const [showReferrerDrop, setShowReferrerDrop] = useState(false)
+  // Returning patient: their referrer from history (Referred-patients link, else
+  // last order) is offered as a one-click confirm under the Doctor Referral field.
+  const [refSuggest, setRefSuggest] = useState<{ referrerId: string; name: string; source: string; lastDate?: string } | null>(null)
   const [showAddReferrer, setShowAddReferrer] = useState(false)
   const [newRef, setNewRef] = useState({ name: '', type: 'DOCTOR', affiliation: '', specialization: '' })
   const [showWalletPay, setShowWalletPay] = useState(false)
@@ -1105,6 +1108,24 @@ function OrderFormModal({
       } catch { setPatients([]) }
     }, 300)
   }, [patientSearch])
+
+  // Referral history for the chosen patient — debounced so free-typed names
+  // only query once they settle; an exact-name or CRM-id match is required
+  // server-side, so partial names simply return nothing.
+  useEffect(() => {
+    setRefSuggest(null)
+    const pname = patientName.trim()
+    if (!patientId && pname.length < 3) return
+    const t = setTimeout(async () => {
+      try {
+        const r = await fetch(`/api/referrers/suggest?patientId=${encodeURIComponent(patientId)}&patientName=${encodeURIComponent(pname)}`)
+        if (!r.ok) return
+        const d = await r.json()
+        if (d?.referrerId) setRefSuggest(d)
+      } catch { /* suggestion only — stay quiet */ }
+    }, 400)
+    return () => clearTimeout(t)
+  }, [patientId, patientName])
 
   // Clinician search
   useEffect(() => {
@@ -2189,6 +2210,19 @@ function OrderFormModal({
           {orderType === 'SERVICE' && (
             <div className="relative">
               <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Doctor Referral (optional)</label>
+              {refSuggest && !referrerId && (
+                <button type="button"
+                  onClick={() => { setReferrerId(refSuggest.referrerId); setReferrerSearch(refSuggest.name); setShowReferrerDrop(false) }}
+                  className="w-full mb-1.5 px-3 py-2 rounded-xl border text-left text-xs font-medium flex items-center justify-between gap-2"
+                  style={{ borderColor: 'var(--teal)', background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}
+                  title="This patient's referrer from their history — click to fill the field">
+                  <span className="truncate">
+                    ↺ {refSuggest.name}
+                    <span className="font-normal"> — {refSuggest.source === 'linked' ? 'linked referrer' : `last order ${refSuggest.lastDate ? new Date(refSuggest.lastDate).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' }) : ''}`}</span>
+                  </span>
+                  <span className="shrink-0 font-semibold">Click to confirm</span>
+                </button>
+              )}
               <div className="flex gap-2">
                 <div className="flex-1 relative">
                   <input

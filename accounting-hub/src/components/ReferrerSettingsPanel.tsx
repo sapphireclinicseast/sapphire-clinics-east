@@ -120,6 +120,21 @@ export default function ReferrerSettingsPanel() {
 
   useEffect(() => { fetchReferrers() }, [fetchReferrers])
 
+  // HR Hub doctors (department MD) get their in-house Referrer row created
+  // automatically — fired on every visit (idempotent server-side), so nobody
+  // has to add our own doctors by hand. Refreshes the lists when it changed
+  // anything; failures stay silent (the HR feed being down shouldn't nag).
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetch('/api/referrers/sync-inhouse', { method: 'POST' })
+        if (!r.ok) return
+        const d = await r.json()
+        if ((d.created || 0) + (d.tagged || 0) > 0) fetchReferrers()
+      } catch { /* ignore */ }
+    })()
+  }, [fetchReferrers])
+
   const openCreate = () => { setEditingId(null); setForm({ name: '', type: 'DOCTOR', affiliation: '', specialization: '', branches: [], isInhouse: false }); setError(''); setShowForm(true) }
   const openEdit = (r: Ref) => { setEditingId(r.id); setForm({ name: r.name, type: r.type || 'DOCTOR', affiliation: r.affiliation || '', specialization: r.specialization || '', branches: r.branches || [], isInhouse: !!r.isInhouse }); setError(''); setShowForm(true) }
   const toggleBranch = (b: string) => setForm(f => ({ ...f, branches: f.branches.includes(b) ? f.branches.filter(x => x !== b) : [...f.branches, b] }))
