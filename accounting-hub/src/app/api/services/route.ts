@@ -24,8 +24,14 @@ export async function GET(req: Request) {
   const sortField = searchParams.get('sortField') || 'name'
   const sortDir = searchParams.get('sortDir') === 'desc' ? 'desc' : 'asc'
 
+  // Disabled services are hidden by default so every picker (POS, pay links,
+  // quotations) only ever offers active ones. The Services management page may
+  // opt in to see disabled/all via ?status= so they can be reviewed or re-enabled.
+  const status = searchParams.get('status') || 'active'
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const where: any = { isActive: true }
+  const where: any = {}
+  if (status === 'inactive') where.isActive = false
+  else if (status !== 'all') where.isActive = true
 
   if (search) {
     where.name = { contains: search, mode: 'insensitive' }
@@ -430,6 +436,31 @@ export async function DELETE(req: Request) {
     })
 
     return NextResponse.json({ message: 'Service deactivated' })
+  } catch {
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
+// Re-enable a previously disabled service — the mirror of DELETE's soft-disable.
+// The service row (and all its history on past orders) was never removed, so
+// flipping isActive back to true makes it available for new orders again.
+export async function PATCH(req: Request) {
+  const session = await auth()
+  if (!session?.user || !WRITE_ROLES.includes(session.user.role as string)) {
+    return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
+  }
+
+  try {
+    const { searchParams } = new URL(req.url)
+    const id = searchParams.get('id')
+    if (!id) return NextResponse.json({ error: 'Service ID is required' }, { status: 400 })
+
+    await prisma.service.update({ where: { id }, data: { isActive: true } })
+    await prisma.auditLog.create({
+      data: { userId: session.user.id, action: 'REACTIVATE', entity: 'service', entityId: id },
+    })
+
+    return NextResponse.json({ message: 'Service re-enabled' })
   } catch {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }

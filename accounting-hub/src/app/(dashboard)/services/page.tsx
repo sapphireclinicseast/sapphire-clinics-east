@@ -4,8 +4,9 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { userBranchScope } from '@/lib/branch-scope'
 import { useSession } from 'next-auth/react'
 import {
-  Plus, Pencil, Trash2, X, Search, Stethoscope,
+  Plus, Pencil, X, Search, Stethoscope,
   ArrowUpDown, ChevronUp, ChevronDown, AlertCircle, XCircle, FileCheck, History, Loader2,
+  Ban, RotateCcw,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { downloadXlsx, downloadPdf } from '@/lib/export'
@@ -126,6 +127,7 @@ export default function ServicesPage() {
   const lockBranch = scope.enum || (isFrontDesk ? userBranch : null) || null
   const [filterBranch, setFilterBranch] = useState('')
   const [filterPayType, setFilterPayType] = useState('') // '' | CASH | HMO | GL
+  const [filterStatus, setFilterStatus] = useState<'active' | 'inactive' | 'all'>('active')
   const [sortField, setSortField] = useState('name')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [error, setError] = useState('')
@@ -200,6 +202,7 @@ export default function ServicesPage() {
       if (search) params.set('search', search)
       if (filterDept) params.set('department', filterDept)
       if (filterBranch) params.set('branch', filterBranch)
+      if (filterStatus !== 'active') params.set('status', filterStatus)
       const res = await fetch(`/api/services?${params}`, { signal: ctl.signal })
       const data = await res.json()
       if (seq !== fetchSeqRef.current) return
@@ -212,7 +215,7 @@ export default function ServicesPage() {
     } finally {
       if (seq === fetchSeqRef.current) setLoading(false)
     }
-  }, [search, filterDept, filterBranch, sortField, sortDir])
+  }, [search, filterDept, filterBranch, filterStatus, sortField, sortDir])
 
   // Lock branch filter for branch-locked users (single-branch assignment or front desk)
   useEffect(() => {
@@ -253,7 +256,7 @@ export default function ServicesPage() {
     const timeout = setTimeout(() => { fetchServices() }, 300)
     return () => clearTimeout(timeout)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, filterDept, filterBranch, sortField, sortDir])
+  }, [search, filterDept, filterBranch, filterStatus, sortField, sortDir])
 
   // Search earned services for eligible services picker (independent of table filters)
   useEffect(() => {
@@ -420,6 +423,16 @@ export default function ServicesPage() {
     } catch { setError('Network error') }
   }
 
+  // Re-enable a disabled service (mirror of the soft-disable above). Nothing was
+  // ever deleted, so this just makes it selectable for new orders again.
+  async function handleReactivate(id: string) {
+    try {
+      const res = await fetch(`/api/services?id=${id}`, { method: 'PATCH' })
+      if (!res.ok) { const d = await res.json(); setError(d.error || 'Failed to re-enable'); return }
+      fetchServices()
+    } catch { setError('Network error') }
+  }
+
   // PWD discount preview calculation — pass explicit figures to preview the
   // scheduled new rate; defaults preview the current one.
   function calcPwdPreview(price?: number, doctorFee?: number, clinicFee?: number) {
@@ -569,6 +582,14 @@ export default function ServicesPage() {
             {(lockBranch ? BRANCHES.filter(b => b.value === lockBranch) : BRANCHES).map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
           </select>
         )}
+        <select value={filterStatus} onChange={(e) => { setFilterStatus(e.target.value as 'active' | 'inactive' | 'all'); setSvcPage(1) }}
+          className="px-3 py-2.5 rounded-xl border text-sm outline-none"
+          style={{ borderColor: 'var(--light-gray)', background: 'white' }}
+          title="Show active, disabled, or all services">
+          <option value="active">Active</option>
+          <option value="inactive">Disabled</option>
+          <option value="all">All</option>
+        </select>
       </div>
 
       {/* Error */}
@@ -621,12 +642,15 @@ export default function ServicesPage() {
                 const badge = DEPT_BADGE[s.department] || { bg: '#f3f4f6', color: '#374151' }
 
                 return (
-                  <tr key={s.id} className="border-t hover:bg-gray-50/50 transition-colors" style={{ borderColor: 'var(--light-gray)' }}>
+                  <tr key={s.id} className="border-t hover:bg-gray-50/50 transition-colors" style={{ borderColor: 'var(--light-gray)', opacity: s.isActive ? 1 : 0.6 }}>
                     <td className="px-4 py-3 font-medium" style={{ color: 'var(--charcoal)' }}>
                       <span className="flex items-center gap-1.5">
                         {s.name}
                         {s.issuedOfficialInvoice && (
                           <span title="Issued Official Sales Invoice" className="flex-shrink-0"><FileCheck size={14} style={{ color: '#16a34a' }} /></span>
+                        )}
+                        {!s.isActive && (
+                          <span className="flex-shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#f3f4f6', color: '#6b7280' }}>Disabled</span>
                         )}
                       </span>
                       {s.revenueAccount && (
@@ -721,9 +745,15 @@ export default function ServicesPage() {
                             <button onClick={() => openEdit(s)} className="p-2 rounded-lg hover:bg-gray-100 transition-colors" title="Edit">
                               <Pencil size={15} style={{ color: 'var(--teal)' }} />
                             </button>
-                            <button onClick={() => setDeleteConfirm(s)} className="p-2 rounded-lg hover:bg-red-50 transition-colors" title="Delete">
-                              <Trash2 size={15} className="text-red-500" />
-                            </button>
+                            {s.isActive ? (
+                              <button onClick={() => setDeleteConfirm(s)} className="p-2 rounded-lg hover:bg-amber-50 transition-colors" title="Disable (hides from new orders, keeps all history)">
+                                <Ban size={15} className="text-amber-600" />
+                              </button>
+                            ) : (
+                              <button onClick={() => handleReactivate(s.id)} className="p-2 rounded-lg hover:bg-emerald-50 transition-colors" title="Enable (make available for new orders again)">
+                                <RotateCcw size={15} className="text-emerald-600" />
+                              </button>
+                            )}
                           </>
                         )}
                       </div>
@@ -744,14 +774,16 @@ export default function ServicesPage() {
       {deleteConfirm && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-xl">
-            <h3 className="text-lg font-bold mb-2" style={{ color: 'var(--charcoal)' }}>Deactivate Service</h3>
+            <h3 className="text-lg font-bold mb-2" style={{ color: 'var(--charcoal)' }}>Disable Service</h3>
             <p className="text-sm mb-2" style={{ color: 'var(--mid-gray)' }}>
               <strong>{deleteConfirm.name}</strong> — {DEPT_LABELS[deleteConfirm.department]}
             </p>
-            <p className="text-sm mb-6" style={{ color: 'var(--mid-gray)' }}>This will hide the service from active listings.</p>
+            <p className="text-sm mb-6" style={{ color: 'var(--mid-gray)' }}>
+              This hides it from new orders and listings. Nothing is deleted — all past orders, reports, and history keep it, and you can re-enable it anytime from the <strong>Disabled</strong> filter.
+            </p>
             <div className="flex gap-3 justify-end">
               <button onClick={() => setDeleteConfirm(null)} className="px-4 py-2 rounded-lg text-sm border" style={{ borderColor: 'var(--light-gray)' }}>Cancel</button>
-              <button onClick={() => handleDelete(deleteConfirm.id)} className="px-4 py-2 rounded-lg text-sm text-white bg-red-500 hover:bg-red-600">Deactivate</button>
+              <button onClick={() => handleDelete(deleteConfirm.id)} className="px-4 py-2 rounded-lg text-sm text-white" style={{ background: 'var(--amber, #d97706)' }}>Disable</button>
             </div>
           </div>
         </div>
