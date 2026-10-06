@@ -877,7 +877,7 @@ export default function ServicesPage() {
                     }
                     return (
                       <div key={br} className="mb-2 last:mb-0">
-                        <p className="text-xs font-medium mb-1" style={{ color: 'var(--charcoal)' }}>{br === 'SANDBOX_EAST' ? 'East Branch' : 'Greenhills Branch'}</p>
+                        <p className="text-xs font-medium mb-1" style={{ color: 'var(--charcoal)' }}>{BRANCH_LABELS[br] || br}</p>
                         <div className="grid grid-cols-3 gap-2">
                           <input type="number" step="0.01" value={bp.price} onChange={(e) => update('price', e.target.value)}
                             placeholder="Price" className="px-2 py-1.5 rounded-lg border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }} />
