@@ -539,12 +539,25 @@ function RecordPaidModal({ rfp, onClose, onSaved }: { rfp: TaxRfp; onClose: () =
   )
 }
 
+const NICE_BRANCH: Record<string, string> = {
+  SBEA: 'East', SBGH: 'Greenhills', VERDANA: 'Verdana',
+  SANDBOX_EAST: 'East', SANDBOX_GREENHILLS: 'Greenhills', VERDANA_STORE: 'Verdana Store', AURA_INSTITUTE: 'Aura Institute',
+}
+
+type NoSiItem = { id: string; kind: 'cons' | 'exp'; ym: string; amount: number; declared: boolean; label: string }
+type NoSiPerson = { key: string; kind: string; name: string; branch: string; items: NoSiItem[]; amount: number; declaredCount: number }
+
 function BulkNoSiModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
   const [throughMonth, setThroughMonth] = useState('2026-08')
-  const [preview, setPreview] = useState<{ byBranch: Record<string, { items: number; amount: number }>; total: number } | null>(null)
+  const [people, setPeople] = useState<NoSiPerson[] | null>(null)
+  // Checkbox state per person: ticked = should be declared. Everyone starts
+  // ticked (declare all is the default action); unticking a person with
+  // declared items queues their undo.
+  const [wanted, setWanted] = useState<Record<string, boolean>>({})
   const [accts, setAccts] = useState<{ id: string; accountNumber: string; accountTitle: string }[]>([])
   const [incomeAccountId, setAcct] = useState('')
   const [busy, setBusy] = useState(false)
+  const [loading, setLoading] = useState(false)
   const [err, setErr] = useState('')
   useEffect(() => {
     fetch('/api/chart-of-accounts?pageSize=1000').then(r => r.ok ? r.json() : { data: [] }).then(d => {
@@ -555,46 +568,135 @@ function BulkNoSiModal({ onClose, onDone }: { onClose: () => void; onDone: () =>
       if (seventy220) setAcct(seventy220.id)
     }).catch(() => {})
   }, [])
-  useEffect(() => {
-    setPreview(null); setErr('')
+  const loadPeople = () => {
+    setPeople(null); setErr('')
     if (!/^\d{4}-\d{2}$/.test(throughMonth)) return
-    fetch('/api/taxes/ewt-other-income', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'bulk-no-si', throughMonth, preview: true }) })
-      .then(r => r.json()).then(d => d.preview ? setPreview(d) : setErr(d.error || 'No preview'))
-      .catch(() => setErr('Preview failed'))
-  }, [throughMonth])
+    setLoading(true)
+    fetch('/api/taxes/ewt-other-income', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'no-si-people', throughMonth }) })
+      .then(r => r.json()).then(d => {
+        if (!d.people) { setErr(d.error || 'Could not load the list'); return }
+        setPeople(d.people)
+        setWanted(Object.fromEntries((d.people as NoSiPerson[]).map(p => [p.key, true])))
+      })
+      .catch(() => setErr('Could not load the list'))
+      .finally(() => setLoading(false))
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { loadPeople() }, [throughMonth])
+
+  const toDeclare = (people || []).flatMap(p => wanted[p.key] ? p.items.filter(i => !i.declared) : [])
+  const toUndo = (people || []).flatMap(p => wanted[p.key] === false ? p.items.filter(i => i.declared) : [])
+  const sum = (xs: NoSiItem[]) => Math.round(xs.reduce((s, i) => s + i.amount, 0) * 100) / 100
+  const declareAmt = sum(toDeclare)
+  const undoAmt = sum(toUndo)
+  const tickedByBranch = (people || []).reduce<Record<string, { items: number; amount: number }>>((acc, p) => {
+    if (!wanted[p.key]) return acc
+    const b = NICE_BRANCH[p.branch] || p.branch
+    const g = acc[b] || { items: 0, amount: 0 }
+    g.items += p.items.length
+    g.amount = Math.round((g.amount + p.amount) * 100) / 100
+    acc[b] = g
+    return acc
+  }, {})
+  const byBranchGroups = (people || []).reduce<Record<string, NoSiPerson[]>>((acc, p) => {
+    const b = NICE_BRANCH[p.branch] || p.branch
+    ;(acc[b] = acc[b] || []).push(p)
+    return acc
+  }, {})
+
   const chosen = accts.find(a => a.id === incomeAccountId)
   const run = async () => {
-    if (!incomeAccountId) { setErr('Choose the income account.'); return }
+    if (toDeclare.length === 0 && toUndo.length === 0) { setErr('Nothing to apply — tick or untick someone first.'); return }
+    if (toDeclare.length > 0 && !incomeAccountId) { setErr('Choose the income account.'); return }
     setBusy(true); setErr('')
     try {
-      const r = await fetch('/api/taxes/ewt-other-income', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'bulk-no-si', throughMonth, incomeAccountId }) })
+      const r = await fetch('/api/taxes/ewt-other-income', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: 'no-si-apply', throughMonth, incomeAccountId: incomeAccountId || undefined,
+          declareConsIds: toDeclare.filter(i => i.kind === 'cons').map(i => i.id),
+          declareExpIds: toDeclare.filter(i => i.kind === 'exp').map(i => i.id),
+          undoConsIds: toUndo.filter(i => i.kind === 'cons').map(i => i.id),
+          undoExpIds: toUndo.filter(i => i.kind === 'exp').map(i => i.id),
+        }),
+      })
       const d = await r.json()
       if (!r.ok) { setErr(d.error || 'Failed'); return }
-      alert(`Declared ₱${peso(d.totalAmount)} across ${d.entries.length} monthly entr${d.entries.length === 1 ? 'y' : 'ies'} (${d.items} items).`)
+      const parts = []
+      if (d.declared?.items) parts.push(`declared ₱${peso(d.declared.totalAmount)} (${d.declared.items} item(s), ${d.declared.entries} monthly entr${d.declared.entries === 1 ? 'y' : 'ies'})`)
+      if (d.undone?.items) parts.push(`undone ₱${peso(d.undone.totalAmount)} (${d.undone.items} item(s))`)
+      alert(`Done: ${parts.join('; ') || 'no changes'}.`)
       onDone()
     } finally { setBusy(false) }
   }
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-3"><h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>Bulk: declare no-SI EWT as Other Income</h2><button onClick={onClose}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button></div>
-        <p className="text-xs mb-3" style={{ color: 'var(--mid-gray)' }}>Every unremitted EWT item with <strong>no official sales invoice</strong> (consultants without a COR; expenses without an SI number), across <strong>all branches</strong>, up to and including the chosen month. Posts one entry per branch per accrual month, dated at that month&apos;s end — no bank movement.</p>
+      <div className="bg-white rounded-2xl p-6 w-full max-w-xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-3"><h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>Declare no-SI EWT as Other Income</h2><button onClick={onClose}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button></div>
+        <p className="text-xs mb-3" style={{ color: 'var(--mid-gray)' }}>Every unremitted EWT item with <strong>no official sales invoice</strong> (consultants without a COR; expenses without an SI number), up to and including the chosen month. <strong>Tick</strong> who to declare — one entry per branch per accrual month, dated at that month&apos;s end, no bank movement. <strong>Untick</strong> someone already declared to undo their share. EWT already remitted to BIR never shows here.</p>
         <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Through month</label>
         <input type="month" value={throughMonth} onChange={e => setThroughMonth(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }} />
-        {preview && (
-          <div className="rounded-xl border p-3 mb-3 text-xs space-y-1" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
-            {Object.entries(preview.byBranch).map(([b, g]) => <div key={b} className="flex justify-between"><span>{b}</span><span>{g.items} item(s) · ₱{peso(g.amount)}</span></div>)}
-            <div className="flex justify-between font-bold pt-1 border-t" style={{ borderColor: 'var(--light-gray)' }}><span>Total</span><span>₱{peso(preview.total)}</span></div>
-          </div>
+        {loading && <p className="text-xs mb-3" style={{ color: 'var(--mid-gray)' }}><Loader2 size={13} className="inline animate-spin mr-1" />Loading the list…</p>}
+        {people && people.length === 0 && <p className="text-xs mb-3" style={{ color: 'var(--mid-gray)' }}>No eligible no-SI EWT items up to this month.</p>}
+        {people && people.length > 0 && (
+          <>
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>{people.length} payee(s)</p>
+              <div className="flex gap-3 text-xs">
+                <button onClick={() => setWanted(Object.fromEntries(people.map(p => [p.key, true])))} className="underline" style={{ color: 'var(--teal)' }}>Tick all</button>
+                <button onClick={() => setWanted(Object.fromEntries(people.map(p => [p.key, false])))} className="underline" style={{ color: 'var(--mid-gray)' }}>Untick all</button>
+              </div>
+            </div>
+            <div className="rounded-xl border mb-3 max-h-72 overflow-y-auto" style={{ borderColor: 'var(--light-gray)' }}>
+              {Object.entries(byBranchGroups).map(([branchLabel, group]) => (
+                <div key={branchLabel}>
+                  <div className="px-3 py-1.5 text-[11px] font-bold sticky top-0" style={{ background: 'var(--off-white)', color: 'var(--charcoal)' }}>{branchLabel}</div>
+                  {group.map(p => {
+                    const fullyDeclared = p.declaredCount === p.items.length && p.declaredCount > 0
+                    const partial = p.declaredCount > 0 && p.declaredCount < p.items.length
+                    return (
+                      <label key={p.key} className="flex items-center gap-2 px-3 py-1.5 border-t cursor-pointer hover:bg-gray-50" style={{ borderColor: 'var(--light-gray)' }}>
+                        <input type="checkbox" checked={!!wanted[p.key]} onChange={e => setWanted(prev => ({ ...prev, [p.key]: e.target.checked }))} />
+                        <span className="flex-1 text-xs truncate" style={{ color: 'var(--charcoal)' }} title={p.name}>{p.name}</span>
+                        {fullyDeclared && <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold whitespace-nowrap" style={{ background: '#dcfce7', color: '#166534' }}>declared</span>}
+                        {partial && <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold whitespace-nowrap" style={{ background: '#fef3c7', color: '#92400e' }}>{p.declaredCount}/{p.items.length} declared</span>}
+                        <span className="text-xs whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{p.items.length} item(s)</span>
+                        <span className="text-xs font-medium whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>₱{peso(p.amount)}</span>
+                      </label>
+                    )
+                  })}
+                </div>
+              ))}
+            </div>
+            <div className="rounded-xl border p-3 mb-3 text-xs space-y-1" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+              {Object.entries(tickedByBranch).map(([b, g]) => <div key={b} className="flex justify-between"><span>{b} (ticked)</span><span>{g.items} item(s) · ₱{peso(g.amount)}</span></div>)}
+              <div className="flex justify-between font-bold pt-1 border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                <span>Will declare</span><span>{toDeclare.length} item(s) · ₱{peso(declareAmt)}</span>
+              </div>
+              {toUndo.length > 0 && (
+                <div className="flex justify-between font-bold" style={{ color: '#b91c1c' }}>
+                  <span>Will undo</span><span>{toUndo.length} item(s) · ₱{peso(undoAmt)}</span>
+                </div>
+              )}
+            </div>
+          </>
         )}
-        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Income account</label>
-        <select value={incomeAccountId} onChange={e => setAcct(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }}>
-          <option value="">— choose —</option>
-          {accts.map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}
-        </select>
+        {toDeclare.length > 0 && (
+          <>
+            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Income account</label>
+            <select value={incomeAccountId} onChange={e => setAcct(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }}>
+              <option value="">— choose —</option>
+              {accts.map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}
+            </select>
+          </>
+        )}
         {err && <p className="text-xs mb-2" style={{ color: '#b91c1c' }}>{err}</p>}
-        <button onClick={run} disabled={busy || !preview || !incomeAccountId} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: '#6d28d9' }}>
-          {busy ? <Loader2 size={15} className="inline animate-spin" /> : `Declare ${preview ? `₱${peso(preview.total)}` : ''} as ${chosen ? chosen.accountNumber : 'Other Income'}`}
+        <button onClick={run} disabled={busy || !people || (toDeclare.length === 0 && toUndo.length === 0) || (toDeclare.length > 0 && !incomeAccountId)}
+          className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: '#6d28d9' }}>
+          {busy ? <Loader2 size={15} className="inline animate-spin" /> : [
+            toDeclare.length > 0 ? `Declare ₱${peso(declareAmt)} as ${chosen ? chosen.accountNumber : 'Other Income'}` : '',
+            toUndo.length > 0 ? `Undo ₱${peso(undoAmt)}` : '',
+          ].filter(Boolean).join(' · ') || 'Nothing to apply'}
         </button>
       </div>
     </div>

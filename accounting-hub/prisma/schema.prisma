@@ -1694,6 +1694,24 @@ model IncentiveRule {
   @@index([branch])
 }
 
+// One row per EWT item recognised as Other Income by the no-SI declaration
+// flow (Taxes → Expanded Withholding). Links each item to the exact journal
+// entry holding its share so a declaration can be undone per item. EWT that
+// was genuinely remitted to BIR has no row here and can never be "undone".
+model EwtIncomeDeclaration {
+  id               String   @id @default(cuid())
+  journalEntryId   String
+  payrollEntryId   String?  @unique
+  pettyCashEntryId String?  @unique
+  branch           String // JE branch (petty-cash branch code)
+  ym               String // accrual month "YYYY-MM"
+  amount           Decimal
+  createdById      String
+  createdAt        DateTime @default(now())
+
+  @@index([journalEntryId])
+}
+
 model PayrollEntry {
   id                      String     @id @default(cuid())
   consultantId            String
