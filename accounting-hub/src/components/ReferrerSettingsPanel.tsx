@@ -8,7 +8,7 @@ export const REFERRER_TYPE_LABEL: Record<string, string> = { DOCTOR: 'Doctor', L
 const REFERRER_TYPES = ['DOCTOR', 'LAW_FIRM', 'PARTNER_SCHOOL'] as const
 const BRANCH_VALUES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'AURA_INSTITUTE']
 
-interface Ref { id: string; name: string; type?: string | null; affiliation?: string | null; specialization?: string | null; branches?: string[]; referralCount?: number }
+interface Ref { id: string; name: string; type?: string | null; affiliation?: string | null; specialization?: string | null; branches?: string[]; isInhouse?: boolean; referralCount?: number }
 
 const typeBadgeStyle = (t?: string | null): React.CSSProperties => {
   if (t === 'LAW_FIRM') return { background: '#fef3c7', color: '#92400e' }
@@ -17,9 +17,11 @@ const typeBadgeStyle = (t?: string | null): React.CSSProperties => {
 }
 
 // One type bucket — its own search box, A→Z / Z→A sort, and scrollable list.
-function ReferrerCard({ title, type, referrers, onEdit, onDelete, onOpenOrders }: {
+function ReferrerCard({ title, type, referrers, onEdit, onDelete, onOpenOrders, onToggleInhouse }: {
   title: string; type: string; referrers: Ref[]
   onEdit: (r: Ref) => void; onDelete: (id: string) => void; onOpenOrders: (r: { id: string; name: string }) => void
+  // Doctors only: tick straight on the card to tag a doctor as in-house.
+  onToggleInhouse?: (r: Ref) => void
 }) {
   const [search, setSearch] = useState('')
   const [asc, setAsc] = useState(true)
@@ -65,6 +67,14 @@ function ReferrerCard({ title, type, referrers, onEdit, onDelete, onOpenOrders }
                     {r.referralCount} referral{r.referralCount === 1 ? '' : 's'}
                   </button>
                 )}
+                {onToggleInhouse && (
+                  <label className="flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-semibold cursor-pointer select-none border"
+                    title="Tick when this doctor is one of ours — in-house doctors are set apart from outside referrers in the ₱100/session referral commission."
+                    style={r.isInhouse ? { background: '#fef3c7', color: '#92400e', borderColor: '#fcd34d' } : { background: '#fff', color: 'var(--mid-gray)', borderColor: 'var(--light-gray)' }}>
+                    <input type="checkbox" checked={!!r.isInhouse} onChange={() => onToggleInhouse(r)} className="w-3 h-3 accent-[#b45309]" />
+                    In-house
+                  </label>
+                )}
               </div>
             </div>
             <div className="flex gap-1 shrink-0">
@@ -83,7 +93,7 @@ export default function ReferrerSettingsPanel() {
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [form, setForm] = useState<{ name: string; type: string; affiliation: string; specialization: string; branches: string[] }>({ name: '', type: 'DOCTOR', affiliation: '', specialization: '', branches: [] })
+  const [form, setForm] = useState<{ name: string; type: string; affiliation: string; specialization: string; branches: string[]; isInhouse: boolean }>({ name: '', type: 'DOCTOR', affiliation: '', specialization: '', branches: [], isInhouse: false })
   const [error, setError] = useState('')
   const [uploading, setUploading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -110,9 +120,22 @@ export default function ReferrerSettingsPanel() {
 
   useEffect(() => { fetchReferrers() }, [fetchReferrers])
 
-  const openCreate = () => { setEditingId(null); setForm({ name: '', type: 'DOCTOR', affiliation: '', specialization: '', branches: [] }); setError(''); setShowForm(true) }
-  const openEdit = (r: Ref) => { setEditingId(r.id); setForm({ name: r.name, type: r.type || 'DOCTOR', affiliation: r.affiliation || '', specialization: r.specialization || '', branches: r.branches || [] }); setError(''); setShowForm(true) }
+  const openCreate = () => { setEditingId(null); setForm({ name: '', type: 'DOCTOR', affiliation: '', specialization: '', branches: [], isInhouse: false }); setError(''); setShowForm(true) }
+  const openEdit = (r: Ref) => { setEditingId(r.id); setForm({ name: r.name, type: r.type || 'DOCTOR', affiliation: r.affiliation || '', specialization: r.specialization || '', branches: r.branches || [], isInhouse: !!r.isInhouse }); setError(''); setShowForm(true) }
   const toggleBranch = (b: string) => setForm(f => ({ ...f, branches: f.branches.includes(b) ? f.branches.filter(x => x !== b) : [...f.branches, b] }))
+
+  // Tag a doctor as in-house straight from the card — optimistic, reverted on failure.
+  const toggleInhouse = async (r: Ref) => {
+    const nv = !r.isInhouse
+    setReferrers(prev => prev.map(x => x.id === r.id ? { ...x, isInhouse: nv } : x))
+    try {
+      const res = await fetch('/api/referrers', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: r.id, isInhouse: nv }) })
+      if (!res.ok) throw new Error()
+    } catch {
+      setReferrers(prev => prev.map(x => x.id === r.id ? { ...x, isInhouse: !nv } : x))
+      setError(`Could not update the in-house tag for ${r.name}.`)
+    }
+  }
 
   const save = async () => {
     if (!form.name.trim()) { setError('Name is required'); return }
@@ -122,7 +145,7 @@ export default function ReferrerSettingsPanel() {
     try {
       // Affiliation/Specialization apply to doctors only; clear them for schools/law firms.
       const isDoctor = form.type === 'DOCTOR'
-      const body = { id: editingId, name: form.name.trim(), type: form.type, affiliation: isDoctor ? (form.affiliation.trim() || null) : null, specialization: isDoctor ? (form.specialization.trim() || null) : null, branches: form.branches }
+      const body = { id: editingId, name: form.name.trim(), type: form.type, affiliation: isDoctor ? (form.affiliation.trim() || null) : null, specialization: isDoctor ? (form.specialization.trim() || null) : null, branches: form.branches, isInhouse: isDoctor && form.isInhouse }
       const res = await fetch('/api/referrers', { method: editingId ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       if (res.ok) { setShowForm(false); fetchReferrers() }
       else { const d = await res.json(); setError(d.error || 'Failed to save') }
@@ -164,7 +187,7 @@ export default function ReferrerSettingsPanel() {
   }
 
   const downloadCsv = () => {
-    const rows = [['Name', 'Type', 'Affiliation', 'Specialization'], ...referrers.map(r => [r.name, REFERRER_TYPE_LABEL[r.type || 'DOCTOR'] || 'Doctor', r.affiliation || '', r.specialization || ''])]
+    const rows = [['Name', 'Type', 'Affiliation', 'Specialization', 'In-house'], ...referrers.map(r => [r.name, REFERRER_TYPE_LABEL[r.type || 'DOCTOR'] || 'Doctor', r.affiliation || '', r.specialization || '', r.isInhouse ? 'Yes' : ''])]
     const csv = rows.map(r => r.map(c => `"${(c || '').replace(/"/g, '""')}"`).join(',')).join('\n')
     const blob = new Blob([csv], { type: 'text/csv' })
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'referrers.csv'; a.click(); URL.revokeObjectURL(a.href)
@@ -179,8 +202,8 @@ export default function ReferrerSettingsPanel() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     autoTable(doc as any, {
       startY: 28,
-      head: [['#', 'Name', 'Type', 'Affiliation', 'Specialization']],
-      body: referrers.map((r, i) => [i + 1, r.name, REFERRER_TYPE_LABEL[r.type || 'DOCTOR'] || 'Doctor', r.affiliation || '', r.specialization || '']),
+      head: [['#', 'Name', 'Type', 'Affiliation', 'Specialization', 'In-house']],
+      body: referrers.map((r, i) => [i + 1, r.name, REFERRER_TYPE_LABEL[r.type || 'DOCTOR'] || 'Doctor', r.affiliation || '', r.specialization || '', r.isInhouse ? 'Yes' : '']),
       styles: { fontSize: 8 }, headStyles: { fillColor: [46, 94, 90] },
     })
     doc.save('referrers.pdf')
@@ -219,7 +242,7 @@ export default function ReferrerSettingsPanel() {
         <div className="py-12 text-center" style={{ color: 'var(--mid-gray)' }}>Loading...</div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <ReferrerCard title="Doctors" type="DOCTOR" referrers={referrers} onEdit={openEdit} onDelete={deleteReferrer} onOpenOrders={openOrders} />
+          <ReferrerCard title="Doctors" type="DOCTOR" referrers={referrers} onEdit={openEdit} onDelete={deleteReferrer} onOpenOrders={openOrders} onToggleInhouse={toggleInhouse} />
           <ReferrerCard title="Law Firms" type="LAW_FIRM" referrers={referrers} onEdit={openEdit} onDelete={deleteReferrer} onOpenOrders={openOrders} />
           <ReferrerCard title="Partner Schools" type="PARTNER_SCHOOL" referrers={referrers} onEdit={openEdit} onDelete={deleteReferrer} onOpenOrders={openOrders} />
         </div>
@@ -259,6 +282,14 @@ export default function ReferrerSettingsPanel() {
                   <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Specialization</label>
                   <input value={form.specialization} onChange={e => setForm({ ...form, specialization: e.target.value })}
                     className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                </div>
+                <div>
+                  <label className="flex items-center gap-2 px-3 py-2 rounded-xl border cursor-pointer text-sm"
+                    style={form.isInhouse ? { borderColor: '#fcd34d', background: '#fef3c7', color: '#92400e' } : { borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                    <input type="checkbox" checked={form.isInhouse} onChange={() => setForm(f => ({ ...f, isInhouse: !f.isInhouse }))} className="accent-[#b45309]" />
+                    In-house doctor
+                  </label>
+                  <p className="text-[11px] mt-1" style={{ color: 'var(--mid-gray)' }}>Tick when this doctor is one of ours — sets them apart from outside referrers in the ₱100/session referral commission.</p>
                 </div>
               </>
             )}

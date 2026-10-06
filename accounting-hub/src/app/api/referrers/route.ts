@@ -45,7 +45,7 @@ export async function GET(req: Request) {
   if (all) {
     const referrers = await prisma.referrer.findMany({
       where,
-      select: { id: true, name: true, type: true, affiliation: true, specialization: true, branches: true },
+      select: { id: true, name: true, type: true, affiliation: true, specialization: true, branches: true, isInhouse: true },
       orderBy: { name: 'asc' },
     })
     // Attach live referral counts (non-voided orders that name each referrer).
@@ -78,7 +78,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { name, type, affiliation, specialization, branches } = await req.json()
+    const { name, type, affiliation, specialization, branches, isInhouse } = await req.json()
 
     if (!name?.trim()) {
       return NextResponse.json({ error: 'Referrer name is required' }, { status: 400 })
@@ -98,6 +98,7 @@ export async function POST(req: Request) {
         affiliation: affiliation?.trim() || null,
         specialization: specialization?.trim() || null,
         branches: normBranches(branches),
+        isInhouse: !!isInhouse,
         createdById: session.user.id,
       },
     })
@@ -125,7 +126,7 @@ export async function PUT(req: Request) {
   }
 
   try {
-    const { id, name, type, affiliation, specialization, branches } = await req.json()
+    const { id, name, type, affiliation, specialization, branches, isInhouse } = await req.json()
 
     if (!id) {
       return NextResponse.json({ error: 'Referrer ID is required' }, { status: 400 })
@@ -138,6 +139,7 @@ export async function PUT(req: Request) {
     if (affiliation !== undefined) data.affiliation = affiliation?.trim() || null
     if (specialization !== undefined) data.specialization = specialization?.trim() || null
     if (branches !== undefined) data.branches = normBranches(branches)
+    if (isInhouse !== undefined) data.isInhouse = !!isInhouse
 
     const referrer = await prisma.referrer.update({ where: { id }, data })
 
