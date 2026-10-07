@@ -555,7 +555,7 @@ interface FormDistribution {
   onHandRecorded?: boolean
 }
 
-interface PartnerInstitution { id: string; name: string; typeLabel?: string }
+interface PartnerInstitution { id: string; name: string; kind?: string; detail?: string }
 
 /* ═══════════════════════════════════════════════════════════
    BARCODE COMPONENT
@@ -6228,7 +6228,7 @@ setTimeout(()=>window.print(),500);
             return (
             <>
               <p className="text-xs mb-3" style={{ color: 'var(--mid-gray)' }}>
-                Log which pre-numbered forms were handed to each partner institution. Partners sync live from HR → Partnerships. Each row draws the pcs down from on-hand. A row flagged <span className="font-semibold" style={{ color: '#b45309' }}>Not on hand</span> was given out but never recorded as received in the clinic — record the receipt to clear it.
+                Log which pre-numbered forms were handed to each partner school or referring doctor. Schools sync live from HR → Partnerships; doctors from the referrers list. Each row draws the pcs down from on-hand. A row flagged <span className="font-semibold" style={{ color: '#b45309' }}>Not on hand</span> was given out but never recorded as received in the clinic — record the receipt to clear it.
               </p>
               {!formsBranchFilter && (
                 <p className="text-xs mb-3 px-3 py-2 rounded-lg" style={{ background: '#fffbeb', color: '#92400e' }}>Pick a specific branch above to log a distribution (so the pads draw down the right branch&apos;s on-hand).</p>
@@ -6239,7 +6239,7 @@ setTimeout(()=>window.print(),500);
                     <thead>
                       <tr style={{ background: 'var(--off-white)' }}>
                         <th className="text-left px-3 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Date</th>
-                        <th className="text-left px-3 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Partner Institution</th>
+                        <th className="text-left px-3 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Recipient (School / Doctor)</th>
                         <th className="text-left px-3 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Form</th>
                         <th className="text-left px-3 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>From #</th>
                         <th className="text-left px-3 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>To #</th>
@@ -6254,8 +6254,15 @@ setTimeout(()=>window.print(),500);
                           <td className="px-2 py-2"><input type="date" value={ndDate} onChange={(e) => setNdDate(e.target.value)} className="w-full px-2 py-1.5 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} /></td>
                           <td className="px-2 py-2">
                             <select value={ndPartner} onChange={(e) => setNdPartner(e.target.value)} className="w-full px-2 py-1.5 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }}>
-                              <option value="">{partnerInstitutions.length ? 'Select partner…' : 'No partners synced from HR'}</option>
-                              {partnerInstitutions.map((p) => <option key={p.id} value={`${p.id}|${p.name}`}>{p.name}{p.typeLabel ? ` · ${p.typeLabel}` : ''}</option>)}
+                              <option value="">{partnerInstitutions.length ? 'Select recipient…' : 'No schools or doctors found'}</option>
+                              {[['School', 'Partner Schools'], ['Doctor', 'Doctors']].map(([kind, label]) => {
+                                const group = partnerInstitutions.filter((p) => (p.kind || 'School') === kind)
+                                return group.length ? (
+                                  <optgroup key={kind} label={label}>
+                                    {group.map((p) => <option key={p.id} value={`${p.id}|${p.name}`}>{p.name}{p.detail ? ` · ${p.detail}` : ''}</option>)}
+                                  </optgroup>
+                                ) : null
+                              })}
                             </select>
                           </td>
                           <td className="px-2 py-2">
@@ -6314,7 +6321,7 @@ setTimeout(()=>window.print(),500);
                 <table className="w-full text-sm">
                   <thead>
                     <tr style={{ background: 'var(--off-white)' }}>
-                      <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Partner Institution</th>
+                      <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Recipient (School / Doctor)</th>
                       <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>By Form Type</th>
                       <th className="text-right px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Entries</th>
                       <th className="text-right px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Pads Given</th>
