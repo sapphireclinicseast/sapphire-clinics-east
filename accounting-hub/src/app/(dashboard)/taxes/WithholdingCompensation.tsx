@@ -320,17 +320,19 @@ export default function WithholdingCompensation() {
 // ─── 1601-C Computation panel ──────────────────────────────────────────────
 interface WcRow {
   employeeId: string; name: string; isMWE: boolean; month: string
-  grossTaxable: number; sss: number; phic: number; hdmf: number; govCon: number
+  gross?: number; grossTaxable: number; sss: number; phic: number; hdmf: number; govCon: number
   netTaxable: number; recordedTax: number; tableTax: number; discrepancy: number
 }
 interface WcComputation {
-  totalGross: number; mweGross: number; amweGovCon: number; thirteenth: number; otherNonTaxable?: number; taxableIncome: number
+  totalGross: number; mweGross: number; amweGovCon: number; thirteenth: number; otherNonTaxable?: number; deMinimis?: number; taxableIncome: number
   amwesWithoutTax: number; amwesWithTax: number; totalTaxDue: number; tableTaxDue: number; discrepancy: number
 }
 const monthLabel = (ym: string) => { const [y, m] = ym.split('-'); return `${MONTHS[parseInt(m) - 1]} ${y}` }
 
-const OV_FIELDS = ['totalGross', 'mweGross', 'amweGovCon', 'thirteenth', 'otherNonTaxable'] as const
+const OV_FIELDS = ['totalGross', 'mweGross', 'amweGovCon', 'thirteenth', 'otherNonTaxable', 'deMinimis'] as const
 type OvField = typeof OV_FIELDS[number]
+const compFieldVal = (comp: WcComputation, f: OvField): number =>
+  f === 'otherNonTaxable' ? (comp.otherNonTaxable || 0) : f === 'deMinimis' ? (comp.deMinimis || 0) : comp[f]
 
 function WcComputationPanel({ branch, year, month, monthTo, canWrite }: { branch: string; year: string; month: string; monthTo: string; canWrite: boolean }) {
   const [open, setOpen] = useState(true)
@@ -389,8 +391,8 @@ function WcComputationPanel({ branch, year, month, monthTo, canWrite }: { branch
   const branchName = BRANCH_FULL[branch] || branch
   const r2n = (n: number) => Math.round(n * 100) / 100
   // Effective line value: the manual override when one is typed, else computed.
-  const effVal = (f: OvField): number => ov[f] ?? (comp ? (f === 'otherNonTaxable' ? (comp.otherNonTaxable || 0) : comp[f]) : 0)
-  const taxableEff = r2n(effVal('totalGross') - effVal('mweGross') - effVal('amweGovCon') - effVal('thirteenth') - effVal('otherNonTaxable'))
+  const effVal = (f: OvField): number => ov[f] ?? (comp ? compFieldVal(comp, f) : 0)
+  const taxableEff = r2n(effVal('totalGross') - effVal('mweGross') - effVal('amweGovCon') - effVal('thirteenth') - effVal('otherNonTaxable') - effVal('deMinimis'))
   const hasOverrides = OV_FIELDS.some(f => ov[f] !== undefined)
   // A computation-vs-recorded row: label | computed | recorded | discrepancy.
   // `field` makes the row overridable: pencil → type the amount; X → back to computed.
@@ -401,7 +403,7 @@ function WcComputationPanel({ branch, year, month, monthTo, canWrite }: { branch
       <div className="flex items-center justify-between gap-2 px-3 py-1.5 text-xs" style={{ background: highlight ? '#fffbeb' : overridden ? '#fef9c3' : undefined, borderTop: strong ? '1px solid var(--light-gray)' : undefined }}>
         <span style={{ paddingLeft: indent ? 16 : 0, color: strong ? 'var(--charcoal)' : 'var(--mid-gray)', fontWeight: strong ? 700 : 400 }}>
           {label}{sub && <span className="ml-1" style={{ color: 'var(--mid-gray)', fontWeight: 400 }}>· {sub}</span>}
-          {overridden && comp && <span className="ml-1.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style={{ background: '#fde68a', color: '#92400e' }} title={`Computed from payroll: ₱${peso(field === 'otherNonTaxable' ? (comp.otherNonTaxable || 0) : comp[field])}`}>manual</span>}
+          {overridden && comp && <span className="ml-1.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style={{ background: '#fde68a', color: '#92400e' }} title={`Computed from payroll: ₱${peso(compFieldVal(comp, field))}`}>manual</span>}
         </span>
         {editing ? (
           <span className="flex items-center gap-1">
@@ -466,6 +468,7 @@ function WcComputationPanel({ branch, year, month, monthTo, canWrite }: { branch
                   <CompRow label="less: AMWEs Gov't Contributions" sub="SSS · PhilHealth · Pag-IBIG" value={effVal('amweGovCon')} indent field="amweGovCon" />
                   <CompRow label="less: 13th Month Pay & Benefits" sub="exempt up to ₱90,000 a year" value={effVal('thirteenth')} indent field="thirteenth" />
                   <CompRow label="less: Other Non-Taxable Compensation" sub="maternity differential · leave conversion" value={effVal('otherNonTaxable')} indent field="otherNonTaxable" />
+                  <CompRow label="less: Non-Taxable Allowances & De Minimis" sub="pay outside taxable income per payroll" value={effVal('deMinimis')} indent field="deMinimis" />
                   <CompRow label="Taxable Income" value={taxableEff} strong />
                   <CompRow label="AMWEs — without tax (≤ ₱20,833/mo)" value={comp.amwesWithoutTax} indent />
                   <CompRow label="AMWEs — with tax" value={comp.amwesWithTax} indent />
@@ -495,7 +498,7 @@ function WcComputationPanel({ branch, year, month, monthTo, canWrite }: { branch
                 <table className="w-full text-xs">
                   <thead>
                     <tr style={{ background: 'var(--off-white)' }}>
-                      {['MWE', 'Employee', 'Month', 'Gross Taxable', 'SSS', 'PhilHealth', 'Pag-IBIG', 'Taxable Income', 'Withheld', 'BIR table', 'Δ'].map((h, i) => (
+                      {['MWE', 'Employee', 'Month', 'Gross Pay', 'Gross Taxable', 'SSS', 'PhilHealth', 'Pag-IBIG', 'Taxable Income', 'Withheld', 'BIR table', 'Δ'].map((h, i) => (
                         <th key={i} className={`px-2.5 py-2 font-semibold whitespace-nowrap ${i >= 3 ? 'text-right' : 'text-left'}`} style={{ color: 'var(--charcoal)' }}>{h}</th>
                       ))}
                     </tr>
@@ -508,7 +511,8 @@ function WcComputationPanel({ branch, year, month, monthTo, canWrite }: { branch
                         </td>
                         <td className="px-2.5 py-1.5 font-medium" style={{ color: 'var(--charcoal)' }}>{r.name}{r.isMWE && <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: '#e0f2fe', color: '#075985' }}>MWE</span>}</td>
                         <td className="px-2.5 py-1.5" style={{ color: 'var(--mid-gray)' }}>{monthLabel(r.month)}</td>
-                        <td className="px-2.5 py-1.5 text-right font-mono tabular-nums" style={{ color: 'var(--charcoal)' }}>{peso(r.grossTaxable)}</td>
+                        <td className="px-2.5 py-1.5 text-right font-mono tabular-nums" style={{ color: 'var(--charcoal)' }} title="Actual pay for the month — both cutoffs">{peso(r.gross ?? r.grossTaxable)}</td>
+                        <td className="px-2.5 py-1.5 text-right font-mono tabular-nums" style={{ color: 'var(--charcoal)' }} title="Taxable income + government contributions (excludes non-taxable allowances)">{peso(r.grossTaxable)}</td>
                         <td className="px-2.5 py-1.5 text-right font-mono tabular-nums" style={{ color: 'var(--mid-gray)' }}>{peso(r.sss)}</td>
                         <td className="px-2.5 py-1.5 text-right font-mono tabular-nums" style={{ color: 'var(--mid-gray)' }}>{peso(r.phic)}</td>
                         <td className="px-2.5 py-1.5 text-right font-mono tabular-nums" style={{ color: 'var(--mid-gray)' }}>{peso(r.hdmf)}</td>
