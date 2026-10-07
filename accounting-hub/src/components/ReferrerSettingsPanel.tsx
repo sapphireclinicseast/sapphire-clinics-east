@@ -8,7 +8,9 @@ export const REFERRER_TYPE_LABEL: Record<string, string> = { DOCTOR: 'Doctor', L
 const REFERRER_TYPES = ['DOCTOR', 'LAW_FIRM', 'PARTNER_SCHOOL'] as const
 const BRANCH_VALUES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'AURA_INSTITUTE']
 
-interface Ref { id: string; name: string; type?: string | null; affiliation?: string | null; specialization?: string | null; branches?: string[]; isInhouse?: boolean; referralCount?: number }
+interface Ref { id: string; name: string; type?: string | null; affiliation?: string | null; specialization?: string | null; branches?: string[]; isInhouse?: boolean; commissionPerSession?: string | number | null; referralCount?: number }
+// Prisma Decimal arrives as a string; null/undefined = no commission.
+const commissionOf = (r: Ref): number | null => r.commissionPerSession == null ? null : Number(r.commissionPerSession)
 
 const typeBadgeStyle = (t?: string | null): React.CSSProperties => {
   if (t === 'LAW_FIRM') return { background: '#fef3c7', color: '#92400e' }
@@ -17,11 +19,13 @@ const typeBadgeStyle = (t?: string | null): React.CSSProperties => {
 }
 
 // One type bucket — its own search box, A→Z / Z→A sort, and scrollable list.
-function ReferrerCard({ title, type, referrers, onEdit, onDelete, onOpenOrders, onToggleInhouse }: {
+function ReferrerCard({ title, type, referrers, onEdit, onDelete, onOpenOrders, onToggleInhouse, onSetCommission }: {
   title: string; type: string; referrers: Ref[]
   onEdit: (r: Ref) => void; onDelete: (id: string) => void; onOpenOrders: (r: { id: string; name: string }) => void
   // Doctors only: tick straight on the card to tag a doctor as in-house.
   onToggleInhouse?: (r: Ref) => void
+  // Doctors only: tick who earns the per-session commission and set each one's ₱ rate.
+  onSetCommission?: (r: Ref, value: number | null) => void
 }) {
   const [search, setSearch] = useState('')
   const [asc, setAsc] = useState(true)
@@ -69,12 +73,32 @@ function ReferrerCard({ title, type, referrers, onEdit, onDelete, onOpenOrders, 
                 )}
                 {onToggleInhouse && (
                   <label className="flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-semibold cursor-pointer select-none border"
-                    title="Tick when this doctor is one of ours — in-house doctors are set apart from outside referrers in the ₱100/session referral commission."
+                    title="Tick when this doctor is one of ours — in-house doctors are set apart from outside referrers in the referral commission."
                     style={r.isInhouse ? { background: '#fef3c7', color: '#92400e', borderColor: '#fcd34d' } : { background: '#fff', color: 'var(--mid-gray)', borderColor: 'var(--light-gray)' }}>
                     <input type="checkbox" checked={!!r.isInhouse} onChange={() => onToggleInhouse(r)} className="w-3 h-3 accent-[#b45309]" />
                     In-house
                   </label>
                 )}
+                {onSetCommission && (() => {
+                  const rate = commissionOf(r)
+                  return (
+                    <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-semibold select-none border"
+                      title="Tick when this doctor earns a commission per session of their referred patients, and set their ₱ rate."
+                      style={rate != null ? { background: 'var(--pale-teal)', color: 'var(--deep-teal)', borderColor: 'var(--teal)' } : { background: '#fff', color: 'var(--mid-gray)', borderColor: 'var(--light-gray)' }}>
+                      <input type="checkbox" checked={rate != null} onChange={() => onSetCommission(r, rate != null ? null : 100)} className="w-3 h-3 accent-[var(--teal)]" />
+                      {rate != null ? (
+                        <>
+                          ₱<input key={rate} type="number" min={0} step="1" defaultValue={rate}
+                            onClick={e => e.stopPropagation()}
+                            onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+                            onBlur={e => { const n = Number(e.target.value); if (!isNaN(n) && n >= 0 && n !== rate) onSetCommission(r, n); else e.target.value = String(rate) }}
+                            className="w-12 px-1 py-0 rounded border text-[10px] font-mono outline-none bg-white" style={{ borderColor: 'var(--light-gray)', color: 'var(--deep-teal)' }} />
+                          /session
+                        </>
+                      ) : 'Commission'}
+                    </span>
+                  )
+                })()}
               </div>
             </div>
             <div className="flex gap-1 shrink-0">
@@ -93,7 +117,7 @@ export default function ReferrerSettingsPanel() {
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [form, setForm] = useState<{ name: string; type: string; affiliation: string; specialization: string; branches: string[]; isInhouse: boolean }>({ name: '', type: 'DOCTOR', affiliation: '', specialization: '', branches: [], isInhouse: false })
+  const [form, setForm] = useState<{ name: string; type: string; affiliation: string; specialization: string; branches: string[]; isInhouse: boolean; commissionOn: boolean; commissionRate: string }>({ name: '', type: 'DOCTOR', affiliation: '', specialization: '', branches: [], isInhouse: false, commissionOn: false, commissionRate: '100' })
   const [error, setError] = useState('')
   const [uploading, setUploading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -135,9 +159,23 @@ export default function ReferrerSettingsPanel() {
     })()
   }, [fetchReferrers])
 
-  const openCreate = () => { setEditingId(null); setForm({ name: '', type: 'DOCTOR', affiliation: '', specialization: '', branches: [], isInhouse: false }); setError(''); setShowForm(true) }
-  const openEdit = (r: Ref) => { setEditingId(r.id); setForm({ name: r.name, type: r.type || 'DOCTOR', affiliation: r.affiliation || '', specialization: r.specialization || '', branches: r.branches || [], isInhouse: !!r.isInhouse }); setError(''); setShowForm(true) }
+  const openCreate = () => { setEditingId(null); setForm({ name: '', type: 'DOCTOR', affiliation: '', specialization: '', branches: [], isInhouse: false, commissionOn: false, commissionRate: '100' }); setError(''); setShowForm(true) }
+  const openEdit = (r: Ref) => { const rate = commissionOf(r); setEditingId(r.id); setForm({ name: r.name, type: r.type || 'DOCTOR', affiliation: r.affiliation || '', specialization: r.specialization || '', branches: r.branches || [], isInhouse: !!r.isInhouse, commissionOn: rate != null, commissionRate: rate != null ? String(rate) : '100' }); setError(''); setShowForm(true) }
   const toggleBranch = (b: string) => setForm(f => ({ ...f, branches: f.branches.includes(b) ? f.branches.filter(x => x !== b) : [...f.branches, b] }))
+
+  // Set/clear a doctor's per-session commission rate from the card — optimistic,
+  // reverted on failure. null = this doctor earns no commission.
+  const setCommission = async (r: Ref, value: number | null) => {
+    const prev = r.commissionPerSession ?? null
+    setReferrers(p => p.map(x => x.id === r.id ? { ...x, commissionPerSession: value } : x))
+    try {
+      const res = await fetch('/api/referrers', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: r.id, commissionPerSession: value }) })
+      if (!res.ok) throw new Error()
+    } catch {
+      setReferrers(p => p.map(x => x.id === r.id ? { ...x, commissionPerSession: prev } : x))
+      setError(`Could not update the commission for ${r.name}.`)
+    }
+  }
 
   // Tag a doctor as in-house straight from the card — optimistic, reverted on failure.
   const toggleInhouse = async (r: Ref) => {
@@ -160,7 +198,7 @@ export default function ReferrerSettingsPanel() {
     try {
       // Affiliation/Specialization apply to doctors only; clear them for schools/law firms.
       const isDoctor = form.type === 'DOCTOR'
-      const body = { id: editingId, name: form.name.trim(), type: form.type, affiliation: isDoctor ? (form.affiliation.trim() || null) : null, specialization: isDoctor ? (form.specialization.trim() || null) : null, branches: form.branches, isInhouse: isDoctor && form.isInhouse }
+      const body = { id: editingId, name: form.name.trim(), type: form.type, affiliation: isDoctor ? (form.affiliation.trim() || null) : null, specialization: isDoctor ? (form.specialization.trim() || null) : null, branches: form.branches, isInhouse: isDoctor && form.isInhouse, commissionPerSession: isDoctor && form.commissionOn && !isNaN(Number(form.commissionRate)) ? Math.max(0, Number(form.commissionRate)) : null }
       const res = await fetch('/api/referrers', { method: editingId ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       if (res.ok) { setShowForm(false); fetchReferrers() }
       else { const d = await res.json(); setError(d.error || 'Failed to save') }
@@ -202,7 +240,7 @@ export default function ReferrerSettingsPanel() {
   }
 
   const downloadCsv = () => {
-    const rows = [['Name', 'Type', 'Affiliation', 'Specialization', 'In-house'], ...referrers.map(r => [r.name, REFERRER_TYPE_LABEL[r.type || 'DOCTOR'] || 'Doctor', r.affiliation || '', r.specialization || '', r.isInhouse ? 'Yes' : ''])]
+    const rows = [['Name', 'Type', 'Affiliation', 'Specialization', 'In-house', 'Commission/session'], ...referrers.map(r => [r.name, REFERRER_TYPE_LABEL[r.type || 'DOCTOR'] || 'Doctor', r.affiliation || '', r.specialization || '', r.isInhouse ? 'Yes' : '', commissionOf(r) != null ? String(commissionOf(r)) : ''])]
     const csv = rows.map(r => r.map(c => `"${(c || '').replace(/"/g, '""')}"`).join(',')).join('\n')
     const blob = new Blob([csv], { type: 'text/csv' })
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'referrers.csv'; a.click(); URL.revokeObjectURL(a.href)
@@ -217,8 +255,8 @@ export default function ReferrerSettingsPanel() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     autoTable(doc as any, {
       startY: 28,
-      head: [['#', 'Name', 'Type', 'Affiliation', 'Specialization', 'In-house']],
-      body: referrers.map((r, i) => [i + 1, r.name, REFERRER_TYPE_LABEL[r.type || 'DOCTOR'] || 'Doctor', r.affiliation || '', r.specialization || '', r.isInhouse ? 'Yes' : '']),
+      head: [['#', 'Name', 'Type', 'Affiliation', 'Specialization', 'In-house', 'Comm/session']],
+      body: referrers.map((r, i) => [i + 1, r.name, REFERRER_TYPE_LABEL[r.type || 'DOCTOR'] || 'Doctor', r.affiliation || '', r.specialization || '', r.isInhouse ? 'Yes' : '', commissionOf(r) != null ? `P${commissionOf(r)}` : '']),
       styles: { fontSize: 8 }, headStyles: { fillColor: [46, 94, 90] },
     })
     doc.save('referrers.pdf')
@@ -257,7 +295,7 @@ export default function ReferrerSettingsPanel() {
         <div className="py-12 text-center" style={{ color: 'var(--mid-gray)' }}>Loading...</div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <ReferrerCard title="Doctors" type="DOCTOR" referrers={referrers} onEdit={openEdit} onDelete={deleteReferrer} onOpenOrders={openOrders} onToggleInhouse={toggleInhouse} />
+          <ReferrerCard title="Doctors" type="DOCTOR" referrers={referrers} onEdit={openEdit} onDelete={deleteReferrer} onOpenOrders={openOrders} onToggleInhouse={toggleInhouse} onSetCommission={setCommission} />
           <ReferrerCard title="Law Firms" type="LAW_FIRM" referrers={referrers} onEdit={openEdit} onDelete={deleteReferrer} onOpenOrders={openOrders} />
           <ReferrerCard title="Partner Schools" type="PARTNER_SCHOOL" referrers={referrers} onEdit={openEdit} onDelete={deleteReferrer} onOpenOrders={openOrders} />
         </div>
@@ -304,7 +342,24 @@ export default function ReferrerSettingsPanel() {
                     <input type="checkbox" checked={form.isInhouse} onChange={() => setForm(f => ({ ...f, isInhouse: !f.isInhouse }))} className="accent-[#b45309]" />
                     In-house doctor
                   </label>
-                  <p className="text-[11px] mt-1" style={{ color: 'var(--mid-gray)' }}>Tick when this doctor is one of ours — sets them apart from outside referrers in the ₱100/session referral commission.</p>
+                  <p className="text-[11px] mt-1" style={{ color: 'var(--mid-gray)' }}>Tick when this doctor is one of ours — sets them apart from outside referrers in the referral commission.</p>
+                </div>
+                <div>
+                  <label className="flex items-center gap-2 px-3 py-2 rounded-xl border cursor-pointer text-sm"
+                    style={form.commissionOn ? { borderColor: 'var(--teal)', background: 'var(--pale-teal)', color: 'var(--deep-teal)' } : { borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                    <input type="checkbox" checked={form.commissionOn} onChange={() => setForm(f => ({ ...f, commissionOn: !f.commissionOn }))} className="accent-[var(--teal)]" />
+                    Earns referral commission
+                    {form.commissionOn && (
+                      <span className="ml-auto flex items-center gap-1 font-mono text-xs">
+                        ₱<input type="number" min={0} step="1" value={form.commissionRate}
+                          onClick={e => e.stopPropagation()}
+                          onChange={e => setForm(f => ({ ...f, commissionRate: e.target.value }))}
+                          className="w-20 px-2 py-1 rounded-lg border text-sm outline-none bg-white" style={{ borderColor: 'var(--light-gray)' }} />
+                        /session
+                      </span>
+                    )}
+                  </label>
+                  <p className="text-[11px] mt-1" style={{ color: 'var(--mid-gray)' }}>Paid per session of each patient this doctor referred. Untick = no commission for this doctor.</p>
                 </div>
               </>
             )}

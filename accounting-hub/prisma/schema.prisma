@@ -852,6 +852,7 @@ model Referrer {
   specialization String?
   branches       String[] @default([]) // visibility scope: SANDBOX_EAST / SANDBOX_GREENHILLS; empty = all branches
   isInhouse      Boolean  @default(false) // DOCTOR: one of our own — separates them from outside referrers in the ₱100/session commission scheme
+  commissionPerSession Decimal? // DOCTOR: ₱ per referred-patient session; null = this doctor gets no commission
   isActive       Boolean  @default(true)
   createdById    String
   createdBy      User     @relation("ReferrerCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)

@@ -8,6 +8,12 @@ const REFERRER_TYPES = ['DOCTOR', 'LAW_FIRM', 'PARTNER_SCHOOL']
 const normType = (t: unknown) => (REFERRER_TYPES.includes(String(t)) ? String(t) : 'DOCTOR')
 const VALID_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'AURA_INSTITUTE']
 const normBranches = (b: unknown): string[] => Array.isArray(b) ? Array.from(new Set(b.map(String).filter(x => VALID_BRANCHES.includes(x)))) : []
+// ₱ per referred-patient session; null = no commission for this doctor.
+const normCommission = (v: unknown): number | null => {
+  if (v === null || v === undefined || v === '') return null
+  const n = Number(v)
+  return isNaN(n) || n < 0 ? null : n
+}
 // A branch-scoped user (East/Greenhills admin or front desk) only sees referrers
 // tagged for their branch (or untagged = all branches). Everyone else sees all.
 function branchScope(role?: string): string | null {
@@ -45,7 +51,7 @@ export async function GET(req: Request) {
   if (all) {
     const referrers = await prisma.referrer.findMany({
       where,
-      select: { id: true, name: true, type: true, affiliation: true, specialization: true, branches: true, isInhouse: true },
+      select: { id: true, name: true, type: true, affiliation: true, specialization: true, branches: true, isInhouse: true, commissionPerSession: true },
       orderBy: { name: 'asc' },
     })
     // Attach live referral counts (non-voided orders that name each referrer).
@@ -78,7 +84,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { name, type, affiliation, specialization, branches, isInhouse } = await req.json()
+    const { name, type, affiliation, specialization, branches, isInhouse, commissionPerSession } = await req.json()
 
     if (!name?.trim()) {
       return NextResponse.json({ error: 'Referrer name is required' }, { status: 400 })
@@ -99,6 +105,7 @@ export async function POST(req: Request) {
         specialization: specialization?.trim() || null,
         branches: normBranches(branches),
         isInhouse: !!isInhouse,
+        commissionPerSession: normCommission(commissionPerSession),
         createdById: session.user.id,
       },
     })
@@ -126,7 +133,7 @@ export async function PUT(req: Request) {
   }
 
   try {
-    const { id, name, type, affiliation, specialization, branches, isInhouse } = await req.json()
+    const { id, name, type, affiliation, specialization, branches, isInhouse, commissionPerSession } = await req.json()
 
     if (!id) {
       return NextResponse.json({ error: 'Referrer ID is required' }, { status: 400 })
@@ -140,6 +147,7 @@ export async function PUT(req: Request) {
     if (specialization !== undefined) data.specialization = specialization?.trim() || null
     if (branches !== undefined) data.branches = normBranches(branches)
     if (isInhouse !== undefined) data.isInhouse = !!isInhouse
+    if (commissionPerSession !== undefined) data.commissionPerSession = normCommission(commissionPerSession)
 
     const referrer = await prisma.referrer.update({ where: { id }, data })
 

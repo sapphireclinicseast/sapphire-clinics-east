@@ -22,12 +22,15 @@ interface SessionRow {
   via: 'tag' | 'link'
 }
 
-// GET ?from=&to=&branch=&rate= → ₱<rate>/session referral commission per doctor.
-// A "session" is an earned (not UNEARNED), non-voided POS order attributed to
-// the doctor either by the order's own Doctor Referral tag or — when the order
-// wasn't tagged — by the patient's Referred-patients link (CRM id first, else
-// exact name, same as the Referral Dashboard). One order = one session; an
-// explicit order tag beats a patient link when they name different doctors.
+// GET ?from=&to=&branch= → referral commission per doctor, each at their own
+// configured ₱-per-session rate (Referrer.commissionPerSession; doctors without
+// one still list their sessions but earn nothing, so unticked doctors with
+// activity stay visible). A "session" is an earned (not UNEARNED), non-voided
+// POS order attributed to the doctor either by the order's own Doctor Referral
+// tag or — when the order wasn't tagged — by the patient's Referred-patients
+// link (CRM id first, else exact name, same as the Referral Dashboard). One
+// order = one session; an explicit order tag beats a patient link when they
+// name different doctors.
 export async function GET(req: Request) {
   const session = await auth()
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -36,7 +39,6 @@ export async function GET(req: Request) {
   const from = sp.get('from') ? new Date(`${sp.get('from')}T00:00:00+08:00`) : null
   const to = sp.get('to') ? new Date(`${sp.get('to')}T23:59:59.999+08:00`) : null
   const branch = sp.get('branch') || ''
-  const rate = Math.max(0, Number(sp.get('rate')) || 100)
   if (!from || !to || isNaN(from.getTime()) || isNaN(to.getTime())) {
     return NextResponse.json({ error: 'from and to are required (YYYY-MM-DD)' }, { status: 400 })
   }
@@ -44,7 +46,7 @@ export async function GET(req: Request) {
   const scope = branchScope(session.user.role as string)
   const doctors = await prisma.referrer.findMany({
     where: { isActive: true, type: 'DOCTOR', ...(scope ? { OR: [{ branches: { isEmpty: true } }, { branches: { has: scope } }] } : {}) },
-    select: { id: true, name: true, specialization: true, isInhouse: true },
+    select: { id: true, name: true, specialization: true, isInhouse: true, commissionPerSession: true },
   })
   const doctorIds = new Set(doctors.map(d => d.id))
 
@@ -101,19 +103,21 @@ export async function GET(req: Request) {
   const rows = doctors
     .map(d => {
       const sessions = perDoctor.get(d.id) || []
+      const rate = d.commissionPerSession == null ? null : Number(d.commissionPerSession)
       return {
         referrerId: d.id,
         name: d.name,
         specialization: d.specialization,
         isInhouse: d.isInhouse,
+        rate,
         patients: new Set(sessions.map(s => (s.patientName || '').trim().toLowerCase())).size,
         sessions: sessions.length,
-        commission: sessions.length * rate,
+        commission: rate != null ? sessions.length * rate : 0,
         orders: sessions,
       }
     })
     .filter(r => r.sessions > 0)
-    .sort((a, b) => b.commission - a.commission || a.name.localeCompare(b.name))
+    .sort((a, b) => b.commission - a.commission || b.sessions - a.sessions || a.name.localeCompare(b.name))
 
-  return NextResponse.json({ rate, rows })
+  return NextResponse.json({ rows })
 }
