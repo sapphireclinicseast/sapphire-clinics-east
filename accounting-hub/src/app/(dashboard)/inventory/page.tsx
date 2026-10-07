@@ -539,6 +539,24 @@ interface FormReceipt {
   createdAt: string
 }
 
+interface FormDistribution {
+  id: string
+  branch: string
+  formType: string
+  partnerId: string | null
+  partnerName: string
+  dateGiven: string
+  fromControl: string
+  toControl: string
+  quantity: number
+  remarks: string | null
+  createdByName?: string | null
+  createdAt: string
+  onHandRecorded?: boolean
+}
+
+interface PartnerInstitution { id: string; name: string; typeLabel?: string }
+
 /* ═══════════════════════════════════════════════════════════
    BARCODE COMPONENT
    ═══════════════════════════════════════════════════════════ */
@@ -1134,6 +1152,23 @@ function InventoryInner() {
   const [frSubmitting, setFrSubmitting] = useState(false)
   const [deleteFormConfirm, setDeleteFormConfirm] = useState<string | null>(null)
   const [deletingForm, setDeletingForm] = useState(false)
+  // ── Forms audit (reconcile on-hand against the remaining control-number range)
+  const [auditOpen, setAuditOpen] = useState(false)
+  const [auditFormType, setAuditFormType] = useState('')
+  const [auditFrom, setAuditFrom] = useState('')
+  const [auditTo, setAuditTo] = useState('')
+  // ── Forms distribution to partner institutions (synced from HR Partnerships)
+  const [formsView, setFormsView] = useState<'receipts' | 'distribution' | 'by-partner'>('receipts')
+  const [distributions, setDistributions] = useState<FormDistribution[]>([])
+  const [partnerInstitutions, setPartnerInstitutions] = useState<PartnerInstitution[]>([])
+  // New-distribution row (spreadsheet-style quick entry)
+  const [ndDate, setNdDate] = useState('')
+  const [ndPartner, setNdPartner] = useState('') // "id|name" composite from the dropdown
+  const [ndForm, setNdForm] = useState('')
+  const [ndFrom, setNdFrom] = useState('')
+  const [ndTo, setNdTo] = useState('')
+  const [ndSaving, setNdSaving] = useState(false)
+  const [deleteDistConfirm, setDeleteDistConfirm] = useState<string | null>(null)
 
   // PDF modal state
   const [pdfModalOpen, setPdfModalOpen] = useState(false)
@@ -1385,6 +1420,20 @@ function InventoryInner() {
     } catch { /* ignore — dropdown falls back to free text */ }
   }, [])
 
+  const fetchDistributions = useCallback(async () => {
+    const qs = formsBranchFilter ? `?branch=${encodeURIComponent(formsBranchFilter)}` : ''
+    const data = await fetchJson(`/api/inventory/form-distributions${qs}`)
+    if (data) setDistributions(data.data || [])
+  }, [fetchJson, formsBranchFilter])
+
+  const fetchPartnerInstitutions = useCallback(async () => {
+    try {
+      const res = await fetch('/api/inventory/partner-institutions')
+      const data = await res.json()
+      setPartnerInstitutions(Array.isArray(data.data) ? data.data : [])
+    } catch { /* ignore — partner dropdown just stays empty */ }
+  }, [])
+
   // Initial load — only runs once when session is available
   const initialLoaded = useRef(false)
   useEffect(() => {
@@ -1395,16 +1444,17 @@ function InventoryInner() {
     }
     initialLoaded.current = true
     setLoading(true)
-    Promise.all([fetchItems(), fetchAllItems(), fetchSuppliers(), fetchAllSuppliers(), fetchAdjustments(), fetchConsignments(), fetchForms(), fetchFormTemplates(), fetchSupplierRequests()])
+    Promise.all([fetchItems(), fetchAllItems(), fetchSuppliers(), fetchAllSuppliers(), fetchAdjustments(), fetchConsignments(), fetchForms(), fetchFormTemplates(), fetchSupplierRequests(), fetchDistributions(), fetchPartnerInstitutions()])
       .finally(() => setLoading(false))
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionUserId])
 
-  // Refetch consumable forms when the branch toggle changes (skip first mount).
+  // Refetch consumable forms + distributions when the branch toggle changes (skip first mount).
   useEffect(() => {
     if (!initialLoaded.current) return
     fetchForms()
-  }, [fetchForms])
+    fetchDistributions()
+  }, [fetchForms, fetchDistributions])
 
   const openFormCreate = () => {
     setFormEditId(null)
@@ -1436,6 +1486,36 @@ function InventoryInner() {
       const res = await fetch(`/api/inventory/forms?id=${id}`, { method: 'DELETE' })
       if (res.ok) { setDeleteFormConfirm(null); fetchForms() }
     } finally { setDeletingForm(false) }
+  }
+
+  // Save a new form distribution (the spreadsheet-style quick-entry row).
+  const handleDistSave = async () => {
+    const [partnerId, partnerName] = ndPartner.split('|')
+    if (!partnerName?.trim()) { setError('Pick the partner institution'); return }
+    if (!ndForm.trim() || !ndFrom.trim() || !ndTo.trim()) { setError('Fill in the form type and the control-number range'); return }
+    setNdSaving(true); setError('')
+    try {
+      const res = await fetch('/api/inventory/form-distributions', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          branch: formsBranchFilter || 'SANDBOX_EAST',
+          formType: ndForm.trim(), partnerId: partnerId || null, partnerName: partnerName.trim(),
+          dateGiven: ndDate || undefined, fromControl: ndFrom.trim(), toControl: ndTo.trim(),
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setError(data.error || 'Failed to save distribution'); return }
+      setNdDate(''); setNdPartner(''); setNdForm(''); setNdFrom(''); setNdTo('')
+      fetchDistributions()
+    } catch { setError('Network error') }
+    finally { setNdSaving(false) }
+  }
+
+  const handleDistDelete = async (id: string) => {
+    try {
+      const res = await fetch(`/api/inventory/form-distributions?id=${id}`, { method: 'DELETE' })
+      if (res.ok) { setDeleteDistConfirm(null); fetchDistributions() }
+    } catch { /* ignore */ }
   }
 
   // Fetch COA accounts for dropdowns
@@ -6007,6 +6087,21 @@ setTimeout(()=>window.print(),500);
         ).sort((a, b) => a[0].localeCompare(b[0]))
         const grandTotal = forms.reduce((s, f) => s + f.quantity, 0)
         const tmplNameByNo = new Map(formTemplates.map((t) => [t.templateNo || t.templateName, t.templateName]))
+        // Distribution rollups — pads given to partner institutions draw down on-hand.
+        const distByType = distributions.reduce((m, d) => { m.set(d.formType, (m.get(d.formType) || 0) + d.quantity); return m }, new Map<string, number>())
+        const grandDistributed = distributions.reduce((s, d) => s + d.quantity, 0)
+        const grandNet = grandTotal - grandDistributed
+        const unrecordedCount = distributions.filter((d) => d.onHandRecorded === false).length
+        const byPartner = Array.from(
+          distributions.reduce((m, d) => {
+            const cur = m.get(d.partnerName) || { total: 0, rows: 0, byType: new Map<string, number>() }
+            cur.total += d.quantity; cur.rows += 1
+            cur.byType.set(d.formType, (cur.byType.get(d.formType) || 0) + d.quantity)
+            m.set(d.partnerName, cur)
+            return m
+          }, new Map<string, { total: number; rows: number; byType: Map<string, number> }>())
+        ).sort((a, b) => b[1].total - a[1].total)
+        const formTypeOptions = Array.from(new Set([...summary.map(([t]) => t), ...formTemplates.map((t) => t.templateNo || t.templateName)])).filter(Boolean).sort()
         return (
         <>
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
@@ -6020,7 +6115,14 @@ setTimeout(()=>window.print(),500);
                 <option value="">All Branches</option>
                 {Object.entries(BRANCH_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
-              {canWrite && (
+              {formsView === 'receipts' && forms.length > 0 && (
+                <button onClick={() => { setAuditFormType(summary[0]?.[0] || ''); setAuditFrom(''); setAuditTo(''); setAuditOpen(true) }}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border transition-opacity hover:opacity-90"
+                  style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+                  <ClipboardCheck size={18} /> Audit
+                </button>
+              )}
+              {formsView === 'receipts' && canWrite && (
                 <button onClick={openFormCreate}
                   className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold transition-opacity hover:opacity-90"
                   style={{ background: 'var(--teal)' }}>
@@ -6030,21 +6132,36 @@ setTimeout(()=>window.print(),500);
             </div>
           </div>
 
+          {/* Forms sub-views: on-hand receipts · distribution to partners · per-partner totals */}
+          <div className="flex items-center gap-1 mb-4 border-b" style={{ borderColor: 'var(--light-gray)' }}>
+            {([['receipts', 'Receipts'], ['distribution', 'Partner Distribution'], ['by-partner', 'Pads by Partner']] as const).map(([v, label]) => (
+              <button key={v} onClick={() => setFormsView(v)}
+                className="px-4 py-2 text-sm font-semibold border-b-2 -mb-px transition-colors"
+                style={{ borderColor: formsView === v ? 'var(--teal)' : 'transparent', color: formsView === v ? 'var(--teal)' : 'var(--mid-gray)' }}>
+                {label}{v === 'distribution' && unrecordedCount > 0 ? ` ⚠${unrecordedCount}` : ''}
+              </button>
+            ))}
+          </div>
+
+          {formsView === 'receipts' && (<>
           {/* Available-pcs summary per form type */}
           {summary.length > 0 && (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 mb-5">
-              {summary.map(([type, s]) => (
+              {summary.map(([type, s]) => {
+                const given = distByType.get(type) || 0
+                const net = s.total - given
+                return (
                 <div key={type} className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
                   <p className="text-xs font-mono font-semibold" style={{ color: 'var(--teal)' }}>{type}</p>
                   {tmplNameByNo.get(type) && <p className="text-xs truncate" style={{ color: 'var(--charcoal)' }} title={tmplNameByNo.get(type)}>{tmplNameByNo.get(type)}</p>}
-                  <p className="text-2xl font-bold mt-1" style={{ color: 'var(--charcoal)' }}>{s.total.toLocaleString('en-PH')}</p>
-                  <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>pcs on hand · {s.receipts} receipt{s.receipts === 1 ? '' : 's'}</p>
+                  <p className="text-2xl font-bold mt-1" style={{ color: net < 0 ? '#dc2626' : 'var(--charcoal)' }}>{net.toLocaleString('en-PH')}</p>
+                  <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>pcs on hand{given > 0 ? <> · {s.total.toLocaleString('en-PH')} received − {given.toLocaleString('en-PH')} given</> : <> · {s.receipts} receipt{s.receipts === 1 ? '' : 's'}</>}</p>
                 </div>
-              ))}
+              )})}
               <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--teal)', background: 'var(--pale-teal)' }}>
-                <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--teal)' }}>Total</p>
-                <p className="text-2xl font-bold mt-1" style={{ color: 'var(--charcoal)' }}>{grandTotal.toLocaleString('en-PH')}</p>
-                <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>pcs across all form types</p>
+                <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--teal)' }}>Total on hand</p>
+                <p className="text-2xl font-bold mt-1" style={{ color: grandNet < 0 ? '#dc2626' : 'var(--charcoal)' }}>{grandNet.toLocaleString('en-PH')}</p>
+                <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>{grandTotal.toLocaleString('en-PH')} received{grandDistributed > 0 ? <> − {grandDistributed.toLocaleString('en-PH')} given to partners</> : ' across all form types'}</p>
               </div>
             </div>
           )}
@@ -6100,6 +6217,147 @@ setTimeout(()=>window.print(),500);
               </table>
             </div>
           </div>
+          </>)}
+
+          {/* ── Partner Distribution — spreadsheet-style log of pads given to partner schools ── */}
+          {formsView === 'distribution' && (() => {
+            const ndFromN = parseInt(ndFrom.replace(/[^0-9]/g, ''), 10)
+            const ndToN = parseInt(ndTo.replace(/[^0-9]/g, ''), 10)
+            const ndQty = Number.isFinite(ndFromN) && Number.isFinite(ndToN) && ndToN >= ndFromN ? ndToN - ndFromN + 1 : null
+            const canEntry = canWrite && !!formsBranchFilter
+            return (
+            <>
+              <p className="text-xs mb-3" style={{ color: 'var(--mid-gray)' }}>
+                Log which pre-numbered forms were handed to each partner institution. Partners sync live from HR → Partnerships. Each row draws the pcs down from on-hand. A row flagged <span className="font-semibold" style={{ color: '#b45309' }}>Not on hand</span> was given out but never recorded as received in the clinic — record the receipt to clear it.
+              </p>
+              {!formsBranchFilter && (
+                <p className="text-xs mb-3 px-3 py-2 rounded-lg" style={{ background: '#fffbeb', color: '#92400e' }}>Pick a specific branch above to log a distribution (so the pads draw down the right branch&apos;s on-hand).</p>
+              )}
+              <div className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr style={{ background: 'var(--off-white)' }}>
+                        <th className="text-left px-3 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Date</th>
+                        <th className="text-left px-3 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Partner Institution</th>
+                        <th className="text-left px-3 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Form</th>
+                        <th className="text-left px-3 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>From #</th>
+                        <th className="text-left px-3 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>To #</th>
+                        <th className="text-right px-3 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Pcs</th>
+                        <th className="text-left px-3 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Status</th>
+                        {canWrite && <th className="px-3 py-3"></th>}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {canEntry && (
+                        <tr style={{ background: '#f8fafc', borderBottom: '2px solid var(--light-gray)' }}>
+                          <td className="px-2 py-2"><input type="date" value={ndDate} onChange={(e) => setNdDate(e.target.value)} className="w-full px-2 py-1.5 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} /></td>
+                          <td className="px-2 py-2">
+                            <select value={ndPartner} onChange={(e) => setNdPartner(e.target.value)} className="w-full px-2 py-1.5 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }}>
+                              <option value="">{partnerInstitutions.length ? 'Select partner…' : 'No partners synced from HR'}</option>
+                              {partnerInstitutions.map((p) => <option key={p.id} value={`${p.id}|${p.name}`}>{p.name}{p.typeLabel ? ` · ${p.typeLabel}` : ''}</option>)}
+                            </select>
+                          </td>
+                          <td className="px-2 py-2">
+                            <select value={ndForm} onChange={(e) => setNdForm(e.target.value)} className="w-full px-2 py-1.5 rounded-lg border text-xs font-mono" style={{ borderColor: 'var(--light-gray)' }}>
+                              <option value="">Form…</option>
+                              {formTypeOptions.map((t) => <option key={t} value={t}>{t}</option>)}
+                            </select>
+                          </td>
+                          <td className="px-2 py-2"><input value={ndFrom} onChange={(e) => setNdFrom(e.target.value)} placeholder="0651" className="w-24 px-2 py-1.5 rounded-lg border text-xs font-mono" style={{ borderColor: 'var(--light-gray)' }} /></td>
+                          <td className="px-2 py-2"><input value={ndTo} onChange={(e) => setNdTo(e.target.value)} placeholder="0700" className="w-24 px-2 py-1.5 rounded-lg border text-xs font-mono" style={{ borderColor: 'var(--light-gray)' }} /></td>
+                          <td className="px-3 py-2 text-right font-semibold" style={{ color: ndQty == null ? 'var(--mid-gray)' : 'var(--charcoal)' }}>{ndQty == null ? '—' : ndQty.toLocaleString('en-PH')}</td>
+                          <td className="px-2 py-2" colSpan={canWrite ? 2 : 1}>
+                            <button onClick={handleDistSave} disabled={ndSaving || ndQty == null || !ndPartner || !ndForm}
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-white text-xs font-semibold disabled:opacity-40" style={{ background: 'var(--teal)' }}>
+                              {ndSaving ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />} Add row
+                            </button>
+                          </td>
+                        </tr>
+                      )}
+                      {distributions.length === 0 && !canEntry ? (
+                        <tr><td colSpan={canWrite ? 8 : 7} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}><Gift size={30} className="mx-auto mb-2 opacity-40" /><p>No form distributions logged yet</p></td></tr>
+                      ) : distributions.map((d) => (
+                        <tr key={d.id} className="border-t hover:bg-gray-50/50 transition-colors" style={{ borderColor: 'var(--light-gray)' }}>
+                          <td className="px-3 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{formatDate(d.dateGiven)}</td>
+                          <td className="px-3 py-3 font-medium" style={{ color: 'var(--charcoal)' }}>{d.partnerName}<span className="text-xs ml-1.5" style={{ color: 'var(--mid-gray)' }}>{BRANCH_LABELS[d.branch] || d.branch}</span></td>
+                          <td className="px-3 py-3"><span className="font-mono text-xs px-1.5 py-0.5 rounded" style={{ background: '#f0fdfa', color: 'var(--teal)' }}>{d.formType}</span></td>
+                          <td className="px-3 py-3 text-xs font-mono" style={{ color: 'var(--charcoal)' }}>{d.fromControl}</td>
+                          <td className="px-3 py-3 text-xs font-mono" style={{ color: 'var(--charcoal)' }}>{d.toControl}</td>
+                          <td className="px-3 py-3 text-right font-semibold" style={{ color: 'var(--charcoal)' }}>{d.quantity.toLocaleString('en-PH')}</td>
+                          <td className="px-3 py-3">
+                            {d.onHandRecorded === false ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: '#fffbeb', color: '#b45309' }}><AlertCircle size={11} /> Not on hand</span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: '#ecfdf5', color: '#047857' }}>Recorded</span>
+                            )}
+                          </td>
+                          {canWrite && (
+                            <td className="px-3 py-3 text-right">
+                              <button onClick={() => setDeleteDistConfirm(d.id)} className="p-2 rounded-lg hover:bg-red-50 transition-colors" title="Delete distribution"><Trash2 size={15} className="text-red-500" /></button>
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+            )
+          })()}
+
+          {/* ── Pads by Partner — per-institution totals ── */}
+          {formsView === 'by-partner' && (
+            <div className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr style={{ background: 'var(--off-white)' }}>
+                      <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Partner Institution</th>
+                      <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>By Form Type</th>
+                      <th className="text-right px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Entries</th>
+                      <th className="text-right px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Pads Given</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {byPartner.length === 0 ? (
+                      <tr><td colSpan={4} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}><Gift size={30} className="mx-auto mb-2 opacity-40" /><p>No distributions yet</p></td></tr>
+                    ) : byPartner.map(([partner, s]) => (
+                      <tr key={partner} className="border-t hover:bg-gray-50/50 transition-colors" style={{ borderColor: 'var(--light-gray)' }}>
+                        <td className="px-4 py-3 font-medium" style={{ color: 'var(--charcoal)' }}>{partner}</td>
+                        <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{Array.from(s.byType).map(([t, q]) => `${t}: ${q.toLocaleString('en-PH')}`).join(' · ')}</td>
+                        <td className="px-4 py-3 text-right text-xs" style={{ color: 'var(--mid-gray)' }}>{s.rows}</td>
+                        <td className="px-4 py-3 text-right font-bold" style={{ color: 'var(--teal)' }}>{s.total.toLocaleString('en-PH')}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  {byPartner.length > 0 && (
+                    <tfoot>
+                      <tr style={{ background: 'var(--off-white)', borderTop: '2px solid var(--light-gray)' }}>
+                        <td className="px-4 py-3 font-bold" style={{ color: 'var(--charcoal)' }} colSpan={3}>Total pads given</td>
+                        <td className="px-4 py-3 text-right font-bold" style={{ color: 'var(--teal)' }}>{grandDistributed.toLocaleString('en-PH')}</td>
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Delete Distribution Confirm */}
+          {deleteDistConfirm && (
+            <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-xl">
+                <h3 className="text-lg font-bold mb-2" style={{ color: 'var(--charcoal)' }}>Delete Distribution</h3>
+                <p className="text-sm mb-6" style={{ color: 'var(--mid-gray)' }}>Remove this distribution? The pcs it issued will be added back to on-hand.</p>
+                <div className="flex gap-3 justify-end">
+                  <button onClick={() => setDeleteDistConfirm(null)} className="px-4 py-2 rounded-lg text-sm border" style={{ borderColor: 'var(--light-gray)' }}>Cancel</button>
+                  <button onClick={() => handleDistDelete(deleteDistConfirm)} className="px-4 py-2 rounded-lg text-sm text-white bg-red-500 hover:bg-red-600">Delete</button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Delete Form Receipt Confirm */}
           {deleteFormConfirm && (
@@ -6116,6 +6374,87 @@ setTimeout(()=>window.print(),500);
               </div>
             </div>
           )}
+
+          {/* Forms Audit — reconcile on-hand against the remaining control-number range */}
+          {auditOpen && (() => {
+            const toInt = (s: string) => { const d = String(s ?? '').replace(/[^0-9]/g, ''); return d ? parseInt(d, 10) : null }
+            const typeReceipts = forms.filter((f) => f.formType === auditFormType)
+            const totalReceived = typeReceipts.reduce((s, f) => s + f.quantity, 0)
+            const froms = typeReceipts.map((f) => toInt(f.fromControl)).filter((n): n is number => n != null)
+            const tos = typeReceipts.map((f) => toInt(f.toControl)).filter((n): n is number => n != null)
+            const recvMin = froms.length ? Math.min(...froms) : null
+            const recvMax = tos.length ? Math.max(...tos) : null
+            const a = toInt(auditFrom), b = toInt(auditTo)
+            const remaining = (a != null && b != null && b >= a) ? b - a + 1 : null
+            const consumed = remaining != null ? totalReceived - remaining : null
+            const pct = consumed != null && totalReceived > 0 ? Math.round((consumed / totalReceived) * 1000) / 10 : null
+            const overCount = consumed != null && consumed < 0
+            const pad = (n: number) => String(n).padStart(Math.max(auditFrom.replace(/[^0-9]/g, '').length, auditTo.replace(/[^0-9]/g, '').length, 4), '0')
+            return (
+            <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setAuditOpen(false)}>
+              <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-xl" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between mb-1">
+                  <h3 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>Forms Audit</h3>
+                  <button onClick={() => setAuditOpen(false)}><XCircle size={18} style={{ color: 'var(--mid-gray)' }} /></button>
+                </div>
+                <p className="text-xs mb-4" style={{ color: 'var(--mid-gray)' }}>
+                  Enter the control-number range you still physically have on hand{formsBranchFilter ? <> for <strong>{BRANCH_LABELS[formsBranchFilter] || formsBranchFilter}</strong></> : ' (all branches)'}. Consumed is computed against the total received for the form type.
+                </p>
+
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Form Type</label>
+                <select value={auditFormType} onChange={(e) => setAuditFormType(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }}>
+                  {summary.map(([type, s]) => <option key={type} value={type}>{type} — {s.total.toLocaleString('en-PH')} received</option>)}
+                </select>
+
+                <div className="rounded-xl p-3 mb-3 text-xs" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
+                  Total received: <strong style={{ color: 'var(--charcoal)' }}>{totalReceived.toLocaleString('en-PH')}</strong> pcs
+                  {recvMin != null && recvMax != null && <> · recorded range <span className="font-mono">{pad(recvMin)} → {pad(recvMax)}</span></>}
+                  {' · '}{typeReceipts.length} receipt{typeReceipts.length === 1 ? '' : 's'}
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                  <div>
+                    <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>On hand from #</label>
+                    <input value={auditFrom} onChange={(e) => setAuditFrom(e.target.value)} placeholder="e.g. 0651"
+                      className="w-full px-3 py-2 rounded-xl border text-sm font-mono" style={{ borderColor: 'var(--light-gray)' }} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>On hand to #</label>
+                    <input value={auditTo} onChange={(e) => setAuditTo(e.target.value)} placeholder="e.g. 1000"
+                      className="w-full px-3 py-2 rounded-xl border text-sm font-mono" style={{ borderColor: 'var(--light-gray)' }} />
+                  </div>
+                </div>
+
+                {remaining != null ? (
+                  <div className="rounded-xl border p-4" style={{ borderColor: overCount ? '#fca5a5' : 'var(--teal)', background: overCount ? '#fef2f2' : 'var(--pale-teal)' }}>
+                    <div className="flex items-center justify-between text-sm mb-1">
+                      <span style={{ color: 'var(--mid-gray)' }}>Remaining on hand</span>
+                      <span className="font-bold" style={{ color: 'var(--charcoal)' }}>{remaining.toLocaleString('en-PH')} pcs</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span style={{ color: 'var(--mid-gray)' }}>Already consumed</span>
+                      <span className="font-bold text-lg" style={{ color: overCount ? '#dc2626' : 'var(--teal)' }}>
+                        {overCount ? '—' : consumed!.toLocaleString('en-PH')}{!overCount && pct != null ? ` (${pct}%)` : ''}
+                      </span>
+                    </div>
+                    {overCount ? (
+                      <p className="text-xs mt-2" style={{ color: '#dc2626' }}>The range on hand ({remaining.toLocaleString('en-PH')} pcs) is larger than the {totalReceived.toLocaleString('en-PH')} pcs recorded as received — check the numbers or add the missing receipt.</p>
+                    ) : recvMin != null && a != null && a > recvMin ? (
+                      <p className="text-xs mt-2" style={{ color: 'var(--mid-gray)' }}>Consumed range: <span className="font-mono">{pad(recvMin)} → {pad(a - 1)}</span></p>
+                    ) : null}
+                  </div>
+                ) : (
+                  <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Enter both control numbers (the “to” must be ≥ the “from”) to compute what’s been consumed.</p>
+                )}
+
+                <div className="flex justify-end mt-5">
+                  <button onClick={() => setAuditOpen(false)} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}>Done</button>
+                </div>
+              </div>
+            </div>
+            )
+          })()}
 
           {/* Add / Edit Form Receipt Modal */}
           {formModalOpen && (() => {

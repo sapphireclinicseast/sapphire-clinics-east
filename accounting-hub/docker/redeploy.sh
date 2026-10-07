@@ -106,6 +106,26 @@ ALTER TABLE "Advance" ADD COLUMN IF NOT EXISTS "paymentBankAccountId" TEXT;
 ALTER TABLE "ARPayment" ADD COLUMN IF NOT EXISTS "overpayment" DECIMAL(65,30) NOT NULL DEFAULT 0;
 ALTER TABLE "ARPayment" ADD COLUMN IF NOT EXISTS "overpaymentAccountId" TEXT;
 ALTER TABLE "ConsultantUnitPay" ADD COLUMN IF NOT EXISTS "branchAmounts" JSONB;
+CREATE TABLE IF NOT EXISTS "FormDistribution" (
+    "id"            TEXT NOT NULL,
+    "branch"        TEXT NOT NULL,
+    "formType"      TEXT NOT NULL,
+    "partnerId"     TEXT,
+    "partnerName"   TEXT NOT NULL,
+    "dateGiven"     TIMESTAMP(3) NOT NULL,
+    "fromControl"   TEXT NOT NULL,
+    "toControl"     TEXT NOT NULL,
+    "quantity"      INTEGER NOT NULL,
+    "remarks"       TEXT,
+    "createdById"   TEXT,
+    "createdByName" TEXT,
+    "createdAt"     TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt"     TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "FormDistribution_pkey" PRIMARY KEY ("id")
+);
+CREATE INDEX IF NOT EXISTS "FormDistribution_branch_idx" ON "FormDistribution"("branch");
+CREATE INDEX IF NOT EXISTS "FormDistribution_formType_idx" ON "FormDistribution"("formType");
+CREATE INDEX IF NOT EXISTS "FormDistribution_partnerName_idx" ON "FormDistribution"("partnerName");
 CREATE TABLE IF NOT EXISTS "PosSettlementBatch" (
     "id"                TEXT NOT NULL,
     "bankTransactionId" TEXT NOT NULL,

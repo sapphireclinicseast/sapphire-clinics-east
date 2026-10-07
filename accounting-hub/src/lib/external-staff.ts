@@ -106,3 +106,37 @@ export async function fetchExternalStaffForSync(
 
   return staff
 }
+
+export type HrPartnerInstitution = {
+  id: string
+  name: string
+  type?: string
+  typeLabel?: string
+}
+
+/**
+ * Partner institutions from the HR Platform "Partnerships" module
+ * (hr.sapphireclinicseast.org → /partner-institutions/external). Same shared
+ * EXTERNAL_API_KEY Bearer auth as the staff feed. Used to populate the partner
+ * dropdown when logging which schools pre-numbered forms were given to.
+ */
+export async function fetchHrPartnerInstitutions(): Promise<HrPartnerInstitution[]> {
+  try {
+    const res = await fetch(`${HR_PLATFORM_URL}/partner-institutions/external`, {
+      headers: { Authorization: `Bearer ${EXTERNAL_API_KEY}` },
+      cache: 'no-store',
+    })
+    if (!res.ok) {
+      console.error(`[external-staff] HR partner-institutions returned ${res.status}`)
+      return []
+    }
+    const data = await res.json()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (data.institutions || []).map((i: any) => ({
+      id: String(i.id), name: String(i.name || '').trim(), type: i.type, typeLabel: i.typeLabel,
+    })).filter((i: HrPartnerInstitution) => i.name)
+  } catch (e) {
+    console.error('[external-staff] HR partner-institutions fetch error:', e)
+    return []
+  }
+}
