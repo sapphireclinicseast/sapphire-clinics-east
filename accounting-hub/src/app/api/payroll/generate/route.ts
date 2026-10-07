@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { notMigratedOrder } from '@/lib/payroll/exclude-migrated'
+import { commissionFloor, computeDoctorCommissions, normName } from '@/lib/referral-commission'
 
 /** Safely convert a Prisma Decimal (or any value) to a plain JS number */
 function toFloat(v: unknown): number {
@@ -271,10 +272,66 @@ export async function GET(req: Request) {
       })
       if (arr.length) caByConsultant.set(a.consultantId, arr)
     }
-    // Stale mm-/ca- lines out, current ones in. Manual lines untouched.
+
+    // ── Referral commission (in-house doctors) ──────────────────────────────
+    // ₱rate per session of the doctor's referred patients, swept from the
+    // scheme start up to this cutoff's END date — unclaimed sessions only (the
+    // claim ledger stamps what a saved payroll pays, so nothing double-counts
+    // and a late-tagged session lands in the next cutoff instead of vanishing)
+    // plus whatever THIS cutoff already claimed, so a saved entry previews the
+    // same line instead of dropping it. Injected on the consultant's PRIMARY
+    // branch only — the commission is per patient-session, not branch-split,
+    // so an interbranch doctor must not get the line at two branches. The line
+    // carries its order ids (rcSessions); the save stamps them.
+    const rcByConsultant = new Map<string, { id: string; name: string; amount: number; isAddition: boolean; isTaxed: boolean; remarks: string; rcSessions: { orderId: string; orderNumber: number; date: string; patientName: string | null; branch: string; amount: number }[] }[]>()
+    {
+      const inhouseDocs = await prisma.referrer.findMany({
+        where: { isActive: true, type: 'DOCTOR', isInhouse: true, commissionPerSession: { not: null } },
+        select: { id: true, name: true, commissionPerSession: true },
+      })
+      if (inhouseDocs.length) {
+        const [engineRows, claimedHere] = await Promise.all([
+          computeDoctorCommissions(prisma, { from: commissionFloor(), to: end, onlyUnclaimed: true }),
+          prisma.referralCommissionItem.findMany({
+            where: { kind: 'DOCTOR', cutoffPeriod, referrerId: { in: inhouseDocs.map(d => d.id) } },
+            select: { referrerId: true, orderId: true, amount: true },
+          }),
+        ])
+        const unclaimedByRef = new Map(engineRows.map(r => [r.referrerId, r]))
+        const consultantByNorm = new Map(consultantsRaw.filter(c => !branch || c.branch === branch).map(c => [normName(c.name), c]))
+        for (const doc of inhouseDocs) {
+          const c = consultantByNorm.get(normName(doc.name))
+          if (!c) continue
+          const rate = Number(doc.commissionPerSession)
+          const fresh = (unclaimedByRef.get(doc.id)?.sessions || []).map(s => ({
+            orderId: s.orderId, orderNumber: s.orderNumber, date: s.date.toISOString(), patientName: s.patientName, branch: s.branch, amount: rate,
+          }))
+          // Sessions this cutoff already paid (saved earlier) re-enter the line
+          // at their CLAIMED amount — a rate change later never rewrites money
+          // a saved payslip already shows.
+          const freshIds = new Set(fresh.map(s => s.orderId))
+          const mine = claimedHere.filter(x => x.referrerId === doc.id && x.orderId && !freshIds.has(x.orderId))
+            .map(x => ({ orderId: x.orderId as string, orderNumber: 0, date: '', patientName: null, branch: '', amount: Number(x.amount) }))
+          const sessions = [...mine, ...fresh]
+          if (!sessions.length) continue
+          const amount = sessions.reduce((s, x) => s + x.amount, 0)
+          rcByConsultant.set(c.id, [{
+            id: `rc-${doc.id}`,
+            name: `Referral commission — ${sessions.length} session${sessions.length === 1 ? '' : 's'} × ₱${rate.toLocaleString('en-PH')}`,
+            amount,
+            isAddition: true,
+            isTaxed: true,
+            remarks: 'Referral commission (₱/session of referred patients — auto)',
+            rcSessions: sessions,
+          }])
+        }
+      }
+    }
+
+    // Stale mm-/ca-/rc- lines out, current ones in. Manual lines untouched.
     const mergeMentorship = (stored: unknown[], consultantId: string): unknown[] => {
-      const manual = (stored as { id?: string }[]).filter(l => { const id = String(l?.id || ''); return !id.startsWith('mm-') && !id.startsWith('ca-') })
-      return [...manual, ...(caByConsultant.get(consultantId) || []), ...(mmByConsultant.get(consultantId) || [])]
+      const manual = (stored as { id?: string }[]).filter(l => { const id = String(l?.id || ''); return !id.startsWith('mm-') && !id.startsWith('ca-') && !id.startsWith('rc-') })
+      return [...manual, ...(caByConsultant.get(consultantId) || []), ...(mmByConsultant.get(consultantId) || []), ...(rcByConsultant.get(consultantId) || [])]
     }
     const existingDataMap = new Map(existingEntries.map(e => [e.consultantId, e]))
 
@@ -715,6 +772,26 @@ export async function POST(req: Request) {
           createdById: session.user.id,
         },
       })
+      // Stamp the referral-commission sessions this entry pays. Release-and-
+      // reclaim keyed on the entry id keeps saves idempotent: a deleted rc-
+      // line frees its sessions for the next cutoff, and skipDuplicates
+      // leaves sessions alone that another cutoff's save claimed first.
+      await prisma.referralCommissionItem.deleteMany({ where: { kind: 'DOCTOR', payrollEntryId: result.id } })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const rcLines = ((entry.adjustments || []) as any[]).filter(l => String(l?.id || '').startsWith('rc-'))
+      for (const line of rcLines) {
+        const referrerId = String(line.id).slice(3)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const sessions = (Array.isArray(line.rcSessions) ? line.rcSessions : []) as any[]
+        if (!sessions.length) continue
+        await prisma.referralCommissionItem.createMany({
+          data: sessions
+            .filter(s => s?.orderId)
+            .map(s => ({ kind: 'DOCTOR', orderId: String(s.orderId), referrerId, amount: Number(s.amount) || 0, cutoffPeriod, payrollEntryId: result.id })),
+          skipDuplicates: true,
+        })
+      }
+
       results.push(result)
     }
 

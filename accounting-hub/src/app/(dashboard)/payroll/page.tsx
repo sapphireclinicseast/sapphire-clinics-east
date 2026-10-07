@@ -5061,6 +5061,38 @@ export default function PayrollPage() {
                                           )}
                                         </div>
 
+                                        {/* ── Referral commission computation (in-house doctors) ── */}
+                                        {adjs.some(a => String(a.id || '').startsWith('rc-')) && (
+                                          <div className="rounded-xl border p-3" style={{ borderColor: 'var(--teal)', background: 'var(--pale-teal)' }}>
+                                            <p className="text-xs font-bold mb-1.5" style={{ color: 'var(--deep-teal)' }}>
+                                              Referral commission — ₱/session of this doctor&apos;s referred patients (sessions up to the cutoff end, each paid once across all cutoffs)
+                                            </p>
+                                            {adjs.filter(a => String(a.id || '').startsWith('rc-')).map(a => {
+                                              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                                              const sess = (Array.isArray((a as any).rcSessions) ? (a as any).rcSessions : []) as { orderId: string; orderNumber: number; date: string; patientName: string | null; branch: string; amount: number }[]
+                                              return (
+                                                <div key={a.id} className="text-xs">
+                                                  <div className="font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>{a.name} = {formatCurrency(a.amount)}</div>
+                                                  {sess.length > 0 && (
+                                                    <table className="w-full text-[11px] bg-white rounded-lg overflow-hidden">
+                                                      <tbody>
+                                                        {sess.map(s => (
+                                                          <tr key={s.orderId} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                                                            <td className="px-2 py-1 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{s.date ? new Date(s.date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' }) : 'earlier save'}</td>
+                                                            <td className="px-2 py-1 font-semibold" style={{ color: 'var(--charcoal)' }}>{s.orderNumber ? `#${s.orderNumber}` : '—'}</td>
+                                                            <td className="px-2 py-1" style={{ color: 'var(--charcoal)' }}>{s.patientName || '—'}</td>
+                                                            <td className="px-2 py-1 text-right font-mono" style={{ color: 'var(--deep-teal)' }}>{formatCurrency(s.amount)}</td>
+                                                          </tr>
+                                                        ))}
+                                                      </tbody>
+                                                    </table>
+                                                  )}
+                                                </div>
+                                              )
+                                            })}
+                                          </div>
+                                        )}
+
                                         {/* ── Totals summary ── */}
                                         <div className="grid grid-cols-3 gap-4 text-xs">
                                           <div>

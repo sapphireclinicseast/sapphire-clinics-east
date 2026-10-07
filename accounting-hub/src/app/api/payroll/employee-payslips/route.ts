@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { commissionFloor, computeMedrepNewPatients, type MedrepNewPatient } from '@/lib/referral-commission'
 
 const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 const READ_ROLES = [...WRITE_ROLES, 'VIEWER']
@@ -188,6 +189,52 @@ export async function GET(req: Request) {
 }
 
 // Generate payslips for a cutoff period
+// ── New-referred-patient incentive (the medical representative's one-time
+// ₱amount per new patient from an EXTERNAL referrer) ─────────────────────────
+// Computed for the recipient configured in Referral → Incentive settings:
+// unclaimed new patients swept from the scheme start up to the cutoff's end.
+// This payslip's own prior claims are RELEASED first, so regenerating shows the
+// same patients again, while other cutoffs' claims keep excluding theirs — the
+// ledger's unique patient key makes double-paying impossible. The caller adds
+// the total to allowances (taxable) and stamps the claims after the save.
+export interface MedrepIncentive {
+  count: number
+  amount: number
+  total: number
+  patients: MedrepNewPatient[]
+  detail: { count: number; amount: number; total: number; patients: { patientName: string; referrerName: string; referrerType: string | null; firstDate: string; branch: string; orderNumber: number }[] }
+}
+async function medrepIncentiveFor(
+  incSettings: { staffId: string | null; amount: unknown } | null,
+  emp: { id: string; externalStaffId: string | null },
+  cutoffPeriod: string, qBranch: string, cutoffEndExclusive: Date,
+): Promise<MedrepIncentive | null> {
+  if (!incSettings?.staffId || !emp.externalStaffId || emp.externalStaffId !== incSettings.staffId) return null
+  const prior = await prisma.employeePayslip.findUnique({
+    where: { employeeId_cutoffPeriod_branch: { employeeId: emp.id, cutoffPeriod, branch: qBranch } },
+    select: { id: true, status: true },
+  })
+  if (prior?.status === 'LOCKED') return null
+  if (prior) await prisma.referralCommissionItem.deleteMany({ where: { kind: 'MEDREP', payslipId: prior.id } })
+  const patients = await computeMedrepNewPatients(prisma, { from: commissionFloor(), to: new Date(cutoffEndExclusive.getTime() - 1), onlyUnclaimed: true })
+  if (!patients.length) return null
+  const amount = Number(incSettings.amount) || 0
+  if (amount <= 0) return null
+  return {
+    count: patients.length, amount, total: patients.length * amount, patients,
+    detail: {
+      count: patients.length, amount, total: patients.length * amount,
+      patients: patients.map(p => ({ patientName: p.patientName, referrerName: p.referrerName, referrerType: p.referrerType, firstDate: p.firstDate.toISOString(), branch: p.branch, orderNumber: p.orderNumber })),
+    },
+  }
+}
+async function claimMedrepIncentive(inc: MedrepIncentive, cutoffPeriod: string, payslipId: string) {
+  await prisma.referralCommissionItem.createMany({
+    data: inc.patients.map(p => ({ kind: 'MEDREP', patientKey: p.patientKey, referrerId: p.referrerId, amount: inc.amount, cutoffPeriod, payslipId })),
+    skipDuplicates: true,
+  })
+}
+
 export async function POST(req: Request) {
   const session = await auth()
   if (!session?.user || !WRITE_ROLES.includes(session.user.role as string)) {
@@ -244,6 +291,7 @@ export async function POST(req: Request) {
     where: { isActive: true, branch: qBranch },
     include: { benefits: { where: { isActive: true } } },
   })
+  const incSettings = await prisma.referralIncentiveSettings.findUnique({ where: { id: 'MAIN' } })
 
   // Get timekeeping records for this period — any upload status + manual entries
   // The upload review workflow (UPLOADED → ACCEPTED → FINALIZED) is an optional audit step
@@ -649,6 +697,14 @@ export async function POST(req: Request) {
       adjDetails.push({ allowanceLabel: adj.allowanceLabel, allowanceType: adj.allowanceType, allowanceAmount: allowAmt, deductionLabel: adj.deductionLabel, deductionType: dedType, deductionAmount: dedAmt })
     }
 
+    // Medical representative's one-time new-referred-patient incentive —
+    // taxable allowance, claim-ledger backed (see medrepIncentiveFor above).
+    const medrepInc = await medrepIncentiveFor(incSettings, emp, cutoffPeriod, qBranch, endDate)
+    if (medrepInc) {
+      allowanceAmount += medrepInc.total
+      adjDetails.push({ allowanceLabel: `New-referred-patient incentive — ${medrepInc.count} × ₱${medrepInc.amount.toLocaleString('en-PH')}`, allowanceType: 'TAXABLE', allowanceAmount: medrepInc.total })
+    }
+
     const grossPay = basicPay + leavePay + overtimePay + holidayOvertimePay + holidayPay + restDayPay + nightDiffPay + allowanceAmount
 
     // TRAIN Law withholding tax (Philippines, 2023 onwards) — monthly basis.
@@ -714,7 +770,7 @@ export async function POST(req: Request) {
           overtimeHours: totalOTHours,
           lateMinutes: totalLateMinutes,
           undertimeMinutes: totalUndertimeMinutes,
-          details: { adjustments: adjDetails, dailyBreakdown, taxableIncome: taxablePerCutoff, holidayOvertimePay, holidayOTHours: totalHolidayOTHours, cutoffStart: startDate.toISOString().substring(0, 10), cutoffEnd: new Date(endDate.getTime() - 86400000).toISOString().substring(0, 10) },
+          details: { adjustments: adjDetails, dailyBreakdown, taxableIncome: taxablePerCutoff, holidayOvertimePay, holidayOTHours: totalHolidayOTHours, cutoffStart: startDate.toISOString().substring(0, 10), cutoffEnd: new Date(endDate.getTime() - 86400000).toISOString().substring(0, 10), ...(medrepInc ? { referralIncentive: medrepInc.detail } : {}) },
           computeTaxNow: empComputeNow,
           status: 'DRAFT',
           createdById: session.user.id as string,
@@ -748,12 +804,15 @@ export async function POST(req: Request) {
           overtimeHours: totalOTHours,
           lateMinutes: totalLateMinutes,
           undertimeMinutes: totalUndertimeMinutes,
-          details: { adjustments: adjDetails, dailyBreakdown, taxableIncome: taxablePerCutoff, holidayOvertimePay, holidayOTHours: totalHolidayOTHours, cutoffStart: startDate.toISOString().substring(0, 10), cutoffEnd: new Date(endDate.getTime() - 86400000).toISOString().substring(0, 10) },
+          details: { adjustments: adjDetails, dailyBreakdown, taxableIncome: taxablePerCutoff, holidayOvertimePay, holidayOTHours: totalHolidayOTHours, cutoffStart: startDate.toISOString().substring(0, 10), cutoffEnd: new Date(endDate.getTime() - 86400000).toISOString().substring(0, 10), ...(medrepInc ? { referralIncentive: medrepInc.detail } : {}) },
           computeTaxNow: empComputeNow,
           status: 'DRAFT',
           createdById: session.user.id as string,
         },
       })
+      // Stamp the incentive's patients against this payslip — the unique
+      // patient key means a patient another cutoff already paid stays theirs.
+      if (medrepInc) await claimMedrepIncentive(medrepInc, cutoffPeriod, payslip.id)
       payslips.push(payslip)
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
@@ -1102,6 +1161,15 @@ export async function PATCH(req: Request) {
       adjDetails.push({ allowanceLabel: adj.allowanceLabel, allowanceType: adj.allowanceType, allowanceAmount: allowAmt, deductionLabel: adj.deductionLabel, deductionType: dedType, deductionAmount: dedAmt })
     }
 
+    // Medical representative's one-time new-referred-patient incentive —
+    // same claim-ledger mechanics as the bulk generate above.
+    const incSettings = await prisma.referralIncentiveSettings.findUnique({ where: { id: 'MAIN' } })
+    const medrepInc = await medrepIncentiveFor(incSettings, emp, cutoffPeriod, qBranch, endDate)
+    if (medrepInc) {
+      allowanceAmount += medrepInc.total
+      adjDetails.push({ allowanceLabel: `New-referred-patient incentive — ${medrepInc.count} × ₱${medrepInc.amount.toLocaleString('en-PH')}`, allowanceType: 'TAXABLE', allowanceAmount: medrepInc.total })
+    }
+
     const grossPay = basicPay + leavePay + overtimePay + holidayOvertimePay + holidayPay + restDayPay + nightDiffPay + allowanceAmount
     const preTaxDeductions = sssDeduction + philhealthDeduction + pagibigDeduction
     const taxablePerCutoff = grossPay - preTaxDeductions - nonTaxableAllowance - taxableAdjDeduction
@@ -1150,7 +1218,7 @@ export async function PATCH(req: Request) {
       taxDeduction, lateDeduction, undertimeDeduction, otherDeductions: adjDeductionAmount,
       totalDeductions, netPay, daysWorked, hoursWorked: totalHoursWorked,
       overtimeHours: totalOTHours, lateMinutes: totalLateMinutes, undertimeMinutes: totalUndertimeMinutes,
-      details: { adjustments: adjDetails, dailyBreakdown, taxableIncome: taxablePerCutoff, holidayOvertimePay, holidayOTHours: totalHolidayOTHours, cutoffStart: startDate.toISOString().substring(0, 10), cutoffEnd: new Date(endDate.getTime() - 86400000).toISOString().substring(0, 10) },
+      details: { adjustments: adjDetails, dailyBreakdown, taxableIncome: taxablePerCutoff, holidayOvertimePay, holidayOTHours: totalHolidayOTHours, cutoffStart: startDate.toISOString().substring(0, 10), cutoffEnd: new Date(endDate.getTime() - 86400000).toISOString().substring(0, 10), ...(medrepInc ? { referralIncentive: medrepInc.detail } : {}) },
       computeTaxNow: shouldComputeNow,
       status: 'DRAFT',
       createdById: session.user.id as string,
@@ -1162,6 +1230,8 @@ export async function PATCH(req: Request) {
       create: { employeeId, cutoffPeriod, branch: qBranch, ...upsertFields },
       include: { employee: { select: { id: true, firstName: true, lastName: true, email: true, department: true, branch: true, rateType: true, dailyRate: true, monthlyRate: true, employeeBioId: true, jobTitle: true } } },
     })
+
+    if (medrepInc) await claimMedrepIncentive(medrepInc, cutoffPeriod, payslip.id)
 
     return NextResponse.json(payslip)
   } catch (err) {

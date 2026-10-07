@@ -74,6 +74,9 @@ export interface EmployeePayslipInput {
   otherDeductions: unknown; totalDeductions: unknown; netPay: unknown
   daysWorked: unknown; hoursWorked: unknown
   employee: { firstName: string; lastName: string }
+  // When present (med rep), the referral incentive prints as its own earnings
+  // row, carved out of the Allowances lump so the payslip shows the scheme.
+  details?: unknown
 }
 
 /**
@@ -109,6 +112,11 @@ export async function buildEmployeePayslipPdf(slip: EmployeePayslipInput): Promi
   doc.text(`Cut-off:   ${fmtCutoffLabel(slip.cutoffPeriod)}`, margin, y); y += 8
 
   const num = (v: unknown) => Number(v ?? 0)
+  // The referral incentive is saved inside Allowances; print it as its own row
+  // (Allowances shows the remainder) so the payslip spells the scheme out.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const ri = (slip.details as any)?.referralIncentive as { count: number; amount: number; total: number } | undefined
+  const riTotal = ri ? num(ri.total) : 0
   const earningsRows: [string, string][] = [
     ['Basic Pay', fmtPHP(num(slip.basicPay))],
     ['Leave', fmtPHP(num(slip.leavePay))],
@@ -116,7 +124,8 @@ export async function buildEmployeePayslipPdf(slip: EmployeePayslipInput): Promi
     ['Holiday Pay', fmtPHP(num(slip.holidayPay))],
     ['Night Differential', fmtPHP(num(slip.nightDiffPay))],
     ['Rest Day Pay', fmtPHP(num(slip.restDayPay))],
-    ['Allowances', fmtPHP(num(slip.allowances))],
+    ['Allowances', fmtPHP(num(slip.allowances) - riTotal)],
+    ...(ri ? [[`Referral incentive (${ri.count} new patient${ri.count === 1 ? '' : 's'} × ${fmtPHP(num(ri.amount))})`, fmtPHP(riTotal)] as [string, string]] : []),
   ]
   autoTable(doc, {
     startY: y,

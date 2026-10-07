@@ -5080,6 +5080,32 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                               </div>
                             </div>
                           </div>
+                          {/* ── Referral incentive computation (medical representative) ── */}
+                          {(() => {
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                            const ri = (p.details as any)?.referralIncentive as { count: number; amount: number; total: number; patients: { patientName: string; referrerName: string; referrerType: string | null; firstDate: string; branch: string; orderNumber: number }[] } | undefined
+                            if (!ri) return null
+                            return (
+                              <div className="rounded-xl border p-3 mt-3" style={{ borderColor: 'var(--teal)', background: 'var(--pale-teal)' }}>
+                                <p className="text-xs font-bold mb-1.5" style={{ color: 'var(--deep-teal)' }}>
+                                  New-referred-patient incentive — {ri.count} × {formatCurrency(ri.amount)} = {formatCurrency(ri.total)} (one-time per patient, each paid once across all cutoffs; included in Allowances)
+                                </p>
+                                <table className="w-full text-[11px] bg-white rounded-lg overflow-hidden">
+                                  <tbody>
+                                    {ri.patients.map((pt, i) => (
+                                      <tr key={i} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                                        <td className="px-2 py-1 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{new Date(pt.firstDate).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}</td>
+                                        <td className="px-2 py-1 font-semibold" style={{ color: 'var(--charcoal)' }}>{pt.patientName}</td>
+                                        <td className="px-2 py-1" style={{ color: 'var(--mid-gray)' }}>via {pt.referrerName}</td>
+                                        <td className="px-2 py-1" style={{ color: 'var(--mid-gray)' }}>first session #{pt.orderNumber}</td>
+                                        <td className="px-2 py-1 text-right font-mono" style={{ color: 'var(--deep-teal)' }}>{formatCurrency(ri.amount)}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            )
+                          })()}
                           {/* PDF, Email & Regenerate Actions */}
                           <div className="flex items-center gap-2 mt-4 pt-3 border-t flex-wrap" style={{ borderColor: 'var(--light-gray)' }}>
                             {canWrite && p.status !== 'LOCKED' && (
