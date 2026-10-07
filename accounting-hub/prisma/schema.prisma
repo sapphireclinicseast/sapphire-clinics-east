@@ -690,6 +690,32 @@ model FormReceipt {
   @@index([formType])
 }
 
+// Pre-numbered forms (pads) given out to a partner institution. Each row is a
+// control-number range issued; quantity = pcs in the range. These DRAW DOWN the
+// on-hand count tracked by FormReceipt (net on hand = received − distributed).
+// partnerName is a snapshot of the HR "Partnerships" institution name at issue
+// time; partnerId keeps the stable HR id for grouping even if the name changes.
+model FormDistribution {
+  id            String   @id @default(cuid())
+  branch        String
+  formType      String // form code / series, matches FormReceipt.formType
+  partnerId     String? // HR partner-institution id
+  partnerName   String
+  dateGiven     DateTime
+  fromControl   String
+  toControl     String
+  quantity      Int
+  remarks       String?
+  createdById   String?
+  createdByName String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([branch])
+  @@index([formType])
+  @@index([partnerName])
+}
+
 model InventoryAdjustmentBatch {
   id                 String               @id @default(cuid())
   referenceNumber    String               @unique
@@ -1578,6 +1604,7 @@ model Consultant {
   birAddress       String? // BIR registered address (for payroll XLSX export)
   corUrl           String? // BIR Certificate of Registration (2303) upload — gates the Service Invoice tab
   corUploadedAt    DateTime?
+  no2303At         DateTime? // marked as NOT BIR-registered (no 2303) — SI tracking stops asking them to submit; cleared when a COR is uploaded
   sssNumber        String?
   philhealthNumber String?
   pagibigNumber    String?

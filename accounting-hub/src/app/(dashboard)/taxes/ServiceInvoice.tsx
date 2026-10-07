@@ -36,6 +36,7 @@ interface Consultant {
   tinNumber?: string | null
   corUrl?: string | null
   corUploadedAt?: string | null
+  no2303At?: string | null
   isActive?: boolean
 }
 interface Submission { consultantId: string; month: string; siUrl: string | null; uploadedAt: string }
@@ -200,8 +201,21 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
     })
     if (!r.ok) { alert((await r.json().catch(() => ({}))).error || 'Failed to save COR'); return }
     const d = await r.json()
-    setConsultants(prev => prev.map(x => x.id === c.id ? { ...x, corUrl: d.corUrl, corUploadedAt: d.corUploadedAt } : x))
-    setCorTarget(prev => (prev && prev.id === c.id ? { ...prev, corUrl: d.corUrl, corUploadedAt: d.corUploadedAt } : prev))
+    setConsultants(prev => prev.map(x => x.id === c.id ? { ...x, corUrl: d.corUrl, corUploadedAt: d.corUploadedAt, no2303At: d.no2303At } : x))
+    setCorTarget(prev => (prev && prev.id === c.id ? { ...prev, corUrl: d.corUrl, corUploadedAt: d.corUploadedAt, no2303At: d.no2303At } : prev))
+  }
+
+  // Not BIR-registered: no 2303 means no Service Invoice to chase — the mark
+  // drops them into their own quiet group at the bottom. Undoable any time,
+  // and uploading a COR clears it server-side (the COR IS the 2303).
+  const setNo2303 = async (c: Consultant, flag: boolean) => {
+    const r = await fetch('/api/payroll/consultants/cor', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ consultantId: c.id, no2303: flag }),
+    })
+    if (!r.ok) { alert((await r.json().catch(() => ({}))).error || 'Failed to update'); return }
+    const d = await r.json()
+    setConsultants(prev => prev.map(x => x.id === c.id ? { ...x, no2303At: d.no2303At } : x))
   }
 
   const send = async () => {
@@ -228,7 +242,8 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
       Number(!!b.corUrl) - Number(!!a.corUrl) || a.name.localeCompare(b.name))
   }, [consultants, q])
   const withCor = filtered.filter(c => c.corUrl)
-  const withoutCor = filtered.filter(c => !c.corUrl)
+  const withoutCor = filtered.filter(c => !c.corUrl && !c.no2303At)
+  const no2303 = filtered.filter(c => !c.corUrl && c.no2303At)
 
   const Row = ({ c }: { c: Consultant }) => {
     const b = breakdowns[c.id]
@@ -265,11 +280,37 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
             )
           })}
           {sentNote[c.id] && <span className="text-[11px]" style={{ color: '#16a34a' }}>{sentNote[c.id]}</span>}
-          {canWrite && !c.corUrl && (
-            <button onClick={() => setCorTarget(c)}
-              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-white" style={{ background: 'var(--teal)' }}>
-              <Upload size={12} /> For SI Submission
-            </button>
+          {c.no2303At && (
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ background: '#f1f5f9', color: '#64748b' }}
+              title={`Marked as not BIR-registered on ${String(c.no2303At).slice(0, 10)} — no 2303, so no Service Invoice to ask for. Upload a COR if they register later.`}>
+              No 2303
+            </span>
+          )}
+          {canWrite && !c.corUrl && !c.no2303At && (
+            <>
+              <button onClick={() => setCorTarget(c)}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-white" style={{ background: 'var(--teal)' }}>
+                <Upload size={12} /> For SI Submission
+              </button>
+              <button onClick={() => setNo2303(c, true)}
+                title="They have no BIR 2303 (not registered) — stop asking them to submit a Service Invoice. Undoable."
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                No 2303
+              </button>
+            </>
+          )}
+          {canWrite && c.no2303At && (
+            <>
+              <button onClick={() => setNo2303(c, false)}
+                title="Put them back in the No-COR-yet list (we ask for SI submission again)"
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                Undo
+              </button>
+              <button onClick={() => setCorTarget(c)} title="They registered after all — upload their COR (clears the No-2303 mark)"
+                className="px-2 py-1.5 rounded-lg text-xs border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                <Upload size={12} />
+              </button>
+            </>
           )}
           {c.corUrl && (
             <>
@@ -528,6 +569,14 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
             </p>
             <div className="space-y-2">{withoutCor.map(c => <Row key={c.id} c={c} />)}</div>
           </div>
+          {no2303.length > 0 && (
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#94a3b8' }}>
+                No 2303 — not BIR-registered, don&apos;t ask for a Service Invoice ({no2303.length})
+              </p>
+              <div className="space-y-2 opacity-75">{no2303.map(c => <Row key={c.id} c={c} />)}</div>
+            </div>
+          )}
         </>
       )}
       </>
