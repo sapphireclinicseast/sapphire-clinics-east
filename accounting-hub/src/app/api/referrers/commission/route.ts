@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
+// Commissions count from this date onward — the scheme's start (owner's call).
+const COMMISSION_START = '2026-10-01'
+
 // Branch-scoped users only see their branch's referrers (mirrors /api/referrers).
 function branchScope(role?: string): string | null {
   if (role === 'AHEA_ADMIN' || role === 'AHEA_FRONTDESK') return 'SANDBOX_EAST'
@@ -36,12 +39,20 @@ export async function GET(req: Request) {
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const sp = new URL(req.url).searchParams
-  const from = sp.get('from') ? new Date(`${sp.get('from')}T00:00:00+08:00`) : null
+  let from = sp.get('from') ? new Date(`${sp.get('from')}T00:00:00+08:00`) : null
   const to = sp.get('to') ? new Date(`${sp.get('to')}T23:59:59.999+08:00`) : null
   const branch = sp.get('branch') || ''
   if (!from || !to || isNaN(from.getTime()) || isNaN(to.getTime())) {
     return NextResponse.json({ error: 'from and to are required (YYYY-MM-DD)' }, { status: 400 })
   }
+  // The scheme starts 2026-10-01 (Hannah, 2026-10-07): sessions before that
+  // never earn commission — the patient links reach back through all history,
+  // so without this floor a newly ticked doctor would earn on years of old
+  // sessions. Clamped server-side so no date picking can widen it.
+  const floor = new Date(`${COMMISSION_START}T00:00:00+08:00`)
+  const clamped = from < floor
+  if (clamped) from = floor
+  const effectiveFrom = clamped ? COMMISSION_START : String(sp.get('from'))
 
   const scope = branchScope(session.user.role as string)
   const doctors = await prisma.referrer.findMany({
@@ -119,5 +130,5 @@ export async function GET(req: Request) {
     .filter(r => r.sessions > 0)
     .sort((a, b) => b.commission - a.commission || b.sessions - a.sessions || a.name.localeCompare(b.name))
 
-  return NextResponse.json({ rows })
+  return NextResponse.json({ rows, commissionStart: COMMISSION_START, effectiveFrom })
 }

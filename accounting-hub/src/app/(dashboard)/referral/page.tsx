@@ -386,6 +386,10 @@ function ReferralCommissionPanel() {
   const [rows, setRows] = useState<ComRow[]>([])
   const [loading, setLoading] = useState(true)
   const [open, setOpen] = useState<Set<string>>(new Set())
+  // The server clamps the range to the scheme's start date; when it does, the
+  // report says so instead of silently showing fewer sessions than the picker.
+  const [effectiveFrom, setEffectiveFrom] = useState('')
+  const [commissionStart, setCommissionStart] = useState('')
 
   const load = useCallback(async () => {
     if (!from || !to) return
@@ -394,6 +398,8 @@ function ReferralCommissionPanel() {
       const r = await fetch(`/api/referrers/commission?from=${from}&to=${to}&branch=${branch}`)
       const d = r.ok ? await r.json() : { rows: [] }
       setRows(d.rows || [])
+      setEffectiveFrom(d.effectiveFrom || '')
+      setCommissionStart(d.commissionStart || '')
     } catch { setRows([]) } finally { setLoading(false) }
   }, [from, to, branch])
   useEffect(() => { const t = setTimeout(load, 300); return () => clearTimeout(t) }, [load])
@@ -418,7 +424,7 @@ function ReferralCommissionPanel() {
     const doc = new jsPDF()
     doc.setFontSize(13); doc.text('Referral Commission — Doctors', 14, 16)
     doc.setFontSize(8); doc.setTextColor(120)
-    doc.text(`${from} to ${to} · ${branch ? branchLabel(branch) : 'All branches'} · per-doctor rates · Generated ${new Date().toLocaleDateString('en-PH')}`, 14, 22)
+    doc.text(`${effectiveFrom || from} to ${to} · ${branch ? branchLabel(branch) : 'All branches'} · per-doctor rates · commissions count from ${commissionStart || '2026-10-01'} · Generated ${new Date().toLocaleDateString('en-PH')}`, 14, 22)
     doc.setTextColor(0)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     autoTable(doc as any, {
@@ -463,6 +469,12 @@ function ReferralCommissionPanel() {
           <button onClick={exportPdf} className="flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}><Download size={13} /> PDF</button>
         </div>
       </div>
+
+      {!loading && effectiveFrom && effectiveFrom !== from && (
+        <p className="text-xs px-3 py-2 rounded-xl inline-block" style={{ background: '#fef3c7', color: '#92400e' }}>
+          The commission scheme starts {commissionStart ? new Date(`${commissionStart}T00:00:00+08:00`).toLocaleDateString('en-PH', { dateStyle: 'medium' }) : effectiveFrom} — sessions before that never earn, so this report covers {effectiveFrom} → {to}.
+        </p>
+      )}
 
       {loading ? (
         <div className="py-12 text-center" style={{ color: 'var(--mid-gray)' }}><Loader2 size={16} className="inline animate-spin" /></div>
