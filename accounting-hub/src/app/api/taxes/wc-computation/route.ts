@@ -16,7 +16,14 @@ function computeTrainTaxMonthly(taxableMonthly: number): number {
 }
 const r2 = (n: number) => Math.round(n * 100) / 100
 
+const OVERRIDE_FIELDS = ['totalGross', 'mweGross', 'amweGovCon', 'thirteenth', 'otherNonTaxable'] as const
+const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
+// One override row per exact branch+period selection ('' branch = consolidated 'ALL').
+const overrideKey = (branch: string, year: string, month: string, monthTo: string) =>
+  `${branch || 'ALL'}|${year || ''}|${month || ''}|${monthTo || ''}`
+
 // GET /api/taxes/wc-computation?branch=SBEA&year=2026&month=07[&monthTo=09]
+// (branch omitted or ALL → consolidated across every branch)
 // Returns the BIR 1601-C (Withholding on Compensation) computation for the
 // selected branch + period, derived live from finalized (LOCKED) payslips —
 // plus a per-employee register and a computed-vs-recorded discrepancy.
@@ -25,7 +32,8 @@ export async function GET(req: Request) {
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { searchParams } = new URL(req.url)
-  const branch = searchParams.get('branch') || ''
+  const branchParam = searchParams.get('branch') || ''
+  const branch = branchParam === 'ALL' ? '' : branchParam
   const year = searchParams.get('year') || ''
   const monthFrom = searchParams.get('month') || '' // '01'..'12' or '' (all)
   const monthTo = searchParams.get('monthTo') || ''
@@ -122,12 +130,54 @@ export async function GET(req: Request) {
   const totalTaxDue = sum(r => r.recordedTax, r => !r.isMWE) // withholding to remit
   const tableTaxDue = sum(r => r.tableTax, r => !r.isMWE)    // graduated-table recompute (check)
 
+  const ovRow = await prisma.wcComputationOverride.findUnique({ where: { id: overrideKey(branch, year, monthFrom, monthTo) } })
+  const overrides = (ovRow?.data && typeof ovRow.data === 'object' && !Array.isArray(ovRow.data)) ? ovRow.data : {}
+
   return NextResponse.json({
     rows,
+    overrides,
     computation: {
       totalGross, mweGross, amweGovCon, thirteenth, otherNonTaxable, taxableIncome,
       amwesWithoutTax, amwesWithTax, totalTaxDue, tableTaxDue,
       discrepancy: r2(tableTaxDue - totalTaxDue),
     },
   })
+}
+
+// PUT { branch, year, month?, monthTo?, overrides: { field: number } }
+// Saves the manually-typed amounts for the five compensation lines of this
+// exact branch+period selection; an empty overrides map removes the row.
+export async function PUT(req: Request) {
+  const session = await auth()
+  if (!session?.user || !WRITE_ROLES.includes(session.user.role as string)) {
+    return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
+  }
+  try {
+    const body = await req.json()
+    const branch = typeof body.branch === 'string' && body.branch !== 'ALL' ? body.branch : ''
+    const year = typeof body.year === 'string' ? body.year : ''
+    if (!year) return NextResponse.json({ error: 'year is required' }, { status: 400 })
+    const month = typeof body.month === 'string' ? body.month : ''
+    const monthTo = typeof body.monthTo === 'string' ? body.monthTo : ''
+    const raw = (body.overrides && typeof body.overrides === 'object' && !Array.isArray(body.overrides)) ? body.overrides : {}
+    const clean: Record<string, number> = {}
+    for (const f of OVERRIDE_FIELDS) {
+      const v = (raw as Record<string, unknown>)[f]
+      if (typeof v === 'number' && isFinite(v) && v >= 0) clean[f] = r2(v)
+    }
+    const id = overrideKey(branch, year, month, monthTo)
+    if (Object.keys(clean).length === 0) {
+      await prisma.wcComputationOverride.deleteMany({ where: { id } })
+    } else {
+      await prisma.wcComputationOverride.upsert({
+        where: { id },
+        create: { id, data: clean, updatedById: session.user.id as string },
+        update: { data: clean, updatedById: session.user.id as string },
+      })
+    }
+    return NextResponse.json({ ok: true, overrides: clean })
+  } catch (e) {
+    console.error('WC override PUT failed', e)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
 }

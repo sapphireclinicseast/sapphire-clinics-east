@@ -1722,6 +1722,18 @@ model IncentiveRule {
   @@index([branch])
 }
 
+// Manual amounts typed over the live 1601-C computation lines (Taxes →
+// Withholding on Compensation). One row per branch+period selection — id is
+// "<branch>|<year>|<month>|<monthTo>" ('ALL' = consolidated, blanks allowed) —
+// holding { field: amount } for the five compensation lines. Taxable Income
+// re-derives from the effective values; tax due still follows payroll.
+model WcComputationOverride {
+  id          String   @id
+  data        Json
+  updatedById String?
+  updatedAt   DateTime @updatedAt
+}
+
 // One row per EWT item recognised as Other Income by the no-SI declaration
 // flow (Taxes → Expanded Withholding). Links each item to the exact journal
 // entry holding its share so a declaration can be undone per item. EWT that

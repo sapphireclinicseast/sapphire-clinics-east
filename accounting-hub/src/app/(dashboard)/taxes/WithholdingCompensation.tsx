@@ -1,7 +1,7 @@
 'use client'
 
 import { specialPeriodLabel } from '@/lib/payroll/special-runs'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { Loader2, FileText, Download, CheckCircle2, Trash2, RefreshCw, X, Eye, Pencil, Calculator, ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react'
 import jsPDF from 'jspdf'
@@ -13,8 +13,10 @@ import { useRfpOtherFees, RfpOtherFeesSection, type CleanRfpFee } from '@/compon
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-const BRANCHES = [{ value: 'SBEA', label: 'East' }, { value: 'SBGH', label: 'Greenhills' }, { value: 'VERDANA', label: 'Verdana' }]
-const BRANCH_FULL: Record<string, string> = { SBEA: 'Aura Health Rehab — East', SBGH: 'Aura Health Rehab — Greenhills', VERDANA: 'Verdana Store' }
+// 'ALL' consolidates the 1601-C computation across every branch; the
+// remittance register and RFPs stay per-branch (an RFP is filed per branch).
+const BRANCHES = [{ value: 'SBEA', label: 'East' }, { value: 'SBGH', label: 'Greenhills' }, { value: 'VERDANA', label: 'Verdana' }, { value: 'ALL', label: 'All' }]
+const BRANCH_FULL: Record<string, string> = { SBEA: 'Aura Health Rehab — East', SBGH: 'Aura Health Rehab — Greenhills', VERDANA: 'Verdana Store', ALL: 'All Branches (consolidated)' }
 const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 // Special pay runs (13th month / maternity / final pay) and the gov-con catch-up are not a 1st/2nd cutoff — name them.
 const cutoffLabel = (p: string) => { const sp = specialPeriodLabel(p); if (sp) return sp; const [y, m, h] = p.split('-'); return `${MONTHS[parseInt(m) - 1]} ${y} — ${h === '1' ? '1st' : '2nd'} cutoff` }
@@ -68,6 +70,7 @@ export default function WithholdingCompensation() {
   const shownRfps = applySortFilter(rfps, rfpGet, rfpSort.key, rfpSort.dir, rfpFilters)
 
   const fetchEntries = useCallback(async () => {
+    if (branch === 'ALL') { setEntries([]); setLoading(false); return }
     setLoading(true)
     try {
       const res = await fetch(`/api/payroll/tax-payable?payrollType=EMPLOYEE&branch=${branch}`)
@@ -76,6 +79,7 @@ export default function WithholdingCompensation() {
   }, [branch])
 
   const fetchRfps = useCallback(async () => {
+    if (branch === 'ALL') { setRfps([]); return }
     try {
       const res = await fetch(`/api/taxes/rfp?taxType=WC&payrollBranch=${branch}`)
       setRfps(res.ok ? await res.json() : [])
@@ -224,6 +228,13 @@ export default function WithholdingCompensation() {
       {/* 1601-C Computation panel — live derivation from finalized payroll */}
       <WcComputationPanel branch={branch} year={year} month={month} monthTo={monthTo} canWrite={canWrite} />
 
+      {branch === 'ALL' && (
+        <p className="text-xs px-1" style={{ color: 'var(--mid-gray)' }}>
+          Consolidated view — the computation above combines every branch. The remittance register and RFPs stay per branch (a 1601-C remittance is filed per branch), so pick East, Greenhills, or Verdana to manage those.
+        </p>
+      )}
+
+      {branch !== 'ALL' && <>
       {/* Entries table */}
       <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
         <table className="w-full text-sm">
@@ -284,6 +295,7 @@ export default function WithholdingCompensation() {
           </table>
         </div>
       </div>
+      </>}
 
       {showRfpModal && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={() => setShowRfpModal(false)}>
@@ -317,24 +329,51 @@ interface WcComputation {
 }
 const monthLabel = (ym: string) => { const [y, m] = ym.split('-'); return `${MONTHS[parseInt(m) - 1]} ${y}` }
 
+const OV_FIELDS = ['totalGross', 'mweGross', 'amweGovCon', 'thirteenth', 'otherNonTaxable'] as const
+type OvField = typeof OV_FIELDS[number]
+
 function WcComputationPanel({ branch, year, month, monthTo, canWrite }: { branch: string; year: string; month: string; monthTo: string; canWrite: boolean }) {
   const [open, setOpen] = useState(true)
   const [loading, setLoading] = useState(false)
   const [rows, setRows] = useState<WcRow[]>([])
   const [comp, setComp] = useState<WcComputation | null>(null)
   const [savingId, setSavingId] = useState<string | null>(null)
+  // Manual overrides over the five compensation lines, persisted per exact
+  // branch+period selection. Taxable Income re-derives from the effective
+  // values; Total Tax Due still follows what payroll actually withheld.
+  const [ov, setOv] = useState<Partial<Record<OvField, number>>>({})
+  const [editingField, setEditingField] = useState<OvField | null>(null)
+  // The edit box is uncontrolled on purpose: CompRow is declared inside this
+  // component, so a controlled input would remount and drop focus per keystroke.
+  const draftRef = useRef('')
+  const [ovBusy, setOvBusy] = useState(false)
 
   const fetchComp = useCallback(async () => {
     setLoading(true)
+    setEditingField(null)
     try {
       const qs = new URLSearchParams({ branch, year })
       if (month) qs.set('month', month)
       if (month && monthTo) qs.set('monthTo', monthTo)
       const res = await fetch(`/api/taxes/wc-computation?${qs.toString()}`)
-      if (res.ok) { const d = await res.json(); setRows(d.rows || []); setComp(d.computation || null) }
-      else { setRows([]); setComp(null) }
-    } catch { setRows([]); setComp(null) } finally { setLoading(false) }
+      if (res.ok) { const d = await res.json(); setRows(d.rows || []); setComp(d.computation || null); setOv(d.overrides || {}) }
+      else { setRows([]); setComp(null); setOv({}) }
+    } catch { setRows([]); setComp(null); setOv({}) } finally { setLoading(false) }
   }, [branch, year, month, monthTo])
+
+  const saveOverride = async (field: OvField, value: number | null) => {
+    setOvBusy(true)
+    try {
+      const next = { ...ov }
+      if (value === null) delete next[field]
+      else next[field] = value
+      const res = await fetch('/api/taxes/wc-computation', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ branch, year, month: month || '', monthTo: (month && monthTo) ? monthTo : '', overrides: next }),
+      })
+      if (res.ok) { setOv(next); setEditingField(null) }
+    } finally { setOvBusy(false) }
+  }
 
   useEffect(() => { if (open) fetchComp() }, [open, fetchComp])
 
@@ -348,13 +387,50 @@ function WcComputationPanel({ branch, year, month, monthTo, canWrite }: { branch
 
   const periodLabel = month ? (monthTo && monthTo !== month ? `${MONTHS[parseInt(month) - 1]}–${MONTHS[parseInt(monthTo) - 1]} ${year}` : `${MONTHS[parseInt(month) - 1]} ${year}`) : `FY ${year} (all months)`
   const branchName = BRANCH_FULL[branch] || branch
-  // A computation-vs-recorded row: label | computed | recorded | discrepancy
-  const CompRow = ({ label, sub, value, indent, strong, highlight }: { label: string; sub?: string; value: number; indent?: boolean; strong?: boolean; highlight?: boolean }) => (
-    <div className="flex items-center justify-between px-3 py-1.5 text-xs" style={{ background: highlight ? '#fffbeb' : undefined, borderTop: strong ? '1px solid var(--light-gray)' : undefined }}>
-      <span style={{ paddingLeft: indent ? 16 : 0, color: strong ? 'var(--charcoal)' : 'var(--mid-gray)', fontWeight: strong ? 700 : 400 }}>{label}{sub && <span className="ml-1" style={{ color: 'var(--mid-gray)', fontWeight: 400 }}>· {sub}</span>}</span>
-      <span className="font-mono tabular-nums" style={{ color: 'var(--charcoal)', fontWeight: strong ? 700 : 500 }}>₱{peso(value)}</span>
-    </div>
-  )
+  const r2n = (n: number) => Math.round(n * 100) / 100
+  // Effective line value: the manual override when one is typed, else computed.
+  const effVal = (f: OvField): number => ov[f] ?? (comp ? (f === 'otherNonTaxable' ? (comp.otherNonTaxable || 0) : comp[f]) : 0)
+  const taxableEff = r2n(effVal('totalGross') - effVal('mweGross') - effVal('amweGovCon') - effVal('thirteenth') - effVal('otherNonTaxable'))
+  const hasOverrides = OV_FIELDS.some(f => ov[f] !== undefined)
+  // A computation-vs-recorded row: label | computed | recorded | discrepancy.
+  // `field` makes the row overridable: pencil → type the amount; X → back to computed.
+  const CompRow = ({ label, sub, value, indent, strong, highlight, field }: { label: string; sub?: string; value: number; indent?: boolean; strong?: boolean; highlight?: boolean; field?: OvField }) => {
+    const overridden = field !== undefined && ov[field] !== undefined
+    const editing = field !== undefined && editingField === field
+    return (
+      <div className="flex items-center justify-between gap-2 px-3 py-1.5 text-xs" style={{ background: highlight ? '#fffbeb' : overridden ? '#fef9c3' : undefined, borderTop: strong ? '1px solid var(--light-gray)' : undefined }}>
+        <span style={{ paddingLeft: indent ? 16 : 0, color: strong ? 'var(--charcoal)' : 'var(--mid-gray)', fontWeight: strong ? 700 : 400 }}>
+          {label}{sub && <span className="ml-1" style={{ color: 'var(--mid-gray)', fontWeight: 400 }}>· {sub}</span>}
+          {overridden && comp && <span className="ml-1.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style={{ background: '#fde68a', color: '#92400e' }} title={`Computed from payroll: ₱${peso(field === 'otherNonTaxable' ? (comp.otherNonTaxable || 0) : comp[field])}`}>manual</span>}
+        </span>
+        {editing ? (
+          <span className="flex items-center gap-1">
+            <input autoFocus type="number" step="0.01" min="0" defaultValue={draftRef.current}
+              onChange={e => { draftRef.current = e.target.value }}
+              onKeyDown={e => {
+                const v = Number(e.currentTarget.value)
+                if (e.key === 'Enter' && e.currentTarget.value !== '' && !isNaN(v)) saveOverride(field, Math.max(0, v))
+                if (e.key === 'Escape') setEditingField(null)
+              }}
+              className="w-32 px-2 py-0.5 rounded-lg border text-xs font-mono text-right" style={{ borderColor: 'var(--teal)' }} />
+            <button onClick={() => { const v = Number(draftRef.current); if (draftRef.current !== '' && !isNaN(v)) saveOverride(field, Math.max(0, v)) }} disabled={ovBusy}
+              className="p-1 rounded hover:bg-green-50 disabled:opacity-40" title="Save override"><CheckCircle2 size={13} style={{ color: '#166534' }} /></button>
+            <button onClick={() => setEditingField(null)} className="p-1 rounded hover:bg-gray-100" title="Cancel"><X size={13} style={{ color: 'var(--mid-gray)' }} /></button>
+          </span>
+        ) : (
+          <span className="flex items-center gap-1">
+            <span className="font-mono tabular-nums" style={{ color: 'var(--charcoal)', fontWeight: strong ? 700 : 500 }}>₱{peso(value)}</span>
+            {field !== undefined && canWrite && (
+              <>
+                <button onClick={() => { draftRef.current = String(value); setEditingField(field) }} className="p-1 rounded hover:bg-gray-100" title="Override this amount manually"><Pencil size={11} style={{ color: 'var(--mid-gray)' }} /></button>
+                {overridden && <button onClick={() => saveOverride(field, null)} disabled={ovBusy} className="p-1 rounded hover:bg-red-50 disabled:opacity-40" title="Remove the override — back to the computed amount"><X size={11} style={{ color: '#b91c1c' }} /></button>}
+              </>
+            )}
+          </span>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className="rounded-2xl border bg-white overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
@@ -385,15 +461,20 @@ function WcComputationPanel({ branch, year, month, monthTo, canWrite }: { branch
               <div className="grid md:grid-cols-2 gap-4">
                 <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
                   <div className="px-3 py-2 text-xs font-bold" style={{ background: 'var(--deep-teal)', color: '#fff' }}>Tax Due Computation</div>
-                  <CompRow label="Total Gross Compensation" value={comp.totalGross} />
-                  <CompRow label="less: MWEs Gross Compensation" value={comp.mweGross} indent />
-                  <CompRow label="less: AMWEs Gov't Contributions" sub="SSS · PhilHealth · Pag-IBIG" value={comp.amweGovCon} indent />
-                  <CompRow label="less: 13th Month Pay & Benefits" sub="exempt up to ₱90,000 a year" value={comp.thirteenth} indent />
-                  <CompRow label="less: Other Non-Taxable Compensation" sub="maternity differential · leave conversion" value={comp.otherNonTaxable || 0} indent />
-                  <CompRow label="Taxable Income" value={comp.taxableIncome} strong />
+                  <CompRow label="Total Gross Compensation" value={effVal('totalGross')} field="totalGross" />
+                  <CompRow label="less: MWEs Gross Compensation" value={effVal('mweGross')} indent field="mweGross" />
+                  <CompRow label="less: AMWEs Gov't Contributions" sub="SSS · PhilHealth · Pag-IBIG" value={effVal('amweGovCon')} indent field="amweGovCon" />
+                  <CompRow label="less: 13th Month Pay & Benefits" sub="exempt up to ₱90,000 a year" value={effVal('thirteenth')} indent field="thirteenth" />
+                  <CompRow label="less: Other Non-Taxable Compensation" sub="maternity differential · leave conversion" value={effVal('otherNonTaxable')} indent field="otherNonTaxable" />
+                  <CompRow label="Taxable Income" value={taxableEff} strong />
                   <CompRow label="AMWEs — without tax (≤ ₱20,833/mo)" value={comp.amwesWithoutTax} indent />
                   <CompRow label="AMWEs — with tax" value={comp.amwesWithTax} indent />
                   <CompRow label="Total Tax Due" value={comp.totalTaxDue} strong highlight />
+                  {hasOverrides && (
+                    <p className="px-3 py-2 text-[11px]" style={{ color: '#92400e', background: '#fffbeb', borderTop: '1px solid var(--light-gray)' }}>
+                      Manual overrides applied (saved for this exact branch + period view) — Taxable Income re-derives from them; Total Tax Due still follows what payroll actually withheld. Hover a &quot;manual&quot; tag to see the computed figure; the red × restores it.
+                    </p>
+                  )}
                 </div>
                 <div className="rounded-xl border overflow-hidden h-fit" style={{ borderColor: 'var(--light-gray)' }}>
                   <div className="px-3 py-2 text-xs font-bold" style={{ background: 'var(--off-white)', color: 'var(--charcoal)' }}>Check vs. BIR Graduated Table</div>
