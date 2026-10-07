@@ -1,9 +1,9 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
-import { Users, UserPlus, Loader2, X, Trash2, Search } from 'lucide-react'
+import { Users, UserPlus, Loader2, X, Trash2, Search, ChevronDown, Download } from 'lucide-react'
 import ReferrerSettingsPanel, { REFERRER_TYPE_LABEL } from '@/components/ReferrerSettingsPanel'
 import { branchLabel } from '@/lib/branch'
 import { departmentLabel } from '@/lib/department'
@@ -19,7 +19,7 @@ interface DashRow { referrerId: string; name: string; type: string | null; refer
 export default function ReferralPage() {
   const { data: session, status } = useSession()
   const role = session?.user?.role
-  const [tab, setTab] = useState<'referrers' | 'patients' | 'dashboard'>('referrers')
+  const [tab, setTab] = useState<'referrers' | 'patients' | 'dashboard' | 'commission'>('referrers')
 
   if (status === 'unauthenticated') redirect('/login')
   if (status === 'authenticated' && role === 'HMO_OFFICER') {
@@ -34,7 +34,7 @@ export default function ReferralPage() {
       </div>
 
       <div className="flex gap-2 border-b" style={{ borderColor: 'var(--light-gray)' }}>
-        {([['referrers', 'Referrers'], ['patients', 'Referred patients'], ['dashboard', 'Referral Dashboard']] as const).map(([k, label]) => (
+        {([['referrers', 'Referrers'], ['patients', 'Referred patients'], ['dashboard', 'Referral Dashboard'], ['commission', 'Commission']] as const).map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)}
             className="px-4 py-2 text-sm font-semibold -mb-px border-b-2"
             style={tab === k ? { borderColor: 'var(--teal)', color: 'var(--deep-teal)' } : { borderColor: 'transparent', color: 'var(--mid-gray)' }}>
@@ -43,7 +43,7 @@ export default function ReferralPage() {
         ))}
       </div>
 
-      {tab === 'referrers' ? <ReferrerSettingsPanel /> : tab === 'patients' ? <ReferredPatientsPanel /> : <ReferralDashboardPanel />}
+      {tab === 'referrers' ? <ReferrerSettingsPanel /> : tab === 'patients' ? <ReferredPatientsPanel /> : tab === 'dashboard' ? <ReferralDashboardPanel /> : <ReferralCommissionPanel />}
     </div>
   )
 }
@@ -358,6 +358,195 @@ function ReferralDashboardPanel() {
                       <td className="px-4 py-2.5 text-right font-mono font-semibold" style={{ color: 'var(--deep-teal)' }}>{peso(r.net)}</td>
                     </tr>
                   ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+interface ComSession { id: string; orderNumber: number; date: string; branch: string; patientName: string | null; net: number; paymentStatus: string | null; via: 'tag' | 'link' }
+interface ComRow { referrerId: string; name: string; specialization: string | null; isInhouse: boolean; patients: number; sessions: number; commission: number; orders: ComSession[] }
+
+// ₱100-per-session referral commission for doctors. A session is an earned,
+// non-voided POS order attributed to the doctor — by the order's own Doctor
+// Referral tag, or by the patient's Referred-patients link when the order
+// wasn't tagged. In-house doctors show separately (their treatment under the
+// scheme is Hannah's call), so both subtotals are always visible.
+function ReferralCommissionPanel() {
+  const today = new Date()
+  const iso = (d: Date) => d.toISOString().slice(0, 10)
+  const [from, setFrom] = useState(iso(new Date(today.getFullYear(), today.getMonth(), 1)))
+  const [to, setTo] = useState(iso(today))
+  const [branch, setBranch] = useState('')
+  const [rate, setRate] = useState(100)
+  const [includeInhouse, setIncludeInhouse] = useState(true)
+  const [rows, setRows] = useState<ComRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [open, setOpen] = useState<Set<string>>(new Set())
+
+  const load = useCallback(async () => {
+    if (!from || !to) return
+    setLoading(true)
+    try {
+      const r = await fetch(`/api/referrers/commission?from=${from}&to=${to}&branch=${branch}&rate=${rate}`)
+      const d = r.ok ? await r.json() : { rows: [] }
+      setRows(d.rows || [])
+    } catch { setRows([]) } finally { setLoading(false) }
+  }, [from, to, branch, rate])
+  useEffect(() => { const t = setTimeout(load, 300); return () => clearTimeout(t) }, [load])
+
+  const shown = includeInhouse ? rows : rows.filter(r => !r.isInhouse)
+  const external = shown.filter(r => !r.isInhouse)
+  const inhouse = shown.filter(r => r.isInhouse)
+  const sum = (list: ComRow[], k: 'sessions' | 'commission') => list.reduce((s, r) => s + r[k], 0)
+  const toggle = (id: string) => setOpen(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n })
+
+  const exportCsv = () => {
+    const head = ['Doctor', 'Specialization', 'In-house', 'Patients', 'Sessions', `Rate`, 'Commission']
+    const body = shown.map(r => [r.name, r.specialization || '', r.isInhouse ? 'Yes' : '', r.patients, r.sessions, rate.toFixed(2), r.commission.toFixed(2)])
+    const csv = [head, ...body].map(line => line.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `referral-commission_${from}_${to}.csv`; a.click(); URL.revokeObjectURL(a.href)
+  }
+
+  const exportPdf = async () => {
+    const { jsPDF } = await import('jspdf')
+    const { default: autoTable } = await import('jspdf-autotable')
+    const doc = new jsPDF()
+    doc.setFontSize(13); doc.text('Referral Commission — Doctors', 14, 16)
+    doc.setFontSize(8); doc.setTextColor(120)
+    doc.text(`${from} to ${to} · ${branch ? branchLabel(branch) : 'All branches'} · P${rate.toFixed(2)} per session · Generated ${new Date().toLocaleDateString('en-PH')}`, 14, 22)
+    doc.setTextColor(0)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    autoTable(doc as any, {
+      startY: 28,
+      head: [['#', 'Doctor', 'In-house', 'Patients', 'Sessions', 'Commission (P)']],
+      body: [
+        ...shown.map((r, i) => [i + 1, r.name, r.isInhouse ? 'Yes' : '', r.patients, r.sessions, r.commission.toLocaleString('en-PH', { minimumFractionDigits: 2 })]),
+        ['', 'TOTAL — external doctors', '', '', sum(external, 'sessions'), sum(external, 'commission').toLocaleString('en-PH', { minimumFractionDigits: 2 })],
+        ...(inhouse.length ? [['', 'TOTAL — in-house doctors', '', '', sum(inhouse, 'sessions'), sum(inhouse, 'commission').toLocaleString('en-PH', { minimumFractionDigits: 2 })]] : []),
+      ],
+      styles: { fontSize: 8 }, headStyles: { fillColor: [46, 94, 90] },
+    })
+    doc.save(`referral-commission_${from}_${to}.pdf`)
+  }
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-base font-bold" style={{ color: 'var(--charcoal)' }}>Referral commission — doctors</h2>
+        <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+          ₱{rate.toLocaleString('en-PH')} per session of each doctor&apos;s referred patients. Sessions come from the POS Doctor Referral tag, plus untagged orders of patients linked under Referred patients. Click a doctor to see the sessions behind the number.
+        </p>
+      </div>
+
+      <div className="flex items-center gap-2 flex-wrap">
+        <input type="date" value={from} onChange={e => setFrom(e.target.value)} className="px-2 py-2 rounded-xl border text-xs" style={{ borderColor: 'var(--light-gray)' }} />
+        <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>→</span>
+        <input type="date" value={to} onChange={e => setTo(e.target.value)} className="px-2 py-2 rounded-xl border text-xs" style={{ borderColor: 'var(--light-gray)' }} />
+        <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: 'var(--light-gray)' }}>
+          {([['', 'All branches'], ['SANDBOX_EAST', 'East'], ['SANDBOX_GREENHILLS', 'Greenhills']] as const).map(([v, label]) => (
+            <button key={v} onClick={() => setBranch(v)} className="px-3 py-2 text-xs font-semibold"
+              style={branch === v ? { background: 'var(--teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' }}>{label}</button>
+          ))}
+        </div>
+        <label className="flex items-center gap-1.5 text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>
+          Rate ₱
+          <input type="number" min={0} step="1" value={rate} onChange={e => setRate(Math.max(0, Number(e.target.value) || 0))}
+            className="w-20 px-2 py-2 rounded-xl border text-xs" style={{ borderColor: 'var(--light-gray)' }} />
+          /session
+        </label>
+        <label className="flex items-center gap-2 px-3 py-2 rounded-xl border cursor-pointer text-xs font-medium"
+          style={includeInhouse ? { borderColor: '#fcd34d', background: '#fef3c7', color: '#92400e' } : { borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+          <input type="checkbox" checked={includeInhouse} onChange={() => setIncludeInhouse(v => !v)} className="accent-[#b45309]" />
+          Include in-house doctors
+        </label>
+        <div className="ml-auto flex items-center gap-2">
+          <button onClick={exportCsv} className="flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}><Download size={13} /> CSV</button>
+          <button onClick={exportPdf} className="flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}><Download size={13} /> PDF</button>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="py-12 text-center" style={{ color: 'var(--mid-gray)' }}><Loader2 size={16} className="inline animate-spin" /></div>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="rounded-2xl border p-4 bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+              <div className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Commission — external doctors</div>
+              <div className="text-xl font-bold" style={{ color: 'var(--deep-teal)' }}>{peso(sum(external, 'commission'))}</div>
+              <div className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>{sum(external, 'sessions')} session{sum(external, 'sessions') === 1 ? '' : 's'} · {external.length} doctor{external.length === 1 ? '' : 's'}</div>
+            </div>
+            {includeInhouse && (
+              <div className="rounded-2xl border p-4 bg-white" style={{ borderColor: '#fcd34d' }}>
+                <div className="text-xs font-semibold" style={{ color: '#92400e' }}>Commission — in-house doctors</div>
+                <div className="text-xl font-bold" style={{ color: '#92400e' }}>{peso(sum(inhouse, 'commission'))}</div>
+                <div className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>{sum(inhouse, 'sessions')} session{sum(inhouse, 'sessions') === 1 ? '' : 's'} · {inhouse.length} doctor{inhouse.length === 1 ? '' : 's'}</div>
+              </div>
+            )}
+            <div className="rounded-2xl border p-4 bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+              <div className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Total shown</div>
+              <div className="text-xl font-bold" style={{ color: 'var(--charcoal)' }}>{peso(sum(shown, 'commission'))}</div>
+              <div className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>{sum(shown, 'sessions')} session{sum(shown, 'sessions') === 1 ? '' : 's'} × ₱{rate.toLocaleString('en-PH')}</div>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border overflow-hidden bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+            <table className="w-full text-sm">
+              <thead>
+                <tr style={{ background: 'var(--pale-teal)' }}>
+                  {['Doctor', 'Patients', 'Sessions', 'Commission'].map((h, i) => (
+                    <th key={h} className={`px-4 py-2.5 text-xs font-semibold ${i === 0 ? 'text-left' : 'text-right'}`} style={{ color: 'var(--deep-teal)' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {shown.length === 0 ? (
+                  <tr><td colSpan={4} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>No referred sessions in this range.</td></tr>
+                ) : shown.map(r => (
+                  <Fragment key={r.referrerId}>
+                    <tr className="border-t hover:bg-gray-50 cursor-pointer" style={{ borderColor: 'var(--light-gray)' }} onClick={() => toggle(r.referrerId)}>
+                      <td className="px-4 py-2.5">
+                        <span className="inline-flex items-center gap-1.5 font-medium" style={{ color: 'var(--charcoal)' }}>
+                          <ChevronDown size={13} style={{ color: 'var(--mid-gray)', transform: open.has(r.referrerId) ? 'none' : 'rotate(-90deg)', transition: 'transform .15s' }} />
+                          {r.name}
+                          {r.isInhouse && <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold" style={{ background: '#fef3c7', color: '#92400e' }}>In-house</span>}
+                        </span>
+                        {r.specialization && <span className="ml-1.5 text-xs" style={{ color: 'var(--mid-gray)' }}>· {r.specialization}</span>}
+                      </td>
+                      <td className="px-4 py-2.5 text-right font-mono">{r.patients}</td>
+                      <td className="px-4 py-2.5 text-right font-mono">{r.sessions}</td>
+                      <td className="px-4 py-2.5 text-right font-mono font-semibold" style={{ color: 'var(--deep-teal)' }}>{peso(r.commission)}</td>
+                    </tr>
+                    {open.has(r.referrerId) && (
+                      <tr className="border-t" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                        <td colSpan={4} className="px-10 py-2">
+                          <table className="w-full text-xs">
+                            <tbody>
+                              {r.orders.map(s => (
+                                <tr key={s.id}>
+                                  <td className="py-1 pr-3 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{new Date(s.date).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })}</td>
+                                  <td className="py-1 pr-3 font-semibold" style={{ color: 'var(--charcoal)' }}>#{s.orderNumber}</td>
+                                  <td className="py-1 pr-3" style={{ color: 'var(--charcoal)' }}>{s.patientName || '—'}
+                                    {s.paymentStatus === 'UNPAID' && <span className="ml-1 text-[10px] font-semibold" style={{ color: '#b45309' }}>(unpaid)</span>}
+                                  </td>
+                                  <td className="py-1 pr-3" style={{ color: 'var(--mid-gray)' }}>{branchLabel(s.branch)}</td>
+                                  <td className="py-1 pr-3" style={{ color: 'var(--mid-gray)' }} title={s.via === 'tag' ? 'The order named this doctor at POS' : 'Attributed through the Referred-patients link (order not tagged)'}>
+                                    {s.via === 'tag' ? 'POS tag' : 'patient link'}
+                                  </td>
+                                  <td className="py-1 text-right font-mono" style={{ color: 'var(--mid-gray)' }}>{peso(s.net)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                ))}
               </tbody>
             </table>
           </div>
