@@ -1,9 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-
-// Commissions count from this date onward — the scheme's start (owner's call).
-const COMMISSION_START = '2026-10-01'
+import { COMMISSION_START, computeDoctorCommissions, computeMedrepNewPatients } from '@/lib/referral-commission'
 
 // Branch-scoped users only see their branch's referrers (mirrors /api/referrers).
 function branchScope(role?: string): string | null {
@@ -12,123 +10,66 @@ function branchScope(role?: string): string | null {
   return null
 }
 
-interface SessionRow {
-  id: string
-  orderNumber: number
-  date: Date
-  branch: string
-  patientName: string | null
-  net: number
-  paymentStatus: string | null
-  // 'tag' = the order named this doctor at POS; 'link' = attributed through the
-  // Referred-patients linkage (front desk didn't tag the order).
-  via: 'tag' | 'link'
-}
-
-// GET ?from=&to=&branch= → referral commission per doctor, each at their own
-// configured ₱-per-session rate (Referrer.commissionPerSession; doctors without
-// one still list their sessions but earn nothing, so unticked doctors with
-// activity stay visible). A "session" is an earned (not UNEARNED), non-voided
-// POS order attributed to the doctor either by the order's own Doctor Referral
-// tag or — when the order wasn't tagged — by the patient's Referred-patients
-// link (CRM id first, else exact name, same as the Referral Dashboard). One
-// order = one session; an explicit order tag beats a patient link when they
-// name different doctors.
+// GET ?from=&to=&branch= → the referral commission report:
+// - per-doctor sessions × their own ₱/session rate (doctors without a rate
+//   still list their sessions but earn nothing, so unticked doctors with
+//   activity stay visible);
+// - the medical representative's one-time incentive: new patients whose first
+//   session falls in range, brought by EXTERNAL referrers.
+// All computation lives in lib/referral-commission.ts — payroll uses the same
+// engine (with the claim ledger), so this report and payroll always agree.
 export async function GET(req: Request) {
   const session = await auth()
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const sp = new URL(req.url).searchParams
-  let from = sp.get('from') ? new Date(`${sp.get('from')}T00:00:00+08:00`) : null
+  const fromStr = sp.get('from')
+  const from = fromStr ? new Date(`${fromStr}T00:00:00+08:00`) : null
   const to = sp.get('to') ? new Date(`${sp.get('to')}T23:59:59.999+08:00`) : null
   const branch = sp.get('branch') || ''
   if (!from || !to || isNaN(from.getTime()) || isNaN(to.getTime())) {
     return NextResponse.json({ error: 'from and to are required (YYYY-MM-DD)' }, { status: 400 })
   }
-  // The scheme starts 2026-10-01 (Hannah, 2026-10-07): sessions before that
-  // never earn commission — the patient links reach back through all history,
-  // so without this floor a newly ticked doctor would earn on years of old
-  // sessions. Clamped server-side so no date picking can widen it.
-  const floor = new Date(`${COMMISSION_START}T00:00:00+08:00`)
-  const clamped = from < floor
-  if (clamped) from = floor
-  const effectiveFrom = clamped ? COMMISSION_START : String(sp.get('from'))
+  // The engine clamps to the scheme's start; tell the UI what actually counted.
+  const clamped = from < new Date(`${COMMISSION_START}T00:00:00+08:00`)
+  const effectiveFrom = clamped ? COMMISSION_START : String(fromStr)
 
   const scope = branchScope(session.user.role as string)
-  const doctors = await prisma.referrer.findMany({
-    where: { isActive: true, type: 'DOCTOR', ...(scope ? { OR: [{ branches: { isEmpty: true } }, { branches: { has: scope } }] } : {}) },
-    select: { id: true, name: true, specialization: true, isInhouse: true, commissionPerSession: true },
-  })
-  const doctorIds = new Set(doctors.map(d => d.id))
+  const [doctorRows, newPatients, incentive] = await Promise.all([
+    computeDoctorCommissions(prisma, { from, to, branch: branch || undefined, scopeBranch: scope }),
+    computeMedrepNewPatients(prisma, { from, to, branch: branch || undefined }),
+    prisma.referralIncentiveSettings.findUnique({ where: { id: 'MAIN' } }),
+  ])
 
-  const referred = await prisma.referredPatient.findMany({
-    where: { referrerId: { in: [...doctorIds] } },
-    select: { referrerId: true, patientId: true, patientName: true },
-  })
-  // Patient → doctor, first link wins (same rule as the Referral Dashboard).
-  const byId = new Map<string, string>()
-  const byName = new Map<string, string>()
-  for (const r of referred) {
-    if (r.patientId && !byId.has(r.patientId)) byId.set(r.patientId, r.referrerId)
-    const k = r.patientName.trim().toLowerCase()
-    if (!byName.has(k)) byName.set(k, r.referrerId)
-  }
-
-  const ids = [...byId.keys()]
-  const names = Array.from(new Set(referred.map(r => r.patientName)))
-  const orders = await prisma.order.findMany({
-    where: {
-      transactionDate: { gte: from, lte: to },
-      status: { notIn: ['VOIDED'] },
-      revenueType: { not: 'UNEARNED' },
-      ...(branch ? { branch } : {}),
-      OR: [
-        { referrerId: { not: null } },
-        ...(ids.length ? [{ patientId: { in: ids } }] : []),
-        ...(names.length ? [{ patientName: { in: names } }] : []),
-      ],
-    },
-    orderBy: { transactionDate: 'asc' },
-    select: {
-      id: true, orderNumber: true, transactionDate: true, branch: true,
-      patientId: true, patientName: true, netAmount: true, paymentStatus: true, referrerId: true,
-    },
-  })
-
-  const perDoctor = new Map<string, SessionRow[]>()
-  for (const o of orders) {
-    // Explicit POS tag first; otherwise the patient's linked doctor.
-    const tagged = o.referrerId && doctorIds.has(o.referrerId) ? o.referrerId : null
-    const linked = (o.patientId && byId.get(o.patientId)) || byName.get((o.patientName || '').trim().toLowerCase()) || null
-    const rid = tagged || linked
-    if (!rid || !doctorIds.has(rid)) continue
-    const list = perDoctor.get(rid) || []
-    list.push({
-      id: o.id, orderNumber: o.orderNumber, date: o.transactionDate, branch: o.branch,
-      patientName: o.patientName, net: Number(o.netAmount), paymentStatus: o.paymentStatus,
-      via: tagged ? 'tag' : 'link',
-    })
-    perDoctor.set(rid, list)
-  }
-
-  const rows = doctors
-    .map(d => {
-      const sessions = perDoctor.get(d.id) || []
-      const rate = d.commissionPerSession == null ? null : Number(d.commissionPerSession)
-      return {
-        referrerId: d.id,
-        name: d.name,
-        specialization: d.specialization,
-        isInhouse: d.isInhouse,
-        rate,
-        patients: new Set(sessions.map(s => (s.patientName || '').trim().toLowerCase())).size,
-        sessions: sessions.length,
-        commission: rate != null ? sessions.length * rate : 0,
-        orders: sessions,
-      }
-    })
+  const rows = doctorRows
+    .map(d => ({
+      referrerId: d.referrerId,
+      name: d.name,
+      specialization: d.specialization,
+      isInhouse: d.isInhouse,
+      rate: d.rate,
+      patients: new Set(d.sessions.map(s => s.patientKey)).size,
+      sessions: d.sessions.length,
+      commission: d.rate != null ? d.sessions.length * d.rate : 0,
+      orders: d.sessions.map(s => ({
+        id: s.orderId, orderNumber: s.orderNumber, date: s.date, branch: s.branch,
+        patientName: s.patientName, net: s.net, paymentStatus: s.paymentStatus, via: s.via,
+      })),
+    }))
     .filter(r => r.sessions > 0)
     .sort((a, b) => b.commission - a.commission || b.sessions - a.sessions || a.name.localeCompare(b.name))
 
-  return NextResponse.json({ rows, commissionStart: COMMISSION_START, effectiveFrom })
+  const incentiveAmount = incentive ? Number(incentive.amount) : 50
+  return NextResponse.json({
+    rows,
+    commissionStart: COMMISSION_START,
+    effectiveFrom,
+    medrep: {
+      staffName: incentive?.staffName || null,
+      amount: incentiveAmount,
+      count: newPatients.length,
+      total: newPatients.length * incentiveAmount,
+      patients: newPatients,
+    },
+  })
 }

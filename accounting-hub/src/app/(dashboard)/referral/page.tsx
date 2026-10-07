@@ -369,6 +369,7 @@ function ReferralDashboardPanel() {
 
 interface ComSession { id: string; orderNumber: number; date: string; branch: string; patientName: string | null; net: number; paymentStatus: string | null; via: 'tag' | 'link' }
 interface ComRow { referrerId: string; name: string; specialization: string | null; isInhouse: boolean; rate: number | null; patients: number; sessions: number; commission: number; orders: ComSession[] }
+interface MedrepBlock { staffName: string | null; amount: number; count: number; total: number; patients: { patientKey: string; patientName: string; referrerName: string; referrerType: string | null; firstDate: string; branch: string; orderNumber: number }[] }
 
 // Per-session referral commission for doctors, each at the ₱ rate set on their
 // card in Referrers (no rate = listed but earns nothing, so unticked doctors
@@ -390,6 +391,8 @@ function ReferralCommissionPanel() {
   // report says so instead of silently showing fewer sessions than the picker.
   const [effectiveFrom, setEffectiveFrom] = useState('')
   const [commissionStart, setCommissionStart] = useState('')
+  const [medrep, setMedrep] = useState<MedrepBlock | null>(null)
+  const [medrepOpen, setMedrepOpen] = useState(false)
 
   const load = useCallback(async () => {
     if (!from || !to) return
@@ -400,7 +403,8 @@ function ReferralCommissionPanel() {
       setRows(d.rows || [])
       setEffectiveFrom(d.effectiveFrom || '')
       setCommissionStart(d.commissionStart || '')
-    } catch { setRows([]) } finally { setLoading(false) }
+      setMedrep(d.medrep || null)
+    } catch { setRows([]); setMedrep(null) } finally { setLoading(false) }
   }, [from, to, branch])
   useEffect(() => { const t = setTimeout(load, 300); return () => clearTimeout(t) }, [load])
 
@@ -499,6 +503,41 @@ function ReferralCommissionPanel() {
               <div className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>{sum(shown, 'sessions')} session{sum(shown, 'sessions') === 1 ? '' : 's'} at per-doctor rates</div>
             </div>
           </div>
+
+          {medrep && (
+            <div className="rounded-2xl border bg-white" style={{ borderColor: '#fcd34d' }}>
+              <button onClick={() => setMedrepOpen(o => !o)} className="w-full px-4 py-3 flex items-center gap-2 flex-wrap text-left">
+                <ChevronDown size={14} style={{ color: 'var(--mid-gray)', transform: medrepOpen ? 'none' : 'rotate(-90deg)', transition: 'transform .15s' }} />
+                <span className="text-sm font-bold" style={{ color: '#92400e' }}>Medical representative incentive</span>
+                <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+                  one-time per new patient from an external referrer · {medrep.staffName ? `recipient: ${medrep.staffName}` : 'no recipient set — Referrers → Incentive settings'}
+                </span>
+                <span className="ml-auto text-sm font-mono font-semibold" style={{ color: '#92400e' }}>
+                  {medrep.count} × ₱{peso(medrep.amount)} = {peso(medrep.total)}
+                </span>
+              </button>
+              {medrepOpen && (
+                <div className="px-10 pb-3">
+                  {medrep.patients.length === 0 ? (
+                    <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>No new referred patients in this range.</p>
+                  ) : (
+                    <table className="w-full text-xs">
+                      <tbody>
+                        {medrep.patients.map(p => (
+                          <tr key={p.patientKey}>
+                            <td className="py-1 pr-3 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{new Date(p.firstDate).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })}</td>
+                            <td className="py-1 pr-3 font-semibold" style={{ color: 'var(--charcoal)' }}>{p.patientName}</td>
+                            <td className="py-1 pr-3" style={{ color: 'var(--mid-gray)' }}>via {p.referrerName}{p.referrerType && p.referrerType !== 'DOCTOR' ? ` (${REFERRER_TYPE_LABEL[p.referrerType] || p.referrerType})` : ''}</td>
+                            <td className="py-1 pr-3" style={{ color: 'var(--mid-gray)' }}>first session #{p.orderNumber} · {branchLabel(p.branch)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="rounded-2xl border overflow-hidden bg-white" style={{ borderColor: 'var(--light-gray)' }}>
             <table className="w-full text-sm">

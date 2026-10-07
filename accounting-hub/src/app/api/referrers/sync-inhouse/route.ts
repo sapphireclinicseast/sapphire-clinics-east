@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { fetchHrStaffForSync } from '@/lib/external-staff'
+import { normName, stripDr } from '@/lib/referral-commission'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK', 'MEDREP']
 
@@ -19,13 +20,8 @@ const isHrDoctor = (s: Record<string, any>): boolean => {
   return false
 }
 
-// Referrers are stored like "DR. AIDA MUNCADA" while HR has "AIDA MUNCADA" —
-// compare with honorifics and punctuation stripped so neither spelling dupes.
-// (Repeated prefixes are real: one HR record carries "DR." inside firstName,
-// and the same doctor exists twice in HR with and without it.)
-const stripDr = (s: string) => s.toUpperCase().replace(/^(?:\s*DRA?\.?\s+)+/, '')
-const normName = (s: string) =>
-  stripDr(s).replace(/[^A-Z ]/g, ' ').replace(/\s+/g, ' ').trim()
+// Name matching (honorifics stripped) comes from the shared commission engine
+// so the sync and payroll agree on who is who.
 
 // POST — create a Referrer (type DOCTOR, in-house) for every HR doctor that
 // doesn't have one yet; tag existing doctor referrers that match by name.

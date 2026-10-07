@@ -121,6 +121,37 @@ export default function ReferrerSettingsPanel() {
   const [error, setError] = useState('')
   const [uploading, setUploading] = useState(false)
   const [saving, setSaving] = useState(false)
+  // One-time new-referred-patient incentive (the med rep's ₱50): recipient +
+  // amount live in a singleton settings row, edited from this tab.
+  const [showIncentive, setShowIncentive] = useState(false)
+  const [incLoading, setIncLoading] = useState(false)
+  const [incSaving, setIncSaving] = useState(false)
+  const [incStaff, setIncStaff] = useState<{ id: string; name: string; jobTitle: string }[]>([])
+  const [incForm, setIncForm] = useState<{ staffId: string; staffName: string; amount: string }>({ staffId: '', staffName: '', amount: '50' })
+  const openIncentive = async () => {
+    setShowIncentive(true); setIncLoading(true)
+    try {
+      const r = await fetch('/api/referrers/incentive-settings')
+      if (r.ok) {
+        const d = await r.json()
+        setIncStaff(d.staff || [])
+        setIncForm({ staffId: d.staffId || '', staffName: d.staffName || '', amount: String(d.amount ?? 50) })
+      }
+    } catch { /* modal still opens; dropdown just stays empty */ }
+    finally { setIncLoading(false) }
+  }
+  const saveIncentive = async () => {
+    setIncSaving(true)
+    try {
+      const r = await fetch('/api/referrers/incentive-settings', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ staffId: incForm.staffId || null, staffName: incForm.staffName || null, amount: Number(incForm.amount) || 0 }),
+      })
+      if (!r.ok) { setError((await r.json().catch(() => ({}))).error || 'Failed to save incentive settings'); return }
+      setShowIncentive(false)
+    } finally { setIncSaving(false) }
+  }
+
   const [ordersFor, setOrdersFor] = useState<{ id: string; name: string } | null>(null)
   const [orders, setOrders] = useState<{ id: string; orderNumber: number; date: string; patientName?: string | null; amount: number; branch: string }[]>([])
   const [ordersLoading, setOrdersLoading] = useState(false)
@@ -283,6 +314,10 @@ export default function ReferrerSettingsPanel() {
             {uploading ? 'Uploading...' : 'Upload CSV'}
             <input type="file" accept=".csv,.txt" onChange={handleCsvUpload} className="hidden" disabled={uploading} />
           </label>
+          <button onClick={openIncentive} title="Who receives the one-time new-referred-patient incentive, and how much"
+            className="px-3 py-2 rounded-xl text-xs font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--deep-teal)' }}>
+            Incentive settings
+          </button>
           <button onClick={openCreate} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium text-white" style={{ background: 'var(--teal)' }}>
             <Plus size={14} /> Add Referrer
           </button>
@@ -384,6 +419,50 @@ export default function ReferrerSettingsPanel() {
                 Cancel
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* One-time new-referred-patient incentive settings */}
+      {showIncentive && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>New-referred-patient incentive</h3>
+              <button onClick={() => setShowIncentive(false)}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button>
+            </div>
+            <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+              Paid once per NEW patient brought by an external referrer — outside doctors (not in-house), law firms, and partner schools. Triggered by the patient&apos;s first session; shown in the Commission tab and paid through payroll.
+            </p>
+            {incLoading ? (
+              <div className="py-6 text-center" style={{ color: 'var(--mid-gray)' }}>Loading…</div>
+            ) : (
+              <>
+                <div>
+                  <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Recipient (staff)</label>
+                  <select value={incForm.staffId}
+                    onChange={e => { const s = incStaff.find(x => x.id === e.target.value); setIncForm(f => ({ ...f, staffId: e.target.value, staffName: s?.name || '' })) }}
+                    className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+                    <option value="">— no recipient (incentive off) —</option>
+                    {incStaff.map(s => <option key={s.id} value={s.id}>{s.name}{s.jobTitle ? ` — ${s.jobTitle}` : ''}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Amount per new patient</label>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>₱</span>
+                    <input type="number" min={0} step="1" value={incForm.amount} onChange={e => setIncForm(f => ({ ...f, amount: e.target.value }))}
+                      className="w-32 px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+                  </div>
+                </div>
+                <div className="flex gap-2 pt-1">
+                  <button onClick={saveIncentive} disabled={incSaving} className="px-4 py-2 rounded-xl text-xs font-medium text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>
+                    {incSaving ? 'Saving…' : 'Save'}
+                  </button>
+                  <button onClick={() => setShowIncentive(false)} className="px-4 py-2 rounded-xl text-xs font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Cancel</button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

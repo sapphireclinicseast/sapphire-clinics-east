@@ -882,6 +882,42 @@ model ReferredPatient {
   @@index([patientId])
 }
 
+// Settings for the one-time new-referred-patient incentive: each NEW patient
+// brought by an EXTERNAL referrer (outside doctor, law firm, partner school)
+// pays this staff member (the medical representative) once. Singleton row.
+model ReferralIncentiveSettings {
+  id        String   @id @default("MAIN")
+  staffId   String? // HR staff id of the recipient
+  staffName String? // display snapshot of the recipient's name
+  amount    Decimal  @default(50)
+  updatedAt DateTime @updatedAt
+}
+
+// Claim ledger for referral commissions pulled into payroll — one row per paid
+// unit, so a session (DOCTOR, per order) or a new referred patient (MEDREP,
+// one-time per patient) can never pay twice across cutoffs. Rows are written
+// when the payroll that pays them is saved; deleting them (payroll undo)
+// releases the units to the next cutoff.
+model ReferralCommissionItem {
+  id             String   @id @default(cuid())
+  kind           String // DOCTOR (per session) | MEDREP (one-time per patient)
+  orderId        String? // DOCTOR: the session's order
+  patientKey     String? // MEDREP: patient key — CRM id, else lowercased name
+  referrerId     String
+  amount         Decimal
+  cutoffPeriod   String // "YYYY-MM-1|2" that paid it
+  payrollEntryId String? // consultant payroll line that carried it (in-house doctor)
+  payslipId      String? // employee payslip that carried it (med rep)
+  createdAt      DateTime @default(now())
+
+  @@unique([kind, orderId])
+  @@unique([kind, patientKey])
+  @@index([cutoffPeriod])
+  @@index([referrerId])
+  @@index([payrollEntryId])
+  @@index([payslipId])
+}
+
 model DigitalWallet {
   id               String       @id @default(cuid())
   patientId        String
