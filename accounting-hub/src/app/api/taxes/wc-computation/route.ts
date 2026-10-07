@@ -16,6 +16,14 @@ function computeTrainTaxMonthly(taxableMonthly: number): number {
 }
 const r2 = (n: number) => Math.round(n * 100) / 100
 
+// Filing convention (owner's payroll workbook, confirmed 2026-10-07): an AMWE
+// whose payroll withheld NO tax is declared at taxable income = gross −
+// government contributions − ₱10,000 de minimis, capped at the ₱20,833/month
+// zero bracket — adjusted precisely so they stay untaxed on the 1601-C.
+// AMWEs with withholding keep payroll's own taxable income.
+const DE_MINIMIS_MONTHLY = 10000
+const NO_TAX_CEILING = 20833
+
 const OVERRIDE_FIELDS = ['totalGross', 'mweGross', 'amweGovCon', 'thirteenth', 'otherNonTaxable', 'deMinimis'] as const
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 // One override row per exact branch+period selection ('' branch = consolidated 'ALL').
@@ -104,14 +112,19 @@ export async function GET(req: Request) {
     // Actual gross can't be below the parts we know of it (a special run may
     // carry its exempt pay only in details) — keeps the de-minimis residual ≥ 0.
     const gross = r2(Math.max(g.gross, g.netTaxable + g.sss + g.phic + g.hdmf + g.exempt13th + g.exemptOther))
-    // Tax per the BIR graduated table — a CHECK against what payroll actually
-    // withheld, not the headline figure (payroll's own computed withholding is
-    // authoritative and is what gets remitted on the 1601-C).
-    const tableTax = g.isMWE ? 0 : r2(computeTrainTaxMonthly(netTaxable))
+    // Declared taxable: the no-tax-AMWE adjustment above; everyone else keeps
+    // payroll's own taxable income.
+    const declaredTaxable = !g.isMWE && recordedTax <= 0
+      ? r2(Math.min(Math.max(gross - govCon - DE_MINIMIS_MONTHLY, 0), NO_TAX_CEILING))
+      : netTaxable
+    // Tax per the BIR graduated table on the DECLARED taxable — a CHECK against
+    // what payroll actually withheld, not the headline figure (payroll's own
+    // withholding is authoritative and is what gets remitted on the 1601-C).
+    const tableTax = g.isMWE ? 0 : r2(computeTrainTaxMonthly(declaredTaxable))
     return {
       employeeId: g.employeeId, name: g.name, isMWE: g.isMWE, month: g.month,
       gross, grossTaxable: r2(g.grossTaxable), sss: r2(g.sss), phic: r2(g.phic), hdmf: r2(g.hdmf),
-      govCon, netTaxable, recordedTax, tableTax, discrepancy: r2(tableTax - recordedTax),
+      govCon, netTaxable, declaredTaxable, recordedTax, tableTax, discrepancy: r2(tableTax - recordedTax),
       exempt13th: r2(g.exempt13th), exemptOther: r2(g.exemptOther),
     }
   }).sort((a, b) => a.month.localeCompare(b.month) || a.name.localeCompare(b.name))
@@ -130,12 +143,13 @@ export async function GET(req: Request) {
   const totalGross = sum(r => r.gross)
   const mweGross = sum(r => r.gross, r => r.isMWE)
   const amweGovCon = sum(r => r.govCon, r => !r.isMWE)
-  const deMinimis = r2(sum(r => r.gross - r.govCon - r.netTaxable - r.exempt13th - r.exemptOther, r => !r.isMWE))
+  const deMinimis = r2(sum(r => r.gross - r.govCon - r.declaredTaxable - r.exempt13th - r.exemptOther, r => !r.isMWE))
   const taxableIncome = r2(totalGross - mweGross - amweGovCon - thirteenth - otherNonTaxable - deMinimis)
   // Split AMWEs by whether payroll actually withheld tax (matches the BIR form's
-  // "with tax" / "without tax" lines, which follow the withholding, not a re-run).
-  const amwesWithoutTax = sum(r => r.netTaxable, r => !r.isMWE && r.recordedTax <= 0)
-  const amwesWithTax = sum(r => r.netTaxable, r => !r.isMWE && r.recordedTax > 0)
+  // "with tax" / "without tax" lines). Both sides use DECLARED taxable — for
+  // the no-tax side that's the adjusted figure, matching the filing workbook.
+  const amwesWithoutTax = sum(r => r.declaredTaxable, r => !r.isMWE && r.recordedTax <= 0)
+  const amwesWithTax = sum(r => r.declaredTaxable, r => !r.isMWE && r.recordedTax > 0)
   const totalTaxDue = sum(r => r.recordedTax, r => !r.isMWE) // withholding to remit
   const tableTaxDue = sum(r => r.tableTax, r => !r.isMWE)    // graduated-table recompute (check)
 

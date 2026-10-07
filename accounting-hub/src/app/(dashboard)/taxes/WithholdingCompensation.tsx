@@ -321,7 +321,7 @@ export default function WithholdingCompensation() {
 interface WcRow {
   employeeId: string; name: string; isMWE: boolean; month: string
   gross?: number; grossTaxable: number; sss: number; phic: number; hdmf: number; govCon: number
-  netTaxable: number; recordedTax: number; tableTax: number; discrepancy: number
+  netTaxable: number; declaredTaxable?: number; recordedTax: number; tableTax: number; discrepancy: number
 }
 interface WcComputation {
   totalGross: number; mweGross: number; amweGovCon: number; thirteenth: number; otherNonTaxable?: number; deMinimis?: number; taxableIncome: number
@@ -470,7 +470,7 @@ function WcComputationPanel({ branch, year, month, monthTo, canWrite }: { branch
                   <CompRow label="less: Other Non-Taxable Compensation" sub="maternity differential · leave conversion" value={effVal('otherNonTaxable')} indent field="otherNonTaxable" />
                   <CompRow label="less: Non-Taxable Allowances & De Minimis" sub="pay outside taxable income per payroll" value={effVal('deMinimis')} indent field="deMinimis" />
                   <CompRow label="Taxable Income" value={taxableEff} strong />
-                  <CompRow label="AMWEs — without tax (≤ ₱20,833/mo)" value={comp.amwesWithoutTax} indent />
+                  <CompRow label="AMWEs — without tax (≤ ₱20,833/mo)" sub="declared: gross − gov't con − ₱10k de minimis, capped ₱20,833" value={comp.amwesWithoutTax} indent />
                   <CompRow label="AMWEs — with tax" value={comp.amwesWithTax} indent />
                   <CompRow label="Total Tax Due" value={comp.totalTaxDue} strong highlight />
                   {hasOverrides && (
@@ -516,7 +516,9 @@ function WcComputationPanel({ branch, year, month, monthTo, canWrite }: { branch
                         <td className="px-2.5 py-1.5 text-right font-mono tabular-nums" style={{ color: 'var(--mid-gray)' }}>{peso(r.sss)}</td>
                         <td className="px-2.5 py-1.5 text-right font-mono tabular-nums" style={{ color: 'var(--mid-gray)' }}>{peso(r.phic)}</td>
                         <td className="px-2.5 py-1.5 text-right font-mono tabular-nums" style={{ color: 'var(--mid-gray)' }}>{peso(r.hdmf)}</td>
-                        <td className="px-2.5 py-1.5 text-right font-mono tabular-nums" style={{ color: 'var(--charcoal)' }}>{peso(r.netTaxable)}</td>
+                        <td className="px-2.5 py-1.5 text-right font-mono tabular-nums" style={{ color: 'var(--charcoal)' }}
+                          title={(r.declaredTaxable ?? r.netTaxable) !== r.netTaxable ? `As declared (adjusted to stay untaxed) — payroll's own taxable was ₱${peso(r.netTaxable)}` : 'Taxable income per payroll'}>
+                          {peso(r.declaredTaxable ?? r.netTaxable)}</td>
                         <td className="px-2.5 py-1.5 text-right font-mono tabular-nums font-semibold" style={{ color: r.recordedTax > 0 ? '#c44b00' : 'var(--mid-gray)' }}>{peso(r.recordedTax)}</td>
                         <td className="px-2.5 py-1.5 text-right font-mono tabular-nums" style={{ color: 'var(--mid-gray)' }}>{r.isMWE ? '—' : peso(r.tableTax)}</td>
                         <td className="px-2.5 py-1.5 text-right font-mono tabular-nums" style={{ color: Math.abs(r.discrepancy) < 0.005 ? 'var(--mid-gray)' : '#b91c1c' }}>{Math.abs(r.discrepancy) < 0.005 ? '—' : peso(r.discrepancy)}</td>
