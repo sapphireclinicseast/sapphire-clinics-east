@@ -2899,6 +2899,14 @@ model PettyCashSettings {
   nextReimbSeq   Int      @default(1)
   requestors     Json     @default("[]")
   prepaidAccount String?
+  // Cash-count reconciliation (per branch). fundAmount = the imprest petty-cash
+  // fund (e.g. 30,000). cashBreakdown = denomination → pcs count ({"1000":2,...})
+  // whose weighted sum is the Total Cash Count. dueToFrom = manual memo rows of
+  // money with staff ([{label,direction:'TO'|'FROM',amount}]) — informational,
+  // does not affect the fund reconciliation.
+  fundAmount     Decimal  @default(0)
+  cashBreakdown  Json?
+  dueToFrom      Json?
   updatedAt      DateTime @default(now()) @updatedAt
 }
 

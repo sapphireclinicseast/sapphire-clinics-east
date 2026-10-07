@@ -41,7 +41,7 @@ export async function PUT(req: Request) {
     return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
   }
   try {
-    const { branch, nextPcvSeq, requestors, prepaidAccount } = await req.json()
+    const { branch, nextPcvSeq, requestors, prepaidAccount, fundAmount, cashBreakdown, dueToFrom } = await req.json()
     if (!VALID_BRANCHES.includes(branch)) {
       return NextResponse.json({ error: 'Valid branch is required' }, { status: 400 })
     }
@@ -60,6 +60,33 @@ export async function PUT(req: Request) {
       data.requestors = requestors.map((r: unknown) => String(r).trim()).filter(Boolean)
     }
     if (prepaidAccount !== undefined) data.prepaidAccount = prepaidAccount ? String(prepaidAccount) : null
+    // Cash-count reconciliation fields (per branch).
+    if (fundAmount !== undefined) {
+      const f = Number(fundAmount)
+      if (!Number.isFinite(f) || f < 0) return NextResponse.json({ error: 'Fund amount must be a non-negative number' }, { status: 400 })
+      data.fundAmount = f
+    }
+    if (cashBreakdown !== undefined) {
+      // { denom: pcs } — coerce to non-negative integer pcs, drop empties.
+      const bd: Record<string, number> = {}
+      if (cashBreakdown && typeof cashBreakdown === 'object') {
+        for (const [k, v] of Object.entries(cashBreakdown as Record<string, unknown>)) {
+          const n = parseInt(String(v), 10)
+          if (Number.isFinite(n) && n > 0) bd[k] = n
+        }
+      }
+      data.cashBreakdown = bd
+    }
+    if (dueToFrom !== undefined) {
+      const rows = Array.isArray(dueToFrom) ? dueToFrom : []
+      data.dueToFrom = rows
+        .map((r: { label?: unknown; direction?: unknown; amount?: unknown }) => ({
+          label: String(r?.label ?? '').trim(),
+          direction: r?.direction === 'FROM' ? 'FROM' : 'TO',
+          amount: Number(r?.amount) || 0,
+        }))
+        .filter((r: { label: string }) => r.label)
+    }
     const settings = await prisma.pettyCashSettings.upsert({
       where: { branch },
       update: data,

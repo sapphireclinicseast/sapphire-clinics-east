@@ -106,6 +106,9 @@ ALTER TABLE "Advance" ADD COLUMN IF NOT EXISTS "paymentBankAccountId" TEXT;
 ALTER TABLE "ARPayment" ADD COLUMN IF NOT EXISTS "overpayment" DECIMAL(65,30) NOT NULL DEFAULT 0;
 ALTER TABLE "ARPayment" ADD COLUMN IF NOT EXISTS "overpaymentAccountId" TEXT;
 ALTER TABLE "ConsultantUnitPay" ADD COLUMN IF NOT EXISTS "branchAmounts" JSONB;
+ALTER TABLE "PettyCashSettings" ADD COLUMN IF NOT EXISTS "fundAmount" DECIMAL(65,30) NOT NULL DEFAULT 0;
+ALTER TABLE "PettyCashSettings" ADD COLUMN IF NOT EXISTS "cashBreakdown" JSONB;
+ALTER TABLE "PettyCashSettings" ADD COLUMN IF NOT EXISTS "dueToFrom" JSONB;
 CREATE TABLE IF NOT EXISTS "FormDistribution" (
     "id"            TEXT NOT NULL,
     "branch"        TEXT NOT NULL,

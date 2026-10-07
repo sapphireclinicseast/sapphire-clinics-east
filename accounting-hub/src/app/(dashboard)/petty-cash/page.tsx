@@ -198,8 +198,13 @@ function PettyCashInner() {
   const canAudit = (role === 'ADMIN' || role === 'ACCOUNTANT') && !viewOnly
   // Session loads async — once we know the user is branch-locked, force their branch.
   useEffect(() => { if (scope.enum && branch !== scope.enum) setBranch(scope.enum) }, [scope.enum]) // eslint-disable-line react-hooks/exhaustive-deps
-  const [tab, setTab] = useState<'entries' | 'reimbursements' | 'flowchart'>('entries')
+  const [tab, setTab] = useState<'entries' | 'reimbursements' | 'cashcount' | 'flowchart'>('entries')
   const [entries, setEntries] = useState<Entry[]>([])
+  // ── Cash Count reconciliation (per branch)
+  const [fundAmount, setFundAmount] = useState('')
+  const [cashBreakdown, setCashBreakdown] = useState<Record<string, string>>({})
+  const [dueToFrom, setDueToFrom] = useState<{ label: string; direction: 'TO' | 'FROM'; amount: string }[]>([])
+  const [ccSaving, setCcSaving] = useState(false)
   const [reimbursements, setReimbursements] = useState<Reimb[]>([])
   const [dlFrom, setDlFrom] = useState(''); const [dlTo, setDlTo] = useState('')  // download date range
   // RFP list sort/filter
@@ -304,9 +309,38 @@ function PettyCashInner() {
   const loadSettings = useCallback(async (br: string) => {
     try {
       const r = await fetch(`/api/petty-cash/settings?branch=${br}`)
-      if (r.ok) { const s = await r.json(); setRequestors(s.requestors || []); setNextPcvSeq(s.nextPcvSeq || 1) }
+      if (r.ok) {
+        const s = await r.json()
+        setRequestors(s.requestors || []); setNextPcvSeq(s.nextPcvSeq || 1)
+        setFundAmount(s.fundAmount != null && Number(s.fundAmount) ? String(Number(s.fundAmount)) : '')
+        const bd: Record<string, string> = {}
+        if (s.cashBreakdown && typeof s.cashBreakdown === 'object') {
+          for (const [k, v] of Object.entries(s.cashBreakdown as Record<string, unknown>)) bd[k] = String(v)
+        }
+        setCashBreakdown(bd)
+        setDueToFrom(Array.isArray(s.dueToFrom) ? s.dueToFrom.map((d: { label?: string; direction?: string; amount?: number }) => ({ label: String(d.label || ''), direction: d.direction === 'FROM' ? 'FROM' : 'TO', amount: String(d.amount ?? '') })) : [])
+      }
     } catch { /* ignore */ }
   }, [])
+
+  const saveCashCount = async () => {
+    setCcSaving(true)
+    try {
+      const bd: Record<string, number> = {}
+      for (const [k, v] of Object.entries(cashBreakdown)) { const n = parseInt(v, 10); if (Number.isFinite(n) && n > 0) bd[k] = n }
+      const r = await fetch('/api/petty-cash/settings', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          branch,
+          fundAmount: num(fundAmount),
+          cashBreakdown: bd,
+          dueToFrom: dueToFrom.filter(d => d.label.trim()).map(d => ({ label: d.label.trim(), direction: d.direction, amount: num(d.amount) })),
+        }),
+      })
+      if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d.error || 'Failed to save'); return }
+      await loadSettings(branch)
+    } catch { alert('Network error') } finally { setCcSaving(false) }
+  }
 
   const loadReimbursements = useCallback(async (br: string) => {
     try {
@@ -930,7 +964,7 @@ function PettyCashInner() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: 'var(--light-gray)' }}>
           {/* PCF Reimbursements tab removed — all RFPs now live under Expenses → RFP as one consecutive list */}
-          {([['entries', 'Entries'], ['flowchart', 'Flowchart']] as const).map(([k, lbl]) => (
+          {([['entries', 'Entries'], ['cashcount', 'Cash Count'], ['flowchart', 'Flowchart']] as const).map(([k, lbl]) => (
             <button key={k} onClick={() => setTab(k)}
               className="px-4 py-2 text-xs font-semibold transition-colors"
               style={tab === k ? { background: 'var(--deep-teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' }}>
@@ -1449,6 +1483,112 @@ function PettyCashInner() {
         </div>
         </>
       )}
+
+      {tab === 'cashcount' && (() => {
+        const DENOMS = [1000, 500, 200, 100, 50, 20, 10, 5, 1, 0.25, 0.10, 0.05, 0.01]
+        const pcsOf = (d: number) => parseInt(cashBreakdown[String(d)] || '0', 10) || 0
+        const cashCountTotal = DENOMS.reduce((s, d) => s + d * pcsOf(d), 0)
+        const forReplTotal = entries.filter(e => e.pcfStatus === 'For Replenishment').reduce((s, e) => s + num(e.grossAmount), 0)
+        const fund = num(fundAmount)
+        const unliquidated = fund - cashCountTotal - forReplTotal
+        const setPcs = (d: number, v: string) => setCashBreakdown(prev => ({ ...prev, [String(d)]: v.replace(/[^0-9]/g, '') }))
+        return (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          {/* ── For Checking ── */}
+          <div className="rounded-2xl border bg-white overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+            <div className="px-5 py-3" style={{ background: '#2f5d4f' }}>
+              <h3 className="text-sm font-bold text-white">For Checking</h3>
+            </div>
+            <div className="p-5 text-sm">
+              {([['Total Cash Count', cashCountTotal], ['For Replenishment', forReplTotal], ['Unliquidated (unaccounted)', unliquidated]] as [string, number][]).map(([label, val]) => (
+                <div key={label} className="flex items-center justify-between py-2 border-b" style={{ borderColor: 'var(--light-gray)' }}>
+                  <span style={{ color: 'var(--charcoal)' }}>{label}</span>
+                  <span className="font-semibold tabular-nums" style={{ color: 'var(--charcoal)' }}>{peso(val)}</span>
+                </div>
+              ))}
+              <div className="flex items-center justify-between py-2.5 mt-1" style={{ borderTop: '2px solid var(--light-gray)' }}>
+                <span className="font-bold" style={{ color: 'var(--charcoal)' }}>Total Petty Cash Fund</span>
+                {canWrite ? (
+                  <input value={fundAmount} onChange={e => setFundAmount(e.target.value.replace(/[^0-9.]/g, ''))} placeholder="30000"
+                    className="w-32 px-2 py-1 rounded-lg border text-sm text-right font-semibold tabular-nums" style={{ borderColor: 'var(--light-gray)' }} />
+                ) : <span className="font-bold tabular-nums">{peso(fund)}</span>}
+              </div>
+              <p className="text-[11px] mt-1" style={{ color: 'var(--mid-gray)' }}>Unliquidated = Fund − Cash Count − For Replenishment (the unaccounted balance of the fund).</p>
+
+              <div className="mt-5">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-xs font-bold uppercase tracking-wide" style={{ color: 'var(--mid-gray)' }}>Money with staff — due to / from employee</h4>
+                  {canWrite && <button onClick={() => setDueToFrom(p => [...p, { label: '', direction: 'TO', amount: '' }])} className="text-xs font-semibold" style={{ color: 'var(--teal)' }}>+ Add row</button>}
+                </div>
+                {dueToFrom.length === 0 && <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>No staff balances recorded.</p>}
+                {dueToFrom.map((d, i) => (
+                  <div key={i} className="flex items-center gap-2 py-1">
+                    {canWrite ? (<>
+                      <input value={d.label} onChange={e => setDueToFrom(p => p.map((x, j) => j === i ? { ...x, label: e.target.value } : x))} placeholder="Name / dept" className="flex-1 px-2 py-1 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} />
+                      <select value={d.direction} onChange={e => setDueToFrom(p => p.map((x, j) => j === i ? { ...x, direction: e.target.value as 'TO' | 'FROM' } : x))} className="px-1.5 py-1 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }}>
+                        <option value="TO">Due TO employee</option>
+                        <option value="FROM">Due FROM employee</option>
+                      </select>
+                      <input value={d.amount} onChange={e => setDueToFrom(p => p.map((x, j) => j === i ? { ...x, amount: e.target.value.replace(/[^0-9.]/g, '') } : x))} placeholder="0.00" className="w-24 px-2 py-1 rounded-lg border text-xs text-right tabular-nums" style={{ borderColor: 'var(--light-gray)' }} />
+                      <button onClick={() => setDueToFrom(p => p.filter((_, j) => j !== i))} className="text-red-500 text-xs px-1" title="Remove">✕</button>
+                    </>) : (
+                      <div className="flex items-center justify-between w-full text-xs">
+                        <span style={{ color: 'var(--charcoal)' }}>{d.label} — DUE {d.direction} EMPLOYEE</span>
+                        <span className="tabular-nums">{peso(num(d.amount))}</span>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {canWrite && (
+                <button onClick={saveCashCount} disabled={ccSaving} className="mt-5 w-full py-2.5 rounded-xl text-white text-sm font-semibold disabled:opacity-50" style={{ background: 'var(--teal)' }}>
+                  {ccSaving ? 'Saving…' : 'Save Cash Count'}
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* ── Cash Breakdown ── */}
+          <div className="rounded-2xl border bg-white overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+            <div className="px-5 py-3" style={{ background: '#2f5d4f' }}>
+              <h3 className="text-sm font-bold text-white">Cash Breakdown</h3>
+            </div>
+            <table className="w-full text-sm">
+              <thead>
+                <tr style={{ background: 'var(--off-white)' }}>
+                  <th className="text-left px-5 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Denomination</th>
+                  <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>pcs</th>
+                  <th className="text-right px-5 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {DENOMS.map(d => {
+                  const pcs = pcsOf(d)
+                  return (
+                    <tr key={d} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                      <td className="px-5 py-1.5 tabular-nums" style={{ color: 'var(--charcoal)' }}>{d >= 1 ? d.toLocaleString('en-PH') : d.toFixed(2)}</td>
+                      <td className="px-3 py-1.5 text-right">
+                        {canWrite ? (
+                          <input value={cashBreakdown[String(d)] || ''} onChange={e => setPcs(d, e.target.value)} placeholder="0" className="w-20 px-2 py-1 rounded-lg border text-xs text-right tabular-nums" style={{ borderColor: 'var(--light-gray)' }} />
+                        ) : <span className="tabular-nums">{pcs || '—'}</span>}
+                      </td>
+                      <td className="px-5 py-1.5 text-right tabular-nums" style={{ color: 'var(--charcoal)' }}>{pcs ? peso(d * pcs) : '—'}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+              <tfoot>
+                <tr style={{ background: 'var(--off-white)', borderTop: '2px solid var(--light-gray)' }}>
+                  <td className="px-5 py-3 font-bold" style={{ color: 'var(--charcoal)' }} colSpan={2}>Total Cash On Hand</td>
+                  <td className="px-5 py-3 text-right font-bold tabular-nums" style={{ color: 'var(--teal)' }}>{peso(cashCountTotal)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+        )
+      })()}
 
       {tab === 'flowchart' && (
         <div className="rounded-2xl border bg-white p-6" style={{ borderColor: 'var(--light-gray)' }}>
