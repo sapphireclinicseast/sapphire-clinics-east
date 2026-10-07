@@ -908,6 +908,7 @@ model ReferralCommissionItem {
   cutoffPeriod   String // "YYYY-MM-1|2" that paid it
   payrollEntryId String? // consultant payroll line that carried it (in-house doctor)
   payslipId      String? // employee payslip that carried it (med rep)
+  rfpId          String? // expense RFP that pays it (EXTERNAL doctor — not staff, so no payroll)
   createdAt      DateTime @default(now())
 
   @@unique([kind, orderId])
@@ -916,6 +917,7 @@ model ReferralCommissionItem {
   @@index([referrerId])
   @@index([payrollEntryId])
   @@index([payslipId])
+  @@index([rfpId])
 }
 
 model DigitalWallet {

@@ -393,6 +393,27 @@ function ReferralCommissionPanel() {
   const [commissionStart, setCommissionStart] = useState('')
   const [medrep, setMedrep] = useState<MedrepBlock | null>(null)
   const [medrepOpen, setMedrepOpen] = useState(false)
+  // RFP payout for EXTERNAL doctors (not staff → no payroll): one expense RFP
+  // per doctor covering their unclaimed sessions, claim-ledger stamped.
+  const [showRfpGen, setShowRfpGen] = useState(false)
+  const [rfpBranch, setRfpBranch] = useState('SANDBOX_EAST')
+  const [rfpUpTo, setRfpUpTo] = useState(() => new Date().toISOString().slice(0, 10))
+  const [rfpBusy, setRfpBusy] = useState(false)
+  const [rfpResult, setRfpResult] = useState<{ created: { doctor: string; refNumber: string; sessions: number; amount: number }[]; note?: string; error?: string } | null>(null)
+  const generateRfps = async () => {
+    setRfpBusy(true); setRfpResult(null)
+    try {
+      const r = await fetch('/api/referrers/commission/rfp', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ branch: rfpBranch, upTo: rfpUpTo }),
+      })
+      const d = await r.json()
+      if (!r.ok) { setRfpResult({ created: [], error: d.error || 'Failed to generate' }); return }
+      setRfpResult(d)
+      load()
+    } catch { setRfpResult({ created: [], error: 'Failed to generate' }) }
+    finally { setRfpBusy(false) }
+  }
 
   const load = useCallback(async () => {
     if (!from || !to) return
@@ -469,10 +490,62 @@ function ReferralCommissionPanel() {
           Include in-house doctors
         </label>
         <div className="ml-auto flex items-center gap-2">
+          <button onClick={() => { setRfpResult(null); setShowRfpGen(true) }}
+            title="Create one expense RFP per external doctor for their unpaid commission sessions"
+            className="px-3 py-2 rounded-xl text-xs font-semibold text-white" style={{ background: 'var(--deep-teal)' }}>
+            Generate RFP payout
+          </button>
           <button onClick={exportCsv} className="flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}><Download size={13} /> CSV</button>
           <button onClick={exportPdf} className="flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}><Download size={13} /> PDF</button>
         </div>
       </div>
+
+      {showRfpGen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>RFP payout — external doctors</h3>
+              <button onClick={() => setShowRfpGen(false)}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button>
+            </div>
+            <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+              Creates one RFP per external doctor (payable to the doctor, booked as an audited expense entry) covering every commission session not yet paid — by payroll or an earlier RFP — from the scheme start through the date below. In-house doctors are paid through payroll, never here. Deleting a generated RFP releases its sessions again.
+            </p>
+            <div className="flex items-center gap-2">
+              <select value={rfpBranch} onChange={e => setRfpBranch(e.target.value)} className="px-3 py-2 rounded-xl border text-sm bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+                <option value="SANDBOX_EAST">Paid by: Aura Health East</option>
+                <option value="SANDBOX_GREENHILLS">Paid by: Aura Health Greenhills</option>
+              </select>
+              <label className="flex items-center gap-1.5 text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>
+                through
+                <input type="date" value={rfpUpTo} onChange={e => setRfpUpTo(e.target.value)} className="px-2 py-2 rounded-xl border text-xs" style={{ borderColor: 'var(--light-gray)' }} />
+              </label>
+            </div>
+            {rfpResult && (
+              rfpResult.error ? <p className="text-xs text-red-600">{rfpResult.error}</p>
+              : rfpResult.created.length === 0 ? <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>{rfpResult.note || 'Nothing unpaid in that window.'}</p>
+              : (
+                <div className="rounded-xl border p-3 text-xs space-y-1" style={{ borderColor: 'var(--teal)', background: 'var(--pale-teal)' }}>
+                  <p className="font-bold" style={{ color: 'var(--deep-teal)' }}>Created {rfpResult.created.length} RFP{rfpResult.created.length === 1 ? '' : 's'} — pay them under Expenses → RFP:</p>
+                  {rfpResult.created.map(c => (
+                    <div key={c.refNumber} className="flex justify-between gap-2">
+                      <span className="font-mono">{c.refNumber}</span>
+                      <span className="truncate flex-1">{c.doctor}</span>
+                      <span>{c.sessions} sess.</span>
+                      <span className="font-mono font-semibold">{peso(c.amount)}</span>
+                    </div>
+                  ))}
+                </div>
+              )
+            )}
+            <div className="flex gap-2 pt-1">
+              <button onClick={generateRfps} disabled={rfpBusy} className="px-4 py-2 rounded-xl text-xs font-medium text-white disabled:opacity-50 flex items-center gap-2" style={{ background: 'var(--teal)' }}>
+                {rfpBusy && <Loader2 size={13} className="animate-spin" />} {rfpBusy ? 'Generating…' : 'Generate'}
+              </button>
+              <button onClick={() => setShowRfpGen(false)} className="px-4 py-2 rounded-xl text-xs font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {!loading && effectiveFrom && effectiveFrom !== from && (
         <p className="text-xs px-3 py-2 rounded-xl inline-block" style={{ background: '#fef3c7', color: '#92400e' }}>
