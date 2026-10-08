@@ -276,6 +276,29 @@ export async function GET(req: Request) {
       }).sort((a, b) => b.units - a.units || a.label.localeCompare(b.label)),
     }
 
+    // ── Marketing ROI: gross product revenue ÷ Marketing & Advertising expense (8120) ──
+    // Marketing spend is read straight from the GL (account 8120) for the same
+    // branch + period as the sales above, so the ratio reconciles to the books.
+    const mktAcct = await prisma.account.findFirst({ where: { accountNumber: '8120', accountType: 'EXPENSE' }, select: { id: true } })
+    let marketingExpense = 0
+    if (mktAcct) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const jeFilter: any = {}
+      if (branch && branch !== 'ALL') jeFilter.branch = branch
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const jeDate: any = {}
+      if (dateFrom) jeDate.gte = new Date(`${dateFrom}T00:00:00+08:00`)
+      if (dateTo) jeDate.lte = new Date(`${dateTo}T23:59:59.999+08:00`)
+      if (Object.keys(jeDate).length) jeFilter.entryDate = jeDate
+      const mktLines = await prisma.journalEntryLine.findMany({
+        where: { accountId: mktAcct.id, ...(Object.keys(jeFilter).length ? { journalEntry: jeFilter } : {}) },
+        select: { debit: true, credit: true },
+      })
+      marketingExpense = mktLines.reduce((a, l) => a + Number(l.debit) - Number(l.credit), 0)
+    }
+    marketingExpense = round2(marketingExpense)
+    const marketingRoi = marketingExpense > 0 ? round2(totalGross / marketingExpense) : null
+
     return NextResponse.json({
       summary: {
         unitsSold,
@@ -284,6 +307,8 @@ export async function GET(req: Request) {
         totalNet: round2(totalNet),
         avgGrossPerUnit: unitsSold > 0 ? round2(totalGross / unitsSold) : 0,
         avgNetPerUnit: unitsSold > 0 ? round2(totalNet / unitsSold) : 0,
+        marketingExpense,
+        marketingRoi,
       },
       refunds: {
         grossProductSales: round2(grossWithReturns),

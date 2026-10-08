@@ -22,6 +22,8 @@ interface AnalysisData {
     totalNet: number
     avgGrossPerUnit: number
     avgNetPerUnit: number
+    marketingExpense: number
+    marketingRoi: number | null
   }
   refunds: {
     grossProductSales: number
@@ -233,7 +235,17 @@ export default function ProductsAnalysisPage() {
             <Kpi label="Avg Gross Sales / Unit" value={formatCurrency(data.summary.avgGrossPerUnit)} sub={`Total gross ${formatCurrency(data.summary.totalGross)}`} />
             <Kpi label="Avg Net Sales / Unit" value={formatCurrency(data.summary.avgNetPerUnit)} sub={`Total net ${formatCurrency(data.summary.totalNet)} (gross less discounts)`} accent />
           </div>
-          <p className="text-xs mb-6" style={{ color: 'var(--mid-gray)' }}>{dateFrom} to {dateTo}{branchLabel}. Free samples are excluded from sold/average figures and shown separately below.</p>
+          {/* Marketing ROI row */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+            <Kpi label="Marketing ROI" accent
+              value={data.summary.marketingRoi != null ? `${data.summary.marketingRoi.toFixed(2)}×` : '—'}
+              sub={data.summary.marketingRoi != null
+                ? `${formatCurrency(data.summary.totalGross)} gross ÷ ${formatCurrency(data.summary.marketingExpense)} marketing`
+                : 'No marketing expense (8120) booked for this period/branch'} />
+            <Kpi label="Marketing Expense" value={formatCurrency(data.summary.marketingExpense)} sub="Account 8120 · Marketing & Advertising" />
+            <Kpi label="Gross Revenue" value={formatCurrency(data.summary.totalGross)} sub="Gross product sales — the ROI numerator" />
+          </div>
+          <p className="text-xs mb-6" style={{ color: 'var(--mid-gray)' }}>{dateFrom} to {dateTo}{branchLabel}. Marketing ROI = gross revenue ÷ Marketing &amp; Advertising expense (account 8120), same branch and period. Free samples are excluded from sold/average figures and shown separately below.</p>
 
           {/* Refund rate */}
           <div className="rounded-2xl border p-4 mb-6" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
