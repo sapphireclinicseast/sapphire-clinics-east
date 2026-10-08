@@ -785,6 +785,10 @@ function InventoryInner() {
   const { data: session } = useSession()
   const sessionUserId = session?.user?.id as string | undefined
   const [activeTab, setActiveTab] = useState<Tab>('Inventory')
+  // Front desk + MedRep only log form distributions — the whole page collapses
+  // to the Forms tab for them (sidebar lets them in for exactly this).
+  const formsOnly = ['MEDREP', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK'].includes((session?.user?.role as string) || '')
+  useEffect(() => { if (formsOnly) setActiveTab('Forms') }, [formsOnly])
 
   // ── Shared state
   const [loading, setLoading] = useState(true)
@@ -1495,18 +1499,30 @@ function InventoryInner() {
     if (!ndForm.trim() || !ndFrom.trim() || !ndTo.trim()) { setError('Fill in the form type and the control-number range'); return }
     setNdSaving(true); setError('')
     try {
-      const res = await fetch('/api/inventory/form-distributions', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          branch: formsBranchFilter || 'SANDBOX_EAST',
-          formType: ndForm.trim(), partnerId: partnerId || null, partnerName: partnerName.trim(),
-          dateGiven: ndDate || undefined, fromControl: ndFrom.trim(), toControl: ndTo.trim(),
-        }),
+      const payload = {
+        branch: formsBranchFilter || 'SANDBOX_EAST',
+        formType: ndForm.trim(), partnerId: partnerId || null, partnerName: partnerName.trim(),
+        dateGiven: ndDate || undefined, fromControl: ndFrom.trim(), toControl: ndTo.trim(),
+      }
+      const post = (body: object) => fetch('/api/inventory/form-distributions', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
       })
-      const data = await res.json()
+      let res = await post(payload)
+      let data = await res.json()
+      let receiptAdded = false
+      if (res.status === 409 && data.needsReceipt) {
+        // The range was never logged as received from the supplier. Offer to record
+        // the receipt now; declining aborts the whole entry — nothing is saved.
+        const yes = window.confirm('These control numbers are not yet recorded in Consumable Forms.\n\nRecord in consumable forms received from supplier?')
+        if (!yes) return
+        res = await post({ ...payload, alsoRecordReceipt: true })
+        data = await res.json()
+        receiptAdded = true
+      }
       if (!res.ok) { setError(data.error || 'Failed to save distribution'); return }
       setNdDate(''); setNdPartner(''); setNdForm(''); setNdFrom(''); setNdTo('')
       fetchDistributions()
+      if (receiptAdded) fetchForms()
     } catch { setError('Network error') }
     finally { setNdSaving(false) }
   }
@@ -2531,7 +2547,7 @@ setTimeout(()=>window.print(),500);
 
       {/* Tab Navigation */}
       <div className="flex gap-6 border-b mb-6" style={{ borderColor: 'var(--light-gray)' }}>
-        {TABS.map((tab) => (
+        {(formsOnly ? (['Forms'] as readonly Tab[]) : TABS).map((tab) => (
           <button
             key={tab}
             onClick={() => { setActiveTab(tab); setError('') }}
@@ -6224,7 +6240,8 @@ setTimeout(()=>window.print(),500);
             const ndFromN = parseInt(ndFrom.replace(/[^0-9]/g, ''), 10)
             const ndToN = parseInt(ndTo.replace(/[^0-9]/g, ''), 10)
             const ndQty = Number.isFinite(ndFromN) && Number.isFinite(ndToN) && ndToN >= ndFromN ? ndToN - ndFromN + 1 : null
-            const canEntry = canWrite && !!formsBranchFilter
+            const canDistWrite = canWrite || formsOnly
+            const canEntry = canDistWrite && !!formsBranchFilter
             return (
             <>
               <p className="text-xs mb-3" style={{ color: 'var(--mid-gray)' }}>
@@ -6245,7 +6262,7 @@ setTimeout(()=>window.print(),500);
                         <th className="text-left px-3 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>To #</th>
                         <th className="text-right px-3 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Pcs</th>
                         <th className="text-left px-3 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Status</th>
-                        {canWrite && <th className="px-3 py-3"></th>}
+                        {canDistWrite && <th className="px-3 py-3"></th>}
                       </tr>
                     </thead>
                     <tbody>
@@ -6274,7 +6291,7 @@ setTimeout(()=>window.print(),500);
                           <td className="px-2 py-2"><input value={ndFrom} onChange={(e) => setNdFrom(e.target.value)} placeholder="0651" className="w-24 px-2 py-1.5 rounded-lg border text-xs font-mono" style={{ borderColor: 'var(--light-gray)' }} /></td>
                           <td className="px-2 py-2"><input value={ndTo} onChange={(e) => setNdTo(e.target.value)} placeholder="0700" className="w-24 px-2 py-1.5 rounded-lg border text-xs font-mono" style={{ borderColor: 'var(--light-gray)' }} /></td>
                           <td className="px-3 py-2 text-right font-semibold" style={{ color: ndQty == null ? 'var(--mid-gray)' : 'var(--charcoal)' }}>{ndQty == null ? '—' : ndQty.toLocaleString('en-PH')}</td>
-                          <td className="px-2 py-2" colSpan={canWrite ? 2 : 1}>
+                          <td className="px-2 py-2" colSpan={canDistWrite ? 2 : 1}>
                             <button onClick={handleDistSave} disabled={ndSaving || ndQty == null || !ndPartner || !ndForm}
                               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-white text-xs font-semibold disabled:opacity-40" style={{ background: 'var(--teal)' }}>
                               {ndSaving ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />} Add row
@@ -6283,7 +6300,7 @@ setTimeout(()=>window.print(),500);
                         </tr>
                       )}
                       {distributions.length === 0 && !canEntry ? (
-                        <tr><td colSpan={canWrite ? 8 : 7} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}><Gift size={30} className="mx-auto mb-2 opacity-40" /><p>No form distributions logged yet</p></td></tr>
+                        <tr><td colSpan={canDistWrite ? 8 : 7} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}><Gift size={30} className="mx-auto mb-2 opacity-40" /><p>No form distributions logged yet</p></td></tr>
                       ) : distributions.map((d) => (
                         <tr key={d.id} className="border-t hover:bg-gray-50/50 transition-colors" style={{ borderColor: 'var(--light-gray)' }}>
                           <td className="px-3 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{formatDate(d.dateGiven)}</td>
@@ -6299,7 +6316,7 @@ setTimeout(()=>window.print(),500);
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: '#ecfdf5', color: '#047857' }}>Recorded</span>
                             )}
                           </td>
-                          {canWrite && (
+                          {canDistWrite && (
                             <td className="px-3 py-3 text-right">
                               <button onClick={() => setDeleteDistConfirm(d.id)} className="p-2 rounded-lg hover:bg-red-50 transition-colors" title="Delete distribution"><Trash2 size={15} className="text-red-500" /></button>
                             </td>

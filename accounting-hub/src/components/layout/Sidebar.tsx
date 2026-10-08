@@ -40,6 +40,9 @@ const FULL_ACCESS = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER', 'AHEA_ADMIN'
 // Referral section: everyone EXCEPT the HMO Officer.
 const REFERRAL_ACCESS = [...FULL_ACCESS, 'PAYROLL_OFFICER', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK', 'MEDREP']
 const ENTRY_ACCESS = FULL_ACCESS
+// Inventory: full access for accounting; front desk + MedRep get a Forms-only
+// slice (the page itself collapses to the Forms tab for them).
+const INVENTORY_ACCESS = [...FULL_ACCESS, 'AHEA_FRONTDESK', 'AHGH_FRONTDESK', 'MEDREP']
 // Roles that see Services + POS (front desk + full access + Payroll Officer)
 const SERVICES_POS_ACCESS = [...FULL_ACCESS, 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
 const SERVICES_POS_PAYROLL = [...SERVICES_POS_ACCESS, 'PAYROLL_OFFICER']
@@ -94,7 +97,7 @@ const NAV_SECTIONS: NavSection[] = [
       { href: '/expenses', icon: CreditCard, label: 'Expenses', roles: ENTRY_ACCESS },
       { href: '/refunds', icon: Undo2, label: 'Refunds', roles: ENTRY_ACCESS },
       { href: '/cash-advances', icon: HandCoins, label: 'Cash Advances', roles: TAX_ACCESS },
-      { href: '/inventory', icon: Package, label: 'Inventory & Procurement', roles: FULL_ACCESS },
+      { href: '/inventory', icon: Package, label: 'Inventory & Procurement', roles: INVENTORY_ACCESS },
       { href: '/asset-management', icon: Building2, label: 'Asset Management', roles: SERVICES_POS_ACCESS },
       { href: '/services', icon: Stethoscope, label: 'Services', roles: SERVICES_POS_PAYROLL },
       { href: '/pos', icon: ShoppingCart, label: 'Point of Sale', roles: SERVICES_POS_PAYROLL },

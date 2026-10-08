@@ -2,7 +2,9 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
-const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
+// Front desk and the MedRep hand pads to partners themselves, so they can log
+// distributions here (the page shows them a Forms-only slice of Inventory).
+const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'MEDREP', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
 
 // Numeric value of a control number (ignores prefix / zero-padding).
 function controlToInt(s: string): number | null {
@@ -76,7 +78,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
   }
   try {
-    const { branch, formType, partnerId, partnerName, dateGiven, fromControl, toControl, remarks } = await req.json()
+    const { branch, formType, partnerId, partnerName, dateGiven, fromControl, toControl, remarks, alsoRecordReceipt } = await req.json()
     if (!branch || !formType?.trim() || !partnerName?.trim() || !fromControl?.trim() || !toControl?.trim()) {
       return NextResponse.json({ error: 'Branch, form type, partner institution, and control-number range are required' }, { status: 400 })
     }
@@ -84,21 +86,63 @@ export async function POST(req: Request) {
     if (quantity == null) {
       return NextResponse.json({ error: 'Invalid control-number range (the "to" number must be ≥ the "from" number, and both must contain digits)' }, { status: 400 })
     }
-    const created = await prisma.formDistribution.create({
-      data: {
-        branch,
-        formType: formType.trim(),
-        partnerId: partnerId?.toString().trim() || null,
-        partnerName: partnerName.trim(),
-        dateGiven: dateGiven ? new Date(dateGiven) : new Date(),
-        fromControl: fromControl.trim(),
-        toControl: toControl.trim(),
-        quantity,
-        remarks: remarks?.trim() || null,
-        createdById: session.user.id as string,
-        createdByName: session.user.name || null,
-      },
+
+    // A distribution of pads that were never logged as received would sit flagged
+    // "Not on hand" forever. Refuse it with needsReceipt so the client can offer
+    // to record the supplier receipt in the same breath; declining saves nothing.
+    const a = controlToInt(fromControl), b = controlToInt(toControl)
+    const receipts = await prisma.formReceipt.findMany({
+      where: { branch, formType: formType.trim() },
+      select: { fromControl: true, toControl: true },
     })
+    const ranges: Array<[number, number]> = []
+    for (const r of receipts) {
+      const lo = controlToInt(r.fromControl), hi = controlToInt(r.toControl)
+      if (lo != null && hi != null) ranges.push([lo, hi])
+    }
+    const covered = a != null && b != null && coveredByUnion(ranges, a, b)
+    if (!covered && !alsoRecordReceipt) {
+      return NextResponse.json({
+        needsReceipt: true,
+        error: 'These control numbers are not recorded as received in Consumable Forms',
+      }, { status: 409 })
+    }
+
+    const distData = {
+      branch,
+      formType: formType.trim(),
+      partnerId: partnerId?.toString().trim() || null,
+      partnerName: partnerName.trim(),
+      dateGiven: dateGiven ? new Date(dateGiven) : new Date(),
+      fromControl: fromControl.trim(),
+      toControl: toControl.trim(),
+      quantity,
+      remarks: remarks?.trim() || null,
+      createdById: session.user.id as string,
+      createdByName: session.user.name || null,
+    }
+    if (!covered) {
+      // Record the receipt for the distributed range itself (the common case is a
+      // whole pad handed straight through), then the distribution, atomically.
+      const [, created] = await prisma.$transaction([
+        prisma.formReceipt.create({
+          data: {
+            branch,
+            formType: formType.trim(),
+            dateReceived: distData.dateGiven,
+            fromControl: fromControl.trim(),
+            toControl: toControl.trim(),
+            quantity,
+            remarks: `Auto-recorded with partner distribution to ${partnerName.trim()}`,
+            createdById: session.user.id as string,
+            createdByName: session.user.name || null,
+          },
+        }),
+        prisma.formDistribution.create({ data: distData }),
+      ])
+      return NextResponse.json(created)
+    }
+    const created = await prisma.formDistribution.create({ data: distData })
     return NextResponse.json(created)
   } catch (err) {
     console.error('Form distribution create error:', err)
