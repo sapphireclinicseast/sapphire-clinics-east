@@ -1491,6 +1491,11 @@ function PettyCashInner() {
         const forReplTotal = entries.filter(e => e.pcfStatus === 'For Replenishment').reduce((s, e) => s + num(e.grossAmount), 0)
         const fund = num(fundAmount)
         const unliquidated = fund - cashCountTotal - forReplTotal
+        // Explicit check: the unaccounted balance above should match the advances
+        // actually documented as still Unliquidated in the entries. Any gap is a
+        // real shortage (negative) or overage (positive).
+        const trackedUnliquidated = entries.filter(e => e.pcfStatus === 'Unliquidated').reduce((s, e) => s + num(e.grossAmount), 0)
+        const shortageOverage = trackedUnliquidated - unliquidated
         const setPcs = (d: number, v: string) => setCashBreakdown(prev => ({ ...prev, [String(d)]: v.replace(/[^0-9]/g, '') }))
         return (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
@@ -1514,6 +1519,14 @@ function PettyCashInner() {
                 ) : <span className="font-bold tabular-nums">{peso(fund)}</span>}
               </div>
               <p className="text-[11px] mt-1" style={{ color: 'var(--mid-gray)' }}>Unliquidated = Fund − Cash Count − For Replenishment (the unaccounted balance of the fund).</p>
+
+              <div className="flex items-center justify-between py-2.5 mt-1 px-2 rounded-lg" style={{ background: shortageOverage === 0 ? 'transparent' : shortageOverage < 0 ? '#fef2f2' : '#ecfdf5' }}>
+                <span className="font-bold" style={{ color: 'var(--charcoal)' }}>Cash (Shortage)/Overage</span>
+                <span className="font-bold tabular-nums" style={{ color: shortageOverage < 0 ? '#dc2626' : shortageOverage > 0 ? '#047857' : 'var(--mid-gray)' }}>
+                  {shortageOverage < 0 ? `(${peso(Math.abs(shortageOverage))})` : peso(shortageOverage)}
+                </span>
+              </div>
+              <p className="text-[11px] mt-1" style={{ color: 'var(--mid-gray)' }}>Check: documented unliquidated advances (₱{peso(trackedUnliquidated)}) − unaccounted balance. Negative = shortage, positive = overage, 0 = reconciles.</p>
 
               <div className="mt-5">
                 <div className="flex items-center justify-between mb-2">
