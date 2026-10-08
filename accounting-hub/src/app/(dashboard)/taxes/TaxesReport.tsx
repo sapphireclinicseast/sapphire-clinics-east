@@ -65,6 +65,30 @@ export default function TaxesReport() {
     try { await fetch('/api/taxes/rfp', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, action: 'set-filing', filingStatus }) }) } catch { /* ignore */ }
   }
 
+  // Bulk filing: tick rows (or select-all shown), one click marks them all —
+  // same pattern as the Expense Report.
+  const [sel, setSel] = useState<Set<string>>(new Set())
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const allShownSel = shown.length > 0 && shown.every(r => sel.has(r.id))
+  const toggleSel = (id: string) => setSel(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n })
+  const toggleSelAll = () => setSel(prev => {
+    const n = new Set(prev)
+    if (allShownSel) shown.forEach(r => n.delete(r.id)); else shown.forEach(r => n.add(r.id))
+    return n
+  })
+  const bulkSetFiling = async (filingStatus: string) => {
+    const ids = [...sel]
+    if (!ids.length || bulkBusy) return
+    setBulkBusy(true)
+    setRfps(prev => prev.map(r => (sel.has(r.id) ? { ...r, filingStatus } : r)))
+    try {
+      const res = await fetch('/api/taxes/rfp', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids, action: 'set-filing', filingStatus }) })
+      if (!res.ok) { alert((await res.json().catch(() => ({}))).error || 'Failed to update'); load() }
+      else setSel(new Set())
+    } catch { alert('Failed to update'); load() }
+    finally { setBulkBusy(false) }
+  }
+
   const exportRep = (fmt: ExportFormat) => {
     const headers = ['Reference Number', 'Tax Type', 'Payable to', 'Date Paid', 'Tax Base', 'Amount', 'Payment Method', 'Filing']
     const body = shown.map(r => [r.refNumber, TYPE_LABEL[typeOf(r)] || typeOf(r), r.payableTo || '', r.paidAt ? String(r.paidAt).slice(0, 10) : '', itemsOf(r).length ? taxBaseOf(r).toFixed(2) : '', num(r.grossTotal).toFixed(2), r.paymentMethod || '', r.filingStatus === 'FILED' ? 'Filed' : 'For Filing'])
@@ -83,6 +107,29 @@ export default function TaxesReport() {
           {BRANCHES.map(b => <button key={b.value} onClick={() => setBranch(b.value)} className="px-4 py-2 text-xs font-semibold" style={branch === b.value ? { background: 'var(--teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' }}>{b.label}</button>)}
         </div>
         <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Paid taxes. {shown.length} payment(s) · tax base ₱{peso(totalBase)} · tax ₱{peso(total)} · click a row for its individuals</p>
+        {canWrite && shown.length > 0 && (
+          <>
+            <label className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-[11px] font-semibold cursor-pointer select-none"
+              title="Tick every row currently shown (respects the filters)"
+              style={{ borderColor: allShownSel ? 'var(--teal)' : 'var(--light-gray)', color: allShownSel ? 'var(--teal)' : 'var(--mid-gray)' }}>
+              <input type="checkbox" checked={allShownSel} onChange={toggleSelAll} className="accent-[var(--teal)]" />
+              Select all shown
+            </label>
+            {sel.size > 0 && (
+              <>
+                <button onClick={() => bulkSetFiling('FILED')} disabled={bulkBusy}
+                  className="px-3 py-1.5 rounded-xl text-[11px] font-semibold text-white disabled:opacity-50" style={{ background: '#166534' }}>
+                  Mark Filed ({sel.size})
+                </button>
+                <button onClick={() => bulkSetFiling('FOR_FILING')} disabled={bulkBusy}
+                  className="px-3 py-1.5 rounded-xl text-[11px] font-semibold border disabled:opacity-50" style={{ borderColor: '#fcd34d', color: '#92400e' }}>
+                  Mark For Filing ({sel.size})
+                </button>
+                <button onClick={() => setSel(new Set())} className="text-[11px] underline" style={{ color: 'var(--mid-gray)' }}>clear</button>
+              </>
+            )}
+          </>
+        )}
       </div>
       <DownloadBar from={from} to={to} onFrom={setFrom} onTo={setTo} onExport={exportRep} dateLabel="Date paid" note={`${shown.length} in range`} />
       <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
@@ -111,10 +158,14 @@ export default function TaxesReport() {
                     <td className="px-3 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{r.paymentMethod || ''}{r.checkNumber ? ` · ${r.checkNumber}` : r.transferRef ? ` · ${r.transferRef}` : ''}</td>
                     <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}>
                       {canWrite ? (
-                        <select value={r.filingStatus || 'FOR_FILING'} onChange={e => setFiling(r.id, e.target.value)} className="px-2 py-1 rounded-lg border text-[11px] font-semibold" style={{ borderColor: 'var(--light-gray)', color: r.filingStatus === 'FILED' ? '#166534' : '#92400e' }}>
-                          <option value="FOR_FILING">For Filing</option>
-                          <option value="FILED">Filed</option>
-                        </select>
+                        <span className="flex items-center gap-1.5">
+                          <input type="checkbox" checked={sel.has(r.id)} onChange={() => toggleSel(r.id)}
+                            className="accent-[var(--teal)]" title="Tick for bulk filing" />
+                          <select value={r.filingStatus || 'FOR_FILING'} onChange={e => setFiling(r.id, e.target.value)} className="px-2 py-1 rounded-lg border text-[11px] font-semibold" style={{ borderColor: 'var(--light-gray)', color: r.filingStatus === 'FILED' ? '#166534' : '#92400e' }}>
+                            <option value="FOR_FILING">For Filing</option>
+                            <option value="FILED">Filed</option>
+                          </select>
+                        </span>
                       ) : <span className="text-[11px]" style={{ color: r.filingStatus === 'FILED' ? '#166534' : '#92400e' }}>{r.filingStatus === 'FILED' ? 'Filed' : 'For Filing'}</span>}
                     </td>
                     <td className="px-3 py-2.5 text-right whitespace-nowrap" onClick={e => e.stopPropagation()}>

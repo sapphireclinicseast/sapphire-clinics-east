@@ -179,7 +179,10 @@ export async function PATCH(req: Request) {
   try {
     const body = await req.json()
     const { id, action } = body
-    if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
+    // set-filing may carry a bulk { ids } instead of a single id.
+    if (!id && !(action === 'set-filing' && Array.isArray(body.ids) && body.ids.length)) {
+      return NextResponse.json({ error: 'id is required' }, { status: 400 })
+    }
 
     if (action === 'pay') {
       await prisma.reimbursementReport.update({
@@ -204,8 +207,11 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ success: true })
     }
     if (action === 'set-filing') {
-      await prisma.reimbursementReport.update({ where: { id }, data: { filingStatus: body.filingStatus === 'FILED' ? 'FILED' : 'FOR_FILING' } })
-      return NextResponse.json({ success: true })
+      // Single { id } or bulk { ids } — the Taxes Report's tick-and-file.
+      const ids: string[] = Array.isArray(body.ids) ? body.ids.map(String).filter(Boolean) : id ? [id] : []
+      if (!ids.length) return NextResponse.json({ error: 'id or ids is required' }, { status: 400 })
+      const r = await prisma.reimbursementReport.updateMany({ where: { id: { in: ids } }, data: { filingStatus: body.filingStatus === 'FILED' ? 'FILED' : 'FOR_FILING' } })
+      return NextResponse.json({ success: true, updated: r.count })
     }
     await prisma.reimbursementReport.update({ where: { id }, data: { pdfData: body.pdfData || null } })
     return NextResponse.json({ success: true })
