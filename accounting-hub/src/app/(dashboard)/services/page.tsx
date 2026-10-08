@@ -586,9 +586,9 @@ export default function ServicesPage() {
           className="px-3 py-2.5 rounded-xl border text-sm outline-none"
           style={{ borderColor: 'var(--light-gray)', background: 'white' }}
           title="Show active, disabled, or all services">
-          <option value="active">Active</option>
-          <option value="inactive">Disabled</option>
-          <option value="all">All</option>
+          <option value="active">Active services</option>
+          <option value="inactive">Disabled services</option>
+          <option value="all">All (incl. disabled)</option>
         </select>
       </div>
 
