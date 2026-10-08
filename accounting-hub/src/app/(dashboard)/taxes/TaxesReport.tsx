@@ -35,10 +35,12 @@ export default function TaxesReport() {
   const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'paidAt', dir: 'desc' })
   const [filters, setFilters] = useState<Record<string, string>>({})
   const toggleSort = (k: string) => setSort(s => s.key === k ? { key: k, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key: k, dir: 'asc' })
+  // Filing leads — it's the working column, same as the Expense Report.
   const cols = [
+    { key: 'filing', label: 'Filing' },
     { key: 'refNumber', label: 'Reference Number' }, { key: 'type', label: 'Tax Type' }, { key: 'payableTo', label: 'Payable to' },
     { key: 'paidAt', label: 'Date Paid' }, { key: 'taxBase', label: 'Tax Base' }, { key: 'grossTotal', label: 'Amount' },
-    { key: 'paymentMethod', label: 'Payment Method' }, { key: 'filing', label: 'Filing' },
+    { key: 'paymentMethod', label: 'Payment Method' },
   ]
   const get = (r: TaxRfp, k: string): string | number =>
     k === 'refNumber' ? r.refNumber : k === 'type' ? (TYPE_LABEL[typeOf(r)] || typeOf(r))
@@ -90,8 +92,8 @@ export default function TaxesReport() {
   }
 
   const exportRep = (fmt: ExportFormat) => {
-    const headers = ['Reference Number', 'Tax Type', 'Payable to', 'Date Paid', 'Tax Base', 'Amount', 'Payment Method', 'Filing']
-    const body = shown.map(r => [r.refNumber, TYPE_LABEL[typeOf(r)] || typeOf(r), r.payableTo || '', r.paidAt ? String(r.paidAt).slice(0, 10) : '', itemsOf(r).length ? taxBaseOf(r).toFixed(2) : '', num(r.grossTotal).toFixed(2), r.paymentMethod || '', r.filingStatus === 'FILED' ? 'Filed' : 'For Filing'])
+    const headers = ['Filing', 'Reference Number', 'Tax Type', 'Payable to', 'Date Paid', 'Tax Base', 'Amount', 'Payment Method']
+    const body = shown.map(r => [r.filingStatus === 'FILED' ? 'Filed' : 'For Filing', r.refNumber, TYPE_LABEL[typeOf(r)] || typeOf(r), r.payableTo || '', r.paidAt ? String(r.paidAt).slice(0, 10) : '', itemsOf(r).length ? taxBaseOf(r).toFixed(2) : '', num(r.grossTotal).toFixed(2), r.paymentMethod || ''])
     if (fmt === 'xlsx') {
       // Second sheet: the individuals behind every RFP in range, for filing.
       const detailHeaders = ['RFP Reference', 'Name', 'Period', 'Tax Base', 'Rate', 'Tax Withheld']
@@ -146,16 +148,6 @@ export default function TaxesReport() {
                   <tr className={`border-t${its.length ? ' cursor-pointer hover:bg-gray-50' : ''}`} style={{ borderColor: 'var(--light-gray)' }}
                     onClick={its.length ? () => toggleExpand(r.id) : undefined}
                     title={its.length ? 'Click to show the individuals in this RFP' : undefined}>
-                    <td className="px-3 py-2.5 font-mono font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>
-                      {its.length > 0 && <ChevronRight size={13} className="inline mr-1 transition-transform" style={{ transform: isOpen ? 'rotate(90deg)' : undefined, color: 'var(--mid-gray)' }} />}
-                      {r.refNumber}
-                    </td>
-                    <td className="px-3 py-2.5 text-xs" style={{ color: 'var(--charcoal)' }}>{TYPE_LABEL[typeOf(r)] || typeOf(r)}</td>
-                    <td className="px-3 py-2.5 text-xs" style={{ color: 'var(--charcoal)' }}>{r.payableTo || '—'}</td>
-                    <td className="px-3 py-2.5 text-xs whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{r.paidAt ? new Date(r.paidAt).toLocaleDateString('en-PH') : ''}</td>
-                    <td className="px-3 py-2.5 text-right text-xs" style={{ color: 'var(--charcoal)' }}>{its.length ? `₱${peso(taxBaseOf(r))}` : '—'}</td>
-                    <td className="px-3 py-2.5 text-right font-semibold" style={{ color: 'var(--charcoal)' }}>₱{peso(num(r.grossTotal))}</td>
-                    <td className="px-3 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{r.paymentMethod || ''}{r.checkNumber ? ` · ${r.checkNumber}` : r.transferRef ? ` · ${r.transferRef}` : ''}</td>
                     <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}>
                       {canWrite ? (
                         <span className="flex items-center gap-1.5">
@@ -168,6 +160,16 @@ export default function TaxesReport() {
                         </span>
                       ) : <span className="text-[11px]" style={{ color: r.filingStatus === 'FILED' ? '#166534' : '#92400e' }}>{r.filingStatus === 'FILED' ? 'Filed' : 'For Filing'}</span>}
                     </td>
+                    <td className="px-3 py-2.5 font-mono font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>
+                      {its.length > 0 && <ChevronRight size={13} className="inline mr-1 transition-transform" style={{ transform: isOpen ? 'rotate(90deg)' : undefined, color: 'var(--mid-gray)' }} />}
+                      {r.refNumber}
+                    </td>
+                    <td className="px-3 py-2.5 text-xs" style={{ color: 'var(--charcoal)' }}>{TYPE_LABEL[typeOf(r)] || typeOf(r)}</td>
+                    <td className="px-3 py-2.5 text-xs" style={{ color: 'var(--charcoal)' }}>{r.payableTo || '—'}</td>
+                    <td className="px-3 py-2.5 text-xs whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{r.paidAt ? new Date(r.paidAt).toLocaleDateString('en-PH') : ''}</td>
+                    <td className="px-3 py-2.5 text-right text-xs" style={{ color: 'var(--charcoal)' }}>{its.length ? `₱${peso(taxBaseOf(r))}` : '—'}</td>
+                    <td className="px-3 py-2.5 text-right font-semibold" style={{ color: 'var(--charcoal)' }}>₱{peso(num(r.grossTotal))}</td>
+                    <td className="px-3 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{r.paymentMethod || ''}{r.checkNumber ? ` · ${r.checkNumber}` : r.transferRef ? ` · ${r.transferRef}` : ''}</td>
                     <td className="px-3 py-2.5 text-right whitespace-nowrap" onClick={e => e.stopPropagation()}>
                       {r.proofUrl && <a href={r.proofUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><Eye size={12} /> Proof</a>}
                     </td>
