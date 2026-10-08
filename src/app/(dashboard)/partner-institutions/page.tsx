@@ -17,6 +17,11 @@ interface Discount {
   // HR's "Priority" tick on a discount row: partner students get priority booking
   // for that service, on top of (or instead of) a price cut.
   priority?: boolean
+  // Who the row is for (HR's "group" on the discount row): ALL, STUDENT, FACULTY,
+  // PARENT, ALUMNI, EMPLOYEE or OTHER. A partner often gives students one rate and
+  // faculty or parents another, so one service can carry several rows.
+  beneficiary?: string
+  beneficiaryLabel?: string
 }
 interface Institution {
   id: string
@@ -305,6 +310,13 @@ export default function PartnerInstitutionsPage() {
                                 discount, where the label is "₱500 off". */}
                             {discountLabel(d)}
                             <span style={{ fontWeight: 600 }}>on {d.serviceLabel}</span>
+                            {d.beneficiary && d.beneficiary !== 'ALL' && (
+                              <span title={`This rate is for ${d.beneficiaryLabel || d.beneficiary} of the institution`}
+                                    style={{ marginLeft: 2, background: '#DBEAFE', color: '#1E40AF', border: '1px solid #93C5FD',
+                                             borderRadius: 6, padding: '1px 6px', fontSize: '0.72rem', fontWeight: 800 }}>
+                                for {d.beneficiaryLabel || d.beneficiary}
+                              </span>
+                            )}
                             {d.priority && (
                               <span title="Priority: students from this institution are prioritised for this service"
                                     style={{ marginLeft: 2, background: '#FEF3C7', color: '#92400E', border: '1px solid #FCD34D',
