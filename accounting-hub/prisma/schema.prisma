@@ -908,7 +908,7 @@ model ReferralCommissionItem {
   cutoffPeriod   String // "YYYY-MM-1|2" that paid it
   payrollEntryId String? // consultant payroll line that carried it (in-house doctor)
   payslipId      String? // employee payslip that carried it (med rep)
-  rfpId          String? // expense RFP that pays it (EXTERNAL doctor — not staff, so no payroll)
+  rfpId          String? // reserved (unused): the RFP-payout path for external doctors was built 10/07 and rolled back on Hannah's call the same day — column kept so prod and schema stay aligned
   createdAt      DateTime @default(now())
 
   @@unique([kind, orderId])
