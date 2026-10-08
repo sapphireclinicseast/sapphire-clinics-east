@@ -2822,11 +2822,14 @@ function ExpenseReportTab({ branch, canWrite, canEdit }: { branch: string; canWr
     setColWidths(null)
     try { localStorage.removeItem('er-col-widths') } catch { /* ignore */ }
   }
+  // Status leads (filing is the working column, so it shouldn't hide at the far
+  // right behind a horizontal scroll), with a tickbox per row for bulk filing.
   const erCols = [
+    { key: 'status', label: 'Status' },
     { key: 'source', label: 'Source' },
     { key: 'payee', label: 'Payee' }, { key: 'paymentAccount', label: 'Payment Account' }, { key: 'paymentDate', label: 'Payment Date' },
     { key: 'paymentMethod', label: 'Payment Method' }, { key: 'pcvNumber', label: 'Reference Number' }, { key: 'accountTitle', label: 'Account Title' },
-    { key: 'description', label: 'Description' }, { key: 'netOfVat', label: 'Amount Net of VAT' }, { key: 'checkInfo', label: 'Check Number / Online Transfer Ref. No.' }, { key: 'status', label: 'Status' },
+    { key: 'description', label: 'Description' }, { key: 'netOfVat', label: 'Amount Net of VAT' }, { key: 'checkInfo', label: 'Check Number / Online Transfer Ref. No.' },
   ]
   const erGet = (r: ErRow, k: string): string | number =>
     k === 'netOfVat' ? r.netOfVat : k === 'status' ? (r.filingStatus === 'FILED' ? 'Filed' : 'For Filing')
@@ -2840,12 +2843,35 @@ function ExpenseReportTab({ branch, canWrite, canEdit }: { branch: string; canWr
     try { await fetch('/api/expenses/filing-status', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, filingStatus }) }) } catch { /* ignore */ }
   }
 
-  const COLS_ER = ['Source', 'Payee', 'Payment Account', 'Payment Date', 'Payment Method', 'Reference Number', 'Account Title', 'Description', 'Net of VAT', 'Check Number / Online Transfer Ref. No.', 'Status']
-  const rowCells = (r: ErRow) => [SOURCE_LABEL[r.source] || r.source, r.payee, r.paymentAccount, r.paymentDate, r.paymentMethod, r.pcvNumber, r.accountTitle, r.description, r.netOfVat.toFixed(2), r.checkInfo, r.filingStatus === 'FILED' ? 'Filed' : 'For Filing']
+  // Bulk filing: tick rows (or select-all shown), then one click marks them all.
+  const [sel, setSel] = useState<Set<string>>(new Set())
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const allShownSel = shown.length > 0 && shown.every(r => sel.has(r.id))
+  const toggleSel = (id: string) => setSel(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n })
+  const toggleSelAll = () => setSel(prev => {
+    const n = new Set(prev)
+    if (allShownSel) shown.forEach(r => n.delete(r.id)); else shown.forEach(r => n.add(r.id))
+    return n
+  })
+  const bulkSetStatus = async (filingStatus: string) => {
+    const ids = [...sel]
+    if (!ids.length || bulkBusy) return
+    setBulkBusy(true)
+    setRows(prev => prev.map(r => (sel.has(r.id) ? { ...r, filingStatus } : r)))
+    try {
+      const res = await fetch('/api/expenses/filing-status', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids, filingStatus }) })
+      if (!res.ok) { alert((await res.json().catch(() => ({}))).error || 'Failed to update'); load() }
+      else setSel(new Set())
+    } catch { alert('Failed to update'); load() }
+    finally { setBulkBusy(false) }
+  }
+
+  const COLS_ER = ['Status', 'Source', 'Payee', 'Payment Account', 'Payment Date', 'Payment Method', 'Reference Number', 'Account Title', 'Description', 'Net of VAT', 'Check Number / Online Transfer Ref. No.']
+  const rowCells = (r: ErRow) => [r.filingStatus === 'FILED' ? 'Filed' : 'For Filing', SOURCE_LABEL[r.source] || r.source, r.payee, r.paymentAccount, r.paymentDate, r.paymentMethod, r.pcvNumber, r.accountTitle, r.description, r.netOfVat.toFixed(2), r.checkInfo]
   const exportExcel = async () => {
     const XLSX = await import('xlsx')
     const total = view === 'Valid' ? totalValid : totalInvalid
-    const aoa = [COLS_ER, ...shown.map(rowCells), ['', '', '', '', '', '', `TOTAL ${view}`, total.toFixed(2), '', '']]
+    const aoa = [COLS_ER, ...shown.map(rowCells), ['', '', '', '', '', '', '', '', `TOTAL ${view}`, total.toFixed(2), '']]
     const ws = XLSX.utils.aoa_to_sheet(aoa)
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, `${view} Expenses`)
@@ -2861,10 +2887,10 @@ function ExpenseReportTab({ branch, canWrite, canEdit }: { branch: string; canWr
     const total = view === 'Valid' ? totalValid : totalInvalid
     autoTable(doc, {
       startY: 24, head: [COLS_ER], body: shown.map(rowCells),
-      foot: [['', '', '', '', '', '', `TOTAL ${view}`, total.toFixed(2), '', '']],
+      foot: [['', '', '', '', '', '', '', '', `TOTAL ${view}`, total.toFixed(2), '']],
       styles: { fontSize: 7, cellPadding: 1.5 }, headStyles: { fillColor: [36, 73, 82], textColor: 255 },
       footStyles: { fillColor: [237, 243, 217], textColor: [30, 30, 30], fontStyle: 'bold' },
-      columnStyles: { 7: { halign: 'right' } }, margin: { left: 10, right: 10 },
+      columnStyles: { 9: { halign: 'right' } }, margin: { left: 10, right: 10 },
     })
     doc.save(`expense-report-${view.toLowerCase()}.pdf`)
   }
@@ -2907,7 +2933,7 @@ function ExpenseReportTab({ branch, canWrite, canEdit }: { branch: string; canWr
       <div className="flex items-center gap-3 flex-wrap">
         <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: 'var(--light-gray)' }}>
           {(['Valid', 'Invalid'] as const).map(v => (
-            <button key={v} onClick={() => setView(v)}
+            <button key={v} onClick={() => { setView(v); setSel(new Set()) }}
               className="px-4 py-2 text-xs font-semibold transition-colors"
               style={view === v ? { background: 'var(--deep-teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' }}>
               {v} ({v === 'Valid' ? valid.length : invalid.length})
@@ -2917,6 +2943,29 @@ function ExpenseReportTab({ branch, canWrite, canEdit }: { branch: string; canWr
         <span className="text-[11px] flex items-center gap-1" style={{ color: 'var(--mid-gray)' }}>
           <span className="inline-block w-3 h-3 rounded" style={{ background: '#dbeafe' }} /> Petty cash (reimbursement)
         </span>
+        {canWrite && shown.length > 0 && (
+          <>
+            <label className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-[11px] font-semibold cursor-pointer select-none"
+              title="Tick every row currently shown (respects the filters)"
+              style={{ borderColor: allShownSel ? 'var(--teal)' : 'var(--light-gray)', color: allShownSel ? 'var(--teal)' : 'var(--mid-gray)' }}>
+              <input type="checkbox" checked={allShownSel} onChange={toggleSelAll} className="accent-[var(--teal)]" />
+              Select all shown
+            </label>
+            {sel.size > 0 && (
+              <>
+                <button onClick={() => bulkSetStatus('FILED')} disabled={bulkBusy}
+                  className="px-3 py-1.5 rounded-xl text-[11px] font-semibold text-white disabled:opacity-50" style={{ background: '#166534' }}>
+                  Mark Filed ({sel.size})
+                </button>
+                <button onClick={() => bulkSetStatus('FOR_FILING')} disabled={bulkBusy}
+                  className="px-3 py-1.5 rounded-xl text-[11px] font-semibold border disabled:opacity-50" style={{ borderColor: '#fcd34d', color: '#92400e' }}>
+                  Mark For Filing ({sel.size})
+                </button>
+                <button onClick={() => setSel(new Set())} className="text-[11px] underline" style={{ color: 'var(--mid-gray)' }}>clear</button>
+              </>
+            )}
+          </>
+        )}
         <div className="flex-1" />
         {colWidths && (
           <button onClick={resetColWidths} className="px-3 py-1.5 rounded-xl text-[11px] font-semibold border"
@@ -2946,6 +2995,19 @@ function ExpenseReportTab({ branch, canWrite, canEdit }: { branch: string; canWr
                 const payroll = r.source === 'SALARY_PAYMENT' || r.source === 'BENEFIT_PAYMENT'
                 return (
                   <tr key={r.id} style={{ background: pc ? '#dbeafe' : payroll ? '#f3e8ff' : r.source === 'CASH_ADVANCE' ? '#fef9c3' : '#fff' }}>
+                    <td className="border-r border-b px-3 py-2 whitespace-nowrap" style={{ borderColor: 'var(--light-gray)' }}>
+                      <span className="flex items-center gap-1.5">
+                        {canWrite && (
+                          <input type="checkbox" checked={sel.has(r.id)} onChange={() => toggleSel(r.id)}
+                            className="accent-[var(--teal)]" title="Tick for bulk filing" />
+                        )}
+                        <select value={r.filingStatus} disabled={!canWrite} onChange={e => setStatus(r.id, e.target.value)}
+                          className="px-2 py-1 rounded-lg border text-[11px] font-semibold" style={{ borderColor: 'var(--light-gray)', color: r.filingStatus === 'FILED' ? '#166534' : '#92400e' }}>
+                          <option value="FOR_FILING">For Filing</option>
+                          <option value="FILED">Filed</option>
+                        </select>
+                      </span>
+                    </td>
                     <td className="border-r border-b px-3 py-2 whitespace-nowrap text-[11px] font-medium" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>{SOURCE_LABEL[r.source] || r.source}</td>
                     <td className="border-r border-b px-3 py-2 whitespace-nowrap" style={{ borderColor: 'var(--light-gray)', color: pc ? '#1e40af' : 'var(--charcoal)', fontWeight: pc ? 600 : 400 }}>{r.payee}</td>
                     <td className="border-r border-b px-3 py-2" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>{r.paymentAccount}</td>
@@ -2956,13 +3018,6 @@ function ExpenseReportTab({ branch, canWrite, canEdit }: { branch: string; canWr
                     <td className="border-r border-b px-3 py-2" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>{r.description}</td>
                     <td className="border-r border-b px-3 py-2 text-right whitespace-nowrap font-semibold" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>₱{peso(r.netOfVat)}</td>
                     <td className="border-r border-b px-3 py-2 whitespace-nowrap" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>{r.checkInfo}</td>
-                    <td className="border-r border-b px-3 py-2" style={{ borderColor: 'var(--light-gray)' }}>
-                      <select value={r.filingStatus} disabled={!canWrite} onChange={e => setStatus(r.id, e.target.value)}
-                        className="px-2 py-1 rounded-lg border text-[11px] font-semibold" style={{ borderColor: 'var(--light-gray)', color: r.filingStatus === 'FILED' ? '#166534' : '#92400e' }}>
-                        <option value="FOR_FILING">For Filing</option>
-                        <option value="FILED">Filed</option>
-                      </select>
-                    </td>
                     {canEdit && (
                       <td className="border-b px-2 py-2 text-right whitespace-nowrap" style={{ borderColor: 'var(--light-gray)' }}>
                         <button onClick={() => setEditRow({ id: r.id, date: r.paymentDate, accountTitle: r.accountTitle, description: r.description, gross: r.gross })}
@@ -2978,9 +3033,9 @@ function ExpenseReportTab({ branch, canWrite, canEdit }: { branch: string; canWr
               )}
               {shown.length > 0 && (
                 <tr style={{ background: 'var(--off-white)' }}>
-                  <td colSpan={8} className="border-r border-b px-3 py-2 text-right font-bold" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>TOTAL {view}</td>
+                  <td colSpan={9} className="border-r border-b px-3 py-2 text-right font-bold" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>TOTAL {view}</td>
                   <td className="border-r border-b px-3 py-2 text-right font-bold whitespace-nowrap" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>₱{peso(shownTotal)}</td>
-                  <td className="border-r border-b" style={{ borderColor: 'var(--light-gray)' }} colSpan={canEdit ? 3 : 2}></td>
+                  <td className="border-r border-b" style={{ borderColor: 'var(--light-gray)' }} colSpan={canEdit ? 2 : 1}></td>
                 </tr>
               )}
             </tbody>
