@@ -270,7 +270,15 @@ model Patient {
   nationality String?
   address     String?          // full address or barangay
   city        String?          // city/municipality (for map choropleth)
+  /// Legacy single free-text field, kept in sync as "; "-joined `diagnoses`.
+  /// Still the only thing 15+ readers know about — CSV export, the external
+  /// patients API, class-portal sync, queueing, the profile page — so it is
+  /// written on every save rather than retired.
   diagnosis          String?
+  /// One entry per tagged condition. Written by the diagnosis tag input on the
+  /// CRM form and the public registration page. Empty for every record created
+  /// before tagging existed; readers fall back to parsing `diagnosis`.
+  diagnoses          String[]  @default([])
   notes              String?
   referralUrl        String?    // optional doctor's referral document URL
   pwdIdUrl           String?    // optional PWD ID photo URL

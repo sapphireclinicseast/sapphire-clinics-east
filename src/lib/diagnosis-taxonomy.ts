@@ -237,3 +237,113 @@ export function tallyDiagnoses<T>(
 
   return { families, unmatched, nonClinical, provisional, blank, classified }
 }
+
+/**
+ * What the diagnosis tag input offers while you type.
+ *
+ * Each entry is ONE condition, deliberately: the point of tagging is that
+ * "Anxiety and Depression" becomes two tags rather than a twelfth distinct
+ * string nothing can group. So there is no combined entry to pick.
+ *
+ * Drawn from what is actually written in the records today — the family names
+ * above, plus the specific wordings that recur often enough that front desk
+ * will expect to find them (frozen shoulder, knee pain, speech delay). Typing
+ * something not on this list is still accepted; the list is a shortcut, never
+ * a restriction, because a clinic sees conditions no fixed list anticipates.
+ */
+export const DIAGNOSIS_SUGGESTIONS: string[] = [
+  // Developmental / neurodevelopmental — the bulk of the pediatric caseload
+  'ASD / Autism Spectrum Disorder',
+  'ADHD',
+  'Global Developmental Delay (GDD)',
+  'Intellectual Disability',
+  'Learning Disability',
+  'Down Syndrome',
+  'Cerebral Palsy',
+  'Seizure Disorder',
+  'Rare / Genetic Condition',
+
+  // Speech, language, feeding
+  'Speech / Language / Communication Disorder',
+  'Speech Delay',
+  'Language Disorder',
+  'Articulation Disorder',
+  'Apraxia of Speech',
+  'Stuttering / Fluency Disorder',
+  'Non-verbal',
+  'Feeding / Swallowing Difficulty',
+
+  // Mental health
+  'Anxiety',
+  'Depression',
+  'Bipolar Disorder',
+  'OCD',
+  'PTSD / Trauma',
+  'Psychotic Disorder',
+  'Behavioral / Emotional / Mood Disorder',
+  'Self-harm / Suicidal Ideation',
+  'Psychosocial Disability',
+  'School Refusal',
+
+  // Sensory
+  'Hearing Impairment',
+  'Visual Impairment',
+  'Sensory Processing Difficulty',
+
+  // Adult rehab — these arrive as body parts far more often than as categories
+  'Musculoskeletal / Orthopedic',
+  'Low Back Pain',
+  'Neck Pain',
+  'Knee Pain',
+  'Frozen Shoulder',
+  'Sciatica',
+  'Scoliosis',
+  'Spondylosis',
+  'ACL Injury',
+  'Meniscus Tear',
+  'Ankle Sprain',
+  'Fracture',
+  'Post-surgical Rehabilitation',
+  'Stroke / Cerebrovascular',
+  'Physical Disability',
+]
+
+/**
+ * Suggestions for what has been typed so far, best match first.
+ *
+ * Prefix matches rank above mid-word ones, so typing "an" offers Anxiety before
+ * Language Disorder. Anything already tagged is dropped — re-offering a tag the
+ * user can see on screen is just noise.
+ */
+export function suggestDiagnoses(query: string, alreadyTagged: string[] = [], limit = 8): string[] {
+  const q = query.trim().toLowerCase()
+  const taken = new Set(alreadyTagged.map((t) => t.trim().toLowerCase()))
+  const pool = DIAGNOSIS_SUGGESTIONS.filter((s) => !taken.has(s.toLowerCase()))
+  if (!q) return pool.slice(0, limit)
+
+  const starts: string[] = []
+  const contains: string[] = []
+  for (const s of pool) {
+    const l = s.toLowerCase()
+    if (l.startsWith(q)) starts.push(s)
+    else if (l.includes(q)) contains.push(s)
+  }
+  return [...starts, ...contains].slice(0, limit)
+}
+
+/**
+ * The families a tagged list belongs to.
+ *
+ * Tagged records need no guessing — each tag is already one condition — but the
+ * tags are still free text, so they go through the same classifier to collapse
+ * "Speech Delay" and "Language Disorder" into one family on the chart.
+ */
+export function familiesForTags(tags: string[]): string[] {
+  const out: string[] = []
+  for (const tag of tags) {
+    for (const f of classifyDiagnosis(tag).families) {
+      if (!out.includes(f)) out.push(f)
+    }
+  }
+  return out
+}

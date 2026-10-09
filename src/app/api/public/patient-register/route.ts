@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
     const {
       firstName, lastName, email, phone, dob,
       sex, civilStatus, religion, nationality,
-      address, city, diagnosis, pwdSeniorId, branches,
+      address, city, diagnosis, diagnoses, pwdSeniorId, branches,
       partnerInstitution, referringDoctor,
     } = body
 
@@ -98,6 +98,17 @@ export async function POST(req: NextRequest) {
         address:     uc(address)     || null,
         city:        uc(city)        || null,
         diagnosis:   uc(diagnosis)   || null,
+        // One entry per condition, so the dashboard can group them without
+        // having to guess where "Anxiety and Depression" splits. Uppercased to
+        // match the single field beside it; capped and trimmed because this is
+        // a public endpoint and the array is caller-supplied.
+        diagnoses:   Array.isArray(diagnoses)
+          ? diagnoses
+              .filter((d: unknown): d is string => typeof d === 'string')
+              .map((d) => d.trim().toUpperCase())
+              .filter((d) => d.length > 0 && d.length <= 120)
+              .slice(0, 20)
+          : [],
         pwdSeniorId: uc(pwdSeniorId) || null,
         // Both accepted as free text. The form offers a list for each, but a
         // parent can name a school or doctor the clinic has not recorded yet,

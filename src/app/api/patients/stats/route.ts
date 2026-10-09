@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { isLikelyChinoy } from '@/lib/chinoy-surnames'
-import { classifyDiagnosis } from '@/lib/diagnosis-taxonomy'
+import { classifyDiagnosis, familiesForTags } from '@/lib/diagnosis-taxonomy'
 
 // Never cache — branch filter query param must always be respected
 export const dynamic = 'force-dynamic'
@@ -53,6 +53,7 @@ export async function GET(req: NextRequest) {
       dob:         true,
       sex:         true,
       diagnosis:   true,
+      diagnoses:   true,
       city:        true,
       address:     true,   // used as barangay label in the choropleth
       branches:    true,
@@ -135,11 +136,25 @@ export async function GET(req: NextRequest) {
   const diagMap: Record<string, { male: number; female: number; other: number }> = {}
   let diagnosedPatients = 0
   for (const p of patients) {
-    if (!p.diagnosis?.trim()) continue
-    const { families, provisional, nonClinical } = classifyDiagnosis(p.diagnosis)
-    // "FOR OT AND PT", "N/A", and the occasional address typed into the box are
-    // not conditions; "T/C ADHD" is a differential, not a diagnosis.
-    if (nonClinical || provisional || !families.length) continue
+    // A tagged record needs no guessing — each tag is already one condition, so
+    // "Anxiety and Depression" arrives as two entries rather than as a string
+    // something has to split. Untagged records fall back to reading the free
+    // text, which is every record created before tagging existed.
+    const tags = (p.diagnoses ?? []).filter((t) => t && t.trim())
+    let families: string[]
+    if (tags.length) {
+      // Tags are still free text, so they go through the same classifier — it
+      // collapses "Speech Delay" and "Language Disorder" into one family.
+      families = familiesForTags(tags)
+      if (!families.length) continue
+    } else {
+      if (!p.diagnosis?.trim()) continue
+      const m = classifyDiagnosis(p.diagnosis)
+      // "FOR OT AND PT", "N/A", and the occasional address typed into the box are
+      // not conditions; "T/C ADHD" is a differential, not a diagnosis.
+      if (m.nonClinical || m.provisional || !m.families.length) continue
+      families = m.families
+    }
     diagnosedPatients++
     const sex = p.sex?.toLowerCase() ?? ''
     const bucket = sex.startsWith('m') ? 'male' : sex.startsWith('f') ? 'female' : 'other'

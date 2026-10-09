@@ -1,5 +1,6 @@
 'use client'
 
+import DiagnosisTagInput, { splitLegacyDiagnosis, joinDiagnosisTags } from '@/components/DiagnosisTagInput'
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import {
   Upload, Plus, Search, X, Cake, Download,
@@ -29,6 +30,7 @@ interface Patient {
   address?: string
   city?: string
   diagnosis?: string
+  diagnoses?: string[]
   notes?: string
   referralUrl?: string | null
   pwdIdUrl?: string | null
@@ -70,7 +72,7 @@ interface DuplicateEntry {
 const EMPTY_FORM = {
   firstName: '', lastName: '', email: '', phone: '', dob: '',
   patientType: 'ADULT', branches: [] as string[], sex: '',
-  civilStatus: '', religion: '', nationality: '', address: '', city: '', diagnosis: '', notes: '',
+  civilStatus: '', religion: '', nationality: '', address: '', city: '', diagnosis: '', diagnoses: [] as string[], notes: '',
   firstDayOfConsult: '', pwdSeniorId: '', unsubscribed: false, smsUnsubscribed: false,
 }
 
@@ -596,6 +598,9 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
       address:     p.address     ?? '',
       city:        p.city        ?? '',
       diagnosis:   p.diagnosis   ?? '',
+      // Records saved before tagging have only the free-text field. Splitting
+      // it gives the editor something to work with instead of one long tag.
+      diagnoses:   p.diagnoses?.length ? p.diagnoses : splitLegacyDiagnosis(p.diagnosis),
       notes:       p.notes       ?? '',
       firstDayOfConsult: p.firstDayOfConsult ? p.firstDayOfConsult.slice(0, 10) : '',
       pwdSeniorId: p.pwdSeniorId ?? '',
@@ -1119,7 +1124,18 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
               <Field label="Sex"                   value={form.sex}          onChange={(v) => setForm((f) => ({ ...f, sex: v }))} placeholder="Male / Female" />
               <Field label="Barangay / Address"    value={form.address}      onChange={(v) => setForm((f) => ({ ...f, address: v }))} />
               <Field label="City"                  value={form.city}         onChange={(v) => setForm((f) => ({ ...f, city: v }))} />
-              <Field label="Diagnosis / Condition" value={form.diagnosis}    onChange={(v) => setForm((f) => ({ ...f, diagnosis: v }))} />
+              <DiagnosisTagInput
+                value={form.diagnoses}
+                uppercase
+                hint="One tag per condition — type to search, Enter to add. Anything not on the list is still accepted."
+                onChange={(next) => setForm((f) => ({
+                  ...f,
+                  diagnoses: next,
+                  // Kept in step so the table column, CSV export and every other
+                  // reader of the single field stay correct without being touched.
+                  diagnosis: joinDiagnosisTags(next),
+                }))}
+              />
               <Field label="Civil Status"          value={form.civilStatus}  onChange={(v) => setForm((f) => ({ ...f, civilStatus: v }))} />
               <Field label="Religion"              value={form.religion}     onChange={(v) => setForm((f) => ({ ...f, religion: v }))} />
               <Field label="Nationality"           value={form.nationality}  onChange={(v) => setForm((f) => ({ ...f, nationality: v }))} />
