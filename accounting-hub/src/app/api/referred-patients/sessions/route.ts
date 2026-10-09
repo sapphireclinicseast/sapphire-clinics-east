@@ -1,10 +1,13 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { nameKey, nameVariants, longestToken } from '@/lib/patient-name-match'
 
 // GET ?id=<referredPatientId> → the patient's recorded sessions from POS Orders:
 // each order's service(s), date, and net amount paid. Matched by CRM patientId when
-// available, else by patient name.
+// available, else by patient name — word-order-insensitively, because orders are
+// often keyed surname-first ("POMALOY FEMARIE KATE") while the referral list holds
+// the name first-name-first, and many orders carry no CRM patientId at all.
 export async function GET(req: Request) {
   const session = await auth()
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -17,19 +20,25 @@ export async function GET(req: Request) {
 
   const match: Record<string, unknown>[] = []
   if (rp.patientId) match.push({ patientId: rp.patientId })
-  if (rp.patientName) match.push({ patientName: { equals: rp.patientName, mode: 'insensitive' } })
+  if (rp.patientName) {
+    match.push({ patientName: { in: nameVariants(rp.patientName), mode: 'insensitive' } })
+    // Wide net for any spelling the variants missed; precise token-set filter below.
+    const token = longestToken(rp.patientName)
+    if (token) match.push({ patientName: { contains: token, mode: 'insensitive' } })
+  }
   if (match.length === 0) return NextResponse.json({ patientName: rp.patientName, sessions: [], total: 0 })
 
   // Earned revenue only: package payments and prepaid-card reloads are
   // UNEARNED orders, not sessions — exclude them from the list and total.
-  const orders = await prisma.order.findMany({
+  const rpKey = nameKey(rp.patientName)
+  const orders = (await prisma.order.findMany({
     where: { status: { notIn: ['VOIDED'] }, revenueType: { not: 'UNEARNED' }, OR: match },
     orderBy: { transactionDate: 'desc' },
     select: {
-      id: true, orderNumber: true, transactionDate: true, netAmount: true, branch: true, paymentStatus: true,
+      id: true, orderNumber: true, transactionDate: true, netAmount: true, branch: true, paymentStatus: true, patientId: true, patientName: true,
       items: { select: { name: true, quantity: true, lineTotal: true, service: { select: { department: true } } } },
     },
-  })
+  })).filter((o) => (rp.patientId && o.patientId === rp.patientId) || (rpKey && nameKey(o.patientName) === rpKey))
 
   const sessions = orders.map(o => ({
     id: o.id,

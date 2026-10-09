@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { nameKey, nameVariants } from '@/lib/patient-name-match'
 
 // Managing referred patients: everyone who manages referrers (all roles except HMO Officer / MedRep read-only via referrers panel).
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK', 'MEDREP']
@@ -28,12 +29,14 @@ export async function GET(req: Request) {
   })
 
   // Which branch(es) each patient actually visits, from their POS orders
-  // (matched by CRM id, else name — same matching as the sessions drill-down).
+  // (matched by CRM id, else name — word-order-insensitively, same as the
+  // sessions drill-down: orders are often keyed surname-first and without a
+  // CRM patientId, so both nets are unioned per patient).
   const ids = Array.from(new Set(rows.map(r => r.patientId).filter(Boolean))) as string[]
-  const names = Array.from(new Set(rows.map(r => r.patientName)))
+  const names = Array.from(new Set(rows.flatMap(r => nameVariants(r.patientName))))
   const orders = rows.length
     ? await prisma.order.findMany({
-        where: { status: { notIn: ['VOIDED'] }, OR: [...(ids.length ? [{ patientId: { in: ids } }] : []), ...(names.length ? [{ patientName: { in: names } }] : [])] },
+        where: { status: { notIn: ['VOIDED'] }, OR: [...(ids.length ? [{ patientId: { in: ids } }] : []), ...(names.length ? [{ patientName: { in: names, mode: 'insensitive' as const } }] : [])] },
         select: { patientId: true, patientName: true, branch: true },
       })
     : []
@@ -41,14 +44,17 @@ export async function GET(req: Request) {
   const branchesByName = new Map<string, Set<string>>()
   for (const o of orders) {
     if (o.patientId) (branchesById.get(o.patientId) ?? branchesById.set(o.patientId, new Set()).get(o.patientId)!).add(o.branch)
-    const k = (o.patientName || '').trim().toLowerCase()
+    const k = nameKey(o.patientName)
     if (k) (branchesByName.get(k) ?? branchesByName.set(k, new Set()).get(k)!).add(o.branch)
   }
 
   return NextResponse.json(rows.map(r => ({
     id: r.id, patientId: r.patientId, patientName: r.patientName, note: r.note,
     referrerId: r.referrerId, referrerName: r.referrer?.name || '—', referrerType: r.referrer?.type || null,
-    branches: Array.from((r.patientId && branchesById.get(r.patientId)) || branchesByName.get(r.patientName.trim().toLowerCase()) || []).sort(),
+    branches: Array.from(new Set([
+      ...((r.patientId && branchesById.get(r.patientId)) || []),
+      ...(branchesByName.get(nameKey(r.patientName)) || []),
+    ])).sort(),
     createdAt: r.createdAt,
   })))
 }
