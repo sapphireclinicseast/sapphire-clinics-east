@@ -4,6 +4,23 @@ import { prisma } from '@/lib/prisma'
 import Papa from 'papaparse'
 import { validateBranches } from '@/lib/branch-options'
 
+/** Caller-supplied diagnosis tags → a clean, capped array. One entry per
+ *  condition; the single `diagnosis` field is rebuilt from it so the CSV
+ *  export, the external API and class-portal sync keep working untouched. */
+function cleanDiagnosisTags(input: unknown): string[] {
+  if (!Array.isArray(input)) return []
+  const out: string[] = []
+  for (const raw of input) {
+    if (typeof raw !== 'string') continue
+    const t = raw.trim().toUpperCase()
+    if (!t || t.length > 120) continue
+    if (!out.some((v) => v === t)) out.push(t)
+    if (out.length >= 20) break
+  }
+  return out
+}
+
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /** Uppercase a string field; pass-through null/undefined */
@@ -459,6 +476,7 @@ export async function POST(req: NextRequest) {
       address:     uc(body.address)     || null,
       city:        uc(body.city)        || null,
       diagnosis:   uc(body.diagnosis)   || null,
+      diagnoses:   cleanDiagnosisTags(body.diagnoses),
       notes:       uc(body.notes)       || null,
       pwdSeniorId: uc(body.pwdSeniorId) || null,
       firstDayOfConsult: body.firstDayOfConsult ? new Date(body.firstDayOfConsult) : null,
@@ -481,7 +499,7 @@ export async function PUT(req: NextRequest) {
   const body = await req.json()
   const {
     id, firstName, lastName, email, phone, dob, branches,
-    sex, civilStatus, religion, nationality, address, city, diagnosis, notes,
+    sex, civilStatus, religion, nationality, address, city, diagnosis, diagnoses, notes,
     firstDayOfConsult, pwdSeniorId, unsubscribed, smsUnsubscribed,
   } = body
 
@@ -531,6 +549,9 @@ export async function PUT(req: NextRequest) {
   if (address      !== undefined) updateData.address      = uc(address)      || null
   if (city         !== undefined) updateData.city         = uc(city)         || null
   if (diagnosis    !== undefined) updateData.diagnosis    = uc(diagnosis)    || null
+  // Only written when the caller actually sent tags, so an older client that
+  // posts just `diagnosis` does not wipe a record's existing tags.
+  if (diagnoses    !== undefined) updateData.diagnoses    = cleanDiagnosisTags(diagnoses)
   if (notes        !== undefined) updateData.notes        = uc(notes)        || null
   if (firstDayOfConsult !== undefined) updateData.firstDayOfConsult = firstDayOfConsult ? new Date(firstDayOfConsult) : null
   if (unsubscribed !== undefined) updateData.unsubscribed = !!unsubscribed

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { isLikelyChinoy } from '@/lib/chinoy-surnames'
+import { classifyDiagnosis, familiesForTags } from '@/lib/diagnosis-taxonomy'
 
 // Never cache — branch filter query param must always be respected
 export const dynamic = 'force-dynamic'
@@ -52,6 +53,7 @@ export async function GET(req: NextRequest) {
       dob:         true,
       sex:         true,
       diagnosis:   true,
+      diagnoses:   true,
       city:        true,
       address:     true,   // used as barangay label in the choropleth
       branches:    true,
@@ -120,15 +122,46 @@ export async function GET(req: NextRequest) {
   })
 
   // ── Diagnoses × sex pyramid ───────────────────────────────────────────────────
+  // Grouped into families rather than counted per raw string. The field is free
+  // text written by three different sources over the years, so one condition
+  // arrives under a dozen spellings — "ASD / Autism Spectrum Disorder", the same
+  // in caps from the QR form, plain "ASD", "MILD AUTISM", "ASD LEVEL 2" — and
+  // counting strings turned the single largest group in the clinic into five
+  // separate bars, none of which showed its real size. See lib/diagnosis-taxonomy.
+  //
+  // A patient with two conditions is counted in BOTH families, so the bars sum
+  // to more than the number of patients. That is the honest reading of "ASD,
+  // ADHD": filing that child under one of the two would hide the other.
+  // diagnosisDenominator is what the percentages are out of.
   const diagMap: Record<string, { male: number; female: number; other: number }> = {}
+  let diagnosedPatients = 0
   for (const p of patients) {
-    if (!p.diagnosis?.trim()) continue
-    const key = p.diagnosis.trim()
-    if (!diagMap[key]) diagMap[key] = { male: 0, female: 0, other: 0 }
+    // A tagged record needs no guessing — each tag is already one condition, so
+    // "Anxiety and Depression" arrives as two entries rather than as a string
+    // something has to split. Untagged records fall back to reading the free
+    // text, which is every record created before tagging existed.
+    const tags = (p.diagnoses ?? []).filter((t) => t && t.trim())
+    let families: string[]
+    if (tags.length) {
+      // Tags are still free text, so they go through the same classifier — it
+      // collapses "Speech Delay" and "Language Disorder" into one family.
+      families = familiesForTags(tags)
+      if (!families.length) continue
+    } else {
+      if (!p.diagnosis?.trim()) continue
+      const m = classifyDiagnosis(p.diagnosis)
+      // "FOR OT AND PT", "N/A", and the occasional address typed into the box are
+      // not conditions; "T/C ADHD" is a differential, not a diagnosis.
+      if (m.nonClinical || m.provisional || !m.families.length) continue
+      families = m.families
+    }
+    diagnosedPatients++
     const sex = p.sex?.toLowerCase() ?? ''
-    if (sex.startsWith('m')) diagMap[key].male++
-    else if (sex.startsWith('f')) diagMap[key].female++
-    else diagMap[key].other++
+    const bucket = sex.startsWith('m') ? 'male' : sex.startsWith('f') ? 'female' : 'other'
+    for (const name of families) {
+      if (!diagMap[name]) diagMap[name] = { male: 0, female: 0, other: 0 }
+      diagMap[name][bucket]++
+    }
   }
   const diagnoses = Object.entries(diagMap)
     .map(([name, { male, female, other }]) => ({
@@ -140,7 +173,17 @@ export async function GET(req: NextRequest) {
     }))
     .sort((a, b) => b.total - a.total)
     .slice(0, 12)
-    .map(({ name, male, female, other }) => ({ name, male, female, other }))
+    .map(({ name, male, female, other, total }) => ({
+      name,
+      male,
+      female,
+      other,
+      // Share of diagnosed patients carrying this condition. Rounded to 0.1 so
+      // the chart does not have to decide; sums past 100% by design.
+      pct: diagnosedPatients
+        ? Math.round((1000 * total) / diagnosedPatients) / 10
+        : 0,
+    }))
 
   // ── Geographic locations (barangay + city) for choropleth ─────────────────────
   const locMap: Record<string, { barangay: string | null; city: string; count: number }> = {}
@@ -185,7 +228,10 @@ export async function GET(req: NextRequest) {
       modeAge,
       avgAge: meanAge,   // backward compat alias
       pyramid,
-      diagnoses,         // includes male/female/other per diagnosis
+      diagnoses,         // family-grouped; male/female/other + pct per family
+      // Denominator behind `pct` — patients with a usable diagnosis, counted once
+      // each even when they carry several conditions.
+      diagnosedPatients,
       locations,         // barangay+city for precise choropleth
       cities,            // city-level fallback
       branchDist: branchMap,

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LabelList,
 } from 'recharts'
 import { Users, Baby, UserCheck, CalendarDays } from 'lucide-react'
 import { branchLabel } from '@/lib/branch-label'
@@ -21,7 +21,9 @@ interface Stats {
   modeAge: number | null
   avgAge: number | null
   pyramid: { label: string; male: number; female: number; other: number }[]
-  diagnoses: { name: string; male: number; female: number; other: number }[]
+  diagnoses: { name: string; male: number; female: number; other: number; pct: number }[]
+  /** Patients with a usable diagnosis — the denominator behind each pct. */
+  diagnosedPatients?: number
   locations: { barangay: string | null; city: string; count: number }[]
   cities: { name: string; count: number }[]
   branchDist: Record<string, number>
@@ -103,6 +105,36 @@ function StatCard({
   )
 }
 
+// ── "n · x%" at the end of each diagnosis bar ────────────────────────────────
+// Recharts hands a LabelList the datum, so the count is summed here rather than
+// carried as a second field nothing else would use.
+function DiagnosisValueLabel(props: {
+  x?: number
+  y?: number
+  width?: number
+  height?: number
+  value?: number
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  payload?: any
+}) {
+  const { x = 0, y = 0, width = 0, height = 0, payload } = props
+  if (!payload) return null
+  const n = (payload.male ?? 0) + (payload.female ?? 0) + (payload.other ?? 0)
+  if (!n) return null
+  return (
+    <text
+      x={x + width + 6}
+      y={y + height / 2}
+      dy={4}
+      textAnchor="start"
+      fontSize={10}
+      fill="var(--mid-gray)"
+    >
+      {n} · {payload.pct ?? 0}%
+    </text>
+  )
+}
+
 // ── Custom Y-axis tick for diagnosis names (truncate to 20 chars) ─────────────
 function DiagnosisTick(props: {
   x?: number
@@ -111,7 +143,10 @@ function DiagnosisTick(props: {
 }) {
   const { x = 0, y = 0, payload } = props
   const raw = payload?.value ?? ''
-  const label = raw.length > 20 ? raw.slice(0, 20) + '…' : raw
+  // Family names run longer than the raw strings this chart used to show, and a
+  // truncated "ASD / Autism Spectru…" is exactly the ambiguity the grouping was
+  // meant to remove — so allow more before cutting.
+  const label = raw.length > 28 ? raw.slice(0, 28) + '…' : raw
   return (
     <g transform={`translate(${x},${y})`}>
       <text
@@ -395,8 +430,16 @@ export default function PatientDashboardPage() {
 
         {/* Top Diagnoses by Sex */}
         <div className="rounded-xl p-5" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
-          <p className="text-sm font-bold mb-4" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+          <p className="text-sm font-bold mb-1" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
             Top Diagnoses by Sex
+          </p>
+          {/* Says what the percentage is out of, and warns that it sums past
+              100% — otherwise a reader adds the bars, gets 110%, and distrusts
+              the whole chart rather than the one thing they misread. */}
+          <p className="text-[11px] mb-4" style={{ color: 'var(--mid-gray)' }}>
+            {stats?.diagnosedPatients
+              ? `Share of ${stats.diagnosedPatients.toLocaleString()} patients with a recorded diagnosis. Related wordings are grouped; a patient with several conditions counts in each, so shares total over 100%.`
+              : 'Related wordings are grouped; a patient with several conditions counts in each.'}
           </p>
           {diagnosesSlice.length === 0 ? (
             <div className="flex items-center justify-center h-64 text-sm" style={{ color: 'var(--mid-gray)' }}>
@@ -415,7 +458,7 @@ export default function PatientDashboardPage() {
                   dataKey="name"
                   type="category"
                   tick={<DiagnosisTick />}
-                  width={130}
+                  width={178}
                 />
                 <Tooltip
                   contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid var(--light-gray)' }}
@@ -423,7 +466,12 @@ export default function PatientDashboardPage() {
                 <Legend wrapperStyle={{ fontSize: 12 }} />
                 <Bar dataKey="female" name="Female" fill="#E91E8C" stackId="a" radius={[0, 0, 0, 0]} />
                 <Bar dataKey="male"   name="Male"   fill="#1A7B8A" stackId="a" radius={[0, 0, 0, 0]} />
-                <Bar dataKey="other"  name="Other"  fill="#9CA3AF" stackId="a" radius={[0, 4, 4, 0]} />
+                <Bar dataKey="other"  name="Other"  fill="#9CA3AF" stackId="a" radius={[0, 4, 4, 0]}>
+                  {/* Count and share at the end of the stack. The absolute number
+                      alone does not say whether 94 is most of the clinic or a
+                      corner of it, which is the question the chart is asked. */}
+                  <LabelList dataKey="pct" position="right" content={<DiagnosisValueLabel />} />
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           )}

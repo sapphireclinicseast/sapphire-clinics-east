@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { CheckCircle2, Loader2, Upload, FileText, X, Camera } from 'lucide-react'
 import PhotoCapture from '@/components/PhotoCapture'
+import DiagnosisTagInput, { joinDiagnosisTags } from '@/components/DiagnosisTagInput'
 
 // The two document fields offer the same pair of buttons, so the styles are
 // declared once here rather than inline twice and drifting apart.
@@ -37,6 +38,7 @@ interface FormState {
   address: string
   city: string
   diagnosis: string
+  diagnoses: string[]
   pwdSeniorId: string
   branches: string[]
   partnerInstitution: string
@@ -46,7 +48,7 @@ interface FormState {
 const EMPTY: FormState = {
   firstName: '', lastName: '', email: '', phone: '', dob: '',
   sex: '', civilStatus: '', religion: '', nationality: '',
-  address: '', city: '', diagnosis: '', pwdSeniorId: '', branches: [],
+  address: '', city: '', diagnosis: '', diagnoses: [], pwdSeniorId: '', branches: [],
   partnerInstitution: '', referringDoctor: '',
 }
 
@@ -219,7 +221,21 @@ export default function PatientRegisterClient({ defaultBranch }: { defaultBranch
 
           <SectionTitle>Clinical Details</SectionTitle>
           <Grid>
-            <Field label="Diagnosis / Reason for Visit" value={form.diagnosis} onChange={v => upd('diagnosis', v)} placeholder="Optional — e.g. Speech delay, Knee pain, …" full />
+            <div style={{ gridColumn: '1 / -1' }}>
+              <DiagnosisTagInput
+                value={form.diagnoses}
+                label="Diagnosis / Reason for Visit"
+                placeholder="Optional — type a condition and press Enter"
+                hint="Add one at a time. If a condition is not in the list, type it and press Enter — it will still be saved."
+                onChange={next => {
+                  upd('diagnoses', next)
+                  // The single field is what the records, the CSV export and the
+                  // other hubs read, so it is kept in step here rather than
+                  // rebuilt server-side.
+                  upd('diagnosis', joinDiagnosisTags(next))
+                }}
+              />
+            </div>
           </Grid>
 
           <SectionTitle>Branch(es) *</SectionTitle>
