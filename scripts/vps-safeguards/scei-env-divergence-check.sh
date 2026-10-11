@@ -30,7 +30,6 @@ CRITICAL_KEYS=(
   NEXTAUTH_URL
   NEXTAUTH_SECRET
   EXTERNAL_API_KEY
-  RESEND_API_KEY
 )
 
 ts() { date -u +"%Y-%m-%dT%H:%M:%SZ"; }

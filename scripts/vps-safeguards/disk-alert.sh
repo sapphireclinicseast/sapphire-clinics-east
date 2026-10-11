@@ -104,7 +104,7 @@ To free space immediately:
   docker system prune -af --filter 'until=168h'   # keep last 7 days only
   docker system prune -af                          # nuclear: everything"
   if [ -x "$ALERT" ]; then
-    "$ALERT" "$SUBJ" "$BODY" >> "$LOG" 2>&1 || log "scei-alert returned non-zero (Resend may be down — see $LOG above)"
+    "$ALERT" "$SUBJ" "$BODY" >> "$LOG" 2>&1 || log "scei-alert returned non-zero (the ops-hub email relay may be down — see $LOG above)"
   else
     log "ALERT SCRIPT NOT FOUND at $ALERT — cannot deliver"
   fi

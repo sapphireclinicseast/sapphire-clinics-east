@@ -43,7 +43,6 @@ services:
       # HR dividend-release ping). Set ACCOUNTING_INTERNAL_KEY in docker/.env to the same value HR uses.
       ACCOUNTING_INTERNAL_KEY: ${ACCOUNTING_INTERNAL_KEY:-}
       EXTERNAL_API_KEY: ${EXTERNAL_API_KEY}
-      RESEND_API_KEY: ${RESEND_API_KEY}
       # Gmail API for outbound mail (src/lib/gmail.ts), replacing Resend. As with
       # PayMongo below, only the NAMES appear here — the values live in
       # DEPLOY_DIR/docker/.env. Compose passes variables through explicitly, so
