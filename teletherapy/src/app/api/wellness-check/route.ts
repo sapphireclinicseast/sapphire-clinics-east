@@ -46,6 +46,10 @@ export async function POST(req: NextRequest) {
     body.name = ''
     body.department = ''
   }
+  // Stamp the respondent's branch from the SESSION, never from the client, so
+  // HR's Wellness Check dashboard can be filtered per branch. The branch alone
+  // does not identify anyone — anonymous submissions stay anonymous.
+  body.branch = (session.user as { branch?: string }).branch ?? ''
 
   let res: Response
   try {
