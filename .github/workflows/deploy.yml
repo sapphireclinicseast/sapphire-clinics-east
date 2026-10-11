@@ -283,6 +283,7 @@ jobs:
             fi
 
       - name: Rebuild & Restart Marketing Hub
+        id: mh_rebuild
         continue-on-error: true   # OOM-kill during build must not block Accounting Hub deploy
         uses: appleboy/ssh-action@v1
         with:
@@ -290,136 +291,25 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           command_timeout: 30m
-          script: |
-            # Deliberately NOT using `set -e` so we can capture build exit
-            # codes and print diagnostics before bailing.
-            DOCKER_DIR="/var/www/sapphireclinicseast.org/docker"
-            ENV_FILE="/opt/sapphire/docker/.env.production"
+          script_path: scripts/deploy/rebuild-marketing-hub.sh
 
-            if [ ! -d "$DOCKER_DIR" ]; then
-              echo "❌ Marketing hub docker dir not found at $DOCKER_DIR"
-              exit 1
-            fi
-            if [ ! -f "$ENV_FILE" ]; then
-              echo "❌ Marketing hub .env.production not found at $ENV_FILE"
-              exit 1
-            fi
+      # Second attempt, only when the first did not succeed. The failure this
+      # exists for is `dial tcp :22 i/o timeout` -- the runner never reaches
+      # the host, so nothing has run and re-running is safe. The script is
+      # idempotent in any case: it rebuilds the image and recreates the
+      # container from source already on the VPS.
+      - name: Rebuild & Restart Marketing Hub (retry)
+        if: steps.mh_rebuild.outcome == 'failure'
+        id: mh_rebuild_retry
+        continue-on-error: true
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          command_timeout: 30m
+          script_path: scripts/deploy/rebuild-marketing-hub.sh
 
-            cd "$DOCKER_DIR"
-
-            echo "→ Currently running marketing-hub container:"
-            docker ps --filter "name=sapphire_app" --format "  {{.Names}}  image={{.Image}}  status={{.Status}}" || true
-
-            # ─── Build-context fingerprint ──────────────────────────────
-            # Sanity-check that the freshly rsync'd source on the VPS
-            # actually contains the latest commit. If somebody (a backup
-            # cron, a hand-edit, etc.) clobbered files between the rsync
-            # and this point, the build below would happily bake the
-            # stale content. Print the schedules layout sha so a
-            # mismatch is visible in the run log.
-            cd /var/www/sapphireclinicseast.org
-            echo "→ Source-tree fingerprint (post-rsync):"
-            echo "   src/app/schedules/layout.tsx:                   $(sha256sum 'src/app/schedules/layout.tsx' 2>/dev/null | awk '{print $1}' | cut -c1-16) ($(wc -c < 'src/app/schedules/layout.tsx' 2>/dev/null) bytes)"
-            echo "   src/app/schedules/page.tsx:                     $(sha256sum 'src/app/schedules/page.tsx' 2>/dev/null | awk '{print $1}' | cut -c1-16)"
-            echo "   src/app/schedules/[branch]/[dept]/page.tsx:     $(sha256sum 'src/app/schedules/[branch]/[dept]/page.tsx' 2>/dev/null | awk '{print $1}' | cut -c1-16)"
-            echo "   src/middleware.ts:                              $(sha256sum 'src/middleware.ts' 2>/dev/null | awk '{print $1}' | cut -c1-16)"
-            cd "$DOCKER_DIR"
-
-            echo "→ Tagging current image as :rollback (best-effort)..."
-            docker tag sapphire_app:latest sapphire_app:rollback 2>/dev/null || true
-
-            echo "→ Building sapphire_app from /var/www/sapphireclinicseast.org..."
-            # The .deploy-sha file written during rsync (one line, the
-            # current commit SHA) is part of the build context. Each new
-            # commit changes its content, which invalidates BuildKit's
-            # cache for the COPY layer and everything downstream — so we
-            # get a real rebuild without paying the full --no-cache tax
-            # on layers that genuinely haven't changed (base image,
-            # node_modules install, etc.).
-            docker compose --env-file "$ENV_FILE" build --pull app
-            BUILD_RC=$?
-            echo "   Build exit code: $BUILD_RC"
-            if [ "$BUILD_RC" != "0" ]; then
-              echo "❌ Build failed — leaving previous container untouched."
-              exit 1
-            fi
-            echo "   ✅ Image built."
-
-            echo "→ Pre-flight: ensuring sapphire_db is healthy before recreating app..."
-            DB_OK="no"
-            for i in 1 2 3 4 5 6; do
-              if docker exec sapphire_db pg_isready -U sapphire -d sapphire_marketing >/dev/null 2>&1; then
-                DB_OK="yes"; break
-              fi
-              echo "   sapphire_db not ready (attempt $i/6) — waiting 5s..."
-              sleep 5
-            done
-            if [ "$DB_OK" != "yes" ]; then
-              echo "   sapphire_db still unhealthy — restarting it..."
-              docker compose --env-file "$ENV_FILE" up -d postgres 2>&1 || true
-              sleep 12
-            fi
-
-            echo "→ Ensuring upload subdirs are writable by the nextjs container user (uid 1001)..."
-            mkdir -p /opt/sapphire/uploads/queue-ads
-            chown 1001:1001 /opt/sapphire/uploads/queue-ads
-
-            echo "→ Recreating sapphire_app container (--no-deps, skip dep wait)..."
-            # --no-deps avoids tearing down or waiting on postgres/redis when only
-            # the app changed. If postgres is briefly unhealthy mid-deploy, this
-            # keeps the rebuild from leaving sapphire_app DOWN (502 on nginx).
-            docker compose --env-file "$ENV_FILE" up -d --force-recreate --no-deps app
-            UP_RC=$?
-            if [ "$UP_RC" != "0" ]; then
-              echo "❌ Container recreate failed (exit $UP_RC)."
-              echo "→ Attempting fallback: start app with previous image..."
-              docker compose --env-file "$ENV_FILE" up -d --no-deps app 2>&1 || true
-              exit 1
-            fi
-
-            echo "→ Waiting 25s for app to stabilize..."
-            sleep 25
-
-            echo "→ Health check on http://localhost:3000/..."
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/ 2>&1 || echo "000")
-            echo "   HTTP $HTTP_CODE"
-
-            echo "→ Container logs (last 30 lines):"
-            docker logs sapphire_app --tail 30 2>&1 || true
-
-            if [ "$HTTP_CODE" = "000" ]; then
-              echo "❌ Marketing Hub did not come up on port 3000"
-              exit 1
-            fi
-
-            # ─── Post-deploy verification ───────────────────────────────
-            # Fetch the schedules gate from the running container and check
-            # that the rebrand markers are present (no orange palette, no
-            # broken sandbox-clinic logo). If a stale image somehow ended
-            # up running, fail the workflow loudly here rather than letting
-            # a silent regression reach end users.
-            echo "→ Verifying rebrand markers on rendered /schedules..."
-            BODY=$(curl -s -L --max-time 10 -H 'Host: schedules.sapphireclinicseast.org' \
-              http://localhost:3000/schedules 2>/dev/null || echo '')
-            HAS_NARRA=$(echo "$BODY" | grep -c '#1B3F38' || true)
-            HAS_PAPER=$(echo "$BODY" | grep -c '#F5F0E8' || true)
-            HAS_ORANGE=$(echo "$BODY" | grep -c '#ED6823' || true)
-            HAS_LOGO=$(echo "$BODY" | grep -c 'sandbox-clinic-logo' || true)
-            echo "   #1B3F38 (Narra):           $HAS_NARRA hits"
-            echo "   #F5F0E8 (Paper):           $HAS_PAPER hits"
-            echo "   #ED6823 (legacy orange):   $HAS_ORANGE hits   (must be 0)"
-            echo "   sandbox-clinic-logo:       $HAS_LOGO hits     (must be 0)"
-            if [ "$HAS_ORANGE" != "0" ] || [ "$HAS_LOGO" != "0" ]; then
-              echo "❌ Stale image detected — running container still serves the orange/logo layout."
-              echo "   This usually means the docker build cache short-circuited the rebuild."
-              echo "   Image-layer history of running container:"
-              docker inspect --format '{{.Image}}' sapphire_app | xargs -I{} docker history --no-trunc {} 2>&1 | head -20 || true
-              exit 1
-            fi
-            echo "   ✅ Rebrand markers present — running image is fresh."
-
-            echo ""
-            echo "✅ Marketing Hub rebuilt & restarted (HTTP $HTTP_CODE)."
 
       # ── 6c. Rebuild & restart the Class Portal Next.js container ─────
       # The class-portal source lives in /opt/sapphire/class-portal (not in
@@ -1456,6 +1346,53 @@ jobs:
       # aggressive fallback pass.
       #
       # SAFE pruning only — never touches volumes (Postgres data).
+      # ── Did the Marketing Hub actually ship? ────────────────────────────
+      # The rebuild step is continue-on-error (deliberately: an OOM there must
+      # not block the Accounting Hub deploy below). The cost is that a failure
+      # is invisible -- GitHub rewrites the step to "success", the run goes
+      # green, and only `outcome=failure` in the raw log says otherwise. Three
+      # deploys shipped nothing that way, and because the migration step runs
+      # BEFORE the rebuild, one of them left the database holding a column the
+      # running code knew nothing about.
+      #
+      # This runs near the end so every other deploy still happens, but it
+      # fails the run, because a deploy that did not deploy is not a success.
+      # The check is the artifact, not a report about it: the container's image
+      # must be newer than the source that was rsync'd onto the box.
+      - name: Verify Marketing Hub is running the new code
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          command_timeout: 5m
+          script: |
+            set -e
+            SRC="/var/www/sapphireclinicseast.org"
+            WANT=$(cat "$SRC/.deploy-sha" 2>/dev/null || echo "")
+            GOT=$(cat "$SRC/.rebuild-sha" 2>/dev/null || echo "")
+            echo "   source deployed : ${WANT:-(none)}"
+            echo "   image built from: ${GOT:-(never)}"
+            if [ -z "$WANT" ]; then
+              echo "⚠ No .deploy-sha — cannot verify; skipping rather than guessing."
+              exit 0
+            fi
+            if [ "$WANT" != "$GOT" ]; then
+              echo ""
+              echo "❌ The running image was NOT built from this deploy's source."
+              echo "   Both rebuild attempts failed — most often the runner never"
+              echo "   reaches the host at all ('dial tcp :22 i/o timeout')."
+              echo "   Note the migration step runs BEFORE the rebuild, so the database"
+              echo "   may now be ahead of the code that is actually running."
+              echo ""
+              echo "   Recover by hand:"
+              echo "     cd $SRC/docker"
+              echo "     docker compose --env-file /opt/sapphire/docker/.env.production build --pull app"
+              echo "     docker compose --env-file /opt/sapphire/docker/.env.production up -d --force-recreate --no-deps app"
+              exit 1
+            fi
+            echo "✅ Marketing Hub is running code built from $WANT."
+
       - name: Prune Docker resources
         if: always()
         uses: appleboy/ssh-action@v1
