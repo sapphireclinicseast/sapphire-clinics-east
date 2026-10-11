@@ -115,3 +115,54 @@ export function benjaminiHochberg(pValues: number[]): number[] {
   }
   return out
 }
+
+/**
+ * Mantel–Haenszel RISK ratio, stratified, with a 95% CI.
+ *
+ * The question "if a patient uses A, how much more likely are they to use B?"
+ * is answered by a risk ratio, not an odds ratio. An OR multiplies ODDS, and
+ * when the outcome is common — several of these services are used by 15–35% of
+ * patients — the OR runs well above the risk ratio and reads as a much stronger
+ * effect than it is. OR is still the right thing to adjust and compare across
+ * pairs; RR is the right thing to say out loud.
+ *
+ * RR = P(B | has A) / P(B | no A). Note this differs from lift, which divides
+ * by P(B) over everyone — a denominator that includes the exposed group and so
+ * always pulls the figure toward 1.
+ */
+export interface RRResult {
+  rr: number
+  ciLow: number
+  ciHigh: number
+  crudeRr: number
+}
+
+export function mantelHaenszelRR(
+  strata: Array<[number, number, number, number]>,
+  crude: [number, number, number, number],
+): RRResult {
+  let R = 0, S = 0, varNum = 0
+  for (const [a, b, c, d] of strata) {
+    const n = a + b + c + d
+    if (n === 0) continue
+    const n1 = a + b          // exposed  (has A)
+    const n0 = c + d          // unexposed
+    const m1 = a + c          // total with the outcome (has B)
+    R += (a * n0) / n
+    S += (c * n1) / n
+    // Greenland–Robins variance for log(RR_MH)
+    varNum += ((n1 * n0 * m1) - (a * c * n)) / (n * n)
+  }
+  const rr = S > 0 ? R / S : NaN
+  const [ca, cb, cc, cd] = crude
+  const pExp = (ca + cb) > 0 ? ca / (ca + cb) : NaN
+  const pUn  = (cc + cd) > 0 ? cc / (cc + cd) : NaN
+  const crudeRr = pUn > 0 ? pExp / pUn : NaN
+  let ciLow = NaN, ciHigh = NaN
+  if (rr > 0 && isFinite(rr) && R > 0 && S > 0) {
+    const se = Math.sqrt(varNum / (R * S))
+    ciLow  = Math.exp(Math.log(rr) - 1.96 * se)
+    ciHigh = Math.exp(Math.log(rr) + 1.96 * se)
+  }
+  return { rr, ciLow, ciHigh, crudeRr }
+}

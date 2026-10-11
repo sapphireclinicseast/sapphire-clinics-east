@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { loadPosHistory } from '@/lib/pos-history'
-import { fisherExact, mantelHaenszel, benjaminiHochberg } from '@/lib/stats-2x2'
+import { fisherExact, mantelHaenszel, mantelHaenszelRR, benjaminiHochberg } from '@/lib/stats-2x2'
 
 export const dynamic = 'force-dynamic'
 
@@ -287,10 +287,15 @@ export async function GET(req: NextRequest) {
       const cB  = deptCounts[d2]
       // 2×2 table: a=co, b=cA-co, c=cB-co, d=N-cA-cB+co
       const chi = chiSquareTest(co, cA - co, cB - co, N - cA - cB + co)
-      const mh  = mantelHaenszel(
-        [table2x2(d1, d2, 'PEDIATRIC'), table2x2(d1, d2, 'ADULT')],
-        table2x2(d1, d2, null),
-      )
+      const strata = [table2x2(d1, d2, 'PEDIATRIC'), table2x2(d1, d2, 'ADULT')] as Array<[number, number, number, number]>
+      const crude  = table2x2(d1, d2, null)
+      const mh  = mantelHaenszel(strata, crude)
+      // The figure to quote: how much more likely a patient is to use the
+      // column service if they already use the row one, against patients who
+      // do not. The odds ratio beside it is for comparing pairs, not for
+      // saying out loud — with services this common it runs well above the
+      // risk ratio and overstates the effect.
+      const rr  = mantelHaenszelRR(strata, crude)
       return {
         target:        d2,
         color:         DEPT_COLORS[d2],
@@ -309,6 +314,9 @@ export async function GET(req: NextRequest) {
         oddsCiLow:      Number.isFinite(mh.ciLow)   ? Number(mh.ciLow.toFixed(2))   : null,
         oddsCiHigh:     Number.isFinite(mh.ciHigh)  ? Number(mh.ciHigh.toFixed(2))  : null,
         crudeOddsRatio: Number.isFinite(mh.crudeOr) ? Number(mh.crudeOr.toFixed(2)) : null,
+        riskRatio:      Number.isFinite(rr.rr)      ? Number(rr.rr.toFixed(2))      : null,
+        riskCiLow:      Number.isFinite(rr.ciLow)   ? Number(rr.ciLow.toFixed(2))   : null,
+        riskCiHigh:     Number.isFinite(rr.ciHigh)  ? Number(rr.ciHigh.toFixed(2))  : null,
         ageConfounded:  mh.confounded,
         qValue:         0,     // filled by the FDR pass below
         qLabel:         '',
