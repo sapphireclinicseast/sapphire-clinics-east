@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { loadPosHistory } from '@/lib/pos-history'
+import { fisherExact, mantelHaenszel, benjaminiHochberg } from '@/lib/stats-2x2'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,8 +27,11 @@ const DEPT_COLORS: Record<Dept, string> = {
 // Distinct unordered pairs = n(n-1)/2. Derived rather than written as a literal
 // so the correction can't silently go stale if FOCUS_DEPTS changes again — the
 // previous hardcoded "/ 6" was correct only for 4 departments.
+// Distinct unordered pairs tested, used by the Benjamini–Hochberg pass. The
+// old Bonferroni α = 0.05 / PAIR_COUNT is gone: see the FDR block below for
+// why controlling the false-discovery RATE fits this panel better than
+// controlling the family-wise error rate.
 const PAIR_COUNT = (FOCUS_DEPTS.length * (FOCUS_DEPTS.length - 1)) / 2
-const ALPHA = 0.05 / PAIR_COUNT
 
 // Empty per-department tally, used for monthly volume and patient counts.
 function zeroByDept(): Record<Dept, number> {
@@ -60,8 +64,9 @@ interface ChiResult {
   phi:      number   // φ coefficient (effect size, −1 to +1)
   pValue:   number   // two-tailed p-value
   pLabel:   string   // e.g. "p < 0.001"
-  pSig:     boolean  // significant at α = 0.05 / PAIR_COUNT (Bonferroni)
-  smallCell: boolean // true when any expected cell < 5 (chi-sq less reliable)
+  pSig:     boolean  // set after FDR correction across all pairs
+  smallCell: boolean // true when any expected cell < 5
+  exact:    boolean  // true when Fisher was used instead of χ²
 }
 
 // 2×2 chi-square test of independence + φ coefficient
@@ -99,18 +104,23 @@ function chiSquareTest(a: number, b: number, c: number, d: number): ChiResult {
   // φ = (ad − bc) / √(rowA·rowB·colA·colB)
   const phi = denom > 0 ? (ad - bc) / Math.sqrt(denom) : 0
 
-  const pValue = chi2pValue(chiSq)
+  // Exact when the approximation is not valid, approximate when it is. Yates
+  // used to cover this case; it narrows the error rather than removing it, and
+  // with zero cells there is nothing for χ² to approximate.
+  const exact = smallCell
+  const pValue = exact ? fisherExact(a, b, c, d) : chi2pValue(chiSq)
 
-  // Bonferroni-corrected α — see PAIR_COUNT above.
-  const pSig = pValue < ALPHA
+  // pSig is filled in by the caller once every pair has been tested — see the
+  // Benjamini–Hochberg pass below. Significance cannot be decided one pair at
+  // a time when fifteen are being screened.
+  const pSig = false
 
   let pLabel: string
   if      (pValue < 0.001) pLabel = 'p < 0.001'
-  else if (pValue < 0.01)  pLabel = `p = ${pValue.toFixed(3)}`
   else if (pValue < 0.05)  pLabel = `p = ${pValue.toFixed(3)}`
   else                     pLabel = `p = ${pValue.toFixed(2)} (n.s.)`
 
-  return { chiSq, phi, pValue, pLabel, pSig, smallCell }
+  return { chiSq, phi, pValue, pLabel, pSig, smallCell, exact }
 }
 
 export async function GET(req: NextRequest) {
@@ -129,7 +139,7 @@ export async function GET(req: NextRequest) {
       patientId: true,
       date:      true,
       staff:     { select: { department: true } },
-      patient:   { select: { branches: true, branch: true } },
+      patient:   { select: { branches: true, branch: true, patientType: true } },
     },
   })
 
@@ -153,6 +163,10 @@ export async function GET(req: NextRequest) {
 
   // ── Build patient → Set<Dept> and month-dept session counts ─────────────────
   const patientDepts = new Map<string, Set<Dept>>()
+  // Stratum per patient, for the Mantel–Haenszel adjustment. Pediatric and
+  // adult caseloads barely overlap in which services they use, so the pooled
+  // table answers a question nobody asked.
+  const patientStratum = new Map<string, 'PEDIATRIC' | 'ADULT'>()
   const monthDept: Record<string, Record<Dept, number>> = {}
 
   for (const s of relevant) {
@@ -160,6 +174,8 @@ export async function GET(req: NextRequest) {
     const dept = s.staff.department as Dept
     if (!patientDepts.has(s.patientId)) patientDepts.set(s.patientId, new Set())
     patientDepts.get(s.patientId)!.add(dept)
+    const pt = s.patient?.patientType as string | undefined
+    if (pt === 'PEDIATRIC' || pt === 'ADULT') patientStratum.set(s.patientId, pt)
 
     const d    = new Date(s.date)
     const mKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
@@ -213,6 +229,20 @@ export async function GET(req: NextRequest) {
     for (const d2 of FOCUS_DEPTS)
       if (d1 !== d2) pair[`${d1}_${d2}`] = countAtLeast([d1, d2])
 
+  /** 2×2 for one pair within one stratum (or all patients when stratum is null). */
+  function table2x2(d1: Dept, d2: Dept, stratum: 'PEDIATRIC' | 'ADULT' | null): [number, number, number, number] {
+    let a = 0, b = 0, c = 0, d = 0
+    for (const [pid, depts] of patientDepts) {
+      if (stratum && patientStratum.get(pid) !== stratum) continue
+      const h1 = depts.has(d1), h2 = depts.has(d2)
+      if (h1 && h2) a++
+      else if (h1)  b++
+      else if (h2)  c++
+      else          d++
+    }
+    return [a, b, c, d]
+  }
+
   function liftVal(d1: Dept, d2: Dept): number {
     const co = pair[`${d1}_${d2}`]
     const cA = deptCounts[d1], cB = deptCounts[d2]
@@ -257,6 +287,10 @@ export async function GET(req: NextRequest) {
       const cB  = deptCounts[d2]
       // 2×2 table: a=co, b=cA-co, c=cB-co, d=N-cA-cB+co
       const chi = chiSquareTest(co, cA - co, cB - co, N - cA - cB + co)
+      const mh  = mantelHaenszel(
+        [table2x2(d1, d2, 'PEDIATRIC'), table2x2(d1, d2, 'ADULT')],
+        table2x2(d1, d2, null),
+      )
       return {
         target:        d2,
         color:         DEPT_COLORS[d2],
@@ -268,9 +302,52 @@ export async function GET(req: NextRequest) {
         pLabel:        chi.pLabel,
         pSig:          chi.pSig,
         smallCell:     chi.smallCell,
+        exact:         chi.exact,
+        // Odds ratio holding patient type constant, with 95% CI. This is the
+        // number to read when it disagrees with the pooled one.
+        oddsRatio:      Number.isFinite(mh.or)      ? Number(mh.or.toFixed(2))      : null,
+        oddsCiLow:      Number.isFinite(mh.ciLow)   ? Number(mh.ciLow.toFixed(2))   : null,
+        oddsCiHigh:     Number.isFinite(mh.ciHigh)  ? Number(mh.ciHigh.toFixed(2))  : null,
+        crudeOddsRatio: Number.isFinite(mh.crudeOr) ? Number(mh.crudeOr.toFixed(2)) : null,
+        ageConfounded:  mh.confounded,
+        qValue:         0,     // filled by the FDR pass below
+        qLabel:         '',
       }
     }),
   }))
+
+  // ── Benjamini–Hochberg across every pair tested ─────────────────────────────
+  // Fifteen pairs are screened at once, so raw p-values overstate significance.
+  // Bonferroni (the previous α = 0.05/15 = 0.0033) controls the chance of ANY
+  // false positive, which is the wrong target for an exploratory panel — it is
+  // so strict that real, moderate associations never show. BH controls the
+  // expected PROPORTION of flagged pairs that are false, which is what someone
+  // reading a co-occurrence chart actually wants to bound.
+  //
+  // Each unordered pair appears twice in the matrix (OT→PT and PT→OT), so the
+  // correction is computed over DISTINCT pairs; counting both would double the
+  // apparent number of tests and over-correct.
+  {
+    const seen = new Map<string, number>()
+    for (const row of affinityMatrix)
+      for (const aff of row.affinities) {
+        const key = [row.dept, aff.target].sort().join('|')
+        if (!seen.has(key)) seen.set(key, aff.pValue)
+      }
+    const keys = [...seen.keys()]
+    const qs = benjaminiHochberg(keys.map((k) => seen.get(k)!))
+    const q = new Map(keys.map((k, i) => [k, qs[i]]))
+    for (const row of affinityMatrix)
+      for (const aff of row.affinities) {
+        const key = [row.dept, aff.target].sort().join('|')
+        const qv = q.get(key) ?? 1
+        aff.qValue = Number(qv.toFixed(4))
+        aff.qLabel = qv < 0.001 ? 'q < 0.001'
+                   : qv < 0.05  ? `q = ${qv.toFixed(3)}`
+                   : `q = ${qv.toFixed(2)} (n.s.)`
+        aff.pSig = qv < 0.05
+      }
+  }
 
   // ── Avg sessions per patient per month ───────────────────────────────────────
   const months = Object.values(monthDept)

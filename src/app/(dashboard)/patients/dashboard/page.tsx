@@ -40,6 +40,18 @@ interface AffinityEntry {
   pLabel: string
   pSig: boolean
   smallCell: boolean
+  /** Fisher's exact was used instead of χ² (expected cell < 5). */
+  exact?: boolean
+  /** Benjamini–Hochberg adjusted p across the 15 distinct pairs. */
+  qValue?: number
+  qLabel?: string
+  /** Odds ratio holding patient type constant (Mantel–Haenszel), 95% CI. */
+  oddsRatio?: number | null
+  oddsCiLow?: number | null
+  oddsCiHigh?: number | null
+  crudeOddsRatio?: number | null
+  /** Pooled and age-adjusted estimates disagree — read the adjusted one. */
+  ageConfounded?: boolean
 }
 
 interface InterdeptStats {
@@ -526,8 +538,10 @@ export default function PatientDashboardPage() {
               (Clinic Schedule sessions plus POS billing history, so visits from before this hub was in use are included) ·
               <strong>Confidence</strong> = if patient has Row, % chance they also have Column ·
               <strong>Lift</strong> = how many times more likely than pure chance (Lift 1 = independent) ·
-              <strong>φ</strong> = effect size −1 to +1 (like a correlation coefficient) ·
-              <strong>χ² p-value</strong> with Bonferroni correction for 15 pairs (α = 0.0033)
+              <strong>φ</strong> = effect size −1 to +1 (the correlation coefficient for two yes/no variables) ·
+              <strong>OR</strong> = odds ratio holding patient type constant (Mantel–Haenszel) with 95% CI ·
+              <strong>q</strong> = p-value after Benjamini–Hochberg correction across the 15 distinct pairs.
+              Pairs too sparse for the χ² approximation use Fisher's exact test instead.
             </p>
           </div>
 
@@ -668,16 +682,36 @@ export default function PatientDashboardPage() {
                                 <div className="text-[10px] mt-0.5" style={{ color: liftFg(aff.lift) }}>
                                   φ = {aff.phi >= 0 ? '+' : ''}{aff.phi.toFixed(2)}
                                 </div>
-                                {/* p-value */}
+                                {/* Age-adjusted odds ratio with CI — the estimate to
+                                    read when pediatric and adult patients use
+                                    services this differently. */}
+                                {aff.oddsRatio != null && (
+                                  <div className="text-[10px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+                                    OR {aff.oddsRatio.toFixed(2)}
+                                    {aff.oddsCiLow != null && aff.oddsCiHigh != null && (
+                                      <span style={{ color: '#9ca3af' }}>
+                                        {' '}({aff.oddsCiLow.toFixed(2)}–{aff.oddsCiHigh.toFixed(2)})
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                                {/* FDR-adjusted significance */}
                                 <div className="text-[10px] mt-0.5 font-medium"
                                   style={{ color: aff.pSig ? '#15803d' : '#9ca3af' }}>
-                                  {aff.pSig ? '✓ ' : ''}{aff.pLabel}
+                                  {aff.pSig ? '✓ ' : ''}{aff.qLabel || aff.pLabel}
                                 </div>
-                                {/* co-count */}
+                                {/* co-count + method/confounding flags */}
                                 <div className="text-[9px] mt-0.5" style={{ color: '#9ca3af' }}>
                                   {aff.coCount.toLocaleString()} shared patients
+                                  {aff.exact ? ' · Fisher' : ''}
                                   {aff.smallCell ? ' ⚠' : ''}
                                 </div>
+                                {aff.ageConfounded && (
+                                  <div className="text-[9px] mt-0.5 font-medium" style={{ color: '#B45309' }}
+                                    title={`Unadjusted OR ${aff.crudeOddsRatio?.toFixed(2)} vs age-adjusted ${aff.oddsRatio?.toFixed(2)} — pediatric and adult patients differ enough that the pooled figure misleads.`}>
+                                    ⚠ age-confounded
+                                  </div>
+                                )}
                               </td>
                             )
                           })}
