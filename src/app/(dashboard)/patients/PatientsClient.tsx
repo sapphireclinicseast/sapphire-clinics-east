@@ -258,6 +258,14 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
   const [importing, setImporting]       = useState(false)
   const [importMsg, setImportMsg]       = useState('')
   const [duplicates, setDuplicates]     = useState<DuplicateEntry[]>([])
+
+  // Front desk works this list to fill the gaps, so a patient with nothing
+  // recorded is flagged rather than left to be noticed. Tags first: a record
+  // tagged in the new input has `diagnoses`, older ones only the free-text
+  // field, and either counts as recorded.
+  const missingDiagnosis = useCallback((p: Patient) =>
+    !(p.diagnoses?.length) && !p.diagnosis?.trim(), [])
+  const [onlyMissingDx, setOnlyMissingDx] = useState(false)
   const [sortCol, setSortCol]           = useState<SortCol>('')
   const [sortDir, setSortDir]           = useState<SortDir>('asc')
 
@@ -396,6 +404,10 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
 
     // Chinoy surname filter
     if (chinoyFilter) result = result.filter((p) => isLikelyChinoy(p.lastName))
+    // Narrow to the gap rather than hunting red rows down a 3,000-row table —
+    // two thirds of records have no diagnosis, so highlighting alone would not
+    // be workable.
+    if (onlyMissingDx) result = result.filter(missingDiagnosis)
 
     // Apply sort
     if (!sortCol) return result
@@ -416,7 +428,7 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
       return sortDir === 'asc' ? c : -c
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [patients, sortCol, sortDir, colFilters, chinoyFilter])
+  }, [patients, sortCol, sortDir, colFilters, chinoyFilter, onlyMissingDx, missingDiagnosis])
 
   // Reset to page 1 whenever the filtered/sorted list changes
   useEffect(() => { setPage(1) }, [displayPatients])
@@ -693,6 +705,10 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
   }
 
   // ── Derived counts ────────────────────────────────────────────────────────
+  // Counted over the whole roster, not the current filter — the badge is the
+  // size of the backlog, and would otherwise drop to 0 the moment the filter
+  // is on and read as "done".
+  const missingDxCount = patients.filter(missingDiagnosis).length
   const pediatricCount = patients.filter((p) => p.patientType === 'PEDIATRIC').length
   const adultCount     = patients.filter((p) => p.patientType === 'ADULT').length
 
@@ -721,6 +737,27 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
             Patient CRM
           </h1>
         </div>
+        <button
+          onClick={() => setOnlyMissingDx((v) => !v)}
+          className="relative flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold flex-shrink-0"
+          title="Show only patients with no diagnosis recorded"
+          style={{
+            background: onlyMissingDx ? '#FEE2E2' : '#fff',
+            border: `1.5px solid ${onlyMissingDx ? '#DC2626' : 'var(--light-gray)'}`,
+            color: onlyMissingDx ? '#B91C1C' : 'var(--mid-gray)',
+          }}
+        >
+          <AlertTriangle size={15} />
+          {onlyMissingDx ? 'Showing missing diagnosis' : 'Missing diagnosis'}
+          {missingDxCount > 0 && (
+            <span
+              className="px-1.5 py-0.5 rounded-full text-xs font-bold"
+              style={{ background: '#DC2626', color: '#fff' }}
+            >
+              {missingDxCount.toLocaleString()}
+            </span>
+          )}
+        </button>
         <button
           onClick={() => setShowDuplicatesModal(true)}
           className="relative flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold flex-shrink-0"
@@ -1340,7 +1377,15 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
             ) : displayPatients.slice((page - 1) * pageSize, page * pageSize).map((p) => (
               <>
                 <tr key={p.id} data-row-id={p.id}
-                  style={{ borderBottom: editingId === p.id ? 'none' : '1px solid var(--light-gray)' }}>
+                  title={missingDiagnosis(p) ? 'No diagnosis recorded — click the pencil to add one' : undefined}
+                  style={{
+                    borderBottom: editingId === p.id ? 'none' : '1px solid var(--light-gray)',
+                    // Flagged, not shouted: a wash this pale stays readable across
+                    // two thirds of the table, where a saturated red would make the
+                    // list unusable and get ignored within a day.
+                    background: missingDiagnosis(p) ? '#FEF2F2' : undefined,
+                    borderLeft: missingDiagnosis(p) ? '3px solid #DC2626' : '3px solid transparent',
+                  }}>
                   <td className="px-4 py-3">
                     <p className="font-semibold" style={{ color: 'var(--charcoal)' }}>
                       {p.firstName} {p.lastName}
