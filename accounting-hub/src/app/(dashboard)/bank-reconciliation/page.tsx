@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { SortFilterHead, applySortFilter, type SortCol } from '@/components/SortFilterHead'
 import { branchForBankAccount, branchLabel } from '@/lib/branch'
-import { ArrowLeftRight, Upload, Plus, Loader2, X, Search, Check, Link2, Ban, RotateCcw, Trash2, Download, Lock, Unlock, Wallet, Wand2, Save, HandCoins } from 'lucide-react'
+import { ArrowLeftRight, Upload, Plus, Loader2, X, Search, Check, Link2, Ban, RotateCcw, Trash2, Download, Lock, Unlock, Wallet, Wand2, Save, HandCoins, Scissors, Merge } from 'lucide-react'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -41,7 +41,7 @@ const cellText = (t: Txn, key: string): string => {
 }
 
 interface BankAcct { id: string; accountNumber: string; accountTitle: string; currency: string; pendingCount: number; postedCount: number; excludedCount: number; archivedCount: number; beginningBalance: number; startDate: string | null; postedBalance: number; statementBalance: number; fxRate: number | null; fxRateDate: string | null; postedBalancePhp: number | null }
-interface Txn { id: string; date: string; description: string; spent: number; received: number; status: string; fromToName: string | null; categoryAccountId: string | null; categoryLabel: string | null; matchType: string | null; matchId: string | null; matchLabel: string | null; note: string | null; proofUrl: string | null }
+interface Txn { id: string; date: string; description: string; spent: number; received: number; status: string; fromToName: string | null; categoryAccountId: string | null; categoryLabel: string | null; matchType: string | null; matchId: string | null; matchLabel: string | null; note: string | null; proofUrl: string | null; splitFromId?: string | null; sourceRowIds?: string[] | null }
 interface Coa { id: string; accountNumber: string; accountTitle: string }
 interface Match { type: string; id: string; label: string; date: string; amount: number; modeId?: string; posPaymentIds?: string[]; details?: string[]; partial?: boolean; partOf?: boolean }
 interface FxMatch { id: string; label: string; date: string; amount: number; currency: string; rate: number | null }
@@ -82,6 +82,13 @@ export default function BankReconciliationPage() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [filters, setFilters] = useState<Record<string, string>>({})
   const [onlyHinted, setOnlyHinted] = useState(false)
+  // Row-shaping: tick lines to Combine (one payroll paid in two transfers;
+  // a credit offsetting a debit), or Split one line into legs (one deposit
+  // covering several sales). Derived rows then match like any other line.
+  const [picked, setPicked] = useState<Set<string>>(new Set())
+  const [splitFor, setSplitFor] = useState<Txn | null>(null)
+  const [reshaping, setReshaping] = useState(false)
+  useEffect(() => { setPicked(new Set()) }, [sel, tab])
 
   const account = accounts.find(a => a.id === sel) || null
   const cur = account && account.currency !== 'PHP' ? account.currency : ''
@@ -175,6 +182,15 @@ export default function BankReconciliationPage() {
   // payment — it is the branch officer drawing the float into cash.
   const isPettyCashAccount = /petty cash/i.test(account?.accountTitle || '')
   const act = async (body: Record<string, unknown>) => { const r = await fetch('/api/bank-rec/transactions', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); if (!r.ok) { alert((await r.json()).error || 'Failed'); return } await refreshAll() }
+  const reshape = async (body: Record<string, unknown>) => {
+    setReshaping(true)
+    try {
+      const r = await fetch('/api/bank-rec/reshape', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      if (!r.ok) { alert((await r.json()).error || 'Failed'); return }
+      setPicked(new Set())
+      await refreshAll()
+    } finally { setReshaping(false) }
+  }
   const del = async (id: string) => { if (!confirm('Delete this bank line?')) return; await fetch(`/api/bank-rec/transactions?id=${id}`, { method: 'DELETE' }); await refreshAll() }
   const lockOlder = async () => {
     if (!account?.startDate) return
@@ -390,25 +406,60 @@ export default function BankReconciliationPage() {
             )}
           </div>
 
+          {/* Combine bar: 2+ picked PENDING lines become one matchable line
+              (or close as an offset pair when they net to zero). */}
+          {canWrite && tab === 'PENDING' && picked.size >= 2 && (() => {
+            const rows = txns.filter(t => picked.has(t.id))
+            const net = Math.round(rows.reduce((s, r) => s + r.received - r.spent, 0) * 100) / 100
+            const zero = Math.abs(net) <= 0.005
+            return (
+              <div className="flex items-center gap-3 flex-wrap px-4 py-2.5 mb-3 rounded-xl border text-xs" style={{ borderColor: 'var(--teal)', background: '#f0fdfa' }}>
+                <span className="font-semibold" style={{ color: 'var(--deep-teal)' }}>
+                  {picked.size} lines picked · {zero ? 'they net to ZERO' : `net ${money(Math.abs(net))} ${net > 0 ? 'received' : 'spent'}`}
+                </span>
+                <button onClick={() => {
+                  const msg = zero
+                    ? `Close these ${picked.size} lines against each other?\n\nThey net to zero (e.g. a double-sent salary and its return). Nothing is posted — both move to Excluded, cross-referenced.`
+                    : `Combine ${picked.size} lines into ONE ${net > 0 ? 'received' : 'spent'} line of ${money(Math.abs(net))}?\n\nThe originals move to Excluded and the combined line is then matched like any other (e.g. a ₱300,000 payroll transfer plus its ₱10,000 correction matching the ₱310,000 payroll). Undo-able until the combined line is posted.`
+                  if (confirm(msg)) reshape({ action: 'combine', ids: [...picked] })
+                }} disabled={reshaping}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>
+                  {reshaping ? <Loader2 size={13} className="animate-spin" /> : <Merge size={13} />} {zero ? 'Offset to zero — close lines' : 'Combine into one line'}
+                </button>
+                <button onClick={() => setPicked(new Set())} className="px-2.5 py-1.5 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Clear</button>
+              </div>
+            )
+          })()}
+
           {/* Grid */}
           <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
             <table className="w-full text-sm">
               <SortFilterHead cols={GRID_COLS} sortKey={sortKey} sortDir={sortDir} filters={filters}
-                onToggleSort={toggleSort} onFilter={setFilter} trailing />
+                onToggleSort={toggleSort} onFilter={setFilter} trailing
+                leading={canWrite && tab === 'PENDING' ? <span title="Tick lines to combine them" /> : undefined} />
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={7} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
+                  <tr><td colSpan={canWrite && tab === 'PENDING' ? 8 : 7} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
                 ) : txns.length === 0 ? (
-                  <tr><td colSpan={7} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>No {tab.toLowerCase()} transactions.</td></tr>
+                  <tr><td colSpan={canWrite && tab === 'PENDING' ? 8 : 7} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>No {tab.toLowerCase()} transactions.</td></tr>
                 ) : visible.length === 0 ? (
-                  <tr><td colSpan={7} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>
+                  <tr><td colSpan={canWrite && tab === 'PENDING' ? 8 : 7} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>
                     No rows match these filters. <button onClick={() => setFilters({})} className="underline" style={{ color: 'var(--teal)' }}>Clear filters</button>
                   </td></tr>
                 ) : visible.map(t => (
                   <tr key={t.id} className="border-t" style={{ borderColor: 'var(--light-gray)', background: hints[t.id] ? '#fef9c3' : undefined }}>
+                    {canWrite && tab === 'PENDING' && (
+                      <td className="px-3 py-2.5">
+                        <input type="checkbox" checked={picked.has(t.id)}
+                          onChange={() => setPicked(prev => { const n = new Set(prev); n.has(t.id) ? n.delete(t.id) : n.add(t.id); return n })}
+                          title="Tick 2+ lines to combine them into one matchable line" />
+                      </td>
+                    )}
                     <td className="px-3 py-2.5 text-xs whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{t.date}</td>
                     <td className="px-3 py-2.5 text-xs" style={{ color: 'var(--charcoal)' }}>
                       {t.description}
+                      {t.splitFromId && <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full font-semibold" style={{ background: '#e0e7ff', color: '#3730a3' }}>split leg</span>}
+                      {(t.sourceRowIds?.length || 0) > 0 && <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full font-semibold" style={{ background: '#e0e7ff', color: '#3730a3' }}>combined</span>}
                       {hints[t.id] && (
                         <span className="block text-[10px] mt-0.5" style={{ color: '#854d0e' }} title={`${hints[t.id].label} · ₱${peso(hints[t.id].amount)} on ${hints[t.id].date}`}>
                           Likely {hints[t.id].kind.toLowerCase()}: {hints[t.id].label}
@@ -455,6 +506,16 @@ export default function BankReconciliationPage() {
                               act({ id: t.id, action: 'close-petty-cash-withdrawal' })
                             }} title="Cash withdrawn to the box — reconcile without posting" className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border mr-1" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}><HandCoins size={13} /> Cash on hand</button>
                           )}
+                          <button onClick={() => setSplitFor(t)} title="Split this line into smaller legs — e.g. one deposit covering several separately-recorded sales"
+                            className="inline-flex items-center px-2 py-1 rounded-lg text-xs border mr-1" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}><Scissors size={13} /></button>
+                          {(t.splitFromId || (t.sourceRowIds?.length || 0) > 0) && (
+                            <button onClick={() => {
+                              if (confirm(t.splitFromId
+                                ? 'Undo this split? All its legs are removed and the original line comes back to Pending.'
+                                : 'Undo this combine? This line is removed and the original lines come back to Pending.')) reshape({ action: 'undo', id: t.id })
+                            }} disabled={reshaping} title="Undo the split/combine — restores the original line(s)"
+                              className="inline-flex items-center px-2 py-1 rounded-lg text-xs border mr-1" style={{ borderColor: '#fca5a5', color: '#b91c1c' }}><RotateCcw size={13} /></button>
+                          )}
                           <button onClick={() => act({ id: t.id, action: 'exclude' })} title="Exclude" className="inline-flex items-center px-2 py-1 rounded-lg text-xs border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}><Ban size={13} /></button>
                         </>
                       )}
@@ -487,6 +548,75 @@ export default function BankReconciliationPage() {
       {showAdd && account && <AddModal bankAccountId={account.id} onClose={() => setShowAdd(false)} onDone={async () => { setShowAdd(false); await refreshAll() }} />}
       {catFor && <CategoriseModal txn={catFor} coa={coa} account={account} onClose={() => setCatFor(null)} onDone={async () => { setCatFor(null); await refreshAll() }} />}
       {matchFor && <MatchModal txn={matchFor} coa={coa} onClose={() => setMatchFor(null)} onCategorise={() => { setCatFor(matchFor); setMatchFor(null) }} onDone={async () => { setMatchFor(null); await refreshAll() }} />}
+      {splitFor && <SplitModal txn={splitFor} money={money} onClose={() => setSplitFor(null)} onDone={async () => { setSplitFor(null); await refreshAll() }} />}
+    </div>
+  )
+}
+
+// ─── Split a statement line into legs ──────────────────────────────────────
+// One deposit often settles several separately-recorded sales (two ₱1,800
+// orders paid as one ₱3,600 transfer). The legs must add up to the line
+// exactly; each then goes through the ordinary Match flow on its own.
+function SplitModal({ txn, money, onClose, onDone }: { txn: Txn; money: (n: number) => string; onClose: () => void; onDone: () => Promise<void> }) {
+  const isSpent = txn.spent > 0
+  const total = isSpent ? txn.spent : txn.received
+  const [legs, setLegs] = useState<string[]>(['', ''])
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const nums = legs.map(l => Number(l) || 0)
+  const sum = Math.round(nums.reduce((s, n) => s + n, 0) * 100) / 100
+  const remainder = Math.round((total - sum) * 100) / 100
+  const valid = legs.length >= 2 && nums.every(n => n > 0) && Math.abs(remainder) <= 0.005
+  const submit = async () => {
+    setBusy(true); setErr('')
+    try {
+      const r = await fetch('/api/bank-rec/reshape', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'split', id: txn.id, legs: nums.map(amount => ({ amount })) }) })
+      const d = await r.json()
+      if (!r.ok) { setErr(d.error || 'Failed'); return }
+      await onDone()
+    } finally { setBusy(false) }
+  }
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>Split bank line</h2>
+          <button onClick={onClose}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button>
+        </div>
+        <p className="text-xs mb-1" style={{ color: 'var(--charcoal)' }}>{txn.date} · {txn.description}</p>
+        <p className="text-xs mb-3" style={{ color: 'var(--mid-gray)' }}>
+          {money(total)} {isSpent ? 'spent' : 'received'} — break it into legs that add up exactly; each leg is then matched on its own
+          (e.g. one deposit covering two separately-recorded sales). The original moves to Excluded and comes back if you undo.
+        </p>
+        <div className="space-y-2 mb-2">
+          {legs.map((l, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <span className="text-xs w-12" style={{ color: 'var(--mid-gray)' }}>Leg {i + 1}</span>
+              <input type="number" step="0.01" min="0" value={l} onChange={e => setLegs(prev => prev.map((x, j) => j === i ? e.target.value : x))}
+                placeholder="0.00" className="flex-1 px-3 py-2 rounded-xl border text-sm font-mono text-right outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+              {legs.length > 2 && (
+                <button onClick={() => setLegs(prev => prev.filter((_, j) => j !== i))} className="p-1 rounded hover:bg-red-50"><X size={13} className="text-red-400" /></button>
+              )}
+            </div>
+          ))}
+        </div>
+        <div className="flex items-center justify-between mb-3 text-xs">
+          <button onClick={() => setLegs(prev => [...prev, ''])} className="underline" style={{ color: 'var(--teal)' }}>+ Add leg</button>
+          {Math.abs(remainder) > 0.005 ? (
+            <span style={{ color: '#b91c1c' }}>
+              {money(Math.abs(remainder))} {remainder > 0 ? 'left to assign' : 'over'} ·{' '}
+              {remainder > 0 && <button onClick={() => setLegs(prev => prev.map((x, j) => j === prev.length - 1 ? String(Math.round(((Number(x) || 0) + remainder) * 100) / 100) : x))} className="underline">put in last leg</button>}
+            </span>
+          ) : (
+            <span style={{ color: '#166534' }}>Legs add up exactly ✓</span>
+          )}
+        </div>
+        {err && <p className="text-xs mb-2" style={{ color: '#b91c1c' }}>{err}</p>}
+        <button onClick={submit} disabled={busy || !valid}
+          className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>
+          {busy ? <Loader2 size={15} className="inline animate-spin" /> : `Split into ${legs.length} legs`}
+        </button>
+      </div>
     </div>
   )
 }

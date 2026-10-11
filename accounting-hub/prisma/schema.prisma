@@ -3727,6 +3727,13 @@ model BankTransaction {
   // file carries one. Lets a balance "as of" any date be read straight off the
   // statement instead of being inferred from a chain of movements.
   statementBalance  Decimal?
+  // Row-shaping for reconciliation. One statement line can be SPLIT into legs
+  // (one deposit covering several POS sales) and several lines COMBINED into
+  // one (a payroll paid out in two transfers, or a credit offsetting a debit).
+  // Derived rows carry the link back to their source(s); the source rows sit
+  // EXCLUDED until an undo deletes the derived rows and restores them.
+  splitFromId       String? // leg of a split: the original line's id
+  sourceRowIds      Json? // combined line: the source lines' ids
   // Rate applied when this line was posted, for accounts not held in PHP. Kept
   // on the line so the general-ledger figure can always be traced back to the
   // rate that produced it, even if the rate table is edited afterwards.

@@ -74,6 +74,7 @@ export async function GET(req: Request) {
     spent: Number(t.spent), received: Number(t.received), status: t.status, fromToName: t.fromToName,
     categoryAccountId: t.categoryAccountId, categoryLabel: catLabel(t.categoryAccountId),
     matchType: t.matchType, matchId: t.matchId, matchLabel: t.matchLabel, note: t.note, proofUrl: t.proofUrl,
+    splitFromId: t.splitFromId, sourceRowIds: Array.isArray(t.sourceRowIds) ? t.sourceRowIds : null,
   })))
 }
 
@@ -705,6 +706,13 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ success: true })
     }
     if (action === 'unpost') {
+      // An original consumed by a Split or Combine must come back through the
+      // derived line's Undo — restoring it here would double-count the money
+      // while its legs/combined line still exist. (An [OFFSET] pair has no
+      // derived line, so restoring one of those IS its undo.)
+      if (txn.status === 'EXCLUDED' && /^\[(SPLIT into|COMBINED into)/.test(txn.note || '')) {
+        return NextResponse.json({ error: 'This line was split/combined. Restore it with the Undo button on its split legs or combined line (Pending tab) — restoring it here would double-count the money.' }, { status: 400 })
+      }
       if (txn.journalEntryId) await prisma.journalEntry.delete({ where: { id: txn.journalEntryId } }).catch(() => {})
       // Undoing a POS settlement frees its order payments for a new batch.
       if (txn.matchType === 'POS_SETTLEMENT' && txn.matchId) await prisma.posSettlementBatch.delete({ where: { id: txn.matchId } }).catch(() => {})
