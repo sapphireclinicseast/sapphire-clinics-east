@@ -27,18 +27,44 @@ const num = (v: unknown) => Number(v || 0)
 export async function GET(req: Request) {
   const session = await auth()
   if (!session?.user || !ADMIN.includes(session.user.role as string)) return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-  const commonShareId = new URL(req.url).searchParams.get('commonShareId') || ''
-  if (!commonShareId) return NextResponse.json({ error: 'commonShareId required' }, { status: 400 })
+  const sp = new URL(req.url).searchParams
+  const commonShareId = sp.get('commonShareId') || ''
+  const preferredShareId = sp.get('preferredShareId') || ''
+  if (!commonShareId && !preferredShareId) return NextResponse.json({ error: 'commonShareId or preferredShareId required' }, { status: 400 })
   const transfers = await prisma.shareTransfer.findMany({
-    where: { fromCommonShareId: commonShareId },
+    where: commonShareId ? { fromCommonShareId: commonShareId } : { fromPreferredShareId: preferredShareId },
     include: { toShareholder: { select: { shNumber: true, name: true } } },
     orderBy: { date: 'asc' },
   })
   return NextResponse.json(transfers.map(t => ({
     id: t.id, date: t.date, shares: num(t.shares), price: num(t.price), amount: num(t.shares) * num(t.price),
     toShareholderId: t.toShareholderId, toShNumber: t.toShareholder.shNumber, toName: t.toShareholder.name,
-    toCommonShareId: t.toCommonShareId, proofUrls: t.proofUrls,
+    toCommonShareId: t.toCommonShareId, toPreferredShareId: t.toPreferredShareId, proofUrls: t.proofUrls,
   })))
+}
+
+// Resolve the buyer — an existing shareholder, or a new one for an external party.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function resolveBuyer(tx: any, b: Record<string, any>, sellerShareholderId: string, userId: string) {
+  let buyer
+  if (b.buyerShareholderId) {
+    buyer = await tx.shareholder.findUnique({ where: { id: String(b.buyerShareholderId) } })
+    if (!buyer) throw new Error('Buyer shareholder not found')
+  } else {
+    const name = String(b.buyerName).trim()
+    buyer = await tx.shareholder.findFirst({ where: { name: { equals: name, mode: 'insensitive' } } })
+    if (!buyer) {
+      const last = await tx.shareholder.findFirst({ orderBy: { shSeq: 'desc' } })
+      const seq = (last?.shSeq || 0) + 1
+      buyer = await tx.shareholder.create({ data: {
+        shNumber: `SH${String(seq).padStart(4, '0')}`, shSeq: seq, name,
+        tin: b.buyerTin?.trim() || null, birthdate: b.buyerBirthdate ? new Date(b.buyerBirthdate) : null,
+        email: b.buyerEmail?.trim() || null, address: b.buyerAddress?.trim() || null, createdById: userId,
+      } })
+    }
+  }
+  if (buyer.id === sellerShareholderId) throw new Error('The buyer must be a different shareholder from the seller')
+  return buyer
 }
 
 export async function POST(req: Request) {
@@ -48,11 +74,62 @@ export async function POST(req: Request) {
     const b = await req.json()
     const userId = session.user.id as string
     const commonShareId = String(b.commonShareId || '')
+    const preferredShareId = String(b.preferredShareId || '')
     const shares = num(b.shares), price = num(b.price)
-    if (!commonShareId) return NextResponse.json({ error: 'commonShareId is required' }, { status: 400 })
+    if (!commonShareId && !preferredShareId) return NextResponse.json({ error: 'commonShareId or preferredShareId is required' }, { status: 400 })
+    if (commonShareId && preferredShareId) return NextResponse.json({ error: 'Give exactly one of commonShareId / preferredShareId' }, { status: 400 })
     if (!(shares > 0)) return NextResponse.json({ error: 'Shares sold must be greater than zero' }, { status: 400 })
     if (!(price > 0)) return NextResponse.json({ error: 'Sale price per share is required' }, { status: 400 })
     if (!b.buyerShareholderId && !(b.buyerName || '').trim()) return NextResponse.json({ error: 'Pick a current shareholder or enter the external buyer\'s name' }, { status: 400 })
+
+    // ── Preferred holding: same mechanics as common — the buyer's holding is
+    // created at the seller's BOOK value and carries the preferred TERMS
+    // (interest, maturity, payout schedule), so future dividends accrue to the
+    // buyer while the seller's shrunken holding keeps earning on the rest.
+    if (preferredShareId) {
+      const share = await prisma.preferredShare.findUnique({
+        where: { id: preferredShareId },
+        include: { shareholder: true, buybacks: { select: { shares: true } }, transfersOut: { select: { shares: true } } },
+      })
+      if (!share) return NextResponse.json({ error: 'Preferred shareholding not found' }, { status: 404 })
+      const gone = num(share.retiredShares) + share.buybacks.reduce((s, x) => s + num(x.shares), 0) + share.transfersOut.reduce((s, x) => s + num(x.shares), 0)
+      const remaining = num(share.numberOfShares) - gone
+      if (shares > remaining + 1e-9) {
+        return NextResponse.json({ error: `Only ${remaining.toLocaleString('en-PH')} preferred shares remain to sell (holds ${num(share.numberOfShares).toLocaleString('en-PH')}, already retired / sold ${gone.toLocaleString('en-PH')}).` }, { status: 400 })
+      }
+      const date = b.date ? new Date(b.date) : new Date()
+      const proofUrls = Array.isArray(b.proofUrls) ? b.proofUrls : undefined
+      const created = await prisma.$transaction(async (tx) => {
+        const buyer = await resolveBuyer(tx, b, share.shareholderId, userId)
+        // Same full-sale certificate rule as common holdings.
+        const isFullSale = shares >= remaining - 1e-9 && gone < 1e-9
+        const toShare = await tx.preferredShare.create({ data: {
+          shareholderId: buyer.id, dateAcquired: date, agreementType: 'DEED_OF_ASSIGNMENT',
+          shareClass: share.shareClass, numberOfShares: shares,
+          stockCertNumber: isFullSale ? share.stockCertNumber : null,
+          truePar: share.truePar, apic: share.apic, pricePerShare: share.pricePerShare,
+          bankAccountId: null, equityAccountId: share.equityAccountId,
+          annualInterest: share.annualInterest, maturityYears: share.maturityYears,
+          buybackPrice: share.buybackPrice, payoutSchedule: share.payoutSchedule,
+          payoutStartMonth: share.payoutStartMonth, payoutStartYear: share.payoutStartYear, payoutDay: share.payoutDay,
+          agreementUrls: proofUrls, createdById: userId,
+        } })
+        if (isFullSale && share.stockCertNumber) {
+          await tx.preferredShare.update({ where: { id: preferredShareId }, data: { stockCertNumber: null } })
+        }
+        const t = await tx.shareTransfer.create({ data: {
+          fromPreferredShareId: preferredShareId, toPreferredShareId: toShare.id, toShareholderId: buyer.id,
+          date, shares, price, proofUrls, createdById: userId,
+        } })
+        const jeId = await postEquityTransfer(tx, {
+          refId: t.id, date, amount: shares * num(share.pricePerShare), equityAccountId: share.equityAccountId,
+          fromInvestor: share.shareholder.name, toInvestor: buyer.name, createdById: userId,
+        })
+        if (jeId) await tx.shareTransfer.update({ where: { id: t.id }, data: { journalEntryId: jeId } })
+        return t
+      })
+      return NextResponse.json({ id: created.id, toPreferredShareId: created.toPreferredShareId })
+    }
 
     const share = await prisma.commonShare.findUnique({
       where: { id: commonShareId },
@@ -69,25 +146,7 @@ export async function POST(req: Request) {
     const date = b.date ? new Date(b.date) : new Date()
     const proofUrls = Array.isArray(b.proofUrls) ? b.proofUrls : undefined
     const created = await prisma.$transaction(async (tx) => {
-      // Resolve the buyer — an existing shareholder, or a new one for an external party.
-      let buyer
-      if (b.buyerShareholderId) {
-        buyer = await tx.shareholder.findUnique({ where: { id: String(b.buyerShareholderId) } })
-        if (!buyer) throw new Error('Buyer shareholder not found')
-      } else {
-        const name = String(b.buyerName).trim()
-        buyer = await tx.shareholder.findFirst({ where: { name: { equals: name, mode: 'insensitive' } } })
-        if (!buyer) {
-          const last = await tx.shareholder.findFirst({ orderBy: { shSeq: 'desc' } })
-          const seq = (last?.shSeq || 0) + 1
-          buyer = await tx.shareholder.create({ data: {
-            shNumber: `SH${String(seq).padStart(4, '0')}`, shSeq: seq, name,
-            tin: b.buyerTin?.trim() || null, birthdate: b.buyerBirthdate ? new Date(b.buyerBirthdate) : null,
-            email: b.buyerEmail?.trim() || null, address: b.buyerAddress?.trim() || null, createdById: userId,
-          } })
-        }
-      }
-      if (buyer.id === share.shareholderId) throw new Error('The buyer must be a different shareholder from the seller')
+      const buyer = await resolveBuyer(tx, b, share.shareholderId, userId)
 
       // The buyer's holding carries the seller's BOOK value (par/APIC) — the
       // private sale price lives on the transfer record only. No bank account,
@@ -143,7 +202,10 @@ export async function DELETE(req: Request) {
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
   const t = await prisma.shareTransfer.findUnique({
     where: { id },
-    include: { toCommonShare: { include: { buybacks: { select: { id: true } }, transfersOut: { select: { id: true } } } } },
+    include: {
+      toCommonShare: { include: { buybacks: { select: { id: true } }, transfersOut: { select: { id: true } } } },
+      toPreferredShare: { include: { buybacks: { select: { id: true } }, transfersOut: { select: { id: true } } } },
+    },
   })
   if (!t) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   // Undoing the transfer removes the buyer's holding — refuse if that holding
@@ -151,18 +213,28 @@ export async function DELETE(req: Request) {
   if (t.toCommonShare && (t.toCommonShare.buybacks.length > 0 || t.toCommonShare.transfersOut.length > 0)) {
     return NextResponse.json({ error: 'The buyer has since sold on or bought back some of these shares — undo those records first.' }, { status: 400 })
   }
+  if (t.toPreferredShare && (t.toPreferredShare.buybacks.length > 0 || t.toPreferredShare.transfersOut.length > 0)) {
+    return NextResponse.json({ error: 'The buyer has since sold on or retired some of these preferred shares — undo those records first.' }, { status: 400 })
+  }
   await prisma.$transaction(async (tx) => {
     await reverseEquityJournal(tx, 'EQUITY_TRANSFER', id)
-    const toShareId = t.toCommonShareId, buyerId = t.toShareholderId
+    const toShareId = t.toCommonShareId, toPrefId = t.toPreferredShareId, buyerId = t.toShareholderId
     await tx.shareTransfer.delete({ where: { id } })
     // If the certificate travelled to the buyer on a full sale, hand it back.
-    if (toShareId && t.toCommonShare?.stockCertNumber) {
+    if (toShareId && t.toCommonShare?.stockCertNumber && t.fromCommonShareId) {
       const seller = await tx.commonShare.findUnique({ where: { id: t.fromCommonShareId }, select: { stockCertNumber: true } })
       if (seller && !seller.stockCertNumber) {
         await tx.commonShare.update({ where: { id: t.fromCommonShareId }, data: { stockCertNumber: t.toCommonShare.stockCertNumber } })
       }
     }
+    if (toPrefId && t.toPreferredShare?.stockCertNumber && t.fromPreferredShareId) {
+      const seller = await tx.preferredShare.findUnique({ where: { id: t.fromPreferredShareId }, select: { stockCertNumber: true } })
+      if (seller && !seller.stockCertNumber) {
+        await tx.preferredShare.update({ where: { id: t.fromPreferredShareId }, data: { stockCertNumber: t.toPreferredShare.stockCertNumber } })
+      }
+    }
     if (toShareId) await tx.commonShare.delete({ where: { id: toShareId } }).catch(() => {})
+    if (toPrefId) await tx.preferredShare.delete({ where: { id: toPrefId } }).catch(() => {})
     // Remove the buyer if this was their only holding (mirrors the common-share delete).
     const [cCount, pCount, tCount] = await Promise.all([
       tx.commonShare.count({ where: { shareholderId: buyerId } }),

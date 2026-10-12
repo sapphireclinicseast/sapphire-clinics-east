@@ -29,7 +29,11 @@ export async function GET() {
       },
     }),
     prisma.preferredShare.findMany({
-      include: { shareholder: { select: { shNumber: true, name: true } } },
+      include: {
+        shareholder: { select: { shNumber: true, name: true } },
+        buybacks: { select: { shares: true } }, transfersOut: { select: { shares: true } },
+        transferIn: { include: { fromPreferredShare: { include: { shareholder: { select: { shNumber: true, name: true } } } } } },
+      },
     }),
   ])
 
@@ -61,11 +65,13 @@ export async function GET() {
       shares: num(c.numberOfShares), netShares: net,
       shareClass: c.shareClass, dateAcquired: c.dateAcquired,
       status: c.rescinded ? 'RESCINDED' : net <= 1e-9 ? 'RETIRED' : 'ACTIVE',
-      viaTransferFrom: c.transferIn ? `${c.transferIn.fromCommonShare.shareholder.shNumber} ${c.transferIn.fromCommonShare.shareholder.name}` : null,
+      viaTransferFrom: c.transferIn?.fromCommonShare ? `${c.transferIn.fromCommonShare.shareholder.shNumber} ${c.transferIn.fromCommonShare.shareholder.name}` : null,
     })
   }
   for (const p of preferreds) {
     const net = num(p.numberOfShares) - num(p.retiredShares)
+      - p.buybacks.reduce((s, b) => s + num(b.shares), 0)
+      - p.transfersOut.reduce((s, t) => s + num(t.shares), 0)
     if (!p.stockCertNumber?.trim()) { if (net > 1e-9) uncertifiedPreferred++; continue }
     const { series, seq } = parse(p.stockCertNumber)
     certs.push({
@@ -74,7 +80,7 @@ export async function GET() {
       shares: num(p.numberOfShares), netShares: net,
       shareClass: p.shareClass, dateAcquired: p.dateAcquired,
       status: net <= 1e-9 ? 'RETIRED' : 'ACTIVE',
-      viaTransferFrom: null,
+      viaTransferFrom: p.transferIn?.fromPreferredShare ? `${p.transferIn.fromPreferredShare.shareholder.shNumber} ${p.transferIn.fromPreferredShare.shareholder.name}` : null,
     })
   }
 

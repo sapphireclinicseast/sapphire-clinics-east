@@ -982,7 +982,14 @@ function DepositManager({ share, banks, assetAccts, capitalization, onChanged, h
 // Manages the list of buybacks for one common shareholding: list existing (with
 // delete) + an inline "add buyback" form. Each add/delete hits /api/equity/buybacks
 // and posts/reverses its own Treasury/Bank journal entry, then reloads the parent.
-function BuybackManager({ share, banks, equityAccts, onChanged }: { share: CommonRow; banks: Bank[]; equityAccts: EquityAcct[]; onChanged: () => void }) {
+// A holding either manager can operate on — CommonRow satisfies this, and the
+// preferred modal passes an adapted PrefRow. `kind` switches the API id key;
+// `extraGone` is shares already gone through OTHER mechanisms (the preferred
+// legacy manual retired counter, and — for the buyback manager — shares sold on).
+type HoldingLike = Pick<CommonRow, 'id' | 'name' | 'shareholderId' | 'numberOfShares' | 'stockCertNumber' | 'pricePerShare' | 'equityAccountId'> & { buybacks?: Buyback[]; transfers?: Transfer[] }
+
+function BuybackManager({ share, banks, equityAccts, onChanged, kind = 'COMMON', extraGone = 0 }: { share: HoldingLike; banks: Bank[]; equityAccts: EquityAcct[]; onChanged: () => void; kind?: 'COMMON' | 'PREFERRED'; extraGone?: number }) {
+  const idKey = kind === 'PREFERRED' ? 'preferredShareId' : 'commonShareId'
   const [list, setList] = useState<Buyback[]>(share.buybacks || [])
   const [d, setD] = useState({ date: new Date().toISOString().slice(0, 10), shares: '', price: '', bankAccountId: '', treasuryAccountId: '' })
   const [proofUrls, setProofUrls] = useState<string[]>([])
@@ -992,11 +999,11 @@ function BuybackManager({ share, banks, equityAccts, onChanged }: { share: Commo
   const inp = 'w-full px-3 py-2 rounded-xl border text-sm outline-none'
   const lbl = 'block text-xs font-semibold mb-1'
   const boughtBackTotal = list.reduce((s, b) => s + b.shares, 0)
-  const remaining = share.numberOfShares - boughtBackTotal
+  const remaining = share.numberOfShares - extraGone - boughtBackTotal
   const set = (k: string, v: string) => setD(p => ({ ...p, [k]: v }))
 
   const refresh = async () => {
-    try { const r = await fetch(`/api/equity/buybacks?commonShareId=${share.id}`); if (r.ok) setList(await r.json()) } catch { /* keep */ }
+    try { const r = await fetch(`/api/equity/buybacks?${idKey}=${share.id}`); if (r.ok) setList(await r.json()) } catch { /* keep */ }
     onChanged()
   }
   const add = async () => {
@@ -1005,7 +1012,7 @@ function BuybackManager({ share, banks, equityAccts, onChanged }: { share: Commo
     if (n(d.shares) > remaining + 1e-9) { alert(`Only ${remaining.toLocaleString('en-PH')} shares remain to buy back.`); return }
     setBusy(true)
     try {
-      const r = await fetch('/api/equity/buybacks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ commonShareId: share.id, date: d.date, shares: n(d.shares), price: n(d.price), bankAccountId: d.bankAccountId || null, treasuryAccountId: d.treasuryAccountId || null, proofUrls }) })
+      const r = await fetch('/api/equity/buybacks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [idKey]: share.id, date: d.date, shares: n(d.shares), price: n(d.price), bankAccountId: d.bankAccountId || null, treasuryAccountId: d.treasuryAccountId || null, proofUrls }) })
       if (!r.ok) { alert((await r.json()).error || 'Failed'); return }
       setD({ date: new Date().toISOString().slice(0, 10), shares: '', price: '', bankAccountId: '', treasuryAccountId: '' }); setProofUrls([]); setAdding(false)
       await refresh()
@@ -1019,7 +1026,7 @@ function BuybackManager({ share, banks, equityAccts, onChanged }: { share: Commo
 
   return (
     <div>
-      <p className="text-[11px] mb-2" style={{ color: 'var(--mid-gray)' }}>Holds {share.numberOfShares.toLocaleString('en-PH')} · bought back {boughtBackTotal.toLocaleString('en-PH')} · <span style={{ color: remaining <= 0 ? '#b91c1c' : '#166534', fontWeight: 600 }}>{remaining.toLocaleString('en-PH')} remaining</span></p>
+      <p className="text-[11px] mb-2" style={{ color: 'var(--mid-gray)' }}>Holds {share.numberOfShares.toLocaleString('en-PH')} · {kind === 'PREFERRED' ? 'retired' : 'bought back'} {boughtBackTotal.toLocaleString('en-PH')}{extraGone > 0 ? ` · otherwise gone ${extraGone.toLocaleString('en-PH')}` : ''} · <span style={{ color: remaining <= 0 ? '#b91c1c' : '#166534', fontWeight: 600 }}>{remaining.toLocaleString('en-PH')} remaining</span></p>
       {list.length > 0 && (
         <div className="rounded-xl border overflow-auto mb-2" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
           <table className="w-full text-xs"><thead><tr className="text-left" style={{ color: 'var(--mid-gray)' }}>{['Date', 'Shares', 'Price', 'Amount', 'Proof', ''].map(h => <th key={h} className="px-2.5 py-1.5 font-semibold">{h}</th>)}</tr></thead><tbody>
@@ -1045,7 +1052,7 @@ function BuybackManager({ share, banks, equityAccts, onChanged }: { share: Commo
             <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Bank account used to pay</label>
               <select value={d.bankAccountId} onChange={e => set('bankAccountId', e.target.value)} className={inp} style={{ borderColor: 'var(--light-gray)' }}><option value="">— Select —</option>{banks.map(b => <option key={b.id} value={b.id}>{bankName(b)}</option>)}</select>
             </div>
-            <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Treasury account to debit <span className="font-normal text-gray-400">(CoA)</span></label>
+            <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>{kind === 'PREFERRED' ? 'Equity / treasury account to debit' : 'Treasury account to debit'} <span className="font-normal text-gray-400">(CoA)</span></label>
               <select value={d.treasuryAccountId} onChange={e => set('treasuryAccountId', e.target.value)} className={inp} style={{ borderColor: 'var(--light-gray)' }}><option value="">— Select equity account —</option>{equityAccts.map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}</select>
             </div>
             <div className="col-span-2 sm:col-span-4"><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Proof of buyback</label>
@@ -1061,8 +1068,8 @@ function BuybackManager({ share, banks, equityAccts, onChanged }: { share: Commo
         </div>
       ) : (
         remaining > 0
-          ? <button type="button" onClick={() => setAdding(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}><Plus size={13} /> Add buyback</button>
-          : <p className="text-[11px]" style={{ color: '#b91c1c' }}>All shares have been bought back.</p>
+          ? <button type="button" onClick={() => setAdding(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}><Plus size={13} /> {kind === 'PREFERRED' ? 'Add retirement / buyback' : 'Add buyback'}</button>
+          : <p className="text-[11px]" style={{ color: '#b91c1c' }}>{kind === 'PREFERRED' ? 'All shares have been retired or sold.' : 'All shares have been bought back.'}</p>
       )}
     </div>
   )
@@ -1075,7 +1082,8 @@ function BuybackManager({ share, banks, equityAccts, onChanged }: { share: Commo
 // automatically — and posts/reverses the net-zero equity memo entry. The sale
 // price is settled privately between the parties and never through a company
 // bank account, so no cash line is ever posted.
-function TransferManager({ share, shareholders, equityAccts, onChanged }: { share: CommonRow; shareholders: Shareholder[]; equityAccts: EquityAcct[]; onChanged: () => void }) {
+function TransferManager({ share, shareholders, equityAccts, onChanged, kind = 'COMMON', extraGone = 0 }: { share: HoldingLike; shareholders: Shareholder[]; equityAccts: EquityAcct[]; onChanged: () => void; kind?: 'COMMON' | 'PREFERRED'; extraGone?: number }) {
+  const idKey = kind === 'PREFERRED' ? 'preferredShareId' : 'commonShareId'
   const [list, setList] = useState<Transfer[]>(share.transfers || [])
   const blank = { date: new Date().toISOString().slice(0, 10), shares: '', price: '', buyerKind: 'CURRENT' as 'CURRENT' | 'EXTERNAL', buyerShareholderId: '', buyerName: '', buyerTin: '', buyerBirthdate: '', buyerEmail: '', buyerAddress: '' }
   const [d, setD] = useState(blank)
@@ -1089,7 +1097,7 @@ function TransferManager({ share, shareholders, equityAccts, onChanged }: { shar
 
   const buybackTotal = (share.buybacks || []).reduce((s, b) => s + b.shares, 0)
   const soldTotal = list.reduce((s, t) => s + t.shares, 0)
-  const remaining = share.numberOfShares - buybackTotal - soldTotal
+  const remaining = share.numberOfShares - extraGone - buybackTotal - soldTotal
   // The buyer list excludes the seller — you cannot sell shares to yourself.
   const buyerOptions = shareholders.filter(s => s.id !== share.shareholderId)
   const buyerLabel = d.buyerKind === 'CURRENT'
@@ -1100,7 +1108,7 @@ function TransferManager({ share, shareholders, equityAccts, onChanged }: { shar
   const equityLabel = equityAccts.find(a => a.id === share.equityAccountId)?.accountTitle || '(equity account not set on this holding)'
 
   const refresh = async () => {
-    try { const r = await fetch(`/api/equity/transfers?commonShareId=${share.id}`); if (r.ok) setList(await r.json()) } catch { /* keep */ }
+    try { const r = await fetch(`/api/equity/transfers?${idKey}=${share.id}`); if (r.ok) setList(await r.json()) } catch { /* keep */ }
     onChanged()
   }
   const add = async () => {
@@ -1112,7 +1120,7 @@ function TransferManager({ share, shareholders, equityAccts, onChanged }: { shar
     setBusy(true)
     try {
       const r = await fetch('/api/equity/transfers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-        commonShareId: share.id, date: d.date, shares: n(d.shares), price: n(d.price), proofUrls,
+        [idKey]: share.id, date: d.date, shares: n(d.shares), price: n(d.price), proofUrls,
         ...(d.buyerKind === 'CURRENT'
           ? { buyerShareholderId: d.buyerShareholderId }
           : { buyerName: d.buyerName, buyerTin: d.buyerTin, buyerBirthdate: d.buyerBirthdate || null, buyerEmail: d.buyerEmail, buyerAddress: d.buyerAddress }),
@@ -1131,7 +1139,7 @@ function TransferManager({ share, shareholders, equityAccts, onChanged }: { shar
 
   return (
     <div>
-      <p className="text-[11px] mb-2" style={{ color: 'var(--mid-gray)' }}>Holds {share.numberOfShares.toLocaleString('en-PH')} · bought back {buybackTotal.toLocaleString('en-PH')} · sold {soldTotal.toLocaleString('en-PH')} · <span style={{ color: remaining <= 0 ? '#b91c1c' : '#166534', fontWeight: 600 }}>{remaining.toLocaleString('en-PH')} remaining</span></p>
+      <p className="text-[11px] mb-2" style={{ color: 'var(--mid-gray)' }}>Holds {share.numberOfShares.toLocaleString('en-PH')} · {kind === 'PREFERRED' ? 'retired' : 'bought back'} {buybackTotal.toLocaleString('en-PH')}{extraGone > 0 ? ` + ${extraGone.toLocaleString('en-PH')}` : ''} · sold {soldTotal.toLocaleString('en-PH')} · <span style={{ color: remaining <= 0 ? '#b91c1c' : '#166534', fontWeight: 600 }}>{remaining.toLocaleString('en-PH')} remaining</span></p>
       {remaining <= 0 && soldTotal > 0 && (
         <p className="text-[11px] mb-2 font-semibold" style={{ color: '#b91c1c' }}>All shares have been sold — this shareholder is retired from this holding.</p>
       )}
@@ -1214,6 +1222,9 @@ interface PrefRow {
   annualInterest: number | null; maturityYears: number | null; buybackPrice: number | null
   payoutSchedule: string | null; payoutStartMonth: number | null; payoutStartYear: number | null; payoutDay: number | null; pdcUrls: string[] | null
   deposits?: Deposit[]
+  // Event-based retirement & secondary sales (same mechanics as common shares)
+  boughtBackShares?: number; soldShares?: number; netShares?: number
+  buybacks?: Buyback[]; transfers?: Transfer[]; viaTransferFrom?: string | null
 }
 interface PrefFigures { preferredCapitalization: number; preferredShares: number; retiredPreferredShares: number }
 
@@ -1341,12 +1352,12 @@ function PreferredTab({ banks, equityAccts, assetAccts = [], onChanged, canWrite
           )}
         </tbody></table>
       </div>
-      {(showAdd || edit) && <PreferredModal row={edit} shareholders={shareholders} banks={banks} equityAccts={equityAccts} assetAccts={assetAccts} onClose={() => { setShowAdd(false); setEdit(null) }} onSaved={() => { setShowAdd(false); setEdit(null); load(); onChanged() }} />}
+      {(showAdd || edit) && <PreferredModal row={edit} shareholders={shareholders} banks={banks} equityAccts={equityAccts} assetAccts={assetAccts} onClose={() => { setShowAdd(false); setEdit(null) }} onSaved={() => { setShowAdd(false); setEdit(null); load(); onChanged() }} onReload={() => { load(); onChanged() }} />}
     </div>
   )
 }
 
-function PreferredModal({ row, shareholders, banks, equityAccts, assetAccts = [], onClose, onSaved }: { row: PrefRow | null; shareholders: Shareholder[]; banks: Bank[]; equityAccts: EquityAcct[]; assetAccts?: EquityAcct[]; onClose: () => void; onSaved: () => void }) {
+function PreferredModal({ row, shareholders, banks, equityAccts, assetAccts = [], onClose, onSaved, onReload = () => {} }: { row: PrefRow | null; shareholders: Shareholder[]; banks: Bank[]; equityAccts: EquityAcct[]; assetAccts?: EquityAcct[]; onClose: () => void; onSaved: () => void; onReload?: () => void }) {
   const [f, setF] = useState({
     shareholderId: row?.shareholderId || '', name: row?.name || '', tin: row?.tin || '', birthdate: row?.birthdate ? String(row.birthdate).slice(0, 10) : '', email: row?.email || '', mobile: row?.mobile || '', address: row?.address || '',
     dateAcquired: row?.dateAcquired ? String(row.dateAcquired).slice(0, 10) : new Date().toISOString().slice(0, 10), agreementType: row?.agreementType || 'SUBSCRIPTION', stockCertNumber: row?.stockCertNumber || '', shareClass: row?.shareClass || '',
@@ -1444,6 +1455,31 @@ function PreferredModal({ row, shareholders, banks, equityAccts, assetAccts = []
           ))}<ScanUpload compact section="equity" prefix={`${prefix}-VALIDID`} existingCount={validIdUrls.length} label="Add" onUploaded={u => setValidIdUrls(p => [...p, u])} /></div></div>
           <div><label className={lbl} style={mg}>PDCs</label><div className="flex flex-wrap items-center gap-2">{pdcUrls.map((u, i) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="text-xs inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>)}<ScanUpload compact section="equity" prefix={`${prefix}-PDC`} existingCount={pdcUrls.length} label="Add" onUploaded={u => setPdcUrls(p => [...p, u])} /></div></div>
         </div>
+        {/* Retirement / redemption — event-based, same mechanics as common buybacks */}
+        <div className="mt-4 rounded-xl border p-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+          <p className="text-sm font-semibold text-gray-700 mb-1">Retirements / Buybacks <span className="font-normal text-gray-400">(preferred shares redeemed by the company — posts DR equity/treasury · CR bank)</span></p>
+          {row ? (
+            <BuybackManager kind="PREFERRED" extraGone={(row.retiredShares || 0) + (row.soldShares || 0)}
+              share={{ id: row.id, name: row.name, shareholderId: row.shareholderId, numberOfShares: row.numberOfShares, stockCertNumber: row.stockCertNumber, pricePerShare: row.pricePerShare, equityAccountId: row.equityAccountId, buybacks: row.buybacks || [], transfers: row.transfers || [] }}
+              banks={banks} equityAccts={equityAccts} onChanged={onReload} />
+          ) : (
+            <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Save the shareholder first, then reopen this record to add a retirement.</p>
+          )}
+          {row && (row.retiredShares || 0) > 0 && <p className="text-[11px] mt-2" style={{ color: 'var(--mid-gray)' }}>The manually-typed Retired Shares figure above ({(row.retiredShares || 0).toLocaleString('en-PH')}) still counts toward the net — prefer recording retirements here so each carries its date, price, proof and journal entry.</p>}
+        </div>
+
+        {/* Sold Shares — secondary sale to another shareholder, settled privately */}
+        <div className="mt-4 rounded-xl border p-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+          <p className="text-sm font-semibold text-gray-700 mb-1">Sold Shares <span className="font-normal text-gray-400">(sold to a current shareholder or an external party — settled privately, not through a company bank account; the buyer&apos;s holding inherits the terms, so future dividends accrue to them)</span></p>
+          {row ? (
+            <TransferManager kind="PREFERRED" extraGone={row.retiredShares || 0}
+              share={{ id: row.id, name: row.name, shareholderId: row.shareholderId, numberOfShares: row.numberOfShares, stockCertNumber: row.stockCertNumber, pricePerShare: row.pricePerShare, equityAccountId: row.equityAccountId, buybacks: row.buybacks || [], transfers: row.transfers || [] }}
+              shareholders={shareholders} equityAccts={equityAccts} onChanged={onReload} />
+          ) : (
+            <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Save the shareholder first, then reopen this record to record a sale.</p>
+          )}
+        </div>
+
         <button onClick={save} disabled={busy} className="w-full mt-4 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2" style={{ background: 'var(--teal)' }}>{busy && <Loader2 size={15} className="animate-spin" />} {row ? 'Save changes' : 'Add preferred shareholder'}</button>
       </div>
     </div>

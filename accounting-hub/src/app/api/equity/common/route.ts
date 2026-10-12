@@ -55,7 +55,7 @@ export async function GET() {
       transfersOut: { include: { toShareholder: { select: { shNumber: true, name: true } } }, orderBy: { date: 'asc' } },
       transferIn: { include: { fromCommonShare: { include: { shareholder: { select: { shNumber: true, name: true } } } } } },
     }, orderBy: { createdAt: 'asc' } }),
-    prisma.preferredShare.findMany({ select: { shareholderId: true, numberOfShares: true, retiredShares: true, pricePerShare: true } }),
+    prisma.preferredShare.findMany({ select: { shareholderId: true, numberOfShares: true, retiredShares: true, pricePerShare: true, buybacks: { select: { shares: true } }, transfersOut: { select: { shares: true } } } }),
     prisma.shareholder.findMany({ orderBy: { shSeq: 'asc' }, select: { id: true, shNumber: true, name: true, tin: true, birthdate: true, email: true, mobile: true, address: true } }),
     prisma.equitySettings.findUnique({ where: { id: 'singleton' } }),
   ])
@@ -74,12 +74,14 @@ export async function GET() {
   // in the registry rows, flagged, for the audit trail.
   const live = commons.filter(c => !c.rescinded)
   const commonCap = live.reduce((s, c) => s + (num(c.numberOfShares) - c.transfersOut.reduce((t, x) => t + num(x.shares), 0)) * num(c.pricePerShare), 0)
-  const prefCap = preferreds.reduce((s, p) => s + num(p.numberOfShares) * num(p.pricePerShare), 0)
+  // Preferred transfers duplicate issued capital across seller + buyer rows the
+  // same way common ones do — count each preferred holding net of shares sold on.
+  const prefCap = preferreds.reduce((s, p) => s + (num(p.numberOfShares) - p.transfersOut.reduce((t, x) => t + num(x.shares), 0)) * num(p.pricePerShare), 0)
   const totalCapitalization = commonCap + prefCap
   // Gross common = every common holding ever issued, including rows reissued out of
   // treasury. Used only as the % equity denominator (kept stable across the cap table).
   const grossCommonShares = live.reduce((s, c) => s + num(c.numberOfShares), 0)
-  const grossShares = grossCommonShares + preferreds.reduce((s, p) => s + num(p.numberOfShares), 0)
+  const grossShares = grossCommonShares + preferreds.reduce((s, p) => s + num(p.numberOfShares) - p.transfersOut.reduce((t, x) => t + num(x.shares), 0), 0)
   // Buybacks are ShareBuyback rows (multiple per shareholder); they move shares into
   // treasury (no longer outstanding). Reissued-from-treasury holdings ("sold from
   // treasury") come back out of treasury and ARE outstanding again.
@@ -118,6 +120,8 @@ export async function GET() {
   const heldPreferred = new Map<string, number>()
   for (const p of preferreds) {
     const net = num(p.numberOfShares) - num(p.retiredShares)
+      - p.buybacks.reduce((t, b) => t + num(b.shares), 0)
+      - p.transfersOut.reduce((t, x) => t + num(x.shares), 0)
     heldPreferred.set(p.shareholderId, (heldPreferred.get(p.shareholderId) || 0) + net)
   }
   const activeCommonShareholders = [...heldCommon.values()].filter(v => v > 0).length
@@ -162,8 +166,8 @@ export async function GET() {
       transferredShares, transfers,
       // Where this holding itself came from, when it was bought from another shareholder.
       acquiredViaTransfer: !!c.transferIn,
-      transferFromName: c.transferIn ? c.transferIn.fromCommonShare.shareholder.name : null,
-      transferFromShNumber: c.transferIn ? c.transferIn.fromCommonShare.shareholder.shNumber : null,
+      transferFromName: c.transferIn?.fromCommonShare?.shareholder.name ?? null,
+      transferFromShNumber: c.transferIn?.fromCommonShare?.shareholder.shNumber ?? null,
       // Fully out — every share bought back or sold on. Shown red as a retired holding.
       retired: num(c.numberOfShares) > 0 && netShares <= 1e-9,
       deposits: deposits.map(d => ({

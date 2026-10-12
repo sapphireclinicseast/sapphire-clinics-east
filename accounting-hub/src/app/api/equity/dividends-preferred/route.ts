@@ -20,14 +20,20 @@ interface Period { year: number; month: number; amount: number }
 // the set of quarters the shareholder is due, and a month-by-month projection of
 // scheduled interest (honoring each preferred share's own payout frequency & start).
 async function preferredSummary() {
-  const shares = await prisma.preferredShare.findMany({ include: { shareholder: { select: { name: true, email: true } } } })
+  const shares = await prisma.preferredShare.findMany({ include: { shareholder: { select: { name: true, email: true } }, buybacks: { select: { shares: true } }, transfersOut: { select: { shares: true } } } })
   const per = new Map<string, { shareholderId: string; name: string; email: string | null; shares: number; quarterly: number; quarters: Set<string>; periods: Map<string, Period> }>()
   for (const p of shares) {
-    const invest = num(p.numberOfShares) * num(p.pricePerShare)
+    // Interest accrues on NET shares: retired/redeemed shares stop earning, and
+    // transferred shares earn on the buyer's own holding instead.
+    const netShares = Math.max(0, num(p.numberOfShares) - num(p.retiredShares)
+      - p.buybacks.reduce((s, b) => s + num(b.shares), 0)
+      - p.transfersOut.reduce((s, t) => s + num(t.shares), 0))
+    if (netShares <= 1e-9) continue
+    const invest = netShares * num(p.pricePerShare)
     const annual = invest * (num(p.annualInterest) / 100)
     const quarterly = annual / 4
     const cur = per.get(p.shareholderId) || { shareholderId: p.shareholderId, name: p.shareholder.name, email: p.shareholder.email, shares: 0, quarterly: 0, quarters: new Set<string>(), periods: new Map<string, Period>() }
-    cur.shares += num(p.numberOfShares)
+    cur.shares += netShares
     cur.quarterly += quarterly
     // Projected release schedule from the payout start over the maturity, at the share's
     // own frequency. If no explicit payout start, fall back to the acquisition date.

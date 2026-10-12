@@ -74,7 +74,10 @@ function mapCommonRow(r: any) {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapPreferredRow(r: any) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const retiredShares = num(r.retiredShares)
+    + (r.buybacks || []).reduce((s: number, b: any) => s + num(b.shares), 0)
+    + (r.transfersOut || []).reduce((s: number, t: any) => s + num(t.shares), 0)
   const netShares = Math.max(0, num(r.numberOfShares) - retiredShares)
   return {
     id: r.id,
@@ -105,7 +108,7 @@ export async function GET(req: NextRequest) {
   try {
     const [commons, preferreds, settings] = await Promise.all([
       prisma.commonShare.findMany({ include: { shareholder: true, buybacks: true, transfersOut: true }, orderBy: { createdAt: 'asc' } }),
-      prisma.preferredShare.findMany({ include: { shareholder: true }, orderBy: { createdAt: 'asc' } }),
+      prisma.preferredShare.findMany({ include: { shareholder: true, buybacks: true, transfersOut: true }, orderBy: { createdAt: 'asc' } }),
       prisma.equitySettings.findUnique({ where: { id: 'singleton' } }).catch(() => null),
     ])
     // Authoritative equity figures — computed exactly like the accounting Equity page.

@@ -24,20 +24,37 @@ export async function GET() {
   const session = await auth()
   if (!session?.user || !ROLES.includes(session.user.role as string)) return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
   const [prefs, commons, shareholders] = await Promise.all([
-    prisma.preferredShare.findMany({ include: { shareholder: true, deposits: { orderBy: { date: 'asc' } } }, orderBy: { createdAt: 'asc' } }),
+    prisma.preferredShare.findMany({ include: {
+      shareholder: true, deposits: { orderBy: { date: 'asc' } },
+      buybacks: { orderBy: { date: 'asc' } },
+      transfersOut: { include: { toShareholder: { select: { shNumber: true, name: true } } }, orderBy: { date: 'asc' } },
+      transferIn: { include: { fromPreferredShare: { include: { shareholder: { select: { shNumber: true, name: true } } } } } },
+    }, orderBy: { createdAt: 'asc' } }),
     prisma.commonShare.findMany({ select: { numberOfShares: true, pricePerShare: true } }),
     prisma.shareholder.findMany({ orderBy: { shSeq: 'asc' }, select: { id: true, shNumber: true, name: true, tin: true, birthdate: true, email: true, mobile: true, address: true } }),
   ])
+  // A transfer duplicates the same issued capital across two rows (seller's
+  // original + buyer's transfer-in holding at book value), so count each
+  // holding net of what it has sold on — mirrors the common-share figures.
+  const soldOf = (p: typeof prefs[number]) => p.transfersOut.reduce((s, x) => s + num(x.shares), 0)
+  const boughtOf = (p: typeof prefs[number]) => p.buybacks.reduce((s, x) => s + num(x.shares), 0)
   const commonCap = commons.reduce((s, c) => s + num(c.numberOfShares) * num(c.pricePerShare), 0)
-  const prefCap = prefs.reduce((s, p) => s + num(p.numberOfShares) * num(p.pricePerShare), 0)
+  const prefCap = prefs.reduce((s, p) => s + (num(p.numberOfShares) - soldOf(p)) * num(p.pricePerShare), 0)
   const total = commonCap + prefCap
   // % equity is share-count based: total shares across common + preferred.
-  const totalShares = commons.reduce((s, c) => s + num(c.numberOfShares), 0) + prefs.reduce((s, p) => s + num(p.numberOfShares), 0)
-  const preferredShares = prefs.reduce((s, p) => s + num(p.numberOfShares), 0)
-  const retiredPreferredShares = prefs.reduce((s, p) => s + num(p.retiredShares), 0)
+  const totalShares = commons.reduce((s, c) => s + num(c.numberOfShares), 0) + prefs.reduce((s, p) => s + num(p.numberOfShares) - soldOf(p), 0)
+  const preferredShares = prefs.reduce((s, p) => s + num(p.numberOfShares) - soldOf(p), 0)
+  const retiredPreferredShares = prefs.reduce((s, p) => s + num(p.retiredShares) + boughtOf(p), 0)
   const rows = prefs.map(p => {
     const cap = num(p.numberOfShares) * num(p.pricePerShare)
+    const boughtBackShares = boughtOf(p)
+    const soldShares = soldOf(p)
+    const netShares = Math.max(0, num(p.numberOfShares) - num(p.retiredShares) - boughtBackShares - soldShares)
     return {
+      boughtBackShares, soldShares, netShares,
+      buybacks: p.buybacks.map(bb => ({ id: bb.id, date: bb.date, shares: num(bb.shares), price: num(bb.price), amount: num(bb.shares) * num(bb.price), bankAccountId: bb.bankAccountId, treasuryAccountId: bb.treasuryAccountId, proofUrls: bb.proofUrls })),
+      transfers: p.transfersOut.map(t => ({ id: t.id, date: t.date, shares: num(t.shares), price: num(t.price), amount: num(t.shares) * num(t.price), toShareholderId: t.toShareholderId, toShNumber: t.toShareholder.shNumber, toName: t.toShareholder.name, toPreferredShareId: t.toPreferredShareId, proofUrls: t.proofUrls })),
+      viaTransferFrom: p.transferIn ? `${p.transferIn.fromPreferredShare?.shareholder.shNumber || ''} ${p.transferIn.fromPreferredShare?.shareholder.name || ''}`.trim() || null : null,
       id: p.id, shareholderId: p.shareholderId, shNumber: p.shareholder.shNumber, name: p.shareholder.name,
       tin: p.shareholder.tin, birthdate: p.shareholder.birthdate, email: p.shareholder.email, mobile: p.shareholder.mobile, address: p.shareholder.address,
       dateAcquired: p.dateAcquired, agreementType: p.agreementType, agreementUrls: p.agreementUrls, stockCertNumber: p.stockCertNumber,

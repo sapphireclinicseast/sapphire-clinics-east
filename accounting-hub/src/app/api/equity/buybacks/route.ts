@@ -1,7 +1,9 @@
-// Buybacks against a common shareholding — a shareholder may have several.
-// Each buyback posts its own DR Treasury / CR Bank journal entry.
-//   GET    ?commonShareId= → list buybacks for that shareholding
-//   POST   { commonShareId, date, shares, price, bankAccountId, treasuryAccountId, proofUrls } → add + post JE
+// Buybacks against a shareholding — a shareholder may have several. Works for
+// COMMON holdings (buyback → treasury) and PREFERRED holdings (redemption /
+// retirement) alike; exactly one of commonShareId / preferredShareId is given.
+// Each buyback posts its own DR Treasury-or-equity / CR Bank journal entry.
+//   GET    ?commonShareId= | ?preferredShareId= → list buybacks for that holding
+//   POST   { commonShareId | preferredShareId, date, shares, price, bankAccountId, treasuryAccountId, proofUrls } → add + post JE
 //   DELETE ?id= → remove a buyback + reverse its JE
 // Access: ADMIN only (matches the common-share routes).
 
@@ -16,9 +18,11 @@ const num = (v: unknown) => Number(v || 0)
 export async function GET(req: Request) {
   const session = await auth()
   if (!session?.user || !ADMIN.includes(session.user.role as string)) return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-  const commonShareId = new URL(req.url).searchParams.get('commonShareId') || ''
-  if (!commonShareId) return NextResponse.json({ error: 'commonShareId required' }, { status: 400 })
-  const buybacks = await prisma.shareBuyback.findMany({ where: { commonShareId }, orderBy: { date: 'asc' } })
+  const sp = new URL(req.url).searchParams
+  const commonShareId = sp.get('commonShareId') || ''
+  const preferredShareId = sp.get('preferredShareId') || ''
+  if (!commonShareId && !preferredShareId) return NextResponse.json({ error: 'commonShareId or preferredShareId required' }, { status: 400 })
+  const buybacks = await prisma.shareBuyback.findMany({ where: commonShareId ? { commonShareId } : { preferredShareId }, orderBy: { date: 'asc' } })
   return NextResponse.json(buybacks.map(b => ({ id: b.id, date: b.date, shares: num(b.shares), price: num(b.price), amount: num(b.shares) * num(b.price), bankAccountId: b.bankAccountId, treasuryAccountId: b.treasuryAccountId, proofUrls: b.proofUrls })))
 }
 
@@ -28,27 +32,46 @@ export async function POST(req: Request) {
   try {
     const b = await req.json()
     const commonShareId = String(b.commonShareId || '')
+    const preferredShareId = String(b.preferredShareId || '')
     const shares = num(b.shares), price = num(b.price)
-    if (!commonShareId) return NextResponse.json({ error: 'commonShareId is required' }, { status: 400 })
+    if (!commonShareId && !preferredShareId) return NextResponse.json({ error: 'commonShareId or preferredShareId is required' }, { status: 400 })
+    if (commonShareId && preferredShareId) return NextResponse.json({ error: 'Give exactly one of commonShareId / preferredShareId' }, { status: 400 })
     if (!(shares > 0)) return NextResponse.json({ error: 'Shares bought back must be greater than zero' }, { status: 400 })
     if (!(price > 0)) return NextResponse.json({ error: 'Buyback price must be greater than zero' }, { status: 400 })
-    const share = await prisma.commonShare.findUnique({ where: { id: commonShareId }, include: { shareholder: { select: { name: true } }, buybacks: { select: { shares: true } } } })
-    if (!share) return NextResponse.json({ error: 'Shareholding not found' }, { status: 404 })
-    // A shareholder can never buy back more than they hold (across all buybacks).
-    const already = share.buybacks.reduce((s, x) => s + num(x.shares), 0)
-    if (already + shares > num(share.numberOfShares) + 1e-9) {
-      return NextResponse.json({ error: `Only ${num(share.numberOfShares) - already} shares remain to buy back (holds ${num(share.numberOfShares)}, already bought back ${already}).` }, { status: 400 })
-    }
     const date = b.date ? new Date(b.date) : new Date()
+
+    let holderName = ''
+    if (commonShareId) {
+      const share = await prisma.commonShare.findUnique({ where: { id: commonShareId }, include: { shareholder: { select: { name: true } }, buybacks: { select: { shares: true } } } })
+      if (!share) return NextResponse.json({ error: 'Shareholding not found' }, { status: 404 })
+      // A shareholder can never buy back more than they hold (across all buybacks).
+      const already = share.buybacks.reduce((s, x) => s + num(x.shares), 0)
+      if (already + shares > num(share.numberOfShares) + 1e-9) {
+        return NextResponse.json({ error: `Only ${num(share.numberOfShares) - already} shares remain to buy back (holds ${num(share.numberOfShares)}, already bought back ${already}).` }, { status: 400 })
+      }
+      holderName = share.shareholder.name
+    } else {
+      const share = await prisma.preferredShare.findUnique({ where: { id: preferredShareId }, include: { shareholder: { select: { name: true } }, buybacks: { select: { shares: true } }, transfersOut: { select: { shares: true } } } })
+      if (!share) return NextResponse.json({ error: 'Preferred shareholding not found' }, { status: 404 })
+      // Net of the legacy manual retired counter, earlier redemptions, and
+      // shares already sold on to another shareholder.
+      const gone = num(share.retiredShares) + share.buybacks.reduce((s, x) => s + num(x.shares), 0) + share.transfersOut.reduce((s, x) => s + num(x.shares), 0)
+      if (gone + shares > num(share.numberOfShares) + 1e-9) {
+        return NextResponse.json({ error: `Only ${num(share.numberOfShares) - gone} preferred shares remain to retire (holds ${num(share.numberOfShares)}, already retired/sold ${gone}).` }, { status: 400 })
+      }
+      holderName = share.shareholder.name
+    }
+
     const created = await prisma.$transaction(async (tx) => {
       const bb = await tx.shareBuyback.create({ data: {
-        commonShareId, date, shares, price, bankAccountId: b.bankAccountId || null, treasuryAccountId: b.treasuryAccountId || null,
+        commonShareId: commonShareId || null, preferredShareId: preferredShareId || null,
+        date, shares, price, bankAccountId: b.bankAccountId || null, treasuryAccountId: b.treasuryAccountId || null,
         proofUrls: Array.isArray(b.proofUrls) ? b.proofUrls : undefined, createdById: session.user!.id ?? null,
       } })
-      const jeId = await postEquityBuyback(tx, { refId: bb.id, date, amount: shares * price, bankAccountId: b.bankAccountId, treasuryAccountId: b.treasuryAccountId, investor: share.shareholder.name, createdById: session.user!.id as string })
+      const jeId = await postEquityBuyback(tx, { refId: bb.id, date, amount: shares * price, bankAccountId: b.bankAccountId, treasuryAccountId: b.treasuryAccountId, investor: holderName, createdById: session.user!.id as string })
       if (jeId) await tx.shareBuyback.update({ where: { id: bb.id }, data: { journalEntryId: jeId } })
       // Keep the legacy flag in sync so anything still reading it sees "bought back".
-      await tx.commonShare.update({ where: { id: commonShareId }, data: { boughtBack: true } })
+      if (commonShareId) await tx.commonShare.update({ where: { id: commonShareId }, data: { boughtBack: true } })
       return bb
     })
     return NextResponse.json({ id: created.id })
@@ -68,8 +91,10 @@ export async function DELETE(req: Request) {
   await prisma.$transaction(async (tx) => {
     if (bb.journalEntryId) await tx.journalEntry.deleteMany({ where: { id: bb.journalEntryId } })
     await tx.shareBuyback.delete({ where: { id } })
-    const remaining = await tx.shareBuyback.count({ where: { commonShareId: bb.commonShareId } })
-    if (remaining === 0) await tx.commonShare.update({ where: { id: bb.commonShareId }, data: { boughtBack: false } })
+    if (bb.commonShareId) {
+      const remaining = await tx.shareBuyback.count({ where: { commonShareId: bb.commonShareId } })
+      if (remaining === 0) await tx.commonShare.update({ where: { id: bb.commonShareId }, data: { boughtBack: false } })
+    }
   })
   return NextResponse.json({ success: true })
 }

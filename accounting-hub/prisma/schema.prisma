@@ -3230,10 +3230,16 @@ model CommonShare {
 // what the journal entry is measured at.
 model ShareTransfer {
   id                String       @id @default(cuid())
-  fromCommonShareId String
-  fromCommonShare   CommonShare  @relation("TransferFrom", fields: [fromCommonShareId], references: [id], onDelete: Cascade)
+  // A transfer moves a COMMON or a PREFERRED holding — exactly one from/to
+  // pair is set (enforced in the API), like EquityDeposit's dual link.
+  fromCommonShareId String?
+  fromCommonShare   CommonShare? @relation("TransferFrom", fields: [fromCommonShareId], references: [id], onDelete: Cascade)
   toCommonShareId   String?      @unique // buyer's holding created by this transfer
   toCommonShare     CommonShare? @relation("TransferTo", fields: [toCommonShareId], references: [id], onDelete: SetNull)
+  fromPreferredShareId String?
+  fromPreferredShare   PreferredShare? @relation("PrefTransferFrom", fields: [fromPreferredShareId], references: [id], onDelete: Cascade)
+  toPreferredShareId   String?         @unique
+  toPreferredShare     PreferredShare? @relation("PrefTransferTo", fields: [toPreferredShareId], references: [id], onDelete: SetNull)
   toShareholderId   String
   toShareholder     Shareholder  @relation("TransfersReceived", fields: [toShareholderId], references: [id])
   date              DateTime
@@ -3245,6 +3251,7 @@ model ShareTransfer {
   createdAt         DateTime     @default(now())
 
   @@index([fromCommonShareId])
+  @@index([fromPreferredShareId])
 }
 
 // A beneficial owner of (part of) a common shareholding — the registered holder
@@ -3304,8 +3311,12 @@ model EquityDeposit {
 
 model ShareBuyback {
   id                String      @id @default(cuid())
-  commonShareId     String
-  commonShare       CommonShare @relation(fields: [commonShareId], references: [id], onDelete: Cascade)
+  // Against a COMMON holding (→ treasury) or a PREFERRED holding (redemption /
+  // retirement) — exactly one is set (enforced in the API).
+  commonShareId     String?
+  commonShare       CommonShare? @relation(fields: [commonShareId], references: [id], onDelete: Cascade)
+  preferredShareId  String?
+  preferredShare    PreferredShare? @relation(fields: [preferredShareId], references: [id], onDelete: Cascade)
   date              DateTime
   shares            Decimal
   price             Decimal
@@ -3317,6 +3328,7 @@ model ShareBuyback {
   createdAt         DateTime    @default(now())
 
   @@index([commonShareId])
+  @@index([preferredShareId])
 }
 
 model PreferredShare {
@@ -3352,6 +3364,12 @@ model PreferredShare {
 
   payouts  PreferredPayout[]
   deposits EquityDeposit[]
+  // Event-based retirement (redemption) and secondary sales — same mechanics
+  // as common shares. Net outstanding = numberOfShares − retiredShares (legacy
+  // manual counter) − Σ buybacks − Σ transfersOut.
+  buybacks     ShareBuyback[]
+  transfersOut ShareTransfer[] @relation("PrefTransferFrom")
+  transferIn   ShareTransfer?  @relation("PrefTransferTo")
 
   @@index([shareholderId])
 }
