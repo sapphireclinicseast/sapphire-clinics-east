@@ -50,6 +50,11 @@ interface AffinityEntry {
   oddsCiLow?: number | null
   oddsCiHigh?: number | null
   crudeOddsRatio?: number | null
+  /** How much more likely the column service is for patients who use the row
+   *  service, vs patients who do not. Age-adjusted, 95% CI. */
+  riskRatio?: number | null
+  riskCiLow?: number | null
+  riskCiHigh?: number | null
   /** Pooled and age-adjusted estimates disagree — read the adjusted one. */
   ageConfounded?: boolean
 }
@@ -145,6 +150,20 @@ function DiagnosisValueLabel(props: {
       {n} · {payload.pct ?? 0}%
     </text>
   )
+}
+
+// Reads the risk ratio aloud, with its interval, and says nothing when the
+// interval crosses 1 — a point estimate quoted without that caveat is how a
+// coincidence becomes a referral policy.
+function rrPhrase(a: AffinityEntry): string {
+  if (a.riskRatio == null) return ''
+  const ci = (a.riskCiLow != null && a.riskCiHigh != null)
+    ? ` (95% CI ${a.riskCiLow.toFixed(2)}–${a.riskCiHigh.toFixed(2)})`
+    : ''
+  const spansOne = a.riskCiLow != null && a.riskCiHigh != null
+    && a.riskCiLow <= 1 && a.riskCiHigh >= 1
+  if (spansOne) return `${ci} — but the interval includes 1, so the direction is not settled`
+  return ` — ${a.riskRatio.toFixed(1)}× as likely as patients who do not${ci}`
 }
 
 // ── Custom Y-axis tick for diagnosis names (truncate to 20 chars) ─────────────
@@ -537,9 +556,12 @@ export default function PatientDashboardPage() {
               Based on {interdeptStats.totalPatients.toLocaleString()} patients with recorded treatment
               (Clinic Schedule sessions plus POS billing history, so visits from before this hub was in use are included) ·
               <strong>Confidence</strong> = if patient has Row, % chance they also have Column ·
-              <strong>Lift</strong> = how many times more likely than pure chance (Lift 1 = independent) ·
+              <strong>RR</strong> = how many times more likely the Column service is for patients who use Row,
+              compared with patients who do not — the figure to quote, age-adjusted with 95% CI ·
+              <strong>Lift</strong> = same idea but measured against the clinic-wide rate, so it sits closer to 1 ·
               <strong>φ</strong> = effect size −1 to +1 (the correlation coefficient for two yes/no variables) ·
-              <strong>OR</strong> = odds ratio holding patient type constant (Mantel–Haenszel) with 95% CI ·
+              <strong>OR</strong> = odds ratio, for comparing pairs and adjusting; it multiplies odds, not
+              chances, so for services this common it runs above RR and should not be read as "times more likely" ·
               <strong>q</strong> = p-value after Benjamini–Hochberg correction across the 15 distinct pairs.
               Pairs too sparse for the χ² approximation use Fisher's exact test instead.
             </p>
@@ -638,9 +660,12 @@ export default function PatientDashboardPage() {
                       } else if (sigAffs.length === 0) {
                         plain = `No statistically significant overlap found. ${row.dept} patients use other departments at roughly random rates — coincidence cannot be ruled out.`
                       } else if (topAff.lift >= 2.0) {
-                        plain = `Strong pairing: ${topAff.confidencePct}% of ${row.dept} patients also use ${topAff.target} — ${topAff.lift.toFixed(1)}× more than pure chance would predict. This is a reliable, clinically meaningful co-occurrence. (${topAff.pLabel})`
+                        // Quote the risk ratio, not lift: "x times as likely as a
+                        // patient who does not use this service" is the claim being
+                        // made, and lift's denominator includes the exposed group.
+                        plain = `Strong pairing: ${topAff.confidencePct}% of ${row.dept} patients also use ${topAff.target}${rrPhrase(topAff)}. This is a reliable, clinically meaningful co-occurrence. (${topAff.qLabel || topAff.pLabel})`
                       } else if (topAff.lift >= 1.5) {
-                        plain = `Notable tendency: ${row.dept} patients are ${topAff.lift.toFixed(1)}× more likely to also use ${topAff.target} than chance alone. Worth considering as a cross-referral opportunity. (${topAff.pLabel})`
+                        plain = `Notable tendency: ${row.dept} patients are more likely to also use ${topAff.target}${rrPhrase(topAff)}. Worth considering as a cross-referral opportunity. (${topAff.qLabel || topAff.pLabel})`
                       } else if (topAff.lift >= 1.2) {
                         plain = `Mild tendency toward ${topAff.target} (${topAff.confidencePct}%, Lift ${topAff.lift.toFixed(2)}). The overlap is above chance but modest — not a strong predictor on its own. (${topAff.pLabel})`
                       } else {
@@ -682,6 +707,18 @@ export default function PatientDashboardPage() {
                                 <div className="text-[10px] mt-0.5" style={{ color: liftFg(aff.lift) }}>
                                   φ = {aff.phi >= 0 ? '+' : ''}{aff.phi.toFixed(2)}
                                 </div>
+                                {/* Risk ratio first: it is the one that can be read
+                                    aloud as "x times more likely". */}
+                                {aff.riskRatio != null && (
+                                  <div className="text-[10px] mt-0.5 font-semibold" style={{ color: liftFg(aff.lift) }}>
+                                    {aff.riskRatio.toFixed(2)}× as likely
+                                    {aff.riskCiLow != null && aff.riskCiHigh != null && (
+                                      <span className="font-normal" style={{ color: '#9ca3af' }}>
+                                        {' '}({aff.riskCiLow.toFixed(2)}–{aff.riskCiHigh.toFixed(2)})
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
                                 {/* Age-adjusted odds ratio with CI — the estimate to
                                     read when pediatric and adult patients use
                                     services this differently. */}
