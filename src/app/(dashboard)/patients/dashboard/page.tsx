@@ -605,16 +605,21 @@ export default function PatientDashboardPage() {
                 Pairwise Affinity Matrix
               </p>
               <p className="text-xs mb-3" style={{ color: 'var(--mid-gray)' }}>
-                Row = base service · Each cell = chance that row patient also uses that column service · ✓ = statistically significant after Bonferroni correction
+                Row = base service · Each cell = chance that row patient also uses that column service · ✓ = significant after Benjamini–Hochberg correction across the 15 distinct pairs (q &lt; 0.05)
               </p>
-              {/* Legend */}
-              <div className="flex flex-wrap gap-2 mb-4">
+              {/* Legend. Colour follows LIFT, which is the band the cells have
+                  always been shaded by; the cell also prints a risk ratio, and
+                  the two legitimately differ because lift divides by the rate
+                  across everyone while RR divides by the rate among patients
+                  who do NOT use the row service. Saying so here stops the pair
+                  reading as a contradiction. */}
+              <div className="flex flex-wrap gap-2 mb-1">
                 {[
-                  { label: '↑↑ Strong — over 2× more likely than chance',    bg: '#dcfce7', fg: '#15803d' },
-                  { label: '↑ Moderate — 1.5–2× more likely than chance',    bg: '#d1fae5', fg: '#059669' },
-                  { label: '↗ Slight — 1.2–1.5× more likely than chance',    bg: '#e0f2fe', fg: '#0284c7' },
-                  { label: '→ Neutral — about as expected by chance',         bg: '#f3f4f6', fg: '#6b7280' },
-                  { label: '↓ Weak — less likely together than by chance',    bg: '#fef3c7', fg: '#d97706' },
+                  { label: '↑↑ Strong — lift over 2×',            bg: '#dcfce7', fg: '#15803d' },
+                  { label: '↑ Moderate — lift 1.5–2×',            bg: '#d1fae5', fg: '#059669' },
+                  { label: '↗ Slight — lift 1.2–1.5×',            bg: '#e0f2fe', fg: '#0284c7' },
+                  { label: '→ Neutral — lift about 1',            bg: '#f3f4f6', fg: '#6b7280' },
+                  { label: '↓ Weak — lift under 1 (less together than chance)', bg: '#fef3c7', fg: '#d97706' },
                 ].map((leg) => (
                   <span key={leg.label} className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
                     style={{ background: leg.bg, color: leg.fg }}>
@@ -622,6 +627,11 @@ export default function PatientDashboardPage() {
                   </span>
                 ))}
               </div>
+              <p className="text-[10px] mb-4" style={{ color: 'var(--mid-gray)' }}>
+                Colour follows lift (measured against the clinic-wide rate). The “× as likely” figure
+                beside it is the risk ratio, measured against patients who do <em>not</em> use the row
+                service — so it is normally the larger of the two, and it is the one to quote.
+              </p>
               <div className="overflow-x-auto">
                 <table className="text-xs border-collapse" style={{ width: '100%', tableLayout: 'fixed' }}>
                   <colgroup>
@@ -667,7 +677,7 @@ export default function PatientDashboardPage() {
                       } else if (topAff.lift >= 1.5) {
                         plain = `Notable tendency: ${row.dept} patients are more likely to also use ${topAff.target}${rrPhrase(topAff)}. Worth considering as a cross-referral opportunity. (${topAff.qLabel || topAff.pLabel})`
                       } else if (topAff.lift >= 1.2) {
-                        plain = `Mild tendency toward ${topAff.target} (${topAff.confidencePct}%, Lift ${topAff.lift.toFixed(2)}). The overlap is above chance but modest — not a strong predictor on its own. (${topAff.pLabel})`
+                        plain = `Mild tendency toward ${topAff.target} (${topAff.confidencePct}% of ${row.dept} patients)${rrPhrase(topAff)}. The overlap is above chance but modest — not a strong predictor on its own. (${topAff.qLabel || topAff.pLabel})`
                       } else {
                         plain = `${row.dept} patients use other departments at near-random rates. No meaningful cross-service trend detected.`
                       }
