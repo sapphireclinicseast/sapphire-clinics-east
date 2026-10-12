@@ -1588,6 +1588,19 @@ function DividendDetail({ release, banks, equityAccts, totalCommon, onClose, onC
     setBusy(it.id)
     try { const res = await fetch('/api/equity/dividends', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: r.id, action: 'email', itemId: it.id }) }); if (!res.ok) { alert((await res.json()).error || 'Email failed'); return } await reload() } finally { setBusy('') }
   }
+  const undoOne = async (it: DivItem) => {
+    const last = r.items.length <= 1
+    if (!confirm(last
+      ? `Undo ${it.shareholderName}'s dividend of ${peso(it.amount)}?\n\nIt is the only payout left on this release, so the WHOLE release and its journal entry are removed.`
+      : `Undo ${it.shareholderName}'s dividend of ${peso(it.amount)}?\n\nTheir payout comes off this release and the journal entry is reduced by that amount. The other shareholders' payouts stay.`)) return
+    setBusy(it.id)
+    try {
+      const res = await fetch(`/api/equity/dividends?itemId=${it.id}`, { method: 'DELETE' })
+      if (!res.ok) { alert((await res.json()).error || 'Failed'); return }
+      if (last) { onChanged(); onClose(); return }
+      await reload()
+    } finally { setBusy('') }
+  }
   const inp = 'w-full px-3 py-2 rounded-xl border text-sm'; const bc = { borderColor: 'var(--light-gray)' }; const mg = { color: 'var(--mid-gray)' }; const lbl = 'block text-xs font-semibold mb-1'
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 overflow-y-auto" onClick={onClose}>
@@ -1614,7 +1627,11 @@ function DividendDetail({ release, banks, equityAccts, totalCommon, onClose, onC
                     <td className="px-3 py-1.5 text-right">{it.shares.toLocaleString('en-PH')}</td>
                     <td className="px-3 py-1.5 text-right font-semibold">{peso(it.amount)}</td>
                     <td className="px-3 py-1.5">{it.emailedAt ? <span className="text-[10px]" style={{ color: '#166534' }}>✓ {String(it.emailedAt).slice(0, 10)}</span> : '—'}</td>
-                    <td className="px-3 py-1.5 text-right"><button onClick={() => emailOne(it)} disabled={busy === it.id} className="px-2 py-1 rounded text-[11px] font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>{busy === it.id ? '…' : 'Email'}</button></td>
+                    <td className="px-3 py-1.5 text-right whitespace-nowrap">
+                      <button onClick={() => emailOne(it)} disabled={busy === it.id} className="px-2 py-1 rounded text-[11px] font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>{busy === it.id ? '…' : 'Email'}</button>
+                      <button onClick={() => undoOne(it)} disabled={busy === it.id} title="Undo this shareholder's payout — the release's journal entry is reduced (or the release removed if it was the last payout)"
+                        className="ml-1 p-1 rounded hover:bg-red-50 disabled:opacity-50"><RotateCcw size={12} className="text-red-400" /></button>
+                    </td>
                   </tr>
                 ))}
               </tbody></table>

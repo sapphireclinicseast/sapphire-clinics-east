@@ -126,8 +126,42 @@ export async function PUT(req: Request) {
 export async function DELETE(req: Request) {
   const session = await auth()
   if (!session?.user || !ADMIN.includes(session.user.role as string)) return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-  const id = new URL(req.url).searchParams.get('id') || ''
-  if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
+  const sp = new URL(req.url).searchParams
+  const id = sp.get('id') || ''
+  const itemId = sp.get('itemId') || ''
+  if (!id && !itemId) return NextResponse.json({ error: 'id or itemId required' }, { status: 400 })
+
+  // Undo ONE shareholder's payout from a finalized release. The release's
+  // aggregate journal entry shrinks by that item's amount — and when the last
+  // item goes, the whole release goes with it. (Re-finalizing is blocked for
+  // finalized releases, so the removed payout stays removed.)
+  if (itemId) {
+    const item = await prisma.dividendReleaseItem.findUnique({ where: { id: itemId }, include: { release: { include: { items: { select: { id: true } } } } } })
+    if (!item) return NextResponse.json({ error: 'Payout not found' }, { status: 404 })
+    const rel = item.release
+    await prisma.$transaction(async (tx) => {
+      if (rel.items.length <= 1) {
+        await reverseEquityJournal(tx, 'DIVIDEND_COMMON', rel.id)
+        await tx.dividendRelease.delete({ where: { id: rel.id } }) // items cascade
+        return
+      }
+      const amt = num(item.amount)
+      if (rel.journalEntryId) {
+        const je = await tx.journalEntry.findUnique({ where: { id: rel.journalEntryId }, include: { lines: true } })
+        if (je) {
+          if (je.lines.length !== 2) throw new Error('The release journal entry was modified — undo it manually in the General Journal first.')
+          for (const ln of je.lines) {
+            await tx.journalEntryLine.update({ where: { id: ln.id }, data: num(ln.debit) > 0 ? { debit: Math.max(0, num(ln.debit) - amt) } : { credit: Math.max(0, num(ln.credit) - amt) } })
+          }
+          await tx.journalEntry.update({ where: { id: je.id }, data: { totalAmount: Math.max(0, num(je.totalAmount) - amt) } })
+        }
+      }
+      await tx.dividendReleaseItem.delete({ where: { id: itemId } })
+      await tx.dividendRelease.update({ where: { id: rel.id }, data: { totalAmountPaid: Math.max(0, num(rel.totalAmountPaid) - amt) } })
+    })
+    return NextResponse.json({ success: true, releaseRemoved: rel.items.length <= 1 })
+  }
+
   await prisma.$transaction(async (tx) => {
     await reverseEquityJournal(tx, 'DIVIDEND_COMMON', id)
     await tx.dividendRelease.delete({ where: { id } })
