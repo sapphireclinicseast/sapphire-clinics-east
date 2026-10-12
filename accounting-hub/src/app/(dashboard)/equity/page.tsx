@@ -4,7 +4,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import { useSession } from 'next-auth/react'
 import { useResizableColumns, ResizableColgroup, ColResizeHandle } from '@/components/useResizableColumns'
 import { redirect } from 'next/navigation'
-import { PieChart, Plus, Loader2, X, Eye, Trash2, Pencil } from 'lucide-react'
+import { PieChart, Plus, Loader2, X, Eye, Trash2, Pencil, RotateCcw } from 'lucide-react'
 import { applySortFilter, type SortCol } from '@/components/SortFilterHead'
 
 // Shares bought back or sold on to another holder are shown net, so sorting
@@ -1325,9 +1325,14 @@ function PreferredTab({ banks, equityAccts, assetAccts = [], onChanged, canWrite
           <tbody>
           {loading ? <tr><td colSpan={16} className="text-center py-10 text-gray-400"><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
           : prefRows.map(r => (
-            <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+            <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)', opacity: (r.netShares ?? (r.numberOfShares - r.retiredShares)) <= 1e-9 && r.numberOfShares > 0 ? 0.6 : 1 }}>
               <td className="px-3 py-2 font-mono font-semibold">{r.shNumber}</td>
-              <td className="px-3 py-2">{r.name}</td>
+              <td className="px-3 py-2">{r.name}
+                {(r.netShares ?? (r.numberOfShares - r.retiredShares)) <= 1e-9 && r.numberOfShares > 0 && (
+                  <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap" style={{ background: '#fee2e2', color: '#b91c1c' }}>{(r.soldShares || 0) > 0 ? 'All sold' : 'Retired'}</span>
+                )}
+                {r.viaTransferFrom && <span className="ml-1.5 text-[10px]" style={{ color: 'var(--mid-gray)' }}>via {r.viaTransferFrom}</span>}
+              </td>
               <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{r.shareClass || '—'}</td>
               <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{String(r.dateAcquired).slice(0, 10)}</td>
               <td className="px-3 py-2 text-right">{r.numberOfShares.toLocaleString('en-PH')}</td>
@@ -1634,6 +1639,13 @@ function PreferredDividendSection({ banks, equityAccts }: { banks: Bank[]; equit
   const load = useCallback(async () => { setLoading(true); try { const r = await fetch('/api/equity/dividends-preferred'); setData(r.ok ? await r.json() : null) } catch { setData(null) } finally { setLoading(false) } }, [])
   useEffect(() => { load() }, [load])
   const del = async (r: any) => { if (!confirm(`Delete preferred dividend release ${r.periodLabel || ''}? Its journal entry is reversed.`)) return; await fetch(`/api/equity/dividends-preferred?id=${r.id}`, { method: 'DELETE' }); load() }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const undoItem = async (r: any, c: any) => {
+    if (!confirm(`Undo the ${c.quarterKey} dividend of ${peso(Number(c.paidItem.amount))} paid to ${r.name}?\n\nThe payment comes off its release and the journal entry is reduced — if it was the release's only payment, the whole release and its entry are removed. The cell goes back to unpaid.`)) return
+    const res = await fetch(`/api/equity/dividends-preferred?itemId=${c.paidItem.itemId}`, { method: 'DELETE' })
+    if (!res.ok) { alert((await res.json()).error || 'Failed'); return }
+    load()
+  }
   const releases = data?.releases || []
   const shareholders = data?.shareholders || []
 
@@ -1693,6 +1705,11 @@ function PreferredDividendSection({ banks, equityAccts }: { banks: Bank[]; equit
                       <label className="inline-flex items-center gap-1 justify-end cursor-pointer" title={`${r.name} · ${c.quarterKey}`}>
                         {!c.paid && <input type="checkbox" checked={on} onChange={() => toggle(r.shareholderId, m)} />}
                         <span className="font-mono" style={{ color: c.paid ? '#166534' : 'var(--charcoal)' }}>{Number(c.amount).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{c.paid && ' ✓'}</span>
+                        {c.paid && c.paidItem && (
+                          <button type="button" onClick={(e) => { e.preventDefault(); undoItem(r, c) }}
+                            title="Undo this dividend payment — the release's journal entry is reduced (or reversed when it was the only payment)"
+                            className="p-0.5 rounded hover:bg-red-50"><RotateCcw size={10} className="text-red-400" /></button>
+                        )}
                       </label>
                     </td>
                   )

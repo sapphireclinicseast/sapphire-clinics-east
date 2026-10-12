@@ -111,7 +111,12 @@ export async function POST(req: Request) {
           bankAccountId: null, equityAccountId: share.equityAccountId,
           annualInterest: share.annualInterest, maturityYears: share.maturityYears,
           buybackPrice: share.buybackPrice, payoutSchedule: share.payoutSchedule,
-          payoutStartMonth: share.payoutStartMonth, payoutStartYear: share.payoutStartYear, payoutDay: share.payoutDay,
+          // The buyer CONTINUES the seller's dividend schedule. Write the
+          // seller's effective anchor explicitly (their payout start, else
+          // their acquisition date) so the clock never resets at the transfer.
+          payoutStartMonth: share.payoutStartMonth ?? (share.dateAcquired ? new Date(share.dateAcquired).getUTCMonth() + 1 : null),
+          payoutStartYear: share.payoutStartYear ?? (share.dateAcquired ? new Date(share.dateAcquired).getUTCFullYear() : null),
+          payoutDay: share.payoutDay,
           agreementUrls: proofUrls, createdById: userId,
         } })
         if (isFullSale && share.stockCertNumber) {

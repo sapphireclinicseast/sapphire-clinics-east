@@ -14,44 +14,76 @@ const stepOf = (s: string) => s === 'MONTHLY' ? 1 : s === 'QUARTERLY' ? 3 : s ==
 function qkOf(y: number, m0: number) { const q = Math.floor(m0 / 3) + 1; return { key: `${y}-Q${q}`, label: `Q${q} ${y}` } }
 function qkDate(d: Date) { return qkOf(d.getUTCFullYear(), d.getUTCMonth()) }
 
-interface Period { year: number; month: number; amount: number }
+interface Period { year: number; month: number; amount: number; shares: number }
 
-// Per-shareholder preferred summary: total shares, quarterly dividend (interest/4),
-// the set of quarters the shareholder is due, and a month-by-month projection of
-// scheduled interest (honoring each preferred share's own payout frequency & start).
+// Per-shareholder preferred summary: current net shares, quarterly dividend on
+// them, the quarters each shareholder is due, and a month-by-month projection.
+//
+// TIME-AWARE: interest for a period goes to whoever HELD the shares then. A
+// holding bought from another shareholder continues the seller's schedule —
+// the anchor walks the transfer chain back to the original issuance, the buyer
+// earns only from their acquisition month, and the seller's dated buybacks /
+// transfers stop their accrual from the event month on. A full sale therefore
+// hands the schedule over mid-stream: no reset, no gap, no double-pay.
 async function preferredSummary() {
-  const shares = await prisma.preferredShare.findMany({ include: { shareholder: { select: { name: true, email: true } }, buybacks: { select: { shares: true } }, transfersOut: { select: { shares: true } } } })
+  const shares = await prisma.preferredShare.findMany({ include: {
+    shareholder: { select: { name: true, email: true } },
+    buybacks: { select: { shares: true, date: true } },
+    transfersOut: { select: { shares: true, date: true } },
+    transferIn: { select: { fromPreferredShareId: true } },
+  } })
+  const byId = new Map(shares.map(p => [p.id, p]))
+  type Holding = (typeof shares)[number]
+  const anchorOf = (p: Holding): { y: number; m: number } | null => {
+    let cur: Holding | undefined = p
+    for (let hops = 0; cur && hops < 20; hops++) {
+      if (cur.payoutStartYear && cur.payoutStartMonth) return { y: cur.payoutStartYear, m: cur.payoutStartMonth }
+      const fromId: string | null | undefined = cur.transferIn?.fromPreferredShareId
+      if (!fromId) break
+      cur = byId.get(fromId)
+    }
+    const base = cur || p
+    if (!base.dateAcquired) return null
+    const d = new Date(base.dateAcquired)
+    return { y: d.getUTCFullYear(), m: d.getUTCMonth() + 1 }
+  }
+
   const per = new Map<string, { shareholderId: string; name: string; email: string | null; shares: number; quarterly: number; quarters: Set<string>; periods: Map<string, Period> }>()
   for (const p of shares) {
-    // Interest accrues on NET shares: retired/redeemed shares stop earning, and
-    // transferred shares earn on the buyer's own holding instead.
-    const netShares = Math.max(0, num(p.numberOfShares) - num(p.retiredShares)
+    const price = num(p.pricePerShare), rate = num(p.annualInterest) / 100
+    const curNet = Math.max(0, num(p.numberOfShares) - num(p.retiredShares)
       - p.buybacks.reduce((s, b) => s + num(b.shares), 0)
       - p.transfersOut.reduce((s, t) => s + num(t.shares), 0))
-    if (netShares <= 1e-9) continue
-    const invest = netShares * num(p.pricePerShare)
-    const annual = invest * (num(p.annualInterest) / 100)
-    const quarterly = annual / 4
     const cur = per.get(p.shareholderId) || { shareholderId: p.shareholderId, name: p.shareholder.name, email: p.shareholder.email, shares: 0, quarterly: 0, quarters: new Set<string>(), periods: new Map<string, Period>() }
-    cur.shares += netShares
-    cur.quarterly += quarterly
-    // Projected release schedule from the payout start over the maturity, at the share's
-    // own frequency. If no explicit payout start, fall back to the acquisition date.
-    const startY = p.payoutStartYear || (p.dateAcquired ? new Date(p.dateAcquired).getUTCFullYear() : null)
-    const startM = p.payoutStartMonth || (p.dateAcquired ? new Date(p.dateAcquired).getUTCMonth() + 1 : null)
-    if (startY && startM) {
+    cur.shares += curNet
+    cur.quarterly += curNet * price * rate / 4
+    const anchor = anchorOf(p)
+    if (anchor) {
       const step = stepOf(p.payoutSchedule || 'QUARTERLY')
-      const perAmt = annual * (step / 12)
-      const n = (p.maturityYears || 5) * (12 / step)
-      for (let i = 0; i < n; i++) {
-        const d = new Date(Date.UTC(startY, (startM - 1) + i * step, 1))
+      const nPeriods = (p.maturityYears || 5) * (12 / step)
+      const acqMonth = p.dateAcquired
+        ? Date.UTC(new Date(p.dateAcquired).getUTCFullYear(), new Date(p.dateAcquired).getUTCMonth(), 1)
+        : 0
+      for (let i = 0; i < nPeriods; i++) {
+        const d = new Date(Date.UTC(anchor.y, (anchor.m - 1) + i * step, 1))
+        // Buyer of a transferred holding starts earning at acquisition; the
+        // periods before that belong to the seller's row.
+        if (d.getTime() < acqMonth) continue
+        // Shares still held in this period: dated retirements and sales stop
+        // accrual from their month on (the same month goes to the buyer).
+        const monthEnd = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0, 23, 59, 59))
+        const held = Math.max(0, num(p.numberOfShares) - num(p.retiredShares)
+          - p.buybacks.filter(b => new Date(b.date) <= monthEnd).reduce((s, b) => s + num(b.shares), 0)
+          - p.transfersOut.filter(t => new Date(t.date) <= monthEnd).reduce((s, t) => s + num(t.shares), 0))
+        if (held <= 1e-9) continue
+        const perAmt = held * price * rate * (step / 12)
         cur.quarters.add(qkDate(d).key)
         const y = d.getUTCFullYear(), m = d.getUTCMonth() + 1, key = `${y}-${m}`
         const ex = cur.periods.get(key)
-        cur.periods.set(key, { year: y, month: m, amount: (ex?.amount || 0) + perAmt })
+        cur.periods.set(key, { year: y, month: m, amount: (ex?.amount || 0) + perAmt, shares: (ex?.shares || 0) + held })
       }
     }
-    per.set(p.shareholderId, cur)
+    if (per.has(p.shareholderId) || cur.shares > 1e-9 || cur.periods.size > 0) per.set(p.shareholderId, cur)
   }
   return per
 }
@@ -68,7 +100,16 @@ export async function GET() {
   const dueBy = new Map<string, Set<string>>()
   for (const h of per.values()) for (const q of h.quarters) { if (!dueBy.has(q)) dueBy.set(q, new Set()); dueBy.get(q)!.add(h.shareholderId) }
   const paidBy = new Map<string, Set<string>>()
-  for (const r of releases) { const q = r.quarterKey; if (!paidBy.has(q)) paidBy.set(q, new Set()); for (const it of r.items) if (it.paidDate) paidBy.get(q)!.add(it.shareholderId) }
+  const paidItemBy = new Map<string, { releaseId: string; itemId: string; amount: number }>()
+  for (const r of releases) {
+    const q = r.quarterKey
+    if (!paidBy.has(q)) paidBy.set(q, new Set())
+    for (const it of r.items) if (it.paidDate) {
+      paidBy.get(q)!.add(it.shareholderId)
+      const k = `${it.shareholderId}|${q}`
+      if (!paidItemBy.has(k)) paidItemBy.set(k, { releaseId: r.id, itemId: it.id, amount: num(it.amount) })
+    }
+  }
   const quarterKeys = [...new Set([...dueBy.keys(), ...paidBy.keys()])].sort()
   const matrix = quarterKeys.map(q => {
     const [y, qq] = q.split('-Q')
@@ -80,9 +121,10 @@ export async function GET() {
   const shareholders = [...per.values()].map(h => ({
     shareholderId: h.shareholderId, name: h.name, email: h.email, shares: h.shares, quarterly: Math.round(h.quarterly * 100) / 100,
     periods: [...h.periods.values()].map(pp => ({
-      year: pp.year, month: pp.month, amount: Math.round(pp.amount * 100) / 100,
+      year: pp.year, month: pp.month, amount: Math.round(pp.amount * 100) / 100, shares: pp.shares,
       quarterKey: qkOf(pp.year, pp.month - 1).key,
       paid: paidBy.get(qkOf(pp.year, pp.month - 1).key)?.has(h.shareholderId) || false,
+      paidItem: paidItemBy.get(`${h.shareholderId}|${qkOf(pp.year, pp.month - 1).key}`) || null,
     })),
   }))
 
@@ -104,17 +146,23 @@ export async function POST(req: Request) {
     // Per-shareholder amount overrides (for recording past quarters whose amounts
     // may differ from today's computed quarterly). Falls back to the computed value.
     const amounts: Record<string, unknown> = (b.amounts && typeof b.amounts === 'object') ? b.amounts : {}
-    const items = ids.map(id => per.get(id)).filter(Boolean).map(h => {
-      const ov = amounts[h!.shareholderId]
-      const amount = (ov != null && ov !== '' && !isNaN(Number(ov))) ? Math.round(Number(ov) * 100) / 100 : Math.round(h!.quarterly * 100) / 100
-      return { shareholderId: h!.shareholderId, shareholderName: h!.name, shares: h!.shares, amount, paidDate: date }
-    })
-    if (items.length === 0) return NextResponse.json({ error: 'No matching preferred shareholders' }, { status: 400 })
-    const total = items.reduce((s, i) => s + i.amount, 0)
     // Explicit quarter (from the picker) wins; otherwise derive from the payout date.
     const derived = qkDate(date)
     const key = typeof b.quarterKey === 'string' && b.quarterKey ? b.quarterKey : derived.key
     const label = typeof b.periodLabel === 'string' && b.periodLabel ? b.periodLabel : derived.label
+    const items = ids.map(id => per.get(id)).filter(Boolean).map(h => {
+      // Default to what THIS quarter owes this shareholder (time-aware — a
+      // seller's catch-up quarter still prices at the shares they held then),
+      // falling back to the current quarterly figure.
+      const qPeriods = [...h!.periods.values()].filter(pp => qkOf(pp.year, pp.month - 1).key === key)
+      const qAmount = qPeriods.reduce((s, pp) => s + pp.amount, 0)
+      const qShares = qPeriods.reduce((s, pp) => s + pp.shares, 0)
+      const ov = amounts[h!.shareholderId]
+      const amount = (ov != null && ov !== '' && !isNaN(Number(ov))) ? Math.round(Number(ov) * 100) / 100 : Math.round((qAmount > 0 ? qAmount : h!.quarterly) * 100) / 100
+      return { shareholderId: h!.shareholderId, shareholderName: h!.name, shares: qShares > 0 ? qShares : h!.shares, amount, paidDate: date }
+    })
+    if (items.length === 0) return NextResponse.json({ error: 'No matching preferred shareholders' }, { status: 400 })
+    const total = items.reduce((s, i) => s + i.amount, 0)
     const created = await prisma.$transaction(async (tx) => {
       const rel = await tx.preferredDividendRelease.create({ data: {
         date, quarterKey: key, periodLabel: label, bankAccountId: b.bankAccountId || null, expenseAccountId: b.expenseAccountId || null,
@@ -176,8 +224,41 @@ export async function PUT(req: Request) {
 export async function DELETE(req: Request) {
   const session = await auth()
   if (!session?.user || !ROLES.includes(session.user.role as string)) return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-  const id = new URL(req.url).searchParams.get('id') || ''
-  if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
+  const sp = new URL(req.url).searchParams
+  const id = sp.get('id') || ''
+  const itemId = sp.get('itemId') || ''
+  if (!id && !itemId) return NextResponse.json({ error: 'id or itemId required' }, { status: 400 })
+
+  // Undo ONE shareholder's payment out of a release (a green matrix cell).
+  // The release's aggregate journal entry shrinks by that item's amount —
+  // and when the last item goes, the whole release goes with it.
+  if (itemId) {
+    const item = await prisma.preferredDividendItem.findUnique({ where: { id: itemId }, include: { release: { include: { items: { select: { id: true } } } } } })
+    if (!item) return NextResponse.json({ error: 'Payment not found' }, { status: 404 })
+    const rel = item.release
+    await prisma.$transaction(async (tx) => {
+      if (rel.items.length <= 1) {
+        await reverseEquityJournal(tx, 'DIVIDEND_PREFERRED', rel.id)
+        await tx.preferredDividendRelease.delete({ where: { id: rel.id } }) // items cascade
+        return
+      }
+      const amt = num(item.amount)
+      if (rel.journalEntryId) {
+        const je = await tx.journalEntry.findUnique({ where: { id: rel.journalEntryId }, include: { lines: true } })
+        if (je) {
+          if (je.lines.length !== 2) throw new Error('The release journal entry was modified — undo it manually in the General Journal first.')
+          for (const ln of je.lines) {
+            await tx.journalEntryLine.update({ where: { id: ln.id }, data: num(ln.debit) > 0 ? { debit: Math.max(0, num(ln.debit) - amt) } : { credit: Math.max(0, num(ln.credit) - amt) } })
+          }
+          await tx.journalEntry.update({ where: { id: je.id }, data: { totalAmount: Math.max(0, num(je.totalAmount) - amt) } })
+        }
+      }
+      await tx.preferredDividendItem.delete({ where: { id: itemId } })
+      await tx.preferredDividendRelease.update({ where: { id: rel.id }, data: { totalAmountPaid: Math.max(0, num(rel.totalAmountPaid) - amt) } })
+    })
+    return NextResponse.json({ success: true })
+  }
+
   await prisma.$transaction(async (tx) => {
     await reverseEquityJournal(tx, 'DIVIDEND_PREFERRED', id)
     await tx.preferredDividendRelease.delete({ where: { id } }) // items cascade
