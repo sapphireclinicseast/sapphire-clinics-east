@@ -293,14 +293,51 @@ jobs:
           command_timeout: 30m
           script_path: scripts/deploy/rebuild-marketing-hub.sh
 
-      # Second attempt, only when the first did not succeed. The failure this
-      # exists for is `dial tcp :22 i/o timeout` -- the runner never reaches
-      # the host, so nothing has run and re-running is safe. The script is
-      # idempotent in any case: it rebuilds the image and recreates the
-      # container from source already on the VPS.
+      # Wait out the firewall before retrying. The VPS carries a ufw `limit`
+      # rule on port 22, which DROPS (not refuses) connections from an IP that
+      # has opened 6 or more in the preceding 30 seconds -- which is why the
+      # client sees a timeout rather than a refusal. This workflow opens well
+      # over a dozen SSH sessions from one runner IP, so the budget is usually
+      # spent by the time it reaches this step.
+      #
+      # The first version of this retry fired immediately and failed
+      # identically 30s later (run 38133767199): still inside the window, and
+      # the retry attempt itself counted against it. 75s clears a 30s window
+      # with room for the drop to age out.
+      - name: Wait out the SSH rate limit before retrying
+        if: steps.mh_rebuild.outcome == 'failure'
+        run: |
+          echo "Rebuild step could not reach the VPS — most likely the ufw"
+          echo "rate limit on port 22. Waiting 75s for the window to clear."
+          sleep 75
+
+      # Second attempt. The failure this exists for is `dial tcp :22 i/o
+      # timeout` -- the runner never reaches the host, so nothing has run and
+      # re-running is safe. The script is idempotent in any case: it rebuilds
+      # the image and recreates the container from source already on the VPS.
       - name: Rebuild & Restart Marketing Hub (retry)
         if: steps.mh_rebuild.outcome == 'failure'
         id: mh_rebuild_retry
+        continue-on-error: true
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          command_timeout: 30m
+          script_path: scripts/deploy/rebuild-marketing-hub.sh
+
+      # Third and last attempt, after a longer wait. Two consecutive failures
+      # mean the window did not clear, so back off further rather than burn
+      # the attempt. If this one fails too, the verify step near the end of
+      # the job fails the run.
+      - name: Wait longer before the final rebuild attempt
+        if: steps.mh_rebuild.outcome == 'failure' && steps.mh_rebuild_retry.outcome == 'failure'
+        run: sleep 150
+
+      - name: Rebuild & Restart Marketing Hub (final attempt)
+        if: steps.mh_rebuild.outcome == 'failure' && steps.mh_rebuild_retry.outcome == 'failure'
+        id: mh_rebuild_final
         continue-on-error: true
         uses: appleboy/ssh-action@v1
         with:
