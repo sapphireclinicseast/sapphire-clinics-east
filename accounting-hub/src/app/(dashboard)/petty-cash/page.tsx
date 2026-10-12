@@ -7,7 +7,7 @@ import { AccountPicker, type PickableAccount } from '@/components/AccountPicker'
 import { useFocusTarget } from '@/lib/use-focus-target'
 import { useSession } from 'next-auth/react'
 import { userBranchScope, canViewPettyCashCeoVerdana, PETTY_CASH_VIEW_ONLY_BRANCHES } from '@/lib/branch-scope'
-import { Plus, Settings, Loader2, Trash2, X, Maximize2, Minimize2, Download, Upload, FileDown, FileText, CheckCircle2, Paperclip, Eye, Pencil } from 'lucide-react'
+import { Plus, Settings, Loader2, Trash2, X, Maximize2, Minimize2, Download, Upload, FileDown, FileText, CheckCircle2, Paperclip, Eye, Pencil, RotateCcw } from 'lucide-react'
 import { SortFilterHead, applySortFilter } from '@/components/SortFilterHead'
 import { useResizableColumns, ResizableColgroup, ColResizeHandle } from '@/components/useResizableColumns'
 import { assetClassFromAccountTitle, ASSET_CLASSIFICATION_LABELS, isDepreciatingClassification, inventoryClassFromAccountTitle, INVENTORY_CLASSIFICATION_LABELS } from '@/lib/asset-classification'
@@ -602,6 +602,19 @@ function PettyCashInner() {
     const cur = proofsOf(e); const next = [...cur, url]
     entriesRef.current = entriesRef.current.map(x => x.id === id ? { ...x, proofUrls: next, proofUrl: next[0] } : x)
     saveField(id, { proofUrls: next, proofUrl: next[0] }, false)
+  }
+
+  // Undo a replenishment from the entry's own row: the RFP that paid this
+  // batch flips back to unpaid and EVERY entry in it returns to "For
+  // Replenishment" — payment is recorded per RFP, so the undo is per RFP too.
+  const undoReplenishment = async (e: Entry) => {
+    if (!e.reimbursementId) return
+    if (!confirm(`Undo the replenishment that paid ${refOf(e)}?\n\nThe whole replenishment RFP goes back to UNPAID and every entry it covers returns to "For Replenishment" (payment is recorded per RFP, not per entry). Re-record the payment from Expenses → RFP when ready.`)) return
+    try {
+      const r = await fetch('/api/petty-cash/reimbursements', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: e.reimbursementId, action: 'unpay' }) })
+      if (!r.ok) { alert((await r.json()).error || 'Failed'); return }
+      await loadEntries(branch)
+    } catch { /* ignore */ }
   }
 
   const deleteRow = async (id: string) => {
@@ -1352,12 +1365,23 @@ function PettyCashInner() {
                                 </button>
                               )}
                             </div>
-                          ) : e.finalized ? (
-                            // Locked (in an RFP): keep the finalized ✓ visible as a read-only state.
-                            <span title="Finalized · locked (in an RFP)" className="inline-flex p-1">
-                              <CheckCircle2 size={14} style={{ color: '#16a34a' }} />
-                            </span>
-                          ) : null}
+                          ) : (
+                            <div className="flex items-center justify-center gap-0.5 whitespace-nowrap">
+                              {e.finalized && (
+                                // Locked (in an RFP): keep the finalized ✓ visible as a read-only state.
+                                <span title="Finalized · locked (in an RFP)" className="inline-flex p-1">
+                                  <CheckCircle2 size={14} style={{ color: '#16a34a' }} />
+                                </span>
+                              )}
+                              {canWrite && e.pcfStatus === 'Replenished' && e.reimbursementId && (
+                                <button onClick={() => undoReplenishment(e)}
+                                  title="Undo replenishment — the RFP that paid this batch goes back to unpaid and all its entries return to For Replenishment"
+                                  className="p-1 rounded hover:bg-red-50">
+                                  <RotateCcw size={13} style={{ color: '#b91c1c' }} />
+                                </button>
+                              )}
+                            </div>
+                          )}
                         </td>
                       </tr>
                     )
