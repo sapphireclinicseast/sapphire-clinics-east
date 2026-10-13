@@ -8977,6 +8977,15 @@ interface SettlementRow {
   bankAmount?: number | null
 }
 
+interface BdoMatchResult {
+  error?: string
+  dryRun?: boolean
+  summary?: { candidateDeposits: number; matched: number; matchedAmount: number; unmatchedDeposits: number; unmatchedCashDays: number; applied: number }
+  matches?: { depositId: string; depositDate: string; depositAmount: number; coveredDays: string[]; matchedAmount: number; paymentCount: number }[]
+  unmatchedDeposits?: { id: string; date: string; amount: number; description: string }[]
+  unmatchedCashDays?: { date: string; cash: number }[]
+}
+
 function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSelectBranch: boolean }) {
   // Always default to a specific branch — Sales Checking is per-branch only
   const [selectedBranch, setSelectedBranch] = useState(canSelectBranch ? 'SANDBOX_EAST' : branch)
@@ -9003,6 +9012,9 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
   // Which OK ticks bank rec set for us: { date: { method: true } }
   const [autoConfirmed, setAutoConfirmed] = useState<Record<string, Record<string, boolean>>>({})
   const [autoTagging, setAutoTagging] = useState(false)
+  const [bdoMatching, setBdoMatching] = useState(false)
+  const [bdoApplying, setBdoApplying] = useState(false)
+  const [bdoPreview, setBdoPreview] = useState<BdoMatchResult | null>(null)
   const [autoResult, setAutoResult] = useState<string | null>(null)
   const [remarks, setRemarks] = useState<Record<string, Record<string, string>>>({}) // { date: { method: remark } }
   // cleared days: { "YYYY-MM-DD|branch": true }
@@ -9408,6 +9420,24 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
     }
   }
 
+  const runBdoMatch = async (dryRun: boolean) => {
+    const br = selectedBranch || branch
+    if (!br) return
+    if (dryRun) setBdoMatching(true); else setBdoApplying(true)
+    try {
+      const res = await fetch('/api/bank-rec/bdo-cash-match', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ branch: br, dateFrom, dateTo, dryRun }),
+      })
+      const d = await res.json()
+      if (!res.ok) { setBdoPreview({ error: d.error || `Failed (${res.status})` }); return }
+      setBdoPreview(d)
+      if (!dryRun) await fetchClearing()
+    } catch (e) {
+      setBdoPreview({ error: e instanceof Error ? e.message : 'Network error' })
+    } finally { setBdoMatching(false); setBdoApplying(false) }
+  }
+
   // Calendar: days that have sales data
   const daysWithSales = new Set(Array.from(byDate.keys()))
 
@@ -9488,9 +9518,71 @@ function SalesCheckingPanel({ branch, canSelectBranch }: { branch: string; canSe
           {autoTagging ? <Loader2 size={13} className="animate-spin" /> : <Wand2 size={13} />}
           {autoTagging ? 'Tagging…' : 'Auto-tag from bank rec'}
         </button>
+        <button onClick={() => runBdoMatch(true)} disabled={bdoMatching}
+          title="Preview matching BDO cash deposits to the day(s) of cash sales they cover — a dry run that writes nothing"
+          className="px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 border"
+          style={{ borderColor: 'var(--teal)', color: 'var(--teal)', opacity: bdoMatching ? 0.6 : 1 }}>
+          {bdoMatching ? <Loader2 size={13} className="animate-spin" /> : <Wand2 size={13} />}
+          {bdoMatching ? 'Matching…' : 'Match BDO cash (preview)'}
+        </button>
       </div>
       {autoResult && (
         <p className="text-xs -mt-2" style={{ color: 'var(--deep-teal)' }}>{autoResult}</p>
+      )}
+
+      {bdoPreview && (
+        <div className="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4" onClick={() => setBdoPreview(null)}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-2xl max-h-[85vh] overflow-y-auto shadow-xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>Match BDO cash deposits</h3>
+              <button onClick={() => setBdoPreview(null)}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button>
+            </div>
+            {bdoPreview.error ? (
+              <p className="text-sm" style={{ color: '#dc2626' }}>{bdoPreview.error}</p>
+            ) : (<>
+              <p className="text-xs mb-3" style={{ color: 'var(--mid-gray)' }}>
+                {bdoPreview.dryRun ? 'Dry run — nothing written yet. ' : bdoPreview.summary?.applied ? `Applied ${bdoPreview.summary.applied} match(es). ` : ''}
+                Matches each BDO cash deposit to the contiguous run of days whose POS cash sales sum to it (deposits lag sales 0–6 days). Applying links the cash so those days clear.
+              </p>
+              <div className="grid grid-cols-3 gap-2 mb-3 text-center">
+                <div className="rounded-xl border p-2" style={{ borderColor: 'var(--light-gray)' }}><p className="text-[10px] uppercase" style={{ color: 'var(--mid-gray)' }}>Matched</p><p className="text-lg font-bold" style={{ color: 'var(--teal)' }}>{bdoPreview.summary?.matched ?? 0}</p></div>
+                <div className="rounded-xl border p-2" style={{ borderColor: 'var(--light-gray)' }}><p className="text-[10px] uppercase" style={{ color: 'var(--mid-gray)' }}>Matched ₱</p><p className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>{(bdoPreview.summary?.matchedAmount ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</p></div>
+                <div className="rounded-xl border p-2" style={{ borderColor: 'var(--light-gray)' }}><p className="text-[10px] uppercase" style={{ color: 'var(--mid-gray)' }}>Deposits left</p><p className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>{bdoPreview.summary?.unmatchedDeposits ?? 0}</p></div>
+              </div>
+              {(bdoPreview.matches?.length ?? 0) > 0 && (
+                <div className="mb-3">
+                  <p className="text-xs font-bold mb-1" style={{ color: 'var(--charcoal)' }}>Proposed matches</p>
+                  <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+                    <table className="w-full text-xs">
+                      <thead><tr style={{ background: 'var(--off-white)' }}><th className="text-left px-3 py-1.5">Deposit date</th><th className="text-right px-3 py-1.5">Amount</th><th className="text-left px-3 py-1.5">Covers days</th><th className="text-right px-3 py-1.5">Pmts</th></tr></thead>
+                      <tbody>
+                        {bdoPreview.matches!.map(m => (
+                          <tr key={m.depositId} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                            <td className="px-3 py-1.5" style={{ color: 'var(--charcoal)' }}>{m.depositDate}</td>
+                            <td className="px-3 py-1.5 text-right tabular-nums">₱{m.depositAmount.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
+                            <td className="px-3 py-1.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{m.coveredDays.length === 1 ? m.coveredDays[0] : `${m.coveredDays[0]} → ${m.coveredDays[m.coveredDays.length - 1]} (${m.coveredDays.length}d)`}</td>
+                            <td className="px-3 py-1.5 text-right">{m.paymentCount}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+              {(bdoPreview.unmatchedDeposits?.length ?? 0) > 0 && (
+                <p className="text-[11px] mb-3" style={{ color: 'var(--mid-gray)' }}><strong>{bdoPreview.unmatchedDeposits!.length}</strong> deposit(s) left unmatched (no day-run sums to them — review manually): {bdoPreview.unmatchedDeposits!.slice(0, 8).map(d => `${d.date} ₱${d.amount.toLocaleString('en-PH')}`).join(', ')}{bdoPreview.unmatchedDeposits!.length > 8 ? '…' : ''}</p>
+              )}
+              {bdoPreview.dryRun && (bdoPreview.matches?.length ?? 0) > 0 && (
+                <div className="flex justify-end gap-2">
+                  <button onClick={() => setBdoPreview(null)} className="px-4 py-2 rounded-lg text-sm border" style={{ borderColor: 'var(--light-gray)' }}>Close</button>
+                  <button onClick={() => runBdoMatch(false)} disabled={bdoApplying} className="px-4 py-2 rounded-lg text-sm text-white font-semibold disabled:opacity-50 flex items-center gap-2" style={{ background: 'var(--teal)' }}>
+                    {bdoApplying && <Loader2 size={14} className="animate-spin" />} Apply {bdoPreview.summary?.matched} match{bdoPreview.summary?.matched === 1 ? '' : 'es'}
+                  </button>
+                </div>
+              )}
+            </>)}
+          </div>
+        </div>
       )}
 
       {/* Clearing Summary calendar — mirrors the applied from–to range exactly */}
