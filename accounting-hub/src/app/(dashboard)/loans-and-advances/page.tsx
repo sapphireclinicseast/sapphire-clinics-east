@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
-import { Landmark, Plus, Loader2, X, Eye, Trash2, Pencil } from 'lucide-react'
+import { Landmark, Plus, Loader2, X, Eye, Trash2, Pencil, RotateCcw } from 'lucide-react'
 import { ScanUpload } from '@/components/ScanUpload'
 import { useResizableColumns, ResizableColgroup, ColResizeHandle } from '@/components/useResizableColumns'
 import StaffLoansTab from './StaffLoansTab'
@@ -54,6 +54,12 @@ export default function LoansAndAdvancesPage() {
   }
 
   const del = async (r: AdvanceRow) => { if (!confirm(`Delete advance from ${r.name}? Its journal entry is reversed.`)) return; await fetch(`/api/loans/advances?id=${r.id}`, { method: 'DELETE' }); load() }
+  const unrelease = async (r: AdvanceRow) => {
+    if (!confirm(`Undo the release of ${r.name}'s advance?\n\nThe disbursement entry (DR bank / CR liability) is reversed and "Bank Account Debited" resets to Not recorded. The advance, its schedule, charges and any recorded payments stay. To re-record the release, edit the advance and pick the bank again.`)) return
+    const res = await fetch('/api/loans/advances', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: r.id, action: 'unrelease' }) })
+    if (!res.ok) { alert((await res.json()).error || 'Failed'); return }
+    load()
+  }
   const acctLabel = (id: string | null) => { const a = accts.find(x => x.id === id) || banks.find(x => x.id === id); return a ? `${a.accountNumber} ${a.accountTitle}` : '—' }
 
   return (
@@ -101,6 +107,10 @@ export default function LoansAndAdvancesPage() {
                       <td className="px-3 py-2"><span className="inline-flex gap-1.5">{(r.proofOfDepositUrls || []).map((u) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--teal)' }}><Eye size={12} /></a>)}</span></td>
                       <td className="px-3 py-2 text-right whitespace-nowrap">
                         <button onClick={() => setEdit(r)} className="p-1 rounded hover:bg-blue-50"><Pencil size={13} className="text-blue-500" /></button>
+                        {r.bankAccountId && (
+                          <button onClick={() => unrelease(r)} title="Undo the release — reverses the disbursement entry only; the advance and its payments stay"
+                            className="p-1 rounded hover:bg-red-50"><RotateCcw size={13} className="text-red-400" /></button>
+                        )}
                         <button onClick={() => del(r)} className="p-1 rounded hover:bg-red-50"><Trash2 size={13} className="text-red-400" /></button>
                       </td>
                     </tr>
@@ -407,6 +417,12 @@ function LoansTab({ shareholders, banks, accts }: { shareholders: SH[]; banks: B
   const load = useCallback(async () => { setLoading(true); try { const r = await fetch('/api/loans/loans'); const j = r.ok ? await r.json() : null; setRows(j?.rows || []) } catch { setRows([]) } finally { setLoading(false) } }, [])
   useEffect(() => { load() }, [load])
   const del = async (r: LoanRow) => { if (!confirm(`Delete loan from ${r.name}? Its journal entry is reversed.`)) return; await fetch(`/api/loans/loans?id=${r.id}`, { method: 'DELETE' }); load() }
+  const unrelease = async (r: LoanRow) => {
+    if (!confirm(`Undo the release of ${r.name}'s loan?\n\nThe disbursement entry (DR bank / CR liability) is reversed and "Bank Account Debited" resets to Not recorded. The loan, its schedule, charges and any recorded payments stay. To re-record the release, edit the loan and pick the bank again.`)) return
+    const res = await fetch('/api/loans/loans', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: r.id, action: 'unrelease' }) })
+    if (!res.ok) { alert((await res.json()).error || 'Failed'); return }
+    load()
+  }
   const acctLabel = (id: string | null) => { const a = accts.find(x => x.id === id) || banks.find(x => x.id === id); return a ? `${a.accountNumber} ${a.accountTitle}` : '—' }
   const entityLabel = (r: LoanRow) => r.loanEntity === 'SHAREHOLDER' ? 'Shareholder' : r.loanEntity === 'BANK' ? 'Bank' : r.loanEntity === 'INDIVIDUAL' ? 'Individual' : 'Other'
   return (
@@ -432,7 +448,7 @@ function LoansTab({ shareholders, banks, accts }: { shareholders: SH[]; banks: B
               <td className="px-3 py-2">{r.loanType === 'CORPORATE_BOND' ? (r.maturityDate ? `matures ${String(r.maturityDate).slice(0, 10)}` : '—') : r.payoutSchedule ? `${r.payoutSchedule.toLowerCase()}${r.payoutStartMonth ? ` from ${MONTHS[r.payoutStartMonth - 1]} ${r.payoutStartYear}` : ''}` : '—'}</td>
               <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{acctLabel(r.bankAccountId)}</td>
               <td className="px-3 py-2"><span className="inline-flex gap-1.5">{(r.loanAgreementUrls || []).map((u) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--teal)' }}><Eye size={12} /></a>)}{(!r.loanAgreementUrls || r.loanAgreementUrls.length === 0) && <span style={{ color: 'var(--mid-gray)' }}>—</span>}</span></td>
-              <td className="px-3 py-2 text-right whitespace-nowrap"><button onClick={() => setEdit(r)} className="p-1 rounded hover:bg-blue-50"><Pencil size={13} className="text-blue-500" /></button><button onClick={() => del(r)} className="p-1 rounded hover:bg-red-50"><Trash2 size={13} className="text-red-400" /></button></td>
+              <td className="px-3 py-2 text-right whitespace-nowrap"><button onClick={() => setEdit(r)} className="p-1 rounded hover:bg-blue-50"><Pencil size={13} className="text-blue-500" /></button>{r.bankAccountId && <button onClick={() => unrelease(r)} title="Undo the release — reverses the disbursement entry only; the loan and its payments stay" className="p-1 rounded hover:bg-red-50"><RotateCcw size={13} className="text-red-400" /></button>}<button onClick={() => del(r)} className="p-1 rounded hover:bg-red-50"><Trash2 size={13} className="text-red-400" /></button></td>
             </tr>
           ))}
           {!loading && rows.length === 0 && <tr><td colSpan={12} className="text-center py-10 text-gray-400">No loans yet.</td></tr>}

@@ -155,6 +155,30 @@ export async function PUT(req: Request) {
   }
 }
 
+// PATCH { id, action: 'unrelease' } — reverse the release (disbursement)
+// entry but KEEP the advance, its schedule, charges, and any recorded
+// payments. "Bank Account Debited" resets to Not recorded; editing the
+// advance and picking a bank again re-posts the release.
+export async function PATCH(req: Request) {
+  const session = await auth()
+  if (!session?.user || !ROLES.includes(session.user.role as string)) return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
+  try {
+    const b = await req.json()
+    if (!b.id) return NextResponse.json({ error: 'id required' }, { status: 400 })
+    if (b.action !== 'unrelease') return NextResponse.json({ error: 'Unknown action' }, { status: 400 })
+    const row = await prisma.advance.findUnique({ where: { id: b.id }, select: { id: true } })
+    if (!row) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    await prisma.$transaction(async (tx) => {
+      await tx.journalEntry.deleteMany({ where: { referenceType: 'ADVANCE', referenceId: b.id } })
+      await tx.advance.update({ where: { id: b.id }, data: { journalEntryId: null, bankAccountId: null } })
+    })
+    return NextResponse.json({ success: true })
+  } catch (e) {
+    console.error('Advance unrelease error:', e)
+    return NextResponse.json({ error: e instanceof Error ? e.message : 'Failed' }, { status: 500 })
+  }
+}
+
 export async function DELETE(req: Request) {
   const session = await auth()
   if (!session?.user || !ROLES.includes(session.user.role as string)) return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
