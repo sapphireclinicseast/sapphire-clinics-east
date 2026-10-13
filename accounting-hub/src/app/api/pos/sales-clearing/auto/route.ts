@@ -205,11 +205,21 @@ export async function POST(req: Request) {
           : `${AUTO_PREFIX} ${m.settledPayments} of ${m.payments} payment(s) settled (₱${m.settledGross.toLocaleString('en-PH', { minimumFractionDigits: 2 })} of ₱${m.system.toLocaleString('en-PH', { minimumFractionDigits: 2 })}) — rest not yet tagged in bank rec`
 
         if (!cellFree) {
-          // Keep the accountant's figure and note; still record what bank rec knows.
+          // Keep the accountant's typed figure and note — but when bank rec now
+          // FULLY accounts for this method (every payment linked to a reconciled
+          // line), the tick is genuinely bank-reconciled: stamp source BANK_REC
+          // rather than leaving a stale manual (USER) tick. A partially-settled
+          // method keeps whatever the accountant had.
           amounts.push({ method: m.method, amount: priorAmt! })
           if (priorRemark) remarks.push({ method: m.method, remarks: priorRemark })
-          if (priorConf) confirmed.push({ method: m.method, confirmed: !!priorConf.confirmed, source: priorConf.source || 'USER' })
-          skipped.push(m.method)
+          if (m.full) {
+            confirmed.push({ method: m.method, confirmed: true, source: 'BANK_REC' })
+            applied.push({ method: m.method, amount: priorAmt!, confirmed: true, note })
+            tagged++
+          } else {
+            if (priorConf) confirmed.push({ method: m.method, confirmed: !!priorConf.confirmed, source: priorConf.source || 'USER' })
+            skipped.push(m.method)
+          }
           continue
         }
         amounts.push({ method: m.method, amount: m.settledNet })
