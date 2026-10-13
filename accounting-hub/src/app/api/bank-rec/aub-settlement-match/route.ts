@@ -27,8 +27,65 @@ const bankingDays = (a: Date, b: Date) => {
   return n
 }
 
-type Pay = { id: string; gross: number; net: number }
-type Line = { id: string; date: Date; received: number; acctId: string; claimed: boolean }
+type Pay = { id: string; gross: number; net: number; netCents: number }
+type Line = { id: string; date: Date; received: number; recvCents: number; acctId: string; claimed: boolean }
+
+// 0/1-knapsack reachability over payment net-cents: return a subset of `items`
+// whose net-cents sum to `target` (±tolCents), or null. Parent-pointer DP keeps
+// memory light; a cap bails out on pathological fan-out (treated as "no exact
+// partition", so the day is left unmatched rather than mis-linked).
+function subsetSumCents(items: { idx: number; cents: number }[], target: number, tolCents: number): number[] | null {
+  if (target < -tolCents) return null
+  const reach = new Map<number, { prev: number; idx: number } | null>([[0, null]])
+  for (const it of items) {
+    for (const s of [...reach.keys()]) {
+      const ns = s + it.cents
+      if (ns > target + tolCents) continue
+      if (!reach.has(ns)) reach.set(ns, { prev: s, idx: it.idx })
+    }
+    if (reach.size > 300_000) return null
+  }
+  let hit: number | null = null
+  for (let d = 0; d <= tolCents && hit === null; d++) {
+    if (reach.has(target + d)) hit = target + d
+    else if (target - d >= 0 && reach.has(target - d)) hit = target - d
+  }
+  if (hit === null) return null
+  const out: number[] = []
+  let cur = hit
+  while (cur !== 0) {
+    const node = reach.get(cur)
+    if (!node) break
+    out.push(node.idx)
+    cur = node.prev
+  }
+  return out
+}
+
+// Partition `pays` exactly across line targets (net-cents): each line gets a
+// disjoint subset summing to its received (±tolCents), every payment used.
+// Returns per-target payment-index lists, or null if no exact partition exists.
+function partitionExact(pays: Pay[], targets: number[], tolCents: number): number[][] | null {
+  // Hardest (largest) target first; fewer ways to overshoot.
+  const order = targets.map((t, i) => ({ t, i })).sort((a, b) => b.t - a.t)
+  const remaining = pays.map((p, idx) => ({ idx, cents: p.netCents }))
+  const result: number[][] = targets.map(() => [])
+  for (let k = 0; k < order.length; k++) {
+    const { t, i } = order[k]
+    if (k === order.length - 1) {
+      // Last line takes the remainder — but only if it actually sums to its target.
+      const rest = remaining.reduce((s, r) => s + r.cents, 0)
+      if (Math.abs(rest - t) > tolCents) return null
+      result[i] = remaining.map(r => r.idx); break
+    }
+    const subsetLocal = subsetSumCents(remaining, t, tolCents)
+    if (!subsetLocal) return null
+    const pick = new Set(subsetLocal)
+    result[i] = [...pick]
+    for (let j = remaining.length - 1; j >= 0; j--) if (pick.has(remaining[j].idx)) remaining.splice(j, 1)
+  }
+  return result
+}
 
 // Match AUB terminal settlement deposits to the POS card/QR takings they settle,
 // so Sales Checking's "Bank reconciled?" ticks turn on. One sale-day × channel
@@ -99,7 +156,7 @@ export async function POST(req: Request) {
       where: { bankTransactionId: { in: rawLines.map(l => l.id) } }, select: { bankTransactionId: true },
     })).map(b => b.bankTransactionId))
     const lines: Line[] = rawLines.filter(l => !alreadyBatched.has(l.id))
-      .map(l => ({ id: l.id, date: l.date, received: round2(Number(l.received)), acctId: l.bankAccountId, claimed: false }))
+      .map(l => ({ id: l.id, date: l.date, received: round2(Number(l.received)), recvCents: Math.round(Number(l.received) * 100), acctId: l.bankAccountId, claimed: false }))
 
     // Unlinked settlement payments grouped by (sale-day × channel).
     const lo = new Date(`${dateFrom}T00:00:00+08:00`); lo.setUTCDate(lo.getUTCDate() - (maxLagDays + 3))
@@ -133,7 +190,7 @@ export async function POST(req: Request) {
         let g = groups.get(k)
         if (!g) { g = { day, channel, gross: 0, net: 0, pays: [] }; groups.set(k, g) }
         g.gross = round2(g.gross + Number(p.amount)); g.net = round2(g.net + net)
-        g.pays.push({ id: p.id, gross: round2(Number(p.amount)), net })
+        g.pays.push({ id: p.id, gross: round2(Number(p.amount)), net, netCents: Math.round(net * 100) })
       }
     }
 
@@ -151,8 +208,10 @@ export async function POST(req: Request) {
       return out
     }
 
-    type Match = { day: string; channel: string; net: number; gross: number; payCount: number; lineIds: string[]; lineAmts: number[] }
+    type Part = { lineId: string; payIdxs: number[]; gross: number; net: number }
+    type Match = { day: string; channel: string; net: number; gross: number; payCount: number; lineIds: string[]; parts: Part[] }
     const matches: Match[] = []
+    const TOL_CENTS = 10 // per-line centavo slack for MDR/WHT rounding across payments
     // Process groups oldest first so earlier settlements claim their lines first.
     for (const g of [...groups.values()].sort((a, b) => a.day.localeCompare(b.day) || a.channel.localeCompare(b.channel))) {
       if (g.day < dateFrom || g.day > dateTo) continue // only report/claim in-range sale days
@@ -162,15 +221,28 @@ export async function POST(req: Request) {
         l.date >= new Date(`${g.day}T00:00:00+08:00`) && bankingDays(new Date(`${g.day}T00:00:00+08:00`), l.date) <= maxLagDays)
         .sort((a, b) => +a.date - +b.date)
       if (!cand.length) continue
-      // Prefer the fewest lines, then the combo closest in total to the net.
-      let best: Line[] | null = null
-      for (const combo of combosUpTo(cand.slice(0, 14), maxLines).sort((a, b) => a.length - b.length)) {
+      // Accept the first line-combo (fewest lines) that both sums to the group net
+      // AND admits an EXACT payment partition — each line gets a disjoint subset of
+      // payments netting to its deposit. Combos that only coincidentally sum are
+      // rejected (no valid partition), so a line is never mislinked to a day.
+      let chosen: { combo: Line[]; parts: Part[] } | null = null
+      for (const combo of combosUpTo(cand.slice(0, 14), maxLines).sort((a, b) => a.length - b.length || Math.abs(a.reduce((s, l) => s + l.received, 0) - g.net) - Math.abs(b.reduce((s, l) => s + l.received, 0) - g.net))) {
         const sum = round2(combo.reduce((s, l) => s + l.received, 0))
-        if (Math.abs(sum - g.net) <= tol) { best = combo; break }
+        if (Math.abs(sum - g.net) > tol) continue
+        const part = partitionExact(g.pays, combo.map(l => l.recvCents), TOL_CENTS)
+        if (!part) continue
+        const parts: Part[] = combo.map((l, ci) => {
+          const idxs = part[ci]
+          return { lineId: l.id, payIdxs: idxs, gross: round2(idxs.reduce((s, ix) => s + g.pays[ix].gross, 0)), net: round2(idxs.reduce((s, ix) => s + g.pays[ix].net, 0)) }
+        })
+        // Every payment must be used exactly once.
+        const used = parts.flatMap(p => p.payIdxs)
+        if (used.length !== g.pays.length || new Set(used).size !== g.pays.length) continue
+        chosen = { combo, parts }; break
       }
-      if (!best) continue
-      for (const l of best) l.claimed = true
-      matches.push({ day: g.day, channel: g.channel, net: g.net, gross: g.gross, payCount: g.pays.length, lineIds: best.map(l => l.id), lineAmts: best.map(l => l.received) })
+      if (!chosen) continue
+      for (const l of chosen.combo) l.claimed = true
+      matches.push({ day: g.day, channel: g.channel, net: g.net, gross: g.gross, payCount: g.pays.length, lineIds: chosen.combo.map(l => l.id), parts: chosen.parts })
     }
 
     const claimedLineIds = new Set(matches.flatMap(m => m.lineIds))
@@ -188,32 +260,25 @@ export async function POST(req: Request) {
         ?? null
       for (const m of matches) {
         const g = groups.get(`${m.day}|${m.channel}`)!
-        const theLines = m.lineIds.map((id, i) => ({ id, received: m.lineAmts[i] }))
-        // Partition payments across the covered lines: fill the line with the most
-        // remaining room first, so each batch's net ≈ its bank line's deposit.
-        const buckets = theLines.map(l => ({ lineId: l.id, target: l.received, pays: [] as Pay[], gross: 0, net: 0 }))
-        for (const p of [...g.pays].sort((a, b) => b.net - a.net)) {
-          const b = buckets.slice().sort((x, y) => (y.target - y.net) - (x.target - x.net))[0]
-          b.pays.push(p); b.gross = round2(b.gross + p.gross); b.net = round2(b.net + p.net)
-        }
         try {
           await prisma.$transaction(async (tx) => {
-            const takenLine = await tx.posSettlementBatch.findMany({ where: { bankTransactionId: { in: theLines.map(l => l.id) } }, select: { bankTransactionId: true } })
+            const takenLine = await tx.posSettlementBatch.findMany({ where: { bankTransactionId: { in: m.lineIds } }, select: { bankTransactionId: true } })
             if (takenLine.length) return // a line got claimed elsewhere — a re-run picks up the rest
             const takenPay = await tx.posSettlementPayment.findMany({ where: { orderPaymentId: { in: g.pays.map(p => p.id) } }, select: { orderPaymentId: true } })
             if (takenPay.length) return
-            for (const b of buckets) {
-              if (!b.pays.length) continue
-              const label = `AUB settlement (auto) — ${b.pays.length} × ${m.channel} on ${m.day} · ₱${b.gross.toLocaleString('en-PH', { minimumFractionDigits: 2 })} gross, ₱${b.net.toLocaleString('en-PH', { minimumFractionDigits: 2 })} net${theLines.length > 1 ? ` (MID ${buckets.indexOf(b) + 1}/${theLines.length})` : ''}`
+            for (let ci = 0; ci < m.parts.length; ci++) {
+              const part = m.parts[ci]
+              if (!part.payIdxs.length) continue
+              const label = `AUB settlement (auto) — ${part.payIdxs.length} × ${m.channel} on ${m.day} · ₱${part.gross.toLocaleString('en-PH', { minimumFractionDigits: 2 })} gross, ₱${part.net.toLocaleString('en-PH', { minimumFractionDigits: 2 })} net${m.parts.length > 1 ? ` (MID ${ci + 1}/${m.parts.length})` : ''}`
               await tx.posSettlementBatch.create({
                 data: {
-                  bankTransactionId: b.lineId, paymentModeId: null, label,
-                  grossTotal: b.gross, netTotal: b.net, createdById: actorId,
-                  payments: { create: b.pays.map(p => ({ orderPaymentId: p.id, amount: p.gross })) },
+                  bankTransactionId: part.lineId, paymentModeId: null, label,
+                  grossTotal: part.gross, netTotal: part.net, createdById: actorId,
+                  payments: { create: part.payIdxs.map(ix => ({ orderPaymentId: g.pays[ix].id, amount: g.pays[ix].gross })) },
                 },
               })
               await tx.bankTransaction.update({
-                where: { id: b.lineId },
+                where: { id: part.lineId },
                 data: { status: 'POSTED', matchType: 'POS_SETTLEMENT', matchLabel: label.slice(0, 200) },
               })
               linesPosted++
@@ -235,7 +300,10 @@ export async function POST(req: Request) {
         unmatchedGroups: unmatchedGroups.length,
         applied, linesPosted,
       },
-      matches: matches.slice(0, 60),
+      matches: matches.slice(0, 60).map(m => ({
+        day: m.day, channel: m.channel, net: m.net, payCount: m.payCount,
+        lines: m.parts.map(p => ({ net: p.net, payCount: p.payIdxs.length })),
+      })),
       unmatchedLines: unmatchedLines.slice(0, 60),
       unmatchedGroups: unmatchedGroups.slice(0, 60),
     })
