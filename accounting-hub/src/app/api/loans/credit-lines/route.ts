@@ -98,6 +98,23 @@ export async function PATCH(req: Request) {
   if (!session?.user || !ROLES.includes(session.user.role as string)) return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
   try {
     const b = await req.json()
+
+    // Undo a "Paid full earlier" settlement: the settlement journal entry
+    // (principal + early-payment charges / CR bank) is reversed and the line
+    // reopens — drawdowns and their histories are untouched.
+    if (b.action === 'undo-settle') {
+      const id = String(b.id || '')
+      if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
+      const line = await prisma.creditLine.findUnique({ where: { id }, select: { settledAt: true } })
+      if (!line) return NextResponse.json({ error: 'Credit line not found' }, { status: 404 })
+      if (!line.settledAt) return NextResponse.json({ error: 'This credit line is not settled' }, { status: 400 })
+      await prisma.$transaction(async (tx) => {
+        await tx.journalEntry.deleteMany({ where: { referenceType: 'CREDIT_LINE_SETTLE', referenceId: id } })
+        await tx.creditLine.update({ where: { id }, data: { settledAt: null, settledJournalEntryId: null } })
+      })
+      return NextResponse.json({ success: true })
+    }
+
     if (b.action !== 'undo-drawdown') return NextResponse.json({ error: 'Unknown action' }, { status: 400 })
     const loanId = String(b.loanId || '')
     if (!loanId) return NextResponse.json({ error: 'loanId required' }, { status: 400 })

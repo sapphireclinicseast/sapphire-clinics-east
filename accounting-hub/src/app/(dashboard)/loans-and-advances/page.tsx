@@ -687,6 +687,12 @@ function CreditLineTab({ shareholders, banks, accts }: { shareholders: SH[]; ban
   const load = useCallback(async () => { setLoading(true); try { const r = await fetch('/api/loans/credit-lines'); const j = r.ok ? await r.json() : null; setRows(j?.rows || []) } catch { setRows([]) } finally { setLoading(false) } }, [])
   useEffect(() => { load() }, [load])
   const del = async (r: CreditLineRow) => { if (!confirm(`Delete credit line "${r.entityName}"? Drawn loans are kept but detached.`)) return; await fetch(`/api/loans/credit-lines?id=${r.id}`, { method: 'DELETE' }); load() }
+  const undoSettle = async (r: CreditLineRow) => {
+    if (!confirm(`Undo the "Paid full earlier" settlement of ${r.entityName}?\n\nThe settlement entry (principal + early-payment charges, CR bank) is reversed and the line goes back to Utilized. Drawdowns and payment history are untouched.`)) return
+    const res = await fetch('/api/loans/credit-lines', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'undo-settle', id: r.id }) })
+    if (!res.ok) { alert((await res.json()).error || 'Failed'); return }
+    load()
+  }
   const undoDrawdown = async (line: CreditLineRow, dl: DrawnLoan) => {
     if (!confirm(`Undo the drawdown "${dl.name}" (${peso(dl.principalAmount)}) from ${line.entityName}?\n\nThe loan this drawdown created and its release entry are removed, and the amount returns to the line's Remaining. If the loan already has recorded payments, undo those first.`)) return
     const res = await fetch('/api/loans/credit-lines', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'undo-drawdown', loanId: dl.id }) })
@@ -728,6 +734,10 @@ function CreditLineTab({ shareholders, banks, accts }: { shareholders: SH[]; ban
               <td className="px-3 py-2 text-right whitespace-nowrap">
                 {!r.settledAt && <button onClick={() => setDrawFor(r)} className="text-[11px] px-2 py-1 rounded-lg font-semibold mr-1" style={{ background: 'var(--pale-teal)', color: 'var(--teal)' }}>Utilize</button>}
                 {!r.settledAt && r.drawnTotal > 0 && <button onClick={() => setSettleFor(r)} className="text-[11px] px-2 py-1 rounded-lg font-semibold mr-1" style={{ background: '#fef9c3', color: '#854d0e' }}>Paid full earlier</button>}
+                {r.settledAt && (
+                  <button onClick={() => undoSettle(r)} title="Undo the settlement — its journal entry is reversed and the line reopens; drawdowns stay"
+                    className="p-1 rounded hover:bg-red-50 mr-1"><RotateCcw size={13} className="text-red-400" /></button>
+                )}
                 <button onClick={() => del(r)} className="p-1 rounded hover:bg-red-50"><Trash2 size={13} className="text-red-400" /></button>
               </td>
             </tr>
