@@ -8703,7 +8703,7 @@ function SalesSection({ branch, canSelectBranch }: { branch: string; canSelectBr
    POS that are not (yet) accounted for by a bank settlement. One
    row per day + method; Resolved + Remarks save per item.
    ══════════════════════════════════════════════════════════════ */
-interface MissingItem { date: string; method: string; methodLabel: string; amount: number; recorded: number; settled: number; description: string; resolved: boolean; remarks: string }
+interface MissingItem { date: string; method: string; methodLabel: string; amount: number; recorded: number; actual: number; bankReconciled: boolean; description: string; resolved: boolean; remarks: string }
 function MissingSettlementPanel({ branch, canSelectBranch }: { branch: string; canSelectBranch: boolean }) {
   const BRANCH_OPTS = [
     ['SANDBOX_EAST', 'East Branch'], ['SANDBOX_GREENHILLS', 'Greenhills Branch'], ['VERDANA_STORE', 'Verdana Store'], ['AURA_INSTITUTE', 'Aura Health Institute'],
@@ -8726,7 +8726,7 @@ function MissingSettlementPanel({ branch, canSelectBranch }: { branch: string; c
     const params = new URLSearchParams({ branch: selBranch, dateFrom: from, dateTo: to })
     fetch(`/api/pos/missing-settlement?${params}`)
       .then(r => r.json())
-      .then(d => { setItems(Array.isArray(d.items) ? d.items : []); setTotal(Number(d.totalUnsettled) || 0) })
+      .then(d => { setItems(Array.isArray(d.items) ? d.items : []); setTotal(Number(d.totalShort) || 0) })
       .catch(() => setItems([]))
       .finally(() => setLoading(false))
   }, [selBranch, from, to])
@@ -8751,10 +8751,10 @@ function MissingSettlementPanel({ branch, canSelectBranch }: { branch: string; c
       <div className="flex items-center justify-between gap-4 mb-1 flex-wrap">
         <div>
           <h2 className="text-base font-bold" style={{ color: 'var(--charcoal)' }}>Missing Settlement</h2>
-          <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Card / debit / GCash / PayMaya sales recorded in POS that are not yet accounted for by a bank settlement. Resolve or annotate each; they clear automatically as the settlement is matched in bank rec.</p>
+          <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Card / debit / GCash / PayMaya days where the auditor&apos;s <strong>Actual</strong> deposit (from Sales Checking) is less than the <strong>System</strong> sales. A reconciled shortfall is usually just the merchant fee; an un-reconciled one is a real gap. Resolve or annotate each.</p>
         </div>
         <div className="text-right">
-          <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Unaccounted total</p>
+          <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Total short (System − Actual)</p>
           <p className="text-lg font-bold" style={{ color: total > 0 ? '#dc2626' : 'var(--teal)' }}>₱{peso(total)}</p>
         </div>
       </div>
@@ -8779,23 +8779,27 @@ function MissingSettlementPanel({ branch, canSelectBranch }: { branch: string; c
               <tr style={{ background: 'var(--off-white)' }}>
                 <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Date</th>
                 <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Form of payment</th>
-                <th className="text-right px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Amount</th>
+                <th className="text-right px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Short (Sys−Act)</th>
                 <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Description</th>
+                <th className="text-center px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Bank reconciled?</th>
                 <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Resolved</th>
                 <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Remarks</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={6} className="px-4 py-10 text-center text-xs" style={{ color: 'var(--mid-gray)' }}>Loading…</td></tr>
+                <tr><td colSpan={7} className="px-4 py-10 text-center text-xs" style={{ color: 'var(--mid-gray)' }}>Loading…</td></tr>
               ) : shown.length === 0 ? (
-                <tr><td colSpan={6} className="px-4 py-10 text-center text-xs" style={{ color: 'var(--mid-gray)' }}>{items.length ? 'All items resolved.' : 'Nothing missing — every card/debit/GCash/PayMaya sale in this period is accounted for in the bank.'}</td></tr>
+                <tr><td colSpan={7} className="px-4 py-10 text-center text-xs" style={{ color: 'var(--mid-gray)' }}>{items.length ? 'All items resolved.' : 'Nothing short — the auditor&apos;s Actual deposit covers System sales for every card/debit/GCash/PayMaya day in this period.'}</td></tr>
               ) : shown.map(it => (
                 <tr key={`${it.date}|${it.method}`} className="border-t hover:bg-gray-50/50 transition-colors" style={{ borderColor: 'var(--light-gray)', opacity: it.resolved ? 0.6 : 1 }}>
                   <td className="px-4 py-3 whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{it.date}</td>
                   <td className="px-4 py-3 whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{it.methodLabel}</td>
-                  <td className="px-4 py-3 text-right font-semibold tabular-nums" style={{ color: it.resolved ? 'var(--mid-gray)' : '#dc2626' }}>₱{peso(it.amount)}</td>
+                  <td className="px-4 py-3 text-right font-semibold tabular-nums" style={{ color: it.resolved ? 'var(--mid-gray)' : '#dc2626' }} title={`System ₱${peso(it.recorded)} − Actual ₱${peso(it.actual)}`}>₱{peso(it.amount)}</td>
                   <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{it.description}</td>
+                  <td className="px-4 py-3 text-center">
+                    <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold" style={it.bankReconciled ? { background: '#ecfdf5', color: '#047857' } : { background: '#fef2f2', color: '#b91c1c' }}>{it.bankReconciled ? 'Yes' : 'No'}</span>
+                  </td>
                   <td className="px-4 py-3">
                     <select value={it.resolved ? 'yes' : 'no'} onChange={e => save(it, { resolved: e.target.value === 'yes' })}
                       className="px-2 py-1 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)', background: it.resolved ? '#ecfdf5' : 'white', color: it.resolved ? '#047857' : 'var(--charcoal)' }}>

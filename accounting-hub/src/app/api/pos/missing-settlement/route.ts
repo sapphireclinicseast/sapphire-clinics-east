@@ -47,17 +47,8 @@ export async function GET(req: Request) {
     },
   })
 
-  const paymentIds = orders.flatMap(o => o.payments.map(p => p.id))
-  // A payment is "settled" when it is linked to a reconciled bank line via a
-  // PosSettlementPayment row (written by AUB clearing / the settlement picker).
-  const linked = paymentIds.length
-    ? new Set((await prisma.posSettlementPayment.findMany({
-        where: { orderPaymentId: { in: paymentIds } }, select: { orderPaymentId: true },
-      })).map(l => l.orderPaymentId))
-    : new Set<string>()
-
-  // Aggregate per Manila day → method: system (recorded) vs settled (linked).
-  const byDay = new Map<string, Map<string, { system: number; settled: number }>>()
+  // Aggregate POS System sales per Manila day → method.
+  const byDay = new Map<string, Map<string, number>>()
   for (const o of orders) {
     const day = manilaDay(o.paymentDate || o.transactionDate || o.createdAt)
     if (day < dateFrom || day > dateTo) continue
@@ -66,49 +57,62 @@ export async function GET(req: Request) {
       if (!SETTLEMENT_METHODS.includes(method)) continue
       let methods = byDay.get(day)
       if (!methods) { methods = new Map(); byDay.set(day, methods) }
-      let m = methods.get(method)
-      if (!m) { m = { system: 0, settled: 0 }; methods.set(method, m) }
-      const amt = Number(p.amount)
-      m.system = round2(m.system + amt)
-      if (linked.has(p.id)) m.settled = round2(m.settled + amt)
+      methods.set(method, round2((methods.get(method) || 0) + Number(p.amount)))
     }
   }
 
-  // Saved resolved/remarks per (date, method).
+  // Source of truth = the auditor's figures in Sales Checking: Actual deposited
+  // (actualAmounts), whether the day+method was bank-reconciled (a BANK_REC tick),
+  // and any saved review.
   const clearings = await prisma.salesDayClearing.findMany({
     where: { branch, date: { gte: dateFrom, lte: dateTo } },
-    select: { date: true, settlementReview: true },
+    select: { date: true, actualAmounts: true, confirmed: true, settlementReview: true },
   })
+  const actualOf = new Map<string, number>()
+  const bankRecOf = new Set<string>()
   const reviewOf = new Map<string, Review>()
   for (const c of clearings) {
-    const arr = Array.isArray(c.settlementReview) ? c.settlementReview as Review[] : []
-    for (const r of arr) if (r?.method) reviewOf.set(`${c.date}|${r.method}`, r)
+    for (const a of (Array.isArray(c.actualAmounts) ? c.actualAmounts as { method: string; amount: number }[] : [])) {
+      if (a?.method) actualOf.set(`${c.date}|${a.method}`, Number(a.amount) || 0)
+    }
+    for (const cf of (Array.isArray(c.confirmed) ? c.confirmed as { method: string; confirmed?: boolean; source?: string }[] : [])) {
+      if (cf?.method && cf.source === 'BANK_REC') bankRecOf.add(`${c.date}|${cf.method}`)
+    }
+    for (const r of (Array.isArray(c.settlementReview) ? c.settlementReview as Review[] : [])) {
+      if (r?.method) reviewOf.set(`${c.date}|${r.method}`, r)
+    }
   }
 
+  // "Missing" = the auditor's Actual deposited is less than the POS System amount
+  // (an under-deposit). The Bank reconciled? flag shows whether that day+method is
+  // already tied to a bank line — a reconciled shortfall is usually just the
+  // merchant fees; an unreconciled one is a real gap.
   const items: {
-    date: string; method: string; methodLabel: string; amount: number; recorded: number; settled: number
-    description: string; resolved: boolean; remarks: string
+    date: string; method: string; methodLabel: string; amount: number; recorded: number; actual: number
+    bankReconciled: boolean; description: string; resolved: boolean; remarks: string
   }[] = []
   for (const [date, methods] of [...byDay.entries()].sort()) {
     for (const method of SETTLEMENT_METHODS) {
-      const m = methods.get(method)
-      if (!m || m.system <= 0) continue
-      const unsettled = round2(m.system - m.settled)
-      if (unsettled <= 0.5) continue // fully accounted for in the bank
-      const rv = reviewOf.get(`${date}|${method}`)
+      const system = methods.get(method)
+      if (!system || system <= 0) continue
+      const key = `${date}|${method}`
+      const actual = actualOf.get(key) ?? 0
+      const shortfall = round2(system - actual)
+      if (shortfall <= 0.5) continue // auditor's actual covers (or exceeds) the recorded sales
+      const rv = reviewOf.get(key)
       items.push({
         date, method, methodLabel: METHOD_LABEL[method] || method,
-        amount: unsettled, recorded: m.system, settled: m.settled,
-        description: m.settled > 0
-          ? `${METHOD_LABEL[method] || method}: ₱${m.system.toLocaleString('en-PH', { minimumFractionDigits: 2 })} recorded, ₱${m.settled.toLocaleString('en-PH', { minimumFractionDigits: 2 })} settled — ₱${unsettled.toLocaleString('en-PH', { minimumFractionDigits: 2 })} not matched to a bank settlement`
-          : `${METHOD_LABEL[method] || method} sales not matched to any bank settlement`,
+        amount: shortfall, recorded: system, actual, bankReconciled: bankRecOf.has(key),
+        description: actual > 0
+          ? `${METHOD_LABEL[method] || method}: ₱${system.toLocaleString('en-PH', { minimumFractionDigits: 2 })} recorded vs ₱${actual.toLocaleString('en-PH', { minimumFractionDigits: 2 })} actually deposited`
+          : `${METHOD_LABEL[method] || method}: ₱${system.toLocaleString('en-PH', { minimumFractionDigits: 2 })} recorded, no actual deposit entered yet`,
         resolved: !!rv?.resolved,
         remarks: rv?.remarks || '',
       })
     }
   }
 
-  return NextResponse.json({ items, totalUnsettled: round2(items.reduce((a, i) => a + i.amount, 0)) })
+  return NextResponse.json({ items, totalShort: round2(items.reduce((a, i) => a + i.amount, 0)) })
 }
 
 // PATCH { branch, date, method, resolved?, remarks? } — save the review for one item.
