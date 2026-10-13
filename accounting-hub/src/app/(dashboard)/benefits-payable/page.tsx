@@ -26,6 +26,9 @@ interface Row {
   sssEE: number; sssER: number; philEE: number; philER: number; pagEE: number; pagER: number
   totalBenefitsPayable: number; benefitsRemitted: boolean; benefitRfpId: string | null
   sssRfpId: string | null; philhealthRfpId: string | null; pagibigRfpId: string | null
+  // Per-agency settlement from the API (row remitted, zero amounts, or that
+  // agency's own RFP PAID) — a paid PHIC+HDMF RFP must not touch SSS.
+  settled?: Record<string, boolean>
 }
 // Branch column display codes (Aura Health branding): SBEA→AHEA, SBGH→AHGH, etc.
 const BRANCH_DISPLAY: Record<string, string> = { SBEA: 'AHEA', SBGH: 'AHGH', VERDANA: 'VERD', AHI: 'AHI' }
@@ -93,6 +96,9 @@ export default function BenefitsPayablePage() {
   const ee = (r: Row) => activeAgencies.reduce((s, a) => s + (r[a.eeField] as number), 0)
   const er = (r: Row) => activeAgencies.reduce((s, a) => s + (r[a.erField] as number), 0)
   const rfpOf = (r: Row) => activeAgencies.map(a => r[a.rfpField] as string | null).find(Boolean) ?? null
+  // Settled for THIS subtab's agencies — per-agency truth, so a paid PHIC+HDMF
+  // RFP shows those tabs Remitted while SSS stays open for its own RFP.
+  const settledOf = (r: Row) => r.benefitsRemitted || activeAgencies.every(a => r.settled?.[a.benefitType] === true)
   const scopeLabel = combined
     ? (activeAgencies.length === AGENCIES.length ? 'All agencies' : activeAgencies.map(a => a.key).join(' + '))
     : agency.label
@@ -102,7 +108,7 @@ export default function BenefitsPayablePage() {
   // Rows relevant to the current agency subtab + filters
   const shown = useMemo(() => rows.filter(r => {
     if (ee(r) + er(r) <= 0) return false
-    if (hideRemitted && r.benefitsRemitted) return false
+    if (hideRemitted && settledOf(r)) return false
     if (fType && r.type !== fType) return false
     const [y, m, half] = r.cutoffPeriod.split('-')
     if (fYear && y !== fYear) return false
@@ -112,7 +118,7 @@ export default function BenefitsPayablePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [rows, agencyKey, combined, combinedKeys, fType, fYear, fMonth, fCutoff, hideRemitted])
 
-  const selectable = shown.filter(r => !rfpOf(r) && !r.benefitsRemitted)
+  const selectable = shown.filter(r => !rfpOf(r) && !settledOf(r))
   const selRows = shown.filter(r => selected.has(r.id))
   const selTotal = selRows.reduce((s, r) => s + ee(r) + er(r), 0)
 
@@ -287,7 +293,7 @@ export default function BenefitsPayablePage() {
                 <div className="mt-1 text-[11px]">Contributions appear once payroll is <strong>locked</strong> and the {scopeLabel} deduction falls on the selected cutoff.</div>
               </td></tr>
             ) : shown.map(r => {
-              const locked = !!rfpOf(r) || r.benefitsRemitted
+              const locked = !!rfpOf(r) || settledOf(r)
               return (
                 <tr key={r.id} className="border-t hover:bg-gray-50/50" style={{ borderColor: 'var(--light-gray)' }}>
                   <td className="text-center px-2 py-2.5">
@@ -304,7 +310,7 @@ export default function BenefitsPayablePage() {
                   <td className="px-3 py-2.5 text-right font-mono" style={{ color: 'var(--charcoal)' }}>{formatCurrency(er(r))}</td>
                   <td className="px-3 py-2.5 text-right font-mono font-semibold" style={{ color: 'var(--deep-teal)' }}>{formatCurrency(ee(r) + er(r))}</td>
                   <td className="px-3 py-2.5">
-                    {r.benefitsRemitted ? <span className="text-[11px] font-medium" style={{ color: '#166534' }}>Remitted</span>
+                    {settledOf(r) ? <span className="text-[11px] font-medium" style={{ color: '#166534' }}>Remitted</span>
                       : rfpOf(r) ? <span className="text-[11px] font-medium" style={{ color: '#c44b00' }}>In RFP</span>
                       : <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>Pending</span>}
                     {r.cutoffPeriod.endsWith('-GOVCON') && !locked && r.type === 'employee' && (

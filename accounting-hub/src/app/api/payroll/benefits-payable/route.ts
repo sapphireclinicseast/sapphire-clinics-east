@@ -27,6 +27,7 @@ export async function GET(req: Request) {
     sssEE: number; sssER: number; philEE: number; philER: number; pagEE: number; pagER: number
     totalBenefitsPayable: number; benefitsRemitted: boolean; benefitPaymentId: string | null; benefitRfpId: string | null
     sssRfpId: string | null; philhealthRfpId: string | null; pagibigRfpId: string | null
+    settled?: Record<string, boolean>
   }[] = []
 
   // ── Employees (from locked payslips) ──
@@ -80,6 +81,24 @@ export async function GET(req: Request) {
         benefitsRemitted: e.benefitsRemitted, benefitPaymentId: e.benefitPaymentId, benefitRfpId: e.benefitRfpId,
         sssRfpId: e.sssRfpId, philhealthRfpId: e.philhealthRfpId, pagibigRfpId: e.pagibigRfpId,
       })
+    }
+  }
+
+  // Per-agency settlement for the status column: an agency is settled when the
+  // whole row was remitted (legacy full remit), its amounts are zero, or its
+  // own RFP (per-agency field, else the legacy combined one) has been PAID.
+  // Without this, a paid PHIC+HDMF RFP either showed "In RFP" forever or —
+  // the 2026-10 bug — falsely marked SSS remitted via the row-level flag.
+  const rfpIds = [...new Set(rows.flatMap(r => [r.sssRfpId, r.philhealthRfpId, r.pagibigRfpId, r.benefitRfpId]).filter(Boolean))] as string[]
+  const paid = rfpIds.length
+    ? new Set((await prisma.reimbursementReport.findMany({ where: { id: { in: rfpIds }, status: 'PAID' }, select: { id: true } })).map(r => r.id))
+    : new Set<string>()
+  for (const r of rows) {
+    const ok = (field: string | null, amt: number) => r.benefitsRemitted || amt <= 0 || !!((field || r.benefitRfpId) && paid.has((field || r.benefitRfpId) as string))
+    r.settled = {
+      SSS: ok(r.sssRfpId, r.sssEE + r.sssER),
+      PHILHEALTH: ok(r.philhealthRfpId, r.philEE + r.philER),
+      PAGIBIG: ok(r.pagibigRfpId, r.pagEE + r.pagER),
     }
   }
 

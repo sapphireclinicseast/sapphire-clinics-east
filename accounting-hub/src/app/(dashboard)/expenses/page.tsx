@@ -171,7 +171,7 @@ interface Supplier { id: string | null; registeredName: string; registeredAddres
 interface SupTxn { date: string | null; pcvNumber: string; description: string; validity: string; gross: number; vat: number; netVat: number }
 interface Rfp {
   id: string; refNumber: string; grossTotal: string | number; payableTotal: string | number; status: string; kind: string | null
-  module?: string; meta?: { source?: string; payableType?: string; idKind?: string; ids?: string[]; splitIds?: string[]; rowIds?: string[]; entryIds?: string[]; payslipIds?: string[]; cutoffPeriod?: string; netTotal?: number; paymentId?: string; items?: { id: string; name: string; amount: number }[] } | null
+  module?: string; meta?: { source?: string; payableType?: string; idKind?: string; ids?: string[]; splitIds?: string[]; rowIds?: string[]; entryIds?: string[]; payslipIds?: string[]; benefitTypes?: string[]; cutoffPeriod?: string; netTotal?: number; paymentId?: string; items?: { id: string; name: string; amount: number }[] } | null
   paidAt: string | null; paymentMethod: string | null; checkNumber: string | null; transferRef?: string | null; debitAccount: string | null
   creditCardId: string | null; proofUrl: string | null; payableTo: string | null; createdAt: string; _count: { entries: number }
   refSeq?: number; depositAccount?: string | null; filterBranch?: string | null // PETTY_CASH rows (merged from the PCF reimbursement API)
@@ -3563,6 +3563,10 @@ function RecordPayrollPaymentModal({ rfp, onClose, onDone }: { rfp: Rfp; onClose
         body: JSON.stringify({
           ...idBody, paymentDate: datePaid, fromAccountId, proofUrl: proofUrl || null,
           notes: bankRef || null, remarks: remarks || null,
+          // Agency-scoped benefit RFPs (e.g. PHIC+HDMF combined) pay only their
+          // own agencies — without this the payment posted all six components
+          // and locked SSS as remitted (2026-10 GH bug).
+          ...(!isSalary && Array.isArray(rfp.meta?.benefitTypes) && rfp.meta.benefitTypes.length ? { benefitTypes: rfp.meta.benefitTypes } : {}),
           ...(hasFee ? { feeAmount: Number(feeAmount), feeExpenseAccountId, feeCashAccountId: fromAccountId } : {}),
           ...(adjustments.length ? { adjustments } : {}),
         }),
