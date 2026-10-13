@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { sweepNoSiEwtToOtherIncome } from '@/lib/accounting/ewt-income'
+
+const SWEEP_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 
 const PAYROLL_TO_PC: Record<string, string> = { SBEA: 'SANDBOX_EAST', SBGH: 'SANDBOX_GREENHILLS', VERDANA: 'VERDANA_STORE', AHI: 'AURA_INSTITUTE' }
 
@@ -13,6 +16,17 @@ export async function GET(req: Request) {
   const payrollBranch = new URL(req.url).searchParams.get('payrollBranch') || ''
   const pcBranch = PAYROLL_TO_PC[payrollBranch]
   if (!pcBranch) return NextResponse.json({ error: 'Valid branch is required' }, { status: 400 })
+
+  // Accounting's standing treatment: no-SI EWT is Other Income the moment it
+  // exists. Sweep whatever is newly eligible before listing, so the tab (and
+  // the income statement) is always current. Idempotent and quiet when there
+  // is nothing to declare; runs only for roles that may post.
+  if (SWEEP_ROLES.includes(session.user.role as string)) {
+    try { await sweepNoSiEwtToOtherIncome(prisma, session.user.id as string) } catch (e) { console.error('EWT auto-sweep failed', e) }
+  }
+  const decls = await prisma.ewtIncomeDeclaration.findMany({ select: { payrollEntryId: true, pettyCashEntryId: true } })
+  const onIncomePay = new Set(decls.map(d => d.payrollEntryId).filter(Boolean))
+  const onIncomePc = new Set(decls.map(d => d.pettyCashEntryId).filter(Boolean))
 
   const consultants = await prisma.payrollEntry.findMany({
     where: { branch: payrollBranch, taxAmount: { gt: 0 }, status: 'LOCKED' },
@@ -43,6 +57,7 @@ export async function GET(req: Request) {
         id: e.id, source: 'CONSULTANT' as const, name: e.consultant.name, ref: e.cutoffPeriod,
         ym: e.cutoffPeriod.slice(0, 7), periodLabel: e.cutoffPeriod,
         base, rate: base > 0 ? Math.round((ewt / base) * 100) : null, ewt, remitted: e.taxRemitted,
+        onIncome: onIncomePay.has(e.id),
       }
     }),
     ...expenses.map(e => {
@@ -56,6 +71,7 @@ export async function GET(req: Request) {
         id: e.id, source: 'EXPENSE' as const, name: e.requestor || e.description || e.pcvNumber, ref: e.pcvNumber,
         ym, periodLabel: when ? new Date(when).toISOString().slice(0, 10) : '',
         base: net, rate, ewt: net * (rate / 100), remitted: e.ewtRemitted,
+        onIncome: onIncomePc.has(e.id),
       }
     }),
     // CEO entries allocated + RFP'd to this branch → one item per (entry, branch),

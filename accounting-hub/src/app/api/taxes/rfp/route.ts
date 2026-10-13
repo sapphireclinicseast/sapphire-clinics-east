@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { undoEwtIncomeDeclarations } from '@/lib/accounting/ewt-income'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 // Payroll branch codes → petty-cash branch keys (so tax RFP numbers stay
@@ -120,6 +121,11 @@ export async function POST(req: Request) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const ceoEntries = ceoRaw.filter((e: any) => !((e.ewtRemittedBranches && typeof e.ewtRemittedBranches === 'object' ? e.ewtRemittedBranches as Record<string, boolean> : {})[pcBranch]))
         if (cons.length === 0 && exps.length === 0 && ceoEntries.length === 0) throw new Error('No eligible unremitted EWT items found')
+        // Items sitting on Other Income come back OFF it the moment they are
+        // ticked for remittance: their auto-declarations reverse (7220 → 4070)
+        // so the BIR payment settles a liability, not income. CEO branch
+        // allocations are never auto-declared, so nothing to reverse there.
+        await undoEwtIncomeDeclarations(tx, cons.map(c => c.id), exps.map(x => x.id))
         const consItems = cons.map(e => { const base = Number(e.grossPay), ewt = Number(e.taxAmount); return { id: e.id, source: 'CONSULTANT', name: e.consultant.name, period: e.cutoffPeriod, base, rate: base > 0 ? Math.round((ewt / base) * 100) : null, ewt } })
         const expItems = exps.map(e => { const g = Number(e.grossAmount); const net = e.vatable === 'VAT' ? g / 1.12 : g; const rate = e.ewtRate || 0; const when = e.paidAt || e.date; return { id: e.id, source: 'EXPENSE', name: e.requestor || e.pcvNumber, period: when ? new Date(when).toISOString().slice(0, 10) : '', base: net, rate, ewt: net * (rate / 100) } })
         // eslint-disable-next-line @typescript-eslint/no-explicit-any

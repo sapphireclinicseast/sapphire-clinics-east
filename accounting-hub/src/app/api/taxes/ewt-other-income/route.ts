@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { undoEwtIncomeDeclarations } from '@/lib/accounting/ewt-income'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 const PAYROLL_TO_PC: Record<string, string> = { SBEA: 'SANDBOX_EAST', SBGH: 'SANDBOX_GREENHILLS', VERDANA: 'VERDANA_STORE', AHI: 'AURA_INSTITUTE' }
@@ -25,11 +26,18 @@ const endOfMonth = (throughMonth: string) => {
 // (cannot issue a BIR sales invoice), and expense EWT with no SI number.
 async function bulkNoSiPopulation(throughMonth: string) {
   const cutoff = endOfMonth(throughMonth)
+  // Declared-as-income items keep their remitted flags FALSE (so they stay
+  // visible and tickable for BIR remittance); eligibility for declaring is
+  // therefore "unremitted AND not already declared".
+  const declared = await prisma.ewtIncomeDeclaration.findMany({ select: { payrollEntryId: true, pettyCashEntryId: true } })
+  const dPay = declared.map(d => d.payrollEntryId).filter((x): x is string => !!x)
+  const dPc = declared.map(d => d.pettyCashEntryId).filter((x): x is string => !!x)
   const cons = await prisma.payrollEntry.findMany({
     where: {
       taxAmount: { gt: 0 }, status: 'LOCKED', taxRemitted: false,
       cutoffPeriod: { lte: `${throughMonth}-9` }, // 'YYYY-MM-1|2' sorts below 'YYYY-MM-9'
       consultant: { corUrl: null },
+      ...(dPay.length ? { id: { notIn: dPay } } : {}),
     },
     include: { consultant: { select: { name: true } } },
   })
@@ -38,6 +46,7 @@ async function bulkNoSiPopulation(throughMonth: string) {
       branch: { not: 'CEO' }, hasEwt: true, ewtRate: { not: null }, ewtRemitted: false,
       OR: [{ paidAt: { not: null } }, { reimbursementId: { not: null } }],
       AND: [{ OR: [{ siNumber: null }, { siNumber: '' }] }],
+      ...(dPc.length ? { id: { notIn: dPc } } : {}),
     },
   })).filter(e => {
     const when = e.paidAt || e.date
@@ -198,58 +207,18 @@ export async function POST(req: Request) {
             declared.items += g.items.length
             declared.totalAmount = r2(declared.totalAmount + amount)
           }
-          if (cons.length) await tx.payrollEntry.updateMany({ where: { id: { in: cons.map(e => e.id) } }, data: { taxRemitted: true } })
-          if (exps.length) await tx.pettyCashEntry.updateMany({ where: { id: { in: exps.map(e => e.id) } }, data: { ewtRemitted: true } })
+          // The remitted flags stay FALSE: declared items remain visible and
+          // tickable for BIR remittance, which reverses the declaration first.
         }
 
         const undone = { items: 0, totalAmount: 0, deletedEntries: 0, adjustedEntries: 0 }
         if (undConsIds.length || undExpIds.length) {
-          const or: { payrollEntryId?: { in: string[] }; pettyCashEntryId?: { in: string[] } }[] = []
-          if (undConsIds.length) or.push({ payrollEntryId: { in: undConsIds } })
-          if (undExpIds.length) or.push({ pettyCashEntryId: { in: undExpIds } })
-          const rows = await tx.ewtIncomeDeclaration.findMany({ where: { OR: or } })
-          if (rows.length !== undConsIds.length + undExpIds.length) {
+          const res = await undoEwtIncomeDeclarations(tx, undConsIds, undExpIds)
+          if (res.items !== undConsIds.length + undExpIds.length) {
             throw new Error('Some unticked items have no income declaration on record (they may be real BIR remittances) — reload and try again.')
           }
-          const byJe = new Map<string, typeof rows>()
-          for (const r of rows) {
-            const g = byJe.get(r.journalEntryId) || []
-            g.push(r)
-            byJe.set(r.journalEntryId, g)
-          }
-          for (const [jeId, rs] of byJe) {
-            const undoAmt = r2(rs.reduce((s, r) => s + Number(r.amount), 0))
-            const je = await tx.journalEntry.findUnique({ where: { id: jeId }, include: { lines: true } })
-            if (je) {
-              if (je.referenceType !== 'EWT_OTHER_INCOME' || je.lines.length !== 2) {
-                throw new Error(`Journal entry ${jeId} was modified since the declaration — undo it manually in the General Journal.`)
-              }
-              const newTotal = r2(Number(je.totalAmount) - undoAmt)
-              if (newTotal <= 0.004) {
-                await tx.journalEntry.delete({ where: { id: jeId } })
-                undone.deletedEntries++
-              } else {
-                for (const ln of je.lines) {
-                  await tx.journalEntryLine.update({
-                    where: { id: ln.id },
-                    data: Number(ln.debit) > 0 ? { debit: r2(Number(ln.debit) - undoAmt) } : { credit: r2(Number(ln.credit) - undoAmt) },
-                  })
-                }
-                await tx.journalEntry.update({
-                  where: { id: jeId },
-                  data: { totalAmount: newTotal, description: `${je.description}`.slice(0, 430) + ` [${rs.length} item(s) undone]` },
-                })
-                undone.adjustedEntries++
-              }
-            }
-            undone.totalAmount = r2(undone.totalAmount + undoAmt)
-          }
-          await tx.ewtIncomeDeclaration.deleteMany({ where: { id: { in: rows.map(r => r.id) } } })
-          const upc = rows.map(r => r.payrollEntryId).filter((x): x is string => !!x)
-          const upe = rows.map(r => r.pettyCashEntryId).filter((x): x is string => !!x)
-          if (upc.length) await tx.payrollEntry.updateMany({ where: { id: { in: upc } }, data: { taxRemitted: false } })
-          if (upe.length) await tx.pettyCashEntry.updateMany({ where: { id: { in: upe } }, data: { ewtRemitted: false } })
-          undone.items = rows.length
+          undone.items = res.items
+          undone.totalAmount = res.totalAmount
         }
 
         return { declared, undone }
@@ -338,8 +307,8 @@ export async function POST(req: Request) {
         totalAmount += amount
         posted.push({ month: ym, journalEntryId: je.id, amount })
       }
-      if (cons.length) await tx.payrollEntry.updateMany({ where: { id: { in: cons.map(e => e.id) } }, data: { taxRemitted: true } })
-      if (exps.length) await tx.pettyCashEntry.updateMany({ where: { id: { in: exps.map(e => e.id) } }, data: { ewtRemitted: true } })
+      // Remitted flags stay FALSE — the items remain tickable for BIR
+      // remittance, which reverses these declarations first.
       return { entries: posted, journalEntryId: posted[0]?.journalEntryId, totalAmount: Math.round(totalAmount * 100) / 100 }
     })
     return NextResponse.json(result, { status: 201 })

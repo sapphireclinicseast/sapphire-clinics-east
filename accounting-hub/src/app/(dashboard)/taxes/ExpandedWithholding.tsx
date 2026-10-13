@@ -17,7 +17,7 @@ const BRANCH_FULL: Record<string, string> = { SBEA: 'Aura Health Rehab — East'
 const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const num = (v: string | number) => (typeof v === 'number' ? v : parseFloat(v) || 0)
 
-interface Item { id: string; source: 'CONSULTANT' | 'EXPENSE'; name: string; ref: string; ym: string; periodLabel: string; base: number; rate: number | null; ewt: number; remitted: boolean }
+interface Item { id: string; source: 'CONSULTANT' | 'EXPENSE'; name: string; ref: string; ym: string; periodLabel: string; base: number; rate: number | null; ewt: number; remitted: boolean; onIncome?: boolean }
 interface MetaItem { id: string; source: string; name: string; period: string; base: number; rate: number | null; ewt: number }
 interface TaxRfp { id: string; refNumber: string; grossTotal: string | number; status: string; paidAt: string | null; paymentMethod: string | null; checkNumber: string | null; transferRef: string | null; proofUrl: string | null; meta: { taxType: string; payrollBranch: string; items: MetaItem[]; otherFees?: CleanRfpFee[]; feesTotal?: number } | null; createdAt: string }
 
@@ -100,7 +100,7 @@ export default function ExpandedWithholding() {
       : k === 'name' ? e.name : k === 'period' ? e.periodLabel : k === 'base' ? e.base
       : k === 'rate' ? (e.rate ?? 0) : k === 'ewt' ? e.ewt
       : k === 'si' ? (e.source === 'CONSULTANT' ? (siStatus[`${e.ym}|${e.name.toUpperCase().replace(/\s+/g, ' ').trim()}`] || '') : 'n/a')
-      : k === 'status' ? (e.remitted ? 'In RFP / Remitted' : 'Unremitted') : '', [siStatus])
+      : k === 'status' ? (e.remitted ? 'In RFP / Remitted' : e.onIncome ? 'On income (7220)' : 'Unremitted') : '', [siStatus])
   // Payee filter also matches the reference line shown under the name.
   const colFilterGet = useCallback((e: Item, k: string): string | number => k === 'name' ? `${e.name} ${e.ref}` : colGet(e, k), [colGet])
   const shown = useMemo(() => applySortFilter(filtered, colGet, sort.key, sort.dir, colFilters, colFilterGet), [filtered, colGet, sort, colFilters, colFilterGet])
@@ -264,7 +264,7 @@ export default function ExpandedWithholding() {
                   <td className="px-4 py-2.5 text-center text-xs" style={{ color: 'var(--mid-gray)' }}>{e.rate != null ? `${e.rate}%` : ''}</td>
                   <td className="px-4 py-2.5 text-right font-semibold text-xs" style={{ color: '#c44b00' }}>₱{peso(e.ewt)}</td>
                   <td className="px-4 py-2.5">{e.source === 'CONSULTANT' ? (() => { const st = siOf(e); const sty = st === 'Submitted' ? { background: '#dcfce7', color: '#166534' } : st === 'No SI' ? { background: '#e5e7eb', color: '#374151' } : st === 'Pending' ? { background: '#fef3c7', color: '#92400e' } : null; return sty ? <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={sty}>{st}</span> : <span className="text-[11px]" style={{ color: 'var(--light-gray)' }}>—</span> })() : <span className="text-[11px]" style={{ color: 'var(--light-gray)' }}>n/a</span>}</td>
-                  <td className="px-4 py-2.5"><span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={e.remitted ? { background: '#dcfce7', color: '#166534' } : { background: '#fef3c7', color: '#92400e' }}>{e.remitted ? 'In RFP / Remitted' : 'Unremitted'}</span></td>
+                  <td className="px-4 py-2.5"><span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" title={e.remitted ? undefined : e.onIncome ? 'Recognised as Other Income (7220) automatically — ticking it for a remittance RFP reverses that and moves it back to 4070 for the BIR payment' : undefined} style={e.remitted ? { background: '#dcfce7', color: '#166534' } : e.onIncome ? { background: '#e0e7ff', color: '#3730a3' } : { background: '#fef3c7', color: '#92400e' }}>{e.remitted ? 'In RFP / Remitted' : e.onIncome ? 'On income (7220)' : 'Unremitted'}</span></td>
                 </tr>
               )
             })}

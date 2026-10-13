@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { sweepNoSiEwtToOtherIncome } from '@/lib/accounting/ewt-income'
 import { lockAndNotifyMentorshipCharges } from '@/lib/mentorship'
 
 const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
@@ -158,6 +159,10 @@ export async function POST(req: Request) {
           })
           return { lockedCount: addEntries.length }
         })
+        // The cutoff's consultant EWT just became eligible — recognise the
+        // no-SI portion as Other Income right away (accounting's standing
+        // treatment). Non-fatal: a failed sweep retries on the next tab load.
+        try { await sweepNoSiEwtToOtherIncome(prisma, session.user.id as string) } catch (e) { console.error('EWT auto-sweep after lock failed', e) }
 
         const journalEntry = await prisma.journalEntry.findUnique({
           where: { id: journalEntryId },
