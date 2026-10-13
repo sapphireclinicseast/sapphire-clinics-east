@@ -675,7 +675,7 @@ function LoanModal({ row, shareholders, banks, accts, onClose, onSaved, preset }
 }
 
 // ── Credit Line ───────────────────────────────────────────────
-interface DrawnLoan { id: string; name: string; principalAmount: number; creditAccountId: string | null }
+interface DrawnLoan { id: string; name: string; principalAmount: number; creditAccountId: string | null; dateAcquired?: string }
 interface CreditLineRow { id: string; entityName: string; amount: number; interestPct: number | null; utilized: boolean; settledAt: string | null; remarks: string | null; drawnLoans: DrawnLoan[]; drawnTotal: number }
 
 function CreditLineTab({ shareholders, banks, accts }: { shareholders: SH[]; banks: Bank[]; accts: Acct[] }) {
@@ -687,6 +687,12 @@ function CreditLineTab({ shareholders, banks, accts }: { shareholders: SH[]; ban
   const load = useCallback(async () => { setLoading(true); try { const r = await fetch('/api/loans/credit-lines'); const j = r.ok ? await r.json() : null; setRows(j?.rows || []) } catch { setRows([]) } finally { setLoading(false) } }, [])
   useEffect(() => { load() }, [load])
   const del = async (r: CreditLineRow) => { if (!confirm(`Delete credit line "${r.entityName}"? Drawn loans are kept but detached.`)) return; await fetch(`/api/loans/credit-lines?id=${r.id}`, { method: 'DELETE' }); load() }
+  const undoDrawdown = async (line: CreditLineRow, dl: DrawnLoan) => {
+    if (!confirm(`Undo the drawdown "${dl.name}" (${peso(dl.principalAmount)}) from ${line.entityName}?\n\nThe loan this drawdown created and its release entry are removed, and the amount returns to the line's Remaining. If the loan already has recorded payments, undo those first.`)) return
+    const res = await fetch('/api/loans/credit-lines', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'undo-drawdown', loanId: dl.id }) })
+    if (!res.ok) { alert((await res.json()).error || 'Failed'); return }
+    load()
+  }
   const markUtilized = async (r: CreditLineRow) => { await fetch('/api/loans/credit-lines', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: r.id, entityName: r.entityName, amount: r.amount, interestPct: r.interestPct, utilized: true, remarks: r.remarks }) }); load() }
   return (
     <div className="space-y-3">
@@ -701,7 +707,22 @@ function CreditLineTab({ shareholders, banks, accts }: { shareholders: SH[]; ban
               <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{r.entityName}</td>
               <td className="px-3 py-2 text-right font-semibold">{peso(r.amount)}</td>
               <td className="px-3 py-2 text-right">{r.interestPct != null ? `${r.interestPct}%` : '—'}</td>
-              <td className="px-3 py-2 text-right">{peso(r.drawnTotal)}</td>
+              <td className="px-3 py-2 text-right">
+                {peso(r.drawnTotal)}
+                {r.drawnLoans.length > 0 && (
+                  <div className="mt-1 space-y-0.5">
+                    {r.drawnLoans.map(dl => (
+                      <div key={dl.id} className="flex items-center justify-end gap-1 text-[10px]" style={{ color: 'var(--mid-gray)' }}>
+                        <span className="truncate max-w-[160px]" title={dl.name}>{dl.dateAcquired ? `${String(dl.dateAcquired).slice(0, 10)} · ` : ''}{dl.name}</span>
+                        <span className="font-mono whitespace-nowrap">{peso(dl.principalAmount)}</span>
+                        <button onClick={() => undoDrawdown(r, dl)}
+                          title="Undo this drawdown — removes the loan it created and its release entry; the amount returns to Remaining (blocked while it has recorded payments)"
+                          className="p-0.5 rounded hover:bg-red-50"><RotateCcw size={10} className="text-red-400" /></button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </td>
               <td className="px-3 py-2 text-right">{peso(Math.max(0, r.amount - r.drawnTotal))}</td>
               <td className="px-3 py-2">{r.settledAt ? <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#dcfce7', color: '#166534' }}>Settled</span> : r.utilized || r.drawnTotal > 0 ? <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#ffedd5', color: '#9a3412' }}>Utilized</span> : <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#f1f5f9', color: '#475569' }}>Open</span>}</td>
               <td className="px-3 py-2 text-right whitespace-nowrap">

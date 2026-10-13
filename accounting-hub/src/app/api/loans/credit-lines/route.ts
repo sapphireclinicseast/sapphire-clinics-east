@@ -88,6 +88,38 @@ export async function PUT(req: Request) {
   }
 }
 
+// PATCH { action: 'undo-drawdown', loanId } — remove ONE drawdown of this
+// credit line: the loan it created, its charges' expense entries, and its
+// release journal entry go; the amount returns to the line's Remaining.
+// Blocked while the loan has recorded (PAID) payments — their journal
+// entries hang off the payouts, so those must be undone first.
+export async function PATCH(req: Request) {
+  const session = await auth()
+  if (!session?.user || !ROLES.includes(session.user.role as string)) return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
+  try {
+    const b = await req.json()
+    if (b.action !== 'undo-drawdown') return NextResponse.json({ error: 'Unknown action' }, { status: 400 })
+    const loanId = String(b.loanId || '')
+    if (!loanId) return NextResponse.json({ error: 'loanId required' }, { status: 400 })
+    const loan = await prisma.loan.findUnique({ where: { id: loanId }, include: { payouts: { where: { status: 'PAID' }, select: { id: true } }, charges: { select: { pettyCashEntryId: true } } } })
+    if (!loan) return NextResponse.json({ error: 'Drawdown loan not found' }, { status: 404 })
+    if (!loan.fromCreditLineId) return NextResponse.json({ error: 'This loan is not a credit-line drawdown' }, { status: 400 })
+    if (loan.payouts.length > 0) {
+      return NextResponse.json({ error: `This drawdown already has ${loan.payouts.length} recorded payment(s) — undo those first (the green cells in its payment schedule), then undo the drawdown.` }, { status: 400 })
+    }
+    await prisma.$transaction(async (tx) => {
+      await tx.journalEntry.deleteMany({ where: { referenceType: 'LOAN', referenceId: loanId } })
+      const eids = loan.charges.map(c => c.pettyCashEntryId).filter((x): x is string => !!x)
+      if (eids.length) await tx.pettyCashEntry.deleteMany({ where: { id: { in: eids } } })
+      await tx.loan.delete({ where: { id: loanId } }) // charges + payouts cascade
+    })
+    return NextResponse.json({ success: true })
+  } catch (e) {
+    console.error('Credit-line undo-drawdown error:', e)
+    return NextResponse.json({ error: e instanceof Error ? e.message : 'Failed' }, { status: 500 })
+  }
+}
+
 export async function DELETE(req: Request) {
   const session = await auth()
   if (!session?.user || !ROLES.includes(session.user.role as string)) return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
