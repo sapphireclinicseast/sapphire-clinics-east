@@ -59,6 +59,17 @@ export async function GET(req: Request) {
     .filter(r => r.sessions > 0)
     .sort((a, b) => b.commission - a.commission || b.sessions - a.sessions || a.name.localeCompare(b.name))
 
+  // Paid status per incentive, from the claim ledger: a MEDREP item exists once
+  // the ₱ landed on the med rep's payslip (payslipId set) or HR marked it paid
+  // by hand (no payslipId). Either way it blocks a second payout.
+  const claims = newPatients.length
+    ? await prisma.referralCommissionItem.findMany({
+        where: { kind: 'MEDREP', patientKey: { in: newPatients.map(p => p.patientKey) } },
+        select: { patientKey: true, cutoffPeriod: true, payslipId: true, createdAt: true },
+      })
+    : []
+  const claimByKey = new Map(claims.map(c => [c.patientKey as string, c]))
+
   const incentiveAmount = incentive ? Number(incentive.amount) : 50
   return NextResponse.json({
     rows,
@@ -69,7 +80,10 @@ export async function GET(req: Request) {
       amount: incentiveAmount,
       count: newPatients.length,
       total: newPatients.length * incentiveAmount,
-      patients: newPatients,
+      patients: newPatients.map(p => {
+        const c = claimByKey.get(p.patientKey)
+        return { ...p, paid: c ? { cutoffPeriod: c.cutoffPeriod, viaPayroll: !!c.payslipId, at: c.createdAt } : null }
+      }),
     },
   })
 }

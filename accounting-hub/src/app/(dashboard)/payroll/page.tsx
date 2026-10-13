@@ -5437,12 +5437,14 @@ export default function PayrollPage() {
         const setActiveSelected = isEmpTab ? setSelectedEmpSalPayableIds : setSelectedSalaryPayableIds
         const salSearch = isEmpTab ? empSalSearch : conSalSearch
         const setSalSearch = isEmpTab ? setEmpSalSearch : setConSalSearch
+        const sq = salSearch.trim().toLowerCase()
         // The Cutoff selector at the top of the page now scopes this list too — it
         // used to be ignored here, so a 2nd-cutoff view still listed 1st-cutoff rows.
         // Anything outstanding in another cutoff is counted below rather than dropped.
-        const allPayables = salAllCutoffs ? loadedPayables : loadedPayables.filter(p => p.cutoffPeriod === cutoffPeriod)
+        // A typed search spans EVERY loaded cutoff: a name sitting in another cutoff
+        // otherwise looks like it doesn't exist while the banner says "not shown".
+        const allPayables = (salAllCutoffs || sq) ? loadedPayables : loadedPayables.filter(p => p.cutoffPeriod === cutoffPeriod)
         const otherCutoffCount = loadedPayables.length - allPayables.length
-        const sq = salSearch.trim().toLowerCase()
         const activePayables = sq
           ? allPayables.filter(p => [
               isEmpTab ? p.employeeName : p.consultantName,
@@ -5523,6 +5525,8 @@ export default function PayrollPage() {
               <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>
                 {salAllCutoffs
                   ? <>Showing <strong style={{ color: 'var(--charcoal)' }}>all cutoffs</strong> with unremitted salaries.</>
+                  : sq
+                  ? <>Searching across <strong style={{ color: 'var(--charcoal)' }}>all cutoffs</strong> — clear the search to return to {getCutoffLabel(cutoffPeriod)}.</>
                   : <>Showing <strong style={{ color: 'var(--charcoal)' }}>{getCutoffLabel(cutoffPeriod)}</strong>.
                       {otherCutoffCount > 0
                         ? ` ${otherCutoffCount} unremitted payslip${otherCutoffCount === 1 ? '' : 's'} in other cutoffs — not shown.`

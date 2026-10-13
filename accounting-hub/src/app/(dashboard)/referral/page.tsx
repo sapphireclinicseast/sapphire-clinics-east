@@ -14,7 +14,20 @@ interface RefOpt { id: string; name: string; type?: string | null }
 interface PatientHit { id: string; name: string; email?: string | null }
 interface RP { id: string; patientId: string | null; patientName: string; referrerId: string; referrerName: string; referrerType: string | null; branches: string[]; note: string | null; createdAt: string }
 interface Sess { id: string; orderNumber: number; date: string; branch: string; paymentStatus: string; services: string; departments: string[]; netAmount: number }
-interface DashRow { referrerId: string; name: string; type: string | null; referrals: number; net: number }
+interface DashRow { referrerId: string; name: string; type: string | null; referrals: number; net: number; medrepTotal: number; medrepPaid: number }
+
+// Label a claim-ledger cutoff for humans: payroll "2026-10-2" → "Oct 2026 · 2nd
+// cutoff"; a hand-mark "MANUAL-2026-10-13" → "marked Oct 13, 2026".
+function paidLabel(paid: { cutoffPeriod: string; viaPayroll: boolean }): string {
+  const m = paid.cutoffPeriod.match(/^(\d{4})-(\d{2})-([12])$/)
+  if (m) {
+    const month = new Date(Number(m[1]), Number(m[2]) - 1, 1).toLocaleDateString('en-PH', { month: 'short', year: 'numeric' })
+    return `payroll · ${month} · ${m[3] === '1' ? '1st' : '2nd'} cutoff`
+  }
+  const man = paid.cutoffPeriod.match(/^MANUAL-(\d{4}-\d{2}-\d{2})$/)
+  if (man) return `marked ${new Date(`${man[1]}T00:00:00+08:00`).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}`
+  return paid.viaPayroll ? 'payroll' : 'marked paid'
+}
 
 export default function ReferralPage() {
   const { data: session, status } = useSession()
@@ -343,18 +356,31 @@ function ReferralDashboardPanel() {
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ background: 'var(--pale-teal)' }}>
-                  {([['name', 'Referrer'], ['type', 'Type'], ['referrals', 'Count of Referrals'], ['net', 'Total Net Sales']] as [typeof sortField, string][]).map(([key, label]) => (
-                    <th key={key} onClick={() => toggleSort(key)} className={`px-4 py-2.5 text-xs font-semibold cursor-pointer select-none ${key === 'referrals' || key === 'net' ? 'text-right' : 'text-left'}`} style={{ color: 'var(--deep-teal)' }}>{label}{arrow(key)}</th>
+                  {([['name', 'Referrer'], ['type', 'Type'], ['referrals', 'Count of Referrals']] as [typeof sortField, string][]).map(([key, label]) => (
+                    <th key={key} onClick={() => toggleSort(key)} className={`px-4 py-2.5 text-xs font-semibold cursor-pointer select-none ${key === 'referrals' ? 'text-right' : 'text-left'}`} style={{ color: 'var(--deep-teal)' }}>{label}{arrow(key)}</th>
+                  ))}
+                  <th className="px-4 py-2.5 text-xs font-semibold text-center" style={{ color: 'var(--deep-teal)' }} title="One-time ₱ incentive to the med rep per new patient this referrer brought — paid vs total. Mark payouts in Commission → Medical representative incentive.">Med-Rep Paid</th>
+                  {([['net', 'Total Net Sales']] as [typeof sortField, string][]).map(([key, label]) => (
+                    <th key={key} onClick={() => toggleSort(key)} className="px-4 py-2.5 text-xs font-semibold cursor-pointer select-none text-right" style={{ color: 'var(--deep-teal)' }}>{label}{arrow(key)}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {sorted.length === 0 ? <tr><td colSpan={4} className="text-center py-10 text-gray-400">No referrers for the selected type(s).</td></tr>
+                {sorted.length === 0 ? <tr><td colSpan={5} className="text-center py-10 text-gray-400">No referrers for the selected type(s).</td></tr>
                   : sorted.map(r => (
                     <tr key={r.referrerId} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
                       <td className="px-4 py-2.5 font-medium" style={{ color: 'var(--charcoal)' }}>{r.name}</td>
                       <td className="px-4 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{REFERRER_TYPE_LABEL[r.type || 'DOCTOR']}</td>
                       <td className="px-4 py-2.5 text-right font-mono">{r.referrals}</td>
+                      <td className="px-4 py-2.5 text-center">
+                        {!r.medrepTotal ? (
+                          <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>—</span>
+                        ) : r.medrepPaid >= r.medrepTotal ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: '#ecfdf5', color: '#047857' }}>✓ {r.medrepPaid}/{r.medrepTotal} paid</span>
+                        ) : (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: '#fffbeb', color: '#b45309' }}>{r.medrepPaid}/{r.medrepTotal} paid</span>
+                        )}
+                      </td>
                       <td className="px-4 py-2.5 text-right font-mono font-semibold" style={{ color: 'var(--deep-teal)' }}>{peso(r.net)}</td>
                     </tr>
                   ))}
@@ -369,7 +395,7 @@ function ReferralDashboardPanel() {
 
 interface ComSession { id: string; orderNumber: number; date: string; branch: string; patientName: string | null; net: number; paymentStatus: string | null; via: 'tag' | 'link' }
 interface ComRow { referrerId: string; name: string; specialization: string | null; isInhouse: boolean; rate: number | null; patients: number; sessions: number; commission: number; orders: ComSession[] }
-interface MedrepBlock { staffName: string | null; amount: number; count: number; total: number; patients: { patientKey: string; patientName: string; referrerName: string; referrerType: string | null; firstDate: string; branch: string; orderNumber: number }[] }
+interface MedrepBlock { staffName: string | null; amount: number; count: number; total: number; patients: { patientKey: string; patientName: string; referrerId: string; referrerName: string; referrerType: string | null; firstDate: string; branch: string; orderNumber: number; paid: { cutoffPeriod: string; viaPayroll: boolean; at: string } | null }[] }
 
 // Per-session referral commission for doctors, each at the ₱ rate set on their
 // card in Referrers (no rate = listed but earns nothing, so unticked doctors
@@ -378,6 +404,8 @@ interface MedrepBlock { staffName: string | null; amount: number; count: number;
 // patient's Referred-patients link when the order wasn't tagged. In-house
 // doctors show separately, so both subtotals are always visible.
 function ReferralCommissionPanel() {
+  const { data: session } = useSession()
+  const canMarkPaid = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'PAYROLL_OFFICER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN'].includes((session?.user?.role as string) || '')
   const today = new Date()
   const iso = (d: Date) => d.toISOString().slice(0, 10)
   const [from, setFrom] = useState(iso(new Date(today.getFullYear(), today.getMonth(), 1)))
@@ -407,6 +435,29 @@ function ReferralCommissionPanel() {
     } catch { setRows([]); setMedrep(null) } finally { setLoading(false) }
   }, [from, to, branch])
   useEffect(() => { const t = setTimeout(load, 300); return () => clearTimeout(t) }, [load])
+
+  // Mark / unmark a med-rep incentive as paid out (manual claim-ledger row).
+  const [marking, setMarking] = useState<string | null>(null)
+  const markPaid = async (p: { patientKey: string; referrerId: string }) => {
+    setMarking(p.patientKey)
+    try {
+      const r = await fetch('/api/referrers/commission/medrep-paid', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ patientKey: p.patientKey, referrerId: p.referrerId }),
+      })
+      if (!r.ok) alert((await r.json()).error || 'Failed to mark as paid')
+      await load()
+    } finally { setMarking(null) }
+  }
+  const unmarkPaid = async (patientKey: string) => {
+    if (!confirm('Remove the manual “paid” mark for this incentive?')) return
+    setMarking(patientKey)
+    try {
+      const r = await fetch(`/api/referrers/commission/medrep-paid?patientKey=${encodeURIComponent(patientKey)}`, { method: 'DELETE' })
+      if (!r.ok) alert((await r.json()).error || 'Failed to unmark')
+      await load()
+    } finally { setMarking(null) }
+  }
 
   const shown = includeInhouse ? rows : rows.filter(r => !r.isInhouse)
   const external = shown.filter(r => !r.isInhouse)
@@ -529,6 +580,27 @@ function ReferralCommissionPanel() {
                             <td className="py-1 pr-3 font-semibold" style={{ color: 'var(--charcoal)' }}>{p.patientName}</td>
                             <td className="py-1 pr-3" style={{ color: 'var(--mid-gray)' }}>via {p.referrerName}{p.referrerType && p.referrerType !== 'DOCTOR' ? ` (${REFERRER_TYPE_LABEL[p.referrerType] || p.referrerType})` : ''}</td>
                             <td className="py-1 pr-3" style={{ color: 'var(--mid-gray)' }}>first session #{p.orderNumber} · {branchLabel(p.branch)}</td>
+                            <td className="py-1 text-right whitespace-nowrap">
+                              {p.paid ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: '#ecfdf5', color: '#047857' }}
+                                  title={p.paid.viaPayroll ? 'Carried on the med rep’s payslip' : 'Marked paid by hand'}>
+                                  ✓ Paid · {paidLabel(p.paid)}
+                                  {!p.paid.viaPayroll && canMarkPaid && (
+                                    <button onClick={() => unmarkPaid(p.patientKey)} disabled={marking === p.patientKey} title="Remove the manual paid mark" className="ml-0.5 hover:opacity-70">
+                                      <X size={11} />
+                                    </button>
+                                  )}
+                                </span>
+                              ) : canMarkPaid ? (
+                                <button onClick={() => markPaid(p)} disabled={marking === p.patientKey}
+                                  className="px-2 py-0.5 rounded-full text-[11px] font-semibold border disabled:opacity-50"
+                                  style={{ borderColor: '#fcd34d', background: '#fffbeb', color: '#b45309' }}>
+                                  {marking === p.patientKey ? '…' : 'Mark paid'}
+                                </button>
+                              ) : (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: '#fffbeb', color: '#b45309' }}>Unpaid</span>
+                              )}
+                            </td>
                           </tr>
                         ))}
                       </tbody>

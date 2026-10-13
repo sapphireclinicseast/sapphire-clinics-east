@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { computeMedrepNewPatients } from '@/lib/referral-commission'
 
 // Branch-scoped users only see their branch's referrers (mirrors /api/referrers).
 function branchScope(role?: string): string | null {
@@ -48,12 +49,30 @@ export async function GET() {
     if (!byName.has(k)) byName.set(k, r.referrerId)
   }
 
-  const agg = new Map<string, { referrerId: string; name: string; type: string | null; referrals: number; net: number }>()
-  for (const r of referrers) agg.set(r.id, { referrerId: r.id, name: r.name, type: r.type, referrals: 0, net: 0 })
+  const agg = new Map<string, { referrerId: string; name: string; type: string | null; referrals: number; net: number; medrepTotal: number; medrepPaid: number }>()
+  for (const r of referrers) agg.set(r.id, { referrerId: r.id, name: r.name, type: r.type, referrals: 0, net: 0, medrepTotal: 0, medrepPaid: 0 })
   for (const r of referred) { const a = agg.get(r.referrerId); if (a) a.referrals++ }
   for (const o of orders) {
     const rid = (o.patientId && byId.get(o.patientId)) || byName.get((o.patientName || '').trim().toLowerCase())
     if (rid) { const a = agg.get(rid); if (a) a.net += Number(o.netAmount) }
+  }
+
+  // Med-rep incentive status per referrer: every new patient they brought since
+  // the scheme started, and how many of those incentives are already paid out
+  // (claim-ledger MEDREP row — payslip-carried or marked by hand).
+  const newPatients = await computeMedrepNewPatients(prisma, { from: new Date(0), to: new Date() })
+  const claims = newPatients.length
+    ? await prisma.referralCommissionItem.findMany({
+        where: { kind: 'MEDREP', patientKey: { in: newPatients.map(p => p.patientKey) } },
+        select: { patientKey: true },
+      })
+    : []
+  const paidKeys = new Set(claims.map(c => c.patientKey as string))
+  for (const p of newPatients) {
+    const a = agg.get(p.referrerId)
+    if (!a) continue
+    a.medrepTotal++
+    if (paidKeys.has(p.patientKey)) a.medrepPaid++
   }
 
   return NextResponse.json({ rows: Array.from(agg.values()) })
