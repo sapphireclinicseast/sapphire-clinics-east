@@ -8663,14 +8663,15 @@ function ProductsSection({
 interface SalesProofEntry { url: string; name?: string; note?: string }
 
 function SalesSection({ branch, canSelectBranch }: { branch: string; canSelectBranch: boolean }) {
-  const [salesTab, setSalesTab] = useState<'summary' | 'checking' | 'scans'>('summary')
+  const [salesTab, setSalesTab] = useState<'summary' | 'checking' | 'scans' | 'missing'>('summary')
   return (
     <div className="space-y-4">
-      <div className="flex gap-1">
+      <div className="flex gap-1 flex-wrap">
         {[
           { key: 'summary' as const, label: 'Sales Summary' },
           { key: 'checking' as const, label: 'Sales Checking' },
           { key: 'scans' as const, label: 'Scanned Sales Records' },
+          { key: 'missing' as const, label: 'Missing Settlement' },
         ].map(t => (
           <button key={t.key} onClick={() => setSalesTab(t.key)}
             className="px-4 py-2 text-sm rounded-xl font-medium transition-colors"
@@ -8689,6 +8690,128 @@ function SalesSection({ branch, canSelectBranch }: { branch: string; canSelectBr
       </div>
       <div style={{ display: salesTab === 'scans' ? 'block' : 'none' }}>
         <ScannedSalesRecords branch={branch} canSelectBranch={canSelectBranch} />
+      </div>
+      <div style={{ display: salesTab === 'missing' ? 'block' : 'none' }}>
+        <MissingSettlementPanel branch={branch} canSelectBranch={canSelectBranch} />
+      </div>
+    </div>
+  )
+}
+
+/* ══════════════════════════════════════════════════════════════
+   MISSING SETTLEMENT — card/debit/GCash/PayMaya sales recorded in
+   POS that are not (yet) accounted for by a bank settlement. One
+   row per day + method; Resolved + Remarks save per item.
+   ══════════════════════════════════════════════════════════════ */
+interface MissingItem { date: string; method: string; methodLabel: string; amount: number; recorded: number; settled: number; description: string; resolved: boolean; remarks: string }
+function MissingSettlementPanel({ branch, canSelectBranch }: { branch: string; canSelectBranch: boolean }) {
+  const BRANCH_OPTS = [
+    ['SANDBOX_EAST', 'East Branch'], ['SANDBOX_GREENHILLS', 'Greenhills Branch'], ['VERDANA_STORE', 'Verdana Store'], ['AURA_INSTITUTE', 'Aura Health Institute'],
+  ] as const
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
+  const monthStart = today.slice(0, 8) + '01'
+  const [selBranch, setSelBranch] = useState(canSelectBranch ? 'SANDBOX_EAST' : branch)
+  const [from, setFrom] = useState(monthStart)
+  const [to, setTo] = useState(today)
+  const [items, setItems] = useState<MissingItem[]>([])
+  const [total, setTotal] = useState(0)
+  const [loading, setLoading] = useState(false)
+  const [hideResolved, setHideResolved] = useState(false)
+  const [savingKey, setSavingKey] = useState('')
+  const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+  const load = useCallback(() => {
+    if (!selBranch) { setItems([]); return }
+    setLoading(true)
+    const params = new URLSearchParams({ branch: selBranch, dateFrom: from, dateTo: to })
+    fetch(`/api/pos/missing-settlement?${params}`)
+      .then(r => r.json())
+      .then(d => { setItems(Array.isArray(d.items) ? d.items : []); setTotal(Number(d.totalUnsettled) || 0) })
+      .catch(() => setItems([]))
+      .finally(() => setLoading(false))
+  }, [selBranch, from, to])
+  useEffect(() => { load() }, [load])
+
+  const save = async (it: MissingItem, patch: Partial<Pick<MissingItem, 'resolved' | 'remarks'>>) => {
+    const key = `${it.date}|${it.method}`
+    setItems(prev => prev.map(x => x.date === it.date && x.method === it.method ? { ...x, ...patch } : x))
+    setSavingKey(key)
+    try {
+      await fetch('/api/pos/missing-settlement', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ branch: selBranch, date: it.date, method: it.method, resolved: patch.resolved ?? it.resolved, remarks: patch.remarks ?? it.remarks }),
+      })
+    } catch { /* keep optimistic */ } finally { setSavingKey('') }
+  }
+
+  const shown = hideResolved ? items.filter(i => !i.resolved) : items
+
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-4 mb-1 flex-wrap">
+        <div>
+          <h2 className="text-base font-bold" style={{ color: 'var(--charcoal)' }}>Missing Settlement</h2>
+          <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Card / debit / GCash / PayMaya sales recorded in POS that are not yet accounted for by a bank settlement. Resolve or annotate each; they clear automatically as the settlement is matched in bank rec.</p>
+        </div>
+        <div className="text-right">
+          <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Unaccounted total</p>
+          <p className="text-lg font-bold" style={{ color: total > 0 ? '#dc2626' : 'var(--teal)' }}>₱{peso(total)}</p>
+        </div>
+      </div>
+      <div className="flex items-center gap-2 my-3 flex-wrap">
+        {canSelectBranch && (
+          <select value={selBranch} onChange={e => setSelBranch(e.target.value)} className="px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }}>
+            {BRANCH_OPTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+        )}
+        <input type="date" value={from} onChange={e => setFrom(e.target.value)} className="px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }} />
+        <span className="text-sm" style={{ color: 'var(--mid-gray)' }}>to</span>
+        <input type="date" value={to} onChange={e => setTo(e.target.value)} className="px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }} />
+        <label className="flex items-center gap-1.5 text-sm ml-2" style={{ color: 'var(--mid-gray)' }}>
+          <input type="checkbox" checked={hideResolved} onChange={e => setHideResolved(e.target.checked)} /> Hide resolved
+        </label>
+      </div>
+
+      <div className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr style={{ background: 'var(--off-white)' }}>
+                <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Date</th>
+                <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Form of payment</th>
+                <th className="text-right px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Amount</th>
+                <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Description</th>
+                <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Resolved</th>
+                <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Remarks</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan={6} className="px-4 py-10 text-center text-xs" style={{ color: 'var(--mid-gray)' }}>Loading…</td></tr>
+              ) : shown.length === 0 ? (
+                <tr><td colSpan={6} className="px-4 py-10 text-center text-xs" style={{ color: 'var(--mid-gray)' }}>{items.length ? 'All items resolved.' : 'Nothing missing — every card/debit/GCash/PayMaya sale in this period is accounted for in the bank.'}</td></tr>
+              ) : shown.map(it => (
+                <tr key={`${it.date}|${it.method}`} className="border-t hover:bg-gray-50/50 transition-colors" style={{ borderColor: 'var(--light-gray)', opacity: it.resolved ? 0.6 : 1 }}>
+                  <td className="px-4 py-3 whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{it.date}</td>
+                  <td className="px-4 py-3 whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{it.methodLabel}</td>
+                  <td className="px-4 py-3 text-right font-semibold tabular-nums" style={{ color: it.resolved ? 'var(--mid-gray)' : '#dc2626' }}>₱{peso(it.amount)}</td>
+                  <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{it.description}</td>
+                  <td className="px-4 py-3">
+                    <select value={it.resolved ? 'yes' : 'no'} onChange={e => save(it, { resolved: e.target.value === 'yes' })}
+                      className="px-2 py-1 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)', background: it.resolved ? '#ecfdf5' : 'white', color: it.resolved ? '#047857' : 'var(--charcoal)' }}>
+                      <option value="no">No</option>
+                      <option value="yes">Yes</option>
+                    </select>
+                  </td>
+                  <td className="px-4 py-3">
+                    <input defaultValue={it.remarks} onBlur={e => { if (e.target.value !== it.remarks) save(it, { remarks: e.target.value }) }}
+                      placeholder="Add a note…" className="w-full min-w-[160px] px-2 py-1 rounded-lg border text-xs" style={{ borderColor: savingKey === `${it.date}|${it.method}` ? 'var(--teal)' : 'var(--light-gray)' }} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   )

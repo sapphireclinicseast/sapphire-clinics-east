@@ -2513,6 +2513,11 @@ model SalesDayClearing {
   // A deposit covering several days is attached to each covered day with a note
   // saying so (covered dates are in the filename). Drives Scanned Sales Records.
   proofUrls     Json?
+  // Missing Settlement review: per-method annotations for card/debit/GCash/PayMaya
+  // sales not accounted for by a bank settlement — [{ method, resolved, remarks }].
+  // resolved is the user's yes/no; remarks is their free note. Drives the
+  // Missing Settlement tab and is independent of the auto settlement ticks.
+  settlementReview Json?
   updatedAt     DateTime @updatedAt
 
   @@unique([date, branch])
