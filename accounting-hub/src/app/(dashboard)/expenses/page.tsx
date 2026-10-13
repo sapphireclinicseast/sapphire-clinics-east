@@ -933,10 +933,72 @@ function ExpensesInner() {
       const r = await fetch(`${rfpApi(rfp)}?id=${rfp.id}`)
       if (!r.ok) return
       const { pdfData } = await r.json()
-      if (!pdfData) { alert('No PDF stored for this RFP.'); return }
-      const a = document.createElement('a'); a.href = pdfData; a.download = `RFP-Summary-${rfp.refNumber}.pdf`
-      document.body.appendChild(a); a.click(); a.remove()
+      if (pdfData) {
+        const a = document.createElement('a'); a.href = pdfData; a.download = `RFP-Summary-${rfp.refNumber}.pdf`
+        document.body.appendChild(a); a.click(); a.remove()
+        return
+      }
+      // Salary/benefit RFPs are created straight from Payroll with no stored
+      // snapshot — rebuild the summary from the RFP's own line items instead
+      // of dead-ending on "No PDF stored".
+      if (rfp.meta?.items?.length) { await buildPayrollRfpPdf(rfp); return }
+      alert('No PDF stored for this RFP.')
     } catch { /* ignore */ }
+  }
+
+  // Summary for a payroll-born RFP (Salaries / Benefits): one row per person
+  // from meta.items, plus any Other Fees lines; total = the RFP's payable.
+  // Mirrors buildRfpPdf's header and signature so the two read as one family.
+  const buildPayrollRfpPdf = async (rfp: Rfp) => {
+    const { jsPDF } = await import('jspdf')
+    const autoTable = (await import('jspdf-autotable')).default
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+    const pageW = doc.internal.pageSize.getWidth()
+    const branchLabel = BRANCHES.find(b => b.value === branch)?.label || branch
+    const logoH = 12
+    let lx = pageW - 10
+    for (const src of ['/login-verdana.png', '/login-aura.png', '/login-scei.png']) {
+      const data = await fetchDataUrl(src)
+      if (!data) continue
+      try {
+        const props = doc.getImageProperties(data)
+        const w = (props.width / props.height) * logoH
+        lx -= w
+        doc.addImage(data, 'PNG', lx, 8, w, logoH)
+        lx -= 4
+      } catch { /* skip bad logo */ }
+    }
+    doc.setFont('helvetica', 'bold').setFontSize(13).text('Request for Payment (RFP)', 14, 15)
+    doc.setFont('helvetica', 'normal').setFontSize(8.5)
+    doc.text(`Branch: ${branchLabel}`, 14, 20)
+    doc.text(`Ref No: ${rfp.refNumber}`, 14, 24)
+    doc.text(`Kind: ${rfp.kind || (rfp.module === 'PAYROLL_SALARY' ? 'Salaries' : 'Benefits')}${rfp.meta?.cutoffPeriod ? ` · Cutoff ${rfp.meta.cutoffPeriod}` : ''}`, 14, 28)
+    doc.text(`Date: ${new Date().toLocaleDateString('en-PH', { timeZone: 'Asia/Manila' })}`, 14, 32)
+    if (rfp.payableTo) { doc.setFont('helvetica', 'bold').text(`Payable to: ${rfp.payableTo}`, 14, 36); doc.setFont('helvetica', 'normal') }
+    const items = rfp.meta?.items || []
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const fees = Array.isArray((rfp.meta as any)?.otherFees) ? ((rfp.meta as any).otherFees as { description?: string; requestor?: string; grossAmount?: number }[]) : []
+    const body = [
+      ...items.map((i, idx) => [String(idx + 1), i.name, rfp.meta?.cutoffPeriod || '', peso(num(i.amount))]),
+      ...fees.filter(f => num(f.grossAmount ?? 0) > 0).map((f, idx) => [String(items.length + idx + 1), `${f.description || f.requestor || 'Other fee'} (other fee)`, '', peso(num(f.grossAmount ?? 0))]),
+    ]
+    autoTable(doc, {
+      startY: rfp.payableTo ? 41 : 37,
+      head: [['#', 'Payee / Item', 'Cutoff', 'Amount Payable']],
+      body,
+      foot: [['', '', 'TOTAL', peso(num(rfp.payableTotal))]],
+      styles: { fontSize: 8, cellPadding: 1.8 }, headStyles: { fillColor: [36, 73, 82], textColor: 255 },
+      footStyles: { fillColor: [237, 243, 217], textColor: [30, 30, 30], fontStyle: 'bold' },
+      columnStyles: { 0: { cellWidth: 10 }, 3: { halign: 'right' } },
+      margin: { left: 14, right: 14 },
+    })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const endY = (doc as any).lastAutoTable?.finalY as number || 60
+    const sigY = Math.min(endY + 24, doc.internal.pageSize.getHeight() - 18)
+    doc.setFont('helvetica', 'bold').setFontSize(9).setTextColor(30, 30, 30).text(preparedByName, 14, sigY - 1)
+    doc.setDrawColor(120, 120, 120).setLineWidth(0.3).line(14, sigY, 74, sigY)
+    doc.setFont('helvetica', 'normal').setFontSize(7.5).setTextColor(120, 120, 120).text('Prepared By (signature over printed name)', 14, sigY + 4)
+    doc.save(`RFP-Summary-${rfp.refNumber}.pdf`)
   }
 
   const buildRfpPdf = async (refNumber: string, br: string, rows: Entry[], opts?: { payableTo?: string; preparedBy?: string; download?: boolean }): Promise<string> => {
