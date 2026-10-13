@@ -11,7 +11,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react'
-import { Wallet, Loader2, RefreshCw, ArrowRight, Pencil } from 'lucide-react'
+import { Wallet, Loader2, RefreshCw, ArrowRight, Pencil, RotateCcw, ChevronDown, ChevronRight } from 'lucide-react'
 
 const peso = (n: number) => '₱' + Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
@@ -26,6 +26,12 @@ interface Pending {
 
 const METHOD_LABEL: Record<string, string> = { QRPH: 'QRPh', GCASH: 'GCash', PAYMAYA: 'Maya', CARD: 'Credit Card' }
 
+interface Converted {
+  id: string; checkoutId: string; referenceCode: string | null; itemName: string | null; description: string | null
+  customerName: string; amount: number; paidAt: string | null; convertedAt: string | null
+  paymentMethodUsed: string | null; walletName: string | null; walletBalance: number | null
+}
+
 export function PaymongoAdvanceQueue({ branch, onConverted }: { branch: string; onConverted?: () => void }) {
   const [rows, setRows] = useState<Pending[]>([])
   const [loading, setLoading] = useState(true)
@@ -34,14 +40,33 @@ export function PaymongoAdvanceQueue({ branch, onConverted }: { branch: string; 
   const [names, setNames] = useState<Record<string, string>>({})
   const [editing, setEditing] = useState('')
 
+  const [conv, setConv] = useState<Converted[]>([])
+  const [showConv, setShowConv] = useState(false)
+
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const r = await fetch(`/api/paymongo/convert-to-advance?branch=${encodeURIComponent(branch || '')}`)
+      const [r, rc] = await Promise.all([
+        fetch(`/api/paymongo/convert-to-advance?branch=${encodeURIComponent(branch || '')}`),
+        fetch(`/api/paymongo/convert-to-advance?branch=${encodeURIComponent(branch || '')}&converted=1`),
+      ])
       setRows(r.ok ? await r.json() : [])
-    } catch { setRows([]) } finally { setLoading(false) }
+      setConv(rc.ok ? await rc.json() : [])
+    } catch { setRows([]); setConv([]) } finally { setLoading(false) }
   }, [branch])
   useEffect(() => { load() }, [load])
+
+  const undo = async (c: Converted) => {
+    if (!confirm(`Undo the conversion of ${peso(c.amount)} onto ${c.walletName || c.customerName}'s advance?\n\nThe amount comes back off the wallet (logged) and the payment returns to this queue. Refused if part of it was already charged to a session.`)) return
+    setBusyId(c.id); setError('')
+    try {
+      const r = await fetch(`/api/paymongo/convert-to-advance?checkoutId=${encodeURIComponent(c.checkoutId)}`, { method: 'DELETE' })
+      const j = await r.json()
+      if (!r.ok) throw new Error(j.error || 'Failed to undo')
+      await load()
+      onConverted?.()
+    } catch (e) { setError(e instanceof Error ? e.message : 'Failed') } finally { setBusyId('') }
+  }
 
   const convert = async (p: Pending) => {
     setBusyId(p.id); setError('')
@@ -58,7 +83,7 @@ export function PaymongoAdvanceQueue({ branch, onConverted }: { branch: string; 
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed') } finally { setBusyId('') }
   }
 
-  if (!loading && rows.length === 0 && !error) return null
+  if (!loading && rows.length === 0 && conv.length === 0 && !error) return null
 
   return (
     <div className="rounded-2xl border" style={{ borderColor: 'var(--teal)', background: '#f0fdfa' }}>
@@ -130,6 +155,28 @@ export function PaymongoAdvanceQueue({ branch, onConverted }: { branch: string; 
           </tbody>
         </table>
       </div>
+      {conv.length > 0 && (
+        <div className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+          <button onClick={() => setShowConv(v => !v)} className="w-full flex items-center gap-1.5 px-4 py-2 text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>
+            {showConv ? <ChevronDown size={13} /> : <ChevronRight size={13} />} Recently converted ({conv.length}) — undo available
+          </button>
+          {showConv && conv.map(c => (
+            <div key={c.id} className="flex items-center gap-2 px-4 py-1.5 border-t bg-white text-xs" style={{ borderColor: 'var(--light-gray)' }}>
+              <span className="whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{c.convertedAt ? new Date(c.convertedAt).toLocaleDateString('en-PH') : '—'}</span>
+              <span className="flex-1 truncate" style={{ color: 'var(--charcoal)' }}>
+                {c.walletName || c.customerName}{c.itemName || c.description ? ` — ${c.itemName || c.description}` : ''}
+              </span>
+              {c.walletBalance != null && <span className="whitespace-nowrap text-[10px]" style={{ color: 'var(--mid-gray)' }}>wallet {peso(c.walletBalance)}</span>}
+              <span className="font-mono font-semibold whitespace-nowrap" style={{ color: 'var(--deep-teal)' }}>{peso(c.amount)}</span>
+              <button onClick={() => undo(c)} disabled={busyId === c.id}
+                title="Undo — takes the amount back off the advance wallet and returns the payment to this queue"
+                className="p-1 rounded hover:bg-red-50 disabled:opacity-50">
+                {busyId === c.id ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} className="text-red-400" />}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
       <p className="px-4 py-2 text-[11px]" style={{ color: 'var(--mid-gray)' }}>
         These were paid online. Converting adds the amount to the patient&apos;s <strong>Advance</strong> wallet —
         no sale is recorded yet. When the session happens, raise the order from the Clinic Schedule and pay it

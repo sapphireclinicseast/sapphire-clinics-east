@@ -26,7 +26,37 @@ export async function GET(req: Request) {
   if (!session?.user || !READ_ROLES.includes(session.user.role as string)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  const branch = String(new URL(req.url).searchParams.get('branch') || '')
+  const sp = new URL(req.url).searchParams
+  const branch = String(sp.get('branch') || '')
+
+  // ?converted=1 → the recent conversions, so a wrong one can be undone from
+  // the same card. Only conversions whose money is still sitting on the wallet
+  // as an advance (no order raised from this checkout) are listed.
+  if (sp.get('converted') === '1') {
+    const conv = await prisma.paymongoCheckout.findMany({
+      where: { status: 'PAID', advanceWalletId: { not: null }, orderId: null, ...(branch ? { branch } : {}) },
+      orderBy: { convertedAt: 'desc' },
+      take: 15,
+      select: {
+        id: true, checkoutId: true, referenceCode: true, itemName: true, description: true,
+        customerFirstName: true, customerLastName: true, amount: true, paidAt: true,
+        convertedAt: true, advanceWalletId: true, paymentMethodUsed: true,
+      },
+    })
+    const wids = [...new Set(conv.map(r => r.advanceWalletId).filter((x): x is string => !!x))]
+    const wallets = wids.length ? await prisma.digitalWallet.findMany({ where: { id: { in: wids } }, select: { id: true, patientName: true, balance: true } }) : []
+    const wOf = (id: string | null) => wallets.find(w => w.id === id)
+    return NextResponse.json(conv.map(r => ({
+      id: r.id, checkoutId: r.checkoutId, referenceCode: r.referenceCode,
+      itemName: r.itemName, description: r.description,
+      customerName: [r.customerFirstName, r.customerLastName].filter(Boolean).join(' '),
+      amount: Number(r.amount), paidAt: r.paidAt, convertedAt: r.convertedAt,
+      paymentMethodUsed: r.paymentMethodUsed,
+      walletName: wOf(r.advanceWalletId)?.patientName || null,
+      walletBalance: wOf(r.advanceWalletId) ? Number(wOf(r.advanceWalletId)!.balance) : null,
+    })))
+  }
+
   const rows = await prisma.paymongoCheckout.findMany({
     where: {
       status: 'PAID',
@@ -139,5 +169,52 @@ export async function POST(req: Request) {
   } catch (e) {
     console.error('PayMongo convert-to-advance error:', e)
     return NextResponse.json({ error: e instanceof Error ? e.message : 'Failed to record the advance' }, { status: 500 })
+  }
+}
+
+// DELETE ?checkoutId=… — undo a conversion: take the amount back off the
+// patient's ADVANCE wallet (logged as a DEDUCTION) and return the payment to
+// the queue. Refused when the wallet no longer holds the full amount — part of
+// it was already charged to a session, and that charge must be undone first.
+// No journal entry moves: the conversion never posted one.
+export async function DELETE(req: Request) {
+  const session = await auth()
+  if (!session?.user || !WRITE_ROLES.includes(session.user.role as string)) {
+    return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
+  }
+  const checkoutId = String(new URL(req.url).searchParams.get('checkoutId') || '')
+  if (!checkoutId) return NextResponse.json({ error: 'checkoutId is required' }, { status: 400 })
+  try {
+    const co = await prisma.paymongoCheckout.findFirst({ where: { OR: [{ id: checkoutId }, { checkoutId }] } })
+    if (!co) return NextResponse.json({ error: 'Payment not found' }, { status: 404 })
+    if (!co.advanceWalletId) return NextResponse.json({ error: 'This payment is not on an advance' }, { status: 400 })
+    if (co.orderId) return NextResponse.json({ error: 'This payment is already recorded as an order' }, { status: 400 })
+    const amount = Number(co.amount)
+
+    await prisma.$transaction(async (tx) => {
+      const wallet = await tx.digitalWallet.findUnique({ where: { id: co.advanceWalletId! } })
+      if (wallet) {
+        const before = Number(wallet.balance)
+        if (before + 1e-9 < amount) {
+          throw new Error(`Only ₱${before.toLocaleString('en-PH', { minimumFractionDigits: 2 })} is left on ${wallet.patientName}'s advance — part of this payment was already charged to a session. Undo that charge first.`)
+        }
+        await tx.digitalWallet.update({ where: { id: wallet.id }, data: { balance: { decrement: amount } } })
+        await tx.walletLog.create({
+          data: {
+            walletId: wallet.id,
+            action: 'DEDUCTION',
+            description: `Undo PayMongo advance conversion — returned to the POS queue${co.referenceCode ? ` · ${co.referenceCode}` : ''}`,
+            balanceBefore: Math.round(before),
+            balanceAfter: Math.round(before - amount),
+            createdById: session.user!.id as string,
+          },
+        })
+      }
+      await tx.paymongoCheckout.update({ where: { id: co.id }, data: { advanceWalletId: null, convertedAt: null } })
+    })
+    return NextResponse.json({ ok: true })
+  } catch (e) {
+    console.error('PayMongo advance undo error:', e)
+    return NextResponse.json({ error: e instanceof Error ? e.message : 'Failed to undo' }, { status: 500 })
   }
 }
