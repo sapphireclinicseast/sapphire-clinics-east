@@ -121,7 +121,7 @@ const NAV_SECTIONS: NavSection[] = [
     label: 'Planning & Analysis',
     items: [
       { href: '/budgets', icon: Target, label: 'Budgets', roles: FULL_ACCESS },
-      { href: '/reports', icon: BarChart3, label: 'Reports', roles: [...FULL_ACCESS, 'MEDREP', 'INVESTOR'] },
+      { href: '/reports', icon: BarChart3, label: 'Reports', roles: [...FULL_ACCESS, 'MEDREP', 'PAYROLL_OFFICER', 'INVESTOR'] },
       { href: '/investor-subsidiary-ledger', icon: ScrollText, label: 'Investor · Subsidiary Ledger', roles: [...FULL_ACCESS, 'INVESTOR'] },
       { href: '/sales-summary', icon: Receipt, label: 'Sales Summary', roles: SERVICES_POS_ACCESS },
       // Catches mentorship sessions paid for without the "Mentorship" service.

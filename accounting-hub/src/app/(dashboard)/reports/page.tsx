@@ -1690,8 +1690,10 @@ export default function ReportsPage() {
 
   // Med-rep: read-only, Income Statement / monthly / gross-revenue only, no drill-down. Branch
   // filter still applies. These "effective" values override the (hidden) tab/view controls.
+  // The payroll officer shares this exact sales-only view (Hannah, 2026-10-13) —
+  // they see revenue figures, never expenses or the full statements.
   const role = (session?.user as { role?: string })?.role || ''
-  const isMedrep = role === 'MEDREP'
+  const isMedrep = role === 'MEDREP' || role === 'PAYROLL_OFFICER'
   // Investor: read-only statements + Graphs. Balance sheet and cash flow are
   // whole-company only (no branch filter); the income statement may be
   // branch-filtered. Amounts are never clickable — drill-downs reach

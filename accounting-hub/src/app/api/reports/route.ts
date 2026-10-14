@@ -4,7 +4,8 @@ import { prisma } from '@/lib/prisma'
 import { productSubtypeLabel } from '@/lib/sku-taxonomy'
 import { getHistoricalReport } from '@/lib/reports/historical-fs'
 
-const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'MEDREP', 'INVESTOR']
+// PAYROLL_OFFICER shares the med-rep revenue-only view (the page renders them identically).
+const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'MEDREP', 'PAYROLL_OFFICER', 'INVESTOR']
 
 export async function GET(req: Request) {
   const session = await auth()
