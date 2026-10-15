@@ -9,6 +9,7 @@ import {
   Ban, RotateCcw,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
+import { pwdUnitPrice, PWD_RATE } from '@/lib/quotations/pricing'
 import { downloadXlsx, downloadPdf } from '@/lib/export'
 import DownloadMenu from '@/components/ui/DownloadMenu'
 import Pagination from '@/components/ui/Pagination'
@@ -483,15 +484,17 @@ export default function ServicesPage() {
     if (filterDept) subtitleParts.push(DEPT_LABELS[filterDept] || filterDept)
     const subtitle = subtitleParts.length ? subtitleParts.join(' · ') : 'All Branches'
 
-    const headers = ['Name', 'Department', 'Branch', 'Price', 'New Price', 'Price Type', 'Revenue Type', 'Doctor Fee', 'Clinic Fee', 'PWD Rule', 'Status']
+    const headers = ['Name', 'Department', 'Branch', 'Price', 'PWD/SC Price', 'New Price', 'Price Type', 'Revenue Type', 'Doctor Fee', 'Clinic Fee', 'PWD Rule', 'Status']
     const rows = services.map(s => {
       const { price, newPrice } = resolvePrice(s)
       const pwdRule = s.noPwdDiscount ? 'No PWD Discount' : s.hasDoctorFee && s.pwdDiscountClinicOnly ? 'Clinic fee only (20%)' : 'Standard (20% total)'
+      const pwdPrice = pwdUnitPrice({ kind: 'SERVICE', name: s.name, grossPrice: price, quantity: 1, noPwdDiscount: s.noPwdDiscount, hasDoctorFee: s.hasDoctorFee, pwdDiscountClinicOnly: s.pwdDiscountClinicOnly, clinicFee: s.clinicFee != null ? Number(s.clinicFee) : null })
       return [
         s.name,
         DEPT_LABELS[s.department] || s.department,
         BRANCH_LABELS[s.branch] || s.branch,
         formatCurrency(price),
+        pwdPrice != null ? formatCurrency(pwdPrice) : '—',
         newPrice != null && newPrice > 0 ? formatCurrency(newPrice) : '',
         s.priceType === 'FIXED' ? 'Fixed' : 'Adjustable',
         s.revenueType === 'EARNED' ? 'Sales' : s.walletType ? s.walletType.replace('_', ' ') : 'Unearned',
@@ -620,6 +623,9 @@ export default function ServicesPage() {
                   onClick={() => toggleSort('price')}>
                   <span className="flex items-center justify-end gap-1">Price <SortIcon field="price" /></span>
                 </th>
+                <th className="text-right px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }} title="Price after the 20% PWD / Senior Citizen discount, for services that allow it">
+                  <span className="flex items-center justify-end gap-1">PWD/SC Price</span>
+                </th>
                 <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Pricing</th>
                 <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Revenue</th>
                 <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>PWD Rule</th>
@@ -629,7 +635,7 @@ export default function ServicesPage() {
             <tbody>
               {visibleServices.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>
+                  <td colSpan={10} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>
                     <Stethoscope size={32} className="mx-auto mb-2 opacity-40" />
                     <p>No services found</p>
                     {canWrite && <p className="text-xs mt-1">Add clinic services to get started</p>}
@@ -639,6 +645,9 @@ export default function ServicesPage() {
                 const price = Number(s.price)
                 const doctor = s.doctorFee != null ? Number(s.doctorFee) : null
                 const clinic = s.clinicFee != null ? Number(s.clinicFee) : null
+                // Price after the 20% PWD/SC discount — same rule the POS and quotations use
+                // (null when the service is not eligible, i.e. noPwdDiscount).
+                const pwdPrice = pwdUnitPrice({ kind: 'SERVICE', name: s.name, grossPrice: price, quantity: 1, noPwdDiscount: s.noPwdDiscount, hasDoctorFee: s.hasDoctorFee, pwdDiscountClinicOnly: s.pwdDiscountClinicOnly, clinicFee: clinic })
                 const badge = DEPT_BADGE[s.department] || { bg: '#f3f4f6', color: '#374151' }
 
                 return (
@@ -704,6 +713,18 @@ export default function ServicesPage() {
                             </div>
                           ))}
                         </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-right font-medium" style={{ color: 'var(--charcoal)' }}>
+                      {pwdPrice != null ? (
+                        <>
+                          <span style={{ color: '#166534' }}>{formatCurrency(pwdPrice)}</span>
+                          <div className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+                            {s.hasDoctorFee && s.pwdDiscountClinicOnly ? 'clinic fee only' : `−${(PWD_RATE * 100).toFixed(0)}%`} · save {formatCurrency(price - pwdPrice)}
+                          </div>
+                        </>
+                      ) : (
+                        <span style={{ color: 'var(--mid-gray)' }} title="Not eligible for the PWD/SC discount">—</span>
                       )}
                     </td>
                     <td className="px-4 py-3">
