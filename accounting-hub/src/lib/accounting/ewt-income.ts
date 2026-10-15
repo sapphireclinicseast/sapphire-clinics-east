@@ -36,6 +36,13 @@ export async function sweepNoSiEwtToOtherIncome(db: PrismaClient, createdById: s
   const dPay = declared.map(d => d.payrollEntryId).filter((x): x is string => !!x)
   const dPc = declared.map(d => d.pettyCashEntryId).filter((x): x is string => !!x)
 
+  // Self-heal: an item flagged remitted AFTER it was declared (e.g. a
+  // reconciliation against actual BIR filings) must come back OFF income —
+  // the remittance already relieves 4070, so keeping the declaration would
+  // relieve it twice. Reverse those declarations before declaring anything new.
+  const stalePay = dPay.length ? (await db.payrollEntry.findMany({ where: { id: { in: dPay }, taxRemitted: true }, select: { id: true } })).map(r => r.id) : []
+  const stalePc = dPc.length ? (await db.pettyCashEntry.findMany({ where: { id: { in: dPc }, ewtRemitted: true }, select: { id: true } })).map(r => r.id) : []
+
   const cons = await db.payrollEntry.findMany({
     where: {
       taxAmount: { gt: 0 }, status: 'LOCKED', taxRemitted: false,
@@ -55,7 +62,13 @@ export async function sweepNoSiEwtToOtherIncome(db: PrismaClient, createdById: s
     const when = e.paidAt || e.date
     return when ? new Date(when) <= cutoff : false
   })
-  if (cons.length === 0 && exps.length === 0) return zero
+  if (cons.length === 0 && exps.length === 0 && stalePay.length === 0 && stalePc.length === 0) return zero
+
+  // Repair-only run: nothing new to declare, but stale declarations to reverse.
+  if (cons.length === 0 && exps.length === 0) {
+    await db.$transaction(async (tx) => { await undoEwtIncomeDeclarations(tx, stalePay, stalePc) })
+    return zero
+  }
 
   const [incomeAccount, taxPayableAccount] = await Promise.all([
     db.account.findFirst({ where: { accountNumber: '7220', isActive: true } }),
@@ -78,6 +91,7 @@ export async function sweepNoSiEwtToOtherIncome(db: PrismaClient, createdById: s
   for (const e of exps) addTo(e.branch, expYm(e), { id: e.id, kind: 'exp', amount: expEwtAmount(e), ref: e.pcvNumber })
 
   return db.$transaction(async (tx) => {
+    if (stalePay.length || stalePc.length) await undoEwtIncomeDeclarations(tx, stalePay, stalePc)
     const out = { entries: 0, items: 0, totalAmount: 0 }
     for (const g of [...groups.values()].sort((a, b) => a.branch.localeCompare(b.branch) || a.ym.localeCompare(b.ym))) {
       const amount = r2(g.items.reduce((s, i) => s + i.amount, 0))
