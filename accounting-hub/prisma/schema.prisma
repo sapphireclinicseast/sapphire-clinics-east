@@ -1109,6 +1109,10 @@ model Order {
   // Per-claim SOA submission outcome: null = Pending; APPROVED | DISAPPROVED set
   // manually in the Per HMO table. A paid order displays as Approved regardless.
   soaApprovalStatus     String?
+  // Per HMO "Reassign": the branch whose SOA generation picks up this session
+  // (SANDBOX_EAST / SANDBOX_GREENHILLS); null = the order's own branch. SOA
+  // scoping only — sales, payroll, aging and LOA views keep reading `branch`.
+  soaBranch             String?
   status                OrderStatus  @default(COMPLETED)
   returnedByBuyer       Boolean      @default(false) // product order returned by buyer (stock restocked, sale reversed)
   paymentStatus         String       @default("PAID") // PAID | UNPAID (session recorded, cash collected later)

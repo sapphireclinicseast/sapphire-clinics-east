@@ -74,7 +74,23 @@ export async function GET(req: Request) {
       status: { not: 'VOIDED' },
       payments: { some: paymentFilter },
     }
-    if (branch) orderWhere.branch = { in: [branch, 'ALL'] }
+    if (branch) {
+      if (type === 'HMO') {
+        // Per HMO "Reassign": a session whose HMO claim is processed under the
+        // other branch carries that branch in soaBranch, and the HMO/SOA views
+        // scope by it. Untagged orders stay with their physical branch. Sales,
+        // payroll, AR aging and LOA keep reading `branch` in their own routes
+        // and never see soaBranch.
+        orderWhere.AND = [{
+          OR: [
+            { soaBranch: branch },
+            { soaBranch: null, branch: { in: [branch, 'ALL'] } },
+          ],
+        }]
+      } else {
+        orderWhere.branch = { in: [branch, 'ALL'] }
+      }
+    }
     if (dateFrom || dateTo) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const rangeFilter: any = {}
@@ -111,6 +127,7 @@ export async function GET(req: Request) {
         clinicianName: true,
         soaApprovalStatus: true,
         branch: true,
+        soaBranch: true,
         netAmount: true,
         arProofUrl: true,
         createdBy: { select: { name: true } },

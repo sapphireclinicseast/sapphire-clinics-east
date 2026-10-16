@@ -16,6 +16,7 @@ import { formatCurrency } from '@/lib/utils'
 import { downloadXlsx, downloadReportPdf } from '@/lib/export'
 import { ScanUpload } from '@/components/ScanUpload'
 import SoaReport from './SoaReport'
+import { soaBranchCode } from '@/lib/soa-ref'
 import SubmittedForSoa from './SubmittedForSoa'
 import OthersTab from './OthersTab'
 import ExpandablePanel from './ExpandablePanel'
@@ -64,6 +65,7 @@ interface AROrder {
   arPaymentItems: { paymentId: string }[]
   soaSubmissionItems?: { submission: { submittedDate: string; referenceNo?: string | null } }[]
   soaApprovalStatus?: string | null   // APPROVED | DISAPPROVED | null (pending)
+  soaBranch?: string | null           // Reassign: branch whose SOA generation picks this up; null = own branch
 }
 
 interface ARSummary {
@@ -426,6 +428,11 @@ export default function AccountsReceivablePage() {
   // showing a pencil to someone whose save would 403 is worse than hiding it.
   const canEditGlCase = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN',
     'VERDANA_ADMIN', 'HMO_OFFICER', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK'].includes(role)
+  // Per HMO "Reassign" (SOA branch). Mirrors WRITE_ROLES in
+  // src/app/api/accounts-receivable/soa-reassign/route.ts — front desk see the
+  // tag but the claim handover stays with the HMO officers and accounting.
+  const canReassign = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN',
+    'VERDANA_ADMIN', 'HMO_OFFICER'].includes(role)
   const scope = userBranchScope((session?.user as { branch?: string })?.branch)
   const searchParams = useSearchParams()
   // HMO Officers and front desk are locked to the HMO tab only
@@ -1111,6 +1118,30 @@ export default function AccountsReceivablePage() {
       setChangeDateBusy(null)
       setChangeDateEditId(null)
     }
+  }
+
+  /* ── Reassign (Per HMO): branch whose SOA generation picks up the session.
+     SOA scoping only — the order's own branch (sales, payroll, aging, LOA)
+     stays untouched. Server normalizes "own branch" back to null. */
+  const [reassignBusy, setReassignBusy] = useState<string | null>(null)
+  const saveSoaBranch = async (orderId: string, soaBranch: string | null) => {
+    setReassignBusy(orderId)
+    try {
+      const res = await fetch('/api/accounts-receivable/soa-reassign', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId, soaBranch }),
+      })
+      if (res.ok) {
+        const { soaBranch: saved } = await res.json()
+        const apply = (list: AROrder[]) => list.map(o => o.id === orderId ? { ...o, soaBranch: saved } : o)
+        setOrders(apply)
+        setPerHmoFetched(prev => prev ? apply(prev) : prev)
+      } else {
+        alert((await res.json().catch(() => ({}))).error || 'Failed to reassign the session')
+      }
+    } catch { /* ignore */ }
+    finally { setReassignBusy(null) }
   }
 
   const saveClinician = async (orderId: string, name: string | null) => {
@@ -2472,6 +2503,7 @@ export default function AccountsReceivablePage() {
                 'Submission Status': o.arPaymentItems.length > 0 ? 'Approved'
                   : o.soaApprovalStatus === 'APPROVED' ? 'Approved'
                   : o.soaApprovalStatus === 'DISAPPROVED' ? ((o.soaSubmissionItems?.length || 0) >= 2 ? 'Resubmitted' : 'Disapproved') : 'Pending',
+                'SOA Branch': soaBranchCode(o.soaBranch || o.branch) + (o.soaBranch ? ' (reassigned)' : ''),
                 Proof: o.arProofUrl || '',
               }
             })
@@ -2605,6 +2637,7 @@ export default function AccountsReceivablePage() {
                       { label: 'Date SOA Submitted', field: '', searchKey: '' },
                       { label: 'SOA Ref', field: '', searchKey: 'soaref' },
                       { label: 'Submission Status', field: '', searchKey: 'substat' },
+                      { label: 'Reassign', field: '', searchKey: '' },
                       { label: 'Invoice', field: '', searchKey: '' },
                       { label: 'Proof', field: '', searchKey: '' },
                     ].map(col => (
@@ -2731,9 +2764,9 @@ export default function AccountsReceivablePage() {
                 </thead>
                 <tbody>
                   {loading ? (
-                    <tr><td colSpan={isFollowUp ? 15 : 14} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>Loading...</td></tr>
+                    <tr><td colSpan={isFollowUp ? 16 : 15} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>Loading...</td></tr>
                   ) : perHmoOrders.length === 0 ? (
-                    <tr><td colSpan={isFollowUp ? 15 : 14} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>
+                    <tr><td colSpan={isFollowUp ? 16 : 15} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>
                       {/* Fetching a past year takes a moment — saying "none" while
                           the rows are still in flight is how this read as empty. */}
                       {perHmoLoading ? 'Loading transactions…' : 'No transactions found'}
@@ -2966,6 +2999,34 @@ export default function AccountsReceivablePage() {
                             </>
                           )
                         })()}
+                        {/* Reassign — the branch whose SOA generation picks up this
+                            session (claim processed under the other branch). SOA
+                            views only; sales, payroll and LOA stay physical. */}
+                        <td className="px-3 py-2 text-center">
+                          {canReassign ? (
+                            <select
+                              value={o.soaBranch || ''}
+                              disabled={reassignBusy === o.id}
+                              onChange={e => saveSoaBranch(o.id, e.target.value || null)}
+                              title="Branch whose SOA generation picks up this session — SOA only; sales, payroll and LOA stay with the branch where it was done"
+                              className="px-1.5 py-1 rounded-lg border text-xs outline-none disabled:opacity-50"
+                              style={{
+                                borderColor: o.soaBranch ? 'var(--teal)' : 'var(--light-gray)',
+                                color: o.soaBranch ? 'var(--deep-teal)' : 'var(--mid-gray)',
+                                background: o.soaBranch ? '#e0f2f1' : 'white',
+                              }}>
+                              <option value="">{soaBranchCode(o.branch)} · own</option>
+                              <option value="SANDBOX_EAST">AHEA</option>
+                              <option value="SANDBOX_GREENHILLS">AHGH</option>
+                            </select>
+                          ) : (
+                            <span className="text-xs font-semibold"
+                              title={o.soaBranch ? 'Reassigned — this claim goes on the other branch’s SOA' : undefined}
+                              style={{ color: o.soaBranch ? 'var(--deep-teal)' : 'var(--mid-gray)' }}>
+                              {soaBranchCode(o.soaBranch || o.branch)}
+                            </span>
+                          )}
+                        </td>
                         <td className="px-3 py-2 text-center">
                           <button
                             disabled={invoiceBusy === o.id}
@@ -3014,6 +3075,7 @@ export default function AccountsReceivablePage() {
       {/* ── SOA Report sub-tab ── */}
       {tab === 'HMO' && hmoSubTab === 'soa-report' && (
         <SoaReport
+          branch={branch}
           wallets={wallets.map(w => ({ id: w.id, patientName: w.patientName, branch: w.branch }))}
           isAdmin={['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN'].includes((session?.user as { role?: string })?.role || '')}
           canWrite={canWrite}

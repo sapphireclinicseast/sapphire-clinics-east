@@ -35,6 +35,11 @@ interface SoaReportProps {
   wallets: ARWallet[]
   isAdmin: boolean // can edit settings
   canWrite?: boolean // can generate/delete SOAs (front desk view them only)
+  // The page's branch filter. When set, the preview covers that branch's CLAIMS:
+  // sessions done there plus sessions reassigned to it in Per HMO (soaBranch),
+  // minus its own sessions reassigned away. Saved on the record so the SOA
+  // reference number carries the right AHEA/AHGH code.
+  branch?: string
 }
 
 /* ─── SOA Settings Modal ───────────────────────────────────── */
@@ -286,7 +291,7 @@ function DuplicateDialog({
 }
 
 /* ─── Main Component ───────────────────────────────────────── */
-export default function SoaReport({ wallets, isAdmin, canWrite = true }: SoaReportProps) {
+export default function SoaReport({ wallets, isAdmin, canWrite = true, branch = '' }: SoaReportProps) {
   const [settings, setSettings] = useState<SoaSettings>({})
   const [showSettings, setShowSettings] = useState(false)
   const [records, setRecords] = useState<SoaListRecord[]>([])
@@ -326,7 +331,10 @@ export default function SoaReport({ wallets, isAdmin, canWrite = true }: SoaRepo
       const dateFrom = `${year}-${month}-01`
       const lastDay = new Date(parseInt(year), parseInt(month), 0).getDate()
       const dateTo = `${year}-${month}-${String(lastDay).padStart(2, '0')}`
-      const r = await fetch(`/api/accounts-receivable?type=HMO&walletId=${genWallet}&dateFrom=${dateFrom}&dateTo=${dateTo}`)
+      // The branch filter scopes by CLAIM branch (soaBranch, set in Per HMO's
+      // Reassign column, falling back to the order's own branch) — so a GH
+      // session reassigned to East lands on East's SOA, and only there.
+      const r = await fetch(`/api/accounts-receivable?type=HMO&walletId=${genWallet}&dateFrom=${dateFrom}&dateTo=${dateTo}${branch ? `&branch=${branch}` : ''}`)
       const d = await r.json()
       const all: AROrder[] = d.orders || []
       // Excluded: sessions already in a submitted batch, AND sessions sitting on
@@ -344,7 +352,7 @@ export default function SoaReport({ wallets, isAdmin, canWrite = true }: SoaRepo
     } finally {
       setPreviewLoading(false)
     }
-  }, [genWallet, genPeriod, records])
+  }, [genWallet, genPeriod, records, branch])
   useEffect(() => { loadPreview() }, [loadPreview])
 
   // "Submitted" button: record the date the SOA was actually filed. The server
@@ -528,6 +536,9 @@ export default function SoaReport({ wallets, isAdmin, canWrite = true }: SoaRepo
           walletId: genWallet, walletName, period: genPeriod,
           pdfData: pdfBase64,
           orderIds: fetchedOrders.map(o => o.id),
+          // Claim branch of this statement — the submission reference number
+          // (AHEA-/AHGH-…) is derived from it when the SOA is marked submitted.
+          branch: branch || null,
           forceCreate: true, // at this point we've confirmed or it's a fresh generate
         }),
       })
@@ -626,6 +637,8 @@ export default function SoaReport({ wallets, isAdmin, canWrite = true }: SoaRepo
           <h2 className="text-base font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>Generate SOA</h2>
           <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
             Select an HMO provider and month — every transaction for that month loads ticked below. Untick any you want left off, then generate the Statement of Account PDF.
+            {branch === 'SANDBOX_EAST' && ' Scoped to East claims — including sessions reassigned to AHEA in Per HMO.'}
+            {branch === 'SANDBOX_GREENHILLS' && ' Scoped to Greenhills claims — including sessions reassigned to AHGH in Per HMO.'}
           </p>
         </div>
 
