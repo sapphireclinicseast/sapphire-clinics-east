@@ -6,20 +6,34 @@ import { enforceBranch } from '@/lib/branch-scope'
 const VALID_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE', 'AURA_INSTITUTE']
 const TARGET_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER'] // only these may set the target
 
-// GET ?branch=&month=&year= — Sales with SI (net) vs manual target for the month.
+// GET ?branch=&year=&month=            — Sales with SI (net) vs manual target for the month.
+//     ?branch=&year=&mode=quarter&quarter=1..4 — the quarter's totals.
+//     ?branch=&year=&mode=annual        — the whole year's totals.
+// Quarter/annual SUM the stored monthly targets and the SI sales over the span
+// (targets are only ever encoded per month — see PUT) and return a per-month
+// breakdown so the view stays consistent with the month views it aggregates.
 export async function GET(req: Request) {
   const session = await auth()
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const sp = new URL(req.url).searchParams
   const branch = enforceBranch((session.user as { branch?: string; branches?: string[] }).branch, (session.user as { branches?: string[] }).branches, sp.get('branch')) ?? (sp.get('branch') || '')
+  const mode = sp.get('mode') || 'month'
   const month = parseInt(sp.get('month') || '0', 10)
+  const quarter = parseInt(sp.get('quarter') || '0', 10)
   const year = parseInt(sp.get('year') || '0', 10)
-  if (!VALID_BRANCHES.includes(branch) || month < 1 || month > 12 || year < 2000) {
-    return NextResponse.json({ error: 'Valid branch, month and year are required' }, { status: 400 })
+  if (
+    !VALID_BRANCHES.includes(branch) || year < 2000
+    || !['month', 'quarter', 'annual'].includes(mode)
+    || (mode === 'month' && (month < 1 || month > 12))
+    || (mode === 'quarter' && (quarter < 1 || quarter > 4))
+  ) {
+    return NextResponse.json({ error: 'Valid branch, period and year are required' }, { status: 400 })
   }
   try {
-    const start = new Date(Date.UTC(year, month - 1, 1))
-    const end = new Date(Date.UTC(year, month, 1))
+    const startIdx = mode === 'month' ? month - 1 : mode === 'quarter' ? (quarter - 1) * 3 : 0
+    const spanLen = mode === 'month' ? 1 : mode === 'quarter' ? 3 : 12
+    const start = new Date(Date.UTC(year, startIdx, 1))
+    const end = new Date(Date.UTC(year, startIdx + spanLen, 1))
     const orders = await prisma.order.findMany({
       where: {
         branch, status: { in: ['COMPLETED', 'REOPENED'] }, issuedOfficialInvoice: true, salesInvoiceNumber: { not: null },
@@ -30,12 +44,27 @@ export async function GET(req: Request) {
           { siDeclaredDate: { gte: start, lt: end } },
         ],
       },
-      select: { netAmount: true },
+      select: { netAmount: true, siDeclaredDate: true, transactionDate: true },
     })
-    const salesWithSI = orders.reduce((s, o) => s + Number(o.netAmount), 0)
-    const t = await prisma.salesTarget.findUnique({ where: { branch_periodMonth_periodYear: { branch, periodMonth: month, periodYear: year } } })
-    const target = t ? Number(t.target) : 0
-    return NextResponse.json({ branch, month, year, salesWithSI, target, difference: target - salesWithSI, orderCount: orders.length })
+    const targets = await prisma.salesTarget.findMany({
+      where: { branch, periodYear: year, periodMonth: { gte: startIdx + 1, lte: startIdx + spanLen } },
+    })
+    const months = Array.from({ length: spanLen }, (_, i) => ({ month: startIdx + i + 1, salesWithSI: 0, target: 0 }))
+    for (const o of orders) {
+      const effective = o.siDeclaredDate ?? o.transactionDate
+      const slot = months[new Date(effective).getUTCMonth() - startIdx]
+      if (slot) slot.salesWithSI += Number(o.netAmount)
+    }
+    for (const t of targets) {
+      const slot = months[t.periodMonth - 1 - startIdx]
+      if (slot) slot.target = Number(t.target)
+    }
+    const salesWithSI = months.reduce((s, m) => s + m.salesWithSI, 0)
+    const target = months.reduce((s, m) => s + m.target, 0)
+    return NextResponse.json({
+      branch, mode, year, salesWithSI, target, difference: target - salesWithSI, orderCount: orders.length, months,
+      ...(mode === 'month' ? { month } : {}), ...(mode === 'quarter' ? { quarter } : {}),
+    })
   } catch (err) {
     console.error('Sales target error:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

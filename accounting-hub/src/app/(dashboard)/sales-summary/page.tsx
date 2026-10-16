@@ -993,17 +993,21 @@ function FlagRow({ branch, label, siNumber, onSave, onTag }: { branch: string; l
 function SalesTargetTab({ branch: initialBranch, scopeEnum, canEditTarget }: { branch: string; scopeEnum: string | null; canEditTarget: boolean }) {
   const now = new Date()
   const [branch, setBranch] = useState(initialBranch)
+  const [mode, setMode] = useState<'month' | 'quarter' | 'annual'>('month')
   const [month, setMonth] = useState(now.getMonth() + 1)
+  const [quarter, setQuarter] = useState(Math.floor(now.getMonth() / 3) + 1)
   const [year, setYear] = useState(now.getFullYear())
-  const [d, setD] = useState<{ salesWithSI: number; target: number; difference: number } | null>(null)
+  const [d, setD] = useState<{ salesWithSI: number; target: number; difference: number; months?: { month: number; salesWithSI: number; target: number }[] } | null>(null)
   const [targetInput, setTargetInput] = useState('')
   const [busy, setBusy] = useState(false)
   const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+  const periodLabel = mode === 'month' ? `${MONTHS[month - 1]} ${year}` : mode === 'quarter' ? `Q${quarter} ${year}` : `${year}`
 
   const load = useCallback(async () => {
-    const r = await fetch(`/api/reports/sales-target?branch=${branch}&month=${month}&year=${year}`)
-    if (r.ok) { const j = await r.json(); setD(j); setTargetInput(j.target ? String(j.target) : '') }
-  }, [branch, month, year])
+    const period = mode === 'month' ? `month=${month}` : mode === 'quarter' ? `mode=quarter&quarter=${quarter}` : 'mode=annual'
+    const r = await fetch(`/api/reports/sales-target?branch=${branch}&${period}&year=${year}`)
+    if (r.ok) { const j = await r.json(); setD(j); if (mode === 'month') setTargetInput(j.target ? String(j.target) : '') }
+  }, [branch, mode, month, quarter, year])
   useEffect(() => { load() }, [load])
 
   const save = async () => {
@@ -1020,32 +1024,83 @@ function SalesTargetTab({ branch: initialBranch, scopeEnum, canEditTarget }: { b
             {WITHSI_BRANCHES.map(b => <button key={b.value} onClick={() => setBranch(b.value)} className="px-4 py-2 text-xs font-semibold" style={branch === b.value ? { background: 'var(--teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' }}>{b.label}</button>)}
           </div>
         )}
-        <select value={month} onChange={e => setMonth(parseInt(e.target.value))} className="px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }}>{MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}</select>
+        <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: 'var(--light-gray)' }}>
+          {([['month', 'Month'], ['quarter', 'Quarter'], ['annual', 'Annual']] as const).map(([v, label]) => (
+            <button key={v} onClick={() => setMode(v)} className="px-4 py-2 text-xs font-semibold" style={mode === v ? { background: 'var(--teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' }}>{label}</button>
+          ))}
+        </div>
+        {mode === 'month' && (
+          <select value={month} onChange={e => setMonth(parseInt(e.target.value))} className="px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }}>{MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}</select>
+        )}
+        {mode === 'quarter' && (
+          <select value={quarter} onChange={e => setQuarter(parseInt(e.target.value))} className="px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }}>{[1, 2, 3, 4].map(q => <option key={q} value={q}>Q{q} ({MONTHS[(q - 1) * 3].slice(0, 3)}–{MONTHS[q * 3 - 1].slice(0, 3)})</option>)}</select>
+        )}
         <select value={year} onChange={e => setYear(parseInt(e.target.value))} className="px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }}>{[0, 1, 2, 3, 4].map(i => now.getFullYear() - i).map(y => <option key={y} value={y}>{y}</option>)}</select>
       </div>
 
       {d && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
-            <p className="text-xs mb-1" style={{ color: 'var(--mid-gray)' }}>Sales with SI</p>
+            <p className="text-xs mb-1" style={{ color: 'var(--mid-gray)' }}>Sales with SI — {periodLabel}</p>
             <p className="text-2xl font-bold" style={{ color: 'var(--charcoal)' }}>₱{peso(d.salesWithSI)}</p>
             <p className="text-[11px] mt-1" style={{ color: 'var(--mid-gray)' }}>Totaled from orders with a Sales Invoice</p>
           </div>
           <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
             <p className="text-xs mb-1" style={{ color: 'var(--mid-gray)' }}>Target sales with SI</p>
-            {canEditTarget ? (
+            {mode === 'month' && canEditTarget ? (
               <div className="flex items-center gap-2">
                 <input value={targetInput} onChange={e => setTargetInput(e.target.value)} inputMode="decimal" placeholder="0.00" className="w-32 px-2 py-1.5 rounded-lg border text-lg font-bold font-mono" style={{ borderColor: 'var(--light-gray)' }} />
                 <button onClick={save} disabled={busy} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>{busy ? '…' : 'Save'}</button>
               </div>
             ) : <p className="text-2xl font-bold" style={{ color: 'var(--charcoal)' }}>₱{peso(d.target)}</p>}
-            <p className="text-[11px] mt-1" style={{ color: 'var(--mid-gray)' }}>{canEditTarget ? 'Encode the monthly target' : 'Set by Admin/Accountant/Bookkeeper'}</p>
+            <p className="text-[11px] mt-1" style={{ color: 'var(--mid-gray)' }}>
+              {mode !== 'month' ? 'Sum of the monthly targets — encode targets in Month view'
+                : canEditTarget ? 'Encode the monthly target' : 'Set by Admin/Accountant/Bookkeeper'}
+            </p>
           </div>
           <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--deep-teal)', background: 'var(--pale-teal)' }}>
             <p className="text-xs mb-1" style={{ color: 'var(--deep-teal)' }}>Difference (Target − Sales)</p>
             <p className="text-2xl font-bold" style={{ color: d.difference > 0 ? '#b45309' : '#166534' }}>₱{peso(d.difference)}</p>
             <p className="text-[11px] mt-1" style={{ color: 'var(--deep-teal)' }}>{d.difference > 0 ? 'Below target' : 'Target met'} — updates as SI orders are added/edited</p>
           </div>
+        </div>
+      )}
+
+      {/* Quarter / Annual: read-only per-month breakdown so the totals above are
+          auditable against the Month view (targets stay encoded per month). */}
+      {mode !== 'month' && d?.months && (
+        <div className="rounded-2xl border bg-white overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+          <div className="px-4 py-2.5 border-b" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+            <p className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>Monthly breakdown — {periodLabel}</p>
+          </div>
+          <table className="w-full text-sm">
+            <thead>
+              <tr style={{ background: 'var(--off-white)' }}>
+                <th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--mid-gray)' }}>Month</th>
+                <th className="px-4 py-2 text-right text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--mid-gray)' }}>Sales with SI</th>
+                <th className="px-4 py-2 text-right text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--mid-gray)' }}>Target</th>
+                <th className="px-4 py-2 text-right text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--mid-gray)' }}>Difference (Target − Sales)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {d.months.map(m => (
+                <tr key={m.month} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                  <td className="px-4 py-2 font-medium" style={{ color: 'var(--charcoal)' }}>{MONTHS[m.month - 1]}</td>
+                  <td className="px-4 py-2 text-right" style={{ color: 'var(--charcoal)' }}>₱{peso(m.salesWithSI)}</td>
+                  <td className="px-4 py-2 text-right" style={{ color: 'var(--charcoal)' }}>₱{peso(m.target)}</td>
+                  <td className="px-4 py-2 text-right font-semibold" style={{ color: m.target - m.salesWithSI > 0 ? '#b45309' : '#166534' }}>₱{peso(m.target - m.salesWithSI)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr style={{ background: 'var(--off-white)', borderTop: '2px solid var(--light-gray)' }}>
+                <td className="px-4 py-2.5 font-bold" style={{ color: 'var(--charcoal)' }}>TOTAL</td>
+                <td className="px-4 py-2.5 text-right font-bold" style={{ color: 'var(--charcoal)' }}>₱{peso(d.salesWithSI)}</td>
+                <td className="px-4 py-2.5 text-right font-bold" style={{ color: 'var(--charcoal)' }}>₱{peso(d.target)}</td>
+                <td className="px-4 py-2.5 text-right font-bold" style={{ color: d.difference > 0 ? '#b45309' : '#166534' }}>₱{peso(d.difference)}</td>
+              </tr>
+            </tfoot>
+          </table>
         </div>
       )}
     </div>
