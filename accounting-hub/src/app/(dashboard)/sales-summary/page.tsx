@@ -997,7 +997,7 @@ function SalesTargetTab({ branch: initialBranch, scopeEnum, canEditTarget }: { b
   const [month, setMonth] = useState(now.getMonth() + 1)
   const [quarter, setQuarter] = useState(Math.floor(now.getMonth() / 3) + 1)
   const [year, setYear] = useState(now.getFullYear())
-  const [d, setD] = useState<{ salesWithSI: number; target: number; difference: number; months?: { month: number; salesWithSI: number; target: number }[] } | null>(null)
+  const [d, setD] = useState<{ salesWithSI: number; target: number; difference: number; months?: { month: number; salesWithSI: number; target: number }[]; migrated?: { count: number; amount: number }; migratedUndated?: { count: number; amount: number } } | null>(null)
   const [targetInput, setTargetInput] = useState('')
   const [busy, setBusy] = useState(false)
   const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
@@ -1043,7 +1043,15 @@ function SalesTargetTab({ branch: initialBranch, scopeEnum, canEditTarget }: { b
           <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
             <p className="text-xs mb-1" style={{ color: 'var(--mid-gray)' }}>Sales with SI — {periodLabel}</p>
             <p className="text-2xl font-bold" style={{ color: 'var(--charcoal)' }}>₱{peso(d.salesWithSI)}</p>
-            <p className="text-[11px] mt-1" style={{ color: 'var(--mid-gray)' }}>Totaled from orders with a Sales Invoice</p>
+            <p className="text-[11px] mt-1" style={{ color: 'var(--mid-gray)' }}>
+              Totaled from orders with a Sales Invoice
+              {(d.migrated?.count || 0) > 0 && <> + {d.migrated!.count} migrated workbook SI{d.migrated!.count !== 1 ? 's' : ''} (₱{peso(d.migrated!.amount)})</>}
+            </p>
+            {(d.migratedUndated?.count || 0) > 0 && (
+              <p className="text-[11px] mt-1" style={{ color: '#b45309' }}>
+                {d.migratedUndated!.count} undated migrated SI{d.migratedUndated!.count !== 1 ? 's' : ''} (₱{peso(d.migratedUndated!.amount)}) can’t be placed in a period and {d.migratedUndated!.count !== 1 ? 'are' : 'is'} excluded
+              </p>
+            )}
           </div>
           <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
             <p className="text-xs mb-1" style={{ color: 'var(--mid-gray)' }}>Target sales with SI</p>

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { enforceBranch } from '@/lib/branch-scope'
+import { parseMonitoringRemark } from '@/lib/si-monitoring'
 
 const VALID_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE', 'AURA_INSTITUTE']
 const TARGET_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER'] // only these may set the target
@@ -55,6 +56,28 @@ export async function GET(req: Request) {
       const slot = months[new Date(effective).getUTCMonth() - startIdx]
       if (slot) slot.salesWithSI += Number(o.netAmount)
     }
+
+    /* ── Migrated invoices from the manual SI monitoring workbook ──────
+       Pre-hub sales (East, and GH before the hub) exist only as
+       SalesInvoiceFlag REMARKS rows, amounts encoded in the remark text —
+       the same rows the Sales Summary report counts. Bucket them by the
+       workbook date (net amount when a PWD/SC net was recorded, matching
+       sales-summary). An UNDATED row can't be placed in any month, so it is
+       excluded from every period sum (keeping month/quarter/annual mutually
+       consistent) and reported separately for the UI to disclose. */
+    const flags = await prisma.salesInvoiceFlag.findMany({ where: { status: 'REMARKS', branch } })
+    const migrated = { count: 0, amount: 0 }
+    const migratedUndated = { count: 0, amount: 0 }
+    for (const f of flags) {
+      const info = parseMonitoringRemark(f.remarks)
+      if (!info || info.amount == null || info.amount <= 0) continue
+      const amt = info.netAmount ?? info.amount
+      if (!info.date) { migratedUndated.count++; migratedUndated.amount += amt; continue }
+      if (parseInt(info.date.slice(0, 4), 10) !== year) continue
+      const slot = months[parseInt(info.date.slice(5, 7), 10) - 1 - startIdx]
+      if (slot) { slot.salesWithSI += amt; migrated.count++; migrated.amount += amt }
+    }
+
     for (const t of targets) {
       const slot = months[t.periodMonth - 1 - startIdx]
       if (slot) slot.target = Number(t.target)
@@ -63,6 +86,7 @@ export async function GET(req: Request) {
     const target = months.reduce((s, m) => s + m.target, 0)
     return NextResponse.json({
       branch, mode, year, salesWithSI, target, difference: target - salesWithSI, orderCount: orders.length, months,
+      migrated, migratedUndated,
       ...(mode === 'month' ? { month } : {}), ...(mode === 'quarter' ? { quarter } : {}),
     })
   } catch (err) {
