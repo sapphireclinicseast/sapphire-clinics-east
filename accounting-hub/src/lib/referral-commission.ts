@@ -4,11 +4,11 @@ import type { PrismaClient } from '@prisma/client'
  * Referral commission engine — the single source of truth used by the
  * Commission report AND payroll, so both always agree:
  *
- * - DOCTOR commission: ₱rate per session (earned, non-voided POS order) of the
- *   doctor's referred patients. A session is attributed by the order's own
- *   Doctor Referral tag, or by the patient's Referred-patients link when the
- *   order wasn't tagged (CRM id first, else exact name — the Referral
- *   Dashboard's rule). The explicit tag wins on conflict.
+ * - DOCTOR / LAW FIRM commission: ₱rate per session (earned, non-voided POS
+ *   order) of the referrer's referred patients. A session is attributed by the
+ *   order's own Doctor Referral tag, or by the patient's Referred-patients
+ *   link when the order wasn't tagged (CRM id first, else exact name — the
+ *   Referral Dashboard's rule). The explicit tag wins on conflict.
  * - MEDREP incentive: one-time ₱amount per NEW patient brought by an EXTERNAL
  *   referrer (outside doctor, law firm, partner school), triggered by the
  *   patient's FIRST session ever.
@@ -67,9 +67,11 @@ export async function computeDoctorCommissions(prisma: PrismaClient, opts: {
   const floor = commissionFloor()
   const from = opts.from < floor ? floor : opts.from
 
+  // Law firms earn the per-session commission exactly like doctors (Hannah,
+  // 2026-10-16); schools never do.
   const doctors = await prisma.referrer.findMany({
     where: {
-      isActive: true, type: 'DOCTOR',
+      isActive: true, type: { in: ['DOCTOR', 'LAW_FIRM'] },
       ...(opts.scopeBranch ? { OR: [{ branches: { isEmpty: true } }, { branches: { has: opts.scopeBranch } }] } : {}),
     },
     select: { id: true, name: true, specialization: true, isInhouse: true, commissionPerSession: true },
