@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
-import { Settings, Save, Loader2, CheckCircle2, Award, FileText, PenTool, KeyRound, Eye, EyeOff } from 'lucide-react'
+import { Settings, Save, Loader2, CheckCircle2, Award, FileText, PenTool, KeyRound, Eye, EyeOff, FileSignature, Download, ExternalLink } from 'lucide-react'
 import SignaturePad from '@/components/SignaturePad'
 
 export default function SettingsPage() {
@@ -17,6 +17,11 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
+  // My Contract — the employment contract HR filed under this account's email.
+  const [contract, setContract] = useState<{ originalName: string; size: number; uploadedAt: string } | null | undefined>(undefined)
+  useEffect(() => {
+    fetch('/api/contract').then((r) => (r.ok ? r.json() : { contract: null })).then((d) => setContract(d.contract ?? null)).catch(() => setContract(null))
+  }, [])
 
   // Password change
   const [currentPassword, setCurrentPassword] = useState('')
@@ -95,6 +100,42 @@ export default function SettingsPage() {
         <p className="text-[13px] text-[var(--mid-gray)] mt-2 ml-[52px]">
           Configure your credentials and signature. These will auto-fill in session note forms.
         </p>
+      </div>
+
+      {/* My Contract — read-only copy of the employment contract HR uploaded */}
+      <div className="card-static mb-6">
+        <h2 className="text-[14px] font-bold text-[var(--charcoal)] mb-4 flex items-center gap-2 pb-3 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
+          <FileSignature size={18} className="text-[var(--sand-dark)]" />
+          My Contract
+        </h2>
+        {contract === undefined ? (
+          <div className="flex items-center gap-2 text-[13px] text-[var(--mid-gray)]"><Loader2 size={14} className="animate-spin" /> Checking with HR…</div>
+        ) : contract === null ? (
+          <p className="text-[13px] text-[var(--mid-gray)]">
+            No contract on file yet. HR uploads your signed contract in the HR Hub; it will appear here as soon as it is there.
+          </p>
+        ) : (
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-[13px] font-semibold text-[var(--charcoal)] truncate max-w-[360px]" title={contract.originalName}>{contract.originalName}</div>
+              <div className="text-[12px] text-[var(--mid-gray)] mt-0.5">
+                Uploaded {new Date(contract.uploadedAt).toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' })}
+                {contract.size ? ` · ${(contract.size / 1024 / 1024).toFixed(2)} MB` : ''} · PDF
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <a href="/api/contract/file" target="_blank" rel="noopener"
+                 className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[13px] font-semibold text-white bg-[var(--teal)] hover:opacity-90">
+                <ExternalLink size={14} /> View
+              </a>
+              <a href="/api/contract/file?download=1"
+                 className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[13px] font-semibold text-[var(--charcoal)] border border-[var(--light-gray)] hover:bg-[var(--off-white)]">
+                <Download size={14} /> Download
+              </a>
+            </div>
+          </div>
+        )}
+        <p className="text-[12px] text-[var(--mid-gray)] mt-4">This is a read-only copy for your records. For corrections, contact HR.</p>
       </div>
 
       {/* PRC License & PTR — hidden for interns (not licensed practitioners) */}

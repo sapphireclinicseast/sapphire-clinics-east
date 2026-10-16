@@ -9,7 +9,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { verifyPatientToken } from '@/lib/patient-session'
+import { verifyPatientToken, issuePatientToken } from '@/lib/patient-session'
 import { branchLabel } from '@/lib/branch-label'
 import { linkedPatientIds } from '@/lib/patient-links'
 import { preflight, withCors } from '../../_cors'
@@ -286,5 +286,24 @@ export async function GET(req: NextRequest) {
     pwdIdUrl: patient.pwdIdUrl ?? null,
   }
 
-  return withCors(NextResponse.json({ profile, servicesAvailed, sessions: dedupedSessions, surveys, stats }), origin)
+  // Sliding renewal: every authenticated /me load re-issues a full-TTL token.
+  // The client-portal proxy reads this `token` to refresh the HttpOnly session
+  // cookie, so an actively-used portal session never expires out from under the
+  // patient. patientId + firstName let the portal rebuild its local UI identity
+  // from the cookie alone (e.g. after iOS Safari evicts localStorage).
+  const refreshedToken = issuePatientToken(session.patientId)
+
+  return withCors(
+    NextResponse.json({
+      patientId: patient.id,
+      firstName: patient.firstName,
+      token: refreshedToken,
+      profile,
+      servicesAvailed,
+      sessions: dedupedSessions,
+      surveys,
+      stats,
+    }),
+    origin,
+  )
 }

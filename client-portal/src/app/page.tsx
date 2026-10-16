@@ -20,7 +20,7 @@ import {
   type PatientDocuments,
 } from '@/lib/api'
 import { branchLabel } from '@/lib/branch-label'
-import { getSession, setSession, clearSession } from '@/lib/session'
+import { getSession, setSession, clearSession, recoverSession } from '@/lib/session'
 import Chatbot from '@/components/Chatbot'
 import { Hero3D } from '@/components/landing/Hero3D'
 import RewardsPanel from '@/components/RewardsPanel'
@@ -45,9 +45,20 @@ function HomeInner() {
   const expired = sp.get('expired') === '1'
 
   useEffect(() => {
+    let cancelled = false
     const s = getSession()
-    if (s) setSessionState({ firstName: s.firstName, token: s.token })
-    setReady(true)
+    if (s) {
+      setSessionState({ firstName: s.firstName, token: s.token })
+      setReady(true)
+      return
+    }
+    // No local session — try to recover from the durable HttpOnly cookie before
+    // falling back to the sign-in screen (iOS Safari evicts localStorage after
+    // ~7 days, but the server-set cookie persists).
+    recoverSession()
+      .then((r) => { if (!cancelled && r) setSessionState({ firstName: r.firstName, token: r.token }) })
+      .finally(() => { if (!cancelled) setReady(true) })
+    return () => { cancelled = true }
   }, [])
 
   const handleSignOut = useCallback(() => {
@@ -455,7 +466,15 @@ function PortalDashboard({
     let cancelled = false
     setLoading(true)
     getMe(token)
-      .then((d) => { if (!cancelled) setData(d) })
+      .then((d) => {
+        if (cancelled) return
+        setData(d)
+        // Sliding renewal: persist the freshly re-issued token (and identity) so
+        // the local cache stays in lockstep with the refreshed cookie.
+        if (d.patientId && d.token) {
+          setSession({ patientId: d.patientId, firstName: d.firstName ?? firstName, token: d.token })
+        }
+      })
       .catch((e) => {
         if (cancelled) return
         if (e instanceof InvalidTokenError) { onSignOut(); return }
@@ -463,7 +482,7 @@ function PortalDashboard({
       })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [token, onSignOut])
+  }, [token, firstName, onSignOut])
 
   return (
     <section className="max-w-5xl mx-auto animate-fade-up stagger-2 space-y-6">
