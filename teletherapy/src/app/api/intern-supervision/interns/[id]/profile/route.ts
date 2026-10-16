@@ -7,7 +7,11 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
 const HR_API_BASE = process.env.HR_API_BASE ?? 'https://hr.sapphireclinicseast.org/api'
-const HR_KEY = process.env.HR_API_KEY ?? ''
+// The HR hub checks these calls against its MARKETING_API_KEY. The deploy
+// writes that value into this app's .env as EXTERNAL_API_KEY (copied from the
+// marketing env) and never as HR_API_KEY — so EXTERNAL_API_KEY is the name
+// that actually exists on the server; HR_API_KEY stays as an explicit override.
+const HR_KEY = process.env.HR_API_KEY ?? process.env.EXTERNAL_API_KEY ?? ''
 
 // Display-safe HR fields only (never expose gov-ID / bank fields here).
 const HR_FIELDS = ['firstName', 'lastName', 'department', 'branch', 'jobTitle', 'employmentType', 'email', 'phone', 'birthday', 'sex', 'dateHired', 'contractExpiry', 'school', 'schoolAttended'] as const

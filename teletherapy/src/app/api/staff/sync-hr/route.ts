@@ -20,7 +20,11 @@ import { prisma } from '@/lib/prisma'
 import { StaffDepartment } from '@prisma/client'
 
 const HR_API_BASE = process.env.HR_API_BASE ?? 'https://hr.sapphireclinicseast.org/api'
-const HR_KEY = process.env.HR_API_KEY ?? ''
+// The HR hub checks these calls against its MARKETING_API_KEY. The deploy
+// writes that value into this app's .env as EXTERNAL_API_KEY (copied from the
+// marketing env) and never as HR_API_KEY — so EXTERNAL_API_KEY is the name
+// that actually exists on the server; HR_API_KEY stays as an explicit override.
+const HR_KEY = process.env.HR_API_KEY ?? process.env.EXTERNAL_API_KEY ?? ''
 const HR_STAFF_URLS = [
   `${HR_API_BASE}/staff/external`,
   'http://127.0.0.1:3457/staff/external', // direct pm2 fallback (same key)
