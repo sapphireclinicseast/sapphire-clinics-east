@@ -67,11 +67,12 @@ export async function computeDoctorCommissions(prisma: PrismaClient, opts: {
   const floor = commissionFloor()
   const from = opts.from < floor ? floor : opts.from
 
-  // Law firms earn the per-session commission exactly like doctors (Hannah,
-  // 2026-10-16); schools never do.
+  // Every referrer type can earn the per-session commission — doctors, law
+  // firms AND partner schools (Hannah, 2026-10-16); who actually earns is
+  // whoever has a rate ticked on the Referrers lists.
   const doctors = await prisma.referrer.findMany({
     where: {
-      isActive: true, type: { in: ['DOCTOR', 'LAW_FIRM'] },
+      isActive: true,
       ...(opts.scopeBranch ? { OR: [{ branches: { isEmpty: true } }, { branches: { has: opts.scopeBranch } }] } : {}),
     },
     select: { id: true, name: true, specialization: true, isInhouse: true, commissionPerSession: true },

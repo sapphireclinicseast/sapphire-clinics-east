@@ -886,11 +886,12 @@ model ReferredPatient {
 // brought by an EXTERNAL referrer (outside doctor, law firm, partner school)
 // pays this staff member (the medical representative) once. Singleton row.
 model ReferralIncentiveSettings {
-  id        String   @id @default("MAIN")
-  staffId   String? // HR staff id of the recipient
-  staffName String? // display snapshot of the recipient's name
-  amount    Decimal  @default(50)
-  updatedAt DateTime @updatedAt
+  id                       String   @id @default("MAIN")
+  staffId                  String? // HR staff id of the recipient
+  staffName                String? // display snapshot of the recipient's name
+  amount                   Decimal  @default(50)
+  commissionExpenseAccount String? // "8120 Marketing and Advertising Expense" form; expense account of external-referrer commission payout RFPs (null = 8120 fallback)
+  updatedAt                DateTime @updatedAt
 }
 
 // Claim ledger for referral commissions pulled into payroll — one row per paid

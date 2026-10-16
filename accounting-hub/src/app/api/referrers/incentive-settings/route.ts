@@ -19,6 +19,7 @@ export async function GET() {
     staffId: settings?.staffId || null,
     staffName: settings?.staffName || null,
     amount: settings ? Number(settings.amount) : 50,
+    commissionExpenseAccount: settings?.commissionExpenseAccount || null,
     staff: staff
       .map(s => ({ id: String(s.id || ''), name: `${String(s.firstName || '').trim()} ${String(s.lastName || '').trim()}`.trim().toUpperCase(), jobTitle: String(s.jobTitle || '') }))
       .filter(s => s.id && s.name)
@@ -26,24 +27,31 @@ export async function GET() {
   })
 }
 
-// POST { staffId, staffName, amount } → save the singleton.
+// POST { staffId?, staffName?, amount?, commissionExpenseAccount? } → save the
+// singleton. A field only changes when the caller sends it, so the med-rep
+// incentive modal and the commission-payout settings can't clobber each other.
 export async function POST(req: Request) {
   const session = await auth()
   if (!session?.user || !WRITE_ROLES.includes(session.user.role as string)) {
     return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
   }
   try {
-    const { staffId, staffName, amount } = await req.json()
-    const amt = Math.max(0, Number(amount) || 0)
+    const { staffId, staffName, amount, commissionExpenseAccount } = await req.json()
+    const patch = {
+      ...(staffId !== undefined ? { staffId: staffId || null } : {}),
+      ...(staffName !== undefined ? { staffName: staffName?.trim() || null } : {}),
+      ...(amount !== undefined ? { amount: Math.max(0, Number(amount) || 0) } : {}),
+      ...(commissionExpenseAccount !== undefined ? { commissionExpenseAccount: String(commissionExpenseAccount || '').trim() || null } : {}),
+    }
     const saved = await prisma.referralIncentiveSettings.upsert({
       where: { id: 'MAIN' },
-      create: { id: 'MAIN', staffId: staffId || null, staffName: staffName?.trim() || null, amount: amt },
-      update: { staffId: staffId || null, staffName: staffName?.trim() || null, amount: amt },
+      create: { id: 'MAIN', ...patch },
+      update: patch,
     })
     await prisma.auditLog.create({
-      data: { userId: session.user.id, action: 'UPDATE', entity: 'referral-incentive-settings', details: { staffName: saved.staffName, amount: amt } },
+      data: { userId: session.user.id, action: 'UPDATE', entity: 'referral-incentive-settings', details: { staffName: saved.staffName, amount: Number(saved.amount), commissionExpenseAccount: saved.commissionExpenseAccount } },
     })
-    return NextResponse.json({ staffId: saved.staffId, staffName: saved.staffName, amount: Number(saved.amount) })
+    return NextResponse.json({ staffId: saved.staffId, staffName: saved.staffName, amount: Number(saved.amount), commissionExpenseAccount: saved.commissionExpenseAccount })
   } catch (e) {
     console.error('Incentive settings save error:', e)
     return NextResponse.json({ error: 'Failed to save' }, { status: 500 })

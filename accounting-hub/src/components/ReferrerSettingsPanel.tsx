@@ -24,7 +24,7 @@ function ReferrerCard({ title, type, referrers, onEdit, onDelete, onOpenOrders, 
   onEdit: (r: Ref) => void; onDelete: (id: string) => void; onOpenOrders: (r: { id: string; name: string }) => void
   // Doctors only: tick straight on the card to tag a doctor as in-house.
   onToggleInhouse?: (r: Ref) => void
-  // Doctors & law firms: tick who earns the per-session commission and set each one's ₱ rate.
+  // Any referrer type: tick who earns the per-session commission and set each one's ₱ rate.
   onSetCommission?: (r: Ref, value: number | null) => void
 }) {
   const [search, setSearch] = useState('')
@@ -228,10 +228,9 @@ export default function ReferrerSettingsPanel() {
     setSaving(true)
     try {
       // Affiliation/Specialization apply to doctors only; clear them for schools/law firms.
-      // Commission applies to doctors AND law firms; schools never earn one.
+      // Commission applies to every referrer type (doctors, law firms, schools).
       const isDoctor = form.type === 'DOCTOR'
-      const earnsCommission = isDoctor || form.type === 'LAW_FIRM'
-      const body = { id: editingId, name: form.name.trim(), type: form.type, affiliation: isDoctor ? (form.affiliation.trim() || null) : null, specialization: isDoctor ? (form.specialization.trim() || null) : null, branches: form.branches, isInhouse: isDoctor && form.isInhouse, commissionPerSession: earnsCommission && form.commissionOn && !isNaN(Number(form.commissionRate)) ? Math.max(0, Number(form.commissionRate)) : null }
+      const body = { id: editingId, name: form.name.trim(), type: form.type, affiliation: isDoctor ? (form.affiliation.trim() || null) : null, specialization: isDoctor ? (form.specialization.trim() || null) : null, branches: form.branches, isInhouse: isDoctor && form.isInhouse, commissionPerSession: form.commissionOn && !isNaN(Number(form.commissionRate)) ? Math.max(0, Number(form.commissionRate)) : null }
       const res = await fetch('/api/referrers', { method: editingId ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       if (res.ok) { setShowForm(false); fetchReferrers() }
       else { const d = await res.json(); setError(d.error || 'Failed to save') }
@@ -334,7 +333,7 @@ export default function ReferrerSettingsPanel() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <ReferrerCard title="Doctors" type="DOCTOR" referrers={referrers} onEdit={openEdit} onDelete={deleteReferrer} onOpenOrders={openOrders} onToggleInhouse={toggleInhouse} onSetCommission={setCommission} />
           <ReferrerCard title="Law Firms" type="LAW_FIRM" referrers={referrers} onEdit={openEdit} onDelete={deleteReferrer} onOpenOrders={openOrders} onSetCommission={setCommission} />
-          <ReferrerCard title="Partner Schools" type="PARTNER_SCHOOL" referrers={referrers} onEdit={openEdit} onDelete={deleteReferrer} onOpenOrders={openOrders} />
+          <ReferrerCard title="Partner Schools" type="PARTNER_SCHOOL" referrers={referrers} onEdit={openEdit} onDelete={deleteReferrer} onOpenOrders={openOrders} onSetCommission={setCommission} />
         </div>
       )}
 
@@ -383,8 +382,7 @@ export default function ReferrerSettingsPanel() {
                 </div>
               </>
             )}
-            {(form.type === 'DOCTOR' || form.type === 'LAW_FIRM') && (
-              <div>
+            <div>
                 <label className="flex items-center gap-2 px-3 py-2 rounded-xl border cursor-pointer text-sm"
                   style={form.commissionOn ? { borderColor: 'var(--teal)', background: 'var(--pale-teal)', color: 'var(--deep-teal)' } : { borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
                   <input type="checkbox" checked={form.commissionOn} onChange={() => setForm(f => ({ ...f, commissionOn: !f.commissionOn }))} className="accent-[var(--teal)]" />
@@ -400,8 +398,7 @@ export default function ReferrerSettingsPanel() {
                   )}
                 </label>
                 <p className="text-[11px] mt-1" style={{ color: 'var(--mid-gray)' }}>Paid per session of each patient this referrer referred. Untick = no commission for this referrer.</p>
-              </div>
-            )}
+            </div>
             <div>
               <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Visible to branch</label>
               <div className="flex gap-2">

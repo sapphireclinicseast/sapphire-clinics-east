@@ -5,10 +5,14 @@ import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
 import { Users, UserPlus, Loader2, X, Trash2, Search, ChevronDown, Download } from 'lucide-react'
 import ReferrerSettingsPanel, { REFERRER_TYPE_LABEL } from '@/components/ReferrerSettingsPanel'
+import { AccountPicker, type PickableAccount } from '@/components/AccountPicker'
 import { branchLabel } from '@/lib/branch'
 import { departmentLabel } from '@/lib/department'
 
 const peso = (n: number) => '₱' + Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+// Where commission payout RFPs book when no account is chosen in the payout
+// settings — must match the API's fallback (referrers/commission/rfp).
+const DEFAULT_COMMISSION_ACCOUNT = '8120 Marketing and Advertising Expense'
 
 interface RefOpt { id: string; name: string; type?: string | null }
 interface PatientHit { id: string; name: string; email?: string | null }
@@ -422,6 +426,41 @@ function ReferralCommissionPanel() {
   const [medrep, setMedrep] = useState<MedrepBlock | null>(null)
   const [medrepOpen, setMedrepOpen] = useState(false)
 
+  // RFP payout for EXTERNAL referrers (outside doctors, law firms, partner
+  // schools — not staff → no payroll): one expense RFP per referrer covering
+  // their unclaimed sessions, claim-ledger stamped. First built 10/07, rolled
+  // back on Hannah's call; reinstated on her call 2026-10-16 with the expense
+  // account configurable below.
+  const [rfpOpen, setRfpOpen] = useState(false)
+  const [rfpBranch, setRfpBranch] = useState('SANDBOX_EAST')
+  const [rfpUpTo, setRfpUpTo] = useState(() => new Date().toISOString().slice(0, 10))
+  const [rfpBusy, setRfpBusy] = useState(false)
+  const [rfpResult, setRfpResult] = useState<{ created: { referrer: string; refNumber: string; sessions: number; amount: number }[]; note?: string; error?: string } | null>(null)
+  // Payout settings: the expense account the RFPs book under (persisted on the
+  // incentive-settings singleton; picking an account saves immediately).
+  const [payoutAccount, setPayoutAccount] = useState<string | null>(null)
+  const [acctSaving, setAcctSaving] = useState(false)
+  const [coa, setCoa] = useState<PickableAccount[]>([])
+  useEffect(() => {
+    if (!rfpOpen || coa.length) return
+    fetch('/api/chart-of-accounts?accountType=EXPENSE&pageSize=1000')
+      .then(r => r.ok ? r.json() : [])
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .then((d: any) => { const list = Array.isArray(d) ? d : (d.accounts || d.data || []); setCoa(list) })
+      .catch(() => {})
+  }, [rfpOpen, coa.length])
+  const saveAccount = async (next: string) => {
+    const prev = payoutAccount
+    setPayoutAccount(next || null); setAcctSaving(true)
+    try {
+      const r = await fetch('/api/referrers/incentive-settings', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ commissionExpenseAccount: next || null }),
+      })
+      if (!r.ok) setPayoutAccount(prev)
+    } catch { setPayoutAccount(prev) } finally { setAcctSaving(false) }
+  }
+
   const load = useCallback(async () => {
     if (!from || !to) return
     setLoading(true)
@@ -432,9 +471,25 @@ function ReferralCommissionPanel() {
       setEffectiveFrom(d.effectiveFrom || '')
       setCommissionStart(d.commissionStart || '')
       setMedrep(d.medrep || null)
+      setPayoutAccount(d.commissionExpenseAccount ?? null)
     } catch { setRows([]); setMedrep(null) } finally { setLoading(false) }
   }, [from, to, branch])
   useEffect(() => { const t = setTimeout(load, 300); return () => clearTimeout(t) }, [load])
+
+  const generateRfps = async () => {
+    setRfpBusy(true); setRfpResult(null)
+    try {
+      const r = await fetch('/api/referrers/commission/rfp', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ branch: rfpBranch, upTo: rfpUpTo }),
+      })
+      const d = await r.json()
+      if (!r.ok) { setRfpResult({ created: [], error: d.error || 'Failed to generate' }); return }
+      setRfpResult(d)
+      load()
+    } catch { setRfpResult({ created: [], error: 'Failed to generate' }) }
+    finally { setRfpBusy(false) }
+  }
 
   // Mark / unmark a med-rep incentive as paid out (manual claim-ledger row).
   const [marking, setMarking] = useState<string | null>(null)
@@ -610,6 +665,66 @@ function ReferralCommissionPanel() {
               )}
             </div>
           )}
+
+          {/* Commission payouts — external referrers get paid by RFP, not payroll. */}
+          <div className="rounded-2xl border bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+            <button onClick={() => { setRfpResult(null); setRfpOpen(o => !o) }} className="w-full px-4 py-3 flex items-center gap-2 flex-wrap text-left">
+              <ChevronDown size={14} style={{ color: 'var(--mid-gray)', transform: rfpOpen ? 'none' : 'rotate(-90deg)', transition: 'transform .15s' }} />
+              <span className="text-sm font-bold" style={{ color: 'var(--deep-teal)' }}>Commission payouts — external referrers</span>
+              <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+                generate RFPs under Expenses → RFP · expense account: {payoutAccount || `${DEFAULT_COMMISSION_ACCOUNT} (default)`}
+              </span>
+            </button>
+            {rfpOpen && (
+              <div className="px-10 pb-4 space-y-3">
+                <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+                  Creates one RFP per external referrer — outside doctors, law firms and partner schools with a commission rate ticked — payable to the referrer and booked as an audited expense entry under the account below, covering every commission session not yet paid by payroll or an earlier RFP, from the scheme start through the chosen date. In-house doctors are paid through payroll, never here. Deleting a generated RFP (Expenses → RFP) releases its sessions for the next run.
+                </p>
+                {canMarkPaid ? (
+                  <>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <label className="text-xs font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>Expense account</label>
+                      <div className="w-96 max-w-full">
+                        <AccountPicker accounts={coa} value={payoutAccount || ''} valueKey="numberTitle"
+                          onChange={next => saveAccount(next)} clearLabel={`Use default — ${DEFAULT_COMMISSION_ACCOUNT}`} />
+                      </div>
+                      {acctSaving && <Loader2 size={13} className="animate-spin" style={{ color: 'var(--mid-gray)' }} />}
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <select value={rfpBranch} onChange={e => setRfpBranch(e.target.value)} className="px-3 py-2 rounded-xl border text-sm bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+                        <option value="SANDBOX_EAST">Paid by: Aura Health East</option>
+                        <option value="SANDBOX_GREENHILLS">Paid by: Aura Health Greenhills</option>
+                      </select>
+                      <label className="flex items-center gap-1.5 text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>
+                        through
+                        <input type="date" value={rfpUpTo} onChange={e => setRfpUpTo(e.target.value)} className="px-2 py-2 rounded-xl border text-xs" style={{ borderColor: 'var(--light-gray)' }} />
+                      </label>
+                      <button onClick={generateRfps} disabled={rfpBusy} className="px-4 py-2 rounded-xl text-xs font-semibold text-white disabled:opacity-50 flex items-center gap-2" style={{ background: 'var(--deep-teal)' }}>
+                        {rfpBusy && <Loader2 size={13} className="animate-spin" />} {rfpBusy ? 'Generating…' : 'Generate commission payment'}
+                      </button>
+                    </div>
+                  </>
+                ) : <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Only Admin, Accountant, Bookkeeper or a branch admin can change the account and generate payouts.</p>}
+                {rfpResult && (
+                  rfpResult.error ? <p className="text-xs text-red-600">{rfpResult.error}</p>
+                  : rfpResult.created.length === 0 ? <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>{rfpResult.note || 'Nothing unpaid in that window.'}</p>
+                  : (
+                    <div className="rounded-xl border p-3 text-xs space-y-1" style={{ borderColor: 'var(--teal)', background: 'var(--pale-teal)' }}>
+                      <p className="font-bold" style={{ color: 'var(--deep-teal)' }}>Created {rfpResult.created.length} RFP{rfpResult.created.length === 1 ? '' : 's'} — pay them under Expenses → RFP:</p>
+                      {rfpResult.created.map(c => (
+                        <div key={c.refNumber} className="flex justify-between gap-2">
+                          <span className="font-mono">{c.refNumber}</span>
+                          <span className="truncate flex-1">{c.referrer}</span>
+                          <span>{c.sessions} sess.</span>
+                          <span className="font-mono font-semibold">{peso(c.amount)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                )}
+              </div>
+            )}
+          </div>
 
           <div className="rounded-2xl border overflow-hidden bg-white" style={{ borderColor: 'var(--light-gray)' }}>
             <table className="w-full text-sm">

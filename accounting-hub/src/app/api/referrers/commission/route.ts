@@ -75,6 +75,8 @@ export async function GET(req: Request) {
     rows,
     commissionStart: COMMISSION_START,
     effectiveFrom,
+    // Expense account the RFP payout books under (payout settings; null = 8120 fallback).
+    commissionExpenseAccount: incentive?.commissionExpenseAccount || null,
     medrep: {
       staffName: incentive?.staffName || null,
       amount: incentiveAmount,
