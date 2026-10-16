@@ -84,6 +84,9 @@ const SITE_CONFIG = {
     { name: 'San Lorenzo Ruiz de Manila School', imgSrc: 'PARTNERS/SAN LORENZO RUIZ DE MANILA SCHOOL.png' },
     { name: 'KILA',                           imgSrc: 'PARTNERS/KILA.png' },
     { name: 'Siena College of Taytay',      imgSrc: 'PARTNERS/SIENA COLLEGE OF TAYTAY.png' },
+    { name: 'Milestone Preschool',           imgSrc: 'PARTNERS/MILESTONE PRESCHOOL.png' },
+    { name: 'University of Santo Tomas',    imgSrc: 'PARTNERS/UNIVERSITY OF SANTO TOMAS.png' },
+    { name: 'University of the East Ramon Magsaysay Memorial Medical Center', imgSrc: 'PARTNERS/UERM.png' },
   ],
 
   /* ── Branches ── */
