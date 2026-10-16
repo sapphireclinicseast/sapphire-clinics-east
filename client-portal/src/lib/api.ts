@@ -14,6 +14,8 @@ export class InvalidTokenError extends Error {
 async function jsonFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
+    // Send/receive the HttpOnly session cookie (scei_pt) on every proxied call.
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
       ...(init?.headers ?? {}),
@@ -219,6 +221,11 @@ export interface SessionStats {
   cancelledRescheduledPct: number
 }
 export interface MeResult {
+  // Present so a session can be rebuilt from the cookie alone (localStorage gone).
+  patientId?: string
+  firstName?: string
+  // Sliding-renewal token — a fresh full-TTL token re-issued on each load.
+  token?: string
   profile: PatientProfile
   servicesAvailed: string[]
   sessions: PatientSessionRecord[]
@@ -226,8 +233,10 @@ export interface MeResult {
   stats?: SessionStats
 }
 
-export function getMe(token: string) {
-  return jsonFetch<MeResult>(`/patients/me?token=${encodeURIComponent(token)}`)
+// token is optional: when omitted/'' the proxy authenticates from the cookie.
+export function getMe(token?: string) {
+  const qs = token ? `?token=${encodeURIComponent(token)}` : ''
+  return jsonFetch<MeResult>(`/patients/me${qs}`)
 }
 
 // ── Clinical documents (read-only, uploaded by therapists) ───────────────────
