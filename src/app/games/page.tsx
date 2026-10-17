@@ -4,7 +4,7 @@ import GamesClient from './GamesClient'
 
 export const metadata: Metadata = {
   title: 'Aura Health · Event Games',
-  description: 'Play, win, and grab a Verdana Trainings & Seminars voucher.',
+  description: 'Play, win, and grab an Aura Health Institute Trainings & Seminars voucher.',
 }
 
 // Canonical public URL attendees land on when they scan the QR at the booth.
