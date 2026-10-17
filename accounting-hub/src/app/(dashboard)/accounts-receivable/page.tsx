@@ -626,6 +626,10 @@ export default function AccountsReceivablePage() {
   const [perHmoFetched, setPerHmoFetched] = useState<AROrder[] | null>(null)
   const [perHmoLoading, setPerHmoLoading] = useState(false)
   const [showDownloadMenu, setShowDownloadMenu] = useState(false)
+  // Left Out Sessions: ticked rows + the "Resubmit as separate SOA" flow.
+  const [luTicked, setLuTicked] = useState<Set<string>>(new Set())
+  const [luResubmitting, setLuResubmitting] = useState(false)
+  const [luResubmitMsg, setLuResubmitMsg] = useState('')
 
   // Invoice Settings state
   const [invoiceSettings, setInvoiceSettings] = useState<Record<string, InvoiceSetting>>({})
@@ -723,7 +727,7 @@ export default function AccountsReceivablePage() {
     setPerHmoLoading(true)
     fetch(`/api/accounts-receivable?${params}`, { signal: ctl.signal })
       .then(r => r.json())
-      .then(d => setPerHmoFetched(d.orders || []))
+      .then(d => { setPerHmoFetched(d.orders || []); setLuTicked(new Set()) })
       .catch(() => {})
       .finally(() => setPerHmoLoading(false))
     return () => ctl.abort()
@@ -1159,6 +1163,70 @@ export default function AccountsReceivablePage() {
       }
     } catch { /* ignore */ }
     finally { setReassignBusy(null) }
+  }
+
+  // Left Out Sessions → "Resubmit as separate SOA": one new submission per
+  // (HMO provider, claim branch) over the ticked sessions, so each gets a
+  // fresh reference number under SOA Submissions. The session's newest
+  // submission then has no paid batch-mate, which is what drops it from the
+  // Left Out list — it is back to "awaiting the HMO".
+  const resubmitLeftOut = async (ticked: AROrder[]) => {
+    if (!ticked.length || luResubmitting) return
+    const groups = new Map<string, { walletId: string; branch: string; orders: AROrder[] }>()
+    for (const o of ticked) {
+      const walletId = o.payments.find(p => p.walletId)?.walletId
+      if (!walletId) continue
+      const claimBranch = o.soaBranch || o.branch
+      const k = `${walletId}|${claimBranch}`
+      const g = groups.get(k) || { walletId, branch: claimBranch, orders: [] }
+      g.orders.push(o)
+      groups.set(k, g)
+    }
+    if (!groups.size) return
+    const walletName = (id: string) => wallets.find(w => w.id === id)?.patientName || 'HMO'
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
+    const summary = [...groups.values()]
+      .map(g => `· ${g.orders.length} session${g.orders.length === 1 ? '' : 's'} — ${walletName(g.walletId)} (${soaBranchCode(g.branch)})`)
+      .join('\n')
+    if (!confirm(`Resubmit as separate SOA dated ${today}?\n\n${summary}\n\nEach line above gets its own new SOA reference number under SOA Submissions.`)) return
+    setLuResubmitting(true)
+    setLuResubmitMsg('')
+    try {
+      const refs: string[] = []
+      const refByOrder = new Map<string, string>()
+      const subIdByOrder = new Map<string, string>()
+      for (const g of groups.values()) {
+        const prevRefs = [...new Set(g.orders.flatMap(o => (o.soaSubmissionItems || []).map(si => si.submission.referenceNo).filter(Boolean)))]
+        const res = await fetch('/api/accounts-receivable/soa-submissions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            walletId: g.walletId,
+            submittedDate: today,
+            branch: g.branch,
+            orderIds: g.orders.map(o => o.id),
+            notes: `Resubmission — left-out sessions from ${prevRefs.join(', ') || 'an earlier SOA'}`,
+          }),
+        })
+        const d = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(d.error || 'Recording the resubmission failed')
+        refs.push(d.referenceNo)
+        g.orders.forEach(o => { refByOrder.set(o.id, d.referenceNo); subIdByOrder.set(o.id, d.id) })
+      }
+      // Stamp the new submission onto the local rows so the resubmitted
+      // sessions leave the Left Out list without a refetch.
+      const stamp = (list: AROrder[]) => list.map(o => refByOrder.has(o.id)
+        ? { ...o, soaSubmissionItems: [...(o.soaSubmissionItems || []), { submission: { id: subIdByOrder.get(o.id), submittedDate: today, referenceNo: refByOrder.get(o.id) } }] }
+        : o)
+      setOrders(stamp)
+      setPerHmoFetched(prev => prev ? stamp(prev) : prev)
+      setLuTicked(new Set())
+      setLuResubmitMsg(`Recorded under SOA Submissions: ${refs.join(', ')}`)
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Recording the resubmission failed')
+    } finally {
+      setLuResubmitting(false)
+    }
   }
 
   const saveClinician = async (orderId: string, name: string | null) => {
@@ -2396,12 +2464,22 @@ export default function AccountsReceivablePage() {
         // tagging — on a submitted SOA where at least one BATCH-MATE of the
         // same submission is already tagged paid, while this one is not. An
         // SOA nobody has paid yet is simply awaiting the HMO and stays out.
+        // Only the session's NEWEST submission counts: once it is resubmitted
+        // as a separate SOA, that fresh SOA has no paid batch-mate and the
+        // session leaves this list until the HMO skips it again.
         if (isSubUnpaid) {
           const paidSubIds = new Set(perHmoOrders.flatMap(o =>
             o.arPaymentItems.length > 0 ? (o.soaSubmissionItems || []).map(si => si.submission.id).filter(Boolean) : []))
-          perHmoOrders = perHmoOrders.filter(o =>
-            o.arPaymentItems.length === 0 && !isDirectToClinician(o) &&
-            (o.soaSubmissionItems || []).some(si => si.submission.id && paidSubIds.has(si.submission.id)))
+          const latestSubId = (o: AROrder) => {
+            const subs = (o.soaSubmissionItems || []).map(si => si.submission)
+            if (!subs.length) return undefined
+            return subs.reduce((a, b) => String(b.submittedDate) >= String(a.submittedDate) ? b : a).id
+          }
+          perHmoOrders = perHmoOrders.filter(o => {
+            if (o.arPaymentItems.length > 0 || isDirectToClinician(o)) return false
+            const lid = latestSubId(o)
+            return !!lid && paidSubIds.has(lid)
+          })
         }
         // Period membership follows the same rule as the server: a Change Date
         // (arCustomDate), where one was set, decides the period instead of the
@@ -2707,8 +2785,22 @@ export default function AccountsReceivablePage() {
                     a session on a submitted SOA whose other sessions were already tagged paid in Record Payment,
                     while this one was not — e.g. 9 of an SOA&apos;s 10 sessions settled, 1 skipped. Check whether the
                     HMO shorted the remittance or the payment tagging simply missed it. SOAs with no payment at
-                    all are not listed here — those are still awaiting the HMO.
+                    all are not listed here — those are still awaiting the HMO. Tick sessions and resubmit them
+                    as a separate SOA to chase the claim under a fresh reference number.
                   </p>
+                )}
+                {isSubUnpaid && (
+                  <div className="ml-auto flex flex-col items-end gap-1.5">
+                    <button
+                      disabled={luResubmitting || !perHmoOrders.some(o => luTicked.has(o.id))}
+                      onClick={() => resubmitLeftOut(perHmoOrders.filter(o => luTicked.has(o.id)))}
+                      className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium text-white disabled:opacity-40"
+                      style={{ background: 'var(--teal)' }}>
+                      <FileCheck size={15} />
+                      {luResubmitting ? 'Recording…' : `Resubmit as separate SOA${perHmoOrders.filter(o => luTicked.has(o.id)).length > 0 ? ` (${perHmoOrders.filter(o => luTicked.has(o.id)).length})` : ''}`}
+                    </button>
+                    {luResubmitMsg && <p className="text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>{luResubmitMsg}</p>}
+                  </div>
                 )}
               </div>
             )}
@@ -2720,6 +2812,19 @@ export default function AccountsReceivablePage() {
               <table className="w-full text-sm" style={{ tableLayout: Object.keys(perHmoColW).length ? 'fixed' : undefined }}>
                 <thead>
                   <tr className="sticky top-0 z-10" style={{ background: 'var(--off-white)' }}>
+                    {isSubUnpaid && (
+                      <th className="px-3 py-2" style={{ width: 36 }}>
+                        <input type="checkbox"
+                          checked={perHmoOrders.length > 0 && perHmoOrders.every(o => luTicked.has(o.id))}
+                          onChange={() => setLuTicked(prev => {
+                            const all = perHmoOrders.length > 0 && perHmoOrders.every(o => prev.has(o.id))
+                            const n = new Set(prev)
+                            perHmoOrders.forEach(o => all ? n.delete(o.id) : n.add(o.id))
+                            return n
+                          })}
+                          title="Tick / untick all rows shown" />
+                      </th>
+                    )}
                     {[
                       { label: 'Date', field: 'transactionDate', searchKey: 'date' },
                       { label: 'Change Date', field: '', searchKey: '' },
@@ -2862,9 +2967,9 @@ export default function AccountsReceivablePage() {
                 </thead>
                 <tbody>
                   {loading ? (
-                    <tr><td colSpan={(isFollowUp || isSubUnpaid) ? 16 : 15} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>Loading...</td></tr>
+                    <tr><td colSpan={isSubUnpaid ? 17 : isFollowUp ? 16 : 15} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>Loading...</td></tr>
                   ) : perHmoOrders.length === 0 ? (
-                    <tr><td colSpan={(isFollowUp || isSubUnpaid) ? 16 : 15} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>
+                    <tr><td colSpan={isSubUnpaid ? 17 : isFollowUp ? 16 : 15} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>
                       {/* Fetching a past year takes a moment — saying "none" while
                           the rows are still in flight is how this read as empty. */}
                       {perHmoLoading ? 'Loading transactions…' : 'No transactions found'}
@@ -2884,6 +2989,16 @@ export default function AccountsReceivablePage() {
                           // Approved. Direct-to-clinician keeps its amber otherwise.
                           background: (isPaid || o.soaApprovalStatus === 'APPROVED') ? '#f0fdf4' : isDirect ? '#fff7ed' : undefined,
                         }}>
+                        {isSubUnpaid && (
+                          <td className="px-3 py-2">
+                            <input type="checkbox" checked={luTicked.has(o.id)}
+                              onChange={() => setLuTicked(prev => {
+                                const n = new Set(prev)
+                                if (n.has(o.id)) n.delete(o.id); else n.add(o.id)
+                                return n
+                              })} />
+                          </td>
+                        )}
                         {/* Original transaction date */}
                         <td className="px-3 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>
                           {formatDate(o.transactionDate)}

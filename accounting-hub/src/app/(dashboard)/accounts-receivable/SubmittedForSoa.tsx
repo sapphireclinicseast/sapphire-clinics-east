@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useState, useEffect, useCallback } from 'react'
+import { Fragment, useState, useEffect, useCallback, useMemo } from 'react'
 import {
   X, Upload, Download, Search, Plus, Trash2, Pencil, AlertCircle, FileText,
   Maximize2, Minimize2, ChevronDown, ChevronRight,
@@ -63,6 +63,28 @@ export default function SubmittedForSoa({ wallets, canWrite }: { wallets: ARWall
   const [loading, setLoading] = useState(true)
   const [listWallet, setListWallet] = useState('')
   const [expandedId, setExpandedId] = useState<string | null>(null)
+
+  // Resubmissions (highlighted orange): a batch whose EVERY session already
+  // sat on an earlier submission — e.g. the Left Out Sessions "Resubmit as
+  // separate SOA" flow, or a disapproved claim regenerated via Generate SOA.
+  // Derived from the loaded list itself, so nothing extra is stored; an
+  // original older than the 500-row window simply isn't detected.
+  const resubmissionIds = useMemo(() => {
+    const seen = new Map<string, { subId: string; date: string; createdAt: string }[]>()
+    for (const s of submissions) {
+      for (const i of s.items) {
+        const arr = seen.get(i.orderId) || []
+        arr.push({ subId: s.id, date: String(s.submittedDate), createdAt: String(s.createdAt) })
+        seen.set(i.orderId, arr)
+      }
+    }
+    const hasEarlier = (orderId: string, s: Submission) =>
+      (seen.get(orderId) || []).some(x => x.subId !== s.id &&
+        (x.date < String(s.submittedDate) || (x.date === String(s.submittedDate) && x.createdAt < String(s.createdAt))))
+    return new Set(submissions
+      .filter(s => s.items.length > 0 && s.items.every(i => hasEarlier(i.orderId, s)))
+      .map(s => s.id))
+  }, [submissions])
 
   // ── Form state ──
   const [showForm, setShowForm] = useState(false)
@@ -313,9 +335,10 @@ export default function SubmittedForSoa({ wallets, canWrite }: { wallets: ARWall
               {submissions.map(s => {
                 const total = s.items.reduce((sum, i) => sum + i.order.payments.reduce((a, p) => a + toNum(p.amount), 0), 0)
                 const open = expandedId === s.id
+                const isResub = resubmissionIds.has(s.id)
                 return (
                   <Fragment key={s.id}>
-                    <tr className="border-t hover:bg-gray-50 cursor-pointer" style={{ borderColor: 'var(--light-gray)' }}
+                    <tr className="border-t hover:bg-gray-50 cursor-pointer" style={{ borderColor: 'var(--light-gray)', background: isResub ? '#fff7ed' : undefined }}
                       onClick={() => setExpandedId(open ? null : s.id)}>
                       <td className="px-3 py-2.5">
                         {open ? <ChevronDown size={14} style={{ color: 'var(--mid-gray)' }} /> : <ChevronRight size={14} style={{ color: 'var(--mid-gray)' }} />}
@@ -323,6 +346,13 @@ export default function SubmittedForSoa({ wallets, canWrite }: { wallets: ARWall
                       <td className="px-3 py-2.5 text-xs whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{fmtDate(s.submittedDate)}</td>
                       <td className="px-3 py-2.5 text-xs font-mono whitespace-nowrap" style={{ color: s.referenceNo ? 'var(--deep-teal)' : 'var(--mid-gray)' }}>
                         {s.referenceNo || '—'}
+                        {isResub && (
+                          <span className="ml-2 px-2 py-0.5 rounded-full text-[10px] font-sans font-semibold whitespace-nowrap align-middle"
+                            title="Every session on this SOA already sat on an earlier submission — this batch re-files the claims"
+                            style={{ background: '#ffedd5', color: '#c2410c', border: '1px solid #fed7aa' }}>
+                            Resubmitted
+                          </span>
+                        )}
                       </td>
                       <td className="px-3 py-2.5 text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>
                         {s.wallet.patientName}
