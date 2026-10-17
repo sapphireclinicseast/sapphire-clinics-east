@@ -41,6 +41,12 @@ export function listMirrors(): Array<Pick<MirrorPayload, 'sessionId' | 'name' | 
     .map(({ sessionId, name, game, status, updatedAt }) => ({ sessionId, name, game, status, updatedAt }))
 }
 
+// Every live snapshot at once — for the "Show Live Game" wall on /games.
+export function allMirrors(): MirrorPayload[] {
+  prune()
+  return [...store.values()].sort((a, b) => a.name.localeCompare(b.name))
+}
+
 export function getMirror(sessionId: string): MirrorPayload | null {
   prune()
   return store.get(sessionId) ?? null

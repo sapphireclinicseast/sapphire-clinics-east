@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { SLP_QUESTIONS } from './slp-questions'
 import { GIcon, ICON_PATHS } from './icons'
+import LiveWall from './LiveWall'
 
 const INSTITUTE = 'Aura Health Institute Trainings & Seminars'
 const LOGO_SRC = '/aura-institute-logo.png'
@@ -250,6 +251,7 @@ function PrizeReveal({ result, email }: { result: PrizeResult; email: string }) 
 export default function GamesClient({ qrDataUrl, gameUrl }: { qrDataUrl: string; gameUrl: string }) {
   const [tab, setTab] = useState<Tab>('SLP')
   const [showQr, setShowQr] = useState(false)
+  const [showLive, setShowLive] = useState(false)
 
   return (
     <div className="wrap">
@@ -260,9 +262,14 @@ export default function GamesClient({ qrDataUrl, gameUrl }: { qrDataUrl: string;
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={LOGO_SRC} alt="Aura Health Institute" className="brand-logo" />
         </div>
-        <button className="qr-toggle" onClick={() => setShowQr(true)} aria-label="Show QR code">
-          <span aria-hidden>▦</span> Show QR
-        </button>
+        <div className="topbar-actions">
+          <button className="qr-toggle" onClick={() => setShowLive(true)} aria-label="Show live game">
+            <GIcon name="monitor" size={14} className="tb-ico" /> <span className="tb-long">Show Live Game</span><span className="tb-short">Live</span>
+          </button>
+          <button className="qr-toggle" onClick={() => setShowQr(true)} aria-label="Show QR code">
+            <GIcon name="qr" size={14} className="tb-ico" /> <span className="tb-long">Show QR</span><span className="tb-short">QR</span>
+          </button>
+        </div>
       </header>
 
       <nav className="tabs" role="tablist" aria-label="Choose your profession">
@@ -286,6 +293,8 @@ export default function GamesClient({ qrDataUrl, gameUrl }: { qrDataUrl: string;
       <footer className="footnote">
         Sapphire Clinics East, Inc. · Aura Health Rehab · Aura Health Institute Trainings &amp; Seminars
       </footer>
+
+      {showLive && <LiveWall onClose={() => setShowLive(false)} />}
 
       {showQr && (
         <div className="qr-overlay" onClick={() => setShowQr(false)}>
@@ -1376,7 +1385,48 @@ function StyleTag() {
         background: linear-gradient(135deg, var(--accent), var(--warm));
         display: inline-block;
       }
+      .topbar-actions {
+        display: flex;
+        gap: 8px;
+        flex: none;
+      }
+      .tb-ico {
+        display: inline-block;
+        vertical-align: -2px;
+        margin-right: 2px;
+      }
+      .tb-short {
+        display: none;
+      }
+      @media (max-width: 600px) {
+        .topbar {
+          padding: 10px 12px;
+          gap: 8px;
+        }
+        .brand {
+          font-size: 14px;
+          gap: 7px;
+          min-width: 0;
+        }
+        .brand-logo {
+          display: none;
+        }
+        .topbar-actions {
+          gap: 6px;
+        }
+        .qr-toggle {
+          padding: 7px 10px;
+          font-size: 12px;
+        }
+        .tb-long {
+          display: none;
+        }
+        .tb-short {
+          display: inline;
+        }
+      }
       .qr-toggle {
+        white-space: nowrap;
         background: rgba(255, 255, 255, 0.12);
         color: #fff;
         border: 1px solid rgba(255, 255, 255, 0.28);
@@ -1525,6 +1575,7 @@ function StyleTag() {
         border-radius: 7px;
       }
       .btn-ico {
+        display: inline-block;
         vertical-align: -3px;
         margin-left: 4px;
       }

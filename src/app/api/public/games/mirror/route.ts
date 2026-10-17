@@ -4,13 +4,14 @@
  * POST /api/public/games/mirror         — a player's phone pushes a snapshot
  * GET  /api/public/games/mirror          — list active players (for the picker)
  * GET  /api/public/games/mirror?sessionId=X — latest snapshot for one player
+ * GET  /api/public/games/mirror?all=1      — every live snapshot (Show Live Game wall)
  *
  * Public + ephemeral: snapshots live in memory and expire ~12s after the phone
  * stops sending. Used by the /games/mirror backend page at the booth.
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { putMirror, listMirrors, getMirror } from '@/lib/games-mirror'
+import { putMirror, listMirrors, getMirror, allMirrors } from '@/lib/games-mirror'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -19,6 +20,9 @@ const MAX_IMAGE_CHARS = 400_000 // ~300KB dataURL cap per frame
 
 export async function GET(req: NextRequest) {
   const sessionId = req.nextUrl.searchParams.get('sessionId')
+  if (req.nextUrl.searchParams.get('all')) {
+    return NextResponse.json({ ok: true, payloads: allMirrors() }, { headers: { 'Cache-Control': 'no-store' } })
+  }
   if (sessionId) {
     const payload = getMirror(sessionId)
     if (!payload) return NextResponse.json({ ok: false, error: 'No live session.' }, { status: 404 })

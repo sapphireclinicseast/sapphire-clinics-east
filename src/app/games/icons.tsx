@@ -13,9 +13,13 @@ export type GIconName =
   | 'refresh'
   | 'dizzy'
   | 'cherub'
+  | 'monitor'
+  | 'qr'
 
 // 24×24 viewBox paths. Shared with the Flappy canvas (see CANVAS_PATHS).
 export const ICON_PATHS: Record<GIconName, string[]> = {
+  monitor: ['M3 5.5A1.5 1.5 0 0 1 4.5 4h15A1.5 1.5 0 0 1 21 5.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 14.5z', 'M8 20h8', 'M12 16v4', 'M9 9.5l3-2 3 2-3 2z'],
+  qr: ['M4 4h6v6H4z', 'M14 4h6v6h-6z', 'M4 14h6v6H4z', 'M14 14h2v2h-2z', 'M18 14h2v2h-2z', 'M14 18h2v2h-2z', 'M18 18h2v2h-2z'],
   gift: [
     'M3 8h18v4H3z',
     'M5 12v8a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-8',
