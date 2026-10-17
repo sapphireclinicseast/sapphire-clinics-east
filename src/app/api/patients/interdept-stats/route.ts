@@ -11,7 +11,7 @@ export const dynamic = 'force-dynamic'
 // co-occurrence hid the biggest referral relationships in the clinic.
 // ORTHOSIS is deliberately left out — 9 patients is far too sparse for a
 // chi-square test to say anything, and it would cost every other pair
-// statistical power through the Bonferroni correction.
+// statistical power through the multiple-comparison correction.
 const FOCUS_DEPTS = ['OT', 'PT', 'SLP', 'SPED', 'MD', 'PSYCHOLOGY'] as const
 type Dept = (typeof FOCUS_DEPTS)[number]
 
@@ -188,7 +188,7 @@ export async function GET(req: NextRequest) {
   // matrix and the Multi-Service Combinations) is computed from ~5 months of
   // Schedule data only and understates real co-occurrence by 3-4x. POS orders
   // reach back to Jun 2024. Scoped to FOCUS_DEPTS so the matrix stays a 4x4
-  // with its stated Bonferroni correction.
+  // with its stated multiple-comparison correction.
   const pos = await loadPosHistory(filterBranches, FOCUS_DEPTS)
   if (pos) {
     for (const [key, depts] of pos.patientDepts) {
