@@ -32,6 +32,23 @@ const BRANCH_TO_ORDER: Record<string, string> = {
   AHI: 'AURA_INSTITUTE',
 }
 
+// HMO medical — no unit pay (Hannah's rule, 2026-10-15): when a session was
+// HMO-paid and the service is medical, the doctor's PF is settled on the HMO
+// side, so generating a unit-pay line would pay the doctor twice.
+// "Medical" = the service's department is MD, or the service is explicitly
+// flagged hmoPaysClinicianDirect — the same per-service signal that suppresses
+// the order's JE in lib/accounting/post-order.ts (owner directive 2026-08-24).
+// Deliberately BROADER than the GL/AR "direct" rule: paysClinicForMd wallets
+// (e.g. Intellicare) stay our revenue/AR there, but per Hannah (2026-10-15)
+// still carry no unit pay — ANY HMO-paid medical session is skipped,
+// regardless of wallet. A cash walk-in for the same service stays payable.
+function isHmoPaid(o: { payments: { method: string }[] }) {
+  return o.payments.some(p => p.method === 'HMO')
+}
+function isMedicalService(svc: { department?: string | null; hmoPaysClinicianDirect?: boolean } | null | undefined) {
+  return !!svc && (String(svc.department || '').toUpperCase() === 'MD' || !!svc.hmoPaysClinicianDirect)
+}
+
 // Parse cutoff period "2026-03-1" → { year: 2026, month: 3, half: 1 }
 function parseCutoff(period: string) {
   const parts = period.split('-')
@@ -196,9 +213,10 @@ export async function GET(req: Request) {
             name: true,
             quantity: true,
             lineTotal: true,
-            service: { select: { id: true, name: true, department: true, unitPayId: true, unitPayEnabled: true, thresholdCounted: true, thresholdQty: true } },
+            service: { select: { id: true, name: true, department: true, unitPayId: true, unitPayEnabled: true, thresholdCounted: true, thresholdQty: true, hmoPaysClinicianDirect: true } },
           },
         },
+        payments: { select: { method: true } },
       },
     })
 
@@ -441,6 +459,10 @@ export async function GET(req: Request) {
           pagibigEmployerShare: Number(existingEntry.pagibigEmployerShare),
           netPay: Number(existingEntry.netPay),
           orderCount: storedItems.reduce((s, b) => s + (b.sessions?.length || 0), 0),
+          // Locked payslips show their stored lines as-is; the HMO-medical
+          // exclusion already happened when they were generated.
+          hmoMedicalSkipCount: 0,
+          hmoMedicalSkips: [] as { orderId: string; date: string; patientName: string; serviceName: string; quantity: number; orderNetAmount: number }[],
           existingStatus: 'LOCKED' as string,
           storedAdjustments: (existingEntry.adjustments as unknown[]) || [],
           storedExtraItems: (existingEntry.extraItems as unknown[]) || [],
@@ -452,10 +474,16 @@ export async function GET(req: Request) {
         o.clinicianName && o.clinicianName.trim().toUpperCase() === c.name.trim().toUpperCase()
       )
 
+      // HMO-paid medical items earn no PF and no incentive credit — the HMO
+      // already compensates the doctor directly. They are surfaced in the
+      // preview (count + session list) instead of silently dropped.
+      const hmoMedicalSkips: { orderId: string; date: string; patientName: string; serviceName: string; quantity: number; orderNetAmount: number }[] = []
+
       // Group by unit pay — with threshold logic per order
       const unitPayBreakdown: { unitPayId: string; unitPayName: string; unitAmount: number; quantity: number; lineTotal: number; isReduced?: boolean; sessions: { orderId: string; date: string; patientName: string; serviceName: string; quantity: number; orderNetAmount: number; orderStatus: string }[] }[] = []
 
       for (const order of consultantOrders) {
+        const hmoPaid = isHmoPaid(order)
         const orderNet = Number(order.netAmount) || 0
         const orderDate = new Date(order.transactionDate).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
 
@@ -479,6 +507,19 @@ export async function GET(req: Request) {
           if (item.service.unitPayEnabled === false) continue
           const rate = c.unitPayRates.find(r => r.unitPayId === item.service!.unitPayId)
           if (!rate || rate.disabled) continue
+
+          // HMO medical — no unit pay. Surfaced in the preview, not paid.
+          if (hmoPaid && isMedicalService(item.service)) {
+            hmoMedicalSkips.push({
+              orderId: order.id,
+              date: orderDate,
+              patientName: order.patientName || 'N/A',
+              serviceName: item.name,
+              quantity: item.quantity,
+              orderNetAmount: orderNet,
+            })
+            continue
+          }
 
           // Determine effective rate: check threshold rule using adjusted basis
           // Use toFloat() to safely convert Prisma Decimal objects to plain JS numbers
@@ -564,9 +605,12 @@ export async function GET(req: Request) {
       const sessionsByDay = new Map<string, number>()
       for (const order of consultantOrders) {
         const dayKey = new Date(order.transactionDate).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }) // YYYY-MM-DD
+        const hmoPaid = isHmoPaid(order)
         let sessions = 0
         for (const item of order.items) {
           if (!item.service?.thresholdCounted) continue
+          // HMO medical items earn no incentive credit either (no PF, not our session).
+          if (hmoPaid && isMedicalService(item.service)) continue
           const qty = Number(item.quantity) || 1
           const weight = Number(item.service.thresholdQty) || 1
           sessions += qty * weight
@@ -635,6 +679,10 @@ export async function GET(req: Request) {
         ...ben,
         netPay,
         orderCount: consultantOrders.length,
+        // HMO medical items excluded above, listed so accountants can see
+        // why a session produced no PF line.
+        hmoMedicalSkipCount: hmoMedicalSkips.reduce((s, x) => s + (Number(x.quantity) || 1), 0),
+        hmoMedicalSkips,
         existingStatus: existingMap.get(c.id) || null,
         storedAdjustments: mergeMentorship((existingEntry?.adjustments as unknown[]) || [], c.id),
         storedExtraItems: (existingEntry?.extraItems as unknown[]) || [],
@@ -714,6 +762,45 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'cutoffPeriod and entries are required' }, { status: 400 })
     }
 
+    // The preview generator never emits PF lines for HMO-paid medical items,
+    // but this handler stores client-sent items wholesale — re-check them so a
+    // stale preview can't save a double pay (the PF is settled on the HMO
+    // side). PF lines group sessions by unitPayId, so a line is offending when
+    // its session's order is HMO-paid and a medical item on that order carries
+    // the line's unit pay.
+    const sessionOrderIds = new Set<string>()
+    for (const entry of entries) {
+      for (const item of (entry.items || []) as { sessions?: { orderId?: string }[] }[]) {
+        for (const s of item.sessions || []) if (s.orderId) sessionOrderIds.add(s.orderId)
+      }
+    }
+    const skipByOrder = new Map<string, { orderNumber: string; unitPayIds: Set<string> }>()
+    if (sessionOrderIds.size > 0) {
+      const sessionOrders = await prisma.order.findMany({
+        where: { id: { in: Array.from(sessionOrderIds) } },
+        select: {
+          id: true,
+          orderNumber: true,
+          items: { select: { service: { select: { department: true, hmoPaysClinicianDirect: true, unitPayId: true } } } },
+          payments: { select: { method: true } },
+        },
+      })
+      for (const o of sessionOrders) {
+        if (!isHmoPaid(o)) continue
+        // A unit pay shared by a medical AND a non-medical item on the same
+        // order can't be attributed to the medical item from the saved line
+        // alone — let it through rather than rejecting a legitimate line the
+        // generator itself would re-emit.
+        const nonMedicalIds = new Set(o.items
+          .filter(i => !isMedicalService(i.service) && i.service?.unitPayId)
+          .map(i => i.service!.unitPayId as string))
+        const unitPayIds = new Set(o.items
+          .filter(i => isMedicalService(i.service) && i.service?.unitPayId && !nonMedicalIds.has(i.service.unitPayId!))
+          .map(i => i.service!.unitPayId as string))
+        if (unitPayIds.size > 0) skipByOrder.set(o.id, { orderNumber: String(o.orderNumber), unitPayIds })
+      }
+    }
+
     const results = []
     for (const entry of entries) {
       // Never overwrite LOCKED entries
@@ -722,6 +809,20 @@ export async function POST(req: Request) {
         select: { status: true },
       })
       if (existing?.status === 'LOCKED') continue
+
+      const offendingOrderNos = new Set<string>()
+      for (const item of (entry.items || []) as { unitPayId?: string; sessions?: { orderId?: string }[] }[]) {
+        if (!item.unitPayId) continue
+        for (const s of item.sessions || []) {
+          const skip = s.orderId ? skipByOrder.get(s.orderId) : undefined
+          if (skip && skip.unitPayIds.has(item.unitPayId)) offendingOrderNos.add(skip.orderNumber)
+        }
+      }
+      if (offendingOrderNos.size > 0) {
+        return NextResponse.json({
+          error: `Entry for consultant ${entry.consultantId} pays HMO medical session(s), which carry no unit pay (order ${Array.from(offendingOrderNos).join(', ')}). Regenerate the payroll preview and save again.`,
+        }, { status: 400 })
+      }
 
       const result = await prisma.payrollEntry.upsert({
         where: {

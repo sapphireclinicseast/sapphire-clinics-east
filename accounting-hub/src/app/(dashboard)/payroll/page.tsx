@@ -88,6 +88,10 @@ interface PayrollPreview {
   pagibigEmployerShare?: number
   netPay: number
   orderCount: number
+  // HMO-paid medical sessions the generator excluded from PF — the HMO pays
+  // the doctor directly, so no unit-pay line is produced.
+  hmoMedicalSkipCount?: number
+  hmoMedicalSkips?: { orderId: string; date: string; patientName: string; serviceName: string; quantity: number; orderNetAmount: number }[]
   existingStatus: string | null
   storedAdjustments?: AdjustmentLine[]
   storedExtraItems?: ExtraUnitPayLine[]
@@ -4798,6 +4802,20 @@ export default function PayrollPage() {
                                                 ))}
                                                 {p.items.length === 0 && (
                                                   <tr><td colSpan={4} className="px-3 py-3 text-center text-xs" style={{ color: 'var(--mid-gray)' }}>No order-linked earnings this cutoff</td></tr>
+                                                )}
+                                                {(p.hmoMedicalSkipCount ?? 0) > 0 && (
+                                                  <tr className="border-t" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                                                    <td colSpan={4} className="px-3 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>
+                                                      <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 mr-1.5">HMO medical — no unit pay</span>
+                                                      {p.hmoMedicalSkipCount} session{p.hmoMedicalSkipCount === 1 ? '' : 's'} excluded — HMO-paid medical sessions carry no unit pay.{' '}
+                                                      <button
+                                                        className="underline"
+                                                        style={{ color: 'var(--teal)' }}
+                                                        onClick={(e) => { e.stopPropagation(); setSessionBreakdown({ unitPayName: 'HMO medical — no unit pay', sessions: p.hmoMedicalSkips || [] }) }}>
+                                                        View sessions
+                                                      </button>
+                                                    </td>
+                                                  </tr>
                                                 )}
                                                 {p.retainerAmount > 0 && (
                                                   <tr className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
