@@ -325,8 +325,8 @@ export default function SoaReport({ wallets, isAdmin, canWrite = true, branch = 
   const [previewLoading, setPreviewLoading] = useState(false)
   const [unticked, setUnticked] = useState<Set<string>>(new Set())
   // Header search + sort for the preview list
-  const [pvFilter, setPvFilter] = useState({ date: '', patient: '', service: '' })
-  const [pvSortField, setPvSortField] = useState<'date' | 'patient' | 'service' | 'amount'>('date')
+  const [pvFilter, setPvFilter] = useState({ date: '', clinician: '', patient: '', service: '' })
+  const [pvSortField, setPvSortField] = useState<'date' | 'clinician' | 'patient' | 'service' | 'amount'>('date')
   const [pvSortDir, setPvSortDir] = useState<'asc' | 'desc'>('asc')
   const [alreadySubmittedCount, setAlreadySubmittedCount] = useState(0)
   // Department scope for the SOA: null = every department (today's behavior).
@@ -444,14 +444,17 @@ export default function SoaReport({ wallets, isAdmin, canWrite = true, branch = 
     new Date(o.arCustomDate || o.transactionDate).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
   const pvOrders = deptOrders
     .filter(o => !pvFilter.date || pvDateLabel(o).toLowerCase().includes(pvFilter.date.toLowerCase()))
+    .filter(o => !pvFilter.clinician || (o.clinicianName || '').toLowerCase().includes(pvFilter.clinician.toLowerCase()))
     .filter(o => !pvFilter.patient || (o.patientName || '').toLowerCase().includes(pvFilter.patient.toLowerCase()))
     .filter(o => !pvFilter.service || o.items.map(i => i.name).join(', ').toLowerCase().includes(pvFilter.service.toLowerCase()))
     .sort((a2, b2) => {
       const va = pvSortField === 'date' ? String(a2.arCustomDate || a2.transactionDate)
+        : pvSortField === 'clinician' ? (a2.clinicianName || '')
         : pvSortField === 'patient' ? (a2.patientName || '')
         : pvSortField === 'service' ? a2.items.map(i => i.name).join(', ')
         : previewAmount(a2)
       const vb = pvSortField === 'date' ? String(b2.arCustomDate || b2.transactionDate)
+        : pvSortField === 'clinician' ? (b2.clinicianName || '')
         : pvSortField === 'patient' ? (b2.patientName || '')
         : pvSortField === 'service' ? b2.items.map(i => i.name).join(', ')
         : previewAmount(b2)
@@ -756,7 +759,7 @@ export default function SoaReport({ wallets, isAdmin, canWrite = true, branch = 
                               title="Tick / untick the rows currently shown"
                             />
                           </th>
-                          {([['date', 'Date'], ['patient', 'Patient'], ['service', 'Service']] as const).map(([f, label]) => (
+                          {([['date', 'Date'], ['clinician', 'Clinician'], ['patient', 'Patient'], ['service', 'Service']] as const).map(([f, label]) => (
                             <th key={f} className="px-3 py-2 font-semibold align-top">
                               <span className="cursor-pointer select-none whitespace-nowrap" onClick={() => pvToggleSort(f)}>
                                 {label} {pvSortField === f ? (pvSortDir === 'asc' ? '▲' : '▼') : <span style={{ color: 'var(--light-gray)' }}>↕</span>}
@@ -777,7 +780,7 @@ export default function SoaReport({ wallets, isAdmin, canWrite = true, branch = 
                       </thead>
                       <tbody>
                         {pvOrders.length === 0 && (
-                          <tr><td colSpan={5} className="px-3 py-4 text-center" style={{ color: 'var(--mid-gray)' }}>No sessions match the search — clear the header filters.</td></tr>
+                          <tr><td colSpan={6} className="px-3 py-4 text-center" style={{ color: 'var(--mid-gray)' }}>No sessions match the search — clear the header filters.</td></tr>
                         )}
                         {pvOrders.map(o => {
                           const on = !unticked.has(o.id)
@@ -788,6 +791,9 @@ export default function SoaReport({ wallets, isAdmin, canWrite = true, branch = 
                               <td className="px-3 py-2"><input type="checkbox" checked={on} readOnly /></td>
                               <td className="px-3 py-2 whitespace-nowrap" style={{ color: wasDisapproved ? '#b91c1c' : 'var(--mid-gray)' }}>
                                 {new Date(o.arCustomDate || o.transactionDate).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
+                              </td>
+                              <td className="px-3 py-2" style={{ color: wasDisapproved ? '#b91c1c' : 'var(--mid-gray)' }}>
+                                {o.clinicianName || '—'}
                               </td>
                               <td className="px-3 py-2" style={{ color: wasDisapproved ? '#b91c1c' : 'var(--charcoal)' }}>
                                 {o.patientName || '—'}

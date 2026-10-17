@@ -30,6 +30,7 @@ export interface SoaOrder {
   transactionDate: string
   arCustomDate?: string | null  // Manually overridden date — used in SOA when set
   patientName: string | null
+  clinicianName?: string | null
   // service.department backs the Generate SOA department filter; callers that
   // don't filter (POS printSoa) can keep passing names alone.
   items: { name: string; service?: { department?: string | null } | null }[]
