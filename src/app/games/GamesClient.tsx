@@ -2,6 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { SLP_QUESTIONS } from './slp-questions'
+import { GIcon, ICON_PATHS } from './icons'
+
+const INSTITUTE = 'Aura Health Institute Trainings & Seminars'
+const LOGO_SRC = '/aura-institute-logo.png'
 
 // ── Game constants ──────────────────────────────────────────────────────────
 const ROUND_SECONDS = 60 // 1 minute
@@ -147,7 +151,7 @@ function PrizeChoiceScreen({
 }) {
   return (
     <section className="panel center">
-      <div className="hero-emoji" aria-hidden>🎁</div>
+      <div className="hero-emoji" aria-hidden><GIcon name="gift" /></div>
       <div className="kicker">Before you play</div>
       <h1 className="h1 sm">What do you want to win?</h1>
       <p className="lede sm">
@@ -155,14 +159,15 @@ function PrizeChoiceScreen({
       </p>
       <div className="prize-cards">
         <button className="prize-card" onClick={() => onPick('merch')}>
-          <span className="pz-emoji" aria-hidden>🎁</span>
+          <span className="pz-emoji" aria-hidden><GIcon name="gift" /></span>
           <span className="pz-title">Aura merch</span>
           <span className="pz-desc">Grab a freebie from our booth.</span>
         </button>
         <button className="prize-card" onClick={() => onPick('discount')}>
-          <span className="pz-emoji" aria-hidden>🎟️</span>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={LOGO_SRC} alt="Aura Health Institute" className="pz-logo" />
           <span className="pz-title">Seminar discount</span>
-          <span className="pz-desc">Up to 8% off a future Verdana Trainings &amp; Seminars enrollment.</span>
+          <span className="pz-desc">Up to 8% off a future Aura Health Institute Trainings &amp; Seminars enrollment.</span>
         </button>
       </div>
       <button className="btn-ghost" style={{ marginTop: 14 }} onClick={onCancel}>
@@ -193,14 +198,14 @@ function PrizeOutcome({
 function ClaimedLock({ reg, claim }: { reg: RegForm; claim: ClaimInfo }) {
   return (
     <section className="panel center">
-      <div className="hero-emoji" aria-hidden>🎉</div>
+      <div className="hero-emoji" aria-hidden><GIcon name="confetti" /></div>
       <div className="kicker">Prize claimed</div>
       <h1 className="h1">You&apos;re all set{reg.firstName ? `, ${reg.firstName}` : ''}!</h1>
       <p className="lede">
         {claim.prize === 'merch'
           ? 'You already claimed your Aura merch prize — show this to our booth staff.'
-          : `You already claimed your ${claim.tier}% Verdana Trainings & Seminars discount.`}{' '}
-        One prize per person, so the games are locked for you now. Thanks for playing! 🦙
+          : `You already claimed your ${claim.tier}% ${INSTITUTE} discount.`}{' '}
+        One prize per person, so the games are locked for you now. Thanks for playing!
       </p>
       <div className="voucher">
         <div className="v-kicker">{claim.prize === 'merch' ? 'Your merch claim code' : 'Your voucher code'}</div>
@@ -219,12 +224,16 @@ function PrizeReveal({ result, email }: { result: PrizeResult; email: string }) 
       )}
       <p className="lede">
         {merch ? (
-          <>You bagged some <strong>Aura merch</strong>! 🎁</>
+          <>You bagged some <strong>Aura merch</strong>!</>
         ) : (
-          <>That&apos;s a <strong>{result.tier}% discount</strong> on Verdana Trainings &amp; Seminars. 🦙</>
+          <>That&apos;s a <strong>{result.tier}% discount</strong> on Aura Health Institute Trainings &amp; Seminars.</>
         )}
       </p>
       <div className="voucher">
+        {!merch && (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img src={LOGO_SRC} alt="Aura Health Institute" className="v-logo" />
+        )}
         <div className="v-kicker">{merch ? 'Your merch claim code' : 'Your voucher code'}</div>
         <div className="v-code">{result.code}</div>
         <div className="v-note">
@@ -248,6 +257,8 @@ export default function GamesClient({ qrDataUrl, gameUrl }: { qrDataUrl: string;
         <div className="brand">
           <span className="dot" />
           Aura Health <span className="brand-sub">· Event Games</span>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={LOGO_SRC} alt="Aura Health Institute" className="brand-logo" />
         </div>
         <button className="qr-toggle" onClick={() => setShowQr(true)} aria-label="Show QR code">
           <span aria-hidden>▦</span> Show QR
@@ -273,7 +284,7 @@ export default function GamesClient({ qrDataUrl, gameUrl }: { qrDataUrl: string;
       </main>
 
       <footer className="footnote">
-        Sapphire Clinics East, Inc. · Aura Health Rehab · Verdana Trainings &amp; Seminars
+        Sapphire Clinics East, Inc. · Aura Health Rehab · Aura Health Institute Trainings &amp; Seminars
       </footer>
 
       {showQr && (
@@ -283,7 +294,7 @@ export default function GamesClient({ qrDataUrl, gameUrl }: { qrDataUrl: string;
               ×
             </button>
             <div className="qr-kicker">Scan to play</div>
-            <h2 className="qr-title">Point your camera here 🦙</h2>
+            <h2 className="qr-title">Point your camera here</h2>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={qrDataUrl} alt="QR code to open the game" className="qr-img" />
             <div className="qr-url">{gameUrl.replace(/^https?:\/\//, '')}</div>
@@ -303,7 +314,7 @@ function ComingSoon({ profession }: { profession: Tab }) {
   return (
     <section className="panel center">
       <div className="soon-emoji" aria-hidden>
-        🛠️
+        <GIcon name="wrench" />
       </div>
       <h1 className="h1">{label} game is warming up.</h1>
       <p className="lede">
@@ -444,7 +455,7 @@ function SlpZone() {
       {chosenPrize && (
         <p className="prize-chip">
           Your prize:{' '}
-          <b>{chosenPrize === 'merch' ? '🎁 Aura merch' : '🎟️ Seminar discount'}</b>
+          <b>{chosenPrize === 'merch' ? 'Aura merch' : 'Seminar discount'}</b>
           {' · '}
           <button className="link-btn" onClick={() => setChosenPrize(null)}>
             change
@@ -457,7 +468,7 @@ function SlpZone() {
           onClick={() => launch('quiz')}
           disabled={!settings.quiz}
         >
-          <span className="gc-emoji" aria-hidden>🗣️</span>
+          <span className="gc-emoji" aria-hidden><GIcon name="speech" /></span>
           <span className="gc-title">Say What?! Beat the Buzzer</span>
           <span className="gc-desc">
             1-minute SLP trivia sprint. 15+ correct = 5% off, 20+ = 8% off.
@@ -469,7 +480,7 @@ function SlpZone() {
           onClick={() => launch('flappy')}
           disabled={!settings.flappy}
         >
-          <span className="gc-emoji" aria-hidden>🐤</span>
+          <span className="gc-emoji" aria-hidden><GIcon name="bird" /></span>
           <span className="gc-title">Flappy Phoneme: Chase the Cherub</span>
           <span className="gc-desc">
             Flap the clinic sky, dodge the flying SLP words, and catch the little angel → 5% off.
@@ -479,7 +490,7 @@ function SlpZone() {
       </div>
       {!settings.quiz && !settings.flappy && (
         <p className="lede sm" style={{ marginTop: 14 }}>
-          🎈 The games are taking a quick break — please check back with our booth staff.
+          The games are taking a quick break — please check back with our booth staff.
         </p>
       )}
     </section>
@@ -836,7 +847,7 @@ function QuizRound({
   return (
     <section className="panel center">
       <div className="hero-emoji" aria-hidden>
-        {win ? '🎉' : '👏'}
+        <GIcon name={win ? 'confetti' : 'medal'} />
       </div>
       <div className="kicker">{win ? 'You did it!' : 'Round over'}</div>
       <h1 className="h1">
@@ -859,7 +870,7 @@ function QuizRound({
         {/* No replay once won — one prize per person. Retry only shows if they didn't win. */}
         {!win && (
           <button className="btn-primary big" onClick={startCountdown}>
-            Try again 🔁
+            <span className="nowrap">Try again <GIcon name="refresh" size={16} className="btn-ico" /></span>
           </button>
         )}
       </div>
@@ -1058,12 +1069,12 @@ function FlappyRound({
   return (
     <section className="panel">
       <div className="kicker">Flappy Phoneme</div>
-      <h1 className="h1 sm">Chase the Cherub 👼</h1>
+      <h1 className="h1 sm">Chase the Cherub</h1>
       <div className="fl-stage" onPointerDown={flap} role="button" tabIndex={0} aria-label="Tap to flap">
         <canvas ref={canvasRef} className="fl-canvas" style={{ aspectRatio: `${FL.W} / ${FL.H}` }} />
         {status === 'ready' && (
           <div className="fl-overlay">
-            <div className="fl-o-emoji" aria-hidden>🐤</div>
+            <div className="fl-o-emoji" aria-hidden><GIcon name="bird" /></div>
             <div className="fl-o-title">Tap to fly</div>
             <div className="fl-o-sub">
               Flap through the gaps, <b>dodge the flying SLP words</b>, and catch the little angel at
@@ -1074,17 +1085,17 @@ function FlappyRound({
         )}
         {status === 'dead' && (
           <div className="fl-overlay">
-            <div className="fl-o-emoji" aria-hidden>😵‍💫</div>
+            <div className="fl-o-emoji" aria-hidden><GIcon name="dizzy" /></div>
             <div className="fl-o-title">Out of lives!</div>
             <div className="fl-o-sub">The cherub fluttered off. Give it another flap?</div>
             <button className="btn-primary" onClick={restart}>
-              Try again 🔁
+              <span className="nowrap">Try again <GIcon name="refresh" size={16} className="btn-ico" /></span>
             </button>
           </div>
         )}
         {status === 'won' && (
           <div className="fl-overlay win">
-            <div className="fl-o-emoji" aria-hidden>🎉</div>
+            <div className="fl-o-emoji" aria-hidden><GIcon name="confetti" /></div>
             <div className="fl-o-title">You caught the cherub!</div>
             <PrizeOutcome claiming={claiming} result={result} error={claimError} email={reg.email} />
           </div>
@@ -1181,6 +1192,37 @@ function stepFlappy(
   if (G.dist >= FL.GOAL) setPhase('won')
 }
 
+const INK = '#244952'
+const HEART = 'M12 20.5l-1.3-1.2C6 15 3.5 12.7 3.5 9.9A4.1 4.1 0 0 1 7.6 5.8c1.5 0 3 .7 3.9 1.9a4.9 4.9 0 0 1 3.9-1.9 4.1 4.1 0 0 1 4.1 4.1c0 2.8-2.5 5.1-7.2 9.4z'
+const FLAG = ['M5 21V4h11l-1.5 4L16 12H5']
+
+// Draws 24-unit icon paths (same set as <GIcon/>) centred on (x, y) at `size` px.
+function drawIcon(
+  ctx: CanvasRenderingContext2D,
+  paths: string[],
+  x: number,
+  y: number,
+  size: number,
+  color = INK,
+  mode: 'stroke' | 'fill' = 'stroke'
+) {
+  ctx.save()
+  ctx.translate(x - size / 2, y - size / 2)
+  const k = size / 24
+  ctx.scale(k, k)
+  ctx.lineWidth = 1.75
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+  ctx.strokeStyle = color
+  ctx.fillStyle = color
+  for (const d of paths) {
+    const P = new Path2D(d)
+    if (mode === 'fill') ctx.fill(P)
+    else ctx.stroke(P)
+  }
+  ctx.restore()
+}
+
 function roundRectPath(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
   ctx.beginPath()
   ctx.moveTo(x + r, y)
@@ -1244,32 +1286,20 @@ function drawFlappy(ctx: CanvasRenderingContext2D, G: FlappyState, now: number) 
 
   // Cherub (the goal pacer) fluttering near the finish edge
   const cherY = GROUND * 0.34 + Math.sin(G.bob * 2.2) * 16
-  ctx.font = '30px serif'
-  ctx.textAlign = 'center'
-  ctx.textBaseline = 'middle'
-  ctx.fillText('👼', W - 40, cherY)
+  drawIcon(ctx, ICON_PATHS.cherub, W - 40, cherY, 34)
 
-  // Bird — mirrored horizontally so it faces right, toward the cherub it's chasing.
+  // Bird — the icon already faces right, toward the cherub it's chasing.
   ctx.save()
   ctx.translate(BIRD_X, G.birdY)
   const ang = Math.max(-0.5, Math.min(0.9, G.birdV / 520))
-  ctx.scale(-1, 1)
-  ctx.rotate(-ang)
+  ctx.rotate(ang)
   if (now < G.invUntil) ctx.globalAlpha = 0.4 + 0.35 * Math.abs(Math.sin(now / 70))
-  ctx.font = '30px serif'
-  ctx.textAlign = 'center'
-  ctx.textBaseline = 'middle'
-  ctx.fillText('🐤', 0, 0)
+  drawIcon(ctx, ICON_PATHS.bird, 0, 0, 34)
   ctx.restore()
   ctx.globalAlpha = 1
 
-  // HUD — hearts
-  ctx.font = '15px serif'
-  ctx.textAlign = 'left'
-  ctx.textBaseline = 'top'
-  let hearts = ''
-  for (let i = 0; i < 3; i++) hearts += i < G.lives ? '❤️' : '🤍'
-  ctx.fillText(hearts, 10, 10)
+  // HUD — hearts (filled = life left, outlined = lost)
+  for (let i = 0; i < 3; i++) drawIcon(ctx, [HEART], 18 + i * 18, 18, 16, INK, i < G.lives ? 'fill' : 'stroke')
 
   // HUD — progress bar to the finish
   const bw = 150
@@ -1281,10 +1311,7 @@ function drawFlappy(ctx: CanvasRenderingContext2D, G: FlappyState, now: number) 
   ctx.fillStyle = '#4a8073'
   roundRectPath(ctx, bx, by, bw * Math.min(1, G.dist / GOAL), 8, 4)
   ctx.fill()
-  ctx.font = '13px serif'
-  ctx.textAlign = 'left'
-  ctx.textBaseline = 'middle'
-  ctx.fillText('🏁', bx + bw + 4, by + 5)
+  drawIcon(ctx, FLAG, bx + bw + 12, by + 4, 14)
 }
 
 // ── Scoped styles ────────────────────────────────────────────────────────────
@@ -1437,14 +1464,72 @@ function StyleTag() {
       .lede.sm {
         font-size: 14px;
       }
-      .hero-emoji {
-        font-size: 54px;
+      .hero-emoji,
+      .soon-emoji,
+      .gc-emoji,
+      .pz-emoji,
+      .fl-o-emoji {
+        color: var(--primary-dark);
+        display: flex;
+        align-items: center;
+        justify-content: center;
         line-height: 1;
+      }
+      .gc-emoji {
+        justify-content: flex-start;
+      }
+      .hero-emoji {
         margin-bottom: 8px;
       }
+      .hero-emoji svg {
+        width: 54px;
+        height: 54px;
+      }
       .soon-emoji {
-        font-size: 46px;
         margin-bottom: 10px;
+      }
+      .soon-emoji svg {
+        width: 46px;
+        height: 46px;
+      }
+      .gc-emoji svg {
+        width: 34px;
+        height: 34px;
+      }
+      .pz-emoji svg {
+        width: 30px;
+        height: 30px;
+      }
+      .fl-o-emoji svg {
+        width: 44px;
+        height: 44px;
+      }
+      .pz-logo {
+        height: 34px;
+        width: auto;
+        display: block;
+        margin: 0 auto 2px;
+      }
+      .v-logo {
+        height: 30px;
+        width: auto;
+        display: block;
+        margin: 0 auto 10px;
+      }
+      .brand-logo {
+        height: 24px;
+        width: auto;
+        margin-left: 8px;
+        padding: 3px 7px;
+        background: #fff;
+        border-radius: 7px;
+      }
+      .btn-ico {
+        vertical-align: -3px;
+        margin-left: 4px;
+      }
+      .nowrap {
+        white-space: nowrap;
       }
       .rules {
         list-style: none;

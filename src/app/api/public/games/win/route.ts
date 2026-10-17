@@ -6,7 +6,7 @@
  *   prize: 'discount' | 'merch'
  *
  * Public. The player chooses a prize on the win screen:
- *   - discount → a unique Verdana Trainings & Seminars voucher (5% / 8%)
+ *   - discount → a unique Aura Health Institute Trainings & Seminars voucher (5% / 8%)
  *   - merch    → a merch claim code to show at the booth
  * Recorded in HR (one per email — a second attempt returns the first prize)
  * and emailed. Returns the canonical code so the win screen can show it.
@@ -104,8 +104,8 @@ export async function POST(req: NextRequest) {
       to: email,
       subject:
         finalPrize === 'merch'
-          ? 'Your Aura Health merch prize 🎁'
-          : `You won a ${finalTier}% Verdana Trainings & Seminars voucher! 🎉`,
+          ? 'Your Aura Health merch prize'
+          : `You won a ${finalTier}% Aura Health Institute Trainings & Seminars voucher!`,
       html: prizeEmailHtml({ firstName, tier: finalTier, code, correct, game, prize: finalPrize }),
     })
     emailed = true
@@ -116,6 +116,7 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ ok: true, code, tier: finalTier, prize: finalPrize, emailed, alreadyClaimed })
 }
 
+const LOGO_URL = 'https://operations.sapphireclinicseast.org/aura-institute-logo.png'
 const HR_URL = process.env.HR_PLATFORM_URL || 'http://127.0.0.1:3457'
 const HR_KEY = process.env.HR_PLATFORM_API_KEY || process.env.EXTERNAL_API_KEY || ''
 
@@ -164,21 +165,22 @@ function prizeEmailHtml(p: {
   const body =
     p.prize === 'merch'
       ? `${wonLine} and picked <strong>Aura Health merch</strong> as your prize.`
-      : `${wonLine} and earned a <strong>${p.tier}% discount</strong> on your next Verdana Trainings &amp; Seminars enrollment.`
+      : `${wonLine} and earned a <strong>${p.tier}% discount</strong> on your next Aura Health Institute Trainings &amp; Seminars enrollment.`
   const codeLabel = p.prize === 'merch' ? 'Your merch claim code' : 'Your voucher code'
   const footNote =
     p.prize === 'merch'
       ? 'Show this code at our booth to grab your merch. One prize per person.'
-      : `Present this code when you enroll in an upcoming Verdana seminar or training to claim your ${p.tier}% discount. One prize per person. Not convertible to cash.`
+      : `Present this code when you enroll in an upcoming Aura Health Institute seminar or training to claim your ${p.tier}% discount. One prize per person. Not convertible to cash.`
   return `<!doctype html>
 <html><body style="margin:0;background:#f7faf1;font-family:Inter,-apple-system,Segoe UI,sans-serif;color:#223841">
   <div style="max-width:520px;margin:0 auto;padding:28px 20px">
     <div style="background:#fff;border:1px solid #dde6d4;border-radius:16px;overflow:hidden">
       <div style="background:${teal};padding:26px 28px;color:#fff">
-        <div style="font-size:13px;letter-spacing:.14em;text-transform:uppercase;opacity:.85">Aura Health &middot; Verdana Trainings &amp; Seminars</div>
-        <div style="font-size:24px;font-weight:800;margin-top:6px">Nice one, ${escapeHtml(p.firstName)}! 🦙</div>
+        <div style="font-size:13px;letter-spacing:.14em;text-transform:uppercase;opacity:.85">Aura Health &middot; Aura Health Institute Trainings &amp; Seminars</div>
+        <div style="font-size:24px;font-weight:800;margin-top:6px">Nice one, ${escapeHtml(p.firstName)}!</div>
       </div>
       <div style="padding:26px 28px">
+        ${p.prize === 'discount' ? `<img src="${LOGO_URL}" alt="Aura Health Institute" width="150" style="display:block;height:auto;margin:0 0 16px">` : ''}
         <p style="margin:0 0 14px;font-size:16px;line-height:1.55">${body}</p>
         <div style="border:2px dashed ${gold};border-radius:12px;padding:18px;text-align:center;margin:18px 0;background:#fbf7ec">
           <div style="font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#8a6a2f">${codeLabel}</div>

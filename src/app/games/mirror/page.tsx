@@ -236,7 +236,7 @@ function QuizMirror({ quiz }: { quiz?: Payload['quiz'] }) {
       <div className="qm">
         <div className="qm-result">
           <div className="big">{quiz.correct ?? 0} correct</div>
-          {quiz.tier ? <div style={{ color: '#5d6f6a', marginTop: 6 }}>Won {quiz.tier}% off 🎉</div> : null}
+          {quiz.tier ? <div style={{ color: '#5d6f6a', marginTop: 6 }}>Won {quiz.tier}% off</div> : null}
           {quiz.code ? <div className="qm-code">{quiz.code}</div> : null}
         </div>
       </div>
