@@ -8,6 +8,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { extractStrength } from '@/lib/patient-love'
 
 const HR_API_BASE = process.env.HR_API_BASE ?? 'https://hr.sapphireclinicseast.org/api'
 // The HR hub checks these calls against its MARKETING_API_KEY. The deploy
@@ -153,6 +154,10 @@ export async function GET() {
         take: 20,
       })
       for (const r of rs) {
+        // Only notify when the patient actually wrote a kind word — otherwise
+        // the bell promises appreciation that the /patients-love wall can't
+        // show (ratings-only submissions leave the strengths field blank).
+        if (!extractStrength(r.surveyType, r.responsesJson)) continue
         items.push({ key: `survey:${r.id}`, type: 'love', title: 'A patient shared appreciation for you 💚', body: 'What Patients Love About You', createdAt: r.submittedAt.toISOString(), href: '/patients-love' })
       }
     })(),

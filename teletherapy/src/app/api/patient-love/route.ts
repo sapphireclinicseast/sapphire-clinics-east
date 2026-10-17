@@ -1,17 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-
-// Map of survey type → key in responsesJson that holds the "strengths" feedback
-const STRENGTHS_KEYS: Record<string, string[]> = {
-  HR10: ['q9'],   // Pedia Patient
-  HR11: ['q13'],  // Adult Patient
-  HR12: ['q10'],  // Admin / Front Desk
-  HR16: ['q11'],  // Group Therapy
-}
-
-// All keys to search as fallback (in case survey type mapping changes)
-const ALL_STRENGTHS_KEYS = ['q9', 'q10', 'q11', 'q13', 'strengths']
+import { extractStrength } from '@/lib/patient-love'
 
 export async function GET(req: NextRequest) {
   const session = await auth()
@@ -67,22 +57,16 @@ export async function GET(req: NextRequest) {
     }> = []
 
     for (const r of responses) {
-      const json = (r.responsesJson ?? {}) as Record<string, any>
-      const relevantKeys = STRENGTHS_KEYS[r.surveyType] ?? ALL_STRENGTHS_KEYS
-
-      for (const key of relevantKeys) {
-        const value = json[key]
-        if (typeof value === 'string' && value.trim().length > 3) {
-          strengths.push({
-            id: `${r.id}-${key}`,
-            text: value.trim(),
-            surveyType: r.surveyType,
-            branch: r.branch,
-            submittedAt: r.submittedAt,
-            respondent: null, // Always anonymous for confidentiality
-          })
-          break // Only one strengths field per response
-        }
+      const text = extractStrength(r.surveyType, r.responsesJson)
+      if (text) {
+        strengths.push({
+          id: r.id,
+          text,
+          surveyType: r.surveyType,
+          branch: r.branch,
+          submittedAt: r.submittedAt,
+          respondent: null, // Always anonymous for confidentiality
+        })
       }
     }
 
