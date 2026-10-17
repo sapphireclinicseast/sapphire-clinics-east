@@ -1359,8 +1359,50 @@ jobs:
             # Enable UFW (non-interactive)
             echo "y" | ufw enable 2>/dev/null || true
 
-            # Rate limit SSH to prevent brute force
-            ufw limit 22/tcp comment "Rate limit SSH" 2>/dev/null || true
+            # SSH is deliberately NOT rate limited at the firewall.
+            #
+            # `ufw limit` DROPS connections from an IP that has opened 6 or more
+            # in the preceding 30 seconds. This workflow alone opens eleven SSH
+            # sessions plus an rsync from one runner IP, so it tripped its own
+            # firewall about half the time. The drop surfaces to the client as
+            # `dial tcp :22 i/o timeout` -- a timeout, not a refusal -- which is
+            # why three silent failed deploys were blamed on the build first.
+            #
+            # It was also buying very little here. Password authentication is
+            # off and root is key-only, so connection volume alone gets nobody
+            # in, and sshd's own MaxStartups still caps concurrent
+            # unauthenticated sessions. The control doing the real work is
+            # fail2ban, which bans on failed auth rather than on connection
+            # count -- 1,214 bans to date.
+            #
+            # No `ufw delete` is needed: `ufw allow 22/tcp` above REPLACES a
+            # limit rule in place ("Rule updated"), so there is never a moment
+            # with no rule for 22. That matters, because the default incoming
+            # policy is deny and a missing rule would be a lockout.
+
+            # fail2ban is the SSH protection now, so declare it rather than
+            # assume it. It was installed by hand, which means a rebuilt box
+            # would have come up without it and nobody would have noticed.
+            if ! dpkg -s fail2ban >/dev/null 2>&1; then
+              echo "→ Installing fail2ban (SSH brute-force protection)..."
+              apt-get install -y fail2ban >/dev/null 2>&1 || echo "⚠ fail2ban install failed"
+            fi
+            # Seed a jail only when none exists — the live one is tuned
+            # (maxretry 5 / findtime 600 / bantime 3600) and must not be reset.
+            if [ ! -f /etc/fail2ban/jail.local ] && [ -z "$(ls -A /etc/fail2ban/jail.d 2>/dev/null)" ]; then
+              echo "→ No fail2ban jail configured — writing a default sshd jail."
+              printf '[sshd]\nenabled = true\nmaxretry = 5\nfindtime = 600\nbantime = 3600\n' > /etc/fail2ban/jail.local
+              systemctl restart fail2ban 2>/dev/null || true
+            fi
+            systemctl enable --now fail2ban 2>/dev/null || true
+            echo "→ fail2ban is $(systemctl is-active fail2ban 2>/dev/null)"
+
+            # Never leave the box unreachable: the default incoming policy is
+            # deny, so an absent rule for 22 locks everyone out.
+            if ! ufw status | grep -qE "^22/tcp[[:space:]]+ALLOW"; then
+              echo "❌ No ALLOW rule for 22/tcp — restoring one before anything else."
+              ufw allow 22/tcp comment "SSH" || true
+            fi
 
             echo "→ Firewall status:"
             ufw status verbose 2>&1
