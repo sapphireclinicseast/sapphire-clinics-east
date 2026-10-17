@@ -14,6 +14,8 @@ const normCommission = (v: unknown): number | null => {
   const n = Number(v)
   return isNaN(n) || n < 0 ? null : n
 }
+// SESSION = ₱ per session of each referred patient; PATIENT = ₱ once per referred patient.
+const normBasis = (v: unknown): 'SESSION' | 'PATIENT' | undefined => v === 'PATIENT' ? 'PATIENT' : v === 'SESSION' ? 'SESSION' : undefined
 // A branch-scoped user (East/Greenhills admin or front desk) only sees referrers
 // tagged for their branch (or untagged = all branches). Everyone else sees all.
 function branchScope(role?: string): string | null {
@@ -51,7 +53,7 @@ export async function GET(req: Request) {
   if (all) {
     const referrers = await prisma.referrer.findMany({
       where,
-      select: { id: true, name: true, type: true, affiliation: true, specialization: true, branches: true, isInhouse: true, commissionPerSession: true },
+      select: { id: true, name: true, type: true, affiliation: true, specialization: true, branches: true, isInhouse: true, commissionPerSession: true, commissionBasis: true },
       orderBy: { name: 'asc' },
     })
     // Attach live referral counts (non-voided orders that name each referrer).
@@ -84,7 +86,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { name, type, affiliation, specialization, branches, isInhouse, commissionPerSession } = await req.json()
+    const { name, type, affiliation, specialization, branches, isInhouse, commissionPerSession, commissionBasis } = await req.json()
 
     if (!name?.trim()) {
       return NextResponse.json({ error: 'Referrer name is required' }, { status: 400 })
@@ -106,6 +108,8 @@ export async function POST(req: Request) {
         branches: normBranches(branches),
         isInhouse: !!isInhouse,
         commissionPerSession: normCommission(commissionPerSession),
+        // In-house doctors are paid per session through payroll — never per patient.
+        commissionBasis: isInhouse ? 'SESSION' : (normBasis(commissionBasis) ?? 'SESSION'),
         createdById: session.user.id,
       },
     })
@@ -133,7 +137,7 @@ export async function PUT(req: Request) {
   }
 
   try {
-    const { id, name, type, affiliation, specialization, branches, isInhouse, commissionPerSession } = await req.json()
+    const { id, name, type, affiliation, specialization, branches, isInhouse, commissionPerSession, commissionBasis, confirmBasisSwitch } = await req.json()
 
     if (!id) {
       return NextResponse.json({ error: 'Referrer ID is required' }, { status: 400 })
@@ -148,6 +152,26 @@ export async function PUT(req: Request) {
     if (branches !== undefined) data.branches = normBranches(branches)
     if (isInhouse !== undefined) data.isInhouse = !!isInhouse
     if (commissionPerSession !== undefined) data.commissionPerSession = normCommission(commissionPerSession)
+
+    const wantBasis = normBasis(commissionBasis)
+    if (wantBasis !== undefined || isInhouse) {
+      const current = await prisma.referrer.findUnique({ where: { id }, select: { commissionBasis: true, isInhouse: true } })
+      if (!current) return NextResponse.json({ error: 'Referrer not found' }, { status: 404 })
+      const willBeInhouse = isInhouse !== undefined ? !!isInhouse : current.isInhouse
+      const nextBasis = willBeInhouse ? 'SESSION' : (wantBasis ?? current.commissionBasis)
+      if (nextBasis !== current.commissionBasis) {
+        // Money already paid (payroll / RFP) stays as paid; only the way FUTURE
+        // commission is counted changes — make that an explicit confirmation.
+        const paid = await prisma.referralCommissionItem.count({ where: { referrerId: id } })
+        if (paid > 0 && !confirmBasisSwitch && !willBeInhouse) {
+          return NextResponse.json({
+            needsConfirm: true,
+            error: `This referrer already has ${paid} commission item(s) paid or claimed. Switching to ${nextBasis === 'PATIENT' ? 'per-patient' : 'per-session'} only changes how FUTURE commission is counted — what was already paid stays as paid, and patients/sessions already paid will not be paid again. Switch anyway?`,
+          }, { status: 409 })
+        }
+        data.commissionBasis = nextBasis
+      }
+    }
 
     const referrer = await prisma.referrer.update({ where: { id }, data })
 

@@ -11,7 +11,8 @@ function branchScope(role?: string): string | null {
 }
 
 // GET ?from=&to=&branch= → the referral commission report:
-// - per-doctor sessions × their own ₱/session rate (doctors without a rate
+// - per-referrer units × their own ₱ rate — units are sessions (per-session
+//   basis) or referred patients (per-patient basis) (referrers without a rate
 //   still list their sessions but earn nothing, so unticked doctors with
 //   activity stay visible);
 // - the medical representative's one-time incentive: new patients whose first
@@ -48,6 +49,7 @@ export async function GET(req: Request) {
       name: d.name,
       specialization: d.specialization,
       isInhouse: d.isInhouse,
+      basis: d.basis,
       rate: d.rate,
       patients: new Set(d.sessions.map(s => s.patientKey)).size,
       sessions: d.sessions.length,

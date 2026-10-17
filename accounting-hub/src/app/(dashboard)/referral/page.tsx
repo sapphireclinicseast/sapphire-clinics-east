@@ -398,7 +398,7 @@ function ReferralDashboardPanel() {
 }
 
 interface ComSession { id: string; orderNumber: number; date: string; branch: string; patientName: string | null; net: number; paymentStatus: string | null; via: 'tag' | 'link' }
-interface ComRow { referrerId: string; name: string; specialization: string | null; isInhouse: boolean; rate: number | null; patients: number; sessions: number; commission: number; orders: ComSession[] }
+interface ComRow { referrerId: string; name: string; specialization: string | null; isInhouse: boolean; basis?: 'SESSION' | 'PATIENT'; rate: number | null; patients: number; sessions: number; commission: number; orders: ComSession[] }
 interface MedrepBlock { staffName: string | null; amount: number; count: number; total: number; patients: { patientKey: string; patientName: string; referrerId: string; referrerName: string; referrerType: string | null; firstDate: string; branch: string; orderNumber: number; paid: { cutoffPeriod: string; viaPayroll: boolean; at: string } | null }[] }
 
 // Per-session referral commission for doctors, each at the ₱ rate set on their
@@ -435,7 +435,7 @@ function ReferralCommissionPanel() {
   const [rfpBranch, setRfpBranch] = useState('SANDBOX_EAST')
   const [rfpUpTo, setRfpUpTo] = useState(() => new Date().toISOString().slice(0, 10))
   const [rfpBusy, setRfpBusy] = useState(false)
-  const [rfpResult, setRfpResult] = useState<{ created: { referrer: string; refNumber: string; sessions: number; amount: number }[]; note?: string; error?: string } | null>(null)
+  const [rfpResult, setRfpResult] = useState<{ created: { referrer: string; refNumber: string; sessions: number; basis?: string; amount: number }[]; note?: string; error?: string } | null>(null)
   // Payout settings: the expense account the RFPs book under (persisted on the
   // incentive-settings singleton; picking an account saves immediately).
   const [payoutAccount, setPayoutAccount] = useState<string | null>(null)
@@ -518,11 +518,17 @@ function ReferralCommissionPanel() {
   const external = shown.filter(r => !r.isInhouse)
   const inhouse = shown.filter(r => r.isInhouse)
   const sum = (list: ComRow[], k: 'sessions' | 'commission') => list.reduce((s, r) => s + r[k], 0)
+  // Units are sessions for per-session referrers and patients for per-patient ones.
+  const unitsText = (list: ComRow[]) => {
+    const sess = list.filter(r => r.basis !== 'PATIENT').reduce((n, r) => n + r.sessions, 0)
+    const pats = list.filter(r => r.basis === 'PATIENT').reduce((n, r) => n + r.sessions, 0)
+    return [sess || !pats ? `${sess} session${sess === 1 ? '' : 's'}` : '', pats ? `${pats} patient${pats === 1 ? '' : 's'}` : ''].filter(Boolean).join(' + ')
+  }
   const toggle = (id: string) => setOpen(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n })
 
   const exportCsv = () => {
-    const head = ['Doctor', 'Specialization', 'In-house', 'Patients', 'Sessions', 'Rate/session', 'Commission']
-    const body = shown.map(r => [r.name, r.specialization || '', r.isInhouse ? 'Yes' : '', r.patients, r.sessions, r.rate != null ? r.rate.toFixed(2) : 'no commission set', r.commission.toFixed(2)])
+    const head = ['Referrer', 'Specialization', 'In-house', 'Basis', 'Patients', 'Sessions', 'Rate', 'Commission']
+    const body = shown.map(r => [r.name, r.specialization || '', r.isInhouse ? 'Yes' : '', r.basis === 'PATIENT' ? 'Per patient' : 'Per session', r.patients, r.basis === 'PATIENT' ? '' : r.sessions, r.rate != null ? r.rate.toFixed(2) : 'no commission set', r.commission.toFixed(2)])
     const csv = [head, ...body].map(line => line.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
     const blob = new Blob([csv], { type: 'text/csv' })
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `referral-commission_${from}_${to}.csv`; a.click(); URL.revokeObjectURL(a.href)
@@ -539,11 +545,11 @@ function ReferralCommissionPanel() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     autoTable(doc as any, {
       startY: 28,
-      head: [['#', 'Doctor', 'In-house', 'Patients', 'Sessions', 'Rate (P)', 'Commission (P)']],
+      head: [['#', 'Referrer', 'In-house', 'Basis', 'Patients', 'Sessions', 'Rate (P)', 'Commission (P)']],
       body: [
-        ...shown.map((r, i) => [i + 1, r.name, r.isInhouse ? 'Yes' : '', r.patients, r.sessions, r.rate != null ? r.rate.toLocaleString('en-PH', { minimumFractionDigits: 2 }) : '—', r.commission.toLocaleString('en-PH', { minimumFractionDigits: 2 })]),
-        ['', 'TOTAL — external doctors', '', '', sum(external, 'sessions'), '', sum(external, 'commission').toLocaleString('en-PH', { minimumFractionDigits: 2 })],
-        ...(inhouse.length ? [['', 'TOTAL — in-house doctors', '', '', sum(inhouse, 'sessions'), '', sum(inhouse, 'commission').toLocaleString('en-PH', { minimumFractionDigits: 2 })]] : []),
+        ...shown.map((r, i) => [i + 1, r.name, r.isInhouse ? 'Yes' : '', r.basis === 'PATIENT' ? 'Per patient' : 'Per session', r.patients, r.basis === 'PATIENT' ? '' : r.sessions, r.rate != null ? r.rate.toLocaleString('en-PH', { minimumFractionDigits: 2 }) : '—', r.commission.toLocaleString('en-PH', { minimumFractionDigits: 2 })]),
+        ['', 'TOTAL — external referrers', '', '', '', '', '', sum(external, 'commission').toLocaleString('en-PH', { minimumFractionDigits: 2 })],
+        ...(inhouse.length ? [['', 'TOTAL — in-house doctors', '', '', '', '', '', sum(inhouse, 'commission').toLocaleString('en-PH', { minimumFractionDigits: 2 })]] : []),
       ],
       styles: { fontSize: 8 }, headStyles: { fillColor: [46, 94, 90] },
     })
@@ -555,7 +561,7 @@ function ReferralCommissionPanel() {
       <div>
         <h2 className="text-base font-bold" style={{ color: 'var(--charcoal)' }}>Referral commission — doctors</h2>
         <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
-          Each doctor&apos;s own ₱/session rate — tick &ldquo;Commission&rdquo; on their card in Referrers and set the amount. Sessions come from the POS Doctor Referral tag, plus untagged orders of patients linked under Referred patients (tag a patient&apos;s first order once and every later session attributes automatically). Click a doctor to see the sessions behind the number.
+          Each referrer&apos;s own rate — tick &ldquo;Commission&rdquo; on their card in Referrers, choose <b>per session</b> (doctors: ₱ for every session of a referred patient) or <b>per patient</b> (law firms, schools: ₱ once per referred patient, regardless of sessions), then set the amount. Sessions come from the POS Doctor Referral tag, plus untagged orders of patients linked under Referred patients (tag a patient&apos;s first order once and every later session attributes automatically). Click a doctor to see the sessions behind the number.
         </p>
       </div>
 
@@ -592,21 +598,21 @@ function ReferralCommissionPanel() {
         <>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="rounded-2xl border p-4 bg-white" style={{ borderColor: 'var(--light-gray)' }}>
-              <div className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Commission — external doctors</div>
+              <div className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Commission — external referrers</div>
               <div className="text-xl font-bold" style={{ color: 'var(--deep-teal)' }}>{peso(sum(external, 'commission'))}</div>
-              <div className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>{sum(external, 'sessions')} session{sum(external, 'sessions') === 1 ? '' : 's'} · {external.length} doctor{external.length === 1 ? '' : 's'}</div>
+              <div className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>{unitsText(external)} · {external.length} referrer{external.length === 1 ? '' : 's'}</div>
             </div>
             {includeInhouse && (
               <div className="rounded-2xl border p-4 bg-white" style={{ borderColor: '#fcd34d' }}>
                 <div className="text-xs font-semibold" style={{ color: '#92400e' }}>Commission — in-house doctors</div>
                 <div className="text-xl font-bold" style={{ color: '#92400e' }}>{peso(sum(inhouse, 'commission'))}</div>
-                <div className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>{sum(inhouse, 'sessions')} session{sum(inhouse, 'sessions') === 1 ? '' : 's'} · {inhouse.length} doctor{inhouse.length === 1 ? '' : 's'}</div>
+                <div className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>{unitsText(inhouse)} · {inhouse.length} doctor{inhouse.length === 1 ? '' : 's'}</div>
               </div>
             )}
             <div className="rounded-2xl border p-4 bg-white" style={{ borderColor: 'var(--light-gray)' }}>
               <div className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Total shown</div>
               <div className="text-xl font-bold" style={{ color: 'var(--charcoal)' }}>{peso(sum(shown, 'commission'))}</div>
-              <div className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>{sum(shown, 'sessions')} session{sum(shown, 'sessions') === 1 ? '' : 's'} at per-doctor rates</div>
+              <div className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>{unitsText(shown)} at per-referrer rates</div>
             </div>
           </div>
 
@@ -678,7 +684,7 @@ function ReferralCommissionPanel() {
             {rfpOpen && (
               <div className="px-10 pb-4 space-y-3">
                 <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
-                  Creates one RFP per external referrer — outside doctors, law firms and partner schools with a commission rate ticked — payable to the referrer and booked as an audited expense entry under the account below, covering every commission session not yet paid by payroll or an earlier RFP, from the scheme start through the chosen date. In-house doctors are paid through payroll, never here. Deleting a generated RFP (Expenses → RFP) releases its sessions for the next run.
+                  Creates one RFP per external referrer — outside doctors, law firms and partner schools with a commission rate ticked — payable to the referrer and booked as an audited expense entry under the account below, covering every commission session (per-session referrers) or newly referred patient (per-patient referrers) not yet paid by payroll or an earlier RFP, from the scheme start through the chosen date. In-house doctors are paid through payroll, never here. Deleting a generated RFP (Expenses → RFP) releases its sessions for the next run.
                 </p>
                 {canMarkPaid ? (
                   <>
@@ -715,7 +721,7 @@ function ReferralCommissionPanel() {
                         <div key={c.refNumber} className="flex justify-between gap-2">
                           <span className="font-mono">{c.refNumber}</span>
                           <span className="truncate flex-1">{c.referrer}</span>
-                          <span>{c.sessions} sess.</span>
+                          <span>{c.sessions} {c.basis === 'PATIENT' ? `patient${c.sessions === 1 ? '' : 's'}` : 'sess.'}</span>
                           <span className="font-mono font-semibold">{peso(c.amount)}</span>
                         </div>
                       ))}
@@ -730,7 +736,7 @@ function ReferralCommissionPanel() {
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ background: 'var(--pale-teal)' }}>
-                  {['Doctor', 'Patients', 'Sessions', 'Rate', 'Commission'].map((h, i) => (
+                  {['Referrer', 'Patients', 'Sessions', 'Rate', 'Commission'].map((h, i) => (
                     <th key={h} className={`px-4 py-2.5 text-xs font-semibold ${i === 0 ? 'text-left' : 'text-right'}`} style={{ color: 'var(--deep-teal)' }}>{h}</th>
                   ))}
                 </tr>
@@ -750,10 +756,10 @@ function ReferralCommissionPanel() {
                         {r.specialization && <span className="ml-1.5 text-xs" style={{ color: 'var(--mid-gray)' }}>· {r.specialization}</span>}
                       </td>
                       <td className="px-4 py-2.5 text-right font-mono">{r.patients}</td>
-                      <td className="px-4 py-2.5 text-right font-mono">{r.sessions}</td>
+                      <td className="px-4 py-2.5 text-right font-mono" title={r.basis === 'PATIENT' ? 'Per-patient referrer: paid once per referred patient, so sessions are not counted' : undefined}>{r.basis === 'PATIENT' ? '—' : r.sessions}</td>
                       <td className="px-4 py-2.5 text-right font-mono text-xs" style={{ color: r.rate != null ? 'var(--charcoal)' : 'var(--mid-gray)' }}
                         title={r.rate == null ? 'No commission set — tick "Commission" on this doctor\'s card in Referrers to pay them per session' : undefined}>
-                        {r.rate != null ? `₱${peso(r.rate)}` : '—'}
+                        {r.rate != null ? `₱${peso(r.rate)}${r.basis === 'PATIENT' ? '/patient' : '/session'}` : '—'}
                       </td>
                       <td className="px-4 py-2.5 text-right font-mono font-semibold" style={{ color: r.rate != null ? 'var(--deep-teal)' : 'var(--mid-gray)' }}>
                         {r.rate != null ? peso(r.commission) : '—'}
@@ -762,6 +768,7 @@ function ReferralCommissionPanel() {
                     {open.has(r.referrerId) && (
                       <tr className="border-t" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
                         <td colSpan={5} className="px-10 py-2">
+                          {r.basis === 'PATIENT' && <div className="pb-1 text-[11px]" style={{ color: 'var(--mid-gray)' }}>Per-patient: each row is the patient&apos;s qualifying first session — paid once, however many sessions follow.</div>}
                           <table className="w-full text-xs">
                             <tbody>
                               {r.orders.map(s => (

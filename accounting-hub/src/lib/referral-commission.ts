@@ -4,8 +4,16 @@ import type { PrismaClient } from '@prisma/client'
  * Referral commission engine — the single source of truth used by the
  * Commission report AND payroll, so both always agree:
  *
- * - DOCTOR / LAW FIRM commission: ₱rate per session (earned, non-voided POS
- *   order) of the referrer's referred patients. A session is attributed by the
+ * - DOCTOR / LAW FIRM / SCHOOL commission, on the referrer's own basis:
+ *   · SESSION (doctors): ₱rate per session (earned, non-voided POS order) of
+ *     the referrer's referred patients.
+ *   · PATIENT (law firms, schools): ₱rate ONCE per referred patient, regardless
+ *     of how many sessions they have — triggered by the patient's first session
+ *     on/after COMMISSION_START (a patient who already had a session before the
+ *     scheme started was not newly referred, so earns nothing), claimed once in
+ *     the ledger by patient key (kind 'PATIENT').
+ *   In-house doctors are always SESSION (payroll pays them per session).
+ *   A session is attributed by the
  *   order's own Doctor Referral tag, or by the patient's Referred-patients
  *   link when the order wasn't tagged (CRM id first, else exact name — the
  *   Referral Dashboard's rule). The explicit tag wins on conflict.
@@ -43,8 +51,13 @@ export interface AttributedSession {
   via: 'tag' | 'link'
 }
 
+export type CommissionBasis = 'SESSION' | 'PATIENT'
+
 export interface DoctorCommissionRow {
   referrerId: string
+  // How `sessions` should be read: every session (SESSION) or one qualifying
+  // first session per referred patient (PATIENT) — each entry is one payable unit.
+  basis: CommissionBasis
   name: string
   specialization: string | null
   isInhouse: boolean
@@ -75,8 +88,10 @@ export async function computeDoctorCommissions(prisma: PrismaClient, opts: {
       isActive: true,
       ...(opts.scopeBranch ? { OR: [{ branches: { isEmpty: true } }, { branches: { has: opts.scopeBranch } }] } : {}),
     },
-    select: { id: true, name: true, specialization: true, isInhouse: true, commissionPerSession: true },
+    select: { id: true, name: true, specialization: true, isInhouse: true, commissionPerSession: true, commissionBasis: true },
   })
+  const basisOf = new Map<string, CommissionBasis>(doctors.map(d => [d.id, !d.isInhouse && d.commissionBasis === 'PATIENT' ? 'PATIENT' : 'SESSION']))
+  const hasPatientBasis = [...basisOf.values()].includes('PATIENT')
   const doctorIds = new Set(doctors.map(d => d.id))
 
   const referred = await prisma.referredPatient.findMany({
@@ -95,7 +110,9 @@ export async function computeDoctorCommissions(prisma: PrismaClient, opts: {
   const names = Array.from(new Set(referred.map(r => r.patientName)))
   const orders = await prisma.order.findMany({
     where: {
-      transactionDate: { gte: from, lte: opts.to },
+      // Per-patient referrers need the whole scheme history (a patient's first
+      // qualifying session may predate the window); per-session ones are cut at `from` below.
+      transactionDate: { gte: hasPatientBasis ? floor : from, lte: opts.to },
       status: { notIn: ['VOIDED'] },
       revenueType: { not: 'UNEARNED' },
       ...(opts.branch ? { branch: opts.branch } : {}),
@@ -122,23 +139,97 @@ export async function computeDoctorCommissions(prisma: PrismaClient, opts: {
   }
 
   const perDoctor = new Map<string, AttributedSession[]>()
+  const perPatient = new Map<string, (AttributedSession & { claimed: boolean })[]>()
   for (const o of orders) {
-    if (claimed.has(o.id)) continue
     const tagged = o.referrerId && doctorIds.has(o.referrerId) ? o.referrerId : null
     const linked = (o.patientId && byId.get(o.patientId)) || byName.get((o.patientName || '').trim().toLowerCase()) || null
     const rid = tagged || linked
     if (!rid || !doctorIds.has(rid)) continue
-    const list = perDoctor.get(rid) || []
-    list.push({
+    const sess: AttributedSession = {
       orderId: o.id, orderNumber: o.orderNumber, date: o.transactionDate, branch: o.branch,
       patientName: o.patientName, patientKey: patientKeyOf(o.patientId, o.patientName),
       net: Number(o.netAmount), paymentStatus: o.paymentStatus, via: tagged ? 'tag' : 'link',
+    }
+    if (basisOf.get(rid) === 'PATIENT') {
+      const list = perPatient.get(rid) || []
+      list.push({ ...sess, claimed: claimed.has(o.id) })
+      perPatient.set(rid, list)
+    } else {
+      if (claimed.has(o.id) || o.transactionDate < from) continue
+      const list = perDoctor.get(rid) || []
+      list.push(sess)
+      perDoctor.set(rid, list)
+    }
+  }
+
+  // A referrer switched from PATIENT to SESSION: sessions of patients already
+  // paid per patient (up to the moment they were paid) must not pay again.
+  if (opts.onlyUnclaimed && perDoctor.size) {
+    const paidBefore = await prisma.referralCommissionItem.findMany({
+      where: { kind: 'PATIENT', referrerId: { in: [...perDoctor.keys()] } },
+      select: { referrerId: true, patientKey: true, createdAt: true },
     })
-    perDoctor.set(rid, list)
+    if (paidBefore.length) {
+      const cutoff = new Map(paidBefore.map(c => [`${c.referrerId}|${c.patientKey}`, c.createdAt]))
+      for (const [rid, list] of perDoctor) {
+        perDoctor.set(rid, list.filter(x => { const t = cutoff.get(`${rid}|${x.patientKey}`); return !t || x.date > t }))
+      }
+    }
+  }
+
+  // Per-patient referrers: one unit per patient = their first attributed session.
+  if (perPatient.size) {
+    // Patients who already had a session BEFORE the scheme started were not
+    // newly referred — they never earn (same rule as the med-rep incentive).
+    const keys = new Map<string, { id: string | null; name: string | null }>()
+    for (const o of orders) {
+      const k = patientKeyOf(o.patientId, o.patientName)
+      if (!keys.has(k)) keys.set(k, { id: o.patientId, name: o.patientName })
+    }
+    const wanted = new Set<string>()
+    for (const list of perPatient.values()) for (const s of list) wanted.add(s.patientKey)
+    const pIds = [...wanted].map(k => keys.get(k)?.id).filter(Boolean) as string[]
+    const pNames = [...wanted].map(k => keys.get(k)?.name).filter(Boolean) as string[]
+    const prior = await prisma.order.findMany({
+      where: {
+        transactionDate: { lt: floor },
+        status: { notIn: ['VOIDED'] },
+        revenueType: { not: 'UNEARNED' },
+        OR: [...(pIds.length ? [{ patientId: { in: pIds } }] : []), ...(pNames.length ? [{ patientName: { in: pNames } }] : [])],
+      },
+      select: { patientId: true, patientName: true },
+    })
+    const existingPatients = new Set(prior.map(o => patientKeyOf(o.patientId, o.patientName)))
+
+    let paidPatients = new Set<string>()
+    if (opts.onlyUnclaimed) {
+      const rows = await prisma.referralCommissionItem.findMany({
+        where: { kind: 'PATIENT', patientKey: { in: [...wanted] } },
+        select: { patientKey: true },
+      })
+      paidPatients = new Set(rows.map(r => r.patientKey as string))
+    }
+
+    for (const [rid, list] of perPatient) {
+      const byPatient = new Map<string, (AttributedSession & { claimed: boolean })[]>()
+      for (const s of list) { const a = byPatient.get(s.patientKey) || []; a.push(s); byPatient.set(s.patientKey, a) }
+      const units: AttributedSession[] = []
+      for (const [pk, sess] of byPatient) {
+        const first = sess[0] // orders are sorted by date asc
+        if (existingPatients.has(pk) || paidPatients.has(pk)) continue
+        if (sess.some(s => s.claimed)) continue // already paid per session before a basis switch
+        if (first.date < from) continue
+        const { claimed: _c, ...unit } = first
+        void _c
+        units.push(unit)
+      }
+      perDoctor.set(rid, units)
+    }
   }
 
   return doctors.map(d => ({
     referrerId: d.id,
+    basis: basisOf.get(d.id) || 'SESSION',
     name: d.name,
     specialization: d.specialization,
     isInhouse: d.isInhouse,
