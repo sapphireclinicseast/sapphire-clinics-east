@@ -11,7 +11,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 
 const ACCOUNTING_API_BASE = process.env.ACCOUNTING_API_BASE ?? 'https://accounting.sapphireclinicseast.org/api'
-const ACCOUNTING_API_KEY = process.env.ACCOUNTING_API_KEY ?? ''
+const ACCOUNTING_API_KEY = process.env.ACCOUNTING_API_KEY ?? process.env.INTERNAL_API_KEY ?? '' // deploy writes INTERNAL_API_KEY (== accounting hub's TELETHERAPY_INTERNAL_API_KEY); it never writes ACCOUNTING_API_KEY. Mirrors PR #808's HR_API_KEY->EXTERNAL_API_KEY fallback.
 
 export async function GET(req: NextRequest) {
   const session = await auth()
