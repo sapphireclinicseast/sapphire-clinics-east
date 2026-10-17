@@ -1630,6 +1630,10 @@ function OrderFormModal({
   // Submit order
   const handleSubmit = async (asUnpaid = false) => {
     if (items.length === 0) { setError('Add at least one item'); return }
+    if (orderType === 'SERVICE' && !referrerId) {
+      setError('Referring Doctor/School/Law Firm is required — pick one from the list, or choose "None — no referral"')
+      return
+    }
     if (!asUnpaid && servicePaymentShort) { setError('Payments do not cover the net amount'); return }
     if ((effectiveRevenueType === 'UNEARNED' || isAdvancePayment) && !patientName.trim()) {
       setError('Patient name is required for unearned revenue / advance payment orders')
@@ -1743,7 +1747,7 @@ function OrderFormModal({
         discountAmount,
         discountLabel: discountLabel || null,
         revenueType: effectiveRevenueType,
-        referrerId: referrerId || null,
+        referrerId: referrerId && referrerId !== 'NONE' ? referrerId : null,
         issuedOfficialInvoice,
         salesInvoiceNumber: issuedOfficialInvoice ? normalizeSI(salesInvoiceNumber) : null,
         referenceNumber: referenceNumber.trim() || null,
@@ -2209,7 +2213,7 @@ function OrderFormModal({
           {/* Referral */}
           {orderType === 'SERVICE' && (
             <div className="relative">
-              <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Doctor Referral (optional)</label>
+              <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Referring Doctor/School/Law Firm <span style={{ color: '#dc2626' }}>*</span></label>
               {refSuggest && !referrerId && (
                 <button type="button"
                   onClick={() => { setReferrerId(refSuggest.referrerId); setReferrerSearch(refSuggest.name); setShowReferrerDrop(false) }}
@@ -2227,13 +2231,18 @@ function OrderFormModal({
                 <div className="flex-1 relative">
                   <input
                     value={referrerSearch}
-                    onChange={e => { setReferrerSearch(e.target.value); setShowReferrerDrop(true) }}
+                    onChange={e => { setReferrerSearch(e.target.value); setReferrerId(''); setShowReferrerDrop(true) }}
                     onFocus={() => setShowReferrerDrop(true)}
-                    placeholder="Search referrer..."
-                    className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}
+                    placeholder="Search doctor / school / law firm…"
+                    className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
+                    style={{ borderColor: referrerId ? 'var(--light-gray)' : '#fcd34d' }}
                   />
-                  {showReferrerDrop && filteredReferrers.length > 0 && (
+                  {showReferrerDrop && (
                     <div className="absolute z-10 w-full mt-1 bg-white border rounded-xl shadow-lg max-h-32 overflow-y-auto" style={{ borderColor: 'var(--light-gray)' }}>
+                      <button onClick={() => { setReferrerId('NONE'); setReferrerSearch('None — no referral'); setShowReferrerDrop(false) }}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 italic" style={{ color: 'var(--mid-gray)' }}>
+                        None — no referral
+                      </button>
                       {filteredReferrers.map(r => (
                         <button key={r.id} onClick={() => { setReferrerId(r.id); setReferrerSearch(r.name); setShowReferrerDrop(false) }}
                           className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50" style={{ color: 'var(--charcoal)' }}>
