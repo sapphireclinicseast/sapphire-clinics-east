@@ -63,7 +63,7 @@ interface AROrder {
   items: { name: string; service?: { department?: string | null; hmoPaysClinicianDirect?: boolean } | null }[]
   payments: { amount: number | string; walletId?: string }[]
   arPaymentItems: { paymentId: string }[]
-  soaSubmissionItems?: { submission: { submittedDate: string; referenceNo?: string | null } }[]
+  soaSubmissionItems?: { submission: { id?: string; submittedDate: string; referenceNo?: string | null } }[]
   soaApprovalStatus?: string | null   // APPROVED | DISAPPROVED | null (pending)
   soaBranch?: string | null           // Reassign: branch whose SOA generation picks this up; null = own branch
 }
@@ -536,7 +536,7 @@ export default function AccountsReceivablePage() {
   // HMO sub-tab state. 'md-consults' and 'submitted-unpaid' are the Per HMO
   // view in fixed shapes (doctor-consult sessions only / on a submitted SOA but
   // still unpaid) — all four render through the same block below.
-  const [hmoSubTab, setHmoSubTab] = useState<'overview' | 'per-hmo' | 'md-consults' | 'soa-report' | 'submitted-soa' | 'submitted-unpaid' | 'loa' | 'follow-up'>('overview')
+  const [hmoSubTab, setHmoSubTab] = useState<'overview' | 'per-hmo' | 'md-consults' | 'soa-report' | 'submitted-soa' | 'submitted-unpaid' | 'loa' | 'follow-up' | 'payment-history'>('overview')
   // useSession resolves after the first render, so the initial tab/sub-tab are
   // picked before the role is known. Snap them back once it arrives — a ?type=
   // link or a stale sub-tab must not park a restricted user on a hidden view.
@@ -1368,7 +1368,8 @@ export default function AccountsReceivablePage() {
             <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Total Receivable ({tab})</p>
             <p className="text-lg font-bold" style={{ color: 'var(--deep-teal)' }}>{formatCurrency(totalReceivable)}</p>
           </div>
-          {canWrite && (
+          {/* For HMO the Record Payment button lives in its Payment History sub-tab. */}
+          {canWrite && tab !== 'HMO' && (
           <button onClick={openPaymentModal} className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium text-white" style={{ background: 'var(--teal)' }}>
             <DollarSign size={16} /> Record Payment
           </button>
@@ -1422,14 +1423,17 @@ export default function AccountsReceivablePage() {
             { key: 'md-consults', label: 'Doctor Consults' },
             { key: 'soa-report', label: 'Generate SOA' },
             { key: 'submitted-soa', label: 'SOA Submissions' },
-            // Sessions on a SUBMITTED SOA that are still not tagged paid — even
-            // when other sessions of the same submission were settled already.
-            { key: 'submitted-unpaid', label: 'Submitted but Unpaid' },
+            // Sessions LEFT OUT of payment tagging: on a submitted SOA whose
+            // batch-mates are already tagged paid, while this one is not.
+            { key: 'submitted-unpaid', label: 'Left Out Sessions' },
             // Letters of Authorization are raised in the Operations Hub; this is
             // the HMO officer's read-only window onto them.
             { key: 'loa', label: 'LOA Submission' },
             // Unpaid HMO sessions since the beginning — the follow-up worklist.
             { key: 'follow-up', label: 'For Follow Up' },
+            // Recorded HMO payments + the Record Payment button, out of Overview
+            // (Hannah 2026-10-17).
+            { key: 'payment-history', label: 'Payment History' },
           ] as const).filter(st => !(isFrontdesk && st.key === 'overview')).map(st => (
             <button key={st.key} onClick={() => setHmoSubTab(st.key)}
               className="px-4 py-2 text-sm font-medium transition-colors"
@@ -2066,9 +2070,13 @@ export default function AccountsReceivablePage() {
         )}
       </div>
 
-      {/* Payment History — always shown, on both wallet tabs. Hiding it when empty made
-          it look as though HMO had no such section at all, when in fact no HMO
-          payment had been recorded (the one that was is since reversed). */}
+      </>}
+
+      {/* Payment History — GL keeps it on its Overview; for HMO it is its own
+          sub-tab carrying the Record Payment button (Hannah 2026-10-17). Shown
+          even when empty: hiding it made it look as though HMO had no such
+          section at all, when in fact no payment had been recorded. */}
+      {((tab === 'HMO' && hmoSubTab === 'payment-history') || (tab === 'GL' && glSubTab === 'overview')) && <>
       {(
         <div id="ar-payment-history">
           <div className="flex flex-wrap items-center gap-2 mb-2">
@@ -2099,6 +2107,13 @@ export default function AccountsReceivablePage() {
                 className="text-[11px] font-semibold px-2.5 py-1.5 rounded-lg shrink-0"
                 style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
                 Clear {activePayFilters} filter{activePayFilters === 1 ? '' : 's'}
+              </button>
+            )}
+            {tab === 'HMO' && canWrite && (
+              <button onClick={openPaymentModal}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium text-white shrink-0"
+                style={{ background: 'var(--teal)' }}>
+                <DollarSign size={14} /> Record Payment
               </button>
             )}
           </div>
@@ -2216,6 +2231,10 @@ export default function AccountsReceivablePage() {
           </ExpandablePanel>
         </div>
       )}
+      </>}
+
+      {/* ── Overview content, continued: Filters + Consumption ── */}
+      {tab !== 'OTHERS' && (tab !== 'HMO' || hmoSubTab === 'overview') && (tab !== 'GL' || glSubTab === 'overview') && <>
 
       {/* Filters */}
       <div className="flex flex-wrap items-end gap-3">
@@ -2344,8 +2363,8 @@ export default function AccountsReceivablePage() {
         // Fixed shapes of the Per HMO view:
         // - "For Follow Up": one whole year, unpaid only, Running AR Days column.
         // - "Doctor Consults": only sessions with an MD-department service.
-        // - "Submitted but Unpaid": on a submitted SOA yet not tagged paid,
-        //   plus a Days Since SOA column.
+        // - "Left Out Sessions": skipped by payment tagging — on a submitted
+        //   SOA with a paid batch-mate, itself untagged — plus Days Since SOA.
         const isFollowUp = hmoSubTab === 'follow-up'
         const isMdConsults = hmoSubTab === 'md-consults'
         const isSubUnpaid = hmoSubTab === 'submitted-unpaid'
@@ -2373,9 +2392,17 @@ export default function AccountsReceivablePage() {
         if (isFollowUp) perHmoOrders = perHmoOrders.filter(o => o.arPaymentItems.length === 0 && !isDirectToClinician(o) && arDaysOf(o) > 180)
         // Doctor consults: any item whose service belongs to the MD department.
         if (isMdConsults) perHmoOrders = perHmoOrders.filter(o => o.items.some(i => i.service?.department === 'MD'))
-        // On a submitted SOA, still unpaid — the submission went out but this
-        // session's money never arrived, even if its batch-mates were settled.
-        if (isSubUnpaid) perHmoOrders = perHmoOrders.filter(o => (o.soaSubmissionItems?.length || 0) > 0 && o.arPaymentItems.length === 0 && !isDirectToClinician(o))
+        // Left Out Sessions (Hannah 2026-10-17): sessions skipped by payment
+        // tagging — on a submitted SOA where at least one BATCH-MATE of the
+        // same submission is already tagged paid, while this one is not. An
+        // SOA nobody has paid yet is simply awaiting the HMO and stays out.
+        if (isSubUnpaid) {
+          const paidSubIds = new Set(perHmoOrders.flatMap(o =>
+            o.arPaymentItems.length > 0 ? (o.soaSubmissionItems || []).map(si => si.submission.id).filter(Boolean) : []))
+          perHmoOrders = perHmoOrders.filter(o =>
+            o.arPaymentItems.length === 0 && !isDirectToClinician(o) &&
+            (o.soaSubmissionItems || []).some(si => si.submission.id && paidSubIds.has(si.submission.id)))
+        }
         // Period membership follows the same rule as the server: a Change Date
         // (arCustomDate), where one was set, decides the period instead of the
         // transaction date. Reading transactionDate here re-dropped rows the
@@ -2665,7 +2692,7 @@ export default function AccountsReceivablePage() {
                 <div>
                   <p className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>
                     {isFollowUp ? `For follow up — ${followUpYear || 'all years'} · unpaid, over 180 AR days`
-                      : isSubUnpaid ? `Submitted but unpaid — ${subUnpaidYear || 'all years'} · on a submitted SOA, not yet tagged paid`
+                      : isSubUnpaid ? `Left out sessions — ${subUnpaidYear || 'all years'}`
                       : 'Consults with doctors only — MD-department sessions'}
                   </p>
                   <p className="text-2xl font-bold" style={{ color: isMdConsults ? 'var(--charcoal)' : '#b91c1c' }}>{formatCurrency(perHmoOrders.reduce((s2, o) => s2 + o.payments.reduce((s3, p2) => s3 + toNum(p2.amount), 0), 0))}</p>
@@ -2674,6 +2701,15 @@ export default function AccountsReceivablePage() {
                   <p className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Sessions</p>
                   <p className="text-2xl font-bold" style={{ color: 'var(--charcoal)' }}>{perHmoOrders.length}</p>
                 </div>
+                {isSubUnpaid && (
+                  <p className="text-xs leading-relaxed basis-full md:basis-auto md:max-w-md" style={{ color: 'var(--mid-gray)' }}>
+                    <span className="font-semibold" style={{ color: 'var(--charcoal)' }}>What counts as left out:</span>{' '}
+                    a session on a submitted SOA whose other sessions were already tagged paid in Record Payment,
+                    while this one was not — e.g. 9 of an SOA&apos;s 10 sessions settled, 1 skipped. Check whether the
+                    HMO shorted the remittance or the payment tagging simply missed it. SOAs with no payment at
+                    all are not listed here — those are still awaiting the HMO.
+                  </p>
+                )}
               </div>
             )}
             {/* Sortable/filterable table — drag a header's right edge to resize

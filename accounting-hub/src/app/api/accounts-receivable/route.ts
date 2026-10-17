@@ -143,7 +143,9 @@ export async function GET(req: Request) {
         // SoaSubmission batch — logged in SOA Submissions, or auto-recorded
         // when an SOA Report is generated over it.
         soaSubmissionItems: {
-          select: { submission: { select: { submittedDate: true, referenceNo: true } } },
+          // id lets the client group batch-mates of one submission — the Left
+          // Out Sessions view needs to know whether a sibling was already paid.
+          select: { submission: { select: { id: true, submittedDate: true, referenceNo: true } } },
         },
       },
       // The unscoped list backs the page grid, where 500 newest is plenty. Any
