@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { nameKey, nameVariants } from '@/lib/patient-name-match'
 
 // Managing referred patients: everyone who manages referrers (all roles except HMO Officer / MedRep read-only via referrers panel).
-const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK', 'MEDREP']
+const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'PAYROLL_OFFICER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK', 'MEDREP']
 
 // GET → list referred patients (with referrer name). Optional ?search / ?referrerId.
 export async function GET(req: Request) {

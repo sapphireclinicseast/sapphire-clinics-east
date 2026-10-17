@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { fetchHrStaffForSync } from '@/lib/external-staff'
 import { normName, stripDr } from '@/lib/referral-commission'
 
-const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK', 'MEDREP']
+const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'PAYROLL_OFFICER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK', 'MEDREP']
 
 // Doctors in the HR Platform live in department "MD" (developmental pediatricians,
 // psychiatrists, rehab medicine doctors) — either top-level or on any of their
