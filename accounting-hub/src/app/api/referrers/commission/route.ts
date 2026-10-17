@@ -15,7 +15,8 @@ function branchScope(role?: string): string | null {
 //   still list their sessions but earn nothing, so unticked doctors with
 //   activity stay visible);
 // - the medical representative's one-time incentive: new patients whose first
-//   session falls in range, brought by EXTERNAL referrers.
+//   session falls in range, brought by EXTERNAL DOCTORS (schools and law
+//   firms don't earn it).
 // All computation lives in lib/referral-commission.ts — payroll uses the same
 // engine (with the claim ledger), so this report and payroll always agree.
 export async function GET(req: Request) {

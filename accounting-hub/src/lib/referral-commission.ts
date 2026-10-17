@@ -161,8 +161,9 @@ export interface MedrepNewPatient {
 /**
  * New referred patients whose FIRST session ever falls in [from, to] (and on
  * or after COMMISSION_START — a patient who first came before the scheme is
- * not "new"). Only patients linked to EXTERNAL referrers count: outside
- * doctors (not in-house), law firms, partner schools. With `onlyUnclaimed`,
+ * not "new"). Only patients linked to EXTERNAL DOCTORS count — per Hannah
+ * (2026-10-13) schools and law firms earn the med rep nothing; the incentive
+ * rewards referrals from outside devpeds/MDs only. With `onlyUnclaimed`,
  * patients already stamped by a MEDREP claim are excluded.
  */
 export async function computeMedrepNewPatients(prisma: PrismaClient, opts: {
@@ -175,7 +176,7 @@ export async function computeMedrepNewPatients(prisma: PrismaClient, opts: {
   const from = opts.from < floor ? floor : opts.from
 
   const externals = await prisma.referrer.findMany({
-    where: { isActive: true, OR: [{ type: { in: ['LAW_FIRM', 'PARTNER_SCHOOL'] } }, { type: 'DOCTOR', isInhouse: false }] },
+    where: { isActive: true, type: 'DOCTOR', isInhouse: false },
     select: { id: true, name: true, type: true },
   })
   const extById = new Map(externals.map(r => [r.id, r]))

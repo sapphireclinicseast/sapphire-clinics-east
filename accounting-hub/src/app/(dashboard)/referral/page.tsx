@@ -363,7 +363,7 @@ function ReferralDashboardPanel() {
                   {([['name', 'Referrer'], ['type', 'Type'], ['referrals', 'Count of Referrals']] as [typeof sortField, string][]).map(([key, label]) => (
                     <th key={key} onClick={() => toggleSort(key)} className={`px-4 py-2.5 text-xs font-semibold cursor-pointer select-none ${key === 'referrals' ? 'text-right' : 'text-left'}`} style={{ color: 'var(--deep-teal)' }}>{label}{arrow(key)}</th>
                   ))}
-                  <th className="px-4 py-2.5 text-xs font-semibold text-center" style={{ color: 'var(--deep-teal)' }} title="One-time ₱ incentive to the med rep per new patient this referrer brought — paid vs total. Mark payouts in Commission → Medical representative incentive.">Med-Rep Paid</th>
+                  <th className="px-4 py-2.5 text-xs font-semibold text-center" style={{ color: 'var(--deep-teal)' }} title="One-time ₱ incentive to the med rep per new patient referred by an external doctor — paid vs total. Schools and law firms don't earn it. Mark payouts in Commission → Medical representative incentive.">Med-Rep Paid</th>
                   {([['net', 'Total Net Sales']] as [typeof sortField, string][]).map(([key, label]) => (
                     <th key={key} onClick={() => toggleSort(key)} className="px-4 py-2.5 text-xs font-semibold cursor-pointer select-none text-right" style={{ color: 'var(--deep-teal)' }}>{label}{arrow(key)}</th>
                   ))}
@@ -616,7 +616,7 @@ function ReferralCommissionPanel() {
                 <ChevronDown size={14} style={{ color: 'var(--mid-gray)', transform: medrepOpen ? 'none' : 'rotate(-90deg)', transition: 'transform .15s' }} />
                 <span className="text-sm font-bold" style={{ color: '#92400e' }}>Medical representative incentive</span>
                 <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>
-                  one-time per new patient from an external referrer · {medrep.staffName ? `recipient: ${medrep.staffName}` : 'no recipient set — Referrers → Incentive settings'}
+                  one-time per new patient from an external doctor · {medrep.staffName ? `recipient: ${medrep.staffName}` : 'no recipient set — Referrers → Incentive settings'}
                 </span>
                 <span className="ml-auto text-sm font-mono font-semibold" style={{ color: '#92400e' }}>
                   {medrep.count} × ₱{peso(medrep.amount)} = {peso(medrep.total)}

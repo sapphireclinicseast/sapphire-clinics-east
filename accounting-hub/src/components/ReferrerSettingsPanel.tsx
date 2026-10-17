@@ -433,7 +433,7 @@ export default function ReferrerSettingsPanel() {
               <button onClick={() => setShowIncentive(false)}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button>
             </div>
             <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
-              Paid once per NEW patient brought by an external referrer — outside doctors (not in-house), law firms, and partner schools. Triggered by the patient&apos;s first session; shown in the Commission tab and paid through payroll.
+              Paid once per NEW patient brought by an external DOCTOR (not in-house) — referrals from law firms and partner schools don&apos;t earn it. Triggered by the patient&apos;s first session; shown in the Commission tab and paid through payroll.
             </p>
             {incLoading ? (
               <div className="py-6 text-center" style={{ color: 'var(--mid-gray)' }}>Loading…</div>
