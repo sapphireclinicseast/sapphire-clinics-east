@@ -66,7 +66,8 @@ export async function POST(req: NextRequest) {
         birthdate,
         yearsOfPractice,
         source: 'Marketing Game',
-        status: 'contacted',
+        // 'for-contact': they signed up at the booth; HR hasn't reached out yet.
+        status: 'for-contact',
         notes: 'Registered at an Aura Health marketing-event game.',
       }),
       cache: 'no-store',
