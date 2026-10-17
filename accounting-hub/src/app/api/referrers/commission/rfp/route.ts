@@ -11,7 +11,7 @@ const DEFAULT_COMMISSION_ACCOUNT = '8120 Marketing and Advertising Expense'
 
 // POST { branch, upTo } → one EXPENSE RFP per EXTERNAL commissioned referrer
 // (outside doctor, law firm, partner school) covering their unclaimed sessions
-// from the scheme start through `upTo`. External referrers are not staff, so
+// (or, for per-patient referrers, newly referred patients) from the scheme start through `upTo`. External referrers are not staff, so
 // payroll can't pay them — instead each one gets an audited one-time expense
 // entry (so the P&L books the cost, under the account chosen in the payout
 // settings) wrapped in a standard RFP (so payment, cheques and bank rec all
@@ -42,10 +42,12 @@ export async function POST(req: Request) {
     if (!externals.length) return NextResponse.json({ created: [], note: 'No unpaid commission sessions for external referrers in that window.' })
 
     const yy = new Date().getFullYear() % 100
-    const created: { referrer: string; refNumber: string; sessions: number; amount: number }[] = []
+    const created: { referrer: string; refNumber: string; sessions: number; basis: string; amount: number }[] = []
 
     for (const ref of externals) {
       const rate = ref.rate as number
+      const perPatient = ref.basis === 'PATIENT'
+      const unit = perPatient ? 'patient' : 'session'
       const total = ref.sessions.length * rate
       const upToLabel = to.toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'Asia/Manila' })
 
@@ -65,7 +67,7 @@ export async function POST(req: Request) {
             pcvSub: 1,
             date: new Date(),
             requestor: ref.name,
-            description: `Referral commission — ${ref.sessions.length} session${ref.sessions.length === 1 ? '' : 's'} × ₱${rate.toLocaleString('en-PH')} (through ${upToLabel})`,
+            description: `Referral commission — ${ref.sessions.length} ${unit}${ref.sessions.length === 1 ? '' : 's'} × ₱${rate.toLocaleString('en-PH')} (through ${upToLabel})`,
             accountTitle: account,
             vatable: 'Non-VAT',
             validity: 'Valid',
@@ -84,7 +86,7 @@ export async function POST(req: Request) {
           data: {
             branch, refNumber: refNo, refSeq: seq, grossTotal: total, kind: 'VALID', module: 'EXPENSE',
             payableTo: ref.name,
-            meta: { source: 'REFERRAL_COMMISSION', referrerId: ref.referrerId, sessions: ref.sessions.length, rate, upTo: upTo || null, account },
+            meta: { source: 'REFERRAL_COMMISSION', referrerId: ref.referrerId, basis: ref.basis, sessions: ref.sessions.length, rate, upTo: upTo || null, account },
             createdById: session.user.id ?? null,
           },
         })
@@ -93,12 +95,14 @@ export async function POST(req: Request) {
         // Stamp every paid session against this RFP — a session another payout
         // or payroll already claimed stays theirs (unique per order).
         await tx.referralCommissionItem.createMany({
-          data: ref.sessions.map(s => ({ kind: 'DOCTOR', orderId: s.orderId, referrerId: ref.referrerId, amount: rate, cutoffPeriod: `RFP:${refNo}`, rfpId: rfp.id })),
+          data: ref.sessions.map(s => perPatient
+            ? { kind: 'PATIENT', patientKey: s.patientKey, referrerId: ref.referrerId, amount: rate, cutoffPeriod: `RFP:${refNo}`, rfpId: rfp.id }
+            : { kind: 'DOCTOR', orderId: s.orderId, referrerId: ref.referrerId, amount: rate, cutoffPeriod: `RFP:${refNo}`, rfpId: rfp.id }),
           skipDuplicates: true,
         })
         return refNo
       })
-      created.push({ referrer: ref.name, refNumber, sessions: ref.sessions.length, amount: total })
+      created.push({ referrer: ref.name, refNumber, sessions: ref.sessions.length, basis: ref.basis, amount: total })
     }
 
     await prisma.auditLog.create({
