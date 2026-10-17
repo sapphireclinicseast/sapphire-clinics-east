@@ -220,13 +220,18 @@ export async function POST(req: NextRequest) {
   const dayEnd   = new Date(`${date}T23:59:59.999Z`)
 
   const schedules = await prisma.schedule.findMany({
-    where:   { staffId, date: { gte: dayStart, lte: dayEnd } },
+    // CONFIRMED only, matching send-clinician-sms. Without this the email swept
+    // in RESCHEDULED, CANCELLED, PENDING and NO_SHOW rows and presented them
+    // under a heading reading "your confirmed schedule" — so a session the
+    // patient had already moved read to the therapist as one to turn up for.
+    // 47% of staff-days carry at least one such row.
+    where:   { staffId, date: { gte: dayStart, lte: dayEnd }, status: 'CONFIRMED' },
     include: { patient: true },
     orderBy: { startTime: 'asc' },
   })
 
   if (schedules.length === 0) {
-    return NextResponse.json({ error: 'No schedules found for this staff on this date' }, { status: 400 })
+    return NextResponse.json({ error: 'No confirmed schedules found for this staff on this date' }, { status: 400 })
   }
 
   const scheduleRows = schedules.map((s) => ({
