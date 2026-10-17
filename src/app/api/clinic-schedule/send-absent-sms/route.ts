@@ -146,6 +146,8 @@ export async function POST(req: NextRequest) {
     where: {
       staffId,
       date:    { gte: dayStart, lte: dayEnd },
+      // Only patients who were still booked — see send-absent-email.
+      status:  'CONFIRMED',
       patient: { isNot: null },
     },
     include: { staff: true, patient: true },

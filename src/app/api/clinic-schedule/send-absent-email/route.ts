@@ -198,6 +198,11 @@ export async function POST(req: NextRequest) {
       staffId,
       date:    { gte: dayStart, lte: dayEnd },
       patient: { email: { not: null } },
+      // Only patients who were still booked. A patient who had already moved
+      // or cancelled does not need telling the clinician is away, and the
+      // message would be the first they heard of an appointment they thought
+      // was settled.
+      status:  'CONFIRMED',
     },
     include: { staff: true, patient: true },
     orderBy: { startTime: 'asc' },

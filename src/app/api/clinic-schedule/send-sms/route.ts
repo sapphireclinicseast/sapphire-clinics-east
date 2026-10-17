@@ -248,6 +248,9 @@ export async function POST(req: NextRequest) {
         staffId,
         date: { gte: dayStart, lte: dayEnd },
         patient: { isNot: null },
+        // Bulk send: text only patients still booked — see send-reminder. The
+        // single-appointment branch above is deliberately not filtered.
+        status: 'CONFIRMED',
       },
       include: { staff: true, patient: true },
       orderBy: { startTime: 'asc' },

@@ -271,6 +271,11 @@ export async function POST(req: NextRequest) {
         staffId,
         date: { gte: dayStart, lte: dayEnd },
         patient: { email: { not: null } },
+        // Bulk send: remind only patients still booked. Reminding someone of a
+        // session they already rescheduled tells them to attend at a time that
+        // no longer stands. The single-appointment branch above is left alone:
+        // there the front desk picked that row deliberately.
+        status: 'CONFIRMED',
       },
       include: { staff: true, patient: true },
       orderBy: { startTime: 'asc' },
