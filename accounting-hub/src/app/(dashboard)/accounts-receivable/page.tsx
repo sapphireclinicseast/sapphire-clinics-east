@@ -106,6 +106,10 @@ interface ARPaymentRecord {
 
 const toNum = (v: unknown) => Number(v) || 0
 
+// The HMO sub-tabs sharing the Per HMO table block: the plain view, plus its
+// fixed shapes (doctor consults only / submitted-SOA-but-unpaid / follow-up).
+const PER_HMO_LIKE_TABS: readonly string[] = ['per-hmo', 'md-consults', 'follow-up', 'submitted-unpaid']
+
 function formatDate(d: string) {
   return new Date(d).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
 }
@@ -529,8 +533,10 @@ export default function AccountsReceivablePage() {
   const [payOverpayAccountId, setPayOverpayAccountId] = useState('')
   const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null)
 
-  // HMO sub-tab state
-  const [hmoSubTab, setHmoSubTab] = useState<'overview' | 'per-hmo' | 'soa-report' | 'submitted-soa' | 'loa' | 'follow-up'>('overview')
+  // HMO sub-tab state. 'md-consults' and 'submitted-unpaid' are the Per HMO
+  // view in fixed shapes (doctor-consult sessions only / on a submitted SOA but
+  // still unpaid) — all four render through the same block below.
+  const [hmoSubTab, setHmoSubTab] = useState<'overview' | 'per-hmo' | 'md-consults' | 'soa-report' | 'submitted-soa' | 'submitted-unpaid' | 'loa' | 'follow-up'>('overview')
   // useSession resolves after the first render, so the initial tab/sub-tab are
   // picked before the role is known. Snap them back once it arrives — a ?type=
   // link or a stale sub-tab must not park a restricted user on a hidden view.
@@ -588,6 +594,9 @@ export default function AccountsReceivablePage() {
     return () => window.removeEventListener('keydown', onKey)
   }, [perHmoExpanded])
   const [followUpYear, setFollowUpYear] = useState(String(new Date().getFullYear()))
+  // Submitted but Unpaid defaults to the whole history — a claim filed last
+  // year and still unsettled is exactly what this list is for.
+  const [subUnpaidYear, setSubUnpaidYear] = useState('')
   const [perHmoFrom, setPerHmoFrom] = useState('')
   const [perHmoTo, setPerHmoTo] = useState('')
   const [perHmoSortField, setPerHmoSortField] = useState('transactionDate')
@@ -597,7 +606,7 @@ export default function AccountsReceivablePage() {
   // the Per HMO column shows these as "On SOA" so nobody regenerates them.
   const [pendingSoaIds, setPendingSoaIds] = useState<Set<string>>(new Set())
   useEffect(() => {
-    if (tab !== 'HMO' || (hmoSubTab !== 'per-hmo' && hmoSubTab !== 'follow-up')) return
+    if (tab !== 'HMO' || !PER_HMO_LIKE_TABS.includes(hmoSubTab)) return
     const ctl = new AbortController()
     fetch('/api/accounts-receivable/soa', { signal: ctl.signal })
       .then(r => r.ok ? r.json() : [])
@@ -692,10 +701,18 @@ export default function AccountsReceivablePage() {
   // imported QB orders it actually holds. With no filter set there is nothing
   // to widen to, and the tab falls back to the page list.
   useEffect(() => {
-    if (tab !== 'HMO' || (hmoSubTab !== 'per-hmo' && hmoSubTab !== 'follow-up')) return
-    // For Follow Up always spans one whole year; Per HMO uses its own inputs.
-    const effFrom = hmoSubTab === 'follow-up' ? (followUpYear ? `${followUpYear}-01-01` : '2000-01-01') : perHmoFrom
-    const effTo = hmoSubTab === 'follow-up' ? (followUpYear ? `${followUpYear}-12-31` : '') : perHmoTo
+    if (tab !== 'HMO' || !PER_HMO_LIKE_TABS.includes(hmoSubTab)) return
+    // For Follow Up and Submitted but Unpaid span one whole year (or everything);
+    // Doctor Consults always fetches the full history unless narrowed, so the
+    // 500-newest page cap never hides an old consult; Per HMO uses its own inputs.
+    const effFrom = hmoSubTab === 'follow-up' ? (followUpYear ? `${followUpYear}-01-01` : '2000-01-01')
+      : hmoSubTab === 'submitted-unpaid' ? (subUnpaidYear ? `${subUnpaidYear}-01-01` : '2000-01-01')
+      : hmoSubTab === 'md-consults' ? (perHmoFrom || '2000-01-01')
+      : perHmoFrom
+    const effTo = hmoSubTab === 'follow-up' ? (followUpYear ? `${followUpYear}-12-31` : '')
+      : hmoSubTab === 'submitted-unpaid' ? (subUnpaidYear ? `${subUnpaidYear}-12-31` : '')
+      : hmoSubTab === 'md-consults' ? perHmoTo
+      : perHmoTo
     if (!perHmoWallet && !effFrom && !effTo) { setPerHmoFetched(null); return }
     const ctl = new AbortController()
     const params = new URLSearchParams({ type: 'HMO', sortField, sortDir })
@@ -710,7 +727,7 @@ export default function AccountsReceivablePage() {
       .catch(() => {})
       .finally(() => setPerHmoLoading(false))
     return () => ctl.abort()
-  }, [tab, hmoSubTab, branch, perHmoWallet, perHmoFrom, perHmoTo, followUpYear, sortField, sortDir])
+  }, [tab, hmoSubTab, branch, perHmoWallet, perHmoFrom, perHmoTo, followUpYear, subUnpaidYear, sortField, sortDir])
 
   // Fetch aging dashboard data whenever tab / branch / period changes
   useEffect(() => {
@@ -1401,8 +1418,13 @@ export default function AccountsReceivablePage() {
           {([
             { key: 'overview', label: 'Overview' },
             { key: 'per-hmo', label: 'Per HMO' },
+            // Per HMO narrowed to doctor-consult sessions (MD-department services).
+            { key: 'md-consults', label: 'Doctor Consults' },
             { key: 'soa-report', label: 'Generate SOA' },
             { key: 'submitted-soa', label: 'SOA Submissions' },
+            // Sessions on a SUBMITTED SOA that are still not tagged paid — even
+            // when other sessions of the same submission were settled already.
+            { key: 'submitted-unpaid', label: 'Submitted but Unpaid' },
             // Letters of Authorization are raised in the Operations Hub; this is
             // the HMO officer's read-only window onto them.
             { key: 'loa', label: 'LOA Submission' },
@@ -2318,14 +2340,30 @@ export default function AccountsReceivablePage() {
       {/* ── Per HMO sub-tab content ── */}
       {tab === 'HMO' && hmoSubTab === 'loa' && <LoaSubmissionsTab />}
 
-      {tab === 'HMO' && (hmoSubTab === 'per-hmo' || hmoSubTab === 'follow-up') && (() => {
-        // "For Follow Up" is the Per HMO view in a fixed shape: one whole year,
-        // unpaid sessions only, plus a Running AR Days column.
+      {tab === 'HMO' && PER_HMO_LIKE_TABS.includes(hmoSubTab) && (() => {
+        // Fixed shapes of the Per HMO view:
+        // - "For Follow Up": one whole year, unpaid only, Running AR Days column.
+        // - "Doctor Consults": only sessions with an MD-department service.
+        // - "Submitted but Unpaid": on a submitted SOA yet not tagged paid,
+        //   plus a Days Since SOA column.
         const isFollowUp = hmoSubTab === 'follow-up'
-        const fFrom = isFollowUp ? (followUpYear ? `${followUpYear}-01-01` : '') : perHmoFrom
-        const fTo = isFollowUp ? (followUpYear ? `${followUpYear}-12-31` : '') : perHmoTo
+        const isMdConsults = hmoSubTab === 'md-consults'
+        const isSubUnpaid = hmoSubTab === 'submitted-unpaid'
+        const fFrom = isFollowUp ? (followUpYear ? `${followUpYear}-01-01` : '')
+          : isSubUnpaid ? (subUnpaidYear ? `${subUnpaidYear}-01-01` : '')
+          : perHmoFrom
+        const fTo = isFollowUp ? (followUpYear ? `${followUpYear}-12-31` : '')
+          : isSubUnpaid ? (subUnpaidYear ? `${subUnpaidYear}-12-31` : '')
+          : perHmoTo
         const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
         const arDaysOf = (o: AROrder) => Math.max(0, Math.round((Date.parse(todayStr) - Date.parse(new Date(o.arCustomDate ?? o.transactionDate).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }))) / 86_400_000))
+        // Days since the latest SOA submission covering the order — how long the
+        // HMO has been sitting on the filed claim.
+        const soaDaysOf = (o: AROrder) => {
+          const dates = (o.soaSubmissionItems || []).map(i => i.submission.submittedDate).sort()
+          if (!dates.length) return 0
+          return Math.max(0, Math.round((Date.parse(todayStr) - Date.parse(new Date(dates[dates.length - 1]).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }))) / 86_400_000))
+        }
         // Filter the main orders data
         // Prefer the period this tab fetched for itself; the page list is only
         // the 500 newest orders and cannot answer for a past year.
@@ -2333,6 +2371,11 @@ export default function AccountsReceivablePage() {
         // Unpaid (with or without an SOA) and aged past 180 days — the worklist
         // only carries claims old enough to chase.
         if (isFollowUp) perHmoOrders = perHmoOrders.filter(o => o.arPaymentItems.length === 0 && !isDirectToClinician(o) && arDaysOf(o) > 180)
+        // Doctor consults: any item whose service belongs to the MD department.
+        if (isMdConsults) perHmoOrders = perHmoOrders.filter(o => o.items.some(i => i.service?.department === 'MD'))
+        // On a submitted SOA, still unpaid — the submission went out but this
+        // session's money never arrived, even if its batch-mates were settled.
+        if (isSubUnpaid) perHmoOrders = perHmoOrders.filter(o => (o.soaSubmissionItems?.length || 0) > 0 && o.arPaymentItems.length === 0 && !isDirectToClinician(o))
         // Period membership follows the same rule as the server: a Change Date
         // (arCustomDate), where one was set, decides the period instead of the
         // transaction date. Reading transactionDate here re-dropped rows the
@@ -2415,9 +2458,9 @@ export default function AccountsReceivablePage() {
           } else if (perHmoSortField === 'status') {
             aVal = a.arPaymentItems.length > 0 ? 1 : 0
             bVal = b.arPaymentItems.length > 0 ? 1 : 0
-          } else if (perHmoSortField === 'ardays') {
-            aVal = arDaysOf(a)
-            bVal = arDaysOf(b)
+          } else if (perHmoSortField === 'soadays') {
+            aVal = soaDaysOf(a)
+            bVal = soaDaysOf(b)
           }
           if (aVal < bVal) return perHmoSortDir === 'asc' ? -1 : 1
           if (aVal > bVal) return perHmoSortDir === 'asc' ? 1 : -1
@@ -2429,6 +2472,16 @@ export default function AccountsReceivablePage() {
           else { setPerHmoSortField(field); setPerHmoSortDir('asc') }
         }
 
+        // Variant-specific naming for the report downloads.
+        const reportTitle = isMdConsults ? 'HMO Doctor Consults Report'
+          : isSubUnpaid ? 'HMO Submitted-but-Unpaid Report'
+          : isFollowUp ? 'HMO For Follow Up Report'
+          : 'HMO AR Report'
+        const reportSlug = isMdConsults ? 'hmo-doctor-consults'
+          : isSubUnpaid ? 'hmo-submitted-unpaid'
+          : isFollowUp ? 'hmo-follow-up'
+          : 'hmo-ar-report'
+
         const downloadPdf = () => {
           // Use jsPDF — dynamic import
           import('jspdf').then(({ jsPDF }) => {
@@ -2436,7 +2489,7 @@ export default function AccountsReceivablePage() {
             const margin = 15
             let y = margin
             doc.setFontSize(14)
-            doc.text('HMO AR Report', margin, y); y += 8
+            doc.text(reportTitle, margin, y); y += 8
             doc.setFontSize(9)
             doc.text(`Generated: ${new Date().toLocaleDateString('en-PH')}`, margin, y); y += 6
             if (perHmoWallet) {
@@ -2478,7 +2531,7 @@ export default function AccountsReceivablePage() {
               })
               y += 5
             }
-            doc.save('hmo-ar-report.pdf')
+            doc.save(`${reportSlug}.pdf`)
           })
           setShowDownloadMenu(false)
         }
@@ -2500,6 +2553,7 @@ export default function AccountsReceivablePage() {
                 'Date SOA Submitted': soaDates.length ? formatDate(soaDates[soaDates.length - 1]) : '',
                 'SOA Ref': (() => { const subs = [...(o.soaSubmissionItems || [])].sort((a, b) => a.submission.submittedDate.localeCompare(b.submission.submittedDate)); return subs.length ? (subs[subs.length - 1].submission.referenceNo || '') : '' })(),
                 ...(isFollowUp ? { 'Running AR Days': arDaysOf(o) } : {}),
+                ...(isSubUnpaid ? { 'Days Since SOA': soaDaysOf(o) } : {}),
                 'Submission Status': o.arPaymentItems.length > 0 ? 'Approved'
                   : o.soaApprovalStatus === 'APPROVED' ? 'Approved'
                   : o.soaApprovalStatus === 'DISAPPROVED' ? ((o.soaSubmissionItems?.length || 0) >= 2 ? 'Resubmitted' : 'Disapproved') : 'Pending',
@@ -2510,7 +2564,7 @@ export default function AccountsReceivablePage() {
             const ws = XLSX.utils.json_to_sheet(rows)
             const wb = XLSX.utils.book_new()
             XLSX.utils.book_append_sheet(wb, ws, 'HMO AR')
-            XLSX.writeFile(wb, 'hmo-ar-report.xlsx')
+            XLSX.writeFile(wb, `${reportSlug}.xlsx`)
           })
           setShowDownloadMenu(false)
         }
@@ -2530,10 +2584,11 @@ export default function AccountsReceivablePage() {
                   {wallets.map(w => <option key={w.id} value={w.id}>{w.patientName}</option>)}
                 </select>
               </div>
-              {isFollowUp ? (
+              {(isFollowUp || isSubUnpaid) ? (
                 <div>
                   <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Year</label>
-                  <select value={followUpYear} onChange={e => setFollowUpYear(e.target.value)}
+                  <select value={isFollowUp ? followUpYear : subUnpaidYear}
+                    onChange={e => (isFollowUp ? setFollowUpYear : setSubUnpaidYear)(e.target.value)}
                     className="px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
                     <option value="">All (since the beginning)</option>
                     {Array.from({ length: new Date().getFullYear() - 2023 }, (_, i) => String(2024 + i)).map(y =>
@@ -2605,11 +2660,15 @@ export default function AccountsReceivablePage() {
               </div>{/* /ml-auto flex */}
             </div>{/* /filters row */}
 
-            {isFollowUp && (
+            {(isFollowUp || isMdConsults || isSubUnpaid) && (
               <div className="rounded-2xl border px-5 py-4 flex flex-wrap items-center gap-6" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
                 <div>
-                  <p className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>For follow up — {followUpYear || 'all years'} · unpaid, over 180 AR days</p>
-                  <p className="text-2xl font-bold" style={{ color: '#b91c1c' }}>{formatCurrency(perHmoOrders.reduce((s2, o) => s2 + o.payments.reduce((s3, p2) => s3 + toNum(p2.amount), 0), 0))}</p>
+                  <p className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>
+                    {isFollowUp ? `For follow up — ${followUpYear || 'all years'} · unpaid, over 180 AR days`
+                      : isSubUnpaid ? `Submitted but unpaid — ${subUnpaidYear || 'all years'} · on a submitted SOA, not yet tagged paid`
+                      : 'Consults with doctors only — MD-department sessions'}
+                  </p>
+                  <p className="text-2xl font-bold" style={{ color: isMdConsults ? 'var(--charcoal)' : '#b91c1c' }}>{formatCurrency(perHmoOrders.reduce((s2, o) => s2 + o.payments.reduce((s3, p2) => s3 + toNum(p2.amount), 0), 0))}</p>
                 </div>
                 <div>
                   <p className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Sessions</p>
@@ -2619,10 +2678,12 @@ export default function AccountsReceivablePage() {
             )}
             {/* Sortable/filterable table — drag a header's right edge to resize
                 that column (double-click the edge resets all widths) */}
-            <div className="rounded-2xl border overflow-x-auto" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+            {/* Vertical scrolling must happen inside this box (not the page) or
+                the sticky header row has nothing to stick to. */}
+            <div className={`rounded-2xl border overflow-auto ${perHmoExpanded ? 'max-h-[82vh]' : 'max-h-[72vh]'}`} style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
               <table className="w-full text-sm" style={{ tableLayout: Object.keys(perHmoColW).length ? 'fixed' : undefined }}>
                 <thead>
-                  <tr style={{ background: 'var(--off-white)' }}>
+                  <tr className="sticky top-0 z-10" style={{ background: 'var(--off-white)' }}>
                     {[
                       { label: 'Date', field: 'transactionDate', searchKey: 'date' },
                       { label: 'Change Date', field: '', searchKey: '' },
@@ -2633,6 +2694,7 @@ export default function AccountsReceivablePage() {
                       { label: 'Amount', field: 'amount', searchKey: 'amount' },
                       { label: 'Status', field: 'status', searchKey: 'status' },
                       ...(isFollowUp ? [{ label: 'Running AR Days', field: 'ardays', searchKey: '' }] : []),
+                      ...(isSubUnpaid ? [{ label: 'Days Since SOA', field: 'soadays', searchKey: '' }] : []),
                       { label: 'SOA Submitted', field: '', searchKey: 'soasub' },
                       { label: 'Date SOA Submitted', field: '', searchKey: '' },
                       { label: 'SOA Ref', field: '', searchKey: 'soaref' },
@@ -2764,9 +2826,9 @@ export default function AccountsReceivablePage() {
                 </thead>
                 <tbody>
                   {loading ? (
-                    <tr><td colSpan={isFollowUp ? 16 : 15} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>Loading...</td></tr>
+                    <tr><td colSpan={(isFollowUp || isSubUnpaid) ? 16 : 15} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>Loading...</td></tr>
                   ) : perHmoOrders.length === 0 ? (
-                    <tr><td colSpan={isFollowUp ? 16 : 15} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>
+                    <tr><td colSpan={(isFollowUp || isSubUnpaid) ? 16 : 15} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>
                       {/* Fetching a past year takes a moment — saying "none" while
                           the rows are still in flight is how this read as empty. */}
                       {perHmoLoading ? 'Loading transactions…' : 'No transactions found'}
@@ -2935,6 +2997,16 @@ export default function AccountsReceivablePage() {
                           return (
                             <td className="px-3 py-2 text-center text-xs font-bold font-mono"
                               style={{ color: days > 365 ? '#b91c1c' : days > 270 ? '#c2410c' : '#92400e' }}>
+                              {days.toLocaleString()}
+                            </td>
+                          )
+                        })()}
+                        {isSubUnpaid && (() => {
+                          const days = soaDaysOf(o)
+                          return (
+                            <td className="px-3 py-2 text-center text-xs font-bold font-mono"
+                              title="Days since the latest SOA submission covering this session"
+                              style={{ color: days > 180 ? '#b91c1c' : days > 90 ? '#c2410c' : '#92400e' }}>
                               {days.toLocaleString()}
                             </td>
                           )

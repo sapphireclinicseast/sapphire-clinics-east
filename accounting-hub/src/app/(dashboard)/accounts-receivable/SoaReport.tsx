@@ -13,6 +13,15 @@ import {
 /* ─── Types ────────────────────────────────────────────────── */
 interface ARWallet { id: string; patientName: string; branch?: string | null }
 
+/* Departments the SOA can be narrowed to — mirrors VALID_DEPARTMENTS in
+   src/app/api/services/route.ts (minus 'ALL'), plus a bucket for items whose
+   service carries no department, so no session is ever unreachable. */
+const SOA_DEPARTMENTS = ['PT', 'MD', 'OT', 'SLP', 'SPED', 'PSYCHOLOGY', 'ORTHOSIS_PROSTHESIS', '__none__'] as const
+const SOA_DEPT_LABELS: Record<string, string> = {
+  PT: 'PT', MD: 'MD (Doctors)', OT: 'OT', SLP: 'SLP', SPED: 'SPED',
+  PSYCHOLOGY: 'Psychology', ORTHOSIS_PROSTHESIS: 'Orthosis & Prosthesis', __none__: 'No department',
+}
+
 
 interface SoaListRecord {
   id: string
@@ -320,6 +329,11 @@ export default function SoaReport({ wallets, isAdmin, canWrite = true, branch = 
   const [pvSortField, setPvSortField] = useState<'date' | 'patient' | 'service' | 'amount'>('date')
   const [pvSortDir, setPvSortDir] = useState<'asc' | 'desc'>('asc')
   const [alreadySubmittedCount, setAlreadySubmittedCount] = useState(0)
+  // Department scope for the SOA: null = every department (today's behavior).
+  // When a specific set is ticked, only sessions with at least one item in a
+  // ticked department go on the SOA — the preview list, its totals and the
+  // generated PDF all follow the same filter, so they always agree.
+  const [deptFilter, setDeptFilter] = useState<string[] | null>(null)
 
   const loadPreview = useCallback(async () => {
     if (!genWallet || !genPeriod) { setPreviewOrders(null); setUnticked(new Set()); return }
@@ -413,12 +427,22 @@ export default function SoaReport({ wallets, isAdmin, canWrite = true, branch = 
     }
   }
 
+  // A session passes the department scope when any of its items belongs to a
+  // ticked department; itemless sessions count as "No department".
+  const deptMatches = (o: AROrder) => {
+    if (!deptFilter) return true
+    if (o.items.length === 0) return deptFilter.includes('__none__')
+    return o.items.some(i => deptFilter.includes(i.service?.department || '__none__'))
+  }
+  const deptOrders = (previewOrders || []).filter(deptMatches)
+  const deptHiddenCount = (previewOrders?.length || 0) - deptOrders.length
+
   const previewAmount = (o: AROrder) =>
     o.payments.reduce((s, p) => (!p.walletId || p.walletId === genWallet) ? s + (Number(p.amount) || 0) : s, 0)
 
   const pvDateLabel = (o: AROrder) =>
     new Date(o.arCustomDate || o.transactionDate).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
-  const pvOrders = (previewOrders || [])
+  const pvOrders = deptOrders
     .filter(o => !pvFilter.date || pvDateLabel(o).toLowerCase().includes(pvFilter.date.toLowerCase()))
     .filter(o => !pvFilter.patient || (o.patientName || '').toLowerCase().includes(pvFilter.patient.toLowerCase()))
     .filter(o => !pvFilter.service || o.items.map(i => i.name).join(', ').toLowerCase().includes(pvFilter.service.toLowerCase()))
@@ -504,14 +528,17 @@ export default function SoaReport({ wallets, isAdmin, canWrite = true, branch = 
         }
       }
 
-      // The SOA covers exactly the TICKED transactions from the preview list.
-      const eligible = previewOrders || []
+      // The SOA covers exactly the TICKED transactions from the preview list —
+      // after the department scope, so the PDF matches what is on screen.
+      const eligible = deptOrders
       const fetchedOrders = eligible.filter(o => !unticked.has(o.id))
       const excludedByUser = eligible.length - fetchedOrders.length
       const alreadySubmitted = alreadySubmittedCount
 
       if (eligible.length === 0) {
-        setGenError(alreadySubmitted > 0
+        setGenError(deptHiddenCount > 0
+          ? 'No sessions in the ticked departments for this provider and month — widen the department filter.'
+          : alreadySubmitted > 0
           ? 'All sessions in this period are already tagged as SOA-submitted (see SOA Submissions) — nothing left to put on a new SOA.'
           : 'No orders found for this provider and period.')
         setGenerating(false)
@@ -659,11 +686,34 @@ export default function SoaReport({ wallets, isAdmin, canWrite = true, branch = 
             </select>
           </div>
           <button onClick={handleGenerate}
-            disabled={generating || previewLoading || !genWallet || !genPeriod || !previewOrders || previewOrders.filter(o => !unticked.has(o.id)).length === 0}
+            disabled={generating || previewLoading || !genWallet || !genPeriod || !previewOrders || deptOrders.filter(o => !unticked.has(o.id)).length === 0}
             className="flex items-center gap-1.5 px-5 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
             style={{ background: 'var(--teal)' }}>
             {generating ? <><Loader2 size={14} className="animate-spin" /> Generating…</> : <><FileText size={14} /> Generate SOA</>}
           </button>
+        </div>
+
+        {/* ── Department scope: ALL departments (default — today's behavior), or
+            only the ticked ones. A session goes on the SOA when any of its items
+            belongs to a ticked department. ── */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2.5 rounded-xl border text-xs"
+          style={{ borderColor: deptFilter ? 'var(--teal)' : 'var(--light-gray)', background: 'var(--off-white)' }}>
+          <label className="flex items-center gap-1.5 font-semibold cursor-pointer" style={{ color: 'var(--charcoal)' }}>
+            <input type="checkbox" checked={!deptFilter}
+              onChange={() => setDeptFilter(f => f ? null : [...SOA_DEPARTMENTS])} />
+            All departments
+          </label>
+          {deptFilter && (<>
+            <span style={{ color: 'var(--light-gray)' }}>|</span>
+            {SOA_DEPARTMENTS.map(d => (
+              <label key={d} className="flex items-center gap-1.5 cursor-pointer" style={{ color: 'var(--charcoal)' }}>
+                <input type="checkbox" checked={deptFilter.includes(d)}
+                  onChange={() => setDeptFilter(f => !f ? f : f.includes(d) ? f.filter(x => x !== d) : [...f, d])} />
+                {SOA_DEPT_LABELS[d] || d}
+              </label>
+            ))}
+            <span style={{ color: 'var(--mid-gray)' }}>Only sessions in the ticked departments go on this SOA.</span>
+          </>)}
         </div>
 
         {/* ── Transaction preview: all ticked by default; untick to leave off ── */}
@@ -679,6 +729,10 @@ export default function SoaReport({ wallets, isAdmin, canWrite = true, branch = 
                   {alreadySubmittedCount > 0
                     ? `All ${alreadySubmittedCount} session${alreadySubmittedCount === 1 ? '' : 's'} in this month are already tagged as SOA-submitted (see SOA Submissions) — nothing left to put on a new SOA.`
                     : 'No transactions found for this provider and month.'}
+                </div>
+              ) : deptOrders.length === 0 ? (
+                <div className="px-4 py-5 text-xs" style={{ color: 'var(--mid-gray)' }}>
+                  No sessions in the ticked departments this month — {previewOrders.length} session{previewOrders.length === 1 ? ' is' : 's are'} hidden by the department filter above.
                 </div>
               ) : (
                 <>
@@ -755,12 +809,16 @@ export default function SoaReport({ wallets, isAdmin, canWrite = true, branch = 
                   </div>
                   <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-t text-xs" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
                     <span style={{ color: 'var(--charcoal)' }}>
-                      <strong>{previewOrders.length - unticked.size}</strong> of {previewOrders.length} session{previewOrders.length === 1 ? '' : 's'} ticked
-                      {' '}· total <strong>{formatCurrency(previewOrders.filter(o => !unticked.has(o.id)).reduce((s, o) => s + previewAmount(o), 0))}</strong>
-                      {unticked.size > 0 && <span style={{ color: 'var(--mid-gray)' }}> · {unticked.size} unticked will stay taggable later</span>}
+                      <strong>{deptOrders.filter(o => !unticked.has(o.id)).length}</strong> of {deptOrders.length} session{deptOrders.length === 1 ? '' : 's'} ticked
+                      {' '}· total <strong>{formatCurrency(deptOrders.filter(o => !unticked.has(o.id)).reduce((s, o) => s + previewAmount(o), 0))}</strong>
+                      {deptOrders.some(o => unticked.has(o.id)) && <span style={{ color: 'var(--mid-gray)' }}> · {deptOrders.filter(o => unticked.has(o.id)).length} unticked will stay taggable later</span>}
                     </span>
-                    {alreadySubmittedCount > 0 && (
-                      <span style={{ color: 'var(--mid-gray)' }}>{alreadySubmittedCount} already-submitted session{alreadySubmittedCount === 1 ? '' : 's'} not shown</span>
+                    {(alreadySubmittedCount > 0 || deptHiddenCount > 0) && (
+                      <span style={{ color: 'var(--mid-gray)' }}>
+                        {alreadySubmittedCount > 0 && `${alreadySubmittedCount} already-submitted session${alreadySubmittedCount === 1 ? '' : 's'} not shown`}
+                        {alreadySubmittedCount > 0 && deptHiddenCount > 0 && ' · '}
+                        {deptHiddenCount > 0 && `${deptHiddenCount} session${deptHiddenCount === 1 ? '' : 's'} in other departments hidden`}
+                      </span>
                     )}
                   </div>
                 </>
