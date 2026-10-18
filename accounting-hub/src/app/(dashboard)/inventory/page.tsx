@@ -20,6 +20,7 @@ import {
   XCircle,
   Clock,
   Send,
+  RotateCcw,
   Upload,
   Download,
   Loader2,
@@ -33,7 +34,6 @@ import {
   TrendingUp,
   TrendingDown,
   Gift,
-  RotateCcw, Archive, ArchiveRestore,
 } from 'lucide-react'
 import { WEBSITE_CLASSIFICATIONS } from '@/lib/website-classification'
 import JsBarcode from 'jsbarcode'
@@ -1928,23 +1928,6 @@ function InventoryInner() {
      BULK EDIT HANDLERS
      ═══════════════════════════════════════════════════════ */
 
-  // Archive (hide) or restore every selected product in one call.
-  const [bulkArchiveConfirm, setBulkArchiveConfirm] = useState<'archive' | 'restore' | null>(null)
-  async function handleBulkArchive(restore: boolean) {
-    if (selectedItems.size === 0) return
-    setBulkSaving(true); setError('')
-    try {
-      const res = await fetch('/api/inventory', { method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: Array.from(selectedItems), isActive: restore }) })
-      const data = await res.json()
-      if (!res.ok) { setError(data.error || (restore ? 'Restore failed' : 'Archive failed')); return }
-      setBulkArchiveConfirm(null)
-      setSelectedItems(new Set())
-      fetchItems(); fetchAllItems()
-    } catch { setError('Network error') }
-    finally { setBulkSaving(false) }
-  }
-
   function toggleSelectItem(id: string) {
     setSelectedItems(prev => {
       const next = new Set(prev)
@@ -2466,7 +2449,7 @@ setTimeout(()=>window.print(),500);
     }
     const rows = items.map(i => [
       i.sku, i.barcode || '', i.name, i.supplierProductName || '', i.description || '',
-      BRANCH_LABELS[i.branch] || i.branch, i.isActive === false ? 'Archived' : 'Active',
+      BRANCH_LABELS[i.branch] || i.branch, i.isActive === false ? 'Disabled' : 'Active',
       i.skuDepartment, i.skuCategory, i.skuSubcategory,
       i.accountSubType || '', i.websiteClassification || '',
       i.quantity, i.reorderLevel ?? '',
@@ -2691,9 +2674,9 @@ setTimeout(()=>window.print(),500);
               ))}
               <option value="__none__">— Not classified —</option>
             </select>
-            <label className="flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm cursor-pointer select-none whitespace-nowrap" style={{ borderColor: 'var(--light-gray)', background: 'white', color: 'var(--mid-gray)' }} title="Show products that have been archived (hidden from the list, POS and store)">
+            <label className="flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm cursor-pointer select-none whitespace-nowrap" style={{ borderColor: 'var(--light-gray)', background: 'white', color: 'var(--mid-gray)' }} title="Show items that have been disabled / retired">
               <input type="checkbox" checked={showDisabledItems} onChange={(e) => setShowDisabledItems(e.target.checked)} className="w-4 h-4 accent-teal-600" />
-              Show archived products
+              Show disabled items
             </label>
           </div>
 
@@ -2708,18 +2691,6 @@ setTimeout(()=>window.print(),500);
                 style={{ background: 'var(--teal)' }}>
                 <Pencil size={14} /> Bulk Edit
               </button>
-              <button onClick={() => setBulkArchiveConfirm('archive')}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-white bg-amber-500 hover:bg-amber-600"
-                title="Hide the selected products from the list, POS and store (recoverable)">
-                <Archive size={14} /> Archive selected
-              </button>
-              {showDisabledItems && (
-                <button onClick={() => setBulkArchiveConfirm('restore')}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700"
-                  title="Bring the selected archived products back">
-                  <ArchiveRestore size={14} /> Restore selected
-                </button>
-              )}
               <button onClick={() => setSelectedItems(new Set())}
                 className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm border"
                 style={{ borderColor: 'var(--bright-teal)', color: 'var(--deep-teal)' }}>
@@ -2775,7 +2746,7 @@ setTimeout(()=>window.print(),500);
                       </td>
                     </tr>
                   ) : sortedItems.slice((invPage - 1) * invPageSize, invPage * invPageSize).map((item) => (
-                    <tr key={item.id} className={`border-t hover:bg-gray-50/50 transition-colors ${selectedItems.has(item.id) ? 'bg-teal-50/40' : ''} ${item.isActive === false ? 'opacity-50 bg-gray-50' : ''}`} style={{ borderColor: 'var(--light-gray)' }} title={item.isActive === false ? 'Archived product' : undefined}>
+                    <tr key={item.id} className={`border-t hover:bg-gray-50/50 transition-colors ${selectedItems.has(item.id) ? 'bg-teal-50/40' : ''} ${item.isActive === false ? 'opacity-50 bg-gray-50' : ''}`} style={{ borderColor: 'var(--light-gray)' }} title={item.isActive === false ? 'Disabled / retired item' : undefined}>
                       {canWrite && (
                         <td className="px-3 py-3 w-10">
                           <input type="checkbox"
@@ -2899,12 +2870,12 @@ setTimeout(()=>window.print(),500);
                               <Pencil size={15} style={{ color: 'var(--teal)' }} />
                             </button>
                             {item.isActive === false ? (
-                              <button onClick={async () => { await fetch('/api/inventory', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: item.id, isActive: true }) }); fetchItems() }} className="p-2 rounded-lg hover:bg-emerald-50 transition-colors" title="Restore (unarchive) product">
-                                <ArchiveRestore size={15} className="text-emerald-600" />
+                              <button onClick={async () => { await fetch('/api/inventory', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: item.id, isActive: true }) }); fetchItems() }} className="p-2 rounded-lg hover:bg-emerald-50 transition-colors" title="Restore (re-enable) item">
+                                <RotateCcw size={15} className="text-emerald-600" />
                               </button>
                             ) : (
-                              <button onClick={() => setDeleteItemConfirm(item.id)} className="p-2 rounded-lg hover:bg-amber-50 transition-colors" title="Archive product">
-                                <Archive size={15} className="text-amber-600" />
+                              <button onClick={() => setDeleteItemConfirm(item.id)} className="p-2 rounded-lg hover:bg-red-50 transition-colors" title="Disable / retire item">
+                                <Trash2 size={15} className="text-red-500" />
                               </button>
                             )}
                           </div>
@@ -3114,36 +3085,14 @@ setTimeout(()=>window.print(),500);
             </div>
           )}
 
-          {bulkArchiveConfirm && (
-            <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-              <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-xl">
-                <h3 className="text-lg font-bold mb-2" style={{ color: 'var(--charcoal)' }}>
-                  {bulkArchiveConfirm === 'archive' ? 'Archive' : 'Restore'} {selectedItems.size} product{selectedItems.size !== 1 ? 's' : ''}?
-                </h3>
-                <p className="text-sm mb-6" style={{ color: 'var(--mid-gray)' }}>
-                  {bulkArchiveConfirm === 'archive'
-                    ? <>They disappear from the list, the POS and the store, but keep their stock history. Tick <strong>&ldquo;Show archived products&rdquo;</strong> to see them again and restore anytime.</>
-                    : <>They become visible and sellable again.</>}
-                </p>
-                <div className="flex gap-3 justify-end">
-                  <button onClick={() => setBulkArchiveConfirm(null)} disabled={bulkSaving} className="px-4 py-2 rounded-lg text-sm border" style={{ borderColor: 'var(--light-gray)' }}>Cancel</button>
-                  <button onClick={() => handleBulkArchive(bulkArchiveConfirm === 'restore')} disabled={bulkSaving}
-                    className={`px-4 py-2 rounded-lg text-sm text-white disabled:opacity-50 ${bulkArchiveConfirm === 'archive' ? 'bg-amber-500 hover:bg-amber-600' : 'bg-emerald-600 hover:bg-emerald-700'}`}>
-                    {bulkSaving ? 'Working…' : bulkArchiveConfirm === 'archive' ? 'Archive' : 'Restore'}
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
           {deleteItemConfirm && (
             <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
               <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-xl">
-                <h3 className="text-lg font-bold mb-2" style={{ color: 'var(--charcoal)' }}>Archive product</h3>
-                <p className="text-sm mb-6" style={{ color: 'var(--mid-gray)' }}>This hides the product from the list, the POS and the store. Its stock history is kept — tick <strong>&ldquo;Show archived products&rdquo;</strong> to see it again and <strong>Restore</strong> anytime.</p>
+                <h3 className="text-lg font-bold mb-2" style={{ color: 'var(--charcoal)' }}>Disable / retire item</h3>
+                <p className="text-sm mb-6" style={{ color: 'var(--mid-gray)' }}>This retires the item and hides it from the list. Its history is kept — tick <strong>&ldquo;Show disabled items&rdquo;</strong> to see it again and <strong>Restore</strong> anytime.</p>
                 <div className="flex gap-3 justify-end">
                   <button onClick={() => setDeleteItemConfirm(null)} className="px-4 py-2 rounded-lg text-sm border" style={{ borderColor: 'var(--light-gray)' }}>Cancel</button>
-                  <button onClick={() => handleItemDelete(deleteItemConfirm)} className="px-4 py-2 rounded-lg text-sm text-white bg-amber-500 hover:bg-amber-600">Archive</button>
+                  <button onClick={() => handleItemDelete(deleteItemConfirm)} className="px-4 py-2 rounded-lg text-sm text-white bg-red-500 hover:bg-red-600">Disable</button>
                 </div>
               </div>
             </div>
