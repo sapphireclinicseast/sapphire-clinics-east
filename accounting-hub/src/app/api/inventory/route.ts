@@ -381,7 +381,8 @@ export async function PATCH(req: Request) {
 
   try {
     const { ids, revenueAccountId, sourceAccountId, expenseAccountId, supplierId, branch, unitCost,
-            sellingPrice, rewardPointsPrice, reorderLevel, accountSubType, websiteClassification: bulkWebClass } = await req.json()
+            sellingPrice, rewardPointsPrice, reorderLevel, accountSubType, websiteClassification: bulkWebClass,
+            isActive } = await req.json()
 
     if (!Array.isArray(ids) || ids.length === 0) {
       return NextResponse.json({ error: 'At least one item ID is required' }, { status: 400 })
@@ -400,20 +401,25 @@ export async function PATCH(req: Request) {
     if (reorderLevel !== undefined) data.reorderLevel = reorderLevel ? parseInt(reorderLevel) : null
     if (accountSubType !== undefined) data.accountSubType = accountSubType || null
     if (bulkWebClass !== undefined) data.websiteClassification = bulkWebClass || null
+    // Bulk archive (isActive:false) / restore (isActive:true). Archived items keep
+    // their history and reappear under "Show archived products".
+    if (isActive !== undefined) data.isActive = !!isActive
 
     if (Object.keys(data).length === 0) {
       return NextResponse.json({ error: 'No fields to update' }, { status: 400 })
     }
 
+    // Ordinary bulk edits only touch live items; an archive/restore toggle must
+    // reach archived rows too (otherwise Restore could never find them).
     const result = await prisma.inventoryItem.updateMany({
-      where: { id: { in: ids }, isActive: true },
+      where: isActive === undefined ? { id: { in: ids }, isActive: true } : { id: { in: ids } },
       data,
     })
 
     await prisma.auditLog.create({
       data: {
         userId: session.user.id,
-        action: 'BULK_UPDATE',
+        action: isActive === undefined ? 'BULK_UPDATE' : (isActive ? 'BULK_RESTORE' : 'BULK_ARCHIVE'),
         entity: 'inventoryItem',
         entityId: ids.join(','),
         details: { count: result.count, fields: Object.keys(data) },
