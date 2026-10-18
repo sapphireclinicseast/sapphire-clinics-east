@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "lint:hooks": "tools/hooks-lint/node_modules/.bin/eslint --config tools/hooks-lint/eslint.hooks.config.mjs --no-warn-ignored src teletherapy/src accounting-hub/src class-portal/src client-portal/src nickel/src verdana-store/src",
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
     "db:seed": "ts-node --compiler-options '{\"module\":\"CommonJS\"}' prisma/seed.ts",

@@ -1,0 +1,13 @@
+{
+  "name": "scei-hooks-lint",
+  "private": true,
+  "description": "One shared ESLint toolchain that runs only react-hooks/rules-of-hooks across every Next.js app in this repo. Used by the deploy gate and `npm run lint:hooks` at the repo root.",
+  "scripts": {
+    "lint:hooks": "cd ../.. && npm run lint:hooks"
+  },
+  "devDependencies": {
+    "eslint": "^9.25.1",
+    "eslint-config-next": "16.2.0",
+    "typescript": "^5"
+  }
+}

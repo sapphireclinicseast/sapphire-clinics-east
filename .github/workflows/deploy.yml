@@ -53,15 +53,15 @@ jobs:
       - name: Build content indexes
         run: node scripts/build-content.js
 
-      # ── 2b. Hooks-rule gate for the accounting hub ──────────────
+      # ── 2b. Hooks-rule gate for every Next.js app ────────────────
       # A React hook declared after an early return renders fine on an empty
       # page and crashes once data arrives (Inventory outage 2026-10-16/18).
-      # tsc cannot see it; only react-hooks/rules-of-hooks can, so run that one
-      # rule here and refuse to deploy when it fails. Full lint stays advisory.
-      - name: Lint accounting hub (rules-of-hooks gate)
-        working-directory: accounting-hub
+      # tsc cannot see it; only react-hooks/rules-of-hooks can. One shared
+      # toolchain (tools/hooks-lint) runs that single rule over every app and
+      # refuses to deploy when it fails. Each app's full lint stays advisory.
+      - name: Lint all apps (rules-of-hooks gate)
         run: |
-          npm ci --no-audit --no-fund --ignore-scripts
+          cd tools/hooks-lint && npm ci --no-audit --no-fund && cd ../..
           npm run lint:hooks
 
       # ── 3. Set up SSH key directly ───────────────────────────────
@@ -88,6 +88,7 @@ jobs:
             --exclude='COMPANY LOGO/package*.json' \
             --exclude='COMPANY LOGO/capture-intro.mjs' \
             --exclude='api/node_modules' \
+            --exclude='tools/hooks-lint/node_modules' \
             --exclude='/data/' \
             --exclude='teletherapy/node_modules' \
             --exclude='teletherapy/.next' \

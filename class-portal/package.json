@@ -6,7 +6,7 @@
     "dev": "next dev -p 3006",
     "build": "next build",
     "start": "next start -p 3006",
-    "lint": "eslint"
+    "lint": "eslint ."
   },
   "dependencies": {
     "@types/qrcode": "^1.5.6",

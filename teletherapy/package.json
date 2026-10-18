@@ -6,7 +6,7 @@
     "dev": "next dev -p 3002",
     "build": "next build --webpack",
     "start": "next start -p 3002",
-    "lint": "next lint",
+    "lint": "eslint .",
     "db:push": "prisma db push",
     "db:setup": "node -e \"const{Client}=require('pg');const c=new Client(process.env.DATABASE_URL);c.connect().then(()=>require('fs').promises.readFile('prisma/setup.sql','utf8')).then(sql=>c.query(sql)).then(()=>{console.log('Tables created');c.end()}).catch(e=>{console.error(e);c.end();process.exit(1)})\"",
     "db:seed": "tsx prisma/seed.ts",

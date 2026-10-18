@@ -47,3 +47,7 @@ verdana-store/node_modules/
 
 # Patient LOA documents — uploaded at runtime, never committed.
 uploads/loa/
+
+# macOS AppleDouble resource-fork files (never source)
+._*
+node_modules/
