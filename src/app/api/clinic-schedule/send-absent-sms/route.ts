@@ -146,8 +146,10 @@ export async function POST(req: NextRequest) {
     where: {
       staffId,
       date:    { gte: dayStart, lte: dayEnd },
-      // Only patients who were still booked — see send-absent-email.
-      status:  'CONFIRMED',
+      // Only patients whose session was still going ahead. PENDING counts:
+      // it is the default for a new booking, so excluding it meant the
+      // absence notice reached almost nobody.
+      status:  { in: ['CONFIRMED', 'PENDING'] },
       patient: { isNot: null },
     },
     include: { staff: true, patient: true },
