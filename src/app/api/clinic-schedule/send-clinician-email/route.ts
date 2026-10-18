@@ -89,7 +89,7 @@ function buildClinicianEmailHtml(opts: {
           <td style="padding:32px 40px;">
             <p style="margin:0 0 18px;font-size:15px;">Hi <strong>${opts.firstName}</strong>!</p>
             <p style="margin:0 0 20px;color:#444;">
-              Here is your confirmed schedule at <strong>${shortLocation(cfg)}</strong>:
+              Here is your schedule at <strong>${shortLocation(cfg)}</strong>:
             </p>
 
             <!-- Schedule table -->
@@ -108,7 +108,7 @@ function buildClinicianEmailHtml(opts: {
             </table>
 
             <p style="margin:0 0 28px;font-size:13px;color:#666;">
-              Total confirmed patients: <strong style="color:#244952;">${total}</strong>
+              Total patients: <strong style="color:#244952;">${total}</strong>
             </p>
 
             <p style="margin:0 0 4px;color:#555;">Warm regards,</p>
@@ -162,7 +162,7 @@ function buildClinicianEmailPlainText(opts: {
 
   lines.push(
     '',
-    `Total confirmed patients: ${opts.schedules.length}`,
+    `Total patients: ${opts.schedules.length}`,
     '',
     'Warm regards,',
     `${cfg.brandName} Team`,
@@ -220,18 +220,21 @@ export async function POST(req: NextRequest) {
   const dayEnd   = new Date(`${date}T23:59:59.999Z`)
 
   const schedules = await prisma.schedule.findMany({
-    // CONFIRMED only, matching send-clinician-sms. Without this the email swept
-    // in RESCHEDULED, CANCELLED, PENDING and NO_SHOW rows and presented them
-    // under a heading reading "your confirmed schedule" — so a session the
-    // patient had already moved read to the therapist as one to turn up for.
-    // 47% of staff-days carry at least one such row.
-    where:   { staffId, date: { gte: dayStart, lte: dayEnd }, status: 'CONFIRMED' },
+    // Sessions that are still going ahead. RESCHEDULED, CANCELLED and
+    // NO_SHOW are excluded — those were being listed under a heading that
+    // said "confirmed", so a session the patient had already moved read as
+    // one to turn up for.
+    //
+    // PENDING is included: it is the DEFAULT for a newly booked session.
+    // Filtering to CONFIRMED alone emptied the email for any day that had
+    // not been confirmed row by row, which is most of them.
+    where:   { staffId, date: { gte: dayStart, lte: dayEnd }, status: { in: ['CONFIRMED', 'PENDING'] } },
     include: { patient: true },
     orderBy: { startTime: 'asc' },
   })
 
   if (schedules.length === 0) {
-    return NextResponse.json({ error: 'No confirmed schedules found for this staff on this date' }, { status: 400 })
+    return NextResponse.json({ error: 'No schedules found for this staff on this date' }, { status: 400 })
   }
 
   const scheduleRows = schedules.map((s) => ({

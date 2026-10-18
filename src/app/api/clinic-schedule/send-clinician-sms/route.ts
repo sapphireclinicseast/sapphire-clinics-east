@@ -51,13 +51,17 @@ export async function POST(req: NextRequest) {
   const dayStart = new Date(`${date}T00:00:00.000Z`)
   const dayEnd   = new Date(`${date}T23:59:59.999Z`)
   const schedules = await prisma.schedule.findMany({
-    where:   { staffId, date: { gte: dayStart, lte: dayEnd }, status: 'CONFIRMED' },
+    // Sessions still going ahead. This used to be CONFIRMED only, which meant
+    // a clinician whose day had not been confirmed row by row was told "no
+    // confirmed schedules" for a full day of booked patients — PENDING is the
+    // default for a new booking. Matches send-clinician-email.
+    where:   { staffId, date: { gte: dayStart, lte: dayEnd }, status: { in: ['CONFIRMED', 'PENDING'] } },
     include: { patient: true },
     orderBy: { startTime: 'asc' },
   })
 
   if (schedules.length === 0)
-    return NextResponse.json({ error: 'No confirmed schedules found for this day' }, { status: 400 })
+    return NextResponse.json({ error: 'No schedules found for this day' }, { status: 400 })
 
   const branch    = BRANCH_SHORT[callerBranch ?? staff.branch] ?? (callerBranch ?? staff.branch)
   const shortDate = new Date(date + 'T12:00:00').toLocaleDateString('en-PH', {

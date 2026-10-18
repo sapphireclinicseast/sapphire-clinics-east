@@ -271,11 +271,12 @@ export async function POST(req: NextRequest) {
         staffId,
         date: { gte: dayStart, lte: dayEnd },
         patient: { email: { not: null } },
-        // Bulk send: remind only patients still booked. Reminding someone of a
-        // session they already rescheduled tells them to attend at a time that
-        // no longer stands. The single-appointment branch above is left alone:
-        // there the front desk picked that row deliberately.
-        status: 'CONFIRMED',
+        // Bulk send: remind only patients whose session is still going ahead.
+        // PENDING counts — it is the DEFAULT for a newly booked session, not a
+        // half-made one, so excluding it silently dropped roughly half of all
+        // upcoming appointments, which are exactly the ones worth reminding.
+        // RESCHEDULED/CANCELLED/NO_SHOW are the ones that are not happening.
+        status: { in: ['CONFIRMED', 'PENDING'] },
       },
       include: { staff: true, patient: true },
       orderBy: { startTime: 'asc' },

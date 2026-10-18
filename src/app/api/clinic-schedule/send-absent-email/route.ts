@@ -198,11 +198,10 @@ export async function POST(req: NextRequest) {
       staffId,
       date:    { gte: dayStart, lte: dayEnd },
       patient: { email: { not: null } },
-      // Only patients who were still booked. A patient who had already moved
-      // or cancelled does not need telling the clinician is away, and the
-      // message would be the first they heard of an appointment they thought
-      // was settled.
-      status:  'CONFIRMED',
+      // Only patients whose session was still going ahead. PENDING counts:
+      // it is the default for a new booking, so excluding it meant the
+      // absence notice reached almost nobody.
+      status:  { in: ['CONFIRMED', 'PENDING'] },
     },
     include: { staff: true, patient: true },
     orderBy: { startTime: 'asc' },
