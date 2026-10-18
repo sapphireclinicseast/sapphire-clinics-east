@@ -53,6 +53,17 @@ jobs:
       - name: Build content indexes
         run: node scripts/build-content.js
 
+      # ── 2b. Hooks-rule gate for the accounting hub ──────────────
+      # A React hook declared after an early return renders fine on an empty
+      # page and crashes once data arrives (Inventory outage 2026-10-16/18).
+      # tsc cannot see it; only react-hooks/rules-of-hooks can, so run that one
+      # rule here and refuse to deploy when it fails. Full lint stays advisory.
+      - name: Lint accounting hub (rules-of-hooks gate)
+        working-directory: accounting-hub
+        run: |
+          npm ci --no-audit --no-fund --ignore-scripts
+          npm run lint:hooks
+
       # ── 3. Set up SSH key directly ───────────────────────────────
       - name: Set up SSH key
         continue-on-error: true   # ssh-keyscan failure must not cascade — run: steps already use -o StrictHostKeyChecking=no

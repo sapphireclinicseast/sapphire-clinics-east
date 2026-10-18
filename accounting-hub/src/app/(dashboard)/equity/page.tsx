@@ -141,10 +141,9 @@ export default function EquityPage() {
       .catch(() => setAssetAccts([]))
   }, [])
 
-  if (status === 'unauthenticated') redirect('/login')
-  if (status === 'authenticated' && !EQUITY_ROLES.includes(role as string)) {
-    return <div className="p-8 text-center text-gray-500">Equity is restricted to Admin, Accountant, and Bookkeeper roles.</div>
-  }
+  // NOTE: the role gate used to live here, above several hooks. An early return
+  // before hooks crashes the page ("Rendered fewer hooks than expected") for any
+  // user who hits it after the first render — it now sits right before the JSX.
   // Accountants/bookkeepers get Preferred Shares + Dividend Release History; the
   // Common Shares tab (and its figures) stays admin-only.
   const allowedTabs = isAdmin ? ['common', 'preferred', 'dividends', 'certificates'] : ['preferred', 'dividends']
@@ -315,6 +314,10 @@ export default function EquityPage() {
   const overCommon = authCommon != null && commonClassShares > authCommon
   const overFounder = authFounder != null && foundersShares > authFounder
   const overTotal = (fig?.totalShares ?? 0) > authTotal
+  if (status === 'unauthenticated') redirect('/login')
+  if (status === 'authenticated' && !EQUITY_ROLES.includes(role as string)) {
+    return <div className="p-8 text-center text-gray-500">Equity is restricted to Admin, Accountant, and Bookkeeper roles.</div>
+  }
   return (
     <div className="p-6 max-w-screen-2xl mx-auto space-y-5">
       <div className="flex items-center gap-3">
