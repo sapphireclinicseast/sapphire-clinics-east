@@ -1,7 +1,8 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { Brain, Copy, Link2, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Brain, Copy, Download, Link2, Pencil, Plus, Trash2 } from 'lucide-react'
+import { downloadXlsx } from '@/lib/export'
 
 /**
  * Inventory → Psych Tests.
@@ -174,6 +175,21 @@ export default function PsychTestsPanel({ canWrite }: { canWrite: boolean }) {
             <option value="">All tests</option>
             {BRANCHES.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
           </select>
+          <button
+            onClick={() => downloadXlsx(`Psych Tests Register - ${branchFilter ? (BRANCH_LABELS[branchFilter] || branchFilter) : 'All'} - ${new Date().toISOString().slice(0, 10)}`, [{
+              name: 'Psych Tests',
+              headers: ['Test', 'Branch', 'Purchased As', 'Qty', 'Supplier / Platform', 'Date Acquired', 'Remarks', 'Last Updated', 'Updated By'],
+              rows: tests.map(t => [
+                t.name, BRANCH_LABELS[t.branch] || t.branch, t.format === 'ONLINE' ? 'Online' : 'Hard copy',
+                t.quantity ?? '', t.supplier || '', t.acquiredDate ? t.acquiredDate.slice(0, 10) : '',
+                t.remarks || '', new Date(t.updatedAt).toLocaleDateString(), t.updatedByName || '',
+              ]),
+            }])}
+            disabled={tests.length === 0}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold border disabled:opacity-50"
+            style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+            <Download size={15} /> Excel
+          </button>
           {canWrite && (
             <button onClick={openCreate}
               className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold text-white"

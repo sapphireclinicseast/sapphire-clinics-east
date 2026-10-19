@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import { downloadXlsx } from '@/lib/export'
 
 /**
  * The psych heads' external editor for the Psych Tests register.
@@ -179,6 +180,26 @@ export default function PsychTestsEditor({ token }: { token: string }) {
   }
 
   const shown = (tests || []).filter(t => !branchFilter || t.branch === branchFilter)
+
+  // Excel of exactly what is on screen (the current branch filter applies).
+  const exportExcel = () => {
+    const scope = branchFilter ? (BRANCH_CHIP[branchFilter]?.label || branchFilter) : 'All'
+    downloadXlsx(`Psych Tests Register - ${scope} - ${new Date().toISOString().slice(0, 10)}`, [{
+      name: 'Psych Tests',
+      headers: ['Test', 'Branch', 'Purchased As', 'Qty', 'Supplier / Platform', 'Date Acquired', 'Remarks', 'Last Updated', 'Updated By'],
+      rows: shown.map(t => [
+        t.name,
+        BRANCH_CHIP[t.branch]?.label || t.branch,
+        t.format === 'ONLINE' ? 'Online' : 'Hard copy',
+        t.quantity ?? '',
+        t.supplier || '',
+        t.acquiredDate ? t.acquiredDate.slice(0, 10) : '',
+        t.remarks || '',
+        new Date(t.updatedAt).toLocaleDateString(),
+        t.updatedByName || '',
+      ]),
+    }])
+  }
   const stepBtn: React.CSSProperties = {
     width: 26, height: 26, borderRadius: 8, border: `1px solid ${LIGHT}`, background: '#fff',
     color: CHARCOAL, fontSize: 15, fontWeight: 700, cursor: 'pointer', lineHeight: 1,
@@ -218,10 +239,16 @@ export default function PsychTestsEditor({ token }: { token: string }) {
               </button>
             ))}
           </div>
-          <button onClick={openAdd} disabled={busy}
-            style={{ background: TEAL, color: '#fff', border: 0, borderRadius: 10, padding: '9px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-            + Add test
-          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={exportExcel} disabled={!tests || shown.length === 0}
+              style={{ background: '#fff', color: TEAL, border: `1px solid ${TEAL}`, borderRadius: 10, padding: '9px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: !tests || shown.length === 0 ? 0.5 : 1 }}>
+              Download Excel
+            </button>
+            <button onClick={openAdd} disabled={busy}
+              style={{ background: TEAL, color: '#fff', border: 0, borderRadius: 10, padding: '9px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+              + Add test
+            </button>
+          </div>
         </div>
 
         {savedTick && (

@@ -321,7 +321,7 @@ export const SECTIONS: Section[] = [
         `Enter the access code **scei** (asked once per device) and type **your name** — it is stamped on every change.`,
         `**+ Add test**, pick the branch (**East**, **Greenhills**, or **Shared** when both branches use it) and **Hard copy** or **Online**, and fill in the quantity, supplier and remarks as needed. Use the **+/−** buttons beside the quantity whenever a kit is used or restocked. Everything saves straight into this tab.`,
       ] },
-      { k: 'note', label: 'Sharing.', t: `The **Psych Tests** tab shows the link and access code with a **Copy** button, ready to send. Both branches are visible to both psych heads by design.` },
+      { k: 'note', label: 'Sharing.', t: `The **Psych Tests** tab shows the link and access code with a **Copy** button, ready to send. Both branches are visible to both psych heads by design, and **Download Excel** (on the external page and in this tab) exports the table as shown — the branch filter applies.` },
     ],
   },
   {
