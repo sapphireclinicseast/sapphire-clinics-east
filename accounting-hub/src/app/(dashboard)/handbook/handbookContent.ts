@@ -735,7 +735,7 @@ export const SECTIONS: Section[] = [
       { k: 'sub', t: 'Tabs' },
       { k: 'ul', items: [
         `**Summary** — every sales line, split into **Report 1 — With Official Sales Invoice** and **Report 2 — Without Sales Invoice**. Columns: **Date · Order # · Patient Name · Service Availed · Qty · Sales Invoice No. · Gross · Net.** Click a heading to sort; type under a heading to filter. **Export CSV** / **Print / PDF** reflect what you've filtered.`,
-        `**With SI** — reconciles the SI booklet: the left list shows every used SI number; the right **Flagged Sales Invoices** panel lists missing (gap) and duplicate numbers, which you can **Declare Cancelled SI**, add **Remarks**, or **Tag to Order**, then **Save**.`,
+        `**With SI** — reconciles the SI booklet: the left **Sales Invoices** list shows every used SI number with its **Actual Date** (the real sale date) and **Declared Date** (the date the SI is reported in the SI book — click the value, or **set**, to pick a date; press Esc to cancel, clear it to fall back to the actual date). The right **Flagged Sales Invoices** panel lists missing (gap) and duplicate numbers, which you can **Declare Cancelled SI**, add **Remarks**, or **Tag to Order**, then **Save**.`,
         `**Sales Target** — pick a month/year/branch to compare **Sales with SI** against the **Target** you set (only Admin/Accountant/Bookkeeper edit the target).`,
       ] },
       { k: 'sub', t: 'Run the report' },
@@ -743,6 +743,7 @@ export const SECTIONS: Section[] = [
         `On **Summary**, set **Branch** and **Date From / To**, tick one or both report types, and click **Generate Report**.`,
         `Review Report 1 / Report 2 and the combined bar, then **Export CSV** or **Print / PDF**.`,
       ] },
+      { k: 'note', label: 'Declared vs actual date.', t: `An SI with a **Declared Date** is counted in that period's SI book and sales target; without one it counts on its **Actual Date**. Setting or clearing the declared date only moves where the invoice is reported — it never changes the order's transaction date or its ledger entries. AR-collection and migrated rows show a dash (they carry no declared date). Every change is audit-logged.` },
     ],
   },
   {
