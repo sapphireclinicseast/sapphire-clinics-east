@@ -27,10 +27,12 @@ interface PsychTest {
   updatedAt: string
 }
 
-// Psych departments exist only at the two clinic branches.
+// Psych departments exist only at the two clinic branches; 'ALL' marks a
+// test kit shared by both.
 const BRANCHES = [
   { value: 'SANDBOX_EAST', label: 'East Branch' },
   { value: 'SANDBOX_GREENHILLS', label: 'Greenhills Branch' },
+  { value: 'ALL', label: 'Shared (both branches)' },
 ]
 const BRANCH_LABELS: Record<string, string> = Object.fromEntries(BRANCHES.map(b => [b.value, b.label]))
 
@@ -128,6 +130,20 @@ export default function PsychTestsPanel({ canWrite }: { canWrite: boolean }) {
     }
   }
 
+  // Stock in/out: optimistic bump; the server answers with the floor-guarded count.
+  const adjust = async (t: PsychTest, delta: number) => {
+    setTests(cur => cur.map(x => x.id === t.id ? { ...x, quantity: Math.max(0, (x.quantity ?? 0) + delta) } : x))
+    try {
+      const r = await fetch('/api/inventory/psych-tests', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: t.id, delta }),
+      })
+      const d = await r.json()
+      if (r.ok) setTests(cur => cur.map(x => x.id === t.id ? { ...x, quantity: d.data.quantity } : x))
+      else { setError(d.error || 'Failed to adjust'); load() }
+    } catch { setError('Failed to adjust'); load() }
+  }
+
   const doDelete = async () => {
     if (!deleteTarget) return
     try {
@@ -155,7 +171,7 @@ export default function PsychTestsPanel({ canWrite }: { canWrite: boolean }) {
         <div className="flex items-center gap-2">
           <select value={branchFilter} onChange={e => setBranchFilter(e.target.value)}
             className="px-3 py-2 rounded-xl border text-sm" style={borderStyle}>
-            <option value="">Both branches</option>
+            <option value="">All tests</option>
             {BRANCHES.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
           </select>
           {canWrite && (
@@ -231,7 +247,17 @@ export default function PsychTestsPanel({ canWrite }: { canWrite: boolean }) {
                       {t.format === 'ONLINE' ? 'Online' : 'Hard copy'}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-right tabular-nums">{t.quantity ?? '—'}</td>
+                  <td className="px-4 py-3 text-right whitespace-nowrap">
+                    {canWrite && (
+                      <button onClick={() => adjust(t, -1)} title="Used one / stock out"
+                        className="w-6 h-6 rounded-lg border text-sm font-bold align-middle mr-1" style={borderStyle}>−</button>
+                    )}
+                    <span className="inline-block min-w-[30px] text-center tabular-nums font-semibold align-middle">{t.quantity ?? '—'}</span>
+                    {canWrite && (
+                      <button onClick={() => adjust(t, 1)} title="Restocked / stock in"
+                        className="w-6 h-6 rounded-lg border text-sm font-bold align-middle ml-1" style={borderStyle}>+</button>
+                    )}
+                  </td>
                   <td className="px-4 py-3">{t.supplier || '—'}</td>
                   <td className="px-4 py-3 max-w-[260px] truncate" title={t.remarks || ''}>{t.remarks || '—'}</td>
                   <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>

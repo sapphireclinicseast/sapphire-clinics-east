@@ -307,7 +307,7 @@ export const SECTIONS: Section[] = [
         `**Consignments** — **New Transfer** stock between branches → **Approve** → **Receive** at the destination; **Generate Transmittal Form PDF**.`,
         `**Branch Stock** — a live, read-only matrix of In / Sold / Left per branch.`,
         `**Forms** — log receipts of controlled consumable forms with their control-number range.`,
-        `**Psych Tests** — the register of psychological test kits at East and Greenhills, each marked **Hard copy** or **Online**. The branch psych heads keep it up to date from outside the hub (see below); staff with write access can also add and edit here.`,
+        `**Psych Tests** — the register of psychological test kits, each tagged **East**, **Greenhills**, or **Shared (both branches)** and marked **Hard copy** or **Online**, with **+/− stock buttons** as kits are used or restocked. The branch psych heads keep it up to date from outside the hub (see below); staff with write access can also add, edit and adjust counts here.`,
       ] },
       { k: 'sub', t: 'Common tasks' },
       { k: 'steps', items: [
@@ -319,7 +319,7 @@ export const SECTIONS: Section[] = [
       { k: 'steps', items: [
         `Open **accounting.sapphireclinicseast.org/psych-tests** on any device — no hub login needed.`,
         `Enter the access code **scei** (asked once per device) and type **your name** — it is stamped on every change.`,
-        `**+ Add test** under the right branch, pick **Hard copy** or **Online**, and fill in the quantity, supplier and remarks as needed. Edits save straight into this tab.`,
+        `**+ Add test**, pick the branch (**East**, **Greenhills**, or **Shared** when both branches use it) and **Hard copy** or **Online**, and fill in the quantity, supplier and remarks as needed. Use the **+/−** buttons beside the quantity whenever a kit is used or restocked. Everything saves straight into this tab.`,
       ] },
       { k: 'note', label: 'Sharing.', t: `The **Psych Tests** tab shows the link and access code with a **Copy** button, ready to send. Both branches are visible to both psych heads by design.` },
     ],

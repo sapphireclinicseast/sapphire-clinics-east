@@ -11,7 +11,8 @@ import { prisma } from '@/lib/prisma'
  * are whitelisted, never trusted from the page.
  */
 
-const BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS']
+// 'ALL' marks a test kit shared by both branches (the hub's usual convention).
+const BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'ALL']
 const FORMATS = ['HARD_COPY', 'ONLINE']
 
 export const dynamic = 'force-dynamic'
@@ -52,6 +53,28 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
       if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
       await prisma.psychTest.delete({ where: { id } }).catch(() => {})
       return NextResponse.json({ success: true })
+    }
+
+    // Stock in/out as tests get used or replenished: a DELTA rather than a
+    // typed total, so two heads clicking at once both count. Floored at 0.
+    if (body.action === 'adjust') {
+      const id = String(body.id ?? '')
+      const delta = Number(body.delta)
+      if (!id || !Number.isFinite(delta) || delta === 0) {
+        return NextResponse.json({ error: 'Missing id or adjustment' }, { status: 400 })
+      }
+      const updated = await prisma.$transaction(async (tx) => {
+        const row = await tx.psychTest.findUnique({ where: { id }, select: { quantity: true } })
+        if (!row) return null
+        const next = Math.max(0, (row.quantity ?? 0) + Math.round(delta))
+        return tx.psychTest.update({
+          where: { id },
+          data: { quantity: next, updatedByName: editor.slice(0, 80) },
+          select: { id: true, quantity: true },
+        })
+      })
+      if (!updated) return NextResponse.json({ error: 'That test no longer exists.' }, { status: 404 })
+      return NextResponse.json({ success: true, quantity: updated.quantity })
     }
 
     const name = String(body.name ?? '').trim()

@@ -10,7 +10,8 @@ import { prisma } from '@/lib/prisma'
  */
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
-const BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS']
+// 'ALL' marks a test kit shared by both branches.
+const BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'ALL']
 const FORMATS = ['HARD_COPY', 'ONLINE']
 
 export const dynamic = 'force-dynamic'
@@ -20,7 +21,7 @@ function shape(body: Record<string, unknown>) {
   const branch = String(body.branch ?? '')
   const format = String(body.format ?? '')
   if (!name) return { error: 'Test name is required' }
-  if (!BRANCHES.includes(branch)) return { error: 'Branch must be East or Greenhills' }
+  if (!BRANCHES.includes(branch)) return { error: 'Branch must be East, Greenhills, or Shared' }
   if (!FORMATS.includes(format)) return { error: 'Format must be HARD_COPY or ONLINE' }
   const qty = body.quantity == null || body.quantity === '' ? null : Number(body.quantity)
   if (qty != null && (!Number.isFinite(qty) || qty < 0)) return { error: 'Quantity must be a non-negative number' }
@@ -83,6 +84,37 @@ export async function PUT(req: Request) {
   } catch (e) {
     console.error('[psych-tests] update failed:', e)
     return NextResponse.json({ error: 'Failed to update' }, { status: 500 })
+  }
+}
+
+/** Stock in/out: a quantity DELTA (race-safe for simultaneous clicks), floored at 0. */
+export async function PATCH(req: Request) {
+  const session = await auth()
+  if (!session?.user || !WRITE_ROLES.includes(session.user.role as string)) {
+    return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
+  }
+  try {
+    const body = await req.json()
+    const id = String(body.id ?? '')
+    const delta = Number(body.delta)
+    if (!id || !Number.isFinite(delta) || delta === 0) {
+      return NextResponse.json({ error: 'Missing id or adjustment' }, { status: 400 })
+    }
+    const updated = await prisma.$transaction(async (tx) => {
+      const row = await tx.psychTest.findUnique({ where: { id }, select: { quantity: true } })
+      if (!row) return null
+      const next = Math.max(0, (row.quantity ?? 0) + Math.round(delta))
+      return tx.psychTest.update({
+        where: { id },
+        data: { quantity: next, updatedByName: session.user.name as string },
+        select: { id: true, quantity: true },
+      })
+    })
+    if (!updated) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    return NextResponse.json({ data: updated })
+  } catch (e) {
+    console.error('[psych-tests] adjust failed:', e)
+    return NextResponse.json({ error: 'Failed to adjust' }, { status: 500 })
   }
 }
 

@@ -7,9 +7,10 @@ import { useCallback, useEffect, useState } from 'react'
  *
  * No hub login. Reached two ways: the bare /psych-tests page (access-code
  * gate, which fetches the edit token server-side) or a direct
- * /psych-tests/<token> link. Both branches are shown and editable; every
- * save is stamped with the editor's name so the hub shows who last touched
- * a row. Styled inline like the other public pages (/pay, /m).
+ * /psych-tests/<token> link. One table holds every test — East, Greenhills,
+ * or Shared (both branches) — with +/− steppers so quantities move as kits
+ * are used or restocked. Every change is stamped with the editor's name.
+ * Styled inline like the other public pages (/pay, /m).
  */
 
 interface Test {
@@ -26,10 +27,15 @@ interface Test {
 }
 
 const BRANCHES = [
-  { value: 'SANDBOX_EAST', label: 'East Branch' },
-  { value: 'SANDBOX_GREENHILLS', label: 'Greenhills Branch' },
+  { value: 'SANDBOX_EAST', label: 'East' },
+  { value: 'SANDBOX_GREENHILLS', label: 'Greenhills' },
+  { value: 'ALL', label: 'Shared (both branches)' },
 ]
-const BRANCH_LABELS: Record<string, string> = Object.fromEntries(BRANCHES.map(b => [b.value, b.label]))
+const BRANCH_CHIP: Record<string, { label: string; bg: string; color: string }> = {
+  SANDBOX_EAST: { label: 'East', bg: '#e6f2ef', color: '#0f766e' },
+  SANDBOX_GREENHILLS: { label: 'Greenhills', bg: '#eef2fb', color: '#3b5bb5' },
+  ALL: { label: 'Shared', bg: '#fdf3e3', color: '#b45309' },
+}
 
 const TEAL = '#0f766e'
 const CHARCOAL = '#1f2d2a'
@@ -41,6 +47,11 @@ const inputStyle: React.CSSProperties = {
   fontSize: 14, color: CHARCOAL, outline: 'none', background: '#fff', boxSizing: 'border-box',
 }
 const labelStyle: React.CSSProperties = { display: 'block', fontSize: 12, fontWeight: 600, color: GRAY, marginBottom: 4 }
+const thStyle: React.CSSProperties = {
+  textAlign: 'left', padding: '10px 12px', fontSize: 11, fontWeight: 700, color: GRAY,
+  textTransform: 'uppercase', letterSpacing: '0.06em', background: '#f1f6f3', whiteSpace: 'nowrap',
+}
+const tdStyle: React.CSSProperties = { padding: '10px 12px', fontSize: 13.5, color: CHARCOAL, borderTop: `1px solid ${LIGHT}`, verticalAlign: 'middle' }
 
 const emptyForm = { id: '', branch: 'SANDBOX_EAST', name: '', format: 'HARD_COPY', quantity: '', supplier: '', acquiredDate: '', remarks: '' }
 
@@ -48,6 +59,7 @@ export default function PsychTestsEditor({ token }: { token: string }) {
   const [tests, setTests] = useState<Test[] | null>(null)
   const [notFound, setNotFound] = useState(false)
   const [editor, setEditor] = useState('')
+  const [branchFilter, setBranchFilter] = useState('')
   const [form, setForm] = useState({ ...emptyForm })
   const [showForm, setShowForm] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -74,7 +86,15 @@ export default function PsychTestsEditor({ token }: { token: string }) {
     try { localStorage.setItem('psych-tests-editor', v) } catch { /* optional */ }
   }
 
-  const openAdd = (branch: string) => { setForm({ ...emptyForm, branch }); setShowForm(true); setError('') }
+  const needName = () => {
+    if (editor.trim()) return false
+    setError('Please enter your name at the top first.')
+    return true
+  }
+
+  const flashSaved = () => { setSavedTick(true); setTimeout(() => setSavedTick(false), 1600) }
+
+  const openAdd = () => { setForm({ ...emptyForm, branch: branchFilter || 'SANDBOX_EAST' }); setShowForm(true); setError('') }
   const openEdit = (t: Test) => {
     setForm({
       id: t.id, branch: t.branch, name: t.name, format: t.format,
@@ -88,7 +108,7 @@ export default function PsychTestsEditor({ token }: { token: string }) {
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!editor.trim()) { setError('Please enter your name at the top first.'); return }
+    if (needName()) return
     setBusy(true)
     setError('')
     try {
@@ -99,8 +119,7 @@ export default function PsychTestsEditor({ token }: { token: string }) {
       const d = await r.json()
       if (!r.ok) { setError(d.error || 'Could not save.'); return }
       setShowForm(false)
-      setSavedTick(true)
-      setTimeout(() => setSavedTick(false), 2000)
+      flashSaved()
       load()
     } catch {
       setError('Could not save — please check your connection and try again.')
@@ -109,9 +128,31 @@ export default function PsychTestsEditor({ token }: { token: string }) {
     }
   }
 
+  // Stock in/out: optimistic bump, server answers with the authoritative count.
+  const adjust = async (t: Test, delta: number) => {
+    if (needName()) return
+    setTests(cur => (cur || []).map(x => x.id === t.id ? { ...x, quantity: Math.max(0, (x.quantity ?? 0) + delta) } : x))
+    try {
+      const r = await fetch(`/api/public/psych-tests/${token}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'adjust', id: t.id, delta, editorName: editor.trim() }),
+      })
+      const d = await r.json()
+      if (r.ok) {
+        setTests(cur => (cur || []).map(x => x.id === t.id ? { ...x, quantity: d.quantity, updatedByName: editor.trim() } : x))
+      } else {
+        setError(d.error || 'Could not update the count.')
+        load()
+      }
+    } catch {
+      setError('Could not update the count — please try again.')
+      load()
+    }
+  }
+
   const remove = async (t: Test) => {
-    if (!editor.trim()) { setError('Please enter your name at the top first.'); return }
-    if (!window.confirm(`Remove "${t.name}" (${BRANCH_LABELS[t.branch]})?`)) return
+    if (needName()) return
+    if (!window.confirm(`Remove "${t.name}" (${BRANCH_CHIP[t.branch]?.label || t.branch})?`)) return
     setBusy(true)
     try {
       await fetch(`/api/public/psych-tests/${token}`, {
@@ -137,92 +178,133 @@ export default function PsychTestsEditor({ token }: { token: string }) {
     )
   }
 
+  const shown = (tests || []).filter(t => !branchFilter || t.branch === branchFilter)
+  const stepBtn: React.CSSProperties = {
+    width: 26, height: 26, borderRadius: 8, border: `1px solid ${LIGHT}`, background: '#fff',
+    color: CHARCOAL, fontSize: 15, fontWeight: 700, cursor: 'pointer', lineHeight: 1,
+  }
+
   return (
     <main style={{ minHeight: '100vh', background: '#f8f7f4', padding: '28px 16px 60px' }}>
-      <div style={{ maxWidth: 760, margin: '0 auto' }}>
+      <div style={{ maxWidth: 900, margin: '0 auto' }}>
         <header style={{ marginBottom: 18 }}>
           <p style={{ fontSize: 11, letterSpacing: '0.14em', textTransform: 'uppercase', color: TEAL, fontWeight: 700, margin: 0 }}>
             Aura Health Rehab · Inventory
           </p>
           <h1 style={{ fontSize: 24, color: CHARCOAL, margin: '4px 0 2px' }}>Psych Tests Register</h1>
           <p style={{ fontSize: 13, color: GRAY, margin: 0 }}>
-            Keep the list of psychological tests up to date for both branches, and mark each one hard copy or online.
-            Changes save straight to the Accounting Hub.
+            Every psychological test in one table — East, Greenhills, or shared by both. Use the +/− buttons as kits are
+            used or restocked. Changes save straight to the Accounting Hub.
           </p>
         </header>
 
-        <div style={{ background: '#fff', borderRadius: 14, padding: '14px 16px', marginBottom: 18, boxShadow: '0 6px 18px rgba(16,52,45,0.06)' }}>
+        <div style={{ background: '#fff', borderRadius: 14, padding: '14px 16px', marginBottom: 14, boxShadow: '0 6px 18px rgba(16,52,45,0.06)' }}>
           <label style={labelStyle}>Your name (stamped on every change)</label>
           <input value={editor} onChange={e => rememberEditor(e.target.value)} placeholder="e.g. Albert Go / Frednick Asistion"
             style={{ ...inputStyle, maxWidth: 340 }} />
         </div>
 
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {[{ value: '', label: 'All' }, ...BRANCHES.map(b => ({ value: b.value, label: BRANCH_CHIP[b.value].label }))].map(c => (
+              <button key={c.value} onClick={() => setBranchFilter(c.value)}
+                style={{
+                  padding: '7px 14px', borderRadius: 999, fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
+                  border: `1px solid ${branchFilter === c.value ? TEAL : LIGHT}`,
+                  background: branchFilter === c.value ? TEAL : '#fff',
+                  color: branchFilter === c.value ? '#fff' : GRAY,
+                }}>
+                {c.label}
+              </button>
+            ))}
+          </div>
+          <button onClick={openAdd} disabled={busy}
+            style={{ background: TEAL, color: '#fff', border: 0, borderRadius: 10, padding: '9px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+            + Add test
+          </button>
+        </div>
+
         {savedTick && (
-          <div style={{ background: '#dcfce7', color: '#166534', borderRadius: 10, padding: '10px 14px', fontSize: 13, fontWeight: 600, marginBottom: 14 }}>
+          <div style={{ background: '#dcfce7', color: '#166534', borderRadius: 10, padding: '9px 14px', fontSize: 13, fontWeight: 600, marginBottom: 10 }}>
             Saved — the Accounting Hub list is updated.
           </div>
         )}
         {error && !showForm && (
-          <div style={{ background: '#fef2f2', color: '#b91c1c', borderRadius: 10, padding: '10px 14px', fontSize: 13, marginBottom: 14 }}>{error}</div>
+          <div style={{ background: '#fef2f2', color: '#b91c1c', borderRadius: 10, padding: '9px 14px', fontSize: 13, marginBottom: 10 }}>{error}</div>
         )}
 
         {tests === null && <p style={{ color: GRAY, fontSize: 14 }}>Loading…</p>}
 
-        {tests !== null && BRANCHES.map(b => {
-          const rows = tests.filter(t => t.branch === b.value)
-          return (
-            <section key={b.value} style={{ marginBottom: 26 }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                <h2 style={{ fontSize: 16, color: CHARCOAL, margin: 0 }}>{b.label}</h2>
-                <button onClick={() => openAdd(b.value)} disabled={busy}
-                  style={{ background: TEAL, color: '#fff', border: 0, borderRadius: 10, padding: '8px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-                  + Add test
-                </button>
-              </div>
-              <div style={{ background: '#fff', borderRadius: 14, overflow: 'hidden', boxShadow: '0 6px 18px rgba(16,52,45,0.06)' }}>
-                {rows.length === 0 && (
-                  <p style={{ padding: '18px 16px', fontSize: 13, color: GRAY, margin: 0 }}>No tests recorded for this branch yet.</p>
+        {tests !== null && (
+          <div style={{ background: '#fff', borderRadius: 14, boxShadow: '0 6px 18px rgba(16,52,45,0.06)', overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 640 }}>
+              <thead>
+                <tr>
+                  <th style={thStyle}>Test</th>
+                  <th style={thStyle}>Branch</th>
+                  <th style={thStyle}>Format</th>
+                  <th style={{ ...thStyle, textAlign: 'center' }}>Qty</th>
+                  <th style={thStyle}>Supplier</th>
+                  <th style={thStyle}>Remarks</th>
+                  <th style={thStyle}>Last updated</th>
+                  <th style={thStyle} />
+                </tr>
+              </thead>
+              <tbody>
+                {shown.length === 0 && (
+                  <tr><td colSpan={8} style={{ ...tdStyle, textAlign: 'center', padding: '26px 12px', color: GRAY }}>
+                    {tests.length === 0 ? 'No tests recorded yet — add the first one.' : 'No tests under this filter.'}
+                  </td></tr>
                 )}
-                {rows.map((t, i) => (
-                  <div key={t.id} style={{ padding: '12px 16px', borderTop: i === 0 ? 'none' : `1px solid ${LIGHT}`, display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: CHARCOAL }}>{t.name}</p>
-                      <p style={{ margin: '3px 0 0', fontSize: 12, color: GRAY }}>
+                {shown.map(t => {
+                  const chip = BRANCH_CHIP[t.branch] || BRANCH_CHIP.ALL
+                  return (
+                    <tr key={t.id}>
+                      <td style={{ ...tdStyle, fontWeight: 600 }}>{t.name}</td>
+                      <td style={tdStyle}>
+                        <span style={{ padding: '3px 10px', borderRadius: 999, fontSize: 11, fontWeight: 700, background: chip.bg, color: chip.color }}>{chip.label}</span>
+                      </td>
+                      <td style={tdStyle}>
                         <span style={{
-                          display: 'inline-block', padding: '2px 10px', borderRadius: 999, fontWeight: 700, fontSize: 11,
+                          padding: '3px 10px', borderRadius: 999, fontSize: 11, fontWeight: 700,
                           background: t.format === 'ONLINE' ? '#f1ecf7' : '#e6f2ef',
                           color: t.format === 'ONLINE' ? '#6d5192' : TEAL,
-                          marginRight: 8,
                         }}>
                           {t.format === 'ONLINE' ? 'Online' : 'Hard copy'}
                         </span>
-                        {t.quantity != null && <>Qty {t.quantity} · </>}
-                        {t.supplier && <>{t.supplier} · </>}
-                        {t.remarks && <>{t.remarks} · </>}
-                        {t.updatedByName && <>last by {t.updatedByName}</>}
-                      </p>
-                    </div>
-                    <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                      <button onClick={() => openEdit(t)} disabled={busy}
-                        style={{ background: '#fff', color: TEAL, border: `1px solid ${TEAL}`, borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
-                        Edit
-                      </button>
-                      <button onClick={() => remove(t)} disabled={busy}
-                        style={{ background: '#fff', color: '#b91c1c', border: '1px solid #f3c6c6', borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
-                        Remove
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )
-        })}
+                      </td>
+                      <td style={{ ...tdStyle, textAlign: 'center', whiteSpace: 'nowrap' }}>
+                        <button style={stepBtn} onClick={() => adjust(t, -1)} title="Used one / stock out" aria-label={`Deduct one ${t.name}`}>−</button>
+                        <span style={{ display: 'inline-block', minWidth: 34, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{t.quantity ?? '—'}</span>
+                        <button style={stepBtn} onClick={() => adjust(t, 1)} title="Restocked / stock in" aria-label={`Add one ${t.name}`}>+</button>
+                      </td>
+                      <td style={{ ...tdStyle, color: t.supplier ? CHARCOAL : GRAY }}>{t.supplier || '—'}</td>
+                      <td style={{ ...tdStyle, color: t.remarks ? CHARCOAL : GRAY, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={t.remarks || undefined}>{t.remarks || '—'}</td>
+                      <td style={{ ...tdStyle, fontSize: 11.5, color: GRAY, whiteSpace: 'nowrap' }}>
+                        {new Date(t.updatedAt).toLocaleDateString()}{t.updatedByName ? ` · ${t.updatedByName}` : ''}
+                      </td>
+                      <td style={{ ...tdStyle, whiteSpace: 'nowrap', textAlign: 'right' }}>
+                        <button onClick={() => openEdit(t)} disabled={busy}
+                          style={{ background: '#fff', color: TEAL, border: `1px solid ${TEAL}`, borderRadius: 8, padding: '5px 11px', fontSize: 12, fontWeight: 700, cursor: 'pointer', marginRight: 6 }}>
+                          Edit
+                        </button>
+                        <button onClick={() => remove(t)} disabled={busy}
+                          style={{ background: '#fff', color: '#b91c1c', border: '1px solid #f3c6c6', borderRadius: 8, padding: '5px 11px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                          Remove
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
 
         {showForm && (
           <div style={{ position: 'fixed', inset: 0, background: 'rgba(12,32,28,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, zIndex: 50 }}>
             <form onSubmit={save} style={{ background: '#fff', borderRadius: 16, padding: 22, width: '100%', maxWidth: 440, maxHeight: '90vh', overflow: 'auto' }}>
-              <h3 style={{ margin: '0 0 14px', fontSize: 16, color: CHARCOAL }}>{form.id ? 'Edit test' : `Add test — ${BRANCH_LABELS[form.branch]}`}</h3>
+              <h3 style={{ margin: '0 0 14px', fontSize: 16, color: CHARCOAL }}>{form.id ? 'Edit test' : 'Add test'}</h3>
               <div style={{ display: 'grid', gap: 12 }}>
                 <div>
                   <label style={labelStyle}>Test name *</label>
