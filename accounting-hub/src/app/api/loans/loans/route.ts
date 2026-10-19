@@ -118,13 +118,17 @@ async function createChargeEntry(tx: any, c: { date: Date; description: string; 
 export async function GET() {
   const session = await auth()
   if (!session?.user || !ROLES.includes(session.user.role as string)) return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-  const [rows, shareholders] = await Promise.all([
+  const [rows, shareholders, paidSums] = await Promise.all([
     prisma.loan.findMany({ include: { charges: true }, orderBy: { createdAt: 'desc' } }),
     prisma.shareholder.findMany({ orderBy: { shSeq: 'asc' }, select: { id: true, shNumber: true, name: true, email: true } }),
+    // Running balance per loan (PAID payouts only) — drives the "Fully paid" badge and the hide-settled toggle.
+    prisma.loanPayout.groupBy({ by: ['loanId'], where: { status: 'PAID' }, _sum: { principalPortion: true, interestPortion: true }, _count: { _all: true }, _max: { paidDate: true, dueDate: true } }),
   ])
+  const paidInfo = new Map(paidSums.map(p => [p.loanId, { paidPrincipal: num(p._sum.principalPortion), paidInterest: num(p._sum.interestPortion), paidCount: p._count._all, lastPaidDate: p._max.paidDate ?? p._max.dueDate ?? null }]))
   return NextResponse.json({
     rows: rows.map(l => ({
       ...l,
+      paidPrincipal: paidInfo.get(l.id)?.paidPrincipal || 0, paidInterest: paidInfo.get(l.id)?.paidInterest || 0, paidCount: paidInfo.get(l.id)?.paidCount || 0, lastPaidDate: paidInfo.get(l.id)?.lastPaidDate || null,
       principalAmount: num(l.principalAmount), annualPct: l.annualPct != null ? num(l.annualPct) : null,
       monthlyAmortization: l.monthlyAmortization != null ? num(l.monthlyAmortization) : null, computedAnnualPct: l.computedAnnualPct != null ? num(l.computedAnnualPct) : null,
       totalInterest: l.totalInterest != null ? num(l.totalInterest) : null, netAmountToDebit: l.netAmountToDebit != null ? num(l.netAmountToDebit) : null,

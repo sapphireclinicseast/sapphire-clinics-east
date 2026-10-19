@@ -39,6 +39,9 @@ export default function LoansAndAdvancesPage() {
   const [loading, setLoading] = useState(true)
   const [edit, setEdit] = useState<AdvanceRow | null>(null)
   const [showAdd, setShowAdd] = useState(false)
+  // Settled advances are hidden by default so the list is the live book; the
+  // tickbox brings them back. (Hook stays above the early returns below.)
+  const [showPaidAdv, setShowPaidAdv] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -62,6 +65,9 @@ export default function LoansAndAdvancesPage() {
     load()
   }
   const acctLabel = (id: string | null) => { const a = accts.find(x => x.id === id) || banks.find(x => x.id === id); return a ? `${a.accountNumber} ${a.accountTitle}` : '—' }
+  const isAdvPaid = (r: AdvanceRow) => (r.paidPrincipal || 0) >= r.principalAmount - 0.005
+  const paidAdvCount = rows.filter(isAdvPaid).length
+  const visibleAdv = showPaidAdv ? rows : rows.filter(r => !isAdvPaid(r))
 
   return (
     <div className="p-6 max-w-screen-2xl mx-auto space-y-5">
@@ -81,7 +87,13 @@ export default function LoansAndAdvancesPage() {
 
       {tab === 'advances' && (
         <div className="space-y-3">
-          <div className="flex justify-end"><button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}><Plus size={15} /> Add Advance</button></div>
+          <div className="flex items-center justify-between gap-3">
+            <label className="flex items-center gap-2 px-3 py-2 rounded-xl border text-sm cursor-pointer select-none whitespace-nowrap" style={{ borderColor: 'var(--light-gray)', background: 'white', color: 'var(--mid-gray)' }} title="Fully paid advances are hidden by default">
+              <input type="checkbox" checked={showPaidAdv} onChange={e => setShowPaidAdv(e.target.checked)} className="w-4 h-4 accent-teal-600" />
+              Show fully paid{paidAdvCount > 0 ? ` (${paidAdvCount})` : ''}
+            </label>
+            <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}><Plus size={15} /> Add Advance</button>
+          </div>
           <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
             <table ref={advTableRef} className="w-full text-xs" style={advRz.tableStyle}>
               <ResizableColgroup rz={advRz} />
@@ -90,7 +102,7 @@ export default function LoansAndAdvancesPage() {
               </tr></thead>
               <tbody>
                 {loading ? <tr><td colSpan={13} className="text-center py-10 text-gray-400"><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
-                : rows.map(r => {
+                : visibleAdv.map(r => {
                   const sh = shareholders.find(s => s.id === r.shareholderId)
                   // Running balance: principal repaid so far vs what is still owed. Many of these
                   // advances are months into their schedule, so the row shows progress, not just the
@@ -433,6 +445,7 @@ interface LoanRow {
   payoutSchedule: string | null; payoutStartMonth: number | null; payoutStartYear: number | null; payoutDay: number | null; payoutAmountPerPeriod: number | null; repaymentMode: string | null; principalPerPeriod: number | null; paymentBankAccountId: string | null
   loanAgreementUrls: string[] | null; pdcUrls: string[] | null; netAmountToDebit: number | null; remarks: string | null; fromCreditLineId: string | null
   branchAllocations: BranchAlloc[] | null
+  paidPrincipal?: number; paidInterest?: number; paidCount?: number; lastPaidDate?: string | null
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   charges: any[]
 }
@@ -442,6 +455,11 @@ function LoansTab({ shareholders, banks, accts }: { shareholders: SH[]; banks: B
   const [loading, setLoading] = useState(true)
   const [edit, setEdit] = useState<LoanRow | null>(null)
   const [showAdd, setShowAdd] = useState(false)
+  // Fully repaid loans are hidden by default; the tickbox brings them back.
+  const [showPaid, setShowPaid] = useState(false)
+  const isPaid = (r: LoanRow) => r.principalAmount > 0 && (r.paidPrincipal || 0) >= r.principalAmount - 0.005
+  const paidCount = rows.filter(isPaid).length
+  const visible = showPaid ? rows : rows.filter(r => !isPaid(r))
   const load = useCallback(async () => { setLoading(true); try { const r = await fetch('/api/loans/loans'); const j = r.ok ? await r.json() : null; setRows(j?.rows || []) } catch { setRows([]) } finally { setLoading(false) } }, [])
   useEffect(() => { load() }, [load])
   const del = async (r: LoanRow) => { if (!confirm(`Delete loan from ${r.name}? Its journal entry is reversed.`)) return; await fetch(`/api/loans/loans?id=${r.id}`, { method: 'DELETE' }); load() }
@@ -455,16 +473,22 @@ function LoansTab({ shareholders, banks, accts }: { shareholders: SH[]; banks: B
   const entityLabel = (r: LoanRow) => r.loanEntity === 'SHAREHOLDER' ? 'Shareholder' : r.loanEntity === 'BANK' ? 'Bank' : r.loanEntity === 'INDIVIDUAL' ? 'Individual' : 'Other'
   return (
     <div className="space-y-3">
-      <div className="flex justify-end"><button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}><Plus size={15} /> Add Loan</button></div>
+      <div className="flex items-center justify-between gap-3">
+        <label className="flex items-center gap-2 px-3 py-2 rounded-xl border text-sm cursor-pointer select-none whitespace-nowrap" style={{ borderColor: 'var(--light-gray)', background: 'white', color: 'var(--mid-gray)' }} title="Fully repaid loans are hidden by default">
+          <input type="checkbox" checked={showPaid} onChange={e => setShowPaid(e.target.checked)} className="w-4 h-4 accent-teal-600" />
+          Show fully paid{paidCount > 0 ? ` (${paidCount})` : ''}
+        </label>
+        <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}><Plus size={15} /> Add Loan</button>
+      </div>
       <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
         <table className="w-full text-xs"><thead><tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
           {['Entity', 'Name', 'Date', 'Type', 'Branches', 'Principal', 'Interest / Coupon', 'Net Debit', 'Schedule', 'Bank', 'Agreement', ''].map(h => <th key={h} className="px-3 py-2.5 font-semibold whitespace-nowrap">{h}</th>)}
         </tr></thead><tbody>
           {loading ? <tr><td colSpan={12} className="text-center py-10 text-gray-400"><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
-          : rows.map(r => (
+          : visible.map(r => (
             <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
               <td className="px-3 py-2">{entityLabel(r)}</td>
-              <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{r.name}</td>
+              <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{r.name}{isPaid(r) && <span className="ml-1.5 inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold whitespace-nowrap" style={{ background: '#dcfce7', color: '#166534' }}>Fully paid ✓</span>}</td>
               <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{String(r.dateAcquired).slice(0, 10)}</td>
               <td className="px-3 py-2">{r.loanType === 'CORPORATE_BOND' ? 'Corp. Bond' : r.loanType === 'KIND' ? `Kind${r.kindType ? ` · ${r.kindType}` : ''}` : 'Cash'}</td>
               <td className="px-3 py-2 whitespace-nowrap">{(r.branchAllocations || []).length
@@ -479,7 +503,7 @@ function LoansTab({ shareholders, banks, accts }: { shareholders: SH[]; banks: B
               <td className="px-3 py-2 text-right whitespace-nowrap"><button onClick={() => setEdit(r)} className="p-1 rounded hover:bg-blue-50"><Pencil size={13} className="text-blue-500" /></button>{r.bankAccountId && <button onClick={() => unrelease(r)} title="Undo the release — reverses the disbursement entry only; the loan and its payments stay" className="p-1 rounded hover:bg-red-50"><RotateCcw size={13} className="text-red-400" /></button>}<button onClick={() => del(r)} className="p-1 rounded hover:bg-red-50"><Trash2 size={13} className="text-red-400" /></button></td>
             </tr>
           ))}
-          {!loading && rows.length === 0 && <tr><td colSpan={12} className="text-center py-10 text-gray-400">No loans yet.</td></tr>}
+          {!loading && visible.length === 0 && <tr><td colSpan={12} className="text-center py-10 text-gray-400">{rows.length === 0 ? 'No loans yet.' : `All ${rows.length} loan${rows.length === 1 ? ' is' : 's are'} fully paid — tick "Show fully paid" to see them.`}</td></tr>}
         </tbody></table>
       </div>
       {(showAdd || edit) && <LoanModal row={edit} shareholders={shareholders} banks={banks} accts={accts} onClose={() => { setShowAdd(false); setEdit(null) }} onSaved={() => { setShowAdd(false); setEdit(null); load() }} />}
