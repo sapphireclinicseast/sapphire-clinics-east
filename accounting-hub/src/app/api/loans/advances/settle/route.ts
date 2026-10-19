@@ -27,7 +27,8 @@ export async function POST(req: Request) {
     if (!advance) return NextResponse.json({ error: 'Advance not found' }, { status: 404 })
     if (!advance.creditAccountId) return NextResponse.json({ error: 'Set the "Account to be Credited" (advances liability) on the advance first — the settlement clears that account.' }, { status: 400 })
     const remaining = r2(num(advance.principalAmount) - payouts.reduce((s, p) => s + num(p.principalPortion), 0))
-    if (!(remaining > 0)) return NextResponse.json({ error: 'Nothing left to settle — the recorded payments already cover the full principal.' }, { status: 400 })
+    // Under ₱1 is centavo rounding across the schedule, not a balance to settle.
+    if (!(remaining >= 1)) return NextResponse.json({ error: 'Nothing left to settle — the recorded payments already cover the full principal.' }, { status: 400 })
     const paidDate = b.paidDate ? new Date(b.paidDate) : new Date()
     const proofUrls = Array.isArray(b.proofUrls) ? b.proofUrls : []
     const memo = typeof b.memo === 'string' && b.memo.trim() ? b.memo.trim().slice(0, 500) : null

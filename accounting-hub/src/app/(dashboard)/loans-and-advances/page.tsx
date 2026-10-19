@@ -27,6 +27,10 @@ interface AdvanceRow {
   paidInterest?: number; paidTotal?: number; paidCount?: number; lastPaidDate?: string | null
 }
 
+// Centavo rounding across an amortization schedule can leave a few centavos
+// "unpaid" on a settled balance; treat anything under ₱1 as fully paid.
+const PAID_TOLERANCE = 1
+
 export default function LoansAndAdvancesPage() {
   const { data: session, status } = useSession()
   const [tab, setTab] = useState<'advances' | 'loans' | 'creditline' | 'staff' | 'history'>('advances')
@@ -65,7 +69,10 @@ export default function LoansAndAdvancesPage() {
     load()
   }
   const acctLabel = (id: string | null) => { const a = accts.find(x => x.id === id) || banks.find(x => x.id === id); return a ? `${a.accountNumber} ${a.accountTitle}` : '—' }
-  const isAdvPaid = (r: AdvanceRow) => (r.paidPrincipal || 0) >= r.principalAmount - 0.005
+  // Amortization schedules round each payment to the centavo, so a fully paid
+  // advance can be left "owing" a few centavos (9 × ₱49,444.44 = ₱444,999.96 on a
+  // ₱445,000 advance). Anything under ₱1 is a rounding residue, not a balance.
+  const isAdvPaid = (r: AdvanceRow) => (r.paidPrincipal || 0) >= r.principalAmount - PAID_TOLERANCE
   const paidAdvCount = rows.filter(isAdvPaid).length
   const visibleAdv = showPaidAdv ? rows : rows.filter(r => !isAdvPaid(r))
 
@@ -115,7 +122,7 @@ export default function LoansAndAdvancesPage() {
                   return (
                     <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
                       <td className="px-3 py-2 font-mono">{sh?.shNumber || '—'}</td>
-                      <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{r.name}{(r.paidPrincipal || 0) >= r.principalAmount - 0.005 && <span className="ml-1.5 inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold whitespace-nowrap" style={{ background: '#dcfce7', color: '#166534' }}>Fully paid ✓</span>}</td>
+                      <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{r.name}{isAdvPaid(r) && <span className="ml-1.5 inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold whitespace-nowrap" style={{ background: '#dcfce7', color: '#166534' }}>Fully paid ✓</span>}</td>
                       <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{String(r.dateAcquired).slice(0, 10)}</td>
                       <td className="px-3 py-2">{r.advanceType === 'KIND' ? `Kind${r.kindType ? ` · ${r.kindType}` : ''}` : 'Cash'}</td>
                       <td className="px-3 py-2 text-right font-semibold">{peso(r.principalAmount)}</td>
@@ -125,8 +132,8 @@ export default function LoansAndAdvancesPage() {
                           <div className="text-[10px]" style={{ color: 'var(--mid-gray)' }}>{r.paidCount || 0}{termN ? ` of ${termN}` : ''} payment{(r.paidCount || 0) === 1 ? '' : 's'}{paidWhen ? ` · last ${paidWhen}` : ''}</div>
                         </> : <span style={{ color: 'var(--mid-gray)' }}>—</span>}
                       </td>
-                      <td className="px-3 py-2 text-right whitespace-nowrap" title={`${pct}% of principal repaid`}>
-                        <div className="font-semibold" style={{ color: balance > 0 ? 'var(--charcoal)' : '#166534' }}>{balance > 0 ? peso(balance) : 'Settled'}</div>
+                      <td className="px-3 py-2 text-right whitespace-nowrap" title={balance > 0 && balance < PAID_TOLERANCE ? `Settled — ${peso(balance)} is centavo rounding across the schedule, not a balance` : `${pct}% of principal repaid`}>
+                        <div className="font-semibold" style={{ color: balance >= PAID_TOLERANCE ? 'var(--charcoal)' : '#166534' }}>{balance >= PAID_TOLERANCE ? peso(balance) : 'Settled'}</div>
                         <div className="mt-1 h-1.5 w-24 ml-auto rounded-full overflow-hidden" style={{ background: 'var(--light-gray)' }}>
                           <div className="h-full rounded-full" style={{ width: `${pct}%`, background: pct >= 100 ? '#16a34a' : 'var(--teal)' }} />
                         </div>
@@ -215,7 +222,7 @@ function AdvanceModal({ row, shareholders, banks, accts, onClose, onSaved }: { r
   // (DR advances liability / CR bank) recorded as a PAID payout with its proof.
   const paidPrincipal = row?.paidPrincipal || 0
   const remaining = row ? Math.max(0, Math.round((row.principalAmount - paidPrincipal) * 100) / 100) : 0
-  const settled = !!row && remaining <= 0.005
+  const settled = !!row && remaining < PAID_TOLERANCE
   // `fee`: optional pre-termination fee / extra interest paid on top of the remaining
   // principal (e.g. a lender's 5% early-settlement charge). Booked to the advance's
   // interest expense account; the bank is credited remaining + fee.
@@ -457,7 +464,7 @@ function LoansTab({ shareholders, banks, accts }: { shareholders: SH[]; banks: B
   const [showAdd, setShowAdd] = useState(false)
   // Fully repaid loans are hidden by default; the tickbox brings them back.
   const [showPaid, setShowPaid] = useState(false)
-  const isPaid = (r: LoanRow) => r.principalAmount > 0 && (r.paidPrincipal || 0) >= r.principalAmount - 0.005
+  const isPaid = (r: LoanRow) => r.principalAmount > 0 && (r.paidPrincipal || 0) >= r.principalAmount - PAID_TOLERANCE
   const paidCount = rows.filter(isPaid).length
   const visible = showPaid ? rows : rows.filter(r => !isPaid(r))
   const load = useCallback(async () => { setLoading(true); try { const r = await fetch('/api/loans/loans'); const j = r.ok ? await r.json() : null; setRows(j?.rows || []) } catch { setRows([]) } finally { setLoading(false) } }, [])
