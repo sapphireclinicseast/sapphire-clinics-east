@@ -296,7 +296,7 @@ export const SECTIONS: Section[] = [
   {
     id: 'inventory', num: '4.4', group: 'Transactions', title: 'Inventory & Procurement', tag: 'Transactions',
     blocks: [
-      { k: 'p', t: `Manages **stock**: the item master, a classification dictionary, suppliers and purchase requests, stock adjustments and replenishment, inter-branch consignment transfers, live per-branch stock, and consumable-form control logs.` },
+      { k: 'p', t: `Manages **stock**: the item master, a classification dictionary, suppliers and purchase requests, stock adjustments and replenishment, inter-branch consignment transfers, live per-branch stock, consumable-form control logs, and the psychological test kits register.` },
       { k: 'sub', t: 'Tabs' },
       { k: 'ul', items: [
         `**Inventory** — the item list. **Add Item**, **Import CSV** (with **CSV Template**), print **Barcodes**, or bulk-edit. Click an item to see its movement history and purchase lots.`,
@@ -307,6 +307,7 @@ export const SECTIONS: Section[] = [
         `**Consignments** — **New Transfer** stock between branches → **Approve** → **Receive** at the destination; **Generate Transmittal Form PDF**.`,
         `**Branch Stock** — a live, read-only matrix of In / Sold / Left per branch.`,
         `**Forms** — log receipts of controlled consumable forms with their control-number range.`,
+        `**Psych Tests** — the register of psychological test kits at East and Greenhills, each marked **Hard copy** or **Online**. The branch psych heads keep it up to date from outside the hub (see below); staff with write access can also add and edit here.`,
       ] },
       { k: 'sub', t: 'Common tasks' },
       { k: 'steps', items: [
@@ -314,6 +315,13 @@ export const SECTIONS: Section[] = [
         `Count stock: **Adjustments → Inventory Audit**, key the **Actual Count**; shortages are deducted and overages added back.`,
         `Move stock between branches: **Consignments → New Transfer**, then **Approve**, then **Receive** at the other branch.`,
       ] },
+      { k: 'sub', t: 'Psych Tests — how the psych heads update it' },
+      { k: 'steps', items: [
+        `Open **accounting.sapphireclinicseast.org/psych-tests** on any device — no hub login needed.`,
+        `Enter the access code **scei** (asked once per device) and type **your name** — it is stamped on every change.`,
+        `**+ Add test** under the right branch, pick **Hard copy** or **Online**, and fill in the quantity, supplier and remarks as needed. Edits save straight into this tab.`,
+      ] },
+      { k: 'note', label: 'Sharing.', t: `The **Psych Tests** tab shows the link and access code with a **Copy** button, ready to send. Both branches are visible to both psych heads by design.` },
     ],
   },
   {
