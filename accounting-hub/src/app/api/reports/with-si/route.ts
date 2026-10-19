@@ -46,7 +46,14 @@ export async function GET(req: Request) {
       const isProduct = o.orderType === 'PRODUCT'
       return {
         id: o.id, orderNumber: o.orderNumber, siNumber: o.salesInvoiceNumber || '', siInt: n,
-        date: new Date(o.siDeclaredDate || o.transactionDate).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }),
+        // Actual sale date and the declared (SI-book) date travel separately —
+        // the grid shows both, and only the declared one is manually settable.
+        // The period FILTER above still goes by COALESCE(declared, actual).
+        date: new Date(o.transactionDate).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }),
+        declaredDate: o.siDeclaredDate
+          ? new Date(o.siDeclaredDate).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
+          : null,
+        src: 'ORDER' as const,
         patientName: o.patientName || '—',
         vat: isProduct ? amt : 0, nonVat: isProduct ? 0 : amt, amount: amt,
         orderType: o.orderType,
@@ -69,6 +76,9 @@ export async function GET(req: Request) {
       return {
         id: p.id, orderNumber: `AR-${p.wallet?.walletType || ''}`, siNumber: p.salesInvoiceNumber || '', siInt: siInt(p.salesInvoiceNumber),
         date: new Date(p.paymentDate).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }),
+        // AR collections carry no siDeclaredDate column — shown as "—", not editable.
+        declaredDate: null,
+        src: 'AR' as const,
         patientName: `${p.wallet?.patientName || '—'} (${p.wallet?.walletType || 'AR'})`,
         vat: 0, nonVat: amt, amount: amt,
         orderType: `AR_${p.wallet?.walletType || ''}`,

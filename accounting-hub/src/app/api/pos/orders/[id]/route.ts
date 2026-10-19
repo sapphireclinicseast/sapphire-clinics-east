@@ -176,6 +176,34 @@ export async function PUT(
       return NextResponse.json({ ok: true, salesInvoiceNumber: si })
     }
 
+    // Sales Summary → With SI: manually set (or clear) the DECLARED date on an
+    // order that already carries a Sales Invoice. The actual transactionDate
+    // and the GL stay untouched; With SI and the sales target re-attribute the
+    // sale to the new declared period (COALESCE(siDeclaredDate, transactionDate)).
+    if (body.action === 'setSiDeclaredDate') {
+      if (!existing.salesInvoiceNumber) {
+        return NextResponse.json({ error: `Order #${existing.orderNumber} has no Sales Invoice — declare one first.` }, { status: 400 })
+      }
+      const declared = body.declaredDate == null || body.declaredDate === '' ? null : String(body.declaredDate)
+      if (declared !== null && !/^\d{4}-\d{2}-\d{2}$/.test(declared)) {
+        return NextResponse.json({ error: 'Pick a valid declared date' }, { status: 400 })
+      }
+      await prisma.order.update({
+        where: { id },
+        data: { siDeclaredDate: declared ? new Date(`${declared}T12:00:00+08:00`) : null },
+      })
+      await prisma.auditLog.create({
+        data: {
+          userId: session.user.id,
+          action: 'UPDATE',
+          entity: 'order',
+          entityId: id,
+          details: { orderNumber: existing.orderNumber, setSiDeclaredDate: declared, si: existing.salesInvoiceNumber },
+        },
+      })
+      return NextResponse.json({ ok: true })
+    }
+
     // Handle status change actions (reopen / void / returnByBuyer)
     if (body.action === 'reopen' || body.action === 'void' || body.action === 'returnByBuyer') {
       const isReturn = body.action === 'returnByBuyer'
