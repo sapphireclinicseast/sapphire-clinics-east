@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { signOut } from 'next-auth/react'
-import { Menu, LogOut, ChevronDown } from 'lucide-react'
+import { Menu, LogOut, ChevronDown, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import GlobalSearch from './GlobalSearch'
 
 interface TopBarProps {
@@ -12,6 +12,8 @@ interface TopBarProps {
     role?: string
   }
   onMenuClick: () => void
+  sidebarCollapsed: boolean
+  onToggleSidebar: () => void
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -26,7 +28,7 @@ const ROLE_LABELS: Record<string, string> = {
   AHGH_FRONTDESK: 'AHGH Front Desk',
 }
 
-export default function TopBar({ user, onMenuClick }: TopBarProps) {
+export default function TopBar({ user, onMenuClick, sidebarCollapsed, onToggleSidebar }: TopBarProps) {
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
@@ -52,6 +54,16 @@ export default function TopBar({ user, onMenuClick }: TopBarProps) {
       className="sticky top-0 z-30 flex items-center justify-between px-4 lg:px-6 h-16 border-b"
       style={{ background: 'white', borderColor: 'var(--light-gray)' }}
     >
+      {/* Desktop: hide/show the sidebar for a bigger work area (also ⌘/Ctrl+B) */}
+      <button
+        onClick={onToggleSidebar}
+        className="hidden lg:inline-flex p-2 rounded-lg hover:bg-gray-100"
+        style={{ color: 'var(--charcoal)' }}
+        title={sidebarCollapsed ? 'Show sidebar (⌘/Ctrl+B)' : 'Hide sidebar (⌘/Ctrl+B)'}
+        aria-label={sidebarCollapsed ? 'Show sidebar' : 'Hide sidebar'}
+      >
+        {sidebarCollapsed ? <PanelLeftOpen size={20} /> : <PanelLeftClose size={20} />}
+      </button>
       <button
         onClick={onMenuClick}
         className="lg:hidden p-2 rounded-lg hover:bg-gray-100"

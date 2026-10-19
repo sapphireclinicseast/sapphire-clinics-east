@@ -144,9 +144,11 @@ interface SidebarProps {
   userRole?: string
   open: boolean
   onClose: () => void
+  /** Desktop collapse — slides the rail off-canvas so the work area gets the full width. */
+  collapsed?: boolean
 }
 
-export default function Sidebar({ userRole, open, onClose }: SidebarProps) {
+export default function Sidebar({ userRole, open, onClose, collapsed = false }: SidebarProps) {
   const pathname = usePathname()
 
   return (
@@ -162,9 +164,10 @@ export default function Sidebar({ userRole, open, onClose }: SidebarProps) {
       <aside
         className={`
           fixed top-0 left-0 z-50 h-full w-64 flex flex-col
-          transition-transform duration-200 ease-in-out
+          transition-[transform,margin] duration-300 ease-in-out
           lg:translate-x-0 lg:static lg:z-auto
           ${open ? 'translate-x-0' : '-translate-x-full'}
+          ${collapsed ? 'lg:-ml-64' : 'lg:ml-0'}
         `}
         style={{ background: 'var(--charcoal)' }}
       >
