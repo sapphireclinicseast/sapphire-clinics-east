@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { Brain, Copy, Link2, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
+import { Brain, Copy, Link2, Pencil, Plus, Trash2 } from 'lucide-react'
 
 /**
  * Inventory → Psych Tests.
@@ -76,31 +76,15 @@ export default function PsychTestsPanel({ canWrite }: { canWrite: boolean }) {
 
   useEffect(() => { load() }, [load])
 
-  useEffect(() => {
-    if (!canWrite) return
-    fetch('/api/inventory/psych-tests/link')
-      .then(r => (r.ok ? r.json() : null))
-      .then(d => { if (d?.token) setShareUrl(`${window.location.origin}/psych-tests/${d.token}`) })
-      .catch(() => {})
-  }, [canWrite])
+  // The easy address, gated by the shared access code on the page itself.
+  useEffect(() => { setShareUrl(`${window.location.origin}/psych-tests`) }, [])
 
   const copyLink = async () => {
     try {
-      await navigator.clipboard.writeText(shareUrl)
+      await navigator.clipboard.writeText(`${shareUrl} (access code: scei)`)
       setCopied(true)
       setTimeout(() => setCopied(false), 1800)
     } catch { /* clipboard may be unavailable; the URL is visible to select */ }
-  }
-
-  const regenerateLink = async () => {
-    if (!window.confirm('Regenerate the external edit link? The old link stops working for the psych heads immediately.')) return
-    try {
-      const r = await fetch('/api/inventory/psych-tests/link', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ regenerate: true }),
-      })
-      const d = await r.json()
-      if (r.ok && d.token) setShareUrl(`${window.location.origin}/psych-tests/${d.token}`)
-    } catch { /* leave the old link showing */ }
   }
 
   const openCreate = () => { setForm({ ...emptyForm }); setShowModal(true) }
@@ -189,21 +173,17 @@ export default function PsychTestsPanel({ canWrite }: { canWrite: boolean }) {
           style={{ borderColor: '#cddcd6', background: '#f4f8f6' }}>
           <Link2 size={16} style={{ color: 'var(--teal)' }} />
           <div className="flex-1 min-w-[220px]">
-            <p className="text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>External edit link for the psych heads</p>
+            <p className="text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>
+              External edit link for the psych heads · access code: <span style={{ color: 'var(--teal)' }}>scei</span>
+            </p>
             <p className="text-xs break-all" style={{ color: 'var(--mid-gray)' }}>
-              {shareUrl || 'Generating…'}
+              {shareUrl || '…'}
             </p>
           </div>
           <button onClick={copyLink} disabled={!shareUrl}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border disabled:opacity-50"
             style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
-            <Copy size={13} /> {copied ? 'Copied!' : 'Copy link'}
-          </button>
-          <button onClick={regenerateLink}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border"
-            style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}
-            title="Invalidate the current link and issue a new one">
-            <RefreshCw size={13} /> Regenerate
+            <Copy size={13} /> {copied ? 'Copied!' : 'Copy link + code'}
           </button>
         </div>
       )}
