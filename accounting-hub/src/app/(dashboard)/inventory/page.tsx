@@ -42,6 +42,7 @@ import { downloadXlsx, downloadPdf } from '@/lib/export'
 import { ScanUpload } from '@/components/ScanUpload'
 import BranchStockPanel from './BranchStockPanel'
 import SkuGuidePanel from './SkuGuidePanel'
+import PsychTestsPanel from './PsychTestsPanel'
 import { SKU_HIERARCHY } from '@/lib/sku-taxonomy'
 import DownloadMenu from '@/components/ui/DownloadMenu'
 import Pagination from '@/components/ui/Pagination'
@@ -348,7 +349,7 @@ const CURRENCIES = [
   { value: 'INR', label: 'INR — Indian Rupee' },
 ]
 
-const TABS = ['Inventory', 'SKU Guide', 'Suppliers', 'Supplier Request', 'Adjustments', 'Consignments', 'Branch Stock', 'Forms'] as const
+const TABS = ['Inventory', 'SKU Guide', 'Suppliers', 'Supplier Request', 'Adjustments', 'Consignments', 'Branch Stock', 'Forms', 'Psych Tests'] as const
 type Tab = (typeof TABS)[number]
 
 const STATUS_BADGE: Record<string, { bg: string; color: string }> = {
@@ -6623,6 +6624,9 @@ setTimeout(()=>window.print(),500);
         </>
         )
       })()}
+
+      {/* ── Psych Tests — the psych heads' register, hard copy vs online ── */}
+      {activeTab === 'Psych Tests' && <PsychTestsPanel canWrite={canWrite} />}
     </div>
   )
 }

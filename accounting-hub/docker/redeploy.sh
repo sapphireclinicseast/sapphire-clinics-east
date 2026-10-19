@@ -131,6 +131,30 @@ CREATE TABLE IF NOT EXISTS "FormDistribution" (
 CREATE INDEX IF NOT EXISTS "FormDistribution_branch_idx" ON "FormDistribution"("branch");
 CREATE INDEX IF NOT EXISTS "FormDistribution_formType_idx" ON "FormDistribution"("formType");
 CREATE INDEX IF NOT EXISTS "FormDistribution_partnerName_idx" ON "FormDistribution"("partnerName");
+CREATE TABLE IF NOT EXISTS "PsychTest" (
+    "id"            TEXT NOT NULL,
+    "branch"        TEXT NOT NULL,
+    "name"          TEXT NOT NULL,
+    "format"        TEXT NOT NULL,
+    "quantity"      INTEGER,
+    "supplier"      TEXT,
+    "acquiredDate"  TIMESTAMP(3),
+    "remarks"       TEXT,
+    "updatedByName" TEXT,
+    "createdById"   TEXT,
+    "createdAt"     TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt"     TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "PsychTest_pkey" PRIMARY KEY ("id")
+);
+CREATE INDEX IF NOT EXISTS "PsychTest_branch_idx" ON "PsychTest"("branch");
+CREATE INDEX IF NOT EXISTS "PsychTest_format_idx" ON "PsychTest"("format");
+CREATE TABLE IF NOT EXISTS "PsychTestSettings" (
+    "id"        TEXT NOT NULL,
+    "editToken" TEXT NOT NULL,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "PsychTestSettings_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "PsychTestSettings_editToken_key" ON "PsychTestSettings"("editToken");
 CREATE TABLE IF NOT EXISTS "PosSettlementBatch" (
     "id"                TEXT NOT NULL,
     "bankTransactionId" TEXT NOT NULL,

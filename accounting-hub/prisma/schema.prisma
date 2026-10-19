@@ -4098,3 +4098,33 @@ model PatientViewCheckout {
 
   @@index([active])
 }
+
+// Inventory → Psych Tests: psychological test kits per clinic branch, kept by
+// the branch psych heads through a token-gated public page (no hub login) and
+// mirrored in the hub. `format` says how the test was purchased: a physical
+// kit (HARD_COPY) or an online subscription/credit (ONLINE).
+model PsychTest {
+  id            String    @id @default(cuid())
+  branch        String // SANDBOX_EAST | SANDBOX_GREENHILLS
+  name          String
+  format        String // HARD_COPY | ONLINE
+  quantity      Int?
+  supplier      String?
+  acquiredDate  DateTime?
+  remarks       String?
+  updatedByName String? // psych head's typed name, or the hub user's
+  createdById   String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([branch])
+  @@index([format])
+}
+
+// The shareable edit token for the external psych-tests page. One link for
+// both psych heads; regenerating it revokes the old link everywhere.
+model PsychTestSettings {
+  id        String   @id @default("singleton")
+  editToken String   @unique
+  updatedAt DateTime @default(now()) @updatedAt
+}
