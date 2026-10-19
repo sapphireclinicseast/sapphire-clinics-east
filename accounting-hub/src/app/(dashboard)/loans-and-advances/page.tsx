@@ -204,7 +204,11 @@ function AdvanceModal({ row, shareholders, banks, accts, onClose, onSaved }: { r
   const paidPrincipal = row?.paidPrincipal || 0
   const remaining = row ? Math.max(0, Math.round((row.principalAmount - paidPrincipal) * 100) / 100) : 0
   const settled = !!row && remaining <= 0.005
-  const [fp, setFp] = useState({ on: false, paidDate: new Date().toISOString().slice(0, 10), bankAccountId: row?.paymentBankAccountId || row?.bankAccountId || '', memo: '' })
+  // `fee`: optional pre-termination fee / extra interest paid on top of the remaining
+  // principal (e.g. a lender's 5% early-settlement charge). Booked to the advance's
+  // interest expense account; the bank is credited remaining + fee.
+  const [fp, setFp] = useState({ on: false, paidDate: new Date().toISOString().slice(0, 10), bankAccountId: row?.paymentBankAccountId || row?.bankAccountId || '', memo: '', fee: '' })
+  const fpFee = Math.max(0, Math.round((Number(fp.fee) || 0) * 100) / 100)
   const [fpProofs, setFpProofs] = useState<string[]>([])
   // "Pay one-time": stored as a MONTHLY schedule with a single payment (termMonths 1)
   // on the chosen month/year — no field of its own, so it round-trips losslessly.
@@ -238,7 +242,7 @@ function AdvanceModal({ row, shareholders, banks, accts, onClose, onSaved }: { r
       const r = await fetch('/api/loans/advances', { method: row ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       if (!r.ok) { alert((await r.json()).error || 'Failed'); return }
       if (fp.on && row && !settled) {
-        const rs = await fetch('/api/loans/advances/settle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: row.id, paidDate: fp.paidDate, bankAccountId: fp.bankAccountId, proofUrls: fpProofs, memo: fp.memo }) })
+        const rs = await fetch('/api/loans/advances/settle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: row.id, paidDate: fp.paidDate, bankAccountId: fp.bankAccountId, proofUrls: fpProofs, memo: fp.memo, fee: fpFee }) })
         if (!rs.ok) { alert((await rs.json()).error || 'The advance saved, but the settlement failed.'); return }
       }
       onSaved()
@@ -362,9 +366,12 @@ function AdvanceModal({ row, shareholders, banks, accts, onClose, onSaved }: { r
                       <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Proof of payment</label>
                         <div className="flex flex-wrap items-center gap-2">{fpProofs.map((u, i) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="text-xs inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>)}<ScanUpload compact section="advance" prefix={`${prefix}-FULLYPAID`} existingCount={fpProofs.length} label="Add" onUploaded={u => setFpProofs(p => [...p, u])} /></div>
                       </div>
-                      <div className="col-span-2 sm:col-span-3"><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Memo <span className="font-normal text-gray-400">(optional — reads in the books)</span></label><input value={fp.memo} onChange={e => setFp(p => ({ ...p, memo: e.target.value }))} className={inp} style={bc} /></div>
+                      <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Pre-termination fee / extra interest <span className="font-normal text-gray-400">(optional)</span></label><input value={fp.fee} onChange={e => setFp(p => ({ ...p, fee: e.target.value }))} inputMode="decimal" placeholder="0.00" className={inp + ' font-mono'} style={bc} />
+                        {fpFee > 0 && <p className="text-[10px] mt-1" style={{ color: 'var(--mid-gray)' }}>Total paid out: {peso(remaining + fpFee)} ({peso(remaining)} principal + {peso(fpFee)} fee → {f.interestExpenseAccountId ? (accts.find(a2 => a2.id === f.interestExpenseAccountId)?.accountTitle || 'interest expense') : 'set the Interest Expense account above'})</p>}
+                      </div>
+                      <div className="col-span-2"><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Memo <span className="font-normal text-gray-400">(optional — reads in the books)</span></label><input value={fp.memo} onChange={e => setFp(p => ({ ...p, memo: e.target.value }))} className={inp} style={bc} /></div>
                     </div>
-                    {f.creditAccountId && fp.bankAccountId && <p className="text-[11px] mt-2 font-mono" style={{ color: '#334155' }}>On save: DR {accts.find(a2 => a2.id === f.creditAccountId)?.accountTitle} {peso(remaining)} / CR {banks.find(b2 => b2.id === fp.bankAccountId)?.accountTitle} {peso(remaining)}</p>}
+                    {f.creditAccountId && fp.bankAccountId && <p className="text-[11px] mt-2 font-mono" style={{ color: '#334155' }}>On save: DR {accts.find(a2 => a2.id === f.creditAccountId)?.accountTitle} {peso(remaining)}{fpFee > 0 ? ` / DR ${accts.find(a2 => a2.id === f.interestExpenseAccountId)?.accountTitle || 'Interest Expense'} ${peso(fpFee)}` : ''} / CR {banks.find(b2 => b2.id === fp.bankAccountId)?.accountTitle} {peso(remaining + fpFee)}</p>}
                   </div>
                 )}
               </>

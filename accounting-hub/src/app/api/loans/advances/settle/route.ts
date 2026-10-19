@@ -31,6 +31,12 @@ export async function POST(req: Request) {
     const paidDate = b.paidDate ? new Date(b.paidDate) : new Date()
     const proofUrls = Array.isArray(b.proofUrls) ? b.proofUrls : []
     const memo = typeof b.memo === 'string' && b.memo.trim() ? b.memo.trim().slice(0, 500) : null
+    // Optional pre-termination fee / extra interest paid on top of the remaining
+    // principal (a lender's early-settlement charge). It is a financing cost, so it
+    // goes to the advance's interest expense account; the bank pays principal + fee.
+    const fee = r2(Math.max(0, num(b.fee)))
+    if (fee > 0 && !advance.interestExpenseAccountId) return NextResponse.json({ error: 'Set the "Interest Expense" account on the advance first — the pre-termination fee is booked there.' }, { status: 400 })
+    const total = r2(remaining + fee)
     // Same branch rule as scheduled payments: dedicated to one branch → book there.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const allocs = Array.isArray(advance.branchAllocations) ? (advance.branchAllocations as any[]).filter(a => a?.branch && Number(a?.amount) > 0) : []
@@ -42,16 +48,17 @@ export async function POST(req: Request) {
         referenceType: 'ADVANCE_PAYMENT', referenceId: advance.id, branch: jeBranch, createdById: userId,
         lines: [
           { accountId: advance.creditAccountId as string, debit: remaining, description: 'Advance settled in full' },
-          { accountId: b.bankAccountId, credit: remaining, description: `Advance fully paid — ${advance.name}` },
+          ...(fee > 0 ? [{ accountId: advance.interestExpenseAccountId as string, debit: fee, description: `Pre-termination fee — ${advance.name}` }] : []),
+          { accountId: b.bankAccountId, credit: total, description: `Advance fully paid — ${advance.name}` },
         ],
       })
       return tx.advancePayout.create({ data: {
-        advanceId: advance.id, dueDate: paidDate, principalPortion: remaining, interestPortion: 0, amount: remaining,
+        advanceId: advance.id, dueDate: paidDate, principalPortion: remaining, interestPortion: fee, amount: total,
         status: 'PAID', paidDate, bankAccountId: b.bankAccountId, proofUrls, memo: memo || 'Fully paid — settlement',
         journalEntryId: je.id, createdById: userId,
       } })
     })
-    return NextResponse.json({ id: rec.id, amount: remaining })
+    return NextResponse.json({ id: rec.id, amount: total, principal: remaining, fee })
   } catch (e) {
     console.error('Advance settle error:', e)
     return NextResponse.json({ error: e instanceof Error ? e.message : 'Failed to settle advance' }, { status: 500 })
