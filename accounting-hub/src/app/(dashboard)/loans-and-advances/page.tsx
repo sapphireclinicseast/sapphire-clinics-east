@@ -24,6 +24,7 @@ interface AdvanceRow {
   pdcUrls: string[] | null; remarks: string | null
   branchAllocations: BranchAlloc[] | null
   paidPrincipal?: number
+  paidInterest?: number; paidTotal?: number; paidCount?: number; lastPaidDate?: string | null
 }
 
 export default function LoansAndAdvancesPage() {
@@ -85,12 +86,20 @@ export default function LoansAndAdvancesPage() {
             <table ref={advTableRef} className="w-full text-xs" style={advRz.tableStyle}>
               <ResizableColgroup rz={advRz} />
               <thead><tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
-                {['SH #', 'Name', 'Date', 'Type', 'Principal', 'Branch', 'Interest', 'Schedule', 'Bank Debited', 'Proofs', ''].map((h, i) => <th key={h} className="px-3 py-2.5 font-semibold whitespace-nowrap relative">{h}<ColResizeHandle rz={advRz} index={i} /></th>)}
+                {['SH #', 'Name', 'Date', 'Type', 'Principal', 'Paid so far', 'Balance', 'Branch', 'Interest', 'Schedule', 'Bank Debited', 'Proofs', ''].map((h, i) => <th key={h} className="px-3 py-2.5 font-semibold whitespace-nowrap relative">{h}<ColResizeHandle rz={advRz} index={i} /></th>)}
               </tr></thead>
               <tbody>
-                {loading ? <tr><td colSpan={11} className="text-center py-10 text-gray-400"><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
+                {loading ? <tr><td colSpan={13} className="text-center py-10 text-gray-400"><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
                 : rows.map(r => {
                   const sh = shareholders.find(s => s.id === r.shareholderId)
+                  // Running balance: principal repaid so far vs what is still owed. Many of these
+                  // advances are months into their schedule, so the row shows progress, not just the
+                  // original principal.
+                  const paidP = r.paidPrincipal || 0
+                  const balance = Math.max(0, Math.round((r.principalAmount - paidP) * 100) / 100)
+                  const pct = r.principalAmount > 0 ? Math.min(100, Math.round(paidP / r.principalAmount * 100)) : 0
+                  const termN = r.termMonths && r.termMonths > 0 ? Math.round(r.termMonths) : null
+                  const paidWhen = r.lastPaidDate ? String(r.lastPaidDate).slice(0, 10) : null
                   return (
                     <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
                       <td className="px-3 py-2 font-mono">{sh?.shNumber || '—'}</td>
@@ -98,6 +107,18 @@ export default function LoansAndAdvancesPage() {
                       <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{String(r.dateAcquired).slice(0, 10)}</td>
                       <td className="px-3 py-2">{r.advanceType === 'KIND' ? `Kind${r.kindType ? ` · ${r.kindType}` : ''}` : 'Cash'}</td>
                       <td className="px-3 py-2 text-right font-semibold">{peso(r.principalAmount)}</td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap" title={paidWhen ? `Last payment ${paidWhen}${r.paidInterest ? ` · interest paid so far ${peso(r.paidInterest)}` : ''}` : 'No payments recorded yet'}>
+                        {paidP > 0 ? <>
+                          <div className="font-semibold" style={{ color: '#166534' }}>{peso(paidP)}</div>
+                          <div className="text-[10px]" style={{ color: 'var(--mid-gray)' }}>{r.paidCount || 0}{termN ? ` of ${termN}` : ''} payment{(r.paidCount || 0) === 1 ? '' : 's'}{paidWhen ? ` · last ${paidWhen}` : ''}</div>
+                        </> : <span style={{ color: 'var(--mid-gray)' }}>—</span>}
+                      </td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap" title={`${pct}% of principal repaid`}>
+                        <div className="font-semibold" style={{ color: balance > 0 ? 'var(--charcoal)' : '#166534' }}>{balance > 0 ? peso(balance) : 'Settled'}</div>
+                        <div className="mt-1 h-1.5 w-24 ml-auto rounded-full overflow-hidden" style={{ background: 'var(--light-gray)' }}>
+                          <div className="h-full rounded-full" style={{ width: `${pct}%`, background: pct >= 100 ? '#16a34a' : 'var(--teal)' }} />
+                        </div>
+                      </td>
                       <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{(r.branchAllocations || []).length
                         ? (r.branchAllocations || []).map(a => (r.branchAllocations || []).length === 1 ? allocLabel(a.branch) : `${allocLabel(a.branch)} ${peso(a.amount)}`).join(' · ')
                         : 'Company-wide'}</td>

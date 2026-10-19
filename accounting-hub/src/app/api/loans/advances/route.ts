@@ -65,14 +65,20 @@ export async function GET() {
   const [rows, shareholders, paidSums] = await Promise.all([
     prisma.advance.findMany({ orderBy: { createdAt: 'desc' } }),
     prisma.shareholder.findMany({ orderBy: { shSeq: 'asc' }, select: { id: true, shNumber: true, name: true, email: true } }),
-    prisma.advancePayout.groupBy({ by: ['advanceId'], _sum: { principalPortion: true } }),
+    // Only PAID payouts count toward the running balance; a scheduled (PENDING) row is not money received.
+    prisma.advancePayout.groupBy({ by: ['advanceId'], where: { status: 'PAID' }, _sum: { principalPortion: true, interestPortion: true, amount: true }, _count: { _all: true }, _max: { paidDate: true, dueDate: true } }),
   ])
-  // Principal already repaid per advance — drives the "Fully Paid" state in the UI.
+  // Running balance per advance — drives the "Fully Paid" badge and the Paid / Balance columns in the UI.
   const paidBy = new Map(paidSums.map(p => [p.advanceId, num(p._sum.principalPortion)]))
+  const paidInfo = new Map(paidSums.map(p => [p.advanceId, {
+    paidInterest: num(p._sum.interestPortion), paidTotal: num(p._sum.amount), paidCount: p._count._all,
+    lastPaidDate: p._max.paidDate ?? p._max.dueDate ?? null,
+  }]))
   return NextResponse.json({
     rows: rows.map(a => ({ ...a, principalAmount: num(a.principalAmount), annualPct: a.annualPct != null ? num(a.annualPct) : null,
       monthlyAmortization: a.monthlyAmortization != null ? num(a.monthlyAmortization) : null, computedAnnualPct: a.computedAnnualPct != null ? num(a.computedAnnualPct) : null,
-      totalInterest: a.totalInterest != null ? num(a.totalInterest) : null, paidPrincipal: paidBy.get(a.id) || 0 })),
+      totalInterest: a.totalInterest != null ? num(a.totalInterest) : null, paidPrincipal: paidBy.get(a.id) || 0,
+      paidInterest: paidInfo.get(a.id)?.paidInterest || 0, paidTotal: paidInfo.get(a.id)?.paidTotal || 0, paidCount: paidInfo.get(a.id)?.paidCount || 0, lastPaidDate: paidInfo.get(a.id)?.lastPaidDate || null })),
     shareholders,
   })
 }
