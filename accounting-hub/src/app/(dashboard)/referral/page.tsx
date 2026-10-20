@@ -530,7 +530,7 @@ function ReferralCommissionPanel() {
     const head = ['Referrer', 'Specialization', 'In-house', 'Basis', 'Patients', 'Sessions', 'Rate', 'Commission']
     const body = shown.map(r => [r.name, r.specialization || '', r.isInhouse ? 'Yes' : '', r.basis === 'PATIENT' ? 'Per patient' : 'Per session', r.patients, r.basis === 'PATIENT' ? '' : r.sessions, r.rate != null ? r.rate.toFixed(2) : 'no commission set', r.commission.toFixed(2)])
     const csv = [head, ...body].map(line => line.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
-    const blob = new Blob([csv], { type: 'text/csv' })
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' }) // BOM so Excel reads UTF-8 (₱, —, ñ)
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `referral-commission_${from}_${to}.csv`; a.click(); URL.revokeObjectURL(a.href)
   }
 

@@ -68,7 +68,7 @@ function downloadCsv(rows: SalesSummaryRow[], filename: string) {
     headers.map(escapeCsv).join(','),
     ...rows.map(r => [
       escapeCsv(r.date),
-      escapeCsv(r.migrated || r.ar ? '—' : r.orderNumber),
+      escapeCsv(r.migrated || r.ar ? '' : r.orderNumber),
       escapeCsv(r.patientName),
       escapeCsv(r.serviceAvailed),
       escapeCsv(r.quantity),
@@ -77,7 +77,9 @@ function downloadCsv(rows: SalesSummaryRow[], filename: string) {
       escapeCsv(r.netAmount.toFixed(2)),
     ].join(',')),
   ]
-  const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' })
+  // UTF-8 byte-order mark: without it Excel decodes the file as Windows-1252 and
+  // every em dash / peso sign / ñ turns into "‚Äî"-style garbage.
+  const blob = new Blob(['\ufeff' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url

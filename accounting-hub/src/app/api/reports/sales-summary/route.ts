@@ -113,12 +113,15 @@ export async function GET(req: Request) {
     const migratedRows = flags.flatMap(f => {
       const info = parseMonitoringRemark(f.remarks)
       if (!info || info.amount == null || info.amount <= 0) return []
-      if (info.date) {
-        if (dateFrom && info.date < dateFrom) return []
-        if (dateTo && info.date > dateTo) return []
+      // Workbook date first; a declared (SI-book) date set on the row in With SI
+      // fills in for the many workbook lines that carried no date at all.
+      const bookDate = info.date || (f.declaredDate ? new Date(f.declaredDate).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }) : null)
+      if (bookDate) {
+        if (dateFrom && bookDate < dateFrom) return []
+        if (dateTo && bookDate > dateTo) return []
       }
-      const date = info.date
-        ? new Date(`${info.date}T12:00:00+08:00`).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' })
+      const date = bookDate
+        ? new Date(`${bookDate}T12:00:00+08:00`).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' })
         : '—'
       return [{
         date,

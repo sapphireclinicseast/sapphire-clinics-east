@@ -10138,7 +10138,7 @@ function SalesSummarySection({ branch, canSelectBranch }: { branch: string; canS
       ])
     })
     const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n')
-    const blob = new Blob([csv], { type: 'text/csv' })
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' }) // BOM so Excel reads UTF-8 (₱, —, ñ)
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
