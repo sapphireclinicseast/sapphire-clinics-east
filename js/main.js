@@ -22,11 +22,12 @@ const SITE_CONFIG = {
 
   /* ── Hero Slides (images from WEBSITE BACKGROUND folder) ── */
   heroSlides: [
-    'WEBSITE BACKGROUND/1.png',
-    'WEBSITE BACKGROUND/2.png',
-    'WEBSITE BACKGROUND/8.png',
-    'WEBSITE BACKGROUND/17.png',
-    'WEBSITE BACKGROUND/22.png',
+    'WEBSITE BACKGROUND/hdr1.jpg',
+    'WEBSITE BACKGROUND/hdr2.jpg',
+    'WEBSITE BACKGROUND/hdr3.jpg',
+    'WEBSITE BACKGROUND/hdr4.jpg',
+    'WEBSITE BACKGROUND/hdr5.jpg',
+    'WEBSITE BACKGROUND/hdr6.jpg',
   ],
   heroSlideInterval: 5000,   // ms between slides
 
@@ -107,21 +108,24 @@ const SITE_CONFIG = {
         'Orthosis and Prosthesis Fabrication',
       ],
       facilities: [
-        { name: 'Pediatric Gym',        img: 'AHEA FACILITY PHOTOS/PEDIATRIC GYM.png' },
-        { name: 'Pediatric Gym II',     img: 'AHEA FACILITY PHOTOS/PEDIATRIC GYM-2.png' },
-        { name: 'Pediatric Rooms',      img: 'AHEA FACILITY PHOTOS/PEDIATRIC ROOMS.png' },
-        { name: 'SPED Room',            img: 'AHEA FACILITY PHOTOS/SPED ROOM.png' },
-        { name: 'Adult Therapy Room 1', img: 'AHEA FACILITY PHOTOS/ADULT THERAPY ROOM 1.png' },
-        { name: 'Adult Therapy Room 2', img: 'AHEA FACILITY PHOTOS/ADULT THERAPY ROOM 2.png' },
-        { name: 'Adult Therapy Room 3', img: 'AHEA FACILITY PHOTOS/ADULT THERAPY ROOM 3.png' },
-        { name: 'Cubicles Room',        img: 'AHEA FACILITY PHOTOS/CUBICLES ROOM.png' },
-        { name: 'Cubicles Room II',     img: 'AHEA FACILITY PHOTOS/CUBICLES ROOM-2.png' },
-        { name: 'Multisensory Room',    img: 'AHEA FACILITY PHOTOS/MULTISENSORY ROOM.png' },
-        { name: 'Psychotherapy Room',   img: 'AHEA FACILITY PHOTOS/PSYCHOTHERAPY ROOM.png' },
-        { name: 'Consultation Suite',   img: 'AHEA FACILITY PHOTOS/CONSULTATION SUITE.png' },
-        { name: 'Adult Therapy Gym',    img: 'AHEA FACILITY PHOTOS/ADULT THERAPY GYM.png' },
-        { name: 'Pantry',               img: 'AHEA FACILITY PHOTOS/PANTRY.png' },
-        { name: 'Feedback Board',       img: 'AHEA FACILITY PHOTOS/FEEDBACK BOARD.png' },
+        { name: 'Reception', img: 'AHEA FACILITY PHOTOS/RECEPTION-1.jpg' },
+        { name: 'Reception', img: 'AHEA FACILITY PHOTOS/RECEPTION-2.jpg' },
+        { name: 'Pediatric Gym', img: 'AHEA FACILITY PHOTOS/PEDIATRIC GYM-1.jpg' },
+        { name: 'Pediatric Gym', img: 'AHEA FACILITY PHOTOS/PEDIATRIC GYM-2.jpg' },
+        { name: 'Pediatric Gym', img: 'AHEA FACILITY PHOTOS/PEDIATRIC GYM-3.jpg' },
+        { name: 'Multisensory Room', img: 'AHEA FACILITY PHOTOS/MULTISENSORY ROOM-1.jpg' },
+        { name: 'Multisensory Room', img: 'AHEA FACILITY PHOTOS/MULTISENSORY ROOM-2.jpg' },
+        { name: 'Adult Therapy Gym', img: 'AHEA FACILITY PHOTOS/ADULT THERAPY GYM-1.jpg' },
+        { name: 'Adult Therapy Gym', img: 'AHEA FACILITY PHOTOS/ADULT THERAPY GYM-3.jpg' },
+        { name: 'Adult Therapy Room', img: 'AHEA FACILITY PHOTOS/ADULT THERAPY ROOM 1.jpg' },
+        { name: 'Adult Therapy Room', img: 'AHEA FACILITY PHOTOS/ADULT THERAPY ROOM 2.jpg' },
+        { name: 'Cubicles Room', img: 'AHEA FACILITY PHOTOS/CUBICLES ROOM-1.jpg' },
+        { name: 'Cubicles Room', img: 'AHEA FACILITY PHOTOS/CUBICLES ROOM-2.jpg' },
+        { name: 'Psychotherapy Room', img: 'AHEA FACILITY PHOTOS/PSYCHOTHERAPY ROOM-1.jpg' },
+        { name: 'Consultation Suite', img: 'AHEA FACILITY PHOTOS/CONSULTATION SUITE.jpg' },
+        { name: 'SPED Room', img: 'AHEA FACILITY PHOTOS/SPED ROOM.jpg' },
+        { name: 'Pediatric Rooms', img: 'AHEA FACILITY PHOTOS/PEDIATRIC ROOMS.jpg' },
+        { name: 'Corridor', img: 'AHEA FACILITY PHOTOS/CORRIDOR.jpg' },
       ],
       facebook:  'https://www.facebook.com/aurahealthrehabeast',
       instagram: 'https://www.instagram.com/aurahealthrehabeast/',
@@ -212,7 +216,7 @@ function buildHeroSlides() {
     const div = document.createElement('div');
     div.className = 'hero-slide' + (i === 0 ? ' active' : '');
     // ?v cache-buster so refreshed background photos aren't served stale
-    div.style.backgroundImage = `url('${src}?v=19')`;
+    div.style.backgroundImage = `url('${src}?v=20')`;
     wrap.appendChild(div);
   });
 }
