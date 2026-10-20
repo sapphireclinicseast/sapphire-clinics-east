@@ -30,6 +30,8 @@ interface SalesSummaryRow {
   // Pre-hub invoice surfaced from the manual SI monitoring workbook (a
   // SalesInvoiceFlag, not an Order) — rendered without an order number.
   migrated?: boolean
+  // HMO / AR collection that was issued a Sales Invoice on payment (no POS order).
+  ar?: boolean
 }
 
 const BRANCHES = [
@@ -66,7 +68,7 @@ function downloadCsv(rows: SalesSummaryRow[], filename: string) {
     headers.map(escapeCsv).join(','),
     ...rows.map(r => [
       escapeCsv(r.date),
-      escapeCsv(r.migrated ? '—' : r.orderNumber),
+      escapeCsv(r.migrated || r.ar ? '—' : r.orderNumber),
       escapeCsv(r.patientName),
       escapeCsv(r.serviceAvailed),
       escapeCsv(r.quantity),
@@ -113,7 +115,7 @@ const reportSortVal = (r: SalesSummaryRow, k: string): string | number => {
 // Filter accessor — the displayed text a user types against.
 const reportFilterVal = (r: SalesSummaryRow, k: string): string => {
   switch (k) {
-    case 'orderNumber': return r.migrated ? '—' : `#${r.orderNumber}`
+    case 'orderNumber': return r.migrated || r.ar ? '—' : `#${r.orderNumber}`
     case 'grossAmount': return formatCurrency(r.grossAmount)
     case 'netAmount': return formatCurrency(r.netAmount)
     case 'quantity': return String(r.quantity)
@@ -160,7 +162,7 @@ function ReportTable({
     const head = REPORT_COLS.map((c, i) => `<th class="${i === 4 ? 'center' : i >= 6 ? 'right' : ''}">${c.label}</th>`).join('')
     const body = displayRows.map(r => `<tr>
       <td>${escHtml(r.date)}</td>
-      <td class="mono">${r.migrated ? '—' : `#${r.orderNumber}`}</td>
+      <td class="mono">${r.migrated || r.ar ? '—' : `#${r.orderNumber}`}</td>
       <td>${escHtml(r.patientName)}</td>
       <td>${escHtml(r.serviceAvailed)}</td>
       <td class="center">${r.quantity}</td>
@@ -248,10 +250,10 @@ function ReportTable({
                     <tr><td colSpan={8} className="px-4 py-8 text-center text-sm" style={{ color: 'var(--mid-gray)' }}>No rows match the current filters.</td></tr>
                   )}
                   {displayRows.map((row, i) => (
-                    <tr key={i} style={{ borderBottom: '1px solid var(--light-gray)', background: row.migrated ? '#fffbeb' : undefined }} className="hover:bg-gray-50"
-                      title={row.migrated ? 'Migrated from the manual SI monitoring workbook (pre-hub invoice — no POS order)' : undefined}>
+                    <tr key={i} style={{ borderBottom: '1px solid var(--light-gray)', background: row.migrated ? '#fffbeb' : row.ar ? '#eff6ff' : undefined }} className="hover:bg-gray-50"
+                      title={row.migrated ? 'Migrated from the manual SI monitoring workbook (pre-hub invoice — no POS order)' : row.ar ? 'HMO / AR collection issued a Sales Invoice on payment (Accounts Receivable → Record Payment — no POS order)' : undefined}>
                       <td className="px-4 py-3" style={{ color: 'var(--mid-gray)' }}>{row.date}</td>
-                      <td className="px-4 py-3 font-mono text-xs" style={{ color: 'var(--charcoal)' }}>{row.migrated ? '—' : `#${row.orderNumber}`}</td>
+                      <td className="px-4 py-3 font-mono text-xs" style={{ color: 'var(--charcoal)' }}>{row.migrated || row.ar ? '—' : `#${row.orderNumber}`}</td>
                       <td className="px-4 py-3 font-medium" style={{ color: 'var(--charcoal)' }}>{row.patientName}</td>
                       <td className="px-4 py-3" style={{ color: 'var(--charcoal)' }}>
                         <span className="flex items-center gap-1">

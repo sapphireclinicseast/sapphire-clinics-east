@@ -133,10 +133,47 @@ export async function GET(req: Request) {
         issuedOfficialInvoice: true,
         itemIssuedOfficialInvoice: false,
         migrated: true,
+        ar: false,
       }]
     })
 
-    return NextResponse.json({ rows: [...rows, ...migratedRows], count: rows.length + migratedRows.length, migratedCount: migratedRows.length })
+    /* ── HMO / AR collections issued a Sales Invoice on payment ─────────
+       Accounts Receivable → Record Payment can issue an SI; those invoices are
+       part of the same SI series the With-SI book counts, so the invoiced-only
+       view includes them (dated by payment date, like orders by sale date).
+       Gross of the waived discount — the invoice covers the full service value. */
+    const arRows: typeof migratedRows = []
+    if (invoicedOnly) {
+      const arPayments = await prisma.aRPayment.findMany({
+        where: {
+          salesInvoiceNumber: { not: null },
+          ...(branch && branch !== 'ALL' ? { branch } : {}),
+          ...(dateFrom || dateTo ? { paymentDate: { ...(dateFrom ? { gte: new Date(`${dateFrom}T00:00:00+08:00`) } : {}), ...(dateTo ? { lte: new Date(`${dateTo}T23:59:59.999+08:00`) } : {}) } } : {}),
+        },
+        orderBy: { paymentDate: 'asc' },
+        select: { id: true, salesInvoiceNumber: true, paymentDate: true, amount: true, discount: true, branch: true, wallet: { select: { patientName: true, walletType: true } } },
+      })
+      for (const p of arPayments) {
+        const gross = Number(p.amount) + Number(p.discount)
+        arRows.push({
+          date: new Date(p.paymentDate).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }),
+          orderNumber: 0,
+          patientName: `${p.wallet?.patientName || '—'} (${p.wallet?.walletType || 'AR'})`,
+          serviceAvailed: `HMO / AR collection — Sales Invoice issued on payment`,
+          quantity: 1,
+          salesInvoiceNumber: p.salesInvoiceNumber || '',
+          grossAmount: gross,
+          netAmount: gross,
+          branch: p.branch || '',
+          issuedOfficialInvoice: true,
+          itemIssuedOfficialInvoice: false,
+          migrated: false,
+          ar: true,
+        })
+      }
+    }
+
+    return NextResponse.json({ rows: [...rows, ...migratedRows, ...arRows], count: rows.length + migratedRows.length + arRows.length, migratedCount: migratedRows.length, arCount: arRows.length })
   } catch (err) {
     console.error('Sales summary error:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
