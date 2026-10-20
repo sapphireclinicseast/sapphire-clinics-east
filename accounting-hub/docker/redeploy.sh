@@ -1047,6 +1047,8 @@ SQL
 # ── Sales Summary: declare SI on a chosen date ("Convert to have Sales Invoice") ──
 docker exec -i accounting_db psql -U sapphire -d sapphire_accounting <<'SQL'
 ALTER TABLE "Order" ADD COLUMN IF NOT EXISTS "siDeclaredDate" TIMESTAMP(3);
+ALTER TABLE "ARPayment" ADD COLUMN IF NOT EXISTS "siDeclaredDate" TIMESTAMP(3);
+ALTER TABLE "SalesInvoiceFlag" ADD COLUMN IF NOT EXISTS "declaredDate" TIMESTAMP(3);
 SQL
 
 echo "Redeploy complete."

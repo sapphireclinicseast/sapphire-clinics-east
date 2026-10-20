@@ -699,7 +699,7 @@ const WITHSI_BRANCHES = [
 const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 interface SiRow { id: string; orderNumber: number; siNumber: string; date: string; declaredDate: string | null; src: 'ORDER' | 'AR'; patientName: string; vat: number; nonVat: number; amount: number; orderType: string }
-interface FlagInfo { siNumber: string; status: string; remarks: string | null; orderId: string | null }
+interface FlagInfo { siNumber: string; status: string; remarks: string | null; orderId: string | null; declaredDate?: string | null }
 interface Flag { siNumber: string; count?: number; flag: { status: string; remarks: string | null } | null }
 interface OrderHit { id: string; orderNumber: number; date: string; patientName: string; services: string; amount: number; payment: string }
 const siDigits = (s: string) => parseInt(String(s).replace(/\D/g, '') || '0', 10)
@@ -708,6 +708,8 @@ type LeftItem = {
   kind: string; si: string; siN: number; order: SiRow | null; amount: number; remarks: string
   // Parsed from a migrated monitoring flag's remark (see lib/si-monitoring).
   mDate?: string | null; mCustomer?: string | null
+  // Declared (SI-book) date stored on the flag row itself (migrated / cancelled / remarks rows).
+  mDeclared?: string | null
 }
 const LEFT_COLS: SortCol[] = [
   { key: 'si', label: 'SI No.' },
@@ -720,7 +722,7 @@ const leftSortVal = (it: LeftItem, k: string): string | number => {
   switch (k) {
     case 'si': return it.siN
     case 'date': return it.order?.date ? (new Date(it.order.date).getTime() || 0) : it.mDate ? (new Date(it.mDate).getTime() || 0) : 0
-    case 'declared': return it.order?.declaredDate ? (new Date(it.order.declaredDate).getTime() || 0) : 0
+    case 'declared': { const d = it.order?.declaredDate || it.mDeclared; return d ? (new Date(d).getTime() || 0) : 0 }
     case 'patient': return (it.order?.patientName || it.mCustomer || it.remarks || '').toLowerCase()
     case 'amount': return it.amount
     default: return ''
@@ -730,7 +732,7 @@ const leftFilterVal = (it: LeftItem, k: string): string => {
   switch (k) {
     case 'si': return it.si
     case 'date': return it.order?.date || it.mDate || ''
-    case 'declared': return it.order?.declaredDate || ''
+    case 'declared': return it.order?.declaredDate || it.mDeclared || ''
     case 'patient': return it.order?.patientName || it.mCustomer || it.remarks || ''
     case 'amount': return it.amount ? peso(it.amount) : ''
     default: return ''
@@ -738,24 +740,26 @@ const leftFilterVal = (it: LeftItem, k: string): string => {
 }
 
 /**
- * The manually settable declared (SI-book) date. Only real orders carry one —
- * AR collections and migrated workbook rows show a dash. Clearing the date
- * falls the SI back to its actual date for With-SI attribution.
+ * The manually settable declared (SI-book) date — editable on every row:
+ *  • POS orders         → PUT /api/pos/orders/[id] { action: 'setSiDeclaredDate' }
+ *  • AR collections     → PATCH /api/reports/with-si { kind: 'AR', id }
+ *  • migrated / flagged → PATCH /api/reports/with-si { kind: 'FLAG', branch, siNumber }
+ * Clearing the date falls the SI back to its actual date for With-SI attribution.
  */
-function DeclaredDateCell({ order, onSaved }: { order: SiRow | null; onSaved: () => void }) {
+function DeclaredDateCell({ item, branch, onSaved }: { item: LeftItem; branch: string; onSaved: () => void }) {
   const [editing, setEditing] = useState(false)
   const [val, setVal] = useState('')
   const [busy, setBusy] = useState(false)
-  if (!order || order.src !== 'ORDER') {
-    return <td className="px-3 py-2 text-xs" style={{ color: 'var(--mid-gray)' }} title={order ? 'AR collection — no declared date' : undefined}>—</td>
-  }
+  const order = item.order
+  const current = order ? order.declaredDate : (item.mDeclared ?? null)
   const save = async (v: string) => {
     setBusy(true)
     try {
-      const r = await fetch(`/api/pos/orders/${order.id}`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'setSiDeclaredDate', declaredDate: v || null }),
-      })
+      const r = order && order.src === 'ORDER'
+        ? await fetch(`/api/pos/orders/${order.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'setSiDeclaredDate', declaredDate: v || null }) })
+        : order
+          ? await fetch('/api/reports/with-si', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'AR', id: order.id, declaredDate: v || null }) })
+          : await fetch('/api/reports/with-si', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'FLAG', branch, siNumber: item.si, declaredDate: v || null }) })
       if (!r.ok) { alert((await r.json().catch(() => ({}))).error || 'Failed to save the declared date'); return }
       setEditing(false)
       onSaved()
@@ -778,11 +782,11 @@ function DeclaredDateCell({ order, onSaved }: { order: SiRow | null; onSaved: ()
   return (
     <td className="px-3 py-2 text-xs">
       <button
-        onClick={() => { setVal(order.declaredDate || ''); setEditing(true) }}
+        onClick={() => { setVal(current || ''); setEditing(true) }}
         className="underline decoration-dotted underline-offset-2"
-        style={{ color: order.declaredDate ? 'var(--charcoal)' : 'var(--mid-gray)' }}
-        title="Click to set the declared (SI book) date">
-        {order.declaredDate || 'set'}
+        style={{ color: current ? 'var(--charcoal)' : 'var(--mid-gray)' }}
+        title="Click to set the declared (SI book) date — clear it to fall back to the actual date">
+        {current || 'set'}
       </button>
     </td>
   )
@@ -840,7 +844,7 @@ function WithSiTab({ branch: initialBranch, scopeEnum }: { branch: string; scope
         order: null as SiRow | null,
         amount: f.status === 'REMARKS' ? (info?.amount || 0) : 0,
         remarks: f.remarks || '',
-        mDate: info?.date ?? null, mCustomer: info?.customer ?? null,
+        mDate: info?.date ?? null, mCustomer: info?.customer ?? null, mDeclared: f.declaredDate ?? null,
       }]
     }),
   ] : []
@@ -928,7 +932,7 @@ function WithSiTab({ branch: initialBranch, scopeEnum }: { branch: string; scope
                       <tr key={`${it.kind}-${it.si}-${it.order?.id || ''}`} className="border-t" style={{ borderColor: 'var(--light-gray)', background: isResolved ? resolvedBg : undefined }}>
                         <td className="px-3 py-2 font-mono font-semibold" style={{ color: 'var(--charcoal)' }}>{it.si}</td>
                         <td className="px-3 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>{it.order?.date || it.mDate || '—'}</td>
-                        <DeclaredDateCell order={it.order} onSaved={load} />
+                        <DeclaredDateCell item={it} branch={branch} onSaved={load} />
                         <td className="px-3 py-2 text-xs" style={{ color: 'var(--charcoal)' }} title={it.remarks || undefined}>
                           {it.order ? it.order.patientName : <span style={{ color: it.mCustomer ? 'var(--charcoal)' : 'var(--mid-gray)' }}>{it.mCustomer || it.remarks || '—'}</span>}
                           {b && <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: b.bg, color: b.c }}>{b.t}</span>}

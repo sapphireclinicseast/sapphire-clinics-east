@@ -1500,6 +1500,7 @@ model ARPayment {
   proofUrl             String? // URL or file path to payment proof
   notes                String?
   salesInvoiceNumber   String? // SI issued for this HMO/GL collection → Sales Summary (With SI)
+  siDeclaredDate       DateTime? // date this SI is declared on the SI book (editable in Sales Summary → With SI); paymentDate when null
   branch               String?
   createdById          String
   createdBy            User          @relation("ARPaymentCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
@@ -3047,6 +3048,7 @@ model SalesInvoiceFlag {
   status      String // CANCELLED | REMARKS | TAGGED
   remarks     String?
   orderId     String? // TAGGED: the order this SI number was assigned to
+  declaredDate DateTime? // CANCELLED/REMARKS (migrated) rows: the SI-book date, editable in Sales Summary → With SI
   createdById String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

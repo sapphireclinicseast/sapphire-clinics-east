@@ -64,20 +64,23 @@ export async function GET(req: Request) {
     // Receivable → Record Payment). Same SI series, so they join the sequence for
     // VAT/Non-VAT totals and gap/duplicate detection. Services → Non-VAT.
     const arPayments = await prisma.aRPayment.findMany({
+      // Same rule as orders: the SI-book date is siDeclaredDate when set, paymentDate otherwise.
       where: {
         branch, salesInvoiceNumber: { not: null },
-        ...(dateFrom || dateTo ? { paymentDate: { ...(dateFrom ? { gte: new Date(`${dateFrom}T00:00:00+08:00`) } : {}), ...(dateTo ? { lte: new Date(`${dateTo}T23:59:59.999+08:00`) } : {}) } } : {}),
+        ...(dateFrom || dateTo ? (() => {
+          const range = { ...(dateFrom ? { gte: new Date(`${dateFrom}T00:00:00+08:00`) } : {}), ...(dateTo ? { lte: new Date(`${dateTo}T23:59:59.999+08:00`) } : {}) }
+          return { OR: [{ siDeclaredDate: null, paymentDate: range }, { siDeclaredDate: range }] }
+        })() : {}),
       },
       orderBy: { paymentDate: 'asc' },
-      select: { id: true, salesInvoiceNumber: true, paymentDate: true, amount: true, discount: true, wallet: { select: { patientName: true, walletType: true } } },
+      select: { id: true, salesInvoiceNumber: true, paymentDate: true, siDeclaredDate: true, amount: true, discount: true, wallet: { select: { patientName: true, walletType: true } } },
     })
     const arRows = arPayments.map(p => {
       const amt = Number(p.amount) + Number(p.discount)
       return {
         id: p.id, orderNumber: `AR-${p.wallet?.walletType || ''}`, siNumber: p.salesInvoiceNumber || '', siInt: siInt(p.salesInvoiceNumber),
         date: new Date(p.paymentDate).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }),
-        // AR collections carry no siDeclaredDate column — shown as "—", not editable.
-        declaredDate: null,
+        declaredDate: p.siDeclaredDate ? new Date(p.siDeclaredDate).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }) : null,
         src: 'AR' as const,
         patientName: `${p.wallet?.patientName || '—'} (${p.wallet?.walletType || 'AR'})`,
         vat: 0, nonVat: amt, amount: amt,
@@ -138,7 +141,7 @@ export async function GET(req: Request) {
       gapsTruncated,
       outliers,
       duplicates: duplicates.map(d => ({ ...d, flag: flagBy.get(d.siNumber) || null })),
-      flags: allFlags.map(f => ({ siNumber: f.siNumber, status: f.status, remarks: f.remarks, orderId: f.orderId })),
+      flags: allFlags.map(f => ({ siNumber: f.siNumber, status: f.status, remarks: f.remarks, orderId: f.orderId, declaredDate: f.declaredDate ? new Date(f.declaredDate).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }) : null })),
     })
   } catch (err) {
     console.error('With-SI error:', err)
@@ -184,6 +187,45 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true })
   } catch (err) {
     console.error('SI flag save error:', err)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
+// PATCH { kind: 'AR', id, declaredDate } | { kind: 'FLAG', branch, siNumber, declaredDate }
+// Sets the declared (SI-book) date on an AR-collection invoice or on a migrated /
+// flagged SI row. Orders use PUT /api/pos/orders/[id] { action: 'setSiDeclaredDate' }.
+// Empty/null clears it (the row falls back to its actual date).
+export async function PATCH(req: Request) {
+  const session = await auth()
+  if (!session?.user || !WRITE_ROLES.includes((session.user as { role?: string }).role || '')) {
+    return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
+  }
+  try {
+    const body = await req.json()
+    const raw = body.declaredDate == null || body.declaredDate === '' ? null : String(body.declaredDate)
+    if (raw && !/^\d{4}-\d{2}-\d{2}$/.test(raw)) return NextResponse.json({ error: 'declaredDate must be YYYY-MM-DD' }, { status: 400 })
+    const value = raw ? new Date(`${raw}T12:00:00+08:00`) : null
+    if (body.kind === 'AR') {
+      if (!body.id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
+      const pay = await prisma.aRPayment.findUnique({ where: { id: String(body.id) }, select: { id: true, branch: true, salesInvoiceNumber: true } })
+      if (!pay || !pay.salesInvoiceNumber) return NextResponse.json({ error: 'AR collection with a Sales Invoice not found' }, { status: 404 })
+      const allowed = enforceBranch((session.user as { branch?: string; branches?: string[] }).branch, (session.user as { branches?: string[] }).branches, pay.branch || '') ?? pay.branch
+      if (pay.branch && allowed !== pay.branch) return NextResponse.json({ error: 'Not your branch' }, { status: 403 })
+      await prisma.aRPayment.update({ where: { id: pay.id }, data: { siDeclaredDate: value } })
+      return NextResponse.json({ success: true })
+    }
+    if (body.kind === 'FLAG') {
+      const branch = enforceBranch((session.user as { branch?: string; branches?: string[] }).branch, (session.user as { branches?: string[] }).branches, body.branch) ?? body.branch
+      const siNumber = String(body.siNumber || '')
+      if (!VALID_BRANCHES.includes(branch) || !siNumber) return NextResponse.json({ error: 'branch and siNumber are required' }, { status: 400 })
+      const flag = await prisma.salesInvoiceFlag.findUnique({ where: { branch_siNumber: { branch, siNumber } } })
+      if (!flag) return NextResponse.json({ error: 'SI row not found' }, { status: 404 })
+      await prisma.salesInvoiceFlag.update({ where: { id: flag.id }, data: { declaredDate: value } })
+      return NextResponse.json({ success: true })
+    }
+    return NextResponse.json({ error: 'kind must be AR or FLAG' }, { status: 400 })
+  } catch (err) {
+    console.error('SI declared-date save error:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
