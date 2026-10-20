@@ -8,6 +8,7 @@ import {
   CheckCircle2, XCircle, X, Search,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
+import { downloadXlsx } from '@/lib/export'
 import { parseMonitoringRemark } from '@/lib/si-monitoring'
 import { applySortFilter, SortFilterHead, type SortCol } from '@/components/SortFilterHead'
 
@@ -805,6 +806,12 @@ function WithSiTab({ branch: initialBranch, scopeEnum }: { branch: string; scope
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [filters, setFilters] = useState<Record<string, string>>({})
   const [flagQ, setFlagQ] = useState('')
+  // "Generate Excel": the whole book or a date range by actual or declared date,
+  // fetched fresh (not the on-screen range) so "All" really is everything.
+  const [xlOpen, setXlOpen] = useState(false)
+  const [xlScope, setXlScope] = useState<'all' | 'actual' | 'declared'>('all')
+  const [xlFrom, setXlFrom] = useState(''); const [xlTo, setXlTo] = useState('')
+  const [xlBusy, setXlBusy] = useState(false)
   const toggleSort = (k: string) => {
     if (sortKey === k) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'))
     else { setSortKey(k); setSortDir('asc') }
@@ -873,6 +880,54 @@ function WithSiTab({ branch: initialBranch, scopeEnum }: { branch: string; scope
   const rightTotal = data ? displayRight.reduce((s, it) => it.type === 'dup'
     ? s + data.rows.filter(r => r.siNumber === it.siNumber).reduce((x, r) => x + r.amount, 0) : s, 0) : 0
 
+  const generateExcel = async () => {
+    if (xlScope !== 'all' && !xlFrom && !xlTo) { alert('Pick a From and/or To date, or choose "Everything".'); return }
+    setXlBusy(true)
+    try {
+      const r = await fetch(`/api/reports/with-si?branch=${branch}`)
+      if (!r.ok) { alert('Could not load the SI book'); return }
+      const d: NonNullable<typeof data> = await r.json()
+      const flagBy = new Map(d.flags.map(f => [f.siNumber, f]))
+      // MM/DD/YYYY (en-PH) → YYYY-MM-DD so dates compare as strings.
+      const iso = (ph: string | null | undefined) => { const m = String(ph || '').match(/^(\d{2})\/(\d{2})\/(\d{4})$/); return m ? `${m[3]}-${m[1]}-${m[2]}` : (ph || '') }
+      const inRange = (ymd: string) => (!xlFrom || ymd >= xlFrom) && (!xlTo || ymd <= xlTo)
+      type XRow = { si: string; actual: string; declared: string; who: string; orderNo: string; type: string; vat: number; nonVat: number; amount: number; remarks: string }
+      const rows: XRow[] = [
+        ...d.rows.map(o => ({
+          si: o.siNumber, actual: iso(o.date), declared: o.declaredDate || '', who: o.patientName,
+          orderNo: o.src === 'AR' ? String(o.orderNumber) : `#${o.orderNumber}`,
+          type: flagBy.get(o.siNumber)?.status === 'TAGGED' ? 'Order (tagged)' : o.src === 'AR' ? 'AR / HMO collection' : 'Order',
+          vat: o.vat, nonVat: o.nonVat, amount: o.amount, remarks: '',
+        })),
+        ...d.flags.filter(f => f.status === 'CANCELLED' || f.status === 'REMARKS').map(f => {
+          const info = parseMonitoringRemark(f.remarks)
+          const amt = f.status === 'REMARKS' ? (info?.netAmount ?? info?.amount ?? 0) : 0
+          return { si: f.siNumber, actual: info?.date || '', declared: f.declaredDate || '', who: info?.customer || '', orderNo: '',
+            type: f.status === 'CANCELLED' ? 'Cancelled SI' : 'Migrated (remarks)', vat: 0, nonVat: amt, amount: amt, remarks: f.remarks || '' }
+        }),
+      ]
+      const keep = xlScope === 'all' ? rows
+        : xlScope === 'actual' ? rows.filter(x => x.actual && inRange(x.actual))
+        // SI-book date: declared when set, actual otherwise — the same rule the tab uses.
+        : rows.filter(x => { const dt = x.declared || x.actual; return dt && inRange(dt) })
+      keep.sort((a, b) => siDigits(a.si) - siDigits(b.si))
+      const flagged = [
+        ...d.gaps.filter(g => !g.flag).map(g => ({ si: g.siNumber, issue: 'Missing', count: '', amount: '' as number | string })),
+        ...d.duplicates.filter(x => !x.flag).map(x => ({ si: x.siNumber, issue: 'Duplicate', count: x.count || 0, amount: d.rows.filter(r => r.siNumber === x.siNumber).reduce((t, r) => t + r.amount, 0) })),
+      ].sort((a, b) => siDigits(a.si) - siDigits(b.si))
+      const outliers = (d.outliers || []).map(o => [o.siNumber, iso(o.date), o.patientName, o.src === 'AR' ? String(o.orderNumber) : `#${o.orderNumber}`, o.amount])
+      const label = xlScope === 'all' ? 'all' : `${xlScope}-${xlFrom || 'start'}_to_${xlTo || 'today'}`
+      const sheets = [
+        { name: 'Sales Invoices', headers: ['SI No.', 'Actual Date', 'Declared Date', 'Patient / Customer', 'Order #', 'Type', 'VAT (Products)', 'Non-VAT (Services)', 'Amount', 'Remarks'],
+          rows: keep.map(x => [x.si, x.actual, x.declared, x.who, x.orderNo, x.type, x.vat, x.nonVat, x.amount, x.remarks]) },
+        { name: 'Flagged Sales Invoices', headers: ['SI No.', 'Issue', 'Count', 'Amount'], rows: flagged.map(f => [f.si, f.issue, f.count, f.amount]) },
+      ]
+      if (outliers.length) sheets.push({ name: 'Outside SI sequence', headers: ['SI field', 'Date', 'Patient / Customer', 'Order #', 'Amount'], rows: outliers })
+      downloadXlsx(`with-si_${branch}_${label}`, sheets)
+      setXlOpen(false)
+    } finally { setXlBusy(false) }
+  }
+
   const resolvedBg = '#fffbeb', resolvedBorder = '#fde68a'
   const badge = (kind: string) => kind === 'tagged' ? { t: 'Tagged → order', bg: '#e0e7ff', c: '#3730a3' }
     : kind === 'cancelled' ? { t: 'Cancelled SI', bg: '#fee2e2', c: '#b91c1c' }
@@ -888,6 +943,33 @@ function WithSiTab({ branch: initialBranch, scopeEnum }: { branch: string; scope
         )}
         <label className="text-xs" style={{ color: 'var(--mid-gray)' }}>From <input type="date" value={from} onChange={e => setFrom(e.target.value)} className="ml-1 px-2 py-1.5 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} /></label>
         <label className="text-xs" style={{ color: 'var(--mid-gray)' }}>To <input type="date" value={to} onChange={e => setTo(e.target.value)} className="ml-1 px-2 py-1.5 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} /></label>
+        <div className="relative ml-auto">
+          <button onClick={() => { setXlFrom(from); setXlTo(to); setXlOpen(o => !o) }} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-white" style={{ background: 'var(--teal)' }}>
+            <Download size={14} /> Generate Excel
+          </button>
+          {xlOpen && (
+            <div className="absolute right-0 mt-2 w-80 rounded-2xl border bg-white shadow-xl p-4 z-30 space-y-3" style={{ borderColor: 'var(--light-gray)' }}>
+              <p className="text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>Download the SI book as Excel</p>
+              <p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>Two sheets: <strong>Sales Invoices</strong> and <strong>Flagged Sales Invoices</strong> (plus any entries outside the SI sequence).</p>
+              <div className="space-y-1.5 text-xs">
+                {([['all', 'Everything (no date filter)'], ['actual', 'Filter by actual date'], ['declared', 'Filter by declared (SI-book) date']] as const).map(([v, l]) => (
+                  <label key={v} className="flex items-center gap-2 cursor-pointer"><input type="radio" name="xl-scope" checked={xlScope === v} onChange={() => setXlScope(v)} /> {l}</label>
+                ))}
+              </div>
+              {xlScope !== 'all' && (
+                <div className="flex items-center gap-2 text-xs">
+                  <label style={{ color: 'var(--mid-gray)' }}>From <input type="date" value={xlFrom} onChange={e => setXlFrom(e.target.value)} className="ml-1 px-2 py-1 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }} /></label>
+                  <label style={{ color: 'var(--mid-gray)' }}>To <input type="date" value={xlTo} onChange={e => setXlTo(e.target.value)} className="ml-1 px-2 py-1 rounded-lg border" style={{ borderColor: 'var(--light-gray)' }} /></label>
+                </div>
+              )}
+              {xlScope === 'declared' && <p className="text-[10px]" style={{ color: 'var(--mid-gray)' }}>Rows without a declared date are placed by their actual date, the same way the book attributes them.</p>}
+              <div className="flex gap-2 justify-end">
+                <button onClick={() => setXlOpen(false)} className="px-3 py-1.5 rounded-lg text-xs border" style={{ borderColor: 'var(--light-gray)' }}>Cancel</button>
+                <button onClick={generateExcel} disabled={xlBusy} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>{xlBusy ? 'Preparing…' : 'Download .xlsx'}</button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {loading ? <div className="py-10 text-center"><Loader2 size={18} className="inline animate-spin" style={{ color: 'var(--teal)' }} /></div> : data && (<>
