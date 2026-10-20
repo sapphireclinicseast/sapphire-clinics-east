@@ -1,12 +1,51 @@
 import type { Metadata, Viewport } from 'next'
-import { Plus_Jakarta_Sans, Baloo_2 } from 'next/font/google'
+import localFont from 'next/font/local'
 import { getSessionPatientId } from '@/lib/auth'
 import MessagesWidget from '@/components/MessagesWidget'
 import PwaSetup from '@/components/PwaSetup'
 import './globals.css'
 
-const body = Plus_Jakarta_Sans({ subsets: ['latin'], variable: '--font-body', display: 'swap' })
-const display = Baloo_2({ subsets: ['latin'], weight: ['500', '600', '700', '800'], variable: '--font-display', display: 'swap' })
+// Self-hosted Google Fonts (byte-identical to the variable woff2
+// next/font/google used to download at build time) so builds no longer
+// depend on fonts.googleapis.com.
+// next/font/local cannot express unicode-range, so each family is two faces:
+// latin (preloaded) and latin-ext (₱ and other extended glyphs, fetched on
+// demand), composed into one font stack in the same fallback order.
+// Plus Jakarta Sans keeps its full variable weight axis (200–800), matching
+// the previous weightless Plus_Jakarta_Sans() config.
+const bodyLatin = localFont({
+  src: '../fonts/plus-jakarta-sans-latin.woff2',
+  weight: '200 800',
+  display: 'swap',
+})
+const bodyLatinExt = localFont({
+  src: '../fonts/plus-jakarta-sans-latin-ext.woff2',
+  weight: '200 800',
+  display: 'swap',
+  preload: false,
+  adjustFontFallback: false,
+})
+const displayLatin = localFont({
+  src: '../fonts/baloo2-latin.woff2',
+  weight: '500 800',
+  display: 'swap',
+})
+const displayLatinExt = localFont({
+  src: '../fonts/baloo2-latin-ext.woff2',
+  weight: '500 800',
+  display: 'swap',
+  preload: false,
+  adjustFontFallback: false,
+})
+
+const stack = (latin: { style: { fontFamily: string } }, ext: { style: { fontFamily: string } }) => {
+  const [family, ...fallbacks] = latin.style.fontFamily.split(', ')
+  return [family, ext.style.fontFamily, ...fallbacks].join(', ')
+}
+const fontVars = {
+  '--font-body': stack(bodyLatin, bodyLatinExt),
+  '--font-display': stack(displayLatin, displayLatinExt),
+} as React.CSSProperties
 
 export const metadata: Metadata = {
   title: { default: 'Nickel', template: '%s · Nickel' },
@@ -25,7 +64,7 @@ export const viewport: Viewport = { themeColor: '#34618c' }
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const isPatient = !!(await getSessionPatientId())
   return (
-    <html lang="en" className={`${body.variable} ${display.variable}`}>
+    <html lang="en" style={fontVars}>
       <body style={{ fontFamily: 'var(--font-body)' }}>
         {/* Capture the install prompt as early as possible so the Install button
             can offer it even if the event fired before React hydrated. Also flag

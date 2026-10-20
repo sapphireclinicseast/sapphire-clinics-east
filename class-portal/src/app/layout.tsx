@@ -1,23 +1,49 @@
 import type { Metadata } from 'next'
-import { Montserrat, Manrope } from 'next/font/google'
+import localFont from 'next/font/local'
 import './globals.css'
 import HeaderNav from '@/components/HeaderNav'
 import ImpersonationBanner from '@/components/ImpersonationBanner'
 import AuthSidebar from '@/components/AuthSidebar'
 
-const montserrat = Montserrat({
-  subsets: ['latin'],
-  variable: '--font-montserrat',
-  weight: ['300', '400', '500', '600', '700'],
+// Self-hosted Google Fonts (byte-identical to the variable woff2
+// next/font/google used to download at build time) so builds no longer
+// depend on fonts.googleapis.com.
+// next/font/local cannot express unicode-range, so each family is two faces:
+// latin (preloaded) and latin-ext (₱ and other extended glyphs, fetched on
+// demand), composed into one font stack in the same fallback order.
+const montserratLatin = localFont({
+  src: '../fonts/montserrat-latin.woff2',
+  weight: '300 700',
   display: 'swap',
+})
+const montserratLatinExt = localFont({
+  src: '../fonts/montserrat-latin-ext.woff2',
+  weight: '300 700',
+  display: 'swap',
+  preload: false,
+  adjustFontFallback: false,
+})
+const manropeLatin = localFont({
+  src: '../fonts/manrope-latin.woff2',
+  weight: '300 700',
+  display: 'swap',
+})
+const manropeLatinExt = localFont({
+  src: '../fonts/manrope-latin-ext.woff2',
+  weight: '300 700',
+  display: 'swap',
+  preload: false,
+  adjustFontFallback: false,
 })
 
-const manrope = Manrope({
-  subsets: ['latin'],
-  variable: '--font-manrope',
-  weight: ['300', '400', '500', '600', '700'],
-  display: 'swap',
-})
+const stack = (latin: { style: { fontFamily: string } }, ext: { style: { fontFamily: string } }) => {
+  const [family, ...fallbacks] = latin.style.fontFamily.split(', ')
+  return [family, ext.style.fontFamily, ...fallbacks].join(', ')
+}
+const fontVars = {
+  '--font-montserrat': stack(montserratLatin, montserratLatinExt),
+  '--font-manrope': stack(manropeLatin, manropeLatinExt),
+} as React.CSSProperties
 
 const SITE_URL = 'https://class.sapphireclinicseast.org'
 const SITE_NAME = 'Aura Academy for Learning'
@@ -142,7 +168,7 @@ const ORG_JSON_LD = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${montserrat.variable} ${manrope.variable}`}>
+    <html lang="en" style={fontVars}>
       <body className="min-h-screen">
         {/* JSON-LD school schema. Inline so it ships in the initial HTML
             and crawlers see it without executing JS. */}

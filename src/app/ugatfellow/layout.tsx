@@ -1,19 +1,46 @@
 import type { Metadata } from 'next'
-import { Montserrat, Arimo } from 'next/font/google'
+import localFont from 'next/font/local'
 
-const montserrat = Montserrat({
-  subsets: ['latin'],
-  variable: '--font-ugat-montserrat',
-  weight: ['400', '500', '600', '700', '800', '900'],
+// Self-hosted Google Fonts (byte-identical to the variable woff2
+// next/font/google used to download at build time) so builds no longer
+// depend on fonts.googleapis.com. The files are shared with the root layout
+// under src/fonts/.
+// next/font/local cannot express unicode-range, so each family is two faces:
+// latin (preloaded) and latin-ext (₱ and other extended glyphs, fetched on
+// demand), composed into one font stack in the same fallback order.
+const montserratLatin = localFont({
+  src: '../../fonts/montserrat-latin.woff2',
+  weight: '400 900',
   display: 'swap',
 })
-
-const arimo = Arimo({
-  subsets: ['latin'],
-  variable: '--font-ugat-arimo',
-  weight: ['400', '500', '600', '700'],
+const montserratLatinExt = localFont({
+  src: '../../fonts/montserrat-latin-ext.woff2',
+  weight: '400 900',
+  display: 'swap',
+  preload: false,
+  adjustFontFallback: false,
+})
+const arimoLatin = localFont({
+  src: '../../fonts/arimo-latin.woff2',
+  weight: '400 700',
   display: 'swap',
 })
+const arimoLatinExt = localFont({
+  src: '../../fonts/arimo-latin-ext.woff2',
+  weight: '400 700',
+  display: 'swap',
+  preload: false,
+  adjustFontFallback: false,
+})
+
+const stack = (latin: { style: { fontFamily: string } }, ext: { style: { fontFamily: string } }) => {
+  const [family, ...fallbacks] = latin.style.fontFamily.split(', ')
+  return [family, ext.style.fontFamily, ...fallbacks].join(', ')
+}
+const fontVars = {
+  '--font-ugat-montserrat': stack(montserratLatin, montserratLatinExt),
+  '--font-ugat-arimo': stack(arimoLatin, arimoLatinExt),
+} as React.CSSProperties
 
 const UGAT_URL = 'https://fellowship.sapphireclinicseast.org'
 const OG_IMAGE = 'https://fellowship.sapphireclinicseast.org/ugat/og.png'
@@ -50,5 +77,5 @@ export const metadata: Metadata = {
 }
 
 export default function UgatLayout({ children }: { children: React.ReactNode }) {
-  return <div className={`${montserrat.variable} ${arimo.variable}`}>{children}</div>
+  return <div style={fontVars}>{children}</div>
 }
