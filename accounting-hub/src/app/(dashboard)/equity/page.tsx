@@ -54,7 +54,7 @@ interface Bank { id: string; accountNumber: string; accountTitle: string; isActi
 // Equity fetches banks with includeRetired=1 — historical issuances are often
 // tagged to a since-closed account (e.g. the old SCI accounts). Flag them.
 const bankName = (b: Bank) => `${b.accountNumber} — ${b.accountTitle}${b.bankRetiredAt || b.isActive === false ? ' (closed)' : ''}`
-interface Shareholder { id: string; shNumber: string; name: string; tin: string | null; birthdate: string | null; email: string | null; mobile: string | null; address: string | null }
+interface Shareholder { id: string; shNumber: string; name: string; tin: string | null; birthdate: string | null; email: string | null; mobile: string | null; address: string | null; isForeign?: boolean }
 interface BeneficialOwnerRow { id?: string; name: string; tin: string | null; email: string | null; address: string | null; shares: number; notes: string | null }
 const COMMON_SHARE_CLASSES = [
   'Common – Voting – with Par',
@@ -80,6 +80,7 @@ interface Transfer { id: string; date: string; shares: number; price: number; am
 interface Deposit { id: string; date: string; amount: number; kind: 'CASH' | 'NON_CASH'; bankAccountId: string | null; assetAccountId: string | null; note: string | null; proofUrls: string[] | null }
 interface CommonRow {
   id: string; shareholderId: string; shNumber: string; name: string; tin: string | null; birthdate: string | null; email: string | null; mobile: string | null; address: string | null
+  isForeign?: boolean
   dateAcquired: string; agreementType: string; assignedToShareholderId: string | null; agreementUrls: string[] | null
   stockCertNumber: string | null; proofOfDepositUrls: string[] | null; validIdUrls: string[] | null; shareClass: string | null; numberOfShares: number; truePar: number; apic: number; pricePerShare: number
   totalCapitalization: number; equityStake: number; equityStakeCurrent: number; equityStakeTotal: number; bankAccountId: string | null; equityAccountId: string | null
@@ -101,7 +102,7 @@ export default function EquityPage() {
   const { data: session, status } = useSession()
   const role = session?.user?.role
   const isAdmin = role === 'ADMIN'
-  const [tab, setTab] = useState<'common' | 'preferred' | 'dividends' | 'certificates'>('common')
+  const [tab, setTab] = useState<'common' | 'preferred' | 'dividends' | 'certificates' | 'gis'>('common')
   const commonTableRef = useRef<HTMLTableElement>(null)
   const commonRz = useResizableColumns('equity-common-list', commonTableRef)
   const [data, setData] = useState<{ rows: CommonRow[]; shareholders: Shareholder[]; figures: Figures } | null>(null)
@@ -146,7 +147,7 @@ export default function EquityPage() {
   // user who hits it after the first render — it now sits right before the JSX.
   // Accountants/bookkeepers get Preferred Shares + Dividend Release History; the
   // Common Shares tab (and its figures) stays admin-only.
-  const allowedTabs = isAdmin ? ['common', 'preferred', 'dividends', 'certificates'] : ['preferred', 'dividends']
+  const allowedTabs = isAdmin ? ['common', 'preferred', 'dividends', 'certificates', 'gis'] : ['preferred', 'dividends']
   const effectiveTab = allowedTabs.includes(tab) ? tab : 'preferred'
 
   const del = async (row: CommonRow) => {
@@ -424,8 +425,8 @@ export default function EquityPage() {
 
       {/* Tabs — accountants/bookkeepers only see Preferred Shares */}
       <div className="flex items-center gap-1 border-b" style={{ borderColor: 'var(--light-gray)' }}>
-        {(isAdmin ? [['common', 'Common Shares'], ['preferred', 'Preferred Shares'], ['dividends', 'Dividend Release History'], ['certificates', 'Certificates']] : [['preferred', 'Preferred Shares'], ['dividends', 'Dividend Release History']]).map(([v, label]) => (
-          <button key={v} onClick={() => setTab(v as 'common' | 'preferred' | 'dividends' | 'certificates')} className="px-4 py-2.5 text-sm font-medium border-b-2 -mb-px"
+        {(isAdmin ? [['common', 'Common Shares'], ['preferred', 'Preferred Shares'], ['dividends', 'Dividend Release History'], ['certificates', 'Certificates'], ['gis', 'GIS Summary']] : [['preferred', 'Preferred Shares'], ['dividends', 'Dividend Release History']]).map(([v, label]) => (
+          <button key={v} onClick={() => setTab(v as 'common' | 'preferred' | 'dividends' | 'certificates' | 'gis')} className="px-4 py-2.5 text-sm font-medium border-b-2 -mb-px"
             style={{ borderColor: effectiveTab === v ? 'var(--teal)' : 'transparent', color: effectiveTab === v ? 'var(--teal)' : 'var(--mid-gray)' }}>{label}</button>
         ))}
       </div>
@@ -542,6 +543,7 @@ export default function EquityPage() {
       {effectiveTab === 'preferred' && <PreferredTab banks={banks} equityAccts={equityAccts} assetAccts={assetAccts} onChanged={load} canWrite />}
       {effectiveTab === 'dividends' && <DividendTab banks={banks} equityAccts={equityAccts} isAdmin={isAdmin} />}
       {effectiveTab === 'certificates' && <CertificatesTab />}
+      {effectiveTab === 'gis' && <GisSummaryTab rows={data?.rows || []} shareholders={data?.shareholders || []} figures={data?.figures || null} onChanged={load} />}
 
       {(showAdd || edit) && <CommonModal row={edit} rows={data?.rows || []} authCommon={authCommon} authFounder={authFounder} shareholders={data?.shareholders || []} banks={banks} equityAccts={equityAccts} assetAccts={assetAccts} onClose={() => { setShowAdd(false); setEdit(null) }} onReload={load} onSaved={() => { setShowAdd(false); setEdit(null); load() }} />}
     </div>
@@ -2074,6 +2076,276 @@ function CertificatesTab() {
           </div>
         </div>
       ))}
+    </div>
+  )
+}
+
+/* ── GIS Summary — the registry arranged exactly like the SEC General
+   Information Sheet's CAPITAL STRUCTURE page, so the filed GIS can be compared
+   line by line: AUTHORIZED per share type, then SUBSCRIBED and PAID-UP split
+   FILIPINO vs FOREIGN with stockholder counts, par amounts and % of ownership.
+   Subscribed = outstanding (net of buybacks/transfers, rescissions excluded);
+   paid-up mirrors subscribed because the registry treats issued shares as
+   paid. Amounts are shares × each holding's truePar (no APIC), so they will
+   NOT match Total Capitalization. Preferred shares are excluded, matching the
+   filed form. The Filipino/Foreign split comes from Shareholder.isForeign,
+   editable right here. */
+function GisSummaryTab({ rows, shareholders, figures, onChanged }: {
+  rows: CommonRow[]; shareholders: Shareholder[]; figures: Figures | null; onChanged: () => void
+}) {
+  const [savingId, setSavingId] = useState<string | null>(null)
+  const [showNat, setShowNat] = useState(false)
+
+  const setForeign = async (sh: Shareholder, isForeign: boolean) => {
+    setSavingId(sh.id)
+    try {
+      const r = await fetch('/api/equity/shareholders', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: sh.id, isForeign }),
+      })
+      if (!r.ok) alert((await r.json().catch(() => ({}))).error || 'Failed to save nationality')
+      else onChanged()
+    } finally { setSavingId(null) }
+  }
+
+  type Bucket = { holders: Set<string>; shares: number; amount: number; pars: Set<number> }
+  const mkBucket = (): Bucket => ({ holders: new Set(), shares: 0, amount: 0, pars: new Set() })
+  const CLASSES = ['FOUNDERS', 'COMMON', 'OTHER'] as const
+  type Cls = typeof CLASSES[number]
+  const clsOf = (r: CommonRow): Cls => {
+    const c = (r.shareClass || '').toLowerCase()
+    return c.startsWith('founders') ? 'FOUNDERS' : c.startsWith('common') ? 'COMMON' : 'OTHER'
+  }
+  const netOf = (r: CommonRow) => r.numberOfShares - (r.buybackShares || 0) - (r.transferredShares || 0)
+
+  const buckets: Record<'PH' | 'F', Record<Cls, Bucket>> = {
+    PH: { FOUNDERS: mkBucket(), COMMON: mkBucket(), OTHER: mkBucket() },
+    F: { FOUNDERS: mkBucket(), COMMON: mkBucket(), OTHER: mkBucket() },
+  }
+  const classPars: Record<Cls, Set<number>> = { FOUNDERS: new Set(), COMMON: new Set(), OTHER: new Set() }
+  for (const r of rows) {
+    if (r.rescinded) continue
+    const net = netOf(r)
+    if (net <= 0) continue
+    const b = buckets[r.isForeign ? 'F' : 'PH'][clsOf(r)]
+    b.holders.add(r.shareholderId)
+    b.shares += net
+    b.amount += net * (r.truePar || 0)
+    b.pars.add(r.truePar || 0)
+    classPars[clsOf(r)].add(r.truePar || 0)
+  }
+
+  const auth = figures?.authorizedShares || 0
+  const n0 = (v: number) => Math.round(v).toLocaleString('en-PH')
+  const n2 = (v: number) => v.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  const parLabel = (s: Set<number>) => s.size === 0 ? '—' : s.size === 1 ? n2([...s][0]) : 'mixed'
+  const pct = (shares: number) => auth > 0 ? `${((shares / auth) * 100).toFixed(2)}` : '—'
+  const natTotal = (nat: 'PH' | 'F') => CLASSES.reduce((t, c) => ({
+    holders: t.holders + buckets[nat][c].holders.size, shares: t.shares + buckets[nat][c].shares, amount: t.amount + buckets[nat][c].amount,
+  }), { holders: 0, shares: 0, amount: 0 })
+  const ph = natTotal('PH'); const fo = natTotal('F')
+  const subscribedShares = ph.shares + fo.shares
+  const subscribedAmount = ph.amount + fo.amount
+  const classPar = (c: Cls) => parLabel(classPars[c])
+  const authFounders = figures?.authorizedFounderShares ?? null
+  const authCommon = figures?.authorizedCommonShares ?? null
+  const singleParOf = (c: Cls): number | null => classPars[c].size === 1 ? [...classPars[c]][0] : null
+  const authAmount = (shares: number | null, c: Cls) => {
+    const p = singleParOf(c)
+    return shares != null && p != null ? n2(shares * p) : '—'
+  }
+  const hasOther = buckets.PH.OTHER.shares + buckets.F.OTHER.shares > 0
+
+  const cellCls = 'border px-2.5 py-1.5'
+  const cell = { borderColor: 'var(--light-gray)' }
+  const headCell = { ...cell, background: 'var(--off-white)', color: 'var(--mid-gray)' }
+  const secHead = (t: string) => (
+    <tr><td colSpan={6} className={`${cellCls} font-bold text-[11px] tracking-wider`} style={{ ...cell, background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>{t}</td></tr>
+  )
+
+  const natRows = (nat: 'PH' | 'F', label: string) => {
+    const t = natTotal(nat)
+    return (
+      <Fragment key={nat}>
+        {([['FOUNDERS', 'FOUNDERS'], ['COMMON', 'COMMON'], ...(hasOther ? [['OTHER', 'UNCLASSIFIED']] : [])] as [Cls, string][]).map(([c, cl], i) => {
+          const b = buckets[nat][c]
+          if (c === 'OTHER' && b.shares <= 0) return null
+          return (
+            <tr key={c}>
+              {i === 0 && <td className={`${cellCls} font-semibold align-top`} style={cell} rowSpan={2 + (hasOther && buckets[nat].OTHER.shares > 0 ? 1 : 0)}>{label}<div className="font-normal text-[10px]" style={{ color: 'var(--mid-gray)' }}>{t.holders} stockholder{t.holders === 1 ? '' : 's'}</div></td>}
+              <td className={`${cellCls} text-center`} style={cell}>{b.holders.size || '—'}</td>
+              <td className={cellCls} style={cell}>{cl}</td>
+              <td className={`${cellCls} text-right tabular-nums`} style={cell}>{b.shares ? n0(b.shares) : '—'}</td>
+              <td className={`${cellCls} text-right tabular-nums`} style={cell}>{parLabel(b.pars)}</td>
+              <td className={`${cellCls} text-right tabular-nums`} style={cell}>{b.shares ? n2(b.amount) : '—'}</td>
+              <td className={`${cellCls} text-right tabular-nums`} style={cell}>{b.shares ? pct(b.shares) : '—'}</td>
+            </tr>
+          )
+        })}
+        <tr className="font-semibold">
+          <td className={`${cellCls} text-right`} style={headCell} colSpan={3}>TOTAL</td>
+          <td className={`${cellCls} text-right tabular-nums`} style={headCell}>{n0(t.shares)}</td>
+          <td className={cellCls} style={headCell} />
+          <td className={`${cellCls} text-right tabular-nums`} style={headCell}>{n2(t.amount)}</td>
+          <td className={`${cellCls} text-right tabular-nums`} style={headCell}>{pct(t.shares)}</td>
+        </tr>
+      </Fragment>
+    )
+  }
+
+  const capTable = (title: string) => (
+    <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+      <div className="px-4 py-3 border-b" style={{ background: 'var(--off-white)', borderColor: 'var(--light-gray)' }}>
+        <h3 className="text-sm font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>{title}</h3>
+      </div>
+      <table className="w-full text-xs" style={{ borderCollapse: 'collapse' }}>
+        <thead>
+          <tr>
+            <th className={`${cellCls} text-left`} style={headCell}>NATIONALITY</th>
+            <th className={`${cellCls} text-center`} style={headCell}>NO. OF STOCKHOLDERS</th>
+            <th className={`${cellCls} text-left`} style={headCell}>TYPE OF SHARES</th>
+            <th className={`${cellCls} text-right`} style={headCell}>NUMBER OF SHARES</th>
+            <th className={`${cellCls} text-right`} style={headCell}>PAR/STATED VALUE</th>
+            <th className={`${cellCls} text-right`} style={headCell}>AMOUNT (PhP)</th>
+            <th className={`${cellCls} text-right`} style={headCell}>% OF OWNERSHIP</th>
+          </tr>
+        </thead>
+        <tbody>
+          {natRows('PH', 'FILIPINO')}
+          {natRows('F', 'FOREIGN')}
+          <tr>
+            <td colSpan={5} className={`${cellCls} text-[11px]`} style={cell}>
+              Percentage of Foreign Equity: <strong>{pct(fo.shares)}%</strong>
+            </td>
+            <td className={`${cellCls} text-right font-bold tabular-nums`} style={{ ...cell, background: 'var(--pale-teal)' }}>₱ {n2(subscribedAmount)}</td>
+            <td className={`${cellCls} text-right font-bold tabular-nums`} style={{ ...cell, background: 'var(--pale-teal)' }}>{pct(subscribedShares)}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  )
+
+  const exportXlsx = () => {
+    const sheetRows: (string | number)[][] = []
+    const push = (section: string) => {
+      sheetRows.push([section])
+      for (const nat of ['PH', 'F'] as const) {
+        for (const c of CLASSES) {
+          const b = buckets[nat][c]
+          if (!b.shares) continue
+          sheetRows.push([nat === 'PH' ? 'FILIPINO' : 'FOREIGN', b.holders.size, c, b.shares, parLabel(b.pars), Math.round(b.amount * 100) / 100, pct(b.shares)])
+        }
+      }
+      sheetRows.push(['TOTAL', '', '', subscribedShares, '', Math.round(subscribedAmount * 100) / 100, pct(subscribedShares)])
+      sheetRows.push([])
+    }
+    sheetRows.push(['AUTHORIZED CAPITAL STOCK'])
+    sheetRows.push(['', '', 'FOUNDERS', authFounders ?? '—', classPar('FOUNDERS'), authAmount(authFounders, 'FOUNDERS'), ''])
+    sheetRows.push(['', '', 'COMMON', authCommon ?? '—', classPar('COMMON'), authAmount(authCommon, 'COMMON'), ''])
+    sheetRows.push(['TOTAL', '', '', auth, '', '', ''])
+    sheetRows.push([])
+    push('SUBSCRIBED CAPITAL')
+    push('PAID-UP CAPITAL')
+    downloadXlsx(`GIS Summary - ${new Date().toISOString().slice(0, 10)}`, [{
+      name: 'GIS Summary',
+      headers: ['Nationality', 'No. of Stockholders', 'Type of Shares', 'Number of Shares', 'Par/Stated Value', 'Amount (PhP)', '% of Ownership'],
+      rows: sheetRows,
+    }])
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>GIS Summary</h2>
+          <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>
+            The share registry arranged like the SEC General Information Sheet&apos;s Capital Structure page, for line-by-line comparison with the filed GIS.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setShowNat(v => !v)}
+            className="px-3 py-2 rounded-xl text-sm font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+            {showNat ? 'Hide nationalities' : 'Edit nationalities'}
+          </button>
+          <button onClick={exportXlsx}
+            className="px-3 py-2 rounded-xl text-sm font-semibold border" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+            Download Excel
+          </button>
+        </div>
+      </div>
+
+      {showNat && (
+        <div className="rounded-2xl border bg-white p-4" style={{ borderColor: 'var(--light-gray)' }}>
+          <p className="text-xs font-semibold mb-2" style={{ color: 'var(--charcoal)' }}>
+            Shareholder nationality — tick the foreign ones; everyone else counts as Filipino.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
+            {shareholders.map(sh => (
+              <label key={sh.id} className="flex items-center gap-2 text-sm px-2 py-1 rounded-lg hover:bg-gray-50 cursor-pointer">
+                <input type="checkbox" checked={!!sh.isForeign} disabled={savingId === sh.id}
+                  onChange={e => setForeign(sh, e.target.checked)} />
+                <span style={{ color: 'var(--charcoal)' }}>{sh.shNumber} — {sh.name}</span>
+                {sh.isForeign && <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold" style={{ background: '#fdf3e3', color: '#b45309' }}>Foreign</span>}
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* AUTHORIZED CAPITAL STOCK */}
+      <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+        <div className="px-4 py-3 border-b" style={{ background: 'var(--off-white)', borderColor: 'var(--light-gray)' }}>
+          <h3 className="text-sm font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>AUTHORIZED CAPITAL STOCK</h3>
+        </div>
+        <table className="w-full text-xs" style={{ borderCollapse: 'collapse' }}>
+          <thead>
+            <tr>
+              <th className={`${cellCls} text-left`} style={headCell}>TYPE OF SHARES</th>
+              <th className={`${cellCls} text-right`} style={headCell}>NUMBER OF SHARES</th>
+              <th className={`${cellCls} text-right`} style={headCell}>PAR/STATED VALUE</th>
+              <th className={`${cellCls} text-right`} style={headCell}>AMOUNT (PhP)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td className={cellCls} style={cell}>FOUNDERS</td>
+              <td className={`${cellCls} text-right tabular-nums`} style={cell}>{authFounders != null ? n0(authFounders) : '—'}</td>
+              <td className={`${cellCls} text-right tabular-nums`} style={cell}>{classPar('FOUNDERS')}</td>
+              <td className={`${cellCls} text-right tabular-nums`} style={cell}>{authAmount(authFounders, 'FOUNDERS')}</td>
+            </tr>
+            <tr>
+              <td className={cellCls} style={cell}>COMMON</td>
+              <td className={`${cellCls} text-right tabular-nums`} style={cell}>{authCommon != null ? n0(authCommon) : '—'}</td>
+              <td className={`${cellCls} text-right tabular-nums`} style={cell}>{classPar('COMMON')}</td>
+              <td className={`${cellCls} text-right tabular-nums`} style={cell}>{authAmount(authCommon, 'COMMON')}</td>
+            </tr>
+            <tr className="font-semibold">
+              <td className={`${cellCls} text-right`} style={headCell}>TOTAL</td>
+              <td className={`${cellCls} text-right tabular-nums`} style={headCell}>{n0(auth)}</td>
+              <td className={cellCls} style={headCell} />
+              <td className={`${cellCls} text-right tabular-nums`} style={headCell}>
+                {authFounders != null && authCommon != null && singleParOf('FOUNDERS') != null && singleParOf('COMMON') != null
+                  ? `₱ ${n2(authFounders * (singleParOf('FOUNDERS') as number) + authCommon * (singleParOf('COMMON') as number))}` : '—'}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        {(authFounders == null || authCommon == null) && (
+          <p className="px-4 py-2 text-[11px]" style={{ color: '#92400e', background: '#fffbeb' }}>
+            The founders/common split of the authorized capital is not set — use the pencil on the Authorized Shares card to fill in both sub-limits.
+          </p>
+        )}
+      </div>
+
+      {capTable('SUBSCRIBED CAPITAL')}
+      {capTable('PAID-UP CAPITAL')}
+
+      <div className="rounded-xl px-4 py-3 text-[11px] space-y-1" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
+        <p>• Subscribed = outstanding shares (net of buybacks and onward transfers; rescinded holdings excluded). Unissued/treasury shares are not part of subscribed capital.</p>
+        <p>• Paid-up mirrors subscribed: the registry treats issued shares as fully paid. Receivable-backed subscriptions are not netted out here.</p>
+        <p>• Amounts are shares × each holding&apos;s par (no APIC), so they will not match Total Capitalization. % of ownership is shares ÷ authorized ({auth ? n0(auth) : '—'}).</p>
+        <p>• Preferred shares are excluded, matching the filed GIS capital-structure page.</p>
+      </div>
     </div>
   )
 }

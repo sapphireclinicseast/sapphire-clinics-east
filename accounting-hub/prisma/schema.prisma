@@ -3157,6 +3157,8 @@ model Shareholder {
   email       String?
   mobile      String?
   address     String?
+  // GIS capital-structure split: Filipino (false) vs Foreign (true) shareholder.
+  isForeign   Boolean  @default(false)
   createdById String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt

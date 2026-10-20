@@ -155,6 +155,7 @@ CREATE TABLE IF NOT EXISTS "PsychTestSettings" (
     CONSTRAINT "PsychTestSettings_pkey" PRIMARY KEY ("id")
 );
 CREATE UNIQUE INDEX IF NOT EXISTS "PsychTestSettings_editToken_key" ON "PsychTestSettings"("editToken");
+ALTER TABLE "Shareholder" ADD COLUMN IF NOT EXISTS "isForeign" BOOLEAN NOT NULL DEFAULT false;
 CREATE TABLE IF NOT EXISTS "PosSettlementBatch" (
     "id"                TEXT NOT NULL,
     "bankTransactionId" TEXT NOT NULL,

@@ -9,7 +9,7 @@ const ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 export async function GET() {
   const session = await auth()
   if (!session?.user || !ROLES.includes(session.user.role as string)) return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
-  const shareholders = await prisma.shareholder.findMany({ orderBy: { shSeq: 'asc' }, select: { id: true, shNumber: true, name: true, tin: true, birthdate: true, email: true, address: true } })
+  const shareholders = await prisma.shareholder.findMany({ orderBy: { shSeq: 'asc' }, select: { id: true, shNumber: true, name: true, tin: true, birthdate: true, email: true, address: true, isForeign: true } })
   return NextResponse.json({ shareholders })
 }
 
@@ -24,6 +24,8 @@ export async function PUT(req: Request) {
     if (b.email !== undefined) data.email = (typeof b.email === 'string' ? b.email.trim() : b.email) || null
     if (b.address !== undefined) data.address = (typeof b.address === 'string' ? b.address.trim() : b.address) || null
     if (b.birthdate !== undefined) data.birthdate = b.birthdate ? new Date(b.birthdate) : null
+    // GIS Filipino/Foreign split — set from the GIS Summary tab's nationality editor.
+    if (b.isForeign !== undefined) data.isForeign = !!b.isForeign
     if (Object.keys(data).length === 0) return NextResponse.json({ error: 'No fields to update' }, { status: 400 })
     await prisma.shareholder.update({ where: { id: b.id }, data })
     return NextResponse.json({ ok: true })

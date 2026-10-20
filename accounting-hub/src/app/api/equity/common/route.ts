@@ -56,7 +56,7 @@ export async function GET() {
       transferIn: { include: { fromCommonShare: { include: { shareholder: { select: { shNumber: true, name: true } } } } } },
     }, orderBy: { createdAt: 'asc' } }),
     prisma.preferredShare.findMany({ select: { shareholderId: true, numberOfShares: true, retiredShares: true, pricePerShare: true, buybacks: { select: { shares: true } }, transfersOut: { select: { shares: true } } } }),
-    prisma.shareholder.findMany({ orderBy: { shSeq: 'asc' }, select: { id: true, shNumber: true, name: true, tin: true, birthdate: true, email: true, mobile: true, address: true } }),
+    prisma.shareholder.findMany({ orderBy: { shSeq: 'asc' }, select: { id: true, shNumber: true, name: true, tin: true, birthdate: true, email: true, mobile: true, address: true, isForeign: true } }),
     prisma.equitySettings.findUnique({ where: { id: 'singleton' } }),
   ])
   const authorizedShares = settings?.authorizedShares ?? 20000000
@@ -150,6 +150,7 @@ export async function GET() {
     return {
       id: c.id, shareholderId: c.shareholderId, shNumber: c.shareholder.shNumber, name: c.shareholder.name,
       tin: c.shareholder.tin, birthdate: c.shareholder.birthdate, email: c.shareholder.email, mobile: c.shareholder.mobile, address: c.shareholder.address,
+      isForeign: c.shareholder.isForeign,
       beneficialOwners: c.beneficialOwners.map(bo => ({ id: bo.id, name: bo.name, tin: bo.tin, email: bo.email, address: bo.address, shares: num(bo.shares), notes: bo.notes })),
       dateAcquired: c.dateAcquired, agreementType: c.agreementType, assignedToShareholderId: c.assignedToShareholderId,
       agreementUrls: c.agreementUrls, stockCertNumber: c.stockCertNumber, proofOfDepositUrls: c.proofOfDepositUrls, validIdUrls: c.validIdUrls, shareClass: c.shareClass,

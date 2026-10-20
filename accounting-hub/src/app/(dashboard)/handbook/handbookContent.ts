@@ -617,7 +617,7 @@ export const SECTIONS: Section[] = [
       { k: 'p', t: `The **shareholder cap table** — common and founders shares, preferred shares, deposits, buybacks (into treasury), share sales, dividend releases and stock certificates, with authorized-share limits.` },
       { k: 'sub', t: 'Tabs & cards' },
       { k: 'ul', items: [
-        `Tabs: **Common Shares · Preferred Shares · Dividend Release History · Certificates**.`,
+        `Tabs: **Common Shares · Preferred Shares · Dividend Release History · Certificates · GIS Summary**.`,
         `KPI cards (Admin): Total Capitalization, **Authorized Shares** (editable, with Common/Founders sub-limits), Total Number of Shares, Total Common, Total Founders, Total Treasury, Active Shareholders.`,
       ] },
       { k: 'sub', t: 'Common tasks' },
@@ -626,6 +626,7 @@ export const SECTIONS: Section[] = [
         `**Buyback** — inside a shareholder, add bought-back shares (they move into **Treasury Shares**).`,
         `**Release a dividend** — **Dividend Release History → Add Dividend Release** (per-share × outstanding, then finalize and email); preferred dividends use a quarter grid.`,
         `**Edit authorized shares** — the pencil on the Authorized Shares card.`,
+        `**Compare with the filed GIS** — **GIS Summary** (Admin) arranges the registry like the SEC GIS Capital Structure page: Authorized per type, then Subscribed and Paid-up split Filipino/Foreign with stockholder counts, par amounts and % of ownership. Tick foreign shareholders under **Edit nationalities**; **Download Excel** exports the same layout. Amounts are shares × par (no APIC), and paid-up mirrors subscribed.`,
       ] },
       { k: 'note', label: 'Guardrails.', t: `Only the **Clinic Manager** edits equity; Accountant/Bookkeeper see the **Preferred** tab (and preferred dividends) view-only. A red **"⚠ Over authorized"** banner appears if a class exceeds its limit, and saving a shareholder that would breach a cap asks you to confirm.` },
     ],
