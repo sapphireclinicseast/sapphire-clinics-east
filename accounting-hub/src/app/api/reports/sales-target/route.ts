@@ -72,9 +72,11 @@ export async function GET(req: Request) {
       const info = parseMonitoringRemark(f.remarks)
       if (!info || info.amount == null || info.amount <= 0) continue
       const amt = info.netAmount ?? info.amount
-      if (!info.date) { migratedUndated.count++; migratedUndated.amount += amt; continue }
-      if (parseInt(info.date.slice(0, 4), 10) !== year) continue
-      const slot = months[parseInt(info.date.slice(5, 7), 10) - 1 - startIdx]
+      // A declared (SI-book) date set on the row wins over the workbook date.
+      const dateStr = f.declaredDate ? new Date(f.declaredDate).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }) : info.date
+      if (!dateStr) { migratedUndated.count++; migratedUndated.amount += amt; continue }
+      if (parseInt(dateStr.slice(0, 4), 10) !== year) continue
+      const slot = months[parseInt(dateStr.slice(5, 7), 10) - 1 - startIdx]
       if (slot) { slot.salesWithSI += amt; migrated.count++; migrated.amount += amt }
     }
 

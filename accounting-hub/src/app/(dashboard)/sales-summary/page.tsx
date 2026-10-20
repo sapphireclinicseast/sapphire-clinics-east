@@ -835,9 +835,10 @@ function WithSiTab({ branch: initialBranch, scopeEnum }: { branch: string; scope
     ...data.rows.map(r => ({ kind: tagged(r.siNumber) ? 'tagged' : 'si', si: r.siNumber, siN: siDigits(r.siNumber), order: r as SiRow | null, amount: r.amount, remarks: '' })),
     ...data.flags.filter(f => f.status === 'CANCELLED' || f.status === 'REMARKS').flatMap(f => {
       const info = parseMonitoringRemark(f.remarks)
-      if (info?.date) {
-        if (from && info.date < from) return []
-        if (to && info.date > to) return []
+      const bookDate = f.declaredDate || info?.date
+      if (bookDate) {
+        if (from && bookDate < from) return []
+        if (to && bookDate > to) return []
       }
       return [{
         kind: f.status.toLowerCase(), si: f.siNumber, siN: siDigits(f.siNumber),

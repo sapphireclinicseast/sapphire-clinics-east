@@ -70,17 +70,23 @@ export async function GET(req: Request) {
     const siOrders = emptyMonths()
     for (const o of orders) siOrders[monthOf(o.siDeclaredDate || o.transactionDate)] += Number(o.netAmount)
 
+    // AR-collection invoices: month of siDeclaredDate when set (editable in
+    // Sales Summary → With SI), paymentDate otherwise — same rule as orders.
     const arPays = await prisma.aRPayment.findMany({
       where: {
-        salesInvoiceNumber: { not: null }, paymentDate: range,
+        salesInvoiceNumber: { not: null },
         ...(branch !== 'ALL' ? { branch } : {}),
+        OR: [
+          { siDeclaredDate: null, paymentDate: range },
+          { siDeclaredDate: range },
+        ],
       },
-      select: { amount: true, discount: true, paymentDate: true },
+      select: { amount: true, discount: true, paymentDate: true, siDeclaredDate: true },
     })
     const siAr = emptyMonths()
     // Gross of the waived discount — the invoice covers the full service value,
     // matching the With SI tab's totals.
-    for (const p of arPays) siAr[monthOf(p.paymentDate)] += Number(p.amount) + Number(p.discount)
+    for (const p of arPays) siAr[monthOf(p.siDeclaredDate || p.paymentDate)] += Number(p.amount) + Number(p.discount)
 
     // Pre-hub invoices from the manual monitoring workbook: REMARKS flags with
     // date/amount encoded in the remark. Only dated rows can join a monthly
@@ -88,15 +94,16 @@ export async function GET(req: Request) {
     // silently dropped.
     const flags = await prisma.salesInvoiceFlag.findMany({
       where: { status: 'REMARKS', ...(branch !== 'ALL' ? { branch } : {}) },
-      select: { remarks: true },
+      select: { remarks: true, declaredDate: true },
     })
     const siMigrated = emptyMonths()
     let migratedUndated = 0
     for (const f of flags) {
       const info = parseMonitoringRemark(f.remarks)
       if (!info || !(info.amount != null && info.amount > 0)) continue
-      if (!info.date) { migratedUndated++; continue }
-      const d = new Date(`${info.date}T12:00:00+08:00`)
+      // A declared (SI-book) date set on the row wins over the workbook date.
+      if (!f.declaredDate && !info.date) { migratedUndated++; continue }
+      const d = f.declaredDate ? new Date(f.declaredDate) : new Date(`${info.date}T12:00:00+08:00`)
       if (yearOf(d) !== year) continue
       siMigrated[monthOf(d)] += Number(info.netAmount ?? info.amount)
     }
