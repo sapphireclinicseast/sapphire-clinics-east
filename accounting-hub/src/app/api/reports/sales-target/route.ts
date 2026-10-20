@@ -108,7 +108,11 @@ export async function PUT(req: Request) {
     if (!VALID_BRANCHES.includes(branch) || !(month >= 1 && month <= 12) || !(year >= 2000)) {
       return NextResponse.json({ error: 'Valid branch, month and year are required' }, { status: 400 })
     }
-    const amt = Number(target) || 0
+    // Tolerate formatted input ("494,785.00", "₱494,785"); reject anything that
+    // is not an amount rather than silently storing 0.
+    const cleaned = typeof target === 'number' ? target : String(target ?? '').replace(/[^0-9.-]/g, '')
+    const amt = cleaned === '' ? 0 : Number(cleaned)
+    if (!Number.isFinite(amt) || amt < 0) return NextResponse.json({ error: `Target must be a number (got "${target}")` }, { status: 400 })
     await prisma.salesTarget.upsert({
       where: { branch_periodMonth_periodYear: { branch, periodMonth: month, periodYear: year } },
       update: { target: amt },

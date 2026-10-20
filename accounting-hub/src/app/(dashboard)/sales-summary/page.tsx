@@ -1075,8 +1075,18 @@ function SalesTargetTab({ branch: initialBranch, scopeEnum, canEditTarget }: { b
   useEffect(() => { load() }, [load])
 
   const save = async () => {
+    // Accept what people actually type — "494,785.00", "₱494,785", "494785" —
+    // instead of Number(), which turns a comma-formatted amount into NaN and
+    // used to save 0.00 silently.
+    const cleaned = targetInput.replace(/[^0-9.-]/g, '')
+    const amt = cleaned === '' ? 0 : Number(cleaned)
+    if (targetInput.trim() !== '' && !Number.isFinite(amt)) { alert(`"${targetInput}" is not an amount. Type numbers only, e.g. 494785 or 494,785.00.`); return }
     setBusy(true)
-    try { await fetch('/api/reports/sales-target', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ branch, month, year, target: Number(targetInput) || 0 }) }); await load() }
+    try {
+      const r = await fetch('/api/reports/sales-target', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ branch, month, year, target: amt }) })
+      if (!r.ok) { alert((await r.json().catch(() => ({}))).error || 'Failed to save the target'); return }
+      await load()
+    }
     finally { setBusy(false) }
   }
 
