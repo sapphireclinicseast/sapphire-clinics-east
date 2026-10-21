@@ -1178,6 +1178,14 @@ a.hero-brand-chip:hover {
 
 /* Verdana Rehab Banner */
 .verdana-section { padding: 48px 24px 8px; }
+
+/* Featured video */
+.video-section { padding: 48px 24px 8px; }
+.video-head { text-align: center; margin-bottom: 22px; }
+.video-eyebrow { display:inline-block; font-size:12px; font-weight:700; letter-spacing:2px; text-transform:uppercase; color:var(--primary); background:var(--bg-alt); border:1px solid rgba(74,128,115,.3); padding:5px 14px; border-radius:100px; margin-bottom:12px; }
+.video-head .section-title { margin-bottom: 0; }
+.video-wrap { position: relative; width: 100%; max-width: 900px; margin: 0 auto; aspect-ratio: 16 / 9; border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow-lg); background:#000; }
+.video-wrap iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
 .verdana-banner {
   background: linear-gradient(135deg, var(--primary-darker), var(--primary-dark));
   border-radius: var(--radius); padding: 32px;
