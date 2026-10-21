@@ -6,7 +6,7 @@
   <title>Sapphire Clinics East Inc. (Aura Health Rehab)</title>
   <link rel="icon" type="image/png" href="favicon.png?v=17">
   <link rel="apple-touch-icon" href="favicon.png?v=17">
-  <meta name="description" content="Sapphire Clinics East, Inc. (SCEI) — Premier rehabilitation center operating Aura Health Clinic branches in Pasig and San Juan City. Physical Therapy, Occupational Therapy, Speech Therapy, SPED, Psychotherapy, and more.">
+  <meta name="description" content="Rehab for Every Age, Every Stage. Sapphire Clinics East, Inc. operating Aura Health Rehab clinics in Pasig (East) and San Juan (Greenhills).">
   <meta name="keywords" content="Sapphire Clinics East, SCEI, Aura Health Clinic, rehabilitation, physical therapy, occupational therapy, speech therapy, SPED, Pasig, San Juan, Greenhills">
   <meta property="og:title" content="Sapphire Clinics East Inc. (Aura Health Rehab)">
   <meta property="og:description" content="Rehab for Every Age, Every Stage — Sapphire Clinics East, Inc.">
@@ -37,13 +37,6 @@
   <link rel="stylesheet" href="css/style.css?v=37">
 </head>
 <body>
-
-<!-- ================================================================
-  LOGO INTRO SPLASH SCREEN
-  HTML lifted verbatim from scei-logo-intro.html.
-  Auto-dismisses via CSS after ~5.5s, or on Skip click.
-  sessionStorage prevents replay within the same browser session.
-================================================================ -->
 <div id="logo-intro-overlay" role="dialog" aria-label="Sapphire Clinics East logo intro">
   <div class="scene">
 
@@ -122,15 +115,11 @@
 
   </div><!-- /scene -->
 </div>
-
-<!-- ================================================================
-  NAVIGATION
-================================================================ -->
 <nav class="navbar hero-top" id="navbar">
   <div class="nav-inner">
 
     <!-- Logo -->
-    <a class="nav-logo" href="#" onclick="scrollToSection('home'); return false;" aria-label="Sapphire Clinics East, Inc.">
+    <a class="nav-logo" href="/" aria-label="Sapphire Clinics East, Inc.">
       <!-- Inline SVG diamond mark — uses currentColor (white on hero, teal on scrolled) -->
       <svg class="nav-logo-mark" viewBox="-100 -100 200 200" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
         <polygon fill="none" stroke="currentColor" stroke-width="5.5" stroke-linejoin="miter" points="0,-88 88,0 0,88 -88,0"/>
@@ -159,26 +148,21 @@
     <!-- Desktop Links -->
     <div class="nav-links">
 
-      <button class="nav-link" onclick="scrollToSection('about')">About Us</button>
+      <a class="nav-link" href="/about/">About Us</a>
 
       <!-- Branches Dropdown -->
       <div class="nav-dropdown">
-        <button class="nav-link" onclick="scrollToSection('branches')">
-          Branches ▾
-        </button>
+        <a class="nav-link" href="/branches/">Branches ▾</a>
         <div class="dropdown-menu">
-          <span class="dropdown-item" onclick="scrollToSection('branches'); setTimeout(()=>switchBranch('east'),400);">
-            📍 Aura Health Clinic - East
-          </span>
-          <span class="dropdown-item" onclick="scrollToSection('branches'); setTimeout(()=>switchBranch('greenhills'),400);">
-            📍 Aura Health Clinic - Greenhills
-          </span>
+          <a class="dropdown-item" href="/branches/?b=east">📍 Aura Health Clinic - East</a>
+          <a class="dropdown-item" href="/branches/?b=greenhills">📍 Aura Health Clinic - Greenhills</a>
         </div>
       </div>
 
+      <a class="nav-link" href="/partners/">Partners</a>
       <a class="nav-link" href="/hiring">Careers</a>
       <a class="nav-link" href="https://institute.sapphireclinicseast.org/">Trainings</a>
-      <button class="nav-link" onclick="scrollToSection('faqs')">FAQs</button>
+      <a class="nav-link" href="/faqs/">FAQs</a>
       <a class="nav-link" href="/catalog/">Catalog</a>
     </div>
 
@@ -194,24 +178,18 @@
 
   </div>
 </nav>
-
-<!-- Mobile Navigation -->
 <div class="mobile-nav" id="mobileNav" role="dialog" aria-label="Mobile navigation">
   <button class="mobile-nav-close" onclick="closeMobileNav()" aria-label="Close navigation">&times;</button>
-  <button class="mobile-nav-link" onclick="scrollToSection('about')">About Us</button>
-  <button class="mobile-nav-link" onclick="scrollToSection('branches')">Branches</button>
+  <a class="mobile-nav-link" href="/about/">About Us</a>
+  <a class="mobile-nav-link" href="/branches/">Branches</a>
+  <a class="mobile-nav-link" href="/partners/">Partners</a>
   <a class="mobile-nav-link" href="/hiring">Careers</a>
   <a class="mobile-nav-link" href="https://institute.sapphireclinicseast.org/">Trainings</a>
-  <button class="mobile-nav-link" onclick="scrollToSection('faqs')">FAQs</button>
+  <a class="mobile-nav-link" href="/faqs/">FAQs</a>
   <a class="mobile-nav-link" href="/catalog/">Catalog</a>
   <a class="mobile-nav-link" href="https://staff.sapphireclinicseast.org/" style="margin-top: 12px;">Staff Log In →</a>
   <a class="mobile-nav-link" href="/booking" style="color: var(--accent);">Book a Session →</a>
 </div>
-
-
-<!-- ================================================================
-  HERO SECTION
-================================================================ -->
 <section id="home" class="hero">
 
   <!-- Background Slides (populated by JS) -->
@@ -251,11 +229,6 @@
   <div class="hero-dots" id="heroDots" aria-label="Hero image navigation"></div>
 
 </section>
-
-
-<!-- ================================================================
-  FEATURED VIDEO
-================================================================ -->
 <section id="video" class="video-section">
   <div class="container">
     <div class="video-head reveal">
@@ -270,773 +243,6 @@
     </div>
   </div>
 </section>
-
-
-<!-- ================================================================
-  VERDANA REHAB (sister initiative — top banner)
-================================================================ -->
-<section id="verdana" class="verdana-section">
-  <div class="container">
-    <a href="https://verdanarehab.com/" target="_blank" rel="noopener" class="verdana-banner reveal">
-      <div class="verdana-icon">
-        <img src="BRANDS/VERDANA STORE.png" alt="Verdana Rehab Solutions" loading="lazy">
-      </div>
-      <div>
-        <h3>Verdana Rehab Solutions</h3>
-        <p>Our dedicated retail arm for therapy products, equipment, and educational materials — equipping families and professionals to support therapy and learning at home. Visit Verdana Rehab Solutions to learn more.</p>
-        <div class="btn btn-white btn-sm" style="display:inline-flex; margin-top:12px;">
-          Visit verdanarehab.com →
-        </div>
-      </div>
-    </a>
-  </div>
-</section>
-
-
-<!-- ================================================================
-  AURA ACADEMY FOR LEARNING (DepEd-accredited SPED / Class Hub)
-================================================================ -->
-<section id="academy" class="verdana-section">
-  <div class="container">
-    <a href="https://class.sapphireclinicseast.org/" target="_blank" rel="noopener" class="verdana-banner reveal">
-      <div class="verdana-icon">
-        <img src="BRANDS/AURA ACADEMY.png" alt="Aura Academy for Learning" loading="lazy">
-      </div>
-      <div>
-        <h3>Aura Academy for Learning</h3>
-        <p>Our DepEd-accredited inclusive school offering Nursery to Grade 12 — pairing quality education with SPED and therapy support so every learner can thrive. Visit Aura Academy to explore our classes and enrollment.</p>
-        <div class="btn btn-white btn-sm" style="display:inline-flex; margin-top:12px;">
-          Visit Aura Academy →
-        </div>
-      </div>
-    </a>
-  </div>
-</section>
-
-
-<!-- ================================================================
-  AURA HEALTH INSTITUTE (trainings & certifications)
-================================================================ -->
-<section id="institute" class="verdana-section">
-  <div class="container">
-    <a href="https://institute.sapphireclinicseast.org/" target="_blank" rel="noopener" class="verdana-banner reveal">
-      <div class="verdana-icon">
-        <img src="BRANDS/AURA INSTITUTE.png" alt="Aura Health Institute" loading="lazy">
-      </div>
-      <div>
-        <h3>Aura Health Institute</h3>
-        <p>Our training and certification arm — seminars, workshops, and professional development programs for therapists and allied-health professionals. Visit Aura Health Institute to explore upcoming trainings and certifications.</p>
-        <div class="btn btn-white btn-sm" style="display:inline-flex; margin-top:12px;">
-          Visit Aura Health Institute →
-        </div>
-      </div>
-    </a>
-  </div>
-</section>
-
-
-<!-- ================================================================
-  UGAT FELLOWSHIP (allied-health stipend program)
-================================================================ -->
-<section id="ugat" class="verdana-section">
-  <div class="container">
-    <a href="https://fellowship.sapphireclinicseast.org/" target="_blank" rel="noopener" class="verdana-banner reveal">
-      <div class="verdana-icon">
-        <img src="BRANDS/UGAT FELLOWSHIP.png" alt="UGAT Fellowship" loading="lazy">
-      </div>
-      <div>
-        <h3>UGAT Fellowship</h3>
-        <p>Our fellowship program providing a monthly stipend to allied-health professionals in their final year of university — nurturing the next generation of rehabilitation practitioners. Visit UGAT Fellowship to learn about eligibility and how to apply.</p>
-        <div class="btn btn-white btn-sm" style="display:inline-flex; margin-top:12px;">
-          Visit UGAT Fellowship →
-        </div>
-      </div>
-    </a>
-  </div>
-</section>
-
-
-<!-- ================================================================
-  ACCREDITED HMOs
-================================================================ -->
-<section id="hmos" class="hmo-section">
-  <div class="container">
-    <div class="section-header reveal">
-      <span class="section-tag">Accredited</span>
-      <h2 class="section-title">HMO Partners</h2>
-      <p class="section-subtitle">We accept a wide range of Health Maintenance Organizations for your convenience.</p>
-    </div>
-
-    <!-- HMO logos (populated by JS) -->
-    <div class="hmo-logos reveal" id="hmoLogos"></div>
-    <p class="hmo-placeholder-text reveal">
-      For the latest list of accredited HMOs, please contact any of our branches.
-    </p>
-  </div>
-</section>
-
-
-<!-- ================================================================
-  PARTNERS
-================================================================ -->
-<section id="partners" class="partners-section">
-  <div class="container">
-    <div class="section-header reveal">
-      <span class="section-tag">Partners</span>
-      <h2 class="section-title">Partners</h2>
-      <p class="section-subtitle">Proud to partner with leading academic institutions and athletic organizations committed to excellence and community health.</p>
-    </div>
-
-    <!-- Partner logos (populated by JS) -->
-    <div class="partner-logos reveal" id="partnerLogos"></div>
-    <p class="hmo-placeholder-text reveal" style="margin-top:16px;">
-      Interested in partnering with us? <button onclick="scrollToSection('contact')" style="background:none;border:none;color:var(--primary);font-weight:600;cursor:pointer;font-size:inherit;">Contact us</button> to explore partnership opportunities.
-    </p>
-  </div>
-</section>
-
-
-<!-- ================================================================
-  ABOUT US
-================================================================ -->
-<section id="about" class="about-section">
-  <div class="container">
-
-    <div class="section-header reveal">
-      <span class="section-tag">Who We Are</span>
-      <h2 class="section-title">About Sapphire Clinics East, Inc.</h2>
-      <p class="section-subtitle">Sapphire Clinics East, Inc. (SCEI) is dedicated to optimizing functional mobility, effective communication, and inclusive care — backed by evidence-based rehabilitation. SCEI operates branches under the Aura Health Clinic brand.</p>
-    </div>
-
-    <!-- Mission & Vision -->
-    <div class="grid-2 reveal" style="margin-bottom: 24px;">
-      <div class="mv-card">
-        <div class="mv-card-label">Our Mission</div>
-        <div class="mv-card-text">
-          To optimize quality of life through accessible, excellent, and evidence-based rehabilitation services — optimizing functional mobility, enabling effective communication, promoting inclusivity, advancing clinical research, and fostering excellence in the professional community.
-        </div>
-      </div>
-      <div class="mv-card light">
-        <div class="mv-card-label">Our Vision</div>
-        <div class="mv-card-text">
-          To lead rehabilitation in the Philippines. A global leader in accessible, excellent, and evidence-based habilitation and rehabilitation services — helping improve the overall health of society, one person and one community at a time.
-        </div>
-      </div>
-    </div>
-
-    <!-- Brand tagline -->
-    <p class="mv-tagline reveal">Feeling seen. &nbsp;Finding footing. &nbsp;Moving forward.</p>
-
-    <!-- BHAG -->
-    <div class="bhag-box reveal" style="margin-bottom: 40px;">
-      <div class="bhag-box-label">🚀 Our BHAG — Big Hairy Audacious Goal</div>
-      <div class="bhag-box-text">
-        To be the #1 market leader in the rehabilitation space in the Philippines in 10 years.
-      </div>
-    </div>
-
-    <!-- Core Values -->
-    <div class="about-grid reveal">
-      <div>
-        <h3 style="font-size:22px; font-weight:800; margin-bottom:8px;">Our Core Values</h3>
-        <p style="font-size:14px; color:var(--text-muted); line-height:1.6; margin-bottom:22px;">The three arches of our mark stand for our three values — <strong>Quality</strong>, <strong>Empathy</strong>, and <strong>Teamwork</strong>.</p>
-        <div class="values-arches">
-          <div class="arch-value narra">
-            <div class="arch-tag">Outer Arch · Narra</div>
-            <div class="arch-name">Quality</div>
-            <div class="arch-desc">Foundation of the work. Evidence-based, outcome-led.</div>
-          </div>
-          <div class="arch-value sage">
-            <div class="arch-tag">Middle Arch · Sage</div>
-            <div class="arch-name">Empathy</div>
-            <div class="arch-desc">The meeting place. We listen first.</div>
-          </div>
-          <div class="arch-value clay">
-            <div class="arch-tag">Inner Arch · Clay</div>
-            <div class="arch-name">Teamwork</div>
-            <div class="arch-desc">Warmth at the core. Therapists, families, patients in concert.</div>
-          </div>
-        </div>
-      </div>
-
-      <div>
-        <h3 style="font-size:22px; font-weight:800; margin-bottom:20px;">Why Aura Health Clinic?</h3>
-        <div class="card" style="margin-bottom:16px; border-left: 4px solid var(--primary);">
-          <div style="font-size:13px; font-weight:700; color:var(--primary); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:8px;">Clinical Excellence</div>
-          <p style="font-size:14px; color:var(--text-muted); line-height:1.7;">We provide the highest quality of Physical Therapy, Occupational Therapy, Speech Therapy, and all services offered to our patients.</p>
-        </div>
-        <div class="card" style="margin-bottom:16px; border-left: 4px solid var(--primary);">
-          <div style="font-size:13px; font-weight:700; color:var(--primary); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:8px;">Professional Hub</div>
-          <p style="font-size:14px; color:var(--text-muted); line-height:1.7;">A destination for driven, competent, and like-minded professionals who want to raise the standard of practice in healthcare.</p>
-        </div>
-        <div class="card" style="border-left: 4px solid var(--primary);">
-          <div style="font-size:13px; font-weight:700; color:var(--primary); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:8px;">Community Impact</div>
-          <p style="font-size:14px; color:var(--text-muted); line-height:1.7;">Helping communities by providing accessible, high-quality healthcare — creating healthy, productive, and happy people.</p>
-        </div>
-      </div>
-    </div>
-
-  </div>
-</section>
-
-
-<!-- ================================================================
-  BOOK NOW STRIP
-================================================================ -->
-<div class="book-strip">
-  <h2 class="reveal">Ready to Start Your Recovery Journey?</h2>
-  <p class="reveal delay-1">Our multidisciplinary team is here to help. Walk-ins welcome, subject to availability.</p>
-  <div class="btn-row reveal delay-2">
-    <button class="btn btn-white btn-lg" onclick="scrollToSection('contact')">
-      <i data-lucide="phone" style="width:18px;height:18px"></i>
-      Contact a Branch
-    </button>
-    <button class="btn btn-outline" style="border-color:rgba(255,255,255,.5);color:#fff;" onclick="scrollToSection('branches')">
-      View Our Branches
-    </button>
-  </div>
-</div>
-
-
-<!-- ================================================================
-  BRANCHES
-================================================================ -->
-<section id="branches" class="branches-section">
-  <div class="container">
-
-    <div class="section-header reveal">
-      <span class="section-tag">Our Locations</span>
-      <h2 class="section-title">Our Branches</h2>
-      <p class="section-subtitle">Two state-of-the-art rehabilitation facilities serving Metro Manila.</p>
-    </div>
-
-    <!-- Branch Tabs -->
-    <div class="branch-tabs reveal">
-      <button class="branch-tab active" data-branch="east" onclick="switchBranch('east')">
-        <i data-lucide="building-2" style="width:18px;height:18px"></i>
-        Aura Health Clinic - East
-      </button>
-      <button class="branch-tab" data-branch="greenhills" onclick="switchBranch('greenhills')">
-        <i data-lucide="building" style="width:18px;height:18px"></i>
-        Aura Health Clinic - Greenhills
-      </button>
-    </div>
-
-    <!-- ── EAST PANEL ── -->
-    <div id="eastPanel" class="branch-panel active">
-
-      <div class="branch-header-card reveal">
-        <div class="branch-name">Aura Health Clinic - East Branch</div>
-        <div class="branch-address">
-          <span>📍</span>
-          Level 4, Robinsons Metro East, Marcos Highway, Brgy. Dela Paz, Santolan, Pasig
-        </div>
-        <div class="branch-contact">
-          <span>📧</span>
-          east@sapphireclinicseast.org
-        </div>
-        <div class="branch-contact">
-          <span>📞</span>
-          +63 917 118 9289 &nbsp;|&nbsp; (02) 5310-4991
-        </div>
-        <div class="branch-msg">
-          <a class="b-msgr" href="https://m.me/aurahealthrehabeast" target="_blank" rel="noopener">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3C6.48 3 2 6.94 2 11.5c0 2.4 1.24 4.56 3.2 6.06V22l3.13-1.72c1.13.36 2.37.56 3.67.56 5.52 0 10-3.94 10-8.9S17.52 3 12 3z"/></svg>
-            Message on Messenger
-          </a>
-          <a class="b-viber" href="viber://chat?number=%2B639171189289">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2C6.9 2 2.75 5.7 2.75 10.25c0 2.5 1.25 4.72 3.2 6.2-.13 1.13-.6 2.24-1.3 3.05 1.34-.15 2.6-.68 3.63-1.5.86.22 1.78.35 2.72.35 5.1 0 9.25-3.7 9.25-8.1S17.1 2 12 2zm4.6 11.6c-.28.77-1.5 1.43-2.35 1.34-.66-.08-1.5-.3-3.28-1.14-2.24-1.13-3.66-3.48-3.77-3.63-.11-.15-.85-1.22-.85-2.33 0-1.1.58-1.63.78-1.85.2-.22.44-.28.58-.28h.42c.14 0 .32-.05.5.4.18.46.63 1.6.68 1.7.05.1.08.24 0 .4-.08.15-.12.24-.24.4-.12.14-.25.32-.36.43-.12.11-.24.24-.1.47.14.23.63 1.05 1.36 1.7.94.84 1.73 1.1 1.98 1.22.24.12.38.1.52-.06.14-.16.6-.7.76-.94.16-.24.32-.2.54-.12.22.08 1.4.66 1.64.78.24.12.4.18.46.28.05.1.05.6-.23 1.37z"/></svg>
-            Message on Viber
-          </a>
-        </div>
-      </div>
-
-      <!-- Services -->
-      <h3 style="font-size:20px; font-weight:700; margin-bottom:16px;" class="reveal">
-        <i data-lucide="stethoscope" style="width:20px;height:20px;vertical-align:-4px;margin-right:8px;color:var(--primary)"></i>
-        Services Offered
-      </h3>
-      <div class="services-grid reveal" id="eastServices">
-        <!-- populated by JS -->
-      </div>
-
-      <!-- Facilities -->
-      <h3 class="facilities-heading reveal" style="margin-top:40px;">
-        <i data-lucide="layout-dashboard" style="width:20px;height:20px;vertical-align:-4px;color:var(--primary)"></i>
-        Our Facilities
-      </h3>
-      <div class="gallery-grid reveal" id="eastGallery">
-        <!-- populated by JS -->
-      </div>
-
-    </div><!-- /eastPanel -->
-
-
-    <!-- ── GREENHILLS PANEL ── -->
-    <div id="greenhillsPanel" class="branch-panel">
-
-      <div class="branch-header-card reveal">
-        <div class="branch-name">Aura Health Clinic - Greenhills Branch</div>
-        <div class="branch-address">
-          <span>📍</span>
-          Level 8, GH Tower Offices, South Drive, Ortigas Avenue, Greenhills, San Juan City
-        </div>
-        <div class="branch-contact">
-          <span>📧</span>
-          greenhills@sapphireclinicseast.org
-        </div>
-        <div class="branch-contact">
-          <span>📞</span>
-          +63 917 770 1686 &nbsp;|&nbsp; (02) 8529-1590
-        </div>
-        <div class="branch-msg">
-          <a class="b-msgr" href="https://m.me/aurahealthrehabgh" target="_blank" rel="noopener">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3C6.48 3 2 6.94 2 11.5c0 2.4 1.24 4.56 3.2 6.06V22l3.13-1.72c1.13.36 2.37.56 3.67.56 5.52 0 10-3.94 10-8.9S17.52 3 12 3z"/></svg>
-            Message on Messenger
-          </a>
-          <a class="b-viber" href="viber://chat?number=%2B639177701686">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2C6.9 2 2.75 5.7 2.75 10.25c0 2.5 1.25 4.72 3.2 6.2-.13 1.13-.6 2.24-1.3 3.05 1.34-.15 2.6-.68 3.63-1.5.86.22 1.78.35 2.72.35 5.1 0 9.25-3.7 9.25-8.1S17.1 2 12 2zm4.6 11.6c-.28.77-1.5 1.43-2.35 1.34-.66-.08-1.5-.3-3.28-1.14-2.24-1.13-3.66-3.48-3.77-3.63-.11-.15-.85-1.22-.85-2.33 0-1.1.58-1.63.78-1.85.2-.22.44-.28.58-.28h.42c.14 0 .32-.05.5.4.18.46.63 1.6.68 1.7.05.1.08.24 0 .4-.08.15-.12.24-.24.4-.12.14-.25.32-.36.43-.12.11-.24.24-.1.47.14.23.63 1.05 1.36 1.7.94.84 1.73 1.1 1.98 1.22.24.12.38.1.52-.06.14-.16.6-.7.76-.94.16-.24.32-.2.54-.12.22.08 1.4.66 1.64.78.24.12.4.18.46.28.05.1.05.6-.23 1.37z"/></svg>
-            Message on Viber
-          </a>
-        </div>
-      </div>
-
-      <!-- Services -->
-      <h3 style="font-size:20px; font-weight:700; margin-bottom:16px;" class="reveal">
-        <i data-lucide="stethoscope" style="width:20px;height:20px;vertical-align:-4px;margin-right:8px;color:var(--primary)"></i>
-        Services Offered
-      </h3>
-      <div class="services-grid reveal" id="greenhillsServices">
-        <!-- populated by JS -->
-      </div>
-
-      <!-- Facilities -->
-      <h3 class="facilities-heading reveal" style="margin-top:40px;">
-        <i data-lucide="layout-dashboard" style="width:20px;height:20px;vertical-align:-4px;color:var(--primary)"></i>
-        Our Facilities
-      </h3>
-      <div class="gallery-grid reveal" id="greenhillsGallery">
-        <!-- populated by JS -->
-      </div>
-
-    </div><!-- /greenhillsPanel -->
-
-  </div>
-</section>
-
-
-<!-- ================================================================
-  CAREERS
-================================================================ -->
-<section id="careers" class="careers-section">
-  <div class="container">
-
-    <div class="section-header reveal">
-      <span class="section-tag">Join Our Team</span>
-      <h2 class="section-title">Careers at Sapphire Clinics East</h2>
-      <p class="section-subtitle">We're looking for passionate healthcare professionals who want to make a real difference.</p>
-      <div style="margin-top: 24px;">
-        <a class="btn btn-accent btn-lg" href="/hiring">
-          <i data-lucide="briefcase" style="width:18px;height:18px"></i>
-          Apply Now
-        </a>
-      </div>
-    </div>
-
-    <a class="career-card reveal" href="/hiring" style="text-decoration:none; color:#fff; display:block;">
-      <h3>🎉 Now Hiring!</h3>
-      <p>Join a dynamic team of healthcare professionals in a state-of-the-art rehabilitation environment. We invest in your growth, your expertise, and your career.</p>
-      <div class="career-branches">
-        <div class="career-branch">
-          <div class="career-branch-name">📍 Aura Health Clinic - East Branch</div>
-          <div class="career-branch-email">
-            <i data-lucide="mail" style="width:14px;height:14px"></i>
-            hr.east@sapphireclinicseast.org
-          </div>
-        </div>
-        <div class="career-branch">
-          <div class="career-branch-name">📍 Aura Health Clinic - Greenhills Branch</div>
-          <div class="career-branch-email">
-            <i data-lucide="mail" style="width:14px;height:14px"></i>
-            hr.gh@sapphireclinicseast.org
-          </div>
-        </div>
-      </div>
-    </a>
-
-    <!-- Benefits -->
-    <h3 style="font-size:22px; font-weight:800; margin: 40px 0 20px;" class="reveal">Why Work With Us?</h3>
-    <div class="career-benefits reveal">
-      <div class="career-benefit">
-        <div class="career-benefit-icon"><i data-lucide="building-2" style="width:20px;height:20px"></i></div>
-        <h4>State-of-the-Art Facilities</h4>
-        <p>Access to modern, fully equipped spaces designed to support you and your clients' needs.</p>
-      </div>
-      <div class="career-benefit">
-        <div class="career-benefit-icon"><i data-lucide="trending-up" style="width:20px;height:20px"></i></div>
-        <h4>Competitive Compensation</h4>
-        <p>Attractive salaries paired with performance-based incentives to reward your expertise and dedication.</p>
-      </div>
-      <div class="career-benefit">
-        <div class="career-benefit-icon"><i data-lucide="graduation-cap" style="width:20px;height:20px"></i></div>
-        <h4>Exclusive Training Opportunities</h4>
-        <p>Large discounts on company-sponsored international training programs and full or partial reimbursement for professional development fees.</p>
-      </div>
-      <div class="career-benefit">
-        <div class="career-benefit-icon"><i data-lucide="crown" style="width:20px;height:20px"></i></div>
-        <h4>Career Growth</h4>
-        <p>Pathways to management roles and leadership opportunities, allowing you to expand your influence and expertise.</p>
-      </div>
-      <div class="career-benefit">
-        <div class="career-benefit-icon"><i data-lucide="users" style="width:20px;height:20px"></i></div>
-        <h4>Collaborative Environment</h4>
-        <p>A dynamic network of healthcare experts committed to innovation and excellence.</p>
-      </div>
-      <div class="career-benefit">
-        <div class="career-benefit-icon"><i data-lucide="shield-check" style="width:20px;height:20px"></i></div>
-        <h4>Comprehensive Support</h4>
-        <p>Robust administrative assistance so you can focus on delivering outstanding care while we handle the logistics.</p>
-      </div>
-    </div>
-
-  </div>
-</section>
-
-
-<!-- ================================================================
-  LEADERSHIP TEAM
-================================================================ -->
-<section id="leadership" style="padding: var(--section-padding); background: var(--bg-alt);">
-  <div class="container">
-    <div class="section-header reveal">
-      <span class="section-tag">The People Behind Us</span>
-      <h2 class="section-title">Leadership Team</h2>
-      <p class="section-subtitle">Experienced healthcare and business professionals committed to advancing rehabilitation in the Philippines.</p>
-    </div>
-
-    <div class="leaders-grid">
-
-      <!-- Hannah Jara -->
-      <div class="leader-card reveal">
-        <div class="leader-avatar"><img src="LEADERSHIP PICTURES/HANNAH JARA.png?v=5" alt="Hannah P. Jara"></div>
-        <div class="leader-name">Hannah P. Jara</div>
-        <div class="leader-creds">MBA, MPH, PTRP</div>
-        <div class="leader-role">President & CEO, Sapphire Clinics East, Inc.</div>
-        <p class="leader-bio">With advanced degrees from the University of the Philippines Manila, Asian Institute of Management and ESADE Business School, Hannah brings vast experience including serving as OIC-Deputy Team Leader for the World Bank's DOH Philippines COVID-19 Emergency Response Project. A board topnotcher (February 2017) and evidence review expert at NIH UPM.</p>
-      </div>
-
-      <!-- Ariel Jan Carlo Gonzales -->
-      <div class="leader-card reveal delay-1">
-        <div class="leader-avatar"><img src="LEADERSHIP PICTURES/ARIEL JAN CARLO GONZALES.png?v=5" alt="Ariel Jan Carlo Gonzales"></div>
-        <div class="leader-name">Ariel Jan Carlo Gonzales</div>
-        <div class="leader-creds">MBA</div>
-        <div class="leader-role">Treasurer, SCEI</div>
-        <p class="leader-bio">Chief Finance Officer at Rapidé Group & Hertz Philippines. Holds an MBA from the Asian Institute of Management and a BS in Management Engineering from Ateneo de Manila University. Previously Head of Treasury and Head of Corporate Planning & Budgeting at LICA Automotive, and a Project Manager at the Department of Transportation & Communications.</p>
-      </div>
-
-      <!-- Anna Kaye Hao Lim -->
-      <div class="leader-card reveal delay-2">
-        <div class="leader-avatar"><img src="LEADERSHIP PICTURES/ANNA KAYE LIM.png?v=5" alt="Anna Kaye Hao Lim"></div>
-        <div class="leader-name">Anna Kaye Hao Lim</div>
-        <div class="leader-creds">MBA</div>
-        <div class="leader-role">Board Member, SCEI</div>
-        <p class="leader-bio">Director of Finance and Risk at Euroasia Marble & Granite, Inc. Holds an MBA from the Asian Institute of Management and a BS in Management Engineering from Ateneo de Manila University. Previously AVP Finance, Strategic Purchasing Analyst, and Business Development Associate at WL Foods.</p>
-      </div>
-
-      <!-- Abram Paez Barrameda -->
-      <div class="leader-card reveal">
-        <div class="leader-avatar"><img src="LEADERSHIP PICTURES/ABRAM BARRAMEDA.png?v=5" alt="Abram Paez Barrameda"></div>
-        <div class="leader-name">Abram Paez Barrameda</div>
-        <div class="leader-creds">MBA</div>
-        <div class="leader-role">Board Member, SCEI</div>
-        <p class="leader-bio">Director at The Abba's Orchard Montessori School. Holds an MBA from the Asian Institute of Management and University of Mannheim, a BA in Political Science from Ateneo de Davao University, and diplomas in Corporate Finance and Applied Project Management from Ateneo de Manila University. Previously in Product Development and Marketing at Filinvest Land Inc.</p>
-      </div>
-
-      <!-- Jireh Annette De Guzman Concepcion -->
-      <div class="leader-card reveal delay-1">
-        <div class="leader-avatar"><img src="LEADERSHIP PICTURES/JIREH CONCEPCION.png?v=5" alt="Jireh Annette De Guzman Concepcion"></div>
-        <div class="leader-name">Jireh Annette De Guzman Concepcion</div>
-        <div class="leader-creds">BA Economics</div>
-        <div class="leader-role">Corporate Secretary, SCEI</div>
-        <p class="leader-bio">A BA Economics graduate of the University of Asia and the Pacific. Previously Executive Assistant at the Mandaluyong Treasury Department, bringing public-sector insight to the board.</p>
-      </div>
-
-    </div>
-  </div>
-</section>
-
-
-<!-- ================================================================
-  FAQs
-================================================================ -->
-<section id="faqs" class="faq-section">
-  <div class="container">
-
-    <div class="section-header reveal">
-      <span class="section-tag">Help Center</span>
-      <h2 class="section-title">Frequently Asked Questions</h2>
-      <p class="section-subtitle">Everything you need to know about Sapphire Clinics East Inc.</p>
-    </div>
-
-    <!-- About the Clinic -->
-    <div class="faq-category reveal">
-      <div class="faq-category-title">
-        <i data-lucide="info" style="width:16px;height:16px"></i>
-        About Sapphire Clinics East Inc.
-      </div>
-
-      <div class="faq-item">
-        <div class="faq-q" tabindex="0">
-          What is Sapphire Clinics East Inc.?
-          <span class="faq-icon">+</span>
-        </div>
-        <div class="faq-a"><div class="faq-a-inner">
-          Sapphire Clinics East Inc. (SCEI) is the corporation that carries our family of brands &mdash; Aura Health Rehab&trade;, Verdana Rehab Solutions&reg;, UGAT, and Aura Health Institute. SCEI is a healthcare hub dedicated to optimizing functional mobility, fostering effective communication, and promoting inclusivity in society. We specialize in evidence-based habilitation and rehabilitation services aimed at improving overall health and well-being.
-        </div></div>
-      </div>
-
-      <div class="faq-item">
-        <div class="faq-q" tabindex="0">
-          Where is Sapphire Clinics East Inc. located?
-          <span class="faq-icon">+</span>
-        </div>
-        <div class="faq-a"><div class="faq-a-inner">
-          We have two branches: <br><br>
-          <strong>Aura Health Clinic - East Branch:</strong> Level 4, Robinsons Metro East, Marcos Highway, Brgy. Dela Paz, Santolan, Pasig<br><br>
-          <strong>Aura Health Clinic - Greenhills Branch:</strong> Level 8, GH Tower Offices, South Drive, Ortigas Avenue, Greenhills, San Juan City
-        </div></div>
-      </div>
-
-      <div class="faq-item">
-        <div class="faq-q" tabindex="0">
-          What services do you offer?
-          <span class="faq-icon">+</span>
-        </div>
-        <div class="faq-a"><div class="faq-a-inner">
-          Both branches offer: Medical Consultations, Occupational Therapy, Physical Therapy, Speech Language Therapy, Special Education Classes, Psychotherapy, and Orthosis & Prosthesis Fabrication. Please visit the Branches section for full details.
-        </div></div>
-      </div>
-    </div>
-
-    <!-- For Patients -->
-    <div class="faq-category reveal">
-      <div class="faq-category-title">
-        <i data-lucide="heart-pulse" style="width:16px;height:16px"></i>
-        For Patients
-      </div>
-
-      <div class="faq-item">
-        <div class="faq-q" tabindex="0">
-          How do I book an appointment?
-          <span class="faq-icon">+</span>
-        </div>
-        <div class="faq-a"><div class="faq-a-inner">
-          You can book an appointment by calling each branch at the contact details provided in our Contact section, or by sending a message on our Facebook or Instagram pages.
-        </div></div>
-      </div>
-
-      <div class="faq-item">
-        <div class="faq-q" tabindex="0">
-          Do you accept walk-in patients?
-          <span class="faq-icon">+</span>
-        </div>
-        <div class="faq-a"><div class="faq-a-inner">
-          Yes, we accept walk-ins, subject to the availability of our staff. However, we recommend scheduling an appointment in advance to ensure timely service.
-        </div></div>
-      </div>
-
-      <div class="faq-item">
-        <div class="faq-q" tabindex="0">
-          What payment methods do you accept?
-          <span class="faq-icon">+</span>
-        </div>
-        <div class="faq-a"><div class="faq-a-inner">
-          We accept cash, credit/debit cards, and select digital payment platforms. For insurance coverage and HMO payments, please check with your provider or contact us directly.
-        </div></div>
-      </div>
-
-      <div class="faq-item">
-        <div class="faq-q" tabindex="0">
-          Can I access my medical records online?
-          <span class="faq-icon">+</span>
-        </div>
-        <div class="faq-a"><div class="faq-a-inner">
-          Yes, registered patients can access their medical records. Please check with each branch at our contact details for more information.
-        </div></div>
-      </div>
-    </div>
-
-    <!-- For Professionals -->
-    <div class="faq-category reveal">
-      <div class="faq-category-title">
-        <i data-lucide="briefcase" style="width:16px;height:16px"></i>
-        For Professionals
-      </div>
-
-      <div class="faq-item">
-        <div class="faq-q" tabindex="0">
-          How can I join Sapphire Clinics East Inc. as a health professional?
-          <span class="faq-icon">+</span>
-        </div>
-        <div class="faq-a"><div class="faq-a-inner">
-          We welcome applications from passionate healthcare professionals. Please visit our Careers section to learn more about open positions. You may also send your application to:<br><br>
-          <strong>East:</strong> hr.east@sapphireclinicseast.org<br>
-          <strong>Greenhills:</strong> hr.gh@sapphireclinicseast.org
-        </div></div>
-      </div>
-
-      <div class="faq-item">
-        <div class="faq-q" tabindex="0">
-          Does Sapphire Clinics East Inc. offer training or mentorship programs?
-          <span class="faq-icon">+</span>
-        </div>
-        <div class="faq-a"><div class="faq-a-inner">
-          Yes, we provide mentorship and continuous professional development programs for our team and partner professionals. Please contact any branch to inquire about available programs.
-        </div></div>
-      </div>
-
-      <div class="faq-item">
-        <div class="faq-q" tabindex="0">
-          What are the benefits of partnering with Sapphire Clinics East Inc.?
-          <span class="faq-icon">+</span>
-        </div>
-        <div class="faq-a"><div class="faq-a-inner">
-          Benefits include: state-of-the-art facilities, competitive compensation with performance incentives, exclusive training opportunities, career growth pathways, collaborative professional environment, and comprehensive administrative support. See our Careers section for full details.
-        </div></div>
-      </div>
-    </div>
-
-    <!-- Compliance -->
-    <div class="faq-category reveal">
-      <div class="faq-category-title">
-        <i data-lucide="shield" style="width:16px;height:16px"></i>
-        Compliance & Policies
-      </div>
-
-      <div class="faq-item">
-        <div class="faq-q" tabindex="0">
-          How does Sapphire Clinics East Inc. ensure patient privacy and data security?
-          <span class="faq-icon">+</span>
-        </div>
-        <div class="faq-a"><div class="faq-a-inner">
-          We adhere to strict confidentiality and data protection regulations, particularly the Data Privacy Act of 2012. Our systems are designed to safeguard all patient information.
-        </div></div>
-      </div>
-
-      <div class="faq-item">
-        <div class="faq-q" tabindex="0">
-          Are your services compliant with local and national regulations?
-          <span class="faq-icon">+</span>
-        </div>
-        <div class="faq-a"><div class="faq-a-inner">
-          Yes, Sapphire Clinics East Inc. operates fully in compliance with regulations set by the Professional Regulation Commission, Securities and Exchange Commission, Bureau of Internal Revenue, and the local government units where our branches are located.
-        </div></div>
-      </div>
-    </div>
-
-  </div>
-</section>
-
-
-<!-- ================================================================
-  CONTACT
-================================================================ -->
-<section id="contact" class="contact-section">
-  <div class="container">
-
-    <div class="section-header reveal">
-      <span class="section-tag">Get In Touch</span>
-      <h2 class="section-title">Contact Us</h2>
-      <p class="section-subtitle">Reach out to any of our branches. We're happy to help with appointments, inquiries, or any concerns.</p>
-    </div>
-
-    <!-- Contact Cards -->
-    <div class="contact-grid reveal">
-
-      <div class="contact-card">
-        <div class="contact-card-title">
-          <i data-lucide="map-pin" style="width:20px;height:20px;vertical-align:-4px;margin-right:6px"></i>
-          Aura Health Clinic - East Branch
-        </div>
-        <div class="contact-detail">
-          <span class="contact-detail-icon">📍</span>
-          <span>Level 4, Robinsons Metro East, Marcos Highway, Brgy. Dela Paz, Santolan, Pasig</span>
-        </div>
-        <div class="contact-detail">
-          <span class="contact-detail-icon">📧</span>
-          <span>east@sapphireclinicseast.org</span>
-        </div>
-        <div class="contact-detail">
-          <span class="contact-detail-icon">📞</span>
-          <span>+63 917 118 9289 | (02) 5310-4991</span>
-        </div>
-        <div style="margin-top:20px; display:flex; flex-wrap:wrap; gap:8px;">
-          <a href="https://www.facebook.com/aurahealthrehabeast" target="_blank" rel="noopener" class="btn btn-white btn-sm">
-            Facebook
-          </a>
-          <a href="https://www.instagram.com/aurahealthrehabeast/" target="_blank" rel="noopener" class="btn btn-white btn-sm">
-            Instagram
-          </a>
-          <a href="https://www.linkedin.com/company/aurahealtheast/" target="_blank" rel="noopener" class="btn btn-white btn-sm">
-            LinkedIn
-          </a>
-        </div>
-      </div>
-
-      <div class="contact-card light">
-        <div class="contact-card-title">
-          <i data-lucide="map-pin" style="width:20px;height:20px;vertical-align:-4px;margin-right:6px"></i>
-          Aura Health Clinic - Greenhills Branch
-        </div>
-        <div class="contact-detail">
-          <span class="contact-detail-icon">📍</span>
-          <span>Level 8, GH Tower Offices, South Drive, Ortigas Avenue, Greenhills, San Juan City</span>
-        </div>
-        <div class="contact-detail">
-          <span class="contact-detail-icon">📧</span>
-          <span>greenhills@sapphireclinicseast.org</span>
-        </div>
-        <div class="contact-detail">
-          <span class="contact-detail-icon">📞</span>
-          <span>+63 917 770 1686 | (02) 8529-1590</span>
-        </div>
-        <div style="margin-top:20px; display:flex; flex-wrap:wrap; gap:8px;">
-          <a href="https://www.facebook.com/aurahealthrehabgh" target="_blank" rel="noopener" class="btn btn-white btn-sm">
-            Facebook
-          </a>
-          <a href="https://www.instagram.com/aurahealthrehabgh/" target="_blank" rel="noopener" class="btn btn-white btn-sm">
-            Instagram
-          </a>
-          <a href="https://www.linkedin.com/company/aurahealthgh/" target="_blank" rel="noopener" class="btn btn-white btn-sm">
-            LinkedIn
-          </a>
-        </div>
-      </div>
-
-    </div>
-
-    <!-- Social Media -->
-    <div class="social-section reveal" style="margin-top:48px;">
-      <div class="social-title">Follow Us on Social Media</div>
-      <div class="social-links">
-        <a href="https://www.tiktok.com/@aurahealthrehab" target="_blank" rel="noopener" class="social-link" aria-label="TikTok @aurahealthrehab">
-          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z"/></svg>
-          <span>TikTok — @aurahealthrehab</span>
-        </a>
-        <a href="https://www.linkedin.com/company/sapphireclinicseast/" target="_blank" rel="noopener" class="social-link" aria-label="SCEI LinkedIn">
-          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
-          <span>LinkedIn — SCEI</span>
-        </a>
-      </div>
-    </div>
-
-  </div>
-</section>
-
-
-<!-- ================================================================
-  FOOTER
-================================================================ -->
 <footer class="footer">
   <div class="footer-grid">
 
@@ -1054,12 +260,13 @@
     <!-- Quick Links -->
     <div>
       <div class="footer-col-title">Quick Links</div>
-      <span class="footer-link" onclick="scrollToSection('home')">Home</span>
-      <span class="footer-link" onclick="scrollToSection('about')">About Us</span>
-      <span class="footer-link" onclick="scrollToSection('leadership')">Leadership</span>
-      <span class="footer-link" onclick="scrollToSection('branches')">Branches</span>
-      <span class="footer-link" onclick="scrollToSection('careers')">Careers</span>
-      <span class="footer-link" onclick="scrollToSection('faqs')">FAQs</span>
+      <a class="footer-link" href="/">Home</a>
+      <a class="footer-link" href="/about/">About Us</a>
+      <a class="footer-link" href="/about/#leadership">Leadership</a>
+      <a class="footer-link" href="/branches/">Branches</a>
+      <a class="footer-link" href="/partners/">Partners</a>
+      <a class="footer-link" href="/hiring">Careers</a>
+      <a class="footer-link" href="/faqs/">FAQs</a>
       <a class="footer-link" href="/privacy-policy/">Privacy Policy</a>
     </div>
 
@@ -1088,11 +295,6 @@
     <span><a href="/privacy-policy/" style="color:inherit;text-decoration:underline;">Privacy Policy</a> &nbsp;·&nbsp; sapphireclinicseast.org</span>
   </div>
 </footer>
-
-
-<!-- ================================================================
-  LIGHTBOX (Gallery Modal)
-================================================================ -->
 <div id="lightbox" class="lightbox" role="dialog" aria-modal="true" aria-label="Facility photo viewer">
   <img id="lbImg" class="lightbox-img" src="" alt="">
   <div id="lbCaption" class="lightbox-caption"></div>
@@ -1154,7 +356,18 @@
 </script>
 
 <!-- JavaScript -->
-<script src="js/main.js?v=41"></script>
 
+<script src="js/main.js?v=42"></script>
+<script>
+(function(){
+  var pageFor={home:'/',about:'/about/',verdana:'/about/#verdana',academy:'/about/#academy',institute:'/about/#institute',ugat:'/about/#ugat',leadership:'/about/#leadership',branches:'/branches/',contact:'/branches/#contact',hmos:'/partners/',partners:'/partners/',faqs:'/faqs/'};
+  var _orig=window.scrollToSection;
+  window.scrollToSection=function(id){
+    var el=document.getElementById(id);
+    if(el){ if(typeof _orig==='function' && _orig!==window.scrollToSection){try{return _orig(id);}catch(e){}} el.scrollIntoView({behavior:'smooth'}); return; }
+    if(pageFor[id]) window.location.href=pageFor[id];
+  };
+})();
+</script>
 </body>
 </html>

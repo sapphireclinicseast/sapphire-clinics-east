@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <base href="/">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>About Us — Sapphire Clinics East Inc. (Aura Health Rehab)</title>
+  <link rel="icon" type="image/png" href="favicon.png?v=17">
+  <link rel="apple-touch-icon" href="favicon.png?v=17">
+  <meta name="description" content="About Sapphire Clinics East, Inc. (SCEI) — our mission, core values, brands (Aura Health Rehab, Verdana Rehab Solutions, UGAT, Aura Health Institute) and leadership team.">
+  <meta name="keywords" content="Sapphire Clinics East, SCEI, Aura Health Clinic, rehabilitation, physical therapy, occupational therapy, speech therapy, SPED, Pasig, San Juan, Greenhills">
+  <meta property="og:title" content="Sapphire Clinics East Inc. (Aura Health Rehab)">
+  <meta property="og:description" content="Rehab for Every Age, Every Stage — Sapphire Clinics East, Inc.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://sapphireclinicseast.org">
+  <meta property="og:image" content="https://sapphireclinicseast.org/COMPANY%20LOGO/logo-exports/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="https://sapphireclinicseast.org/COMPANY%20LOGO/logo-exports/og-image.png">
+  <link rel="canonical" href="https://sapphireclinicseast.org">
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Icons (Lucide) -->
+  <script src="https://unpkg.com/lucide@latest" defer></script>
+
+  <!-- Markdown renderer (for CMS blog posts) -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+  <!-- Netlify Identity (for CMS admin login) -->
+  <script src="https://identity.netlify.com/v1/netlify-identity-widget.js"></script>
+
+  <!-- Stylesheet -->
+  <link rel="stylesheet" href="css/style.css?v=37">
+</head>
+<body>
+<div id="logo-intro-overlay" role="dialog" aria-label="Sapphire Clinics East logo intro">
+  <div class="scene">
+
+    <!-- Background ambient glow -->
+    <div class="bg-glow"></div>
+
+    <!-- Corner frame decorations -->
+    <div class="corner tl"></div>
+    <div class="corner tr"></div>
+    <div class="corner bl"></div>
+    <div class="corner br"></div>
+
+    <!-- Logo wrapper -->
+    <div class="logo-wrapper">
+
+      <!-- Mark SVG -->
+      <svg id="logo-svg" viewBox="-100 -100 200 200" xmlns="http://www.w3.org/2000/svg">
+        <g id="logo-mark-group">
+
+          <!-- Level 1: Outer Diamond -->
+          <polygon id="outer-diamond"
+            points="0,-88 88,0 0,88 -88,0"/>
+
+          <!-- Level 2: Inscribed Square -->
+          <polygon id="inscribed-square"
+            points="44,-44 44,44 -44,44 -44,-44"/>
+
+          <!-- Level 3: Inner Diamond -->
+          <polygon id="inner-diamond"
+            points="0,-44 44,0 0,44 -44,0"/>
+
+          <!-- Facet lines group -->
+          <g id="facet-group">
+            <!-- Cardinal lines (outer → inner) -->
+            <line class="facet-line cardinal" x1="0"   y1="-88" x2="0"   y2="-44"/>
+            <line class="facet-line cardinal" x1="88"  y1="0"   x2="44"  y2="0"/>
+            <line class="facet-line cardinal" x1="0"   y1="88"  x2="0"   y2="44"/>
+            <line class="facet-line cardinal" x1="-88" y1="0"   x2="-44" y2="0"/>
+            <!-- Diagonal lines (square corners → inner diamond) -->
+            <line class="facet-line diagonal" x1="44"  y1="-44" x2="44"  y2="0"/>
+            <line class="facet-line diagonal" x1="44"  y1="-44" x2="0"   y2="-44"/>
+            <line class="facet-line diagonal" x1="44"  y1="44"  x2="44"  y2="0"/>
+            <line class="facet-line diagonal" x1="44"  y1="44"  x2="0"   y2="44"/>
+            <line class="facet-line diagonal" x1="-44" y1="44"  x2="-44" y2="0"/>
+            <line class="facet-line diagonal" x1="-44" y1="44"  x2="0"   y2="44"/>
+            <line class="facet-line diagonal" x1="-44" y1="-44" x2="-44" y2="0"/>
+            <line class="facet-line diagonal" x1="-44" y1="-44" x2="0"   y2="-44"/>
+          </g>
+
+          <!-- Center table diamond -->
+          <polygon id="center-table"
+            points="0,-14 14,0 0,14 -14,0"/>
+
+        </g>
+      </svg>
+
+      <!-- Wordmark -->
+      <div class="wordmark-container">
+        <span class="wordmark-primary">Sapphire</span>
+        <span class="wordmark-rule"></span>
+        <span class="wordmark-secondary">Clinics East, Inc.</span>
+      </div>
+
+      <!-- Tagline -->
+      <div class="tagline">
+        <span>Rehab for Every Age, Every Stage.</span>
+      </div>
+
+    </div><!-- /logo-wrapper -->
+
+    <!-- Skip button (replaces Replay in the standalone version) -->
+    <button class="replay-btn" onclick="dismissIntro()">↺ &nbsp;Skip</button>
+
+    <!-- Embed note -->
+    <div class="embed-note">Sapphire Clinics East, Inc. &nbsp;·&nbsp; Website Intro</div>
+
+  </div><!-- /scene -->
+</div>
+<nav class="navbar hero-top" id="navbar">
+  <div class="nav-inner">
+
+    <!-- Logo -->
+    <a class="nav-logo" href="/" aria-label="Sapphire Clinics East, Inc.">
+      <!-- Inline SVG diamond mark — uses currentColor (white on hero, teal on scrolled) -->
+      <svg class="nav-logo-mark" viewBox="-100 -100 200 200" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <polygon fill="none" stroke="currentColor" stroke-width="5.5" stroke-linejoin="miter" points="0,-88 88,0 0,88 -88,0"/>
+        <polygon fill="none" stroke="currentColor" stroke-width="4.2" stroke-linejoin="miter" points="44,-44 44,44 -44,44 -44,-44"/>
+        <polygon fill="none" stroke="currentColor" stroke-width="3.2" stroke-linejoin="miter" points="0,-44 44,0 0,44 -44,0"/>
+        <line fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="square" x1="0" y1="-88" x2="0" y2="-44"/>
+        <line fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="square" x1="88" y1="0" x2="44" y2="0"/>
+        <line fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="square" x1="0" y1="88" x2="0" y2="44"/>
+        <line fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="square" x1="-88" y1="0" x2="-44" y2="0"/>
+        <line fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" x1="44" y1="-44" x2="44" y2="0"/>
+        <line fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" x1="44" y1="-44" x2="0" y2="-44"/>
+        <line fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" x1="44" y1="44" x2="44" y2="0"/>
+        <line fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" x1="44" y1="44" x2="0" y2="44"/>
+        <line fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" x1="-44" y1="44" x2="-44" y2="0"/>
+        <line fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" x1="-44" y1="44" x2="0" y2="44"/>
+        <line fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" x1="-44" y1="-44" x2="-44" y2="0"/>
+        <line fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" x1="-44" y1="-44" x2="0" y2="-44"/>
+        <polygon fill="currentColor" points="0,-14 14,0 0,14 -14,0"/>
+      </svg>
+      <div class="nav-logo-text">
+        <span class="nav-logo-name">Sapphire Clinics East</span>
+        <span class="nav-logo-sub">Inc.</span>
+      </div>
+    </a>
+
+    <!-- Desktop Links -->
+    <div class="nav-links">
+
+      <a class="nav-link" href="/about/">About Us</a>
+
+      <!-- Branches Dropdown -->
+      <div class="nav-dropdown">
+        <a class="nav-link" href="/branches/">Branches ▾</a>
+        <div class="dropdown-menu">
+          <a class="dropdown-item" href="/branches/?b=east">📍 Aura Health Clinic - East</a>
+          <a class="dropdown-item" href="/branches/?b=greenhills">📍 Aura Health Clinic - Greenhills</a>
+        </div>
+      </div>
+
+      <a class="nav-link" href="/partners/">Partners</a>
+      <a class="nav-link" href="/hiring">Careers</a>
+      <a class="nav-link" href="https://institute.sapphireclinicseast.org/">Trainings</a>
+      <a class="nav-link" href="/faqs/">FAQs</a>
+      <a class="nav-link" href="/catalog/">Catalog</a>
+    </div>
+
+    <!-- Book CTA -->
+    <div class="nav-cta">
+      <a class="btn btn-outline btn-sm" href="https://staff.sapphireclinicseast.org/">Staff Log In</a>
+    </div>
+
+    <!-- Hamburger -->
+    <button class="hamburger" id="hamburger" aria-label="Toggle navigation" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
+
+  </div>
+</nav>
+<div class="mobile-nav" id="mobileNav" role="dialog" aria-label="Mobile navigation">
+  <button class="mobile-nav-close" onclick="closeMobileNav()" aria-label="Close navigation">&times;</button>
+  <a class="mobile-nav-link" href="/about/">About Us</a>
+  <a class="mobile-nav-link" href="/branches/">Branches</a>
+  <a class="mobile-nav-link" href="/partners/">Partners</a>
+  <a class="mobile-nav-link" href="/hiring">Careers</a>
+  <a class="mobile-nav-link" href="https://institute.sapphireclinicseast.org/">Trainings</a>
+  <a class="mobile-nav-link" href="/faqs/">FAQs</a>
+  <a class="mobile-nav-link" href="/catalog/">Catalog</a>
+  <a class="mobile-nav-link" href="https://staff.sapphireclinicseast.org/" style="margin-top: 12px;">Staff Log In →</a>
+  <a class="mobile-nav-link" href="/booking" style="color: var(--accent);">Book a Session →</a>
+</div>
+<section id="about" class="about-section">
+  <div class="container">
+
+    <div class="section-header reveal">
+      <span class="section-tag">Who We Are</span>
+      <h2 class="section-title">About Sapphire Clinics East, Inc.</h2>
+      <p class="section-subtitle">Sapphire Clinics East, Inc. (SCEI) is dedicated to optimizing functional mobility, effective communication, and inclusive care — backed by evidence-based rehabilitation. SCEI operates branches under the Aura Health Clinic brand.</p>
+    </div>
+
+    <!-- Mission & Vision -->
+    <div class="grid-2 reveal" style="margin-bottom: 24px;">
+      <div class="mv-card">
+        <div class="mv-card-label">Our Mission</div>
+        <div class="mv-card-text">
+          To optimize quality of life through accessible, excellent, and evidence-based rehabilitation services — optimizing functional mobility, enabling effective communication, promoting inclusivity, advancing clinical research, and fostering excellence in the professional community.
+        </div>
+      </div>
+      <div class="mv-card light">
+        <div class="mv-card-label">Our Vision</div>
+        <div class="mv-card-text">
+          To lead rehabilitation in the Philippines. A global leader in accessible, excellent, and evidence-based habilitation and rehabilitation services — helping improve the overall health of society, one person and one community at a time.
+        </div>
+      </div>
+    </div>
+
+    <!-- Brand tagline -->
+    <p class="mv-tagline reveal">Feeling seen. &nbsp;Finding footing. &nbsp;Moving forward.</p>
+
+    <!-- BHAG -->
+    <div class="bhag-box reveal" style="margin-bottom: 40px;">
+      <div class="bhag-box-label">🚀 Our BHAG — Big Hairy Audacious Goal</div>
+      <div class="bhag-box-text">
+        To be the #1 market leader in the rehabilitation space in the Philippines in 10 years.
+      </div>
+    </div>
+
+    <!-- Core Values -->
+    <div class="about-grid reveal">
+      <div>
+        <h3 style="font-size:22px; font-weight:800; margin-bottom:8px;">Our Core Values</h3>
+        <p style="font-size:14px; color:var(--text-muted); line-height:1.6; margin-bottom:22px;">The three arches of our mark stand for our three values — <strong>Quality</strong>, <strong>Empathy</strong>, and <strong>Teamwork</strong>.</p>
+        <div class="values-arches">
+          <div class="arch-value narra">
+            <div class="arch-tag">Outer Arch · Narra</div>
+            <div class="arch-name">Quality</div>
+            <div class="arch-desc">Foundation of the work. Evidence-based, outcome-led.</div>
+          </div>
+          <div class="arch-value sage">
+            <div class="arch-tag">Middle Arch · Sage</div>
+            <div class="arch-name">Empathy</div>
+            <div class="arch-desc">The meeting place. We listen first.</div>
+          </div>
+          <div class="arch-value clay">
+            <div class="arch-tag">Inner Arch · Clay</div>
+            <div class="arch-name">Teamwork</div>
+            <div class="arch-desc">Warmth at the core. Therapists, families, patients in concert.</div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <h3 style="font-size:22px; font-weight:800; margin-bottom:20px;">Why Aura Health Clinic?</h3>
+        <div class="card" style="margin-bottom:16px; border-left: 4px solid var(--primary);">
+          <div style="font-size:13px; font-weight:700; color:var(--primary); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:8px;">Clinical Excellence</div>
+          <p style="font-size:14px; color:var(--text-muted); line-height:1.7;">We provide the highest quality of Physical Therapy, Occupational Therapy, Speech Therapy, and all services offered to our patients.</p>
+        </div>
+        <div class="card" style="margin-bottom:16px; border-left: 4px solid var(--primary);">
+          <div style="font-size:13px; font-weight:700; color:var(--primary); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:8px;">Professional Hub</div>
+          <p style="font-size:14px; color:var(--text-muted); line-height:1.7;">A destination for driven, competent, and like-minded professionals who want to raise the standard of practice in healthcare.</p>
+        </div>
+        <div class="card" style="border-left: 4px solid var(--primary);">
+          <div style="font-size:13px; font-weight:700; color:var(--primary); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:8px;">Community Impact</div>
+          <p style="font-size:14px; color:var(--text-muted); line-height:1.7;">Helping communities by providing accessible, high-quality healthcare — creating healthy, productive, and happy people.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+<section id="verdana" class="verdana-section">
+  <div class="container">
+    <a href="https://verdanarehab.com/" target="_blank" rel="noopener" class="verdana-banner reveal">
+      <div class="verdana-icon">
+        <img src="BRANDS/VERDANA STORE.png" alt="Verdana Rehab Solutions" loading="lazy">
+      </div>
+      <div>
+        <h3>Verdana Rehab Solutions</h3>
+        <p>Our dedicated retail arm for therapy products, equipment, and educational materials — equipping families and professionals to support therapy and learning at home. Visit Verdana Rehab Solutions to learn more.</p>
+        <div class="btn btn-white btn-sm" style="display:inline-flex; margin-top:12px;">
+          Visit verdanarehab.com →
+        </div>
+      </div>
+    </a>
+  </div>
+</section>
+<section id="academy" class="verdana-section">
+  <div class="container">
+    <a href="https://class.sapphireclinicseast.org/" target="_blank" rel="noopener" class="verdana-banner reveal">
+      <div class="verdana-icon">
+        <img src="BRANDS/AURA ACADEMY.png" alt="Aura Academy for Learning" loading="lazy">
+      </div>
+      <div>
+        <h3>Aura Academy for Learning</h3>
+        <p>Our DepEd-accredited inclusive school offering Nursery to Grade 12 — pairing quality education with SPED and therapy support so every learner can thrive. Visit Aura Academy to explore our classes and enrollment.</p>
+        <div class="btn btn-white btn-sm" style="display:inline-flex; margin-top:12px;">
+          Visit Aura Academy →
+        </div>
+      </div>
+    </a>
+  </div>
+</section>
+<section id="institute" class="verdana-section">
+  <div class="container">
+    <a href="https://institute.sapphireclinicseast.org/" target="_blank" rel="noopener" class="verdana-banner reveal">
+      <div class="verdana-icon">
+        <img src="BRANDS/AURA INSTITUTE.png" alt="Aura Health Institute" loading="lazy">
+      </div>
+      <div>
+        <h3>Aura Health Institute</h3>
+        <p>Our training and certification arm — seminars, workshops, and professional development programs for therapists and allied-health professionals. Visit Aura Health Institute to explore upcoming trainings and certifications.</p>
+        <div class="btn btn-white btn-sm" style="display:inline-flex; margin-top:12px;">
+          Visit Aura Health Institute →
+        </div>
+      </div>
+    </a>
+  </div>
+</section>
+<section id="ugat" class="verdana-section">
+  <div class="container">
+    <a href="https://fellowship.sapphireclinicseast.org/" target="_blank" rel="noopener" class="verdana-banner reveal">
+      <div class="verdana-icon">
+        <img src="BRANDS/UGAT FELLOWSHIP.png" alt="UGAT Fellowship" loading="lazy">
+      </div>
+      <div>
+        <h3>UGAT Fellowship</h3>
+        <p>Our fellowship program providing a monthly stipend to allied-health professionals in their final year of university — nurturing the next generation of rehabilitation practitioners. Visit UGAT Fellowship to learn about eligibility and how to apply.</p>
+        <div class="btn btn-white btn-sm" style="display:inline-flex; margin-top:12px;">
+          Visit UGAT Fellowship →
+        </div>
+      </div>
+    </a>
+  </div>
+</section>
+<section id="leadership" style="padding: var(--section-padding); background: var(--bg-alt);">
+  <div class="container">
+    <div class="section-header reveal">
+      <span class="section-tag">The People Behind Us</span>
+      <h2 class="section-title">Leadership Team</h2>
+      <p class="section-subtitle">Experienced healthcare and business professionals committed to advancing rehabilitation in the Philippines.</p>
+    </div>
+
+    <div class="leaders-grid">
+
+      <!-- Hannah Jara -->
+      <div class="leader-card reveal">
+        <div class="leader-avatar"><img src="LEADERSHIP PICTURES/HANNAH JARA.png?v=5" alt="Hannah P. Jara"></div>
+        <div class="leader-name">Hannah P. Jara</div>
+        <div class="leader-creds">MBA, MPH, PTRP</div>
+        <div class="leader-role">President & CEO, Sapphire Clinics East, Inc.</div>
+        <p class="leader-bio">With advanced degrees from the University of the Philippines Manila, Asian Institute of Management and ESADE Business School, Hannah brings vast experience including serving as OIC-Deputy Team Leader for the World Bank's DOH Philippines COVID-19 Emergency Response Project. A board topnotcher (February 2017) and evidence review expert at NIH UPM.</p>
+      </div>
+
+      <!-- Ariel Jan Carlo Gonzales -->
+      <div class="leader-card reveal delay-1">
+        <div class="leader-avatar"><img src="LEADERSHIP PICTURES/ARIEL JAN CARLO GONZALES.png?v=5" alt="Ariel Jan Carlo Gonzales"></div>
+        <div class="leader-name">Ariel Jan Carlo Gonzales</div>
+        <div class="leader-creds">MBA</div>
+        <div class="leader-role">Treasurer, SCEI</div>
+        <p class="leader-bio">Chief Finance Officer at Rapidé Group & Hertz Philippines. Holds an MBA from the Asian Institute of Management and a BS in Management Engineering from Ateneo de Manila University. Previously Head of Treasury and Head of Corporate Planning & Budgeting at LICA Automotive, and a Project Manager at the Department of Transportation & Communications.</p>
+      </div>
+
+      <!-- Anna Kaye Hao Lim -->
+      <div class="leader-card reveal delay-2">
+        <div class="leader-avatar"><img src="LEADERSHIP PICTURES/ANNA KAYE LIM.png?v=5" alt="Anna Kaye Hao Lim"></div>
+        <div class="leader-name">Anna Kaye Hao Lim</div>
+        <div class="leader-creds">MBA</div>
+        <div class="leader-role">Board Member, SCEI</div>
+        <p class="leader-bio">Director of Finance and Risk at Euroasia Marble & Granite, Inc. Holds an MBA from the Asian Institute of Management and a BS in Management Engineering from Ateneo de Manila University. Previously AVP Finance, Strategic Purchasing Analyst, and Business Development Associate at WL Foods.</p>
+      </div>
+
+      <!-- Abram Paez Barrameda -->
+      <div class="leader-card reveal">
+        <div class="leader-avatar"><img src="LEADERSHIP PICTURES/ABRAM BARRAMEDA.png?v=5" alt="Abram Paez Barrameda"></div>
+        <div class="leader-name">Abram Paez Barrameda</div>
+        <div class="leader-creds">MBA</div>
+        <div class="leader-role">Board Member, SCEI</div>
+        <p class="leader-bio">Director at The Abba's Orchard Montessori School. Holds an MBA from the Asian Institute of Management and University of Mannheim, a BA in Political Science from Ateneo de Davao University, and diplomas in Corporate Finance and Applied Project Management from Ateneo de Manila University. Previously in Product Development and Marketing at Filinvest Land Inc.</p>
+      </div>
+
+      <!-- Jireh Annette De Guzman Concepcion -->
+      <div class="leader-card reveal delay-1">
+        <div class="leader-avatar"><img src="LEADERSHIP PICTURES/JIREH CONCEPCION.png?v=5" alt="Jireh Annette De Guzman Concepcion"></div>
+        <div class="leader-name">Jireh Annette De Guzman Concepcion</div>
+        <div class="leader-creds">BA Economics</div>
+        <div class="leader-role">Corporate Secretary, SCEI</div>
+        <p class="leader-bio">A BA Economics graduate of the University of Asia and the Pacific. Previously Executive Assistant at the Mandaluyong Treasury Department, bringing public-sector insight to the board.</p>
+      </div>
+
+    </div>
+  </div>
+</section>
+<div class="book-strip">
+  <h2 class="reveal">Ready to Start Your Recovery Journey?</h2>
+  <p class="reveal delay-1">Our multidisciplinary team is here to help. Walk-ins welcome, subject to availability.</p>
+  <div class="btn-row reveal delay-2">
+    <button class="btn btn-white btn-lg" onclick="scrollToSection('contact')">
+      <i data-lucide="phone" style="width:18px;height:18px"></i>
+      Contact a Branch
+    </button>
+    <button class="btn btn-outline" style="border-color:rgba(255,255,255,.5);color:#fff;" onclick="scrollToSection('branches')">
+      View Our Branches
+    </button>
+  </div>
+</div>
+<footer class="footer">
+  <div class="footer-grid">
+
+    <!-- Brand -->
+    <div>
+      <div style="margin-bottom:12px;">
+        <img src="COMPANY LOGO/logo-exports/logo-white-transparent.png"
+             alt="Sapphire Clinics East, Inc."
+             style="width:160px; height:auto; object-fit:contain; opacity:0.9;">
+      </div>
+      <div class="footer-brand-sub" style="margin-bottom:12px;">Operating Aura Health Clinic Branches</div>
+      <p class="footer-brand-desc">Sapphire Clinics East, Inc. (SCEI) operates premier rehabilitation clinics under the Aura Health Clinic brand — dedicated to evidence-based healthcare and optimizing quality of life across Metro Manila.</p>
+    </div>
+
+    <!-- Quick Links -->
+    <div>
+      <div class="footer-col-title">Quick Links</div>
+      <a class="footer-link" href="/">Home</a>
+      <a class="footer-link" href="/about/">About Us</a>
+      <a class="footer-link" href="/about/#leadership">Leadership</a>
+      <a class="footer-link" href="/branches/">Branches</a>
+      <a class="footer-link" href="/partners/">Partners</a>
+      <a class="footer-link" href="/hiring">Careers</a>
+      <a class="footer-link" href="/faqs/">FAQs</a>
+      <a class="footer-link" href="/privacy-policy/">Privacy Policy</a>
+    </div>
+
+    <!-- East Branch -->
+    <div>
+      <div class="footer-col-title">Aura Health Clinic - East</div>
+      <p class="footer-contact-item">📍 Level 4, Robinsons Metro East, Pasig</p>
+      <p class="footer-contact-item">📧 east@sapphireclinicseast.org</p>
+      <p class="footer-contact-item">📞 +63 917 118 9289</p>
+      <p class="footer-contact-item">📞 (02) 5310-4991</p>
+    </div>
+
+    <!-- Greenhills Branch -->
+    <div>
+      <div class="footer-col-title">Aura Health Clinic - Greenhills</div>
+      <p class="footer-contact-item">📍 Level 8, GH Tower Offices, San Juan</p>
+      <p class="footer-contact-item">📧 greenhills@sapphireclinicseast.org</p>
+      <p class="footer-contact-item">📞 +63 917 770 1686</p>
+      <p class="footer-contact-item">📞 (02) 8529-1590</p>
+    </div>
+
+  </div>
+
+  <div class="footer-bottom">
+    <span>© 2025 Sapphire Clinics East, Inc. All rights reserved.</span>
+    <span><a href="/privacy-policy/" style="color:inherit;text-decoration:underline;">Privacy Policy</a> &nbsp;·&nbsp; sapphireclinicseast.org</span>
+  </div>
+</footer>
+<div id="lightbox" class="lightbox" role="dialog" aria-modal="true" aria-label="Facility photo viewer">
+  <img id="lbImg" class="lightbox-img" src="" alt="">
+  <div id="lbCaption" class="lightbox-caption"></div>
+  <button class="lightbox-close" onclick="closeLightbox()" aria-label="Close">×</button>
+  <button class="lightbox-prev" onclick="lbNav(-1)" aria-label="Previous">&#8592;</button>
+  <button class="lightbox-next" onclick="lbNav(1)" aria-label="Next">&#8594;</button>
+</div>
+
+
+<!-- ================================================================
+  SCROLL TO TOP BUTTON
+================================================================ -->
+<button class="scroll-top" id="scrollTop" aria-label="Scroll to top">↑</button>
+
+
+<!-- Cookie Consent Banner -->
+<style>
+  .hero-press{display:flex;align-items:center;gap:13px;margin:30px 0 34px;flex-wrap:wrap}
+  .hero-press>span{color:#fff;opacity:.82;font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase}
+  .hero-press-chip{display:inline-flex;align-items:center;gap:9px;background:#fff;border-radius:100px;padding:7px 17px 7px 13px;box-shadow:0 8px 22px -8px rgba(0,0,0,.45)}
+  .hero-press-chip img{height:22px;width:auto;display:block}
+  .hero-press-chip b{font-family:'DM Sans','Inter',sans-serif;font-size:16px;font-weight:800;color:#ea5a1b;letter-spacing:-.01em}
+  .cookie-consent{position:fixed;left:16px;right:16px;bottom:16px;z-index:9999;background:#fff;border:1px solid #dde6d4;border-radius:16px;box-shadow:0 16px 40px -12px rgba(0,0,0,.28);padding:18px 22px;max-width:940px;margin:0 auto;animation:ccUp .35s ease}
+  @keyframes ccUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+  .cc-inner{display:flex;align-items:center;gap:20px;flex-wrap:wrap;justify-content:space-between}
+  .cc-text{margin:0;font-size:14px;color:#3a4b46;line-height:1.55;flex:1 1 340px}
+  .cc-text b{color:#244952}
+  .cc-text a{color:#4a8073;font-weight:600;text-decoration:underline}
+  .cc-actions{display:flex;gap:10px;flex:0 0 auto}
+  .cc-btn{font-family:inherit;font-weight:700;font-size:14px;padding:11px 26px;border-radius:100px;cursor:pointer;border:1px solid transparent;transition:.2s;white-space:nowrap}
+  .cc-accept{background:#4a8073;color:#fff}
+  .cc-accept:hover{background:#244952}
+  .cc-decline{background:#fff;color:#244952;border:1px solid #cfdac4}
+  .cc-decline:hover{background:#f0f4e9}
+  @media(max-width:560px){.cc-actions{flex:1 1 100%}.cc-btn{flex:1}}
+</style>
+<div id="cookieConsent" class="cookie-consent" role="dialog" aria-live="polite" aria-label="Cookie consent" hidden>
+  <div class="cc-inner">
+    <p class="cc-text">We use cookies to keep our site working and to improve your experience. By clicking <b>Accept</b>, you agree to our use of cookies. Read our <a href="/privacy-policy/">Privacy Policy</a>.</p>
+    <div class="cc-actions">
+      <button type="button" class="cc-btn cc-decline" onclick="setCookieConsent('declined')">Decline</button>
+      <button type="button" class="cc-btn cc-accept" onclick="setCookieConsent('accepted')">Accept</button>
+    </div>
+  </div>
+</div>
+<script>
+  (function(){
+    var KEY='scei_cookie_consent';
+    var el=document.getElementById('cookieConsent');
+    if(!el)return;
+    var saved=null;
+    try{saved=localStorage.getItem(KEY);}catch(e){}
+    if(!saved){el.hidden=false;}
+    window.setCookieConsent=function(v){
+      try{localStorage.setItem(KEY,v);}catch(e){}
+      el.hidden=true;
+    };
+  })();
+</script>
+
+<!-- JavaScript -->
+
+<script src="js/main.js?v=42"></script>
+<script>
+(function(){
+  var pageFor={home:'/',about:'/about/',verdana:'/about/#verdana',academy:'/about/#academy',institute:'/about/#institute',ugat:'/about/#ugat',leadership:'/about/#leadership',branches:'/branches/',contact:'/branches/#contact',hmos:'/partners/',partners:'/partners/',faqs:'/faqs/'};
+  var _orig=window.scrollToSection;
+  window.scrollToSection=function(id){
+    var el=document.getElementById(id);
+    if(el){ if(typeof _orig==='function' && _orig!==window.scrollToSection){try{return _orig(id);}catch(e){}} el.scrollIntoView({behavior:'smooth'}); return; }
+    if(pageFor[id]) window.location.href=pageFor[id];
+  };
+})();
+</script>
+</body>
+</html>
