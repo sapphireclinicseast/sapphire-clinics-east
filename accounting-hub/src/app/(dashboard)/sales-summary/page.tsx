@@ -55,38 +55,24 @@ function firstOfMonth() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`
 }
 
-function escapeCsv(val: string | number) {
-  const s = String(val)
-  if (s.includes(',') || s.includes('"') || s.includes('\n')) {
-    return `"${s.replace(/"/g, '""')}"`
-  }
-  return s
-}
-
-function downloadCsv(rows: SalesSummaryRow[], filename: string) {
-  const headers = ['Date', 'Order #', 'Patient Name', 'Service Availed', 'Qty', 'Sales Invoice No.', 'Gross Amount', 'Net Amount']
-  const lines = [
-    headers.map(escapeCsv).join(','),
-    ...rows.map(r => [
-      escapeCsv(r.date),
-      escapeCsv(r.migrated || r.ar ? '' : r.orderNumber),
-      escapeCsv(r.patientName),
-      escapeCsv(r.serviceAvailed),
-      escapeCsv(r.quantity),
-      escapeCsv(r.salesInvoiceNumber || ''),
-      escapeCsv(r.grossAmount.toFixed(2)),
-      escapeCsv(r.netAmount.toFixed(2)),
-    ].join(',')),
-  ]
-  // UTF-8 byte-order mark: without it Excel decodes the file as Windows-1252 and
-  // every em dash / peso sign / ñ turns into "‚Äî"-style garbage.
-  const blob = new Blob(['\ufeff' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  a.click()
-  URL.revokeObjectURL(url)
+// A real .xlsx rather than CSV (Hannah, 2026-10-21): no encoding pitfalls, and
+// gross/net land as true numbers Excel can sum. Exports what is on screen —
+// the column filters apply.
+function downloadExcel(rows: SalesSummaryRow[], filename: string) {
+  downloadXlsx(filename.replace(/\.csv$/i, ''), [{
+    name: 'Sales Summary',
+    headers: ['Date', 'Order #', 'Patient Name', 'Service Availed', 'Qty', 'Sales Invoice No.', 'Gross Amount', 'Net Amount'],
+    rows: rows.map(r => [
+      r.date,
+      r.migrated || r.ar ? '' : r.orderNumber,
+      r.patientName,
+      r.serviceAvailed,
+      r.quantity,
+      r.salesInvoiceNumber || '',
+      Math.round(r.grossAmount * 100) / 100,
+      Math.round(r.netAmount * 100) / 100,
+    ]),
+  }])
 }
 
 /* ─────────────────────────────────────────────
@@ -215,11 +201,11 @@ function ReportTable({
         </div>
         <div className="flex items-center gap-2 print:hidden">
           <button
-            onClick={() => downloadCsv(displayRows, csvFilename)}
+            onClick={() => downloadExcel(displayRows, csvFilename)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border"
             style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}
           >
-            <Download size={13} /> Export CSV
+            <Download size={13} /> Export Excel
           </button>
           <button
             onClick={handlePrint}

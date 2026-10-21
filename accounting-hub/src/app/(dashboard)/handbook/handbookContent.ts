@@ -743,7 +743,7 @@ export const SECTIONS: Section[] = [
       { k: 'p', t: `A **transaction-level sales report with invoice tracking** — it splits sales into invoiced vs non-invoiced, checks your Sales Invoice (SI) booklet for gaps and duplicates, and compares sales against a target.` },
       { k: 'sub', t: 'Tabs' },
       { k: 'ul', items: [
-        `**Summary** — every sales line, split into **Report 1 — With Official Sales Invoice** and **Report 2 — Without Sales Invoice**. Columns: **Date · Order # · Patient Name · Service Availed · Qty · Sales Invoice No. · Gross · Net.** Click a heading to sort; type under a heading to filter. **Export CSV** / **Print / PDF** reflect what you've filtered.`,
+        `**Summary** — every sales line, split into **Report 1 — With Official Sales Invoice** and **Report 2 — Without Sales Invoice**. Columns: **Date · Order # · Patient Name · Service Availed · Qty · Sales Invoice No. · Gross · Net.** Click a heading to sort; type under a heading to filter. **Export Excel** / **Print / PDF** reflect what you've filtered.`,
         `**With SI** — reconciles the SI booklet: the left **Sales Invoices** list shows every used SI number with its **Actual Date** (the real sale date) and **Declared Date** (the date the SI is reported in the SI book — click the value, or **set**, to pick a date; press Esc to cancel, clear it to fall back to the actual date). The right **Flagged Sales Invoices** panel lists missing (gap) and duplicate numbers, which you can **Declare Cancelled SI**, add **Remarks**, or **Tag to Order**, then **Save**.`,
         `**Sales Target** — pick a month/year/branch to compare **Sales with SI** against the **Target** you set (only Admin/Accountant/Bookkeeper edit the target).`,
       ] },
