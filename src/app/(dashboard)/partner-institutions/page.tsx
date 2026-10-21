@@ -33,6 +33,11 @@ interface Institution {
   mobile: string
   telephone: string
   services: { id: string; label: string }[]
+  // HR "Partnership For": referral (clients referred to us) and/or internship
+  // (they send us interns). Internship departments come separately.
+  purposes?: string[]
+  purposeLabels?: string[]
+  internshipServices?: { id: string; label: string }[]
   discounts: Discount[]
   agreementType: string
   effectivityFrom: string
@@ -144,7 +149,7 @@ export default function PartnerInstitutionsPage() {
       if (!needle) return true
       // Contact and service names too: "who do we call at Xavier" and "who do
       // we have an OT discount with" are both questions this page gets asked.
-      return [i.name, i.pointOfContact, i.email, i.remarks, ...i.services.map(s => s.label)]
+      return [i.name, i.pointOfContact, i.email, i.remarks, ...i.services.map(s => s.label), ...(i.purposeLabels ?? []), ...(i.internshipServices ?? []).map(s => s.label)]
         .join(' ').toLowerCase().includes(needle)
     })
   }, [list, q, type])
@@ -251,6 +256,11 @@ export default function PartnerInstitutionsPage() {
                     </div>
                     <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: '0.35rem' }}>
                       {i.typeLabel && <span style={chip}>{i.typeLabel}</span>}
+                      {(i.purposes ?? ['referral']).map(p => (
+                        <span key={p} style={{ ...chip, background: p === 'internship' ? '#EDE4FA' : '#E6F1EE', color: p === 'internship' ? '#5B2A86' : '#1F5F55' }}>
+                          {p === 'internship' ? 'Internship' : 'Referral'}
+                        </span>
+                      ))}
                       {expired && (
                         <span style={{ ...chip, background: '#FEE2E2', color: '#991B1B' }}>
                           Expired {fmtDate(i.effectivityTo)}
@@ -288,6 +298,18 @@ export default function PartnerInstitutionsPage() {
 
                   {/* ── Right: what they are entitled to ── */}
                   <div style={{ padding: '0.9rem 1rem' }}>
+                    {(i.purposes ?? []).includes('internship') && (
+                      <div style={{ marginBottom: '0.6rem' }}>
+                        <p style={{ fontSize: '0.62rem', fontWeight: 800, letterSpacing: '0.06em', color: 'var(--mid-gray)', textTransform: 'uppercase', marginBottom: 4 }}>Interns accepted in</p>
+                        {(i.internshipServices ?? []).length > 0 ? (
+                          <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                            {(i.internshipServices ?? []).map(s => <span key={s.id} style={{ ...chip, background: '#EDE4FA', color: '#5B2A86' }}>{s.label}</span>)}
+                          </div>
+                        ) : (
+                          <p style={{ fontSize: '0.76rem', color: 'var(--mid-gray)', fontStyle: 'italic' }}>Departments not set in HR Hub yet</p>
+                        )}
+                      </div>
+                    )}
                     {i.services.length > 0 && (
                       <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: '0.6rem' }}>
                         {i.services.map(s => <span key={s.id} style={{ ...chip, background: '#EDE4FA', color: '#5B2A86' }}>{s.label}</span>)}

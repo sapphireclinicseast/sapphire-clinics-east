@@ -35,6 +35,10 @@ export interface PartnerInstitution {
   mobile: string
   telephone: string
   services: { id: string; label: string }[]
+  // Referral and/or Internship (HR "Partnership For"); internship departments listed separately.
+  purposes?: string[]
+  purposeLabels?: string[]
+  internshipServices?: { id: string; label: string }[]
   discounts: { serviceId: string; serviceLabel: string; discountType: string; value: number; note: string; priority?: boolean; beneficiary?: string; beneficiaryLabel?: string }[]
   agreementType: string
   effectivityFrom: string
