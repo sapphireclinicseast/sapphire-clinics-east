@@ -32,6 +32,8 @@ interface Institution {
   email: string
   mobile: string
   telephone: string
+  // Additional contacts recorded in HR (beyond the primary point of contact).
+  contacts?: { name: string; role: string; email: string; mobile: string; telephone: string }[]
   services: { id: string; label: string }[]
   // HR "Partnership For": referral (clients referred to us) and/or internship
   // (they send us interns). Internship departments come separately.
@@ -149,7 +151,7 @@ export default function PartnerInstitutionsPage() {
       if (!needle) return true
       // Contact and service names too: "who do we call at Xavier" and "who do
       // we have an OT discount with" are both questions this page gets asked.
-      return [i.name, i.pointOfContact, i.email, i.remarks, ...i.services.map(s => s.label), ...(i.purposeLabels ?? []), ...(i.internshipServices ?? []).map(s => s.label)]
+      return [i.name, i.pointOfContact, i.email, i.remarks, ...i.services.map(s => s.label), ...(i.purposeLabels ?? []), ...(i.internshipServices ?? []).map(s => s.label), ...(i.contacts ?? []).flatMap(c => [c.name, c.role, c.email])]
         .join(' ').toLowerCase().includes(needle)
     })
   }, [list, q, type])
@@ -268,7 +270,7 @@ export default function PartnerInstitutionsPage() {
                       )}
                     </div>
 
-                    {(i.pointOfContact || i.email || i.mobile || i.telephone) ? (
+                    {(i.pointOfContact || i.email || i.mobile || i.telephone || (i.contacts ?? []).length > 0) ? (
                       <div style={{ marginTop: '0.7rem', display: 'flex', flexDirection: 'column', gap: 2 }}>
                         <p style={{ fontSize: '0.62rem', fontWeight: 800, letterSpacing: '0.06em', color: 'var(--mid-gray)', textTransform: 'uppercase' }}>Contact</p>
                         {i.pointOfContact && <p style={{ fontSize: '0.82rem', color: 'var(--charcoal)', fontWeight: 600 }}>{i.pointOfContact}</p>}
@@ -279,6 +281,22 @@ export default function PartnerInstitutionsPage() {
                             {i.mobile || i.telephone}
                           </a>
                         )}
+                        {/* Further contacts from HR — same clickable email / number treatment. */}
+                        {(i.contacts ?? []).map((c, idx) => (
+                          <div key={idx} style={{ marginTop: 6, paddingTop: 6, borderTop: '1px dashed var(--light-gray)', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            {(c.name || c.role) && (
+                              <p style={{ fontSize: '0.82rem', color: 'var(--charcoal)', fontWeight: 600 }}>
+                                {c.name}{c.role ? <span style={{ fontWeight: 400, color: 'var(--mid-gray)' }}> · {c.role}</span> : null}
+                              </p>
+                            )}
+                            {c.email && <a href={`mailto:${c.email}`} style={{ fontSize: '0.78rem', color: 'var(--teal)', wordBreak: 'break-all' }}>{c.email}</a>}
+                            {(c.mobile || c.telephone) && (
+                              <a href={`tel:${(c.mobile || c.telephone).replace(/\s+/g, '')}`} style={{ fontSize: '0.78rem', color: 'var(--teal)' }}>
+                                {c.mobile || c.telephone}
+                              </a>
+                            )}
+                          </div>
+                        ))}
                       </div>
                     ) : (
                       <p style={{ fontSize: '0.76rem', color: 'var(--mid-gray)', marginTop: '0.7rem', fontStyle: 'italic' }}>No contact recorded</p>

@@ -34,6 +34,8 @@ export interface PartnerInstitution {
   email: string
   mobile: string
   telephone: string
+  // Further people at the institution, each with their own email / numbers.
+  contacts?: { name: string; role: string; email: string; mobile: string; telephone: string }[]
   services: { id: string; label: string }[]
   // Referral and/or Internship (HR "Partnership For"); internship departments listed separately.
   purposes?: string[]
