@@ -846,9 +846,17 @@ function WithSiTab({ branch: initialBranch, scopeEnum }: { branch: string; scope
       }]
     }),
   ] : []
-  const displayLeft = applySortFilter(leftItems, leftSortVal, sortKey, sortDir, filters, leftFilterVal)
+  // The undated migrated workbook SIs the Sales Target card discloses: REMARKS
+  // rows carrying an amount but no workbook date and no declared date. They
+  // can't be placed in any period, so every period sum excludes them — until
+  // someone sets a Declared Date on the row, which files it into that month.
+  const isUndatedMigrated = (it: LeftItem) => it.kind === 'remarks' && !it.order && !it.mDate && !it.mDeclared && it.amount > 0
+  const undated = leftItems.filter(isUndatedMigrated)
+  const undatedTotal = undated.reduce((s, it) => s + it.amount, 0)
+  const [undatedOnly, setUndatedOnly] = useState(false)
+  const displayLeft = applySortFilter(undatedOnly ? undated : leftItems, leftSortVal, sortKey, sortDir, filters, leftFilterVal)
   const leftTotal = displayLeft.reduce((s, it) => s + it.amount, 0)
-  const leftFiltering = Object.values(filters).some(Boolean)
+  const leftFiltering = Object.values(filters).some(Boolean) || undatedOnly
 
   // RIGHT — still-unresolved flags (missing / duplicate numbers) needing action.
   const rightItems = data ? [
@@ -985,7 +993,19 @@ function WithSiTab({ branch: initialBranch, scopeEnum }: { branch: string; scope
           <div className="rounded-2xl border bg-white overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
             <div className="flex items-center justify-between px-3 py-2.5 border-b" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
               <p className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>Sales Invoices <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>· {leftFiltering ? `${displayLeft.length} of ${leftItems.length}` : leftItems.length}</span></p>
-              <p className="text-sm font-bold" style={{ color: 'var(--deep-teal)' }}>₱{peso(leftTotal)}</p>
+              <div className="flex items-center gap-2">
+                {undated.length > 0 && (
+                  <button onClick={() => setUndatedOnly(v => !v)}
+                    className="px-2.5 py-1 rounded-full text-[11px] font-semibold border"
+                    style={undatedOnly
+                      ? { background: '#b45309', borderColor: '#b45309', color: '#fff' }
+                      : { background: '#fffbeb', borderColor: '#fcd34d', color: '#92400e' }}
+                    title="Migrated workbook SIs with no date — excluded from every period total until a Declared Date is set. Click to show only these.">
+                    ⚠ {undated.length} undated · ₱{peso(undatedTotal)}{undatedOnly ? ' — showing only these' : ''}
+                  </button>
+                )}
+                <p className="text-sm font-bold" style={{ color: 'var(--deep-teal)' }}>₱{peso(leftTotal)}</p>
+              </div>
             </div>
             <div className="overflow-auto" style={{ maxHeight: '68vh' }}>
               <table className="w-full text-sm">
@@ -1004,7 +1024,11 @@ function WithSiTab({ branch: initialBranch, scopeEnum }: { branch: string; scope
                     return (
                       <tr key={`${it.kind}-${it.si}-${it.order?.id || ''}`} className="border-t" style={{ borderColor: 'var(--light-gray)', background: isResolved ? resolvedBg : undefined }}>
                         <td className="px-3 py-2 font-mono font-semibold" style={{ color: 'var(--charcoal)' }}>{it.si}</td>
-                        <td className="px-3 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>{it.order?.date || it.mDate || '—'}</td>
+                        <td className="px-3 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>
+                          {it.order?.date || it.mDate || (isUndatedMigrated(it)
+                            ? <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#fef3c7', color: '#92400e' }} title="No workbook date — set a Declared Date to file this SI into a month">No date</span>
+                            : '—')}
+                        </td>
                         <DeclaredDateCell item={it} branch={branch} onSaved={load} />
                         <td className="px-3 py-2 text-xs" style={{ color: 'var(--charcoal)' }} title={it.remarks || undefined}>
                           {it.order ? it.order.patientName : <span style={{ color: it.mCustomer ? 'var(--charcoal)' : 'var(--mid-gray)' }}>{it.mCustomer || it.remarks || '—'}</span>}
@@ -1132,6 +1156,9 @@ function SalesTargetTab({ branch: initialBranch, scopeEnum, canEditTarget }: { b
   const [d, setD] = useState<{ salesWithSI: number; target: number; difference: number; months?: { month: number; salesWithSI: number; target: number }[]; migrated?: { count: number; amount: number }; migratedUndated?: { count: number; amount: number } } | null>(null)
   const [targetInput, setTargetInput] = useState('')
   const [busy, setBusy] = useState(false)
+  // A saved target shows as a read-only figure with an Edit button; the input
+  // only appears for a month with no target yet, or while revising.
+  const [editingTarget, setEditingTarget] = useState(false)
   const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
   const periodLabel = mode === 'month' ? `${MONTHS[month - 1]} ${year}` : mode === 'quarter' ? `Q${quarter} ${year}` : `${year}`
 
@@ -1139,6 +1166,7 @@ function SalesTargetTab({ branch: initialBranch, scopeEnum, canEditTarget }: { b
     const period = mode === 'month' ? `month=${month}` : mode === 'quarter' ? `mode=quarter&quarter=${quarter}` : 'mode=annual'
     const r = await fetch(`/api/reports/sales-target?branch=${branch}&${period}&year=${year}`)
     if (r.ok) { const j = await r.json(); setD(j); if (mode === 'month') setTargetInput(j.target ? String(j.target) : '') }
+    setEditingTarget(false)
   }, [branch, mode, month, quarter, year])
   useEffect(() => { load() }, [load])
 
@@ -1198,14 +1226,32 @@ function SalesTargetTab({ branch: initialBranch, scopeEnum, canEditTarget }: { b
           <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
             <p className="text-xs mb-1" style={{ color: 'var(--mid-gray)' }}>Target sales with SI</p>
             {mode === 'month' && canEditTarget ? (
-              <div className="flex items-center gap-2">
-                <input value={targetInput} onChange={e => setTargetInput(e.target.value)} inputMode="decimal" placeholder="0.00" className="w-32 px-2 py-1.5 rounded-lg border text-lg font-bold font-mono" style={{ borderColor: 'var(--light-gray)' }} />
-                <button onClick={save} disabled={busy} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>{busy ? '…' : 'Save'}</button>
-              </div>
+              d.target > 0 && !editingTarget ? (
+                <div className="flex items-center gap-2">
+                  <p className="text-2xl font-bold" style={{ color: 'var(--charcoal)' }}>₱{peso(d.target)}</p>
+                  <button onClick={() => { setTargetInput(String(d.target)); setEditingTarget(true) }}
+                    className="px-2.5 py-1 rounded-lg text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                    Edit
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <input value={targetInput} onChange={e => setTargetInput(e.target.value)} inputMode="decimal" placeholder="0.00" className="w-32 px-2 py-1.5 rounded-lg border text-lg font-bold font-mono" style={{ borderColor: 'var(--light-gray)' }} />
+                  <button onClick={save} disabled={busy} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>{busy ? '…' : 'Save'}</button>
+                  {d.target > 0 && (
+                    <button onClick={() => setEditingTarget(false)} disabled={busy}
+                      className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border disabled:opacity-50" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                      Cancel
+                    </button>
+                  )}
+                </div>
+              )
             ) : <p className="text-2xl font-bold" style={{ color: 'var(--charcoal)' }}>₱{peso(d.target)}</p>}
             <p className="text-[11px] mt-1" style={{ color: 'var(--mid-gray)' }}>
               {mode !== 'month' ? 'Sum of the monthly targets — encode targets in Month view'
-                : canEditTarget ? 'Encode the monthly target' : 'Set by Admin/Accountant/Bookkeeper'}
+                : !canEditTarget ? 'Set by Admin/Accountant/Bookkeeper'
+                  : d.target > 0 && !editingTarget ? 'Saved target — Edit to revise'
+                    : 'Encode the monthly target'}
             </p>
           </div>
           <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--deep-teal)', background: 'var(--pale-teal)' }}>
