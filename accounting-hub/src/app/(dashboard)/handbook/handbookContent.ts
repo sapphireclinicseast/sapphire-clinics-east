@@ -439,7 +439,7 @@ export const SECTIONS: Section[] = [
       { k: 'sub', t: 'Tabs' },
       { k: 'ul', items: [
         `**Referrers** — add and manage referrers by type (Doctors / Partner Schools / Law Firms). Each can be limited to a branch.`,
-        `**Referred patients** — **Add referred patient**: pick a referrer, search a patient (from the patient CRM), add a note, **Save**. Click a row to see that patient's sessions.`,
+        `**Referred patients** — the list keeps itself in sync with the POS both ways: a patient listed here gets their referrer **auto-tagged at every checkout** (the cashier sees an "Auto-tagged" banner and can still change or clear it), and a patient tagged with a referrer during a checkout is **added here automatically** and auto-tagged on succeeding checkouts. **Add referred patient** still works for linking someone by hand before their first visit. Click a row to see that patient's sessions.`,
         `**Referral Dashboard** — tick which referrer types to include; see **Total referrals**, **Total net sales**, and the **Top 5 referrers**.`,
       ] },
       { k: 'note', label: 'Access.', t: `Everyone can open Referral **except the HMO Officer**.` },

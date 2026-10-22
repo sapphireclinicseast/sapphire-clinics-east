@@ -1044,6 +1044,11 @@ function OrderFormModal({
   // Returning patient: their referrer from history (Referred-patients link, else
   // last order) is offered as a one-click confirm under the Doctor Referral field.
   const [refSuggest, setRefSuggest] = useState<{ referrerId: string; name: string; source: string; lastDate?: string } | null>(null)
+  // Whether the referrer field was filled by the auto-tagger (vs the cashier).
+  // Kept in a ref too so the debounced suggest callback reads fresh state.
+  const [refAutoTagged, setRefAutoTagged] = useState(false)
+  const refPickRef = useRef({ id: '', search: '', auto: false })
+  useEffect(() => { refPickRef.current = { id: referrerId, search: referrerSearch, auto: refAutoTagged } }, [referrerId, referrerSearch, refAutoTagged])
   const [showAddReferrer, setShowAddReferrer] = useState(false)
   const [newRef, setNewRef] = useState({ name: '', type: 'DOCTOR', affiliation: '', specialization: '' })
   const [showWalletPay, setShowWalletPay] = useState(false)
@@ -1112,8 +1117,17 @@ function OrderFormModal({
   // Referral history for the chosen patient — debounced so free-typed names
   // only query once they settle; an exact-name or CRM-id match is required
   // server-side, so partial names simply return nothing.
+  //
+  // AUTO-TAG (Hannah, 2026-10-22): a patient already in Referred Patients (or
+  // tagged on a previous order) gets their referrer filled in by itself — the
+  // cashier no longer re-picks it every visit, but can still clear or change
+  // it. A referrer the cashier chose or started typing is never overwritten,
+  // and switching to a different patient releases only an auto-filled value.
   useEffect(() => {
     setRefSuggest(null)
+    if (refPickRef.current.auto) {
+      setReferrerId(''); setReferrerSearch(''); setRefAutoTagged(false)
+    }
     const pname = patientName.trim()
     if (!patientId && pname.length < 3) return
     const t = setTimeout(async () => {
@@ -1121,7 +1135,15 @@ function OrderFormModal({
         const r = await fetch(`/api/referrers/suggest?patientId=${encodeURIComponent(patientId)}&patientName=${encodeURIComponent(pname)}`)
         if (!r.ok) return
         const d = await r.json()
-        if (d?.referrerId) setRefSuggest(d)
+        if (!d?.referrerId) return
+        setRefSuggest(d)
+        const cur = refPickRef.current
+        if (!cur.id && !cur.search.trim()) {
+          setReferrerId(d.referrerId)
+          setReferrerSearch(d.name)
+          setShowReferrerDrop(false)
+          setRefAutoTagged(true)
+        }
       } catch { /* suggestion only — stay quiet */ }
     }, 400)
     return () => clearTimeout(t)
@@ -2214,7 +2236,17 @@ function OrderFormModal({
           {orderType === 'SERVICE' && (
             <div className="relative">
               <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Referring Doctor/School/Law Firm <span style={{ color: '#dc2626' }}>*</span></label>
-              {refSuggest && !referrerId && (
+              {refAutoTagged && referrerId && refSuggest ? (
+                <div className="w-full mb-1.5 px-3 py-2 rounded-xl border text-xs font-medium flex items-center justify-between gap-2"
+                  style={{ borderColor: 'var(--teal)', background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
+                  <span className="truncate">
+                    ↺ Auto-tagged: <strong>{refSuggest.name}</strong>
+                    <span className="font-normal"> — {refSuggest.source === 'linked' ? 'from Referred Patients' : `from last order${refSuggest.lastDate ? ` (${new Date(refSuggest.lastDate).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })})` : ''}`}</span>
+                  </span>
+                  <button type="button" onClick={() => { setReferrerId(''); setReferrerSearch(''); setRefAutoTagged(false) }}
+                    className="shrink-0 font-semibold underline">Change</button>
+                </div>
+              ) : refSuggest && !referrerId ? (
                 <button type="button"
                   onClick={() => { setReferrerId(refSuggest.referrerId); setReferrerSearch(refSuggest.name); setShowReferrerDrop(false) }}
                   className="w-full mb-1.5 px-3 py-2 rounded-xl border text-left text-xs font-medium flex items-center justify-between gap-2"
@@ -2226,12 +2258,12 @@ function OrderFormModal({
                   </span>
                   <span className="shrink-0 font-semibold">Click to confirm</span>
                 </button>
-              )}
+              ) : null}
               <div className="flex gap-2">
                 <div className="flex-1 relative">
                   <input
                     value={referrerSearch}
-                    onChange={e => { setReferrerSearch(e.target.value); setReferrerId(''); setShowReferrerDrop(true) }}
+                    onChange={e => { setReferrerSearch(e.target.value); setReferrerId(''); setRefAutoTagged(false); setShowReferrerDrop(true) }}
                     onFocus={() => setShowReferrerDrop(true)}
                     placeholder="Search doctor / school / law firm…"
                     className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
