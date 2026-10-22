@@ -744,15 +744,15 @@ export const SECTIONS: Section[] = [
       { k: 'sub', t: 'Tabs' },
       { k: 'ul', items: [
         `**Summary** — every sales line, split into **Report 1 — With Official Sales Invoice** and **Report 2 — Without Sales Invoice**. Columns: **Date · Order # · Patient Name · Service Availed · Qty · Sales Invoice No. · Gross · Net.** Click a heading to sort; type under a heading to filter. **Export Excel** / **Print / PDF** reflect what you've filtered.`,
-        `**With SI** — reconciles the SI booklet: the left **Sales Invoices** list shows every used SI number with its **Actual Date** (the real sale date) and **Declared Date** (the date the SI is reported in the SI book — click the value, or **set**, to pick a date; press Esc to cancel, clear it to fall back to the actual date). The right **Flagged Sales Invoices** panel lists missing (gap) and duplicate numbers, which you can **Declare Cancelled SI**, add **Remarks**, or **Tag to Order**, then **Save**.`,
-        `**Sales Target** — pick a month/year/branch to compare **Sales with SI** against the **Target** you set (only Admin/Accountant/Bookkeeper edit the target).`,
+        `**With SI** — reconciles the SI booklet: the left **Sales Invoices** list shows every used SI number with its **Actual Date** (the real sale date) and **Declared Date** (the date the SI is reported in the SI book — click the value, or **set**, to pick a date; press Esc to cancel, clear it to fall back to the actual date). An amber **"⚠ N undated"** chip appears when migrated workbook SIs have no date at all — click it to see only those, then set a Declared Date on each to file it into a month (until then every period total excludes them). The right **Flagged Sales Invoices** panel lists missing (gap) and duplicate numbers, which you can **Declare Cancelled SI**, add **Remarks**, or **Tag to Order**, then **Save**.`,
+        `**Sales Target** — pick a branch and Month/Quarter/Annual to compare **Sales with SI** against the **Target**. A saved monthly target shows as a read-only figure with an **Edit** button (only Admin/Accountant/Bookkeeper can revise it). In **Month** view, the full **Sales Invoices table for that month** sits below the cards — same columns as With SI, including the editable Declared Date — and **Download Excel** exports the target-vs-sales breakdown plus (in Month view) that invoice list as a second sheet.`,
       ] },
       { k: 'sub', t: 'Run the report' },
       { k: 'steps', items: [
         `On **Summary**, set **Branch** and **Date From / To**, tick one or both report types, and click **Generate Report**.`,
-        `Review Report 1 / Report 2 and the combined bar, then **Export CSV** or **Print / PDF**.`,
+        `Review Report 1 / Report 2 and the combined bar, then **Export Excel** or **Print / PDF**.`,
       ] },
-      { k: 'note', label: 'Declared vs actual date.', t: `An SI with a **Declared Date** is counted in that period's SI book and sales target; without one it counts on its **Actual Date**. Setting or clearing the declared date only moves where the invoice is reported — it never changes the order's transaction date or its ledger entries. AR-collection and migrated rows show a dash (they carry no declared date). Every change is audit-logged.` },
+      { k: 'note', label: 'Declared vs actual date.', t: `An SI with a **Declared Date** is counted in that period's SI book and sales target; without one it counts on its **Actual Date**. Setting or clearing the declared date only moves where the invoice is reported — it never changes the order's transaction date or its ledger entries. It is editable on every row type (orders, AR collections, migrated workbook rows), and every change is audit-logged. Note: AR/HMO collection SIs are listed in the invoice tables but are not part of the Sales-with-SI figure, so those totals can legitimately differ.` },
     ],
   },
   {
