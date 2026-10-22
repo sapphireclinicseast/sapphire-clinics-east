@@ -485,11 +485,12 @@ a.hero-brand-chip:hover {
 .hero-actions { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 64px; }
 
 /* Hero headline: title + big Book a Session button side by side */
-.hero-headline { display: flex; align-items: center; gap: 44px; flex-wrap: wrap; margin-bottom: 24px; }
+.hero-headline { display: flex; align-items: flex-end; gap: 44px; flex-wrap: wrap; margin-bottom: 24px; }
 .hero-headline .hero-title { margin-bottom: 0; }
-.hero-book-btn { font-size: 22px; font-weight: 800; padding: 20px 50px; box-shadow: 0 12px 34px -10px rgba(0,0,0,.45); }
+.hero-book-btn { font-size: 22px; font-weight: 800; padding: 20px 50px; margin-bottom: -56px; color: var(--primary-dark); box-shadow: 0 12px 34px -10px rgba(0,0,0,.45); }
+.hero-book-btn:hover { color: var(--primary-dark); }
 .hero-book-btn i, .hero-book-btn svg { width: 24px; height: 24px; }
-@media (max-width: 820px){ .hero-headline { gap: 22px; } .hero-book-btn { font-size: 18px; padding: 16px 36px; } }
+@media (max-width: 820px){ .hero-headline { align-items: flex-start; gap: 18px; } .hero-book-btn { font-size: 18px; padding: 16px 36px; margin-bottom: 0; } }
 .hero-stats {
   display: flex; flex-wrap: wrap; gap: 0;
   background: rgba(255,255,255,.08);
