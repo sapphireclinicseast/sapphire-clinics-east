@@ -1216,6 +1216,10 @@ function SalesTargetTab({ branch: initialBranch, scopeEnum, canEditTarget }: { b
         </div>
       )}
 
+      {/* Month view: the invoices behind the figure above — the With SI
+          Sales Invoices table scoped to the chosen month. */}
+      {mode === 'month' && <MonthSalesInvoices branch={branch} year={year} month={month} monthLabel={periodLabel} onChanged={load} />}
+
       {/* Quarter / Annual: read-only per-month breakdown so the totals above are
           auditable against the Month view (targets stay encoded per month). */}
       {mode !== 'month' && d?.months && (
@@ -1253,6 +1257,112 @@ function SalesTargetTab({ branch: initialBranch, scopeEnum, canEditTarget }: { b
           </table>
         </div>
       )}
+    </div>
+  )
+}
+
+/* ── The chosen month's Sales Invoices — the With SI left table scoped to one
+   month, embedded under the Sales Target cards so the figure above can be
+   opened up invoice by invoice. Same columns, sorting, filters and the
+   editable Declared Date (saving one re-attributes the SI to its declared
+   book month and refreshes the target figures). Note: AR/HMO collection SIs
+   appear here exactly as in With SI, but the Sales-with-SI card counts orders
+   + migrated workbook SIs only — the footer flags the difference. */
+function MonthSalesInvoices({ branch, year, month, monthLabel, onChanged }: {
+  branch: string; year: number; month: number; monthLabel: string; onChanged: () => void
+}) {
+  const from = `${year}-${String(month).padStart(2, '0')}-01`
+  const to = new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10)
+  const [data, setData] = useState<{ rows: SiRow[]; flags: FlagInfo[] } | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [sortKey, setSortKey] = useState('si')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [filters, setFilters] = useState<Record<string, string>>({})
+  const toggleSort = (k: string) => {
+    if (sortKey === k) setSortDir(dd => (dd === 'asc' ? 'desc' : 'asc'))
+    else { setSortKey(k); setSortDir('asc') }
+  }
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try { const r = await fetch(`/api/reports/with-si?branch=${branch}&dateFrom=${from}&dateTo=${to}`); setData(r.ok ? await r.json() : null) }
+    catch { setData(null) } finally { setLoading(false) }
+  }, [branch, from, to])
+  useEffect(() => { load() }, [load])
+
+  const flagBySi = new Map((data?.flags || []).map(f => [f.siNumber, f]))
+  const taggedSi = (si: string) => flagBySi.get(si)?.status === 'TAGGED'
+  const leftItems: LeftItem[] = data ? [
+    ...data.rows.map(r => ({ kind: taggedSi(r.siNumber) ? 'tagged' : 'si', si: r.siNumber, siN: siDigits(r.siNumber), order: r as SiRow | null, amount: r.amount, remarks: '' })),
+    ...data.flags.filter(f => f.status === 'CANCELLED' || f.status === 'REMARKS').flatMap(f => {
+      const info = parseMonitoringRemark(f.remarks)
+      // Only flags that belong to THIS month; an undated flag can't be placed.
+      if (!info?.date || info.date < from || info.date > to) return []
+      return [{
+        kind: f.status.toLowerCase(), si: f.siNumber, siN: siDigits(f.siNumber),
+        order: null as SiRow | null,
+        amount: f.status === 'REMARKS' ? (info?.amount || 0) : 0,
+        remarks: f.remarks || '',
+        mDate: info?.date ?? null, mCustomer: info?.customer ?? null,
+      }]
+    }),
+  ] : []
+  const display = applySortFilter(leftItems, leftSortVal, sortKey, sortDir, filters, leftFilterVal)
+  const total = display.reduce((s, it) => s + it.amount, 0)
+  const filtering = Object.values(filters).some(Boolean)
+  const resolvedBg = '#fffbeb'
+  const chip = (kind: string) => kind === 'tagged' ? { t: 'Tagged → order', bg: '#e0e7ff', c: '#3730a3' }
+    : kind === 'cancelled' ? { t: 'Cancelled SI', bg: '#fee2e2', c: '#b91c1c' }
+    : { t: 'Remarks', bg: '#fef3c7', c: '#92400e' }
+
+  return (
+    <div className="rounded-2xl border bg-white overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+      <div className="flex items-center justify-between px-3 py-2.5 border-b" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+        <p className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>
+          Sales Invoices — {monthLabel}{' '}
+          <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>
+            · {filtering ? `${display.length} of ${leftItems.length}` : leftItems.length}
+          </span>
+        </p>
+        <p className="text-sm font-bold" style={{ color: 'var(--deep-teal)' }}>₱{peso(total)}</p>
+      </div>
+      <div className="overflow-auto" style={{ maxHeight: '60vh' }}>
+        <table className="w-full text-sm">
+          <SortFilterHead
+            cols={LEFT_COLS}
+            sortKey={sortKey}
+            sortDir={sortDir}
+            filters={filters}
+            onToggleSort={toggleSort}
+            onFilter={(k, v) => setFilters(f => ({ ...f, [k]: v }))}
+          />
+          <tbody>
+            {loading && <tr><td colSpan={5} className="text-center py-8 text-sm" style={{ color: 'var(--mid-gray)' }}>Loading…</td></tr>}
+            {!loading && display.map(it => {
+              const isResolved = it.kind !== 'si'
+              const b = isResolved ? chip(it.kind) : null
+              return (
+                <tr key={`${it.kind}-${it.si}-${it.order?.id || ''}`} className="border-t" style={{ borderColor: 'var(--light-gray)', background: isResolved ? resolvedBg : undefined }}>
+                  <td className="px-3 py-2 font-mono font-semibold" style={{ color: 'var(--charcoal)' }}>{it.si}</td>
+                  <td className="px-3 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>{it.order?.date || it.mDate || '—'}</td>
+                  <DeclaredDateCell item={it} branch={branch} onSaved={() => { load(); onChanged() }} />
+                  <td className="px-3 py-2 text-xs" style={{ color: 'var(--charcoal)' }} title={it.remarks || undefined}>
+                    {it.order ? it.order.patientName : <span style={{ color: it.mCustomer ? 'var(--charcoal)' : 'var(--mid-gray)' }}>{it.mCustomer || it.remarks || '—'}</span>}
+                    {b && <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: b.bg, color: b.c }}>{b.t}</span>}
+                  </td>
+                  <td className="px-3 py-2 text-right whitespace-nowrap" style={{ color: it.amount ? 'var(--charcoal)' : 'var(--light-gray)' }}>{it.amount ? `₱${peso(it.amount)}` : '—'}</td>
+                </tr>
+              )
+            })}
+            {!loading && display.length === 0 && <tr><td colSpan={5} className="text-center py-8 text-sm" style={{ color: 'var(--mid-gray)' }}>{leftItems.length === 0 ? 'No Sales Invoices in this month.' : 'No rows match the current filters.'}</td></tr>}
+          </tbody>
+        </table>
+      </div>
+      <p className="px-3 py-2 text-[11px] border-t" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+        Dated by declared date when one is set, otherwise the actual date — the same rule as the Sales-with-SI figure above.
+        AR/HMO collection SIs are listed here (as in With SI) but are not part of that figure, so the two totals can differ.
+        Editing a Declared Date moves the SI between book months and refreshes the figures.
+      </p>
     </div>
   )
 }
