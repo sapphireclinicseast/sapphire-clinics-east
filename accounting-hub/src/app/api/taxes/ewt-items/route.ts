@@ -52,11 +52,19 @@ export async function GET(req: Request) {
 
   const items = [
     ...consultants.map(e => {
-      const base = Number(e.grossPay), ewt = Number(e.taxAmount)
+      // Tax base = the amount actually SUBJECTED to withholding, not the whole
+      // gross pay (Hannah, 2026-10-22). Untaxed adjustments — e.g. a signing
+      // bonus marked not-taxed — sit inside grossPay but outside the 5%
+      // computation, which made the derived rate read 3–4% and overstated the
+      // BIR tax base. Consultants withhold at a flat 5% (taxDeduction
+      // FIVE_PERCENT is the only non-NONE classification), so the taxed
+      // portion is exactly taxAmount ÷ 5%.
+      const ewt = Number(e.taxAmount)
+      const base = Math.round((ewt / 0.05) * 100) / 100
       return {
         id: e.id, source: 'CONSULTANT' as const, name: e.consultant.name, ref: e.cutoffPeriod,
         ym: e.cutoffPeriod.slice(0, 7), periodLabel: e.cutoffPeriod,
-        base, rate: base > 0 ? Math.round((ewt / base) * 100) : null, ewt, remitted: e.taxRemitted,
+        base, rate: 5, ewt, remitted: e.taxRemitted,
         onIncome: onIncomePay.has(e.id),
       }
     }),
