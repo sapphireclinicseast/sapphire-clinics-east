@@ -1170,6 +1170,48 @@ function SalesTargetTab({ branch: initialBranch, scopeEnum, canEditTarget }: { b
   }, [branch, mode, month, quarter, year])
   useEffect(() => { load() }, [load])
 
+  // Excel of the view: the target-vs-sales breakdown, plus (Month view) a
+  // second sheet with that month's Sales Invoices — same attribution as the
+  // embedded table.
+  const exportExcel = async () => {
+    if (!d) return
+    const r2 = (v: number) => Math.round(v * 100) / 100
+    const branchLabel = WITHSI_BRANCHES.find(b => b.value === branch)?.label || branch
+    const sheets: { name: string; headers: string[]; rows: (string | number)[][] }[] = [{
+      name: 'Sales Target',
+      headers: ['Month', 'Sales with SI', 'Target', 'Difference (Target − Sales)'],
+      rows: [
+        [`Branch: ${branchLabel}`, '', '', ''],
+        [`Period: ${periodLabel}`, '', '', ''],
+        [],
+        ...(d.months || []).map(m => [MONTHS[m.month - 1], r2(m.salesWithSI), r2(m.target), r2(m.target - m.salesWithSI)] as (string | number)[]),
+        ['TOTAL', r2(d.salesWithSI), r2(d.target), r2(d.difference)],
+        ...(d.migrated?.count ? [[`Includes ${d.migrated.count} migrated workbook SI(s)`, r2(d.migrated.amount), '', ''] as (string | number)[]] : []),
+        ...(d.migratedUndated?.count ? [[`Excluded — ${d.migratedUndated.count} undated migrated SI(s), no date to place them`, r2(d.migratedUndated.amount), '', ''] as (string | number)[]] : []),
+      ],
+    }]
+    if (mode === 'month') {
+      const { from, to } = monthBounds(year, month)
+      try {
+        const r = await fetch(`/api/reports/with-si?branch=${branch}&dateFrom=${from}&dateTo=${to}`)
+        const items = buildMonthSiItems(r.ok ? await r.json() : null, from, to)
+        sheets.push({
+          name: 'Sales Invoices',
+          headers: ['SI No.', 'Actual Date', 'Declared Date', 'Patient / Customer', 'Status', 'Amount'],
+          rows: items.map(it => [
+            it.si,
+            it.order?.date || it.mDate || '',
+            it.order?.declaredDate || it.mDeclared || '',
+            it.order ? (it.order.patientName || '') : (it.mCustomer || it.remarks || ''),
+            it.kind === 'si' ? '' : it.kind === 'tagged' ? 'Tagged → order' : it.kind === 'cancelled' ? 'Cancelled SI' : 'Remarks',
+            r2(it.amount),
+          ]),
+        })
+      } catch { /* ship the summary sheet alone */ }
+    }
+    downloadXlsx(`Sales Target - ${branchLabel} - ${periodLabel}`, sheets)
+  }
+
   const save = async () => {
     // Accept what people actually type — "494,785.00", "₱494,785", "494785" —
     // instead of Number(), which turns a comma-formatted amount into NaN and
@@ -1206,6 +1248,11 @@ function SalesTargetTab({ branch: initialBranch, scopeEnum, canEditTarget }: { b
           <select value={quarter} onChange={e => setQuarter(parseInt(e.target.value))} className="px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }}>{[1, 2, 3, 4].map(q => <option key={q} value={q}>Q{q} ({MONTHS[(q - 1) * 3].slice(0, 3)}–{MONTHS[q * 3 - 1].slice(0, 3)})</option>)}</select>
         )}
         <select value={year} onChange={e => setYear(parseInt(e.target.value))} className="px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }}>{[0, 1, 2, 3, 4].map(i => now.getFullYear() - i).map(y => <option key={y} value={y}>{y}</option>)}</select>
+        <button onClick={exportExcel} disabled={!d}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border disabled:opacity-50"
+          style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+          <Download size={14} /> Download Excel
+        </button>
       </div>
 
       {d && (
@@ -1307,6 +1354,37 @@ function SalesTargetTab({ branch: initialBranch, scopeEnum, canEditTarget }: { b
   )
 }
 
+/** The month bounds and the With SI left-table items for one month — shared by
+ *  the embedded MonthSalesInvoices table and the Sales Target Excel export. */
+function monthBounds(year: number, month: number) {
+  return {
+    from: `${year}-${String(month).padStart(2, '0')}-01`,
+    to: new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10),
+  }
+}
+function buildMonthSiItems(data: { rows: SiRow[]; flags: FlagInfo[] } | null, from: string, to: string): LeftItem[] {
+  if (!data) return []
+  const flagBySi = new Map((data.flags || []).map(f => [f.siNumber, f]))
+  const taggedSi = (si: string) => flagBySi.get(si)?.status === 'TAGGED'
+  return [
+    ...data.rows.map(r => ({ kind: taggedSi(r.siNumber) ? 'tagged' : 'si', si: r.siNumber, siN: siDigits(r.siNumber), order: r as SiRow | null, amount: r.amount, remarks: '' })),
+    ...data.flags.filter(f => f.status === 'CANCELLED' || f.status === 'REMARKS').flatMap(f => {
+      const info = parseMonitoringRemark(f.remarks)
+      // Only flags whose BOOK date (declared date wins over the workbook date)
+      // falls in this month; an undated flag can't be placed in any month.
+      const bookDate = f.declaredDate || info?.date
+      if (!bookDate || bookDate < from || bookDate > to) return []
+      return [{
+        kind: f.status.toLowerCase(), si: f.siNumber, siN: siDigits(f.siNumber),
+        order: null as SiRow | null,
+        amount: f.status === 'REMARKS' ? (info?.amount || 0) : 0,
+        remarks: f.remarks || '',
+        mDate: info?.date ?? null, mCustomer: info?.customer ?? null, mDeclared: f.declaredDate ?? null,
+      }]
+    }),
+  ]
+}
+
 /* ── The chosen month's Sales Invoices — the With SI left table scoped to one
    month, embedded under the Sales Target cards so the figure above can be
    opened up invoice by invoice. Same columns, sorting, filters and the
@@ -1317,8 +1395,7 @@ function SalesTargetTab({ branch: initialBranch, scopeEnum, canEditTarget }: { b
 function MonthSalesInvoices({ branch, year, month, monthLabel, onChanged }: {
   branch: string; year: number; month: number; monthLabel: string; onChanged: () => void
 }) {
-  const from = `${year}-${String(month).padStart(2, '0')}-01`
-  const to = new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10)
+  const { from, to } = monthBounds(year, month)
   const [data, setData] = useState<{ rows: SiRow[]; flags: FlagInfo[] } | null>(null)
   const [loading, setLoading] = useState(true)
   const [sortKey, setSortKey] = useState('si')
@@ -1336,23 +1413,7 @@ function MonthSalesInvoices({ branch, year, month, monthLabel, onChanged }: {
   }, [branch, from, to])
   useEffect(() => { load() }, [load])
 
-  const flagBySi = new Map((data?.flags || []).map(f => [f.siNumber, f]))
-  const taggedSi = (si: string) => flagBySi.get(si)?.status === 'TAGGED'
-  const leftItems: LeftItem[] = data ? [
-    ...data.rows.map(r => ({ kind: taggedSi(r.siNumber) ? 'tagged' : 'si', si: r.siNumber, siN: siDigits(r.siNumber), order: r as SiRow | null, amount: r.amount, remarks: '' })),
-    ...data.flags.filter(f => f.status === 'CANCELLED' || f.status === 'REMARKS').flatMap(f => {
-      const info = parseMonitoringRemark(f.remarks)
-      // Only flags that belong to THIS month; an undated flag can't be placed.
-      if (!info?.date || info.date < from || info.date > to) return []
-      return [{
-        kind: f.status.toLowerCase(), si: f.siNumber, siN: siDigits(f.siNumber),
-        order: null as SiRow | null,
-        amount: f.status === 'REMARKS' ? (info?.amount || 0) : 0,
-        remarks: f.remarks || '',
-        mDate: info?.date ?? null, mCustomer: info?.customer ?? null,
-      }]
-    }),
-  ] : []
+  const leftItems: LeftItem[] = buildMonthSiItems(data, from, to)
   const display = applySortFilter(leftItems, leftSortVal, sortKey, sortDir, filters, leftFilterVal)
   const total = display.reduce((s, it) => s + it.amount, 0)
   const filtering = Object.values(filters).some(Boolean)
