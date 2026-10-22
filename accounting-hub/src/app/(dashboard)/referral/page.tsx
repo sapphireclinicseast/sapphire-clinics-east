@@ -282,6 +282,23 @@ function ReferralDashboardPanel() {
   const [loading, setLoading] = useState(true)
   const [sortField, setSortField] = useState<'name' | 'type' | 'referrals' | 'net'>('net')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+  // Click a referrer's row to see the sessions behind its figures — fetched
+  // once per referrer, attributed server-side with the same rules the totals
+  // use, so the drill-down always adds up to the row.
+  const [openRows, setOpenRows] = useState<Set<string>>(new Set())
+  const [rowSessions, setRowSessions] = useState<Record<string, { id: string; orderNumber: number; date: string; patientName: string | null; branch: string; net: number }[] | 'loading'>>({})
+  const toggleRow = (id: string) => {
+    setOpenRows(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n })
+    setRowSessions(s => {
+      if (s[id]) return s
+      fetch(`/api/referred-patients/dashboard?referrerId=${encodeURIComponent(id)}`)
+        .then(r => (r.ok ? r.json() : { sessions: [] }))
+        .then(j => setRowSessions(cur => ({ ...cur, [id]: j.sessions || [] })))
+        .catch(() => setRowSessions(cur => ({ ...cur, [id]: [] })))
+      return { ...s, [id]: 'loading' }
+    })
+  }
+  const BRANCH_SHORT: Record<string, string> = { SANDBOX_EAST: 'East', SANDBOX_GREENHILLS: 'Greenhills', VERDANA_STORE: 'Verdana', AURA_INSTITUTE: 'Institute' }
 
   useEffect(() => {
     (async () => { setLoading(true); try { const r = await fetch('/api/referred-patients/dashboard'); const j = r.ok ? await r.json() : { rows: [] }; setRows(j.rows || []) } catch { setRows([]) } finally { setLoading(false) } })()
@@ -372,8 +389,13 @@ function ReferralDashboardPanel() {
               <tbody>
                 {sorted.length === 0 ? <tr><td colSpan={5} className="text-center py-10 text-gray-400">No referrers for the selected type(s).</td></tr>
                   : sorted.map(r => (
-                    <tr key={r.referrerId} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
-                      <td className="px-4 py-2.5 font-medium" style={{ color: 'var(--charcoal)' }}>{r.name}</td>
+                    <Fragment key={r.referrerId}>
+                    <tr className="border-t cursor-pointer hover:bg-gray-50/70" style={{ borderColor: 'var(--light-gray)' }}
+                      onClick={() => toggleRow(r.referrerId)} title="Click to see the sessions behind these figures">
+                      <td className="px-4 py-2.5 font-medium" style={{ color: 'var(--charcoal)' }}>
+                        <span className="inline-block w-4 text-xs" style={{ color: 'var(--mid-gray)' }}>{openRows.has(r.referrerId) ? '▾' : '▸'}</span>
+                        {r.name}
+                      </td>
                       <td className="px-4 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{REFERRER_TYPE_LABEL[r.type || 'DOCTOR']}</td>
                       <td className="px-4 py-2.5 text-right font-mono">{r.referrals}</td>
                       <td className="px-4 py-2.5 text-center">
@@ -387,6 +409,45 @@ function ReferralDashboardPanel() {
                       </td>
                       <td className="px-4 py-2.5 text-right font-mono font-semibold" style={{ color: 'var(--deep-teal)' }}>{peso(r.net)}</td>
                     </tr>
+                    {openRows.has(r.referrerId) && (
+                      <tr>
+                        <td colSpan={5} className="px-6 pb-3" style={{ background: 'var(--off-white)' }}>
+                          {rowSessions[r.referrerId] === 'loading' || !rowSessions[r.referrerId] ? (
+                            <p className="text-xs py-3" style={{ color: 'var(--mid-gray)' }}>Loading sessions…</p>
+                          ) : (rowSessions[r.referrerId] as Exclude<typeof rowSessions[string], 'loading'>).length === 0 ? (
+                            <p className="text-xs py-3" style={{ color: 'var(--mid-gray)' }}>No earned sessions recorded for this referrer&apos;s patients yet.</p>
+                          ) : (
+                            <table className="w-full text-xs mt-2 bg-white rounded-xl overflow-hidden">
+                              <thead>
+                                <tr style={{ background: 'var(--pale-teal)' }}>
+                                  <th className="px-3 py-1.5 text-left font-semibold" style={{ color: 'var(--deep-teal)' }}>Date</th>
+                                  <th className="px-3 py-1.5 text-left font-semibold" style={{ color: 'var(--deep-teal)' }}>Order #</th>
+                                  <th className="px-3 py-1.5 text-left font-semibold" style={{ color: 'var(--deep-teal)' }}>Patient</th>
+                                  <th className="px-3 py-1.5 text-left font-semibold" style={{ color: 'var(--deep-teal)' }}>Branch</th>
+                                  <th className="px-3 py-1.5 text-right font-semibold" style={{ color: 'var(--deep-teal)' }}>Net</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {(rowSessions[r.referrerId] as Exclude<typeof rowSessions[string], 'loading'>).map(s => (
+                                  <tr key={s.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                                    <td className="px-3 py-1.5">{new Date(s.date).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })}</td>
+                                    <td className="px-3 py-1.5 font-mono">{s.orderNumber}</td>
+                                    <td className="px-3 py-1.5">{s.patientName || '—'}</td>
+                                    <td className="px-3 py-1.5">{BRANCH_SHORT[s.branch] || s.branch}</td>
+                                    <td className="px-3 py-1.5 text-right font-mono">{peso(s.net)}</td>
+                                  </tr>
+                                ))}
+                                <tr className="border-t font-semibold" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                                  <td className="px-3 py-1.5" colSpan={4}>{(rowSessions[r.referrerId] as Exclude<typeof rowSessions[string], 'loading'>).length} session{(rowSessions[r.referrerId] as Exclude<typeof rowSessions[string], 'loading'>).length === 1 ? '' : 's'}</td>
+                                  <td className="px-3 py-1.5 text-right font-mono" style={{ color: 'var(--deep-teal)' }}>{peso((rowSessions[r.referrerId] as Exclude<typeof rowSessions[string], 'loading'>).reduce((t, s) => t + s.net, 0))}</td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   ))}
               </tbody>
             </table>
