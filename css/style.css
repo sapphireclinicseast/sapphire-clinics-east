@@ -1614,3 +1614,18 @@ a.hero-brand-chip:hover {
   text-transform: uppercase;
 }
 
+
+/* Verified & Registered badges (landing bottom) */
+.registered-section { padding: 60px 24px 72px; background: var(--primary-xlight); }
+.registered-badges { display: flex; flex-wrap: wrap; justify-content: center; align-items: stretch; gap: 28px; margin-top: 4px; }
+.reg-badge { background: #fff; border-radius: 20px; padding: 28px 34px; margin: 0; box-shadow: var(--shadow-md); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; }
+.reg-badge img { display: block; width: auto; max-width: 100%; height: auto; }
+.reg-badge-bir img { max-height: 150px; }
+.reg-badge-npc img { max-height: 230px; }
+.reg-badge figcaption { font-size: 13px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--primary-dark); }
+@media (max-width: 720px){
+  .registered-badges { gap: 20px; }
+  .reg-badge { width: 100%; max-width: 440px; padding: 24px; }
+  .reg-badge-bir img { max-height: 110px; }
+  .reg-badge-npc img { max-height: 200px; }
+}
