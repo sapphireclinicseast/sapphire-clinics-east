@@ -6,7 +6,8 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { Loader2, Send } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
+import ChatThread, { ChatComposer } from '@/components/ChatThread'
 
 interface Msg { fromStaff: boolean; author: string; body: string; createdAt: string }
 interface Thread { ref: string; branch: string; name: string; subject: string | null; status: string; messages: Msg[] }
@@ -31,8 +32,7 @@ export default function ThreadClient({ refNo }: { refNo: string }) {
 
   useEffect(() => { load() }, [load])
 
-  async function send(e: React.FormEvent) {
-    e.preventDefault()
+  async function send() {
     if (!reply.trim()) return
     setBusy(true)
     try {
@@ -75,42 +75,28 @@ export default function ThreadClient({ refNo }: { refNo: string }) {
         {t.status === 'ANSWERED' ? 'Replied' : t.status === 'CLOSED' ? 'Closed' : 'Awaiting reply'}
       </span>
 
-      <div style={{ display: 'grid', gap: 10, marginBottom: 20 }}>
-        {t.messages.map((m, i) => (
-          <div key={i} style={{
-            alignSelf: m.fromStaff ? 'flex-start' : 'flex-end',
-            background: m.fromStaff ? '#F0F9FA' : '#FAFAF8',
-            border: `1px solid ${m.fromStaff ? '#cfe3e6' : '#ECECE6'}`,
-            borderRadius: 12, padding: '10px 13px',
-          }}>
-            <p style={{ fontSize: 11, fontWeight: 700, color: m.fromStaff ? '#1a7b8a' : '#8a9499', margin: '0 0 3px' }}>
-              {m.author}
-            </p>
-            <p style={{ fontSize: 13.5, color: '#2b3a3f', margin: 0, whiteSpace: 'pre-wrap', lineHeight: 1.55 }}>{m.body}</p>
-            <p style={{ fontSize: 10.5, color: '#9aa5a9', margin: '5px 0 0' }}>
-              {new Date(m.createdAt).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })}
-            </p>
-          </div>
-        ))}
-      </div>
+      <ChatThread
+        messages={t.messages}
+        /* The enquirer is reading, so THEIR messages sit on the right. */
+        mineIsStaff={false}
+        emptyNote="No messages yet."
+      />
 
-      {t.status === 'CLOSED' ? (
-        <p style={{ ...lead, textAlign: 'left' }}>
-          This enquiry is closed. <a href="/inquiry" style={{ color: '#1a7b8a' }}>Send a new one</a> if you need anything else.
-        </p>
-      ) : (
-        <form onSubmit={send}>
-          <textarea value={reply} onChange={e => setReply(e.target.value)} rows={4} placeholder="Write a reply…"
-            style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1.5px solid #e5e7eb',
-                     fontSize: 14, color: '#24505a', outline: 'none', fontFamily: 'inherit', resize: 'vertical' }} />
-          <button type="submit" disabled={busy || !reply.trim()}
-            style={{ marginTop: 10, background: '#1a7b8a', color: '#fff', border: 0, borderRadius: 10,
-                     padding: '11px 16px', fontSize: 14, fontWeight: 700, cursor: 'pointer',
-                     opacity: busy || !reply.trim() ? 0.5 : 1, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-            <Send size={14} /> {busy ? 'Sending…' : 'Send reply'}
-          </button>
-        </form>
-      )}
+      <div style={{ marginTop: 16 }}>
+        {t.status === 'CLOSED' ? (
+          <p style={{ ...lead, textAlign: 'left' }}>
+            This enquiry is closed. <a href="/inquiry" style={{ color: '#1a7b8a' }}>Send a new one</a> if you need anything else.
+          </p>
+        ) : (
+          <ChatComposer
+            value={reply}
+            onChange={setReply}
+            onSend={() => send()}
+            busy={busy}
+            placeholder="Write a reply…"
+          />
+        )}
+      </div>
     </Shell>
   )
 }
