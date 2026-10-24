@@ -9,7 +9,7 @@ import {
   Users, Mail, BookOpen, Clock, ChevronRight, Link2, ChevronDown, X, BarChart2,
   UserCog, ListOrdered, CalendarDays, ClipboardCheck, Layers, HeartHandshake,
   UsersRound, FileText, Activity, FileCheck, Building2,
-  MessageSquare,
+  MessageSquare, Inbox,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useBrand } from '@/contexts/BrandContext'
@@ -20,6 +20,7 @@ const FRONT_DESK_ROLES = ['AHEA_FRONT_DESK', 'AHGH_FRONT_DESK']
 // ─── Nav item definitions ────────────────────────────────────────────────────
 
 const CLINIC_TOOLS_ALL = [
+      { href: '/inquiries', icon: Inbox, label: 'Enquiries' },
   { href: '/staff', icon: UserCog, label: 'Staff Module' },
   { href: '/queueing', icon: ListOrdered, label: 'Queueing' },
   { href: '/clinic-schedule', icon: CalendarDays, label: 'Clinic Schedule' },
@@ -108,6 +109,7 @@ const FRONT_DESK_NAV = [
     items: [
       { href: '/patients', icon: Users, label: 'Patient CRM' },
       { href: '/patients/profile', icon: Users, label: 'Patient Profile' },
+      { href: '/inquiries', icon: Inbox, label: 'Enquiries' },
       { href: '/staff', icon: UserCog, label: 'Staff Module' },
       { href: '/queueing', icon: ListOrdered, label: 'Queueing' },
       { href: '/clinic-schedule', icon: CalendarDays, label: 'Clinic Schedule' },
