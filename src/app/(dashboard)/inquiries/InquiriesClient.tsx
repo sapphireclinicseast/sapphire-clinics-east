@@ -8,7 +8,8 @@
 // branch it pinned so the UI can stop pretending the filter exists.
 
 import { useState, useEffect, useCallback } from 'react'
-import { Inbox, Loader2, Send, Search, Check } from 'lucide-react'
+import { Inbox, Loader2, Search, Check } from 'lucide-react'
+import ChatThread, { ChatComposer } from '@/components/ChatThread'
 
 interface Row {
   id: string; ref: string; branch: string; name: string; email: string | null; phone: string | null
@@ -174,40 +175,35 @@ export default function InquiriesClient() {
                   </button>
                 </div>
 
-                <div className="grid gap-2 mb-4" style={{ maxHeight: 360, overflowY: 'auto' }}>
-                  {thread.messages.map(m => (
-                    <div key={m.id} style={{
-                      background: m.fromStaff ? 'var(--pale-teal)' : 'var(--off-white)',
-                      border: '1px solid var(--light-gray)', borderRadius: 10, padding: '9px 12px',
-                    }}>
-                      <p className="text-[11px] font-bold mb-1" style={{ color: m.fromStaff ? 'var(--teal)' : 'var(--mid-gray)' }}>
-                        {m.fromStaff ? (m.authorName || 'Front Desk') : thread.inquiry.name}
-                      </p>
-                      <p className="text-[13px] whitespace-pre-wrap" style={{ color: 'var(--charcoal)' }}>{m.body}</p>
-                      <p className="text-[10px] mt-1" style={{ color: 'var(--mid-gray)' }}>
-                        {new Date(m.createdAt).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })}
-                      </p>
-                    </div>
-                  ))}
-                </div>
+                <ChatThread
+                  /* Front desk is reading, so the CLINIC's replies sit on the
+                     right — the mirror of what the enquirer sees. */
+                  mineIsStaff
+                  maxHeight={360}
+                  messages={thread.messages.map(m => ({
+                    id: m.id,
+                    fromStaff: m.fromStaff,
+                    author: m.fromStaff ? (m.authorName || 'Front Desk') : thread.inquiry.name,
+                    body: m.body,
+                    createdAt: m.createdAt,
+                  }))}
+                />
 
-                {thread.inquiry.status === 'CLOSED' ? (
-                  <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
-                    Closed — reopen to reply. The enquirer cannot add to a closed thread.
-                  </p>
-                ) : (
-                  <>
-                    <textarea value={reply} onChange={e => setReply(e.target.value)} rows={4}
+                <div className="mt-3">
+                  {thread.inquiry.status === 'CLOSED' ? (
+                    <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+                      Closed — reopen to reply. The enquirer cannot add to a closed thread.
+                    </p>
+                  ) : (
+                    <ChatComposer
+                      value={reply}
+                      onChange={setReply}
+                      onSend={send}
+                      busy={busy}
                       placeholder="Write a reply — the enquirer sees this on their link."
-                      className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                      style={{ border: '1.5px solid var(--light-gray)', resize: 'vertical', fontFamily: 'inherit' }} />
-                    <button onClick={send} disabled={busy || !reply.trim()}
-                      className="mt-2 px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2"
-                      style={{ background: 'var(--teal)', color: '#fff', opacity: busy || !reply.trim() ? 0.5 : 1 }}>
-                      <Send size={14} /> {busy ? 'Sending…' : 'Send reply'}
-                    </button>
-                  </>
-                )}
+                    />
+                  )}
+                </div>
               </>
             )}
           </div>
