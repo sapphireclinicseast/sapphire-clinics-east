@@ -2495,3 +2495,57 @@ model DeckingSnapshot {
   @@unique([date, branch, department])
   @@index([branch, department, date])
 }
+
+/// Public enquiry from the website, routed to one branch's front desk.
+///
+/// Exists because enquiries were arriving through Meta (Facebook/Instagram)
+/// messaging, which nobody owns, nothing numbers and the hub cannot see — so
+/// they were being missed. This gives an enquiry a reference, a branch, an
+/// owner and a thread.
+model Inquiry {
+  id        String   @id @default(cuid())
+  /// Human reference, YYYY-MM-DD-00001. What the enquirer quotes and what
+  /// front desk searches by. Unique, and allocated per calendar day.
+  ref       String   @unique
+  /// Secret in the enquirer's link. The ref alone is guessable by design — it
+  /// is sequential — so it must NOT be enough to open a thread on its own.
+  token     String   @unique
+  /// HrBranch.shortCode (SBEA / SBGH). Matches what branchForRole() returns,
+  /// so a front-desk account's scope is a direct comparison.
+  branch    String
+  name      String
+  email     String?
+  phone     String?
+  subject   String?
+  status    InquiryStatus @default(OPEN)
+  /// Set when a staff account first opens it — drives the unread count.
+  readAt      DateTime?
+  /// Last message from either side, for sorting the inbox by what needs work.
+  lastMessageAt DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  messages  InquiryMessage[]
+
+  @@index([branch, status])
+  @@index([branch, lastMessageAt])
+}
+
+model InquiryMessage {
+  id         String   @id @default(cuid())
+  inquiryId  String
+  inquiry    Inquiry  @relation(fields: [inquiryId], references: [id], onDelete: Cascade)
+  /// true = written by the clinic, false = written by the enquirer.
+  fromStaff  Boolean  @default(false)
+  /// Staff display name, or null for the enquirer (their name is on Inquiry).
+  authorName String?
+  body       String
+  createdAt  DateTime @default(now())
+
+  @@index([inquiryId, createdAt])
+}
+
+enum InquiryStatus {
+  OPEN
+  ANSWERED
+  CLOSED
+}
