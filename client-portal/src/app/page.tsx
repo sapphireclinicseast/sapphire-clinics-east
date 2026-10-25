@@ -26,6 +26,7 @@ import { Hero3D } from '@/components/landing/Hero3D'
 import RewardsPanel from '@/components/RewardsPanel'
 import { DirectorySection } from '@/components/Directory'
 import PortalConcerns from '@/components/PortalConcerns'
+import PortalMessages from '@/components/PortalMessages'
 import HomeProgressSection from '@/components/HomeProgress'
 
 type Tab = 'returning' | 'new'
@@ -487,6 +488,8 @@ function PortalDashboard({
   return (
     <section className="max-w-5xl mx-auto animate-fade-up stagger-2 space-y-6">
       <PortalConcerns token={token} />
+      {/* Stacked above Concerns, which sits above the chatbot bubble. */}
+      <PortalMessages token={token} />
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-[26px] leading-tight text-[color:var(--deep-teal)]">Welcome back, {firstName}</h2>

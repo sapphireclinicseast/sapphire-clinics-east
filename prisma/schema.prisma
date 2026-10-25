@@ -320,6 +320,8 @@ model Patient {
   documents           PatientDocument[]
   tickets             PatientTicket[]
   homeProgress        HomeProgressEntry[]
+  /// Enquiries recognised as coming from this patient.
+  inquiries   Inquiry[]
 }
 
 // Patient-submitted portal concern/support ticket. Patient files it from the
@@ -2513,6 +2515,13 @@ model Inquiry {
   /// HrBranch.shortCode (SBEA / SBGH). Matches what branchForRole() returns,
   /// so a front-desk account's scope is a direct comparison.
   branch    String
+  /// Set when the enquirer is recognised as a patient — either because they
+  /// wrote in from the client portal while signed in, or because the contact
+  /// details they gave on the public form match a record. This is what lets
+  /// the portal show someone their own conversation, and what keeps a thread
+  /// attached to a person rather than to a string they typed.
+  patientId String?
+  patient   Patient? @relation(fields: [patientId], references: [id], onDelete: SetNull)
   name      String
   email     String?
   phone     String?
@@ -2528,6 +2537,7 @@ model Inquiry {
 
   @@index([branch, status])
   @@index([branch, lastMessageAt])
+  @@index([patientId, lastMessageAt])
 }
 
 model InquiryMessage {
