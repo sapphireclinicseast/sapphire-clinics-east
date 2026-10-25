@@ -1,170 +1,225 @@
 'use client'
 
-// Public enquiry form. Branch list comes from /api/public/branches, which is
-// the HR Branch Registry cache — so adding or renaming a branch in HR changes
-// this page with nothing to deploy. Only branches with a front desk that can
-// answer are offered; routing an enquiry to a branch nobody watches is the
-// exact failure this page exists to end.
+// Public enquiry, as a chat rather than a form.
+//
+// The form version asked for five fields before a word of the question. This
+// asks one thing at a time in the window the answer appears in, which is how
+// people already expect to message a business — and it is the habit they were
+// using on Meta, which is what this replaces.
+//
+// Nothing is lodged until a branch is chosen AND a question is typed: a
+// half-filled form should not reach a front desk as an enquiry with no
+// question in it.
 
-import { useEffect, useState } from 'react'
-import { Loader2, CheckCircle2, Copy } from 'lucide-react'
+import { useEffect, useState, useRef } from 'react'
+import { Loader2, Check, Copy } from 'lucide-react'
+import ChatThread, { ChatComposer, type ChatMessage } from '@/components/ChatThread'
 
 const ANSWERABLE = ['SBEA', 'SBGH']
 
-interface Branch { shortCode: string; name: string; brandName?: string | null; address?: string | null; phone?: string | null }
+interface Branch {
+  shortCode: string; name: string; brandName?: string | null
+  address?: string | null; phone?: string | null
+}
+
+/** What the desk still needs, asked one at a time. */
+type Step = 'branch' | 'name' | 'contact' | 'question' | 'sending' | 'done'
 
 export default function InquiryClient() {
   const [branches, setBranches] = useState<Branch[]>([])
-  const [form, setForm] = useState({ branch: '', name: '', email: '', phone: '', subject: '', message: '' })
-  const [busy, setBusy] = useState(false)
+  const [branch, setBranch] = useState<Branch | null>(null)
+  const [step, setStep] = useState<Step>('branch')
+  const [draft, setDraft] = useState('')
+  const [log, setLog] = useState<ChatMessage[]>([])
+  const [answers, setAnswers] = useState({ name: '', contact: '', question: '' })
+  const [result, setResult] = useState<{ ref: string; token: string } | null>(null)
   const [error, setError] = useState('')
-  const [done, setDone] = useState<{ ref: string; token: string } | null>(null)
   const [copied, setCopied] = useState(false)
+  const loadFailed = useRef(false)
 
   useEffect(() => {
     fetch('/api/public/branches')
       .then(r => r.json())
       .then(d => setBranches((d.branches ?? []).filter((b: Branch) => ANSWERABLE.includes(b.shortCode))))
-      .catch(() => setError('Could not load branches. Please refresh.'))
+      .catch(() => { loadFailed.current = true; setError('Could not load branches. Please refresh.') })
   }, [])
 
-  const upd = (k: keyof typeof form, v: string) => setForm(f => ({ ...f, [k]: v }))
+  const say = (body: string, fromStaff = true, author?: string) =>
+    setLog(l => [...l, { fromStaff, author: author ?? (branch?.brandName || 'Aura Health Rehab'), body, createdAt: new Date() }])
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault()
-    setError(''); setBusy(true)
-    try {
-      const res = await fetch('/api/public/inquiry', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
-      })
-      const d = await res.json()
-      if (!res.ok) { setError(d.error || 'Something went wrong.'); return }
-      setDone({ ref: d.ref, token: d.token })
-    } catch {
-      setError('Could not reach the clinic. Please check your connection and try again.')
-    } finally { setBusy(false) }
+  function chooseBranch(b: Branch) {
+    setBranch(b)
+    const who = b.brandName || b.name
+    setLog([
+      { fromStaff: true, author: who, body: `Hi! You're messaging ${who}. 👋`, createdAt: new Date() },
+      { fromStaff: true, author: who, body: "Before we start — what's your name?", createdAt: new Date() },
+    ])
+    setStep('name')
   }
 
-  const threadUrl = done ? `${typeof window !== 'undefined' ? window.location.origin : ''}/inquiry/${done.ref}?t=${done.token}` : ''
+  async function onSend() {
+    const text = draft.trim()
+    if (!text || !branch) return
+    const who = branch.brandName || branch.name
+    setDraft('')
+    setLog(l => [...l, { fromStaff: false, author: 'You', body: text, createdAt: new Date() }])
 
-  if (done) {
-    return (
-      <Shell>
-        <div style={{ textAlign: 'center', padding: '8px 0 4px' }}>
-          <CheckCircle2 size={44} style={{ color: '#1a7b8a' }} />
-        </div>
-        <h1 style={h1}>Your enquiry is in</h1>
-        <p style={lead}>Your reference number is</p>
-        <p style={{ fontSize: 26, fontWeight: 800, color: '#1a7b8a', letterSpacing: '0.02em', margin: '4px 0 18px', textAlign: 'center' }}>
-          {done.ref}
-        </p>
-        <p style={{ ...lead, marginBottom: 10 }}>
-          Keep this link. It is the only way back to your conversation, and it is where
-          the branch&rsquo;s reply will appear.
-        </p>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', background: '#F6FAFA',
-                      border: '1px solid #cfe3e6', borderRadius: 10, padding: '10px 12px', marginBottom: 18 }}>
-          <input readOnly value={threadUrl} style={{ flex: 1, border: 0, background: 'transparent', fontSize: 12, color: '#24505a' }} />
-          <button type="button" onClick={() => { navigator.clipboard?.writeText(threadUrl); setCopied(true); setTimeout(() => setCopied(false), 1800) }}
-            style={{ ...btn, padding: '6px 10px', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Copy size={13} /> {copied ? 'Copied' : 'Copy'}
-          </button>
-        </div>
-        <a href={threadUrl} style={{ ...btn, display: 'block', textAlign: 'center', textDecoration: 'none' }}>
-          Open my enquiry
-        </a>
-      </Shell>
-    )
+    if (step === 'name') {
+      setAnswers(a => ({ ...a, name: text }))
+      setTimeout(() => {
+        say(`Thanks, ${text.split(' ')[0]}. What's the best email address or mobile number to reach you on?`, true, who)
+        setStep('contact')
+      }, 350)
+      return
+    }
+
+    if (step === 'contact') {
+      setAnswers(a => ({ ...a, contact: text }))
+      setTimeout(() => {
+        say('Got it. How can we help?', true, who)
+        setStep('question')
+      }, 350)
+      return
+    }
+
+    if (step === 'question') {
+      setStep('sending')
+      const looksLikeEmail = answers.contact.includes('@')
+      try {
+        const res = await fetch('/api/public/inquiry', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            branch: branch.shortCode,
+            name: answers.name,
+            email: looksLikeEmail ? answers.contact : '',
+            phone: looksLikeEmail ? '' : answers.contact,
+            message: text,
+          }),
+        })
+        const d = await res.json()
+        if (!res.ok) {
+          setError(d.error || 'Something went wrong.')
+          // Back to the question so what they wrote is not lost behind an error.
+          setStep('question')
+          return
+        }
+        setResult({ ref: d.ref, token: d.token })
+        setTimeout(() => {
+          say(`Thanks! Your enquiry is in — reference ${d.ref}. We'll reply right here.`, true, who)
+          setStep('done')
+        }, 350)
+      } catch {
+        setError('Could not reach the clinic. Please try again.')
+        setStep('question')
+      }
+    }
   }
+
+  const threadUrl = result && typeof window !== 'undefined'
+    ? `${window.location.origin}/inquiry/${result.ref}?t=${result.token}` : ''
+
+  const placeholder =
+    step === 'name' ? 'Type your name…'
+    : step === 'contact' ? 'Email or mobile number…'
+    : step === 'question' ? 'Type your question…'
+    : ''
 
   return (
-    <Shell>
-      <h1 style={h1}>Ask us a question</h1>
-      <p style={lead}>
-        Send a message to a branch and we&rsquo;ll reply here. You&rsquo;ll get a reference
-        number and a private link to follow the conversation.
-      </p>
-
-      <form onSubmit={submit} style={{ marginTop: 18 }}>
-        <Label>Which branch?</Label>
-        <div style={{ display: 'grid', gap: 8, marginBottom: 16 }}>
-          {branches.length === 0 && <p style={{ fontSize: 13, color: '#8a9499' }}>Loading branches…</p>}
-          {branches.map(b => (
-            <label key={b.shortCode} style={{
-              display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer',
-              padding: '12px 14px', borderRadius: 10,
-              border: `1.5px solid ${form.branch === b.shortCode ? '#1a7b8a' : '#e5e7eb'}`,
-              background: form.branch === b.shortCode ? '#f0f9fa' : '#fff',
-            }}>
-              <input type="radio" name="branch" checked={form.branch === b.shortCode}
-                onChange={() => upd('branch', b.shortCode)} style={{ marginTop: 3 }} />
-              <span>
-                <span style={{ fontWeight: 700, fontSize: 14, color: '#24505a' }}>{b.brandName || b.name}</span>
-                {b.address && <span style={{ display: 'block', fontSize: 12, color: '#8a9499' }}>{b.address}</span>}
-              </span>
-            </label>
-          ))}
+    <main style={{ minHeight: '100vh', background: '#EDF3D9', padding: '24px 16px', display: 'flex', justifyContent: 'center' }}>
+      <div style={{
+        width: '100%', maxWidth: 480, background: '#fff', borderRadius: 16,
+        boxShadow: '0 6px 28px rgba(36,80,90,0.10)', display: 'flex', flexDirection: 'column',
+        overflow: 'hidden', maxHeight: 'calc(100vh - 48px)',
+      }}>
+        {/* Header — the person you're talking to, like any chat */}
+        <div style={{ background: '#1a7b8a', color: '#fff', padding: '14px 18px', flexShrink: 0 }}>
+          <p style={{ margin: 0, fontWeight: 800, fontSize: 15 }}>
+            {branch ? (branch.brandName || branch.name) : 'Aura Health Rehab'}
+          </p>
+          <p style={{ margin: '2px 0 0', fontSize: 12, opacity: 0.85 }}>
+            {branch ? 'Typically replies within clinic hours' : 'Choose a branch to start'}
+          </p>
         </div>
 
-        <Label>Your name *</Label>
-        <Input value={form.name} onChange={v => upd('name', v)} />
+        {/* Branch picker — the one thing asked before the conversation starts,
+            because an enquiry has to belong to a branch to reach anyone. */}
+        {step === 'branch' ? (
+          <div style={{ padding: 18, overflowY: 'auto' }}>
+            <p style={{ fontSize: 13.5, color: '#5b6b70', margin: '0 0 14px', lineHeight: 1.6 }}>
+              Which branch would you like to message?
+            </p>
+            {branches.length === 0 && !error && (
+              <p style={{ fontSize: 13, color: '#9aa5a9' }}>Loading branches…</p>
+            )}
+            {branches.map(b => (
+              <button key={b.shortCode} onClick={() => chooseBranch(b)} style={{
+                display: 'block', width: '100%', textAlign: 'left', cursor: 'pointer',
+                padding: '13px 15px', borderRadius: 12, marginBottom: 10,
+                border: '1.5px solid #e5e7eb', background: '#fff',
+              }}>
+                <span style={{ fontWeight: 700, fontSize: 14, color: '#24505a', display: 'block' }}>
+                  {b.brandName || b.name}
+                </span>
+                {b.address && (
+                  <span style={{ fontSize: 12, color: '#8a9499', display: 'block', marginTop: 2 }}>{b.address}</span>
+                )}
+              </button>
+            ))}
+            {error && <p style={{ color: '#B91C1C', fontSize: 13, marginTop: 8 }}>{error}</p>}
+          </div>
+        ) : (
+          <>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px', background: '#fff' }}>
+              <ChatThread messages={log} mineIsStaff={false} />
+              {step === 'sending' && (
+                <p style={{ fontSize: 12, color: '#9aa5a9', display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
+                  <Loader2 size={13} className="animate-spin" /> Sending…
+                </p>
+              )}
+              {error && <p style={{ color: '#B91C1C', fontSize: 12.5, marginTop: 8 }}>{error}</p>}
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <div><Label>Email</Label><Input type="email" value={form.email} onChange={v => upd('email', v)} /></div>
-          <div><Label>Mobile no.</Label><Input value={form.phone} onChange={v => upd('phone', v)} /></div>
-        </div>
-        <p style={{ fontSize: 11.5, color: '#8a9499', margin: '-6px 0 12px' }}>
-          Leave at least one so we can reach you if the link is lost.
-        </p>
+              {step === 'done' && result && (
+                <div style={{ marginTop: 14, padding: 13, background: '#F6FAFA', border: '1px solid #cfe3e6', borderRadius: 12 }}>
+                  <p style={{ margin: '0 0 7px', fontSize: 12, color: '#24505a', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Check size={14} /> Keep this link to see our reply
+                  </p>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <input readOnly value={threadUrl} style={{
+                      flex: 1, border: '1px solid #cfe3e6', borderRadius: 8, padding: '6px 8px',
+                      fontSize: 11, color: '#24505a', background: '#fff', minWidth: 0,
+                    }} />
+                    <button type="button" onClick={() => { navigator.clipboard?.writeText(threadUrl); setCopied(true); setTimeout(() => setCopied(false), 1800) }}
+                      style={{ background: '#1a7b8a', color: '#fff', border: 0, borderRadius: 8, padding: '7px 10px',
+                               fontSize: 11.5, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
+                      <Copy size={12} /> {copied ? 'Copied' : 'Copy'}
+                    </button>
+                  </div>
+                  <a href={threadUrl} style={{
+                    display: 'block', textAlign: 'center', marginTop: 9, background: '#fff',
+                    border: '1.5px solid #1a7b8a', color: '#1a7b8a', borderRadius: 8,
+                    padding: '8px 10px', fontSize: 12.5, fontWeight: 700, textDecoration: 'none',
+                  }}>
+                    Open my conversation
+                  </a>
+                </div>
+              )}
+            </div>
 
-        <Label>Subject</Label>
-        <Input value={form.subject} onChange={v => upd('subject', v)} placeholder="Optional — e.g. Booking an assessment" />
-
-        <Label>Your message *</Label>
-        <textarea value={form.message} onChange={e => upd('message', e.target.value)} rows={6}
-          style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }} />
-
-        {error && (
-          <p style={{ color: '#B91C1C', fontSize: 13, margin: '10px 0 0' }}>{error}</p>
+            {step !== 'done' && (
+              <div style={{ padding: '10px 14px 14px', borderTop: '1px solid #F1F2F4', flexShrink: 0 }}>
+                <ChatComposer
+                  value={draft}
+                  onChange={setDraft}
+                  onSend={onSend}
+                  busy={step === 'sending'}
+                  disabled={step === 'sending'}
+                  placeholder={placeholder}
+                />
+              </div>
+            )}
+          </>
         )}
-
-        <button type="submit" disabled={busy} style={{ ...btn, width: '100%', marginTop: 18, opacity: busy ? 0.6 : 1 }}>
-          {busy ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><Loader2 size={15} className="animate-spin" /> Sending…</span> : 'Send enquiry'}
-        </button>
-      </form>
-    </Shell>
-  )
-}
-
-/* ── small presentational helpers ─────────────────────────────────────────── */
-const h1: React.CSSProperties = { fontSize: 24, fontWeight: 800, color: '#24505a', margin: '0 0 6px', textAlign: 'center' }
-const lead: React.CSSProperties = { fontSize: 13.5, color: '#5b6b70', lineHeight: 1.6, margin: 0, textAlign: 'center' }
-const inputStyle: React.CSSProperties = {
-  width: '100%', padding: '10px 12px', borderRadius: 10, border: '1.5px solid #e5e7eb',
-  fontSize: 14, color: '#24505a', outline: 'none', marginBottom: 14, background: '#fff',
-}
-const btn: React.CSSProperties = {
-  background: '#1a7b8a', color: '#fff', border: 0, borderRadius: 10,
-  padding: '12px 16px', fontSize: 14, fontWeight: 700, cursor: 'pointer',
-}
-function Label({ children }: { children: React.ReactNode }) {
-  return <label style={{ display: 'block', fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase',
-    letterSpacing: '0.08em', color: '#8a9499', marginBottom: 6 }}>{children}</label>
-}
-function Input({ value, onChange, type = 'text', placeholder = '' }: {
-  value: string; onChange: (v: string) => void; type?: string; placeholder?: string
-}) {
-  return <input type={type} value={value} placeholder={placeholder}
-    onChange={e => onChange(e.target.value)} style={inputStyle} />
-}
-function Shell({ children }: { children: React.ReactNode }) {
-  return (
-    <main style={{ minHeight: '100vh', background: '#EDF3D9', padding: '32px 16px' }}>
-      <div style={{ maxWidth: 560, margin: '0 auto', background: '#fff', borderRadius: 16,
-                    padding: '28px 24px 32px', boxShadow: '0 6px 28px rgba(36,80,90,0.08)' }}>
-        {children}
       </div>
     </main>
   )

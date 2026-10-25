@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { branchForRole } from '@/lib/role-branch'
+import { canUseInquiries } from '@/lib/inquiry-access'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,6 +15,9 @@ async function authorise(id: string) {
   const session = await auth()
   if (!session) return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
   const user = session.user as { role?: string; name?: string | null; email?: string | null }
+  if (!canUseInquiries(user.role)) {
+    return { error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
+  }
   const forced = branchForRole(user.role ?? '')
   const inquiry = await prisma.inquiry.findUnique({ where: { id } })
   if (!inquiry) return { error: NextResponse.json({ error: 'Not found' }, { status: 404 }) }

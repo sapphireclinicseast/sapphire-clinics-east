@@ -1,26 +1,52 @@
 'use client'
 
-// Front-desk inbox for public enquiries.
+// Enquiries, laid out the way a messaging app is: conversations down the left,
+// the open conversation filling the right.
 //
-// The branch filter here is a CONVENIENCE for accounts that can see more than
-// one branch. It is not the control: /api/inquiries pins a branch-scoped
-// account to its own branch whatever this sends, and the API reports back which
-// branch it pinned so the UI can stop pretending the filter exists.
+// The first version was a filter bar over a table with a detail panel beside
+// it. It held the same information and read like a records screen, which is not
+// what answering messages feels like.
+//
+// Branch scoping is NOT done here. /api/inquiries pins a branch-scoped account
+// to its own branch whatever this sends, and reports back which branch it
+// pinned — the filter below is a convenience for accounts that can see both.
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { Inbox, Loader2, Search, Check } from 'lucide-react'
+import { Loader2, Search, Check, RotateCcw, Inbox } from 'lucide-react'
 import ChatThread, { ChatComposer } from '@/components/ChatThread'
 
 interface Row {
   id: string; ref: string; branch: string; name: string; email: string | null; phone: string | null
   subject: string | null; status: string; readAt: string | null; lastMessageAt: string; createdAt: string
+  preview: { body: string; fromStaff: boolean } | null
   _count: { messages: number }
 }
 interface Msg { id: string; fromStaff: boolean; authorName: string | null; body: string; createdAt: string }
 
 const BRANCH_LABEL: Record<string, string> = { SBEA: 'East', SBGH: 'Greenhills' }
-const STATUSES = ['ALL', 'OPEN', 'ANSWERED', 'CLOSED']
+const FILTERS = [
+  { key: 'OPEN', label: 'Unanswered' },
+  { key: 'ALL', label: 'All' },
+  { key: 'ANSWERED', label: 'Replied' },
+  { key: 'CLOSED', label: 'Closed' },
+]
+
+function initials(name: string) {
+  const p = name.trim().split(/\s+/).filter(Boolean)
+  return ((p[0]?.[0] ?? '') + (p.length > 1 ? p[p.length - 1][0] : '')).toUpperCase() || '?'
+}
+
+function whenLabel(iso: string) {
+  const d = new Date(iso)
+  const now = new Date()
+  if (d.toDateString() === now.toDateString()) {
+    return d.toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' })
+  }
+  const y = new Date(now); y.setDate(y.getDate() - 1)
+  if (d.toDateString() === y.toDateString()) return 'Yesterday'
+  return d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })
+}
 
 export default function InquiriesClient() {
   const [rows, setRows] = useState<Row[]>([])
@@ -35,42 +61,53 @@ export default function InquiriesClient() {
   const [reply, setReply] = useState('')
   const [busy, setBusy] = useState(false)
 
-  // Deep link from the notification bell: /inquiries?open=<id>. Runs once, and
-  // only after the first list load, so opening it cannot be undone by the
-  // fetch that follows. Without this the bell would drop you on a list and
-  // leave you to find the row yourself, which defeats the notification.
   const searchParams = useSearchParams()
   const deepLinked = useRef(false)
+  const openIdRef = useRef<string | null>(null)
+  openIdRef.current = openId
 
   const load = useCallback(async () => {
-    setLoading(true)
     const p = new URLSearchParams({ branch, status, q })
     const res = await fetch(`/api/inquiries?${p}`, { cache: 'no-store' })
-    const d = await res.json()
-    setRows(d.inquiries ?? []); setUnread(d.unread ?? 0); setScoped(d.scopedToBranch ?? null)
+    if (res.ok) {
+      const d = await res.json()
+      setRows(d.inquiries ?? []); setUnread(d.unread ?? 0); setScoped(d.scopedToBranch ?? null)
+    }
     setLoading(false)
   }, [branch, status, q])
 
+  const openThread = useCallback(async (id: string) => {
+    setOpenId(id); setThread(null)
+    const res = await fetch(`/api/inquiries/${id}`, { cache: 'no-store' })
+    if (res.ok) { setThread(await res.json()); load() }
+  }, [load])
+
   useEffect(() => { load() }, [load])
 
+  // Poll so a reply arrives without a refresh, the way a messaging app does.
+  useEffect(() => {
+    const t = setInterval(() => {
+      load()
+      if (openIdRef.current) {
+        fetch(`/api/inquiries/${openIdRef.current}`, { cache: 'no-store' })
+          .then(r => r.ok ? r.json() : null).then(d => d && setThread(d)).catch(() => {})
+      }
+    }, 20000)
+    return () => clearInterval(t)
+  }, [load])
+
+  // Deep link from the notification bell: /inquiries?open=<id>. Widen the
+  // filter first — a reply on an ANSWERED thread is unread but hidden under
+  // the default, so otherwise the bell lands you on a list without the row.
   useEffect(() => {
     if (deepLinked.current) return
     const id = searchParams.get('open')
     if (!id) return
     deepLinked.current = true
-    // An enquiry linked from the bell is unread, and the default filter is
-    // already OPEN — but a reply on an ANSWERED thread is also unread, so widen
-    // the filter rather than open a row the list is hiding.
     setStatus('ALL')
-    open(id)
+    openThread(id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams])
-
-  async function open(id: string) {
-    setOpenId(id); setThread(null)
-    const res = await fetch(`/api/inquiries/${id}`, { cache: 'no-store' })
-    if (res.ok) { setThread(await res.json()); load() }
-  }
 
   async function send() {
     if (!openId || !reply.trim()) return
@@ -80,7 +117,7 @@ export default function InquiriesClient() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: reply }),
       })
-      if (res.ok) { setReply(''); await open(openId) }
+      if (res.ok) { setReply(''); await openThread(openId) }
     } finally { setBusy(false) }
   }
 
@@ -89,147 +126,187 @@ export default function InquiriesClient() {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status: next }),
     })
-    await open(id)
+    await openThread(id)
   }
 
   return (
-    <div className="p-6">
-      <div className="flex items-center gap-3 mb-1">
-        <Inbox size={20} style={{ color: 'var(--teal)' }} />
-        <h1 className="text-2xl font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
-          Enquiries
-        </h1>
-        {unread > 0 && (
-          <span className="px-2 py-0.5 rounded-full text-xs font-bold" style={{ background: '#DC2626', color: '#fff' }}>
-            {unread} unread
-          </span>
-        )}
-      </div>
-      <p className="text-sm mb-5" style={{ color: 'var(--mid-gray)' }}>
-        Questions sent from <strong>operations.sapphireclinicseast.org/inquiry</strong>.
-        {scoped ? ` Showing ${BRANCH_LABEL[scoped] ?? scoped} only.` : ' Showing every branch.'}
-      </p>
-
-      <div className="flex flex-wrap gap-2 mb-4 items-center">
-        {!scoped && (
-          <select value={branch} onChange={e => setBranch(e.target.value)} className="px-3 py-2 rounded-lg text-sm"
-            style={{ border: '1.5px solid var(--light-gray)' }}>
-            <option value="ALL">All branches</option>
-            <option value="SBEA">East</option>
-            <option value="SBGH">Greenhills</option>
-          </select>
-        )}
-        {STATUSES.map(s => (
-          <button key={s} onClick={() => setStatus(s)} className="px-3 py-1.5 rounded-lg text-xs font-semibold"
-            style={{ border: `1.5px solid ${status === s ? 'var(--teal)' : 'var(--light-gray)'}`,
-                     background: status === s ? 'var(--pale-teal)' : '#fff',
-                     color: status === s ? 'var(--teal)' : 'var(--mid-gray)' }}>
-            {s === 'ALL' ? 'All' : s === 'OPEN' ? 'Awaiting reply' : s === 'ANSWERED' ? 'Replied' : 'Closed'}
-          </button>
-        ))}
-        <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ border: '1.5px solid var(--light-gray)' }}>
-          <Search size={14} style={{ color: 'var(--mid-gray)' }} />
-          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Reference, name, email…"
-            className="text-sm outline-none" style={{ border: 0, minWidth: 190 }} />
-        </div>
-      </div>
-
-      <div className="grid gap-4" style={{ gridTemplateColumns: openId ? '1fr 1fr' : '1fr' }}>
-        <div className="rounded-xl overflow-hidden" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
-          {loading ? (
-            <div className="p-8 flex justify-center"><Loader2 size={20} className="animate-spin" style={{ color: 'var(--teal)' }} /></div>
-          ) : rows.length === 0 ? (
-            <p className="p-8 text-center text-sm" style={{ color: 'var(--mid-gray)' }}>Nothing here.</p>
-          ) : (
-            <table className="w-full text-sm">
-              <tbody>
-                {rows.map(r => (
-                  <tr key={r.id} onClick={() => open(r.id)} style={{
-                    cursor: 'pointer', borderBottom: '1px solid var(--light-gray)',
-                    background: openId === r.id ? 'var(--pale-teal)' : !r.readAt ? '#FFFDF5' : '#fff',
-                  }}>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        {!r.readAt && <span style={{ width: 7, height: 7, borderRadius: 99, background: '#DC2626', display: 'inline-block' }} />}
-                        <span className="font-mono text-xs" style={{ color: 'var(--teal)' }}>{r.ref}</span>
-                        <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
-                          {BRANCH_LABEL[r.branch] ?? r.branch}
-                        </span>
-                      </div>
-                      <p className="font-semibold mt-1" style={{ color: 'var(--charcoal)' }}>{r.name}</p>
-                      <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
-                        {r.subject || '(no subject)'} · {r._count.messages} message{r._count.messages === 1 ? '' : 's'}
-                      </p>
-                    </td>
-                    <td className="px-4 py-3 text-right text-xs" style={{ color: 'var(--mid-gray)', whiteSpace: 'nowrap' }}>
-                      {new Date(r.lastMessageAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}
-                      <span className="block mt-1 font-semibold" style={{
-                        color: r.status === 'OPEN' ? '#A16207' : r.status === 'ANSWERED' ? '#047857' : '#6B7280' }}>
-                        {r.status === 'OPEN' ? 'Awaiting' : r.status === 'ANSWERED' ? 'Replied' : 'Closed'}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-
-        {openId && (
-          <div className="rounded-xl p-5" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
-            {!thread ? (
-              <div className="flex justify-center py-10"><Loader2 size={20} className="animate-spin" style={{ color: 'var(--teal)' }} /></div>
-            ) : (
-              <>
-                <div className="flex items-start justify-between mb-3">
-                  <div>
-                    <p className="font-mono text-xs" style={{ color: 'var(--teal)' }}>{thread.inquiry.ref}</p>
-                    <p className="font-bold" style={{ color: 'var(--charcoal)' }}>{thread.inquiry.name}</p>
-                    <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
-                      {[thread.inquiry.email, thread.inquiry.phone].filter(Boolean).join(' · ') || 'No contact details'}
-                    </p>
-                  </div>
-                  <button onClick={() => setStatusOf(thread.inquiry.id, thread.inquiry.status === 'CLOSED' ? 'OPEN' : 'CLOSED')}
-                    className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5"
-                    style={{ border: '1.5px solid var(--light-gray)', color: 'var(--mid-gray)' }}>
-                    <Check size={13} /> {thread.inquiry.status === 'CLOSED' ? 'Reopen' : 'Close'}
-                  </button>
-                </div>
-
-                <ChatThread
-                  /* Front desk is reading, so the CLINIC's replies sit on the
-                     right — the mirror of what the enquirer sees. */
-                  mineIsStaff
-                  maxHeight={360}
-                  messages={thread.messages.map(m => ({
-                    id: m.id,
-                    fromStaff: m.fromStaff,
-                    author: m.fromStaff ? (m.authorName || 'Front Desk') : thread.inquiry.name,
-                    body: m.body,
-                    createdAt: m.createdAt,
-                  }))}
-                />
-
-                <div className="mt-3">
-                  {thread.inquiry.status === 'CLOSED' ? (
-                    <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
-                      Closed — reopen to reply. The enquirer cannot add to a closed thread.
-                    </p>
-                  ) : (
-                    <ChatComposer
-                      value={reply}
-                      onChange={setReply}
-                      onSend={send}
-                      busy={busy}
-                      placeholder="Write a reply — the enquirer sees this on their link."
-                    />
-                  )}
-                </div>
-              </>
+    <div style={{
+      display: 'flex', height: 'calc(100vh - 64px)', background: '#fff',
+      borderTop: '1px solid var(--light-gray)',
+    }}>
+      {/* ── Conversations ─────────────────────────────────────────────── */}
+      <aside style={{
+        width: 330, flexShrink: 0, borderRight: '1px solid var(--light-gray)',
+        display: 'flex', flexDirection: 'column', background: '#fff',
+      }}>
+        <div style={{ padding: '14px 14px 10px', borderBottom: '1px solid var(--light-gray)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <h1 style={{ margin: 0, fontSize: 19, fontWeight: 800, color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>
+              Enquiries
+            </h1>
+            {unread > 0 && (
+              <span style={{ background: '#DC2626', color: '#fff', fontSize: 11, fontWeight: 800,
+                             borderRadius: 999, padding: '1px 7px' }}>{unread}</span>
             )}
           </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7, background: '#F1F2F4',
+                        borderRadius: 999, padding: '7px 12px', marginBottom: 9 }}>
+            <Search size={14} style={{ color: '#8a9499', flexShrink: 0 }} />
+            <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search messages"
+              style={{ border: 0, background: 'transparent', outline: 'none', fontSize: 13, width: '100%', color: 'var(--charcoal)' }} />
+          </div>
+
+          <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+            {FILTERS.map(f => (
+              <button key={f.key} onClick={() => setStatus(f.key)} style={{
+                border: 0, cursor: 'pointer', borderRadius: 999, padding: '4px 10px',
+                fontSize: 11.5, fontWeight: 700,
+                background: status === f.key ? 'var(--pale-teal)' : '#F1F2F4',
+                color: status === f.key ? 'var(--teal)' : '#6b7280',
+              }}>{f.label}</button>
+            ))}
+            {!scoped && (
+              <select value={branch} onChange={e => setBranch(e.target.value)} style={{
+                border: 0, borderRadius: 999, padding: '4px 8px', fontSize: 11.5, fontWeight: 700,
+                background: branch === 'ALL' ? '#F1F2F4' : 'var(--pale-teal)',
+                color: branch === 'ALL' ? '#6b7280' : 'var(--teal)', cursor: 'pointer',
+              }}>
+                <option value="ALL">Both branches</option>
+                <option value="SBEA">East</option>
+                <option value="SBGH">Greenhills</option>
+              </select>
+            )}
+          </div>
+        </div>
+
+        <div style={{ flex: 1, overflowY: 'auto' }}>
+          {loading ? (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: 30 }}>
+              <Loader2 size={19} className="animate-spin" style={{ color: 'var(--teal)' }} />
+            </div>
+          ) : rows.length === 0 ? (
+            <p style={{ fontSize: 13, color: '#9aa5a9', textAlign: 'center', padding: '28px 18px' }}>
+              No conversations here.
+            </p>
+          ) : rows.map(r => {
+            const active = openId === r.id
+            return (
+              <button key={r.id} onClick={() => openThread(r.id)} style={{
+                display: 'flex', alignItems: 'center', gap: 11, width: '100%', textAlign: 'left',
+                border: 0, cursor: 'pointer', padding: '10px 13px',
+                background: active ? 'var(--pale-teal)' : 'transparent',
+              }}>
+                <div style={{
+                  width: 42, height: 42, borderRadius: 999, flexShrink: 0,
+                  background: active ? 'var(--teal)' : '#E3E8EA',
+                  color: active ? '#fff' : '#5b6b70',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 13, fontWeight: 800,
+                }}>{initials(r.name)}</div>
+
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                    <span style={{
+                      flex: 1, minWidth: 0, fontSize: 13.5, color: 'var(--charcoal)',
+                      fontWeight: r.readAt ? 600 : 800,
+                      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                    }}>{r.name}</span>
+                    <span style={{ fontSize: 10.5, color: '#9aa5a9', flexShrink: 0 }}>{whenLabel(r.lastMessageAt)}</span>
+                  </div>
+                  <p style={{
+                    margin: '1px 0 0', fontSize: 12, color: r.readAt ? '#8a9499' : 'var(--charcoal)',
+                    fontWeight: r.readAt ? 400 : 600,
+                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                  }}>
+                    {r.preview ? `${r.preview.fromStaff ? 'You: ' : ''}${r.preview.body}` : r.subject || 'No messages'}
+                  </p>
+                  <p style={{ margin: '1px 0 0', fontSize: 10.5, color: '#b3bcc0' }}>
+                    {r.ref} · {BRANCH_LABEL[r.branch] ?? r.branch}
+                  </p>
+                </div>
+
+                {!r.readAt && (
+                  <span style={{ width: 9, height: 9, borderRadius: 999, background: '#1a7b8a', flexShrink: 0 }} />
+                )}
+              </button>
+            )
+          })}
+        </div>
+      </aside>
+
+      {/* ── Open conversation ─────────────────────────────────────────── */}
+      <section style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: '#fff' }}>
+        {!openId ? (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
+                        justifyContent: 'center', color: '#9aa5a9', gap: 10, padding: 24, textAlign: 'center' }}>
+            <Inbox size={34} style={{ opacity: 0.45 }} />
+            <p style={{ margin: 0, fontSize: 14 }}>Select a conversation to read and reply.</p>
+            <p style={{ margin: 0, fontSize: 12 }}>
+              Enquiries arrive from <strong>operations.sapphireclinicseast.org/inquiry</strong>
+              {scoped ? ` · ${BRANCH_LABEL[scoped] ?? scoped} only` : ' · every branch'}
+            </p>
+          </div>
+        ) : !thread ? (
+          <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+            <Loader2 size={21} className="animate-spin" style={{ color: 'var(--teal)' }} />
+          </div>
+        ) : (
+          <>
+            <header style={{
+              display: 'flex', alignItems: 'center', gap: 11, padding: '11px 16px',
+              borderBottom: '1px solid var(--light-gray)', flexShrink: 0,
+            }}>
+              <div style={{
+                width: 38, height: 38, borderRadius: 999, background: 'var(--teal)', color: '#fff',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12.5, fontWeight: 800, flexShrink: 0,
+              }}>{initials(thread.inquiry.name)}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ margin: 0, fontSize: 14.5, fontWeight: 800, color: 'var(--charcoal)' }}>
+                  {thread.inquiry.name}
+                </p>
+                <p style={{ margin: 0, fontSize: 11.5, color: '#8a9499', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {thread.inquiry.ref} · {BRANCH_LABEL[thread.inquiry.branch] ?? thread.inquiry.branch}
+                  {[thread.inquiry.email, thread.inquiry.phone].filter(Boolean).length
+                    ? ` · ${[thread.inquiry.email, thread.inquiry.phone].filter(Boolean).join(' · ')}` : ''}
+                </p>
+              </div>
+              <button onClick={() => setStatusOf(thread.inquiry.id, thread.inquiry.status === 'CLOSED' ? 'OPEN' : 'CLOSED')}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, cursor: 'pointer',
+                  border: '1.5px solid var(--light-gray)', background: '#fff', borderRadius: 999,
+                  padding: '6px 12px', fontSize: 12, fontWeight: 700, color: '#6b7280',
+                }}>
+                {thread.inquiry.status === 'CLOSED' ? <><RotateCcw size={13} /> Reopen</> : <><Check size={13} /> Mark done</>}
+              </button>
+            </header>
+
+            <div style={{ flex: 1, overflowY: 'auto', padding: '14px 18px' }}>
+              <ChatThread
+                mineIsStaff
+                messages={thread.messages.map(m => ({
+                  id: m.id,
+                  fromStaff: m.fromStaff,
+                  author: m.fromStaff ? (m.authorName || 'Front Desk') : thread.inquiry.name,
+                  body: m.body,
+                  createdAt: m.createdAt,
+                }))}
+              />
+            </div>
+
+            <div style={{ padding: '10px 16px 14px', borderTop: '1px solid var(--light-gray)', flexShrink: 0 }}>
+              {thread.inquiry.status === 'CLOSED' ? (
+                <p style={{ margin: 0, fontSize: 12.5, color: '#8a9499' }}>
+                  This conversation is closed — reopen it to reply. The enquirer cannot add to it either.
+                </p>
+              ) : (
+                <ChatComposer value={reply} onChange={setReply} onSend={send} busy={busy}
+                  placeholder="Write a reply — the enquirer sees this on their link." />
+              )}
+            </div>
+          </>
         )}
-      </div>
+      </section>
     </div>
   )
 }
