@@ -2538,7 +2538,16 @@ model InquiryMessage {
   fromStaff  Boolean  @default(false)
   /// Staff display name, or null for the enquirer (their name is on Inquiry).
   authorName String?
+  /// May be empty when the message is only an attachment — a sent photo with
+  /// no caption is a real message, not an incomplete one.
   body       String
+  /// Attachment, served through /api/uploads/<file>. One file per message, the
+  /// way a chat sends them: two photos are two messages, which keeps ordering
+  /// and deletion simple.
+  fileUrl    String?
+  fileName   String?
+  fileMime   String?
+  fileSize   Int?
   createdAt  DateTime @default(now())
 
   @@index([inquiryId, createdAt])

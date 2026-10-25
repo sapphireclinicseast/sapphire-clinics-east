@@ -13,8 +13,9 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { Loader2, Search, Check, RotateCcw, Inbox } from 'lucide-react'
+import { Loader2, Search, Inbox } from 'lucide-react'
 import ChatThread, { ChatComposer } from '@/components/ChatThread'
+import InquiryContactPanel, { type PanelPatient, type PanelHistory } from '@/components/InquiryContactPanel'
 
 interface Row {
   id: string; ref: string; branch: string; name: string; email: string | null; phone: string | null
@@ -22,7 +23,8 @@ interface Row {
   preview: { body: string; fromStaff: boolean } | null
   _count: { messages: number }
 }
-interface Msg { id: string; fromStaff: boolean; authorName: string | null; body: string; createdAt: string }
+interface Msg { id: string; fromStaff: boolean; authorName: string | null; body: string; createdAt: string
+  fileUrl?: string | null; fileName?: string | null; fileMime?: string | null; fileSize?: number | null }
 
 const BRANCH_LABEL: Record<string, string> = { SBEA: 'East', SBGH: 'Greenhills' }
 const FILTERS = [
@@ -57,7 +59,7 @@ export default function InquiriesClient() {
   const [q, setQ] = useState('')
   const [loading, setLoading] = useState(true)
   const [openId, setOpenId] = useState<string | null>(null)
-  const [thread, setThread] = useState<{ inquiry: Row; messages: Msg[] } | null>(null)
+  const [thread, setThread] = useState<{ inquiry: Row; messages: Msg[]; patient: PanelPatient | null; history?: PanelHistory[] } | null>(null)
   const [reply, setReply] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -108,6 +110,21 @@ export default function InquiriesClient() {
     openThread(id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams])
+
+  async function sendFile(file: File, caption: string) {
+    if (!openId) return
+    const fd = new FormData()
+    fd.append('file', file); fd.append('caption', caption)
+    setBusy(true)
+    try {
+      const res = await fetch(`/api/inquiries/${openId}/upload`, { method: 'POST', body: fd })
+      if (res.ok) await openThread(openId)
+      else {
+        const d = await res.json().catch(() => ({}))
+        alert(d.error || 'Could not send that file.')
+      }
+    } finally { setBusy(false) }
+  }
 
   async function send() {
     if (!openId || !reply.trim()) return
@@ -235,7 +252,7 @@ export default function InquiriesClient() {
         </div>
       </aside>
 
-      {/* ── Open conversation ─────────────────────────────────────────── */}
+      {/* ── Open conversation + contact panel ─────────────────────────── */}
       <section style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: '#fff' }}>
         {!openId ? (
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
@@ -267,18 +284,8 @@ export default function InquiriesClient() {
                 </p>
                 <p style={{ margin: 0, fontSize: 11.5, color: '#8a9499', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {thread.inquiry.ref} · {BRANCH_LABEL[thread.inquiry.branch] ?? thread.inquiry.branch}
-                  {[thread.inquiry.email, thread.inquiry.phone].filter(Boolean).length
-                    ? ` · ${[thread.inquiry.email, thread.inquiry.phone].filter(Boolean).join(' · ')}` : ''}
                 </p>
               </div>
-              <button onClick={() => setStatusOf(thread.inquiry.id, thread.inquiry.status === 'CLOSED' ? 'OPEN' : 'CLOSED')}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, cursor: 'pointer',
-                  border: '1.5px solid var(--light-gray)', background: '#fff', borderRadius: 999,
-                  padding: '6px 12px', fontSize: 12, fontWeight: 700, color: '#6b7280',
-                }}>
-                {thread.inquiry.status === 'CLOSED' ? <><RotateCcw size={13} /> Reopen</> : <><Check size={13} /> Mark done</>}
-              </button>
             </header>
 
             <div style={{ flex: 1, overflowY: 'auto', padding: '14px 18px' }}>
@@ -290,6 +297,8 @@ export default function InquiriesClient() {
                   author: m.fromStaff ? (m.authorName || 'Front Desk') : thread.inquiry.name,
                   body: m.body,
                   createdAt: m.createdAt,
+                  fileUrl: m.fileUrl, fileName: m.fileName,
+                  fileMime: m.fileMime, fileSize: m.fileSize,
                 }))}
               />
             </div>
@@ -300,13 +309,23 @@ export default function InquiriesClient() {
                   This conversation is closed — reopen it to reply. The enquirer cannot add to it either.
                 </p>
               ) : (
-                <ChatComposer value={reply} onChange={setReply} onSend={send} busy={busy}
+                <ChatComposer value={reply} onChange={setReply} onSend={send} onSendFile={sendFile} busy={busy}
                   placeholder="Write a reply — the enquirer sees this on their link." />
               )}
             </div>
           </>
         )}
       </section>
+
+      {thread && (
+        <InquiryContactPanel
+          inquiry={thread.inquiry}
+          patient={thread.patient}
+          history={thread.history ?? []}
+          onOpenOther={(id) => { setStatus('ALL'); openThread(id) }}
+          onToggleClosed={() => setStatusOf(thread.inquiry.id, thread.inquiry.status === 'CLOSED' ? 'OPEN' : 'CLOSED')}
+        />
+      )}
     </div>
   )
 }

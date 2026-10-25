@@ -18,7 +18,8 @@ interface Row {
   id: string; ref: string; branch: string; name: string
   subject: string | null; status: string; readAt: string | null; lastMessageAt: string
 }
-interface Msg { id: string; fromStaff: boolean; authorName: string | null; body: string; createdAt: string }
+interface Msg { id: string; fromStaff: boolean; authorName: string | null; body: string; createdAt: string
+  fileUrl?: string | null; fileName?: string | null; fileMime?: string | null; fileSize?: number | null }
 
 const BRANCH_LABEL: Record<string, string> = { SBEA: 'East', SBGH: 'Greenhills' }
 const POLL_MS = 20000
@@ -65,6 +66,21 @@ export default function InquiryDock() {
     }, POLL_MS)
     return () => clearInterval(t)
   }, [loadList, loadThread])
+
+  async function sendFile(file: File, caption: string) {
+    if (!sel) return
+    const fd = new FormData()
+    fd.append('file', file); fd.append('caption', caption)
+    setBusy(true)
+    try {
+      const res = await fetch(`/api/inquiries/${sel}/upload`, { method: 'POST', body: fd })
+      if (res.ok) await loadThread(sel)
+      else {
+        const d = await res.json().catch(() => ({}))
+        alert(d.error || 'Could not send that file.')
+      }
+    } finally { setBusy(false) }
+  }
 
   async function send() {
     if (!sel || !reply.trim()) return
@@ -156,6 +172,8 @@ export default function InquiryDock() {
                       author: m.fromStaff ? (m.authorName || 'Front Desk') : thread.inquiry.name,
                       body: m.body,
                       createdAt: m.createdAt,
+                      fileUrl: m.fileUrl, fileName: m.fileName,
+                      fileMime: m.fileMime, fileSize: m.fileSize,
                     }))}
                   />
                 )}
@@ -166,7 +184,7 @@ export default function InquiryDock() {
                 </p>
               ) : (
                 <div style={{ padding: '9px 11px 11px', borderTop: '1px solid #F1F2F4', flexShrink: 0 }}>
-                  <ChatComposer value={reply} onChange={setReply} onSend={send} busy={busy} placeholder="Reply…" />
+                  <ChatComposer value={reply} onChange={setReply} onSend={send} onSendFile={sendFile} busy={busy} placeholder="Reply…" />
                 </div>
               )}
             </>
