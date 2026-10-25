@@ -39,7 +39,7 @@ function prettyTime(t: string): string {
   return `${h % 12 || 12}:${String(m || 0).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`
 }
 
-export default function DepartedBookings() {
+export default function DepartedBookings({ branch }: { branch: string }) {
   const [rows, setRows] = useState<Row[]>([])
   const [replacements, setReplacements] = useState<Record<string, Replacement[]>>({})
   const [loading, setLoading] = useState(true)
@@ -50,7 +50,7 @@ export default function DepartedBookings() {
 
   const load = useCallback(() => {
     setLoading(true); setError('')
-    fetch('/api/decking/departed')
+    fetch(`/api/decking/departed?branch=${encodeURIComponent(branch)}`)
       .then(async r => {
         const d = await r.json()
         if (!r.ok) throw new Error(d.error ?? 'Could not load')
@@ -59,9 +59,18 @@ export default function DepartedBookings() {
       })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false))
-  }, [])
+    // Refetches when the board's branch toggle changes. Without `branch` here
+    // the callback is created once and keeps the branch it closed over, so
+    // switching tabs would leave the first branch's list on screen — which is
+    // the other half of how Greenhills came to show East's bookings.
+  }, [branch])
 
   useEffect(load, [load])
+
+  // Per-branch UI state. These are keyed by slot id, and slot ids do not repeat
+  // across branches — but leaving a previous branch's selections in place makes
+  // the new list look part-filled, so they are cleared with the data.
+  useEffect(() => { setPicked({}); setMoved({}) }, [branch])
 
   async function move(row: Row) {
     const staffId = picked[row.slotId]

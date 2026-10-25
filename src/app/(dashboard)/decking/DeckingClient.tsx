@@ -1483,7 +1483,7 @@ export default function DeckingClient({ role }: { role: string }) {
                  itself keeps no dated record. */
               <DeckingHistory branch={activeBranch} />
             ) : activeSection === 'departed' ? (
-              <DepartedBookings />
+              <DepartedBookings branch={activeBranch} />
             ) : activeSection === 'crosssell' ? (
               /* A patient list, not a roster: which patients on this branch's
                  board see more than one department, and which do not yet. */
