@@ -8,11 +8,14 @@ import { localTodayStr } from '@/lib/utils'
 
 interface NotifItem {
   id: string
-  type: 'REGISTRATION' | 'BOOKING' | 'FORM_RESPONSE'
+  type: 'REGISTRATION' | 'BOOKING' | 'FORM_RESPONSE' | 'INQUIRY'
   name: string
   branch: string
   status?: string
   formKey?: string
+  /** INQUIRY only — the YYYY-MM-DD-00001 reference. */
+  ref?: string
+  subject?: string | null
   createdAt: string
   href: string
 }
@@ -213,6 +216,10 @@ export default function TopBar({ user, onMenuClick }: TopBarProps) {
                           <div className="text-[11px] mt-0.5" style={{ color: '#6b7280' }}>
                             {item.type === 'REGISTRATION'
                               ? 'New Patient added in Patient CRM'
+                              : item.type === 'INQUIRY'
+                              // The ref is what a caller quotes, so show it here
+                              // rather than making someone open the thread for it.
+                              ? `New enquiry · ${item.ref}${item.subject ? ` · ${item.subject}` : ''}`
                               : item.type === 'FORM_RESPONSE'
                               ? 'New form submission'
                               : item.status === 'PAID'

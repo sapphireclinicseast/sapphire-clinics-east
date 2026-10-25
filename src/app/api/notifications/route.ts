@@ -106,7 +106,7 @@ export async function GET() {
 
   const since = new Date(Date.now() - 48 * 60 * 60 * 1000)
 
-  const [patients, bookings, formResponses] = await Promise.all([
+  const [patients, bookings, formResponses, inquiries] = await Promise.all([
     // Patient registrations (hub DB)
     prisma.patient.findMany({
       where: { createdAt: { gte: since } },
@@ -132,6 +132,20 @@ export async function GET() {
     }),
     // Form responses (HR Platform — gracefully skipped if HR is down)
     fetchFormResponseNotifs(since, bookingBranches).catch(() => []),
+    // Public enquiries nobody has opened yet. Unread rather than merely recent:
+    // an enquiry someone has already picked up is not something to chase, and
+    // this feature exists because enquiries were being missed.
+    prisma.inquiry.findMany({
+      where: {
+        readAt: null,
+        status: { not: 'CLOSED' },
+        lastMessageAt: { gte: since },
+        ...(bookingBranches ? { branch: { in: bookingBranches } } : {}),
+      },
+      select: { id: true, ref: true, name: true, branch: true, subject: true, lastMessageAt: true },
+      orderBy: { lastMessageAt: 'desc' },
+      take: 50,
+    }),
   ])
 
   const items = [
@@ -154,6 +168,20 @@ export async function GET() {
       href: `/decking?highlight=${b.id}`,
     })),
     ...formResponses,
+    ...inquiries.map((i) => ({
+      id: `inq_${i.id}`,
+      type: 'INQUIRY' as const,
+      name: i.name,
+      branch: i.branch,
+      // The ref is what front desk will be asked for on the phone, so it rides
+      // along in the subject line rather than being hidden behind the click.
+      subject: i.subject ?? null,
+      ref: i.ref,
+      // Sorted by last message, not creation: a reply on an old enquiry is new
+      // work and should surface with today's items.
+      createdAt: i.lastMessageAt.toISOString(),
+      href: `/inquiries?open=${i.id}`,
+    })),
   ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
 
   const scoped = role === 'MEDREP'
