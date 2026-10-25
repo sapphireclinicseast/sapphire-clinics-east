@@ -22,7 +22,10 @@ interface Msg { id: string; fromStaff: boolean; authorName: string | null; body:
   fileUrl?: string | null; fileName?: string | null; fileMime?: string | null; fileSize?: number | null }
 
 const BRANCH_LABEL: Record<string, string> = { SBEA: 'East', SBGH: 'Greenhills' }
-const POLL_MS = 20000
+// Ten seconds, not twenty. At twenty a patient's reply could sit unseen for
+// most of a minute while the desk stared straight at the thread, which reads
+// as the page being broken rather than slow.
+const POLL_MS = 10000
 
 export default function InquiryDock() {
   const [open, setOpen] = useState(false)
@@ -56,15 +59,27 @@ export default function InquiryDock() {
 
   useEffect(() => { loadList() }, [loadList])
 
-  // Poll so a reply lands without a refresh. Only while the dock is open or
-  // there is something unread — a background tab should not hammer the API all
-  // day for a desk that is not looking.
+  // Poll so a reply lands without a refresh.
+  //
+  // The visibility check is what the comment here used to claim and the code
+  // did not do: this polled every twenty seconds in every background tab, all
+  // day, for desks that were not looking at it. A hidden tab now costs nothing
+  // and catches up the instant it comes forward — which is also what stops a
+  // reply appearing to arrive late when someone switches back to the hub.
   useEffect(() => {
-    const t = setInterval(() => {
+    const tick = () => {
+      if (document.visibilityState !== 'visible') return
       loadList()
       if (selRef.current) loadThread(selRef.current)
-    }, POLL_MS)
-    return () => clearInterval(t)
+    }
+    const t = setInterval(tick, POLL_MS)
+    window.addEventListener('focus', tick)
+    document.addEventListener('visibilitychange', tick)
+    return () => {
+      clearInterval(t)
+      window.removeEventListener('focus', tick)
+      document.removeEventListener('visibilitychange', tick)
+    }
   }, [loadList, loadThread])
 
   async function sendFile(file: File, caption: string) {

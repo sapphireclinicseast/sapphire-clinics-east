@@ -87,15 +87,29 @@ export default function InquiriesClient() {
   useEffect(() => { load() }, [load])
 
   // Poll so a reply arrives without a refresh, the way a messaging app does.
+  //
+  // Every ten seconds rather than twenty, and only while someone is actually
+  // looking: a reply that takes most of a minute to appear while the desk has
+  // the thread open on screen reads as the page being broken, and a background
+  // tab polling all day serves nobody. Coming back to the tab refetches at
+  // once, so switching windows never costs a cycle's wait.
   useEffect(() => {
-    const t = setInterval(() => {
+    const tick = () => {
+      if (document.visibilityState !== 'visible') return
       load()
       if (openIdRef.current) {
         fetch(`/api/inquiries/${openIdRef.current}`, { cache: 'no-store' })
           .then(r => r.ok ? r.json() : null).then(d => d && setThread(d)).catch(() => {})
       }
-    }, 20000)
-    return () => clearInterval(t)
+    }
+    const t = setInterval(tick, 10000)
+    window.addEventListener('focus', tick)
+    document.addEventListener('visibilitychange', tick)
+    return () => {
+      clearInterval(t)
+      window.removeEventListener('focus', tick)
+      document.removeEventListener('visibilitychange', tick)
+    }
   }, [load])
 
   // Deep link from the notification bell: /inquiries?open=<id>. Widen the
