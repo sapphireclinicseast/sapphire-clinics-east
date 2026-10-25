@@ -73,6 +73,15 @@ function Bubble({ m }: { m: PortalInquiryMessage }) {
   )
 }
 
+// Monochrome chat-bubble icon (inherits the button's white via currentColor).
+function ChatIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+    </svg>
+  )
+}
+
 export default function PortalMessages({ token }: { token: string }) {
   const [open, setOpen] = useState(false)
   const [list, setList] = useState<PortalInquiry[]>([])
@@ -124,11 +133,12 @@ export default function PortalMessages({ token }: { token: string }) {
     return (
       <button
         onClick={() => setOpen(true)}
-        className="fixed bottom-44 right-5 z-40 inline-flex items-center gap-2 px-4 py-3 rounded-full text-white font-semibold shadow-[0_10px_30px_rgba(27,63,56,0.28)] hover:opacity-95 transition-opacity"
+        className="fixed bottom-24 right-5 z-40 inline-flex items-center gap-2 px-4 py-3 rounded-full text-white font-semibold shadow-[0_10px_30px_rgba(27,63,56,0.28)] hover:opacity-95 transition-opacity"
         style={{ background: 'linear-gradient(135deg, var(--teal), var(--deep-teal))', fontFamily: 'var(--font-display)' }}
         aria-label="Messages with the clinic"
       >
-        💬 Messages
+        <ChatIcon />
+        <span className="text-sm">Messages</span>
         {unread > 0 && (
           <span className="ml-1 rounded-full bg-white text-[11px] font-bold px-1.5 py-0.5" style={{ color: 'var(--deep-teal)' }}>
             {unread}

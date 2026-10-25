@@ -21,7 +21,6 @@ import {
 } from '@/lib/api'
 import { branchLabel } from '@/lib/branch-label'
 import { getSession, setSession, clearSession, recoverSession } from '@/lib/session'
-import Chatbot from '@/components/Chatbot'
 import { Hero3D } from '@/components/landing/Hero3D'
 import RewardsPanel from '@/components/RewardsPanel'
 import { DirectorySection } from '@/components/Directory'
@@ -73,8 +72,6 @@ function HomeInner() {
 
   return (
     <div className="space-y-8 md:space-y-10">
-      <Chatbot />
-
       {/* Wait for the session check before rendering, so signed-in patients
           never flash the marketing hero. */}
       {!ready ? null : session ? (
