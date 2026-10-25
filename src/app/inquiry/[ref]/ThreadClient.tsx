@@ -32,6 +32,20 @@ export default function ThreadClient({ refNo }: { refNo: string }) {
 
   useEffect(() => { load() }, [load])
 
+  async function sendFile(file: File, caption: string) {
+    const fd = new FormData()
+    fd.append('token', token); fd.append('file', file); fd.append('caption', caption)
+    setBusy(true)
+    try {
+      const res = await fetch(`/api/public/inquiry/${encodeURIComponent(refNo)}/upload`, { method: 'POST', body: fd })
+      if (res.ok) await load()
+      else {
+        const d = await res.json().catch(() => ({}))
+        alert(d.error || 'Could not send that file.')
+      }
+    } finally { setBusy(false) }
+  }
+
   async function send() {
     if (!reply.trim()) return
     setBusy(true)
@@ -92,6 +106,7 @@ export default function ThreadClient({ refNo }: { refNo: string }) {
             value={reply}
             onChange={setReply}
             onSend={() => send()}
+            onSendFile={sendFile}
             busy={busy}
             placeholder="Write a reply…"
           />

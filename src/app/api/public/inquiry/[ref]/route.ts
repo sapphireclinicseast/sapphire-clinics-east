@@ -43,6 +43,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ ref:
       author: m.fromStaff ? (m.authorName || 'Front Desk') : inq.name,
       body: m.body,
       createdAt: m.createdAt,
+      fileUrl: m.fileUrl,
+      fileName: m.fileName,
+      fileMime: m.fileMime,
+      fileSize: m.fileSize,
     })),
   }), origin)
 }

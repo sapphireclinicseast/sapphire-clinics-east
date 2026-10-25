@@ -57,6 +57,48 @@ export interface NewInquiryInput {
  * write it is.
  */
 export async function createInquiryWithRef(input: NewInquiryInput) {
+  // ── Continue an existing conversation where we can ────────────────────────
+  // Without this every visit opened a new reference, so one parent asking three
+  // questions over a week became three unrelated threads and front desk had no
+  // way to see they were the same person. Matching on contact details keeps the
+  // trail in one place.
+  //
+  // Scoped to the same branch: messaging East and messaging Greenhills are two
+  // conversations with two different desks, not one.
+  //
+  // A CLOSED thread is deliberately NOT reused — closing it is the desk saying
+  // the matter is finished, and reopening it silently would undo that. A new
+  // reference is opened instead, and the contact panel shows the earlier ones.
+  const digits = (input.phone ?? '').replace(/[^0-9]/g, '')
+  const existing = (input.email || digits.length >= 10)
+    ? await prisma.inquiry.findFirst({
+        where: {
+          branch: input.branch,
+          status: { not: 'CLOSED' },
+          OR: [
+            ...(input.email ? [{ email: { equals: input.email, mode: 'insensitive' as const } }] : []),
+            ...(digits.length >= 10 ? [{ phone: { endsWith: digits.slice(-10) } }] : []),
+          ],
+        },
+        orderBy: { lastMessageAt: 'desc' },
+      })
+    : null
+
+  if (existing) {
+    await prisma.$transaction([
+      prisma.inquiryMessage.create({
+        data: { inquiryId: existing.id, fromStaff: false, body: input.body },
+      }),
+      prisma.inquiry.update({
+        where: { id: existing.id },
+        // Back to unread: a returning enquirer is new work even on a thread
+        // somebody already answered.
+        data: { status: 'OPEN', readAt: null, lastMessageAt: new Date() },
+      }),
+    ])
+    return existing
+  }
+
   const dayKey = manilaDateKey()
 
   for (let attempt = 0; attempt < 6; attempt++) {

@@ -8,7 +8,9 @@
 // opposite sides — which is why the caller passes `mineIsStaff` rather than the
 // component deciding.
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { kindOf, humanSize, ACCEPT_ATTR } from '@/lib/attachment-types'
+import { Paperclip, FileText, Download, X } from 'lucide-react'
 
 export interface ChatMessage {
   id?: string
@@ -16,6 +18,56 @@ export interface ChatMessage {
   author: string
   body: string
   createdAt: string | Date
+  fileUrl?: string | null
+  fileName?: string | null
+  fileMime?: string | null
+  fileSize?: number | null
+}
+
+/** Attachment inside a bubble. Images, video and audio play where they are —
+ *  making someone download a photo to see it is what a file list does, not a
+ *  chat. Everything else is a card with its name, size and a download link. */
+function Attachment({ m, mine }: { m: ChatMessage; mine: boolean }) {
+  if (!m.fileUrl) return null
+  const kind = kindOf(m.fileMime)
+  const label = m.fileName || 'Attachment'
+
+  if (kind === 'image') {
+    return (
+      <a href={m.fileUrl} target="_blank" rel="noreferrer" style={{ display: 'block' }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={m.fileUrl} alt={label}
+          style={{ display: 'block', maxWidth: '100%', maxHeight: 260, borderRadius: 12, objectFit: 'cover' }} />
+      </a>
+    )
+  }
+  if (kind === 'video') {
+    return <video src={m.fileUrl} controls preload="metadata"
+      style={{ display: 'block', maxWidth: '100%', maxHeight: 260, borderRadius: 12 }} />
+  }
+  if (kind === 'audio') {
+    return <audio src={m.fileUrl} controls preload="metadata" style={{ display: 'block', width: 232, maxWidth: '100%' }} />
+  }
+  return (
+    <a href={m.fileUrl} target="_blank" rel="noreferrer" download={label}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 9, textDecoration: 'none',
+        background: mine ? 'rgba(255,255,255,0.16)' : '#fff',
+        border: `1px solid ${mine ? 'rgba(255,255,255,0.3)' : '#E3E8EA'}`,
+        borderRadius: 10, padding: '8px 10px', maxWidth: 250,
+      }}>
+      <FileText size={18} style={{ flexShrink: 0, color: mine ? '#fff' : 'var(--teal, #1a7b8a)' }} />
+      <span style={{ flex: 1, minWidth: 0 }}>
+        <span style={{ display: 'block', fontSize: 12.5, fontWeight: 600,
+                       color: mine ? '#fff' : '#1f2937', whiteSpace: 'nowrap',
+                       overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
+        <span style={{ display: 'block', fontSize: 10.5, color: mine ? 'rgba(255,255,255,0.8)' : '#8a9499' }}>
+          {humanSize(m.fileSize)}
+        </span>
+      </span>
+      <Download size={14} style={{ flexShrink: 0, color: mine ? 'rgba(255,255,255,0.85)' : '#b3bcc0' }} />
+    </a>
+  )
 }
 
 function dayLabel(d: Date): string {
@@ -130,13 +182,20 @@ export default function ChatThread({
                   background: mine ? accent : '#F1F2F4',
                   color: mine ? '#fff' : '#1f2937',
                   borderRadius: radius,
-                  padding: '8px 13px',
+                  // A bare image or video fills its bubble — padding around it
+                  // reads as a framing mistake rather than a design.
+                  padding: m.fileUrl && !m.body && kindOf(m.fileMime) !== 'file' ? 4 : '8px 13px',
                   fontSize: 14,
                   lineHeight: 1.45,
                   whiteSpace: 'pre-wrap',
                   wordBreak: 'break-word',
                 }}
               >
+                {m.fileUrl && (
+                  <div style={{ marginBottom: m.body ? 7 : 0 }}>
+                    <Attachment m={m} mine={mine} />
+                  </div>
+                )}
                 {m.body}
               </div>
             </div>
@@ -162,7 +221,7 @@ export default function ChatThread({
  * every chat uses, and the one people will try first.
  */
 export function ChatComposer({
-  value, onChange, onSend, busy, placeholder, accent = '#1a7b8a', disabled,
+  value, onChange, onSend, busy, placeholder, accent = '#1a7b8a', disabled, onSendFile,
 }: {
   value: string
   onChange: (v: string) => void
@@ -171,8 +230,12 @@ export function ChatComposer({
   placeholder?: string
   accent?: string
   disabled?: boolean
+  /** Omit to hide the attach button — some composers have nowhere to put a file. */
+  onSendFile?: (file: File, caption: string) => Promise<void> | void
 }) {
   const ref = useRef<HTMLTextAreaElement>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [pending, setPending] = useState<File | null>(null)
 
   // Grow with the text, up to a point, then scroll — a fixed box either wastes
   // space on one-liners or hides the end of a long reply.
@@ -183,25 +246,70 @@ export function ChatComposer({
     el.style.height = Math.min(el.scrollHeight, 140) + 'px'
   }, [value])
 
-  const canSend = !busy && !disabled && value.trim().length > 0
+  // A file on its own is a message; a caption is optional.
+  const canSend = !busy && !disabled && (value.trim().length > 0 || !!pending)
+
+  async function fire() {
+    if (!canSend) return
+    if (pending && onSendFile) {
+      const f = pending
+      setPending(null)
+      await onSendFile(f, value.trim())
+      onChange('')
+      return
+    }
+    onSend()
+  }
 
   return (
+    <div>
+      {/* Chosen file sits above the box until sent, so it is obvious something
+          is attached and removable without clearing the caption. */}
+      {pending && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8, marginBottom: 7,
+          background: '#F1F2F4', borderRadius: 10, padding: '7px 10px',
+        }}>
+          <Paperclip size={13} style={{ color: '#6b7280', flexShrink: 0 }} />
+          <span style={{ flex: 1, minWidth: 0, fontSize: 12, color: '#1f2937',
+                         whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {pending.name}
+          </span>
+          <span style={{ fontSize: 11, color: '#8a9499', flexShrink: 0 }}>{humanSize(pending.size)}</span>
+          <button type="button" onClick={() => setPending(null)} aria-label="Remove attachment"
+            style={{ border: 0, background: 'transparent', cursor: 'pointer', color: '#8a9499', display: 'flex', padding: 0 }}>
+            <X size={14} />
+          </button>
+        </div>
+      )}
     <div style={{
       display: 'flex', alignItems: 'flex-end', gap: 8,
       background: '#fff', border: '1.5px solid #e5e7eb', borderRadius: 22,
-      padding: '6px 6px 6px 14px',
+      padding: '6px 6px 6px 10px',
     }}>
+      {onSendFile && (
+        <>
+          <input ref={fileRef} type="file" accept={ACCEPT_ATTR} style={{ display: 'none' }}
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) setPending(f); e.target.value = '' }} />
+          <button type="button" onClick={() => fileRef.current?.click()} disabled={disabled || busy}
+            aria-label="Attach a file"
+            style={{ flexShrink: 0, border: 0, background: 'transparent', cursor: 'pointer',
+                     color: '#8a9499', display: 'flex', alignItems: 'center', padding: '7px 2px' }}>
+            <Paperclip size={18} />
+          </button>
+        </>
+      )}
       <textarea
         ref={ref}
         value={value}
         rows={1}
         disabled={disabled}
-        placeholder={placeholder ?? 'Write a message…'}
+        placeholder={pending ? 'Add a caption (optional)…' : (placeholder ?? 'Write a message…')}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault()
-            if (canSend) onSend()
+            if (canSend) fire()
           }
         }}
         style={{
@@ -212,7 +320,7 @@ export function ChatComposer({
       />
       <button
         type="button"
-        onClick={() => canSend && onSend()}
+        onClick={() => fire()}
         disabled={!canSend}
         aria-label="Send message"
         style={{
@@ -228,6 +336,7 @@ export function ChatComposer({
           <path d="M3.4 20.4l17.45-7.48a1 1 0 000-1.84L3.4 3.6a.993.993 0 00-1.39.91L2 9.12c0 .5.37.93.87.99L17 12 2.87 13.88c-.5.07-.87.5-.87 1l.01 4.61c0 .71.73 1.2 1.39.91z" />
         </svg>
       </button>
+    </div>
     </div>
   )
 }

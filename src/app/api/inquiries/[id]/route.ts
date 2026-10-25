@@ -29,6 +29,43 @@ async function authorise(id: string) {
   return { inquiry, user }
 }
 
+/**
+ * Is this enquirer already in the patient register?
+ *
+ * Front desk's first question about an enquiry is almost always "are they one
+ * of ours?" — the answer changes the reply. Matched on email or phone first,
+ * which are unambiguous, then on an exact full-name match as a fallback.
+ *
+ * A NAME match is reported as `confident: false`: names repeat, and a front
+ * desk about to discuss a child's sessions should be told the match is a guess
+ * rather than shown a record as if it were certain.
+ */
+async function findPatient(inq: { name: string; email: string | null; phone: string | null }) {
+  const digits = (inq.phone ?? '').replace(/[^0-9]/g, '')
+  const byContact = await prisma.patient.findFirst({
+    where: {
+      OR: [
+        ...(inq.email ? [{ email: { equals: inq.email, mode: 'insensitive' as const } }] : []),
+        // Last 10 digits: numbers are stored with and without the +63 prefix.
+        ...(digits.length >= 10 ? [{ phone: { endsWith: digits.slice(-10) } }] : []),
+      ],
+    },
+    select: { id: true, firstName: true, lastName: true, patientType: true, branches: true },
+  })
+  if (byContact) return { ...byContact, confident: true }
+
+  const parts = inq.name.trim().split(/\s+/).filter(Boolean)
+  if (parts.length < 2) return null
+  const byName = await prisma.patient.findFirst({
+    where: {
+      firstName: { equals: parts[0], mode: 'insensitive' },
+      lastName:  { equals: parts[parts.length - 1], mode: 'insensitive' },
+    },
+    select: { id: true, firstName: true, lastName: true, patientType: true, branches: true },
+  })
+  return byName ? { ...byName, confident: false } : null
+}
+
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const a = await authorise(id)
@@ -39,10 +76,35 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   if (!a.inquiry.readAt) {
     await prisma.inquiry.update({ where: { id }, data: { readAt: new Date() } })
   }
-  const messages = await prisma.inquiryMessage.findMany({
-    where: { inquiryId: id }, orderBy: { createdAt: 'asc' },
+  const digits = (a.inquiry.phone ?? '').replace(/[^0-9]/g, '')
+  const [messages, patient, history] = await Promise.all([
+    prisma.inquiryMessage.findMany({ where: { inquiryId: id }, orderBy: { createdAt: 'asc' } }),
+    findPatient(a.inquiry).catch(() => null),
+    // Earlier conversations from the same person. A closed thread is not
+    // reused, so without this the trail would end wherever somebody last
+    // pressed "Mark done".
+    (a.inquiry.email || digits.length >= 10)
+      ? prisma.inquiry.findMany({
+          where: {
+            id: { not: id },
+            branch: a.inquiry.branch,
+            OR: [
+              ...(a.inquiry.email ? [{ email: { equals: a.inquiry.email, mode: 'insensitive' as const } }] : []),
+              ...(digits.length >= 10 ? [{ phone: { endsWith: digits.slice(-10) } }] : []),
+            ],
+          },
+          orderBy: { lastMessageAt: 'desc' },
+          take: 8,
+          select: { id: true, ref: true, status: true, lastMessageAt: true },
+        }).catch(() => [])
+      : Promise.resolve([]),
+  ])
+  return NextResponse.json({
+    inquiry: { ...a.inquiry, readAt: a.inquiry.readAt ?? new Date() },
+    messages,
+    patient,
+    history,
   })
-  return NextResponse.json({ inquiry: { ...a.inquiry, readAt: a.inquiry.readAt ?? new Date() }, messages })
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
