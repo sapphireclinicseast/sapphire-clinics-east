@@ -8,6 +8,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { branchForRole } from '@/lib/role-branch'
 import { canUseInquiries } from '@/lib/inquiry-access'
+import { emailInquiryLink } from '@/lib/inquiry-email'
 
 export const dynamic = 'force-dynamic'
 
@@ -126,6 +127,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       data: { status: 'ANSWERED', readAt: new Date(), lastMessageAt: new Date() },
     }),
   ])
+  // Tell them there is a reply waiting. Without this the clinic answers into a
+  // page nobody is looking at.
+  void emailInquiryLink(id, 'reply')
   return NextResponse.json({ ok: true })
 }
 

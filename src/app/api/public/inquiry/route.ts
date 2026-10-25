@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { createInquiryWithRef } from '@/lib/inquiry-ref'
+import { emailInquiryLink } from '@/lib/inquiry-email'
 import { preflight, withCors } from '../_cors'
 
 export async function OPTIONS(req: NextRequest) {
@@ -52,9 +53,16 @@ export async function POST(req: NextRequest) {
         { error: 'Please choose a branch from the list.' }, { status: 400 }), origin)
     }
 
+    const before = await prisma.inquiry.count({ where: { branch: allowed.shortCode } })
     const inquiry = await createInquiryWithRef({
       branch: allowed.shortCode, name, email, phone, subject, body,
     })
+    // Count tells us whether this opened a thread or joined one; the wording
+    // differs, and "joined one" is the case where they may no longer have the
+    // link. Fire-and-forget: the enquiry is already saved and must not fail
+    // because email did.
+    const after = await prisma.inquiry.count({ where: { branch: allowed.shortCode } })
+    void emailInquiryLink(inquiry.id, after > before ? 'new' : 'continued')
 
     // The token is returned once, here. It is the enquirer's only key to the
     // thread, so the page must show it as a link they can keep.

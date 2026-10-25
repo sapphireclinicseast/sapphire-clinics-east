@@ -43,6 +43,10 @@ export default function InquiryClient() {
   const [result, setResult] = useState<{ ref: string; token: string } | null>(null)
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
+  // "Messaged us before?" — offered, never required. The default is simply to
+  // keep typing; this is for someone who has lost their link and wants the old
+  // conversation back.
+  const [resumeState, setResumeState] = useState<'idle' | 'sending' | 'sent'>('idle')
 
   useEffect(() => {
     fetch('/api/public/branches')
@@ -113,6 +117,19 @@ export default function InquiryClient() {
       setError('Could not reach the clinic. Please try again.')
       setStep('chat')
     }
+  }
+
+  async function emailMyLink() {
+    if (!branch || !details.email.trim()) return
+    setResumeState('sending')
+    try {
+      await fetch('/api/public/inquiry/resume', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ branch: branch.shortCode, email: details.email.trim() }),
+      })
+    } catch { /* the message below is neutral either way */ }
+    setResumeState('sent')
   }
 
   const threadUrl = result && typeof window !== 'undefined'
@@ -235,6 +252,30 @@ export default function InquiryClient() {
 
             {step !== 'done' && (
               <div style={{ padding: '10px 14px 14px', borderTop: '1px solid #F1F2F4', flexShrink: 0 }}>
+                {/* Deliberately NOT a question the page answers: we never say on
+                    screen whether that address has written before, because that
+                    would let anyone confirm who is in contact with the clinic.
+                    The email is what proves who they are. */}
+                {details.email.trim() && (
+                  resumeState === 'sent' ? (
+                    <p style={{ margin: '0 0 9px', fontSize: 11.5, color: '#047857', lineHeight: 1.5 }}>
+                      If we found a conversation for that address, we&rsquo;ve emailed you a link to it.
+                      You can carry on typing here in the meantime.
+                    </p>
+                  ) : (
+                    <p style={{ margin: '0 0 9px', fontSize: 11.5, color: '#8a9499', lineHeight: 1.5 }}>
+                      Messaged us before?{' '}
+                      <button type="button" onClick={emailMyLink} disabled={resumeState === 'sending'}
+                        style={{
+                          border: 0, background: 'transparent', padding: 0, cursor: 'pointer',
+                          color: '#1a7b8a', fontWeight: 700, fontSize: 11.5, textDecoration: 'underline',
+                        }}>
+                        {resumeState === 'sending' ? 'Sending…' : 'Email me a link to that conversation'}
+                      </button>
+                      {' '}— or just keep typing below.
+                    </p>
+                  )
+                )}
                 <ChatComposer value={draft} onChange={setDraft} onSend={onSend}
                   busy={step === 'sending'} disabled={step === 'sending'}
                   placeholder="Type your question…" />
