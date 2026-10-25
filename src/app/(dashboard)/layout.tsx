@@ -5,6 +5,8 @@ import { SessionProvider } from 'next-auth/react'
 import DashboardShell from '@/components/layout/DashboardShell'
 import { BrandProvider } from '@/contexts/BrandContext'
 import { scopeFor, pathAllowedForRole } from '@/lib/scoped-roles'
+import { canUseInquiries } from '@/lib/inquiry-access'
+import InquiryDock from '@/components/InquiryDock'
 
 // Some roles see a deliberately small slice of the Hub — Investor, and now
 // Medical Representative. There is no middleware/route-level auth elsewhere in
@@ -39,6 +41,10 @@ export default async function DashboardLayout({
     <SessionProvider session={session}>
       <BrandProvider>
         <DashboardShell user={session.user}>{children}</DashboardShell>
+        {/* Docked enquiry chat, bottom-right. Rendered only for the roles that
+            may read enquiries — the dock also hides itself if the API refuses,
+            but not shipping it at all is the better guarantee. */}
+        {canUseInquiries(role) && <InquiryDock />}
       </BrandProvider>
     </SessionProvider>
   )

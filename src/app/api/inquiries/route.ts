@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { branchForRole } from '@/lib/role-branch'
+import { canUseInquiries } from '@/lib/inquiry-access'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,6 +15,9 @@ export async function GET(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const role = (session.user as { role?: string }).role ?? ''
+  // Enquiries carry a member of the public's name, contact details and their
+  // message. Signed-in is not the bar.
+  if (!canUseInquiries(role)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   const forced = branchForRole(role)          // null = sees every branch
 
   const { searchParams } = new URL(req.url)
@@ -44,6 +48,13 @@ export async function GET(req: NextRequest) {
       id: true, ref: true, branch: true, name: true, email: true, phone: true,
       subject: true, status: true, readAt: true, lastMessageAt: true, createdAt: true,
       _count: { select: { messages: true } },
+      // Newest message, for the preview line in the conversation list. A list
+      // of names with no idea what was said is not a conversation list.
+      messages: {
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+        select: { body: true, fromStaff: true, createdAt: true },
+      },
     },
   })
 
@@ -53,5 +64,14 @@ export async function GET(req: NextRequest) {
     where: { ...(branch ? { branch } : {}), readAt: null, status: { not: 'CLOSED' } },
   })
 
-  return NextResponse.json({ inquiries, unread, scopedToBranch: forced })
+  // Flatten the one-message array into a preview so the client does not have
+  // to know it asked for a list to get a single row.
+  const shaped = inquiries.map(({ messages, ...rest }) => ({
+    ...rest,
+    preview: messages[0]
+      ? { body: messages[0].body, fromStaff: messages[0].fromStaff }
+      : null,
+  }))
+
+  return NextResponse.json({ inquiries: shaped, unread, scopedToBranch: forced })
 }
