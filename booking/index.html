@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="index, follow">
 <title>Book a Session — Sapphire Clinics East, Inc. (Aura Health Rehab)</title>
-<meta name="description" content="Book a session at Aura Health Rehab — choose your branch (East or Greenhills) and message our front desk on Messenger or Viber.">
+<meta name="description" content="Book a session at Aura Health Rehab — choose your branch (East or Greenhills) and message our front desk on Messenger, Viber, or our inquiry form.">
 <link rel="icon" href="/favicon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -72,6 +72,15 @@
   .back:hover{color:var(--primary-dark);text-decoration:underline}
   .step-title{font-size:15px;font-weight:700;color:var(--primary-dark);text-transform:uppercase;letter-spacing:.05em;margin-bottom:18px}
 
+  .alt-wrap{margin-top:24px;display:flex;flex-direction:column;align-items:center;gap:11px}
+  .alt-or{font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--light)}
+  .alt-link{display:inline-flex;align-items:center;gap:9px;font-weight:700;font-size:15px;color:var(--primary-dark);background:var(--card);border:1.5px solid var(--border);padding:13px 26px;border-radius:100px;transition:.2s}
+  .alt-link:hover{border-color:var(--primary);background:var(--xlight);transform:translateY(-2px)}
+  .alt-link svg{width:18px;height:18px;fill:var(--primary)}
+  .inquiry{display:inline-flex;align-items:center;justify-content:center;gap:8px;width:100%;margin-top:10px;font-weight:700;font-size:15px;padding:13px 22px;border-radius:100px;background:var(--gold);color:#fff;transition:.2s}
+  .inquiry svg{width:18px;height:18px;fill:#fff}
+  .inquiry:hover{background:#a8761c}
+
   footer{color:var(--light);font-size:12.5px;text-align:center;padding:24px}
 </style>
 </head>
@@ -98,6 +107,13 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 2v2H5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2V2h-2v2H9V2H7zm12 7v10H5V9h14zM5 6h2v1h2V6h6v1h2V6h2v1H5V6z"/></svg>
         Book Now
       </button>
+      <div class="alt-wrap">
+        <span class="alt-or">or</span>
+        <a class="alt-link" href="https://operations.sapphireclinicseast.org/inquiry" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H8l-4 4V5a1 1 0 0 1 1-1zm3 5v2h10V9H7zm0 4v2h7v-2H7z"/></svg>
+          Message our front desk directly
+        </a>
+      </div>
     </div>
 
     <!-- Step 2: choose branch -->
@@ -141,6 +157,10 @@
             Viber
           </a>
         </div>
+        <a class="inquiry" href="https://operations.sapphireclinicseast.org/inquiry" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H8l-4 4V5a1 1 0 0 1 1-1zm3 5v2h10V9H7zm0 4v2h7v-2H7z"/></svg>
+          Message the front desk
+        </a>
       </div>
       <span class="back" onclick="showBranches()">← Choose another branch</span>
     </div>
@@ -166,6 +186,10 @@
             Viber
           </a>
         </div>
+        <a class="inquiry" href="https://operations.sapphireclinicseast.org/inquiry" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H8l-4 4V5a1 1 0 0 1 1-1zm3 5v2h10V9H7zm0 4v2h7v-2H7z"/></svg>
+          Message the front desk
+        </a>
       </div>
       <span class="back" onclick="showBranches()">← Choose another branch</span>
     </div>
