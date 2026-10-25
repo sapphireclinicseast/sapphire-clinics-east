@@ -7,7 +7,8 @@
 // account to its own branch whatever this sends, and the API reports back which
 // branch it pinned so the UI can stop pretending the filter exists.
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { Inbox, Loader2, Search, Check } from 'lucide-react'
 import ChatThread, { ChatComposer } from '@/components/ChatThread'
 
@@ -34,6 +35,13 @@ export default function InquiriesClient() {
   const [reply, setReply] = useState('')
   const [busy, setBusy] = useState(false)
 
+  // Deep link from the notification bell: /inquiries?open=<id>. Runs once, and
+  // only after the first list load, so opening it cannot be undone by the
+  // fetch that follows. Without this the bell would drop you on a list and
+  // leave you to find the row yourself, which defeats the notification.
+  const searchParams = useSearchParams()
+  const deepLinked = useRef(false)
+
   const load = useCallback(async () => {
     setLoading(true)
     const p = new URLSearchParams({ branch, status, q })
@@ -44,6 +52,19 @@ export default function InquiriesClient() {
   }, [branch, status, q])
 
   useEffect(() => { load() }, [load])
+
+  useEffect(() => {
+    if (deepLinked.current) return
+    const id = searchParams.get('open')
+    if (!id) return
+    deepLinked.current = true
+    // An enquiry linked from the bell is unread, and the default filter is
+    // already OPEN — but a reply on an ANSWERED thread is also unread, so widen
+    // the filter rather than open a row the list is hiding.
+    setStatus('ALL')
+    open(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
 
   async function open(id: string) {
     setOpenId(id); setThread(null)
