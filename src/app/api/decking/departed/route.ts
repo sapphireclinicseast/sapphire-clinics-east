@@ -18,7 +18,7 @@
 // that department, and works that branch — so the decision stays a decision
 // and this route never writes.
 
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import type { StaffDepartment } from '@prisma/client'
@@ -41,18 +41,26 @@ export interface Replacement {
   name: string
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  // Both branches read both boards, same as the board itself — a child gets
-  // coordinated across branches and you cannot do that through a keyhole.
+  // Scoped to the branch the board is showing. The first version returned both
+  // branches on the reasoning that a child may be moved across them — but the
+  // page has a branch toggle, and a toggle that does not filter is a bug: the
+  // Greenhills tab listed East's 55 bookings and read as if they were
+  // Greenhills'. Cross-branch flexibility belongs in the "move to" list below,
+  // which already offers consultants whose extraBranches cover this branch, not
+  // in a list that claims to be one branch and is not.
+  const branch = req.nextUrl.searchParams.get('branch') ?? undefined
+
   const slots = await prisma.deckingSlot.findMany({
     where: {
       isClass: false,
       disabled: false,
       patientId: { not: null },
       staff: { active: false },
+      ...(branch ? { branch } : {}),
     },
     select: {
       id: true, staffId: true, branch: true, department: true,
