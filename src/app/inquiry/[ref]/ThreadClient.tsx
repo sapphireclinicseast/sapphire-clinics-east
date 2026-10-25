@@ -24,13 +24,41 @@ export default function ThreadClient({ refNo }: { refNo: string }) {
   const [reply, setReply] = useState('')
   const [busy, setBusy] = useState(false)
 
-  const load = useCallback(async () => {
-    const res = await fetch(`/api/public/inquiry/${encodeURIComponent(refNo)}?token=${encodeURIComponent(token)}`, { cache: 'no-store' })
-    if (!res.ok) { setState('denied'); return }
-    setThread(await res.json()); setState('ok')
+  // `silent` is for the background poll: a transient 5xx while the page is open
+  // must not throw an enquirer out of a thread they are already reading. Only
+  // the first load, which is the one actually testing the link, can deny.
+  const load = useCallback(async (silent = false) => {
+    try {
+      const res = await fetch(`/api/public/inquiry/${encodeURIComponent(refNo)}?token=${encodeURIComponent(token)}`, { cache: 'no-store' })
+      if (!res.ok) { if (!silent) setState('denied'); return }
+      setThread(await res.json()); setState('ok')
+    } catch {
+      if (!silent) setState('denied')
+    }
   }, [refNo, token])
 
   useEffect(() => { load() }, [load])
+
+  // A reply should arrive on its own. Without this the enquirer sits on a page
+  // that is already out of date and has no reason to suspect it — they were
+  // told the clinic would answer here, so nothing prompts them to refresh.
+  //
+  // Polling rather than a socket: one small request every ten seconds, only
+  // while the tab is actually in front of someone. A hidden tab is skipped
+  // entirely and caught up the moment it is focused, which is also what makes
+  // coming back to the tab feel instant rather than ten seconds stale.
+  useEffect(() => {
+    if (state !== 'ok') return
+    const tick = () => { if (document.visibilityState === 'visible') load(true) }
+    const id = setInterval(tick, 10000)
+    window.addEventListener('focus', tick)
+    document.addEventListener('visibilitychange', tick)
+    return () => {
+      clearInterval(id)
+      window.removeEventListener('focus', tick)
+      document.removeEventListener('visibilitychange', tick)
+    }
+  }, [state, load])
 
   async function sendFile(file: File, caption: string) {
     const fd = new FormData()

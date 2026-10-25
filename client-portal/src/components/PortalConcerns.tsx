@@ -5,6 +5,7 @@
 // once an admin resolves one, the resolution shows under "My tickets".
 
 import { useCallback, useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { submitTicket, listMyTickets, type PortalTicket } from '@/lib/api'
 
 type Tab = 'report' | 'mine'
@@ -12,8 +13,17 @@ type Tab = 'report' | 'mine'
 export default function PortalConcerns({ token }: { token: string }) {
   const [open, setOpen] = useState(false)
   const [tab, setTab] = useState<Tab>('report')
+  const [mounted, setMounted] = useState(false)
 
-  return (
+  useEffect(() => { setMounted(true) }, [])
+
+  // Into <body>, for the same reason as the Messages widget: the dashboard
+  // section this sits in ends its entry animation holding a transform, and a
+  // transformed ancestor becomes the containing block for `position: fixed`,
+  // so the launcher was pinned to that section rather than the screen.
+  if (!mounted) return null
+
+  return createPortal(
     <>
       {/* Launcher — bottom-right corner, stacked directly BELOW the Messages
           launcher (bottom-24 right-5). */}
@@ -62,7 +72,8 @@ export default function PortalConcerns({ token }: { token: string }) {
           </div>
         </div>
       )}
-    </>
+    </>,
+    document.body,
   )
 }
 

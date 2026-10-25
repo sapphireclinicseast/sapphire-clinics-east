@@ -9,6 +9,7 @@
 // component deciding.
 
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { kindOf, humanSize, ACCEPT_ATTR } from '@/lib/attachment-types'
 import { Paperclip, FileText, Download, X } from 'lucide-react'
 
@@ -24,21 +25,103 @@ export interface ChatMessage {
   fileSize?: number | null
 }
 
+/** Can this be looked at without leaving the page? */
+function viewable(m: ChatMessage): boolean {
+  return kindOf(m.fileMime) === 'image' || m.fileMime === 'application/pdf'
+}
+
+/**
+ * Full-screen viewer, so opening an attachment keeps you in the conversation.
+ *
+ * A new tab was the old behaviour and it is wrong here: the thread is the
+ * context for the file, and on a phone a new tab buries that thread behind the
+ * tab switcher. Rendered into <body> because the staff dock and the portal both
+ * mount this inside transformed, scrolling containers, and `position: fixed`
+ * resolves against a transformed ancestor rather than the viewport.
+ */
+function Lightbox({ m, onClose }: { m: ChatMessage; onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      document.body.style.overflow = prev
+    }
+  }, [onClose])
+
+  const label = m.fileName || 'Attachment'
+  const isPdf = m.fileMime === 'application/pdf'
+
+  return createPortal(
+    <div
+      role="dialog" aria-modal="true" aria-label={label}
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(12,20,24,0.9)',
+        display: 'flex', flexDirection: 'column', padding: 14,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, color: '#fff', flexShrink: 0, paddingBottom: 12 }}>
+        <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 600,
+                       whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {label}
+        </span>
+        <a
+          href={m.fileUrl!} download={label} onClick={(e) => e.stopPropagation()}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#fff',
+                   fontSize: 12.5, fontWeight: 700, textDecoration: 'none', flexShrink: 0 }}
+        >
+          <Download size={16} /> Download
+        </a>
+        <button
+          type="button" onClick={onClose} aria-label="Close"
+          style={{ border: 0, background: 'rgba(255,255,255,0.14)', color: '#fff', cursor: 'pointer',
+                   width: 32, height: 32, borderRadius: 999, display: 'flex',
+                   alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+        >
+          <X size={17} />
+        </button>
+      </div>
+
+      {/* Clicks on the file itself must not close it — only the backdrop does. */}
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      >
+        {isPdf ? (
+          <iframe src={m.fileUrl!} title={label}
+            style={{ width: '100%', height: '100%', border: 0, borderRadius: 10, background: '#fff' }} />
+        ) : (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={m.fileUrl!} alt={label}
+            style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: 8 }} />
+        )}
+      </div>
+    </div>,
+    document.body,
+  )
+}
+
 /** Attachment inside a bubble. Images, video and audio play where they are —
  *  making someone download a photo to see it is what a file list does, not a
  *  chat. Everything else is a card with its name, size and a download link. */
-function Attachment({ m, mine }: { m: ChatMessage; mine: boolean }) {
+function Attachment({ m, mine, onOpen }: { m: ChatMessage; mine: boolean; onOpen: (m: ChatMessage) => void }) {
   if (!m.fileUrl) return null
   const kind = kindOf(m.fileMime)
   const label = m.fileName || 'Attachment'
 
   if (kind === 'image') {
     return (
-      <a href={m.fileUrl} target="_blank" rel="noreferrer" style={{ display: 'block' }}>
+      <button
+        type="button" onClick={() => onOpen(m)} aria-label={`Open ${label}`}
+        style={{ display: 'block', padding: 0, border: 0, background: 'transparent', cursor: 'zoom-in', width: '100%' }}
+      >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={m.fileUrl} alt={label}
           style={{ display: 'block', maxWidth: '100%', maxHeight: 260, borderRadius: 12, objectFit: 'cover' }} />
-      </a>
+      </button>
     )
   }
   if (kind === 'video') {
@@ -48,14 +131,14 @@ function Attachment({ m, mine }: { m: ChatMessage; mine: boolean }) {
   if (kind === 'audio') {
     return <audio src={m.fileUrl} controls preload="metadata" style={{ display: 'block', width: 232, maxWidth: '100%' }} />
   }
-  return (
-    <a href={m.fileUrl} target="_blank" rel="noreferrer" download={label}
-      style={{
-        display: 'flex', alignItems: 'center', gap: 9, textDecoration: 'none',
-        background: mine ? 'rgba(255,255,255,0.16)' : '#fff',
-        border: `1px solid ${mine ? 'rgba(255,255,255,0.3)' : '#E3E8EA'}`,
-        borderRadius: 10, padding: '8px 10px', maxWidth: 250,
-      }}>
+  const cardStyle: React.CSSProperties = {
+    display: 'flex', alignItems: 'center', gap: 9, textDecoration: 'none', textAlign: 'left',
+    background: mine ? 'rgba(255,255,255,0.16)' : '#fff',
+    border: `1px solid ${mine ? 'rgba(255,255,255,0.3)' : '#E3E8EA'}`,
+    borderRadius: 10, padding: '8px 10px', maxWidth: 250, width: '100%', cursor: 'pointer',
+  }
+  const inner = (
+    <>
       <FileText size={18} style={{ flexShrink: 0, color: mine ? '#fff' : 'var(--teal, #1a7b8a)' }} />
       <span style={{ flex: 1, minWidth: 0 }}>
         <span style={{ display: 'block', fontSize: 12.5, fontWeight: 600,
@@ -66,7 +149,15 @@ function Attachment({ m, mine }: { m: ChatMessage; mine: boolean }) {
         </span>
       </span>
       <Download size={14} style={{ flexShrink: 0, color: mine ? 'rgba(255,255,255,0.85)' : '#b3bcc0' }} />
-    </a>
+    </>
+  )
+
+  // A PDF can be read in the viewer. A Word document cannot be rendered by the
+  // browser at all, so for those a download is the only honest action.
+  return viewable(m) ? (
+    <button type="button" onClick={() => onOpen(m)} style={cardStyle}>{inner}</button>
+  ) : (
+    <a href={m.fileUrl} download={label} style={cardStyle}>{inner}</a>
   )
 }
 
@@ -104,6 +195,7 @@ export default function ChatThread({
 }) {
   const endRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const [viewing, setViewing] = useState<ChatMessage | null>(null)
 
   // Land on the newest message, like any chat. `block: 'nearest'` keeps the
   // scroll inside this pane instead of yanking the whole page down to it.
@@ -193,7 +285,7 @@ export default function ChatThread({
               >
                 {m.fileUrl && (
                   <div style={{ marginBottom: m.body ? 7 : 0 }}>
-                    <Attachment m={m} mine={mine} />
+                    <Attachment m={m} mine={mine} onOpen={setViewing} />
                   </div>
                 )}
                 {m.body}
@@ -212,6 +304,7 @@ export default function ChatThread({
         )
       })}
       <div ref={endRef} />
+      {viewing && <Lightbox m={viewing} onClose={() => setViewing(null)} />}
     </div>
   )
 }
