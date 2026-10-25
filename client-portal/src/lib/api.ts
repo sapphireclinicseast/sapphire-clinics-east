@@ -467,3 +467,57 @@ export function uploadPatientDocument(
     xhr.send(fd)
   })
 }
+
+/* ── Enquiries ──────────────────────────────────────────────────────────────
+   The same conversation front desk sees in the hub — not a separate channel.
+   A reply here lands in the thread they already have open, which is the point:
+   a patient asking a follow-up should not become a new enquiry. */
+
+export interface PortalInquiry {
+  id: string
+  ref: string
+  branch: string
+  subject: string | null
+  status: 'OPEN' | 'ANSWERED' | 'CLOSED'
+  lastMessageAt: string
+  createdAt: string
+  preview: { body: string; fromStaff: boolean } | null
+}
+
+export interface PortalInquiryMessage {
+  fromStaff: boolean
+  author: string
+  body: string
+  createdAt: string
+  fileUrl?: string | null
+  fileName?: string | null
+  fileMime?: string | null
+  fileSize?: number | null
+}
+
+export function listMyInquiries(token: string) {
+  return jsonFetch<{ inquiries: PortalInquiry[] }>(
+    `/patients/inquiries?token=${encodeURIComponent(token)}`,
+  )
+}
+
+export function getMyInquiry(token: string, id: string) {
+  return jsonFetch<{
+    ref: string; branch: string; subject: string | null; status: string
+    messages: PortalInquiryMessage[]
+  }>(`/patients/inquiries/${encodeURIComponent(id)}?token=${encodeURIComponent(token)}`)
+}
+
+export function replyToInquiry(token: string, id: string, message: string) {
+  return jsonFetch<{ ok: true }>(`/patients/inquiries/${encodeURIComponent(id)}`, {
+    method: 'POST',
+    body: JSON.stringify({ token, message }),
+  })
+}
+
+export function startInquiry(token: string, message: string, branch?: string) {
+  return jsonFetch<{ ok: true; ref: string; id: string }>('/patients/inquiries', {
+    method: 'POST',
+    body: JSON.stringify({ token, message, branch }),
+  })
+}

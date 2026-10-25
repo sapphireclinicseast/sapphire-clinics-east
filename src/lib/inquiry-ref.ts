@@ -47,6 +47,32 @@ export interface NewInquiryInput {
   phone?: string | null
   subject?: string | null
   body: string
+  /** Set when the enquiry came from a signed-in portal session. Trusted — the
+   *  caller has already verified the patient token. */
+  patientId?: string | null
+}
+
+/**
+ * Who is this, if we already know them?
+ *
+ * Contact details only — email or phone. Deliberately NOT the name fallback the
+ * staff contact panel uses: that one is a hint shown to a human who can judge
+ * it, whereas this one decides whose portal a conversation appears in. Guessing
+ * by name there would put one family's enquiry in another's account.
+ */
+async function resolvePatientId(email?: string | null, phone?: string | null): Promise<string | null> {
+  const digits = (phone ?? '').replace(/[^0-9]/g, '')
+  if (!email && digits.length < 10) return null
+  const p = await prisma.patient.findFirst({
+    where: {
+      OR: [
+        ...(email ? [{ email: { equals: email, mode: 'insensitive' as const } }] : []),
+        ...(digits.length >= 10 ? [{ phone: { endsWith: digits.slice(-10) } }] : []),
+      ],
+    },
+    select: { id: true },
+  })
+  return p?.id ?? null
 }
 
 /**
@@ -70,16 +96,21 @@ export async function createInquiryWithRef(input: NewInquiryInput) {
   // the matter is finished, and reopening it silently would undo that. A new
   // reference is opened instead, and the contact panel shows the earlier ones.
   const digits = (input.phone ?? '').replace(/[^0-9]/g, '')
-  const existing = (input.email || digits.length >= 10)
+  const patientId = input.patientId ?? await resolvePatientId(input.email, input.phone)
+
+  // Match on the patient link first when we have one: a patient may write from
+  // the portal one week and from the public form the next, and those are the
+  // same conversation even if they typed a different address the second time.
+  const match = patientId
+    ? [{ patientId }]
+    : [
+        ...(input.email ? [{ email: { equals: input.email, mode: 'insensitive' as const } }] : []),
+        ...(digits.length >= 10 ? [{ phone: { endsWith: digits.slice(-10) } }] : []),
+      ]
+
+  const existing = match.length
     ? await prisma.inquiry.findFirst({
-        where: {
-          branch: input.branch,
-          status: { not: 'CLOSED' },
-          OR: [
-            ...(input.email ? [{ email: { equals: input.email, mode: 'insensitive' as const } }] : []),
-            ...(digits.length >= 10 ? [{ phone: { endsWith: digits.slice(-10) } }] : []),
-          ],
-        },
+        where: { branch: input.branch, status: { not: 'CLOSED' }, OR: match },
         orderBy: { lastMessageAt: 'desc' },
       })
     : null
@@ -110,6 +141,7 @@ export async function createInquiryWithRef(input: NewInquiryInput) {
             ref,
             token: newInquiryToken(),
             branch: input.branch,
+            patientId,
             name: input.name,
             email: input.email || null,
             phone: input.phone || null,
