@@ -521,3 +521,35 @@ export function startInquiry(token: string, message: string, branch?: string) {
     body: JSON.stringify({ token, message, branch }),
   })
 }
+
+/**
+ * Rewrite an attachment path for this origin.
+ *
+ * The hub stores attachments as `/api/uploads/<name>`, which is relative to the
+ * hub. Rendered here that resolves against the portal, where nothing serves it,
+ * and the attachment shows as a broken image. Routing it through the proxy both
+ * fixes that and puts the file behind the patient's own session — the hub's
+ * uploads path is public, because Meta's crawlers have to reach it.
+ */
+export function inquiryFileUrl(inquiryId: string, fileUrl: string | null | undefined): string | null {
+  if (!fileUrl) return null
+  const name = fileUrl.startsWith('/api/uploads/') ? fileUrl.slice('/api/uploads/'.length) : null
+  if (!name) return fileUrl           // already absolute, or some other shape — leave it alone
+  return `${API_BASE}/patients/inquiries/${encodeURIComponent(inquiryId)}/file/${encodeURIComponent(name)}`
+}
+
+/** Attach a file to a conversation. The caption is optional — a file alone is a message. */
+export async function uploadInquiryFile(token: string, id: string, file: File, caption: string) {
+  const fd = new FormData()
+  fd.append('token', token)
+  fd.append('file', file, file.name)
+  fd.append('caption', caption)
+  const res = await fetch(`${API_BASE}/patients/inquiries/${encodeURIComponent(id)}/upload`, {
+    method: 'POST',
+    credentials: 'include',
+    body: fd,                         // no Content-Type: the browser sets the multipart boundary
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data?.error ?? `HTTP ${res.status}`)
+  return data as { ok: true }
+}
