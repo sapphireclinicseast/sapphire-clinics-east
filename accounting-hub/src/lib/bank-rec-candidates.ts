@@ -89,7 +89,7 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
       where: { status: 'COMPLETED', transactionDate: range },
       select: {
         id: true, orderNumber: true, netAmount: true, transactionDate: true, patientName: true,
-        payments: { select: { amount: true, paymentMode: { select: { accountId: true, deductions: { select: { rate: true, valueType: true, effectiveFrom: true, effectiveTo: true } } } } } },
+        payments: { select: { amount: true, walletId: true, method: true, paymentMode: { select: { accountId: true, name: true, deductions: { select: { rate: true, valueType: true, effectiveFrom: true, effectiveTo: true } } } } } },
       },
     }),
     // The rest name the bank account they moved through. Rows that never had one
@@ -268,19 +268,30 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
     // and never arrives in this deposit — so the full order net over-states what
     // the bank line can contain. A ₱3,300 order paid ₱1,000 downpayment + ₱2,300
     // cash contributes only ₱2,300 to the cash deposit, which is what a combined
-    // day's-takings match must total against. With no account scope (the untagged
-    // view) the whole net stands, and an order whose modes were never set falls
-    // back to it too.
+    // day's-takings match must total against. When no leg names this account
+    // (modes whose lodging account was never set), the wallet legs still can't
+    // be in the deposit, so the non-wallet remainder is offered instead of the
+    // full net. With no account scope (the untagged view) the whole net stands.
     let amount = num(o.netAmount)
     if (bankAccountId) {
       const here = o.payments.filter(p => p.paymentMode?.accountId === bankAccountId)
       if (here.length) {
         amount = Math.round(here.reduce((s, p) =>
           s + netOfDeductions(num(p.amount), p.paymentMode!.deductions, o.transactionDate), 0) * 100) / 100
+      } else if (o.payments.some(p => p.walletId)) {
+        amount = Math.round(o.payments.reduce((s, p) => {
+          if (p.walletId) return s
+          return s + netOfDeductions(num(p.amount), p.paymentMode?.deductions || [], o.transactionDate)
+        }, 0) * 100) / 100
       }
     }
+    // Staff read the row to decide what a deposit can contain, so a split
+    // payment spells itself out: "DOWNPAYMENT ₱1,000 + CASH ₱2,300".
+    const legs = o.payments.length > 1 || Math.abs(amount - num(o.netAmount)) > 0.005
+      ? ' · ' + o.payments.map(p => `${p.paymentMode?.name || p.method || 'unassigned'} ₱${num(p.amount).toLocaleString('en-PH')}`).join(' + ')
+      : ''
     out.push({
-      type: 'ORDER', id: o.id, label: `Order #${o.orderNumber}${o.patientName ? ` · ${o.patientName}` : ''}`,
+      type: 'ORDER', id: o.id, label: `Order #${o.orderNumber}${o.patientName ? ` · ${o.patientName}` : ''}${legs}`,
       date: o.transactionDate, amount, dir: 'in',
     })
   }
