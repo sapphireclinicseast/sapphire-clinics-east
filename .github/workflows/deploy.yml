@@ -376,6 +376,10 @@ jobs:
           command_timeout: 30m
           script: |
             set +e
+            # pipefail only makes $? / PIPESTATUS truthful — with `set +e` it
+            # aborts nothing on its own. Without it, every `cmd 2>&1 | tail -N`
+            # below reports tail's status (always 0) and the failure vanishes.
+            set -o pipefail
             CLASS_REPO="/opt/sapphire"
             ENV_FILE="/opt/sapphire/docker/.env.production"
 
@@ -389,8 +393,17 @@ jobs:
             git stash push -m "auto-deploy-$(date +%Y%m%d-%H%M%S)" 2>&1 | tail -3 || true
 
             echo "→ Pulling latest main into $CLASS_REPO..."
-            git fetch origin main 2>&1 | tail -3
-            git reset --hard origin/main 2>&1 | tail -3
+            # A failed fetch leaves origin/main pointing at whatever was last
+            # fetched, and a failed reset leaves the tree on old code — either
+            # way the build below would bake stale source and still report "✅".
+            if ! git fetch origin main 2>&1 | tail -3; then
+              echo "❌ git fetch origin main failed — refusing to build from a stale tree."
+              exit 1
+            fi
+            if ! git reset --hard origin/main 2>&1 | tail -3; then
+              echo "❌ git reset --hard origin/main failed — tree is not at this deploy's code."
+              exit 1
+            fi
 
             echo "→ Restoring stashed local edits (if any)..."
             git stash pop 2>&1 | tail -3 || echo "   (no stash to pop or non-fatal conflict — VPS-local hot-fixes preserved in stash)"
@@ -410,7 +423,11 @@ jobs:
             fi
 
             echo "→ Recreating sapphire_class_portal container..."
-            docker compose -f /opt/sapphire/docker/docker-compose.yml --env-file "$ENV_FILE" up -d --force-recreate --no-deps class-portal 2>&1 | tail -5
+            if ! docker compose -f /opt/sapphire/docker/docker-compose.yml --env-file "$ENV_FILE" up -d --force-recreate --no-deps class-portal 2>&1 | tail -5; then
+              echo "❌ class-portal container recreate failed — the freshly built image is NOT running."
+              docker logs sapphire_class_portal --tail 30 2>&1 || true
+              exit 1
+            fi
 
             echo "→ Waiting 15s for class-portal to stabilize..."
             sleep 15
@@ -830,7 +847,14 @@ jobs:
         run: |
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
             ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} 'bash -s' << 'REMOTE_SCRIPT'
-          set -e
+          # pipefail matters as much as `set -e` here. The remote shell is bash
+          # (`bash -s` above), and every build/up below is piped into `tail`, so
+          # without it the pipeline's status is tail's — always 0. A failed
+          # `build client-portal` therefore fell straight through to
+          # `up -d`, which restarted the PREVIOUS image, and the script printed
+          # "✅ Client-portal deployed." on a green run while the live portal
+          # kept serving old code. Same for the nickel build below.
+          set -eo pipefail
 
           # ── Rebuild + restart client-portal Docker container ──────────
           # Same problem as teletherapy: rsync updates the source on disk
@@ -840,9 +864,16 @@ jobs:
           cd /opt/sapphire
           ENV_FILE="/opt/sapphire/docker/.env"
           if [ ! -f "$ENV_FILE" ]; then ENV_FILE="/opt/sapphire/docker/.env.production"; fi
-          docker compose -f /opt/sapphire/docker/docker-compose.yml --env-file "$ENV_FILE" build client-portal 2>&1 | tail -15
+          if ! docker compose -f /opt/sapphire/docker/docker-compose.yml --env-file "$ENV_FILE" build client-portal 2>&1 | tail -15; then
+            echo "❌ client-portal build failed — leaving the previous container untouched."
+            exit 1
+          fi
           echo "→ Restarting client-portal container..."
-          docker compose -f /opt/sapphire/docker/docker-compose.yml --env-file "$ENV_FILE" up -d --no-deps client-portal 2>&1 | tail -5
+          if ! docker compose -f /opt/sapphire/docker/docker-compose.yml --env-file "$ENV_FILE" up -d --no-deps client-portal 2>&1 | tail -5; then
+            echo "❌ client-portal container recreate failed — the new image is NOT running."
+            docker logs sapphire_client_portal --tail 30 2>&1 || true
+            exit 1
+          fi
           echo "→ Waiting 6s for client-portal to stabilize..."
           sleep 6
           echo "→ Checking port 3005:"
@@ -856,13 +887,34 @@ jobs:
           git checkout origin/main -- nickel docker 2>/dev/null || true
           # Sync Nickel's schema to its OWN database (idempotent) before restart.
           NICKEL_DB_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' sapphire_db 2>/dev/null || echo "")
-          NICKEL_PG_PASS=$(grep "^POSTGRES_PASSWORD" "$ENV_FILE" | cut -d= -f2-)
+          # `|| true`: a missing POSTGRES_PASSWORD line makes grep exit 1, which
+          # under pipefail would abort the whole step on an assignment that has
+          # always been allowed to come back empty.
+          NICKEL_PG_PASS=$(grep "^POSTGRES_PASSWORD" "$ENV_FILE" | cut -d= -f2- || true)
           if [ -n "$NICKEL_DB_IP" ] && [ -d /opt/sapphire/nickel ]; then
-            docker exec sapphire_db psql -U sapphire -d sapphire_marketing -tc "SELECT 1 FROM pg_database WHERE datname='sapphire_nickel'" | grep -q 1 || docker exec sapphire_db psql -U sapphire -d sapphire_marketing -c "CREATE DATABASE sapphire_nickel"
-            (cd /opt/sapphire/nickel && npm install --no-audit --no-fund >/dev/null 2>&1 && DATABASE_URL="postgresql://sapphire:${NICKEL_PG_PASS}@${NICKEL_DB_IP}:5432/sapphire_nickel" ./node_modules/.bin/prisma db push 2>&1 | tail -3) || echo "⚠ nickel db push skipped"
+            # Was `psql -tc ... | grep -q 1 || CREATE DATABASE`. `grep -q` exits on
+            # the first match, so under pipefail psql can lose the race and die of
+            # SIGPIPE (141) — the pipeline then reads as "not found" and we would
+            # try to CREATE a database that already exists, failing the deploy.
+            # Compare the value instead; no pipe, no race.
+            NICKEL_DB_EXISTS=$(docker exec sapphire_db psql -U sapphire -d sapphire_marketing -tAc "SELECT 1 FROM pg_database WHERE datname='sapphire_nickel'" || true)
+            if [ "$NICKEL_DB_EXISTS" != "1" ]; then
+              docker exec sapphire_db psql -U sapphire -d sapphire_marketing -c "CREATE DATABASE sapphire_nickel"
+            fi
+            # Still non-fatal (Nickel is a standalone side app), but pipefail now
+            # makes the `prisma db push` failure reach the `||`, so a real schema
+            # failure is reported as one instead of the misleading "skipped".
+            (cd /opt/sapphire/nickel && npm install --no-audit --no-fund >/dev/null 2>&1 && DATABASE_URL="postgresql://sapphire:${NICKEL_PG_PASS}@${NICKEL_DB_IP}:5432/sapphire_nickel" ./node_modules/.bin/prisma db push 2>&1 | tail -3) || echo "⚠ nickel db push FAILED (non-fatal) — nickel schema may be behind the image built below."
           fi
-          docker compose -f /opt/sapphire/docker/docker-compose.yml --env-file "$ENV_FILE" build nickel 2>&1 | tail -15
-          docker compose -f /opt/sapphire/docker/docker-compose.yml --env-file "$ENV_FILE" up -d --no-deps nickel 2>&1 | tail -5
+          if ! docker compose -f /opt/sapphire/docker/docker-compose.yml --env-file "$ENV_FILE" build nickel 2>&1 | tail -15; then
+            echo "❌ nickel build failed — leaving the previous container untouched."
+            exit 1
+          fi
+          if ! docker compose -f /opt/sapphire/docker/docker-compose.yml --env-file "$ENV_FILE" up -d --no-deps nickel 2>&1 | tail -5; then
+            echo "❌ nickel container recreate failed — the new image is NOT running."
+            docker logs sapphire_nickel_app --tail 30 2>&1 || true
+            exit 1
+          fi
           sleep 6
           echo "→ Checking port 3007:"
           curl -s -o /dev/null -w "%{http_code}" http://localhost:3007/ 2>&1 || echo "curl failed"
@@ -1193,6 +1245,12 @@ jobs:
             cat > /usr/local/bin/sapphire-db-backup.sh << 'BACKUP_SCRIPT'
             #!/bin/bash
             set -e
+            # pipefail: `pg_dump | gzip > file` returns gzip's status, so a failed
+            # dump still produced a ~20-byte "valid" gzip of nothing — which passed
+            # the `-s` (non-empty) check below, got checksummed, encrypted into cold
+            # storage and reported as "✅ Backup complete". Every pipeline that is
+            # allowed to fail in this script already carries `|| true`.
+            set -o pipefail
 
             # ── Paths ──
             ONLINE_DIR="/var/backups/sapphire-db"               # Hot — fast recovery from VPS
@@ -1210,10 +1268,20 @@ jobs:
             BACKUP_FILE="$ONLINE_DIR/sapphire_marketing_$TIMESTAMP.sql.gz"
 
             # ── DB dump ──
-            docker exec sapphire_db pg_dump -U sapphire -d sapphire_marketing --no-owner --no-acl 2>/dev/null | gzip > "$BACKUP_FILE"
+            # stderr goes to a file rather than /dev/null so a failure says why.
+            if ! docker exec sapphire_db pg_dump -U sapphire -d sapphire_marketing --no-owner --no-acl 2>/tmp/sapphire-pgdump.err | gzip > "$BACKUP_FILE"; then
+              echo "$(date): ERROR - pg_dump failed; discarding the partial archive."
+              tail -5 /tmp/sapphire-pgdump.err 2>/dev/null || true
+              rm -f "$BACKUP_FILE"
+              exit 1
+            fi
 
-            if [ ! -s "$BACKUP_FILE" ]; then
-              echo "$(date): ERROR - DB backup file is empty!"
+            # gzip of an empty stream is ~20 bytes, so `-s` alone never caught a
+            # failed dump. A real dump of this database is megabytes.
+            BACKUP_BYTES=$(stat -c %s "$BACKUP_FILE" 2>/dev/null || echo 0)
+            if [ "$BACKUP_BYTES" -lt 1024 ]; then
+              echo "$(date): ERROR - DB backup is only ${BACKUP_BYTES} bytes — treating as empty!"
+              tail -5 /tmp/sapphire-pgdump.err 2>/dev/null || true
               rm -f "$BACKUP_FILE"
               exit 1
             fi
