@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { writeFile, mkdir } from 'fs/promises'
 import path from 'path'
 import { isNoteAgeLocked, NOTE_AGE_LOCK_MESSAGE } from '@/lib/note-age-lock'
+import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB } from '@/lib/upload-limit'
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR ?? './uploads'
 
@@ -15,6 +16,10 @@ export async function POST(req: NextRequest) {
 
     if (!file || !scheduleId || !token) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
+    }
+
+    if (file.size > MAX_UPLOAD_BYTES) {
+      return NextResponse.json({ error: `File too large. Max ${MAX_UPLOAD_MB}MB.` }, { status: 400 })
     }
 
     // Validate capture token

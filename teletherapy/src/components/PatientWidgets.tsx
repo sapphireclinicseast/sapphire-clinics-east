@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
+import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB } from '@/lib/upload-limit'
 import {
   User,
   FileText,
@@ -234,6 +235,10 @@ function DocumentSection({
   }
 
   async function handleUpload(file: File, replaceDocId?: string) {
+    if (file.size > MAX_UPLOAD_BYTES) {
+      alert(`"${file.name}" is too large (max ${MAX_UPLOAD_MB}MB per file). Please compress or split it.`)
+      return
+    }
     setUploading(true)
     try {
       // If replacing, delete old first
@@ -506,6 +511,7 @@ function DocumentSection({
 
       {/* Upload button */}
       {canManage && (
+        <>
         <label className="flex items-center justify-center gap-1.5 w-full py-2 px-3 rounded-lg border border-dashed border-[var(--light-gray)] text-[11px] font-medium text-[var(--teal)] hover:border-[var(--teal)] hover:bg-[var(--pale-teal)] transition-all cursor-pointer">
           {uploading && !reuploadingId ? (
             <>
@@ -527,6 +533,8 @@ function DocumentSection({
             }}
           />
         </label>
+        <p className="text-[10px] text-[var(--mid-gray)] mt-1 text-center">PDF, Word, or image · max {MAX_UPLOAD_MB}MB per file</p>
+        </>
       )}
       </div>
       )}

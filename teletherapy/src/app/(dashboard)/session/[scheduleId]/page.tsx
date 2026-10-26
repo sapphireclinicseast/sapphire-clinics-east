@@ -44,15 +44,13 @@ import SPEDNoteDisplay from '@/components/SPEDNoteDisplay'
 import PTNoteForm, { type PTFormData } from '@/components/PTNoteForm'
 import PTNoteDisplay from '@/components/PTNoteDisplay'
 import { isPastNoteWindow, NOTE_WINDOW_MONTHS } from '@/lib/note-age-lock'
+import { MAX_UPLOAD_MB } from '@/lib/upload-limit'
 
 // In-portal voice / video recorder. Records via the browser MediaRecorder API
 // (on a phone this opens the mic/camera), then hands the finished clip to the
 // parent as a File so it joins the session's attachments. Kept self-contained:
 // idle = a tile button; recording = live timer (+ camera preview for video);
 // preview = playback with Add / Re-record.
-// Max per-file upload size — kept in sync with the nginx client_max_body_size
-// on the staff vhost and the /api/upload route cap.
-const MAX_UPLOAD_MB = 100
 
 function MediaCapture({ kind, onAdd }: { kind: 'audio' | 'video'; onAdd: (file: File) => void }) {
   const [phase, setPhase] = useState<'idle' | 'recording' | 'preview'>('idle')
