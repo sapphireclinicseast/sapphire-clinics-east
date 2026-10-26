@@ -9,6 +9,7 @@ import { Users, Baby, UserCheck, CalendarDays } from 'lucide-react'
 import { branchLabel } from '@/lib/branch-label'
 
 import DeptBreakdownSection from './DeptBreakdownSection'
+import LifetimeSection from './LifetimeSection'
 
 const PatientMap = dynamic(() => import('@/components/patients/PatientMap'), { ssr: false })
 
@@ -543,6 +544,10 @@ export default function PatientDashboardPage() {
 
       {/* ── Patients by Service ── */}
       <DeptBreakdownSection branches={selectedBranches} />
+
+      {/* ── Patient Lifetime by Service ── counts the same patients the
+           section above breaks down, measured over time rather than totalled */}
+      <LifetimeSection branches={selectedBranches} />
 
       {/* ── Interdepartmental Service Co-occurrence ── */}
       {interdeptStats && interdeptStats.totalPatients > 0 && (
