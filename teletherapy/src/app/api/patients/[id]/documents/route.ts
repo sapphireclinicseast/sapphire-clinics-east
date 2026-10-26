@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { writeFile, mkdir } from 'fs/promises'
 import path from 'path'
+import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB } from '@/lib/upload-limit'
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR ?? './uploads'
 
@@ -158,8 +159,8 @@ export async function POST(
     return NextResponse.json({ error: 'Invalid file type. Allowed: PDF, Word, JPEG, PNG, WebP' }, { status: 400 })
   }
 
-  if (file.size > 25 * 1024 * 1024) {
-    return NextResponse.json({ error: 'File too large. Max 25MB.' }, { status: 400 })
+  if (file.size > MAX_UPLOAD_BYTES) {
+    return NextResponse.json({ error: `File too large. Max ${MAX_UPLOAD_MB}MB.` }, { status: 400 })
   }
 
   const department = await getClinicianDepartment(session.user.id)

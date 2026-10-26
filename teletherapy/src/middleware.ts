@@ -30,5 +30,12 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|icon.png|apple-icon.png|api/auth|Codepaca\\.svg).*)'],
+  // Exclude ALL /api routes from middleware. Middleware is a no-op for them
+  // anyway (every /api/ path is in publicPaths above), and when middleware
+  // matches a route Next.js buffers the request body through it with a 10MB
+  // cap (middlewareClientMaxBodySize) — which silently truncated every file
+  // upload > 10MB and broke multipart parsing ("Failed to parse body as
+  // FormData" → the client saw uploads fail at ~99%). Skipping /api lets
+  // uploads stream straight to the route handlers, up to nginx's 20M limit.
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|icon.png|apple-icon.png|api/|Codepaca\\.svg).*)'],
 }

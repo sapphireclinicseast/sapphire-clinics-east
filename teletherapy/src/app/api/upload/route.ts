@@ -5,6 +5,7 @@ import { createWriteStream } from 'fs'
 import { Readable } from 'stream'
 import { pipeline } from 'stream/promises'
 import path from 'path'
+import { MAX_UPLOAD_BYTES, MAX_UPLOAD_MB } from '@/lib/upload-limit'
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR ?? './uploads'
 
@@ -57,11 +58,10 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  // Validate file size. Capped at 100MB to match nginx client_max_body_size on
+  // Validate file size. Capped to match nginx client_max_body_size on
   // staff.sapphireclinicseast.org (bigger uploads 413 at the proxy first).
-  // Generous for recorded/uploaded video; small files are unaffected.
-  if (file.size > 100 * 1024 * 1024) {
-    return NextResponse.json({ error: 'File too large. Max 100MB.' }, { status: 400 })
+  if (file.size > MAX_UPLOAD_BYTES) {
+    return NextResponse.json({ error: `File too large. Max ${MAX_UPLOAD_MB}MB.` }, { status: 400 })
   }
 
   // Destination subfolder: an explicit `folder` (e.g. intern-grades/<id>) or the
