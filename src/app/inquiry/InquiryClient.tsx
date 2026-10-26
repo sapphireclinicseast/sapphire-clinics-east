@@ -195,7 +195,7 @@ export default function InquiryClient() {
             <Field label="Email address" type="email" value={details.email} error={fieldErr.email}
               placeholder="you@example.com" autoComplete="email"
               onChange={v => setDetails(d => ({ ...d, email: v }))} />
-            <Field label="Mobile number" type="tel" value={details.phone} error={fieldErr.phone}
+            <Field label="Mobile number" type="tel" optional value={details.phone} error={fieldErr.phone}
               placeholder="09XX XXX XXXX" autoComplete="tel"
               onChange={v => setDetails(d => ({ ...d, phone: v }))} />
             <p style={{ fontSize: 11.5, color: '#8a9499', margin: '-4px 0 16px', lineHeight: 1.5 }}>
@@ -289,10 +289,11 @@ export default function InquiryClient() {
 }
 
 function Field({
-  label, value, onChange, type = 'text', placeholder, required, error, autoComplete,
+  label, value, onChange, type = 'text', placeholder, required, optional, error, autoComplete,
 }: {
   label: string; value: string; onChange: (v: string) => void
-  type?: string; placeholder?: string; required?: boolean; error?: string; autoComplete?: string
+  type?: string; placeholder?: string; required?: boolean; optional?: boolean
+  error?: string; autoComplete?: string
 }) {
   return (
     <div style={{ marginBottom: 14 }}>
@@ -301,6 +302,15 @@ function Field({
         letterSpacing: '0.07em', color: '#8a9499', marginBottom: 6,
       }}>
         {label}{required && ' *'}
+        {/* Spelled out rather than left to the absence of an asterisk: a blank
+            field reads as "not filled in yet" far more readily than as "you may
+            skip this", and this one was being read as demanded. Lower-cased
+            against the label's uppercase so it reads as an aside. */}
+        {optional && (
+          <span style={{ textTransform: 'none', fontWeight: 600, letterSpacing: 0, color: '#a3acb1' }}>
+            {' '}(optional)
+          </span>
+        )}
       </label>
       <input
         type={type} value={value} placeholder={placeholder} autoComplete={autoComplete}
