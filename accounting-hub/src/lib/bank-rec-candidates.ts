@@ -258,9 +258,14 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
       if (!proceedsAccounts.has(bankAccountId)) continue
       // Otherwise offer the order only where its own payment modes lodge it.
       // Orders whose modes were never set stay offered against any proceeds
-      // account, so nothing is hidden by an unfilled field.
+      // account, so nothing is hidden by an unfilled field. One attributed leg
+      // must not hide the rest: a ₱1,000 DP + ₱600 cash + ₱285 debit order has
+      // its debit lodging at AUB, but the cash leg carries no account at all —
+      // it may be in THIS account's deposit, so the order stays offered (at
+      // the unattributed portion) everywhere except where nothing of it fits.
       const lodgedIn = o.payments.map(p => p.paymentMode?.accountId).filter(Boolean) as string[]
-      if (lodgedIn.length && !lodgedIn.includes(bankAccountId)) continue
+      if (lodgedIn.length && !lodgedIn.includes(bankAccountId)
+        && !o.payments.some(p => !p.walletId && !p.paymentMode?.accountId)) continue
     }
     // How much of this order lands in the account being reconciled: only the
     // payments whose mode lodges here, each net of that mode's fees. A
@@ -278,9 +283,13 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
       if (here.length) {
         amount = Math.round(here.reduce((s, p) =>
           s + netOfDeductions(num(p.amount), p.paymentMode!.deductions, o.transactionDate), 0) * 100) / 100
-      } else if (o.payments.some(p => p.walletId)) {
+      } else if (o.payments.length) {
+        // No leg names this account: what COULD be in its deposit is only the
+        // unattributed, non-wallet money — wallet legs were collected earlier
+        // and attributed legs lodge at their own bank. Zero remainder means the
+        // order is dropped for this account by the remaining-amount filter.
         amount = Math.round(o.payments.reduce((s, p) => {
-          if (p.walletId) return s
+          if (p.walletId || p.paymentMode?.accountId) return s
           return s + netOfDeductions(num(p.amount), p.paymentMode?.deductions || [], o.transactionDate)
         }, 0) * 100) / 100
       }
