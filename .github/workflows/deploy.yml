@@ -912,7 +912,7 @@ jobs:
           fi
           if ! docker compose -f /opt/sapphire/docker/docker-compose.yml --env-file "$ENV_FILE" up -d --no-deps nickel 2>&1 | tail -5; then
             echo "❌ nickel container recreate failed — the new image is NOT running."
-            docker logs sapphire_nickel --tail 30 2>&1 || true
+            docker logs sapphire_nickel_app --tail 30 2>&1 || true
             exit 1
           fi
           sleep 6
