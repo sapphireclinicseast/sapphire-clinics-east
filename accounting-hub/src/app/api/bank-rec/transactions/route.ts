@@ -532,17 +532,27 @@ export async function PATCH(req: Request) {
           // difference account is chosen) is a fallback for anything the
           // resolver cannot name, never an override.
           const resolved = await recordAmountById(rid, isSpent)
-          // A single-record match claims only this line (a part payment is
-          // real); a record ticked into a combination is consumed for its own
-          // full amount, whatever share of the line it took.
-          const claim = reqIds.length === 1 ? thisLine : (resolved ?? thisLine)
           const recordTotal = resolved ?? Number(body.recordsTotal ?? thisLine)
-          if (used + claim > recordTotal + 0.01) {
+          // A single-record match claims only this line (a part payment is
+          // real). A record ticked into a combination joins it for whatever it
+          // has LEFT — the picker offers remainders, so a record partly
+          // settled by an earlier bank line legitimately completes a later
+          // deposit; only a record with nothing left is blocked. When the
+          // resolver cannot name the record's own amount, the remainder is
+          // unknowable and the old whole-line claim stands.
+          const canRemainder = reqIds.length > 1 && resolved != null
+          const blocked = canRemainder
+            ? recordTotal - used <= 0.005
+            : used + thisLine > recordTotal + 0.01
+          if (blocked) {
             const where = already
               .map(b => `${new Date(b.date).toISOString().slice(0, 10)} ${b.description || ''} ${money(Number(isSpent ? b.spent : b.received))}`.trim())
               .join('; ')
+            const claimNote = canRemainder
+              ? `A record for ${money(recordTotal)} has nothing left for this combination.`
+              : `Matching this ${money(thisLine)} line as well would claim ${money(used + thisLine)} against a record for ${money(recordTotal)}.`
             return NextResponse.json({
-              error: `That record is already matched to ${already.length} other bank line${already.length === 1 ? '' : 's'} (${where}) totalling ${money(used)}. Matching this ${money(thisLine)} line as well would claim ${money(used + claim)} against a record for ${money(recordTotal)}. Unmatch the other line first, or match this one to its own record.`,
+              error: `That record is already matched to ${already.length} other bank line${already.length === 1 ? '' : 's'} (${where}) totalling ${money(used)}. ${claimNote} Unmatch the other line first, or ${canRemainder ? 'untick it here' : 'match this one to its own record'}.`,
               alreadyMatchedTo: already.map(b => b.id),
             }, { status: 409 })
           }
