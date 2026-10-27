@@ -10,6 +10,41 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
+/**
+ * Cover thumbnail = the manual's first rendered page (served by
+ * /api/manuals/[id]/page/1, the same view-only image pipeline as the
+ * reader — the source PDF never reaches the browser). Falls back to the
+ * teal book tile while loading or if the page image can't be fetched.
+ */
+function ManualCover({ id }: { id: string }) {
+  const [status, setStatus] = useState<'loading' | 'ok' | 'error'>('loading')
+
+  return (
+    <div className="relative w-12 h-16 rounded-lg overflow-hidden shrink-0 border border-[var(--light-gray)] bg-white shadow-[0_2px_8px_rgba(15,49,56,0.08)]">
+      {status !== 'ok' && (
+        <div
+          className="absolute inset-0 flex items-center justify-center"
+          style={{ background: 'linear-gradient(135deg, var(--teal), var(--bright-teal))' }}
+        >
+          <BookOpen className="text-white" size={20} />
+        </div>
+      )}
+      {status !== 'error' && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={`/api/manuals/${id}/page/1`}
+          alt=""
+          aria-hidden
+          draggable={false}
+          onLoad={() => setStatus('ok')}
+          onError={() => setStatus('error')}
+          className={`absolute inset-0 w-full h-full object-cover object-top transition-opacity duration-300 ${status === 'ok' ? 'opacity-100' : 'opacity-0'}`}
+        />
+      )}
+    </div>
+  )
+}
+
 export default function ManualsPage() {
   const [manuals, setManuals] = useState<ManualMeta[]>([])
   const [loading, setLoading] = useState(true)
@@ -84,12 +119,7 @@ export default function ManualsPage() {
               className="group text-left rounded-2xl border border-[var(--light-gray)] bg-white p-5 hover:shadow-[0_8px_24px_rgba(15,49,56,0.10)] hover:border-[var(--teal)]/40 transition-all"
             >
               <div className="flex items-start gap-3">
-                <div
-                  className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
-                  style={{ background: 'linear-gradient(135deg, var(--teal), var(--bright-teal))' }}
-                >
-                  <BookOpen className="text-white" size={20} />
-                </div>
+                <ManualCover id={m.id} />
                 <div className="min-w-0 flex-1">
                   <p className="font-semibold text-[14px] text-[var(--charcoal)] leading-snug">{m.name}</p>
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-[11px] text-[var(--charcoal)]/55">
