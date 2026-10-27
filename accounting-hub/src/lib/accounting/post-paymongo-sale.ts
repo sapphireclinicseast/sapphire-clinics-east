@@ -22,13 +22,35 @@
  *
  * referenceType is PAYMONGO_SALE (never POS_ORDER). Nothing lands in the Income Statement
  * from this entry; it moves the balance sheet only.
+ *
+ * WHO CALLS THIS: every path that learns a link was paid — the PayMongo webhook, the POS
+ * "sync pending" safety net, the PayMongo tab's Sync button, Convert-to-Order (as a
+ * catch-up before it raises the order) and the opt-in `paymongo-sales` backfill bucket.
+ * The owner's rule is that the ledger needs no click, so the webhook is the normal
+ * poster and everything else is a safety net that must find the entry already there.
+ *
+ * IDEMPOTENCY: one PAYMONGO_SALE entry per checkout, enforced under a Postgres
+ * transaction-scoped advisory lock keyed on the checkout id. A duplicate webhook
+ * delivery, a Sync click racing the webhook, or two Sync clicks at once all serialise
+ * on that lock, and the loser sees the winner's committed entry and returns
+ * `already posted`. (The old read-then-insert check had the same same-second race
+ * that double-reversed POS order #41717.)
+ *
+ * The later order that draws this collection down is posted by postOrderJournal, which
+ * recognises a PayMongo leg whose checkout already carries a PAYMONGO_SALE entry and
+ * routes it DR 4050 instead of DR the payment-mode cash account — so the money is
+ * never counted twice between the two entries.
  */
 
-import type { PrismaClient } from '@prisma/client'
+import type { Prisma, PrismaClient } from '@prisma/client'
 import { postJournalEntry } from './posting'
 import { resolvePaymongoAccounts } from './paymongo-accounts'
+import { orderGlNetCents } from './post-order'
 
 export interface PaymongoSaleResult { posted: boolean; reason?: string; journalEntryId?: string }
+
+/** Reasons that mean "nothing to do", not "something went wrong". */
+export const PAYMONGO_SALE_BENIGN_REASONS = ['already posted', 'GL posting off', 'test mode', 'posted via POS order'] as const
 
 export async function postPaymongoSale(
   prisma: PrismaClient,
@@ -41,15 +63,15 @@ export async function postPaymongoSale(
   if (co.status !== 'PAID') return { posted: false, reason: 'not paid' }
   // Test-mode money never enters the real books.
   if (!co.livemode) return { posted: false, reason: 'test mode' }
-  // Links recorded as a POS order are posted by postOrderJournal — don't double-count.
-  if (co.orderId) return { posted: false, reason: 'posted via POS order' }
-
-  // Idempotency: one JE per checkout.
-  const existing = await prisma.journalEntry.findFirst({
-    where: { referenceType: 'PAYMONGO_SALE', referenceId: co.checkoutId },
-    select: { id: true },
-  })
-  if (existing) return { posted: false, reason: 'already posted', journalEntryId: existing.id }
+  // A checkout tied to a POS order whose sale ALREADY stands in the GL in cash form
+  // (DR payment-mode account / CR revenue, the POS-links flow settled by
+  // settleLinkedOrder) carries its money through that entry — a collection entry on
+  // top would count the cash twice. A linked order with NO standing entry (converted
+  // before Convert-to-Order posted anything) is not covered: post the collection and
+  // let postOrderJournal draw it down when the order is backfilled.
+  if (co.orderId && (await orderGlNetCents(prisma, co.orderId)) > 0) {
+    return { posted: false, reason: 'posted via POS order' }
+  }
 
   const charged = Number(co.amount)
   const fee = co.fee != null ? Number(co.fee) : 0
@@ -65,6 +87,7 @@ export async function postPaymongoSale(
   })
   if (!unearned) return { posted: false, reason: 'no 4050 Unearned Revenue account in the chart of accounts' }
 
+  // May create accounts/modes on first use — keep it outside the locked transaction.
   const pmAccts = await resolvePaymongoAccounts(prisma, opts.userId)
 
   const lines: { accountId: string; debit?: number; credit?: number; description?: string }[] = [
@@ -76,15 +99,27 @@ export async function postPaymongoSale(
     description: `Collected online — ${label}${co.voucherCode ? ` (voucher ${co.voucherCode})` : ''}`,
   })
 
-  const je = await postJournalEntry(prisma, {
-    entryDate: co.paidAt || new Date(),
-    description: `PayMongo collection — ${label}${co.voucherCode ? ` (voucher ${co.voucherCode})` : ''}`,
-    referenceType: 'PAYMONGO_SALE',
-    referenceId: co.checkoutId,
-    branch: co.branch || 'ALL',
-    createdById: opts.userId,
-    lines,
-  })
+  const lockKey = `PAYMONGO_SALE:${co.checkoutId}`
+  return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    // Serialise every poster of this checkout. The lock is released at commit/rollback,
+    // and the existence check below runs AFTER the lock is held, so it sees whatever a
+    // concurrent winner committed.
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey})::bigint)`
+    const existing = await tx.journalEntry.findFirst({
+      where: { referenceType: 'PAYMONGO_SALE', referenceId: co.checkoutId },
+      select: { id: true },
+    })
+    if (existing) return { posted: false, reason: 'already posted', journalEntryId: existing.id }
 
-  return { posted: true, journalEntryId: je.id }
+    const je = await postJournalEntry(tx, {
+      entryDate: co.paidAt || new Date(),
+      description: `PayMongo collection — ${label}${co.voucherCode ? ` (voucher ${co.voucherCode})` : ''}`,
+      referenceType: 'PAYMONGO_SALE',
+      referenceId: co.checkoutId,
+      branch: co.branch || 'ALL',
+      createdById: opts.userId,
+      lines,
+    })
+    return { posted: true, journalEntryId: je.id }
+  })
 }

@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { paymongoPaymentModeName } from '@/lib/paymongo'
+import { postPaymongoSale, PAYMONGO_SALE_BENIGN_REASONS } from '@/lib/accounting/post-paymongo-sale'
+import { postOrderJournal } from '@/lib/accounting/post-order'
 
 const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
@@ -11,7 +13,19 @@ const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_AD
  *
  * GET  ?branch=… → the queue the cashier sees in POS ("Convert to Order").
  * POST { checkoutId, patientName?, revenueType? } → creates the POS order with the payment
- *        already tagged to the matching "Paymongo - <BRANCH> (<METHOD>)" payment mode.
+ *        already tagged to the matching "Paymongo - <BRANCH> (<METHOD>)" payment mode,
+ *        and posts it to the ledger.
+ *
+ * Ledger model (no clicks anywhere):
+ *   paid     → PAYMONGO_SALE   DR Clearing (net) + DR Fees / CR 4050 Unearned   (webhook)
+ *   convert  → POS_ORDER       DR 4050 (draw-down) [+ DR discount] / CR revenue  (here)
+ *              — or, for an UNEARNED conversion, the deposit simply stays in 4050.
+ * The order's PAYMONGO leg draws 4050 down instead of debiting the payment mode's
+ * cash account because the collection entry already holds the cash; postOrderJournal
+ * detects the linked checkout's PAYMONGO_SALE entry and routes it that way. Should
+ * the collection entry be missing (webhook never ran, posting was off), it is
+ * posted here first, so the order never lands in cash form on top of a later
+ * collection. Both postings are idempotent.
  */
 export async function GET(req: Request) {
   const session = await auth()
@@ -96,6 +110,20 @@ export async function POST(req: Request) {
     // Revenue timing: a downpayment is unearned until the service is delivered.
     const revenueType = b.revenueType === 'UNEARNED' ? 'UNEARNED' : 'EARNED'
 
+    // Catch-up: make sure the collection entry exists BEFORE the order is raised, so the
+    // order posts as a draw-down of 4050 rather than as fresh cash. Normally the webhook
+    // posted it at payment time and this returns `already posted` at once.
+    const saleWarnings: string[] = []
+    try {
+      const sale = await postPaymongoSale(prisma, { checkoutId: co.checkoutId, userId: session.user!.id as string })
+      if (!sale.posted && sale.reason && !(PAYMONGO_SALE_BENIGN_REASONS as readonly string[]).includes(sale.reason)) {
+        saleWarnings.push(`collection entry not posted: ${sale.reason}`)
+      }
+    } catch (e) {
+      console.error('PayMongo convert-to-order: collection posting threw:', e)
+      saleWarnings.push(`collection entry not posted: ${e instanceof Error ? e.message : 'error'}`)
+    }
+
     const order = await prisma.$transaction(async (tx) => {
       const created = await tx.order.create({
         data: {
@@ -133,12 +161,35 @@ export async function POST(req: Request) {
       return created
     })
 
+    // Post the order (DR 4050 draw-down / CR revenue). Non-fatal, like the POS route:
+    // the order stands either way and the orders backfill picks up a skipped one.
+    // Test-mode money is never posted (postPaymongoSale refused it above for the same
+    // reason) — the order exists for the cashier's queue only.
+    let glPosted = false
+    let glReason: string | undefined
+    if (co.livemode) {
+      try {
+        const r = await postOrderJournal(prisma, order.id, session.user!.id as string)
+        glPosted = r.posted || !!r.alreadyPosted
+        if (!glPosted) glReason = r.reason
+      } catch (e) {
+        console.error('PayMongo convert-to-order: order posting threw:', e)
+        glReason = e instanceof Error ? e.message : 'posting failed'
+      }
+    } else {
+      glReason = 'test mode'
+    }
+
+    const warnings = [
+      ...(fallbackUsed ? [`PayMongo didn't report which instrument was used, so this was tagged as "${mode.name}". Change it on the order if that's wrong.`] : []),
+      ...saleWarnings,
+      ...(glReason && glReason !== 'test mode' ? [`Order not booked to the ledger: ${glReason}`] : []),
+    ]
     return NextResponse.json({
       ok: true, orderId: order.id, patientName: order.patientName,
       amount: Number(order.netAmount), paymentMode: mode.name,
-      warning: fallbackUsed
-        ? `PayMongo didn't report which instrument was used, so this was tagged as "${mode.name}". Change it on the order if that's wrong.`
-        : undefined,
+      glPosted,
+      warning: warnings.length ? warnings.join(' ') : undefined,
     })
   } catch (e) {
     console.error('PayMongo convert-to-order error:', e)

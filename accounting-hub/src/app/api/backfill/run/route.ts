@@ -11,8 +11,9 @@
  *       year?:   number    // restrict to a specific fiscal year (default: all)
  *       branch?: string    // 'ALL' | 'SANDBOX_EAST' | …
  *       only?:   string[]  // ['orders'|'ar'|'inventory'|'assets'] (default: all four);
- *                          // 'redate-reversals' is a maintenance bucket that runs
- *                          // ONLY when named explicitly — see its block below
+ *                          // 'redate-reversals', 'paymongo-sales' and 'paymongo-relink'
+ *                          // are maintenance buckets that run ONLY when named
+ *                          // explicitly — see their blocks below
  *     }
  *
  * Required: ENABLE_GL_POSTING=true (otherwise the helpers no-op).
@@ -21,10 +22,11 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { postOrderJournal } from '@/lib/accounting/post-order'
+import { postOrderJournal, reverseOrderJournal, orderGlNetCents } from '@/lib/accounting/post-order'
 import { postARPaymentJournal } from '@/lib/accounting/post-ar-payment'
 import { postInventoryAdjustmentJournal } from '@/lib/accounting/post-inventory-adjustment'
 import { postAssetJournal } from '@/lib/accounting/post-asset'
+import { postPaymongoSale, PAYMONGO_SALE_BENIGN_REASONS } from '@/lib/accounting/post-paymongo-sale'
 
 const RUN_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 
@@ -54,11 +56,13 @@ export async function POST(req: Request) {
     if (!actorId) return NextResponse.json({ error: 'no admin user for internal backfill' }, { status: 500 })
   }
 
-  const body = await req.json().catch(() => ({})) as { year?: number; branch?: string; only?: string[]; orderIds?: string[] }
+  const body = await req.json().catch(() => ({})) as { year?: number; branch?: string; only?: string[]; orderIds?: string[]; dryRun?: boolean }
   const branch = body.branch || 'ALL'
   const orderIds = Array.isArray(body.orderIds) && body.orderIds.length ? body.orderIds : undefined
-  // 'redate-reversals' is maintenance-only and never part of the default sweep.
+  // 'redate-reversals', 'paymongo-sales' and 'paymongo-relink' are maintenance-only and
+  // never part of the default sweep.
   const only = new Set(body.only?.length ? body.only : ['orders', 'ar', 'inventory', 'assets'])
+  const dryRun = body.dryRun === true
 
   const dateFilter: { gte?: Date; lt?: Date } = {}
   if (body.year) {
@@ -74,6 +78,60 @@ export async function POST(req: Request) {
     inventory: newBucket(),
     assets:    newBucket(),
     'redate-reversals': newBucket(),
+    'paymongo-sales':   newBucket(),
+    'paymongo-relink':  newBucket(),
+    dryRun,
+  }
+
+  /* ── PayMongo collections (opt-in; run BEFORE 'orders' in the same call) ─
+     Every PAID live-mode payment link should carry a PAYMONGO_SALE collection
+     entry (DR Clearing + Fees / CR 4050). The webhook posts it at payment time
+     since this bucket was added; links paid before then only got one if someone
+     pressed Sync on the PayMongo tab while the row was still PENDING locally —
+     webhook-flipped links never did ("bucket B/D" in the 2026-09 analysis).
+     postPaymongoSale is idempotent and refuses a link whose POS order already
+     stands in cash form, so this is safe to repeat. Converted links that get
+     their collection entry here are then posted by the 'orders' bucket as a
+     4050 draw-down (postOrderJournal detects the entry), which is why the
+     buckets run in this order when both are named. `dryRun: true` only counts. */
+  if (only.has('paymongo-sales')) {
+    const bucket = result['paymongo-sales']
+    const links = await prisma.paymongoCheckout.findMany({
+      where: {
+        status: 'PAID', livemode: true,
+        ...(Object.keys(dateFilter).length ? { paidAt: dateFilter } : {}),
+        ...(branch !== 'ALL' ? { branch } : {}),
+        ...(orderIds ? { orderId: { in: orderIds } } : {}),
+      },
+      select: { checkoutId: true, orderId: true },
+      orderBy: { paidAt: 'asc' },
+    })
+    bucket.scanned = links.length
+    const booked = new Set((links.length ? await prisma.journalEntry.findMany({
+      where: { referenceType: 'PAYMONGO_SALE', referenceId: { in: links.map(l => l.checkoutId) } },
+      select: { referenceId: true },
+    }) : []).map(j => j.referenceId))
+    for (const l of links) {
+      if (booked.has(l.checkoutId)) { bucket.alreadyPosted++; continue }
+      if (dryRun) {
+        // Report what WOULD post. A linked order already standing in cash form is
+        // what postPaymongoSale refuses — mirror that here without posting.
+        bucket.failures.push({ id: l.checkoutId, reason: l.orderId ? 'would post (linked order — only if its sale does not already stand in cash form)' : 'would post' })
+        continue
+      }
+      try {
+        const r = await postPaymongoSale(prisma, { checkoutId: l.checkoutId, userId: actorId })
+        if (r.posted) bucket.posted++
+        else if (r.reason === 'already posted' || r.reason === 'posted via POS order') bucket.alreadyPosted++
+        else {
+          bucket.failed++
+          if (r.reason && !(PAYMONGO_SALE_BENIGN_REASONS as readonly string[]).includes(r.reason)) bucket.failures.push({ id: l.checkoutId, reason: r.reason })
+        }
+      } catch (e) {
+        bucket.failed++
+        bucket.failures.push({ id: l.checkoutId, reason: e instanceof Error ? e.message : String(e) })
+      }
+    }
   }
 
   /* ── Orders ─────────────────────────────────────────────────── */
@@ -92,6 +150,12 @@ export async function POST(req: Request) {
     result.orders.scanned = orders.length
     for (const o of orders) {
       try {
+        if (dryRun) {
+          // Count only: an order whose GL net carries no sale is what a real run posts.
+          if (await orderGlNetCents(prisma, o.id) <= 0) result.orders.failures.push({ id: o.id, reason: 'would post' })
+          else result.orders.alreadyPosted++
+          continue
+        }
         const r = await postOrderJournal(prisma, o.id, actorId)
         if (r.posted)               result.orders.posted++
         else if (r.alreadyPosted)   result.orders.alreadyPosted++
@@ -106,8 +170,63 @@ export async function POST(req: Request) {
     }
   }
 
+  /* ── PayMongo relink (opt-in; one-time repair of "bucket A") ──────
+     An order converted from a paid link whose sale was posted in CASH form
+     (DR payment-mode account / CR revenue) while the link ALSO carries a
+     PAYMONGO_SALE collection entry counts the cash twice and never draws
+     4050 down. Now that postOrderJournal routes such a leg DR 4050, the
+     repair is: reverse the standing cash-form forward, repost. The pair
+     nets inside the original month (reversals are dated at the forward's
+     entryDate), so only the cash/4050 split changes — revenue is untouched.
+     Detection: the newest standing POS_ORDER forward has a PAYMONGO cash
+     leg (an 'Online collection applied' line is what the fixed engine
+     writes, so its absence on an order with a PAYMONGO leg and a collection
+     entry means cash form). `dryRun: true` lists the orders without touching them. */
+  if (only.has('paymongo-relink')) {
+    const bucket = result['paymongo-relink']
+    const links = await prisma.paymongoCheckout.findMany({
+      where: {
+        status: 'PAID', livemode: true, orderId: { not: null },
+        ...(Object.keys(dateFilter).length ? { paidAt: dateFilter } : {}),
+        ...(branch !== 'ALL' ? { branch } : {}),
+        ...(orderIds ? { orderId: { in: orderIds } } : {}),
+      },
+      select: { checkoutId: true, orderId: true },
+      orderBy: { paidAt: 'asc' },
+    })
+    const withSale = new Set((links.length ? await prisma.journalEntry.findMany({
+      where: { referenceType: 'PAYMONGO_SALE', referenceId: { in: links.map(l => l.checkoutId) } },
+      select: { referenceId: true },
+    }) : []).map(j => j.referenceId))
+    const candidates = links.filter(l => withSale.has(l.checkoutId))
+    bucket.scanned = candidates.length
+    for (const l of candidates) {
+      const oid = l.orderId as string
+      try {
+        const order = await prisma.order.findUnique({ where: { id: oid }, select: { status: true, orderNumber: true, payments: { select: { method: true } } } })
+        if (!order || order.status === 'VOIDED' || !order.payments.some(p => p.method === 'PAYMONGO')) { bucket.alreadyPosted++; continue }
+        const forward = await prisma.journalEntry.findFirst({
+          where: { referenceType: 'POS_ORDER', referenceId: oid },
+          orderBy: { createdAt: 'desc' },
+          select: { id: true, lines: { select: { description: true } } },
+        })
+        if (!forward) { bucket.alreadyPosted++; continue }   // nothing standing — the 'orders' bucket posts it right
+        if (forward.lines.some(ln => (ln.description || '').startsWith('Online collection applied'))) { bucket.alreadyPosted++; continue }
+        if (dryRun) { bucket.failures.push({ id: oid, reason: `would reverse + repost order #${order.orderNumber} (cash form → 4050 draw-down)` }); continue }
+        const rev = await reverseOrderJournal(prisma, oid, actorId, 'PayMongo link relink — cash form → 4050 draw-down')
+        if (!rev.posted && !rev.alreadyPosted) { bucket.failed++; bucket.failures.push({ id: oid, reason: `reverse: ${rev.reason}` }); continue }
+        const re = await postOrderJournal(prisma, oid, actorId)
+        if (re.posted) bucket.posted++
+        else { bucket.failed++; bucket.failures.push({ id: oid, reason: `repost: ${re.reason || 'already posted'}` }) }
+      } catch (e) {
+        bucket.failed++
+        bucket.failures.push({ id: oid, reason: e instanceof Error ? e.message : String(e) })
+      }
+    }
+  }
+
   /* ── AR Payments ────────────────────────────────────────────── */
-  if (only.has('ar')) {
+  if (only.has('ar') && !dryRun) {
     const payments = await prisma.aRPayment.findMany({
       where: {
         ...(Object.keys(dateFilter).length ? { paymentDate: dateFilter } : {}),
@@ -134,7 +253,7 @@ export async function POST(req: Request) {
   }
 
   /* ── Inventory Adjustments ──────────────────────────────────── */
-  if (only.has('inventory')) {
+  if (only.has('inventory') && !dryRun) {
     const adjustments = await prisma.inventoryAdjustment.findMany({
       where: {
         ...(Object.keys(dateFilter).length ? { adjustmentDate: dateFilter } : {}),
@@ -161,7 +280,7 @@ export async function POST(req: Request) {
   }
 
   /* ── Assets ─────────────────────────────────────────────────── */
-  if (only.has('assets')) {
+  if (only.has('assets') && !dryRun) {
     const assets = await prisma.asset.findMany({
       where: {
         ...(Object.keys(dateFilter).length ? { dateBought: dateFilter } : {}),
@@ -201,7 +320,7 @@ export async function POST(req: Request) {
      are unchanged by construction, and the reversal cash legs return beside
      their forwards, healing month-end bank positions too. Idempotent: a
      reversal already on its forward's date counts as alreadyPosted. */
-  if (only.has('redate-reversals')) {
+  if (only.has('redate-reversals') && !dryRun) {
     const bucket = result['redate-reversals']
     const reversals = await prisma.journalEntry.findMany({
       where: {
@@ -250,7 +369,10 @@ export async function POST(req: Request) {
     }
   }
 
-  await prisma.auditLog.create({
+  // A dry run reads only — no audit row for a pass that changed nothing. (Only the
+  // 'orders', 'paymongo-sales' and 'paymongo-relink' buckets have a counting mode;
+  // the rest are skipped outright when dryRun is set.)
+  if (!dryRun) await prisma.auditLog.create({
     data: {
       userId: actorId,
       action: 'BACKFILL_GL',
@@ -262,6 +384,9 @@ export async function POST(req: Request) {
         inventoryScanned: result.inventory.scanned, inventoryPosted: result.inventory.posted, inventoryAlready: result.inventory.alreadyPosted, inventoryFailed: result.inventory.failed,
         assetsScanned:    result.assets.scanned,    assetsPosted:    result.assets.posted,    assetsAlready:    result.assets.alreadyPosted,    assetsFailed:    result.assets.failed,
         redateScanned:    result['redate-reversals'].scanned, redatePosted: result['redate-reversals'].posted, redateAlready: result['redate-reversals'].alreadyPosted, redateFailed: result['redate-reversals'].failed,
+        pmSalesScanned:   result['paymongo-sales'].scanned,   pmSalesPosted:  result['paymongo-sales'].posted,  pmSalesAlready:  result['paymongo-sales'].alreadyPosted,  pmSalesFailed:  result['paymongo-sales'].failed,
+        pmRelinkScanned:  result['paymongo-relink'].scanned,  pmRelinkPosted: result['paymongo-relink'].posted, pmRelinkAlready: result['paymongo-relink'].alreadyPosted, pmRelinkFailed: result['paymongo-relink'].failed,
+        dryRun,
       },
     },
   })
