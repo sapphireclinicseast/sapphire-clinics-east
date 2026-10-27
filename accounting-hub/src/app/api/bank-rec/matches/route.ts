@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { candidates, forDirection } from '@/lib/bank-rec-candidates'
+import { candidates, forDirection, remainingOn } from '@/lib/bank-rec-candidates'
 import { posSettlementShapes } from '@/lib/pos-settlement-shapes'
 
 const WINDOW_DAYS = 7
@@ -222,11 +222,25 @@ export async function GET(req: Request) {
   // the statement can't contain — an explicit search is the user reaching for
   // exactly such a record (e.g. a 2025 supplier entry on an account whose
   // opening balance starts 2026), so the cutoff doesn't apply there.
+  // What a row offers is what is LEFT of the record, not its face amount: a
+  // ₱885 cash leg with ₱800 already matched to an earlier line has only ₱85
+  // for this one, and ticking it must add ₱85 to the combination total. The
+  // label says so, or staff read the smaller figure as a bug.
+  const remOf = (c: { amount: number; settled?: { in: number; out: number } }) =>
+    remainingOn(c as Parameters<typeof remainingOn>[0], isSpent)
+  const row = (c: (typeof all)[number], extra?: Record<string, boolean>) => {
+    const used = isSpent ? (c.settled?.out ?? 0) : (c.settled?.in ?? 0)
+    return {
+      type: c.type, id: c.id, date: c.date.toISOString().slice(0, 10),
+      label: used > 0.005 ? `${c.label} · ₱${used.toLocaleString('en-PH')} already matched` : c.label,
+      amount: remOf(c), ...extra,
+    }
+  }
   const out = forDirection(all, isSpent)
     .filter(c => searching
       ? (!q || c.label.toLowerCase().includes(q))
-      : (gte(c.date) && near(c.amount, amount) && (!c.fx || withinFxWindow(c.date, txn.date))))
-    .map(c => ({ type: c.type, id: c.id, label: c.label, date: c.date.toISOString().slice(0, 10), amount: c.amount }))
+      : (gte(c.date) && near(remOf(c), amount) && (!c.fx || withinFxWindow(c.date, txn.date))))
+    .map(c => row(c))
 
   // Closest dates first.
   out.sort((a, b) => Math.abs(+new Date(a.date) - +txn.date) - Math.abs(+new Date(b.date) - +txn.date))
@@ -237,9 +251,9 @@ export async function GET(req: Request) {
   // in the same window as a combinable part, for the picker to tick and total.
   const chosen = new Set(out.map(c => `${c.type}-${c.id}`))
   const partials = searching ? [] : forDirection(all, isSpent)
-    .filter(c => gte(c.date) && !c.fx && c.amount > 0 && c.amount < amount - 0.01
+    .filter(c => gte(c.date) && !c.fx && remOf(c) > 0 && remOf(c) < amount - 0.01
       && !chosen.has(`${c.type}-${c.id}`))
-    .map(c => ({ type: c.type, id: c.id, label: c.label, date: c.date.toISOString().slice(0, 10), amount: c.amount, partial: true }))
+    .map(c => row(c, { partial: true }))
     .sort((a, b) => Math.abs(+new Date(a.date) - +txn.date) - Math.abs(+new Date(b.date) - +txn.date))
     .slice(0, 25)
 
@@ -250,9 +264,9 @@ export async function GET(req: Request) {
   // larger than this line as part payments — matching one leaves the record
   // available for the other lines, since a match posts no entry of its own.
   const bigger = searching ? [] : forDirection(all, isSpent)
-    .filter(c => gte(c.date) && !c.fx && c.amount > amount + 0.01
+    .filter(c => gte(c.date) && !c.fx && remOf(c) > amount + 0.01
       && !chosen.has(`${c.type}-${c.id}`))
-    .map(c => ({ type: c.type, id: c.id, label: c.label, date: c.date.toISOString().slice(0, 10), amount: c.amount, partOf: true }))
+    .map(c => row(c, { partOf: true }))
     .sort((a, b) => Math.abs(+new Date(a.date) - +txn.date) - Math.abs(+new Date(b.date) - +txn.date))
     .slice(0, 15)
 
