@@ -870,6 +870,8 @@ function DepositManager({ share, banks, assetAccts, capitalization, onChanged, h
   const [proofUrls, setProofUrls] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
   const [adding, setAdding] = useState(false)
+  const [editingProofs, setEditingProofs] = useState<Deposit | null>(null)
+  const [edProofs, setEdProofs] = useState<string[]>([])
   const n = (v: string) => Number(v) || 0
   const inp = 'w-full px-3 py-2 rounded-xl border text-sm outline-none'
   const lbl = 'block text-xs font-semibold mb-1'
@@ -901,6 +903,21 @@ function DepositManager({ share, banks, assetAccts, capitalization, onChanged, h
     await refresh(); onChanged()
   }
 
+  const startProofEdit = (x: Deposit) => {
+    setEditingProofs(x)
+    setEdProofs(Array.isArray(x.proofUrls) ? x.proofUrls : [])
+  }
+  const saveProofs = async () => {
+    if (!editingProofs) return
+    setBusy(true)
+    try {
+      const r = await fetch('/api/equity/deposits', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editingProofs.id, proofUrls: edProofs }) })
+      if (!r.ok) { alert((await r.json()).error || 'Failed'); return }
+      setEditingProofs(null)
+      await refresh(); onChanged()
+    } finally { setBusy(false) }
+  }
+
   const acctLabel = (x: Deposit) => x.kind === 'NON_CASH'
     ? (assetAccts.find(a => a.id === x.assetAccountId)?.accountTitle || '(account not set)')
     : (banks.find(b => b.id === x.bankAccountId)?.accountTitle || '(bank not set)')
@@ -914,6 +931,7 @@ function DepositManager({ share, banks, assetAccts, capitalization, onChanged, h
               <th className="px-2 py-1.5 text-left font-semibold" style={{ color: 'var(--mid-gray)' }}>Date</th>
               <th className="px-2 py-1.5 text-left font-semibold" style={{ color: 'var(--mid-gray)' }}>Debited to</th>
               <th className="px-2 py-1.5 text-right font-semibold" style={{ color: 'var(--mid-gray)' }}>Amount</th>
+              <th className="px-2 py-1.5 text-left font-semibold" style={{ color: 'var(--mid-gray)' }}>Proof</th>
               <th className="px-2 py-1.5" />
             </tr></thead>
             <tbody>
@@ -926,23 +944,38 @@ function DepositManager({ share, banks, assetAccts, capitalization, onChanged, h
                     {x.note && <span className="block text-[10px]" style={{ color: 'var(--mid-gray)' }}>{x.note}</span>}
                   </td>
                   <td className="px-2 py-1.5 text-right font-mono">{peso(x.amount)}</td>
-                  <td className="px-2 py-1.5 text-right"><button type="button" onClick={() => del(x)} title="Remove" style={{ color: '#b91c1c' }}><Trash2 size={13} /></button></td>
+                  <td className="px-2 py-1.5">{(Array.isArray(x.proofUrls) ? x.proofUrls : []).map((u: string, i: number) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 mr-1" style={{ color: 'var(--teal)' }}><Eye size={11} />{i + 1}</a>)}</td>
+                  <td className="px-2 py-1.5 text-right whitespace-nowrap">
+                    <button type="button" onClick={() => startProofEdit(x)} className="mr-1" title="Add / remove proofs"><Pencil size={13} style={{ color: 'var(--teal)' }} /></button>
+                    <button type="button" onClick={() => del(x)} title="Remove" style={{ color: '#b91c1c' }}><Trash2 size={13} /></button></td>
                 </tr>
               ))}
               <tr className="border-t font-semibold" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
                 <td className="px-2 py-1.5" colSpan={2}>Recorded of {peso(capitalization)}</td>
                 <td className="px-2 py-1.5 text-right font-mono" style={{ color: Math.abs(remaining) < 0.005 ? 'var(--teal)' : '#b45309' }}>{peso(recorded)}</td>
-                <td />
+                <td colSpan={2} />
               </tr>
               {Math.abs(remaining) >= 0.005 && (
                 <tr style={{ background: '#fffbeb' }}>
                   <td className="px-2 py-1.5 text-[11px]" colSpan={2} style={{ color: '#92400e' }}>Not yet accounted for</td>
                   <td className="px-2 py-1.5 text-right font-mono text-[11px]" style={{ color: '#92400e' }}>{peso(remaining)}</td>
-                  <td />
+                  <td colSpan={2} />
                 </tr>
               )}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {editingProofs && (
+        <div className="rounded-xl border p-3 mb-2" style={{ borderColor: 'var(--teal)', background: 'white' }}>
+          <p className="text-xs font-semibold mb-2" style={{ color: 'var(--teal)' }}>Proofs for the {String(editingProofs.date).slice(0, 10)} deposit of {peso(editingProofs.amount)} <span className="font-normal text-gray-400">(add more, or ✕ to remove)</span></p>
+          <div className="flex flex-wrap items-center gap-2">{edProofs.map((u, i) => <span key={u} className="inline-flex items-center gap-1 text-xs"><a href={u} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a><button type="button" onClick={() => setEdProofs(p => p.filter(x => x !== u))} className="p-0.5 rounded hover:bg-red-50" title="Remove this proof"><X size={11} className="text-red-400" /></button></span>)}
+            <ScanUpload compact section="equity" prefix={`${share.stockCertNumber || share.name}-DEPOSIT`} existingCount={edProofs.length} label="Add" onUploaded={u => setEdProofs(p => [...p, u])} /></div>
+          <div className="flex gap-2 mt-3">
+            <button type="button" onClick={saveProofs} disabled={busy} className="px-4 py-2 rounded-xl text-xs font-semibold text-white disabled:opacity-50 flex items-center gap-1.5" style={{ background: 'var(--teal)' }}>{busy && <Loader2 size={13} className="animate-spin" />} Save proofs</button>
+            <button type="button" onClick={() => setEditingProofs(null)} className="px-4 py-2 rounded-xl text-xs font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Cancel</button>
+          </div>
         </div>
       )}
 

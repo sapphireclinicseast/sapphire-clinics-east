@@ -90,6 +90,25 @@ export async function POST(req: Request) {
   }
 }
 
+// PATCH { id, proofUrls } — update the proofs attached to a recorded deposit.
+// Proofs carry no journal effect, so nothing is re-posted.
+export async function PATCH(req: Request) {
+  const session = await auth()
+  if (!session?.user || !ADMIN.includes(session.user.role as string)) return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
+  try {
+    const b = await req.json()
+    const id = String(b.id || '')
+    if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
+    const dep = await prisma.equityDeposit.findUnique({ where: { id } })
+    if (!dep) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    const updated = await prisma.equityDeposit.update({ where: { id }, data: { proofUrls: Array.isArray(b.proofUrls) ? b.proofUrls : [] } })
+    return NextResponse.json(shape(updated))
+  } catch (e) {
+    console.error('Deposit proof update error:', e)
+    return NextResponse.json({ error: e instanceof Error ? e.message : 'Failed' }, { status: 500 })
+  }
+}
+
 export async function DELETE(req: Request) {
   const session = await auth()
   if (!session?.user || !ADMIN.includes(session.user.role as string)) return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
