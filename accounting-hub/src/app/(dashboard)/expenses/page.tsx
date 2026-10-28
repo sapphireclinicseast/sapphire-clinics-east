@@ -282,6 +282,8 @@ function ExpensesInner() {
   const [newSupplierPrompt, setNewSupplierPrompt] = useState<{ registeredName: string; registeredAddress: string; tin: string } | null>(null)
   // "Add to Asset Management" prompt for one-time entries tagged with a PPE classification.
   const [assetPrompt, setAssetPrompt] = useState<Entry | null>(null)
+  // Shared purchase split: one supplier payment expensed across several branches.
+  const [showSplit, setShowSplit] = useState(false)
   const [assetBusy, setAssetBusy] = useState(false)
   const [assetResult, setAssetResult] = useState<{ count: number } | null>(null)
   const [assetReAddWarn, setAssetReAddWarn] = useState<Entry | null>(null)
@@ -1806,6 +1808,14 @@ function ExpensesInner() {
                 style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }} title="Copy the last entry's details into a new row (change the amount)">
                 <Plus size={14} /> Duplicate previous entry
               </button>
+              {recordType === 'ONE_TIME' && !scope.locked && (
+                <button onClick={() => setShowSplit(true)} disabled={adding}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold border disabled:opacity-50"
+                  style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}
+                  title="One purchase shared by several branches (e.g. a supplier TT from the AUB CNY account) — tick the branches and the amount is split equally, one entry per branch">
+                  <Plus size={14} /> Shared purchase (split)
+                </button>
+              )}
             </div>
           )}
         </>
@@ -2069,6 +2079,18 @@ function ExpensesInner() {
         )
       })()}
 
+      {showSplit && (
+        <SplitPurchaseModal accounts={coaAccounts} bankOptions={bankOptions}
+          onClose={() => setShowSplit(false)}
+          onDone={(entries, paid) => {
+            setShowSplit(false)
+            reload(branch, 'ONE_TIME')
+            alert(`Created one entry per branch:\n${entries.map(e =>
+              `${e.pcvNumber} — ₱${Number(e.grossAmount).toLocaleString('en-PH', { minimumFractionDigits: 2 })}`).join('\n')}${
+              paid ? '\n\nThe entries were recorded as paid — tick "Show paid" to see them on the grid.' : ''}`)
+          }} />
+      )}
+
       {payTarget && (
         <ForPaymentModal count={payTarget._count.entries} bankOptions={bankOptions} cards={cards} paying={paying}
           title={`${payTarget.paidAt ? 'Edit RFP Payment' : 'Record RFP as Paid'} — ${payTarget.refNumber}`}
@@ -2279,6 +2301,191 @@ function ExpensesInner() {
 }
 
 // ── For Payment modal ──────────────────────────────────────────
+// One shared purchase (e.g. a supplier TT from the AUB CNY account) expensed
+// across several branches: tick the branches, the total splits EQUALLY — one
+// one-time entry per branch, rounding centavos on the first ticked branch.
+// Shares are ordinary editable rows afterwards if a branch's cut isn't even.
+function SplitPurchaseModal({ accounts, bankOptions, onClose, onDone }: {
+  accounts: PickableAccount[]
+  bankOptions: string[]
+  onClose: () => void
+  onDone: (entries: { branch: string; pcvNumber: string; grossAmount: number }[], paid: boolean) => void
+}) {
+  const choices = BRANCHES.filter(b => b.value !== 'CEO')
+  const [ticked, setTicked] = useState<Record<string, boolean>>({ SANDBOX_EAST: true, SANDBOX_GREENHILLS: true })
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
+  const [registeredName, setRegisteredName] = useState('')
+  const [tinNumber, setTinNumber] = useState('')
+  const [registeredAddress, setRegisteredAddress] = useState('')
+  const [siNumber, setSiNumber] = useState('')
+  const [description, setDescription] = useState('')
+  const [accountTitle, setAccountTitle] = useState('')
+  const [vatable, setVatable] = useState('NV')
+  const [total, setTotal] = useState('')
+  const [payNow, setPayNow] = useState(true)
+  const [datePaid, setDatePaid] = useState(new Date().toISOString().slice(0, 10))
+  const [method, setMethod] = useState('Telegraphic Transfer')
+  const [reference, setReference] = useState('')
+  const [bankAccount, setBankAccount] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const chosen = choices.filter(b => ticked[b.value])
+  const totalCents = Math.round((Number(total) || 0) * 100)
+  const baseShare = chosen.length ? Math.floor(totalCents / chosen.length) : 0
+  const shareOf = (i: number) => (baseShare + (i === 0 ? totalCents - baseShare * chosen.length : 0)) / 100
+  const peso = (n: number) => `₱${n.toLocaleString('en-PH', { minimumFractionDigits: 2 })}`
+  const needsRef = method === 'Telegraphic Transfer' || method.startsWith('Check')
+
+  const submit = async () => {
+    if (chosen.length < 2) { alert('Tick at least two branches — a single-branch purchase is an ordinary Add Row.'); return }
+    if (!(totalCents > 0)) { alert('Enter the total amount.'); return }
+    if (!date) { alert('Enter the purchase date.'); return }
+    if (payNow && needsRef && (!reference || !bankAccount)) { alert('Enter the reference number and the bank account the payment left from.'); return }
+    setBusy(true)
+    try {
+      const r = await fetch('/api/expenses/split-onetime', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          branches: chosen.map(b => b.value), totalAmount: totalCents / 100, date,
+          description, accountTitle, vatable, siNumber, tinNumber, registeredName, registeredAddress,
+          ...(payNow ? { payment: { datePaid, paymentMethod: method, checkNumber: reference, paymentBankAccount: bankAccount } } : {}),
+        }),
+      })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) { alert(j.error || 'Failed to create the split entries'); return }
+      onDone(j.entries || [], payNow)
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="text-base font-bold" style={{ color: 'var(--dark-teal)' }}>Shared purchase — split across branches</h3>
+          <button onClick={onClose}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button>
+        </div>
+        <p className="text-[11px] mb-4" style={{ color: 'var(--mid-gray)' }}>
+          One supplier payment expensed by several branches. The total is split equally — one entry per ticked branch; edit a share on the grid afterwards if the cut isn&apos;t even.
+        </p>
+
+        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--dark-teal)' }}>Branches</label>
+        <div className="flex flex-wrap gap-3 mb-3">
+          {choices.map(b => (
+            <label key={b.value} className="flex items-center gap-1.5 text-sm cursor-pointer">
+              <input type="checkbox" checked={!!ticked[b.value]}
+                onChange={e => setTicked(prev => ({ ...prev, [b.value]: e.target.checked }))} />
+              {b.label}
+            </label>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <div>
+            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--dark-teal)' }}>Purchase date</label>
+            <input type="date" value={date} onChange={e => setDate(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }} />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--dark-teal)' }}>Total amount (₱)</label>
+            <input type="number" min="0" step="0.01" value={total} onChange={e => setTotal(e.target.value)} placeholder="0.00"
+              className="w-full px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }} />
+          </div>
+        </div>
+        {chosen.length >= 2 && totalCents > 0 && (
+          <p className="text-[11px] mb-3" style={{ color: 'var(--mid-gray)' }}>
+            {chosen.map((b, i) => `${b.label} ${peso(shareOf(i))}`).join(' · ')}
+            {totalCents % chosen.length !== 0 ? ` (rounding centavos on ${chosen[0].label})` : ''}
+          </p>
+        )}
+
+        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--dark-teal)' }}>Description</label>
+        <input value={description} onChange={e => setDescription(e.target.value)} placeholder="What was bought"
+          className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }} />
+
+        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--dark-teal)' }}>Account title</label>
+        <AccountPicker accounts={accounts} value={accountTitle} valueKey="numberTitle"
+          className="w-full px-3 py-2 rounded-xl border text-sm mb-3" placeholder="Type a number or a name…"
+          clearLabel="— Clear —" onChange={setAccountTitle} />
+
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <div>
+            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--dark-teal)' }}>VAT</label>
+            <select value={vatable} onChange={e => setVatable(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }}>
+              <option value="NV">NV</option>
+              <option value="VAT">VAT</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--dark-teal)' }}>SI number</label>
+            <input value={siNumber} onChange={e => setSiNumber(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }} />
+          </div>
+        </div>
+
+        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--dark-teal)' }}>Supplier (registered name)</label>
+        <input value={registeredName} onChange={e => setRegisteredName(e.target.value)}
+          className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }} />
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <div>
+            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--dark-teal)' }}>TIN</label>
+            <input value={tinNumber} onChange={e => setTinNumber(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }} />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--dark-teal)' }}>Address</label>
+            <input value={registeredAddress} onChange={e => setRegisteredAddress(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }} />
+          </div>
+        </div>
+
+        <label className="flex items-center gap-2 text-sm font-semibold mb-2 cursor-pointer" style={{ color: 'var(--dark-teal)' }}>
+          <input type="checkbox" checked={payNow} onChange={e => setPayNow(e.target.checked)} />
+          Record the payment now (all entries share one reference)
+        </label>
+        {payNow && (
+          <div className="rounded-xl border p-3 mb-3" style={{ borderColor: 'var(--light-gray)' }}>
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--dark-teal)' }}>Date paid</label>
+                <input type="date" value={datePaid} onChange={e => setDatePaid(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--dark-teal)' }}>Method</label>
+                <select value={method} onChange={e => setMethod(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }}>
+                  <option>Telegraphic Transfer</option>
+                  <option>Check deposit</option>
+                  <option>Check encashment to deposit as cash</option>
+                </select>
+              </div>
+            </div>
+            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--dark-teal)' }}>Paid from (bank account)</label>
+            <select value={bankAccount} onChange={e => setBankAccount(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }}>
+              <option value="">Select account…</option>
+              {bankOptions.map(o => <option key={o} value={o}>{o}</option>)}
+            </select>
+            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--dark-teal)' }}>{method === 'Telegraphic Transfer' ? 'TT reference number' : 'Check number'}</label>
+            <input value={reference} onChange={e => setReference(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }} />
+          </div>
+        )}
+
+        <div className="flex gap-2 mt-4">
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Cancel</button>
+          <button onClick={submit} disabled={busy}
+            className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2"
+            style={{ background: 'var(--teal)' }}>
+            {busy ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />} Create {chosen.length >= 2 ? `${chosen.length} entries` : 'entries'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function ForPaymentModal({ count, bankOptions, cards, paying, title, confirmLabel, proofPrefix, initial, onClose, onAddCard, onSubmit }: {
   count: number; bankOptions: string[]; cards: Card[]; paying: boolean; title?: string; confirmLabel?: string; proofPrefix?: string
   // Editing an already-paid RFP: seed the form from what was recorded, so a
