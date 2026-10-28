@@ -81,6 +81,71 @@ export async function POST(req: Request) {
   }
 }
 
+// PATCH { id, date?, shares?, price?, bankAccountId?, treasuryAccountId?, proofUrls? }
+// Edit a recorded buyback in place: the record is updated and its journal entry
+// re-posted at the new date/amount/accounts. Any bank line already matched to
+// the old entry is re-pointed to the new one so Bank Rec never dangles.
+export async function PATCH(req: Request) {
+  const session = await auth()
+  if (!session?.user || !ADMIN.includes(session.user.role as string)) return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
+  try {
+    const b = await req.json()
+    const id = String(b.id || '')
+    if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
+    const bb = await prisma.shareBuyback.findUnique({ where: { id } })
+    if (!bb) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    const shares = b.shares !== undefined ? num(b.shares) : num(bb.shares)
+    const price = b.price !== undefined ? num(b.price) : num(bb.price)
+    if (!(shares > 0)) return NextResponse.json({ error: 'Shares bought back must be greater than zero' }, { status: 400 })
+    if (!(price > 0)) return NextResponse.json({ error: 'Buyback price must be greater than zero' }, { status: 400 })
+    const date = b.date ? new Date(b.date) : bb.date
+    const bankAccountId = b.bankAccountId !== undefined ? (b.bankAccountId || null) : bb.bankAccountId
+    const treasuryAccountId = b.treasuryAccountId !== undefined ? (b.treasuryAccountId || null) : bb.treasuryAccountId
+
+    // Same cap as recording: this buyback's NEW size plus every OTHER buyback
+    // must still fit inside the holding.
+    let holderName = ''
+    if (bb.commonShareId) {
+      const share = await prisma.commonShare.findUnique({ where: { id: bb.commonShareId }, include: { shareholder: { select: { name: true } }, buybacks: { select: { id: true, shares: true } } } })
+      if (!share) return NextResponse.json({ error: 'Shareholding not found' }, { status: 404 })
+      const others = share.buybacks.filter(x => x.id !== id).reduce((s, x) => s + num(x.shares), 0)
+      if (others + shares > num(share.numberOfShares) + 1e-9) {
+        return NextResponse.json({ error: `Only ${num(share.numberOfShares) - others} shares fit this buyback (holds ${num(share.numberOfShares)}, other buybacks ${others}).` }, { status: 400 })
+      }
+      holderName = share.shareholder.name
+    } else {
+      const share = await prisma.preferredShare.findUnique({ where: { id: bb.preferredShareId! }, include: { shareholder: { select: { name: true } }, buybacks: { select: { id: true, shares: true } }, transfersOut: { select: { shares: true } } } })
+      if (!share) return NextResponse.json({ error: 'Preferred shareholding not found' }, { status: 404 })
+      const gone = num(share.retiredShares) + share.buybacks.filter(x => x.id !== id).reduce((s, x) => s + num(x.shares), 0) + share.transfersOut.reduce((s, x) => s + num(x.shares), 0)
+      if (gone + shares > num(share.numberOfShares) + 1e-9) {
+        return NextResponse.json({ error: `Only ${num(share.numberOfShares) - gone} preferred shares fit this retirement (holds ${num(share.numberOfShares)}, otherwise retired/sold ${gone}).` }, { status: 400 })
+      }
+      holderName = share.shareholder.name
+    }
+
+    await prisma.$transaction(async (tx) => {
+      // Remember which bank lines were matched to the old entry before it goes.
+      const matched = bb.journalEntryId
+        ? await tx.bankTransaction.findMany({ where: { journalEntryId: bb.journalEntryId }, select: { id: true, matchId: true } })
+        : []
+      await tx.shareBuyback.update({ where: { id }, data: {
+        date, shares, price, bankAccountId, treasuryAccountId,
+        ...(Array.isArray(b.proofUrls) ? { proofUrls: b.proofUrls } : {}),
+      } })
+      if (bb.journalEntryId) await tx.journalEntry.deleteMany({ where: { id: bb.journalEntryId } })
+      const jeId = await postEquityBuyback(tx, { refId: id, date, amount: shares * price, bankAccountId, treasuryAccountId, investor: holderName, createdById: session.user!.id as string })
+      await tx.shareBuyback.update({ where: { id }, data: { journalEntryId: jeId } })
+      if (jeId) for (const m of matched) {
+        await tx.bankTransaction.update({ where: { id: m.id }, data: { journalEntryId: jeId, ...(m.matchId === bb.journalEntryId ? { matchId: jeId } : {}) } })
+      }
+    })
+    return NextResponse.json({ success: true })
+  } catch (e) {
+    console.error('Buyback edit error:', e)
+    return NextResponse.json({ error: e instanceof Error ? e.message : 'Failed' }, { status: 500 })
+  }
+}
+
 export async function DELETE(req: Request) {
   const session = await auth()
   if (!session?.user || !ADMIN.includes(session.user.role as string)) return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })

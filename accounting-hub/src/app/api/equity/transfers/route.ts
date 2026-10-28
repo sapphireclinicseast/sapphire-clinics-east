@@ -200,6 +200,115 @@ export async function POST(req: Request) {
   }
 }
 
+// PATCH { id, date?, shares?, price?, proofUrls? } — edit a recorded sale in
+// place. The buyer cannot change (undo and re-record for that). Changing the
+// share count also resizes the buyer's holding, so it is refused once the
+// buyer has sold on or bought back out of that holding. The memo JE is
+// re-posted at the new date/amount, and the stock certificate follows the same
+// full-sale rule as recording/undoing.
+export async function PATCH(req: Request) {
+  const session = await auth()
+  if (!session?.user || !ADMIN.includes(session.user.role as string)) return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
+  try {
+    const b = await req.json()
+    const id = String(b.id || '')
+    if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
+    const t = await prisma.shareTransfer.findUnique({
+      where: { id },
+      include: {
+        toShareholder: { select: { name: true } },
+        toCommonShare: { include: { buybacks: { select: { id: true } }, transfersOut: { select: { id: true } } } },
+        toPreferredShare: { include: { buybacks: { select: { id: true } }, transfersOut: { select: { id: true } } } },
+      },
+    })
+    if (!t) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    const shares = b.shares !== undefined ? num(b.shares) : num(t.shares)
+    const price = b.price !== undefined ? num(b.price) : num(t.price)
+    if (!(shares > 0)) return NextResponse.json({ error: 'Shares sold must be greater than zero' }, { status: 400 })
+    if (!(price > 0)) return NextResponse.json({ error: 'Sale price per share is required' }, { status: 400 })
+    const date = b.date ? new Date(b.date) : t.date
+    const sharesChanged = Math.abs(shares - num(t.shares)) > 1e-9
+    const buyerMovedOn = Boolean(
+      (t.toCommonShare && (t.toCommonShare.buybacks.length > 0 || t.toCommonShare.transfersOut.length > 0)) ||
+      (t.toPreferredShare && (t.toPreferredShare.buybacks.length > 0 || t.toPreferredShare.transfersOut.length > 0)))
+    if (sharesChanged && buyerMovedOn) {
+      return NextResponse.json({ error: 'The buyer has since sold on or bought back some of these shares — undo those records first before resizing this sale.' }, { status: 400 })
+    }
+
+    // Seller-side cap, excluding this very transfer; the full-sale cert rule is
+    // recomputed the same way recording computes it.
+    let fromInvestor = '', equityAccountId: string | null = null, bookPrice = 0
+    let sellerCert: string | null = null, isFullSale = false
+    if (t.fromCommonShareId) {
+      const share = await prisma.commonShare.findUnique({ where: { id: t.fromCommonShareId }, include: { shareholder: { select: { name: true } }, buybacks: { select: { shares: true } }, transfersOut: { select: { id: true, shares: true } } } })
+      if (!share) return NextResponse.json({ error: 'Shareholding not found' }, { status: 404 })
+      const gone = share.buybacks.reduce((s, x) => s + num(x.shares), 0) + share.transfersOut.filter(x => x.id !== id).reduce((s, x) => s + num(x.shares), 0)
+      const remaining = num(share.numberOfShares) - gone
+      if (shares > remaining + 1e-9) return NextResponse.json({ error: `Only ${remaining.toLocaleString('en-PH')} shares fit this sale (holds ${num(share.numberOfShares).toLocaleString('en-PH')}, otherwise bought back / sold ${gone.toLocaleString('en-PH')}).` }, { status: 400 })
+      fromInvestor = share.shareholder.name; equityAccountId = share.equityAccountId; bookPrice = num(share.pricePerShare)
+      sellerCert = share.stockCertNumber; isFullSale = shares >= remaining - 1e-9 && gone < 1e-9
+    } else if (t.fromPreferredShareId) {
+      const share = await prisma.preferredShare.findUnique({ where: { id: t.fromPreferredShareId }, include: { shareholder: { select: { name: true } }, buybacks: { select: { shares: true } }, transfersOut: { select: { id: true, shares: true } } } })
+      if (!share) return NextResponse.json({ error: 'Preferred shareholding not found' }, { status: 404 })
+      const gone = num(share.retiredShares) + share.buybacks.reduce((s, x) => s + num(x.shares), 0) + share.transfersOut.filter(x => x.id !== id).reduce((s, x) => s + num(x.shares), 0)
+      const remaining = num(share.numberOfShares) - gone
+      if (shares > remaining + 1e-9) return NextResponse.json({ error: `Only ${remaining.toLocaleString('en-PH')} preferred shares fit this sale (holds ${num(share.numberOfShares).toLocaleString('en-PH')}, otherwise retired / sold ${gone.toLocaleString('en-PH')}).` }, { status: 400 })
+      fromInvestor = share.shareholder.name; equityAccountId = share.equityAccountId; bookPrice = num(share.pricePerShare)
+      sellerCert = share.stockCertNumber; isFullSale = shares >= remaining - 1e-9 && gone < 1e-9
+    }
+
+    await prisma.$transaction(async (tx) => {
+      const matched = t.journalEntryId
+        ? await tx.bankTransaction.findMany({ where: { journalEntryId: t.journalEntryId }, select: { id: true, matchId: true } })
+        : []
+      await tx.shareTransfer.update({ where: { id }, data: {
+        date, shares, price, ...(Array.isArray(b.proofUrls) ? { proofUrls: b.proofUrls } : {}),
+      } })
+      // Keep the buyer's holding in step — it was created BY this sale.
+      if (t.toCommonShareId) {
+        await tx.commonShare.update({ where: { id: t.toCommonShareId }, data: {
+          numberOfShares: shares, dateAcquired: date,
+          ...(Array.isArray(b.proofUrls) ? { agreementUrls: b.proofUrls } : {}),
+        } })
+        // Cert follows the full-sale rule in both directions.
+        if (isFullSale && sellerCert && !t.toCommonShare?.stockCertNumber) {
+          await tx.commonShare.update({ where: { id: t.fromCommonShareId! }, data: { stockCertNumber: null } })
+          await tx.commonShare.update({ where: { id: t.toCommonShareId }, data: { stockCertNumber: sellerCert } })
+        } else if (!isFullSale && t.toCommonShare?.stockCertNumber && !sellerCert) {
+          await tx.commonShare.update({ where: { id: t.toCommonShareId }, data: { stockCertNumber: null } })
+          await tx.commonShare.update({ where: { id: t.fromCommonShareId! }, data: { stockCertNumber: t.toCommonShare.stockCertNumber } })
+        }
+      }
+      if (t.toPreferredShareId) {
+        await tx.preferredShare.update({ where: { id: t.toPreferredShareId }, data: {
+          numberOfShares: shares, dateAcquired: date,
+          ...(Array.isArray(b.proofUrls) ? { agreementUrls: b.proofUrls } : {}),
+        } })
+        if (isFullSale && sellerCert && !t.toPreferredShare?.stockCertNumber) {
+          await tx.preferredShare.update({ where: { id: t.fromPreferredShareId! }, data: { stockCertNumber: null } })
+          await tx.preferredShare.update({ where: { id: t.toPreferredShareId }, data: { stockCertNumber: sellerCert } })
+        } else if (!isFullSale && t.toPreferredShare?.stockCertNumber && !sellerCert) {
+          await tx.preferredShare.update({ where: { id: t.toPreferredShareId }, data: { stockCertNumber: null } })
+          await tx.preferredShare.update({ where: { id: t.fromPreferredShareId! }, data: { stockCertNumber: t.toPreferredShare.stockCertNumber } })
+        }
+      }
+      await reverseEquityJournal(tx, 'EQUITY_TRANSFER', id)
+      const jeId = await postEquityTransfer(tx, {
+        refId: id, date, amount: shares * bookPrice, equityAccountId,
+        fromInvestor, toInvestor: t.toShareholder.name, createdById: session.user!.id as string,
+      })
+      await tx.shareTransfer.update({ where: { id }, data: { journalEntryId: jeId } })
+      if (jeId) for (const m of matched) {
+        await tx.bankTransaction.update({ where: { id: m.id }, data: { journalEntryId: jeId, ...(m.matchId === t.journalEntryId ? { matchId: jeId } : {}) } })
+      }
+    })
+    return NextResponse.json({ success: true })
+  } catch (e) {
+    console.error('Share transfer edit error:', e)
+    return NextResponse.json({ error: e instanceof Error ? e.message : 'Failed' }, { status: 500 })
+  }
+}
+
 export async function DELETE(req: Request) {
   const session = await auth()
   if (!session?.user || !ADMIN.includes(session.user.role as string)) return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })

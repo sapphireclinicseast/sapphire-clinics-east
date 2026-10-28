@@ -1000,12 +1000,16 @@ function BuybackManager({ share, banks, equityAccts, onChanged, kind = 'COMMON',
   const [proofUrls, setProofUrls] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
   const [adding, setAdding] = useState(false)
+  const [editing, setEditing] = useState<Buyback | null>(null)
+  const [ed, setEd] = useState({ date: '', shares: '', price: '', bankAccountId: '', treasuryAccountId: '' })
+  const [edProofs, setEdProofs] = useState<string[]>([])
   const n = (v: string) => Number(v) || 0
   const inp = 'w-full px-3 py-2 rounded-xl border text-sm outline-none'
   const lbl = 'block text-xs font-semibold mb-1'
   const boughtBackTotal = list.reduce((s, b) => s + b.shares, 0)
   const remaining = share.numberOfShares - extraGone - boughtBackTotal
   const set = (k: string, v: string) => setD(p => ({ ...p, [k]: v }))
+  const setE = (k: string, v: string) => setEd(p => ({ ...p, [k]: v }))
 
   const refresh = async () => {
     try { const r = await fetch(`/api/equity/buybacks?${idKey}=${share.id}`); if (r.ok) setList(await r.json()) } catch { /* keep */ }
@@ -1028,6 +1032,25 @@ function BuybackManager({ share, banks, equityAccts, onChanged, kind = 'COMMON',
     await fetch(`/api/equity/buybacks?id=${b.id}`, { method: 'DELETE' })
     await refresh()
   }
+  const startEdit = (b: Buyback) => {
+    setAdding(false); setEditing(b)
+    setEd({ date: String(b.date).slice(0, 10), shares: String(b.shares), price: String(b.price), bankAccountId: b.bankAccountId || '', treasuryAccountId: b.treasuryAccountId || '' })
+    setEdProofs(Array.isArray(b.proofUrls) ? b.proofUrls : [])
+  }
+  const saveEdit = async () => {
+    if (!editing) return
+    if (!(n(ed.shares) > 0)) { alert('Enter shares bought back.'); return }
+    if (!(n(ed.price) > 0)) { alert('Enter the buyback price.'); return }
+    // This row's own shares come back into the pool while it is being resized.
+    if (n(ed.shares) > remaining + editing.shares + 1e-9) { alert(`Only ${(remaining + editing.shares).toLocaleString('en-PH')} shares fit this buyback.`); return }
+    setBusy(true)
+    try {
+      const r = await fetch('/api/equity/buybacks', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editing.id, date: ed.date, shares: n(ed.shares), price: n(ed.price), bankAccountId: ed.bankAccountId || null, treasuryAccountId: ed.treasuryAccountId || null, proofUrls: edProofs }) })
+      if (!r.ok) { alert((await r.json()).error || 'Failed'); return }
+      setEditing(null)
+      await refresh()
+    } finally { setBusy(false) }
+  }
 
   return (
     <div>
@@ -1042,10 +1065,37 @@ function BuybackManager({ share, banks, equityAccts, onChanged, kind = 'COMMON',
                 <td className="px-2.5 py-1.5 font-mono">{peso(b.price)}</td>
                 <td className="px-2.5 py-1.5 font-mono font-semibold">{peso(b.amount)}</td>
                 <td className="px-2.5 py-1.5">{(Array.isArray(b.proofUrls) ? b.proofUrls : []).map((u: string, i: number) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 mr-1" style={{ color: 'var(--teal)' }}><Eye size={11} />{i + 1}</a>)}</td>
-                <td className="px-2.5 py-1.5 text-right"><button type="button" onClick={() => del(b)} className="p-1 rounded hover:bg-red-50"><Trash2 size={12} className="text-red-400" /></button></td>
+                <td className="px-2.5 py-1.5 text-right whitespace-nowrap">
+                  <button type="button" onClick={() => startEdit(b)} className="p-1 rounded hover:bg-teal-50" title="Edit this buyback"><Pencil size={12} style={{ color: 'var(--teal)' }} /></button>
+                  <button type="button" onClick={() => del(b)} className="p-1 rounded hover:bg-red-50"><Trash2 size={12} className="text-red-400" /></button></td>
               </tr>
             ))}
           </tbody></table>
+        </div>
+      )}
+      {editing && (
+        <div className="rounded-xl border p-3 mb-2" style={{ borderColor: 'var(--teal)', background: 'white' }}>
+          <p className="text-xs font-semibold mb-2" style={{ color: 'var(--teal)' }}>Editing the {String(editing.date).slice(0, 10)} {kind === 'PREFERRED' ? 'retirement' : 'buyback'} — saving re-posts its journal entry with the new details</p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Date</label><input type="date" value={ed.date} onChange={e => setE('date', e.target.value)} className={inp} style={{ borderColor: 'var(--light-gray)' }} /></div>
+            <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Shares bought back</label><input value={ed.shares} onChange={e => setE('shares', e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={{ borderColor: 'var(--light-gray)' }} /></div>
+            <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Price at buyback</label><input value={ed.price} onChange={e => setE('price', e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={{ borderColor: 'var(--light-gray)' }} /></div>
+            <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Bank account used to pay</label>
+              <select value={ed.bankAccountId} onChange={e => setE('bankAccountId', e.target.value)} className={inp} style={{ borderColor: 'var(--light-gray)' }}><option value="">— Select —</option>{banks.map(b => <option key={b.id} value={b.id}>{bankName(b)}</option>)}</select>
+            </div>
+            <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>{kind === 'PREFERRED' ? 'Equity / treasury account to debit' : 'Treasury account to debit'} <span className="font-normal text-gray-400">(CoA)</span></label>
+              <select value={ed.treasuryAccountId} onChange={e => setE('treasuryAccountId', e.target.value)} className={inp} style={{ borderColor: 'var(--light-gray)' }}><option value="">— Select equity account —</option>{equityAccts.map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountTitle}</option>)}</select>
+            </div>
+            <div className="col-span-2 sm:col-span-4"><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Proof of buyback <span className="font-normal text-gray-400">(add more, or ✕ to remove)</span></label>
+              <div className="flex flex-wrap items-center gap-2">{edProofs.map((u, i) => <span key={u} className="inline-flex items-center gap-1 text-xs"><a href={u} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a><button type="button" onClick={() => setEdProofs(p => p.filter(x => x !== u))} className="p-0.5 rounded hover:bg-red-50" title="Remove this proof"><X size={11} className="text-red-400" /></button></span>)}
+                <ScanUpload compact section="equity" prefix={`${share.stockCertNumber || share.name}-BUYBACK`} existingCount={edProofs.length} label="Add" onUploaded={u => setEdProofs(p => [...p, u])} /></div>
+            </div>
+          </div>
+          {n(ed.shares) > 0 && n(ed.price) > 0 && ed.treasuryAccountId && ed.bankAccountId && <p className="text-[11px] mt-2 font-mono" style={{ color: '#334155' }}>DR {equityAccts.find(a => a.id === ed.treasuryAccountId)?.accountTitle} {peso(n(ed.shares) * n(ed.price))} / CR {banks.find(b => b.id === ed.bankAccountId)?.accountTitle} {peso(n(ed.shares) * n(ed.price))}</p>}
+          <div className="flex gap-2 mt-3">
+            <button type="button" onClick={saveEdit} disabled={busy} className="px-4 py-2 rounded-xl text-xs font-semibold text-white disabled:opacity-50 flex items-center gap-1.5" style={{ background: 'var(--teal)' }}>{busy && <Loader2 size={13} className="animate-spin" />} Save changes</button>
+            <button type="button" onClick={() => setEditing(null)} className="px-4 py-2 rounded-xl text-xs font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Cancel</button>
+          </div>
         </div>
       )}
       {adding ? (
@@ -1073,7 +1123,7 @@ function BuybackManager({ share, banks, equityAccts, onChanged, kind = 'COMMON',
         </div>
       ) : (
         remaining > 0
-          ? <button type="button" onClick={() => setAdding(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}><Plus size={13} /> {kind === 'PREFERRED' ? 'Add retirement / buyback' : 'Add buyback'}</button>
+          ? <button type="button" onClick={() => { setAdding(true); setEditing(null) }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}><Plus size={13} /> {kind === 'PREFERRED' ? 'Add retirement / buyback' : 'Add buyback'}</button>
           : <p className="text-[11px]" style={{ color: '#b91c1c' }}>{kind === 'PREFERRED' ? 'All shares have been retired or sold.' : 'All shares have been bought back.'}</p>
       )}
     </div>
@@ -1098,7 +1148,11 @@ function TransferManager({ share, shareholders, equityAccts, onChanged, kind = '
   const n = (v: string) => Number(v) || 0
   const inp = 'w-full px-3 py-2 rounded-xl border text-sm outline-none'
   const lbl = 'block text-xs font-semibold mb-1'
+  const [editing, setEditing] = useState<Transfer | null>(null)
+  const [ed, setEd] = useState({ date: '', shares: '', price: '' })
+  const [edProofs, setEdProofs] = useState<string[]>([])
   const set = (k: keyof typeof blank, v: string) => setD(p => ({ ...p, [k]: v }))
+  const setE = (k: string, v: string) => setEd(p => ({ ...p, [k]: v }))
 
   const buybackTotal = (share.buybacks || []).reduce((s, b) => s + b.shares, 0)
   const soldTotal = list.reduce((s, t) => s + t.shares, 0)
@@ -1141,6 +1195,25 @@ function TransferManager({ share, shareholders, equityAccts, onChanged, kind = '
     if (!r.ok) { alert((await r.json()).error || 'Failed'); return }
     await refresh()
   }
+  const startEdit = (t: Transfer) => {
+    setAdding(false); setEditing(t)
+    setEd({ date: String(t.date).slice(0, 10), shares: String(t.shares), price: String(t.price) })
+    setEdProofs(Array.isArray(t.proofUrls) ? t.proofUrls : [])
+  }
+  const saveEdit = async () => {
+    if (!editing) return
+    if (!(n(ed.shares) > 0)) { alert('Enter the number of shares sold.'); return }
+    if (!(n(ed.price) > 0)) { alert('Enter the price per share it was sold for.'); return }
+    // This sale's own shares come back into the pool while it is being resized.
+    if (n(ed.shares) > remaining + editing.shares + 1e-9) { alert(`Only ${(remaining + editing.shares).toLocaleString('en-PH')} shares fit this sale.`); return }
+    setBusy(true)
+    try {
+      const r = await fetch('/api/equity/transfers', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: editing.id, date: ed.date, shares: n(ed.shares), price: n(ed.price), proofUrls: edProofs }) })
+      if (!r.ok) { alert((await r.json()).error || 'Failed'); return }
+      setEditing(null)
+      await refresh()
+    } finally { setBusy(false) }
+  }
 
   return (
     <div>
@@ -1159,10 +1232,32 @@ function TransferManager({ share, shareholders, equityAccts, onChanged, kind = '
                 <td className="px-2.5 py-1.5 font-mono">{peso(t.price)}</td>
                 <td className="px-2.5 py-1.5 font-mono font-semibold">{peso(t.amount)}</td>
                 <td className="px-2.5 py-1.5">{(Array.isArray(t.proofUrls) ? t.proofUrls : []).map((u: string, i: number) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 mr-1" style={{ color: 'var(--teal)' }}><Eye size={11} />{i + 1}</a>)}</td>
-                <td className="px-2.5 py-1.5 text-right"><button type="button" onClick={() => del(t)} className="p-1 rounded hover:bg-red-50" title="Undo this sale"><Trash2 size={12} className="text-red-400" /></button></td>
+                <td className="px-2.5 py-1.5 text-right whitespace-nowrap">
+                  <button type="button" onClick={() => startEdit(t)} className="p-1 rounded hover:bg-teal-50" title="Edit this sale"><Pencil size={12} style={{ color: 'var(--teal)' }} /></button>
+                  <button type="button" onClick={() => del(t)} className="p-1 rounded hover:bg-red-50" title="Undo this sale"><Trash2 size={12} className="text-red-400" /></button></td>
               </tr>
             ))}
           </tbody></table>
+        </div>
+      )}
+      {editing && (
+        <div className="rounded-xl border p-3 mb-2" style={{ borderColor: 'var(--teal)', background: 'white' }}>
+          <p className="text-xs font-semibold mb-2" style={{ color: 'var(--teal)' }}>Editing the {String(editing.date).slice(0, 10)} sale to {editing.toName} — saving resizes the buyer&apos;s holding and re-posts the equity memo entry. To change the buyer, undo the sale and record it again.</p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Buyer</label><div className="px-3 py-2 rounded-xl text-sm" style={{ background: 'var(--off-white)', color: 'var(--charcoal)' }}>{editing.toShNumber} — {editing.toName}</div></div>
+            <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Date of sale</label><input type="date" value={ed.date} onChange={e => setE('date', e.target.value)} className={inp} style={{ borderColor: 'var(--light-gray)' }} /></div>
+            <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Shares sold</label><input value={ed.shares} onChange={e => setE('shares', e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={{ borderColor: 'var(--light-gray)' }} /></div>
+            <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Price/Share sold for</label><input value={ed.price} onChange={e => setE('price', e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={{ borderColor: 'var(--light-gray)' }} /></div>
+            <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Total sale price</label><div className="px-3 py-2 rounded-xl text-sm font-mono font-bold" style={{ background: 'var(--off-white)', color: 'var(--charcoal)' }}>{peso(n(ed.shares) * n(ed.price))}</div></div>
+            <div className="col-span-2 sm:col-span-4"><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Proof of sale <span className="font-normal text-gray-400">(add more, or ✕ to remove)</span></label>
+              <div className="flex flex-wrap items-center gap-2">{edProofs.map((u, i) => <span key={u} className="inline-flex items-center gap-1 text-xs"><a href={u} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a><button type="button" onClick={() => setEdProofs(p => p.filter(x => x !== u))} className="p-0.5 rounded hover:bg-red-50" title="Remove this proof"><X size={11} className="text-red-400" /></button></span>)}
+                <ScanUpload compact section="equity" prefix={`${share.stockCertNumber || share.name}-SOLD`} existingCount={edProofs.length} label="Add" onUploaded={u => setEdProofs(p => [...p, u])} /></div>
+            </div>
+          </div>
+          <div className="flex gap-2 mt-3">
+            <button type="button" onClick={saveEdit} disabled={busy} className="px-4 py-2 rounded-xl text-xs font-semibold text-white disabled:opacity-50 flex items-center gap-1.5" style={{ background: 'var(--teal)' }}>{busy && <Loader2 size={13} className="animate-spin" />} Save changes</button>
+            <button type="button" onClick={() => setEditing(null)} className="px-4 py-2 rounded-xl text-xs font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Cancel</button>
+          </div>
         </div>
       )}
       {adding ? (
@@ -1211,7 +1306,7 @@ function TransferManager({ share, shareholders, equityAccts, onChanged, kind = '
         </div>
       ) : (
         remaining > 0
-          ? <button type="button" onClick={() => setAdding(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}><Plus size={13} /> Record sale</button>
+          ? <button type="button" onClick={() => { setAdding(true); setEditing(null) }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}><Plus size={13} /> Record sale</button>
           : soldTotal === 0 ? <p className="text-[11px]" style={{ color: '#b91c1c' }}>No shares remain to sell.</p> : null
       )}
     </div>
