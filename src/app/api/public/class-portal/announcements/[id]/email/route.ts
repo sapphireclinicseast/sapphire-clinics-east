@@ -15,6 +15,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/class-portal-auth'
 import { sendTransactionalEmail } from '@/lib/transactional-email'
+import { sanitizeAnnouncementHtml, bodyLooksLikeHtml, plainTextToHtml } from '@/lib/announcement-sanitize'
 import { withCors, corsHeaders } from '../../../../_cors'
 
 // Throttle between each Resend call so we stay well below the API's
@@ -127,11 +128,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return withCors(NextResponse.json({ ok: true, sent: 0, failed: 0, errors: [], note: 'No recipients matched.' }), origin)
     }
 
-    // Build the HTML once and reuse for every send. The body is plain
-    // text so we wrap it in <p style=white-space:pre-wrap> to preserve
-    // line breaks.
+    // Build the HTML once and reuse for every send. Bodies composed via
+    // the rich-text editor arrive as sanitized HTML — we re-sanitize
+    // here as defense in depth before inlining into the email. Legacy
+    // plain-text bodies get converted via plainTextToHtml so they
+    // render identically through either path (paragraphs + line breaks
+    // preserved).
     const safeTitle = escapeHtml(announcement.title)
-    const safeBody  = escapeHtml(announcement.body)
+    const bodyRaw   = String(announcement.body ?? '')
+    const safeBody  = bodyLooksLikeHtml(bodyRaw)
+      ? sanitizeAnnouncementHtml(bodyRaw)
+      : plainTextToHtml(bodyRaw)
     const dateLabel = new Date(announcement.createdAt).toLocaleString('en-PH', {
       year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit',
     })
@@ -173,7 +180,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       '<h1 style="margin:0 0 8px;font-size:22px;line-height:1.25;color:#0f172a">' + safeTitle + '</h1>' +
       '<div style="color:#64748b;font-size:12px;margin-bottom:18px">' + authorLabel + ' · ' + escapeHtml(dateLabel) + '</div>' +
       posterImgTag +
-      '<p style="white-space:pre-wrap;font-size:14px;line-height:1.6;margin:0">' + safeBody + '</p>' +
+      '<div style="font-size:14px;line-height:1.6;color:#0f172a">' + safeBody + '</div>' +
       '<hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0">' +
       '<p style="color:#94a3b8;font-size:12px;margin:0">' +
       'You\'re receiving this because you have an active account on the Aura Academy for Learning Class Portal. ' +
