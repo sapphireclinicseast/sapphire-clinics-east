@@ -11,12 +11,13 @@ import {
   ChevronUp, ChevronDown, ArrowUpDown, Search, X, AlertCircle,
   RefreshCw, Loader2, ChevronRight, Download, Mail, Trash2,
   PlusCircle, CheckCircle2, ToggleLeft, ToggleRight, Receipt, Shield, ShieldOff, Upload,
-  Lock, LockOpen, ClipboardList, Eye, UserX,
+  Lock, LockOpen, ClipboardList, Eye, UserX, TrendingUp,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { useRfpOtherFees, RfpOtherFeesSection } from '@/components/RfpOtherFees'
 import EmployeePayroll from './EmployeePayroll'
 import MentorshipMeetingsTab from './MentorshipMeetingsTab'
+import PayrollHistoryTab from './PayrollHistoryTab'
 
 const toNum = (v: unknown) => Number(v) || 0
 
@@ -794,7 +795,7 @@ export default function PayrollPage() {
   const [cutoffHalf, setCutoffHalf] = useState(now.getDate() <= 15 ? 1 : 2)
   const cutoffPeriod = `${cutoffYear}-${String(cutoffMonth).padStart(2, '0')}-${cutoffHalf}`
 
-  const [mainTab, setMainTab] = useState<'consultants' | 'employees' | 'tax-payable' | 'salaries-payable' | 'benefits-payable' | 'payroll-settings'>('consultants')
+  const [mainTab, setMainTab] = useState<'consultants' | 'employees' | 'tax-payable' | 'salaries-payable' | 'benefits-payable' | 'payroll-settings' | 'payroll-history'>('consultants')
   const [subTab, setSubTab] = useState<'list' | 'unit-pay' | 'pay-rules' | 'adjustments' | 'initial-eval' | 'progress-report' | 'payslips' | 'benefits' | 'mentorship' | 'directory'>('list')
   // Consultant Benefits Setting (mirror Employees)
   const [conBenefitSelIds, setConBenefitSelIds] = useState<Set<string>>(new Set())
@@ -2691,7 +2692,16 @@ export default function PayrollPage() {
             </button>
           )
         })}
+        <button onClick={() => setMainTab('payroll-history')}
+          className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-colors"
+          style={mainTab === 'payroll-history' ? { background: 'var(--teal)', color: 'white' } : { background: 'var(--off-white)', color: 'var(--charcoal)' }}>
+          <TrendingUp size={16} /> Payroll History
+        </button>
       </div>
+
+      {mainTab === 'payroll-history' && (
+        <PayrollHistoryTab branch={branch} />
+      )}
 
       {mainTab === 'employees' && (
         <EmployeePayroll canWrite={!!canWrite} branch={branch} cutoffMonth={cutoffMonth} cutoffYear={cutoffYear} cutoffHalf={cutoffHalf} cutoffPeriod={cutoffPeriod} />
