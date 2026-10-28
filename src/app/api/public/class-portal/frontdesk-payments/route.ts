@@ -49,6 +49,7 @@ export async function POST(req: Request) {
       method?: string
       methodDetail?: string | null
       notes?: string
+      isPartialPayment?: boolean
     }
 
     // Validation — every required field present and reasonable.
@@ -119,6 +120,7 @@ export async function POST(req: Request) {
         method,
         methodDetail,
         notes: body.notes ?? null,
+        isPartialPayment: Boolean(body.isPartialPayment),
       },
       create: {
         classPortalPaymentId: body.classPortalPaymentId!,
@@ -133,6 +135,7 @@ export async function POST(req: Request) {
         method,
         methodDetail,
         notes: body.notes ?? null,
+        isPartialPayment: Boolean(body.isPartialPayment),
         status: 'PENDING',
       },
     })
@@ -152,6 +155,7 @@ export async function POST(req: Request) {
         method: row.method ?? null,
         methodDetail: row.methodDetail ?? null,
         status: row.status,
+        isPartialPayment: Boolean(row.isPartialPayment),
         createdAt: row.createdAt.toISOString(),
         convertedAt: row.convertedAt?.toISOString() ?? null,
       },
@@ -191,6 +195,7 @@ export async function GET(req: Request) {
       methodDetail: r.methodDetail ?? null,
       status: r.status,
       notes: r.notes ?? null,
+      isPartialPayment: Boolean(r.isPartialPayment),
       createdAt: r.createdAt.toISOString(),
       convertedAt: r.convertedAt?.toISOString() ?? null,
     }))
