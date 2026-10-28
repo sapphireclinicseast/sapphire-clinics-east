@@ -14,6 +14,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/class-portal-auth'
+import { sanitizeAnnouncementHtml, bodyLooksLikeHtml, htmlToPlainText } from '@/lib/announcement-sanitize'
 import { withCors, corsHeaders } from '../../_cors'
 
 // 20 MB cap. Images stay well under this; the bump is for parent-
@@ -109,7 +110,16 @@ export async function POST(req: NextRequest) {
     }
     const form = await req.formData()
     const title = String(form.get('title') ?? '').trim()
-    const body  = String(form.get('body')  ?? '').trim()
+    const rawBody = String(form.get('body')  ?? '').trim()
+    // Composer sends the rich-text editor's HTML as `body`. We sanitize
+    // on the server so a hand-crafted request can't bypass the client
+    // allowlist. Legacy plain-text payloads (no HTML tags) pass through
+    // unchanged — the client renderer detects that with bodyLooksLikeHtml
+    // and treats them as plain text with whitespace-pre-wrap.
+    const body = bodyLooksLikeHtml(rawBody) ? sanitizeAnnouncementHtml(rawBody) : rawBody
+    // Guard against a composer that submitted only tags with no visible
+    // text (e.g. an empty <p></p>) — strip + check length.
+    const visible = bodyLooksLikeHtml(body) ? htmlToPlainText(body).trim() : body.trim()
     const authorName = String(form.get('authorName') ?? auth.email).trim() || auth.email
     let levels: string[] = []
     try {
@@ -121,7 +131,7 @@ export async function POST(req: NextRequest) {
     } catch { /* tolerate */ }
     const includeTeachers = String(form.get('includeTeachers') ?? '').toLowerCase() === 'true'
     if (!title) return withCors(NextResponse.json({ error: 'Title is required.' }, { status: 400 }), origin)
-    if (!body)  return withCors(NextResponse.json({ error: 'Body is required.'  }, { status: 400 }), origin)
+    if (!body || !visible) return withCors(NextResponse.json({ error: 'Body is required.' }, { status: 400 }), origin)
 
     const poster = form.get('poster')
     let posterFileName: string | null = null

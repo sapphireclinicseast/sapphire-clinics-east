@@ -7,6 +7,8 @@ import {
   getUsers, inferPaymentPlanFor, remindersForStudentOn,
   type AnnouncementRecord, type EnrollmentLevel, type PaymentReminder, levelLabel,
 } from '@/lib/session'
+import RichTextEditor from '@/components/RichTextEditor'
+import { renderAnnouncementBodyHtml, bodyLooksLikeHtml } from '@/lib/announcement-html'
 
 const ALL_LEVELS: EnrollmentLevel[] = ['NURSERY', 'KINDER', 'GRADE_1', 'GRADE_2', 'GRADE_3', 'GRADE_4', 'GRADE_5', 'GRADE_6', 'GRADE_7', 'GRADE_8', 'GRADE_9', 'GRADE_10', 'GRADE_11', 'GRADE_12']
 
@@ -72,7 +74,15 @@ export default function NotificationPanel({ viewer }: Props) {
 
   async function handlePublish() {
     if (!title.trim()) { setPublishErr('Title is required.'); return }
-    if (!body.trim()) { setPublishErr('Body is required.'); return }
+    // body is HTML from the rich-text editor — an "empty" editor can
+    // still produce <p><br></p>, so check visible text content, not
+    // just string length.
+    const visibleBody = bodyLooksLikeHtml(body)
+      ? (typeof document !== 'undefined'
+          ? (() => { const d = document.createElement('div'); d.innerHTML = body; return (d.textContent || '').trim() })()
+          : body.replace(/<[^>]+>/g, '').trim())
+      : body.trim()
+    if (!visibleBody) { setPublishErr('Body is required.'); return }
     setPublishBusy(true); setPublishErr(null)
     try {
       const created = await createAnnouncement({
@@ -129,10 +139,16 @@ export default function NotificationPanel({ viewer }: Props) {
                 <input className="input" value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Mid-year IEP review schedule" disabled={publishBusy} />
               </label>
 
-              <label className="block">
+              <div className="block">
                 <span className="label">Details</span>
-                <textarea className="input" rows={5} value={body} onChange={e => setBody(e.target.value)} placeholder="What parents and teachers need to know…" disabled={publishBusy} />
-              </label>
+                <RichTextEditor
+                  value={body}
+                  onChange={setBody}
+                  placeholder="What parents and teachers need to know… use the toolbar for bold, italic, underline, lists, and links."
+                  disabled={publishBusy}
+                  minHeight={160}
+                />
+              </div>
 
               <div>
                 <span className="label">Poster image or PDF (optional)</span>
@@ -487,7 +503,21 @@ function AnnouncementModal({ announcement: a, viewer, onClose, onDelete, onSent 
             </div>
           )}
 
-          <p className="text-[14.5px] text-[color:var(--ink)] whitespace-pre-wrap leading-relaxed">{a.body}</p>
+          {/* Rich-text announcement body. Legacy plain-text bodies render
+              through plainTextToHtml so paragraphs + line breaks still
+              survive. Server also sanitizes before storage; this is
+              defense in depth. */}
+          <div
+            className="rt-body text-[14.5px] text-[color:var(--ink)] leading-relaxed"
+            dangerouslySetInnerHTML={{ __html: renderAnnouncementBodyHtml(a.body) }}
+          />
+          <style>{`
+            .rt-body p { margin: 0 0 0.6em; }
+            .rt-body p:last-child { margin-bottom: 0; }
+            .rt-body ul, .rt-body ol { margin: 0.4em 0 0.4em 1.4em; }
+            .rt-body li { margin: 0.15em 0; }
+            .rt-body a { color: var(--sage); text-decoration: underline; }
+          `}</style>
         </div>
 
         {(canSendEmail || canDelete) && (
