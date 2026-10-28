@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { enforceBranch } from '@/lib/branch-scope'
 import { parseMonitoringRemark } from '@/lib/si-monitoring'
+import { takenSiNumbers, isShadowedMonitoringFlag } from '@/lib/si-flag-guard'
 
 export async function GET(req: Request) {
   const session = await auth()
@@ -110,7 +111,11 @@ export async function GET(req: Request) {
     const flags = await prisma.salesInvoiceFlag.findMany({
       where: { status: 'REMARKS', ...(branch && branch !== 'ALL' ? { branch } : {}) },
     })
+    const taken = await takenSiNumbers(branch)
     const migratedRows = flags.flatMap(f => {
+      // Skip a migrated flag whose invoice the hub already counts as an order
+      // (retro-tagged after the import) — it would double-count the sale.
+      if (isShadowedMonitoringFlag(f, taken)) return []
       const info = parseMonitoringRemark(f.remarks)
       if (!info || info.amount == null || info.amount <= 0) return []
       // Workbook date first; a declared (SI-book) date set on the row in With SI

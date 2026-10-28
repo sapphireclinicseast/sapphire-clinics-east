@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { enforceBranch } from '@/lib/branch-scope'
 import { parseMonitoringRemark } from '@/lib/si-monitoring'
+import { takenSiNumbers, isShadowedMonitoringFlag } from '@/lib/si-flag-guard'
 
 const VALID_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE', 'AURA_INSTITUTE']
 const TARGET_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER'] // only these may set the target
@@ -66,9 +67,13 @@ export async function GET(req: Request) {
        excluded from every period sum (keeping month/quarter/annual mutually
        consistent) and reported separately for the UI to disclose. */
     const flags = await prisma.salesInvoiceFlag.findMany({ where: { status: 'REMARKS', branch } })
+    const taken = await takenSiNumbers(branch)
     const migrated = { count: 0, amount: 0 }
     const migratedUndated = { count: 0, amount: 0 }
     for (const f of flags) {
+      // Skip a migrated flag whose invoice the hub already counts as an order
+      // (retro-tagged after the import) — it would double-count the sale.
+      if (isShadowedMonitoringFlag(f, taken)) continue
       const info = parseMonitoringRemark(f.remarks)
       if (!info || info.amount == null || info.amount <= 0) continue
       const amt = info.netAmount ?? info.amount

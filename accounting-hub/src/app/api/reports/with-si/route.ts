@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { enforceBranch } from '@/lib/branch-scope'
+import { takenSiNumbers, isShadowedMonitoringFlag } from '@/lib/si-flag-guard'
 
 const VALID_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE', 'AURA_INSTITUTE']
 const siInt = (s: string | null) => { const d = String(s || '').replace(/\D/g, ''); return d ? parseInt(d, 10) : null }
@@ -131,7 +132,12 @@ export async function GET(req: Request) {
     }
 
     // All flag resolutions for the branch (Cancelled / Remarks / Tagged-to-order).
-    const allFlags = await prisma.salesInvoiceFlag.findMany({ where: { branch } })
+    // A migrated monitoring REMARKS flag whose SI number an order/AR already
+    // carries is a duplicate book row (the order is the system of record) —
+    // leave it out so the grid can't show, or total, the same invoice twice.
+    const taken = await takenSiNumbers(branch)
+    const allFlags = (await prisma.salesInvoiceFlag.findMany({ where: { branch } }))
+      .filter(f => f.status !== 'REMARKS' || !isShadowedMonitoringFlag(f, taken))
     const flagBy = new Map(allFlags.map(f => [f.siNumber, { status: f.status, remarks: f.remarks, orderId: f.orderId }]))
 
     return NextResponse.json({
