@@ -1464,6 +1464,14 @@ model ClassPortalFrontDeskPayment {
   /// in display logic).
   methodDetail         String?
   notes                String?
+  /// True when the staff recording the payment ticked "Partial payment"
+  /// in the modal — the row is a receipt for a cash receipt that does
+  /// NOT settle the period in full. The badge logic treats a partial-
+  /// flagged row as "doesn't flip the month to Paid alone" so a parent
+  /// paying ₱2,000 of ₱5,000 on the 5th still shows as Due; the final
+  /// payment that clears the balance is logged as a non-partial row
+  /// and flips the badge. Default false preserves legacy behaviour.
+  isPartialPayment     Boolean           @default(false)
   createdAt            DateTime          @default(now())
   convertedAt          DateTime?
 

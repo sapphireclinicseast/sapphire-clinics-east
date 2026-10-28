@@ -8,7 +8,8 @@ import {
   getGradeForStudent,
   getFile,
   syncLocalDocsToServer,
-  type StoredUser, type PaymentRecord, type GradeRecord,
+  fetchFeeSummary, balanceSummaryFor,
+  type StoredUser, type PaymentRecord, type GradeRecord, type FeeSummary,
   type EnrollmentLevel, type PaymentMethod,
   levelLabel,
 } from '@/lib/session'
@@ -83,6 +84,7 @@ function StudentView({ user }: { user: StoredUser }) {
   const [tab, setTab] = useState<StudentTab>('PROFILE')
   const [payments, setPayments] = useState<PaymentRecord[]>([])
   const [grade, setGrade] = useState<GradeRecord | null>(null)
+  const [feeSummary, setFeeSummary] = useState<FeeSummary | null>(null)
 
   useEffect(() => {
     setPayments(getPaymentsForStudent(user.id))
@@ -90,6 +92,11 @@ function StudentView({ user }: { user: StoredUser }) {
     // Reflect any cashier-converted tuition payments as PAID without
     // requiring the parent to refresh manually.
     hydrateFrontDeskPayments().then(() => setPayments(getPaymentsForStudent(user.id))).catch(() => { /* ignore */ })
+    // Pull the fee schedule so the Payment tab can show months owed +
+    // running balance amount. Null when the student has no payments
+    // yet (back-end precondition) — the Balance card falls back to a
+    // placeholder in that case.
+    fetchFeeSummary(user.id).then(setFeeSummary).catch(() => { /* ignore */ })
   }, [user.id])
 
   return (
@@ -104,7 +111,7 @@ function StudentView({ user }: { user: StoredUser }) {
       {tab === 'PROFILE' && <StudentDetail student={user} viewerRole="STUDENT" />}
 
       {tab === 'PAYMENT' && (
-        <PaymentTab payments={payments} />
+        <PaymentTab payments={payments} studentId={user.id} feeSummary={feeSummary} />
       )}
 
       {tab === 'GRADES' && (
@@ -216,9 +223,28 @@ function TabBar({ tabs, active, onChange }: { tabs: Array<{ value: string; label
  * feel like they've paid. When nothing is paid, surface a prominent
  * "you still need to pay tuition" card with a CTA into /pay.
  */
-function PaymentTab({ payments }: { payments: PaymentRecord[] }) {
+function PaymentTab({ payments, studentId, feeSummary }: {
+  payments: PaymentRecord[]
+  studentId: string
+  feeSummary: FeeSummary | null
+}) {
   const hasPaid = payments.some(p => p.status === 'PAID')
   const pending = payments.filter(p => p.status === 'PENDING')
+
+  // Balance card — renders when we have a fee summary (student needs
+  // at least one payment on file before the fee-summary endpoint will
+  // serve one). balanceSummaryFor combines unpaid-months detection with
+  // the per-month installment amount so parents see BOTH which months
+  // are owed AND the running peso total.
+  const balance = feeSummary
+    ? balanceSummaryFor(studentId, {
+        // For MONTHLY the per-installment amount is already the full
+        // combined (tuition + bundled misc) cost. We pass it as tuition
+        // and leave misc at 0 so balanceSummaryFor's math is correct.
+        monthlyTuitionCentavos: feeSummary.installmentCentavos,
+        monthlyMiscCentavos: 0,
+      })
+    : null
 
   if (!hasPaid) {
     return (
@@ -246,12 +272,97 @@ function PaymentTab({ payments }: { payments: PaymentRecord[] }) {
   }
 
   return (
-    <div className="card-static">
-      <h2 className="text-[18px] leading-tight mb-3">Payment history</h2>
-      <PaymentTable payments={payments} />
-      <div className="mt-4">
-        <a href="/pay" className="btn-secondary">Make another payment</a>
+    <div className="space-y-4">
+      {balance && (balance.unpaidMonths.length > 0 || balance.partialReceiptsForCurrentPeriodCentavos > 0) && (
+        <BalanceCard balance={balance} />
+      )}
+      <div className="card-static">
+        <h2 className="text-[18px] leading-tight mb-3">Payment history</h2>
+        <PaymentTable payments={payments} />
+        <div className="mt-4">
+          <a href="/pay" className="btn-secondary">Make another payment</a>
+        </div>
       </div>
+    </div>
+  )
+}
+
+/** Compact card showing the running balance: which months are still
+ *  owed and the matching peso total, plus any partial receipts banked
+ *  against the current period. Only rendered on MONTHLY plans today
+ *  (annual/bi-annual have simpler one-shot semantics). */
+function BalanceCard({ balance }: { balance: ReturnType<typeof balanceSummaryFor> }) {
+  const owes = balance.unpaidMonths.length > 0
+  return (
+    <div
+      className="card-static"
+      style={{
+        borderColor: owes ? '#fed7aa' : '#bbf7d0',
+        background: owes ? '#fff7ed' : '#f0fdf4',
+      }}
+    >
+      <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
+        <div>
+          <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] mb-1" style={{ color: owes ? 'var(--clay)' : '#166534' }}>
+            Running balance
+          </div>
+          <h2 className="text-[18px] leading-tight" style={{ color: 'var(--deep-teal)' }}>
+            {owes ? 'Tuition still owed' : 'All caught up'}
+          </h2>
+        </div>
+        <a href="/pay" className="btn-cta text-xs">Pay tuition fee →</a>
+      </div>
+      {owes ? (
+        <>
+          <p className="text-sm mb-3" style={{ color: 'var(--ink)' }}>
+            Months that still need to be settled:
+          </p>
+          <ul className="mb-3" style={{ paddingLeft: '1.25rem' }}>
+            {balance.unpaidMonthLabels.map(label => (
+              <li key={label} className="text-sm" style={{ color: 'var(--ink)' }}>{label}</li>
+            ))}
+          </ul>
+          <div className="rounded-md border p-3 flex items-center justify-between flex-wrap gap-2" style={{ borderColor: '#fed7aa', background: '#fff' }}>
+            <div>
+              <div className="text-[11px] uppercase tracking-wider text-[color:var(--mid-gray)]">Amount owed</div>
+              <div className="text-[20px] font-semibold" style={{ color: 'var(--clay)' }}>
+                {fmt(balance.totalOwedCentavos)}
+              </div>
+              <div className="text-[11px] text-[color:var(--mid-gray)]">
+                {balance.unpaidMonths.length} month{balance.unpaidMonths.length === 1 ? '' : 's'} ×{' '}
+                {fmt(balance.monthlyTuitionCentavos + balance.monthlyMiscCentavos)}
+              </div>
+            </div>
+            {balance.partialReceiptsForCurrentPeriodCentavos > 0 && (
+              <div className="text-right">
+                <div className="text-[11px] uppercase tracking-wider text-[color:var(--mid-gray)]">
+                  Partial receipts already banked
+                </div>
+                <div className="text-[15px] font-semibold" style={{ color: '#166534' }}>
+                  {fmt(balance.partialReceiptsForCurrentPeriodCentavos)}
+                </div>
+                <div className="text-[11px] text-[color:var(--mid-gray)]">
+                  Credit toward the next installment
+                </div>
+              </div>
+            )}
+          </div>
+        </>
+      ) : balance.partialReceiptsForCurrentPeriodCentavos > 0 ? (
+        <>
+          <p className="text-sm mb-2" style={{ color: 'var(--ink)' }}>
+            Your current period is covered. The front desk has also banked
+            partial receipts totaling{' '}
+            <strong style={{ color: '#166534' }}>{fmt(balance.partialReceiptsForCurrentPeriodCentavos)}</strong>{' '}
+            against the next installment.
+          </p>
+        </>
+      ) : (
+        <p className="text-sm" style={{ color: 'var(--ink)' }}>
+          No outstanding balance. Your tuition is settled through the current
+          period.
+        </p>
+      )}
     </div>
   )
 }

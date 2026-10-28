@@ -1025,6 +1025,13 @@ export interface PaymentRecord {
   proofFileType?: string
   paidAt?: string
   createdAt: string
+  /** True when the staff recording the payment ticked "Partial payment"
+   *  in the Record/Edit modal — this receipt doesn't settle the period
+   *  on its own. The badge logic skips partial rows when deciding
+   *  whether a month / half / year is Paid, so a parent paying ₱2,000
+   *  of ₱5,000 still shows as Due; the final payment that completes
+   *  the balance is logged as a non-partial row and flips the badge. */
+  isPartialPayment?: boolean
 }
 
 export function getPayments(): PaymentRecord[] {
@@ -1071,6 +1078,10 @@ export interface FrontDeskPaymentRow {
   status: 'PENDING' | 'CONVERTED' | 'VOIDED'
   /** Free-text remarks / accounting-hub reconciliation notes. */
   notes: string | null
+  /** True when staff flagged this payment as partial — the badge logic
+   *  then treats it as "doesn't settle the period" and the row shows
+   *  with a "Partial" chip in the Pending + Confirmed lists. */
+  isPartialPayment?: boolean
   createdAt: string
   convertedAt: string | null
 }
@@ -1195,6 +1206,10 @@ export async function recordPaymentOnBehalfOf(args: {
   reference?: string
   /** Optional extra context appended to the auto-generated notes. */
   extraNotes?: string
+  /** Staff ticked "Partial payment" — this receipt doesn't settle the
+   *  period on its own; the badge stays Due until a non-partial payment
+   *  for the same period closes the balance. */
+  isPartialPayment?: boolean
 }): Promise<RecordPaymentOutcome> {
   if (typeof window === 'undefined') return { ok: false, reason: 'network', message: 'Not in a browser context.' }
   const tok = getToken()
@@ -1228,6 +1243,7 @@ export async function recordPaymentOnBehalfOf(args: {
       detailLabel                          ? `Frontdesk payment (${detailLabel})` :
                                             'Frontdesk payment'
     let notes = `${methodLabel} · logged by front desk on behalf of student`
+    if (args.isPartialPayment) notes += ' · PARTIAL payment'
     if (args.reference?.trim()) notes += ` · ref ${args.reference.trim()}`
     if (args.extraNotes?.trim()) notes += ` · ${args.extraNotes.trim()}`
 
@@ -1250,6 +1266,7 @@ export async function recordPaymentOnBehalfOf(args: {
         method: args.method,
         methodDetail: args.method === 'FRONT_DESK_CASH' ? (args.methodDetail ?? 'CASH') : null,
         notes,
+        isPartialPayment: Boolean(args.isPartialPayment),
       }),
     })
     if (!res.ok) {
@@ -1487,6 +1504,8 @@ export interface FrontDeskPaymentPatch {
   createdAt?: string
   /** ISO 8601 string or null to clear. convertedAt = "Confirmed at". */
   convertedAt?: string | null
+  /** Toggle the partial-payment flag on the row. */
+  isPartialPayment?: boolean
 }
 
 export async function patchFrontDeskPayment(
@@ -1528,6 +1547,7 @@ export async function patchFrontDeskPayment(
           ...(patch.tuitionCentavos !== undefined ? { tuitionAmount: patch.tuitionCentavos } : {}),
           ...(patch.miscCentavos    !== undefined ? { miscAmount: patch.miscCentavos } : {}),
           ...(patch.method          !== undefined ? { method: patch.method ?? undefined } : {}),
+          ...(patch.isPartialPayment !== undefined ? { isPartialPayment: Boolean(patch.isPartialPayment) } : {}),
         }
         local[idx] = merged
         writePayments(local)
@@ -1663,6 +1683,7 @@ export async function hydrateFrontDeskPayments(): Promise<PaymentRecord[]> {
         period: string
         method: 'FRONT_DESK_CASH' | 'BANK_DEPOSIT' | 'PAYMONGO' | null
         status: 'PENDING' | 'CONVERTED' | 'VOIDED'
+        isPartialPayment?: boolean
         createdAt: string
         convertedAt: string | null
       }>
@@ -1684,13 +1705,15 @@ export async function hydrateFrontDeskPayments(): Promise<PaymentRecord[]> {
         const idx = next.findIndex(r => r.id === existing.id)
         const remotePlan = (remote.plan as PaymentPlan) ?? existing.plan
         const remoteMethod = remote.method ?? undefined
+        const remotePartial = Boolean(remote.isPartialPayment)
         const drifted =
           existing.status !== targetStatus ||
           existing.period !== remote.period ||
           existing.plan !== remotePlan ||
           existing.tuitionAmount !== remote.tuitionCentavos ||
           existing.miscAmount !== remote.miscCentavos ||
-          existing.method !== remoteMethod
+          existing.method !== remoteMethod ||
+          Boolean(existing.isPartialPayment) !== remotePartial
         if (drifted) {
           mutated = true
           const base: PaymentRecord = {
@@ -1700,6 +1723,7 @@ export async function hydrateFrontDeskPayments(): Promise<PaymentRecord[]> {
             tuitionAmount: remote.tuitionCentavos,
             miscAmount: remote.miscCentavos,
             method: remoteMethod,
+            isPartialPayment: remotePartial,
           }
           if (targetStatus === 'PAID') {
             next[idx] = { ...base, status: 'PAID', paidAt: remote.convertedAt ?? existing.paidAt ?? new Date().toISOString() }
@@ -1725,6 +1749,7 @@ export async function hydrateFrontDeskPayments(): Promise<PaymentRecord[]> {
         period: remote.period,
         status: targetStatus,
         method: remote.method ?? undefined,
+        isPartialPayment: Boolean(remote.isPartialPayment),
         paidAt: remote.status === 'CONVERTED' ? (remote.convertedAt ?? new Date().toISOString()) : undefined,
         createdAt: remote.createdAt,
       })
@@ -1777,8 +1802,10 @@ export function currentPeriodPaymentStatusFor(studentId: string): 'PAID' | 'DUE'
   const today = new Date()
 
   if (plan === 'ANNUAL') {
-    // Annual is one lump per SY. Any PAID row = current period covered.
-    return list.some(p => p.status === 'PAID') ? 'PAID' : 'DUE'
+    // Annual is one lump per SY. Any non-partial PAID row = current period
+    // covered. Partial-flagged rows (parent paying the annual in splits)
+    // keep the badge DUE until a non-partial payment closes the balance.
+    return list.some(p => p.status === 'PAID' && !p.isPartialPayment) ? 'PAID' : 'DUE'
   }
 
   if (plan === 'MONTHLY') {
@@ -1797,8 +1824,10 @@ export function currentPeriodPaymentStatusFor(studentId: string): 'PAID' | 'DUE'
 
     // Pass 1: literal period-string match. This is what /pay emits
     // ("First half SY 2026–2027") — cheapest and most direct.
+    // Partial-flagged rows don't count: a parent paying ₱20k of ₱45k
+    // bi-annual stays Due until the balance is cleared.
     const halfRegex = inSecondHalf ? /second[- ]?half/i : /first[- ]?half/i
-    if (list.some(p => p.status === 'PAID' && p.plan === 'BIANNUAL' && halfRegex.test(p.period))) {
+    if (list.some(p => p.status === 'PAID' && p.plan === 'BIANNUAL' && !p.isPartialPayment && halfRegex.test(p.period))) {
       return 'PAID'
     }
 
@@ -1824,7 +1853,7 @@ export function currentPeriodPaymentStatusFor(studentId: string): 'PAID' | 'DUE'
       end   = Date.UTC(y, 11, 4, 23, 59, 59)
     }
     const inWindow = list.some(p => {
-      if (p.status !== 'PAID' || p.plan !== 'BIANNUAL') return false
+      if (p.status !== 'PAID' || p.plan !== 'BIANNUAL' || p.isPartialPayment) return false
       const stamp = new Date(p.paidAt ?? p.createdAt).getTime()
       return Number.isFinite(stamp) && stamp >= start && stamp <= end
     })
@@ -1867,7 +1896,13 @@ export function biannualHalfFor(d: Date = new Date()): { half: 'FIRST' | 'SECOND
  * front-desk free-text records still count.
  */
 export function didPayForBiannualHalf(studentId: string, half: 'FIRST' | 'SECOND', syStartYear: number): boolean {
-  const list = getPaymentsForStudent(studentId).filter(p => p.status === 'PAID' && p.plan === 'BIANNUAL')
+  // Partial-flagged rows are receipts for an installment inside the half
+  // that does NOT settle the half on its own — ignore them for Paid-badge
+  // purposes. A later non-partial payment that closes the balance will
+  // flip the badge.
+  const list = getPaymentsForStudent(studentId).filter(p =>
+    p.status === 'PAID' && p.plan === 'BIANNUAL' && !p.isPartialPayment,
+  )
   if (list.length === 0) return false
   const halfRegex = half === 'FIRST' ? /first[- ]?half/i : /second[- ]?half/i
   // Literal match takes precedence — a "Second half SY 2026–2027" record
@@ -1902,7 +1937,13 @@ export function didPayForBiannualHalf(studentId: string, half: 'FIRST' | 'SECOND
  * row happened to be created.
  */
 export function didPayForMonth(studentId: string, year: number, monthIdx: number): boolean {
-  const list = getPaymentsForStudent(studentId).filter(p => p.status === 'PAID' && p.plan === 'MONTHLY')
+  // Partial-flagged rows (ticked "Partial payment" in the Record / Edit
+  // modal) are kept in the history for audit but ignored here — they do
+  // NOT settle the month on their own. Staff logs the final non-partial
+  // payment that completes the balance to flip the badge to Paid.
+  const list = getPaymentsForStudent(studentId).filter(p =>
+    p.status === 'PAID' && p.plan === 'MONTHLY' && !p.isPartialPayment,
+  )
   if (list.length === 0) return false
   const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December']
   const targetName = monthNames[monthIdx]
@@ -1915,6 +1956,104 @@ export function didPayForMonth(studentId: string, year: number, monthIdx: number
     if (p.period.includes(targetYear) && periodCoversMonth(p.period, targetName)) return true
     return false
   })
+}
+
+/** Shape of balanceSummaryFor's return value. Powers the balance card
+ *  on the student's own profile view. All amounts are PHP centavos
+ *  (divide by 100 for pesos). */
+export interface BalanceSummary {
+  plan: PaymentPlan | null
+  /** Months in the SY-to-date that have NOT been settled (i.e. no non-
+   *  partial PAID row covers them). Each entry is {year, monthIdx} with
+   *  monthIdx 0-based (so June = 5). Only populated for MONTHLY plans. */
+  unpaidMonths: Array<{ year: number; monthIdx: number }>
+  /** Human labels for the unpaid months, oldest first — e.g.
+   *  ["June 2026", "July 2026"]. Convenience for templates. */
+  unpaidMonthLabels: string[]
+  /** Monthly tuition + misc the plan expects, in centavos. 0 when the
+   *  fee schedule isn't loaded or the plan isn't monthly. */
+  monthlyTuitionCentavos: number
+  monthlyMiscCentavos: number
+  /** The expected amount owed for the unpaid months — unpaid count *
+   *  (tuition + misc). Zero when not applicable. */
+  totalOwedCentavos: number
+  /** Sum of CONVERTED partial-flagged payments for the CURRENT month
+   *  (monthly) / current half (biannual) / SY (annual). Shows how much
+   *  the parent has already paid against the next installment. */
+  partialReceiptsForCurrentPeriodCentavos: number
+  /** Running credit so staff can see what the parent has banked but
+   *  that hasn't flipped the current period badge. Same thing as
+   *  partialReceiptsForCurrentPeriodCentavos — exposed under a friendly
+   *  name for template bindings. */
+  partialCreditLabel: string
+}
+
+/**
+ * Student-facing balance summary. Combines unpaidBackMonthsFor (months
+ * that have no non-partial PAID row) with the fee-schedule's expected
+ * monthly tuition + misc so the student profile can render both the
+ * list of unpaid months AND the running amount owed.
+ *
+ * Pass the branch's fee schedule as a pair of centavos. When the fee
+ * schedule hasn't loaded yet the function returns a safe zero-valued
+ * summary — the UI should either wait or render a loading state.
+ */
+export function balanceSummaryFor(studentId: string, feeSchedule?: {
+  monthlyTuitionCentavos?: number
+  monthlyMiscCentavos?: number
+}): BalanceSummary {
+  const plan = inferPaymentPlanFor(studentId)
+  const monthlyTuitionCentavos = Math.max(0, Math.round(feeSchedule?.monthlyTuitionCentavos ?? 0))
+  const monthlyMiscCentavos    = Math.max(0, Math.round(feeSchedule?.monthlyMiscCentavos    ?? 0))
+
+  // Unpaid months — only meaningful on MONTHLY; keep the shape stable
+  // for the UI by returning empty arrays on other plans.
+  const unpaidMonths = plan === 'MONTHLY' ? unpaidBackMonthsFor(studentId) : []
+  const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December']
+  const unpaidMonthLabels = unpaidMonths.map(m => `${monthNames[m.monthIdx]} ${m.year}`)
+
+  const totalOwedCentavos = plan === 'MONTHLY'
+    ? unpaidMonths.length * (monthlyTuitionCentavos + monthlyMiscCentavos)
+    : 0
+
+  // Sum of partial-flagged PAID rows whose period covers THIS month
+  // (so the current-period card can show "₱2,000 of ₱5,000 banked for
+  // this month" when the parent is paying in installments). On
+  // non-monthly plans the window is the current half (biannual) or
+  // the SY (annual), which we approximate as "any partial PAID row of
+  // the same plan".
+  const now = new Date()
+  const partialRows = getPaymentsForStudent(studentId).filter(p =>
+    p.status === 'PAID' && p.isPartialPayment,
+  )
+  const partialReceiptsForCurrentPeriodCentavos = partialRows.reduce((sum, p) => {
+    if (plan === 'MONTHLY') {
+      const monthName = monthNames[now.getMonth()]
+      const inPeriod = p.period.toLowerCase().includes(monthName.toLowerCase()) &&
+                       p.period.includes(String(now.getFullYear()))
+      return inPeriod ? sum + p.tuitionAmount + p.miscAmount : sum
+    }
+    // Any partial row of the same plan — ok approximation for the
+    // badge logic to display total credit awaiting a non-partial
+    // closing payment.
+    return p.plan === plan ? sum + p.tuitionAmount + p.miscAmount : sum
+  }, 0)
+
+  const toPeso = (c: number) => `₱${(c / 100).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  const partialCreditLabel = partialReceiptsForCurrentPeriodCentavos > 0
+    ? `${toPeso(partialReceiptsForCurrentPeriodCentavos)} already banked (partial)`
+    : ''
+
+  return {
+    plan,
+    unpaidMonths,
+    unpaidMonthLabels,
+    monthlyTuitionCentavos,
+    monthlyMiscCentavos,
+    totalOwedCentavos,
+    partialReceiptsForCurrentPeriodCentavos,
+    partialCreditLabel,
+  }
 }
 
 /**

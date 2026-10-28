@@ -1191,6 +1191,15 @@ export default function HandbookPage() {
                 When staff records a payment as PayMongo via this modal, it&rsquo;s a bookkeeping entry for a receipt already collected. The row lands as PENDING and you must click <kbd>Confirm payment</kbd> for the student&rsquo;s badge to flip. Forgetting is the #1 cause of &ldquo;parent paid but portal says Due&rdquo; tickets.
               </div>
 
+              <h4>Full payment vs Partial payment</h4>
+              <p>The Record and Edit modals both include a radio toggle under <b>Payment amount</b>:</p>
+              <ul>
+                <li><strong>Full payment</strong> (default) — the receipt settles the period in full. The student&rsquo;s portal flips to <em>Paid</em> for the covered period as soon as you click <kbd>Confirm payment</kbd>.</li>
+                <li><strong>Partial payment</strong> — tick this when the parent is paying in installments within the same period (common on the Monthly plan when a parent splits ₱5,000 into two cash receipts). The row is still logged + confirmed, but the badge logic treats it as &ldquo;doesn&rsquo;t settle the period on its own&rdquo; so the student&rsquo;s portal keeps showing <em>Due</em> until a later <em>Full</em> payment is recorded against the same period.</li>
+              </ul>
+              <p>Partial-flagged rows show a small amber <strong>Partial</strong> chip beside the amount in both the Pending and Confirmed Payments tables so staff can see at a glance which payments haven&rsquo;t closed their period yet.</p>
+              <p>On the student&rsquo;s own portal (<em>/profile → Payment</em>), a <strong>Running balance</strong> card appears whenever months are owed or partial receipts are banked — it lists the unpaid months by name and totals the running balance in pesos, with any partial receipts shown as credit toward the next installment.</p>
+
               <h4>Edit payment modal</h4>
               <p>Header: <em>Edit payment · reconcile with accounting hub · &lt;student&gt;</em>. Sub-line shows email · branch · status · classPortalPaymentId. Fields: <em>Amount paid · Method · Frontdesk payment type · Plan · Period covered · Submitted at · Confirmed at · Remarks / accounting-hub reference</em>. Setting <kbd>Confirmed at</kbd> on a pending row auto-flips its status to CONVERTED.</p>
 

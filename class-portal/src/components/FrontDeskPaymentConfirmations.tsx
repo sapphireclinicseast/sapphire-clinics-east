@@ -277,7 +277,7 @@ export default function FrontDeskPaymentConfirmations({ canDelete = false }: Fdp
                       </select>
                     </td>
                     <td className="py-2.5 px-3 text-[12.5px]">{r.branch}</td>
-                    <td className="py-2.5 px-3 text-right tabular-nums">{fmt(r.tuitionCentavos + r.miscCentavos)}</td>
+                    <td className="py-2.5 px-3 text-right tabular-nums">{fmt(r.tuitionCentavos + r.miscCentavos)}{r.isPartialPayment && (<span className="ml-1 inline-block text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded" style={{ background: "#fef3c7", color: "#92400e" }} title="Partial payment — doesnt settle the period on its own">Partial</span>)}</td>
                     <td className="py-2.5 px-3 text-[12.5px]">{new Date(r.createdAt).toLocaleString()}</td>
                     <td className="py-2.5 px-3 text-right">
                       <div className="inline-flex gap-1.5 items-center justify-end">
@@ -395,7 +395,7 @@ export default function FrontDeskPaymentConfirmations({ canDelete = false }: Fdp
                       </select>
                     </td>
                     <td className="py-2.5 px-3 text-[12.5px]">{r.branch}</td>
-                    <td className="py-2.5 px-3 text-right tabular-nums">{fmt(r.tuitionCentavos + r.miscCentavos)}</td>
+                    <td className="py-2.5 px-3 text-right tabular-nums">{fmt(r.tuitionCentavos + r.miscCentavos)}{r.isPartialPayment && (<span className="ml-1 inline-block text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded" style={{ background: "#fef3c7", color: "#92400e" }} title="Partial payment — doesnt settle the period on its own">Partial</span>)}</td>
                     <td className="py-2.5 px-3 text-[12.5px]">{r.convertedAt ? new Date(r.convertedAt).toLocaleString() : '—'}</td>
                     <td className="py-2.5 px-3"><span className="badge badge-paid">Paid</span></td>
                     <td className="py-2.5 px-3 text-right">
@@ -478,6 +478,10 @@ function RecordPaymentModal({
   const [amount, setAmount] = useState('')
   const [period, setPeriod] = useState('')
   const [reference, setReference] = useState('')
+  // Full = default. Ticking "Partial payment" marks the row as not
+  // settling the period on its own, so the student's badge stays Due
+  // until a later non-partial payment closes the balance.
+  const [isPartial, setIsPartial] = useState(false)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
@@ -521,6 +525,7 @@ function RecordPaymentModal({
         miscCentavos: 0,
         period: period.trim(),
         reference: reference.trim() || undefined,
+        isPartialPayment: isPartial,
       })
       if (!result.ok) {
         // Surface the real reason so an expired token doesn't look like a
@@ -656,6 +661,43 @@ function RecordPaymentModal({
           />
         </label>
 
+        {/* Full / partial payment radio pair. Default = Full (unticked),
+            which preserves legacy behaviour. Ticking Partial flags the
+            row so the badge logic leaves the period marked Due until a
+            later non-partial payment closes the balance. */}
+        <div className="block mb-3">
+          <span className="label">Payment amount</span>
+          <div className="flex gap-4 flex-wrap text-sm" style={{ paddingTop: 2 }}>
+            <label className="inline-flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                name="rpm-partial"
+                checked={!isPartial}
+                onChange={() => setIsPartial(false)}
+                disabled={busy}
+              />
+              <span>Full payment</span>
+            </label>
+            <label className="inline-flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                name="rpm-partial"
+                checked={isPartial}
+                onChange={() => setIsPartial(true)}
+                disabled={busy}
+              />
+              <span>Partial payment</span>
+            </label>
+          </div>
+          {isPartial && (
+            <p className="text-xs mt-1" style={{ color: 'var(--clay)' }}>
+              Marked as partial — the student&rsquo;s portal keeps showing
+              <strong> Due</strong> for this period until a later <em>full</em> payment is
+              logged that completes the balance.
+            </p>
+          )}
+        </div>
+
         <div className="block mb-3">
           <span className="label">Period covered</span>
           <PeriodPicker plan={plan} value={period} onChange={setPeriod} disabled={busy} />
@@ -726,6 +768,7 @@ function EditPaymentModal({ row, onClose, onSaved }: {
   const [createdAt, setCreatedAt] = useState<string>(isoToLocalInput(row.createdAt))
   const [convertedAt, setConvertedAt] = useState<string>(isoToLocalInput(row.convertedAt))
   const [notes, setNotes] = useState<string>(row.notes ?? '')
+  const [isPartial, setIsPartial] = useState<boolean>(Boolean(row.isPartialPayment))
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
@@ -770,6 +813,7 @@ function EditPaymentModal({ row, onClose, onSaved }: {
     }
     const trimmedNotes = notes.trim()
     if (trimmedNotes !== (row.notes ?? '')) patch.notes = trimmedNotes || null
+    if (isPartial !== Boolean(row.isPartialPayment)) patch.isPartialPayment = isPartial
 
     if (Object.keys(patch).length === 0) {
       setErr('No changes to save.')
@@ -852,6 +896,40 @@ function EditPaymentModal({ row, onClose, onSaved }: {
             <span className="label">Period covered</span>
             <PeriodPicker plan={plan} value={period} onChange={setPeriod} disabled={busy} />
           </div>
+        </div>
+
+        {/* Full / partial payment toggle. Mirrors the Record modal. */}
+        <div className="block mb-3">
+          <span className="label">Payment amount</span>
+          <div className="flex gap-4 flex-wrap text-sm" style={{ paddingTop: 2 }}>
+            <label className="inline-flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                name="epm-partial"
+                checked={!isPartial}
+                onChange={() => setIsPartial(false)}
+                disabled={busy}
+              />
+              <span>Full payment</span>
+            </label>
+            <label className="inline-flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                name="epm-partial"
+                checked={isPartial}
+                onChange={() => setIsPartial(true)}
+                disabled={busy}
+              />
+              <span>Partial payment</span>
+            </label>
+          </div>
+          {isPartial && (
+            <p className="text-xs mt-1" style={{ color: 'var(--clay)' }}>
+              This row is flagged partial. The student&rsquo;s portal keeps showing
+              <strong> Due</strong> for the period until a later <em>full</em> payment is
+              recorded that closes the balance.
+            </p>
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-3 mb-3">

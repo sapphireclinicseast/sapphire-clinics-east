@@ -49,6 +49,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ cl
        *  convertedAt = "confirmed at" on Confirmed rows. */
       createdAt?: string
       convertedAt?: string | null
+      /** Toggle the partial-payment flag. Staff ticks this on a row when
+       *  the parent is paying in installments within the same period. */
+      isPartialPayment?: boolean
     }
 
     // Branch scoping for non-main-admin roles.
@@ -152,6 +155,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ cl
         data.convertedAt = d
       }
     }
+    if (body.isPartialPayment !== undefined) {
+      data.isPartialPayment = Boolean(body.isPartialPayment)
+    }
 
     if (Object.keys(data).length === 0) {
       return withCors(NextResponse.json({ error: 'No editable fields supplied.' }, { status: 400 }), origin)
@@ -174,6 +180,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ cl
         tuitionCentavos: updated.tuitionCentavos,
         miscCentavos: updated.miscCentavos,
         notes: updated.notes ?? null,
+        isPartialPayment: Boolean(updated.isPartialPayment),
         createdAt: updated.createdAt.toISOString(),
         convertedAt: updated.convertedAt?.toISOString() ?? null,
       },
