@@ -66,7 +66,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ branch:
     survey: { count: invitations.length, invitations, error: surveyError },
     complaintFormUrl: COMPLAINT_FORM_URL,
     rewardPointsUrl: REWARD_POINTS_URL,
-    patientRegisterUrl: PATIENT_REGISTER_URL,
+    // Carry the tablet's branch into the embedded registration form so its
+    // required Branch(es) field is pre-selected. Without it the form opens with
+    // nothing ticked and the patient hits "Please select at least one branch"
+    // on submit. The ops form accepts these slugs (east/greenhills) directly.
+    patientRegisterUrl: `${PATIENT_REGISTER_URL}?branch=${encodeURIComponent(branch.slug)}`,
     serverTime: new Date().toISOString(),
   })
 }
