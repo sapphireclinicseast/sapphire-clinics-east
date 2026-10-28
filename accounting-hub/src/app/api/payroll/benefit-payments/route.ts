@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { consultantContribAccounts } from '@/lib/payroll/consultant-contrib'
 
 // Ledger-facing branch codes: JournalEntry.branch must use the chart/report codes
 // (SANDBOX_EAST etc.) so branch-filtered financial statements include these entries.
@@ -164,6 +165,16 @@ export async function POST(req: Request) {
     const totalAmount = payables.reduce((s, p) => s + Number(p.totalBenefitsPayable), 0)
     const descriptions = payables.map(p => `${p.payrollType} ${p.cutoffPeriod} ${p.branch}`).join(', ')
 
+    // Consultant contributions sit in their own payable (4045 — self-employed
+    // contributions the company remits on the consultant's behalf), never in the
+    // employee 4040. Split the debit per payroll type.
+    const consultantAmount = payables.filter(p => p.payrollType === 'CONSULTANT').reduce((s, p) => s + Number(p.totalBenefitsPayable), 0)
+    const employeeAmount = totalAmount - consultantAmount
+    const consultantPayableId = consultantAmount > 0 ? (await consultantContribAccounts()).payableId : null
+    if (consultantAmount > 0 && !consultantPayableId) {
+      return NextResponse.json({ error: 'Account 4045 (Consultant Contributions Payable) not found in the chart of accounts' }, { status: 400 })
+    }
+
     const result = await prisma.$transaction(async (tx) => {
       const journalEntry = await tx.journalEntry.create({
         data: {
@@ -176,7 +187,8 @@ export async function POST(req: Request) {
           createdById: session.user.id as string,
           lines: {
             create: [
-              { accountId: mapping.benefitsPayableAccountId!, debit: totalAmount, credit: 0, description: 'SSS, PHIC, HDMF Payable' },
+              ...(employeeAmount > 0 ? [{ accountId: mapping.benefitsPayableAccountId!, debit: employeeAmount, credit: 0, description: 'SSS, PHIC, HDMF Payable' }] : []),
+              ...(consultantAmount > 0 ? [{ accountId: consultantPayableId!, debit: consultantAmount, credit: 0, description: 'Consultant Contributions Payable (Self-Employed)' }] : []),
               { accountId: fromAccountId, debit: 0, credit: totalAmount, description: 'Cash/Bank' },
             ],
           },

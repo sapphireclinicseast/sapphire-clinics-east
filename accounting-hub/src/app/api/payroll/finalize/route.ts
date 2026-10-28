@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { sweepNoSiEwtToOtherIncome } from '@/lib/accounting/ewt-income'
 import { lockAndNotifyMentorshipCharges } from '@/lib/mentorship'
+import { consultantContribAccounts } from '@/lib/payroll/consultant-contrib'
 
 const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 
@@ -95,6 +96,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Payroll COA mapping not configured. Go to Payroll Settings to set up account mappings.' }, { status: 400 })
     }
 
+    // Consultant self-employed contribution accounts (8195 expense / 4045 payable).
+    // Resolved by account number — these are fixed-purpose accounts, not part of
+    // the employee COA mapping, because consultant contributions must never mix
+    // with the company's employer-contribution chain.
+    const contrib = payrollType === 'CONSULTANT' ? await consultantContribAccounts() : { expenseId: null, payableId: null }
+
     // Check for existing finalization
     const existingPayable = await prisma.payrollPayableStatus.findUnique({
       where: { cutoffPeriod_branch_payrollType: { cutoffPeriod, branch, payrollType } },
@@ -138,8 +145,20 @@ export async function POST(req: Request) {
         const result = await prisma.$transaction(async (tx) => {
           await tx.payrollEntry.updateMany({ where: { cutoffPeriod, branch, status: 'FINAL' }, data: { status: 'LOCKED' } })
           const all = await tx.payrollEntry.findMany({ where: { cutoffPeriod, branch, status: 'LOCKED' } })
-          let totalGross = 0, totalTax = 0, totalNet = 0
-          for (const e of all) { totalGross += Number(e.grossPay); totalTax += Number(e.taxAmount); totalNet += Number(e.netPay) }
+          let totalGross = 0, totalTax = 0, totalNet = 0, totalEeContrib = 0, totalShouldered = 0
+          for (const e of all) {
+            totalGross += Number(e.grossPay); totalTax += Number(e.taxAmount); totalNet += Number(e.netPay)
+            totalEeContrib += Number(e.sssDeduction) + Number(e.philhealthDeduction) + Number(e.pagibigDeduction)
+            totalShouldered += Number(e.sssEmployerShare) + Number(e.philhealthEmployerShare) + Number(e.pagibigEmployerShare)
+          }
+          // net = gross − tax − EE contributions must hold or the JE cannot balance.
+          // Refuse loudly instead of posting an unbalanced entry (the 2026-10-28
+          // ₱1,250 bug: benefit deductions had no credit line).
+          const residual = Math.round((totalGross - totalTax - totalEeContrib - totalNet) * 100) / 100
+          if (residual !== 0) throw new Error(`Payslips carry ₱${residual} of deductions with no GL wiring — fix the payslips before locking.`)
+          if (totalEeContrib + totalShouldered > 0 && (!contrib.expenseId || !contrib.payableId)) {
+            throw new Error('Consultant contribution accounts 8195/4045 are missing from the chart of accounts.')
+          }
 
           const lines = await tx.journalEntryLine.findMany({ where: { journalEntryId } })
           const setLine = async (accountId: string | null, side: 'debit' | 'credit', amount: number, description: string) => {
@@ -151,11 +170,13 @@ export async function POST(req: Request) {
           await setLine(mapping.professionalFeesAccountId, 'debit', totalGross, 'Professional Fees (Consultants)')
           await setLine(mapping.salariesPayableAccountId, 'credit', totalNet, 'Salaries Payable — Consultants')
           await setLine(mapping.taxPayableAccountId, 'credit', totalTax, 'Withholding Tax Payable — Consultants')
+          await setLine(contrib.expenseId, 'debit', totalShouldered, 'Consultant Benefits — Self-Employed Contributions (company-shouldered, not employer contributions)')
+          await setLine(contrib.payableId, 'credit', totalEeContrib + totalShouldered, 'Consultant Contributions Payable (Self-Employed, withheld + shouldered)')
 
-          await tx.journalEntry.update({ where: { id: journalEntryId }, data: { totalAmount: totalGross } })
+          await tx.journalEntry.update({ where: { id: journalEntryId }, data: { totalAmount: totalGross + totalShouldered } })
           await tx.payrollPayableStatus.update({
             where: { id: existingPayable.id },
-            data: { totalSalariesPayable: totalNet, totalTaxPayable: totalTax },
+            data: { totalSalariesPayable: totalNet, totalTaxPayable: totalTax, totalBenefitsPayable: totalEeContrib + totalShouldered },
           })
           return { lockedCount: addEntries.length }
         })
@@ -273,23 +294,41 @@ export async function POST(req: Request) {
         })
 
         // Aggregate
-        let totalGross = 0, totalTax = 0, totalNet = 0
+        let totalGross = 0, totalTax = 0, totalNet = 0, totalEeContrib = 0, totalShouldered = 0
         for (const e of entries) {
           totalGross += Number(e.grossPay)
           totalTax += Number(e.taxAmount)
           totalNet += Number(e.netPay)
+          totalEeContrib += Number(e.sssDeduction) + Number(e.philhealthDeduction) + Number(e.pagibigDeduction)
+          totalShouldered += Number(e.sssEmployerShare) + Number(e.philhealthEmployerShare) + Number(e.pagibigEmployerShare)
+        }
+        // net = gross − tax − EE contributions must hold or the JE cannot balance.
+        // Refuse loudly instead of posting an unbalanced entry (the 2026-10-28
+        // ₱1,250 bug: benefit deductions had no credit line).
+        const residual = Math.round((totalGross - totalTax - totalEeContrib - totalNet) * 100) / 100
+        if (residual !== 0) throw new Error(`Payslips carry ₱${residual} of deductions with no GL wiring — fix the payslips before locking.`)
+        if (totalEeContrib + totalShouldered > 0 && (!contrib.expenseId || !contrib.payableId)) {
+          throw new Error('Consultant contribution accounts 8195/4045 are missing from the chart of accounts.')
         }
 
         // Create journal entry lines
         // Debit Professional Fees = grossPay
+        // Debit Consultant Benefits (8195) = shouldered self-employed contributions
         // Credit Salaries Payable = netPay
         // Credit Tax Payable = taxAmount (if any)
+        // Credit Consultant Contributions Payable (4045) = withheld + shouldered
         const lines: { accountId: string; debit: number; credit: number; description: string }[] = [
           { accountId: mapping.professionalFeesAccountId, debit: totalGross, credit: 0, description: 'Professional Fees (Consultants)' },
           { accountId: mapping.salariesPayableAccountId, debit: 0, credit: totalNet, description: 'Salaries Payable — Consultants' },
         ]
         if (totalTax > 0 && mapping.taxPayableAccountId) {
           lines.push({ accountId: mapping.taxPayableAccountId, debit: 0, credit: totalTax, description: 'Withholding Tax Payable — Consultants' })
+        }
+        if (totalShouldered > 0) {
+          lines.push({ accountId: contrib.expenseId!, debit: totalShouldered, credit: 0, description: 'Consultant Benefits — Self-Employed Contributions (company-shouldered, not employer contributions)' })
+        }
+        if (totalEeContrib + totalShouldered > 0) {
+          lines.push({ accountId: contrib.payableId!, debit: 0, credit: totalEeContrib + totalShouldered, description: 'Consultant Contributions Payable (Self-Employed, withheld + shouldered)' })
         }
 
         const journalEntry = await tx.journalEntry.create({
@@ -298,7 +337,7 @@ export async function POST(req: Request) {
             description: `Payroll — Consultants — ${cutoffPeriod} — ${branchDisplay(branch)}`,
             referenceType: 'PAYROLL_CONSULTANT',
             referenceId: `${cutoffPeriod}|${branch}`,
-            totalAmount: totalGross,
+            totalAmount: totalGross + totalShouldered,
             branch: ledgerBranch(branch),
             createdById: session.user.id as string,
             lines: { create: lines },
@@ -310,7 +349,7 @@ export async function POST(req: Request) {
           data: {
             cutoffPeriod, branch, payrollType: 'CONSULTANT',
             totalSalariesPayable: totalNet,
-            totalBenefitsPayable: 0,
+            totalBenefitsPayable: totalEeContrib + totalShouldered,
             totalTaxPayable: totalTax,
             journalEntryId: journalEntry.id,
           },
