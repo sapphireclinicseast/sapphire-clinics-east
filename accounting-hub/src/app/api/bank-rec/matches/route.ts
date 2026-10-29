@@ -151,6 +151,7 @@ async function interbankCandidates(txn: Txn) {
     // any at all) for the combined offer to be honest.
     const outNo = isSpent ? account?.accountNumber : acct.accountNumber
     const inNo = isSpent ? acct.accountNumber : account?.accountNumber
+    let settles = 0
     for (const r of rfps) {
       const paysFrom = !r.debitAccount || (!!outNo && r.debitAccount.startsWith(outNo))
       const landsIn = !r.depositAccount || (!!inNo && r.depositAccount.startsWith(inNo))
@@ -160,8 +161,12 @@ async function interbankCandidates(txn: Txn) {
         label: `${base} — settles ${r.refNumber}${r.payableTo ? ` · ${r.payableTo}` : ''}`,
         date, amount,
       })
+      settles++
     }
-    out.push({ type: 'INTERBANK', id: l.id, label: base, date, amount })
+    // The plain pairing is redundant once the same pair is offered WITH its RFP
+    // settlement — showing both just invites picking the one that leaves the
+    // report dangling. Offer it only when no report claims this pair.
+    if (!settles) out.push({ type: 'INTERBANK', id: l.id, label: base, date, amount })
   }
   return out
 }
