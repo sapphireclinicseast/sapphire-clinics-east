@@ -221,7 +221,7 @@ export async function POST(req: Request) {
     const { siNumber, status, remarks, orderId } = body
     // Branch-scoped users can only flag invoices in their own branch.
     const branch = enforceBranch((session.user as { branch?: string; branches?: string[] }).branch, (session.user as { branches?: string[] }).branches, body.branch) ?? body.branch
-    if (!VALID_BRANCHES.includes(branch) || !siNumber || !['CANCELLED', 'REMARKS', 'TAGGED'].includes(status)) {
+    if (!VALID_BRANCHES.includes(branch) || !siNumber || !['CANCELLED', 'REMARKS', 'TAGGED', 'INDEPENDENT'].includes(status)) {
       return NextResponse.json({ error: 'branch, siNumber and a valid status are required' }, { status: 400 })
     }
     // Tag-to-order: the missing SI number is actually an order that was never
@@ -283,7 +283,28 @@ export async function PATCH(req: Request) {
       await prisma.salesInvoiceFlag.update({ where: { id: flag.id }, data: { declaredDate: value } })
       return NextResponse.json({ success: true })
     }
-    return NextResponse.json({ error: 'kind must be AR or FLAG' }, { status: 400 })
+    // Fix a wrong Sales Invoice number on this branch's own order / AR collection
+    // (e.g. a cross-branch "Shared #" that was actually a mis-keyed number).
+    if (body.kind === 'RENUMBER') {
+      const src = body.src === 'AR' ? 'AR' : 'ORDER'
+      const id = String(body.id || '')
+      const newSi = String(body.newSiNumber || '').trim()
+      if (!id || !newSi) return NextResponse.json({ error: 'id and newSiNumber are required' }, { status: 400 })
+      const ub = (session.user as { branch?: string; branches?: string[] })
+      if (src === 'ORDER') {
+        const o = await prisma.order.findUnique({ where: { id }, select: { id: true, branch: true } })
+        if (!o) return NextResponse.json({ error: 'Order not found' }, { status: 404 })
+        if ((enforceBranch(ub.branch, ub.branches, o.branch) ?? o.branch) !== o.branch) return NextResponse.json({ error: 'Not your branch' }, { status: 403 })
+        await prisma.order.update({ where: { id }, data: { salesInvoiceNumber: newSi, issuedOfficialInvoice: true } })
+      } else {
+        const p = await prisma.aRPayment.findUnique({ where: { id }, select: { id: true, branch: true } })
+        if (!p) return NextResponse.json({ error: 'AR collection not found' }, { status: 404 })
+        if (p.branch && (enforceBranch(ub.branch, ub.branches, p.branch) ?? p.branch) !== p.branch) return NextResponse.json({ error: 'Not your branch' }, { status: 403 })
+        await prisma.aRPayment.update({ where: { id }, data: { salesInvoiceNumber: newSi } })
+      }
+      return NextResponse.json({ success: true })
+    }
+    return NextResponse.json({ error: 'kind must be AR, FLAG or RENUMBER' }, { status: 400 })
   } catch (err) {
     console.error('SI declared-date save error:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

@@ -802,6 +802,11 @@ function WithSiTab({ branch: initialBranch, scopeEnum, canViewAll }: { branch: s
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [filters, setFilters] = useState<Record<string, string>>({})
   const [flagQ, setFlagQ] = useState('')
+  // User-adjustable column widths for the Sales Invoices table (drag header edges), persisted per browser.
+  const [colWidths, setColWidths] = useState<Record<string, number> | null>(null)
+  useEffect(() => { try { setColWidths(JSON.parse(localStorage.getItem('withsi-col-widths') || 'null')) } catch { /* ignore */ } }, [])
+  const saveColWidths = (w: Record<string, number>) => { setColWidths(w); try { localStorage.setItem('withsi-col-widths', JSON.stringify(w)) } catch { /* ignore */ } }
+  const resetColWidths = () => { setColWidths(null); try { localStorage.removeItem('withsi-col-widths') } catch { /* ignore */ } }
   // "Generate Excel": the whole book or a date range by actual or declared date,
   // fetched fresh (not the on-screen range) so "All" really is everything.
   const [xlOpen, setXlOpen] = useState(false)
@@ -830,6 +835,17 @@ function WithSiTab({ branch: initialBranch, scopeEnum, canViewAll }: { branch: s
     await load()
   }
   const clearFlag = async (siNumber: string) => { await fetch(`/api/reports/with-si?branch=${branch}&siNumber=${siNumber}`, { method: 'DELETE' }); await load() }
+  // Shared (cross-branch) SI resolutions: mark it a legitimately-independent number
+  // for this branch, or fix a mis-keyed number on this branch's own order/AR.
+  const markIndependent = async (siNumber: string) => {
+    await fetch('/api/reports/with-si', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ branch, siNumber, status: 'INDEPENDENT' }) })
+    await load()
+  }
+  const renumber = async (src: 'ORDER' | 'AR', id: string, newSiNumber: string) => {
+    const r = await fetch('/api/reports/with-si', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'RENUMBER', src, id, newSiNumber }) })
+    if (!r.ok) { alert((await r.json().catch(() => ({}))).error || 'Failed to update the SI number'); return }
+    await load()
+  }
 
   const flagBySi = new Map((data?.flags || []).map(f => [f.siNumber, f]))
   const tagged = (si: string) => flagBySi.get(si)?.status === 'TAGGED'
@@ -897,7 +913,7 @@ function WithSiTab({ branch: initialBranch, scopeEnum, canViewAll }: { branch: s
   // SI numbers of THIS branch that also exist in another branch — used to
   // highlight those rows in the left "Sales Invoices" table (keyed by digits so
   // "0512" and "512" match). usedBy lets the row name the other branch.
-  const crossDupByDigits = new Map((data?.crossDuplicates || []).map(c => [siDigits(c.siNumber), c.usedBy]))
+  const crossDupByDigits = new Map((data?.crossDuplicates || []).map(c => [siDigits(c.siNumber), c]))
 
   const generateExcel = async () => {
     if (xlScope !== 'all' && !xlFrom && !xlTo) { alert('Pick a From and/or To date, or choose "Everything".'); return }
@@ -1036,11 +1052,14 @@ function WithSiTab({ branch: initialBranch, scopeEnum, canViewAll }: { branch: s
                     ⚠ {undated.length} undated · ₱{peso(undatedTotal)}{undatedOnly ? ' — showing only these' : ''}
                   </button>
                 )}
+                {colWidths && (
+                  <button onClick={resetColWidths} className="px-2.5 py-1 rounded-full text-[11px] font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }} title="Restore automatic column widths">Reset widths</button>
+                )}
                 <p className="text-sm font-bold" style={{ color: 'var(--deep-teal)' }}>₱{peso(leftTotal)}</p>
               </div>
             </div>
             <div className="overflow-auto" style={{ maxHeight: '68vh' }}>
-              <table className="w-full text-sm">
+              <table className="text-sm" style={colWidths ? { tableLayout: 'fixed', width: Object.values(colWidths).reduce((s, w) => s + w, 0) } : { width: '100%' }}>
                 <SortFilterHead
                   cols={LEFT_COLS}
                   sortKey={sortKey}
@@ -1048,18 +1067,25 @@ function WithSiTab({ branch: initialBranch, scopeEnum, canViewAll }: { branch: s
                   filters={filters}
                   onToggleSort={toggleSort}
                   onFilter={(k, v) => setFilters(f => ({ ...f, [k]: v }))}
+                  widths={colWidths}
+                  onWidthsChange={saveColWidths}
                 />
                 <tbody>
                   {displayLeft.map(it => {
                     const isResolved = it.kind !== 'si'
                     const b = isResolved ? badge(it.kind) : null
-                    // This SI number is also used in another branch — flag it.
+                    // This SI number is also used in another branch — flag it,
+                    // unless it's been confirmed independent per branch.
                     const shared = crossDupByDigits.get(siDigits(it.si))
+                    const indep = shared?.flag?.status === 'INDEPENDENT'
+                    const sharedUnresolved = !!shared && !indep
                     return (
-                      <tr key={`${it.kind}-${it.si}-${it.order?.id || ''}`} className="border-t" style={{ borderColor: 'var(--light-gray)', background: shared ? '#fef2f2' : isResolved ? resolvedBg : undefined }}>
-                        <td className="px-3 py-2 font-mono" style={{ color: shared ? '#b91c1c' : 'var(--charcoal)', fontWeight: shared ? 800 : 600 }}>
+                      <tr key={`${it.kind}-${it.si}-${it.order?.id || ''}`} className="border-t" style={{ borderColor: 'var(--light-gray)', background: sharedUnresolved ? '#fef2f2' : isResolved ? resolvedBg : undefined }}>
+                        <td className="px-3 py-2 font-mono" style={{ color: sharedUnresolved ? '#b91c1c' : 'var(--charcoal)', fontWeight: shared ? 800 : 600 }}>
                           {it.si}
-                          {shared && <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold align-middle" style={{ background: '#fee2e2', color: '#b91c1c' }}>also in {usedByLabel(shared)}</span>}
+                          {shared && (indep
+                            ? <><span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold align-middle" style={{ background: '#dcfce7', color: '#166534' }} title={`Confirmed independent of ${usedByLabel(shared.usedBy)}`}>independent · also in {usedByLabel(shared.usedBy)}</span>{!readOnly && <button onClick={() => clearFlag(shared.siNumber)} className="ml-1 underline text-[10px] align-middle" style={{ color: 'var(--mid-gray)' }}>undo</button>}</>
+                            : <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold align-middle" style={{ background: '#fee2e2', color: '#b91c1c' }}>also in {usedByLabel(shared.usedBy)}</span>)}
                         </td>
                         <td className="px-3 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>
                           {it.order?.date || it.mDate || (isUndatedMigrated(it)
@@ -1112,15 +1138,9 @@ function WithSiTab({ branch: initialBranch, scopeEnum, canViewAll }: { branch: s
               ) : (<>
                 {/* Cross-branch DUPLICATES — the same SI number in two branches. A real issue. */}
                 {crossDupsShown.map(c => (
-                  <div key={`xdup${c.siNumber}`} className="rounded-lg border p-2 text-xs" style={{ borderColor: '#fca5a5', background: '#fef2f2' }}>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-mono font-bold text-[13px]" style={{ color: '#b91c1c' }}>Shared #{c.siNumber}</span>
-                      <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#fee2e2', color: '#b91c1c' }}>also used by {usedByLabel(c.usedBy)}</span>
-                    </div>
-                    <p className="mt-1 text-[11px]" style={{ color: 'var(--mid-gray)' }}>
-                      This branch issued #{c.siNumber} too — same official number on two sales. In {usedByLabel(c.usedBy)}: {c.usedBy.map(u => `${u.customer} · ₱${peso(u.amount)}${u.date ? ` · ${u.date}` : ''}`).join('; ')}. Decide which branch owns it.
-                    </p>
-                  </div>
+                  <SharedSiCard key={`xdup${c.siNumber}`} c={c}
+                    localRow={data.rows.find(r => siDigits(r.siNumber) === siDigits(c.siNumber))}
+                    readOnly={readOnly} onIndependent={markIndependent} onRenumber={renumber} />
                 ))}
                 {/* Actionable flags — true missing numbers & within-branch duplicates. */}
                 {displayRight.map(it => (
@@ -1222,6 +1242,48 @@ function FlagRow({ branch, label, siNumber, onSave, onTag, readOnly }: { branch:
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+// A cross-branch "Shared #" duplicate: the same official SI in two branches.
+// Resolve it either by confirming it is a legitimate independent per-branch
+// number, or by fixing a mis-keyed number on THIS branch's own order / AR.
+function SharedSiCard({ c, localRow, readOnly, onIndependent, onRenumber }: {
+  c: CrossRow; localRow: SiRow | undefined; readOnly: boolean
+  onIndependent: (si: string) => void; onRenumber: (src: 'ORDER' | 'AR', id: string, newSi: string) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [val, setVal] = useState(localRow?.siNumber || c.siNumber)
+  const save = () => {
+    if (!localRow) { alert('No order/AR record for this SI in this branch to re-number.'); return }
+    const v = val.trim()
+    if (!v) { alert('Enter the corrected Sales Invoice number'); return }
+    onRenumber(localRow.src, localRow.id, v)
+  }
+  const localLabel = localRow ? `${typeof localRow.orderNumber === 'number' ? `order #${localRow.orderNumber}` : localRow.orderNumber} · ${localRow.patientName} · ₱${peso(localRow.amount)}` : null
+  return (
+    <div className="rounded-lg border p-2 text-xs" style={{ borderColor: '#fca5a5', background: '#fef2f2' }}>
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="font-mono font-bold text-[13px]" style={{ color: '#b91c1c' }}>Shared #{c.siNumber}</span>
+        <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#fee2e2', color: '#b91c1c' }}>also used by {usedByLabel(c.usedBy)}</span>
+      </div>
+      <p className="mt-1 text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+        This branch issued #{c.siNumber} too{localLabel ? ` (${localLabel})` : ''}. In {usedByLabel(c.usedBy)}: {c.usedBy.map(u => `${u.customer} · ₱${peso(u.amount)}${u.date ? ` · ${u.date}` : ''}`).join('; ')}.
+      </p>
+      {!readOnly && (editing ? (
+        <div className="mt-2 flex items-center gap-2 flex-wrap">
+          <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>New SI # for this branch&apos;s record:</span>
+          <input value={val} onChange={e => setVal(e.target.value)} className="px-2 py-1 rounded border text-xs font-mono w-28" style={{ borderColor: 'var(--teal)' }} />
+          <button onClick={save} className="px-2 py-1 rounded text-white font-semibold flex items-center gap-1" style={{ background: 'var(--teal)' }}><CheckCircle2 size={12} /> Save</button>
+          <button onClick={() => setEditing(false)} className="px-2 py-1 rounded border" style={{ borderColor: 'var(--light-gray)' }}>Cancel</button>
+        </div>
+      ) : (
+        <div className="mt-2 flex items-center gap-2 flex-wrap">
+          <button onClick={() => onIndependent(c.siNumber)} className="px-2 py-1 rounded text-[11px] font-semibold border" style={{ borderColor: '#86efac', background: '#dcfce7', color: '#166534' }}>✓ Correct — independent per branch</button>
+          {localRow && <button onClick={() => { setVal(localRow.siNumber); setEditing(true) }} className="px-2 py-1 rounded text-[11px] font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>Edit SI number…</button>}
+        </div>
+      ))}
     </div>
   )
 }
