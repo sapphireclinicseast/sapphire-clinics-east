@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { getAuth, clearAuth, type AuthSession } from '@/lib/session'
+import BellIcon from './BellIcon'
 
 // A single nav item — icon + label + href, optionally gated by role
 // or by main-admin-only visibility. The `mainAdminOnly` flag is a
@@ -12,7 +13,7 @@ import { getAuth, clearAuth, type AuthSession } from '@/lib/session'
 type NavItem = {
   href: string
   label: string
-  icon: 'home' | 'classes' | 'calendar' | 'pay' | 'handbook' | 'meetings'
+  icon: 'home' | 'classes' | 'calendar' | 'pay' | 'handbook' | 'meetings' | 'templates' | 'megaphone'
   roles?: Array<'ADMIN' | 'BRANCH_ADMIN' | 'FRONTDESK' | 'TEACHER' | 'STUDENT'>
   mainAdminOnly?: boolean
 }
@@ -74,6 +75,22 @@ function NavIcon({ name }: { name: NavItem['icon'] }) {
         <svg {...common}>
           <polygon points="23 7 16 12 23 17 23 7" />
           <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+        </svg>
+      )
+    case 'templates':
+      // Document grid — stacked lines like a template layout.
+      return (
+        <svg {...common}>
+          <rect x="4" y="3" width="16" height="18" rx="2" />
+          <path d="M8 7h8M8 11h8M8 15h5" />
+        </svg>
+      )
+    case 'megaphone':
+      // Megaphone — matches "post an announcement" semantics.
+      return (
+        <svg {...common}>
+          <path d="M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1z" />
+          <path d="M14 7a5 5 0 0 1 0 10" />
         </svg>
       )
   }
@@ -144,6 +161,11 @@ export default function AuthSidebar() {
     { href: '/calendar',       label: 'Calendar',     icon: 'calendar' },
     { href: '/meetings',       label: 'Meetings',     icon: 'meetings',  roles: ['ADMIN', 'BRANCH_ADMIN', 'TEACHER', 'STUDENT'] },
     { href: '/pay',            label: 'Pay tuition',  icon: 'pay',       roles: ['STUDENT'] },
+    // Templates + Notifications are admin-only tools (lesson/activity
+    // templates and the staff announcement composer). Hoisted out of
+    // the Admin Dashboard tabs so admins reach them in one click.
+    { href: '/admin/templates',     label: 'Templates',     icon: 'templates', roles: ['ADMIN', 'BRANCH_ADMIN'] },
+    { href: '/admin/notifications', label: 'Notifications', icon: 'megaphone', roles: ['ADMIN', 'BRANCH_ADMIN'] },
     { href: '/admin/handbook',               label: 'Class Portal Handbook', icon: 'handbook', mainAdminOnly: true },
     // Staff Portal Handbook (docs for staff.sapphireclinicseast.org) was
     // shown here but belongs on the staff portal itself, not the class
@@ -212,6 +234,14 @@ export default function AuthSidebar() {
             <span>{item.label}</span>
           </a>
         ))}
+
+        {/* Bell icon — unread count + dropdown panel. Shown to every
+            signed-in user. The hardcoded-password frontdesk account
+            has no userId; the API returns an empty inbox for it, so
+            the bell stays quiet rather than erroring. */}
+        <div className="pt-1">
+          <BellIcon />
+        </div>
       </nav>
 
       {/* User chip + sign out */}

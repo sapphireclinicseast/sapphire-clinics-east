@@ -6,6 +6,7 @@ import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/class-portal-auth'
 import { withCors, corsHeaders } from '../../../../_cors'
 import { canSeeClass, canEditClass } from '../../../lessons/_lib'
+import { createNotifications } from '@/lib/class-portal-notifications'
 
 export async function OPTIONS(req: Request) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(req.headers.get('origin')) })
@@ -95,6 +96,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         toDate: body.toDate ? new Date(body.toDate) : null,
       },
     })
+    try {
+      await createNotifications(klass.studentIds ?? [], {
+        kind: 'CLASS_ACTIVITY',
+        title: `New activity in ${klass.name}`,
+        body: body.name.trim(),
+        href: `/classes/${id}`,
+        payload: { classId: id, activityId: row.id },
+      })
+    } catch (nerr) {
+      console.error('[activities.POST] notify fan-out failed', nerr)
+    }
     return withCors(NextResponse.json({ activity: { ...serialize(row), photos: [] } }), origin)
   } catch (e) {
     if (e instanceof Response) {

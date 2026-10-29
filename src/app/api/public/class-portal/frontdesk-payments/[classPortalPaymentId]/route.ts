@@ -10,6 +10,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/class-portal-auth'
+import { createNotification } from '@/lib/class-portal-notifications'
 import { withCors, corsHeaders } from '../../../_cors'
 
 export async function OPTIONS(req: Request) {
@@ -163,11 +164,37 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ cl
       return withCors(NextResponse.json({ error: 'No editable fields supplied.' }, { status: 400 }), origin)
     }
 
+    // Pre-read the current row so we can tell whether this PATCH is the
+    // moment that flips PENDING → CONVERTED (we only want to notify the
+    // student once per confirmation, not on every subsequent amount edit).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const before = await (prisma.classPortalFrontDeskPayment as any).findUnique({
+      where: { classPortalPaymentId },
+      select: { status: true, studentId: true },
+    })
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const updated = await (prisma.classPortalFrontDeskPayment as any).update({
       where: { classPortalPaymentId },
       data,
     })
+
+    try {
+      const transitionedToConfirmed = before && before.status !== 'CONVERTED' && updated.status === 'CONVERTED'
+      if (transitionedToConfirmed && updated.studentId) {
+        const amount = `₱${((updated.tuitionCentavos + updated.miscCentavos) / 100).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+        await createNotification({
+          userId: updated.studentId,
+          kind: 'PAYMENT_RECEIVED',
+          title: `Payment confirmed · ${updated.period}`,
+          body: `${amount} received. Thank you!`,
+          href: `/profile`,
+          payload: { frontDeskPaymentId: updated.id, classPortalPaymentId: updated.classPortalPaymentId },
+        })
+      }
+    } catch (nerr) {
+      console.error('[public/frontdesk-payments PATCH] notify failed', nerr)
+    }
+
     return withCors(NextResponse.json({
       payment: {
         id: updated.id,

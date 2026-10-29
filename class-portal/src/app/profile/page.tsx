@@ -277,13 +277,120 @@ function PaymentTab({ payments, studentId, feeSummary }: {
         <BalanceCard balance={balance} />
       )}
       <div className="card-static">
-        <h2 className="text-[18px] leading-tight mb-3">Payment history</h2>
-        <PaymentTable payments={payments} />
+        <h2 className="text-[18px] leading-tight mb-1">Payment status by trimester</h2>
+        <p className="text-sm text-[color:var(--mid-gray)] mb-3">
+          Hover a <strong>Paid</strong> or <strong>Pending</strong> cell to see the payment details.
+        </p>
+        <PaymentTrimesterGrid payments={payments} />
+        <details className="mt-4">
+          <summary className="text-[12.5px] text-[color:var(--mid-gray)] cursor-pointer select-none">Show full payment history</summary>
+          <div className="mt-3">
+            <PaymentTable payments={payments} />
+          </div>
+        </details>
         <div className="mt-4">
           <a href="/pay" className="btn-secondary">Make another payment</a>
         </div>
       </div>
     </div>
+  )
+}
+
+/** Trimester grid — 11 school months × 3 semesters. Rows are months
+ *  (Jun → Apr), columns are semesters: S1 = Jun/Jul/Aug, S2 = Sep-Dec,
+ *  S3 = Jan-Apr. Each month belongs to exactly one semester so only one
+ *  cell per row is ever filled. The cell shows "Paid" / "Pending" from
+ *  the payment whose period includes that month name; hovering reveals
+ *  method, date, amount, and reference. Non-monthly plans still render
+ *  the grid best-effort (BIANNUAL / ANNUAL payment periods usually
+ *  mention a month range so the first matching month lights up). */
+function PaymentTrimesterGrid({ payments }: { payments: PaymentRecord[] }) {
+  const MONTHS = ['June', 'July', 'August', 'September', 'October', 'November', 'December', 'January', 'February', 'March', 'April']
+  const SEMESTERS: Array<{ key: 1 | 2 | 3; label: string; months: string[] }> = [
+    { key: 1, label: 'Semester 1', months: ['June', 'July', 'August'] },
+    { key: 2, label: 'Semester 2', months: ['September', 'October', 'November', 'December'] },
+    { key: 3, label: 'Semester 3', months: ['January', 'February', 'March', 'April'] },
+  ]
+  function semesterOf(month: string): 1 | 2 | 3 {
+    for (const s of SEMESTERS) if (s.months.includes(month)) return s.key
+    return 1
+  }
+
+  // For each school month, find payments whose period mentions it. We
+  // key by lowercased month name because periods vary ("August 2026",
+  // "Aug 2026", "Aug–Jan"). We accept any payment whose period substring
+  // includes the full month name — close enough for the trimester grid.
+  function paymentsForMonth(month: string): PaymentRecord[] {
+    const needle = month.toLowerCase()
+    return payments.filter(p => p.period.toLowerCase().includes(needle))
+  }
+
+  return (
+    <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--paper-3)' }}>
+      <table className="w-full text-sm border-collapse">
+        <thead style={{ background: 'var(--paper-2)' }}>
+          <tr className="text-left text-[11.5px] uppercase tracking-[0.08em] text-[color:var(--mid-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
+            <th className="py-2 px-3 border-b" style={{ borderColor: 'var(--paper-3)' }}>Month</th>
+            {SEMESTERS.map(s => (
+              <th key={s.key} className="py-2 px-3 border-b border-l text-center" style={{ borderColor: 'var(--paper-3)' }}>{s.label}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {MONTHS.map(month => {
+            const sem = semesterOf(month)
+            const matches = paymentsForMonth(month)
+            // Prefer PAID over PENDING when both exist in the same cell.
+            const chosen = matches.find(p => p.status === 'PAID') ?? matches[0] ?? null
+            return (
+              <tr key={month} className="border-b" style={{ borderColor: 'var(--paper-3)' }}>
+                <td className="py-2.5 px-3 text-[13px] font-medium text-[color:var(--narra)]">{month}</td>
+                {SEMESTERS.map(s => (
+                  <td
+                    key={s.key}
+                    className="py-2.5 px-3 border-l text-center text-[12.5px]"
+                    style={{ borderColor: 'var(--paper-3)' }}
+                  >
+                    {s.key === sem && chosen ? <PaymentCell payment={chosen} /> : null}
+                  </td>
+                ))}
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+/** One grid cell for a payment. Hovering shows method, date, amount,
+ *  and reference — rendered as a styled tooltip that unhides on group-
+ *  hover rather than relying on the browser's slow native title. */
+function PaymentCell({ payment }: { payment: PaymentRecord }) {
+  const paid = payment.status === 'PAID'
+  const dateIso = payment.paidAt ?? payment.createdAt
+  const dateLabel = new Date(dateIso).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
+  const total = payment.tuitionAmount + payment.miscAmount
+  const method = paymentMethodLabel(payment.method)
+  const reference = payment.paymongoCheckoutId
+    || payment.proofFileName
+    || payment.voucherCode
+    || '—'
+  return (
+    <span className="relative group inline-block">
+      <span className={`badge ${paid ? 'badge-paid' : 'badge-pending'}`}>{paid ? 'Paid' : 'Pending'}</span>
+      <span
+        className="absolute left-1/2 -translate-x-1/2 top-full mt-1 z-20 hidden group-hover:block text-left bg-white border rounded-lg shadow-xl px-3 py-2 w-[220px]"
+        style={{ borderColor: 'var(--paper-3)' }}
+        role="tooltip"
+      >
+        <div className="text-[10.5px] uppercase tracking-wider text-[color:var(--mid-gray)] mb-1">Payment details</div>
+        <div className="text-[12.5px] text-[color:var(--narra)]"><strong>Method:</strong> {method}</div>
+        <div className="text-[12.5px] text-[color:var(--narra)]"><strong>Date:</strong> {dateLabel}</div>
+        <div className="text-[12.5px] text-[color:var(--narra)]"><strong>Amount:</strong> {fmt(total)}</div>
+        <div className="text-[12.5px] text-[color:var(--narra)] truncate" title={reference}><strong>Ref:</strong> {reference}</div>
+      </span>
+    </span>
   )
 }
 

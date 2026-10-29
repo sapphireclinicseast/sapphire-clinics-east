@@ -30,15 +30,14 @@ const ALL_GRADE_LEVELS: EnrollmentLevel[] = [
 import { listStaff, type StaffMember } from '@/lib/api'
 import StudentListPanel from '@/components/StudentListPanel'
 import CurriculumPanel from '@/components/CurriculumPanel'
-import NotificationPanel from '@/components/NotificationPanel'
 import PaymentsGrouped from '@/components/PaymentsGrouped'
 import FrontDeskPaymentConfirmations from '@/components/FrontDeskPaymentConfirmations'
 import PromissoryNotesPanel from '@/components/PromissoryNotesPanel'
 import AssignmentsPanel from '@/components/AssignmentsPanel'
 import ClassesPanel from '@/components/ClassesPanel'
-import TemplatesPanel from '@/components/TemplatesPanel'
+import { getImpersonationMeta } from '@/lib/backend'
 
-type AdminTab = 'USERS' | 'STUDENTS' | 'CLASSES' | 'CURRICULUM' | 'TEMPLATES' | 'NOTIFICATIONS' | 'PAYMENTS' | 'FEES' | 'ASSIGNMENTS'
+type AdminTab = 'USERS' | 'STUDENTS' | 'CLASSES' | 'CURRICULUM' | 'PAYMENTS' | 'FEES' | 'ASSIGNMENTS'
 
 export default function AdminPage() {
   const router = useRouter()
@@ -51,6 +50,19 @@ export default function AdminPage() {
   useEffect(() => {
     const auth = getAuth()
     if (!auth || (auth.role !== 'ADMIN' && auth.role !== 'BRANCH_ADMIN')) { router.replace('/sign-in'); return }
+    // Impersonation redirect: an admin who clicked "View as" on a
+    // student or teacher gets an impersonation token for that user's
+    // role, but their main JWT (still ADMIN) kept this page reachable
+    // and the user list came back empty-scoped to the impersonated
+    // viewer — looked like a leak. While impersonation is active,
+    // kick to the impersonated user's actual home page so the view
+    // matches what they would see.
+    const imp = getImpersonationMeta()
+    if (imp) {
+      const home = imp.targetRole === 'STUDENT' || imp.targetRole === 'TEACHER' ? '/profile' : '/frontdesk'
+      router.replace(home)
+      return
+    }
     setAdminEmail(auth.email)
     setAdminRole(auth.role)
     setAdminBranch(auth.branch)
@@ -78,8 +90,6 @@ export default function AdminPage() {
           ['STUDENTS', 'Students'],
           ['CLASSES', 'Grade Levels'],
           ['CURRICULUM', 'Curriculum'],
-          ['TEMPLATES', 'Templates'],
-          ['NOTIFICATIONS', 'Notifications'],
           ['PAYMENTS', 'Payments'],
           ['FEES', 'Fees'],
           ['ASSIGNMENTS', 'Assignments'],
@@ -96,8 +106,6 @@ export default function AdminPage() {
       {tab === 'STUDENTS'      && <StudentListPanel viewer={{ role: 'ADMIN', email: adminEmail, name: isMainAdmin ? 'Main admin' : 'Branch admin' }} viewerBranch={isMainAdmin ? undefined : adminBranch} />}
       {tab === 'CLASSES'       && <ClassesPanel />}
       {tab === 'CURRICULUM'    && <CurriculumPanel viewer={{ role: 'ADMIN', email: adminEmail }} />}
-      {tab === 'TEMPLATES'     && <TemplatesPanel viewer={{ role: 'ADMIN', email: adminEmail }} />}
-      {tab === 'NOTIFICATIONS' && <NotificationPanel viewer={{ role: 'ADMIN', email: adminEmail, name: isMainAdmin ? 'Main admin' : 'Branch admin' }} />}
       {tab === 'PAYMENTS'      && (
         <div className="space-y-6">
           {/* canDelete restricted to the main admin (not branch admin)

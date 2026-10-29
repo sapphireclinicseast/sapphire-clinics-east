@@ -15,6 +15,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/class-portal-auth'
 import { sanitizeAnnouncementHtml, bodyLooksLikeHtml, htmlToPlainText } from '@/lib/announcement-sanitize'
+import { createNotifications } from '@/lib/class-portal-notifications'
 import { withCors, corsHeaders } from '../../_cors'
 
 // 20 MB cap. Images stay well under this; the bump is for parent-
@@ -175,6 +176,41 @@ export async function POST(req: NextRequest) {
         createdAt: true,
       },
     })
+
+    // Fan-out bell notifications to targeted students (level match or
+    // empty levels = everyone) and, when includeTeachers, every active
+    // teacher. Best-effort — a notification write failure never breaks
+    // the announcement create.
+    try {
+      const audienceLevels = Array.isArray(created.levels) ? (created.levels as string[]) : []
+      const studentWhere = audienceLevels.length === 0
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ? { role: 'STUDENT' as const, disabledAt: null }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        : { role: 'STUDENT' as const, disabledAt: null, level: { in: audienceLevels as any } }
+      const studentRows = await prisma.classPortalUser.findMany({
+        where: studentWhere,
+        select: { id: true },
+      })
+      const teacherRows = created.includeTeachers
+        ? await prisma.classPortalUser.findMany({
+            where: { role: 'TEACHER', disabledAt: null },
+            select: { id: true },
+          })
+        : []
+      const recipients = [...studentRows, ...teacherRows].map(r => r.id)
+      const previewRaw = bodyLooksLikeHtml(created.body) ? htmlToPlainText(created.body) : created.body
+      const preview = previewRaw.length > 180 ? previewRaw.slice(0, 177) + '…' : previewRaw
+      await createNotifications(recipients, {
+        kind: 'ANNOUNCEMENT',
+        title: created.title,
+        body: preview || 'New announcement from the school.',
+        href: `/announcements`,
+        payload: { announcementId: created.id },
+      })
+    } catch (notifErr) {
+      console.error('[announcements POST] notification fan-out failed', notifErr)
+    }
 
     return withCors(NextResponse.json({
       announcement: {
