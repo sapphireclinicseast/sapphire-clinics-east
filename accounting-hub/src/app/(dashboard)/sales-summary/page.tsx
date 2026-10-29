@@ -894,6 +894,10 @@ function WithSiTab({ branch: initialBranch, scopeEnum, canViewAll }: { branch: s
   const crossDupsShown = crossDups.filter(matchesFlagQ)
   const crossUsedShown = crossUsed.filter(matchesFlagQ)
   const hasAnyRight = rightItems.length > 0 || crossDups.length > 0 || crossUsed.length > 0
+  // SI numbers of THIS branch that also exist in another branch — used to
+  // highlight those rows in the left "Sales Invoices" table (keyed by digits so
+  // "0512" and "512" match). usedBy lets the row name the other branch.
+  const crossDupByDigits = new Map((data?.crossDuplicates || []).map(c => [siDigits(c.siNumber), c.usedBy]))
 
   const generateExcel = async () => {
     if (xlScope !== 'all' && !xlFrom && !xlTo) { alert('Pick a From and/or To date, or choose "Everything".'); return }
@@ -1049,9 +1053,14 @@ function WithSiTab({ branch: initialBranch, scopeEnum, canViewAll }: { branch: s
                   {displayLeft.map(it => {
                     const isResolved = it.kind !== 'si'
                     const b = isResolved ? badge(it.kind) : null
+                    // This SI number is also used in another branch — flag it.
+                    const shared = crossDupByDigits.get(siDigits(it.si))
                     return (
-                      <tr key={`${it.kind}-${it.si}-${it.order?.id || ''}`} className="border-t" style={{ borderColor: 'var(--light-gray)', background: isResolved ? resolvedBg : undefined }}>
-                        <td className="px-3 py-2 font-mono font-semibold" style={{ color: 'var(--charcoal)' }}>{it.si}</td>
+                      <tr key={`${it.kind}-${it.si}-${it.order?.id || ''}`} className="border-t" style={{ borderColor: 'var(--light-gray)', background: shared ? '#fef2f2' : isResolved ? resolvedBg : undefined }}>
+                        <td className="px-3 py-2 font-mono" style={{ color: shared ? '#b91c1c' : 'var(--charcoal)', fontWeight: shared ? 800 : 600 }}>
+                          {it.si}
+                          {shared && <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold align-middle" style={{ background: '#fee2e2', color: '#b91c1c' }}>also in {usedByLabel(shared)}</span>}
+                        </td>
                         <td className="px-3 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>
                           {it.order?.date || it.mDate || (isUndatedMigrated(it)
                             ? <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#fef3c7', color: '#92400e' }} title="No workbook date — set a Declared Date to file this SI into a month">No date</span>
@@ -1103,9 +1112,9 @@ function WithSiTab({ branch: initialBranch, scopeEnum, canViewAll }: { branch: s
               ) : (<>
                 {/* Cross-branch DUPLICATES — the same SI number in two branches. A real issue. */}
                 {crossDupsShown.map(c => (
-                  <div key={`xdup${c.siNumber}`} className="rounded-lg border bg-white p-2 text-xs" style={{ borderColor: '#fecaca' }}>
+                  <div key={`xdup${c.siNumber}`} className="rounded-lg border p-2 text-xs" style={{ borderColor: '#fca5a5', background: '#fef2f2' }}>
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-semibold" style={{ color: '#b91c1c' }}>Shared #{c.siNumber}</span>
+                      <span className="font-mono font-bold text-[13px]" style={{ color: '#b91c1c' }}>Shared #{c.siNumber}</span>
                       <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#fee2e2', color: '#b91c1c' }}>also used by {usedByLabel(c.usedBy)}</span>
                     </div>
                     <p className="mt-1 text-[11px]" style={{ color: 'var(--mid-gray)' }}>
@@ -1121,10 +1130,10 @@ function WithSiTab({ branch: initialBranch, scopeEnum, canViewAll }: { branch: s
                 ))}
                 {/* Used by another branch — the shared-booklet number was issued elsewhere, not missing. */}
                 {crossUsedShown.map(c => (
-                  <div key={`xused${c.siNumber}`} className="rounded-lg border p-2 text-xs" style={{ borderColor: 'var(--light-gray)', background: '#fff' }}>
+                  <div key={`xused${c.siNumber}`} className="rounded-lg border p-2 text-xs" style={{ borderColor: '#bfdbfe', background: '#eff6ff' }}>
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-mono font-semibold" style={{ color: 'var(--charcoal)' }}>#{c.siNumber}</span>
-                      <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#dcfce7', color: '#166534' }}>Used by {usedByLabel(c.usedBy)}</span>
+                      <span className="font-mono font-bold text-[13px]" style={{ color: '#1e40af' }}>#{c.siNumber}</span>
+                      <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#dbeafe', color: '#1e40af' }}>Used by {usedByLabel(c.usedBy)}</span>
                       <span style={{ color: 'var(--mid-gray)' }}>{c.usedBy.map(u => `${u.customer} · ₱${peso(u.amount)}${u.date ? ` · ${u.date}` : ''}`).join('; ')}</span>
                     </div>
                   </div>
