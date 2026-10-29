@@ -647,6 +647,18 @@ export default function AccountsReceivablePage() {
   // Clinician — inline editing state per order (blank POS entries, corrections)
   const [clinicianEditId, setClinicianEditId] = useState<string | null>(null)
   const [clinicianValue, setClinicianValue] = useState('')
+  // Staff roster for the clinician suggestions — fetched once; the order data
+  // alone only knows names already typed on past sessions.
+  const [clinicianRoster, setClinicianRoster] = useState<string[]>([])
+  useEffect(() => {
+    if (tab !== 'HMO' || clinicianRoster.length > 0) return
+    const ctl = new AbortController()
+    fetch('/api/accounts-receivable/clinician', { signal: ctl.signal })
+      .then(r => r.ok ? r.json() : { names: [] })
+      .then(d => setClinicianRoster(Array.isArray(d.names) ? d.names : []))
+      .catch(() => {})
+    return () => ctl.abort()
+  }, [tab, clinicianRoster.length])
   // Set when the edit is being cancelled (Escape / ✕) so the blur-save skips.
   const clinCancelRef = useRef(false)
   const [clinicianBusy, setClinicianBusy] = useState<string | null>(null)
@@ -2503,7 +2515,10 @@ export default function AccountsReceivablePage() {
         // "(Blank)"), so blank rows can be pulled up and fixed — the options
         // come from the rows BEFORE this filter, or picking one name would
         // erase all the others from the list.
-        const clinicianOptions = Array.from(new Set(perHmoOrders.map(o => (o.clinicianName || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b))
+        const clinicianOptions = Array.from(new Set([
+          ...clinicianRoster,
+          ...perHmoOrders.map(o => (o.clinicianName || '').trim()),
+        ].filter(Boolean))).sort((a, b) => a.localeCompare(b))
         if (perHmoColSearch.clinician) {
           const v = perHmoColSearch.clinician
           perHmoOrders = perHmoOrders.filter(o => v === '__blank__' ? !(o.clinicianName || '').trim() : (o.clinicianName || '').trim() === v)

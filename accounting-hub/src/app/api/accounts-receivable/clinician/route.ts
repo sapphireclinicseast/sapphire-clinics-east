@@ -8,6 +8,24 @@ import { prisma } from '@/lib/prisma'
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'HMO_OFFICER', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
 
 /**
+ * GET /api/accounts-receivable/clinician
+ * Active consultant names for the clinician suggestion dropdown — the staff
+ * roster, not just names already typed on past orders.
+ */
+export async function GET() {
+  const session = await auth()
+  if (!session?.user || !WRITE_ROLES.includes(session.user.role as string)) {
+    return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
+  }
+  const consultants = await prisma.consultant.findMany({
+    where: { isActive: true },
+    select: { name: true },
+    orderBy: { name: 'asc' },
+  })
+  return NextResponse.json({ names: consultants.map(c => c.name) })
+}
+
+/**
  * PATCH /api/accounts-receivable/clinician
  * Body: { orderId: string, clinicianName: string | null }
  * Sets or clears the clinician on an AR order (blank POS entries, corrections).
