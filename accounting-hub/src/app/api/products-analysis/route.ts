@@ -277,8 +277,21 @@ export async function GET(req: Request) {
     }
 
     // ── Marketing ROI: gross product revenue ÷ Marketing & Advertising expense (8120) ──
-    // Marketing spend is read straight from the GL (account 8120) for the same
-    // branch + period as the sales above, so the ratio reconciles to the books.
+    // Marketing is a MONTHLY spend, so the denominator covers the whole calendar
+    // month(s) the filter touches, and it reads BOTH sources of 8120:
+    //  - journal lines (platform fees etc.), and
+    //  - petty-cash/RFP marketing rows, which post no journal lines of their own
+    //    (the IS synthesizes them) — including the CEO-fund ad payments, which are
+    //    attributed to a branch by their description (TikTok/Verdana → Verdana,
+    //    AHEA/East → East, AHGH/Greenhills → GH; unattributed CEO ads count only
+    //    under All branches). Pre-2026 petty-cash rows are skipped: the QB-era GL
+    //    already carries them as journal lines.
+    const lastDayOfMonth = (iso: string) => {
+      const [y, m] = iso.split('-').map(Number)
+      return `${iso.slice(0, 7)}-${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, '0')}`
+    }
+    const mFrom = dateFrom ? `${dateFrom.slice(0, 7)}-01` : ''
+    const mTo = dateTo ? lastDayOfMonth(dateTo) : ''
     const mktAcct = await prisma.account.findFirst({ where: { accountNumber: '8120', accountType: 'EXPENSE' }, select: { id: true } })
     let marketingExpense = 0
     if (mktAcct) {
@@ -287,14 +300,40 @@ export async function GET(req: Request) {
       if (branch && branch !== 'ALL') jeFilter.branch = branch
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const jeDate: any = {}
-      if (dateFrom) jeDate.gte = new Date(`${dateFrom}T00:00:00+08:00`)
-      if (dateTo) jeDate.lte = new Date(`${dateTo}T23:59:59.999+08:00`)
+      if (mFrom) jeDate.gte = new Date(`${mFrom}T00:00:00+08:00`)
+      if (mTo) jeDate.lte = new Date(`${mTo}T23:59:59.999+08:00`)
       if (Object.keys(jeDate).length) jeFilter.entryDate = jeDate
       const mktLines = await prisma.journalEntryLine.findMany({
         where: { accountId: mktAcct.id, ...(Object.keys(jeFilter).length ? { journalEntry: jeFilter } : {}) },
         select: { debit: true, credit: true },
       })
       marketingExpense = mktLines.reduce((a, l) => a + Number(l.debit) - Number(l.credit), 0)
+    }
+    {
+      const pceFrom = mFrom && mFrom > '2026-01-01' ? mFrom : '2026-01-01'
+      const pceRows = await prisma.pettyCashEntry.findMany({
+        where: {
+          accountTitle: { startsWith: '8120' },
+          skipReports: false,
+          NOT: { recordType: 'RECURRING' },
+          date: { gte: new Date(`${pceFrom}T00:00:00+08:00`), ...(mTo ? { lte: new Date(`${mTo}T23:59:59.999+08:00`) } : {}) },
+        },
+        select: { branch: true, description: true, grossAmount: true, vatable: true, pcfStatus: true, validity: true },
+      })
+      const attributedBranch = (b: string, descr: string | null) => {
+        if (b !== 'CEO') return b
+        const d = (descr || '').toLowerCase()
+        if (/tik ?tok|verdana/.test(d)) return 'VERDANA_STORE'
+        if (/ahea|east/.test(d)) return 'SANDBOX_EAST'
+        if (/ahgh|greenhills/.test(d)) return 'SANDBOX_GREENHILLS'
+        return 'CEO'
+      }
+      for (const e of pceRows) {
+        if (e.pcfStatus === 'Cancelled' || e.validity === 'Cancelled' || e.vatable === 'Cancelled') continue
+        if (branch && branch !== 'ALL' && attributedBranch(e.branch, e.description) !== branch) continue
+        const gross = Number(e.grossAmount)
+        marketingExpense += e.vatable === 'VAT' ? gross / 1.12 : gross
+      }
     }
     marketingExpense = round2(marketingExpense)
     const marketingRoi = marketingExpense > 0 ? round2(totalGross / marketingExpense) : null

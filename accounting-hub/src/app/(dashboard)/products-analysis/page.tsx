@@ -242,10 +242,10 @@ export default function ProductsAnalysisPage() {
               sub={data.summary.marketingRoi != null
                 ? `${formatCurrency(data.summary.totalGross)} gross ÷ ${formatCurrency(data.summary.marketingExpense)} marketing`
                 : 'No marketing expense (8120) booked for this period/branch'} />
-            <Kpi label="Marketing Expense" value={formatCurrency(data.summary.marketingExpense)} sub="Account 8120 · Marketing & Advertising" />
+            <Kpi label="Marketing Expense" value={formatCurrency(data.summary.marketingExpense)} sub="Account 8120 · GL + petty-cash/RFP ads, whole month(s)" />
             <Kpi label="Gross Revenue" value={formatCurrency(data.summary.totalGross)} sub="Gross product sales — the ROI numerator" />
           </div>
-          <p className="text-xs mb-6" style={{ color: 'var(--mid-gray)' }}>{dateFrom} to {dateTo}{branchLabel}. Marketing ROI = gross revenue ÷ Marketing &amp; Advertising expense (account 8120), same branch and period. Free samples are excluded from sold/average figures and shown separately below.</p>
+          <p className="text-xs mb-6" style={{ color: 'var(--mid-gray)' }}>{dateFrom} to {dateTo}{branchLabel}. Marketing ROI = gross revenue ÷ Marketing &amp; Advertising expense (account 8120: journal lines plus petty-cash/RFP ad spend, with CEO-fund ads attributed to their branch), summed over the whole calendar month(s) the filter touches. Free samples are excluded from sold/average figures and shown separately below.</p>
 
           {/* Refund rate */}
           <div className="rounded-2xl border p-4 mb-6" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
