@@ -26,8 +26,10 @@ export async function PUT(req: Request) {
   }
 
   const body = await req.json()
-  // Strip id and timestamps — these are not updatable
-  const { id: _id, createdAt: _ca, updatedAt: _ua, ...data } = body
+  // Strip id and timestamps — these are not updatable. The consultant timing is
+  // owned by /api/payroll/consultant-benefits/timing; a stale copy in the employee
+  // settings form must not overwrite it.
+  const { id: _id, createdAt: _ca, updatedAt: _ua, consultantBenefitDeductionTiming: _cbt, ...data } = body
 
   try {
     let settings = await prisma.employeeSettings.findFirst()

@@ -808,6 +808,8 @@ export default function PayrollPage() {
   const [conBulkBenefitType, setConBulkBenefitType] = useState('SSS')
   const [conBulkBenefitEE, setConBulkBenefitEE] = useState(0)
   const [conBulkBenefitER, setConBulkBenefitER] = useState(0)
+  const [conBenefitTiming, setConBenefitTiming] = useState('')
+  const [conBenefitTimingSaved, setConBenefitTimingSaved] = useState(false)
 
   /* ── IE / PR tracking ── */
   const [ieprDocs, setIeprDocs] = useState<IEPRDoc[]>([])
@@ -1118,7 +1120,31 @@ export default function PayrollPage() {
 
   useEffect(() => { if (subTab === 'directory') fetchDirectory() }, [subTab, fetchDirectory])
 
+  useEffect(() => {
+    if (subTab !== 'benefits') return
+    fetch('/api/payroll/consultant-benefits/timing')
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (d?.timing) setConBenefitTiming(d.timing) })
+      .catch(() => {})
+  }, [subTab])
+
   /* ── Consultant Benefits Setting ── */
+  const saveConBenefitTiming = async (timing: string) => {
+    const prev = conBenefitTiming
+    setConBenefitTiming(timing)
+    try {
+      const r = await fetch('/api/payroll/consultant-benefits/timing', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ timing }),
+      })
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Failed to save deduction timing')
+      setConBenefitTimingSaved(true)
+      setTimeout(() => setConBenefitTimingSaved(false), 3000)
+    } catch (e) {
+      setConBenefitTiming(prev)
+      setError(e instanceof Error ? e.message : 'Failed to save deduction timing')
+    }
+  }
   const toggleConBenefitSel = (id: string) => setConBenefitSelIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
   const saveConBenefit = async () => {
     if (!conBenefitCId) return
@@ -4145,7 +4171,7 @@ export default function PayrollPage() {
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <div>
                   <p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>Consultant Benefits (SSS, PhilHealth, Pag-IBIG)</p>
-                  <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Monthly contribution amounts. The consultant (EE) share is deducted from net pay each cutoff; the employer (ER) share is accrued. Both flow to Benefits Payable.</p>
+                  <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Monthly contribution amounts. The consultant (EE) share is deducted from net pay on the cutoff(s) chosen below; the employer (ER) share is accrued. Both flow to Benefits Payable.</p>
                 </div>
                 {canWrite && (
                   <div className="flex items-center gap-2">
@@ -4161,6 +4187,34 @@ export default function PayrollPage() {
                     </button>
                   </div>
                 )}
+              </div>
+
+              <div className="rounded-xl border p-4" style={{ borderColor: 'var(--light-gray)' }}>
+                <div className="flex items-center justify-between gap-2 mb-3">
+                  <h4 className="text-xs font-bold" style={{ color: 'var(--charcoal)' }}>EE Share Deduction Timing</h4>
+                  {conBenefitTimingSaved && (
+                    <span className="flex items-center gap-1 text-xs font-medium" style={{ color: '#16a34a' }}>
+                      <CheckCircle2 size={14} /> Saved
+                    </span>
+                  )}
+                </div>
+                <p className="text-[10px] mb-3" style={{ color: 'var(--mid-gray)' }}>When to deduct the consultant share of SSS, PhilHealth, and Pag-IBIG per month:</p>
+                <div className="flex flex-wrap gap-3 text-xs">
+                  {[
+                    { value: 'HALF_HALF', label: 'Half in 1st Cutoff + Half in 2nd Cutoff' },
+                    { value: 'FIRST_CUTOFF', label: 'Full deduction in 1st Cutoff only' },
+                    { value: 'SECOND_CUTOFF', label: 'Full deduction in 2nd Cutoff only' },
+                  ].map(opt => (
+                    <label key={opt.value} className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors ${canWrite ? 'cursor-pointer' : 'cursor-not-allowed'}`}
+                      style={{ borderColor: conBenefitTiming === opt.value ? 'var(--teal)' : 'var(--light-gray)', background: conBenefitTiming === opt.value ? 'var(--pale-teal)' : 'transparent' }}>
+                      <input type="radio" name="consultantBenefitDeductionTiming" value={opt.value}
+                        checked={conBenefitTiming === opt.value} disabled={!canWrite}
+                        onChange={() => saveConBenefitTiming(opt.value)} />
+                      <span style={{ color: 'var(--charcoal)' }}>{opt.label}</span>
+                    </label>
+                  ))}
+                </div>
+                <p className="text-[10px] mt-2" style={{ color: 'var(--mid-gray)' }}>Saves on click and applies the next time a cutoff is generated; payslips already generated keep their amounts until regenerated. Employees have their own setting in Employee Settings.</p>
               </div>
 
               <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--light-gray)' }}>

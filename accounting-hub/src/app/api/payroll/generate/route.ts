@@ -128,10 +128,10 @@ export async function GET(req: Request) {
       orderBy: { name: 'asc' },
     })
 
-    // Benefit deduction cadence — reuse the same setting employees use so both
-    // payrolls split monthly SSS/PHIC/HDMF across cutoffs identically.
+    // Benefit deduction cadence — consultants have their own setting (Consultants →
+    // Benefits Setting), independent of the employee one.
     const benefitSettings = await prisma.employeeSettings.findFirst()
-    const benefitTiming = (benefitSettings as unknown as Record<string, unknown>)?.benefitDeductionTiming as string || 'HALF_HALF'
+    const benefitTiming = benefitSettings?.consultantBenefitDeductionTiming || 'HALF_HALF'
     const cutoffHalf = cutoffPeriod.split('-')[2] // "1" or "2"
     const benefitMultiplier = benefitTiming === 'HALF_HALF' ? 0.5
       : benefitTiming === 'FIRST_CUTOFF' ? (cutoffHalf === '1' ? 1 : 0)
