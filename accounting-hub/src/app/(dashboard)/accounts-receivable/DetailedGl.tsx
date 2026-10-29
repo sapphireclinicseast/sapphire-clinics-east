@@ -450,6 +450,8 @@ export default function DetailedGl({
 }) {
   const [search, setSearch] = useState('')
   const [noSoaOnly, setNoSoaOnly] = useState(false)
+  // State tickboxes (Paid / SOA submitted / Needs a GL wallet) — multiple ticked = union
+  const [toneTicks, setToneTicks] = useState<Exclude<RowTone, null>[]>([])
   const [filters, setFilters] = useState<Partial<Record<ColKey, string>>>({})
   const [sortKey, setSortKey] = useState<ColKey>('name')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
@@ -489,7 +491,9 @@ export default function DetailedGl({
     setBranchTicked(next)
   }
 
-  const rows = useMemo(() => {
+  // Every filter except the state tickboxes — their counts must come from this
+  // base, or ticking one state would zero the other two counts.
+  const baseRows = useMemo(() => {
     const q = search.trim().toLowerCase()
     let out = allRows
     if (ticked.length !== branchOptions.length) out = out.filter(r => ticked.includes(r.branch || ''))
@@ -503,6 +507,12 @@ export default function DetailedGl({
       if (!needle) continue
       out = out.filter(r => cellText(r, k as ColKey).toLowerCase().includes(needle))
     }
+    return out
+  }, [allRows, search, filters, ticked, branchOptions, noSoaOnly])
+
+  const rows = useMemo(() => {
+    let out = baseRows
+    if (toneTicks.length) out = out.filter(r => { const t = rowTone(r); return t !== null && toneTicks.includes(t) })
     return [...out].sort((a, b) => {
       const av = sortValue(a, sortKey), bv = sortValue(b, sortKey)
       const cmp = typeof av === 'number' && typeof bv === 'number'
@@ -510,7 +520,7 @@ export default function DetailedGl({
         : String(av).localeCompare(String(bv))
       return sortDir === 'asc' ? cmp : -cmp
     })
-  }, [allRows, search, filters, sortKey, sortDir, ticked, branchOptions, noSoaOnly])
+  }, [baseRows, toneTicks, sortKey, sortDir])
 
   const toggleSort = (k: ColKey) => {
     if (sortKey === k) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'))
@@ -642,7 +652,14 @@ export default function DetailedGl({
   const needsWallet = rows.filter(r => r.caseId && !r.wallet).length
   // Counted over everything the other filters allow, so the number on the box is
   // what ticking it would actually show.
-  const noSoaCount = rows.filter(r => !soaSubmitted(r)).length
+  const noSoaCount = baseRows.filter(r => !soaSubmitted(r)).length
+  const toneCounts = useMemo(() => {
+    const c = { paid: 0, soa: 0, nowallet: 0 }
+    for (const r of baseRows) { const t = rowTone(r); if (t) c[t]++ }
+    return c
+  }, [baseRows])
+  const toggleTone = (t: Exclude<RowTone, null>) =>
+    setToneTicks(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t])
   const arDaysValues = rows.map(arRunningDays).filter((d): d is number => d != null)
   const avgArDays = arDaysValues.length
     ? arDaysValues.reduce((a, b) => a + b, 0) / arDaysValues.length
@@ -727,31 +744,29 @@ export default function DetailedGl({
           SOA not yet submitted
           <span className="tabular-nums" style={{ color: 'var(--mid-gray)' }}>({noSoaCount})</span>
         </label>
-        {/* Without a key the tints are just decoration — say what they mean. */}
-        <span className="flex items-center gap-3 text-[11px] px-2.5 py-1.5 rounded-lg border"
-          style={{ color: 'var(--charcoal)', background: 'white', borderColor: 'var(--light-gray)' }}>
-          <span className="font-semibold uppercase tracking-wide text-[10px]" style={{ color: 'var(--mid-gray)' }}>Row colors</span>
-          <span className="flex items-center gap-1.5">
-            <span className="inline-block w-3.5 h-3.5 rounded-sm border"
-              style={{ background: TONE_BG.paid, borderColor: '#86b78f' }} />
-            Paid
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="inline-block w-3.5 h-3.5 rounded-sm border"
-              style={{ background: TONE_BG.soa, borderColor: '#d4c34a' }} />
-            SOA submitted, awaiting payment
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="inline-block w-3.5 h-3.5 rounded-sm border"
-              style={{ background: TONE_BG.nowallet, borderColor: '#e08a8a' }} />
-            Needs a GL wallet in POS
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="inline-block w-3.5 h-3.5 rounded-sm border"
-              style={{ background: 'white', borderColor: 'var(--light-gray)' }} />
-            SOA not yet submitted
-          </span>
-        </span>
+        {/* The row tints double as filters: each state is a tickbox (multiple
+            ticked = union), so the legend is also the control. */}
+        <label className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium cursor-pointer select-none"
+          style={{ border: `1px solid ${toneTicks.includes('paid') ? '#15803d' : '#86b78f'}`,
+                   background: TONE_BG.paid, color: 'var(--charcoal)' }}>
+          <input type="checkbox" checked={toneTicks.includes('paid')} onChange={() => toggleTone('paid')} className="accent-current" />
+          Paid
+          <span className="tabular-nums" style={{ color: 'var(--mid-gray)' }}>({toneCounts.paid})</span>
+        </label>
+        <label className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium cursor-pointer select-none"
+          style={{ border: `1px solid ${toneTicks.includes('soa') ? '#a16207' : '#d4c34a'}`,
+                   background: TONE_BG.soa, color: 'var(--charcoal)' }}>
+          <input type="checkbox" checked={toneTicks.includes('soa')} onChange={() => toggleTone('soa')} className="accent-current" />
+          SOA submitted
+          <span className="tabular-nums" style={{ color: 'var(--mid-gray)' }}>({toneCounts.soa})</span>
+        </label>
+        <label className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium cursor-pointer select-none"
+          style={{ border: `1px solid ${toneTicks.includes('nowallet') ? '#dc2626' : '#e08a8a'}`,
+                   background: TONE_BG.nowallet, color: 'var(--charcoal)' }}>
+          <input type="checkbox" checked={toneTicks.includes('nowallet')} onChange={() => toggleTone('nowallet')} className="accent-current" />
+          Needs a GL wallet in POS
+          <span className="tabular-nums" style={{ color: 'var(--mid-gray)' }}>({toneCounts.nowallet})</span>
+        </label>
         {/* A count, not just a colour: these are the rows someone has to act on,
             and they are easy to miss scattered through a long sheet. */}
         {needsWallet > 0 && (
