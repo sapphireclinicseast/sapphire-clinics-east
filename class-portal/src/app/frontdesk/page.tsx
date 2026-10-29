@@ -9,6 +9,7 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { getAuth, type Branch } from '@/lib/session'
+import { getImpersonationMeta } from '@/lib/backend'
 import StudentListPanel from '@/components/StudentListPanel'
 import FrontDeskPaymentConfirmations from '@/components/FrontDeskPaymentConfirmations'
 import PaymentsGrouped from '@/components/PaymentsGrouped'
@@ -39,6 +40,13 @@ export default function FrontdeskPage() {
       // Bounce non-frontdesk users to their proper dashboard.
       router.replace(auth.role === 'ADMIN' ? '/admin' : '/profile')
       return
+    }
+    // Same impersonation redirect as /admin — see that page for the
+    // "View as" / Users-list-looks-empty rationale.
+    const imp = getImpersonationMeta()
+    if (imp) {
+      const home = imp.targetRole === 'STUDENT' || imp.targetRole === 'TEACHER' ? '/profile' : '/frontdesk'
+      if (home !== '/frontdesk') { router.replace(home); return }
     }
     setEmail(auth.email)
     setViewerBranch(auth.branch)

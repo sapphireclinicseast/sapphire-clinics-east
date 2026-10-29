@@ -4426,3 +4426,71 @@ export async function fetchPromissoryNoteBlob(id: string): Promise<Blob | null> 
     return null
   }
 }
+
+// ────────── Bell-icon notifications ──────────────────────────────
+// Thin fetchers over /api/public/class-portal/notifications. The
+// BellIcon component in the sidebar polls fetchNotifications() every
+// 60s while the tab is visible and locally advances the badge count
+// when the user marks a row read or clicks through.
+
+export type NotificationKind =
+  | 'ANNOUNCEMENT'
+  | 'PAYMENT_DUE'
+  | 'PAYMENT_RECEIVED'
+  | 'PROMISSORY_NOTE'
+  | 'CLASS_LESSON'
+  | 'CLASS_ACTIVITY'
+  | 'CLASS_ASSIGNMENT'
+  | 'CLASS_PROJECT'
+  | 'CLASS_PHOTO'
+  | 'PENDING_PAYMENT'
+
+export interface BellNotification {
+  id: string
+  kind: NotificationKind
+  title: string
+  body: string
+  href: string | null
+  readAt: string | null
+  createdAt: string
+}
+
+export async function fetchNotifications(opts?: { limit?: number; unreadOnly?: boolean }): Promise<{
+  notifications: BellNotification[]
+  unreadCount: number
+}> {
+  try {
+    const qs = new URLSearchParams()
+    if (opts?.limit) qs.set('limit', String(opts.limit))
+    if (opts?.unreadOnly) qs.set('unread', '1')
+    const path = qs.toString() ? `/api/public/class-portal/notifications?${qs}` : '/api/public/class-portal/notifications'
+    return await backendJson<{ notifications: BellNotification[]; unreadCount: number }>(path)
+  } catch {
+    return { notifications: [], unreadCount: 0 }
+  }
+}
+
+export async function markNotificationRead(id: string, read = true): Promise<BellNotification | null> {
+  try {
+    const { notification } = await backendJson<{ notification: BellNotification }>(
+      `/api/public/class-portal/notifications/${encodeURIComponent(id)}`,
+      { method: 'PATCH', body: JSON.stringify({ read }) },
+    )
+    return notification
+  } catch {
+    return null
+  }
+}
+
+export async function markAllNotificationsRead(): Promise<number> {
+  try {
+    const { updated } = await backendJson<{ updated: number }>(
+      '/api/public/class-portal/notifications/mark-all-read',
+      { method: 'POST' },
+    )
+    return updated
+  } catch {
+    return 0
+  }
+}
+

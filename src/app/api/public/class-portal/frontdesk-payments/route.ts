@@ -14,6 +14,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/class-portal-auth'
+import { createNotifications, staffRecipientsForBranch } from '@/lib/class-portal-notifications'
 import { withCors, corsHeaders } from '../../_cors'
 
 const ALL_BRANCHES = ['EAST', 'GREENHILLS'] as const
@@ -139,6 +140,24 @@ export async function POST(req: Request) {
         status: 'PENDING',
       },
     })
+
+    // Fan-out PENDING_PAYMENT bell notification to the desk + admins.
+    // Only fires on initial create (status=PENDING) so a re-notify
+    // upsert doesn't spam again. Best-effort — swallowed on failure.
+    try {
+      if (row.status === 'PENDING') {
+        const recipients = await staffRecipientsForBranch(row.branch)
+        await createNotifications(recipients, {
+          kind: 'PENDING_PAYMENT',
+          title: `Pending payment: ${row.studentName}`,
+          body: `${row.period} · ₱${((row.tuitionCentavos + row.miscCentavos) / 100).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          href: `/admin?tab=PAYMENTS`,
+          payload: { frontDeskPaymentId: row.id, classPortalPaymentId: row.classPortalPaymentId },
+        })
+      }
+    } catch (nerr) {
+      console.error('[frontdesk-payments.POST] pending-notify failed', nerr)
+    }
 
     return withCors(NextResponse.json({
       payment: {

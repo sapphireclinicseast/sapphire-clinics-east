@@ -1234,12 +1234,58 @@ model ClassPortalUser {
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
 
+  notifications ClassPortalNotification[]
+
   @@unique([role, email])
   @@index([role])
   @@index([branch])
   @@index([disabledAt])
   @@index([isIntern])
   @@index([linkedStaffId])
+}
+
+/// What the bell-icon notification is about. The frontend uses this
+/// to pick an icon + colour; the trigger site writes a row with the
+/// matching kind.
+enum ClassPortalNotificationKind {
+  ANNOUNCEMENT
+  PAYMENT_DUE
+  PAYMENT_RECEIVED
+  PROMISSORY_NOTE
+  CLASS_LESSON
+  CLASS_ACTIVITY
+  CLASS_ASSIGNMENT
+  CLASS_PROJECT
+  CLASS_PHOTO
+  PENDING_PAYMENT
+}
+
+/// Per-user bell-icon notification. One row per (recipient, event).
+/// The recipient is always a ClassPortalUser (students, teachers,
+/// front-desk, branch admins — anyone with an account). readAt stays
+/// null until the user opens or dismisses the notification. href is
+/// the in-app URL the bell dropdown should navigate to on click.
+model ClassPortalNotification {
+  id          String                      @id @default(cuid())
+  userId      String
+  kind        ClassPortalNotificationKind
+  /// Short label e.g. "New announcement" or "Tuition due".
+  title       String
+  /// One-line summary rendered under the title in the dropdown.
+  body        String
+  /// In-app destination. Null for notifications that only inform (no
+  /// landing page to visit).
+  href        String?
+  /// Extra context (sourceId, classId, amountCentavos, …) kept opaque
+  /// to the client, used for de-duping on the write side.
+  payloadJson Json?
+  readAt      DateTime?
+  createdAt   DateTime                    @default(now())
+
+  user        ClassPortalUser             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([userId, readAt])
 }
 
 enum ClassPortalEventType {
