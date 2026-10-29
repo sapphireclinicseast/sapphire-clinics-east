@@ -104,14 +104,16 @@ export async function GET(req: NextRequest) {
       const taxableBase = storedGross + incentiveTotal
       const tax = taxDeduction === 'FIVE_PERCENT' ? Math.max(0, taxableBase) * 0.05 : 0
       const gross = taxableBase
-      const net = gross - tax
+      // The consultant's own SSS / PhilHealth / Pag-IBIG share is withheld too.
+      const benefitEE = Number(e.sssDeduction ?? 0) + Number(e.philhealthDeduction ?? 0) + Number(e.pagibigDeduction ?? 0)
+      const net = gross - tax - benefitEE
       return {
         kind: 'consultant' as const,
         id: e.id,
         cutoffPeriod: e.cutoffPeriod,
         branch: e.branch,
         grossPay: gross,
-        totalDeductions: tax,
+        totalDeductions: tax + benefitEE,
         netPay: net,
         hasPdf: true,
         pdfStored: pdfExists('consultant', e.id) || !!e.pdfUrl,

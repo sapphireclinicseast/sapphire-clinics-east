@@ -316,6 +316,7 @@ async function buildConsultantPdf(entry: {
   items: unknown; extraItems: unknown; adjustments: unknown
   incentives?: unknown; incentiveTotal?: unknown
   grossPay: unknown; retainerAmount: unknown; taxAmount: unknown; netPay: unknown
+  sssDeduction?: unknown; philhealthDeduction?: unknown; pagibigDeduction?: unknown
   consultant: { name: string; department: string; taxDeduction: string }
 }): Promise<Buffer> {
   const num = (v: unknown) => Number(v ?? 0)
@@ -361,6 +362,9 @@ async function buildConsultantPdf(entry: {
     incentiveTotal: num(entry.incentiveTotal),
     grossPay: num(entry.grossPay),
     taxAmount: num(entry.taxAmount),
+    sssDeduction: num(entry.sssDeduction),
+    philhealthDeduction: num(entry.philhealthDeduction),
+    pagibigDeduction: num(entry.pagibigDeduction),
     netPay: num(entry.netPay),
   }
   const extraLines: ExtraUnitPayLine[] = extras.map(e => ({

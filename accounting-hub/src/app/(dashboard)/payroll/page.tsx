@@ -4723,6 +4723,7 @@ export default function PayrollPage() {
                             <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Adj</th>
                             <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Gross</th>
                             <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Tax</th>
+                            <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }} title="SSS / PhilHealth / Pag-IBIG withheld from net pay (the consultant's share)">Contributions</th>
                             <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Net Pay</th>
                             <th className="text-center px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Status</th>
                             <th className="text-center px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}></th>
@@ -4768,6 +4769,10 @@ export default function PayrollPage() {
                                   </td>
                                   <td className="px-3 py-2.5 text-right font-mono font-medium" style={{ color: 'var(--charcoal)' }}>{formatCurrency(t.gross)}</td>
                                   <td className="px-3 py-2.5 text-right font-mono" style={{ color: '#d97706' }}>{t.tax > 0 ? formatCurrency(t.tax) : '—'}</td>
+                                  <td className="px-3 py-2.5 text-right font-mono" style={{ color: '#d97706' }}
+                                    title={t.benefitEE > 0 ? `SSS ${formatCurrency(p.sssDeduction ?? 0)} · PhilHealth ${formatCurrency(p.philhealthDeduction ?? 0)} · Pag-IBIG ${formatCurrency(p.pagibigDeduction ?? 0)}` : undefined}>
+                                    {t.benefitEE > 0 ? formatCurrency(t.benefitEE) : '—'}
+                                  </td>
                                   <td className="px-3 py-2.5 text-right font-mono font-bold" style={{ color: 'var(--deep-teal)' }}>{formatCurrency(t.net)}</td>
                                   <td className="px-3 py-2.5 text-center">
                                     {p.existingStatus && (
@@ -4785,7 +4790,7 @@ export default function PayrollPage() {
                                 {/* ── Expanded breakdown ── */}
                                 {isExpanded && (
                                   <tr key={`${p.consultantId}-detail`}>
-                                    <td colSpan={9} className="px-5 py-4" style={{ background: 'var(--off-white)' }}>
+                                    <td colSpan={10} className="px-5 py-4" style={{ background: 'var(--off-white)' }}>
                                       <div className="space-y-4">
                                         {/* ── Earnings from Orders ── */}
                                         <div>
@@ -5226,6 +5231,7 @@ export default function PayrollPage() {
                               <td className="px-3 py-2.5 text-right font-mono">{(() => { const v = visiblePreviews.reduce((s, p) => { const t = computeTotals(p, extraUnitPays[p.consultantId] || [], adjustments[p.consultantId] || []); return s + t.taxedAdj + t.nonTaxedAdj }, 0); return v !== 0 ? ((v > 0 ? '+' : '') + formatCurrency(v)) : '—' })()}</td>
                               <td className="px-3 py-2.5 text-right font-mono">{formatCurrency(visiblePreviews.reduce((s, p) => s + computeTotals(p, extraUnitPays[p.consultantId] || [], adjustments[p.consultantId] || []).gross, 0))}</td>
                               <td className="px-3 py-2.5 text-right font-mono" style={{ color: '#d97706' }}>{formatCurrency(visiblePreviews.reduce((s, p) => s + computeTotals(p, extraUnitPays[p.consultantId] || [], adjustments[p.consultantId] || []).tax, 0))}</td>
+                              <td className="px-3 py-2.5 text-right font-mono" style={{ color: '#d97706' }}>{formatCurrency(visiblePreviews.reduce((s, p) => s + computeTotals(p, extraUnitPays[p.consultantId] || [], adjustments[p.consultantId] || []).benefitEE, 0))}</td>
                               <td className="px-3 py-2.5 text-right font-mono font-bold" style={{ color: 'var(--deep-teal)' }}>{formatCurrency(visiblePreviews.reduce((s, p) => s + computeTotals(p, extraUnitPays[p.consultantId] || [], adjustments[p.consultantId] || []).net, 0))}</td>
                               <td colSpan={2}></td>
                             </tr>

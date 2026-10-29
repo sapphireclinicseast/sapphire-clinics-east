@@ -48,6 +48,11 @@ export interface ConsultantPayslipPreview {
   incentiveTotal?: number
   grossPay: number
   taxAmount: number
+  // The consultant's own SSS / PhilHealth / Pag-IBIG share for this cutoff,
+  // withheld from net pay (cadence follows the employee benefit timing).
+  sssDeduction?: number
+  philhealthDeduction?: number
+  pagibigDeduction?: number
   netPay: number
 }
 
@@ -122,8 +127,14 @@ export function computeTotals(p: ConsultantPayslipPreview, extras: ExtraUnitPayL
   const taxableBase = totalUnitPay + retainer + incentiveTotal + taxedAdj
   const tax = p.taxDeduction === 'FIVE_PERCENT' ? Math.max(0, taxableBase) * 0.05 : 0
   const gross = taxableBase + nonTaxedAdj
-  const net = gross - tax
-  return { totalUnitPay, extraTotal, incentiveTotal, taxedAdj, nonTaxedAdj, taxableBase, tax, gross, net }
+  // Must match the hub's computeTotals and the stored netPay
+  // (generate: net = gross − tax − benefit EE), or the PDF overstates NET PAY.
+  const sss = p.sssDeduction ?? 0
+  const philhealth = p.philhealthDeduction ?? 0
+  const pagibig = p.pagibigDeduction ?? 0
+  const benefitEE = sss + philhealth + pagibig
+  const net = gross - tax - benefitEE
+  return { totalUnitPay, extraTotal, incentiveTotal, taxedAdj, nonTaxedAdj, taxableBase, tax, gross, sss, philhealth, pagibig, benefitEE, net }
 }
 
 /**
@@ -317,6 +328,41 @@ export async function buildConsultantPayslipPdf(
     y += 8
   }
 
+  // DEDUCTIONS — laid out like the employee payslip: each government
+  // contribution on its own line, then withholding tax, then the total.
+  const totalDeductions = totals.tax + totals.benefitEE
+  if (totalDeductions > 0) {
+    doc.setFontSize(9).setFont('helvetica', 'bold').setTextColor(...DARK)
+    doc.text('DEDUCTIONS', margin, y); y += 2
+
+    const dedBody: string[][] = [
+      ['SSS', fmtPHP(totals.sss)],
+      ['PhilHealth', fmtPHP(totals.philhealth)],
+      ['Pag-IBIG', fmtPHP(totals.pagibig)],
+      ['Withholding Tax (5%)', fmtPHP(totals.tax)],
+    ]
+    autoTable(doc, {
+      startY: y,
+      head: [['Description', 'Amount']],
+      body: [...dedBody, ['Total Deductions', fmtPHP(totalDeductions)]],
+      theme: 'grid',
+      headStyles: tableHeadStyles,
+      bodyStyles: tableBodyStyles,
+      columnStyles: {
+        0: { cellWidth: 'auto' },
+        1: { halign: 'right', cellWidth: 50 },
+      },
+      margin: { left: margin, right: margin },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      didParseCell: (data: any) => {
+        if (data.section === 'body' && data.row.index === dedBody.length) data.cell.styles.fontStyle = 'bold'
+      },
+    })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    y = (doc as any).lastAutoTable?.finalY ?? y
+    y += 8
+  }
+
   doc.setFontSize(9).setFont('helvetica', 'bold').setTextColor(...DARK)
   doc.text('SUMMARY', margin, y); y += 2
 
@@ -331,6 +377,7 @@ export async function buildConsultantPayslipPdf(
     }] : []),
     { label: 'Gross Pay', value: fmtPHP(totals.gross), bold: true },
     ...(totals.tax > 0 ? [{ label: 'Tax Deduction (5%)', value: '(' + fmtPHP(totals.tax) + ')', red: true }] : []),
+    ...(totals.benefitEE > 0 ? [{ label: 'SSS / PhilHealth / Pag-IBIG', value: '(' + fmtPHP(totals.benefitEE) + ')', red: true }] : []),
     { label: 'NET PAY', value: fmtPHP(totals.net), bold: true, netPay: true },
   ]
 
