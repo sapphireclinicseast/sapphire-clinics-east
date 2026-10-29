@@ -164,6 +164,7 @@ export async function GET(req: Request) {
       b0_30: number; b31_60: number; b61_90: number; b90plus: number
       orderIdsByBucket: Record<Bucket, string[]>
       arTotal: number
+      ageWeighted: number // Σ (claim amount × claim age in days) — for the weighted-average age
     }
     const agingByWallet = new Map<string, AgingRow>()
     for (const w of wallets) {
@@ -171,6 +172,7 @@ export async function GET(req: Request) {
         b0_30: 0, b31_60: 0, b61_90: 0, b90plus: 0,
         orderIdsByBucket: { b0_30: [], b31_60: [], b61_90: [], b90plus: [] },
         arTotal: 0,
+        ageWeighted: 0,
       })
     }
 
@@ -185,6 +187,7 @@ export async function GET(req: Request) {
         row[bucket] += amount
         row.orderIdsByBucket[bucket].push(order.id)
         row.arTotal += amount
+        row.ageWeighted += amount * ageDays
       }
     }
 
@@ -224,10 +227,14 @@ export async function GET(req: Request) {
         }
       }
 
-      // HMO: order-based aging
+      // HMO: order-based aging. AR Days = amount-weighted average age of the
+      // wallet's unpaid claims — a real age, bounded by the oldest claim. The
+      // old DSO formula (AR ÷ period revenue × period days) exploded for any
+      // payer with old AR but little recent business (Valucare showed 2,461
+      // days) and showed a misleading 0 when period revenue was nil.
       const aging = agingByWallet.get(w.id)!
       const ar = aging.arTotal
-      const arDays = rev > 0 ? (ar / rev) * periodDays : 0
+      const arDays = ar > 0 ? aging.ageWeighted / ar : 0
       return {
         walletId: w.id,
         walletName: w.patientName,
@@ -242,16 +249,15 @@ export async function GET(req: Request) {
 
     const totalAR = perWallet.reduce((s, w) => s + w.ar, 0)
 
-    // GL overall = AR-weighted average of per-wallet age (dateObtained-based)
-    // HMO overall = DSO: (totalAR / totalRevenue) * periodDays
-    const arDaysOverall = isGL
-      ? (() => {
-          const withAR = perWallet.filter(w => w.ar > 0)
-          if (withAR.length === 0) return 0
-          const weightedSum = withAR.reduce((s, w) => s + w.arDays * w.ar, 0)
-          return weightedSum / totalAR
-        })()
-      : totalRevenue > 0 ? (totalAR / totalRevenue) * periodDays : 0
+    // Overall = AR-weighted average of per-wallet age for BOTH types (GL:
+    // dateObtained-based; HMO: weighted claim age). The old HMO DSO overall
+    // mixed units with the per-wallet rows and inherited the same blow-ups.
+    const arDaysOverall = (() => {
+      const withAR = perWallet.filter(w => w.ar > 0)
+      if (withAR.length === 0 || totalAR <= 0) return 0
+      const weightedSum = withAR.reduce((s, w) => s + w.arDays * w.ar, 0)
+      return weightedSum / totalAR
+    })()
 
     return NextResponse.json({
       periodDays,

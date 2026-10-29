@@ -1956,7 +1956,7 @@ export default function AccountsReceivablePage() {
           <div>
             <h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>AR Dashboard — {tab}</h2>
             <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
-              Days Sales Outstanding and aging buckets. AR Days = (average AR ÷ period revenue) × period days.
+              Receivable age and aging buckets. AR Days = amount-weighted average age of the unpaid claims (HMO: days since session; GL: days since the letter was obtained).
             </p>
           </div>
           <div className="flex items-center gap-2">
