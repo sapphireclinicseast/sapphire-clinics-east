@@ -728,21 +728,28 @@ export default function DetailedGl({
           <span className="tabular-nums" style={{ color: 'var(--mid-gray)' }}>({noSoaCount})</span>
         </label>
         {/* Without a key the tints are just decoration — say what they mean. */}
-        <span className="flex items-center gap-3 text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+        <span className="flex items-center gap-3 text-[11px] px-2.5 py-1.5 rounded-lg border"
+          style={{ color: 'var(--charcoal)', background: 'white', borderColor: 'var(--light-gray)' }}>
+          <span className="font-semibold uppercase tracking-wide text-[10px]" style={{ color: 'var(--mid-gray)' }}>Row colors</span>
           <span className="flex items-center gap-1.5">
-            <span className="inline-block w-3 h-3 rounded-sm border"
-              style={{ background: TONE_BG.paid, borderColor: 'var(--light-gray)' }} />
+            <span className="inline-block w-3.5 h-3.5 rounded-sm border"
+              style={{ background: TONE_BG.paid, borderColor: '#86b78f' }} />
             Paid
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="inline-block w-3 h-3 rounded-sm border"
-              style={{ background: TONE_BG.soa, borderColor: 'var(--light-gray)' }} />
-            SOA submitted
+            <span className="inline-block w-3.5 h-3.5 rounded-sm border"
+              style={{ background: TONE_BG.soa, borderColor: '#d4c34a' }} />
+            SOA submitted, awaiting payment
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="inline-block w-3 h-3 rounded-sm border"
-              style={{ background: TONE_BG.nowallet, borderColor: 'var(--light-gray)' }} />
+            <span className="inline-block w-3.5 h-3.5 rounded-sm border"
+              style={{ background: TONE_BG.nowallet, borderColor: '#e08a8a' }} />
             Needs a GL wallet in POS
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block w-3.5 h-3.5 rounded-sm border"
+              style={{ background: 'white', borderColor: 'var(--light-gray)' }} />
+            SOA not yet submitted
           </span>
         </span>
         {/* A count, not just a colour: these are the rows someone has to act on,
