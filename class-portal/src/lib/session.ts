@@ -2045,7 +2045,7 @@ export function balanceSummaryFor(studentId: string, feeSchedule?: {
     : ''
 
   return {
-    plan,
+    plan: plan ?? null,
     unpaidMonths,
     unpaidMonthLabels,
     monthlyTuitionCentavos,
