@@ -10,7 +10,6 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { getAuth } from '@/lib/session'
-import { getImpersonationMeta } from '@/lib/backend'
 import NotificationPanel from '@/components/NotificationPanel'
 
 export default function NotificationsStandalonePage() {
@@ -23,11 +22,6 @@ export default function NotificationsStandalonePage() {
     const auth = getAuth()
     if (!auth || (auth.role !== 'ADMIN' && auth.role !== 'BRANCH_ADMIN')) {
       router.replace('/sign-in')
-      return
-    }
-    const imp = getImpersonationMeta()
-    if (imp) {
-      router.replace(imp.targetRole === 'STUDENT' || imp.targetRole === 'TEACHER' ? '/profile' : '/frontdesk')
       return
     }
     setEmail(auth.email)
