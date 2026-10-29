@@ -50,6 +50,11 @@ export function clearToken() {
 
 export interface ImpersonationMeta {
   logId: string
+  /** ClassPortalUser.id of the impersonated user — needed by /profile
+   *  to hydrate the student's own row (auth.userId is still the admin's
+   *  real id, so hydrating against auth.userId would show the admin's
+   *  blank profile). */
+  targetUserId: string
   targetEmail: string
   targetRole: string
   targetFirstName?: string | null

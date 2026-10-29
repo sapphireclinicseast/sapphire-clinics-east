@@ -172,6 +172,13 @@ export default function AuthSidebar() {
         : role === 'TEACHER' ? 'Teacher hub'
         : 'My profile',
       icon: 'home' },
+    // During impersonation we drop the main dashboard entry (admins
+    // exit via "Return to admin"). Surface the student's profile as a
+    // dedicated entry so the admin can click into the view-as user's
+    // profile + documents, which is what they're usually here for.
+    ...(impersonating && (role === 'STUDENT' || role === 'TEACHER')
+      ? [{ href: '/profile', label: 'Profile', icon: 'home' as const }]
+      : []),
     { href: '/classes',        label: 'Classes',      icon: 'classes',   roles: ['ADMIN', 'BRANCH_ADMIN', 'TEACHER', 'STUDENT'] },
     { href: '/calendar',       label: 'Calendar',     icon: 'calendar' },
     { href: '/meetings',       label: 'Meetings',     icon: 'meetings',  roles: ['ADMIN', 'BRANCH_ADMIN', 'TEACHER', 'STUDENT'] },
