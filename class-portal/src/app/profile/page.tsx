@@ -19,6 +19,7 @@ import CurriculumPanel from '@/components/CurriculumPanel'
 import TemplatesPanel from '@/components/TemplatesPanel'
 import GradesPanel from '@/components/GradesPanel'
 import StudentListPanel from '@/components/StudentListPanel'
+import { getImpersonationMeta } from '@/lib/backend'
 
 type StudentTab = 'PROFILE' | 'PAYMENT' | 'GRADES' | 'NOTIFICATIONS'
 type TeacherTab = 'STUDENTS' | 'CURRICULUM' | 'TEMPLATES' | 'GRADES' | 'NOTIFICATIONS'
@@ -35,13 +36,29 @@ export default function ProfilePage() {
   useEffect(() => {
     const auth = getAuth()
     if (!auth) { router.replace('/sign-in'); return }
+    // When an admin clicked "View as" a STUDENT or TEACHER, the auth
+    // role stays ADMIN but we want to render the impersonated user's
+    // profile with their own data. The impersonation token on API
+    // calls scopes the user list to the target, so hydration against
+    // imp.targetUserId pulls the correct row — not the admin's.
+    const imp = getImpersonationMeta()
+    const impersonatingStudentOrTeacher = !!imp && (imp.targetRole === 'STUDENT' || imp.targetRole === 'TEACHER')
     // Send admin / branch admin / front-desk users to their proper
     // dashboards instead of falling through to TeacherView (which is
     // why a branch admin landed here and saw "SCEI teacher account"
-    // at the top of the screen).
-    if (auth.role === 'ADMIN' || auth.role === 'BRANCH_ADMIN') { router.replace('/admin'); return }
-    if (auth.role === 'FRONTDESK') { router.replace('/frontdesk'); return }
-    if (!auth.userId) { router.replace('/sign-in'); return }
+    // at the top of the screen). Impersonation above short-circuits
+    // the bounce so the admin sees the impersonated user's profile.
+    if (!impersonatingStudentOrTeacher) {
+      if (auth.role === 'ADMIN' || auth.role === 'BRANCH_ADMIN') { router.replace('/admin'); return }
+      if (auth.role === 'FRONTDESK') { router.replace('/frontdesk'); return }
+    }
+    // Effective identity used by every data fetch below. Falls back to
+    // auth for the normal (non-impersonation) sign-in case.
+    const effectiveUserId = impersonatingStudentOrTeacher ? (imp!.targetUserId || auth.userId) : auth.userId
+    const effectiveRole = impersonatingStudentOrTeacher ? imp!.targetRole : auth.role
+    const effectiveEmail = impersonatingStudentOrTeacher ? imp!.targetEmail : auth.email
+    const effectiveFirstName = impersonatingStudentOrTeacher ? (imp!.targetFirstName ?? undefined) : auth.firstName
+    if (!effectiveUserId) { router.replace('/sign-in'); return }
     let cancelled = false
     ;(async () => {
       // Pull the canonical user list from the API so the teacher dashboard
@@ -52,13 +69,13 @@ export default function ProfilePage() {
       // viewer only gets STUDENT rows back — their own row won't be in the
       // list. Fall back to a synthetic StoredUser built from the auth token
       // so the dashboard still renders.
-      const found = users.find(x => x.id === auth.userId)
+      const found = users.find(x => x.id === effectiveUserId)
       const synthetic: StoredUser = {
-        id: auth.userId!,
-        role: (auth.role === 'TEACHER' ? 'TEACHER' : 'STUDENT'),
-        email: auth.email,
+        id: effectiveUserId,
+        role: (effectiveRole === 'TEACHER' ? 'TEACHER' : 'STUDENT'),
+        email: effectiveEmail,
         password: '',
-        firstName: auth.firstName,
+        firstName: effectiveFirstName,
         createdAt: new Date().toISOString(),
       }
       setUser(found ?? synthetic)

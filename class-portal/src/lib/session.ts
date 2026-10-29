@@ -535,6 +535,7 @@ export async function startImpersonation(userId: string, reason?: string): Promi
   const { setImpersonationToken } = await import('./backend')
   setImpersonationToken(token, {
     logId,
+    targetUserId: user.id,
     targetEmail: user.email,
     targetRole: user.role,
     targetFirstName: user.firstName,
