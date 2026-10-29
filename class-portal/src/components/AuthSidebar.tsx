@@ -3,7 +3,13 @@
 import { useEffect, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { getAuth, clearAuth, type AuthSession } from '@/lib/session'
+import { getImpersonationMeta } from '@/lib/backend'
 import BellIcon from './BellIcon'
+
+type Role = 'ADMIN' | 'BRANCH_ADMIN' | 'FRONTDESK' | 'TEACHER' | 'STUDENT'
+function isRole(x: string | undefined | null): x is Role {
+  return x === 'ADMIN' || x === 'BRANCH_ADMIN' || x === 'FRONTDESK' || x === 'TEACHER' || x === 'STUDENT'
+}
 
 // A single nav item — icon + label + href, optionally gated by role
 // or by main-admin-only visibility. The `mainAdminOnly` flag is a
@@ -102,6 +108,7 @@ function NavIcon({ name }: { name: NavItem['icon'] }) {
 // mobile (viewport < md) — kicks a fixed-position overlay drawer.
 export default function AuthSidebar() {
   const [auth, setAuthState] = useState<AuthSession | null>(null)
+  const [impersonatedRole, setImpersonatedRole] = useState<Role | null>(null)
   const [mounted, setMounted] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const router = useRouter()
@@ -110,6 +117,8 @@ export default function AuthSidebar() {
   useEffect(() => {
     setMounted(true)
     setAuthState(getAuth())
+    const imp = getImpersonationMeta()
+    setImpersonatedRole(imp && isRole(imp.targetRole) ? imp.targetRole : null)
     setMobileOpen(false)
   }, [pathname])
 
@@ -143,7 +152,13 @@ export default function AuthSidebar() {
   // state — prevents a flash of the sidebar for signed-out visitors.
   if (!mounted || !auth) return null
 
-  const role = auth.role
+  // When the admin has "View as"-impersonated someone, mirror that user's
+  // sidebar instead of the admin's own — the red banner at the top of
+  // the viewport provides the "Return to admin" exit, so we don't need
+  // a dashboard entry here. The dashboard entry is suppressed below in
+  // that case rather than pointing somewhere ambiguous.
+  const role: Role = impersonatedRole ?? auth.role
+  const impersonating = impersonatedRole !== null
   const dashboardHref =
     role === 'ADMIN' || role === 'BRANCH_ADMIN' ? '/admin'
     : role === 'FRONTDESK' ? '/frontdesk'
@@ -179,18 +194,35 @@ export default function AuthSidebar() {
   // role check alone identifies the main admin. This stays correct across
   // the staff-email transition, unlike an exact-email pin (which silently
   // hid these links once the admin's synced email drifted from the hardcode).
+  // While impersonating, `role` is the TARGET role so main-admin-only
+  // items (Handbook) are hidden the same way they'd be for the student
+  // or teacher the admin is viewing as.
   const isMainAdmin = role === 'ADMIN'
   const visible = items.filter(i => {
     if (i.mainAdminOnly) return isMainAdmin
-    return !i.roles || i.roles.includes(role)
+    if (!i.roles) return true
+    if (!i.roles.includes(role)) return false
+    return true
   })
+    // When impersonating, drop the dashboard entry entirely. Admins
+    // exit back to their real dashboard through the red "Return to
+    // admin" button at the top of the viewport; a sidebar entry would
+    // either send them to a page their real role can't actually use
+    // (/profile bounces admin back to /admin) or defeat the purpose of
+    // the impersonation mirror.
+    .filter(i => !(impersonating && i.href === dashboardHref))
 
   const displayName = auth.email?.split('@')[0] ?? 'account'
+  // The signed-in chip at the bottom always shows the REAL auth role —
+  // not the impersonated role — so the admin can see their own identity
+  // even while viewing-as. The red banner at the top of the page handles
+  // the "you're viewing as X" messaging.
+  const realRole = auth.role
   const roleLabel =
-    role === 'ADMIN' ? 'Main admin'
-    : role === 'BRANCH_ADMIN' ? `Branch admin${auth.branch ? ` · ${auth.branch === 'EAST' ? 'East' : 'Greenhills'}` : ''}`
-    : role === 'FRONTDESK' ? `Front desk${auth.branch ? ` · ${auth.branch === 'EAST' ? 'East' : 'Greenhills'}` : ''}`
-    : role === 'TEACHER' ? 'Teacher'
+    realRole === 'ADMIN' ? 'Main admin'
+    : realRole === 'BRANCH_ADMIN' ? `Branch admin${auth.branch ? ` · ${auth.branch === 'EAST' ? 'East' : 'Greenhills'}` : ''}`
+    : realRole === 'FRONTDESK' ? `Front desk${auth.branch ? ` · ${auth.branch === 'EAST' ? 'East' : 'Greenhills'}` : ''}`
+    : realRole === 'TEACHER' ? 'Teacher'
     : 'Student'
 
   function isActive(href: string): boolean {
