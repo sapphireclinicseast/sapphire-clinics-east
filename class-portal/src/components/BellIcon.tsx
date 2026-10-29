@@ -99,7 +99,7 @@ export default function BellIcon() {
         type="button"
         onClick={() => setOpen(v => !v)}
         className="flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-[13.5px] text-[color:var(--narra)] hover:bg-[color:var(--paper-2)] transition-colors"
-        aria-label={`Notifications${unreadCount > 0 ? ` — ${unreadCount} unread` : ''}`}
+        aria-label={`Inbox${unreadCount > 0 ? ` — ${unreadCount} unread` : ''}`}
       >
         <span className="relative flex items-center justify-center w-5 h-5 shrink-0 opacity-80">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -112,7 +112,7 @@ export default function BellIcon() {
             </span>
           )}
         </span>
-        <span>Notifications</span>
+        <span>Inbox</span>
       </button>
 
       {open && (
@@ -120,11 +120,11 @@ export default function BellIcon() {
           className="absolute left-full top-0 ml-2 w-[340px] max-h-[70vh] overflow-hidden rounded-xl shadow-xl border bg-white z-50 flex flex-col"
           style={{ borderColor: 'var(--paper-3)' }}
           role="dialog"
-          aria-label="Notifications"
+          aria-label="Inbox"
         >
           <div className="px-3 py-2 border-b flex items-center justify-between" style={{ borderColor: 'var(--paper-3)' }}>
             <div className="text-[12.5px] font-semibold text-[color:var(--narra)]">
-              Notifications{unreadCount > 0 ? ` · ${unreadCount} unread` : ''}
+              Inbox{unreadCount > 0 ? ` · ${unreadCount} unread` : ''}
             </div>
             {unreadCount > 0 && (
               <button

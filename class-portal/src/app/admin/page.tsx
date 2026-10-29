@@ -35,7 +35,6 @@ import FrontDeskPaymentConfirmations from '@/components/FrontDeskPaymentConfirma
 import PromissoryNotesPanel from '@/components/PromissoryNotesPanel'
 import AssignmentsPanel from '@/components/AssignmentsPanel'
 import ClassesPanel from '@/components/ClassesPanel'
-import { getImpersonationMeta } from '@/lib/backend'
 
 type AdminTab = 'USERS' | 'STUDENTS' | 'CLASSES' | 'CURRICULUM' | 'PAYMENTS' | 'FEES' | 'ASSIGNMENTS'
 
@@ -50,19 +49,6 @@ export default function AdminPage() {
   useEffect(() => {
     const auth = getAuth()
     if (!auth || (auth.role !== 'ADMIN' && auth.role !== 'BRANCH_ADMIN')) { router.replace('/sign-in'); return }
-    // Impersonation redirect: an admin who clicked "View as" on a
-    // student or teacher gets an impersonation token for that user's
-    // role, but their main JWT (still ADMIN) kept this page reachable
-    // and the user list came back empty-scoped to the impersonated
-    // viewer — looked like a leak. While impersonation is active,
-    // kick to the impersonated user's actual home page so the view
-    // matches what they would see.
-    const imp = getImpersonationMeta()
-    if (imp) {
-      const home = imp.targetRole === 'STUDENT' || imp.targetRole === 'TEACHER' ? '/profile' : '/frontdesk'
-      router.replace(home)
-      return
-    }
     setAdminEmail(auth.email)
     setAdminRole(auth.role)
     setAdminBranch(auth.branch)
