@@ -327,12 +327,14 @@ export async function POST(req: Request) {
               amount: number
               walletId?: string
               reference?: string
+              loaNumber?: string
               paymentModeId?: string
             }) => ({
               method: p.method,
               amount: Number(p.amount),
               walletId: p.walletId || null,
               reference: p.reference || null,
+              loaNumber: p.method === 'HMO' ? (p.loaNumber?.trim() || null) : null,
               paymentModeId: p.paymentModeId || null,
             })),
           },

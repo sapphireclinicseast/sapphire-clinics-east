@@ -1184,6 +1184,7 @@ model OrderPayment {
   walletId      String?
   wallet        DigitalWallet? @relation(fields: [walletId], references: [id])
   reference     String?
+  loaNumber     String? // HMO letter of authorization / approval number, keyed at checkout
   paymentModeId String? // Configured PaymentMode (carries deduction rules)
   paymentMode   PaymentMode?   @relation("OrderPaymentMode", fields: [paymentModeId], references: [id], onDelete: SetNull)
   createdAt     DateTime       @default(now())

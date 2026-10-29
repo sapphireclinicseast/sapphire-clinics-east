@@ -89,6 +89,7 @@ interface PaymentLine {
   paymentModeId?: string  // configured PaymentMode id (carries deduction rules + account routing)
   walletId?: string
   reference?: string
+  loaNumber?: string
 }
 
 interface Order {
@@ -114,7 +115,7 @@ interface Order {
   paymentStatus?: string
   paymentDate?: string | null
   items: { id: string; name: string; quantity: number; unitPrice: string | number; lineTotal: string | number; serviceId?: string; inventoryItemId?: string; service?: { department?: string; revenueType?: string } | null }[]
-  payments: { id: string; method: string; amount: string | number; paymentModeId?: string | null; walletId?: string; reference?: string }[]
+  payments: { id: string; method: string; amount: string | number; paymentModeId?: string | null; walletId?: string; reference?: string; loaNumber?: string | null }[]
   arPaymentItems?: { paymentId: string }[]
   referrer?: { id: string; name: string } | null
   createdBy?: { name: string }
@@ -541,6 +542,12 @@ function formatClinicianName(name: string | null | undefined): string {
     }
   }
   return name.toUpperCase()
+}
+
+// First word of an HMO name or of an HMO service's prefix. "INLIFE/GENERALI"
+// (the payer) and "INLIFE BENEFITS/GENERALI - …" (its services) both read INLIFE.
+function hmoKey(name: string): string {
+  return (name.toUpperCase().match(/[A-Z]+/) || [''])[0]
 }
 
 function queueBranch(branch: string): string {
@@ -1068,6 +1075,12 @@ function OrderFormModal({
   const [showHmoPay, setShowHmoPay] = useState(false)
   const [hmoSearch, setHmoSearch] = useState('')
   const [hmoWallets, setHmoWallets] = useState<DigitalWallet[]>([])
+  // Wrong-HMO guards: the HMO this patient was last billed to, every HMO's name
+  // (to read a service's HMO off its prefix), and which set of warnings the
+  // cashier has confirmed against the patient's LOA.
+  const [hmoSuggest, setHmoSuggest] = useState<{ walletId: string; name: string; lastDate?: string; orderNumber?: number } | null>(null)
+  const [hmoNames, setHmoNames] = useState<{ id: string; name: string }[]>([])
+  const [hmoAckKey, setHmoAckKey] = useState('')
   const [showGlPay, setShowGlPay] = useState(false)
   const [glSearch, setGlSearch] = useState('')
   const [glWallets, setGlWallets] = useState<DigitalWallet[]>([])
@@ -1148,6 +1161,54 @@ function OrderFormModal({
     }, 400)
     return () => clearTimeout(t)
   }, [patientId, patientName])
+
+  useEffect(() => {
+    fetch('/api/pos/wallets?walletType=HMO&pageSize=500')
+      .then(r => (r.ok ? r.json() : []))
+      .then(d => setHmoNames((normalize(d) as DigitalWallet[]).map(w => ({ id: w.id, name: w.patientName }))))
+      .catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    setHmoSuggest(null)
+    const pname = patientName.trim()
+    if (!patientId && pname.length < 3) return
+    const t = setTimeout(async () => {
+      try {
+        const r = await fetch(`/api/pos/hmo-suggest?patientId=${encodeURIComponent(patientId)}&patientName=${encodeURIComponent(pname)}`)
+        if (!r.ok) return
+        const d = await r.json()
+        if (d?.walletId) setHmoSuggest(d)
+      } catch { /* suggestion only — stay quiet */ }
+    }, 400)
+    return () => clearTimeout(t)
+  }, [patientId, patientName])
+
+  // A service's HMO is its name prefix ("INSULAR - Tecar Therapy"). Warn when it
+  // differs from the HMO picked as payer, or when the payer differs from the
+  // patient's last HMO visit — May 2026's mis-billed claims were all one of these.
+  const hmoWarnings = useMemo(() => {
+    const nameByKey = new Map(hmoNames.map(w => [hmoKey(w.name), w.name]))
+    const out: string[] = []
+    for (const p of payments) {
+      if (p.method !== 'HMO' || !p.walletId) continue
+      const payer = hmoNames.find(w => w.id === p.walletId)?.name || p.reference || 'the HMO picked'
+      const serviceHmos = [...new Set(items
+        .filter(it => it.name.includes(' - '))
+        .map(it => hmoKey(it.name.split(' - ')[0]))
+        .filter(k => nameByKey.has(k) && k !== hmoKey(payer)))]
+      if (serviceHmos.length) {
+        out.push(`The services are ${serviceHmos.map(k => nameByKey.get(k)).join(' / ')} items, but the payer is ${payer}.`)
+      }
+      if (hmoSuggest && hmoSuggest.walletId !== p.walletId) {
+        const when = hmoSuggest.lastDate ? ` (${new Date(hmoSuggest.lastDate).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })})` : ''
+        out.push(`This patient's last HMO visit${when} was billed to ${hmoSuggest.name}, not ${payer}.`)
+      }
+    }
+    return out
+  }, [payments, items, hmoNames, hmoSuggest])
+  const hmoWarnKey = hmoWarnings.join('|')
+  const hmoAcked = hmoWarnings.length === 0 || hmoAckKey === hmoWarnKey
 
   // Clinician search
   useEffect(() => {
@@ -1657,6 +1718,21 @@ function OrderFormModal({
       return
     }
     if (!asUnpaid && servicePaymentShort) { setError('Payments do not cover the net amount'); return }
+    if (!asUnpaid) {
+      const hmoLines = payments.filter(p => p.method === 'HMO' && toNum(p.amount) > 0)
+      if (hmoLines.some(p => !p.walletId)) {
+        setError('Pick the HMO provider with the HMO button — an HMO payment needs its provider')
+        return
+      }
+      if (hmoLines.some(p => !p.loaNumber?.trim())) {
+        setError("Enter the LOA / approval number from the patient's letter of authorization")
+        return
+      }
+      if (!hmoAcked) {
+        setError("Check the HMO warning against the patient's LOA, then tick the box to continue")
+        return
+      }
+    }
     if ((effectiveRevenueType === 'UNEARNED' || isAdvancePayment) && !patientName.trim()) {
       setError('Patient name is required for unearned revenue / advance payment orders')
       return
@@ -1764,6 +1840,7 @@ function OrderFormModal({
           amount: p.method === 'PACKAGE' ? netAmount : toNum(p.amount),
           walletId: p.walletId || null,
           reference: p.reference || null,
+          loaNumber: p.method === 'HMO' ? (p.loaNumber?.trim() || null) : null,
         })),
         discountType,
         discountAmount,
@@ -2398,10 +2475,20 @@ function OrderFormModal({
                   </div>
                 )
               })()}
-                {(p.method === 'HMO' || p.method === 'GL') && (
-                  <input value={p.reference || ''} placeholder={p.method === 'HMO' ? 'HMO Provider (e.g. Intellicare, Avega)' : 'GL Provider / Reference'}
+                {p.method === 'HMO' && (
+                  <div className="flex items-center gap-2">
+                    <span className="shrink-0 px-2.5 py-2 rounded-xl border text-xs font-semibold" style={{ borderColor: '#fed7aa', background: '#fff7ed', color: '#c2410c' }}>
+                      {hmoNames.find(w => w.id === p.walletId)?.name || p.reference || 'Pick the HMO provider'}
+                    </span>
+                    <input value={p.loaNumber || ''} placeholder="LOA / approval no. (required)"
+                      onChange={e => setPayments(prev => prev.map((pp, i) => i === idx ? { ...pp, loaNumber: e.target.value } : pp))}
+                      className="flex-1 min-w-0 px-3 py-2 rounded-xl border text-xs outline-none" style={{ borderColor: p.loaNumber?.trim() ? '#fed7aa' : '#fca5a5', background: '#fff7ed' }} />
+                  </div>
+                )}
+                {p.method === 'GL' && (
+                  <input value={p.reference || ''} placeholder="GL Provider / Reference"
                     onChange={e => setPayments(prev => prev.map((pp, i) => i === idx ? { ...pp, reference: e.target.value } : pp))}
-                    className="w-full px-3 py-2 rounded-xl border text-xs outline-none" style={{ borderColor: p.method === 'HMO' ? '#fed7aa' : '#bbf7d0', background: p.method === 'HMO' ? '#fff7ed' : '#f0fdf4' }} />
+                    className="w-full px-3 py-2 rounded-xl border text-xs outline-none" style={{ borderColor: '#bbf7d0', background: '#f0fdf4' }} />
                 )}
               </div>
             ))}
@@ -2642,6 +2729,21 @@ function OrderFormModal({
             {showHmoPay && (
               <div className="p-3 rounded-xl border space-y-2" style={{ borderColor: '#fdba74', background: '#fff7ed' }}>
                 <p className="text-xs font-semibold" style={{ color: '#c2410c' }}>Select HMO Provider</p>
+                {hmoSuggest && (
+                  <button onClick={() => {
+                    upsertWalletPayment({ method: 'HMO', amount: 0, walletId: hmoSuggest.walletId, reference: hmoSuggest.name })
+                    setShowHmoPay(false)
+                    setHmoSearch('')
+                    setHmoWallets([])
+                  }}
+                    className="w-full text-left px-3 py-2 text-sm rounded-lg border flex justify-between items-center gap-2 hover:bg-orange-50"
+                    style={{ borderColor: '#fdba74', background: '#fff' }}>
+                    <span className="font-semibold">↺ {hmoSuggest.name}</span>
+                    <span className="text-xs" style={{ color: '#c2410c' }}>
+                      last HMO visit{hmoSuggest.lastDate ? ` · ${new Date(hmoSuggest.lastDate).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })}` : ''}
+                    </span>
+                  </button>
+                )}
                 <input value={hmoSearch} onChange={e => searchHmoWallets(e.target.value)} placeholder="Search HMO (e.g. Intellicare, Avega)..."
                   onFocus={() => { if (!hmoSearch) searchHmoWallets('') }}
                   className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: '#fdba74' }} />
@@ -2879,6 +2981,17 @@ function OrderFormModal({
                 <MonitorSmartphone size={16} /> Show bill on patient tablet
               </button>
             )
+          )}
+
+          {hmoWarnings.length > 0 && (
+            <div className="w-full mb-2 px-3 py-2.5 rounded-xl border text-xs space-y-1.5" style={{ borderColor: '#f59e0b', background: '#fffbeb', color: '#92400e' }}>
+              <p className="font-semibold flex items-center gap-1.5"><AlertCircle size={14} /> Check the HMO before completing</p>
+              {hmoWarnings.map(w => <p key={w}>{w}</p>)}
+              <label className="flex items-center gap-2 pt-1 font-semibold cursor-pointer">
+                <input type="checkbox" checked={hmoAcked} onChange={e => setHmoAckKey(e.target.checked ? hmoWarnKey : '')} />
+                I checked the patient&apos;s LOA — the HMO is correct
+              </label>
+            </div>
           )}
 
           {/* Submit */}
@@ -3844,7 +3957,7 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
                 <div className="space-y-1">
                   {viewOrder.payments.map((p, i) => (
                     <div key={i} className="flex justify-between text-xs px-3 py-1.5 rounded-lg" style={{ background: 'var(--off-white)' }}>
-                      <span style={{ color: 'var(--charcoal)' }}>{p.method}{p.reference ? ` (${p.reference})` : ''}</span>
+                      <span style={{ color: 'var(--charcoal)' }}>{p.method}{p.reference ? ` (${p.reference})` : ''}{p.loaNumber ? ` · LOA ${p.loaNumber}` : ''}</span>
                       <span className="font-medium" style={{ color: 'var(--charcoal)' }}>{formatCurrency(toNum(p.amount))}</span>
                     </div>
                   ))}
