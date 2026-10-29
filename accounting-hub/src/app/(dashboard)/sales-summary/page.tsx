@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
-import { userBranchScope } from '@/lib/branch-scope'
+import { userBranchScope, canViewAllBranchesSI } from '@/lib/branch-scope'
 import {
   Receipt, Download, Printer, Loader2, Filter, FileText,
   CheckCircle2, XCircle, X, Search,
@@ -429,7 +429,7 @@ export default function SalesSummaryPage() {
         ))}
       </div>
 
-      {view === 'with-si' && <WithSiTab branch={branch !== 'ALL' ? branch : (scope.enum || 'SANDBOX_EAST')} scopeEnum={scope.enum} />}
+      {view === 'with-si' && <WithSiTab branch={branch !== 'ALL' ? branch : (scope.enum || 'SANDBOX_EAST')} scopeEnum={scope.enum} canViewAll={canViewAllBranchesSI(role)} />}
       {view === 'target' && <SalesTargetTab branch={branch !== 'ALL' ? branch : (scope.enum || 'SANDBOX_EAST')} scopeEnum={scope.enum} canEditTarget={['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER'].includes(role)} />}
 
       {view === 'summary' && (<>
@@ -692,6 +692,10 @@ const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2
 interface SiRow { id: string; orderNumber: number; siNumber: string; date: string; declaredDate: string | null; src: 'ORDER' | 'AR'; patientName: string; vat: number; nonVat: number; amount: number; orderType: string }
 interface FlagInfo { siNumber: string; status: string; remarks: string | null; orderId: string | null; declaredDate?: string | null }
 interface Flag { siNumber: string; count?: number; flag: { status: string; remarks: string | null } | null }
+interface CrossUse { branch: string; customer: string; amount: number; date: string }
+interface CrossRow { siNumber: string; usedBy: CrossUse[]; flag?: { status: string; remarks: string | null } | null }
+const BRANCH_SHORT: Record<string, string> = { SANDBOX_EAST: 'East', SANDBOX_GREENHILLS: 'Greenhills', VERDANA_STORE: 'Verdana', AURA_INSTITUTE: 'Aura' }
+const usedByLabel = (uses: CrossUse[]) => [...new Set(uses.map(u => BRANCH_SHORT[u.branch] || u.branch))].join(' & ')
 interface OrderHit { id: string; orderNumber: number; date: string; patientName: string; services: string; amount: number; payment: string }
 const siDigits = (s: string) => parseInt(String(s).replace(/\D/g, '') || '0', 10)
 
@@ -737,12 +741,15 @@ const leftFilterVal = (it: LeftItem, k: string): string => {
  *  • migrated / flagged → PATCH /api/reports/with-si { kind: 'FLAG', branch, siNumber }
  * Clearing the date falls the SI back to its actual date for With-SI attribution.
  */
-function DeclaredDateCell({ item, branch, onSaved }: { item: LeftItem; branch: string; onSaved: () => void }) {
+function DeclaredDateCell({ item, branch, onSaved, readOnly }: { item: LeftItem; branch: string; onSaved: () => void; readOnly?: boolean }) {
   const [editing, setEditing] = useState(false)
   const [val, setVal] = useState('')
   const [busy, setBusy] = useState(false)
   const order = item.order
   const current = order ? order.declaredDate : (item.mDeclared ?? null)
+  if (readOnly) {
+    return <td className="px-3 py-2 text-xs" style={{ color: current ? 'var(--charcoal)' : 'var(--mid-gray)' }}>{current || '—'}</td>
+  }
   const save = async (v: string) => {
     setBusy(true)
     try {
@@ -783,10 +790,13 @@ function DeclaredDateCell({ item, branch, onSaved }: { item: LeftItem; branch: s
   )
 }
 
-function WithSiTab({ branch: initialBranch, scopeEnum }: { branch: string; scopeEnum: string | null }) {
+function WithSiTab({ branch: initialBranch, scopeEnum, canViewAll }: { branch: string; scopeEnum: string | null; canViewAll: boolean }) {
   const [branch, setBranch] = useState(initialBranch)
+  // A branch-locked user (front desk) with the cross-branch view capability may
+  // READ other branches here, but may only flag/resolve SIs in their own branch.
+  const readOnly = !!scopeEnum && branch !== scopeEnum
   const [from, setFrom] = useState(''); const [to, setTo] = useState('')
-  const [data, setData] = useState<{ rows: SiRow[]; totals: { vat: number; nonVat: number; count: number }; gaps: Flag[]; gapsTruncated?: number; outliers?: SiRow[]; duplicates: Flag[]; flags: FlagInfo[] } | null>(null)
+  const [data, setData] = useState<{ rows: SiRow[]; totals: { vat: number; nonVat: number; count: number }; gaps: Flag[]; gapsTruncated?: number; crossBranch?: CrossRow[]; crossDuplicates?: CrossRow[]; outliers?: SiRow[]; duplicates: Flag[]; flags: FlagInfo[] } | null>(null)
   const [loading, setLoading] = useState(false)
   const [sortKey, setSortKey] = useState('si')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
@@ -873,6 +883,17 @@ function WithSiTab({ branch: initialBranch, scopeEnum }: { branch: string; scope
   ) : rightItems
   const rightTotal = data ? displayRight.reduce((s, it) => it.type === 'dup'
     ? s + data.rows.filter(r => r.siNumber === it.siNumber).reduce((x, r) => x + r.amount, 0) : s, 0) : 0
+  // Cross-branch rows: numbers ANOTHER branch used (not missing — info), and
+  // numbers used by BOTH this branch and another (a real duplicate to resolve).
+  const crossDups = (data?.crossDuplicates || []).filter(c => !c.flag)
+  const crossUsed = (data?.crossBranch || []).filter(c => !c.flag)
+  const matchesFlagQ = (c: CrossRow) => !flagQNorm
+    || c.siNumber.toLowerCase().includes(flagQNorm)
+    || usedByLabel(c.usedBy).toLowerCase().includes(flagQNorm)
+    || (flagQDigits !== '' && String(siDigits(c.siNumber)).includes(flagQDigits))
+  const crossDupsShown = crossDups.filter(matchesFlagQ)
+  const crossUsedShown = crossUsed.filter(matchesFlagQ)
+  const hasAnyRight = rightItems.length > 0 || crossDups.length > 0 || crossUsed.length > 0
 
   const generateExcel = async () => {
     if (xlScope !== 'all' && !xlFrom && !xlTo) { alert('Pick a From and/or To date, or choose "Everything".'); return }
@@ -906,8 +927,10 @@ function WithSiTab({ branch: initialBranch, scopeEnum }: { branch: string; scope
         : rows.filter(x => { const dt = x.declared || x.actual; return dt && inRange(dt) })
       keep.sort((a, b) => siDigits(a.si) - siDigits(b.si))
       const flagged = [
-        ...d.gaps.filter(g => !g.flag).map(g => ({ si: g.siNumber, issue: 'Missing', count: '', amount: '' as number | string })),
-        ...d.duplicates.filter(x => !x.flag).map(x => ({ si: x.siNumber, issue: 'Duplicate', count: x.count || 0, amount: d.rows.filter(r => r.siNumber === x.siNumber).reduce((t, r) => t + r.amount, 0) })),
+        ...d.gaps.filter(g => !g.flag).map(g => ({ si: g.siNumber, issue: 'Missing', count: '' as number | string, amount: '' as number | string })),
+        ...d.duplicates.filter(x => !x.flag).map(x => ({ si: x.siNumber, issue: 'Duplicate', count: x.count || 0, amount: d.rows.filter(r => r.siNumber === x.siNumber).reduce((t, r) => t + r.amount, 0) as number | string })),
+        ...(d.crossDuplicates || []).filter(c => !c.flag).map(c => ({ si: c.siNumber, issue: `Shared with ${usedByLabel(c.usedBy)}`, count: '' as number | string, amount: c.usedBy.reduce((s, u) => s + u.amount, 0) as number | string })),
+        ...(d.crossBranch || []).filter(c => !c.flag).map(c => ({ si: c.siNumber, issue: `Used by ${usedByLabel(c.usedBy)}`, count: '' as number | string, amount: c.usedBy.reduce((s, u) => s + u.amount, 0) as number | string })),
       ].sort((a, b) => siDigits(a.si) - siDigits(b.si))
       const outliers = (d.outliers || []).map(o => [o.siNumber, iso(o.date), o.patientName, o.src === 'AR' ? String(o.orderNumber) : `#${o.orderNumber}`, o.amount])
       const label = xlScope === 'all' ? 'all' : `${xlScope}-${xlFrom || 'start'}_to_${xlTo || 'today'}`
@@ -930,10 +953,15 @@ function WithSiTab({ branch: initialBranch, scopeEnum }: { branch: string; scope
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 flex-wrap">
-        {!scopeEnum && (
+        {(!scopeEnum || canViewAll) && (
           <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: 'var(--light-gray)' }}>
             {WITHSI_BRANCHES.map(b => <button key={b.value} onClick={() => setBranch(b.value)} className="px-4 py-2 text-xs font-semibold" style={branch === b.value ? { background: 'var(--teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' }}>{b.label}</button>)}
           </div>
+        )}
+        {readOnly && (
+          <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold" style={{ background: '#e0e7ff', color: '#3730a3' }}>
+            Viewing {BRANCH_SHORT[branch] || branch} · read-only — you can flag SIs only in {BRANCH_SHORT[scopeEnum || ''] || scopeEnum}
+          </span>
         )}
         <label className="text-xs" style={{ color: 'var(--mid-gray)' }}>From <input type="date" value={from} onChange={e => setFrom(e.target.value)} className="ml-1 px-2 py-1.5 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} /></label>
         <label className="text-xs" style={{ color: 'var(--mid-gray)' }}>To <input type="date" value={to} onChange={e => setTo(e.target.value)} className="ml-1 px-2 py-1.5 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} /></label>
@@ -1029,11 +1057,11 @@ function WithSiTab({ branch: initialBranch, scopeEnum }: { branch: string; scope
                             ? <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#fef3c7', color: '#92400e' }} title="No workbook date — set a Declared Date to file this SI into a month">No date</span>
                             : '—')}
                         </td>
-                        <DeclaredDateCell item={it} branch={branch} onSaved={load} />
+                        <DeclaredDateCell item={it} branch={branch} onSaved={load} readOnly={readOnly} />
                         <td className="px-3 py-2 text-xs" style={{ color: 'var(--charcoal)' }} title={it.remarks || undefined}>
                           {it.order ? it.order.patientName : <span style={{ color: it.mCustomer ? 'var(--charcoal)' : 'var(--mid-gray)' }}>{it.mCustomer || it.remarks || '—'}</span>}
                           {b && <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: b.bg, color: b.c }}>{b.t}</span>}
-                          {isResolved && <button onClick={() => clearFlag(it.si)} className="ml-1.5 underline text-[10px]" style={{ color: 'var(--mid-gray)' }}>undo</button>}
+                          {isResolved && !readOnly && <button onClick={() => clearFlag(it.si)} className="ml-1.5 underline text-[10px]" style={{ color: 'var(--mid-gray)' }}>undo</button>}
                         </td>
                         <td className="px-3 py-2 text-right whitespace-nowrap" style={{ color: it.amount ? 'var(--charcoal)' : 'var(--light-gray)' }}>{it.amount ? `₱${peso(it.amount)}` : '—'}</td>
                       </tr>
@@ -1048,28 +1076,63 @@ function WithSiTab({ branch: initialBranch, scopeEnum }: { branch: string; scope
           {/* RIGHT — Flagged Sales Invoices */}
           <div className="rounded-2xl border overflow-hidden" style={{ borderColor: resolvedBorder, background: resolvedBg }}>
             <div className="flex items-center justify-between px-3 py-2.5 border-b" style={{ borderColor: resolvedBorder }}>
-              <p className="text-sm font-bold" style={{ color: '#92400e' }}>Flagged Sales Invoices <span className="font-normal">· {flagQNorm ? `${displayRight.length} of ${rightItems.length}` : rightItems.length}</span></p>
+              <div>
+                <p className="text-sm font-bold" style={{ color: '#92400e' }}>Flagged Sales Invoices <span className="font-normal">· {flagQNorm ? `${displayRight.length} of ${rightItems.length}` : rightItems.length} need action</span></p>
+                {(crossUsed.length > 0 || crossDups.length > 0) && (
+                  <p className="text-[11px]" style={{ color: '#92400e' }}>
+                    {crossUsed.length > 0 && <>{crossUsed.length} used by another branch</>}
+                    {crossUsed.length > 0 && crossDups.length > 0 && ' · '}
+                    {crossDups.length > 0 && <>{crossDups.length} shared with another branch</>}
+                  </p>
+                )}
+              </div>
               {rightTotal > 0 && <p className="text-sm font-bold" style={{ color: '#92400e' }}>₱{peso(rightTotal)}</p>}
             </div>
-            {rightItems.length > 0 && (
+            {hasAnyRight && (
               <div className="px-3 pt-3">
                 <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg border bg-white" style={{ borderColor: resolvedBorder }}>
                   <Search size={12} style={{ color: '#92400e' }} />
-                  <input value={flagQ} onChange={e => setFlagQ(e.target.value)} placeholder="Search SI number, or “missing” / “duplicate”…" className="flex-1 text-xs outline-none bg-transparent" />
+                  <input value={flagQ} onChange={e => setFlagQ(e.target.value)} placeholder="Search SI number, branch, or “missing” / “duplicate”…" className="flex-1 text-xs outline-none bg-transparent" />
                   {flagQ && <button onClick={() => setFlagQ('')} aria-label="Clear search"><X size={12} style={{ color: '#92400e' }} /></button>}
                 </div>
               </div>
             )}
             <div className="overflow-auto p-3 space-y-1.5" style={{ maxHeight: '68vh' }}>
-              {rightItems.length === 0 ? (
+              {!hasAnyRight ? (
                 <p className="text-xs text-center py-8" style={{ color: '#92400e' }}>No unresolved flags — every Sales Invoice number is accounted for. 🎉</p>
-              ) : displayRight.length === 0 ? (
-                <p className="text-xs text-center py-8" style={{ color: '#92400e' }}>No flags match “{flagQ.trim()}”.</p>
-              ) : displayRight.map(it => (
-                <FlagRow key={`${it.type}${it.siNumber}`} branch={branch}
-                  label={it.type === 'gap' ? `Missing #${it.siNumber}` : `Duplicate #${it.siNumber} (×${it.count})`}
-                  siNumber={it.siNumber} onSave={saveFlag} onTag={tagOrder} />
-              ))}
+              ) : (<>
+                {/* Cross-branch DUPLICATES — the same SI number in two branches. A real issue. */}
+                {crossDupsShown.map(c => (
+                  <div key={`xdup${c.siNumber}`} className="rounded-lg border bg-white p-2 text-xs" style={{ borderColor: '#fecaca' }}>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-semibold" style={{ color: '#b91c1c' }}>Shared #{c.siNumber}</span>
+                      <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#fee2e2', color: '#b91c1c' }}>also used by {usedByLabel(c.usedBy)}</span>
+                    </div>
+                    <p className="mt-1 text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+                      This branch issued #{c.siNumber} too — same official number on two sales. In {usedByLabel(c.usedBy)}: {c.usedBy.map(u => `${u.customer} · ₱${peso(u.amount)}${u.date ? ` · ${u.date}` : ''}`).join('; ')}. Decide which branch owns it.
+                    </p>
+                  </div>
+                ))}
+                {/* Actionable flags — true missing numbers & within-branch duplicates. */}
+                {displayRight.map(it => (
+                  <FlagRow key={`${it.type}${it.siNumber}`} branch={branch} readOnly={readOnly}
+                    label={it.type === 'gap' ? `Missing #${it.siNumber}` : `Duplicate #${it.siNumber} (×${it.count})`}
+                    siNumber={it.siNumber} onSave={saveFlag} onTag={tagOrder} />
+                ))}
+                {/* Used by another branch — the shared-booklet number was issued elsewhere, not missing. */}
+                {crossUsedShown.map(c => (
+                  <div key={`xused${c.siNumber}`} className="rounded-lg border p-2 text-xs" style={{ borderColor: 'var(--light-gray)', background: '#fff' }}>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-mono font-semibold" style={{ color: 'var(--charcoal)' }}>#{c.siNumber}</span>
+                      <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#dcfce7', color: '#166534' }}>Used by {usedByLabel(c.usedBy)}</span>
+                      <span style={{ color: 'var(--mid-gray)' }}>{c.usedBy.map(u => `${u.customer} · ₱${peso(u.amount)}${u.date ? ` · ${u.date}` : ''}`).join('; ')}</span>
+                    </div>
+                  </div>
+                ))}
+                {flagQNorm && displayRight.length === 0 && crossDupsShown.length === 0 && crossUsedShown.length === 0 && (
+                  <p className="text-xs text-center py-8" style={{ color: '#92400e' }}>No flags match “{flagQ.trim()}”.</p>
+                )}
+              </>)}
             </div>
           </div>
         </div>
@@ -1078,7 +1141,7 @@ function WithSiTab({ branch: initialBranch, scopeEnum }: { branch: string; scope
   )
 }
 
-function FlagRow({ branch, label, siNumber, onSave, onTag }: { branch: string; label: string; siNumber: string; onSave: (si: string, status: string, remarks: string) => void; onTag: (si: string, orderId: string) => void }) {
+function FlagRow({ branch, label, siNumber, onSave, onTag, readOnly }: { branch: string; label: string; siNumber: string; onSave: (si: string, status: string, remarks: string) => void; onTag: (si: string, orderId: string) => void; readOnly?: boolean }) {
   const [status, setStatus] = useState('CANCELLED')
   const [remarks, setRemarks] = useState('')
   const [q, setQ] = useState('')
@@ -1099,6 +1162,14 @@ function FlagRow({ branch, label, siNumber, onSave, onTag }: { branch: string; l
   const save = () => {
     if (status === 'TAGGED') { if (!picked) { alert('Search and choose the order this SI belongs to.'); return } onTag(siNumber, picked.id) }
     else onSave(siNumber, status, remarks)
+  }
+  // Read-only (front desk viewing another branch): show the flag, hide the actions.
+  if (readOnly) {
+    return (
+      <div className="rounded-lg border bg-white p-2 text-xs" style={{ borderColor: 'var(--light-gray)' }}>
+        <span className="font-semibold" style={{ color: '#92400e' }}>{label}</span>
+      </div>
+    )
   }
   return (
     <div className="rounded-lg border bg-white p-2" style={{ borderColor: 'var(--light-gray)' }}>

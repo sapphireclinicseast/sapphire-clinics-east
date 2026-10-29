@@ -93,3 +93,17 @@ export function canViewPettyCashCeoVerdana(
   return (role === 'ACCOUNTANT' || role === 'BOOKKEEPER')
     && (userBranch === 'SANDBOX_EAST' || userBranch === 'SANDBOX_GREENHILLS')
 }
+
+// Roles that may VIEW (read-only) any branch's Sales-Invoice series, even when
+// they are otherwise branch-locked. The SI booklets are shared across branches
+// — Verdana wrote on East's/Greenhills' booklets — so a "missing" number in one
+// branch is often just a number another branch used. Front desk (and branch
+// admins) need to see across branches to reconcile the shared series. This is
+// READ ONLY: flagging / declaring SIs still goes through enforceBranch, so a
+// user can only resolve invoices in their own branch.
+export const SI_CROSS_BRANCH_VIEW_ROLES = [
+  'AHEA_FRONTDESK', 'AHGH_FRONTDESK', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN',
+]
+export function canViewAllBranchesSI(role: string | null | undefined): boolean {
+  return !!role && SI_CROSS_BRANCH_VIEW_ROLES.includes(role)
+}

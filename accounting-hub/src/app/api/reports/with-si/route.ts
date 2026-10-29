@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { enforceBranch } from '@/lib/branch-scope'
+import { enforceBranch, canViewAllBranchesSI } from '@/lib/branch-scope'
 import { takenSiNumbers, isShadowedMonitoringFlag } from '@/lib/si-flag-guard'
 
 const VALID_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE', 'AURA_INSTITUTE']
@@ -14,8 +14,16 @@ export async function GET(req: Request) {
   const session = await auth()
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const sp = new URL(req.url).searchParams
-  // Branch-scoped users (e.g. front desk) are forced to their own branch.
-  const branch = enforceBranch((session.user as { branch?: string; branches?: string[] }).branch, (session.user as { branches?: string[] }).branches, sp.get('branch')) ?? (sp.get('branch') || '')
+  const role = (session.user as { role?: string }).role
+  const requested = sp.get('branch') || ''
+  // Branch-scoped users are normally forced to their own branch. But SI booklets
+  // are shared across branches, so roles with the cross-branch SI view capability
+  // (front desk / branch admins) may READ any branch here. Writes (POST/PATCH/
+  // DELETE below) stay locked to the user's own branch via enforceBranch.
+  const forced = enforceBranch((session.user as { branch?: string; branches?: string[] }).branch, (session.user as { branches?: string[] }).branches, requested)
+  const branch = forced == null
+    ? requested
+    : (canViewAllBranchesSI(role) ? (requested || forced) : forced)
   if (!VALID_BRANCHES.includes(branch)) return NextResponse.json({ error: 'Select a branch' }, { status: 400 })
   const dateFrom = sp.get('dateFrom') || ''
   const dateTo = sp.get('dateTo') || ''
@@ -89,6 +97,33 @@ export async function GET(req: Request) {
       }
     })
 
+    // ── Cross-branch SI usage ───────────────────────────────────────────
+    // The SI booklets are shared across branches (Verdana wrote on East's /
+    // Greenhills' booklets), so a number this branch never issued is often one
+    // another branch used — it is NOT missing. Load every other branch's issued
+    // SI numbers so the gap scan can label those "Used by <branch>" instead of
+    // flagging them, and so a number used by BOTH this branch and another shows
+    // up as a true cross-branch duplicate.
+    const phDate = (d: Date) => new Date(d).toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' })
+    type OtherUse = { branch: string; customer: string; amount: number; date: string }
+    const otherBySi = new Map<number, OtherUse[]>()
+    const addOther = (n: number | null, use: OtherUse) => {
+      if (n == null) return
+      const a = otherBySi.get(n); if (a) a.push(use); else otherBySi.set(n, [use])
+    }
+    const [otherOrders, otherAr] = await Promise.all([
+      prisma.order.findMany({
+        where: { branch: { not: branch }, status: { in: ['COMPLETED', 'REOPENED'] }, issuedOfficialInvoice: true, salesInvoiceNumber: { not: null } },
+        select: { branch: true, salesInvoiceNumber: true, patientName: true, netAmount: true, transactionDate: true },
+      }),
+      prisma.aRPayment.findMany({
+        where: { branch: { not: branch }, salesInvoiceNumber: { not: null } },
+        select: { branch: true, salesInvoiceNumber: true, amount: true, discount: true, paymentDate: true, wallet: { select: { patientName: true, walletType: true } } },
+      }),
+    ])
+    for (const o of otherOrders) addOther(siInt(o.salesInvoiceNumber), { branch: o.branch, customer: o.patientName || '—', amount: Number(o.netAmount), date: phDate(o.transactionDate) })
+    for (const p of otherAr) addOther(siInt(p.salesInvoiceNumber), { branch: p.branch || '', customer: `${p.wallet?.patientName || '—'} (${p.wallet?.walletType || 'AR'})`, amount: Number(p.amount) + Number(p.discount), date: phDate(p.paymentDate) })
+
     const allRows = [...orderRows, ...arRows]
       .filter(r => r.siInt !== null)
       .sort((a, b) => (a.siInt! - b.siInt!))
@@ -117,19 +152,36 @@ export async function GET(req: Request) {
     const duplicates = [...countByInt.entries()].filter(([, c]) => c > 1).map(([n, c]) => ({ siNumber: pad4(n), count: c }))
 
     // Gaps: missing integers between min and max of the dominant sequence,
-    // capped so a still-large span can never take the page down.
+    // capped so a still-large span can never take the page down. A number that
+    // ANOTHER branch issued is not a gap — the shared booklet number was used,
+    // just elsewhere — so it goes to crossBranch (labelled "Used by <branch>")
+    // instead of being flagged "missing".
     const GAP_CAP = 2000
     const gaps: { siNumber: string }[] = []
+    const crossBranch: { siNumber: string; usedBy: OtherUse[] }[] = []
     let gapsTruncated = 0
+    const present = new Set(rows.map(r => r.siInt!))
     if (rows.length > 1) {
-      const present = new Set(rows.map(r => r.siInt!))
       const min = rows[0].siInt!, max = rows[rows.length - 1].siInt!
       for (let i = min + 1; i < max; i++) {
         if (present.has(i)) continue
-        if (gaps.length < GAP_CAP) gaps.push({ siNumber: pad4(i) })
+        const other = otherBySi.get(i)
+        if (other && other.length) {
+          if (crossBranch.length < GAP_CAP) crossBranch.push({ siNumber: pad4(i), usedBy: other })
+        } else if (gaps.length < GAP_CAP) gaps.push({ siNumber: pad4(i) })
         else gapsTruncated++
       }
     }
+
+    // Cross-branch duplicates: a number THIS branch issued that another branch
+    // also issued — the same official SI on two different sales. A real data
+    // issue (unlike a borrowed-booklet gap), surfaced for a human to resolve.
+    const crossDuplicates: { siNumber: string; usedBy: OtherUse[] }[] = []
+    for (const n of present) {
+      const other = otherBySi.get(n)
+      if (other && other.length) crossDuplicates.push({ siNumber: pad4(n), usedBy: other })
+    }
+    crossDuplicates.sort((a, b) => (siInt(a.siNumber) ?? 0) - (siInt(b.siNumber) ?? 0))
 
     // All flag resolutions for the branch (Cancelled / Remarks / Tagged-to-order).
     // A migrated monitoring REMARKS flag whose SI number an order/AR already
@@ -145,6 +197,8 @@ export async function GET(req: Request) {
       totals: { vat: rows.reduce((s, r) => s + r.vat, 0), nonVat: rows.reduce((s, r) => s + r.nonVat, 0), count: rows.length },
       gaps: gaps.map(g => ({ ...g, flag: flagBy.get(g.siNumber) || null })),
       gapsTruncated,
+      crossBranch: crossBranch.map(c => ({ ...c, flag: flagBy.get(c.siNumber) || null })),
+      crossDuplicates: crossDuplicates.map(c => ({ ...c, flag: flagBy.get(c.siNumber) || null })),
       outliers,
       duplicates: duplicates.map(d => ({ ...d, flag: flagBy.get(d.siNumber) || null })),
       flags: allFlags.map(f => ({ siNumber: f.siNumber, status: f.status, remarks: f.remarks, orderId: f.orderId, declaredDate: f.declaredDate ? new Date(f.declaredDate).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }) : null })),
