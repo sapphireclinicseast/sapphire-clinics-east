@@ -3077,28 +3077,51 @@ export default function AccountsReceivablePage() {
                         <td className="px-3 py-2 text-xs" style={{ color: 'var(--charcoal)' }}>
                           {clinicianEditId === o.id ? (
                             <div className="flex items-center gap-1">
-                              <input
-                                autoFocus
-                                list="perhmo-clinician-names"
-                                defaultValue={o.clinicianName || ''}
-                                onChange={e => setClinicianValue(e.target.value)}
-                                onKeyDown={e => {
-                                  if (e.key === 'Enter') saveClinician(o.id, clinicianValue || o.clinicianName || null)
-                                  if (e.key === 'Escape') { clinCancelRef.current = true; setClinicianEditId(null); setClinicianValue('') }
-                                }}
-                                // Chrome's datalist popup swallows the first click on the ✓
-                                // while it is open — the blur commits the edit regardless.
-                                onBlur={() => {
-                                  if (clinCancelRef.current) { clinCancelRef.current = false; return }
-                                  saveClinician(o.id, clinicianValue || o.clinicianName || null)
-                                }}
-                                placeholder="Clinician name"
-                                className="px-1.5 py-0.5 rounded border text-xs outline-none"
-                                style={{ borderColor: 'var(--teal)', width: 140 }}
-                              />
-                              <datalist id="perhmo-clinician-names">
-                                {clinicianOptions.map(name => <option key={name} value={name} />)}
-                              </datalist>
+                              <div className="relative">
+                                <input
+                                  autoFocus
+                                  value={clinicianValue}
+                                  onChange={e => setClinicianValue(e.target.value)}
+                                  onKeyDown={e => {
+                                    if (e.key === 'Enter') saveClinician(o.id, clinicianValue || o.clinicianName || null)
+                                    if (e.key === 'Escape') { clinCancelRef.current = true; setClinicianEditId(null); setClinicianValue('') }
+                                  }}
+                                  onBlur={() => {
+                                    if (clinCancelRef.current) { clinCancelRef.current = false; return }
+                                    saveClinician(o.id, clinicianValue || o.clinicianName || null)
+                                  }}
+                                  placeholder="Clinician name"
+                                  className="px-2 py-1 rounded-lg border text-xs outline-none bg-white"
+                                  style={{ borderColor: 'var(--teal)', width: 170 }}
+                                />
+                                {(() => {
+                                  const q = clinicianValue.trim().toLowerCase()
+                                  const sugg = clinicianOptions
+                                    .filter(n => !q || n.toLowerCase().includes(q))
+                                    .filter(n => n.toLowerCase() !== q)
+                                    .slice(0, 8)
+                                  return sugg.length > 0 && (
+                                    <div className="absolute left-0 top-full mt-1 w-56 rounded-lg border bg-white shadow-lg z-30 overflow-hidden"
+                                      style={{ borderColor: 'var(--light-gray)' }}>
+                                      {sugg.map(name => (
+                                        <button key={name} type="button"
+                                          // mousedown beats the input's blur, so picking a name
+                                          // saves once — the guard stops the blur-commit after it.
+                                          onMouseDown={e => {
+                                            e.preventDefault()
+                                            clinCancelRef.current = true
+                                            setClinicianValue(name)
+                                            saveClinician(o.id, name)
+                                          }}
+                                          className="block w-full text-left px-3 py-1.5 text-xs hover:bg-teal-50"
+                                          style={{ color: 'var(--charcoal)' }}>
+                                          {name}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  )
+                                })()}
+                              </div>
                               <button
                                 disabled={clinicianBusy === o.id}
                                 onClick={() => saveClinician(o.id, clinicianValue || o.clinicianName || null)}
