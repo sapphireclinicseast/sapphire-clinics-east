@@ -2049,14 +2049,14 @@ export default function PayrollPage() {
         'PAYROLL DATE', 'LOCATION', 'ID NO', 'NAME',
         'GROSS PAY', 'TAXABLE ADJUSTMENT', 'TAXABLE AMOUNT BEFORE TAX',
         'EXPANDED WITHHOLDING TAX AMOUNT', 'TAXABLE AMOUNT AFTER TAX',
-        'NON TAXABLE ADJUSTMENT', 'TOTAL NET PAY', 'TIN NUMBER', 'ADDRESS',
+        'NON TAXABLE ADJUSTMENT', 'SSS / PHILHEALTH / PAG-IBIG', 'TOTAL NET PAY', 'TIN NUMBER', 'ADDRESS',
       ]
 
       // 3 blank rows on top to match the template layout, then header
       const consultantData: (string | number)[][] = [[], [], [], consultantHeaders]
 
       let totGross = 0, totTaxAdj = 0, totTaxableBefore = 0, totEWT = 0
-      let totTaxableAfter = 0, totNonTaxAdj = 0, totNet = 0
+      let totTaxableAfter = 0, totNonTaxAdj = 0, totContrib = 0, totNet = 0
 
       for (const p of rows) {
         const extras = extraUnitPays[p.consultantId] !== undefined
@@ -2071,7 +2071,7 @@ export default function PayrollPage() {
 
         totGross += t.gross; totTaxAdj += t.taxedAdj
         totTaxableBefore += t.taxableBase; totEWT += t.tax
-        totTaxableAfter += taxableAfter; totNonTaxAdj += t.nonTaxedAdj; totNet += t.net
+        totTaxableAfter += taxableAfter; totNonTaxAdj += t.nonTaxedAdj; totContrib += t.benefitEE; totNet += t.net
 
         consultantData.push([
           cutoffLabel, branchShort(p.branch), consultant?.bioId ?? '', p.consultantName,
@@ -2081,6 +2081,7 @@ export default function PayrollPage() {
           Math.round(t.tax * 100) / 100,
           Math.round(taxableAfter * 100) / 100,
           Math.round(t.nonTaxedAdj * 100) / 100,
+          Math.round(t.benefitEE * 100) / 100,
           Math.round(t.net * 100) / 100,
           consultant?.tinNumber || '',
           consultant?.birAddress || '',
@@ -2096,6 +2097,7 @@ export default function PayrollPage() {
         Math.round(totEWT * 100) / 100,
         Math.round(totTaxableAfter * 100) / 100,
         Math.round(totNonTaxAdj * 100) / 100,
+        Math.round(totContrib * 100) / 100,
         Math.round(totNet * 100) / 100,
         '', '',
       ])
@@ -2104,7 +2106,7 @@ export default function PayrollPage() {
       wsConsultant['!cols'] = [
         { wch: 28 }, { wch: 10 }, { wch: 6 }, { wch: 30 },
         { wch: 14 }, { wch: 20 }, { wch: 26 }, { wch: 34 },
-        { wch: 26 }, { wch: 22 }, { wch: 14 }, { wch: 18 }, { wch: 40 },
+        { wch: 26 }, { wch: 22 }, { wch: 30 }, { wch: 14 }, { wch: 18 }, { wch: 40 },
       ]
 
       const wb = XLSX.utils.book_new()
@@ -2126,13 +2128,13 @@ export default function PayrollPage() {
         'PAYROLL DATE', 'LOCATION', 'ID NO', 'NAME',
         'GROSS PAY', 'TAXABLE ADJUSTMENT', 'TAXABLE AMOUNT BEFORE TAX',
         'EXPANDED WITHHOLDING TAX AMOUNT', 'TAXABLE AMOUNT AFTER TAX',
-        'NON TAXABLE ADJUSTMENT', 'TOTAL NET PAY', 'TIN NUMBER', 'ADDRESS',
+        'NON TAXABLE ADJUSTMENT', 'SSS / PHILHEALTH / PAG-IBIG', 'TOTAL NET PAY', 'TIN NUMBER', 'ADDRESS',
       ]
 
       const sheetData: (string | number)[][] = [headers]
 
       let totGross = 0, totTaxAdj = 0, totTaxableBefore = 0, totEWT = 0
-      let totTaxableAfter = 0, totNonTaxAdj = 0, totNet = 0
+      let totTaxableAfter = 0, totNonTaxAdj = 0, totContrib = 0, totNet = 0
       let idNo = 1
 
       for (const p of rows) {
@@ -2152,6 +2154,7 @@ export default function PayrollPage() {
         totEWT += t.tax
         totTaxableAfter += taxableAfter
         totNonTaxAdj += t.nonTaxedAdj
+        totContrib += t.benefitEE
         totNet += t.net
 
         sheetData.push([
@@ -2165,6 +2168,7 @@ export default function PayrollPage() {
           Math.round(t.tax * 100) / 100,
           Math.round(taxableAfter * 100) / 100,
           Math.round(t.nonTaxedAdj * 100) / 100,
+          Math.round(t.benefitEE * 100) / 100,
           Math.round(t.net * 100) / 100,
           consultant?.tinNumber || '',
           consultant?.birAddress || '',
@@ -2180,6 +2184,7 @@ export default function PayrollPage() {
         Math.round(totEWT * 100) / 100,
         Math.round(totTaxableAfter * 100) / 100,
         Math.round(totNonTaxAdj * 100) / 100,
+        Math.round(totContrib * 100) / 100,
         Math.round(totNet * 100) / 100,
         '', '',
       ])
@@ -2198,6 +2203,7 @@ export default function PayrollPage() {
         { wch: 34 }, // EXPANDED WITHHOLDING TAX AMOUNT
         { wch: 26 }, // TAXABLE AMOUNT AFTER TAX
         { wch: 22 }, // NON TAXABLE ADJUSTMENT
+        { wch: 30 }, // SSS / PHILHEALTH / PAG-IBIG
         { wch: 14 }, // TOTAL NET PAY
         { wch: 18 }, // TIN NUMBER
         { wch: 40 }, // ADDRESS
@@ -5139,12 +5145,15 @@ export default function PayrollPage() {
                                             </div>
                                           </div>
                                           <div>
-                                            <p className="font-bold mb-2" style={{ color: 'var(--charcoal)' }}>Adjustments &amp; Tax</p>
+                                            <p className="font-bold mb-2" style={{ color: 'var(--charcoal)' }}>Adjustments &amp; Deductions</p>
                                             <div className="space-y-1">
                                               {t.taxedAdj !== 0 && <div className="flex justify-between"><span>Taxed Adj</span><span className="font-mono" style={{ color: t.taxedAdj >= 0 ? '#065f46' : '#991b1b' }}>{t.taxedAdj >= 0 ? '+' : ''}{formatCurrency(t.taxedAdj)}</span></div>}
                                               {t.nonTaxedAdj !== 0 && <div className="flex justify-between"><span>Non-taxed Adj</span><span className="font-mono" style={{ color: t.nonTaxedAdj >= 0 ? '#065f46' : '#991b1b' }}>{t.nonTaxedAdj >= 0 ? '+' : ''}{formatCurrency(t.nonTaxedAdj)}</span></div>}
                                               {t.tax > 0 && <div className="flex justify-between"><span>Tax (5%)</span><span className="font-mono" style={{ color: '#991b1b' }}>({formatCurrency(t.tax)})</span></div>}
-                                              {t.taxedAdj === 0 && t.nonTaxedAdj === 0 && t.tax === 0 && <div className="flex justify-between" style={{ color: 'var(--mid-gray)' }}><span>None</span><span>—</span></div>}
+                                              {t.benefitEE > 0 && ([['SSS', p.sssDeduction], ['PhilHealth', p.philhealthDeduction], ['Pag-IBIG', p.pagibigDeduction]] as [string, number | undefined][]).map(([label, amt]) => (
+                                                <div key={label} className="flex justify-between"><span>{label}</span><span className="font-mono" style={{ color: (amt ?? 0) > 0 ? '#991b1b' : 'var(--mid-gray)' }}>{(amt ?? 0) > 0 ? `(${formatCurrency(amt ?? 0)})` : '—'}</span></div>
+                                              ))}
+                                              {t.taxedAdj === 0 && t.nonTaxedAdj === 0 && t.tax === 0 && t.benefitEE === 0 && <div className="flex justify-between" style={{ color: 'var(--mid-gray)' }}><span>None</span><span>—</span></div>}
                                             </div>
                                           </div>
                                           <div>
@@ -5152,6 +5161,7 @@ export default function PayrollPage() {
                                             <div className="space-y-1">
                                               <div className="flex justify-between"><span>Gross Pay</span><span className="font-mono font-semibold">{formatCurrency(t.gross)}</span></div>
                                               <div className="flex justify-between"><span>Tax</span><span className="font-mono" style={{ color: '#991b1b' }}>{t.tax > 0 ? `(${formatCurrency(t.tax)})` : '—'}</span></div>
+                                              {t.benefitEE > 0 && <div className="flex justify-between"><span>SSS / PhilHealth / Pag-IBIG</span><span className="font-mono" style={{ color: '#991b1b' }}>({formatCurrency(t.benefitEE)})</span></div>}
                                               <div className="flex justify-between border-t pt-1 font-bold" style={{ borderColor: 'var(--light-gray)', color: '#166534' }}><span>NET PAY</span><span className="font-mono">{formatCurrency(t.net)}</span></div>
                                             </div>
                                           </div>
