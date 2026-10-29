@@ -367,6 +367,13 @@ jobs:
       # main, stash any VPS-local hot-fixes (e.g. src/app/api/upload/route.ts
       # — the team intentionally keeps a local version), then rebuild.
       - name: Rebuild & Restart Class Portal
+        id: cp_rebuild
+        # continue-on-error so a class-portal issue doesn't block
+        # downstream app deploys (teletherapy, accounting-hub, …) that
+        # follow in this job. The step's outcome is still checked by
+        # the "Fail job if critical rebuilds failed" gate at the end
+        # of the deploy job, so a build failure here now actually
+        # fails the whole run instead of hiding under a green ✅.
         continue-on-error: true
         uses: appleboy/ssh-action@v1
         with:
@@ -1666,6 +1673,36 @@ jobs:
             docker system df 2>&1
             echo ""
             echo "✅ Prune complete."
+
+      # ── Final gate: fail the job if critical rebuilds failed ─────
+      # continue-on-error on the per-app rebuild steps keeps a
+      # class-portal (or marketing-hub) failure from blocking the
+      # OTHER apps' deploys, but it also hid real build failures
+      # under a green ✅ for 24+ hours in Oct 2026 (PRs #790, #841,
+      # #843 all merged with a TS error that failed `docker compose
+      # build class-portal` — the deploy workflow kept reporting
+      # success, so nobody noticed until a user asked "is it live
+      # yet?"). This gate flips that: the apps still deploy
+      # independently, but if any of the critical rebuilds reported
+      # failure, the whole workflow run turns red so GitHub emails +
+      # branch-protection noticed.
+      - name: Fail job if critical rebuilds failed
+        if: always()
+        run: |
+          failed=""
+          if [ "${{ steps.mh_rebuild.outcome }}" = "failure" ] \
+             && [ "${{ steps.mh_rebuild_retry.outcome }}" = "failure" ] \
+             && [ "${{ steps.mh_rebuild_final.outcome }}" = "failure" ]; then
+            failed="$failed marketing-hub"
+          fi
+          if [ "${{ steps.cp_rebuild.outcome }}" = "failure" ]; then
+            failed="$failed class-portal"
+          fi
+          if [ -n "$failed" ]; then
+            echo "::error title=Deploy incomplete::Rebuild failed for:$failed. The affected app(s) are NOT running the new code. See the earlier step logs for the build error."
+            exit 1
+          fi
+          echo "✅ All critical rebuilds succeeded."
 
   # ── Diagnostic: accounting-hub logs ──────────────────────────
   check-accounting-logs:
