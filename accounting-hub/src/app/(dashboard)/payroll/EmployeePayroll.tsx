@@ -378,7 +378,8 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
   const [benefitErShare, setBenefitErShare] = useState(0)
 
   /* ── Leave Settings ── */
-  interface LeaveEmployee { id: string; firstName: string; lastName: string; branch: string; department: string; used: Record<string, number>; remaining: Record<string, number> }
+  interface MpRange { id: string; leaveType: string; startDate: string; endDate: string }
+  interface LeaveEmployee { id: string; firstName: string; lastName: string; branch: string; department: string; used: Record<string, number>; remaining: Record<string, number>; mpRanges: MpRange[] }
   const [leaveMaxDays, setLeaveMaxDays] = useState<Record<string, number>>({
     VACATION: 5, SICK: 5, EMERGENCY: 3, MATERNITY: 105, PATERNITY: 7,
     BEREAVEMENT: 3, UNPAID: 0, SIL: 5, BDAY: 1, TRAINING: 0,
@@ -388,6 +389,9 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
   const [leaveLoading, setLeaveLoading] = useState(false)
   const [leaveSaving, setLeaveSaving] = useState(false)
   const [leaveSaved, setLeaveSaved] = useState(false)
+  // Maternity/paternity spells are recorded as a from–to range right in the balance cell
+  const [mpEdit, setMpEdit] = useState<{ empId: string; leaveType: string; from: string; to: string; requestId?: string } | null>(null)
+  const [mpSaving, setMpSaving] = useState(false)
 
   /* ── Cutoff Adjustments ── */
   interface AdjustmentRow { employeeId: string; employeeName?: string; allowance: number; allowanceType: string; allowanceLabel: string; deduction: number; deductionType: string; deductionLabel: string; rowKey: string; staffLoanId?: string | null; suggested?: boolean }
@@ -714,6 +718,28 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
     } catch { /* ignore */ }
     setLeaveLoading(false)
   }, [branch, leaveYear])
+
+  const saveMpSpell = async (remove = false) => {
+    if (!mpEdit) return
+    if (!remove && (!mpEdit.from || !mpEdit.to || mpEdit.to < mpEdit.from)) {
+      alert('Choose a valid from/to date range')
+      return
+    }
+    setMpSaving(true)
+    try {
+      const r = await fetch('/api/payroll/leave-settings', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(remove
+          ? { leaveType: mpEdit.leaveType, requestId: mpEdit.requestId, remove: true }
+          : { employeeId: mpEdit.empId, leaveType: mpEdit.leaveType, startDate: mpEdit.from, endDate: mpEdit.to, requestId: mpEdit.requestId }),
+      })
+      const d = await r.json()
+      if (!r.ok) { alert(d.error || 'Could not save the leave spell'); setMpSaving(false); return }
+      setMpEdit(null)
+      await fetchLeaveSettings()
+    } catch { alert('Could not save the leave spell') }
+    setMpSaving(false)
+  }
 
   const fetchEmpPastPayslips = async (employeeId: string) => {
     if (expandedEmpPayslips === employeeId) { setExpandedEmpPayslips(''); return }
@@ -4187,6 +4213,10 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                             : pct >= 1 ? '#dc2626'
                             : pct >= 0.7 ? '#d97706'
                             : '#15803d'
+                          const isMp = lt.value === 'MATERNITY' || lt.value === 'PATERNITY'
+                          const ranges = isMp ? (emp.mpRanges || []).filter(r => r.leaveType === lt.value) : []
+                          const editingHere = mpEdit && mpEdit.empId === emp.id && mpEdit.leaveType === lt.value
+                          const fmtD = (iso: string) => `${iso.slice(5, 7)}/${iso.slice(8, 10)}`
                           return (
                             <td key={lt.value} className="px-2 py-2.5 text-center">
                               {isUnlimited ? (
@@ -4199,6 +4229,49 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                                   </span>
                                   {used > 0 && (
                                     <span className="text-[10px]" style={{ color: 'var(--mid-gray)' }}>{used} used</span>
+                                  )}
+                                  {isMp && !editingHere && ranges.map(r => (
+                                    <button key={r.id} type="button"
+                                      onClick={() => setMpEdit({ empId: emp.id, leaveType: lt.value, from: r.startDate, to: r.endDate, requestId: r.id })}
+                                      className="text-[10px] underline decoration-dotted cursor-pointer"
+                                      style={{ color: 'var(--mid-gray)' }} title="Edit the recorded dates">
+                                      {fmtD(r.startDate)}–{fmtD(r.endDate)}
+                                    </button>
+                                  ))}
+                                  {isMp && !editingHere && (
+                                    <button type="button"
+                                      onClick={() => setMpEdit({ empId: emp.id, leaveType: lt.value, from: '', to: '' })}
+                                      className="text-[10px] cursor-pointer hover:underline"
+                                      style={{ color: 'var(--mid-gray)' }} title="Record the dates this leave was used — the balance updates automatically">
+                                      + dates
+                                    </button>
+                                  )}
+                                  {editingHere && mpEdit && (
+                                    <span className="flex flex-col items-center gap-1 mt-1 p-1.5 rounded-lg border"
+                                      style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                                      <input type="date" value={mpEdit.from}
+                                        onChange={e => setMpEdit({ ...mpEdit, from: e.target.value })}
+                                        className="text-[10px] border rounded px-1 py-0.5" style={{ borderColor: 'var(--light-gray)' }} />
+                                      <input type="date" value={mpEdit.to} min={mpEdit.from || undefined}
+                                        onChange={e => setMpEdit({ ...mpEdit, to: e.target.value })}
+                                        className="text-[10px] border rounded px-1 py-0.5" style={{ borderColor: 'var(--light-gray)' }} />
+                                      {mpEdit.from && mpEdit.to && mpEdit.to >= mpEdit.from && (
+                                        <span className="text-[10px]" style={{ color: 'var(--mid-gray)' }}>
+                                          {Math.floor((new Date(mpEdit.to).getTime() - new Date(mpEdit.from).getTime()) / 86400000) + 1} days
+                                        </span>
+                                      )}
+                                      <span className="flex gap-1">
+                                        <button type="button" onClick={() => saveMpSpell()} disabled={mpSaving}
+                                          className="text-[10px] px-1.5 py-0.5 rounded text-white cursor-pointer"
+                                          style={{ background: 'var(--charcoal)' }}>{mpSaving ? '…' : 'Save'}</button>
+                                        {mpEdit.requestId && (
+                                          <button type="button" onClick={() => saveMpSpell(true)} disabled={mpSaving}
+                                            className="text-[10px] px-1.5 py-0.5 rounded cursor-pointer" style={{ color: '#dc2626' }}>Remove</button>
+                                        )}
+                                        <button type="button" onClick={() => setMpEdit(null)}
+                                          className="text-[10px] px-1 py-0.5 rounded cursor-pointer" style={{ color: 'var(--mid-gray)' }}>✕</button>
+                                      </span>
+                                    </span>
                                   )}
                                 </span>
                               )}

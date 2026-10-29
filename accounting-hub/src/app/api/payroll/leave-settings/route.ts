@@ -86,7 +86,7 @@ export async function GET(req: Request) {
         { endDate: null, startDate: { gte: yearStart } },
       ],
     },
-    select: { employeeId: true, leaveType: true, startDate: true, endDate: true, isHalfDay: true },
+    select: { id: true, employeeId: true, leaveType: true, startDate: true, endDate: true, isHalfDay: true },
   })
 
   // Aggregate used days per employee per leave type
@@ -99,6 +99,20 @@ export async function GET(req: Request) {
     empUsed[req.leaveType] = (empUsed[req.leaveType] || 0) + days
   }
 
+  // Maternity/paternity usage is recorded as a date range (one approved request
+  // per spell) — hand those ranges to the UI so they can be shown and edited.
+  const mpMap = new Map<string, { id: string; leaveType: string; startDate: string; endDate: string }[]>()
+  for (const req of leaveRequests) {
+    if (!req.employeeId || !req.startDate) continue
+    if (req.leaveType !== 'MATERNITY' && req.leaveType !== 'PATERNITY') continue
+    if (!mpMap.has(req.employeeId)) mpMap.set(req.employeeId, [])
+    mpMap.get(req.employeeId)!.push({
+      id: req.id, leaveType: req.leaveType,
+      startDate: req.startDate.toISOString().slice(0, 10),
+      endDate: (req.endDate ?? req.startDate).toISOString().slice(0, 10),
+    })
+  }
+
   const employeesWithLeave = employees.map(emp => {
     const used: Record<string, number> = usedMap.get(emp.id) || {}
     const remaining: Record<string, number> = {}
@@ -109,10 +123,68 @@ export async function GET(req: Request) {
         remaining[type] = Math.max(0, max - (used[type] || 0))
       }
     }
-    return { ...emp, used, remaining }
+    return { ...emp, used, remaining, mpRanges: mpMap.get(emp.id) || [] }
   })
 
   return NextResponse.json({ leaveMaxDays, employees: employeesWithLeave })
+}
+
+/** Record (or edit/remove) a dated maternity/paternity leave spell.
+ *  POST { employeeId, leaveType: 'MATERNITY'|'PATERNITY', startDate, endDate, requestId?, remove? }
+ *  Creates/updates an APPROVED LEAVE request, which is exactly what the
+ *  balance table counts — so the grid reflects it immediately. */
+export async function POST(req: Request) {
+  const session = await auth()
+  if (!session?.user || !WRITE_ROLES.includes(session.user.role as string)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
+  }
+  const body = await req.json()
+  const leaveType = String(body.leaveType || '')
+  if (!['MATERNITY', 'PATERNITY'].includes(leaveType)) {
+    return NextResponse.json({ error: 'Only maternity and paternity spells are recorded here' }, { status: 400 })
+  }
+
+  if (body.remove) {
+    const requestId = String(body.requestId || '')
+    const existing = requestId ? await prisma.employeeRequest.findUnique({ where: { id: requestId } }) : null
+    if (!existing || existing.requestType !== 'LEAVE' || (existing.leaveType !== 'MATERNITY' && existing.leaveType !== 'PATERNITY')) {
+      return NextResponse.json({ error: 'Leave record not found' }, { status: 404 })
+    }
+    await prisma.employeeRequest.delete({ where: { id: existing.id } })
+    return NextResponse.json({ ok: true, removed: existing.id })
+  }
+
+  const employeeId = String(body.employeeId || '')
+  const start = new Date(`${String(body.startDate || '')}T00:00:00Z`)
+  const end = new Date(`${String(body.endDate || '')}T00:00:00Z`)
+  if (isNaN(start.getTime()) || isNaN(end.getTime()) || end < start) {
+    return NextResponse.json({ error: 'Choose a valid from/to date range' }, { status: 400 })
+  }
+  const employee = await prisma.employee.findUnique({ where: { id: employeeId }, select: { id: true, branch: true } })
+  if (!employee) return NextResponse.json({ error: 'Employee not found' }, { status: 404 })
+  const allowed = allowedBranches(session.user.role as string)
+  if (allowed && !allowed.includes(employee.branch)) {
+    return NextResponse.json({ error: 'Access denied for this branch' }, { status: 403 })
+  }
+
+  const data = {
+    leaveType: leaveType as 'MATERNITY' | 'PATERNITY',
+    startDate: start, endDate: end,
+    status: 'APPROVED' as const,
+    reason: body.reason ? String(body.reason).slice(0, 300) : `${leaveType === 'MATERNITY' ? 'Maternity' : 'Paternity'} leave recorded from the leave balances table`,
+  }
+  if (body.requestId) {
+    const existing = await prisma.employeeRequest.findUnique({ where: { id: String(body.requestId) } })
+    if (!existing || existing.employeeId !== employeeId || existing.requestType !== 'LEAVE') {
+      return NextResponse.json({ error: 'Leave record not found' }, { status: 404 })
+    }
+    const updated = await prisma.employeeRequest.update({ where: { id: existing.id }, data })
+    return NextResponse.json({ ok: true, id: updated.id })
+  }
+  const created = await prisma.employeeRequest.create({
+    data: { employeeId, requestType: 'LEAVE', reviewedById: session.user.id ?? null, ...data },
+  })
+  return NextResponse.json({ ok: true, id: created.id })
 }
 
 export async function PUT(req: Request) {
