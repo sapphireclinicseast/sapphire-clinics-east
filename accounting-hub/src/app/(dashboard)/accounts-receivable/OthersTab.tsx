@@ -6,8 +6,9 @@
 // staggered monthly plan (months + interest as % of principal or an absolute
 // add-on) with the monthly equivalent shown, and per-installment payments.
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Loader2, X, Plus, Trash2, CalendarClock, HandCoins, ChevronDown, ChevronRight, Eye } from 'lucide-react'
+import { Loader2, X, Plus, Trash2, CalendarClock, HandCoins, ChevronDown, ChevronRight, Eye, Paperclip } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
+import { ScanUpload } from '@/components/ScanUpload'
 
 interface ORPayment { id: string; date: string; amount: number; method: string | null; reference: string | null; proofUrl: string | null; notes: string | null }
 interface OtherRec {
@@ -15,6 +16,7 @@ interface OtherRec {
   isBusiness?: boolean; businessName?: string | null; businessTin?: string | null; issuedSalesInvoice?: boolean
   principal: number; totalDue: number; months: number | null; interestType: string | null; interestValue: number | null
   monthlyAmount: number | null; startDate: string | null; notes: string | null; status: string; createdAt: string
+  attachments: string[]
   paid: number; balance: number; payments: ORPayment[]
 }
 
@@ -56,6 +58,21 @@ export default function OthersTab({ branch, canWrite }: { branch: string; canWri
     if (!confirm('Delete this payment?')) return
     await fetch('/api/accounts-receivable/others', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: r.id, action: 'delete-payment', paymentId }) })
     load()
+  }
+
+  const saveAttachments = async (id: string, attachments: string[]) => {
+    await fetch('/api/accounts-receivable/others', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, action: 'attachments', attachments }) })
+    load()
+  }
+  // ScanUpload fires onUploaded once per file in a batch; appending from live
+  // state (not the render-time row) keeps the second file from erasing the first.
+  const addAttachment = (id: string, url: string) => {
+    setRows(prev => {
+      const cur = prev.find(x => x.id === id)
+      const next = [...(cur?.attachments || []), url]
+      saveAttachments(id, next)
+      return prev.map(x => x.id === id ? { ...x, attachments: next } : x)
+    })
   }
 
   const planLabel = (r: OtherRec) => {
@@ -154,6 +171,36 @@ export default function OthersTab({ branch, canWrite }: { branch: string; canWri
                           </tbody>
                         </table>
                       )}
+                      {/* Attachments — PDC/check photos, agreements, anything backing the receivable */}
+                      <div className="mt-3 pt-2 border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                        <p className="text-[11px] font-semibold mb-1 flex items-center gap-1" style={{ color: 'var(--mid-gray)' }}>
+                          <Paperclip size={11} /> Attachments{r.attachments.length > 0 && ` (${r.attachments.length})`}
+                        </p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          {r.attachments.map((u, i) => (
+                            <span key={u} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border text-[11px] bg-white"
+                              style={{ borderColor: 'var(--light-gray)' }}>
+                              <a href={u} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--teal)' }}>
+                                {decodeURIComponent(u.split('/').pop() || `file ${i + 1}`)}
+                              </a>
+                              {canWrite && (
+                                <button onClick={() => saveAttachments(r.id, r.attachments.filter(x => x !== u))}
+                                  title="Remove attachment" className="cursor-pointer" style={{ color: 'var(--mid-gray)' }}>
+                                  <X size={11} />
+                                </button>
+                              )}
+                            </span>
+                          ))}
+                          {canWrite && (
+                            <ScanUpload compact prefix={`OR-${r.id.slice(-6)}`} section="other-receivable"
+                              existingCount={r.attachments.length}
+                              onUploaded={url => addAttachment(r.id, url)} />
+                          )}
+                          {r.attachments.length === 0 && !canWrite && (
+                            <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>None</span>
+                          )}
+                        </div>
+                      </div>
                     </td>
                   </tr>
                 )}

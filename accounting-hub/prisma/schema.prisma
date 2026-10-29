@@ -1542,6 +1542,7 @@ model OtherReceivable {
   monthlyAmount      Decimal? // totalDue / months
   startDate          DateTime? // first installment month
   notes              String?
+  attachments        Json? // file URLs (check/PDC photos, agreements) shown on the Other Customers row
   status             String    @default("OPEN") // OPEN | SETTLED
   createdById        String?
   createdAt          DateTime  @default(now())

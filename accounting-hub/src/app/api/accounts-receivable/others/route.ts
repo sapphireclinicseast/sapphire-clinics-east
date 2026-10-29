@@ -21,6 +21,7 @@ function serialize(r: any) {
     monthlyAmount: r.monthlyAmount != null ? Number(r.monthlyAmount) : null,
     startDate: r.startDate ? r.startDate.toISOString().slice(0, 10) : null,
     notes: r.notes, status: r.status, createdAt: r.createdAt,
+    attachments: Array.isArray(r.attachments) ? r.attachments : [],
     paid, balance: Number(r.totalDue) - paid,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     payments: (r.payments || []).map((p: any) => ({
@@ -146,6 +147,14 @@ export async function PATCH(req: Request) {
       if (!body.paymentId) return NextResponse.json({ error: 'paymentId is required' }, { status: 400 })
       await prisma.otherReceivablePayment.delete({ where: { id: body.paymentId } })
       await refreshStatus(id)
+    } else if (action === 'attachments') {
+      // Full replacement of the row's attachment list (PDC/check photos,
+      // agreements). Only files that came through our own upload route.
+      const urls = Array.isArray(body.attachments)
+        ? body.attachments.filter((u: unknown) => typeof u === 'string' && ((u as string).startsWith('/api/files/') || (u as string).startsWith('/uploads/'))).slice(0, 30)
+        : null
+      if (!urls) return NextResponse.json({ error: 'attachments must be a list of uploaded-file URLs' }, { status: 400 })
+      await prisma.otherReceivable.update({ where: { id }, data: { attachments: urls } })
     } else if (action === 'edit') {
       await prisma.otherReceivable.update({
         where: { id },
