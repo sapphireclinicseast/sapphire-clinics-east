@@ -22,6 +22,10 @@ type NavItem = {
   icon: 'home' | 'classes' | 'calendar' | 'pay' | 'handbook' | 'meetings' | 'templates' | 'megaphone'
   roles?: Array<'ADMIN' | 'BRANCH_ADMIN' | 'FRONTDESK' | 'TEACHER' | 'STUDENT'>
   mainAdminOnly?: boolean
+  /** The role's home / landing entry. Suppressed while impersonating so
+   *  the sidebar doesn't carry a redundant link next to the Profile
+   *  entry that mirrors the student view. */
+  isDashboard?: boolean
 }
 
 // Monochrome 20×20 line icons rendered inline as SVG so they inherit
@@ -171,7 +175,7 @@ export default function AuthSidebar() {
         : role === 'FRONTDESK' ? 'Front desk'
         : role === 'TEACHER' ? 'Teacher hub'
         : 'My profile',
-      icon: 'home' },
+      icon: 'home', isDashboard: true },
     // During impersonation we drop the main dashboard entry (admins
     // exit via "Return to admin"). Surface the student's profile as a
     // dedicated entry so the admin can click into the view-as user's
@@ -215,9 +219,9 @@ export default function AuthSidebar() {
     // exit back to their real dashboard through the red "Return to
     // admin" button at the top of the viewport; a sidebar entry would
     // either send them to a page their real role can't actually use
-    // (/profile bounces admin back to /admin) or defeat the purpose of
-    // the impersonation mirror.
-    .filter(i => !(impersonating && i.href === dashboardHref))
+    // or shadow the dedicated Profile entry we add below (both end
+    // up with the same /profile href for a student impersonation).
+    .filter(i => !(impersonating && i.isDashboard))
 
   const displayName = auth.email?.split('@')[0] ?? 'account'
   // The signed-in chip at the bottom always shows the REAL auth role —
@@ -273,15 +277,18 @@ export default function AuthSidebar() {
             <span>{item.label}</span>
           </a>
         ))}
-
-        {/* Bell icon — unread count + dropdown panel. Shown to every
-            signed-in user. The hardcoded-password frontdesk account
-            has no userId; the API returns an empty inbox for it, so
-            the bell stays quiet rather than erroring. */}
-        <div className="pt-1">
-          <BellIcon />
-        </div>
       </nav>
+
+      {/* Bell icon — unread count + dropdown panel. Shown to every
+          signed-in user. Rendered OUTSIDE <nav> because the nav's
+          `overflow-y-auto` clips the absolute-positioned dropdown
+          panel; the panel wouldn't render far enough right to be
+          visible. The hardcoded-password frontdesk account has no
+          userId; the API returns an empty inbox for it, so the bell
+          stays quiet rather than erroring. */}
+      <div className="px-2 pt-1 pb-1" style={{ fontFamily: 'var(--font-display)' }}>
+        <BellIcon />
+      </div>
 
       {/* User chip + sign out */}
       <div className="mt-2 mx-2 mb-2 rounded-xl border p-3" style={{ borderColor: 'var(--paper-3)', background: 'var(--paper-2)' }}>
