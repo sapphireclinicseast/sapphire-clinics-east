@@ -654,6 +654,7 @@ export default function LedgerStatements({ year, branch, tab, view, readOnly }: 
                   {sec('OPEX')!.rows.map(r => (
                     <MultiRow key={r.number} label={`${r.number} ${r.title}`} indent={1} {...rowVals(r)} onClickCell={m => openDrill(r, cellMonth(m))} pctBases={vaBases} pctBaseTotal={vaTotal} />
                   ))}
+                  <MultiRow label="Total Operating Expenses" values={opexC} total={is.totalOpex} bold rule pctBases={vaBases} pctBaseTotal={vaTotal} />
                 </>)}
                 <MultiRow label="EBITDA" values={ebitdaC} total={is.ebitda} bold doubleRule pctBases={vaBases} pctBaseTotal={vaTotal} />
                 {(['DEPRECIATION', 'INTEREST', 'NON_OPERATING'] as const).map(k => sec(k) && (<Fragment key={k}>
