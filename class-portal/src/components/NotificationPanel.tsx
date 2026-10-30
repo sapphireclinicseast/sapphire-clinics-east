@@ -424,17 +424,17 @@ function AnnouncementModal({ announcement: a, viewer, onClose, onDelete, onSent 
     // poster image and surrounding body text feel cramped. A very
     // soft tint is enough to signal "modal on top" without competing.
     <div
-      className="fixed inset-0 z-50 bg-black/15 overflow-y-auto p-2 sm:p-4"
+      className="fixed inset-0 z-50 bg-white overflow-y-auto"
       onClick={onClose}
     >
-      {/* The inner card fills the entire viewport minus the wrapper
-          padding. Without the min-h clamp it shrunk to its content
-          height on short announcements, leaving a wide strip of
-          backdrop below that read as blank page. When a poster is
-          attached we render poster + body side-by-side so the message
-          text is visible immediately next to the image. */}
+      {/* Full-bleed modal: no backdrop gutter, no rounded card edge,
+          no border — the announcement occupies the entire viewport,
+          edge to edge, so the body is the only thing the reader sees.
+          Internal padding keeps the content from touching the screen
+          edge. When a poster is attached we still render poster + body
+          side-by-side. */}
       <div
-        className="w-full card-static min-h-[calc(100vh-16px)] sm:min-h-[calc(100vh-32px)]"
+        className="w-full min-h-screen bg-white p-4 sm:p-8"
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-3 mb-3">
