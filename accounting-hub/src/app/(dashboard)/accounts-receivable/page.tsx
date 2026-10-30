@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef, Fragment } from 'react'
 import LoaSubmissionsTab from './LoaSubmissionsTab'
+import RevisedSessionsTab from './RevisedSessionsTab'
 import { useSession } from 'next-auth/react'
 import { userBranchScope } from '@/lib/branch-scope'
 import { branchLabel } from '@/lib/branch'
@@ -553,7 +554,7 @@ export default function AccountsReceivablePage() {
   // HMO sub-tab state. 'md-consults' and 'submitted-unpaid' are the Per HMO
   // view in fixed shapes (doctor-consult sessions only / on a submitted SOA but
   // still unpaid) — all four render through the same block below.
-  const [hmoSubTab, setHmoSubTab] = useState<'overview' | 'per-hmo' | 'md-consults' | 'soa-report' | 'submitted-soa' | 'submitted-unpaid' | 'loa' | 'follow-up' | 'payment-history'>('overview')
+  const [hmoSubTab, setHmoSubTab] = useState<'overview' | 'per-hmo' | 'md-consults' | 'soa-report' | 'submitted-soa' | 'submitted-unpaid' | 'loa' | 'follow-up' | 'revised-amounts' | 'payment-history'>('overview')
   // useSession resolves after the first render, so the initial tab/sub-tab are
   // picked before the role is known. Snap them back once it arrives — a ?type=
   // link or a stale sub-tab must not park a restricted user on a hidden view.
@@ -1528,6 +1529,8 @@ export default function AccountsReceivablePage() {
             { key: 'loa', label: 'LOA Submission' },
             // Unpaid HMO sessions since the beginning — the follow-up worklist.
             { key: 'follow-up', label: 'For Follow Up' },
+            // Sessions decreased to the HMO-paid amount (Hannah 2026-10-30).
+            { key: 'revised-amounts', label: 'Revised Session Amount' },
             // Recorded HMO payments + the Record Payment button, out of Overview
             // (Hannah 2026-10-17).
             { key: 'payment-history', label: 'Payment History' },
@@ -2455,6 +2458,8 @@ export default function AccountsReceivablePage() {
 
       {/* ── Per HMO sub-tab content ── */}
       {tab === 'HMO' && hmoSubTab === 'loa' && <LoaSubmissionsTab />}
+
+      {tab === 'HMO' && hmoSubTab === 'revised-amounts' && <RevisedSessionsTab branch={branch} />}
 
       {tab === 'HMO' && PER_HMO_LIKE_TABS.includes(hmoSubTab) && (() => {
         // Fixed shapes of the Per HMO view:
