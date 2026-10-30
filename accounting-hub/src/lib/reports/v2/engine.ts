@@ -56,6 +56,8 @@ export interface V2AccountRow {
   virtual: boolean
   /** Bank-flagged in the CoA or cash-titled — grouped as Cash and Cash Equivalents on the BS. */
   cash: boolean
+  /** Clearing / undeposited money on its way to a bank — grouped as Cash in Transit, never as cash. */
+  transit: boolean
 }
 
 /** One underlying line, returned when a drill-down is requested. */
@@ -170,10 +172,79 @@ const BS_SECTION: [key: string, label: string, match: (a: AcctInfo) => boolean][
 function isCashAccount(a: AcctInfo): boolean {
   if (a.type !== 'ASSET') return false
   const t = a.title.toLowerCase()
-  // 'deposit' used to exclude "UnDEPOSITed Funds" — the clearing account IS
-  // cash in transit and belongs in Cash and Cash Equivalents (user policy).
+  // 'deposit' used to exclude "UnDEPOSITed Funds" — keep matching it here;
+  // isTransitAccount() is what separates it from cash.
   if (/receivable|input vat|withholding|prepaid|security deposit|deposit paid|inventory|advances|due from/.test(t)) return false
   return /cash|bank|gcash|paymaya|maya|fund|clearing|undeposited/.test(t)
+}
+
+const TRANSIT_TITLE = /clearing|undeposited|in transit/i
+
+/* Cash on the balance sheet must equal what the banks (and the physical
+   floats) hold. Card / e-wallet / marketplace money that has not landed yet
+   sits in clearing accounts; it is shown beside cash as Cash in Transit, and
+   the cash flow treats its change as working capital, so Ending Cash is the
+   bank figure too. */
+function isTransitAccount(a: AcctInfo, bankFlagged: Set<string>): boolean {
+  return !bankFlagged.has(a.number) && isCashAccount(a) && TRANSIT_TITLE.test(a.title)
+}
+function isCashLine(a: AcctInfo, bankFlagged: Set<string>): boolean {
+  return bankFlagged.has(a.number) || (isCashAccount(a) && !TRANSIT_TITLE.test(a.title))
+}
+
+/* ── In-flight lines follow the bank they settle into (branch views) ──
+   A true-up that moves money out of 1170 Undeposited Funds or into 2990
+   suspense and into the branches' banks is tagged ALL, and those accounts
+   belong to no branch. Line derivation kept each branch's bank leg but
+   dropped the clearing leg, so a branch sheet carried every sale's debit to
+   1170 and none of the credits that cleared it — East showed P7.3M of
+   "cash" the bank never held. When an ALL-tagged entry consists ONLY of
+   branch-owned lines and branchless in-flight lines, each in-flight line is
+   split across the branches whose banks it moved money for: exactly, by
+   matching it to the bank legs it equals; otherwise in proportion to each
+   branch's net. Returns signed debit-positive shares per branch, or null
+   when the entry is not a closed in-flight movement (left to derivation). */
+const INFLIGHT_TITLE = /clearing|undeposited|in transit|unreconciled|suspense/i
+type InflightLine = { acct: AcctInfo; debit?: number; credit?: number }
+function inflightShares<L extends InflightLine>(lines: L[]): Map<L, Record<string, number>> | null {
+  const net = (l: InflightLine) => Math.round(((l.debit || 0) - (l.credit || 0)) * 100) / 100
+  const owned = lines.filter(l => !!l.acct.branch)
+  const inflight = lines.filter(l => !l.acct.branch && (l.acct.type === 'ASSET' || l.acct.type === 'LIABILITY') && INFLIGHT_TITLE.test(l.acct.title))
+  if (!owned.length || !inflight.length || owned.length + inflight.length !== lines.length) return null
+  if (Math.abs(lines.reduce((s, l) => s + net(l), 0)) >= 0.01) return null
+  const byBranch = (ls: InflightLine[]) => {
+    const m: Record<string, number> = {}
+    for (const l of ls) m[l.acct.branch!] = (m[l.acct.branch!] || 0) + net(l)
+    return m
+  }
+  const out = new Map<L, Record<string, number>>()
+  const negate = (m: Record<string, number>) => Object.fromEntries(Object.entries(m).map(([b, v]) => [b, -v]))
+  if (inflight.length === 1) {
+    out.set(inflight[0], negate(byBranch(owned)))
+    return out
+  }
+  // Two in-flight lines (e.g. AUB legs vs 1170 and BDO legs vs 2990): find
+  // the bank legs that sum exactly to the first; the rest must make the second.
+  if (inflight.length === 2 && owned.length <= 16) {
+    const want = -net(inflight[0])
+    for (let mask = 0; mask < (1 << owned.length); mask++) {
+      let s = 0
+      for (let i = 0; i < owned.length; i++) if (mask & (1 << i)) s += net(owned[i])
+      if (Math.abs(s - want) >= 0.005) continue
+      const pick = owned.filter((_, i) => mask & (1 << i))
+      const rest = owned.filter((_, i) => !(mask & (1 << i)))
+      out.set(inflight[0], negate(byBranch(pick)))
+      out.set(inflight[1], negate(byBranch(rest)))
+      return out
+    }
+  }
+  const bnet = byBranch(owned)
+  const total = Object.values(bnet).reduce((s, v) => s + v, 0)
+  if (Math.abs(total) < 0.005) return null
+  for (const l of inflight) {
+    out.set(l, Object.fromEntries(Object.entries(bnet).map(([b, v]) => [b, net(l) * v / total])))
+  }
+  return out
 }
 
 /**
@@ -518,15 +589,40 @@ export async function computeLedgerStatements(
           referenceType: { notIn: ['CLOSING_ENTRY', 'CLOSING_ENTRY_REVERSAL'] },
         },
       },
-      select: { debit: true, credit: true, account: { select: { accountNumber: true } }, journalEntry: { select: { branch: true } } },
+      select: { debit: true, credit: true, account: { select: { accountNumber: true } }, journalEntry: { select: { id: true, branch: true } } },
     })
+    type PriorLine = (typeof priorLines)[number]
+    const priorShare = new Map<PriorLine, number>()
+    {
+      const acctOf = (l: PriorLine) => (l.account ? byNumber.get(l.account.accountNumber) : undefined)
+      const candidates = new Set<string>()
+      for (const l of priorLines) {
+        const a = acctOf(l)
+        if (l.journalEntry?.branch === 'ALL' && a && !a.branch && INFLIGHT_TITLE.test(a.title)) candidates.add(l.journalEntry.id)
+      }
+      const groups = new Map<string, { raw: PriorLine; acct: AcctInfo; debit: number; credit: number }[]>()
+      for (const l of priorLines) {
+        if (!l.journalEntry || !candidates.has(l.journalEntry.id)) continue
+        const a = acctOf(l)
+        if (!a) continue
+        const g = groups.get(l.journalEntry.id) || []
+        g.push({ raw: l, acct: a, debit: Number(l.debit) || 0, credit: Number(l.credit) || 0 })
+        groups.set(l.journalEntry.id, g)
+      }
+      for (const g of groups.values()) {
+        const shares = inflightShares(g)
+        if (shares) for (const [l, s] of shares) priorShare.set(l.raw, branchValues!.reduce((t, b) => t + (s[b] || 0), 0))
+      }
+    }
     let priorPL = 0, carried = 0, interOpen = 0
     for (const l of priorLines) {
       if (!l.account) continue
       const acct = byNumber.get(l.account.accountNumber)
       if (!acct) continue
-      if (!branchValues!.includes(lineBranchOf(acct.branch, l.journalEntry?.branch))) continue
-      const d = Number(l.debit) || 0, c = Number(l.credit) || 0
+      const share = priorShare.get(l)
+      if (share === undefined && !branchValues!.includes(lineBranchOf(acct.branch, l.journalEntry?.branch))) continue
+      const d = share === undefined ? Number(l.debit) || 0 : Math.max(share, 0)
+      const c = share === undefined ? Number(l.credit) || 0 : Math.max(-share, 0)
       interOpen += d - c
       if (acct.type === 'REVENUE' || acct.type === 'EXPENSE') {
         priorPL += c - d // credit-positive: net income of prior years
@@ -604,7 +700,14 @@ export async function computeLedgerStatements(
       debit: Number(l.debit), credit: Number(l.credit),
     }))
     if (branchValues) {
-      jeLines = jeLines.filter(l => branchValues.includes(lineBranchOf(l.acct.branch, je.branch)))
+      const shares = je.branch === 'ALL' ? inflightShares(jeLines) : null
+      jeLines = jeLines.flatMap(l => {
+        const s = shares?.get(l)
+        if (!s) return branchValues.includes(lineBranchOf(l.acct.branch, je.branch)) ? [l] : []
+        const amt = round2(branchValues.reduce((t, b) => t + (s[b] || 0), 0))
+        if (Math.abs(amt) < 0.005) return []
+        return [amt > 0 ? { acct: l.acct, debit: amt } : { acct: l.acct, credit: -amt }]
+      })
       if (!jeLines.length) continue
       const net = round2(jeLines.reduce((sum, l) => sum + (l.debit || 0) - (l.credit || 0), 0))
       if (Math.abs(net) >= 0.01) jeLines.push(net > 0
@@ -1306,12 +1409,11 @@ export async function computeLedgerStatements(
       let floored = 0
       for (const acct of byNumber.values()) {
         if (acct.virtual || !acct.id) continue
-        if (!(bankFlagged.has(acct.number) || isCashAccount(acct))) continue
-        /* Clearing / undeposited / in-transit accounts group under Cash and
-           Cash Equivalents for DISPLAY, but they are net timing positions that
-           may legitimately run negative (e.g. 1170 at -200,000 across the
-           2024/25 year straddle) — flooring them invented 3990 noise. */
-        if (/clearing|undeposited|in transit/i.test(acct.title)) continue
+        /* Only physical cash floors at zero. Clearing / undeposited accounts
+           are net timing positions that may legitimately run negative (e.g.
+           1170 at -200,000 across the 2024/25 year straddle) — flooring them
+           invented 3990 noise. */
+        if (!isCashLine(acct, bankFlagged)) continue
         if (!ownsBank(acct)) continue                 // zeroed above, not ours to floor
         if (byAcctMonth.has(acct.id)) continue        // has statements — trued above
         const mm = movMonthly.get(acct.number)
@@ -1373,7 +1475,8 @@ export async function computeLedgerStatements(
       number: n, title: a.title, type: a.type, subType: a.subType,
       opening: round2(open), debit: round2(m.debit), credit: round2(m.credit),
       closing: round2(closing), monthly, virtual: a.virtual,
-      cash: bankFlagged.has(n) || isCashAccount(a),
+      cash: isCashLine(a, bankFlagged),
+      transit: isTransitAccount(a, bankFlagged),
     })
   }
   rows.sort((x, y) => x.number.localeCompare(y.number))

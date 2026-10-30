@@ -363,6 +363,9 @@ export default function LedgerStatements({ year, branch, tab, view, readOnly }: 
   // Balance sheet: bank/cash accounts collapse into one "Cash and Cash
   // Equivalents" line; toggle to see the individual accounts.
   const [cashOpen, setCashOpen] = useState(false)
+  // Clearing / undeposited accounts collapse into "Cash in Transit" right
+  // below cash — money owed to the banks, not money they hold.
+  const [transitOpen, setTransitOpen] = useState(false)
   // 7080 Sales of Product Income category breakdown — collapsed by default.
   const [show7080Breakdown, setShow7080Breakdown] = useState(false)
 
@@ -476,14 +479,15 @@ export default function LedgerStatements({ year, branch, tab, view, readOnly }: 
             Cash check: the ledger says {formatCurrency(v.cashRecon.ledgerCash)}, the bank statements say {formatCurrency(v.cashRecon.statementCash)}
           </div>
           <div style={{ color: '#64748b' }}>
-            The ledger only knows recorded transactions.{' '}
+            Every account with an imported statement is stated at the bank&apos;s own balance, so the difference is
+            the accounts below that have no statement imported — import one to replace the ledger figure with the
+            bank&apos;s.{' '}
             {v.cashRecon.pendingCount > 0 && (
               <>
-                <strong>{formatCurrency(v.cashRecon.pendingOut)}</strong> of imported bank outflows
+                Separately, <strong>{formatCurrency(v.cashRecon.pendingOut)}</strong> of imported bank outflows
                 ({v.cashRecon.pendingCount.toLocaleString()} transactions) are still uncategorized in{' '}
-                <a href="/bank-reconciliation" className="underline">Bank Reconciliation</a> — salaries paid, suppliers,
-                rent and the rest. Until they are categorized and posted, this sheet cannot subtract them, so the cash
-                line reads high by roughly that amount.{' '}
+                <a href="/bank-reconciliation" className="underline">Bank Reconciliation</a>; they sit on
+                &quot;3990 Cash Pending Reconciliation&quot; until categorized.{' '}
               </>
             )}
             Per account (statement balance as of its latest imported line):
@@ -765,7 +769,7 @@ export default function LedgerStatements({ year, branch, tab, view, readOnly }: 
                 </tr>
               </thead>
               <tbody>
-                {bs.sections.map(s => { const cashRows = s.rows.filter(r => r.cash); const grouped = cashRows.length > 1; return (<Fragment key={s.key}>
+                {bs.sections.map(s => { const cashRows = s.rows.filter(r => r.cash); const grouped = cashRows.length > 1; const transitRows = s.rows.filter(r => r.transit); const tGrouped = transitRows.length > 1; return (<Fragment key={s.key}>
                   <tr><td colSpan={colLabels.length + 2} className="px-3 pt-2 pb-1 font-semibold text-[0.72rem] uppercase" style={{ color: '#111827' }}><span className="inline-block" style={{ position: 'sticky', left: 12 }}>{s.label}</span></td></tr>
                   {grouped && (
                     <MultiRow label={
@@ -782,7 +786,22 @@ export default function LedgerStatements({ year, branch, tab, view, readOnly }: 
                       values={pick(r.monthly || [])} total={r.closing}
                       onClickCell={m => openDrill(r, view === 'monthly' ? m : null, view === 'monthly')} />
                   ))}
-                  {(grouped ? s.rows.filter(r => !r.cash) : s.rows).map(r => (
+                  {tGrouped && (
+                    <MultiRow label={
+                      <button onClick={() => setTransitOpen(o => !o)} className="flex items-center gap-1" title="Card, e-wallet and marketplace sales not yet deposited — click to show the clearing accounts">
+                        <ChevronDown size={12} style={{ transform: transitOpen ? undefined : 'rotate(-90deg)', transition: 'transform .15s', color: 'var(--mid-gray)' }} />
+                        Cash in Transit (not yet in the bank)
+                      </button>
+                    } indent={1}
+                      values={pick(Array.from({ length: 12 }, (_, i) => transitRows.reduce((sum, r) => sum + (r.monthly?.[i] || 0), 0)))}
+                      total={transitRows.reduce((sum, r) => sum + r.closing, 0)} />
+                  )}
+                  {tGrouped && transitOpen && transitRows.map(r => (
+                    <MultiRow key={r.number} label={`${r.number} ${r.title}${r.virtual ? ' *' : ''}`} indent={2} muted
+                      values={pick(r.monthly || [])} total={r.closing}
+                      onClickCell={m => openDrill(r, view === 'monthly' ? m : null, view === 'monthly')} />
+                  ))}
+                  {s.rows.filter(r => !(grouped && r.cash) && !(tGrouped && r.transit)).map(r => (
                     <MultiRow key={r.number} label={`${r.number} ${r.title}${r.virtual ? ' *' : ''}`} indent={1}
                       values={pick(r.monthly || [])} total={r.closing}
                       onClickCell={m => openDrill(r, view === 'monthly' ? m : null, view === 'monthly')} />
@@ -807,7 +826,7 @@ export default function LedgerStatements({ year, branch, tab, view, readOnly }: 
     } else {
     body = (
       <div className="py-1">
-        {bs.sections.map(s => { const cashRows = s.rows.filter(r => r.cash); const grouped = cashRows.length > 1; return (
+        {bs.sections.map(s => { const cashRows = s.rows.filter(r => r.cash); const grouped = cashRows.length > 1; const transitRows = s.rows.filter(r => r.transit); const tGrouped = transitRows.length > 1; return (
           <div key={s.key}>
             <Row label={s.label} bold />
             {grouped && (
@@ -821,7 +840,18 @@ export default function LedgerStatements({ year, branch, tab, view, readOnly }: 
             {grouped && cashOpen && cashRows.map(r => (
               <Row key={r.number} label={`${r.number} ${r.title}${r.virtual ? ' *' : ''}`} amount={r.closing} indent={2} muted onClick={() => openDrill(r)} />
             ))}
-            {(grouped ? s.rows.filter(r => !r.cash) : s.rows).map(r => (
+            {tGrouped && (
+              <Row label={
+                <button onClick={() => setTransitOpen(o => !o)} className="flex items-center gap-1" title="Card, e-wallet and marketplace sales not yet deposited — click to show the clearing accounts">
+                  <ChevronDown size={12} style={{ transform: transitOpen ? undefined : 'rotate(-90deg)', transition: 'transform .15s', color: 'var(--mid-gray)' }} />
+                  Cash in Transit (not yet in the bank)
+                </button>
+              } amount={transitRows.reduce((sum, r) => sum + r.closing, 0)} indent={1} />
+            )}
+            {tGrouped && transitOpen && transitRows.map(r => (
+              <Row key={r.number} label={`${r.number} ${r.title}${r.virtual ? ' *' : ''}`} amount={r.closing} indent={2} muted onClick={() => openDrill(r)} />
+            ))}
+            {s.rows.filter(r => !(grouped && r.cash) && !(tGrouped && r.transit)).map(r => (
               <Row key={r.number} label={`${r.number} ${r.title}${r.virtual ? ' *' : ''}`} amount={r.closing} indent={1} onClick={() => openDrill(r)} />
             ))}
             {s.key === 'CURRENT_ASSETS' && bs.deferredTaxAsset > 0 && (
