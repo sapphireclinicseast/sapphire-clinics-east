@@ -9,6 +9,17 @@ import {
   unpaidBackMonthsFor,
   type PaymentPlan, type PaymentMethod, type PaymentRecord, type StoredUser, type FeeSchedule,
 } from '@/lib/session'
+
+// Local method label — not exported from @/lib/session, so the grid
+// below carries its own small lookup. Mirrors the version in /profile.
+function methodLabel(m: PaymentMethod | undefined): string {
+  switch (m) {
+    case 'PAYMONGO':        return 'PayMongo'
+    case 'FRONT_DESK_CASH': return 'Front desk (cash)'
+    case 'BANK_DEPOSIT':    return 'Bank deposit'
+    default:                return '—'
+  }
+}
 import { backendJson, getImpersonationMeta } from '@/lib/backend'
 
 const BANK_DETAILS = {
@@ -458,6 +469,10 @@ export default function PayPage() {
 
   return (
     <div className="max-w-4xl mx-auto animate-fade-up space-y-6">
+      {/* Payment status by trimester — moved here from /profile so the
+          "where are my payments?" grid lives alongside the Pay flow. */}
+      <PaymentStatusGrid payments={history} />
+
       {/* Top — tuition fee table */}
       <div className="card-static">
         <div className="flex items-start justify-between gap-3 flex-wrap mb-1">
@@ -795,5 +810,144 @@ function Row({ item, amount, deadline }: { item: string; amount: string; deadlin
       <td className="py-2.5 px-3 text-right tabular-nums">{amount}</td>
       <td className="py-2.5 px-3 text-[12.5px] text-[color:var(--mid-gray)]">{deadline}</td>
     </tr>
+  )
+}
+
+/* ─────────────── Plan-aware Payment Status by trimester grid ───────────────
+ *
+ * Grid: rows = school months (Jun → Apr), columns = Semester 1 (Jun-Aug),
+ *       Semester 2 (Sep-Dec), Semester 3 (Jan-Apr).
+ *
+ * MONTHLY — one cell per month lights up when a PAID payment's `period`
+ *   substring includes that month name (same logic as the old profile
+ *   trimester grid).
+ *
+ * BIANNUAL — SCEI biannual = 2 installments. The 1st installment
+ *   covers Jun-Oct (5 months), the 2nd covers Nov-Apr (6 months). We key
+ *   off the COUNT of PAID biannual payments the student has on file,
+ *   sorted by paidAt ascending:
+ *     0 paid → nothing lit
+ *     1 paid → Jun/Jul/Aug/Sep/Oct cells lit
+ *     2 paid → every month lit
+ *   The user asked for "full for 1st sem, half for 2nd sem, none for 3rd"
+ *   after one biannual payment — that's exactly S1 (full, Jun-Aug) + S2
+ *   half (Sep-Oct of 4 months) under this mapping.
+ *
+ * ANNUAL — one payment covers the whole SY. Any PAID annual payment lights
+ *   every month.
+ */
+function PaymentStatusGrid({ payments }: { payments: PaymentRecord[] }) {
+  const MONTHS = ['June', 'July', 'August', 'September', 'October', 'November', 'December', 'January', 'February', 'March', 'April']
+  const SEMESTERS: Array<{ key: 1 | 2 | 3; label: string; months: string[] }> = [
+    { key: 1, label: 'Semester 1', months: ['June', 'July', 'August'] },
+    { key: 2, label: 'Semester 2', months: ['September', 'October', 'November', 'December'] },
+    { key: 3, label: 'Semester 3', months: ['January', 'February', 'March', 'April'] },
+  ]
+  // SCEI biannual installment coverage. 1st covers 5 months, 2nd covers 6.
+  const BIANNUAL_1 = ['June', 'July', 'August', 'September', 'October']
+  const BIANNUAL_2 = ['November', 'December', 'January', 'February', 'March', 'April']
+
+  function semesterOf(month: string): 1 | 2 | 3 {
+    for (const s of SEMESTERS) if (s.months.includes(month)) return s.key
+    return 1
+  }
+
+  // Latest plan the student has committed to (last PAID row wins, else
+  // the most recent PENDING). Falls back to MONTHLY only to pick a layout
+  // when there's no data — the grid stays empty in that case anyway.
+  const paid = payments.filter(p => p.status === 'PAID')
+  const anyRows = [...paid, ...payments.filter(p => p.status !== 'PAID')]
+  const activePlan: PaymentPlan = (anyRows[0]?.plan ?? 'MONTHLY') as PaymentPlan
+
+  // Count paid annual / biannual rows up front — used for the whole-year
+  // and half-year fills below.
+  const paidAnnual = paid.find(p => p.plan === 'ANNUAL')
+  const paidBiannualSorted = paid
+    .filter(p => p.plan === 'BIANNUAL')
+    .sort((a, b) => new Date(a.paidAt ?? a.createdAt).getTime() - new Date(b.paidAt ?? b.createdAt).getTime())
+
+  function paymentForMonth(month: string): PaymentRecord | null {
+    if (paidAnnual) return paidAnnual
+    if (activePlan === 'BIANNUAL') {
+      if (BIANNUAL_1.includes(month) && paidBiannualSorted[0]) return paidBiannualSorted[0]
+      if (BIANNUAL_2.includes(month) && paidBiannualSorted[1]) return paidBiannualSorted[1]
+      // Pending second installment on biannual? Fall through to look for
+      // any PENDING match so the cell can still say "Pending" instead of
+      // leaving the parent to guess.
+    }
+    // MONTHLY fallback (also catches biannual months with no paid cover):
+    // prefer a PAID row whose period mentions the month, else any row.
+    const needle = month.toLowerCase()
+    const matches = payments.filter(p => p.period.toLowerCase().includes(needle))
+    return matches.find(p => p.status === 'PAID') ?? matches[0] ?? null
+  }
+
+  return (
+    <div className="card-static">
+      <h2 className="text-[18px] leading-tight mb-1">Payment status by trimester</h2>
+      <p className="text-sm text-[color:var(--mid-gray)] mb-3">
+        Hover a <strong>Paid</strong> or <strong>Pending</strong> cell to see the payment details.
+      </p>
+      <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--paper-3)' }}>
+        <table className="w-full text-sm border-collapse">
+          <thead style={{ background: 'var(--paper-2)' }}>
+            <tr className="text-left text-[11.5px] uppercase tracking-[0.08em] text-[color:var(--mid-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
+              <th className="py-2 px-3 border-b" style={{ borderColor: 'var(--paper-3)' }}>Month</th>
+              {SEMESTERS.map(s => (
+                <th key={s.key} className="py-2 px-3 border-b border-l text-center" style={{ borderColor: 'var(--paper-3)' }}>{s.label}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {MONTHS.map(month => {
+              const sem = semesterOf(month)
+              const match = paymentForMonth(month)
+              return (
+                <tr key={month} className="border-b" style={{ borderColor: 'var(--paper-3)' }}>
+                  <td className="py-2.5 px-3 text-[13px] font-medium text-[color:var(--narra)]">{month}</td>
+                  {SEMESTERS.map(s => (
+                    <td
+                      key={s.key}
+                      className="py-2.5 px-3 border-l text-center text-[12.5px]"
+                      style={{ borderColor: 'var(--paper-3)' }}
+                    >
+                      {s.key === sem && match ? <PaymentStatusCell payment={match} /> : null}
+                    </td>
+                  ))}
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+function PaymentStatusCell({ payment }: { payment: PaymentRecord }) {
+  const paid = payment.status === 'PAID'
+  const dateIso = payment.paidAt ?? payment.createdAt
+  const dateLabel = new Date(dateIso).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
+  const total = payment.tuitionAmount + payment.miscAmount
+  const method = methodLabel(payment.method)
+  const reference = payment.paymongoCheckoutId
+    || payment.proofFileName
+    || payment.voucherCode
+    || '—'
+  return (
+    <span className="relative group inline-block">
+      <span className={`badge ${paid ? 'badge-paid' : 'badge-pending'}`}>{paid ? 'Paid' : 'Pending'}</span>
+      <span
+        className="absolute left-1/2 -translate-x-1/2 top-full mt-1 z-20 hidden group-hover:block text-left bg-white border rounded-lg shadow-xl px-3 py-2 w-[220px]"
+        style={{ borderColor: 'var(--paper-3)' }}
+        role="tooltip"
+      >
+        <div className="text-[10.5px] uppercase tracking-wider text-[color:var(--mid-gray)] mb-1">Payment details</div>
+        <div className="text-[12.5px] text-[color:var(--narra)]"><strong>Method:</strong> {method}</div>
+        <div className="text-[12.5px] text-[color:var(--narra)]"><strong>Date:</strong> {dateLabel}</div>
+        <div className="text-[12.5px] text-[color:var(--narra)]"><strong>Amount:</strong> ₱{(total / 100).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+        <div className="text-[12.5px] text-[color:var(--narra)] truncate" title={reference}><strong>Ref:</strong> {reference}</div>
+      </span>
+    </span>
   )
 }

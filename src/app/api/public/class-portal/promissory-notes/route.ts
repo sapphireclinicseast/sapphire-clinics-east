@@ -21,6 +21,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, type ClassPortalRole } from '@/lib/class-portal-auth'
+import { createNotification } from '@/lib/class-portal-notifications'
 import { withCors, corsHeaders } from '../../_cors'
 
 const MAX_BYTES = 100 * 1024 * 1024 // 100 MB
@@ -171,6 +172,21 @@ export async function POST(req: Request) {
         notes: true, uploadedBy: true, createdAt: true,
       },
     })
+
+    // Bell notification to the student that a note is on file for them.
+    // Best-effort — swallowed on failure so the upload itself still succeeds.
+    try {
+      await createNotification({
+        userId: student.id,
+        kind: 'PROMISSORY_NOTE',
+        title: 'Promissory note on file',
+        body: notes ? `${notes.slice(0, 160)}` : `A promissory note was uploaded for your account.`,
+        href: `/profile`,
+        payload: { promissoryNoteId: row.id, fileName: row.fileName },
+      })
+    } catch (nerr) {
+      console.error('[promissory-notes.POST] notify failed', nerr)
+    }
 
     return withCors(NextResponse.json({
       note: {

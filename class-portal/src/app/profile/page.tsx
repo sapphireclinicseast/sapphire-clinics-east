@@ -98,68 +98,12 @@ export default function ProfilePage() {
 /* ────────────────────── STUDENT VIEW ────────────────────── */
 
 function StudentView({ user }: { user: StoredUser }) {
-  const [tab, setTab] = useState<StudentTab>('PROFILE')
-  const [payments, setPayments] = useState<PaymentRecord[]>([])
-  const [grade, setGrade] = useState<GradeRecord | null>(null)
-  const [feeSummary, setFeeSummary] = useState<FeeSummary | null>(null)
-
-  useEffect(() => {
-    setPayments(getPaymentsForStudent(user.id))
-    setGrade(getGradeForStudent(user.id))
-    // Reflect any cashier-converted tuition payments as PAID without
-    // requiring the parent to refresh manually.
-    hydrateFrontDeskPayments().then(() => setPayments(getPaymentsForStudent(user.id))).catch(() => { /* ignore */ })
-    // Pull the fee schedule so the Payment tab can show months owed +
-    // running balance amount. Null when the student has no payments
-    // yet (back-end precondition) — the Balance card falls back to a
-    // placeholder in that case.
-    fetchFeeSummary(user.id).then(setFeeSummary).catch(() => { /* ignore */ })
-  }, [user.id])
-
+  // Payment / Grades / Notifications used to be top tabs here; they now
+  // live as sidebar entries pointing at /pay, /grades, /notifications so
+  // the student profile stays focused on the Profile card itself.
   return (
     <div className="max-w-4xl mx-auto animate-fade-up space-y-6">
-      <TabBar tabs={[
-        { value: 'PROFILE',       label: 'Profile' },
-        { value: 'PAYMENT',       label: 'Payment' },
-        { value: 'GRADES',        label: 'Grades' },
-        { value: 'NOTIFICATIONS', label: 'Notifications' },
-      ]} active={tab} onChange={v => setTab(v as StudentTab)} />
-
-      {tab === 'PROFILE' && <StudentDetail student={user} viewerRole="STUDENT" />}
-
-      {tab === 'PAYMENT' && (
-        <PaymentTab payments={payments} studentId={user.id} feeSummary={feeSummary} />
-      )}
-
-      {tab === 'GRADES' && (
-        <div className="card-static">
-          <h2 className="text-[18px] leading-tight mb-3">Grades</h2>
-          {!grade ? (
-            <p className="text-sm text-[color:var(--mid-gray)] text-center py-8">No grades have been recorded yet by the teacher.</p>
-          ) : (
-            <div className="space-y-3">
-              <div className="grid grid-cols-5 gap-2 text-center">
-                <Quarter label="Q1" value={grade.q1} />
-                <Quarter label="Q2" value={grade.q2} />
-                <Quarter label="Q3" value={grade.q3} />
-                <Quarter label="Q4" value={grade.q4} />
-                <Quarter label="Year Avg" value={grade.yearAvg} highlight />
-              </div>
-              <p className="text-[11.5px] text-[color:var(--mid-gray)]">Updated {new Date(grade.updatedAt).toLocaleString()}.</p>
-            </div>
-          )}
-        </div>
-      )}
-
-      {tab === 'NOTIFICATIONS' && (
-        <NotificationPanel viewer={{
-          role: 'STUDENT',
-          level: user.level as EnrollmentLevel | undefined,
-          email: user.email,
-          name: [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email,
-          userId: user.id,
-        }} />
-      )}
+      <StudentDetail student={user} viewerRole="STUDENT" />
     </div>
   )
 }

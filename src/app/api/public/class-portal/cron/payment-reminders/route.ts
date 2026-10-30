@@ -26,6 +26,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { sendTransactionalEmail } from '@/lib/transactional-email'
+import { createNotification } from '@/lib/class-portal-notifications'
 
 type Plan = 'MONTHLY' | 'BIANNUAL' | 'ANNUAL'
 type Reason = 'WINDOW_OPEN' | 'DUE_SOON' | 'PAST_DUE'
@@ -364,6 +365,24 @@ export async function POST(req: Request) {
           },
         })
       } catch { /* unique violation tolerated */ }
+      // Fire a bell PAYMENT_DUE notification alongside the email so a
+      // parent who checks the portal without opening email still sees
+      // the reminder. Guarded by the reminder-log unique index above —
+      // the loop only reaches here on a fresh (student, period, reason)
+      // triple, so this won't fan out twice for the same reminder.
+      const dueLabel = d.dueOn.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' })
+      const bodyLine =
+        d.reason === 'WINDOW_OPEN' ? `Tuition for ${d.period} is coming due on ${dueLabel}.` :
+        d.reason === 'DUE_SOON'    ? `Tuition for ${d.period} is due tomorrow (${dueLabel}).` :
+                                     `Tuition for ${d.period} was due ${dueLabel} and still shows unpaid.`
+      await createNotification({
+        userId: d.studentId,
+        kind: 'PAYMENT_DUE',
+        title: d.title,
+        body: bodyLine,
+        href: `/pay`,
+        payload: { period: d.period, reason: d.reason, dueOnIso: d.dueOn.toISOString() },
+      })
       sent += 1
     } catch (e) {
       failed += 1
