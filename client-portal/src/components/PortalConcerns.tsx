@@ -30,12 +30,12 @@ export default function PortalConcerns({ token }: { token: string }) {
       {!open && (
         <button
           onClick={() => setOpen(true)}
-          className="fixed bottom-5 right-5 z-40 inline-flex items-center gap-2 px-4 py-3 rounded-full text-white font-semibold shadow-[0_10px_30px_rgba(27,63,56,0.28)] hover:opacity-95 transition-opacity"
-          style={{ background: 'linear-gradient(135deg, var(--teal), var(--deep-teal))', fontFamily: 'var(--font-display)' }}
+          className="fixed bottom-5 right-5 z-40 w-14 h-14 rounded-full text-white flex items-center justify-center shadow-[0_8px_32px_rgba(27,63,56,0.3)] hover:shadow-[0_12px_40px_rgba(27,63,56,0.45)] hover:scale-105 transition-all"
+          style={{ background: 'linear-gradient(135deg, var(--teal), var(--deep-teal))' }}
           aria-label="Report a portal concern"
+          title="Concerns"
         >
-          <LifebuoyIcon />
-          <span className="text-sm">Concerns?</span>
+          <LifebuoyIcon size={24} />
         </button>
       )}
 
@@ -271,9 +271,9 @@ async function captureScreenFrame(): Promise<string> {
   }
 }
 
-function LifebuoyIcon() {
+function LifebuoyIcon({ size = 18 }: { size?: number }) {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="4" />
       <line x1="4.93" y1="4.93" x2="9.17" y2="9.17" /><line x1="14.83" y1="14.83" x2="19.07" y2="19.07" />
       <line x1="14.83" y1="9.17" x2="19.07" y2="4.93" /><line x1="4.93" y1="19.07" x2="9.17" y2="14.83" />
