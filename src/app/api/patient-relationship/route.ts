@@ -111,6 +111,31 @@ export async function GET(req: NextRequest) {
     // Sort by submitted_at desc
     filtered.sort((a, b) => new Date(b.submitted_at).getTime() - new Date(a.submitted_at).getTime())
 
+    // Attach front desk's follow-up state. Looked up by the form ids actually
+    // in play rather than per row, so this stays one query however long the
+    // waitlist grows. A failure here leaves the list rendering untagged rather
+    // than failing the tab — the submissions are the point, the tags are not.
+    try {
+      const formIds = [form.sbea, form.sbgh].filter(Boolean) as string[]
+      const tags = await prisma.waitlistFollowUp.findMany({
+        where: { formId: { in: formIds } },
+      })
+      const byKey = new Map(tags.map(t => [`${t.formId}|${t.submissionId}`, t]))
+      for (const item of filtered) {
+        const t = byKey.get(`${item._formId}|${item.landing_id}`)
+        if (t) {
+          item._followUp = {
+            status: t.status,
+            remarks: t.remarks,
+            setByName: t.setByName,
+            updatedAt: t.updatedAt,
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[patient-relationship/waitlist] follow-up lookup failed:', err)
+    }
+
     return NextResponse.json({ responses: filtered, total: filtered.length, formTitle: form.title })
   }
 
@@ -400,6 +425,45 @@ export async function POST(req: NextRequest) {
 
   const contentType = req.headers.get('content-type') || ''
 
+  // ── Waitlist follow-up tag ────────────────────────────────────────────────
+  // Upsert, so tagging an entry that is already tagged edits the remarks in
+  // place rather than failing on the unique key or leaving a stale row behind.
+  if (new URL(req.url).searchParams.get('tab') === 'waitlist-followup') {
+    const body = await req.json().catch(() => null)
+    const formId = typeof body?.formId === 'string' ? body.formId : ''
+    const submissionId = typeof body?.submissionId === 'string' ? body.submissionId : ''
+    const remarks = typeof body?.remarks === 'string' ? body.remarks.trim().slice(0, 1000) : ''
+    const status = typeof body?.status === 'string' && body.status ? body.status : 'WILL_NOT_AVAIL'
+
+    if (!formId || !submissionId) {
+      return NextResponse.json({ error: 'formId and submissionId required' }, { status: 400 })
+    }
+    // Remarks are the whole point — a tag with no reason tells the next person
+    // nothing beyond "someone clicked this".
+    if (!remarks) {
+      return NextResponse.json({ error: 'Please add a remark explaining why.' }, { status: 400 })
+    }
+
+    const u = session.user as any
+    const setByName = u?.name || u?.email || null
+
+    const saved = await prisma.waitlistFollowUp.upsert({
+      where: { formId_submissionId: { formId, submissionId } },
+      create: { formId, submissionId, status, remarks, setByName },
+      update: { status, remarks, setByName },
+    })
+
+    return NextResponse.json({
+      ok: true,
+      followUp: {
+        status: saved.status,
+        remarks: saved.remarks,
+        setByName: saved.setByName,
+        updatedAt: saved.updatedAt,
+      },
+    })
+  }
+
   // Handle file upload (multipart)
   if (contentType.includes('multipart/form-data')) {
     const formData = await req.formData()
@@ -505,6 +569,21 @@ export async function DELETE(req: NextRequest) {
   const user = session.user as any
   const { searchParams } = new URL(req.url)
   const tab = searchParams.get('tab')
+
+  // Lift a waitlist follow-up tag — used when someone who said they would not
+  // avail turns up and enrols after all. Deleting the row rather than keeping a
+  // cleared flag means the entry simply reads as untagged again.
+  if (tab === 'waitlist-followup') {
+    const formId = searchParams.get('formId')
+    const submissionId = searchParams.get('submissionId')
+    if (!formId || !submissionId) {
+      return NextResponse.json({ error: 'formId and submissionId required' }, { status: 400 })
+    }
+    // deleteMany, not delete: clearing a tag that is already gone is the same
+    // outcome the caller wanted, not a 500.
+    await prisma.waitlistFollowUp.deleteMany({ where: { formId, submissionId } })
+    return NextResponse.json({ ok: true })
+  }
 
   // Delete waitlist entry (HR form response)
   if (tab === 'waitlist-delete') {
