@@ -10,9 +10,10 @@ import { useSearchParams } from 'next/navigation'
 import {
   FileCheck, Search, ChevronUp, ChevronDown, ArrowUpDown,
   X, AlertCircle, DollarSign, Calendar, Upload, Trash2, Pencil,
-  Download, Filter, FileText, Settings, Maximize2, Minimize2, Lock, Unlock,
+  Download, Filter, FileText, Settings, Maximize2, Minimize2, Lock, Unlock, TrendingDown, Loader2,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
+import { HmoSettlementModal, HMO_SETTLE_ROLES, type SettleOrder } from '@/components/HmoSettlementModal'
 import { downloadXlsx, downloadReportPdf } from '@/lib/export'
 import { ScanUpload } from '@/components/ScanUpload'
 import SoaReport from './SoaReport'
@@ -517,6 +518,22 @@ export default function AccountsReceivablePage() {
   // QB 2025) orders never reach it. The tag list instead uses a wallet-scoped
   // fetch, which the API returns uncapped-in-practice.
   const [payWalletOrders, setPayWalletOrders] = useState<AROrder[]>([])
+  // Bumped after a session is decreased to the HMO-paid amount so the tag list re-reads it.
+  const [payWalletOrdersVersion, setPayWalletOrdersVersion] = useState(0)
+  // "Decrease due to HMO Payment" from the tag list — same modal as POS Order History.
+  const canSettleHmo = HMO_SETTLE_ROLES.includes(role)
+  const [settleOrder, setSettleOrder] = useState<SettleOrder | null>(null)
+  const [settleLoadingId, setSettleLoadingId] = useState('')
+  const openSettle = async (orderId: string) => {
+    setSettleLoadingId(orderId)
+    try {
+      const r = await fetch(`/api/pos/orders/${encodeURIComponent(orderId)}`)
+      const o = r.ok ? await r.json() : null
+      if (o?.id) setSettleOrder(o as SettleOrder)
+    } finally {
+      setSettleLoadingId('')
+    }
+  }
   // Payment-modal tagging UX: full-screen toggle + tag-list filters (search / date range)
   const [payModalExpanded, setPayModalExpanded] = useState(false)
   const [payTagSearch, setPayTagSearch] = useState('')
@@ -710,7 +727,7 @@ export default function AccountsReceivablePage() {
       .then(d => setPayWalletOrders(d.orders || []))
       .catch(() => {})
     return () => ctl.abort()
-  }, [showPaymentModal, tab, payWalletId])
+  }, [showPaymentModal, tab, payWalletId, payWalletOrdersVersion])
 
   // Per HMO's own order fetch. Any of its filters makes the request narrow
   // enough for the API to lift the 500-row page cap, so a past year returns the
@@ -3719,6 +3736,15 @@ export default function AccountsReceivablePage() {
                           <span style={{ color: 'var(--mid-gray)' }}>{formatDate(o.transactionDate)}</span>
                           <span className="flex-1" style={{ color: 'var(--charcoal)' }}>{o.patientName} — {o.items.map(i => i.name).join(', ')}</span>
                           <span className="font-medium">{formatCurrency(toNum(amt?.amount))}</span>
+                          {tab === 'HMO' && canSettleHmo && toNum(amt?.amount) > 0 && (
+                            <button type="button" title="Decrease due to HMO Payment"
+                              onClick={e => { e.preventDefault(); e.stopPropagation(); openSettle(o.id) }}
+                              className="p-1 rounded-lg hover:bg-red-50 shrink-0">
+                              {settleLoadingId === o.id
+                                ? <Loader2 size={13} className="animate-spin text-red-600" />
+                                : <TrendingDown size={13} className="text-red-600" />}
+                            </button>
+                          )}
                         </label>
                       )
                     })}
@@ -3807,6 +3833,12 @@ export default function AccountsReceivablePage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Decrease due to HMO Payment — opened from the Record Payment tag list */}
+      {settleOrder && (
+        <HmoSettlementModal order={settleOrder} onClose={() => setSettleOrder(null)}
+          onDone={() => { setPayWalletOrdersVersion(v => v + 1); fetchData() }} />
       )}
     </div>
   )

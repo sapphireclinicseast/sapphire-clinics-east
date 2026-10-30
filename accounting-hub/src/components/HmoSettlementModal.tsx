@@ -15,7 +15,10 @@ export interface HmoSettlementNote {
   createdByName?: string | null
 }
 
-interface SettleOrder {
+// Who may revise an HMO sale down to the settlement amount (matches the API).
+export const HMO_SETTLE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'PAYROLL_OFFICER', 'HMO_OFFICER', 'AHEA_ADMIN', 'AHGH_ADMIN']
+
+export interface SettleOrder {
   id: string
   orderNumber: string
   transactionDate: string

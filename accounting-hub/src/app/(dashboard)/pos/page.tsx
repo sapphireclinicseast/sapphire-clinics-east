@@ -19,7 +19,7 @@ import { normalizeSI } from '@/lib/sales-invoice'
 import { ScanUpload } from '@/components/ScanUpload'
 import { PaymongoAdvanceQueue } from './PaymongoAdvanceQueue'
 import { TiktokImportModal } from './TiktokImportModal'
-import { HmoSettlementModal, type HmoSettlementNote } from './HmoSettlementModal'
+import { HmoSettlementModal, HMO_SETTLE_ROLES, type HmoSettlementNote } from '@/components/HmoSettlementModal'
 import Pagination from '@/components/ui/Pagination'
 import { downloadXlsx, downloadReportPdf } from '@/lib/export'
 import { patientViewPath } from '@/lib/patient-view'
@@ -566,9 +566,6 @@ function userBranch(session: any): string {
   if (role.startsWith('VERDANA')) return 'VERDANA_STORE'
   return session?.user?.branch || 'SANDBOX_EAST'
 }
-
-// Who may revise an HMO sale down to the settlement amount (matches the API).
-const HMO_SETTLE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'PAYROLL_OFFICER', 'HMO_OFFICER', 'AHEA_ADMIN', 'AHGH_ADMIN']
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function isAdmin(session: any): boolean {
