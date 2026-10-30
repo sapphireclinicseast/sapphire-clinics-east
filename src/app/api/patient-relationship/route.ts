@@ -68,28 +68,56 @@ export async function GET(req: NextRequest) {
       psych:         { sbea: 'X2YDKTaH', sbgh: null, title: 'Psych Registration Form' },
     }
 
+    // "all" merges every registration route into one list, so an enquiry that
+    // arrived through the ALAGA, group therapy or psych form is chased from
+    // the same place as a plain registration instead of being found only by
+    // remembering to click its sub-tab. Each row still carries the form it
+    // came from, which is what keeps the merged list readable.
+    const isAll = formKey === 'all'
     const form = FORM_TYPES[formKey]
-    if (!form) return NextResponse.json({ error: 'Unknown form' }, { status: 400 })
+    if (!isAll && !form) return NextResponse.json({ error: 'Unknown form' }, { status: 400 })
 
-    // Fetch responses from HR platform
+    // One entry per (form, branch) pair actually worth fetching.
+    const sources: { formId: string; branch: 'SBEA' | 'SBGH'; title: string; key: string }[] = []
+    for (const [key, f] of Object.entries(FORM_TYPES)) {
+      if (!isAll && key !== formKey) continue
+      sources.push({ formId: f.sbea, branch: 'SBEA', title: f.title, key })
+      if (f.sbgh) sources.push({ formId: f.sbgh, branch: 'SBGH', title: f.title, key })
+    }
+
+    // Fetch responses from HR platform. In parallel: "all" is seven calls, and
+    // run one after another they would turn a quick tab into a visible wait.
+    // Each source fails on its own — one unreachable form leaves the rest of
+    // the list intact rather than emptying the tab.
     const responses: any[] = []
     try {
-      const res1 = await hrFetch(`/forms/external/${form.sbea}/responses`, { cache: 'no-store' })
-      const d1 = await res1.json()
-      if (d1.ok && d1.items) {
-        for (const item of d1.items) {
-          responses.push({ ...item, _branch: 'SBEA', _formTitle: form.title, _formId: form.sbea })
+      const settled = await Promise.all(sources.map(async (s) => {
+        try {
+          const res = await hrFetch(`/forms/external/${s.formId}/responses`, { cache: 'no-store' })
+          const d = await res.json()
+          if (!d.ok || !d.items) return { s, items: [] as any[], failed: !d.ok }
+          return { s, items: d.items as any[], failed: false }
+        } catch {
+          return { s, items: [] as any[], failed: true }
+        }
+      }))
+
+      const failedSources = settled.filter(r => r.failed).map(r => r.s.title)
+      for (const { s, items } of settled) {
+        for (const item of items) {
+          responses.push({
+            ...item,
+            _branch: s.branch,
+            _formTitle: s.title,
+            _formId: s.formId,
+            _formKey: s.key,
+          })
         }
       }
-
-      if (form.sbgh) {
-        const res2 = await hrFetch(`/forms/external/${form.sbgh}/responses`, { cache: 'no-store' })
-        const d2 = await res2.json()
-        if (d2.ok && d2.items) {
-          for (const item of d2.items) {
-            responses.push({ ...item, _branch: 'SBGH', _formTitle: form.title, _formId: form.sbgh })
-          }
-        }
+      if (failedSources.length === sources.length) {
+        // Nothing came back at all — that is an outage, not an empty waitlist,
+        // and saying so beats showing a convincing "no responses".
+        throw new Error(`no response from HR for ${failedSources.join(', ')}`)
       }
     } catch (err) {
       // Don't swallow — log it and surface to caller. Today's "Registration
@@ -98,7 +126,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({
         responses: [],
         total: 0,
-        formTitle: form.title,
+        formTitle: isAll ? 'All Forms' : form.title,
         _warning: `Could not reach HR Platform: ${(err as Error).message ?? 'unknown error'}`,
       })
     }
@@ -116,7 +144,7 @@ export async function GET(req: NextRequest) {
     // waitlist grows. A failure here leaves the list rendering untagged rather
     // than failing the tab — the submissions are the point, the tags are not.
     try {
-      const formIds = [form.sbea, form.sbgh].filter(Boolean) as string[]
+      const formIds = sources.map(s => s.formId)
       const tags = await prisma.waitlistFollowUp.findMany({
         where: { formId: { in: formIds } },
       })
@@ -136,7 +164,11 @@ export async function GET(req: NextRequest) {
       console.error('[patient-relationship/waitlist] follow-up lookup failed:', err)
     }
 
-    return NextResponse.json({ responses: filtered, total: filtered.length, formTitle: form.title })
+    return NextResponse.json({
+      responses: filtered,
+      total: filtered.length,
+      formTitle: isAll ? 'All Forms' : form.title,
+    })
   }
 
   // ── FOLLOW UP TAB ─────────────────────────────────────────────

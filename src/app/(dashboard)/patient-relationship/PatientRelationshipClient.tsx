@@ -74,12 +74,27 @@ function Pagination({ total, page, perPage, onPage, onPerPage }: {
 // WAITLIST TAB
 // ══════════════════════════════════════════════════════════════════════════════
 
+// "All Forms" leads and is the default. Every registration route feeds the one
+// waitlist, so an ALAGA or psych enquiry is chased from the same place as a
+// plain registration rather than only being found by remembering to click its
+// sub-tab. The single-form tabs stay for when someone wants just one intake.
 const WAITLIST_FORMS = [
-  { key: 'registration', label: 'Registration Form' },
+  { key: 'all', label: 'All Forms' },
+  { key: 'registration', label: 'Registration' },
   { key: 'group-therapy', label: 'Group Therapy' },
-  { key: 'sip', label: 'SIP Registration' },
-  { key: 'psych', label: 'Psych Registration' },
+  { key: 'sip', label: 'ALAGA' },
+  { key: 'psych', label: 'Psych' },
 ]
+
+// Per-row source identifier. Colours are only to tell the intakes apart at a
+// glance down a mixed list — they carry no status meaning, so they stay clear
+// of the green/red the Converted and Will-no-longer-avail chips use.
+const FORM_CHIP: Record<string, { label: string; bg: string; fg: string }> = {
+  registration:    { label: 'Registration', bg: '#E6F2F4', fg: '#12606C' },
+  'group-therapy': { label: 'Group Therapy', bg: '#EDE9FE', fg: '#5B21B6' },
+  sip:             { label: 'ALAGA',         bg: '#FEF3E2', fg: '#92400E' },
+  psych:           { label: 'Psych',         bg: '#E0E7FF', fg: '#3730A3' },
+}
 
 // ── Sorting ──────────────────────────────────────────────────────────────────
 // All four tabs render the same table shell over different row shapes, so the
@@ -297,7 +312,7 @@ function FilterToggle({ open, onToggle, activeCount, onClear }: {
 }
 
 function WaitlistTab({ branch }: { branch: string }) {
-  const [formKey, setFormKey] = useState('registration')
+  const [formKey, setFormKey] = useState('all')
   const [responses, setResponses] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -593,7 +608,21 @@ function WaitlistTab({ branch }: { branch: string }) {
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-3" style={{ color: '#6B7280' }}>{item._formTitle}</td>
+                  {/* Which intake this came in through. A chip rather than
+                      plain text because in the merged list this is the column
+                      that tells two otherwise identical rows apart. */}
+                  <td className="px-4 py-3">
+                    {(() => {
+                      const chip = FORM_CHIP[item._formKey as string]
+                      if (!chip) return <span style={{ color: '#6B7280' }}>{item._formTitle}</span>
+                      return (
+                        <span className="text-xs px-2 py-0.5 rounded-full" title={item._formTitle}
+                          style={{ background: chip.bg, color: chip.fg, fontWeight: 600, whiteSpace: 'nowrap' }}>
+                          {chip.label}
+                        </span>
+                      )
+                    })()}
+                  </td>
                   <td className="px-4 py-3">
                     {item._branch ? (
                       <span className="text-xs px-2 py-0.5 rounded-full" style={{
