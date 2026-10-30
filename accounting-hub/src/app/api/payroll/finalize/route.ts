@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { sweepNoSiEwtToOtherIncome } from '@/lib/accounting/ewt-income'
 import { lockAndNotifyMentorshipCharges } from '@/lib/mentorship'
 import { consultantContribAccounts } from '@/lib/payroll/consultant-contrib'
+import { deletePfSessionAccruals, syncPfSessionAccruals } from '@/lib/payroll/pf-session-month'
 
 const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 
@@ -50,6 +51,8 @@ export async function DELETE(req: Request) {
         await tx.journalEntryLine.deleteMany({ where: { journalEntryId: payable.journalEntryId } })
         await tx.journalEntry.delete({ where: { id: payable.journalEntryId } })
       }
+      // …and the session-month accruals that sat beside it.
+      if (payrollType === 'CONSULTANT') await deletePfSessionAccruals(tx, cutoffPeriod, branch)
 
       // Delete the payable status record
       await tx.payrollPayableStatus.delete({
@@ -177,6 +180,12 @@ export async function POST(req: Request) {
           await tx.payrollPayableStatus.update({
             where: { id: existingPayable.id },
             data: { totalSalariesPayable: totalNet, totalTaxPayable: totalTax, totalBenefitsPayable: totalEeContrib + totalShouldered },
+          })
+          // Sessions from another month book their fees in that month.
+          await syncPfSessionAccruals(tx, {
+            cutoffPeriod, branch, ledgerBranch: ledgerBranch(branch), branchLabel: branchDisplay(branch),
+            feesAccountId: mapping.professionalFeesAccountId!, payableAccountId: mapping.salariesPayableAccountId!,
+            userId: session.user.id as string,
           })
           return { lockedCount: addEntries.length }
         })
@@ -353,6 +362,14 @@ export async function POST(req: Request) {
             totalTaxPayable: totalTax,
             journalEntryId: journalEntry.id,
           },
+        })
+
+        // Sessions from another month (the 26th–month-end days a 1st cutoff
+        // pays) book their fees in the month they happened.
+        await syncPfSessionAccruals(tx, {
+          cutoffPeriod, branch, ledgerBranch: ledgerBranch(branch), branchLabel: branchDisplay(branch),
+          feesAccountId: mapping.professionalFeesAccountId, payableAccountId: mapping.salariesPayableAccountId,
+          userId: session.user.id as string,
         })
 
         return { journalEntry, payable, lockedCount: entries.length }

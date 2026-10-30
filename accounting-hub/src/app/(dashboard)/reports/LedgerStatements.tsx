@@ -48,6 +48,8 @@ const SOURCE_LABELS: Record<string, string> = {
   'journal:AR_PAYMENT': 'HMO / guarantee-letter collections (posted)',
   'journal:AR_PAYMENT_REVERSAL': 'HMO / GL collection reversals',
   'journal:PAYROLL_CONSULTANT': 'Consultant payroll',
+  'journal:PAYROLL_CONSULTANT_ACCRUAL': 'Consultant fees booked in the session month',
+  'journal:PAYROLL_CONSULTANT_ACCRUAL_REVERSAL': 'Consultant fees moved out of the cutoff month',
   'journal:PAYROLL_EMPLOYEE': 'Employee payroll',
   'journal:SALARY_PAYMENT': 'Salary payments',
   'journal:BENEFIT_PAYMENT': 'Government benefit remittances',

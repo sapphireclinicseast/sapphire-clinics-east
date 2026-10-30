@@ -549,6 +549,7 @@ export const SECTIONS: Section[] = [
         `**Consultants → Payslip Generation** → **Generate Payslips** → **Save All as Draft** → **Finalize All** → **Lock Payroll**.`,
         `In **Mentorship Meetings**, tick a meeting to charge the mentee the set fee and pay the mentor — both appear as adjustment lines on the next payslip preview.`,
       ] },
+      { k: 'note', label: 'Which month the fees land in.', t: `Fees are booked in the month each **session** happened, not the month the cutoff is paid. The 1st cutoff pays the 26th to the end of the previous month, so when it is locked those sessions' fees go to the previous month (an accrual on its last day, reversed on the 1st). Retainers, incentives and adjustment lines have no session date and stay in the cutoff's month.` },
       { k: 'note', label: 'Important.', t: `**Locking cannot be undone without unlocking**, and **Unlock Payroll** deletes the journal entry so you can edit again. A locked payslip can't be regenerated until you unlock. Consultant payslips **keep Administration** consultants (they start at zero so an adjustment line can pay them) — they are not excluded.` },
     ],
   },

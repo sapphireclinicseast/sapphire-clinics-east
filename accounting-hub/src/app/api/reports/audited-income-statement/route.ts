@@ -5,6 +5,7 @@ import { enforceBranch } from '@/lib/branch-scope'
 import { parseMonitoringRemark } from '@/lib/si-monitoring'
 import { takenSiNumbers, isShadowedMonitoringFlag } from '@/lib/si-flag-guard'
 import { isPayrollItem } from '@/lib/payroll-item-guard'
+import { otherMonthSessionPf } from '@/lib/payroll/pf-session-month'
 
 /**
  * Audited Income Statement — GET ?year=&branch=
@@ -165,14 +166,17 @@ export async function GET(req: Request) {
     }
 
     /* ── Professional fees — consultants WITH a COR only ───────── */
+    // In the month each session happened (lib/payroll/pf-session-month): a 1st
+    // cutoff pays the previous month's 26th–month-end, so those fees move back
+    // a month — which is why next January's 1st cutoff is read for December.
     const pf = emptyMonths()
     const pfEntries = await prisma.payrollEntry.findMany({
       where: {
         status: { in: ['FINAL', 'LOCKED'] },
-        cutoffPeriod: { startsWith: `${year}-` },
+        OR: [{ cutoffPeriod: { startsWith: `${year}-` } }, { cutoffPeriod: `${year + 1}-01-1` }],
         consultant: { corUrl: { not: null } },
       },
-      select: { cutoffPeriod: true, grossPay: true, branch: true },
+      select: { cutoffPeriod: true, grossPay: true, branch: true, items: true },
     })
     let pfExcludedNoCor = 0
     const pfNoCor = await prisma.payrollEntry.aggregate({
@@ -187,9 +191,13 @@ export async function GET(req: Request) {
     pfExcludedNoCor = Number(pfNoCor._sum.grossPay || 0)
     for (const e of pfEntries) {
       if (branch !== 'ALL' && pcOfPayroll(e.branch) !== branch) continue
+      const moved = otherMonthSessionPf(e.items, e.cutoffPeriod)
       const mo = cutoffMonth(e.cutoffPeriod)
-      if (mo === null) continue
-      pf[mo] += Number(e.grossPay)
+      if (mo !== null) pf[mo] += Number(e.grossPay) - [...moved.values()].reduce((t, v) => t + v, 0)
+      for (const [ym, amt] of moved) {
+        const [y, m] = ym.split('-').map(Number)
+        if (y === year) pf[m - 1] += amt
+      }
     }
 
     /* ── Assemble ──────────────────────────────────────────────── */

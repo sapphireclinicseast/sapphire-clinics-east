@@ -23,6 +23,7 @@ const blankLine = (): DraftLine => ({ accountId: '', accountLabel: '', q: '', de
 const SOURCE_LABEL: Record<string, string> = {
   MANUAL: 'Manual', POS_ORDER: 'POS', BANK_REC: 'Bank Rec', AR_PAYMENT: 'AR', AP_SETTLEMENT: 'AP',
   PAYROLL_CONSULTANT: 'Payroll', PAYROLL_EMPLOYEE: 'Payroll', QB_PAYROLL_IMPORT: 'QB import',
+  PAYROLL_CONSULTANT_ACCRUAL: 'Payroll', PAYROLL_CONSULTANT_ACCRUAL_REVERSAL: 'Payroll',
   QB_WHT_IMPORT: 'QB import', QB_LIAB_IMPORT: 'QB import', ASSET_PURCHASE: 'Assets',
 }
 

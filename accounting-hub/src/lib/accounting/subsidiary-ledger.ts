@@ -114,6 +114,8 @@ export const REF_TYPE_LABEL: Record<string, string> = {
   PAYMONGO_PAYOUT:               'PayMongo Payout',
   PAYMONGO_SALE:                 'PayMongo Sale',
   PAYROLL_CONSULTANT:            'Payroll — Consultant',
+  PAYROLL_CONSULTANT_ACCRUAL:    'Payroll — Consultant (session month)',
+  PAYROLL_CONSULTANT_ACCRUAL_REVERSAL: 'Payroll — Consultant (session-month reversal)',
   PAYROLL_EMPLOYEE:              'Payroll — Employee',
   POS_ORDER:                     'POS Order',
   REFUND_PAYMENT:                'Refund',
