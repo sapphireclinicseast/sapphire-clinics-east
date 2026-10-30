@@ -1151,6 +1151,28 @@ model Order {
   @@index([queueItemId])
 }
 
+// Compliance Calendar (Taxes → Compliance Calendar, and the top-bar bell):
+// benefit remittances and government filings that fall due on a fixed day.
+// BIR tax deadlines live in lib/taxes.ts; these are the rest. An occurrence
+// shows in the bell from leadDays before it is due until it is marked done.
+model ComplianceDeadline {
+  id              String    @id @default(cuid())
+  name            String
+  category        String    @default("GOVERNMENT") // BENEFITS | GOVERNMENT | OTHER
+  frequency       String    @default("MONTHLY") // MONTHLY | QUARTERLY | ANNUALLY
+  dueMonth        Int? // 1–12: the month it falls due (ANNUALLY), or the first due month of the cycle (QUARTERLY)
+  dueDay          Int // 1–31; a day past month-end means the last day of the month
+  periodLagMonths Int       @default(0) // MONTHLY remittances for the previous month: 1 → "for September" when due in October
+  leadDays        Int       @default(7)
+  notes           String?
+  isActive        Boolean   @default(true)
+  lastDoneDue     String? // YYYY-MM-DD of the latest occurrence marked done
+  lastDoneAt      DateTime?
+  lastDoneBy      String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
 // "Decrease due to HMO Payment": the HMO approved/paid less than the session was
 // billed, so the order's lines, HMO payment and net are revised down to what was
 // paid and the sale is re-posted on its own date. One row per adjustment keeps

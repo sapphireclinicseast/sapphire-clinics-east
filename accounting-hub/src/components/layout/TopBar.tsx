@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import { signOut } from 'next-auth/react'
 import { Menu, LogOut, ChevronDown, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import GlobalSearch from './GlobalSearch'
+import NotificationBell from './NotificationBell'
 
 interface TopBarProps {
   user: {
@@ -75,6 +76,9 @@ export default function TopBar({ user, onMenuClick, sidebarCollapsed, onToggleSi
       <div className="flex-1 flex justify-center px-2 lg:px-4">
         <GlobalSearch />
       </div>
+
+      {/* Deadlines and payroll adjustments that need action */}
+      <NotificationBell role={user.role} />
 
       {/* User menu */}
       <div className="relative" ref={dropdownRef}>

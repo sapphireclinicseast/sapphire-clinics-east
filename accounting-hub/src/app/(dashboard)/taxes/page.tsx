@@ -13,11 +13,13 @@ import TaxesRfp from './TaxesRfp'
 import ServiceInvoiceTab from './ServiceInvoice'
 import TaxesPaid from './TaxesPaid'
 import TaxesReport from './TaxesReport'
+import ComplianceCalendar from './ComplianceCalendar'
 
-type Tab = 'guide' | 'compensation' | 'ewt' | 'business' | 'income-tax' | 'service-invoice' | 'rfp' | 'paid' | 'report'
+type Tab = 'guide' | 'compliance' | 'compensation' | 'ewt' | 'business' | 'income-tax' | 'service-invoice' | 'rfp' | 'paid' | 'report'
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'guide', label: 'Guide & Summary' },
+  { key: 'compliance', label: 'Compliance Calendar' },
   { key: 'compensation', label: 'Withholding on Compensation (1601-C)' },
   { key: 'ewt', label: 'Expanded Withholding (0619E / 1601EQ)' },
   { key: 'business', label: 'Business Tax (2550Q)' },
@@ -46,6 +48,12 @@ export default function TaxesPage() {
 
   // Deadlines depend on "today" → compute client-side to avoid hydration drift.
   useEffect(() => { setDue(computeTaxDue(new Date())) }, [])
+
+  // Deep link from the top-bar bell: /taxes?tab=compliance
+  useEffect(() => {
+    const t = new URLSearchParams(window.location.search).get('tab')
+    if (t && TABS.some(x => x.key === t)) setTab(t as Tab)
+  }, [])
 
   const soon = useMemo(() => (due || []).filter(d => d.daysUntil <= 5), [due])
 
@@ -152,6 +160,7 @@ export default function TaxesPage() {
         </div>
       )}
 
+      {tab === 'compliance' && <ComplianceCalendar canWrite={['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'PAYROLL_OFFICER'].includes(((session?.user as { role?: string })?.role) || '')} />}
       {tab === 'compensation' && <WithholdingCompensation />}
       {tab === 'ewt' && <ExpandedWithholding />}
       {tab === 'business' && <BusinessTax />}

@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { AlertTriangle, ChevronDown, ChevronUp, Loader2 } from 'lucide-react'
+import { AlertTriangle, ChevronRight, Loader2 } from 'lucide-react'
 import { formatCurrency, formatDate } from '@/lib/utils'
 
 interface PfAlert {
@@ -27,9 +27,15 @@ interface PfAlert {
  * when the sale was later decreased to what the HMO paid ("Decrease due to HMO
  * Payment" in POS Order History). Shows what to deduct from the next payout.
  */
-export default function HmoSettlementPfAlerts({ canWrite }: { canWrite: boolean }) {
-  const [alerts, setAlerts] = useState<PfAlert[]>([])
-  const [open, setOpen] = useState(false)
+export default function HmoSettlementPfAlerts({ canWrite, variant = 'full', onOpen, onCount }: {
+  canWrite: boolean
+  // 'banner' = one line above the consultant sub-tabs pointing to the section;
+  // 'full' = the HMO PF Adjustments sub-tab itself.
+  variant?: 'banner' | 'full'
+  onOpen?: () => void
+  onCount?: (n: number) => void
+}) {
+  const [alerts, setAlerts] = useState<PfAlert[] | null>(null)
   const [busyId, setBusyId] = useState('')
 
   const load = useCallback(() => {
@@ -39,6 +45,7 @@ export default function HmoSettlementPfAlerts({ canWrite }: { canWrite: boolean 
       .catch(() => setAlerts([]))
   }, [])
   useEffect(() => { load() }, [load])
+  useEffect(() => { if (alerts) onCount?.(alerts.length) }, [alerts, onCount])
 
   const resolve = async (settlementId: string) => {
     if (!confirm('Mark this PF overpayment as deducted? The alert will clear.')) return
@@ -53,22 +60,37 @@ export default function HmoSettlementPfAlerts({ canWrite }: { canWrite: boolean 
     }
   }
 
-  if (!alerts.length) return null
-  const total = alerts.reduce((s, a) => s + a.overpaid, 0)
-  const byConsultant = alerts.reduce<Record<string, number>>((m, a) => { m[a.consultant] = (m[a.consultant] || 0) + a.overpaid; return m }, {})
+  const list = alerts || []
+  const total = list.reduce((s, a) => s + a.overpaid, 0)
+  const byConsultant = list.reduce<Record<string, number>>((m, a) => { m[a.consultant] = (m[a.consultant] || 0) + a.overpaid; return m }, {})
+  const headline = `PF overpaid after HMO decreases: ${formatCurrency(total)} across ${list.length} session${list.length === 1 ? '' : 's'} — ${Object.entries(byConsultant).map(([n, v]) => `${n} ${formatCurrency(v)}`).join(' · ')}`
+
+  if (variant === 'banner') {
+    if (!list.length) return null
+    return (
+      <button onClick={onOpen} className="w-full rounded-xl border px-4 py-2.5 text-sm flex items-center justify-between gap-2 text-left"
+        style={{ background: '#fffbeb', borderColor: '#fde68a', color: '#92400e' }}>
+        <span className="flex items-center gap-2 font-semibold"><AlertTriangle size={16} /> {headline}</span>
+        <span className="flex items-center gap-1 text-xs font-semibold whitespace-nowrap">Open <ChevronRight size={14} /></span>
+      </button>
+    )
+  }
+
+  if (alerts === null) {
+    return <p className="text-xs flex items-center gap-2" style={{ color: 'var(--mid-gray)' }}><Loader2 size={13} className="animate-spin" /> Loading…</p>
+  }
+  if (!list.length) {
+    return (
+      <div className="rounded-xl border px-4 py-6 text-sm text-center" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+        No PF to recover. When a session is decreased with &quot;Decrease due to HMO Payment&quot; after its PF was released, it appears here.
+      </div>
+    )
+  }
 
   return (
     <div className="rounded-xl border px-4 py-3 text-sm" style={{ background: '#fffbeb', borderColor: '#fde68a', color: '#92400e' }}>
-      <button onClick={() => setOpen(o => !o)} className="w-full flex items-center justify-between gap-2 text-left">
-        <span className="flex items-center gap-2 font-semibold">
-          <AlertTriangle size={16} />
-          PF overpaid after HMO decreases: {formatCurrency(total)} across {alerts.length} session{alerts.length === 1 ? '' : 's'} —
-          {' '}{Object.entries(byConsultant).map(([n, v]) => `${n} ${formatCurrency(v)}`).join(' · ')}
-        </span>
-        {open ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-      </button>
-      {open && (
-        <div className="mt-3 space-y-2">
+      <p className="flex items-center gap-2 font-semibold"><AlertTriangle size={16} /> {headline}</p>
+      <div className="mt-3 space-y-2">
           <p className="text-xs">These sessions were decreased to what the HMO paid after their PF was released at the billed amount. Deduct the overpaid PF from the consultant&apos;s next payout, then mark it deducted.</p>
           <div className="overflow-x-auto rounded-lg border bg-white" style={{ borderColor: '#fde68a' }}>
             <table className="w-full text-xs" style={{ color: 'var(--charcoal)' }}>
@@ -80,7 +102,7 @@ export default function HmoSettlementPfAlerts({ canWrite }: { canWrite: boolean 
                 </tr>
               </thead>
               <tbody>
-                {alerts.map((a, i) => (
+                {list.map((a, i) => (
                   <tr key={`${a.settlementId}-${a.cutoffPeriod}-${i}`} className="border-t" style={{ borderColor: '#fef3c7' }}>
                     <td className="px-2 py-1.5 whitespace-nowrap">{a.consultant}</td>
                     <td className="px-2 py-1.5 whitespace-nowrap">{a.cutoffPeriod}</td>
@@ -104,8 +126,7 @@ export default function HmoSettlementPfAlerts({ canWrite }: { canWrite: boolean 
               </tbody>
             </table>
           </div>
-        </div>
-      )}
+      </div>
     </div>
   )
 }

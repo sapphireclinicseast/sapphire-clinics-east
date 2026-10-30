@@ -11,7 +11,7 @@ import {
   ChevronUp, ChevronDown, ArrowUpDown, Search, X, AlertCircle,
   RefreshCw, Loader2, ChevronRight, Download, Mail, Trash2,
   PlusCircle, CheckCircle2, ToggleLeft, ToggleRight, Receipt, Shield, ShieldOff, Upload,
-  Lock, LockOpen, ClipboardList, Eye, UserX, TrendingUp,
+  Lock, LockOpen, ClipboardList, Eye, UserX, TrendingUp, TrendingDown,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { useRfpOtherFees, RfpOtherFeesSection } from '@/components/RfpOtherFees'
@@ -797,7 +797,13 @@ export default function PayrollPage() {
   const cutoffPeriod = `${cutoffYear}-${String(cutoffMonth).padStart(2, '0')}-${cutoffHalf}`
 
   const [mainTab, setMainTab] = useState<'consultants' | 'employees' | 'tax-payable' | 'salaries-payable' | 'benefits-payable' | 'payroll-settings' | 'payroll-history'>('consultants')
-  const [subTab, setSubTab] = useState<'list' | 'unit-pay' | 'pay-rules' | 'adjustments' | 'initial-eval' | 'progress-report' | 'payslips' | 'benefits' | 'mentorship' | 'directory'>('list')
+  const [subTab, setSubTab] = useState<'list' | 'unit-pay' | 'pay-rules' | 'adjustments' | 'initial-eval' | 'progress-report' | 'payslips' | 'benefits' | 'mentorship' | 'directory' | 'hmo-pf'>('list')
+  // Count for the HMO PF Adjustments tab badge (reported by the banner's fetch).
+  const [hmoPfCount, setHmoPfCount] = useState(0)
+  // Deep link from the top-bar bell: /payroll?sub=hmo-pf
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('sub') === 'hmo-pf') { setMainTab('consultants'); setSubTab('hmo-pf') }
+  }, [])
   // Consultant Benefits Setting (mirror Employees)
   const [conBenefitSelIds, setConBenefitSelIds] = useState<Set<string>>(new Set())
   const [showConBenefitForm, setShowConBenefitForm] = useState(false)
@@ -3126,17 +3132,26 @@ export default function PayrollPage() {
               { key: 'payslips' as const, label: 'Payslip Generation', icon: FileText },
               { key: 'mentorship' as const, label: 'Mentorship Meetings', icon: Users },
               { key: 'directory' as const, label: 'Staff Directory', icon: UserX },
+              { key: 'hmo-pf' as const, label: 'HMO PF Adjustments', icon: TrendingDown },
             ].map(t => (
               <button key={t.key} onClick={() => { setSubTab(t.key); setIeprSearch(''); setIeprExpanded(new Set()) }}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors"
-                style={subTab === t.key ? { background: 'var(--pale-teal)', color: 'var(--deep-teal)' } : { color: 'var(--mid-gray)' }}>
+                style={subTab === t.key ? { background: 'var(--pale-teal)', color: 'var(--deep-teal)' } : { color: t.key === 'hmo-pf' && hmoPfCount > 0 ? '#b45309' : 'var(--mid-gray)' }}>
                 <t.icon size={14} /> {t.label}
+                {t.key === 'hmo-pf' && hmoPfCount > 0 && (
+                  <span className="ml-0.5 px-1.5 rounded-full text-[10px] font-bold text-white" style={{ background: '#dc2626' }}>{hmoPfCount}</span>
+                )}
               </button>
             ))}
           </div>
 
-          {/* PF released before a session was decreased to what the HMO paid */}
-          <HmoSettlementPfAlerts canWrite={!!canWrite} />
+          {/* PF released before a session was decreased to what the HMO paid — points to its own section */}
+          {subTab !== 'hmo-pf' && (
+            <HmoSettlementPfAlerts canWrite={!!canWrite} variant="banner" onOpen={() => setSubTab('hmo-pf')} onCount={setHmoPfCount} />
+          )}
+          {subTab === 'hmo-pf' && (
+            <HmoSettlementPfAlerts canWrite={!!canWrite} variant="full" onCount={setHmoPfCount} />
+          )}
 
           {error && <p className="text-xs text-red-600 flex items-center gap-1"><AlertCircle size={12} />{error}</p>}
 
