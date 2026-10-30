@@ -42,6 +42,7 @@ const SOURCE_LABELS: Record<string, string> = {
   'journal:manual': 'Manual journal entries',
   'journal:MANUAL': 'Manual journal entries',
   'journal:ADJUSTMENT': 'Manual adjustments',
+  'journal:PRIOR_PERIOD_BRIDGE': 'Prior-period adjustments (closed years)',
   'journal:POS_ORDER': 'POS sales (posted to ledger)',
   'journal:POS_ORDER_REVERSAL': 'Voided POS orders (reversals)',
   'journal:FREE_SAMPLE': 'Free samples',

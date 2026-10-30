@@ -156,6 +156,13 @@ const BRANCH_MAP: Record<string, string> = {
 
 const OPENING_PLUG = '3999'
 const IMBALANCE_PLUG = '9990'
+/* A loss that belongs to a closed, audited year (e.g. a write-off dated in the
+   session month) is posted there for the record, but the All-Branches view
+   opens from the audited balances and never sees it. A PRIOR_PERIOD_BRIDGE
+   entry in the current year (DR 6030 Retained Earnings / CR the account)
+   carries it into that view; branch views skip bridges, since they rebuild
+   their openings from the backdated entries themselves. */
+const PRIOR_PERIOD_BRIDGE = 'PRIOR_PERIOD_BRIDGE'
 const round2 = (n: number) => Math.round(n * 100) / 100
 
 // Sections an account lands in, by CoA classification.
@@ -586,7 +593,9 @@ export async function computeLedgerStatements(
       where: {
         journalEntry: {
           entryDate: { lt: start },
-          referenceType: { notIn: ['CLOSING_ENTRY', 'CLOSING_ENTRY_REVERSAL'] },
+          // Bridges restate the AUDITED opening for entries backdated into a
+          // closed year; this opening already carries those entries themselves.
+          referenceType: { notIn: ['CLOSING_ENTRY', 'CLOSING_ENTRY_REVERSAL', PRIOR_PERIOD_BRIDGE] },
         },
       },
       select: { debit: true, credit: true, account: { select: { accountNumber: true } }, journalEntry: { select: { id: true, branch: true } } },
@@ -675,6 +684,10 @@ export async function computeLedgerStatements(
   const glRefIds = new Map<string, Set<string>>() // referenceType → refIds
   const glRefTypes = new Set<string>()
   for (const je of journalEntries) {
+    // A branch view rebuilds its opening from prior entries, backdated ones
+    // included, so the bridge that brings the audited opening in line with
+    // them would count them twice here.
+    if (branch !== 'ALL' && je.referenceType === PRIOR_PERIOD_BRIDGE) continue
     // exclude prior-year payroll JEs dated inside this year (mirror of the window above)
     if (
       (je.referenceType === 'PAYROLL_CONSULTANT' || je.referenceType === 'PAYROLL_EMPLOYEE') &&

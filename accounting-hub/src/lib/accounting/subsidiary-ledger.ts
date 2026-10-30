@@ -118,6 +118,7 @@ export const REF_TYPE_LABEL: Record<string, string> = {
   PAYROLL_CONSULTANT_ACCRUAL_REVERSAL: 'Payroll — Consultant (session-month reversal)',
   PAYROLL_EMPLOYEE:              'Payroll — Employee',
   POS_ORDER:                     'POS Order',
+  PRIOR_PERIOD_BRIDGE:           'Prior-period bridge (audited opening)',
   REFUND_PAYMENT:                'Refund',
   SALARY_PAYMENT:                'Salary Payment',
   SCHOLAR_RELEASE:               'Scholarship Release',
@@ -184,10 +185,14 @@ export async function computeSubsidiaryLedger(
   const searchTargetsAccount = term.length > 0 && accountMatches.length > 0
   const scopedIds = searchTargetsAccount ? accountMatches.map(a => a.id) : ids
 
+  // This ledger is rebuilt from raw entries, backdated prior-period ones
+  // included, so the audited-opening bridges for them would count twice
+  // (see PRIOR_PERIOD_BRIDGE in lib/reports/v2/engine.ts) — listed only when
+  // asked for by type.
   const jeWhere = {
     entryDate: { gte: from, lt: to },
     ...(branch !== 'ALL' ? { branch } : {}),
-    ...(refType ? { referenceType: refType } : {}),
+    ...(refType ? { referenceType: refType } : { referenceType: { not: 'PRIOR_PERIOD_BRIDGE' } }),
   }
 
   const lineWhere = {
@@ -219,6 +224,7 @@ export async function computeSubsidiaryLedger(
         journalEntry: {
           entryDate: { lt: from },
           ...(branch !== 'ALL' ? { branch } : {}),
+          referenceType: { not: 'PRIOR_PERIOD_BRIDGE' },
         },
       },
       _sum: { debit: true, credit: true },
