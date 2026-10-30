@@ -32,6 +32,7 @@ import {
   X,
   FileText,
   PiggyBank,
+  FolderLock,
  AlertTriangle } from 'lucide-react'
 
 // Roles that see all accounting modules (excludes front desk and HMO Officer).
@@ -129,6 +130,13 @@ const NAV_SECTIONS: NavSection[] = [
       { href: '/mentorship-audit', icon: AlertTriangle, label: 'Mentorship Audit', roles: SERVICES_POS_ACCESS },
       { href: '/products-analysis', icon: PackageSearch, label: 'Products Analysis', roles: [...ANALYSIS_ACCESS, 'ACCOUNTANT', 'BOOKKEEPER'] },
       { href: '/sales-analysis', icon: TrendingUp, label: 'Sales Analysis', roles: ANALYSIS_ACCESS },
+    ],
+  },
+  {
+    // Business, SEC, BIR and benefit-agency papers (permits, registrations, filings).
+    label: 'Company Records',
+    items: [
+      { href: '/official-documents', icon: FolderLock, label: 'Official Documents', roles: [...FULL_ACCESS, 'PAYROLL_OFFICER'] },
     ],
   },
   {

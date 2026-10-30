@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Bell, TrendingDown, CalendarClock, Landmark, ShieldCheck, Loader2 } from 'lucide-react'
+import { Bell, TrendingDown, CalendarClock, Landmark, ShieldCheck, Loader2, FolderLock } from 'lucide-react'
 import { computeTaxDue } from '@/lib/taxes'
 import type { ComplianceDue } from '@/lib/compliance'
 
@@ -22,10 +22,11 @@ const dueText = (d: number) => (d < 0 ? `${-d} day${d === -1 ? '' : 's'} overdue
 const getJson = (url: string) => fetch(url).then(r => (r.ok ? r.json() : null)).catch(() => null)
 
 async function loadGroups(role: string): Promise<Group[]> {
-  const [pf, recurring, compliance] = await Promise.all([
+  const [pf, recurring, compliance, expiring] = await Promise.all([
     getJson('/api/payroll/hmo-settlement-alerts'),
     getJson('/api/expenses/reminders'),
     getJson('/api/compliance-deadlines?due=1'),
+    getJson('/api/official-documents?expiring=1'),
   ])
   const groups: Group[] = []
 
@@ -78,6 +79,20 @@ async function loadGroups(role: string): Promise<Group[]> {
       items: due.map(c => ({
         key: `cmp-${c.id}`, title: c.name,
         detail: `${c.periodLabel ? `${c.periodLabel} · ` : ''}${c.nextDue}`, daysUntil: c.daysUntil, href: '/taxes?tab=compliance',
+      })),
+    })
+  }
+
+  // Official documents expiring within 30 days (or already expired)
+  const docs: { id: string; title: string; referenceNo: string | null; expiryDate: string }[] = expiring?.documents || []
+  if (docs.length) {
+    const today = Date.parse(new Date().toISOString().slice(0, 10))
+    groups.push({
+      key: 'docs', label: 'Expiring documents', icon: FolderLock,
+      items: docs.map(d => ({
+        key: `doc-${d.id}`, title: d.title,
+        detail: `${d.referenceNo ? `${d.referenceNo} · ` : ''}expires ${d.expiryDate.slice(0, 10)}`,
+        daysUntil: Math.round((Date.parse(d.expiryDate.slice(0, 10)) - today) / 86_400_000), href: '/official-documents',
       })),
     })
   }

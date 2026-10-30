@@ -1151,6 +1151,29 @@ model Order {
   @@index([queueItemId])
 }
 
+// Company Records → Official Documents: the company's business, SEC, BIR and
+// benefit-agency papers in one place (permits, registrations, certificates,
+// filed forms). A document with an expiry date shows in the top-bar bell for
+// the 30 days before it lapses.
+model OfficialDocument {
+  id             String    @id @default(cuid())
+  category       String // BUSINESS | SEC | BIR | BENEFITS | OTHER
+  title          String
+  branch         String? // null = company-wide; else SANDBOX_EAST | SANDBOX_GREENHILLS | VERDANA_STORE | AURA_INSTITUTE
+  referenceNo    String? // permit / certificate / registration no.
+  issuedDate     DateTime?
+  expiryDate     DateTime?
+  fileUrls       Json      @default("[]") // ["/api/files/…"]
+  notes          String?
+  uploadedById   String
+  uploadedByName String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([category])
+  @@index([expiryDate])
+}
+
 // Compliance Calendar (Taxes → Compliance Calendar, and the top-bar bell):
 // benefit remittances and government filings that fall due on a fixed day.
 // BIR tax deadlines live in lib/taxes.ts; these are the rest. An occurrence
