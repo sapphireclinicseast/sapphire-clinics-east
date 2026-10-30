@@ -310,6 +310,13 @@ function WaitlistTab({ branch }: { branch: string }) {
   const [converting, setConverting] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
   const [patientNames, setPatientNames] = useState<Set<string>>(new Set())
+  // Remarks prompt for the "Will no longer avail" tag. One modal serves both
+  // the first tagging and later edits — it opens pre-filled with whatever is
+  // already there, so correcting a note is the same gesture as writing one.
+  const [tagging, setTagging] = useState<any | null>(null)
+  const [tagRemarks, setTagRemarks] = useState('')
+  const [tagSaving, setTagSaving] = useState(false)
+  const [tagError, setTagError] = useState('')
 
   // Fetch existing patients to check if already converted
   useEffect(() => {
@@ -350,6 +357,55 @@ function WaitlistTab({ branch }: { branch: string }) {
       }
     } catch { alert('Failed to delete') }
     finally { setDeleting(null) }
+  }
+
+  function openTagModal(item: any) {
+    setTagging(item)
+    setTagRemarks(item._followUp?.remarks || '')
+    setTagError('')
+  }
+
+  async function saveTag() {
+    if (!tagging) return
+    const remarks = tagRemarks.trim()
+    // Checked here as well as server-side so the front desk gets the message
+    // without a round trip.
+    if (!remarks) { setTagError('Please add a remark explaining why.'); return }
+    setTagSaving(true); setTagError('')
+    try {
+      const res = await fetch('/api/patient-relationship?tab=waitlist-followup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          formId: tagging._formId,
+          submissionId: tagging.landing_id,
+          status: 'WILL_NOT_AVAIL',
+          remarks,
+        }),
+      })
+      const d = await res.json().catch(() => null)
+      if (!res.ok) { setTagError(d?.error || 'Could not save that.'); return }
+      setResponses(prev => prev.map(r =>
+        r.landing_id === tagging.landing_id ? { ...r, _followUp: d.followUp } : r))
+      setTagging(null)
+    } catch {
+      setTagError('Could not save that.')
+    } finally {
+      setTagSaving(false)
+    }
+  }
+
+  // Lifting the tag, for when someone who said they would not avail enrols
+  // after all. The entry goes back to reading as untouched.
+  async function clearTag(item: any) {
+    if (!confirm('Remove the "Will no longer avail" tag from this entry?')) return
+    const qs = `formId=${encodeURIComponent(item._formId)}&submissionId=${encodeURIComponent(item.landing_id)}`
+    try {
+      const res = await fetch(`/api/patient-relationship?tab=waitlist-followup&${qs}`, { method: 'DELETE' })
+      if (!res.ok) { alert('Could not remove the tag.'); return }
+      setResponses(prev => prev.map(r =>
+        r.landing_id === item.landing_id ? { ...r, _followUp: undefined } : r))
+    } catch { alert('Could not remove the tag.') }
   }
 
   // Extract name from response answers
@@ -514,16 +570,28 @@ function WaitlistTab({ branch }: { branch: string }) {
               <tr><td colSpan={5} className="text-center py-10" style={{ color: '#9ca3af' }}>{activeCount > 0 ? 'No responses match these filters.' : 'No responses found.'}</td></tr>
             ) : paginated.map((item: any) => {
               const converted = isConverted(item)
+              const declined = !!item._followUp
               return (
               <Fragment key={item.landing_id}>
-                <tr style={{ borderBottom: '1px solid #F3F4F6', cursor: 'pointer', background: converted ? '#F0FDF4' : undefined }}
+                {/* Declined wins the row colour over converted: if both are
+                    somehow true the contradiction is the thing worth seeing. */}
+                <tr style={{ borderBottom: '1px solid #F3F4F6', cursor: 'pointer', background: declined ? '#FEF2F2' : converted ? '#F0FDF4' : undefined }}
                   onClick={() => setExpanded(expanded === item.landing_id ? null : item.landing_id)}>
                   <td className="px-4 py-3" style={{ width: 30 }}>
                     {expanded === item.landing_id ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                   </td>
-                  <td className="px-4 py-3 font-semibold" style={{ color: converted ? '#15803D' : 'var(--charcoal)' }}>
+                  <td className="px-4 py-3 font-semibold" style={{ color: declined ? '#B91C1C' : converted ? '#15803D' : 'var(--charcoal)' }}>
                     {getName(item)}
                     {converted && <span className="ml-2 text-xs px-2 py-0.5 rounded-full" style={{ background: '#DCFCE7', color: '#15803D', fontWeight: 600, fontSize: '0.65rem' }}>Converted</span>}
+                    {/* The remark rides in the tooltip so the list stays
+                        scannable while the reason is still one hover away. */}
+                    {declined && (
+                      <span className="ml-2 text-xs px-2 py-0.5 rounded-full"
+                        title={`${item._followUp.remarks}${item._followUp.setByName ? ` — ${item._followUp.setByName}` : ''}`}
+                        style={{ background: '#FEE2E2', color: '#B91C1C', fontWeight: 600, fontSize: '0.65rem' }}>
+                        Will no longer avail
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-3" style={{ color: '#6B7280' }}>{item._formTitle}</td>
                   <td className="px-4 py-3">
@@ -570,7 +638,51 @@ function WaitlistTab({ branch }: { branch: string }) {
                             </div>
                           )
                         })}
-                        <div className="mt-3 flex gap-2">
+                        {/* What front desk actually needs off this panel: has
+                            anyone chased this entry, what came of it, and who
+                            to ask about it. */}
+                        {declined && (
+                          <div className="mt-3 p-3 rounded-lg" style={{ background: '#FEF2F2', border: '1px solid #FECACA' }}>
+                            <p className="text-xs font-bold uppercase" style={{ color: '#B91C1C', letterSpacing: '0.05em' }}>
+                              Will no longer avail
+                            </p>
+                            <p className="text-xs mt-1" style={{ color: '#7F1D1D', whiteSpace: 'pre-wrap' }}>
+                              {item._followUp.remarks}
+                            </p>
+                            <p className="text-[11px] mt-1.5" style={{ color: '#9CA3AF' }}>
+                              {item._followUp.setByName ? `Tagged by ${item._followUp.setByName}` : 'Tagged'}
+                              {item._followUp.updatedAt
+                                ? ` · ${new Date(item._followUp.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
+                                : ''}
+                            </p>
+                          </div>
+                        )}
+
+                        <div className="mt-3 flex gap-2 flex-wrap">
+                          {!declined && (
+                            <button onClick={() => openTagModal(item)}
+                              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold"
+                              style={{ background: '#FEE2E2', color: '#B91C1C', border: 'none', cursor: 'pointer' }}>
+                              <XCircle size={13} />
+                              Will no longer avail
+                            </button>
+                          )}
+                          {declined && (
+                            <>
+                              <button onClick={() => openTagModal(item)}
+                                className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold"
+                                style={{ background: '#FEE2E2', color: '#B91C1C', border: 'none', cursor: 'pointer' }}>
+                                <MessageSquare size={13} />
+                                Edit remarks
+                              </button>
+                              <button onClick={() => clearTag(item)}
+                                className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold"
+                                style={{ background: '#F3F4F6', color: '#374151', border: 'none', cursor: 'pointer' }}>
+                                <Check size={13} />
+                                Remove tag
+                              </button>
+                            </>
+                          )}
                           {!converted && (
                             <button onClick={() => convertToPatient(item)} disabled={converting === item.landing_id}
                               className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold"
@@ -597,6 +709,61 @@ function WaitlistTab({ branch }: { branch: string }) {
         </table>
         <Pagination total={sorted.length} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
       </div>
+
+      {/* Remarks prompt. A textarea rather than window.prompt(): these notes
+          run to a sentence or two about what the family said, and a native
+          prompt gives a single unreadable line with no room to correct it. */}
+      {tagging && (
+        <div
+          onClick={() => !tagSaving && setTagging(null)}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(17,24,39,0.45)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: 16,
+          }}>
+          <div onClick={e => e.stopPropagation()} className="rounded-xl"
+            style={{ background: '#fff', width: '100%', maxWidth: 440, boxShadow: '0 12px 40px rgba(0,0,0,0.18)' }}>
+            <div className="px-5 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid var(--light-gray)' }}>
+              <p className="text-sm font-bold" style={{ color: '#B91C1C' }}>Will no longer avail</p>
+              <button onClick={() => !tagSaving && setTagging(null)} aria-label="Close"
+                style={{ background: 'none', border: 0, cursor: 'pointer', color: '#9CA3AF', lineHeight: 0 }}>
+                <X size={16} />
+              </button>
+            </div>
+            <div className="px-5 py-4">
+              <p className="text-xs mb-2" style={{ color: '#6B7280' }}>
+                Marking <strong>{getName(tagging)}</strong>. Add what they said, so whoever
+                picks this up next knows it has been followed up.
+              </p>
+              <textarea
+                value={tagRemarks}
+                onChange={e => { setTagRemarks(e.target.value); if (tagError) setTagError('') }}
+                rows={4}
+                autoFocus
+                placeholder="e.g. Called 10/30 — enrolled closer to home, not pushing through."
+                style={{
+                  width: '100%', padding: '10px 12px', borderRadius: 10, fontSize: 13,
+                  border: `1.5px solid ${tagError ? '#DC2626' : '#e5e7eb'}`,
+                  color: '#24505a', outline: 'none', resize: 'vertical', fontFamily: 'inherit',
+                }}
+              />
+              {tagError && <p className="mt-1.5 text-xs" style={{ color: '#B91C1C' }}>{tagError}</p>}
+            </div>
+            <div className="px-5 pb-4 flex gap-2 justify-end">
+              <button onClick={() => setTagging(null)} disabled={tagSaving}
+                className="px-4 py-2 rounded-lg text-xs font-semibold"
+                style={{ background: '#F3F4F6', color: '#374151', border: 'none', cursor: 'pointer' }}>
+                Cancel
+              </button>
+              <button onClick={saveTag} disabled={tagSaving}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold"
+                style={{ background: '#B91C1C', color: '#fff', border: 'none', cursor: 'pointer', opacity: tagSaving ? 0.6 : 1 }}>
+                {tagSaving ? <Loader2 size={13} className="animate-spin" /> : <XCircle size={13} />}
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

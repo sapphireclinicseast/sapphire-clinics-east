@@ -28,6 +28,39 @@ model FollowUpReminder {
 }
 
 
+// ── Waitlist follow-up state ────────────────────────────────────────────────
+// Front desk's record of chasing a waitlist entry, for Patient Relationship →
+// Waitlist.
+//
+// The entries themselves are form submissions living in HR Platform, not rows
+// here, so this keys off (formId, submissionId) rather than a relation. Writing
+// the state back to HR was the alternative and a worse one: that feed is
+// read-only to this hub, and its deploy replaces the repo wholesale.
+//
+// Uniqueness on (formId, submissionId) means one live state per entry, so
+// re-tagging edits rather than accumulating rows. Deleting the row is how a tag
+// is lifted — if someone does enrol after saying they would not, the entry goes
+// back to looking untouched instead of carrying a contradicted note.
+model WaitlistFollowUp {
+  id           String   @id @default(cuid())
+  formId       String
+  submissionId String
+  /// Only "WILL_NOT_AVAIL" today. A string, not an enum, because the next
+  /// states front desk asks for ("called, no answer") shouldn't need a
+  /// migration to the enum type on a table this small.
+  status       String
+  remarks      String   @default("")
+  /// Who tagged it — the point of the tag is knowing whether anyone has
+  /// followed this entry up, which a bare flag would not tell you.
+  setByName    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([formId, submissionId])
+  @@index([formId])
+}
+
+
 
 // ── Patient Documents (Progress Reports, Initial Evaluations, etc.) ──────────
 // Created by clinicians via teletherapy.sapphireclinicseast.org. The marketing
