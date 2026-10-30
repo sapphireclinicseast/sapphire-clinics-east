@@ -19,7 +19,7 @@ function isRole(x: string | undefined | null): x is Role {
 type NavItem = {
   href: string
   label: string
-  icon: 'home' | 'classes' | 'calendar' | 'pay' | 'handbook' | 'meetings' | 'templates' | 'megaphone'
+  icon: 'home' | 'classes' | 'calendar' | 'pay' | 'handbook' | 'meetings' | 'templates' | 'megaphone' | 'grades' | 'bell'
   roles?: Array<'ADMIN' | 'BRANCH_ADMIN' | 'FRONTDESK' | 'TEACHER' | 'STUDENT'>
   mainAdminOnly?: boolean
   /** The role's home / landing entry. Suppressed while impersonating so
@@ -101,6 +101,22 @@ function NavIcon({ name }: { name: NavItem['icon'] }) {
         <svg {...common}>
           <path d="M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1z" />
           <path d="M14 7a5 5 0 0 1 0 10" />
+        </svg>
+      )
+    case 'grades':
+      // Mortar-board.
+      return (
+        <svg {...common}>
+          <path d="M2 9l10-4 10 4-10 4z" />
+          <path d="M6 11v4c0 1 2.5 3 6 3s6-2 6-3v-4" />
+        </svg>
+      )
+    case 'bell':
+      // Bell glyph — the student-side announcements inbox.
+      return (
+        <svg {...common}>
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+          <path d="M13.73 21a2 2 0 0 1-3.46 0" />
         </svg>
       )
   }
@@ -187,6 +203,13 @@ export default function AuthSidebar() {
     { href: '/calendar',       label: 'Calendar',     icon: 'calendar' },
     { href: '/meetings',       label: 'Meetings',     icon: 'meetings',  roles: ['ADMIN', 'BRANCH_ADMIN', 'TEACHER', 'STUDENT'] },
     { href: '/pay',            label: 'Pay tuition',  icon: 'pay',       roles: ['STUDENT'] },
+    // Student-side Grades + Notifications were top tabs on /profile. They
+    // now live as sidebar entries so the student can jump straight to
+    // them, matching what parents actually want to click. Admin + branch
+    // admin also get these so they can navigate the same way while
+    // impersonating a student.
+    { href: '/grades',         label: 'Grades',         icon: 'grades',    roles: ['STUDENT'] },
+    { href: '/notifications',  label: 'Notifications',  icon: 'bell',      roles: ['STUDENT'] },
     // Templates + Notifications are admin-only tools (lesson/activity
     // templates and the staff announcement composer). Hoisted out of
     // the Admin Dashboard tabs so admins reach them in one click.

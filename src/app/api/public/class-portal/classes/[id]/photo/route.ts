@@ -9,6 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/class-portal-auth'
+import { createNotifications } from '@/lib/class-portal-notifications'
 import { withCors, corsHeaders } from '../../../../_cors'
 
 const MAX_BYTES = 10 * 1024 * 1024 // 10MB cap on the cover photo
@@ -43,7 +44,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const row = await (prisma.classPortalClass as any).findUnique({
       where: { id },
-      select: { teacherId: true, branch: true },
+      select: { teacherId: true, branch: true, studentIds: true, name: true },
     })
     if (!row) return withCors(NextResponse.json({ error: 'Class not found.' }, { status: 404 }), origin)
     if (!canEdit(auth, row)) return withCors(NextResponse.json({ error: 'Forbidden.' }, { status: 403 }), origin)
@@ -68,6 +69,19 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         updatedAt: new Date(),
       },
     })
+
+    try {
+      await createNotifications(row.studentIds ?? [], {
+        kind: 'CLASS_PHOTO',
+        title: `New cover photo in ${row.name}`,
+        body: `A new class photo was uploaded.`,
+        href: `/classes/${id}`,
+        payload: { classId: id, fileName: f.name },
+      })
+    } catch (nerr) {
+      console.error('[classes/photo.PUT] notify fan-out failed', nerr)
+    }
+
     return withCors(NextResponse.json({ ok: true, fileName: f.name, fileType: f.type, fileSize: f.size }), origin)
   } catch (e) {
     if (e instanceof Response) {
