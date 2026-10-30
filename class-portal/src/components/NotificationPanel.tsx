@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import {
   listAnnouncements, createAnnouncement, deleteAnnouncementServer, fetchAnnouncementPosterBlob,
   emailAnnouncement,
@@ -348,6 +349,9 @@ function AnnouncementModal({ announcement: a, viewer, onClose, onDelete, onSent 
 }) {
   const [posterUrl, setPosterUrl] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
+  // Gate the portal on client-mount so SSR doesn't trip on `document`.
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => { setMounted(true) }, [])
 
   useEffect(() => {
     if (!a.hasPoster) return
@@ -418,11 +422,15 @@ function AnnouncementModal({ announcement: a, viewer, onClose, onDelete, onSent 
     }
   }
 
-  return (
-    // Lighter, non-blurred backdrop. The previous bg-black/40 +
-    // backdrop-blur-sm fought the modal for attention and made the
-    // poster image and surrounding body text feel cramped. A very
-    // soft tint is enough to signal "modal on top" without competing.
+  if (!mounted) return null
+  // Portal to document.body so the modal escapes any ancestor that
+  // applies `transform` / `filter` / `backdrop-filter` (e.g. the page's
+  // `animate-fade-up` wrapper). Per CSS spec, those properties make
+  // the element a containing block for descendants with position:fixed,
+  // which was trapping the modal inside the right-of-sidebar area with
+  // dead space below. Rendering through document.body puts `fixed
+  // inset-0` back on the viewport.
+  return createPortal(
     <div
       className="fixed inset-0 z-50 bg-white overflow-y-auto"
       onClick={onClose}
@@ -521,7 +529,10 @@ function AnnouncementModal({ announcement: a, viewer, onClose, onDelete, onSent 
           <style>{`
             .rt-body p { margin: 0 0 0.6em; }
             .rt-body p:last-child { margin-bottom: 0; }
-            .rt-body ul, .rt-body ol { margin: 0.4em 0 0.4em 1.4em; }
+            /* Tailwind's preflight resets list-style on ul/ol, so bullets
+               and numbers never render. Put them back explicitly. */
+            .rt-body ul { list-style: disc outside; margin: 0.4em 0 0.4em 1.4em; padding-left: 0.2em; }
+            .rt-body ol { list-style: decimal outside; margin: 0.4em 0 0.4em 1.4em; padding-left: 0.2em; }
             .rt-body li { margin: 0.15em 0; }
             .rt-body a { color: var(--sage); text-decoration: underline; }
           `}</style>
@@ -558,6 +569,7 @@ function AnnouncementModal({ announcement: a, viewer, onClose, onDelete, onSent 
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
