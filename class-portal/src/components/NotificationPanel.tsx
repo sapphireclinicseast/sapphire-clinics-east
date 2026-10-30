@@ -427,13 +427,14 @@ function AnnouncementModal({ announcement: a, viewer, onClose, onDelete, onSent 
       className="fixed inset-0 z-50 bg-black/15 overflow-y-auto p-2 sm:p-4"
       onClick={onClose}
     >
-      {/* No max-width cap — the modal fills the entire viewport minus
-          the wrapper's small padding. When a poster is attached we
-          render poster + body side-by-side so the message text is
-          visible immediately next to the image, no scroll needed for
-          most content. */}
+      {/* The inner card fills the entire viewport minus the wrapper
+          padding. Without the min-h clamp it shrunk to its content
+          height on short announcements, leaving a wide strip of
+          backdrop below that read as blank page. When a poster is
+          attached we render poster + body side-by-side so the message
+          text is visible immediately next to the image. */}
       <div
-        className="w-full mx-auto my-2 sm:my-4 card-static"
+        className="w-full card-static min-h-[calc(100vh-16px)] sm:min-h-[calc(100vh-32px)]"
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-3 mb-3">
