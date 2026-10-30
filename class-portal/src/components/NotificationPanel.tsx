@@ -449,13 +449,19 @@ function AnnouncementModal({ announcement: a, viewer, onClose, onDelete, onSent 
           <button className="btn-secondary text-xs whitespace-nowrap" onClick={onClose}>Close</button>
         </div>
 
-        <div className="flex flex-wrap gap-1.5 mb-4">
-          {a.levels.length === 0
-            ? <span className="badge badge-approved">All levels</span>
-            : a.levels.map(l => <span key={l} className="badge badge-teletherapy">{levelLabel(l)}</span>)
-          }
-          {a.includeTeachers && <span className="badge badge-pending">+ Teachers</span>}
-        </div>
+        {/* Audience chips — only the sender's view needs these. Students
+            already see only announcements targeting their own grade level,
+            so showing a 2-row GRADE_1 … GRADE_12 + TEACHERS chip bar just
+            pushed the actual message below the fold. */}
+        {viewer.role !== 'STUDENT' && (
+          <div className="flex flex-wrap gap-1.5 mb-4">
+            {a.levels.length === 0
+              ? <span className="badge badge-approved">All levels</span>
+              : a.levels.map(l => <span key={l} className="badge badge-teletherapy">{levelLabel(l)}</span>)
+            }
+            {a.includeTeachers && <span className="badge badge-pending">+ Teachers</span>}
+          </div>
+        )}
 
         <div className={`grid gap-5 ${a.hasPoster ? 'md:grid-cols-2' : ''}`}>
           {a.hasPoster && (
