@@ -859,23 +859,22 @@ function PaymentStatusGrid({ payments }: { payments: PaymentRecord[] }) {
   const anyRows = [...paid, ...payments.filter(p => p.status !== 'PAID')]
   const activePlan: PaymentPlan = (anyRows[0]?.plan ?? 'MONTHLY') as PaymentPlan
 
-  // Count paid annual / biannual rows up front — used for the whole-year
-  // and half-year fills below.
+  // Annual gets whole-year coverage from one paid row; biannual rows
+  // (paid OR pending) fill the two half-year slots in date order so a
+  // 2nd installment that's still pending shows as "Pending" over the
+  // Nov-Apr cells instead of leaving them blank.
   const paidAnnual = paid.find(p => p.plan === 'ANNUAL')
-  const paidBiannualSorted = paid
+  const allBiannualSorted = payments
     .filter(p => p.plan === 'BIANNUAL')
     .sort((a, b) => new Date(a.paidAt ?? a.createdAt).getTime() - new Date(b.paidAt ?? b.createdAt).getTime())
 
   function paymentForMonth(month: string): PaymentRecord | null {
     if (paidAnnual) return paidAnnual
     if (activePlan === 'BIANNUAL') {
-      if (BIANNUAL_1.includes(month) && paidBiannualSorted[0]) return paidBiannualSorted[0]
-      if (BIANNUAL_2.includes(month) && paidBiannualSorted[1]) return paidBiannualSorted[1]
-      // Pending second installment on biannual? Fall through to look for
-      // any PENDING match so the cell can still say "Pending" instead of
-      // leaving the parent to guess.
+      if (BIANNUAL_1.includes(month) && allBiannualSorted[0]) return allBiannualSorted[0]
+      if (BIANNUAL_2.includes(month) && allBiannualSorted[1]) return allBiannualSorted[1]
     }
-    // MONTHLY fallback (also catches biannual months with no paid cover):
+    // MONTHLY fallback (also catches biannual months with no cover):
     // prefer a PAID row whose period mentions the month, else any row.
     const needle = month.toLowerCase()
     const matches = payments.filter(p => p.period.toLowerCase().includes(needle))
