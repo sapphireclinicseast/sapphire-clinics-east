@@ -1129,6 +1129,7 @@ model Order {
   payments          OrderPayment[]
   arPaymentItems    ARPaymentItem[]
   soaSubmissionItems SoaSubmissionItem[]
+  hmoSettlements    OrderHmoSettlement[]
   otherReceivable   OtherReceivable?
   // Who the sale was to. Asked on every checkout, not just credit sales, because
   // an official invoice needs the buyer whatever the payment mode was. A patient
@@ -1148,6 +1149,35 @@ model Order {
   @@index([createdById])
   @@index([referrerId])
   @@index([queueItemId])
+}
+
+// "Decrease due to HMO Payment": the HMO approved/paid less than the session was
+// billed, so the order's lines, HMO payment and net are revised down to what was
+// paid and the sale is re-posted on its own date. One row per adjustment keeps
+// the billed amount and the original lines for the order history, and drives
+// the Payroll alert for PF already released at the higher amount.
+model OrderHmoSettlement {
+  id             String    @id @default(cuid())
+  orderId        String
+  order          Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  paymentId      String? // the HMO OrderPayment that was reduced
+  walletId       String?
+  billedAmount   Decimal // HMO amount on the order before the decrease
+  paidAmount     Decimal // gross the HMO approved/paid (before its discount and WHT)
+  difference     Decimal
+  reference      String? // payment voucher / PV no.
+  note           String?
+  originalItems  Json // [{id, name, quantity, unitPrice, lineTotal}] before the decrease
+  glStatus       String? // REPOSTED | UNCHANGED (<reason>)
+  pfResolvedAt   DateTime? // set once any PF overpayment from this decrease is deducted
+  pfResolvedById String?
+  pfResolvedNote String?
+  createdById    String
+  createdByName  String?
+  createdAt      DateTime  @default(now())
+
+  @@index([orderId])
+  @@index([pfResolvedAt])
 }
 
 model OrderItem {

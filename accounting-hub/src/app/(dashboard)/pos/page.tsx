@@ -12,13 +12,14 @@ import {
   Pencil, PlusCircle, ToggleLeft, ToggleRight, Eye, CheckCircle, Gift,
   Globe, Truck, Phone, MapPin, Package, Clock, Upload, DollarSign, Wand2, MonitorSmartphone,
   CalendarCheck, Ticket,
-  ArrowUpDown,
+  ArrowUpDown, TrendingDown,
 } from 'lucide-react'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { normalizeSI } from '@/lib/sales-invoice'
 import { ScanUpload } from '@/components/ScanUpload'
 import { PaymongoAdvanceQueue } from './PaymongoAdvanceQueue'
 import { TiktokImportModal } from './TiktokImportModal'
+import { HmoSettlementModal, type HmoSettlementNote } from './HmoSettlementModal'
 import Pagination from '@/components/ui/Pagination'
 import { downloadXlsx, downloadReportPdf } from '@/lib/export'
 import { patientViewPath } from '@/lib/patient-view'
@@ -117,6 +118,7 @@ interface Order {
   items: { id: string; name: string; quantity: number; unitPrice: string | number; lineTotal: string | number; serviceId?: string; inventoryItemId?: string; service?: { department?: string; revenueType?: string } | null }[]
   payments: { id: string; method: string; amount: string | number; paymentModeId?: string | null; walletId?: string; reference?: string; loaNumber?: string | null }[]
   arPaymentItems?: { paymentId: string }[]
+  hmoSettlements?: HmoSettlementNote[]
   referrer?: { id: string; name: string } | null
   createdBy?: { name: string }
   [key: string]: unknown
@@ -564,6 +566,9 @@ function userBranch(session: any): string {
   if (role.startsWith('VERDANA')) return 'VERDANA_STORE'
   return session?.user?.branch || 'SANDBOX_EAST'
 }
+
+// Who may revise an HMO sale down to the settlement amount (matches the API).
+const HMO_SETTLE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'PAYROLL_OFFICER', 'HMO_OFFICER', 'AHEA_ADMIN', 'AHGH_ADMIN']
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function isAdmin(session: any): boolean {
@@ -3116,6 +3121,11 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(false)
   const [payUnpaidOrder, setPayUnpaidOrder] = useState<Order | null>(null)
+  // "Decrease due to HMO Payment" — revises an HMO sale down to what the HMO paid.
+  const { data: ordersSession } = useSession()
+  const canSettleHmo = HMO_SETTLE_ROLES.includes((ordersSession?.user?.role as string) || '')
+  const [settleOrder, setSettleOrder] = useState<Order | null>(null)
+  const isHmoOrder = (o: Order) => o.status === 'COMPLETED' && o.payments.some(p => p.method === 'HMO' && toNum(p.amount) > 0)
   const [ordPage, setOrdPage] = useState(1)
   const [ordPageSize, setOrdPageSize] = useState(25)
   const [orderSearch, setOrderSearch] = useState('')
@@ -3801,7 +3811,15 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
                     </td>
                     <td className="px-4 py-3" style={{ color: 'var(--mid-gray)' }}>{formatClinicianName(o.clinicianName)}</td>
                     <td className="px-4 py-3 text-xs font-mono" style={{ color: 'var(--mid-gray)' }}>{o.referenceNumber || '—'}</td>
-                    <td className="px-4 py-3 font-medium" style={{ color: 'var(--charcoal)' }}>{formatCurrency(toNum(o.netAmount))}</td>
+                    <td className="px-4 py-3 font-medium" style={{ color: 'var(--charcoal)' }}>
+                      {formatCurrency(toNum(o.netAmount))}
+                      {(o.hmoSettlements?.length || 0) > 0 && (
+                        <span className="block text-[10px] font-semibold" style={{ color: '#b91c1c' }}
+                          title={`Revised due to HMO settlement — billed ${formatCurrency(toNum(o.hmoSettlements![0].billedAmount))}`}>
+                          HMO-revised
+                        </span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
                       {o.payments.map(p => p.method).join(', ')}
                     </td>
@@ -3824,6 +3842,11 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
                         {(o.status === 'COMPLETED' || o.status === 'REOPENED') && (
                           <button onClick={() => printThermalReceipt(o)} className="p-1.5 rounded-lg hover:bg-gray-100" title="Print Receipt">
                             <Printer size={13} style={{ color: 'var(--teal)' }} />
+                          </button>
+                        )}
+                        {canSettleHmo && isHmoOrder(o) && (
+                          <button onClick={() => setSettleOrder(o)} className="p-1.5 rounded-lg hover:bg-red-50" title="Decrease due to HMO Payment">
+                            <TrendingDown size={13} className="text-red-600" />
                           </button>
                         )}
                         {o.status === 'COMPLETED' && (
@@ -3874,6 +3897,21 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
       {/* Record payment on an Unpaid order */}
       {payUnpaidOrder && (
         <RecordUnpaidPaymentModal order={payUnpaidOrder} onClose={() => setPayUnpaidOrder(null)} onSaved={() => { setPayUnpaidOrder(null); fetchOrders() }} />
+      )}
+
+      {/* Decrease due to HMO Payment */}
+      {settleOrder && (
+        <HmoSettlementModal order={settleOrder} onClose={() => setSettleOrder(null)}
+          onDone={() => {
+            fetchOrders()
+            // Refresh the open detail view so it shows the revised lines and the settlement note.
+            if (viewOrder?.id === settleOrder.id) {
+              fetch(`/api/pos/orders/${encodeURIComponent(settleOrder.id)}`)
+                .then(r => (r.ok ? r.json() : null))
+                .then(o => { if (o?.id) setViewOrder(o as Order) })
+                .catch(() => {})
+            }
+          }} />
       )}
 
       {/* View Order Detail Modal */}
@@ -3964,6 +4002,19 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
                 </div>
               </div>
 
+              {/* HMO settlement revisions */}
+              {(viewOrder.hmoSettlements?.length || 0) > 0 && (
+                <div className="space-y-1">
+                  {viewOrder.hmoSettlements!.map(s => (
+                    <div key={s.id} className="text-xs px-3 py-2 rounded-lg" style={{ background: '#fef2f2', color: '#991b1b', border: '1px solid #fecaca' }}>
+                      <span className="font-semibold">Revised due to HMO settlement:</span> billed {formatCurrency(toNum(s.billedAmount))} → paid {formatCurrency(toNum(s.paidAmount))} (−{formatCurrency(toNum(s.difference))})
+                      {s.reference ? ` · ${s.reference}` : ''}{s.note ? ` · ${s.note}` : ''}
+                      <span className="block" style={{ color: '#b91c1c' }}>{formatDate(s.createdAt)}{s.createdByName ? ` by ${s.createdByName}` : ''}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {/* Remarks */}
               <div>
                 <p className="text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Remarks</p>
@@ -3985,6 +4036,11 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
               <button onClick={() => { printThermalReceipt(viewOrder); }} className="flex-1 py-2 rounded-xl text-sm font-medium flex items-center justify-center gap-2" style={{ background: 'var(--off-white)', color: 'var(--teal)' }}>
                 <Printer size={14} /> Print Receipt
               </button>
+              {canSettleHmo && isHmoOrder(viewOrder) && (
+                <button onClick={() => setSettleOrder(viewOrder)} className="flex-1 py-2 rounded-xl text-sm font-medium flex items-center justify-center gap-2" style={{ background: '#fef2f2', color: '#b91c1c' }}>
+                  <TrendingDown size={14} /> Decrease due to HMO Payment
+                </button>
+              )}
               <button onClick={() => setViewOrder(null)} className="px-6 py-2 rounded-xl text-sm font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
                 Close
               </button>

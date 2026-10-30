@@ -17,6 +17,7 @@ import { formatCurrency } from '@/lib/utils'
 import { useRfpOtherFees, RfpOtherFeesSection } from '@/components/RfpOtherFees'
 import EmployeePayroll from './EmployeePayroll'
 import MentorshipMeetingsTab from './MentorshipMeetingsTab'
+import HmoSettlementPfAlerts from './HmoSettlementPfAlerts'
 import PayrollHistoryTab from './PayrollHistoryTab'
 
 const toNum = (v: unknown) => Number(v) || 0
@@ -3133,6 +3134,9 @@ export default function PayrollPage() {
               </button>
             ))}
           </div>
+
+          {/* PF released before a session was decreased to what the HMO paid */}
+          <HmoSettlementPfAlerts canWrite={!!canWrite} />
 
           {error && <p className="text-xs text-red-600 flex items-center gap-1"><AlertCircle size={12} />{error}</p>}
 

@@ -124,6 +124,10 @@ export async function GET(req: Request) {
           },
           payments: true,
           arPaymentItems: { select: { paymentId: true } },
+          hmoSettlements: {
+            select: { id: true, billedAmount: true, paidAmount: true, difference: true, reference: true, note: true, createdAt: true, createdByName: true },
+            orderBy: { createdAt: 'asc' },
+          },
           referrer: true,
           createdBy: { select: { id: true, name: true } },
         },
