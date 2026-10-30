@@ -153,6 +153,15 @@ function Bubble({ m, inquiryId, onOpen }: {
   )
 }
 
+// Monochrome chat-bubble icon (inherits the button's white via currentColor).
+function ChatIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+    </svg>
+  )
+}
+
 export default function PortalMessages({ token }: { token: string }) {
   const [mounted, setMounted] = useState(false)
   const [open, setOpen] = useState(false)
@@ -242,13 +251,14 @@ export default function PortalMessages({ token }: { token: string }) {
     return createPortal(
       <button
         onClick={() => setOpen(true)}
-        className="fixed bottom-24 right-5 z-40 inline-flex items-center gap-2 px-4 py-3 rounded-full text-white font-semibold shadow-[0_10px_30px_rgba(27,63,56,0.28)] hover:opacity-95 transition-opacity"
-        style={{ background: 'linear-gradient(135deg, var(--teal), var(--deep-teal))', fontFamily: 'var(--font-display)' }}
+        className="fixed bottom-24 right-5 z-40 w-14 h-14 rounded-full text-white flex items-center justify-center shadow-[0_8px_32px_rgba(27,63,56,0.3)] hover:shadow-[0_12px_40px_rgba(27,63,56,0.45)] hover:scale-105 transition-all"
+        style={{ background: 'linear-gradient(135deg, var(--teal), var(--deep-teal))' }}
         aria-label="Messages with the clinic"
+        title="Messages"
       >
-        💬 Messages
+        <ChatIcon size={24} />
         {unread > 0 && (
-          <span className="ml-1 rounded-full bg-white text-[11px] font-bold px-1.5 py-0.5" style={{ color: 'var(--deep-teal)' }}>
+          <span className="absolute -top-1 -right-1 rounded-full bg-white text-[11px] font-bold px-1.5 py-0.5 shadow" style={{ color: 'var(--deep-teal)' }}>
             {unread}
           </span>
         )}
