@@ -33,6 +33,10 @@ const BRANCHES = [
   { value: 'AURA_INSTITUTE', label: 'Aura Health Institute' },
 ]
 
+// The by-branch view: every operating branch, then the company total.
+const BY_BRANCH = ['SBEA', 'SBGH', 'VERDANA_STORE', 'AURA_INSTITUTE']
+type View = 'single' | 'byBranch'
+
 interface EngineRow { number: string; title: string; monthly: number[] }
 interface EngineSection { key: string; rows: EngineRow[] }
 interface EnginePayload { incomeStatement?: { sections: EngineSection[] } }
@@ -81,6 +85,27 @@ function change(a: number, b: number, good: 'up' | 'down') {
   const better = diff === 0 ? null : (good === 'up' ? diff > 0 : diff < 0)
   return { diff, pct, better }
 }
+
+/** The headline lines the by-branch view compares. */
+const METRICS = [
+  { key: 'grossRevenue', label: 'Gross Revenue' },
+  { key: 'netSales', label: 'Net Sales' },
+  { key: 'grossProfit', label: 'Gross Profit' },
+  { key: 'ebitda', label: 'EBITDA' },
+  { key: 'netIncome', label: 'Net Income' },
+] as const
+type Summary = Record<typeof METRICS[number]['key'], number>
+const ZERO_SUMMARY: Summary = { grossRevenue: 0, netSales: 0, grossProfit: 0, ebitda: 0, netIncome: 0 }
+function summarize(f: Figures): Summary {
+  const netSales = f.totals.REVENUE - f.totals.DISCOUNTS
+  const grossProfit = netSales - f.totals.COGS
+  const ebitda = grossProfit - f.totals.OPEX
+  return {
+    grossRevenue: r2(f.totals.REVENUE), netSales: r2(netSales), grossProfit: r2(grossProfit),
+    ebitda: r2(ebitda), netIncome: r2(ebitda - f.below),
+  }
+}
+type BranchGroup = { key: string; label: string; kind: 'branch' | 'residual' | 'total'; rows: { label: string; a: number; b: number }[] }
 
 function ledgerFigures(p: EnginePayload, from: number, to: number): Figures {
   const rangeSum = (m: number[]) => {
@@ -163,6 +188,7 @@ export default function YoYComparison({ lockedBranch }: { lockedBranch?: string 
   const [toM, setToM] = useState(thisMonth)
   const [branch, setBranch] = useState(lockedBranch || 'ALL')
   const [basis, setBasis] = useState<Basis>('ledger')
+  const [view, setView] = useState<View>('single')
   useEffect(() => { if (lockedBranch) setBranch(lockedBranch) }, [lockedBranch])
 
   const [cache, setCache] = useState<Record<string, EnginePayload | HistoricalReportPayload>>({})
@@ -174,13 +200,16 @@ export default function YoYComparison({ lockedBranch }: { lockedBranch?: string 
   // Which source serves a year: the audited package only exists through
   // FY2025, and only when that basis is chosen.
   const sourceOf = (y: number) => (basis === 'audited' && y <= LAST_MANUAL_YEAR ? 'aud' : 'v2')
-  const keyOf = (y: number) => `${sourceOf(y)}:${y}|${branch}`
+  const keyFor = (y: number, b: string = branch) => `${sourceOf(y)}:${y}|${b}`
+  const byBranch = view === 'byBranch' && !lockedBranch
   const auditedApplies = yearA <= LAST_MANUAL_YEAR || yearB <= LAST_MANUAL_YEAR
 
   // Load what the two years need. Each year+branch+source is cached, so
   // changing only the month range is instant; a newer load supersedes an older.
   useEffect(() => {
-    const keys = [...new Set([keyOf(yearA), keyOf(yearB)])]
+    const keys = [...new Set(byBranch
+      ? [yearA, yearB].flatMap(y => ['ALL', ...BY_BRANCH].map(b => keyFor(y, b)))
+      : [keyFor(yearA), keyFor(yearB)])]
     const missing = keys.filter(k => !cache[k])
     if (missing.length === 0) {
       // Everything is cached: retire any in-flight load so its spinner can't linger.
@@ -207,12 +236,12 @@ export default function YoYComparison({ lockedBranch }: { lockedBranch?: string 
       .catch(e => { if (mine === seq.current && (e as Error).name !== 'AbortError') setError((e as Error).message || 'Failed to load') })
       .finally(() => { if (mine === seq.current) setLoading(false) })
     return () => ctl.abort()
-    // keyOf folds in basis and branch.
+    // keyFor folds in basis and branch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [yearA, yearB, branch, basis, cache])
+  }, [yearA, yearB, branch, basis, byBranch, cache])
 
-  const figuresFor = (y: number): Figures | string | null => {
-    const p = cache[keyOf(y)]
+  const figuresFor = (y: number, b: string = branch): Figures | string | null => {
+    const p = cache[keyFor(y, b)]
     if (!p) return null
     return sourceOf(y) === 'aud'
       ? auditedFigures(p as HistoricalReportPayload, fromM, toM)
@@ -221,6 +250,47 @@ export default function YoYComparison({ lockedBranch }: { lockedBranch?: string 
   const figA = figuresFor(yearA)
   const figB = figuresFor(yearB)
   const figError = typeof figA === 'string' ? `${yearA}: ${figA}` : typeof figB === 'string' ? `${yearB}: ${figB}` : ''
+
+  // By-branch view: the headline lines for each branch, then whatever the books
+  // carry company-wide without a branch (so the rows add up), then the total.
+  const branchName = (b: string) => BRANCHES.find(x => x.value === b)?.label || b
+  const branchView = (() => {
+    if (!byBranch) return null
+    const notes = new Set<string>()
+    const summaryOf = (y: number, b: string): Summary | null => {
+      const f = figuresFor(y, b)
+      if (f === null) return null // still loading
+      // A branch with no statements for a year (e.g. Verdana before 2026) is a
+      // zero here, not an error that hides the other branches.
+      if (typeof f === 'string') { notes.add(`${y} — ${branchName(b)}: ${f}`); return ZERO_SUMMARY }
+      f.notes.forEach(n => notes.add(n))
+      return summarize(f)
+    }
+    const cells: Record<string, { a: Summary; b: Summary }> = {}
+    for (const b of ['ALL', ...BY_BRANCH]) {
+      const sa = summaryOf(yearA, b), sb = summaryOf(yearB, b)
+      if (!sa || !sb) return null
+      cells[b] = { a: sa, b: sb }
+    }
+    const rowsOf = (c: { a: Summary; b: Summary }) => METRICS.map(m => ({ label: m.label, a: c.a[m.key], b: c.b[m.key] }))
+    const groups: BranchGroup[] = []
+    const idle: string[] = []
+    for (const b of BY_BRANCH) {
+      const rows = rowsOf(cells[b])
+      if (rows.every(r => Math.abs(r.a) < 0.005 && Math.abs(r.b) < 0.005)) { idle.push(branchName(b)); continue }
+      groups.push({ key: b, label: branchName(b), kind: 'branch', rows })
+    }
+    const residual = METRICS.map(m => ({
+      label: m.label,
+      a: r2(cells.ALL.a[m.key] - BY_BRANCH.reduce((t, b) => t + cells[b].a[m.key], 0)),
+      b: r2(cells.ALL.b[m.key] - BY_BRANCH.reduce((t, b) => t + cells[b].b[m.key], 0)),
+    }))
+    if (residual.some(r => Math.abs(r.a) >= 0.005 || Math.abs(r.b) >= 0.005)) {
+      groups.push({ key: 'RESIDUAL', label: 'Not assigned to a branch', kind: 'residual', rows: residual })
+    }
+    groups.push({ key: 'ALL', label: 'All Branches', kind: 'total', rows: rowsOf(cells.ALL) })
+    return { groups, idle, notes: [...notes] }
+  })()
 
   const blocks = useMemo<Block[] | null>(() => {
     if (!figA || !figB || typeof figA === 'string' || typeof figB === 'string') return null
@@ -283,6 +353,13 @@ export default function YoYComparison({ lockedBranch }: { lockedBranch?: string 
   const toggle = (k: string) => setOpen(prev => { const n = new Set(prev); if (n.has(k)) n.delete(k); else n.add(k); return n })
 
   const exportRows = (): (string | number)[][] => {
+    if (byBranch) {
+      if (!branchView) return []
+      return branchView.groups.flatMap(g => g.rows.map(r => {
+        const c = change(r.a, r.b, 'up')
+        return [`${g.label} — ${r.label}`, r.b, r.a, c.diff, c.pct === null ? (c.diff === 0 ? '' : 'new') : `${c.pct.toFixed(1)}%`]
+      }))
+    }
     if (!blocks) return []
     const row = (label: string, a: number, b: number, good: 'up' | 'down') => {
       const c = change(a, b, good)
@@ -295,12 +372,12 @@ export default function YoYComparison({ lockedBranch }: { lockedBranch?: string 
     }
     return rows
   }
-  const headers = ['Line', colB, colA, 'Change (₱)', 'Change (%)']
-  const basisTag = auditedInUse ? 'audited-basis' : 'ledger'
-  const exportXlsx = () => downloadXlsx(`yoy-${rangeLabel}-${yearA}-vs-${yearB}-${branch}-${basisTag}`, [{ name: 'YoY Comparison', headers, rows: exportRows() }])
+  const headers = [byBranch ? 'Branch — Line' : 'Line', colB, colA, 'Change (₱)', 'Change (%)']
+  const basisTag = `${auditedInUse ? 'audited-basis' : 'ledger'}${byBranch ? '-by-branch' : ''}`
+  const exportXlsx = () => downloadXlsx(`yoy-${rangeLabel}-${yearA}-vs-${yearB}-${branch}-${basisTag}`, [{ name: byBranch ? 'YoY by Branch' : 'YoY Comparison', headers, rows: exportRows() }])
   const exportPdf = () => downloadPdf({
     title: `Year-over-Year Comparison — ${colA} vs ${colB}`,
-    subtitle: `${branchLabel}${auditedInUse ? ' · FY2024–FY2025 on the audited basis' : ''}`,
+    subtitle: `${byBranch ? 'By branch' : branchLabel}${auditedInUse ? ' · FY2024–FY2025 on the audited basis' : ''}`,
     headers,
     rows: exportRows().map(r => r.map((c, i) => (i >= 1 && i <= 3 && typeof c === 'number') ? peso(c) : c)),
     landscape: true,
@@ -347,9 +424,21 @@ export default function YoYComparison({ lockedBranch }: { lockedBranch?: string 
         <select value={yearB} onChange={e => setYearB(parseInt(e.target.value))} className={sel} style={{ borderColor: 'var(--light-gray)' }}>
           {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
         </select>
-        <select value={branch} onChange={e => setBranch(e.target.value)} disabled={!!lockedBranch} className={sel} style={{ borderColor: 'var(--light-gray)' }}>
-          {(lockedBranch ? BRANCHES.filter(b => b.value === lockedBranch) : BRANCHES).map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
-        </select>
+        {!lockedBranch && (
+          <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: 'var(--light-gray)' }}>
+            {([['single', 'One branch'], ['byBranch', 'By branch']] as const).map(([v, label]) => (
+              <button key={v} onClick={() => setView(v)} className="px-3 py-2 text-xs font-semibold"
+                style={view === v ? { background: 'var(--teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' }}>
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+        {!byBranch && (
+          <select value={branch} onChange={e => setBranch(e.target.value)} disabled={!!lockedBranch} className={sel} style={{ borderColor: 'var(--light-gray)' }}>
+            {(lockedBranch ? BRANCHES.filter(b => b.value === lockedBranch) : BRANCHES).map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
+          </select>
+        )}
         {auditedApplies && (
           <div className="flex items-center gap-1.5">
             <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>FY2024–2025 basis</span>
@@ -365,8 +454,8 @@ export default function YoYComparison({ lockedBranch }: { lockedBranch?: string 
           </div>
         )}
         <div className="ml-auto flex items-center gap-2">
-          <button onClick={exportXlsx} disabled={!blocks} className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium disabled:opacity-40" style={{ border: '1px solid var(--light-gray)', color: 'var(--charcoal)' }}><Download size={15} /> Excel</button>
-          <button onClick={exportPdf} disabled={!blocks} className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium disabled:opacity-40" style={{ border: '1px solid var(--light-gray)', color: 'var(--charcoal)' }}><Printer size={15} /> PDF</button>
+          <button onClick={exportXlsx} disabled={byBranch ? !branchView : !blocks} className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium disabled:opacity-40" style={{ border: '1px solid var(--light-gray)', color: 'var(--charcoal)' }}><Download size={15} /> Excel</button>
+          <button onClick={exportPdf} disabled={byBranch ? !branchView : !blocks} className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium disabled:opacity-40" style={{ border: '1px solid var(--light-gray)', color: 'var(--charcoal)' }}><Printer size={15} /> PDF</button>
         </div>
       </div>
 
@@ -375,18 +464,70 @@ export default function YoYComparison({ lockedBranch }: { lockedBranch?: string 
         {auditedInUse
           ? <>, with FY2024–FY2025 taken from the <strong>audited management accounts</strong> (summary lines only — account detail isn&apos;t available on that basis).</>
           : <>, from the same ledger as the Income Statement tab. Click a section to see its accounts.</>}
+        {byBranch && <> Each branch is shown on its own, then anything the books carry company-wide without a branch, then the company total — so the rows add up.</>}
         {' '}Green means better (revenue and profit up, costs down); red means worse.
         {!auditedInUse && auditedApplies && <> FY2024–FY2025 can also be compared on the <strong>audited</strong> basis — the 2025 ledger lacks the year-end adjustments, so its profit lines differ from the audited statements.</>}
         {yearA === yearB && <> <strong>Both years are the same</strong> — pick a different comparison year.</>}
         {inProgress && <> <strong>{MONTHS[thisMonth - 1]} {thisYear} is still in progress</strong>, so its figures are partial.</>}
       </p>
-      {yearNotes.length > 0 && (
-        <ul className="text-xs list-disc pl-5 space-y-0.5" style={{ color: 'var(--mid-gray)' }}>
-          {yearNotes.map(n => <li key={n}>{n}</li>)}
-        </ul>
-      )}
+      {(() => {
+        const notes = byBranch ? [
+          ...(branchView?.notes || []),
+          ...(branchView?.idle.length ? [`No activity in either period: ${branchView.idle.join(', ')}.`] : []),
+        ] : yearNotes
+        return notes.length > 0 && (
+          <ul className="text-xs list-disc pl-5 space-y-0.5" style={{ color: 'var(--mid-gray)' }}>
+            {notes.map(n => <li key={n}>{n}</li>)}
+          </ul>
+        )
+      })()}
 
-      {shownError ? (
+      {byBranch ? (
+        error ? (
+          <div className="px-4 py-3 rounded-xl text-sm bg-red-50 text-red-700">{error}</div>
+        ) : loading || !branchView ? (
+          <div className="py-16 text-center text-sm" style={{ color: 'var(--mid-gray)' }}>
+            <Loader2 size={20} className="inline animate-spin mr-2" style={{ color: 'var(--teal)' }} /> Building every branch for both years… (about 15 seconds the first time)
+          </div>
+        ) : (
+          <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+            <table className="w-full text-sm" style={{ minWidth: 760 }}>
+              <thead>
+                <tr style={{ background: 'var(--off-white)' }}>
+                  <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--mid-gray)' }}>Branch</th>
+                  <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase" style={{ color: 'var(--mid-gray)' }}>{colB}</th>
+                  <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase" style={{ color: 'var(--charcoal)' }}>{colA}</th>
+                  <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase" style={{ color: 'var(--mid-gray)' }}>Change (₱)</th>
+                  <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase" style={{ color: 'var(--mid-gray)' }}>Change (%)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {branchView.groups.map(g => (
+                  <Fragment key={g.key}>
+                    <tr className="border-t" style={{ borderColor: 'var(--light-gray)', background: g.kind === 'total' ? 'var(--pale-teal)' : 'var(--off-white)', borderTopWidth: g.kind === 'total' ? 2 : 1 }}>
+                      <td colSpan={5} className="px-3 py-2 font-bold" style={{ color: g.kind === 'total' ? 'var(--deep-teal)' : g.kind === 'residual' ? 'var(--mid-gray)' : 'var(--charcoal)' }}
+                        title={g.kind === 'residual' ? 'Company-wide entries the books do not assign to any branch (e.g. head-office costs). All Branches minus the sum of the branches above.' : undefined}>
+                        {g.label}
+                      </td>
+                    </tr>
+                    {g.rows.map(r => {
+                      const headline = r.label === 'Net Income'
+                      return (
+                        <tr key={`${g.key}-${r.label}`} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                          <td className="py-1.5 pr-3" style={{ paddingLeft: '1.75rem', color: 'var(--charcoal)', fontWeight: headline ? 600 : undefined }}>{r.label}</td>
+                          <td className="px-3 py-1.5 text-right font-mono" style={{ color: r.b < 0 ? '#b91c1c' : 'var(--mid-gray)' }}>{peso(r.b)}</td>
+                          <td className="px-3 py-1.5 text-right font-mono" style={{ color: r.a < 0 ? '#b91c1c' : 'var(--charcoal)', fontWeight: headline ? 600 : undefined }}>{peso(r.a)}</td>
+                          <ChangeCells a={r.a} b={r.b} good="up" strong={headline} />
+                        </tr>
+                      )
+                    })}
+                  </Fragment>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )
+      ) : shownError ? (
         <div className="px-4 py-3 rounded-xl text-sm bg-red-50 text-red-700">{shownError}</div>
       ) : loading || !blocks ? (
         <div className="py-16 text-center text-sm" style={{ color: 'var(--mid-gray)' }}>
