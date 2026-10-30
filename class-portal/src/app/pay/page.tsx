@@ -9,7 +9,7 @@ import {
   unpaidBackMonthsFor,
   type PaymentPlan, type PaymentMethod, type PaymentRecord, type StoredUser, type FeeSchedule,
 } from '@/lib/session'
-import { backendJson } from '@/lib/backend'
+import { backendJson, getImpersonationMeta } from '@/lib/backend'
 
 const BANK_DETAILS = {
   EAST: {
@@ -162,9 +162,17 @@ export default function PayPage() {
   useEffect(() => {
     const auth = getAuth()
     if (!auth) { router.replace('/sign-in'); return }
-    if (auth.role === 'ADMIN') { router.replace('/admin'); return }
-    if (!auth.userId) { router.replace('/sign-in'); return }
-    const u = getUsers().find(x => x.id === auth.userId) ?? null
+    // Same impersonation bypass as /profile — admins who clicked
+    // "View as" on a student can walk the Pay-tuition flow in that
+    // student's shoes so they can see fees + outstanding balance.
+    // The impersonation token on API calls scopes payments and fees
+    // to the target. targetUserId is captured at startImpersonation.
+    const imp = getImpersonationMeta()
+    const impersonatingStudent = !!imp && imp.targetRole === 'STUDENT'
+    if (!impersonatingStudent && auth.role === 'ADMIN') { router.replace('/admin'); return }
+    const effectiveUserId = impersonatingStudent ? (imp!.targetUserId || auth.userId) : auth.userId
+    if (!effectiveUserId) { router.replace('/sign-in'); return }
+    const u = getUsers().find(x => x.id === effectiveUserId) ?? null
     if (!u) { router.replace('/sign-in'); return }
     setUser(u)
     setHistory(getPaymentsForStudent(u.id))
