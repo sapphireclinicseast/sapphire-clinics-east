@@ -1216,7 +1216,7 @@ model OrderHmoSettlement {
   glStatus       String? // REPOSTED | UNCHANGED (<reason>)
   pfResolvedAt   DateTime? // set once any PF overpayment from this decrease is deducted
   pfResolvedById String?
-  pfResolvedNote String?
+  pfResolvedNote String? // "cutoff:2026-11-1[ — note]": the payroll cutoff the overpaid PF was deducted in
   createdById    String
   createdByName  String?
   createdAt      DateTime  @default(now())
