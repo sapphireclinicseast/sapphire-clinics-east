@@ -5,7 +5,7 @@ import { useSession } from 'next-auth/react'
 import { userBranchScope } from '@/lib/branch-scope'
 import {
   FileText, Download, Printer, Loader2, ChevronDown,
-  Calendar, Building2, LayoutList, BarChart3, X, TrendingUp, Percent, ShieldCheck,
+  Calendar, Building2, LayoutList, BarChart3, X, TrendingUp, Percent, ShieldCheck, CalendarRange,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { DISPLAY_CURRENCIES, type DisplayCurrency, setDisplay, inDisplay, fmt, fmtSigned } from './display-currency'
@@ -16,6 +16,7 @@ import LedgerStatements from './LedgerStatements'
 import GraphsView from './GraphsView'
 import ContributionMargin, { type CmPayload } from './ContributionMargin'
 import AuditedStatement from './AuditedStatement'
+import YoYComparison from './YoYComparison'
 import { RETAINED_EARNINGS_BF_2026 } from '@/lib/reports/historical-fs'
 import { mergeLedgerStatements } from '@/lib/reports/v2/merge'
 import type { HistoricalReportPayload } from '@/lib/reports/historical-fs'
@@ -102,7 +103,7 @@ interface ReportData {
   unearnedRevenueFromAR?: number
 }
 
-type ReportTab = 'balance-sheet' | 'income-statement' | 'cash-flow' | 'graphs' | 'contribution' | 'audited'
+type ReportTab = 'balance-sheet' | 'income-statement' | 'cash-flow' | 'graphs' | 'contribution' | 'audited' | 'yoy'
 // 'quarterly' is offered on the full statements only; the med-rep revenue view
 // treats it as 'annual' if it ever reaches it.
 type ViewMode = 'annual' | 'quarterly' | 'monthly'
@@ -146,6 +147,7 @@ const TABS: { key: ReportTab; label: string; icon: typeof FileText }[] = [
   { key: 'graphs', label: 'Graphs', icon: TrendingUp },
   { key: 'contribution', label: 'Contribution Margin', icon: Percent },
   { key: 'audited', label: 'Audited', icon: ShieldCheck },
+  { key: 'yoy', label: 'YoY Comparison', icon: CalendarRange },
 ]
 
 const DEPT_LABELS: Record<string, string> = {
@@ -2120,7 +2122,7 @@ export default function ReportsPage() {
             Generate and review financial statements for Sapphire Clinics East Incorporated
           </p>
         </div>
-        <div className="flex gap-2" style={{ display: (isMedrep || isInvestor || effTab === 'graphs' || effTab === 'audited') ? 'none' : undefined }}>
+        <div className="flex gap-2" style={{ display: (isMedrep || isInvestor || effTab === 'graphs' || effTab === 'audited' || effTab === 'yoy') ? 'none' : undefined }}>
           <button
             onClick={() => handleDownloadCSV('csv')}
             disabled={effTab === 'contribution' ? !cmData : (loading || !data)}
@@ -2154,7 +2156,7 @@ export default function ReportsPage() {
       {/* ── Tab Navigation ─────────────────────────────────────── */}
       {!isMedrep && (
       <div className="flex gap-1 mb-4 p-1 rounded-xl print:hidden" style={{ background: 'var(--light-gray)' }}>
-        {TABS.filter(t => !(isInvestor && (t.key === 'contribution' || t.key === 'audited'))).map((tab) => {
+        {TABS.filter(t => !(isInvestor && (t.key === 'contribution' || t.key === 'audited' || t.key === 'yoy'))).map((tab) => {
           const Icon = tab.icon
           const isActive = activeTab === tab.key
           return (
@@ -2177,7 +2179,9 @@ export default function ReportsPage() {
       </div>
       )}
 
-      {effTab === 'audited' ? (
+      {effTab === 'yoy' ? (
+        <YoYComparison lockedBranch={scope.short} />
+      ) : effTab === 'audited' ? (
         <AuditedStatement />
       ) : effTab === 'contribution' ? (
         <>
