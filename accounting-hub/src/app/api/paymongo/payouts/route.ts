@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { listPayouts, parsePayout, paymongoConfigured, isPaymongoAccount } from '@/lib/paymongo'
+import { prisma } from '@/lib/prisma'
+import { syncPayouts } from '@/lib/accounting/paymongo-payouts'
 
 import { PAYMONGO_READ_ROLES as READ_ROLES, canReadPaymongoAccount } from '@/lib/paymongo-access'
 
@@ -22,6 +24,13 @@ export async function GET(req: Request) {
   if (!paymongoConfigured(account)) {
     return NextResponse.json({ account, configured: false, payouts: [] })
   }
+  // Anyone looking at payouts also books the new ones (hourly at most), so
+  // posting doesn't depend on an accountant opening the reconciliation panel.
+  try {
+    const s = await prisma.paymongoSettings.findUnique({ where: { id: 'singleton' } })
+    const stale = !s?.lastSyncAt || Date.now() - new Date(s.lastSyncAt).getTime() > 60 * 60 * 1000
+    if (s?.autoReconcile && s.bankAccountId && stale) await syncPayouts(prisma, session.user.id as string)
+  } catch (e) { console.error('[PayMongo] on-view payout sync failed:', e) }
   try {
     const raw = await listPayouts(account, { limit: 50 })
     const payouts = raw.map(r => {

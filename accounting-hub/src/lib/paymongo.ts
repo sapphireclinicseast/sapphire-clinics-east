@@ -190,6 +190,14 @@ export async function listPayouts(account: string, params: { limit?: number } = 
   return json.data || []
 }
 
+// The individual payments a payout settled (net of each payment's own fee).
+// `complete` is false when PayMongo reports more pages than were read.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function listPayoutTransactions(account: string, payoutId: string): Promise<{ data: any[]; complete: boolean }> {
+  const json = await pmFetch(account, `/payouts/${payoutId}/transactions?limit=100`)
+  return { data: json.data || [], complete: !json.pagination?.next_cursor }
+}
+
 // Normalise a PayMongo payout resource → PHP net/fee + settled flag.
 // Field names vary by account; we read defensively. `settled` = money has landed
 // in the bank (as opposed to pending/in-transit).
@@ -200,8 +208,11 @@ export function parsePayout(p: any): { payoutId: string; netPhp: number; feePhp:
   // Prefer an explicit net; else total amount less fee.
   const netPhp = a.net_amount != null ? toPhp(a.net_amount) : toPhp(a.amount) - feePhp
   const status = String(a.status || '').toLowerCase()
-  const SETTLED = new Set(['paid', 'settled', 'completed', 'succeeded', 'success'])
-  const ts = a.paid_at || a.updated_at || a.created_at
+  // Live payouts report "deposited" once the money reaches the destination.
+  const SETTLED = new Set(['paid', 'settled', 'completed', 'succeeded', 'success', 'deposited'])
+  // Payouts carry no paid_at; updated_at moves whenever PayMongo touches the
+  // record, so the creation date is the stable payout date.
+  const ts = a.paid_at || a.created_at || a.updated_at
   return {
     payoutId: p?.id || '',
     netPhp, feePhp, status,

@@ -51,6 +51,18 @@ export async function GET() {
 //   { action: 'sync' }                                    → force a payout sync now
 //   { bankAccountId, checkoutIds? }                       → manual settle (fallback)
 export async function POST(req: Request) {
+  // A scheduled job may run { action: 'sync' } with the shared secret, so
+  // payouts post without anyone having to open the PayMongo page.
+  const internalSecret = process.env.NEXTAUTH_SECRET
+  const isInternal = Boolean(internalSecret) && req.headers.get('x-internal-secret') === internalSecret
+  if (isInternal) {
+    const body = await req.json().catch(() => ({}))
+    if (body.action !== 'sync') return NextResponse.json({ error: 'Only sync is allowed without a session' }, { status: 403 })
+    const admin = await prisma.user.findFirst({ where: { role: 'ADMIN' }, orderBy: { createdAt: 'asc' }, select: { id: true } })
+    if (!admin) return NextResponse.json({ error: 'No admin user to attribute the entries to' }, { status: 500 })
+    const res = await syncPayouts(prisma, admin.id)
+    return NextResponse.json({ ok: true, ...res })
+  }
   const session = await auth()
   if (!session?.user || !RECON_ROLES.includes(session.user.role as string)) {
     return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })

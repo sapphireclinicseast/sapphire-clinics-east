@@ -20,6 +20,21 @@ export interface PostARResult {
   alreadyPosted?: boolean
 }
 
+/**
+ * How many postings of this payment are currently standing: forward entries
+ * minus reversals. An edit reverses and re-posts under the same payment id, so
+ * the mere existence of a forward entry does not mean the payment is posted —
+ * counting only forward entries made every edit un-post the payment, and each
+ * later edit reverse it again.
+ */
+async function standingPostings(prisma: PrismaClient, paymentId: string): Promise<number> {
+  const [forward, reversed] = await Promise.all([
+    prisma.journalEntry.count({ where: { referenceType: 'AR_PAYMENT', referenceId: paymentId } }),
+    prisma.journalEntry.count({ where: { referenceType: 'AR_PAYMENT_REVERSAL', referenceId: paymentId } }),
+  ])
+  return forward - reversed
+}
+
 export async function postARPaymentJournal(
   prisma: PrismaClient,
   paymentId: string,
@@ -29,12 +44,15 @@ export async function postARPaymentJournal(
     return { posted: false, reason: 'ENABLE_GL_POSTING flag is off' }
   }
 
-  // Idempotency
-  const existing = await prisma.journalEntry.findFirst({
-    where: { referenceType: 'AR_PAYMENT', referenceId: paymentId },
-    select: { id: true },
-  })
-  if (existing) return { posted: false, alreadyPosted: true, journalEntryId: existing.id }
+  // Idempotency: net standing, not mere existence of a forward entry.
+  if (await standingPostings(prisma, paymentId) > 0) {
+    const existing = await prisma.journalEntry.findFirst({
+      where: { referenceType: 'AR_PAYMENT', referenceId: paymentId },
+      select: { id: true },
+      orderBy: { createdAt: 'desc' },
+    })
+    return { posted: false, alreadyPosted: true, journalEntryId: existing?.id }
+  }
 
   const payment = await prisma.aRPayment.findUnique({
     where: { id: paymentId },
@@ -151,6 +169,11 @@ export async function reverseARPaymentJournal(
   if (process.env.ENABLE_GL_POSTING !== 'true') {
     return { posted: false, reason: 'ENABLE_GL_POSTING flag is off' }
   }
+  // Nothing standing → nothing to reverse. Without this, every edit of a
+  // payment whose posting was already reversed drove it further negative.
+  if (await standingPostings(prisma, paymentId) <= 0) {
+    return { posted: false, reason: 'no standing posting to reverse' }
+  }
   // Find the most recent forward JE for this payment (ignore prior reversals).
   const original = await prisma.journalEntry.findFirst({
     where: { referenceType: 'AR_PAYMENT', referenceId: paymentId },
@@ -168,7 +191,10 @@ export async function reverseARPaymentJournal(
 
   try {
     const je = await postJournalEntry(prisma, {
-      entryDate:     new Date(),
+      // Dated with the entry it cancels (same rule as POS order reversals), so
+      // an edit restates the original month instead of leaving it posted there
+      // and taking it back out in the month of the edit.
+      entryDate:     original.entryDate,
       description:   `Reversal of AR payment ${paymentId} — ${reason}`,
       referenceType: 'AR_PAYMENT_REVERSAL',
       referenceId:   paymentId,
