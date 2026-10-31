@@ -122,6 +122,9 @@ export async function dueReminders(branches: string[] | null): Promise<TuitionRe
 export const TUITION_WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN']
 export const TUITION_COLLECT_ROLES = [...TUITION_WRITE_ROLES, 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
 export const TUITION_READ_ROLES = [...TUITION_COLLECT_ROLES, 'VIEWER']
+// Settling part of an installment by discount forgoes money, so it is kept to
+// the people who own the books.
+export const TUITION_DISCOUNT_ROLES = ['ADMIN', 'ACCOUNTANT']
 export const TUITION_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS']
 
 // ── POS tuition picker: what each student owes ──────────────────────────────
@@ -152,6 +155,27 @@ export interface StudentBalance {
   semesters: SemesterBalance[] | null; yearTuition: number | null; runningBalance: number | null
   dues: TuitionDue[]; nextDue: TuitionDue | null
   payments: { period: string; amount: number; date: string; orderNumber: number | null; partial: boolean }[]
+  /** Installments settled by discount instead of cash (TuitionAdjustment) — counted
+   *  in dues and the running balance, never in paidThisSy. */
+  adjustments: TuitionAdjustmentView[]
+  discountedThisSy: number
+}
+export interface TuitionAdjustmentView { id: string; period: string; amount: number; reason: string; by: string | null; date: string }
+
+/** Discounts recorded against the students' installments for one school year. */
+export async function tuitionAdjustments(studentIds: string[], schoolYear: number): Promise<Map<string, TuitionAdjustmentView[]>> {
+  const out = new Map<string, TuitionAdjustmentView[]>()
+  if (!studentIds.length) return out
+  // Never let this take the tuition screens down (e.g. table not yet created).
+  const rows = await prisma.tuitionAdjustment.findMany({
+    where: { studentId: { in: studentIds }, schoolYear }, orderBy: { createdAt: 'asc' },
+  }).catch(err => { console.error('[tuition] adjustments lookup failed:', err); return [] })
+  for (const r of rows) {
+    const list = out.get(r.studentId) || []
+    list.push({ id: r.id, period: r.period, amount: Number(r.amount), reason: r.reason, by: r.createdByName, date: toYmd(r.createdAt) })
+    out.set(r.studentId, list)
+  }
+  return out
 }
 
 /**
@@ -165,9 +189,10 @@ export interface StudentBalance {
 export async function studentBalances(params: { classBranch: string | null; schoolYear?: number; hub?: ClassHubSnapshot }): Promise<{ schoolYear: number; students: StudentBalance[] }> {
   const hub = params.hub ?? await fetchClassHub({ classBranch: params.classBranch, schoolYear: params.schoolYear })
   const confirmedAt = new Map(hub.payments.filter(p => p.status === 'CONVERTED' && p.convertedAt).map(p => [p.classPortalPaymentId, toYmd(p.convertedAt!)]))
-  const [plans, sales] = await Promise.all([
+  const [plans, sales, adjustmentsOf] = await Promise.all([
     loadPlans({ studentId: { in: hub.students.map(s => s.id) }, status: 'ACTIVE' }).then(rows => planViews(rows, confirmedAt)),
     posSalesFor(hub.payments.map(p => p.classPortalPaymentId)),
+    tuitionAdjustments(hub.students.map(s => s.id), hub.schoolYear),
   ])
   const orderIds = [...new Set([...sales.values()].map(s => s.orderId))]
   const labels = new Map((orderIds.length
@@ -194,11 +219,17 @@ export async function studentBalances(params: { classBranch: string | null; scho
     const dues: TuitionDue[] = []
     let nextDue: TuitionDue | null = null
     const myPlans = plans.filter(p => p.studentId === s.id)
+    const adjustments = adjustmentsOf.get(s.id) || []
+    // What settles each installment: the cash recorded, plus any discount.
+    const settled = [
+      ...paidRows.map(r => ({ period: r.period, amount: r.amountCentavos / 100 })),
+      ...adjustments.map(a => ({ period: a.period, amount: a.amount })),
+    ]
 
     if (plan && rate) {
       const owed = regularDues({
         plan, rate, schoolYear: hub.schoolYear, today,
-        payments: paidRows.map(r => ({ period: r.period, amount: r.amountCentavos / 100 })),
+        payments: settled,
         promissoryDueDates: new Set(myPlans.map(pl => pl.originalDueDate)),
       })
       for (const o of owed) {
@@ -226,7 +257,7 @@ export async function studentBalances(params: { classBranch: string | null; scho
     dues.sort((a, b) => a.dueDate.localeCompare(b.dueDate))
     const paidThisSy = Math.round(paidRows.reduce((t, r) => t + r.amountCentavos, 0)) / 100
     const bySem = plan && rate
-      ? semesterBalances({ plan, rate, schoolYear: hub.schoolYear, today, payments: paidRows.map(r => ({ period: r.period, amount: r.amountCentavos / 100 })) })
+      ? semesterBalances({ plan, rate, schoolYear: hub.schoolYear, today, payments: settled })
       : null
     return {
       id: s.id, name: s.name, email: s.email, level: s.level,
@@ -240,6 +271,8 @@ export async function studentBalances(params: { classBranch: string | null; scho
         period: r.period, amount: r.amountCentavos / 100, date: sales.get(r.classPortalPaymentId)?.date || (r.convertedAt ? toYmd(r.convertedAt) : toYmd(r.createdAt)),
         orderNumber: sales.get(r.classPortalPaymentId)?.orderNumber ?? null, partial: r.isPartialPayment,
       })),
+      adjustments,
+      discountedThisSy: Math.round(adjustments.reduce((t, a) => t + a.amount, 0) * 100) / 100,
     }
   })
   return { schoolYear: hub.schoolYear, students }

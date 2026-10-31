@@ -7,6 +7,7 @@
 // picker); the sale marks them paid here and records them in Class Hub — the
 // POS is the only place tuition is recorded.
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
+import { useSession } from 'next-auth/react'
 import { Loader2, X, Plus, Trash2, CalendarClock, ChevronDown, ChevronRight, Eye, AlertTriangle, FileText } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import {
@@ -30,7 +31,12 @@ interface Student {
   semesters: SemesterRow[] | null; yearTuition: number | null; runningBalance: number | null
   /** Regular installments overdue or due within 7 days (Class Hub plan rules, as at the POS). */
   dues: RegularDue[]
+  /** Installments settled by discount instead of cash — counted in dues and the running balance. */
+  adjustments: Adjustment[]
 }
+interface Adjustment { id: string; period: string; amount: number; reason: string; by: string | null; date: string }
+// Mirrors TUITION_DISCOUNT_ROLES (lib/tuition-server): settling by discount forgoes money.
+const DISCOUNT_ROLES = ['ADMIN', 'ACCOUNTANT']
 
 const overdueOf = (s: Student) => s.dues.filter(d => d.state === 'OVERDUE')
 /** Behind on a regular installment with no promissory note to cover it. */
@@ -85,6 +91,8 @@ export default function TuitionTab({ branch, canWrite }: { branch: string; canWr
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [editing, setEditing] = useState<{ student: Student; plan: Plan | null } | null>(null)
   const [busy, setBusy] = useState('')
+  const { data: session } = useSession()
+  const canDiscount = DISCOUNT_ROLES.includes((session?.user as { role?: string } | undefined)?.role ?? '')
 
   const load = useCallback(async () => {
     setLoading(true); setError('')
@@ -103,6 +111,33 @@ export default function TuitionTab({ branch, canWrite }: { branch: string; canWr
   useEffect(() => { void load() }, [load])
 
   const toggle = (id: string) => setExpanded(s => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n })
+
+  // Settle what is left of an installment by discount (e.g. a promo) rather than
+  // cash: nothing is rung up, the installment just stops showing as owed.
+  const discount = async (s: Student, d: RegularDue) => {
+    const raw = prompt(`Amount of ${d.period} settled by discount (not cash) — up to ${formatCurrency(d.remaining)}:`, String(d.remaining))
+    if (raw === null) return
+    const amount = Number(raw)
+    if (!(amount > 0) || amount > d.remaining + 0.005) { alert(`Enter an amount up to ${formatCurrency(d.remaining)}.`); return }
+    const reason = prompt('Why is it settled by discount? (e.g. the promo that covered it)')
+    if (!reason?.trim()) return
+    setBusy(`disc:${s.id}`)
+    try {
+      const r = await fetch('/api/tuition/adjustments', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ studentId: s.id, schoolYear: sy, period: d.period, amount, reason }),
+      })
+      const res = await r.json().catch(() => ({}))
+      if (!r.ok) { alert(res.error || 'Could not save the discount.'); return }
+      await load()
+    } finally { setBusy('') }
+  }
+  const removeDiscount = async (a: Adjustment) => {
+    if (!confirm(`Remove the ${a.period} ${formatCurrency(a.amount)} discount? That amount shows as owed again.`)) return
+    const r = await fetch(`/api/tuition/adjustments?id=${a.id}`, { method: 'DELETE' })
+    if (!r.ok) { alert('Could not remove the discount.'); return }
+    await load()
+  }
 
   const totals = useMemo(() => {
     const items = students.flatMap(s => s.plans.filter(p => p.status === 'ACTIVE').flatMap(p => p.items))
@@ -208,6 +243,7 @@ export default function TuitionTab({ branch, canWrite }: { branch: string; canWr
               </td></tr>
             ) : shown.map(s => {
               const paid = s.payments.filter(p => p.where === 'POS' || p.where === 'CLASS_HUB_ONLY').reduce((t, p) => t + p.amount, 0)
+              const discounted = (s.adjustments || []).reduce((t, a) => t + a.amount, 0)
               const overdue = overdueOf(s)
               const overdueAmt = overdue.reduce((t, d) => t + d.remaining, 0) + s.plans.filter(p => p.status === 'ACTIVE').flatMap(p => p.items).filter(i => i.state === 'OVERDUE').reduce((t, i) => t + i.amount, 0)
               const st = PLAN_STATUS[planStatus(s)]
@@ -280,6 +316,14 @@ export default function TuitionTab({ branch, canWrite }: { branch: string; canWr
                                     <td className="py-0.5 text-[11px]" style={{ color: 'var(--mid-gray)' }}>{x.started ? '' : 'not started yet'}</td>
                                   </tr>
                                 ))}
+                                {s.adjustments.length > 0 && (
+                                  <tr className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                                    <td className="pr-4 pt-1">Settled by discount (not cash)</td>
+                                    <td />
+                                    <td className="pr-4 pt-1 font-mono">{formatCurrency(discounted)}</td>
+                                    <td colSpan={2} />
+                                  </tr>
+                                )}
                                 <tr className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
                                   <td className="pr-4 pt-1 font-semibold">Running balance (semesters started)</td>
                                   <td className="pr-4 pt-1 font-mono">{formatCurrency(s.semesters.filter(x => x.started).reduce((t, x) => t + x.tuition, 0))}</td>
@@ -290,8 +334,21 @@ export default function TuitionTab({ branch, canWrite }: { branch: string; canWr
                               </tbody>
                             </table>
                             <p className="text-[11px] mt-1" style={{ color: 'var(--mid-gray)' }}>
-                              Whole school year: {formatCurrency(s.yearTuition || 0)} tuition − {formatCurrency(paid)} paid = {balanceText((s.yearTuition || 0) - paid)} left. Payments fill Semester 1, then 2, then 3.
+                              Whole school year: {formatCurrency(s.yearTuition || 0)} tuition − {formatCurrency(paid)} paid{discounted > 0.005 ? ` − ${formatCurrency(discounted)} discount` : ''} = {balanceText((s.yearTuition || 0) - paid - discounted)} left. Payments fill Semester 1, then 2, then 3.
                             </p>
+                            {s.adjustments.length > 0 && (
+                              <div className="mt-1.5 text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+                                <span className="font-semibold">Settled by discount:</span>{' '}
+                                {s.adjustments.map(a => (
+                                  <span key={a.id} className="mr-3 inline-flex items-center gap-1">
+                                    {a.period} <span className="font-mono">{formatCurrency(a.amount)}</span> — {a.reason}{a.by ? ` · ${a.by}` : ''} · {fmtDate(a.date)}
+                                    {canDiscount && (
+                                      <button onClick={() => removeDiscount(a)} className="p-0.5 rounded hover:bg-red-50" title="Remove this discount"><X size={11} style={{ color: '#dc2626' }} /></button>
+                                    )}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
                           </div>
                         )}
                         {/* Overdue regular installments (Class Hub plan rules) */}
@@ -302,7 +359,7 @@ export default function TuitionTab({ branch, canWrite }: { branch: string; canWr
                               {s.notes.length === 0 && ' — no promissory note uploaded in Class Hub yet'}
                             </p>
                             <table className="text-xs w-full" style={{ maxWidth: 720 }}>
-                              <thead><tr>{['For', 'Was due', 'Days late', 'Paid', 'Still owed'].map(h => <th key={h} className="text-left pr-4 pb-1 font-semibold" style={{ color: 'var(--mid-gray)' }}>{h}</th>)}</tr></thead>
+                              <thead><tr>{['For', 'Was due', 'Days late', 'Paid', 'Still owed', ''].map(h => <th key={h} className="text-left pr-4 pb-1 font-semibold" style={{ color: 'var(--mid-gray)' }}>{h}</th>)}</tr></thead>
                               <tbody>
                                 {overdue.map(d => (
                                   <tr key={d.key}>
@@ -311,6 +368,13 @@ export default function TuitionTab({ branch, canWrite }: { branch: string; canWr
                                     <td className="pr-4 py-0.5">{-d.daysUntil}</td>
                                     <td className="pr-4 py-0.5 font-mono">{d.paid > 0.005 ? formatCurrency(d.paid) : '—'}</td>
                                     <td className="pr-4 py-0.5 font-mono font-semibold" style={{ color: '#b91c1c' }}>{formatCurrency(d.remaining)}</td>
+                                    <td className="py-0.5">
+                                      {canDiscount && (
+                                        <button onClick={() => discount(s, d)} disabled={busy === `disc:${s.id}`}
+                                          className="px-2 py-0.5 rounded-lg border text-[11px] font-semibold bg-white disabled:opacity-50" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}
+                                          title="Settle what is left by discount (e.g. a promo) — no cash is recorded">Settle by discount</button>
+                                      )}
+                                    </td>
                                   </tr>
                                 ))}
                               </tbody>

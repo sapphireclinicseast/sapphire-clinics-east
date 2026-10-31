@@ -66,6 +66,8 @@ export async function GET(req: NextRequest) {
       runningBalance: balanceOf.get(s.id)?.runningBalance ?? null,
       // Regular installments overdue or due within 7 days (promissory ones are in plans).
       dues: (balanceOf.get(s.id)?.dues ?? []).filter(d => d.kind === 'REGULAR'),
+      // Installments settled by discount instead of cash.
+      adjustments: balanceOf.get(s.id)?.adjustments ?? [],
     }
   })
 

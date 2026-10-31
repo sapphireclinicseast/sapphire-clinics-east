@@ -1739,6 +1739,26 @@ model TuitionPaymentPlanItem {
   @@index([dueDate])
 }
 
+// A tuition installment settled by a discount rather than cash (e.g. a July
+// promo that left ₱600 of the installment unbilled). Counts toward the period
+// in the dues and the semester running balance; never touches cash, the ledger
+// or Class Hub. studentId is the Class Hub ClassPortalUser.id.
+model TuitionAdjustment {
+  id            String   @id @default(cuid())
+  studentId     String
+  studentName   String
+  schoolYear    Int // first year of the school year (2026 = SY 2026–2027)
+  period        String // the Class Hub period label it settles, e.g. "July 2026"
+  amount        Decimal
+  reason        String
+  createdById   String
+  createdByName String?
+  createdAt     DateTime @default(now())
+
+  @@index([studentId])
+  @@index([schoolYear])
+}
+
 model ARPaymentItem {
   id        String    @id @default(cuid())
   paymentId String

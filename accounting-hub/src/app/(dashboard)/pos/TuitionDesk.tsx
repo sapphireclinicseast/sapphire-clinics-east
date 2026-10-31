@@ -6,7 +6,8 @@
 // payment in Class Hub — the POS is the only place tuition is recorded. A
 // smaller amount than due is a partial payment: the rest stays due.
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { GraduationCap, ChevronDown, ChevronRight, Loader2, RefreshCw, Search } from 'lucide-react'
+import { useSession } from 'next-auth/react'
+import { GraduationCap, ChevronDown, ChevronRight, Loader2, RefreshCw, Search, X } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import {
   REMIND_DAYS, TUITION_PLANS, currentSchoolYear, daysBetween, schoolYearPeriods, todayManila, tuitionPrefillFor,
@@ -26,9 +27,14 @@ interface Student {
   semesters: { semester: number; label: string; tuition: number; paid: number; balance: number; started: boolean }[] | null
   dues: Due[]; nextDue: Due | null
   payments: { period: string; amount: number; date: string; orderNumber: number | null; partial: boolean }[]
+  /** Installments settled by discount instead of cash. */
+  adjustments: { id: string; period: string; amount: number; reason: string; by: string | null; date: string }[]
+  discountedThisSy: number
 }
 
 const TUITION_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS']
+// Mirrors TUITION_DISCOUNT_ROLES (lib/tuition-server): settling by discount forgoes money.
+const DISCOUNT_ROLES = ['ADMIN', 'ACCOUNTANT']
 const fmtDate = (d: string) => new Date(`${d}T00:00:00`).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
 const dueText = (d: Due) => (d.daysUntil < 0 ? `${-d.daysUntil} day${d.daysUntil === -1 ? '' : 's'} overdue` : d.daysUntil === 0 ? 'due today' : `due in ${d.daysUntil} day${d.daysUntil === 1 ? '' : 's'}`)
 const STATE_STYLE = {
@@ -44,6 +50,9 @@ export default function TuitionDesk({ branch, onCollect }: { branch: string; onC
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
   const [picked, setPicked] = useState<string>('')
+  const [schoolYear, setSchoolYear] = useState<number | null>(null)
+  const { data: session } = useSession()
+  const canDiscount = DISCOUNT_ROLES.includes((session?.user as { role?: string } | undefined)?.role ?? '')
   const enabled = TUITION_BRANCHES.includes(branch)
 
   const load = useCallback(async () => {
@@ -54,6 +63,7 @@ export default function TuitionDesk({ branch, onCollect }: { branch: string; onC
       const d = await r.json()
       if (!r.ok) throw new Error(d.error || 'Could not load tuition.')
       setStudents(d.students || [])
+      setSchoolYear(d.schoolYear ?? null)
     } catch (e) {
       setError((e as Error).message)
     } finally {
@@ -131,14 +141,20 @@ export default function TuitionDesk({ branch, onCollect }: { branch: string; onC
               })}
             </div>
           )}
-          {student && <StudentCard key={`${student.id}:${student.dues.map(d => `${d.key}=${d.remaining}`).join()}`} student={student} onCollect={onCollect} />}
+          {student && (
+            <StudentCard key={`${student.id}:${student.dues.map(d => `${d.key}=${d.remaining}`).join()}`} student={student} onCollect={onCollect}
+              schoolYear={schoolYear} canDiscount={canDiscount} onChanged={load} />
+          )}
         </div>
       )}
     </div>
   )
 }
 
-function StudentCard({ student, onCollect }: { student: Student; onCollect: (t: TuitionPrefill) => void }) {
+function StudentCard({ student, onCollect, schoolYear, canDiscount, onChanged }: {
+  student: Student; onCollect: (t: TuitionPrefill) => void
+  schoolYear: number | null; canDiscount: boolean; onChanged: () => void
+}) {
   const [amounts, setAmounts] = useState<Record<string, string>>(() => Object.fromEntries(student.dues.map(d => [d.key, String(d.remaining)])))
   // Anything not on the due list: an advance payment, or a student with no plan yet.
   const sy = currentSchoolYear()
@@ -160,6 +176,29 @@ function StudentCard({ student, onCollect }: { student: Student; onCollect: (t: 
     if (amt > d.remaining + 0.005) { alert(`That is more than the ${formatCurrency(d.remaining)} due for ${d.period}. Collect the next period separately.`); return }
     onCollect(tuitionPrefillFor(student, d, amt))
   }
+  // Settle what is left of an installment by discount (e.g. a promo) rather than
+  // cash: nothing is rung up, the installment just stops showing as owed.
+  const discount = async (d: Due) => {
+    const raw = prompt(`Amount of ${d.period} settled by discount (not cash) — up to ${formatCurrency(d.remaining)}:`, String(d.remaining))
+    if (raw === null) return
+    const amount = Number(raw)
+    if (!(amount > 0) || amount > d.remaining + 0.005) { alert(`Enter an amount up to ${formatCurrency(d.remaining)}.`); return }
+    const reason = prompt('Why is it settled by discount? (e.g. the promo that covered it)', student.discountLabel || '')
+    if (!reason?.trim()) return
+    const r = await fetch('/api/tuition/adjustments', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ studentId: student.id, schoolYear: schoolYear ?? sy, period: d.period, amount, reason }),
+    })
+    const res = await r.json().catch(() => ({}))
+    if (!r.ok) { alert(res.error || 'Could not save the discount.'); return }
+    onChanged()
+  }
+  const removeDiscount = async (id: string, label: string) => {
+    if (!confirm(`Remove the ${label} discount? That amount shows as owed again.`)) return
+    const r = await fetch(`/api/tuition/adjustments?id=${id}`, { method: 'DELETE' })
+    if (!r.ok) { alert('Could not remove the discount.'); return }
+    onChanged()
+  }
   const collectOther = () => {
     const amt = Number(otherAmount) || 0
     if (!(amt > 0) || !otherPeriod) { alert('Pick the period and enter the amount.'); return }
@@ -178,6 +217,7 @@ function StudentCard({ student, onCollect }: { student: Student; onCollect: (t: 
           <p style={{ color: 'var(--mid-gray)' }}>
             {student.plan ? <>{student.plan.toLowerCase()} plan{student.rate ? <> · {formatCurrency(student.rate)} per installment</> : null}</> : 'No plan yet — the first payment sets it'}
             {' · '}paid this school year <strong style={{ color: '#166534' }}>{formatCurrency(student.paidThisSy)}</strong>
+            {student.discountedThisSy > 0.005 && <> · settled by discount <strong>{formatCurrency(student.discountedThisSy)}</strong></>}
           </p>
           {student.semesters && student.runningBalance != null && (
             <p style={{ color: 'var(--mid-gray)' }}>
@@ -219,7 +259,11 @@ function StudentCard({ student, onCollect }: { student: Student; onCollect: (t: 
                       className="w-28 px-2 py-1 rounded-lg border text-xs text-right outline-none bg-white" style={{ borderColor: partial ? '#f59e0b' : 'var(--light-gray)' }} />
                     {partial && <span className="ml-1.5 text-[11px] font-semibold" style={{ color: '#b45309' }}>partial — {formatCurrency(d.remaining - amt)} stays due</span>}
                   </td>
-                  <td className="py-1 text-right">
+                  <td className="py-1 text-right whitespace-nowrap">
+                    {canDiscount && d.kind === 'REGULAR' && (
+                      <button onClick={() => discount(d)} className="mr-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border bg-white" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}
+                        title="Settle what is left by discount (e.g. a promo) — no cash is recorded">Discount</button>
+                    )}
                     <button onClick={() => collect(d)} className="px-3 py-1 rounded-lg text-xs font-semibold text-white" style={{ background: 'var(--teal)' }}>Collect</button>
                   </td>
                 </tr>
@@ -261,6 +305,21 @@ function StudentCard({ student, onCollect }: { student: Student; onCollect: (t: 
           <span className="font-semibold">Recorded this school year:</span>{' '}
           {student.payments.slice(-6).map((p, i) => (
             <span key={i} className="mr-2">{p.period} {formatCurrency(p.amount)}{p.partial ? ' (partial)' : ''}{p.orderNumber ? ` #${p.orderNumber}` : ''}</span>
+          ))}
+        </div>
+      )}
+      {student.adjustments.length > 0 && (
+        <div className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+          <span className="font-semibold">Settled by discount:</span>{' '}
+          {student.adjustments.map(a => (
+            <span key={a.id} className="mr-2 inline-flex items-center gap-0.5" title={`${a.reason}${a.by ? ` · ${a.by}` : ''} · ${fmtDate(a.date)}`}>
+              {a.period} {formatCurrency(a.amount)} ({a.reason})
+              {canDiscount && (
+                <button onClick={() => removeDiscount(a.id, `${a.period} ${formatCurrency(a.amount)}`)} className="p-0.5 rounded hover:bg-red-50" title="Remove this discount">
+                  <X size={10} style={{ color: '#dc2626' }} />
+                </button>
+              )}
+            </span>
           ))}
         </div>
       )}
