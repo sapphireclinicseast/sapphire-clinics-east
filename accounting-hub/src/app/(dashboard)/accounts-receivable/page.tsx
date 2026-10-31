@@ -2367,7 +2367,7 @@ export default function AccountsReceivablePage() {
             : orders.reduce((s, o) => s + o.payments.reduce((ps, p) => ps + toNum(p.amount), 0), 0)
           const received = arPayments.reduce((s, p) => s + toNum(p.amount), 0)
           return (
-            <div id="ar-payment-history" className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-stretch">
+            <div id="ar-payment-history" className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-stretch">
               <PaymentsCard
                 title="Payment History — HMO"
                 icon={<DollarSign size={15} />}

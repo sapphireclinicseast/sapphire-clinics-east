@@ -101,7 +101,7 @@ export default function PaymentsCard({
 
   const shown = recent.slice(0, RECENT)
   return (
-    <div className="rounded-2xl border p-4 flex flex-col gap-3 h-full" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+    <div className="rounded-2xl border p-4 flex flex-col gap-3 h-full min-w-0" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
           <h3 className="text-sm font-semibold flex items-center gap-2" style={{ color: 'var(--charcoal)' }}>{icon}{title}{badge}</h3>
@@ -127,8 +127,8 @@ export default function PaymentsCard({
           <div>
             {shown.map(r => (
               <div key={r.id} className="flex items-center gap-2 py-1.5 text-xs border-t first:border-t-0" style={{ borderColor: 'var(--light-gray)' }}>
-                <span className="w-[84px] shrink-0 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{r.date}</span>
-                <span className="w-[120px] shrink-0 truncate font-mono" style={{ color: 'var(--charcoal)' }} title={r.ref}>
+                <span className="w-[78px] shrink-0 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{r.date}</span>
+                <span className="w-[104px] shrink-0 truncate font-mono" style={{ color: 'var(--charcoal)' }} title={r.ref}>
                   {r.flagged && <span className="inline-block w-1.5 h-1.5 rounded-full mr-1 align-middle" style={{ background: '#f59e0b' }} title="For review" />}
                   {r.ref || '—'}
                 </span>
