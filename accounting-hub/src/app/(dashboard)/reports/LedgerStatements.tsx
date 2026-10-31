@@ -24,6 +24,8 @@ const BRANCH_NAMES: Record<string, string> = {
 const ReadOnlyCtx = createContext(false)
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+// Consultant professional fees — accrued to the session month by payroll.
+const PF_ACCOUNT = '8190'
 const QUARTERS = ['Q1', 'Q2', 'Q3', 'Q4']
 
 // Plain-language names for entry sources (journal reference types + the
@@ -605,6 +607,20 @@ export default function LedgerStatements({ year, branch, tab, view, readOnly }: 
       )
     }
 
+    // Consultant PF is accrued to the session month (lib/payroll/pf-session-month),
+    // but the month's last days are paid in the NEXT month's 1st cutoff (26th–10th):
+    // until that cutoff is locked, the month's professional fees are incomplete.
+    const hasPf = !!sec('OPEX')?.rows.some(r => r.number === PF_ACCOUNT)
+    const opexLabel = (r: { number: string; title: string; virtual?: boolean }, star = false) =>
+      `${r.number} ${r.title}${star && r.virtual ? ' *' : ''}${r.number === PF_ACCOUNT ? ' †' : ''}`
+    const pfNote = hasPf && (
+      <p className="px-3 pt-3 text-[11px] leading-snug" style={{ color: '#6b7280' }}>
+        † Professional fees are matched to the month the sessions were done. Sessions from the 26th to month-end
+        are paid in the next month&apos;s 1st payroll cutoff (26th–10th), so a month&apos;s professional fees — and its
+        operating expenses, EBITDA and net income — can still change until that cutoff is finalized.
+      </p>
+    )
+
     if (multiCol) {
       body = (
         <div className="py-1">
@@ -653,7 +669,7 @@ export default function LedgerStatements({ year, branch, tab, view, readOnly }: 
                 {sec('OPEX') && (<>
                   <tr><td colSpan={colLabels.length + 2} className="px-3 pt-2 pb-1 font-semibold text-[0.72rem] uppercase" style={{ color: '#111827' }}><span className="inline-block" style={{ position: 'sticky', left: 12 }}>Operating Expenses</span></td></tr>
                   {sec('OPEX')!.rows.map(r => (
-                    <MultiRow key={r.number} label={`${r.number} ${r.title}`} indent={1} {...rowVals(r)} onClickCell={m => openDrill(r, cellMonth(m))} pctBases={vaBases} pctBaseTotal={vaTotal} />
+                    <MultiRow key={r.number} label={opexLabel(r)} indent={1} {...rowVals(r)} onClickCell={m => openDrill(r, cellMonth(m))} pctBases={vaBases} pctBaseTotal={vaTotal} />
                   ))}
                   <MultiRow label="Total Operating Expenses" values={opexC} total={is.totalOpex} bold rule pctBases={vaBases} pctBaseTotal={vaTotal} />
                 </>)}
@@ -672,6 +688,7 @@ export default function LedgerStatements({ year, branch, tab, view, readOnly }: 
               </tbody>
             </table>
           </div>
+          {pfNote}
         </div>
       )
     } else {
@@ -709,7 +726,7 @@ export default function LedgerStatements({ year, branch, tab, view, readOnly }: 
           {sec('OPEX') && (<>
             <Row label="Operating Expenses" bold />
             {sec('OPEX')!.rows.map(r => (
-              <Row key={r.number} label={`${r.number} ${r.title}${r.virtual ? ' *' : ''}`} amount={annualVal(r)} indent={1} onClick={() => openDrill(r)} pctBase={vaBase} />
+              <Row key={r.number} label={opexLabel(r, true)} amount={annualVal(r)} indent={1} onClick={() => openDrill(r)} pctBase={vaBase} />
             ))}
             <Row label="Total Operating Expenses" amount={is.totalOpex} bold rule pctBase={vaBase} />
           </>)}
@@ -724,6 +741,7 @@ export default function LedgerStatements({ year, branch, tab, view, readOnly }: 
           <Row label={`Provision for Income Tax (${Math.round(INCOME_TAX_RATE * 100)}%)`} amount={is.taxProvision} indent={1} pctBase={vaBase} />
           )}
           <Row label="NET INCOME" amount={is.netIncome} bold doubleRule pctBase={vaBase} />
+          {pfNote}
         </div>
       )
     }
