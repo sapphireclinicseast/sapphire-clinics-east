@@ -18,7 +18,20 @@ interface PlanItem { id: string; seq: number; dueDate: string; amount: number; c
 interface Plan { id: string; promissoryNoteId: string | null; schoolYear: number; semester: number; originalDueDate: string; amount: number; notes: string | null; status: string; items: PlanItem[]; paid: number; balance: number }
 interface Payment { classPortalPaymentId: string; plan: string; period: string; amount: number; status: string; method: string | null; methodDetail: string | null; isPartialPayment: boolean; recordedOn: string; confirmedOn: string | null; orderNumber: number | null; saleDate: string | null; where: 'POS' | 'WAITING' | 'CLASS_HUB_ONLY' | 'VOIDED' }
 interface Note { id: string; fileName: string; fileType: string; notes: string | null; uploadedBy: string | null; createdAt: string }
-interface Student { id: string; name: string; email: string; level: string | null; branch: string; patientId: string | null; payments: Payment[]; notes: Note[]; plans: Plan[] }
+interface RegularDue { key: string; period: string; dueDate: string; expected: number; paid: number; remaining: number; state: 'OVERDUE' | 'DUE_SOON' | 'UPCOMING'; daysUntil: number }
+interface Student {
+  id: string; name: string; email: string; level: string | null; branch: string; patientId: string | null
+  payments: Payment[]; notes: Note[]; plans: Plan[]
+  tuitionPlan: string | null; rate: number | null
+  /** This school year's tuition net of discounts (installment × installments), and what is left after payments. */
+  yearTuition: number | null; installments: number | null; runningBalance: number | null
+  /** Regular installments overdue or due within 7 days (Class Hub plan rules, as at the POS). */
+  dues: RegularDue[]
+}
+
+const overdueOf = (s: Student) => s.dues.filter(d => d.state === 'OVERDUE')
+/** Behind on a regular installment with no promissory note to cover it. */
+const isDelayedNoNote = (s: Student) => s.notes.length === 0 && overdueOf(s).length > 0
 
 const BRANCH_LABEL: Record<string, string> = { SANDBOX_EAST: 'East', SANDBOX_GREENHILLS: 'Greenhills' }
 const LEVEL_LABEL = (l: string | null) => (l ? l.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, c => c.toUpperCase()) : '')
@@ -37,8 +50,9 @@ const WHERE_LABEL: Record<Payment['where'], { text: string; style: { background:
   VOIDED: { text: 'Voided', style: { background: 'var(--off-white)', color: 'var(--mid-gray)' } },
 }
 
-type PlanStatus = 'OVERDUE' | 'DUE_SOON' | 'NEEDS_PLAN' | 'ON_SCHEDULE' | 'COMPLETED' | 'COMPLETED_LATE' | 'NONE'
+type PlanStatus = 'DELAYED_NO_NOTE' | 'OVERDUE' | 'DUE_SOON' | 'NEEDS_PLAN' | 'ON_SCHEDULE' | 'COMPLETED' | 'COMPLETED_LATE' | 'NONE'
 function planStatus(s: Student): PlanStatus {
+  if (isDelayedNoNote(s)) return 'DELAYED_NO_NOTE'
   const items = s.plans.filter(p => p.status === 'ACTIVE').flatMap(p => p.items)
   if (!items.length) return s.notes.length ? 'NEEDS_PLAN' : 'NONE'
   if (items.some(i => i.state === 'OVERDUE')) return 'OVERDUE'
@@ -47,6 +61,7 @@ function planStatus(s: Student): PlanStatus {
   return 'ON_SCHEDULE'
 }
 const PLAN_STATUS: Record<PlanStatus, { text: string; style: { background: string; color: string } } | null> = {
+  DELAYED_NO_NOTE: { text: 'Delayed — no promissory note', style: { background: '#fee2e2', color: '#991b1b' } },
   OVERDUE: { text: 'Overdue', style: STATE_STYLE.OVERDUE },
   DUE_SOON: { text: 'Due within 7 days', style: STATE_STYLE.DUE_SOON },
   NEEDS_PLAN: { text: 'Note — no plan yet', style: { background: '#fef3c7', color: '#92400e' } },
@@ -63,7 +78,7 @@ export default function TuitionTab({ branch, canWrite }: { branch: string; canWr
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
-  const [filter, setFilter] = useState<'all' | 'notes' | 'attention'>('notes')
+  const [filter, setFilter] = useState<'all' | 'notes' | 'delayed' | 'attention'>('notes')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [editing, setEditing] = useState<{ student: Student; plan: Plan | null } | null>(null)
   const [busy, setBusy] = useState('')
@@ -97,6 +112,8 @@ export default function TuitionTab({ branch, canWrite }: { branch: string; canWr
       overdue: sum(items.filter(i => i.state === 'OVERDUE')),
       outsideCount: outside.length,
       outsideAmount: outside.reduce((t, p) => t + p.amount, 0),
+      delayedCount: students.filter(isDelayedNoNote).length,
+      delayedAmount: students.filter(isDelayedNoNote).reduce((t, s) => t + overdueOf(s).reduce((u, d) => u + d.remaining, 0), 0),
     }
   }, [students])
 
@@ -104,8 +121,10 @@ export default function TuitionTab({ branch, canWrite }: { branch: string; canWr
     const q = search.trim().toLowerCase()
     return students.filter(s => {
       if (q && !`${s.name} ${s.email}`.toLowerCase().includes(q)) return false
-      if (filter === 'notes') return s.notes.length > 0 || s.plans.length > 0
-      if (filter === 'attention') return ['OVERDUE', 'DUE_SOON', 'NEEDS_PLAN'].includes(planStatus(s)) || s.payments.some(p => p.where === 'CLASS_HUB_ONLY')
+      // Default view: everyone on a promissory note, plus everyone behind without one.
+      if (filter === 'notes') return s.notes.length > 0 || s.plans.length > 0 || isDelayedNoNote(s)
+      if (filter === 'delayed') return isDelayedNoNote(s)
+      if (filter === 'attention') return ['DELAYED_NO_NOTE', 'OVERDUE', 'DUE_SOON', 'NEEDS_PLAN'].includes(planStatus(s)) || s.payments.some(p => p.where === 'CLASS_HUB_ONLY')
       return true
     })
   }, [students, search, filter])
@@ -140,7 +159,8 @@ export default function TuitionTab({ branch, canWrite }: { branch: string; canWr
             {[thisSy, thisSy - 1].map(y => <option key={y} value={y}>{schoolYearLabel(y)}</option>)}
           </select>
           <select value={filter} onChange={e => setFilter(e.target.value as typeof filter)} className="px-3 py-2 rounded-xl border text-xs" style={{ borderColor: 'var(--light-gray)' }}>
-            <option value="notes">With promissory notes</option>
+            <option value="notes">Promissory notes & delayed</option>
+            <option value="delayed">Delayed — no promissory note</option>
             <option value="attention">Needs attention</option>
             <option value="all">All students</option>
           </select>
@@ -148,11 +168,12 @@ export default function TuitionTab({ branch, canWrite }: { branch: string; canWr
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         {[
           { label: 'Students with promissory notes', value: String(totals.withNotes), sub: `${totals.activePlans} active plan${totals.activePlans === 1 ? '' : 's'}` },
-          { label: 'Due within 7 days', value: formatCurrency(totals.dueSoon), sub: 'scheduled, unpaid', color: '#c2410c' },
-          { label: 'Overdue', value: formatCurrency(totals.overdue), sub: 'past the scheduled date', color: '#b91c1c' },
+          { label: 'Delayed, no promissory note', value: String(totals.delayedCount), sub: totals.delayedCount ? `${formatCurrency(totals.delayedAmount)} overdue` : 'none', color: totals.delayedCount ? '#991b1b' : undefined },
+          { label: 'Promissory due within 7 days', value: formatCurrency(totals.dueSoon), sub: 'scheduled, unpaid', color: '#c2410c' },
+          { label: 'Promissory overdue', value: formatCurrency(totals.overdue), sub: 'past the scheduled date', color: '#b91c1c' },
           { label: 'Confirmed in Class Hub, no linked POS sale', value: String(totals.outsideCount), sub: totals.outsideCount ? `${formatCurrency(totals.outsideAmount)} to check` : 'none', color: totals.outsideCount ? '#b91c1c' : undefined },
         ].map(c => (
           <div key={c.label} className="rounded-2xl border bg-white px-4 py-3" style={{ borderColor: 'var(--light-gray)' }}>
@@ -170,21 +191,22 @@ export default function TuitionTab({ branch, canWrite }: { branch: string; canWr
           <thead>
             <tr style={{ background: 'var(--off-white)' }}>
               <th className="px-3 py-2.5 w-8" />
-              {['Student', 'Branch', 'Paid this SY', 'Waiting in POS', 'Promissory notes', 'Plan', 'Next scheduled payment', ''].map(h => (
+              {['Student', 'Branch', 'Paid this SY', 'Running balance', 'Overdue', 'Promissory notes', 'Status', 'Next scheduled payment', ''].map(h => (
                 <th key={h} className="px-3 py-2.5 text-left text-xs font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={9} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}><Loader2 size={16} className="inline animate-spin" /> Loading from Class Hub…</td></tr>
+              <tr><td colSpan={10} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}><Loader2 size={16} className="inline animate-spin" /> Loading from Class Hub…</td></tr>
             ) : shown.length === 0 ? (
-              <tr><td colSpan={9} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>
-                {filter === 'notes' ? 'No promissory notes uploaded in Class Hub for this school year.' : filter === 'attention' ? 'Nothing needs attention.' : 'No students found.'}
+              <tr><td colSpan={10} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>
+                {filter === 'notes' ? 'No promissory notes and no delayed students this school year.' : filter === 'delayed' ? 'No student is behind without a promissory note.' : filter === 'attention' ? 'Nothing needs attention.' : 'No students found.'}
               </td></tr>
             ) : shown.map(s => {
               const paid = s.payments.filter(p => p.where === 'POS' || p.where === 'CLASS_HUB_ONLY').reduce((t, p) => t + p.amount, 0)
-              const waiting = s.payments.filter(p => p.where === 'WAITING').reduce((t, p) => t + p.amount, 0)
+              const overdue = overdueOf(s)
+              const overdueAmt = overdue.reduce((t, d) => t + d.remaining, 0) + s.plans.filter(p => p.status === 'ACTIVE').flatMap(p => p.items).filter(i => i.state === 'OVERDUE').reduce((t, i) => t + i.amount, 0)
               const st = PLAN_STATUS[planStatus(s)]
               const next = nextPayment(s)
               const active = s.plans.filter(p => p.status === 'ACTIVE')
@@ -201,7 +223,15 @@ export default function TuitionTab({ branch, canWrite }: { branch: string; canWr
                     </td>
                     <td className="px-3 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{BRANCH_LABEL[s.branch] || s.branch}</td>
                     <td className="px-3 py-2.5 text-right font-mono text-xs" style={{ color: '#166534' }}>{formatCurrency(paid)}</td>
-                    <td className="px-3 py-2.5 text-right font-mono text-xs" style={{ color: waiting ? '#92400e' : 'var(--mid-gray)' }}>{waiting ? formatCurrency(waiting) : '—'}</td>
+                    <td className="px-3 py-2.5 text-right text-xs whitespace-nowrap" title={s.yearTuition != null ? `${formatCurrency(s.yearTuition)} tuition this school year − ${formatCurrency(paid)} paid` : 'No payment recorded yet, so the plan and rate are not known'}>
+                      {s.runningBalance == null ? <span style={{ color: 'var(--mid-gray)' }}>—</span>
+                        : <span className="font-mono font-semibold" style={{ color: s.runningBalance > 0.005 ? '#c44b00' : '#166534' }}>{s.runningBalance < -0.005 ? `${formatCurrency(-s.runningBalance)} credit` : formatCurrency(s.runningBalance)}</span>}
+                    </td>
+                    <td className="px-3 py-2.5 text-right text-xs whitespace-nowrap">
+                      {overdueAmt > 0.005
+                        ? <><span className="font-mono font-semibold" style={{ color: '#b91c1c' }}>{formatCurrency(overdueAmt)}</span>{overdue.length > 0 && <div className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>{overdue.map(d => d.period.replace(/ \d{4}$/, '')).join(', ')}</div>}</>
+                        : <span style={{ color: 'var(--mid-gray)' }}>—</span>}
+                    </td>
                     <td className="px-3 py-2.5 text-xs">
                       {s.notes.length === 0 ? <span style={{ color: 'var(--mid-gray)' }}>—</span> : s.notes.map(n => (
                         <a key={n.id} href={`/api/tuition/notes/${n.id}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 mr-2" style={{ color: 'var(--teal)' }} title={n.fileName}>
@@ -213,7 +243,9 @@ export default function TuitionTab({ branch, canWrite }: { branch: string; canWr
                       {st ? <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap" style={st.style}>{st.text}</span> : <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>—</span>}
                     </td>
                     <td className="px-3 py-2.5 text-xs whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>
-                      {next ? <>{fmtDate(next.dueDate)} · <span className="font-mono">{formatCurrency(next.amount)}</span></> : '—'}
+                      {next ? <>{fmtDate(next.dueDate)} · <span className="font-mono">{formatCurrency(next.amount)}</span></>
+                        : s.dues.find(d => d.state === 'DUE_SOON') ? (() => { const d = s.dues.find(x => x.state === 'DUE_SOON')!; return <>{fmtDate(d.dueDate)} · <span className="font-mono">{formatCurrency(d.remaining)}</span> <span style={{ color: 'var(--mid-gray)' }}>({d.period})</span></> })()
+                        : '—'}
                     </td>
                     <td className="px-3 py-2.5 text-right whitespace-nowrap">
                       {canWrite && freeNotes.length > 0 && (
@@ -226,7 +258,42 @@ export default function TuitionTab({ branch, canWrite }: { branch: string; canWr
                   {expanded.has(s.id) && (
                     <tr className="border-t" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
                       <td />
-                      <td colSpan={8} className="px-3 py-3 space-y-4">
+                      <td colSpan={9} className="px-3 py-3 space-y-4">
+                        {/* Running balance: tuition this school year (net of discounts) − payments */}
+                        {s.yearTuition != null && (
+                          <p className="text-xs" style={{ color: 'var(--charcoal)' }}>
+                            <strong>Running balance:</strong> tuition this school year <span className="font-mono">{formatCurrency(s.yearTuition)}</span>
+                            <span style={{ color: 'var(--mid-gray)' }}> ({s.installments} × {formatCurrency(s.rate || 0)}{s.tuitionPlan ? `, ${s.tuitionPlan.toLowerCase()} plan` : ''}, after discounts)</span>
+                            {' '}− paid <span className="font-mono" style={{ color: '#166534' }}>{formatCurrency(paid)}</span>
+                            {' '}= <span className="font-mono font-semibold" style={{ color: (s.runningBalance || 0) > 0.005 ? '#c44b00' : '#166534' }}>{(s.runningBalance || 0) < -0.005 ? `${formatCurrency(-(s.runningBalance || 0))} credit` : formatCurrency(s.runningBalance || 0)}</span>
+                          </p>
+                        )}
+                        {/* Overdue regular installments (Class Hub plan rules) */}
+                        {overdue.length > 0 && (
+                          <div>
+                            <p className="text-[11px] font-semibold mb-1.5" style={{ color: '#991b1b' }}>
+                              Overdue installments{s.tuitionPlan ? ` · ${s.tuitionPlan.toLowerCase()} plan` : ''}{s.rate ? ` · ${formatCurrency(s.rate)} each` : ''}
+                              {s.notes.length === 0 && ' — no promissory note uploaded in Class Hub yet'}
+                            </p>
+                            <table className="text-xs w-full" style={{ maxWidth: 720 }}>
+                              <thead><tr>{['For', 'Was due', 'Days late', 'Paid', 'Still owed'].map(h => <th key={h} className="text-left pr-4 pb-1 font-semibold" style={{ color: 'var(--mid-gray)' }}>{h}</th>)}</tr></thead>
+                              <tbody>
+                                {overdue.map(d => (
+                                  <tr key={d.key}>
+                                    <td className="pr-4 py-0.5">{d.period}</td>
+                                    <td className="pr-4 py-0.5 whitespace-nowrap">{fmtDate(d.dueDate)}</td>
+                                    <td className="pr-4 py-0.5">{-d.daysUntil}</td>
+                                    <td className="pr-4 py-0.5 font-mono">{d.paid > 0.005 ? formatCurrency(d.paid) : '—'}</td>
+                                    <td className="pr-4 py-0.5 font-mono font-semibold" style={{ color: '#b91c1c' }}>{formatCurrency(d.remaining)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                            <p className="text-[11px] mt-1" style={{ color: 'var(--mid-gray)' }}>
+                              Based on the payments recorded for this school year. Collect at POS → Tuition, or have the family give a promissory note in Class Hub to set a payment plan.
+                            </p>
+                          </div>
+                        )}
                         {/* Payment plans */}
                         <div>
                           <p className="text-[11px] font-semibold mb-1.5" style={{ color: 'var(--mid-gray)' }}>Payment plans</p>

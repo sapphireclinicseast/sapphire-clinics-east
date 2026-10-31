@@ -8,7 +8,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { enforceBranch } from '@/lib/branch-scope'
 import { CLASS_TO_LEDGER_BRANCH, LEDGER_TO_CLASS_BRANCH, toYmd } from '@/lib/tuition'
-import { TUITION_BRANCHES, TUITION_READ_ROLES, fetchClassHub, loadPlans, planViews, posSalesFor } from '@/lib/tuition-server'
+import { TUITION_BRANCHES, TUITION_READ_ROLES, fetchClassHub, loadPlans, planViews, posSalesFor, studentBalances } from '@/lib/tuition-server'
 
 export async function GET(req: NextRequest) {
   const session = await auth()
@@ -30,10 +30,15 @@ export async function GET(req: NextRequest) {
   }
 
   const confirmedAt = new Map(hub.payments.filter(p => p.status === 'CONVERTED' && p.convertedAt).map(p => [p.classPortalPaymentId, toYmd(p.convertedAt!)]))
-  const [plans, sales] = await Promise.all([
+  const [plans, sales, balances] = await Promise.all([
     loadPlans({ studentId: { in: hub.students.map(s => s.id) }, schoolYear: hub.schoolYear }).then(rows => planViews(rows, confirmedAt)),
     posSalesFor(hub.payments.map(p => p.classPortalPaymentId)),
+    // What each student owes under Class Hub's plan rules — the same figures
+    // the POS Tuition picker shows — so students who are behind with no
+    // promissory note are listed too.
+    studentBalances({ classBranch: null, hub }),
   ])
+  const balanceOf = new Map(balances.students.map(b => [b.id, b]))
 
   const students = hub.students.map(s => {
     const payments = hub.payments.filter(p => p.studentId === s.id).map(p => {
@@ -54,6 +59,13 @@ export async function GET(req: NextRequest) {
       payments,
       notes: hub.notes.filter(n => n.studentId === s.id),
       plans: plans.filter(p => p.studentId === s.id),
+      tuitionPlan: balanceOf.get(s.id)?.plan ?? null,
+      rate: balanceOf.get(s.id)?.rate ?? null,
+      yearTuition: balanceOf.get(s.id)?.yearTuition ?? null,
+      installments: balanceOf.get(s.id)?.installments ?? null,
+      runningBalance: balanceOf.get(s.id)?.runningBalance ?? null,
+      // Regular installments overdue or due within 7 days (promissory ones are in plans).
+      dues: (balanceOf.get(s.id)?.dues ?? []).filter(d => d.kind === 'REGULAR'),
     }
   })
 

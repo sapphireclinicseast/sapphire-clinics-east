@@ -22,7 +22,8 @@ interface Student {
   id: string; name: string; email: string; level: string | null; branch: string; patientId: string | null
   plan: TuitionPlan | null; rate: number | null; discountLabel: string | null
   isNew: boolean
-  paidThisSy: number; dues: Due[]; nextDue: Due | null
+  paidThisSy: number; yearTuition: number | null; installments: number | null; runningBalance: number | null
+  dues: Due[]; nextDue: Due | null
   payments: { period: string; amount: number; date: string; orderNumber: number | null; partial: boolean }[]
 }
 
@@ -177,6 +178,14 @@ function StudentCard({ student, onCollect }: { student: Student; onCollect: (t: 
             {student.plan ? <>{student.plan.toLowerCase()} plan{student.rate ? <> · {formatCurrency(student.rate)} per installment</> : null}</> : 'No plan yet — the first payment sets it'}
             {' · '}paid this school year <strong style={{ color: '#166534' }}>{formatCurrency(student.paidThisSy)}</strong>
           </p>
+          {student.yearTuition != null && student.runningBalance != null && (
+            <p style={{ color: 'var(--mid-gray)' }}>
+              Tuition this school year {formatCurrency(student.yearTuition)} ({student.installments} × {formatCurrency(student.rate || 0)}, after discounts) − paid {formatCurrency(student.paidThisSy)} ={' '}
+              <strong style={{ color: student.runningBalance > 0.005 ? '#c44b00' : '#166534' }}>
+                {student.runningBalance < -0.005 ? `${formatCurrency(-student.runningBalance)} credit` : `${formatCurrency(student.runningBalance)} running balance`}
+              </strong>
+            </p>
+          )}
         </div>
         {student.nextDue && <p style={{ color: 'var(--mid-gray)' }}>Next: {student.nextDue.period} · {formatCurrency(student.nextDue.remaining)} on {fmtDate(student.nextDue.dueDate)}</p>}
       </div>

@@ -4,7 +4,7 @@
 import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import {
-  CLASS_TO_LEDGER_BRANCH, REMIND_DAYS, asTuitionPlan, daysBetween, itemState, periodForDate, regularDues,
+  CLASS_TO_LEDGER_BRANCH, REMIND_DAYS, asTuitionPlan, daysBetween, itemState, periodForDate, regularDues, yearTuition,
   toYmd, todayManila, type ItemState, type TuitionPlan,
 } from '@/lib/tuition'
 
@@ -146,7 +146,10 @@ export interface StudentBalance {
   plan: TuitionPlan | null; rate: number | null; discountLabel: string | null
   /** Enrolled in Class Hub with no payment yet this school year — a new student. */
   isNew: boolean
-  paidThisSy: number; dues: TuitionDue[]; nextDue: TuitionDue | null
+  paidThisSy: number
+  /** This school year's tuition net of discounts, and what is left of it after payments. */
+  yearTuition: number | null; installments: number | null; runningBalance: number | null
+  dues: TuitionDue[]; nextDue: TuitionDue | null
   payments: { period: string; amount: number; date: string; orderNumber: number | null; partial: boolean }[]
 }
 
@@ -158,8 +161,8 @@ export interface StudentBalance {
  * payment, so a mid-year enrolee owes nothing for the months before it, and an
  * overpayment of one installment carries to the next.
  */
-export async function studentBalances(params: { classBranch: string | null; schoolYear?: number }): Promise<{ schoolYear: number; students: StudentBalance[] }> {
-  const hub = await fetchClassHub({ classBranch: params.classBranch, schoolYear: params.schoolYear })
+export async function studentBalances(params: { classBranch: string | null; schoolYear?: number; hub?: ClassHubSnapshot }): Promise<{ schoolYear: number; students: StudentBalance[] }> {
+  const hub = params.hub ?? await fetchClassHub({ classBranch: params.classBranch, schoolYear: params.schoolYear })
   const confirmedAt = new Map(hub.payments.filter(p => p.status === 'CONVERTED' && p.convertedAt).map(p => [p.classPortalPaymentId, toYmd(p.convertedAt!)]))
   const [plans, sales] = await Promise.all([
     loadPlans({ studentId: { in: hub.students.map(s => s.id) }, status: 'ACTIVE' }).then(rows => planViews(rows, confirmedAt)),
@@ -220,12 +223,16 @@ export async function studentBalances(params: { classBranch: string | null; scho
       }
     }
     dues.sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+    const paidThisSy = Math.round(paidRows.reduce((t, r) => t + r.amountCentavos, 0)) / 100
+    const year = plan && rate ? yearTuition({ plan, rate, schoolYear: hub.schoolYear, payments: paidRows }) : null
     return {
       id: s.id, name: s.name, email: s.email, level: s.level,
       branch: CLASS_TO_LEDGER_BRANCH[s.branch || ''] || s.branch || '', patientId: s.patientId,
       plan, rate, discountLabel: lastSale ? labels.get(lastSale.orderId) ?? null : null,
       isNew: rows.length === 0,
-      paidThisSy: Math.round(paidRows.reduce((t, r) => t + r.amountCentavos, 0)) / 100,
+      paidThisSy,
+      yearTuition: year?.total ?? null, installments: year?.installments ?? null,
+      runningBalance: year ? Math.round((year.total - paidThisSy) * 100) / 100 : null,
       dues, nextDue,
       payments: paidRows.map(r => ({
         period: r.period, amount: r.amountCentavos / 100, date: sales.get(r.classPortalPaymentId)?.date || (r.convertedAt ? toYmd(r.convertedAt) : toYmd(r.createdAt)),

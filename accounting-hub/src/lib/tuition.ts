@@ -284,3 +284,16 @@ export function regularDues(args: {
   }
   return out
 }
+
+/**
+ * This school year's tuition for a student, net of any discount they availed:
+ * their installment (already after the discount) × the installments from the
+ * first one they paid to the end of the year — a mid-year enrolee is not
+ * charged for the months before they started.
+ */
+export function yearTuition(args: { plan: TuitionPlan; rate: number; schoolYear: number; payments: { period: string }[] }): { installments: number; total: number } {
+  const periods = schoolYearPeriods(args.plan, args.schoolYear)
+  const first = periods.findIndex(p => args.payments.some(r => periodMatches(r.period, p)))
+  const installments = periods.length - Math.max(0, first)
+  return { installments, total: Math.round(args.rate * installments * 100) / 100 }
+}
