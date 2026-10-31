@@ -44,7 +44,8 @@ const STATE_STYLE = {
 }
 
 export default function TuitionDesk({ branch, onCollect }: { branch: string; onCollect: (t: TuitionPrefill) => void }) {
-  const [open, setOpen] = useState(true)
+  // Starts collapsed: the header badge already shows who owes; the cashier opens it to collect.
+  const [open, setOpen] = useState(false)
   const [students, setStudents] = useState<Student[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
