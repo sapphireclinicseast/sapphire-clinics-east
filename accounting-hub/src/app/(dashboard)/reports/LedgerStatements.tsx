@@ -610,14 +610,15 @@ export default function LedgerStatements({ year, branch, tab, view, readOnly }: 
     // Consultant PF is accrued to the session month (lib/payroll/pf-session-month),
     // but the month's last days are paid in the NEXT month's 1st cutoff (26th–10th):
     // until that cutoff is locked, the month's professional fees are incomplete.
-    const hasPf = !!sec('OPEX')?.rows.some(r => r.number === PF_ACCOUNT)
+    // 8190 sits under Cost of Sales (direct cost of the sessions), so look in both.
+    const hasPf = (['COGS', 'OPEX'] as const).some(k => !!sec(k)?.rows.some(r => r.number === PF_ACCOUNT))
     const opexLabel = (r: { number: string; title: string; virtual?: boolean }, star = false) =>
       `${r.number} ${r.title}${star && r.virtual ? ' *' : ''}${r.number === PF_ACCOUNT ? ' †' : ''}`
     const pfNote = hasPf && (
       <p className="px-3 pt-3 text-[11px] leading-snug" style={{ color: '#6b7280' }}>
         † Professional fees are matched to the month the sessions were done. Sessions from the 26th to month-end
         are paid in the next month&apos;s 1st payroll cutoff (26th–10th), so a month&apos;s professional fees — and its
-        operating expenses, EBITDA and net income — can still change until that cutoff is finalized.
+        cost of sales, gross profit and net income — can still change until that cutoff is finalized.
       </p>
     )
 
@@ -662,7 +663,7 @@ export default function LedgerStatements({ year, branch, tab, view, readOnly }: 
                 {sec('COGS') && (<>
                   <tr><td colSpan={colLabels.length + 2} className="px-3 pt-2 pb-1 font-semibold text-[0.72rem] uppercase" style={{ color: '#111827' }}><span className="inline-block" style={{ position: 'sticky', left: 12 }}>Cost of Sales</span></td></tr>
                   {sec('COGS')!.rows.map(r => (
-                    <MultiRow key={r.number} label={`${r.number} ${r.title}`} indent={1} {...rowVals(r)} onClickCell={m => openDrill(r, cellMonth(m))} pctBases={vaBases} pctBaseTotal={vaTotal} />
+                    <MultiRow key={r.number} label={opexLabel(r)} indent={1} {...rowVals(r)} onClickCell={m => openDrill(r, cellMonth(m))} pctBases={vaBases} pctBaseTotal={vaTotal} />
                   ))}
                 </>)}
                 <MultiRow label="Gross Profit" values={netSalesC.map((n, i) => n - cogsC[i])} total={is.grossProfit} bold doubleRule pctBases={vaBases} pctBaseTotal={vaTotal} />
@@ -718,7 +719,7 @@ export default function LedgerStatements({ year, branch, tab, view, readOnly }: 
           {sec('COGS') && (<>
             <Row label="Cost of Sales" bold />
             {sec('COGS')!.rows.map(r => (
-              <Row key={r.number} label={`${r.number} ${r.title}${r.virtual ? ' *' : ''}`} amount={annualVal(r)} indent={1} onClick={() => openDrill(r)} pctBase={vaBase} />
+              <Row key={r.number} label={opexLabel(r, true)} amount={annualVal(r)} indent={1} onClick={() => openDrill(r)} pctBase={vaBase} />
             ))}
             <Row label="Total Cost of Sales" amount={is.totalCOGS} bold rule pctBase={vaBase} />
           </>)}
