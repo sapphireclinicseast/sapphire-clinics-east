@@ -70,10 +70,12 @@ retry_rsync "public/ sync" \
   "$VPS:$REMOTE/public/"
 
 echo "==> 4/5 Syncing source..."
+# No uploads exclude here: under src/ an uploads dir is a route segment, not
+# user files (those live in $REMOTE/uploads, outside this sync). Excluding it
+# froze the server's copy of api/payroll/timekeeping/uploads/route.ts.
 retry_rsync "src/ sync" --delete \
   --exclude='node_modules' \
   --exclude='.next' \
-  --exclude='uploads' \
   --exclude='.git' \
   --exclude='*.log' \
   "$LOCAL/src/" "$VPS:$REMOTE/src/"

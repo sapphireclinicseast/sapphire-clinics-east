@@ -1047,6 +1047,14 @@ jobs:
             # Excludes: .env files (authoritative versions live in DEPLOY_DIR/docker/
             # and are NOT in git — losing them costs NEXTAUTH_SECRET, EXTERNAL_API_KEY
             # and the DB URL), build artifacts, and user-uploaded files.
+            # `uploads` stays unanchored so it shields an uploads dir at any depth:
+            # the live store is $DEPLOY_DIR/uploads (bind-mounted to /app/uploads),
+            # and code before 2026-05-03 wrote public/uploads. src/ is the exception:
+            # it is git-only source, where an uploads dir is a route segment. The
+            # unanchored exclude froze the server's copy of
+            # api/payroll/timekeeping/uploads/route.ts: no deploy could update or
+            # remove it. rsync applies the first matching rule, so the include
+            # must stay above the exclude.
             # --delay-updates moves everything into place at the end, so the tree is
             # never half-old/half-new on disk.
             rsync -a --delete --delay-updates \
@@ -1054,6 +1062,7 @@ jobs:
               --exclude='docker/.env.production' \
               --exclude='node_modules' \
               --exclude='.next' \
+              --include='/src/**/uploads/' \
               --exclude='uploads' \
               "$ACCT_DIR/accounting-hub/" "$DEPLOY_DIR/"
             echo "   Source synced OK."
