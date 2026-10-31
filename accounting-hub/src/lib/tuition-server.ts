@@ -4,8 +4,8 @@
 import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import {
-  CLASS_TO_LEDGER_BRANCH, REMIND_DAYS, asTuitionPlan, daysBetween, itemState, periodForDate, regularDues, yearTuition,
-  toYmd, todayManila, type ItemState, type TuitionPlan,
+  CLASS_TO_LEDGER_BRANCH, REMIND_DAYS, asTuitionPlan, daysBetween, itemState, periodForDate, regularDues, semesterBalances,
+  toYmd, todayManila, type ItemState, type SemesterBalance, type TuitionPlan,
 } from '@/lib/tuition'
 
 const MARKETING_HUB_URL = process.env.MARKETING_HUB_URL || 'https://operations.sapphireclinicseast.org'
@@ -147,8 +147,9 @@ export interface StudentBalance {
   /** Enrolled in Class Hub with no payment yet this school year — a new student. */
   isNew: boolean
   paidThisSy: number
-  /** This school year's tuition net of discounts, and what is left of it after payments. */
-  yearTuition: number | null; installments: number | null; runningBalance: number | null
+  /** By semester (lib/tuition semesterBalances): tuition net of discounts, paid, balance.
+   *  runningBalance = tuition of the semesters started so far − paid (negative = paid ahead). */
+  semesters: SemesterBalance[] | null; yearTuition: number | null; runningBalance: number | null
   dues: TuitionDue[]; nextDue: TuitionDue | null
   payments: { period: string; amount: number; date: string; orderNumber: number | null; partial: boolean }[]
 }
@@ -224,15 +225,16 @@ export async function studentBalances(params: { classBranch: string | null; scho
     }
     dues.sort((a, b) => a.dueDate.localeCompare(b.dueDate))
     const paidThisSy = Math.round(paidRows.reduce((t, r) => t + r.amountCentavos, 0)) / 100
-    const year = plan && rate ? yearTuition({ plan, rate, schoolYear: hub.schoolYear, payments: paidRows }) : null
+    const bySem = plan && rate
+      ? semesterBalances({ plan, rate, schoolYear: hub.schoolYear, today, payments: paidRows.map(r => ({ period: r.period, amount: r.amountCentavos / 100 })) })
+      : null
     return {
       id: s.id, name: s.name, email: s.email, level: s.level,
       branch: CLASS_TO_LEDGER_BRANCH[s.branch || ''] || s.branch || '', patientId: s.patientId,
       plan, rate, discountLabel: lastSale ? labels.get(lastSale.orderId) ?? null : null,
       isNew: rows.length === 0,
       paidThisSy,
-      yearTuition: year?.total ?? null, installments: year?.installments ?? null,
-      runningBalance: year ? Math.round((year.total - paidThisSy) * 100) / 100 : null,
+      semesters: bySem?.semesters ?? null, yearTuition: bySem?.yearTuition ?? null, runningBalance: bySem?.runningBalance ?? null,
       dues, nextDue,
       payments: paidRows.map(r => ({
         period: r.period, amount: r.amountCentavos / 100, date: sales.get(r.classPortalPaymentId)?.date || (r.convertedAt ? toYmd(r.convertedAt) : toYmd(r.createdAt)),

@@ -18,13 +18,16 @@ interface PlanItem { id: string; seq: number; dueDate: string; amount: number; c
 interface Plan { id: string; promissoryNoteId: string | null; schoolYear: number; semester: number; originalDueDate: string; amount: number; notes: string | null; status: string; items: PlanItem[]; paid: number; balance: number }
 interface Payment { classPortalPaymentId: string; plan: string; period: string; amount: number; status: string; method: string | null; methodDetail: string | null; isPartialPayment: boolean; recordedOn: string; confirmedOn: string | null; orderNumber: number | null; saleDate: string | null; where: 'POS' | 'WAITING' | 'CLASS_HUB_ONLY' | 'VOIDED' }
 interface Note { id: string; fileName: string; fileType: string; notes: string | null; uploadedBy: string | null; createdAt: string }
+interface SemesterRow { semester: number; label: string; start: string; end: string; tuition: number; paid: number; balance: number; started: boolean }
+const balanceText = (b: number) => (b < -0.005 ? `${formatCurrency(-b)} paid ahead` : formatCurrency(b))
 interface RegularDue { key: string; period: string; dueDate: string; expected: number; paid: number; remaining: number; state: 'OVERDUE' | 'DUE_SOON' | 'UPCOMING'; daysUntil: number }
 interface Student {
   id: string; name: string; email: string; level: string | null; branch: string; patientId: string | null
   payments: Payment[]; notes: Note[]; plans: Plan[]
   tuitionPlan: string | null; rate: number | null
-  /** This school year's tuition net of discounts (installment × installments), and what is left after payments. */
-  yearTuition: number | null; installments: number | null; runningBalance: number | null
+  /** By semester: tuition net of discounts, paid, balance. runningBalance = tuition of
+   *  the semesters started so far − paid (negative = paid ahead). */
+  semesters: SemesterRow[] | null; yearTuition: number | null; runningBalance: number | null
   /** Regular installments overdue or due within 7 days (Class Hub plan rules, as at the POS). */
   dues: RegularDue[]
 }
@@ -223,9 +226,9 @@ export default function TuitionTab({ branch, canWrite }: { branch: string; canWr
                     </td>
                     <td className="px-3 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{BRANCH_LABEL[s.branch] || s.branch}</td>
                     <td className="px-3 py-2.5 text-right font-mono text-xs" style={{ color: '#166534' }}>{formatCurrency(paid)}</td>
-                    <td className="px-3 py-2.5 text-right text-xs whitespace-nowrap" title={s.yearTuition != null ? `${formatCurrency(s.yearTuition)} tuition this school year − ${formatCurrency(paid)} paid` : 'No payment recorded yet, so the plan and rate are not known'}>
+                    <td className="px-3 py-2.5 text-right text-xs whitespace-nowrap" title={s.semesters ? 'Tuition of the semesters started so far, less everything paid' : 'No payment recorded yet, so the plan and rate are not known'}>
                       {s.runningBalance == null ? <span style={{ color: 'var(--mid-gray)' }}>—</span>
-                        : <span className="font-mono font-semibold" style={{ color: s.runningBalance > 0.005 ? '#c44b00' : '#166534' }}>{s.runningBalance < -0.005 ? `${formatCurrency(-s.runningBalance)} credit` : formatCurrency(s.runningBalance)}</span>}
+                        : <span className="font-mono font-semibold" style={{ color: s.runningBalance > 0.005 ? '#c44b00' : '#166534' }}>{balanceText(s.runningBalance)}</span>}
                     </td>
                     <td className="px-3 py-2.5 text-right text-xs whitespace-nowrap">
                       {overdueAmt > 0.005
@@ -260,13 +263,36 @@ export default function TuitionTab({ branch, canWrite }: { branch: string; canWr
                       <td />
                       <td colSpan={9} className="px-3 py-3 space-y-4">
                         {/* Running balance: tuition this school year (net of discounts) − payments */}
-                        {s.yearTuition != null && (
-                          <p className="text-xs" style={{ color: 'var(--charcoal)' }}>
-                            <strong>Running balance:</strong> tuition this school year <span className="font-mono">{formatCurrency(s.yearTuition)}</span>
-                            <span style={{ color: 'var(--mid-gray)' }}> ({s.installments} × {formatCurrency(s.rate || 0)}{s.tuitionPlan ? `, ${s.tuitionPlan.toLowerCase()} plan` : ''}, after discounts)</span>
-                            {' '}− paid <span className="font-mono" style={{ color: '#166534' }}>{formatCurrency(paid)}</span>
-                            {' '}= <span className="font-mono font-semibold" style={{ color: (s.runningBalance || 0) > 0.005 ? '#c44b00' : '#166534' }}>{(s.runningBalance || 0) < -0.005 ? `${formatCurrency(-(s.runningBalance || 0))} credit` : formatCurrency(s.runningBalance || 0)}</span>
-                          </p>
+                        {s.semesters && (
+                          <div>
+                            <p className="text-[11px] font-semibold mb-1.5" style={{ color: 'var(--mid-gray)' }}>
+                              Running balance by semester{s.tuitionPlan ? ` · ${s.tuitionPlan.toLowerCase()} plan` : ''}{s.rate ? ` · ${formatCurrency(s.rate)} per installment, after discounts` : ''}
+                            </p>
+                            <table className="text-xs w-full" style={{ maxWidth: 720 }}>
+                              <thead><tr>{['Semester', 'Tuition', 'Paid', 'Balance', ''].map(h => <th key={h} className="text-left pr-4 pb-1 font-semibold" style={{ color: 'var(--mid-gray)' }}>{h}</th>)}</tr></thead>
+                              <tbody>
+                                {s.semesters.map(x => (
+                                  <tr key={x.semester} style={{ opacity: x.started ? 1 : 0.6 }}>
+                                    <td className="pr-4 py-0.5">{x.label}</td>
+                                    <td className="pr-4 py-0.5 font-mono">{formatCurrency(x.tuition)}</td>
+                                    <td className="pr-4 py-0.5 font-mono" style={{ color: '#166534' }}>{formatCurrency(x.paid)}</td>
+                                    <td className="pr-4 py-0.5 font-mono font-semibold" style={{ color: x.balance > 0.005 ? '#c44b00' : '#166534' }}>{formatCurrency(x.balance)}</td>
+                                    <td className="py-0.5 text-[11px]" style={{ color: 'var(--mid-gray)' }}>{x.started ? '' : 'not started yet'}</td>
+                                  </tr>
+                                ))}
+                                <tr className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                                  <td className="pr-4 pt-1 font-semibold">Running balance (semesters started)</td>
+                                  <td className="pr-4 pt-1 font-mono">{formatCurrency(s.semesters.filter(x => x.started).reduce((t, x) => t + x.tuition, 0))}</td>
+                                  <td className="pr-4 pt-1 font-mono" style={{ color: '#166534' }}>{formatCurrency(paid)}</td>
+                                  <td className="pr-4 pt-1 font-mono font-semibold" style={{ color: (s.runningBalance || 0) > 0.005 ? '#c44b00' : '#166534' }}>{balanceText(s.runningBalance || 0)}</td>
+                                  <td />
+                                </tr>
+                              </tbody>
+                            </table>
+                            <p className="text-[11px] mt-1" style={{ color: 'var(--mid-gray)' }}>
+                              Whole school year: {formatCurrency(s.yearTuition || 0)} tuition − {formatCurrency(paid)} paid = {balanceText((s.yearTuition || 0) - paid)} left. Payments fill Semester 1, then 2, then 3.
+                            </p>
+                          </div>
                         )}
                         {/* Overdue regular installments (Class Hub plan rules) */}
                         {overdue.length > 0 && (

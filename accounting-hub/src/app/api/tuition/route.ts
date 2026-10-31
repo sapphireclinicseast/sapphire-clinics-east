@@ -61,8 +61,8 @@ export async function GET(req: NextRequest) {
       plans: plans.filter(p => p.studentId === s.id),
       tuitionPlan: balanceOf.get(s.id)?.plan ?? null,
       rate: balanceOf.get(s.id)?.rate ?? null,
+      semesters: balanceOf.get(s.id)?.semesters ?? null,
       yearTuition: balanceOf.get(s.id)?.yearTuition ?? null,
-      installments: balanceOf.get(s.id)?.installments ?? null,
       runningBalance: balanceOf.get(s.id)?.runningBalance ?? null,
       // Regular installments overdue or due within 7 days (promissory ones are in plans).
       dues: (balanceOf.get(s.id)?.dues ?? []).filter(d => d.kind === 'REGULAR'),

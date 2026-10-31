@@ -22,7 +22,8 @@ interface Student {
   id: string; name: string; email: string; level: string | null; branch: string; patientId: string | null
   plan: TuitionPlan | null; rate: number | null; discountLabel: string | null
   isNew: boolean
-  paidThisSy: number; yearTuition: number | null; installments: number | null; runningBalance: number | null
+  paidThisSy: number; yearTuition: number | null; runningBalance: number | null
+  semesters: { semester: number; label: string; tuition: number; paid: number; balance: number; started: boolean }[] | null
   dues: Due[]; nextDue: Due | null
   payments: { period: string; amount: number; date: string; orderNumber: number | null; partial: boolean }[]
 }
@@ -178,11 +179,16 @@ function StudentCard({ student, onCollect }: { student: Student; onCollect: (t: 
             {student.plan ? <>{student.plan.toLowerCase()} plan{student.rate ? <> · {formatCurrency(student.rate)} per installment</> : null}</> : 'No plan yet — the first payment sets it'}
             {' · '}paid this school year <strong style={{ color: '#166534' }}>{formatCurrency(student.paidThisSy)}</strong>
           </p>
-          {student.yearTuition != null && student.runningBalance != null && (
+          {student.semesters && student.runningBalance != null && (
             <p style={{ color: 'var(--mid-gray)' }}>
-              Tuition this school year {formatCurrency(student.yearTuition)} ({student.installments} × {formatCurrency(student.rate || 0)}, after discounts) − paid {formatCurrency(student.paidThisSy)} ={' '}
+              {student.semesters.map(x => (
+                <span key={x.semester} className="mr-3" style={{ opacity: x.started ? 1 : 0.6 }}>
+                  Sem {x.semester}: {formatCurrency(x.paid)} of {formatCurrency(x.tuition)}{x.balance > 0.005 ? <strong style={{ color: '#c44b00' }}> · {formatCurrency(x.balance)} left</strong> : ' ✓'}
+                </span>
+              ))}
+              <br />Running balance (semesters started):{' '}
               <strong style={{ color: student.runningBalance > 0.005 ? '#c44b00' : '#166534' }}>
-                {student.runningBalance < -0.005 ? `${formatCurrency(-student.runningBalance)} credit` : `${formatCurrency(student.runningBalance)} running balance`}
+                {student.runningBalance < -0.005 ? `${formatCurrency(-student.runningBalance)} paid ahead` : formatCurrency(student.runningBalance)}
               </strong>
             </p>
           )}

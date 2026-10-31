@@ -285,15 +285,62 @@ export function regularDues(args: {
   return out
 }
 
+/** School months billed in each semester (tuition runs Jun–Mar, 10 months). */
+export const SEMESTER_BILLING_MONTHS: Record<1 | 2 | 3, number[]> = { 1: [6, 7, 8], 2: [9, 10, 11, 12], 3: [1, 2, 3] }
+
+export interface SemesterBalance {
+  semester: 1 | 2 | 3; label: string; start: string; end: string
+  tuition: number; paid: number; balance: number; started: boolean
+}
+
 /**
- * This school year's tuition for a student, net of any discount they availed:
- * their installment (already after the discount) × the installments from the
- * first one they paid to the end of the year — a mid-year enrolee is not
- * charged for the months before they started.
+ * The running balance, kept by semester (Hannah, 2026-10-31). Each semester's
+ * tuition, net of discounts:
+ *   MONTHLY  — the installment × the school months in it (3 / 4 / 3), from the
+ *              first month the student paid (a mid-year enrolee owes nothing
+ *              before they started);
+ *   BIANNUAL — the 1st installment covers all of Semester 1 and half of
+ *              Semester 2, the 2nd the other half of Semester 2 and all of
+ *              Semester 3, i.e. 0.6 / 0.8 / 0.6 of an installment;
+ *   ANNUAL   — the one payment spread over the year 3 : 4 : 3.
+ * Payments fill the semesters in order. The running balance is the tuition of
+ * every semester that has started, less everything paid (negative = paid ahead).
  */
-export function yearTuition(args: { plan: TuitionPlan; rate: number; schoolYear: number; payments: { period: string }[] }): { installments: number; total: number } {
-  const periods = schoolYearPeriods(args.plan, args.schoolYear)
-  const first = periods.findIndex(p => args.payments.some(r => periodMatches(r.period, p)))
-  const installments = periods.length - Math.max(0, first)
-  return { installments, total: Math.round(args.rate * installments * 100) / 100 }
+export function semesterBalances(args: {
+  plan: TuitionPlan; rate: number; schoolYear: number; today: string
+  payments: { period: string; amount: number }[]
+}): { semesters: SemesterBalance[]; runningBalance: number; yearTuition: number; paid: number } {
+  const { plan, rate, schoolYear: sy, today } = args
+  const r2 = (n: number) => Math.round(n * 100) / 100
+  let firstMonth = 0 // index into Jun..Mar of the first month paid (monthly only)
+  if (plan === 'MONTHLY') {
+    const months = schoolYearPeriods('MONTHLY', sy)
+    const i = months.findIndex(p => args.payments.some(x => periodMatches(x.period, p)))
+    firstMonth = Math.max(0, i)
+  }
+  const order = [6, 7, 8, 9, 10, 11, 12, 1, 2, 3]
+  const tuitionOf = (sem: 1 | 2 | 3): number => {
+    if (plan === 'MONTHLY') return r2(rate * SEMESTER_BILLING_MONTHS[sem].filter(m => order.indexOf(m) >= firstMonth).length)
+    const share = SEMESTER_BILLING_MONTHS[sem].length / 10
+    return r2((plan === 'BIANNUAL' ? 2 * rate : rate) * share)
+  }
+  let pool = r2(args.payments.reduce((t, p) => t + p.amount, 0))
+  const paidTotal = pool
+  const semesters = ([1, 2, 3] as const).map(sem => {
+    const { start, end } = semesterRange(sy, sem)
+    const tuition = tuitionOf(sem)
+    const paid = r2(Math.min(pool, tuition))
+    pool = r2(pool - paid)
+    return {
+      semester: sem, label: `${SEMESTERS[sem - 1].label} (${SEMESTERS[sem - 1].months})`, start, end,
+      tuition, paid, balance: r2(tuition - paid), started: today >= start,
+    }
+  })
+  const dueToDate = semesters.filter(s => s.started).reduce((t, s) => t + s.tuition, 0)
+  return {
+    semesters,
+    runningBalance: r2(dueToDate - paidTotal),
+    yearTuition: r2(semesters.reduce((t, s) => t + s.tuition, 0)),
+    paid: paidTotal,
+  }
 }
