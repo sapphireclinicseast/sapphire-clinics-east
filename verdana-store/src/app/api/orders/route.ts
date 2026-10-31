@@ -13,8 +13,17 @@ async function readOrders() {
   }
 }
 
+// The order list carries customers' names, addresses and phone numbers, so it
+// answers only the accounting hub (server to server, shared secret) — never an
+// anonymous browser. Refuses outright when no secret is configured.
+function fromHub(request: Request): boolean {
+  const secret = process.env.WEIGHT_SYNC_SECRET || ''
+  return Boolean(secret) && request.headers.get('x-sync-secret') === secret
+}
+
 // GET — list all orders (used by accounting system)
 export async function GET(request: Request) {
+  if (!fromHub(request)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { searchParams } = new URL(request.url)
   const status = searchParams.get('status') // pending, preparing, shipped, delivered
   const limit = parseInt(searchParams.get('limit') || '50', 10)
@@ -36,6 +45,7 @@ export async function GET(request: Request) {
 
 // PUT — update delivery status
 export async function PUT(request: Request) {
+  if (!fromHub(request)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   try {
     const { orderId, deliveryStatus } = await request.json()
 

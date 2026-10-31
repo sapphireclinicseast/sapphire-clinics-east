@@ -142,7 +142,15 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const session = await auth()
+  // The Verdana online-store sync records paid web orders through this same
+  // handler (stock, FIFO cost and the order journal stay on one path),
+  // authenticating with the shared internal secret as the first admin.
+  const internalSecret = process.env.NEXTAUTH_SECRET
+  const isInternal = Boolean(internalSecret) && req.headers.get('x-internal-secret') === internalSecret
+  const systemUser = isInternal
+    ? await prisma.user.findFirst({ where: { role: 'ADMIN' }, orderBy: { createdAt: 'asc' }, select: { id: true, name: true, role: true } })
+    : null
+  const session = systemUser ? { user: { id: systemUser.id, name: systemUser.name, role: systemUser.role as string } } : await auth()
   if (!session?.user || !WRITE_ROLES.includes(session.user.role as string)) {
     return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
   }

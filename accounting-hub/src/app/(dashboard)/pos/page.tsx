@@ -7609,7 +7609,7 @@ function OnlineOrdersWidget() {
 
   const loadOrders = useCallback(async () => {
     try {
-      const res = await fetch('https://verdanarehab.com/api/orders?limit=20')
+      const res = await fetch('/api/verdana-store/orders?limit=20')
       const data = await res.json()
       setOrders(data.orders || [])
     } catch (err) {
@@ -7623,7 +7623,7 @@ function OnlineOrdersWidget() {
   async function updateDeliveryStatus(orderId: string, status: string) {
     setUpdatingId(orderId)
     try {
-      await fetch('https://verdanarehab.com/api/orders', {
+      await fetch('/api/verdana-store/orders', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orderId, deliveryStatus: status }),

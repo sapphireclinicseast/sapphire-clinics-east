@@ -38,6 +38,7 @@
 import type { PrismaClient } from '@prisma/client'
 import { PAYMONGO_ACCOUNTS, listPayouts, listPayoutTransactions, listWallets, listWalletTransactions, paymongoConfigured, parsePayout } from '@/lib/paymongo'
 import { postJournalEntry, type PostingLine } from './posting'
+import { syncStoreOrders } from '@/lib/verdana-store-sync'
 
 const POSTING_FROM = new Date('2026-06-17T00:00:00+08:00')
 const SUSPENSE_NUMBER = '2990'
@@ -61,6 +62,10 @@ export async function syncPayouts(prisma: PrismaClient, userId: string): Promise
 
   // Stamp the sync time up front so the on-load poll is throttled even if the API is slow/down.
   await prisma.paymongoSettings.update({ where: { id: 'singleton' }, data: { lastSyncAt: new Date() } })
+
+  // Online-store sales first, so a payout finds its sale's clearing balance
+  // instead of parking the money in suspense.
+  try { await syncStoreOrders(prisma) } catch (e) { console.error('[PayMongo] store order sync failed:', e) }
 
   // Branch clearings = the accounts the PayMongo payment modes post to.
   const modes = await prisma.paymentMode.findMany({
