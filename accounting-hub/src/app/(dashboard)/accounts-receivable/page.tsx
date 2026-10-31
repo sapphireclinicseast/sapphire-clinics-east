@@ -116,6 +116,18 @@ function formatDate(d: string) {
   return new Date(d).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
+// AR collection reference ("AHEA-AR26-0015", "AR25-0022"). It has always been
+// keyed at the head of the payment's notes, so it is read from — and saved to —
+// there rather than a field of its own.
+const AR_REF_RE = /\b(?:(?:AHEA|AHGH|VER)-)?AR\d{2}-\d{3,5}\b/
+const arRefOf = (notes?: string | null) => notes?.match(AR_REF_RE)?.[0] || ''
+const notesWithoutRef = (notes?: string | null) =>
+  (notes || '').replace(new RegExp(`${AR_REF_RE.source}\\s*[;|:–-]?\\s*`), '').trim()
+const notesWithRef = (ref: string, notes: string) =>
+  [ref.trim(), notesWithoutRef(notes)].filter(Boolean).join('; ')
+// Page branch → the prefix its AR references carry.
+const AR_REF_PREFIX: Record<string, string> = { SANDBOX_EAST: 'AHEA', SANDBOX_GREENHILLS: 'AHGH', VERDANA_STORE: 'VER' }
+
 // Helper: parse arProofUrl which may be a plain URL, or a JSON array whose
 // entries are "url" strings or { url, locked } objects (locked files can't be
 // removed until deliberately unlocked).
@@ -513,6 +525,7 @@ export default function AccountsReceivablePage() {
   const [payDiscountSearch, setPayDiscountSearch] = useState('')
   const [payNotes, setPayNotes] = useState('')
   const [paySalesInvoice, setPaySalesInvoice] = useState('')
+  const [payRef, setPayRef] = useState('')
   const [payProofUrls, setPayProofUrls] = useState<string[]>([])
   const [paySelectedOrders, setPaySelectedOrders] = useState<string[]>([])
   // The page's `orders` list is capped to the 500 newest, so old (e.g. imported
@@ -907,6 +920,7 @@ export default function AccountsReceivablePage() {
   const payCols = useMemo(() => ([
     { key: 'date',    label: 'Date',            text: (p: ARPaymentRecord) => formatDate(p.paymentDate),
       sort: (p: ARPaymentRecord) => new Date(p.paymentDate).getTime() },
+    { key: 'ref',     label: 'Reference No.',   text: (p: ARPaymentRecord) => arRefOf(p.notes) },
     { key: 'si',      label: 'SI Number',       text: (p: ARPaymentRecord) => p.salesInvoiceNumber || '' },
     { key: 'agency',  label: 'Provider/Agency', text: (p: ARPaymentRecord) => wallets.find(w => w.id === p.walletId)?.patientName || '' },
     { key: 'amount',  label: 'Amount',          text: (p: ARPaymentRecord) => formatCurrency(toNum(p.amount)),
@@ -916,7 +930,7 @@ export default function AccountsReceivablePage() {
     { key: 'account', label: 'Debit Account',   text: (p: ARPaymentRecord) => p.cashAccount ? `${p.cashAccount.accountNumber} ${p.cashAccount.accountTitle}` : '' },
     { key: 'orders',  label: 'Orders',          text: (p: ARPaymentRecord) => String(p.items?.length ?? 0),
       sort: (p: ARPaymentRecord) => p.items?.length ?? 0, numeric: true },
-    { key: 'notes',   label: 'Notes',           text: (p: ARPaymentRecord) => p.notes || '' },
+    { key: 'notes',   label: 'Notes',           text: (p: ARPaymentRecord) => notesWithoutRef(p.notes) },
     { key: 'proof',   label: 'Proof',           text: () => '' },
     { key: 'by',      label: 'Recorded By',     text: (p: ARPaymentRecord) => p.createdBy?.name || '' },
   ]), [wallets])
@@ -1018,6 +1032,13 @@ export default function AccountsReceivablePage() {
     setPayOverpayAccountId('')
     setPayNotes('')
     setPaySalesInvoice('')
+    setPayRef('')
+    // Pre-fill the branch's next AR reference; still editable.
+    const today = new Date().toISOString().split('T')[0]
+    fetch(`/api/accounts-receivable/payments/next-ref?date=${today}`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { const next = d?.next?.[AR_REF_PREFIX[branch] || 'AHEA']; if (next) setPayRef(cur => cur || next) })
+      .catch(() => {})
     setPayProofUrls([])
     setPaySelectedOrders([])
     setPayError('')
@@ -1040,7 +1061,8 @@ export default function AccountsReceivablePage() {
     setPayCashAccountId(p.cashAccountId || '')
     setPayCashAccountSearch(p.cashAccount ? `${p.cashAccount.accountNumber} ${p.cashAccount.accountTitle}` : '')
     setPayOverpayAccountId(p.overpaymentAccountId || '')
-    setPayNotes(p.notes || '')
+    setPayRef(arRefOf(p.notes))
+    setPayNotes(notesWithoutRef(p.notes))
     setPaySalesInvoice(p.salesInvoiceNumber || '')
     setPayProofUrls(parseProofUrls(p.proofUrl))
     setPaySelectedOrders(p.items.map(i => i.orderId))
@@ -1094,7 +1116,7 @@ export default function AccountsReceivablePage() {
           overpaymentAccountId: payOverpay > 0 ? payOverpayAccountId : null,
           orderIds: paySelectedOrders,
           proofUrl: payProofUrls.length > 0 ? JSON.stringify(payProofUrls) : null,
-          notes: payNotes || null,
+          notes: notesWithRef(payRef, payNotes) || null,
           salesInvoiceNumber: paySalesInvoice || null,
           branch: branch || null,
         }),
@@ -1368,13 +1390,14 @@ export default function AccountsReceivablePage() {
     // 4) Payment history
     const paymentRows = arPayments.map(p => [
       formatDate(p.paymentDate),
+      arRefOf(p.notes) || '—',
       p.salesInvoiceNumber || '—',
       wallets.find(w => w.id === p.walletId)?.patientName || '—',
       money(toNum(p.amount)),
       money(toNum(p.discount)),
       p.cashAccount ? `${p.cashAccount.accountNumber} ${p.cashAccount.accountTitle}` : '—',
       String(p.items?.length ?? 0),
-      p.notes || '',
+      notesWithoutRef(p.notes),
       p.createdBy?.name || '—',
     ])
 
@@ -1404,7 +1427,7 @@ export default function AccountsReceivablePage() {
         ]),
         {
           heading: 'Payment History',
-          headers: ['Date', 'SI Number', isGL ? 'Agency' : 'Provider', 'Amount', 'Discount', 'Debit Account', 'Orders', 'Notes', 'Recorded By'],
+          headers: ['Date', 'Reference No.', 'SI Number', isGL ? 'Agency' : 'Provider', 'Amount', 'Discount', 'Debit Account', 'Orders', 'Notes', 'Recorded By'],
           rows: paymentRows,
         },
       ],
@@ -2264,7 +2287,7 @@ export default function AccountsReceivablePage() {
               </thead>
               <tbody>
                 {shownPayments.length === 0 && (
-                  <tr><td colSpan={11} className="text-center py-8 text-xs" style={{ color: 'var(--mid-gray)' }}>
+                  <tr><td colSpan={12} className="text-center py-8 text-xs" style={{ color: 'var(--mid-gray)' }}>
                     {arPayments.length > 0
                       ? (paySearch.trim()
                           ? `No payment matches “${paySearch.trim()}”.`
@@ -2278,6 +2301,7 @@ export default function AccountsReceivablePage() {
                   return (
                     <tr key={p.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
                       <td className="px-3 py-2">{formatDate(p.paymentDate)}</td>
+                      <td className="px-3 py-2 font-mono whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{arRefOf(p.notes) || '—'}</td>
                       <td className="px-3 py-2 font-mono" style={{ color: 'var(--charcoal)' }}>{p.salesInvoiceNumber || '—'}</td>
                       <td className="px-3 py-2">{wallet?.patientName || '—'}</td>
                       <td className="px-3 py-2 font-medium" style={{ color: '#166534' }}>
@@ -2292,7 +2316,7 @@ export default function AccountsReceivablePage() {
                       <td className="px-3 py-2">{toNum(p.discount) > 0 ? formatCurrency(toNum(p.discount)) : '—'}</td>
                       <td className="px-3 py-2" style={{ color: 'var(--teal)' }}>{p.cashAccount ? `${p.cashAccount.accountNumber} ${p.cashAccount.accountTitle}` : '—'}</td>
                       <td className="px-3 py-2">{p.items.length} orders</td>
-                      <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{p.notes || '—'}</td>
+                      <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{notesWithoutRef(p.notes) || '—'}</td>
                       <td className="px-3 py-2">
                         {proofFiles.length === 0 ? (
                           <span style={{ color: 'var(--light-gray)' }}>—</span>
@@ -3642,6 +3666,14 @@ export default function AccountsReceivablePage() {
                     placeholder="SI issued for this collection"
                     className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
                 </div>
+              </div>
+
+              {/* AR reference — saved at the head of the notes, where it has always lived */}
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Reference No.</label>
+                <input type="text" value={payRef} onChange={e => setPayRef(e.target.value.toUpperCase())}
+                  placeholder="e.g. AHEA-AR26-0016"
+                  className="w-full px-3 py-2.5 rounded-xl border text-sm font-mono outline-none" style={{ borderColor: 'var(--light-gray)' }} />
               </div>
 
               {/* Amount */}
