@@ -221,8 +221,13 @@ async function recordOne(
   for (const id of touched.items) {
     const delta = (before.items.get(id) ?? 0) - (after.items.get(id) ?? 0)
     if (delta <= 0) continue
+    // An audit count, or a hand correction of the count on the item form, after
+    // the sale already reflects the units having left.
     const audit = await prisma.inventoryAdjustment.findFirst({
-      where: { itemId: id, countedQuantity: { not: null }, adjustmentDate: { gt: paidAt } },
+      where: {
+        itemId: id, adjustmentDate: { gt: paidAt },
+        OR: [{ countedQuantity: { not: null } }, { remarks: 'Quantity edited via item form' }],
+      },
       select: { adjustmentDate: true }, orderBy: { adjustmentDate: 'asc' },
     })
     if (!audit) continue
@@ -234,7 +239,7 @@ async function recordOne(
         previousQuantity: item.quantity, newQuantity: item.quantity + delta,
         remainingQuantity: delta, localCost: Number(item.unitCost || 0),
         adjustmentDate: new Date(),
-        remarks: `Online order ${o.id} recorded late — the ${audit.adjustmentDate.toISOString().slice(0, 10)} audit already counted these units out`,
+        remarks: `Online order ${o.id} recorded late — the ${audit.adjustmentDate.toISOString().slice(0, 10)} count already took these units out`,
         adjustedById: ctx.adminId,
       },
     })

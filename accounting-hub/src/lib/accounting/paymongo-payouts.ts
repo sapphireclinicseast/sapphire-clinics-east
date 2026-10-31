@@ -92,8 +92,10 @@ export async function syncPayouts(prisma: PrismaClient, userId: string): Promise
     try { payouts = await listPayouts(acct.code, { limit: 20 }) }
     catch (e) { console.error(`[PayMongo] listPayouts failed for ${acct.code}:`, e); continue }
 
-    for (const raw of payouts) {
-      const p = parsePayout(raw)
+    // Oldest first: each payout claims the clearing balance open on its own
+    // date, so a later payout must not take an earlier one's share first.
+    const ordered = payouts.map(raw => parsePayout(raw)).sort((a, b) => (a.paidAt?.getTime() ?? 0) - (b.paidAt?.getTime() ?? 0))
+    for (const p of ordered) {
       if (!p.settled || p.netPhp <= 0 || !p.paidAt || p.paidAt < POSTING_FROM) continue
       const dup = await prisma.journalEntry.findFirst({
         where: { referenceType: 'PAYMONGO_PAYOUT', referenceId: p.payoutId }, select: { id: true },
