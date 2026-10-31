@@ -2300,10 +2300,19 @@ export default function AccountsReceivablePage() {
                 {shownPayments.map(p => {
                   const wallet = wallets.find(w => w.id === p.walletId)
                   const proofFiles = parseProofUrls(p.proofUrl)
+                  // "[FOR REVIEW]" in the notes: recorded but awaiting the HMO
+                  // officer's check (e.g. the Valucare PNs that paid some LOAs twice).
+                  const forReview = /\[FOR REVIEW\]/i.test(p.notes || '')
                   return (
-                    <tr key={p.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                    <tr key={p.id} className="border-t" style={{ borderColor: 'var(--light-gray)', ...(forReview ? { background: '#fffbeb', boxShadow: 'inset 3px 0 0 #f59e0b' } : {}) }}>
                       <td className="px-3 py-2">{formatDate(p.paymentDate)}</td>
-                      <td className="px-3 py-2 font-mono whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{arRefOf(p.notes) || '—'}</td>
+                      <td className="px-3 py-2 font-mono whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>
+                        {arRefOf(p.notes) || '—'}
+                        {forReview && (
+                          <span className="block mt-0.5 w-fit px-1.5 py-0.5 rounded-full text-[9px] font-sans font-bold" style={{ background: '#fef3c7', color: '#92400e' }}
+                            title="Recorded, but the HMO officer is double-checking it — see the notes">For review</span>
+                        )}
+                      </td>
                       <td className="px-3 py-2 font-mono" style={{ color: 'var(--charcoal)' }}>{p.salesInvoiceNumber || '—'}</td>
                       <td className="px-3 py-2">{wallet?.patientName || '—'}</td>
                       <td className="px-3 py-2 font-medium" style={{ color: '#166534' }}>
