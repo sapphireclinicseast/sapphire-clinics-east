@@ -359,9 +359,6 @@ export interface AuthSession {
   branch?: Branch
 }
 
-export const ADMIN_EMAIL = 'main@sapphireclinicseast.org'
-export const ADMIN_PASSWORD = 'SCEI'
-
 export function getUsers(): StoredUser[] {
   if (typeof window === 'undefined') return []
   try {

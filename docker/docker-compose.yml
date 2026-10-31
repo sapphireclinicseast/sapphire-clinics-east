@@ -99,6 +99,9 @@ services:
       PATIENT_PORTAL_SECRET: ${PATIENT_PORTAL_SECRET}
       CLIENT_PORTAL_URL: ${CLIENT_PORTAL_URL:-https://client.sapphireclinicseast.org}
       CLASS_PORTAL_JWT_SECRET: ${CLASS_PORTAL_JWT_SECRET}
+      # Class Hub main-admin password as an scrypt hash. Generate with
+      # `node scripts/hash-class-portal-admin-password.mjs`. Unset = admin sign-in disabled.
+      CLASS_PORTAL_ADMIN_PASSWORD_HASH: ${CLASS_PORTAL_ADMIN_PASSWORD_HASH}
       AURORA_ADMIN_TOKEN: ${AURORA_ADMIN_TOKEN}
       # Auth for the VPS crontab that fires /api/public/class-portal/cron/payment-reminders.
       CRON_SECRET: ${CRON_SECRET}

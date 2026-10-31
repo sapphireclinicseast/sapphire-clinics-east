@@ -1,11 +1,13 @@
 // Class-portal auth helpers — used by /api/public/class-portal/* routes.
 // Tokens are HS256 JWTs signed with CLASS_PORTAL_JWT_SECRET. Passwords are
-// bcrypt'd. The admin role is virtual (hardcoded creds), no DB row.
+// bcrypt'd. The admin role is virtual (no DB row); its password exists only
+// as an scrypt hash in the server env (CLASS_PORTAL_ADMIN_PASSWORD_HASH).
 
 import bcrypt from 'bcryptjs'
+import { scrypt, timingSafeEqual } from 'crypto'
+import { promisify } from 'util'
 
 const ADMIN_EMAIL = 'main@sapphireclinicseast.org'
-const ADMIN_PASSWORD = 'SCEI'
 const FRONTDESK_EMAIL = 'frontdesk@sapphireclinicseast.org'
 const FRONTDESK_PASSWORD = 'FRONTDESK'
 const TOKEN_TTL_SECONDS = 60 * 60 * 24 * 30 // 30 days
@@ -100,8 +102,29 @@ export async function comparePassword(pw: string, hash: string): Promise<boolean
   return bcrypt.compare(pw, hash)
 }
 
-export function isAdminCredentials(email: string, password: string): boolean {
-  return email.trim().toLowerCase() === ADMIN_EMAIL && password === ADMIN_PASSWORD
+const scryptAsync = promisify(scrypt) as (pw: string, salt: Buffer, keylen: number) => Promise<Buffer>
+
+/** Parse CLASS_PORTAL_ADMIN_PASSWORD_HASH = `scrypt:<salt>:<key>` (base64url),
+ *  as printed by scripts/hash-class-portal-admin-password.mjs. The format has
+ *  no `$`, so docker compose can't mangle it while interpolating the env file. */
+function adminPasswordHash(): { salt: Buffer; key: Buffer } | null {
+  const parts = (process.env.CLASS_PORTAL_ADMIN_PASSWORD_HASH ?? '').trim().split(':')
+  if (parts.length !== 3 || parts[0] !== 'scrypt') return null
+  const salt = Buffer.from(parts[1], 'base64url')
+  const key = Buffer.from(parts[2], 'base64url')
+  if (salt.length < 16 || key.length < 32) return null
+  return { salt, key }
+}
+
+/** Check a main-admin sign-in. Returns null when the hash env is missing or
+ *  malformed, so the caller can say "not configured" rather than reporting a
+ *  wrong password. */
+export async function checkAdminCredentials(email: string, password: string): Promise<boolean | null> {
+  const hash = adminPasswordHash()
+  if (!hash) return null
+  if (email.trim().toLowerCase() !== ADMIN_EMAIL) return false
+  const actual = await scryptAsync(password, hash.salt, hash.key.length)
+  return timingSafeEqual(actual, hash.key)
 }
 
 export function isFrontdeskCredentials(email: string, password: string): boolean {

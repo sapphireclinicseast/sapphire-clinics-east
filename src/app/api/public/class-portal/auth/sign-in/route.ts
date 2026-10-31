@@ -7,7 +7,7 @@ import { prisma } from '@/lib/prisma'
 import {
   signToken,
   comparePassword,
-  isAdminCredentials,
+  checkAdminCredentials,
   isFrontdeskCredentials,
   CLASS_PORTAL_ADMIN_EMAIL,
   CLASS_PORTAL_FRONTDESK_EMAIL,
@@ -36,9 +36,14 @@ export async function POST(req: Request) {
     return withCors(NextResponse.json({ error: 'Invalid role.' }, { status: 400 }), origin)
   }
 
-  // Admin: virtual user, hardcoded creds.
+  // Admin: virtual user, password checked against the server-only env hash.
   if (role === 'ADMIN') {
-    if (!isAdminCredentials(email, password)) {
+    const adminOk = await checkAdminCredentials(email, password)
+    if (adminOk === null) {
+      console.error('[class-portal sign-in] CLASS_PORTAL_ADMIN_PASSWORD_HASH is missing or malformed — main admin sign-in is disabled.')
+      return withCors(NextResponse.json({ error: 'Main admin sign-in is not configured on the server.' }, { status: 503 }), origin)
+    }
+    if (!adminOk) {
       return withCors(NextResponse.json({ error: 'Invalid admin credentials.' }, { status: 401 }), origin)
     }
     const token = await signToken({ role: 'ADMIN', email: CLASS_PORTAL_ADMIN_EMAIL })
