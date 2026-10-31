@@ -1201,6 +1201,48 @@ model ComplianceDeadline {
 // paid and the sale is re-posted on its own date. One row per adjustment keeps
 // the billed amount and the original lines for the order history, and drives
 // the Payroll alert for PF already released at the higher amount.
+// An HMO payment released straight to a doctor (e.g. an Intellicare or Avega PV
+// for MD consults made out to the clinician). Documentation only: no cash
+// reached SCEI, so nothing posts to the GL and AR is untouched — the consults it
+// covers are linked so they read "paid direct" in AR.
+model ClinicianHmoPayment {
+  id            String   @id @default(cuid())
+  walletId      String // the HMO that paid
+  clinicianName String
+  pvNumber      String?
+  pvDate        DateTime
+  checkNumber   String?
+  grossAmount   Decimal  @default(0) // professional fees before VAT / WHT
+  vatAmount     Decimal  @default(0)
+  wtaxAmount    Decimal  @default(0)
+  netAmount     Decimal  @default(0) // cheque amount
+  proofUrl      String?
+  notes         String?
+  branch        String?
+  createdById   String
+  createdByName String?
+  createdAt     DateTime @default(now())
+
+  items ClinicianHmoPaymentItem[]
+
+  @@index([walletId])
+  @@index([pvDate])
+}
+
+model ClinicianHmoPaymentItem {
+  id          String              @id @default(cuid())
+  paymentId   String
+  payment     ClinicianHmoPayment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  orderId     String? // the hub consult session, when there is one
+  patientName String?
+  loaNumber   String?
+  loaDate     DateTime?
+  amount      Decimal             @default(0)
+
+  @@index([paymentId])
+  @@index([orderId])
+}
+
 model OrderHmoSettlement {
   id             String    @id @default(cuid())
   orderId        String

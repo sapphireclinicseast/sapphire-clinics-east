@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef, Fragment } from 'react'
 import LoaSubmissionsTab from './LoaSubmissionsTab'
 import RevisedSessionsTab from './RevisedSessionsTab'
+import ClinicianPaymentsPanel from './ClinicianPaymentsPanel'
 import { useSession } from 'next-auth/react'
 import { userBranchScope } from '@/lib/branch-scope'
 import { branchLabel } from '@/lib/branch'
@@ -68,6 +69,7 @@ interface AROrder {
   soaSubmissionItems?: { submission: { id?: string; submittedDate: string; referenceNo?: string | null } }[]
   soaApprovalStatus?: string | null   // APPROVED | DISAPPROVED | null (pending)
   soaBranch?: string | null           // Reassign: branch whose SOA generation picks this up; null = own branch
+  clinicianPayment?: { pvNumber: string | null; clinicianName: string; pvDate: string } | null // HMO paid the doctor directly (Payments to Doctors)
 }
 
 interface ARSummary {
@@ -2359,6 +2361,15 @@ export default function AccountsReceivablePage() {
           </ExpandablePanel>
         </div>
       )}
+      {/* HMO payments made out to the doctor — documentation only, kept apart
+          from our collections above because they never touch our AR or cash. */}
+      {tab === 'HMO' && (
+        <ClinicianPaymentsPanel
+          wallets={wallets.map(w => ({ id: w.id, name: w.patientName }))}
+          canWrite={canEditGlCase && !isFrontdesk}
+          branch={branch}
+          onSaved={fetchData} />
+      )}
       </>}
 
       {/* ── Overview content, continued: Filters + Consumption ── */}
@@ -3069,6 +3080,13 @@ export default function AccountsReceivablePage() {
                           {formatDate(o.transactionDate)}
                           {isDirect && (
                             <span className="ml-1 px-1.5 py-0.5 rounded-full text-[9px] font-semibold whitespace-nowrap" title="The HMO pays the clinician directly — not part of our AR" style={{ background: '#ffedd5', color: '#c2410c' }}>direct to clinician</span>
+                          )}
+                          {o.clinicianPayment && (
+                            <span className="ml-1 px-1.5 py-0.5 rounded-full text-[9px] font-semibold whitespace-nowrap"
+                              title={`Paid by the HMO to ${o.clinicianPayment.clinicianName} on ${formatDate(o.clinicianPayment.pvDate)} — Payment History → Payments to Doctors`}
+                              style={{ background: '#dcfce7', color: '#166534' }}>
+                              paid{o.clinicianPayment.pvNumber ? ` · ${o.clinicianPayment.pvNumber}` : ''}
+                            </span>
                           )}
                         </td>
                         {/* Change Date cell */}

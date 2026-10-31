@@ -393,7 +393,19 @@ export async function GET(req: Request) {
         })
       : []
 
-    return NextResponse.json({ wallets: walletsOut, orders, arPayments, summary, glCases })
+    // Consults the HMO paid straight to the doctor (Payment History → Payments
+    // to Doctors): carried so AR can show them as paid direct.
+    // Never let this annotation take the AR page down (e.g. table not yet created).
+    const cpItems = orders.length
+      ? await prisma.clinicianHmoPaymentItem.findMany({
+          where: { orderId: { in: orders.map(o => o.id) } },
+          select: { orderId: true, payment: { select: { pvNumber: true, clinicianName: true, pvDate: true } } },
+        }).catch(err => { console.error('[AR] clinician payments lookup failed:', err); return [] })
+      : []
+    const cpByOrder = new Map(cpItems.map(i => [i.orderId as string, i.payment]))
+    const ordersOut = orders.map(o => ({ ...o, clinicianPayment: cpByOrder.get(o.id) ?? null }))
+
+    return NextResponse.json({ wallets: walletsOut, orders: ordersOut, arPayments, summary, glCases })
   } catch (err) {
     console.error('AR API error:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
