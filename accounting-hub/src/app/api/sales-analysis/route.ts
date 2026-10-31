@@ -131,7 +131,9 @@ export async function GET(req: Request) {
         })
       }
       for (const it of o.items) {
-        const dept = it.service?.department || it.inventoryItem?.skuDepartment || 'OTHER'
+        // Every product is Merchandise: skuDepartment tags the shelf a product sits on
+        // (OT chews, speech toys), and its codes don't match the service departments.
+        const dept = it.inventoryItem ? 'MER' : (it.service?.department || 'OTHER')
         deptGross.set(dept, (deptGross.get(dept) || 0) + Number(it.lineTotal))
       }
       for (const p of o.payments) {

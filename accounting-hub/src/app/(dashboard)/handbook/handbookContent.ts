@@ -799,7 +799,7 @@ export const SECTIONS: Section[] = [
         `Set **Branch** and **Date From / To**, then click **Generate**.`,
         `Read the KPIs (**Gross Sales**, **Net Sales**) and the tables — Gross Sales by Department, By Form of Payment, Unearned Revenue by wallet, and Gross/Net by Age. Click any column heading to re-sort.`,
       ] },
-      { k: 'note', label: 'Note.', t: `Earned sales only — voided/returned and unearned-revenue orders are excluded. "Unknown" age means the order has no linked patient or birthday. No export button.` },
+      { k: 'note', label: 'Note.', t: `Earned sales only — voided/returned and unearned-revenue orders are excluded. Departments count service revenue; every product sale (chews, toys, books) counts under Merchandise. "Unknown" age means the order has no linked patient or birthday. No export button.` },
     ],
   },
 
