@@ -335,8 +335,9 @@ function initNavbar() {
   const navbar = document.getElementById('navbar');
   if (!navbar) return;
 
+  const hero = document.getElementById('home');
   const update = () => {
-    if (window.scrollY > 60) {
+    if (!hero || window.scrollY > 60) {
       navbar.classList.add('scrolled');
       navbar.classList.remove('hero-top');
     } else {
