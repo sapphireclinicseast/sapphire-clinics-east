@@ -1033,11 +1033,18 @@ jobs:
             # back to $DEPLOY_DIR (2026-10-31: a deleted tuition route broke two
             # builds). Remove what the index has but origin/main does not, never
             # touching rsync-excluded paths. Non-fatal: worst case is the old state.
+            # accounting-hub/src/ gets its own pass because the rsync deploys its
+            # uploads dirs (route segments); everywhere else uploads stays skipped.
             echo "→ Removing files deleted from git out of the mirror..."
-            git diff-index --cached --name-only --diff-filter=A -z origin/main -- \
-                accounting-hub/ client-portal/ teletherapy/ .github/ scripts/ \
-              | { grep -zvE '(^|/)(node_modules|\.next|uploads)(/|$)|/docker/\.env' || :; } \
-              | xargs -0r git --literal-pathspecs rm -f -- \
+            {
+              git diff-index --cached --name-only --diff-filter=A -z origin/main -- \
+                  accounting-hub/ client-portal/ teletherapy/ .github/ scripts/ \
+                  ':(exclude)accounting-hub/src/' \
+                | { grep -zvE '(^|/)(node_modules|\.next|uploads)(/|$)|/docker/\.env' || :; } &&
+              git diff-index --cached --name-only --diff-filter=A -z origin/main -- \
+                  accounting-hub/src/ \
+                | { grep -zvE '(^|/)(node_modules|\.next)(/|$)' || :; }
+            } | xargs -0r git --literal-pathspecs rm -f -- \
               || echo "   ⚠ Could not prune deleted files (non-fatal)."
             echo "   accounting-hub/ synced to: $(git log -1 --oneline origin/main -- accounting-hub/)"
             echo "   client-portal/  synced to: $(git log -1 --oneline origin/main -- client-portal/)"
