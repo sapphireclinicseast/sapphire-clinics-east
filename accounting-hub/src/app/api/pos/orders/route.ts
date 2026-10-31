@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { TUITION_SERVICE_NAME } from '@/lib/tuition'
 import { classHubMethod, recordClassHubPayment } from '@/lib/tuition-server'
 import { prisma } from '@/lib/prisma'
+import { glOverdraws, glOverdrawMessage } from '@/lib/gl-balance'
 import { parsePagination, paginatedResult } from '@/lib/pagination'
 import { consumeFifoLots, recalcWeightedUnitCost } from '@/lib/fifo'
 import { postJournalEntry, UnbalancedJournalEntryError } from '@/lib/accounting/posting'
@@ -252,6 +253,14 @@ export async function POST(req: Request) {
           { error: `Payments total ₱${paidTotal.toFixed(2)} but the net amount is ₱${netAmount.toFixed(2)}. The collected amount must equal the net amount — check the discount and downpayment math before completing the order.` },
           { status: 400 }
         )
+      }
+    }
+
+    // A guarantee letter pays only up to what is left on it (lib/gl-balance).
+    if (payLines.length) {
+      const overdraws = await glOverdraws(prisma, payLines)
+      if (overdraws.length) {
+        return NextResponse.json({ error: glOverdrawMessage(overdraws[0]), glOverdraw: overdraws }, { status: 400 })
       }
     }
 

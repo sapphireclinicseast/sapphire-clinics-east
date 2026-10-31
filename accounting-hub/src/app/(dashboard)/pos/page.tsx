@@ -95,6 +95,10 @@ interface PaymentLine {
   walletId?: string
   reference?: string
   loaNumber?: string
+  /** GL only, client-side: what was left on the letter when it was picked, and
+   *  the patient's next letter with money left (lib/gl-balance checks again). */
+  glLeft?: number
+  glNext?: { id: string; name: string; balance: number }
 }
 
 interface Order {
@@ -1593,6 +1597,26 @@ function OrderFormModal({
     } catch { setGlWallets([]) }
   }
 
+  // A GL pays only up to what is left on it — OP will not pay beyond the
+  // approved amount. Cap the GL line at the balance and send the rest to cash
+  // or to the patient's next letter.
+  const capGlLine = (idx: number, to: 'CASH' | 'NEXT') => setPayments(prev => {
+    const line = prev[idx]
+    if (!line || line.glLeft == null) return prev
+    const r2 = (n: number) => Math.round(n * 100) / 100
+    const rest = r2(toNum(line.amount) - line.glLeft)
+    if (rest <= 0) return prev
+    const capped = prev.map((pp, i) => i === idx ? { ...pp, amount: line.glLeft! } : pp)
+    if (to === 'NEXT' && line.glNext) {
+      const g = line.glNext
+      const onNext = r2(Math.min(rest, g.balance))
+      const out: PaymentLine[] = [...capped, { method: 'GL', amount: onNext, walletId: g.id, reference: g.name, glLeft: g.balance }]
+      return rest - onNext > 0.005 ? [...out, { method: 'CASH', amount: r2(rest - onNext) }] : out
+    }
+    const cashIdx = capped.findIndex(pp => pp.method === 'CASH' && !pp.walletId && !toNum(pp.amount))
+    return cashIdx >= 0 ? capped.map((pp, i) => i === cashIdx ? { ...pp, amount: rest } : pp) : [...capped, { method: 'CASH', amount: rest }]
+  })
+
   const searchDpWallets = async (q: string) => {
     setDpSearch(q)
     try {
@@ -2603,6 +2627,25 @@ function OrderFormModal({
                     onChange={e => setPayments(prev => prev.map((pp, i) => i === idx ? { ...pp, reference: e.target.value } : pp))}
                     className="w-full px-3 py-2 rounded-xl border text-xs outline-none" style={{ borderColor: '#bbf7d0', background: '#f0fdf4' }} />
                 )}
+                {p.method === 'GL' && p.glLeft != null && (toNum(p.amount) > p.glLeft + 0.005 ? (
+                  <div className="w-full rounded-xl px-3 py-2 text-xs" style={{ background: '#fef2f2', color: '#991b1b', border: '1px solid #fecaca' }}>
+                    This GL has only <strong>{formatCurrency(p.glLeft)}</strong> left — OP will not pay beyond the approved amount, so the sale can&apos;t put {formatCurrency(toNum(p.amount))} on it.
+                    <div className="flex flex-wrap gap-2 mt-1.5">
+                      <button type="button" onClick={() => capGlLine(idx, 'CASH')} className="px-2.5 py-1 rounded-lg font-semibold bg-white border" style={{ borderColor: '#fecaca', color: '#991b1b' }}>
+                        {formatCurrency(p.glLeft)} on this GL, {formatCurrency(toNum(p.amount) - p.glLeft)} on cash
+                      </button>
+                      {p.glNext && (
+                        <button type="button" onClick={() => capGlLine(idx, 'NEXT')} className="px-2.5 py-1 rounded-lg font-semibold bg-white border" style={{ borderColor: '#bbf7d0', color: '#15803d' }}>
+                          Rest on {p.glNext.name} ({formatCurrency(p.glNext.balance)} left)
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-[11px]" style={{ color: '#15803d' }}>
+                    GL left: {formatCurrency(p.glLeft)}{toNum(p.amount) > 0 ? ` → ${formatCurrency(p.glLeft - toNum(p.amount))} after this sale` : ''}
+                  </p>
+                ))}
               </div>
             ))}
             <div className="flex flex-wrap gap-2">
@@ -2898,9 +2941,19 @@ function OrderFormModal({
                       const displayName = agency ? `${w.patientName} (${agency})` : w.patientName
                       return (
                         <button key={w.id} onClick={() => {
+                          // Fill in what is due, but never more than the letter has left;
+                          // remember the patient's next letter in case this one runs out.
+                          const left = toNum(w.balance)
+                          const base = (x: string) => x.replace(/\([^)]*\)/g, '').toUpperCase().replace(/[^A-Z]/g, '')
+                          const next = glWallets.find(o => o.id !== w.id && o.soaStatus === 'With GL and SOA' && toNum(o.balance) > 0 && base(o.patientName) === base(w.patientName))
                           setPayments(prev => {
                             const existingIdx = prev.findIndex(pm => pm.method === 'GL')
-                            const newPay = { method: 'GL' as const, amount: 0, walletId: w.id, reference: displayName }
+                            const othersPaid = prev.reduce((t, pm, i) => (i === existingIdx ? t : t + toNum(pm.amount)), 0)
+                            const due = Math.max(0, netAmount - othersPaid)
+                            const newPay: PaymentLine = {
+                              method: 'GL', amount: Math.round(Math.min(left, due) * 100) / 100, walletId: w.id, reference: displayName, glLeft: left,
+                              glNext: next ? { id: next.id, name: next.patientName, balance: toNum(next.balance) } : undefined,
+                            }
                             if (existingIdx >= 0) return prev.map((pm, i) => i === existingIdx ? newPay : pm)
                             return [...prev, newPay]
                           })

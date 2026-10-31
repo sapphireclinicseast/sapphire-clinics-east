@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { TUITION_SERVICE_NAME } from '@/lib/tuition'
 import { prisma } from '@/lib/prisma'
+import { glOverdraws, glOverdrawMessage } from '@/lib/gl-balance'
 import { restoreFifoLots, recalcWeightedUnitCost } from '@/lib/fifo'
 import { postOrderJournal, reverseOrderJournal } from '@/lib/accounting/post-order'
 import { linkReferredPatientFromOrder } from '@/lib/referral-link'
@@ -555,6 +556,20 @@ export async function PUT(
           { error: `Payments total ₱${paidTotal.toFixed(2)} but the net amount is ₱${expectedNet.toFixed(2)}. The collected amount must equal the net amount — fix the discount/downpayment or the payment lines before completing.` },
           { status: 400 }
         )
+      }
+    }
+
+    // A guarantee letter pays only up to what is left on it (lib/gl-balance).
+    // The edit puts this order's own GL charges back first, so count them as
+    // available.
+    if (payments?.length) {
+      const held = new Map<string, number>()
+      for (const op of await prisma.orderPayment.findMany({ where: { orderId: id, method: 'GL' }, select: { walletId: true, amount: true } })) {
+        if (op.walletId) held.set(op.walletId, (held.get(op.walletId) || 0) + Number(op.amount))
+      }
+      const overdraws = await glOverdraws(prisma, payments, held)
+      if (overdraws.length) {
+        return NextResponse.json({ error: glOverdrawMessage(overdraws[0]), glOverdraw: overdraws }, { status: 400 })
       }
     }
 
