@@ -9,7 +9,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { GraduationCap, ChevronDown, ChevronRight, Loader2, RefreshCw, Search } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import {
-  TUITION_PLANS, currentSchoolYear, schoolYearPeriods, tuitionPrefillFor,
+  REMIND_DAYS, TUITION_PLANS, currentSchoolYear, daysBetween, schoolYearPeriods, todayManila, tuitionPrefillFor,
   type TuitionPlan, type TuitionPrefill,
 } from '@/lib/tuition'
 
@@ -21,6 +21,7 @@ interface Due {
 interface Student {
   id: string; name: string; email: string; level: string | null; branch: string; patientId: string | null
   plan: TuitionPlan | null; rate: number | null; discountLabel: string | null
+  isNew: boolean
   paidThisSy: number; dues: Due[]; nextDue: Due | null
   payments: { period: string; amount: number; date: string; orderNumber: number | null; partial: boolean }[]
 }
@@ -66,11 +67,14 @@ export default function TuitionDesk({ branch, onCollect }: { branch: string; onC
   }, [load])
 
   const owing = useMemo(() => students.filter(s => s.dues.length > 0), [students])
+  // New Class Hub students show up here by themselves (the list reads Class
+  // Hub live) and stay listed until their first payment is recorded.
+  const newcomers = useMemo(() => students.filter(s => s.isNew), [students])
   const shown = useMemo(() => {
     const q = search.trim().toLowerCase()
-    if (!q) return owing
+    if (!q) return [...owing, ...newcomers.filter(s => !owing.includes(s))]
     return students.filter(s => `${s.name} ${s.email}`.toLowerCase().includes(q))
-  }, [students, owing, search])
+  }, [students, owing, newcomers, search])
   const student = students.find(s => s.id === picked) || null
 
   if (!enabled) return null
@@ -84,6 +88,11 @@ export default function TuitionDesk({ branch, onCollect }: { branch: string; onC
           {owing.length > 0 && (
             <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: '#ffedd5', color: '#c2410c' }}>
               {owing.length} with dues · {formatCurrency(totalDue)}
+            </span>
+          )}
+          {newcomers.length > 0 && (
+            <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: '#e0f2fe', color: '#075985' }}>
+              {newcomers.length} new — no payment yet
             </span>
           )}
         </span>
@@ -106,7 +115,7 @@ export default function TuitionDesk({ branch, onCollect }: { branch: string; onC
             <p className="text-xs py-3" style={{ color: 'var(--mid-gray)' }}><Loader2 size={13} className="inline animate-spin" /> Loading from Class Hub…</p>
           ) : (
             <div className="flex flex-wrap gap-2 mb-3">
-              {shown.length === 0 && <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>{search ? 'No student matches.' : 'No tuition due within 7 days. Search a student to collect anyway.'}</span>}
+              {shown.length === 0 && <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>{search ? 'No student matches.' : 'No tuition due within 7 days and no new students. Search a student to collect anyway.'}</span>}
               {shown.slice(0, 24).map(s => {
                 const overdue = s.dues.some(d => d.state === 'OVERDUE')
                 return (
@@ -114,6 +123,7 @@ export default function TuitionDesk({ branch, onCollect }: { branch: string; onC
                     style={picked === s.id ? { background: 'var(--teal)', color: 'white', borderColor: 'var(--teal)' } : { borderColor: overdue ? '#fca5a5' : 'var(--light-gray)', color: 'var(--charcoal)' }}>
                     <span className="font-semibold">{s.name}</span>
                     {s.dues.length > 0 && <span className="ml-1.5" style={picked === s.id ? {} : { color: overdue ? '#b91c1c' : '#c2410c' }}>{formatCurrency(s.dues.reduce((t, d) => t + d.remaining, 0))}</span>}
+                    {s.isNew && <span className="ml-1.5 text-[10px] font-bold uppercase" style={picked === s.id ? {} : { color: '#075985' }}>New</span>}
                   </button>
                 )
               })}
@@ -130,9 +140,15 @@ function StudentCard({ student, onCollect }: { student: Student; onCollect: (t: 
   const [amounts, setAmounts] = useState<Record<string, string>>(() => Object.fromEntries(student.dues.map(d => [d.key, String(d.remaining)])))
   // Anything not on the due list: an advance payment, or a student with no plan yet.
   const sy = currentSchoolYear()
+  // The installment coming due now (a mid-year enrolee starts there, not June).
+  const currentPeriod = (p: TuitionPlan) => {
+    const all = schoolYearPeriods(p, sy)
+    const today = todayManila()
+    return ([...all].reverse().find(x => daysBetween(today, x.dueDate) <= REMIND_DAYS) || all[0])?.period || ''
+  }
   const [otherPlan, setOtherPlan] = useState<TuitionPlan>(student.plan || 'MONTHLY')
   const otherPeriods = schoolYearPeriods(otherPlan, sy)
-  const [otherPeriod, setOtherPeriod] = useState(otherPeriods[0]?.period || '')
+  const [otherPeriod, setOtherPeriod] = useState(() => currentPeriod(student.plan || 'MONTHLY'))
   const [otherAmount, setOtherAmount] = useState('')
   const [otherPartial, setOtherPartial] = useState(false)
 
@@ -200,10 +216,15 @@ function StudentCard({ student, onCollect }: { student: Student; onCollect: (t: 
         <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Nothing due within 7 days.</p>
       )}
 
-      <details className="text-xs">
-        <summary className="cursor-pointer font-semibold" style={{ color: 'var(--teal)' }}>Other tuition payment (advance, or a period not listed)</summary>
+      {student.isNew && (
+        <p className="text-xs font-semibold" style={{ color: '#075985' }}>
+          New student — no payment recorded yet. Record the first payment below; its plan becomes the student&apos;s plan.
+        </p>
+      )}
+      <details className="text-xs" open={!student.plan}>
+        <summary className="cursor-pointer font-semibold" style={{ color: 'var(--teal)' }}>{student.plan ? 'Other tuition payment (advance, or a period not listed)' : 'First tuition payment'}</summary>
         <div className="flex flex-wrap items-center gap-2 mt-2">
-          <select value={otherPlan} onChange={e => { const p = e.target.value as TuitionPlan; setOtherPlan(p); setOtherPeriod(schoolYearPeriods(p, sy)[0]?.period || '') }} className="px-2 py-1.5 rounded-lg border bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+          <select value={otherPlan} onChange={e => { const p = e.target.value as TuitionPlan; setOtherPlan(p); setOtherPeriod(currentPeriod(p)) }} className="px-2 py-1.5 rounded-lg border bg-white" style={{ borderColor: 'var(--light-gray)' }}>
             {TUITION_PLANS.map(p => <option key={p} value={p}>{p.charAt(0) + p.slice(1).toLowerCase()}</option>)}
           </select>
           <select value={otherPeriod} onChange={e => setOtherPeriod(e.target.value)} className="px-2 py-1.5 rounded-lg border bg-white" style={{ borderColor: 'var(--light-gray)' }}>

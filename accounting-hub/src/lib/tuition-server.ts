@@ -144,6 +144,8 @@ export interface TuitionDue {
 export interface StudentBalance {
   id: string; name: string; email: string; level: string | null; branch: string; patientId: string | null
   plan: TuitionPlan | null; rate: number | null; discountLabel: string | null
+  /** Enrolled in Class Hub with no payment yet this school year — a new student. */
+  isNew: boolean
   paidThisSy: number; dues: TuitionDue[]; nextDue: TuitionDue | null
   payments: { period: string; amount: number; date: string; orderNumber: number | null; partial: boolean }[]
 }
@@ -222,6 +224,7 @@ export async function studentBalances(params: { classBranch: string | null; scho
       id: s.id, name: s.name, email: s.email, level: s.level,
       branch: CLASS_TO_LEDGER_BRANCH[s.branch || ''] || s.branch || '', patientId: s.patientId,
       plan, rate, discountLabel: lastSale ? labels.get(lastSale.orderId) ?? null : null,
+      isNew: rows.length === 0,
       paidThisSy: Math.round(paidRows.reduce((t, r) => t + r.amountCentavos, 0)) / 100,
       dues, nextDue,
       payments: paidRows.map(r => ({

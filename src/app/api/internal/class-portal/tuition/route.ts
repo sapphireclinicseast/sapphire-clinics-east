@@ -57,11 +57,27 @@ export async function GET(req: NextRequest) {
       }),
     ])
 
+    // CRM patient per student — what the POS rings the student up as. The
+    // student sync keys patients by the portal email, but siblings can share
+    // a parent's email and some patients were registered under another one,
+    // so: same email and name, else same email, else same name.
+    const fold = (x: string | null | undefined) => (x || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z]/g, '')
     const emails = Array.from(new Set(students.map(s => (s.email || '').toLowerCase()).filter(Boolean)))
-    const patients = emails.length
-      ? await prisma.patient.findMany({ where: { email: { in: emails } }, select: { id: true, email: true } })
+    const lastNames = Array.from(new Set(students.map(s => (s.lastName || '').trim()).filter(Boolean)))
+    const patients = emails.length || lastNames.length
+      ? await prisma.patient.findMany({
+          where: { OR: [{ email: { in: emails, mode: 'insensitive' } }, { lastName: { in: lastNames, mode: 'insensitive' } }] },
+          select: { id: true, email: true, firstName: true, lastName: true },
+        })
       : []
-    const patientIdByEmail = new Map(patients.map(p => [(p.email ?? '').toLowerCase(), p.id]))
+    const patientFor = (s: { email: string | null; firstName: string | null; lastName: string | null }) => {
+      const email = (s.email || '').toLowerCase()
+      const name = fold(`${s.firstName ?? ''}${s.lastName ?? ''}`)
+      const byEmail = patients.filter(p => email && (p.email || '').toLowerCase() === email)
+      return (byEmail.find(p => fold(`${p.firstName}${p.lastName}`) === name)
+        ?? (byEmail.length === 1 ? byEmail[0] : undefined)
+        ?? patients.find(p => fold(`${p.firstName}${p.lastName}`) === name))?.id ?? null
+    }
 
     return NextResponse.json({
       schoolYear: sy,
@@ -71,7 +87,7 @@ export async function GET(req: NextRequest) {
         email: s.email,
         level: s.level,
         branch: s.branch,
-        patientId: patientIdByEmail.get((s.email || '').toLowerCase()) ?? null,
+        patientId: patientFor(s),
       })),
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       payments: payments.map((p: any) => ({
