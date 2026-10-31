@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  getAuth, getUsers, hydrateUsers, getPaymentsForStudent, savePayment, putFile,
+  getAuth, getUsers, hydrateUsers, getPaymentsForStudent,
   levelLabel, getFeeFor, hydrateFees, hydrateFrontDeskPayments, validateVoucher,
   listPersonalVouchersFor,
   unpaidBackMonthsFor,
@@ -20,7 +20,7 @@ function methodLabel(m: PaymentMethod | undefined): string {
     default:                return '—'
   }
 }
-import { backendJson, getImpersonationMeta } from '@/lib/backend'
+import { getImpersonationMeta } from '@/lib/backend'
 
 const BANK_DETAILS = {
   EAST: {
@@ -39,8 +39,7 @@ const BANK_DETAILS = {
   },
 } as const
 
-const PROOF_MAX_BYTES = 10 * 1024 * 1024 // 10 MB
-const PROOF_ACCEPT = '.pdf,.png,.jpg,.jpeg,.doc,.docx,application/pdf,image/png,image/jpeg,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+
 
 interface PlanRow {
   plan: PaymentPlan; title: string; tuition: number; misc: number; period: string; deadline: string;
@@ -156,11 +155,9 @@ export default function PayPage() {
   const [user, setUser] = useState<StoredUser | null>(null)
   const [selected, setSelected] = useState<PaymentPlan>('ANNUAL')
   const [method, setMethod] = useState<PaymentMethod>('PAYMONGO')
-  const [proofFile, setProofFile] = useState<File | null>(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [history, setHistory] = useState<PaymentRecord[]>([])
-  const [confirmation, setConfirmation] = useState<string | null>(null)
 
   const [fee, setFee] = useState<FeeSchedule | null>(null)
 
@@ -267,27 +264,6 @@ export default function PayPage() {
   const discountAmount = Math.round((effectiveTuition * discountPercent) / 100)
   const discountedTuition = Math.max(0, effectiveTuition - discountAmount)
 
-  /** Build the up-front PENDING record common to every method. */
-  function buildPending(paymentId: string): PaymentRecord {
-    return {
-      id: paymentId,
-      studentId: user!.id,
-      studentEmail: user!.email,
-      plan: plan.plan,
-      tuitionAmount: discountedTuition,
-      miscAmount: effectiveMisc,
-      period: effectivePeriod,
-      ...(appliedVoucher ? {
-        voucherCode: appliedVoucher.code,
-        discountPercent,
-        tuitionBeforeDiscount: effectiveTuition,
-      } : {}),
-      status: 'PENDING',
-      method,
-      createdAt: new Date().toISOString(),
-    }
-  }
-
   async function handleApplyVoucher() {
     setVoucherErr(null)
     const code = voucherInput.trim()
@@ -313,18 +289,15 @@ export default function PayPage() {
     setVoucherErr(null)
   }
 
-  function pushHistory(rec: PaymentRecord) {
-    setHistory(h => [rec, ...h.filter(x => x.id !== rec.id)])
-  }
-
   async function handlePaymongo() {
     if (!user) return
-    setBusy(true); setErr(null); setConfirmation(null)
+    setBusy(true); setErr(null)
     try {
+      // No local "pending/paid" record: Class Hub shows only payments the
+      // Accounting Hub POS recorded (Hannah, 2026-10-31). The id travels as
+      // the PayMongo reference so the front desk can match the payment.
       const paymentId = 'pmt_' + Math.random().toString(36).slice(2, 12)
       const studentName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email
-      const record = buildPending(paymentId)
-      savePayment(record); pushHistory(record)
       const res = await fetch('/api/pay/create-checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -352,113 +325,11 @@ export default function PayPage() {
         throw new Error(j?.error ?? `Checkout failed (${res.status})`)
       }
       const data = await res.json() as { checkoutId: string; checkoutUrl: string }
-      const stamped: PaymentRecord = { ...record, paymongoCheckoutId: data.checkoutId, paymongoCheckoutUrl: data.checkoutUrl }
-      savePayment(stamped); pushHistory(stamped)
       window.location.assign(data.checkoutUrl)
     } catch (e) {
       setErr((e as Error).message)
       setBusy(false)
     }
-  }
-
-  async function handleFrontDeskCash() {
-    if (!user) return
-    setBusy(true); setErr(null); setConfirmation(null)
-    try {
-      const paymentId = 'pmt_' + Math.random().toString(36).slice(2, 12)
-      const record = buildPending(paymentId)
-      savePayment(record); pushHistory(record)
-      // Post the notification to the marketing hub so it surfaces in the
-      // accounting hub's POS Cashier (Services > Cashier). Without this
-      // step the local record sits in localStorage and the front desk
-      // never sees it.
-      const studentName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email
-      try {
-        await backendJson('/api/public/class-portal/frontdesk-payments', {
-          method: 'POST',
-          body: JSON.stringify({
-            classPortalPaymentId: paymentId,
-            studentId: user.id,
-            studentEmail: user.email,
-            studentName,
-            branch: user.branch ?? 'EAST',
-            plan: plan.plan,
-            tuitionCentavos: discountedTuition,
-            miscCentavos: effectiveMisc,
-            period: effectivePeriod,
-            method: 'FRONT_DESK_CASH',
-          }),
-        })
-      } catch (postErr) {
-        // Roll back the confirmation so the parent retries — otherwise
-        // they'd walk in expecting the clinic to be ready.
-        throw new Error('Could not reach the front desk system. Please try again — ' + (postErr as Error).message)
-      }
-      setConfirmation('Payment notification sent to front desk for verification. Please proceed to the clinic with your payment.')
-    } catch (e) {
-      setErr((e as Error).message)
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function handleBankDeposit() {
-    if (!user) return
-    if (!proofFile) { setErr('Please upload your deposit slip / proof of payment.'); return }
-    setBusy(true); setErr(null); setConfirmation(null)
-    try {
-      const paymentId = 'pmt_' + Math.random().toString(36).slice(2, 12)
-      const proofFileId = 'proof_' + Math.random().toString(36).slice(2, 12)
-      try { await putFile(proofFileId, proofFile) } catch { /* ignore — record still saved with metadata */ }
-      const record: PaymentRecord = {
-        ...buildPending(paymentId),
-        proofFileId,
-        proofFileName: proofFile.name,
-        proofFileSize: proofFile.size,
-        proofFileType: proofFile.type,
-      }
-      savePayment(record); pushHistory(record)
-      // Post to the marketing-hub queue so the front desk sees the
-      // deposit waiting for confirmation. The proof slip stays in the
-      // parent's IndexedDB; the front desk verifies against the bank's
-      // own records and confirms via /frontdesk → Payments.
-      const studentName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email
-      try {
-        await backendJson('/api/public/class-portal/frontdesk-payments', {
-          method: 'POST',
-          body: JSON.stringify({
-            classPortalPaymentId: paymentId,
-            studentId: user.id,
-            studentEmail: user.email,
-            studentName,
-            branch: user.branch ?? 'EAST',
-            plan: plan.plan,
-            tuitionCentavos: discountedTuition,
-            miscCentavos: effectiveMisc,
-            period: effectivePeriod,
-            method: 'BANK_DEPOSIT',
-          }),
-        })
-      } catch (postErr) {
-        console.warn('[bank-deposit] frontdesk queue post failed:', postErr)
-        // Don't fail the parent's submission — the local record is saved
-        // and they can re-notify the front desk if needed.
-      }
-      setProofFile(null)
-      setConfirmation('Payment notification sent to front desk for verification. They will confirm once the bank transfer is reconciled.')
-    } catch (e) {
-      setErr((e as Error).message)
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  function handleProofPick(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0]
-    e.target.value = ''
-    if (!f) return
-    if (f.size > PROOF_MAX_BYTES) { setErr('Proof of payment is larger than 10 MB.'); return }
-    setErr(null); setProofFile(f)
   }
 
   if (!user || !plan) return null
@@ -671,12 +542,6 @@ export default function PayPage() {
           </div>
         </div>
 
-        {confirmation && (
-          <div className="mt-5 px-4 py-3 rounded-xl bg-emerald-50 border border-emerald-200 text-sm text-emerald-900 animate-fade-in">
-            ✓ {confirmation}
-          </div>
-        )}
-
         {/* Method picker — three options as tiles. */}
         <div className="mt-5">
           <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)] mb-2" style={{ fontFamily: 'var(--font-display)' }}>
@@ -684,16 +549,16 @@ export default function PayPage() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
             <MethodTile
-              active={method === 'PAYMONGO'} onClick={() => { setMethod('PAYMONGO'); setConfirmation(null) }}
+              active={method === 'PAYMONGO'} onClick={() => setMethod('PAYMONGO')}
               title="PayMongo checkout" sub="Credit card, GCash, Maya, or GrabPay"
             />
             <MethodTile
-              active={method === 'FRONT_DESK_CASH'} onClick={() => { setMethod('FRONT_DESK_CASH'); setConfirmation(null) }}
-              title="Pay at front desk" sub="Cash payment in clinic"
+              active={method === 'FRONT_DESK_CASH'} onClick={() => setMethod('FRONT_DESK_CASH')}
+              title="Pay at front desk" sub="How to pay in clinic"
             />
             <MethodTile
-              active={method === 'BANK_DEPOSIT'} onClick={() => { setMethod('BANK_DEPOSIT'); setConfirmation(null) }}
-              title="Direct bank deposit" sub="BDO — upload proof of payment"
+              active={method === 'BANK_DEPOSIT'} onClick={() => setMethod('BANK_DEPOSIT')}
+              title="Bank transfer" sub="BDO — account details"
             />
           </div>
         </div>
@@ -705,7 +570,7 @@ export default function PayPage() {
               {busy ? 'Opening secure checkout…' : `Proceed to PayMongo checkout — ${fmt(total)}`}
             </button>
             <p className="text-[11px] text-[color:var(--mid-gray)] text-center mt-2" style={{ fontFamily: 'var(--font-display)' }}>
-              You will be redirected to PayMongo. Credit card, GCash, Maya, and GrabPay are supported.
+              You will be redirected to PayMongo. Credit card, GCash, Maya, and GrabPay are supported. Your payment shows here as paid once our front desk records it.
             </p>
           </div>
         )}
@@ -714,12 +579,10 @@ export default function PayPage() {
           <div className="mt-5">
             <div className="rounded-xl p-4 border" style={{ borderColor: 'var(--paper-3)', background: '#fff' }}>
               <p className="text-sm text-[color:var(--ink)] leading-relaxed">
-                Visit our <span className="font-semibold text-[color:var(--narra)]">{bank.branchLabel}</span> front desk and pay <span className="font-semibold text-[color:var(--narra)]">{fmt(total)}</span> in cash. We&apos;ll issue a receipt and mark your account as paid once it&apos;s settled.
+                Visit our <span className="font-semibold text-[color:var(--narra)]">{bank.branchLabel}</span> front desk and pay <span className="font-semibold text-[color:var(--narra)]">{fmt(total)}</span> for <span className="font-semibold">{effectivePeriod}</span> (cash, card, GCash or Maya). The front desk issues your receipt and records the payment — it then shows here as paid.
               </p>
+              <p className="text-[12px] text-[color:var(--mid-gray)] mt-2">There&apos;s nothing to submit here.</p>
             </div>
-            <button type="button" onClick={handleFrontDeskCash} disabled={busy} className="btn-cta w-full mt-4">
-              {busy ? 'Sending notification…' : 'Notify front desk — I will pay in cash'}
-            </button>
           </div>
         )}
 
@@ -740,22 +603,10 @@ export default function PayPage() {
                 <dd className="font-bold text-[color:var(--narra)] tabular-nums tracking-wider">{bank.accountNumber}</dd>
               </dl>
               <p className="text-[11.5px] text-[color:var(--mid-gray)] mt-3" style={{ fontFamily: 'var(--font-display)' }}>
-                Deposit / transfer <span className="font-semibold text-[color:var(--ink)]">{fmt(total)}</span> to the account above, then upload your deposit slip or transfer receipt below.
+                Transfer <span className="font-semibold text-[color:var(--ink)]">{fmt(total)}</span> for <span className="font-semibold text-[color:var(--ink)]">{effectivePeriod}</span> to the account above, then show or send the transfer receipt to the {bank.branchLabel} front desk with the student&apos;s name. They record the payment and it shows here as paid.
               </p>
+              <p className="text-[12px] text-[color:var(--mid-gray)] mt-2">There&apos;s nothing to submit here.</p>
             </div>
-
-            <label className="doc-row cursor-pointer" style={proofFile ? { borderStyle: 'solid', borderColor: 'var(--sage)', background: 'var(--sage-tint)' } : undefined}>
-              <div className="min-w-0">
-                <div className="doc-row-title">Proof of payment</div>
-                <div className="doc-row-sub">{proofFile ? `Selected: ${proofFile.name} (${(proofFile.size / 1024).toFixed(0)} KB)` : 'PDF, PNG, JPG, or Word — max 10 MB.'}</div>
-              </div>
-              <span className="btn-secondary shrink-0" style={{ pointerEvents: 'none' }}>{proofFile ? 'Change' : 'Upload'}</span>
-              <input type="file" className="hidden" accept={PROOF_ACCEPT} onChange={handleProofPick} />
-            </label>
-
-            <button type="button" onClick={handleBankDeposit} disabled={busy || !proofFile} className="btn-cta w-full">
-              {busy ? 'Sending notification…' : 'Submit bank deposit + notify front desk'}
-            </button>
           </div>
         )}
       </div>

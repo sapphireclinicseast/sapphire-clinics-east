@@ -820,7 +820,7 @@ export default function HandbookPage() {
             <div className="rc f">
               <h4><span className="badge b-f"><span className="dot">F</span> Front desk</span></h4>
               <div className="who">in-app: FRONTDESK &nbsp;·&nbsp; clinic reception</div>
-              <p>Payment-focused, branch-scoped. Takes cash, confirms bank deposits, records payments, and keeps the enrollment register clean. Cannot open the Classes page.</p>
+              <p>Payment-focused, branch-scoped. Sees tuition payments (recorded at the Accounting Hub POS) and keeps the enrollment register clean. Cannot open the Classes page.</p>
             </div>
             <div className="rc t">
               <h4><span className="badge b-t"><span className="dot">T</span> SPED teacher</span></h4>
@@ -958,7 +958,7 @@ export default function HandbookPage() {
 
               <h4>Detail drawer — stacked cards</h4>
               <ol className="steps">
-                <li><b>Identity + tuition status</b> — headshot, name, email, inline grade-level editor (<kbd>Change</kbd>), badge stack for past-paid / past-due / current-period. Main-admin-only <kbd>Record PayMongo payment</kbd> button appears here for students with zero prior payments.</li>
+                <li><b>Identity + tuition status</b> — headshot, name, email, inline grade-level editor (<kbd>Change</kbd>), badge stack for past-paid / past-due / current-period. Payments are recorded at the Accounting Hub POS, including PayMongo payments.</li>
                 <li><b>Learner profile</b> — school year, LRN status + number, PSA Birth Cert No., DOB, sex, mother tongue, religion, diagnosis, LSEN classification, address, parents, guardian, phone numbers. Header actions: <kbd>Update LRN</kbd>, <kbd>Set / Update LSEN classification</kbd>, <kbd>Edit enrollment</kbd> (opens the full enrollment editor).</li>
                 <li><b>Submitted documents</b> — each row: <kbd>View</kbd> · <kbd>Download</kbd> · <kbd>Re-upload</kbd>. Bottom picker lets staff add missing documents.</li>
                 <li><b>Other Documents</b> — auto-generated PDFs. Each has <kbd>View</kbd> + <kbd>Download PDF</kbd>: Enrollment Form (Annex 2) · Parent Waiver · School ID · School Registration Letter (main admin) · Schedule of Fees (main admin) · Personal Vouchers · Plan-switch balance calculator (main admin) · Form 137 / SF10.</li>
@@ -1159,45 +1159,26 @@ export default function HandbookPage() {
               </div>
               <p className="desc">The busiest module. Six stacked sub-panels in order: <em>Pending confirmations · Confirmed Payments · Pending payments — by deadline · Paying students (consolidated) · No payment record yet · Automated payment reminders</em>.</p>
 
-              <h4>Pending confirmations</h4>
-              <ul>
-                <li>Rows are payments the front desk has recorded but not yet confirmed.</li>
-                <li>Top-right: <kbd>+ Record payment</kbd> and <kbd>Refresh</kbd>.</li>
-                <li>Columns: Student · Plan · Period · Method · Branch · Amount · Submitted · Action.</li>
-                <li><b>Method</b> is an inline select — change it any time before confirming. Options: <em>Frontdesk: Cash / Credit Card / Debit Card / GCash / PayMaya · Bank deposit · PayMongo</em>.</li>
-                <li>Row actions: <kbd>Edit</kbd> · <kbd>Delete</kbd> (main admin only). Pending rows show <b>Waiting in POS</b> — the cashier completes them in the Accounting Hub POS queue, which flips them to Confirmed.</li>
-              </ul>
-
-              <h4>Confirmed Payments</h4>
-              <ul>
-                <li>Search input <em>&ldquo;Search name, email, plan, period, method, branch&rdquo;</em> and counter <em>N/total total</em>.</li>
-                <li>Same columns plus <em>Confirmed at</em>. Status is always <span className="badge b-s"><span className="dot">✓</span> Paid</span>.</li>
-                <li>Row actions: <kbd>Edit</kbd> · <kbd>Delete</kbd> (main admin).</li>
-              </ul>
-
-              <h4>Record payment modal <span className="tag">Front-desk override</span></h4>
-              <ol className="steps">
-                <li>Pick the <kbd>Student</kbd> from the branch-scoped dropdown (format <em>Last, First · Branch · Level</em>).</li>
-                <li>Pick the <kbd>Payment method</kbd>: Frontdesk payment / Bank deposit / PayMongo.</li>
-                <li>When method = Frontdesk payment, pick a <kbd>Frontdesk payment type</kbd>: Cash / Credit Card / Debit Card / GCash / PayMaya.</li>
-                <li>Pick <kbd>Plan</kbd> (Monthly / Bi-annual / Annual).</li>
-                <li>Type <kbd>Amount paid (PHP)</kbd> as a plain number (no commas).</li>
-                <li>Use the <kbd>Period covered</kbd> picker — see the Golden rule about period text.</li>
-                <li>Optionally type a receipt / deposit-slip / PayMongo reference (the label morphs to the method).</li>
-                <li>Click <kbd>Record payment</kbd>. The row goes to the Accounting Hub POS queue; the cashier completes it there once the money is verified.</li>
-              </ol>
-
-              <div className="call rule"><span className="lbl">PayMongo records DO NOT auto-confirm from this flow</span>
-                When staff records a payment as PayMongo via this modal, it&rsquo;s a bookkeeping entry for a receipt already collected. The row lands as PENDING in the Accounting Hub POS queue; the student&rsquo;s badge flips once the cashier completes it there. A row left in the POS queue is the #1 cause of &ldquo;parent paid but portal says Due&rdquo; tickets.
+              <div className="call rule"><span className="lbl">Tuition is recorded only in the Accounting Hub</span>
+                Since 31 Oct 2026 every tuition payment — cash, card, GCash/Maya, bank transfer, and PayMongo — is recorded at the <b>Accounting Hub POS → Tuition</b>. Class Hub only shows what the POS recorded: it can&rsquo;t record, confirm, edit or delete a payment. To correct one, void, reopen or edit the sale in the Accounting Hub; Class Hub follows it.
               </div>
 
-              <h4>Full payment vs Partial payment</h4>
-              <p>The Record and Edit modals both include a radio toggle under <b>Payment amount</b>:</p>
+              <h4>Tuition payments</h4>
               <ul>
-                <li><strong>Full payment</strong> (default) — the receipt settles the period in full. The student&rsquo;s portal flips to <em>Paid</em> for the covered period as soon as the cashier completes it at the Accounting Hub POS.</li>
-                <li><strong>Partial payment</strong> — tick this when the parent is paying in installments within the same period (common on the Monthly plan when a parent splits ₱5,000 into two cash receipts). The row is still logged + confirmed, but the badge logic treats it as &ldquo;doesn&rsquo;t settle the period on its own&rdquo; so the student&rsquo;s portal keeps showing <em>Due</em> until a later <em>Full</em> payment is recorded against the same period.</li>
+                <li>Every payment the POS recorded, newest first, with a search box (<em>name, email, plan, period, method, branch</em>) and <kbd>Refresh</kbd>.</li>
+                <li>Columns: Student · Plan · Period · Method · Branch · Amount · Recorded · Status (always <span className="badge b-s"><span className="dot">✓</span> Paid</span>).</li>
+                <li>A small amber <strong>Partial</strong> chip marks a payment that doesn&rsquo;t settle its period on its own; the rest of that period is still due.</li>
+                <li><b>Waiting in the POS queue</b> appears only for rows submitted before 31 Oct 2026 — the cashier completes each from the POS queue.</li>
               </ul>
-              <p>Partial-flagged rows show a small amber <strong>Partial</strong> chip beside the amount in both the Pending and Confirmed Payments tables so staff can see at a glance which payments haven&rsquo;t closed their period yet.</p>
+
+              <h4>How the front desk records tuition (Accounting Hub)</h4>
+              <ol className="steps">
+                <li>POS → <b>Tuition — Class Hub students</b> → pick the student. It lists what is due now under the student&rsquo;s plan (Monthly on the 5th, Bi-annual Jun 5 / Dec 5, Annual Jun 5) and any promissory payments.</li>
+                <li>Click <kbd>Collect</kbd>. For a <strong>partial payment</strong>, lower the amount first — the rest stays due.</li>
+                <li>Finish the sale as usual (payment method, receipt). The payment appears here as Paid, and the parent gets a <em>Payment received</em> notification.</li>
+                <li>A parent who paid through PayMongo checkout is recorded the same way, with PayMongo as the payment method.</li>
+              </ol>
+
               <p>On the student&rsquo;s own portal (<em>/profile → Payment</em>), a <strong>Running balance</strong> card appears whenever months are owed or partial receipts are banked — it lists the unpaid months by name and totals the running balance in pesos, with any partial receipts shown as credit toward the next installment.</p>
 
               <h4>Edit payment modal</h4>
@@ -1271,7 +1252,7 @@ export default function HandbookPage() {
                 <li>Pick the target plan from the dropdown.</li>
                 <li>If a live personal voucher exists, tick <kbd>Apply &lt;N&gt;% voucher</kbd>.</li>
                 <li>Read the balance breakdown live: target-plan tuition · less voucher discount (green) · plus misc · = <b>Gross on new plan</b> · less already paid (green) · = <b>Balance to collect</b>.</li>
-                <li>Take that number to <em>Payments › + Record payment</em>. Pick the target plan, enter the balance, use a clear period like <em>&ldquo;First half SY 2026–2027 (plan change credit)&rdquo;</em>.</li>
+                <li>Have the front desk collect that balance at the Accounting Hub POS → Tuition (<em>Other tuition payment</em>), with the target plan and the period it covers.</li>
                 <li>Confirm the row. The student&rsquo;s inferred plan flips to the new one; every future badge and reminder uses the new logic.</li>
               </ol>
             </div>
@@ -1602,7 +1583,7 @@ export default function HandbookPage() {
               <div className="flowcol supplies">
                 <div className="flow-lbl">Class portal supplies</div>
                 <ul>
-                  <li>Every pending payment is a queue item in the Accounting Hub POS. The cashier converting it creates the <em>Order</em> (tuition + misc + method) — that&rsquo;s how the cash lands on the P&amp;L — and flips the row to Confirmed here. Class Hub can no longer confirm a payment on its own.</li>
+                  <li>Every tuition payment is a sale at the Accounting Hub POS (POS → Tuition) — that&rsquo;s how the cash lands on the P&amp;L — and the sale writes the payment here. Class Hub can no longer record or confirm a payment on its own.</li>
                 </ul>
               </div>
               <div className="flowcol receives">
@@ -1673,7 +1654,7 @@ export default function HandbookPage() {
               <li><b>Sweep your inbox for parent tickets</b> — payment questions, waiver questions, document requests.</li>
               <li><b>Open Admin › Payments › Pending confirmations</b>. Confirm anything the front desk queued yesterday; the row moves to Confirmed Payments and the badge flips.</li>
               <li><b>Check Pending payments — by deadline</b>. Anyone in the rose &ldquo;overdue&rdquo; band gets a nudge — click <kbd>🔔 Remind</kbd> to send a manual email if the cron hasn&rsquo;t already.</li>
-              <li><b>Answer parent tickets from the Students tab.</b> Click a name, resolve the question from the drawer — Record PayMongo payment, issue a personal voucher, run the plan-switch calculator, generate a registration letter — everything is one card away.</li>
+              <li><b>Answer parent tickets from the Students tab.</b> Click a name, resolve the question from the drawer — issue a personal voucher, run the plan-switch calculator, generate a registration letter — everything is one card away.</li>
               <li><b>Countersign waivers</b> — anyone showing <em>Sign as SCEI</em> in the drawer header gets one signature and one PDF re-upload.</li>
               <li><b>End of day:</b> peek at Fees + shared vouchers only if something changed; otherwise leave them alone.</li>
             </ol>
@@ -1694,8 +1675,8 @@ export default function HandbookPage() {
           <div className="play f">
             <h3><span className="badge b-f"><span className="dot">F</span> Front desk</span></h3>
             <ol>
-              <li><b>Take walk-in payments.</b> For each: Payments → <kbd>+ Record payment</kbd> → student, method, plan, amount, period. Watch the period text.</li>
-              <li><b>Confirm bank deposits</b> that landed overnight. Match to the parent&rsquo;s uploaded slip in the Proof column, then have the cashier complete the row in the Accounting Hub POS queue.</li>
+              <li><b>Take walk-in payments</b> at the Accounting Hub POS → Tuition: pick the student, <kbd>Collect</kbd>, finish the sale. Lower the amount for a partial payment.</li>
+              <li><b>Record bank transfers</b> that landed overnight: match the parent&rsquo;s receipt to the bank, then collect it at the POS → Tuition with Bank transfer as the method.</li>
               <li><b>Keep the Enrollment register clean.</b> Fill LRNs the moment a parent brings the document. Mark NO_LRN via the LRN Status dropdown for those still waiting.</li>
               <li><b>Answer parent walk-ins.</b> Open their student on the Students tab; the drawer has every document, every payment, every badge.</li>
               <li><b>End of day:</b> Excel export the Enrollment register if the branch admin asks; otherwise leave it.</li>
@@ -1718,7 +1699,7 @@ export default function HandbookPage() {
             <h3><span className="badge b-s"><span className="dot">S</span> Parent / student</span></h3>
             <ol>
               <li><b>Check your badge.</b> Sign in → your profile card at the top-right shows Paid / Due / Owes. If it says <em>Due</em>, click <kbd>Pay tuition fee →</kbd>.</li>
-              <li><b>Pay tuition.</b> Sidebar → <kbd>Pay tuition</kbd> → pick a plan → your personal voucher auto-applies → pick <em>PayMongo</em> (instant), <em>Front desk cash</em>, or <em>Bank deposit</em>.</li>
+              <li><b>Pay tuition.</b> Sidebar → <kbd>Pay tuition</kbd> → pick a plan → your personal voucher auto-applies → pay with <em>PayMongo</em>, or read the instructions for paying at the front desk or by bank transfer. A payment shows as paid once the front desk records it.</li>
               <li><b>Sign the waiver</b> if you haven&rsquo;t. Documents → <kbd>Sign waiver →</kbd> opens the popup. Save. The teacher countersigns witness; the main admin countersigns SCEI.</li>
               <li><b>Upload documents</b> the front desk asked for from the Submitted documents card.</li>
               <li><b>Join your child&rsquo;s meetings</b> via the guest link in the Meetings tab.</li>
@@ -1737,7 +1718,7 @@ export default function HandbookPage() {
           </div>
 
           <div className="call rule"><span className="lbl">PayMongo record ≠ auto-confirm</span>
-            When staff record a payment as PayMongo via <kbd>+ Record payment</kbd>, it lands PENDING — that&rsquo;s a bookkeeping entry, not a live checkout. The cashier still has to complete it in the Accounting Hub POS queue for the badge to flip. Actual PayMongo checkouts from <code>/pay</code> auto-flip because the webhook fires.
+            A PayMongo checkout from <code>/pay</code> does not mark anything paid by itself. The front desk records it at the Accounting Hub POS → Tuition (method PayMongo), and the badge flips then.
           </div>
 
           <div className="call rule"><span className="lbl">Disable, don&rsquo;t delete</span>
@@ -1795,7 +1776,7 @@ export default function HandbookPage() {
             <details id="faq-paid-due"><summary>A parent paid via PayMongo but the portal still says Due.</summary><div className="a">
               <p>Two possible causes, both fixable in seconds:</p>
               <ol>
-                <li><b>Front desk recorded it as PayMongo but forgot to Confirm.</b> Find it in the Accounting Hub POS queue (it is listed under the student&rsquo;s name) and complete the sale. Badge flips on next refresh.</li>
+                <li><b>Parent paid but the portal still says Due.</b> The payment hasn&rsquo;t been recorded at the POS yet — record it at the Accounting Hub POS → Tuition. Badge flips on next refresh.</li>
                 <li><b>The PayMongo webhook didn&rsquo;t fire.</b> Confirm the row manually via the same button, then check that PayMongo has the correct webhook URL for the branch.</li>
               </ol>
             </div></details>

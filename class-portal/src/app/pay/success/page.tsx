@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { getPayments, savePayment, getAuth, getUsers } from '@/lib/session'
+import { getAuth, getUsers } from '@/lib/session'
 
 export default function PaymentSuccessPage() {
   return (
@@ -21,16 +21,11 @@ function Inner() {
   const [studentName, setStudentName] = useState('')
 
   useEffect(() => {
-    if (!paymentId) { setStatus('NOT_FOUND'); return }
-    const pmt = getPayments().find(p => p.id === paymentId)
-    if (!pmt) { setStatus('NOT_FOUND'); return }
-    // We trust the PayMongo redirect — a real prod setup would verify the
-    // session via the secret-key API or a webhook. For MVP, the redirect
-    // landing here means PayMongo accepted the payment.
-    savePayment({ ...pmt, status: 'PAID', paidAt: new Date().toISOString(), paymongoCheckoutId: pmt.paymongoCheckoutId ?? sessionId })
-    setStatus('PAID')
-
-    // Pull student name for the message.
+    // PayMongo landed the parent here, so the charge went through. Nothing is
+    // marked paid on this device: Class Hub shows only payments the Accounting
+    // Hub POS recorded (Hannah, 2026-10-31), so it reads PAID once the front
+    // desk records this PayMongo payment there.
+    setStatus(paymentId || sessionId ? 'PAID' : 'NOT_FOUND')
     const auth = getAuth()
     if (auth?.userId) {
       const u = getUsers().find(x => x.id === auth.userId)
@@ -52,7 +47,7 @@ function Inner() {
             <div className="inline-flex w-14 h-14 rounded-full bg-[color:var(--sage-tint)] items-center justify-center mb-4 text-[color:var(--moss)] text-2xl">✓</div>
             <h1 className="text-[26px] leading-tight mb-2">Payment received</h1>
             <p className="text-sm text-[color:var(--mid-gray)] mb-7">
-              Thank you{studentName ? `, ${studentName}'s family` : ''}. The proof of enrollment is now on the student profile.
+              Thank you{studentName ? `, ${studentName}'s family` : ''}. PayMongo received your payment and emailed your receipt. It shows on the student profile as paid once our front desk records it — usually within the next business day.
             </p>
             <button className="btn-primary" onClick={() => router.push('/profile')}>Go to my profile →</button>
           </>
@@ -60,9 +55,9 @@ function Inner() {
         {status === 'NOT_FOUND' && (
           <>
             <div className="inline-flex w-14 h-14 rounded-full bg-[color:var(--clay-tint)] items-center justify-center mb-4 text-[color:var(--clay)] text-2xl">!</div>
-            <h1 className="text-[24px] leading-tight mb-2">Couldn&apos;t match this payment</h1>
+            <h1 className="text-[24px] leading-tight mb-2">No payment details</h1>
             <p className="text-sm text-[color:var(--mid-gray)] mb-7">
-              We didn&apos;t find a matching pending payment on this browser. If you completed the PayMongo checkout, your receipt was emailed to you. Please contact admin to record the payment.
+              This page opened without PayMongo&apos;s payment details. If you completed the checkout, your receipt was emailed to you — please send it to the front desk so they can record the payment.
             </p>
             <button className="btn-primary" onClick={() => router.push('/profile')}>Go to my profile →</button>
           </>

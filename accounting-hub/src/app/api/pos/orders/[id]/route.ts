@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
+import { TUITION_SERVICE_NAME } from '@/lib/tuition'
 import { prisma } from '@/lib/prisma'
 import { restoreFifoLots, recalcWeightedUnitCost } from '@/lib/fifo'
 import { postOrderJournal, reverseOrderJournal } from '@/lib/accounting/post-order'
@@ -466,6 +467,10 @@ export async function PUT(
           // Reopen we treat the same as a void from the class-portal point
           // of view: the order's no longer authoritative, so the student
           // should see PENDING again until the cashier re-completes.
+          // A row the POS created itself (Tuition picker, id pos_…) has no
+          // queue item to return to — it is VOIDED until the sale is
+          // completed again (see the edit path below).
+          const posMade = classPortalPaymentId.startsWith('pos_')
           void fetch(`${marketingUrl}/api/internal/class-portal/frontdesk-payments/${encodeURIComponent(classPortalPaymentId)}`, {
             method: 'PATCH',
             headers: {
@@ -473,7 +478,7 @@ export async function PUT(
               'content-type': 'application/json',
             },
             body: JSON.stringify({
-              status: 'PENDING',
+              status: posMade ? 'VOIDED' : 'PENDING',
               notes: `Order ${existing.orderNumber ?? id} ${body.action} by ${session.user.name ?? session.user.id}${body.reason ? ': ' + body.reason : ''}`,
             }),
           }).catch(err => {
@@ -703,6 +708,29 @@ export async function PUT(
     // to zero against it and the sale silently vanishes from the books.
     if (updated.status !== 'VOIDED') {
       try { await postOrderJournal(prisma, id, session.user.id) } catch (e) { console.error('Order re-post after edit failed:', e) }
+    }
+
+    // A re-completed Class Hub tuition sale is the payment again: mark the
+    // Class Hub row PAID, with the edited amount when the POS made the row.
+    if (typeof updated.queueItemId === 'string' && updated.queueItemId.startsWith('clsp_')) {
+      const classPortalPaymentId = updated.queueItemId.slice('clsp_'.length)
+      const apiKey = process.env.EXTERNAL_API_KEY || ''
+      if (apiKey) {
+        const tuitionNames = new Set(Object.values(TUITION_SERVICE_NAME))
+        const items = await prisma.orderItem.findMany({ where: { orderId: id }, select: { name: true, lineTotal: true } })
+        const lines = items.filter(i => tuitionNames.has(i.name))
+        const gross = lines.reduce((t, i) => t + Number(i.lineTotal), 0)
+        const amount = lines.length === items.length ? Number(updated.netAmount) : Math.max(0, gross - Number(updated.discountAmount))
+        void fetch(`${process.env.MARKETING_HUB_URL || 'https://operations.sapphireclinicseast.org'}/api/internal/class-portal/frontdesk-payments/${encodeURIComponent(classPortalPaymentId)}`, {
+          method: 'PATCH',
+          headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
+          body: JSON.stringify({
+            status: 'CONVERTED',
+            notes: `Order ${updated.orderNumber ?? id} completed again by ${session.user.name ?? session.user.id}`,
+            ...(classPortalPaymentId.startsWith('pos_') && amount > 0 ? { amountCentavos: Math.round(amount * 100) } : {}),
+          }),
+        }).catch(err => console.warn('[orders.PUT edit] class-portal callback failed:', err))
+      }
     }
 
     return NextResponse.json(updated)

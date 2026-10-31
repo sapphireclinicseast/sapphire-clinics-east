@@ -461,9 +461,16 @@ export const SECTIONS: Section[] = [
         `Open **Tuition** (filter **With promissory notes**). A student whose note has no schedule yet shows **Note — no plan yet**.`,
         `Click **Set payment plan**: pick the note, the date the payment was **originally due**, the amount it covers, then one or more **scheduled payments** (Split the amount evenly helps).`,
         `The plan must follow the promissory rule: every payment within **3 months** of the original due date and **inside the same semester** (Semester 1 Jun–Aug, 2 Sep–Dec, 3 Jan–Apr). The form shows the latest allowed date and won't save a schedule that breaks it.`,
-        `From 7 days before each date (and until it's paid) the payment shows in the **bell** and at the **POS** when the student is the patient. **Send to POS** / **Collect now → queue** puts it in the POS queue; the cashier converts it like any Class Hub tuition item, and it turns **Paid** here and in Class Hub.`,
+        `From 7 days before each date (and until it's paid) the payment shows in the **bell**, in **POS → Tuition**, and under the patient name when the student is rung up. Collect it there; the sale marks it **Paid** here and in Class Hub.`,
       ] },
-      { k: 'note', label: 'The POS is the only door for tuition.', t: `Class Hub can no longer confirm a payment by itself — every pending Class Hub payment waits in the POS queue until the cashier completes it, so the cash always becomes a sale. Payments confirmed in Class Hub before this change show as **Confirmed in Class Hub — no linked POS sale** in red: check whether each was rung up as a separate sale; if not, it is missing from the ledger.` },
+      { k: 'sub', t: 'Collecting tuition at the POS' },
+      { k: 'steps', items: [
+        `**POS → Tuition — Class Hub students** lists the students with something due within 7 days; search to reach anyone else. Pick the student.`,
+        `It shows what is due under the student's plan (Monthly on the 5th of Jun–Mar, Bi-annual Jun 5 / Dec 5, Annual Jun 5) and any promissory payments, with what is already paid this school year.`,
+        `Click **Collect** — the sale form opens with the tuition on it. For a **partial payment**, lower the amount first: it is rung at exactly the amount paid (never as a discount), and the rest of that month stays due. A full payment is rung at the list price with the student's usual discount.`,
+        `**Other tuition payment** covers an advance payment or a period not listed. Finish the sale as usual — the payment is written to Class Hub as Paid and the family is notified.`,
+      ] },
+      { k: 'note', label: 'Tuition is recorded only in the Accounting Hub.', t: `Class Hub can't record, confirm, edit or delete a payment — it shows what the POS recorded. To correct a payment, void, reopen or edit the sale; Class Hub follows it. A parent who paid through PayMongo checkout is recorded here too, with PayMongo as the method.` },
       { k: 'sub', t: 'Record a collection' },
       { k: 'steps', items: [
         `Open the **HMO** or **GL** tab and click **Record Payment**.`,

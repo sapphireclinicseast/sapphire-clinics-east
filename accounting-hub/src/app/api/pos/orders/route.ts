@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
+import { TUITION_SERVICE_NAME } from '@/lib/tuition'
+import { classHubMethod, recordClassHubPayment } from '@/lib/tuition-server'
 import { prisma } from '@/lib/prisma'
 import { parsePagination, paginatedResult } from '@/lib/pagination'
 import { consumeFifoLots, recalcWeightedUnitCost } from '@/lib/fifo'
@@ -630,7 +632,39 @@ export async function POST(req: Request) {
       }
     }
 
-    return NextResponse.json(order, { status: 201 })
+    // Tuition rung up from the POS Tuition picker. The POS is the only place
+    // tuition is recorded (Hannah, 2026-10-31): write the payment to Class Hub
+    // already PAID and link this sale to it, so voiding or editing the sale
+    // keeps Class Hub in step. A promissory payment also marks its plan item.
+    let tuitionRecorded: boolean | undefined
+    const tuition = body.tuition as { studentId?: string; plan?: string; period?: string; isPartialPayment?: boolean; planItemId?: string } | undefined
+    if (tuition?.studentId && tuition.period && !queueItemId && !isUnpaid) {
+      const tuitionNames = new Set(Object.values(TUITION_SERVICE_NAME))
+      const tuitionLines = order.items.filter(i => tuitionNames.has(i.name))
+      const gross = tuitionLines.reduce((t, i) => t + Number(i.lineTotal), 0)
+      const amount = tuitionLines.length === order.items.length ? Number(order.netAmount) : Math.max(0, gross - Number(order.discountAmount))
+      const classPortalPaymentId = `pos_${order.id}`
+      const largest = [...order.payments].sort((a, b) => Number(b.amount) - Number(a.amount))[0]
+      try {
+        await recordClassHubPayment({
+          classPortalPaymentId, studentId: tuition.studentId, plan: tuition.plan || '', period: tuition.period,
+          amountCentavos: Math.round(amount * 100), isPartialPayment: !!tuition.isPartialPayment,
+          ...classHubMethod(largest?.method),
+          notes: `Order ${order.orderNumber} at the Accounting Hub POS by ${session.user.name ?? session.user.id}${tuition.isPartialPayment ? ' · partial payment' : ''}`,
+          paidAt: order.transactionDate.toISOString(),
+        })
+        await prisma.order.update({ where: { id: order.id }, data: { queueItemId: `clsp_${classPortalPaymentId}` } })
+        if (tuition.planItemId) {
+          await prisma.tuitionPaymentPlanItem.updateMany({ where: { id: tuition.planItemId, classPortalPaymentId: null }, data: { classPortalPaymentId } })
+        }
+        tuitionRecorded = true
+      } catch (err) {
+        console.warn('[orders.POST] Class Hub tuition record failed:', err)
+        tuitionRecorded = false
+      }
+    }
+
+    return NextResponse.json(tuitionRecorded === undefined ? order : { ...order, tuitionRecorded }, { status: 201 })
   } catch {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }

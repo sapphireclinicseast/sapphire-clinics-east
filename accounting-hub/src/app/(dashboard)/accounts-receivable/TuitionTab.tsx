@@ -3,11 +3,11 @@
 // Accounts Receivable → Tuition: Class Hub students, their tuition payments
 // and promissory notes, and the payment schedule set for each note. A note may
 // delay a payment by at most 3 months and never past the end of its semester
-// (lib/tuition.ts). Scheduled payments are collected at the POS: "Send to POS"
-// puts one in the POS queue, and the cashier's sale marks it paid here and in
-// Class Hub.
+// (lib/tuition.ts). Scheduled payments are collected at the POS (Tuition
+// picker); the sale marks them paid here and records them in Class Hub — the
+// POS is the only place tuition is recorded.
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
-import { Loader2, X, Plus, Trash2, CalendarClock, ChevronDown, ChevronRight, Eye, Send, AlertTriangle, FileText } from 'lucide-react'
+import { Loader2, X, Plus, Trash2, CalendarClock, ChevronDown, ChevronRight, Eye, AlertTriangle, FileText } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import {
   ITEM_STATE_LABEL, MAX_PLAN_PAYMENTS, currentSchoolYear, latestAllowedDate, planProblem, schoolYearLabel,
@@ -56,7 +56,7 @@ const PLAN_STATUS: Record<PlanStatus, { text: string; style: { background: strin
   NONE: null,
 }
 
-export default function TuitionTab({ branch, canWrite, canCollect }: { branch: string; canWrite: boolean; canCollect: boolean }) {
+export default function TuitionTab({ branch, canWrite }: { branch: string; canWrite: boolean }) {
   const thisSy = currentSchoolYear()
   const [sy, setSy] = useState(thisSy)
   const [students, setStudents] = useState<Student[]>([])
@@ -109,20 +109,6 @@ export default function TuitionTab({ branch, canWrite, canCollect }: { branch: s
       return true
     })
   }, [students, search, filter])
-
-  async function sendToPos(item: PlanItem) {
-    setBusy(item.id); setError('')
-    try {
-      const res = await fetch(`/api/tuition/items/${item.id}/collect`, { method: 'POST' })
-      const d = await res.json()
-      if (!res.ok) throw new Error(d.error || 'Could not send to the POS queue.')
-      await load()
-    } catch (e) {
-      setError((e as Error).message)
-    } finally {
-      setBusy('')
-    }
-  }
 
   async function cancelPlan(plan: Plan) {
     if (!confirm('Cancel this payment plan? Its scheduled payments stop showing in the bell and at the POS.')) return
@@ -278,13 +264,8 @@ export default function TuitionTab({ branch, canWrite, canCollect }: { branch: s
                                       <td className="pr-4 py-1 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>
                                         {i.paidOn ? <>{fmtDate(i.paidOn)}{i.orderNumber ? ` · POS #${i.orderNumber}` : ' · Class Hub only'}</> : i.inPos ? 'Waiting in POS' : '—'}
                                       </td>
-                                      <td className="py-1 text-right">
-                                        {canCollect && p.status === 'ACTIVE' && !i.paidOn && !i.classPortalPaymentId && (
-                                          <button onClick={() => sendToPos(i)} disabled={busy === i.id} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium text-white disabled:opacity-60" style={{ background: 'var(--teal)' }}
-                                            title="Put this payment in the POS queue for the cashier to collect">
-                                            {busy === i.id ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />} Send to POS
-                                          </button>
-                                        )}
+                                      <td className="py-1 text-right text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+                                        {p.status === 'ACTIVE' && !i.paidOn && !i.inPos && 'Collect at POS → Tuition'}
                                       </td>
                                     </tr>
                                   ))}

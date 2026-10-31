@@ -23,9 +23,13 @@ import { HmoSettlementModal, HMO_SETTLE_ROLES, type HmoSettlementNote } from '@/
 import Pagination from '@/components/ui/Pagination'
 import { downloadXlsx, downloadReportPdf } from '@/lib/export'
 import { patientViewPath } from '@/lib/patient-view'
+import { TUITION_SERVICE_NAME, normName, tuitionPrefillFor, type TuitionPlan, type TuitionPrefill } from '@/lib/tuition'
+import TuitionDesk from './TuitionDesk'
 import { buildSoaPdf, MONTH_OPTIONS, periodLabel, type SoaSettings, type SoaOrder } from '@/lib/soa-pdf'
 
 /* ─────────────────────────── TYPES ─────────────────────────── */
+
+const TUITION_LINE_NAMES = new Set(Object.values(TUITION_SERVICE_NAME))
 
 interface QueueItem {
   id: string
@@ -799,12 +803,6 @@ function CashierPanel({
   }, [selectedBranch, date])
 
   useEffect(() => { fetchQueue() }, [fetchQueue])
-  // A tuition payment sent to the queue from the sale form shows up right away.
-  useEffect(() => {
-    const onRefresh = () => { fetchQueue() }
-    window.addEventListener('pos-queue-refresh', onRefresh)
-    return () => window.removeEventListener('pos-queue-refresh', onRefresh)
-  }, [fetchQueue])
 
   // Auto-refresh queue every 30 seconds for live updates
   useEffect(() => {
@@ -881,6 +879,9 @@ function CashierPanel({
           </a>
         )}
       </div>
+
+      {/* Tuition — Class Hub students: pick one, collect what is due */}
+      <TuitionDesk branch={selectedBranch} onCollect={t => { setPrefill({ patientName: t.studentName, patientId: t.patientId, tuition: t }); setShowOrderForm(true) }} />
 
       {/* Queue — hidden for Verdana (retail/seminars branch has no appointment queue) */}
       {selectedBranch !== 'VERDANA_STORE' && (
@@ -1087,10 +1088,15 @@ function OrderFormModal({
   // (to read a service's HMO off its prefix), and which set of warnings the
   // cashier has confirmed against the patient's LOA.
   const [hmoSuggest, setHmoSuggest] = useState<{ walletId: string; name: string; lastDate?: string; orderNumber?: number } | null>(null)
-  // Tuition promissory payments due within 7 days (or overdue) for the student
-  // being rung up — AR → Tuition plans; the front desk asks the parent to pay.
-  const [tuitionDue, setTuitionDue] = useState<{ itemId: string; studentName: string; seq: number; count: number; dueDate: string; amount: number; daysUntil: number; inPos: boolean }[]>([])
-  const [tuitionBusy, setTuitionBusy] = useState('')
+  // Tuition on this sale (POS → Tuition picker, or the due reminder under the
+  // patient name). Completing the sale records it in Class Hub — the POS is
+  // the only place tuition is recorded.
+  const [tuitionMeta, setTuitionMeta] = useState<TuitionPrefill | null>((prefill?.tuition as TuitionPrefill | undefined) || null)
+  const tuitionApplied = useRef(false)
+  // Tuition due for the student being rung up, so the front desk asks the
+  // parent to pay: { student, dues } from /api/tuition/balances.
+  const [tuitionDue, setTuitionDue] = useState<{ student: { id: string; name: string; patientId: string | null; discountLabel: string | null }; dues: { key: string; kind: 'REGULAR' | 'PROMISSORY'; plan: TuitionPlan; period: string; dueDate: string; paid: number; remaining: number; daysUntil: number; planItemId?: string; seq?: number; count?: number }[] } | null>(null)
+  const [tuitionAmt, setTuitionAmt] = useState<Record<string, string>>({})
   const [hmoNames, setHmoNames] = useState<{ id: string; name: string }[]>([])
   const [hmoAckKey, setHmoAckKey] = useState('')
   const [showGlPay, setShowGlPay] = useState(false)
@@ -1196,36 +1202,25 @@ function OrderFormModal({
     return () => clearTimeout(t)
   }, [patientId, patientName])
 
-  const loadTuitionDue = useCallback(async (pid: string, pname: string) => {
-    try {
-      const r = await fetch(`/api/tuition/reminders?patientId=${encodeURIComponent(pid)}&patientName=${encodeURIComponent(pname)}`)
-      if (!r.ok) return
-      const d = await r.json()
-      setTuitionDue(d?.reminders || [])
-    } catch { /* reminder only — stay quiet */ }
-  }, [])
   useEffect(() => {
-    setTuitionDue([])
-    const pname = patientName.trim()
-    if (!patientId && pname.length < 3) return
-    const t = setTimeout(() => { void loadTuitionDue(patientId, pname) }, 400)
+    setTuitionDue(null)
+    const pname = normName(patientName)
+    if (!['SANDBOX_EAST', 'SANDBOX_GREENHILLS'].includes(branch) || (!patientId && pname.length < 6)) return
+    const t = setTimeout(async () => {
+      try {
+        const r = await fetch(`/api/tuition/balances?branch=${branch}`)
+        if (!r.ok) return
+        const d = await r.json()
+        type Bal = { id: string; name: string; patientId: string | null; discountLabel: string | null; dues: NonNullable<typeof tuitionDue>['dues'] }
+        const st = ((d?.students || []) as Bal[]).find(x => (patientId && x.patientId === patientId) || normName(x.name) === pname)
+        if (st && st.dues.length) {
+          setTuitionDue({ student: { id: st.id, name: st.name, patientId: st.patientId, discountLabel: st.discountLabel }, dues: st.dues })
+          setTuitionAmt(Object.fromEntries(st.dues.map(x => [x.key, String(x.remaining)])))
+        }
+      } catch { /* reminder only — stay quiet */ }
+    }, 500)
     return () => clearTimeout(t)
-  }, [patientId, patientName, loadTuitionDue])
-
-  // Put a scheduled tuition payment in the queue, where it is converted like
-  // any Class Hub tuition item (the sale marks it paid in AR and Class Hub).
-  const sendTuitionToQueue = async (itemId: string) => {
-    setTuitionBusy(itemId)
-    try {
-      const r = await fetch(`/api/tuition/items/${itemId}/collect`, { method: 'POST' })
-      const d = await r.json().catch(() => ({}))
-      if (!r.ok) { alert(d.error || 'Could not send the tuition payment to the queue.'); return }
-      window.dispatchEvent(new Event('pos-queue-refresh'))
-      await loadTuitionDue(patientId, patientName.trim())
-    } finally {
-      setTuitionBusy('')
-    }
-  }
+  }, [patientId, patientName, branch])
 
   // A service's HMO is its name prefix ("INSULAR - Tecar Therapy"). Warn when it
   // differs from the HMO picked as payer, or when the payer differs from the
@@ -1318,8 +1313,44 @@ function OrderFormModal({
   }
 
   const addItem = (svc: ServiceItem) => {
-    const price = effectivePrice(svc)
-    setItems(prev => [...prev, {
+    setItems(prev => [...prev, itemFor(svc)])
+    setServiceSearch('')
+    setShowServiceDrop(false)
+  }
+
+  // Put tuition on the sale. A full payment is rung at the service's list price
+  // with the student's usual discount; a partial one at exactly the amount
+  // paid, so it is never booked as a discount and the rest stays due.
+  const applyTuition = (t: TuitionPrefill) => {
+    const svc = services.find(x => x.name === TUITION_SERVICE_NAME[t.plan])
+    if (!svc) { setError(`The ${TUITION_SERVICE_NAME[t.plan]} service is not available — check POS → Services.`); return }
+    const list = effectivePrice(svc)
+    const atList = t.listMode && list >= t.amount
+    const line = itemFor(svc, atList ? list : t.amount)
+    setItems(prev => [...prev.filter(it => !TUITION_LINE_NAMES.has(it.name)), line])
+    if (atList && list - t.amount > 0.005) {
+      setCustomDiscountId('__FREEFORM__')
+      setFreeformDiscountType('FIXED')
+      setFreeformDiscountAmt(Math.round((list - t.amount) * 100) / 100)
+      setFreeformDiscountRemarks(t.discountLabel || 'Tuition discount')
+    }
+    if (!patientName.trim()) setPatientName(t.studentName)
+    if (t.patientId && !patientId) setPatientId(t.patientId)
+    tuitionApplied.current = true
+    setTuitionMeta(t)
+  }
+  useEffect(() => {
+    if (tuitionApplied.current || !tuitionMeta || services.length === 0) return
+    applyTuition(tuitionMeta)
+  }, [services]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Taking the tuition line off the sale takes the Class Hub record with it.
+  useEffect(() => {
+    if (tuitionApplied.current && tuitionMeta && !items.some(it => TUITION_LINE_NAMES.has(it.name))) setTuitionMeta(null)
+  }, [items, tuitionMeta])
+
+  const itemFor = (svc: ServiceItem, priceOverride?: number) => {
+    const price = priceOverride ?? effectivePrice(svc)
+    return {
       serviceId: svc.id,
       name: svc.name,
       department: svc.department,
@@ -1338,9 +1369,7 @@ function OrderFormModal({
         const cf = newActive && svc.newClinicFee != null ? svc.newClinicFee : svc.clinicFee
         return { doctorFee: df != null ? toNum(df) : undefined, clinicFee: cf != null ? toNum(cf) : undefined }
       })(),
-    }])
-    setServiceSearch('')
-    setShowServiceDrop(false)
+    }
   }
 
   const updateItemQty = (idx: number, qty: number) => {
@@ -1896,6 +1925,10 @@ function OrderFormModal({
         notes: orderNotes.trim() || null,
         unpaid: asUnpaid,
         voucherId: voucher?.id || null,
+        tuition: tuitionMeta ? {
+          studentId: tuitionMeta.studentId, plan: tuitionMeta.plan, period: tuitionMeta.period,
+          isPartialPayment: tuitionMeta.isPartialPayment, planItemId: tuitionMeta.planItemId,
+        } : undefined,
       }
       const res = await fetch('/api/pos/orders', {
         method: 'POST',
@@ -1904,6 +1937,10 @@ function OrderFormModal({
       })
       const data = await res.json()
       if (!res.ok) { setError(data.error || 'Failed to create order'); setSubmitting(false); return }
+      if (tuitionMeta) {
+        if (data.tuitionRecorded === false) alert(`Order #${data.orderNumber} is saved, but Class Hub could not be updated. Tell accounting so the payment is added to the student's Class Hub record.`)
+        window.dispatchEvent(new Event('pos-tuition-refresh'))
+      }
 
       // Deduct wallet balances after order is created
       // Exclude HMO and GL — those are accounts receivable, handled on the backend
@@ -2165,24 +2202,37 @@ function OrderFormModal({
                 ))}
               </div>
             )}
-            {tuitionDue.length > 0 && (
+            {tuitionMeta ? (
+              <div className="mt-2 rounded-xl border px-3 py-2 text-xs flex items-center justify-between gap-2" style={{ borderColor: '#99f6e4', background: '#f0fdfa', color: '#115e59' }}>
+                <span>
+                  <strong>Tuition:</strong> {tuitionMeta.studentName} · {tuitionMeta.period} · {formatCurrency(tuitionMeta.amount)}
+                  {tuitionMeta.isPartialPayment && <strong> · partial payment</strong>} — recorded in Class Hub when this sale is completed.
+                </span>
+                <button type="button" onClick={() => { setTuitionMeta(null); setItems(prev => prev.filter(it => !TUITION_LINE_NAMES.has(it.name))) }} className="shrink-0 underline">Remove</button>
+              </div>
+            ) : tuitionDue && (
               <div className="mt-2 rounded-xl border px-3 py-2 text-xs space-y-1.5" style={{ borderColor: '#fdba74', background: '#fff7ed', color: '#9a3412' }}>
-                <p className="font-semibold">Tuition promissory payment{tuitionDue.length > 1 ? 's' : ''} due — please ask the parent to pay</p>
-                {tuitionDue.map(t => (
-                  <div key={t.itemId} className="flex items-center justify-between gap-2">
-                    <span>
-                      {t.studentName}: {formatCurrency(t.amount)} · payment {t.seq} of {t.count} ·{' '}
-                      <strong>{t.daysUntil < 0 ? `${-t.daysUntil} day${t.daysUntil === -1 ? '' : 's'} overdue` : t.daysUntil === 0 ? 'due today' : `due in ${t.daysUntil} day${t.daysUntil === 1 ? '' : 's'}`}</strong>
-                      {' '}({new Date(`${t.dueDate}T00:00:00`).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })})
-                    </span>
-                    {t.inPos
-                      ? <span className="shrink-0 font-semibold">In the queue — convert it there</span>
-                      : <button type="button" onClick={() => sendTuitionToQueue(t.itemId)} disabled={tuitionBusy === t.itemId}
-                          className="shrink-0 px-2 py-1 rounded-lg font-semibold text-white disabled:opacity-60" style={{ background: '#ea580c' }}>
-                          {tuitionBusy === t.itemId ? 'Sending…' : 'Collect now → queue'}
-                        </button>}
-                  </div>
-                ))}
+                <p className="font-semibold">Tuition due for {tuitionDue.student.name} — please ask the parent to pay</p>
+                {tuitionDue.dues.map(d => {
+                  const amt = Number(tuitionAmt[d.key]) || 0
+                  return (
+                    <div key={d.key} className="flex items-center justify-between gap-2 flex-wrap">
+                      <span>
+                        {d.period}{d.kind === 'PROMISSORY' ? ` (promissory ${d.seq} of ${d.count})` : ''}: {formatCurrency(d.remaining)} ·{' '}
+                        <strong>{d.daysUntil < 0 ? `${-d.daysUntil} day${d.daysUntil === -1 ? '' : 's'} overdue` : d.daysUntil === 0 ? 'due today' : `due in ${d.daysUntil} day${d.daysUntil === 1 ? '' : 's'}`}</strong>
+                      </span>
+                      <span className="flex items-center gap-1.5 shrink-0">
+                        <input type="number" min={0} step="0.01" value={tuitionAmt[d.key] ?? ''} onChange={e => setTuitionAmt({ ...tuitionAmt, [d.key]: e.target.value })}
+                          className="w-24 px-2 py-1 rounded-lg border text-right bg-white" style={{ borderColor: '#fdba74' }} title="Lower it for a partial payment" />
+                        <button type="button" disabled={!(amt > 0) || amt > d.remaining + 0.005}
+                          onClick={() => applyTuition(tuitionPrefillFor(tuitionDue.student, d, amt))}
+                          className="px-2 py-1 rounded-lg font-semibold text-white disabled:opacity-50" style={{ background: '#ea580c' }}>
+                          {amt > 0 && amt < d.remaining - 0.005 ? 'Add partial to this sale' : 'Add to this sale'}
+                        </button>
+                      </span>
+                    </div>
+                  )
+                })}
               </div>
             )}
           </div>

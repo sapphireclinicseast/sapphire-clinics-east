@@ -1,9 +1,5 @@
-// POST /api/public/class-portal/frontdesk-payments
-//
-// Parent on /pay picks "Pay at front desk" → class portal POSTs here so
-// the accounting hub's POS Cashier sees a pending tuition item to convert
-// into an order. Idempotent on classPortalPaymentId — retrying the
-// "Notify front desk" button doesn't spawn duplicate cashier items.
+// POST /api/public/class-portal/frontdesk-payments — refused: payments are
+// recorded only at the Accounting Hub POS (see POST below).
 //
 // GET /api/public/class-portal/frontdesk-payments
 //
@@ -14,11 +10,9 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/class-portal-auth'
-import { createNotifications, staffRecipientsForBranch } from '@/lib/class-portal-notifications'
 import { withCors, corsHeaders } from '../../_cors'
 
-const ALL_BRANCHES = ['EAST', 'GREENHILLS'] as const
-type ClassPortalBranch = (typeof ALL_BRANCHES)[number]
+const CLASS_HUB_READ_ONLY = 'Tuition payments are recorded at the Accounting Hub POS. Class Hub shows them once the front desk records the sale.'
 
 export async function OPTIONS(req: Request) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(req.headers.get('origin')) })
@@ -33,152 +27,16 @@ function jsonError(origin: string | null, e: unknown): NextResponse {
   return withCors(NextResponse.json({ error: 'Server error.' }, { status: 500 }), origin)
 }
 
+// Tuition is recorded only at the Accounting Hub POS (Hannah, 2026-10-31):
+// Class Hub shows what the POS recorded and creates no payment rows of its
+// own. Parents pay online through PayMongo or at the front desk / by bank
+// transfer, and the cashier records it — the accounting hub then writes the
+// row through /api/internal/class-portal/frontdesk-payments.
 export async function POST(req: Request) {
   const origin = req.headers.get('origin')
   try {
-    const auth = await requireAuth(req)
-    const body = await req.json() as {
-      classPortalPaymentId?: string
-      studentId?: string
-      studentEmail?: string
-      studentName?: string
-      branch?: string
-      plan?: string
-      tuitionCentavos?: number
-      miscCentavos?: number
-      period?: string
-      method?: string
-      methodDetail?: string | null
-      notes?: string
-      isPartialPayment?: boolean
-    }
-
-    // Validation — every required field present and reasonable.
-    const required = ['classPortalPaymentId', 'studentId', 'studentEmail', 'studentName', 'branch', 'plan', 'period'] as const
-    for (const k of required) {
-      if (!body[k] || typeof body[k] !== 'string') {
-        return withCors(NextResponse.json({ error: `${k} is required.` }, { status: 400 }), origin)
-      }
-    }
-    if (!ALL_BRANCHES.includes(body.branch as ClassPortalBranch)) {
-      return withCors(NextResponse.json({ error: 'Invalid branch.' }, { status: 400 }), origin)
-    }
-    const tuitionCentavos = Math.max(0, Math.round(Number(body.tuitionCentavos ?? 0)))
-    const miscCentavos    = Math.max(0, Math.round(Number(body.miscCentavos    ?? 0)))
-    if (tuitionCentavos + miscCentavos <= 0) {
-      return withCors(NextResponse.json({ error: 'Amount must be greater than zero.' }, { status: 400 }), origin)
-    }
-
-    // Students may only create notifications for their own account.
-    if (auth.role === 'STUDENT' && auth.userId !== body.studentId) {
-      return withCors(NextResponse.json({ error: 'You can only post payment notifications for your own account.' }, { status: 403 }), origin)
-    }
-
-    // PAYMONGO rows are minted by an admin/branch-admin/frontdesk via the
-    // "Record PayMongo payment" affordance on the student profile, so the
-    // payment surfaces in the accounting-hub POS queue same as a bank or
-    // cash payment. We don't accept PAYMONGO from STUDENT — only paid-via-
-    // PayMongo records that staff manually log, until the proper
-    // webhook flow lands.
-    const allowed = ['BANK_DEPOSIT', 'FRONT_DESK_CASH', 'PAYMONGO'] as const
-    type AllowedMethod = typeof allowed[number]
-    const method: AllowedMethod | null = (allowed as readonly string[]).includes(body.method ?? '')
-      ? (body.method as AllowedMethod)
-      : null
-    if (method === 'PAYMONGO' && auth.role === 'STUDENT') {
-      return withCors(NextResponse.json({ error: 'Only staff can log a PayMongo payment.' }, { status: 403 }), origin)
-    }
-
-    // Validate methodDetail. Only meaningful when method = FRONT_DESK_CASH
-    // ("Frontdesk payment" in the UI). For other methods we force-null it
-    // so the row stays clean even if a buggy client sends a value.
-    const allowedDetails = ['CASH', 'CREDIT_CARD', 'DEBIT_CARD', 'GCASH', 'PAYMAYA'] as const
-    type AllowedDetail = typeof allowedDetails[number]
-    let methodDetail: AllowedDetail | null = null
-    if (method === 'FRONT_DESK_CASH') {
-      const raw = body.methodDetail ?? null
-      if (raw === null || raw === '') {
-        // Default to CASH so legacy callers keep working.
-        methodDetail = 'CASH'
-      } else if ((allowedDetails as readonly string[]).includes(raw)) {
-        methodDetail = raw as AllowedDetail
-      } else {
-        return withCors(NextResponse.json({ error: 'Invalid methodDetail. Must be one of: CASH, CREDIT_CARD, DEBIT_CARD, GCASH, PAYMAYA.' }, { status: 400 }), origin)
-      }
-    }
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const row = await (prisma.classPortalFrontDeskPayment as any).upsert({
-      where: { classPortalPaymentId: body.classPortalPaymentId },
-      // Re-notify is allowed: update only the mutable fields. Status/createdAt stay.
-      update: {
-        studentEmail: body.studentEmail,
-        studentName: body.studentName,
-        plan: body.plan,
-        tuitionCentavos,
-        miscCentavos,
-        period: body.period,
-        method,
-        methodDetail,
-        notes: body.notes ?? null,
-        isPartialPayment: Boolean(body.isPartialPayment),
-      },
-      create: {
-        classPortalPaymentId: body.classPortalPaymentId!,
-        studentId: body.studentId!,
-        studentEmail: body.studentEmail!,
-        studentName: body.studentName!,
-        branch: body.branch as ClassPortalBranch,
-        plan: body.plan!,
-        tuitionCentavos,
-        miscCentavos,
-        period: body.period!,
-        method,
-        methodDetail,
-        notes: body.notes ?? null,
-        isPartialPayment: Boolean(body.isPartialPayment),
-        status: 'PENDING',
-      },
-    })
-
-    // Fan-out PENDING_PAYMENT bell notification to the desk + admins.
-    // Only fires on initial create (status=PENDING) so a re-notify
-    // upsert doesn't spam again. Best-effort — swallowed on failure.
-    try {
-      if (row.status === 'PENDING') {
-        const recipients = await staffRecipientsForBranch(row.branch)
-        await createNotifications(recipients, {
-          kind: 'PENDING_PAYMENT',
-          title: `Pending payment: ${row.studentName}`,
-          body: `${row.period} · ₱${((row.tuitionCentavos + row.miscCentavos) / 100).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-          href: `/admin?tab=PAYMENTS`,
-          payload: { frontDeskPaymentId: row.id, classPortalPaymentId: row.classPortalPaymentId },
-        })
-      }
-    } catch (nerr) {
-      console.error('[frontdesk-payments.POST] pending-notify failed', nerr)
-    }
-
-    return withCors(NextResponse.json({
-      payment: {
-        id: row.id,
-        classPortalPaymentId: row.classPortalPaymentId,
-        studentId: row.studentId,
-        studentEmail: row.studentEmail,
-        studentName: row.studentName,
-        branch: row.branch,
-        plan: row.plan,
-        tuitionCentavos: row.tuitionCentavos,
-        miscCentavos: row.miscCentavos,
-        period: row.period,
-        method: row.method ?? null,
-        methodDetail: row.methodDetail ?? null,
-        status: row.status,
-        isPartialPayment: Boolean(row.isPartialPayment),
-        createdAt: row.createdAt.toISOString(),
-        convertedAt: row.convertedAt?.toISOString() ?? null,
-      },
-    }), origin)
+    await requireAuth(req)
+    return withCors(NextResponse.json({ error: CLASS_HUB_READ_ONLY }, { status: 409 }), origin)
   } catch (e) { return jsonError(origin, e) }
 }
 

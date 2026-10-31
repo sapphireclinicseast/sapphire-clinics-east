@@ -2016,7 +2016,7 @@ export default function AccountsReceivablePage() {
       {tab === 'OTHERS' && <OthersTab branch={branch} canWrite={!isHmoOfficer} />}
 
       {/* ── Tuition: Class Hub promissory notes and their payment plans ── */}
-      {tab === 'TUITION' && <TuitionTab branch={branch} canWrite={canWrite && !isHmoOfficer} canCollect={!isHmoOfficer} />}
+      {tab === 'TUITION' && <TuitionTab branch={branch} canWrite={canWrite && !isHmoOfficer} />}
 
       {/* ── Overview content (AR Dashboard + Filters + Cards + Table + Payment History) ── */}
       {!ownTab && (tab !== 'HMO' || hmoSubTab === 'overview') && (tab !== 'GL' || glSubTab === 'overview') && <>

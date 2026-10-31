@@ -24,6 +24,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ cl
   const body = await req.json().catch(() => ({})) as {
     status?: 'PENDING' | 'CONVERTED' | 'VOIDED'
     notes?: string
+    /** A re-completed POS sale can change the amount paid. */
+    amountCentavos?: number
+    isPartialPayment?: boolean
   }
   // PENDING is used by the accounting hub when an order is voided/reopened —
   // the cashier item should re-appear in the queue and the student portal
@@ -42,6 +45,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ cl
         // Only CONVERTED carries a real timestamp; VOIDED and PENDING clear it.
         convertedAt: status === 'CONVERTED' ? new Date() : null,
         notes: body.notes ?? undefined,
+        ...(Number(body.amountCentavos) > 0 ? { tuitionCentavos: Math.round(Number(body.amountCentavos)), miscCentavos: 0 } : {}),
+        ...(typeof body.isPartialPayment === 'boolean' ? { isPartialPayment: body.isPartialPayment } : {}),
       },
     })
     return NextResponse.json({

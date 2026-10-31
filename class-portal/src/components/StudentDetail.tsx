@@ -9,7 +9,6 @@ import {
   updateUserEnrollment, updateUser, saveHeadshot,
   levelLabel, lrnStatusLabel, lsenClassificationLabel,
   LSEN_CLASSIFICATION_GROUPS,
-  recordPayMongoPayment,
   hydrateFrontDeskPayments,
   type StoredUser, type PaymentRecord, type WaiverRecord, type GradeRecord,
   type EnrollmentDraft, type LsenClassification, type EnrollmentLevel,
@@ -108,14 +107,10 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
   }, [student.id, student.email])
 
   const e = student.enrollment ?? {}
-  // Payment status has TWO meanings we care about here:
-  //   • hasEverPaid: any PAID row exists — used to gate "Record PayMongo
-  //     payment" (only offer that action if nothing has been paid yet).
-  //   • currentPeriodStatus: is THIS month's / this half's / this year's
-  //     installment covered? This is what drives the badge, so a monthly
-  //     student who paid June but not July shows DUE — matching the
-  //     Students list — instead of the misleading "Tuition paid".
-  const hasEverPaid = payments.some(p => p.status === 'PAID')
+  // currentPeriodStatus: is THIS month's / this half's / this year's
+  // installment covered? This is what drives the badge, so a monthly
+  // student who paid June but not July shows DUE — matching the Students
+  // list — instead of the misleading "Tuition paid".
   // Re-run when paymentsRev bumps (i.e., after we hydrate from server).
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const badgeInfo = useMemo(() => paymentBadgeInfoFor(student.id), [student.id, paymentsRev, payments])
@@ -180,19 +175,8 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
             {viewerRole === 'STUDENT' && (
               <a href="/pay" className="btn-cta text-xs whitespace-nowrap">Pay tuition fee →</a>
             )}
-            {viewerRole === 'ADMIN' && !hasEverPaid && (
-              <PayMongoRecorder
-                student={student}
-                onRecorded={async () => {
-                  // Re-hydrate from the server so this device's local cache
-                  // picks up the new PENDING row immediately (it'll flip to
-                  // PAID once the cashier converts to order).
-                  await hydrateFrontDeskPayments()
-                  setPayments(getPaymentsForStudent(student.id))
-                  onChange?.()
-                }}
-              />
-            )}
+            {/* Payments are recorded at the Accounting Hub POS only (Hannah,
+                2026-10-31); a PayMongo payment is recorded there too. */}
           </div>
         </div>
       </div>
@@ -1644,146 +1628,3 @@ async function downloadServerWaiverPdf(studentId: string, lastName: string): Pro
   setTimeout(() => URL.revokeObjectURL(url), 5_000)
 }
 
-/**
- * Admin/branch-admin/frontdesk affordance for logging a PayMongo payment
- * that didn't auto-record (e.g. the parent paid on a different device,
- * never landed on /pay/success, or otherwise left no server-side trail).
- *
- * Creates a queued row that the cashier converts to an Order via the
- * accounting hub — matching exactly how a bank-deposit row behaves. We
- * intentionally do NOT mark the row CONVERTED here: the cashier still
- * needs to issue the OR/receipt and let the accounting ledger create the
- * Order. Once they do, the student's profile flips to PAID.
- */
-function PayMongoRecorder({ student, onRecorded }: {
-  student: StoredUser
-  onRecorded: () => void | Promise<void>
-}) {
-  const [open, setOpen] = useState(false)
-  const [amount, setAmount] = useState('')
-  const [plan, setPlan] = useState<PaymentPlan>('ANNUAL')
-  const [period, setPeriod] = useState('')
-  const [reference, setReference] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState<string | null>(null)
-
-  const studentBranch = (student.branch as 'EAST' | 'GREENHILLS' | null) ?? null
-  const studentName = [student.firstName, student.lastName].filter(Boolean).join(' ') || student.email
-
-  async function submit() {
-    setErr(null)
-    if (!studentBranch) { setErr('Student has no branch on file — set the branch first.'); return }
-    const peso = Number(amount.replace(/,/g, ''))
-    if (!Number.isFinite(peso) || peso <= 0) { setErr('Enter the amount paid (in PHP).'); return }
-    if (!period.trim()) { setErr('Period covered is required (e.g. "AY 2026–2027").'); return }
-    setBusy(true)
-    try {
-      const ok = await recordPayMongoPayment({
-        studentId: student.id,
-        studentEmail: student.email,
-        studentName,
-        branch: studentBranch,
-        plan,
-        tuitionCentavos: Math.round(peso * 100),
-        miscCentavos: 0,
-        period: period.trim(),
-        notes: reference.trim()
-          ? `PayMongo ref: ${reference.trim()} · logged by admin`
-          : 'PayMongo · logged by admin',
-      })
-      if (!ok) { setErr('Could not record the payment. Retry?'); return }
-      await onRecorded()
-      setOpen(false)
-      setAmount(''); setReference(''); setPeriod('')
-      alert(`Recorded ${studentName}'s PayMongo payment. The cashier will see it in the POS queue and can Convert to Order.`)
-    } finally { setBusy(false) }
-  }
-
-  if (!open) {
-    return (
-      <button
-        type="button"
-        className="btn-secondary text-[11px] whitespace-nowrap"
-        onClick={() => setOpen(true)}
-        title="Use this if the parent already paid via PayMongo but the system never recorded it (e.g. they paid on a different device)."
-      >
-        Record PayMongo payment
-      </button>
-    )
-  }
-  return (
-    <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm overflow-y-auto p-3 sm:p-4 flex items-start justify-center" onClick={() => !busy && setOpen(false)}>
-      <div
-        className="card-static w-full max-w-md mt-10 sm:mt-16"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)] mb-1" style={{ fontFamily: 'var(--font-display)' }}>
-          Record PayMongo payment
-        </div>
-        <h3 className="text-[18px] leading-tight mb-3">{studentName}</h3>
-        <p className="text-[12px] text-[color:var(--mid-gray)] mb-4">
-          Use this when the parent already paid via PayMongo but the system didn&apos;t record it (different device, cleared browser, etc.).
-          A pending tuition row is created so the cashier can <span className="font-semibold">Convert to Order</span> in the accounting hub —
-          the student&apos;s profile flips to PAID once the cashier converts.
-        </p>
-
-        {err && (
-          <div className="mb-3 px-3 py-2 rounded-lg bg-rose-50 border border-rose-100 text-[12.5px] text-rose-800">{err}</div>
-        )}
-
-        <label className="block mb-3">
-          <span className="label">Amount paid (PHP)</span>
-          <input
-            type="number"
-            inputMode="decimal"
-            min={0}
-            step="0.01"
-            className="input"
-            value={amount}
-            onChange={e => setAmount(e.target.value)}
-            placeholder="e.g. 5000"
-            disabled={busy}
-          />
-        </label>
-
-        <label className="block mb-3">
-          <span className="label">Plan</span>
-          <select
-            className="select"
-            value={plan}
-            onChange={e => setPlan(e.target.value as PaymentPlan)}
-            disabled={busy}
-          >
-            <option value="ANNUAL">Annual</option>
-            <option value="BIANNUAL">Bi-annual</option>
-            <option value="MONTHLY">Monthly</option>
-          </select>
-        </label>
-
-        <div className="block mb-3">
-          <span className="label">Period covered</span>
-          <PeriodPicker plan={plan} value={period} onChange={setPeriod} disabled={busy} />
-        </div>
-
-        <label className="block mb-4">
-          <span className="label">PayMongo reference / receipt no. (optional)</span>
-          <input
-            type="text"
-            className="input"
-            value={reference}
-            onChange={e => setReference(e.target.value)}
-            placeholder="Paste from the PayMongo email"
-            disabled={busy}
-          />
-        </label>
-
-        <div className="flex gap-2 justify-end">
-          <button className="btn-secondary text-xs" onClick={() => setOpen(false)} disabled={busy}>Cancel</button>
-          <button className="btn-primary text-xs" onClick={submit} disabled={busy}>
-            {busy ? 'Recording…' : 'Record payment'}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
