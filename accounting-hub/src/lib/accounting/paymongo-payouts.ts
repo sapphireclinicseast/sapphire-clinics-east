@@ -75,14 +75,15 @@ export async function syncPayouts(prisma: PrismaClient, userId: string): Promise
   const branchOfClearing = new Map<string, string | null>()
   for (const m of modes) if (m.accountId && !branchOfClearing.has(m.accountId)) branchOfClearing.set(m.accountId, m.branch || null)
   const clearingIds = [...branchOfClearing.keys()]
-  // Credits made earlier in this run, so two payouts never claim the same open balance.
-  const claimed = new Map<string, number>()
-  const openBalance = async (accountId: string, asOf: Date) => {
+  // Open as of the payout date, less what this payout has already taken from it.
+  // Earlier payouts are posted (so already in the ledger) before the next one
+  // is read — counting them again here would starve every later payout.
+  const openBalance = async (accountId: string, asOf: Date, pending: Map<string, number>) => {
     const agg = await prisma.journalEntryLine.aggregate({
       where: { accountId, journalEntry: { entryDate: { lte: asOf } } },
       _sum: { debit: true, credit: true },
     })
-    return r2(Number(agg._sum.debit || 0) - Number(agg._sum.credit || 0) - (claimed.get(accountId) || 0))
+    return r2(Number(agg._sum.debit || 0) - Number(agg._sum.credit || 0) - (pending.get(accountId) || 0))
   }
 
   let recorded = 0, netTotal = 0, unallocated = 0
@@ -111,7 +112,6 @@ export async function syncPayouts(prisma: PrismaClient, userId: string): Promise
       const linkedCheckoutIds: string[] = []
       const addCredit = (accountId: string, amt: number) => {
         credits.set(accountId, r2((credits.get(accountId) || 0) + amt))
-        claimed.set(accountId, r2((claimed.get(accountId) || 0) + amt))
       }
 
       for (const t of txns.data) {
@@ -146,7 +146,7 @@ export async function syncPayouts(prisma: PrismaClient, userId: string): Promise
         }
 
         // 3. A POS PayMongo payment: the branch clearing with room for it.
-        const open = await Promise.all(clearingIds.map(async id => ({ id, bal: await openBalance(id, p.paidAt!) })))
+        const open = await Promise.all(clearingIds.map(async id => ({ id, bal: await openBalance(id, p.paidAt!, credits) })))
         open.sort((x, y) => y.bal - x.bal)
         for (const o of open) {
           if (!(remaining > 0.005) || !(o.bal > 0.005)) break
@@ -181,7 +181,6 @@ export async function syncPayouts(prisma: PrismaClient, userId: string): Promise
         })
       } catch (e) {
         console.error('[PayMongo] payout JE failed for', p.payoutId, e)
-        for (const [id, amt] of credits) claimed.set(id, r2((claimed.get(id) || 0) - amt))
         continue
       }
 
