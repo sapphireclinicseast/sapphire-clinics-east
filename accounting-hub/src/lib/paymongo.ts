@@ -190,6 +190,19 @@ export async function listPayouts(account: string, params: { limit?: number } = 
   return json.data || []
 }
 
+// The PayMongo wallet(s) payouts land in, with each wallet's movements
+// (payouts in, settlements out to the bank).
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function listWallets(account: string): Promise<any[]> {
+  const json = await pmFetch(account, '/wallets')
+  return json.data || []
+}
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function listWalletTransactions(account: string, walletId: string): Promise<any[]> {
+  const json = await pmFetch(account, `/wallets/${walletId}/transactions?limit=100`)
+  return json.data || []
+}
+
 // The individual payments a payout settled (net of each payment's own fee).
 // `complete` is false when PayMongo reports more pages than were read.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

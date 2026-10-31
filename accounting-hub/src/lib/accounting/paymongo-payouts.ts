@@ -3,11 +3,14 @@
  *
  * How the money actually moves (verified against the live API, 2026-10-31):
  * PayMongo pays every merchant account's collections out to the PayMongo
- * WALLET (bank "PAYMONGO PAYMENTS, INC.", account ••8714) — not to a bank.
- * Someone later withdraws from the wallet to SCEI Main by hand, and that
- * withdrawal is a bank-statement line reconciled in Bank Rec.
+ * WALLET (bank "PAYMONGO PAYMENTS, INC.", account ••8714), and the wallet
+ * settles to the bank (SCEI Main, BDO ••7267). That settlement is a bank
+ * statement line: a Bank Rec category rule on PayMongo's bank code (PAEYPHM)
+ * books it DR bank / CR wallet at import, so it is NOT posted here — posting it
+ * here as well would count the deposit twice. Only the wallet's own transfer
+ * fee, which no bank statement shows, is posted here (DR 8330 / CR wallet).
  *
- * So each settled payout posts, against the configured settlement account
+ * Each settled payout posts, against the configured settlement account
  * (the PayMongo Wallet asset):
  *
  *   DR PayMongo Wallet                 payout net
@@ -27,16 +30,18 @@
  * Whatever is left lands in 2990 suspense, never invented into a clearing.
  *
  * Idempotent per payout (JE PAYMONGO_PAYOUT:<payoutId>). Payouts before
- * POSTING_FROM are skipped: their money reached the books through bank
- * true-ups and the 2026-06 clearing fix, so posting them would double count.
+ * POSTING_FROM are skipped: everything up to the 2026-06-16 settlement reached
+ * the books through the SCEI Main true-up and MJE-2026-0041, and the ₱285.70
+ * the wallet kept that day was booked as its opening (MJE-2026-0049).
  */
 
 import type { PrismaClient } from '@prisma/client'
-import { PAYMONGO_ACCOUNTS, listPayouts, listPayoutTransactions, paymongoConfigured, parsePayout } from '@/lib/paymongo'
+import { PAYMONGO_ACCOUNTS, listPayouts, listPayoutTransactions, listWallets, listWalletTransactions, paymongoConfigured, parsePayout } from '@/lib/paymongo'
 import { postJournalEntry, type PostingLine } from './posting'
 
-const POSTING_FROM = new Date('2026-11-01T00:00:00+08:00')
+const POSTING_FROM = new Date('2026-06-17T00:00:00+08:00')
 const SUSPENSE_NUMBER = '2990'
+const BANK_CHARGES_NUMBER = '8330'
 
 export interface PayoutSyncResult { recorded: number; net: number; unallocated?: number; skipped?: string }
 
@@ -176,6 +181,42 @@ export async function syncPayouts(prisma: PrismaClient, userId: string): Promise
       if (linkedCheckoutIds.length) await prisma.paymongoCheckout.updateMany({ where: { id: { in: linkedCheckoutIds } }, data: { payoutId: p.payoutId } })
       recorded++; netTotal = r2(netTotal + p.netPhp)
       if (diff > 0.005) unallocated = r2(unallocated + diff)
+    }
+
+    // The wallet's fee on each settlement to the bank (₱10 per transfer so far):
+    // the bank receives the amount, the wallet loses amount + fee.
+    const charges = await prisma.account.findFirst({ where: { accountNumber: BANK_CHARGES_NUMBER }, select: { id: true } })
+    if (!charges) continue
+    let wallets: Record<string, unknown>[] = []
+    try { wallets = await listWallets(acct.code) } catch { /* no wallet product on this account */ }
+    for (const w of wallets) {
+      const walletNo = String(((w.attributes || {}) as Record<string, unknown>).account_number || '')
+      let wtx: Record<string, unknown>[] = []
+      try { wtx = await listWalletTransactions(acct.code, String(w.id)) } catch (e) { console.error('[PayMongo] wallet transactions failed:', e); continue }
+      for (const t of wtx) {
+        const a = (t.attributes || {}) as Record<string, unknown>
+        const sender = (a.sender || {}) as Record<string, unknown>
+        const fee = r2(Number(a.fee || 0) / 100)
+        const at = a.created_at ? new Date(Number(a.created_at) * 1000) : null
+        if (!walletNo || String(sender.bank_account_number || '') !== walletNo) continue
+        if (!(fee > 0) || a.status !== 'succeeded' || !at || at < POSTING_FROM) continue
+        const ref = String(t.id)
+        if (await prisma.journalEntry.findFirst({ where: { referenceType: 'PAYMONGO_WALLET_FEE', referenceId: ref }, select: { id: true } })) continue
+        try {
+          await postJournalEntry(prisma, {
+            entryDate: at,
+            description: `PayMongo wallet transfer fee — ${ref} (₱${(Number(a.amount || 0) / 100).toFixed(2)} sent to the bank)`,
+            referenceType: 'PAYMONGO_WALLET_FEE',
+            referenceId: ref,
+            branch: 'ALL',
+            createdById: userId,
+            lines: [
+              { accountId: charges.id, debit: fee, description: 'PayMongo wallet transfer fee' },
+              { accountId: wallet.id, credit: fee, description: 'PayMongo wallet transfer fee' },
+            ],
+          })
+        } catch (e) { console.error('[PayMongo] wallet fee JE failed for', ref, e) }
+      }
     }
   }
 
