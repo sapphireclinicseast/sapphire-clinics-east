@@ -83,7 +83,9 @@ export function PaymongoAdvanceQueue({ branch, onConverted }: { branch: string; 
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed') } finally { setBusyId('') }
   }
 
-  if (!loading && rows.length === 0 && conv.length === 0 && !error) return null
+  // Nothing to show — including while the first load is still running, so an
+  // empty queue never flashes up for a second on every POS refresh.
+  if (rows.length === 0 && conv.length === 0 && !error) return null
 
   return (
     <div className="rounded-2xl border" style={{ borderColor: 'var(--teal)', background: '#f0fdfa' }}>
