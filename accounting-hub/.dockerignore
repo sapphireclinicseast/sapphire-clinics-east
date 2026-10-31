@@ -1,0 +1,34 @@
+# The build context for docker/Dockerfile is this directory: compose builds
+# with `context: ..` and redeploy.sh runs `docker build -f docker/Dockerfile .`,
+# both from /opt/accounting on the VPS. The builder stage runs `COPY . .`, so
+# everything not listed here is sent to the daemon and kept in a build layer.
+#
+# After the CI rsync --delete, /opt/accounting holds git's files plus only what
+# that rsync excludes: docker/.env*, node_modules, .next and uploads. Those are
+# exactly what must stay out of the image.
+#
+# Unlike .gitignore, a pattern here is anchored to this directory unless it
+# starts with **/.
+
+# User uploads. /opt/accounting/uploads (~850MB) is bind-mounted to
+# /app/uploads at run time and served by /api/files, so the image never needs
+# it. public/uploads is where files went before 2026-05-03. Keep these anchored:
+# src/app/api/payroll/timekeeping/uploads/ is source code.
+uploads
+public/uploads
+
+# Secrets. docker/.env holds NEXTAUTH_SECRET, the DB password and the API keys.
+# Compose reads it on the host; the build never does.
+docker/.env*
+.env
+.env*.local
+
+# Host dependencies and build output. The builder gets node_modules from the
+# deps stage's npm ci, and a host copy would overwrite it at COPY . .
+**/node_modules
+**/.next
+*.tsbuildinfo
+
+.git
+**/*.log
+**/.DS_Store
