@@ -1165,7 +1165,7 @@ export default function HandbookPage() {
                 <li>Top-right: <kbd>+ Record payment</kbd> and <kbd>Refresh</kbd>.</li>
                 <li>Columns: Student · Plan · Period · Method · Branch · Amount · Submitted · Action.</li>
                 <li><b>Method</b> is an inline select — change it any time before confirming. Options: <em>Frontdesk: Cash / Credit Card / Debit Card / GCash / PayMaya · Bank deposit · PayMongo</em>.</li>
-                <li>Row actions: <kbd>Confirm payment</kbd> (primary) · <kbd>Edit</kbd> · <kbd>Delete</kbd> (main admin only).</li>
+                <li>Row actions: <kbd>Edit</kbd> · <kbd>Delete</kbd> (main admin only). Pending rows show <b>Waiting in POS</b> — the cashier completes them in the Accounting Hub POS queue, which flips them to Confirmed.</li>
               </ul>
 
               <h4>Confirmed Payments</h4>
@@ -1184,17 +1184,17 @@ export default function HandbookPage() {
                 <li>Type <kbd>Amount paid (PHP)</kbd> as a plain number (no commas).</li>
                 <li>Use the <kbd>Period covered</kbd> picker — see the Golden rule about period text.</li>
                 <li>Optionally type a receipt / deposit-slip / PayMongo reference (the label morphs to the method).</li>
-                <li>Click <kbd>Record payment</kbd>. Success alert reminds you to click <kbd>Confirm payment</kbd> once the money is verified.</li>
+                <li>Click <kbd>Record payment</kbd>. The row goes to the Accounting Hub POS queue; the cashier completes it there once the money is verified.</li>
               </ol>
 
               <div className="call rule"><span className="lbl">PayMongo records DO NOT auto-confirm from this flow</span>
-                When staff records a payment as PayMongo via this modal, it&rsquo;s a bookkeeping entry for a receipt already collected. The row lands as PENDING and you must click <kbd>Confirm payment</kbd> for the student&rsquo;s badge to flip. Forgetting is the #1 cause of &ldquo;parent paid but portal says Due&rdquo; tickets.
+                When staff records a payment as PayMongo via this modal, it&rsquo;s a bookkeeping entry for a receipt already collected. The row lands as PENDING in the Accounting Hub POS queue; the student&rsquo;s badge flips once the cashier completes it there. A row left in the POS queue is the #1 cause of &ldquo;parent paid but portal says Due&rdquo; tickets.
               </div>
 
               <h4>Full payment vs Partial payment</h4>
               <p>The Record and Edit modals both include a radio toggle under <b>Payment amount</b>:</p>
               <ul>
-                <li><strong>Full payment</strong> (default) — the receipt settles the period in full. The student&rsquo;s portal flips to <em>Paid</em> for the covered period as soon as you click <kbd>Confirm payment</kbd>.</li>
+                <li><strong>Full payment</strong> (default) — the receipt settles the period in full. The student&rsquo;s portal flips to <em>Paid</em> for the covered period as soon as the cashier completes it at the Accounting Hub POS.</li>
                 <li><strong>Partial payment</strong> — tick this when the parent is paying in installments within the same period (common on the Monthly plan when a parent splits ₱5,000 into two cash receipts). The row is still logged + confirmed, but the badge logic treats it as &ldquo;doesn&rsquo;t settle the period on its own&rdquo; so the student&rsquo;s portal keeps showing <em>Due</em> until a later <em>Full</em> payment is recorded against the same period.</li>
               </ul>
               <p>Partial-flagged rows show a small amber <strong>Partial</strong> chip beside the amount in both the Pending and Confirmed Payments tables so staff can see at a glance which payments haven&rsquo;t closed their period yet.</p>
@@ -1602,7 +1602,7 @@ export default function HandbookPage() {
               <div className="flowcol supplies">
                 <div className="flow-lbl">Class portal supplies</div>
                 <ul>
-                  <li>Each <b>Confirm payment</b> click creates an <em>Order</em> in Accounting Hub POS with tuition + misc + method — that&rsquo;s how the cash lands on the P&amp;L.</li>
+                  <li>Every pending payment is a queue item in the Accounting Hub POS. The cashier converting it creates the <em>Order</em> (tuition + misc + method) — that&rsquo;s how the cash lands on the P&amp;L — and flips the row to Confirmed here. Class Hub can no longer confirm a payment on its own.</li>
                 </ul>
               </div>
               <div className="flowcol receives">
@@ -1695,7 +1695,7 @@ export default function HandbookPage() {
             <h3><span className="badge b-f"><span className="dot">F</span> Front desk</span></h3>
             <ol>
               <li><b>Take walk-in payments.</b> For each: Payments → <kbd>+ Record payment</kbd> → student, method, plan, amount, period. Watch the period text.</li>
-              <li><b>Confirm bank deposits</b> that landed overnight. Match to the parent&rsquo;s uploaded slip in the Proof column, then <kbd>Confirm payment</kbd>.</li>
+              <li><b>Confirm bank deposits</b> that landed overnight. Match to the parent&rsquo;s uploaded slip in the Proof column, then have the cashier complete the row in the Accounting Hub POS queue.</li>
               <li><b>Keep the Enrollment register clean.</b> Fill LRNs the moment a parent brings the document. Mark NO_LRN via the LRN Status dropdown for those still waiting.</li>
               <li><b>Answer parent walk-ins.</b> Open their student on the Students tab; the drawer has every document, every payment, every badge.</li>
               <li><b>End of day:</b> Excel export the Enrollment register if the branch admin asks; otherwise leave it.</li>
@@ -1737,7 +1737,7 @@ export default function HandbookPage() {
           </div>
 
           <div className="call rule"><span className="lbl">PayMongo record ≠ auto-confirm</span>
-            When staff record a payment as PayMongo via <kbd>+ Record payment</kbd>, it lands PENDING — that&rsquo;s a bookkeeping entry, not a live checkout. You still have to click <kbd>Confirm payment</kbd> for the badge to flip. Actual PayMongo checkouts from <code>/pay</code> auto-flip because the webhook fires.
+            When staff record a payment as PayMongo via <kbd>+ Record payment</kbd>, it lands PENDING — that&rsquo;s a bookkeeping entry, not a live checkout. The cashier still has to complete it in the Accounting Hub POS queue for the badge to flip. Actual PayMongo checkouts from <code>/pay</code> auto-flip because the webhook fires.
           </div>
 
           <div className="call rule"><span className="lbl">Disable, don&rsquo;t delete</span>
@@ -1795,7 +1795,7 @@ export default function HandbookPage() {
             <details id="faq-paid-due"><summary>A parent paid via PayMongo but the portal still says Due.</summary><div className="a">
               <p>Two possible causes, both fixable in seconds:</p>
               <ol>
-                <li><b>Front desk recorded it as PayMongo but forgot to Confirm.</b> Admin → Payments → Pending confirmations → find the row → click <kbd>Confirm payment</kbd>. Badge flips on next refresh.</li>
+                <li><b>Front desk recorded it as PayMongo but forgot to Confirm.</b> Find it in the Accounting Hub POS queue (it is listed under the student&rsquo;s name) and complete the sale. Badge flips on next refresh.</li>
                 <li><b>The PayMongo webhook didn&rsquo;t fire.</b> Confirm the row manually via the same button, then check that PayMongo has the correct webhook URL for the branch.</li>
               </ol>
             </div></details>
@@ -1870,7 +1870,7 @@ export default function HandbookPage() {
               type="search"
               value={query}
               onChange={e => setQuery(e.target.value)}
-              placeholder="e.g. Confirm payment, PayMongo, Missing bearer, intern, waiver…"
+              placeholder="e.g. Waiting in POS, PayMongo, Missing bearer, intern, waiver…"
               autoComplete="off"
               aria-label="Search the handbook"
             />

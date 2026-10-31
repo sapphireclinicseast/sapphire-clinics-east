@@ -799,6 +799,12 @@ function CashierPanel({
   }, [selectedBranch, date])
 
   useEffect(() => { fetchQueue() }, [fetchQueue])
+  // A tuition payment sent to the queue from the sale form shows up right away.
+  useEffect(() => {
+    const onRefresh = () => { fetchQueue() }
+    window.addEventListener('pos-queue-refresh', onRefresh)
+    return () => window.removeEventListener('pos-queue-refresh', onRefresh)
+  }, [fetchQueue])
 
   // Auto-refresh queue every 30 seconds for live updates
   useEffect(() => {
@@ -1081,6 +1087,10 @@ function OrderFormModal({
   // (to read a service's HMO off its prefix), and which set of warnings the
   // cashier has confirmed against the patient's LOA.
   const [hmoSuggest, setHmoSuggest] = useState<{ walletId: string; name: string; lastDate?: string; orderNumber?: number } | null>(null)
+  // Tuition promissory payments due within 7 days (or overdue) for the student
+  // being rung up — AR → Tuition plans; the front desk asks the parent to pay.
+  const [tuitionDue, setTuitionDue] = useState<{ itemId: string; studentName: string; seq: number; count: number; dueDate: string; amount: number; daysUntil: number; inPos: boolean }[]>([])
+  const [tuitionBusy, setTuitionBusy] = useState('')
   const [hmoNames, setHmoNames] = useState<{ id: string; name: string }[]>([])
   const [hmoAckKey, setHmoAckKey] = useState('')
   const [showGlPay, setShowGlPay] = useState(false)
@@ -1185,6 +1195,37 @@ function OrderFormModal({
     }, 400)
     return () => clearTimeout(t)
   }, [patientId, patientName])
+
+  const loadTuitionDue = useCallback(async (pid: string, pname: string) => {
+    try {
+      const r = await fetch(`/api/tuition/reminders?patientId=${encodeURIComponent(pid)}&patientName=${encodeURIComponent(pname)}`)
+      if (!r.ok) return
+      const d = await r.json()
+      setTuitionDue(d?.reminders || [])
+    } catch { /* reminder only — stay quiet */ }
+  }, [])
+  useEffect(() => {
+    setTuitionDue([])
+    const pname = patientName.trim()
+    if (!patientId && pname.length < 3) return
+    const t = setTimeout(() => { void loadTuitionDue(patientId, pname) }, 400)
+    return () => clearTimeout(t)
+  }, [patientId, patientName, loadTuitionDue])
+
+  // Put a scheduled tuition payment in the queue, where it is converted like
+  // any Class Hub tuition item (the sale marks it paid in AR and Class Hub).
+  const sendTuitionToQueue = async (itemId: string) => {
+    setTuitionBusy(itemId)
+    try {
+      const r = await fetch(`/api/tuition/items/${itemId}/collect`, { method: 'POST' })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) { alert(d.error || 'Could not send the tuition payment to the queue.'); return }
+      window.dispatchEvent(new Event('pos-queue-refresh'))
+      await loadTuitionDue(patientId, patientName.trim())
+    } finally {
+      setTuitionBusy('')
+    }
+  }
 
   // A service's HMO is its name prefix ("INSULAR - Tecar Therapy"). Warn when it
   // differs from the HMO picked as payer, or when the payer differs from the
@@ -2121,6 +2162,26 @@ function OrderFormModal({
                     <span className="font-medium">{p.name}</span>
                     {p.email ? <span className="text-xs ml-2 truncate" style={{ color: 'var(--mid-gray)' }}>{p.email}</span> : null}
                   </button>
+                ))}
+              </div>
+            )}
+            {tuitionDue.length > 0 && (
+              <div className="mt-2 rounded-xl border px-3 py-2 text-xs space-y-1.5" style={{ borderColor: '#fdba74', background: '#fff7ed', color: '#9a3412' }}>
+                <p className="font-semibold">Tuition promissory payment{tuitionDue.length > 1 ? 's' : ''} due — please ask the parent to pay</p>
+                {tuitionDue.map(t => (
+                  <div key={t.itemId} className="flex items-center justify-between gap-2">
+                    <span>
+                      {t.studentName}: {formatCurrency(t.amount)} · payment {t.seq} of {t.count} ·{' '}
+                      <strong>{t.daysUntil < 0 ? `${-t.daysUntil} day${t.daysUntil === -1 ? '' : 's'} overdue` : t.daysUntil === 0 ? 'due today' : `due in ${t.daysUntil} day${t.daysUntil === 1 ? '' : 's'}`}</strong>
+                      {' '}({new Date(`${t.dueDate}T00:00:00`).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })})
+                    </span>
+                    {t.inPos
+                      ? <span className="shrink-0 font-semibold">In the queue — convert it there</span>
+                      : <button type="button" onClick={() => sendTuitionToQueue(t.itemId)} disabled={tuitionBusy === t.itemId}
+                          className="shrink-0 px-2 py-1 rounded-lg font-semibold text-white disabled:opacity-60" style={{ background: '#ea580c' }}>
+                          {tuitionBusy === t.itemId ? 'Sending…' : 'Collect now → queue'}
+                        </button>}
+                  </div>
                 ))}
               </div>
             )}

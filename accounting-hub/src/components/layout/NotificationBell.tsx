@@ -1,13 +1,14 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Bell, TrendingDown, CalendarClock, Landmark, ShieldCheck, Loader2, FolderLock } from 'lucide-react'
+import { Bell, TrendingDown, CalendarClock, Landmark, ShieldCheck, Loader2, FolderLock, GraduationCap } from 'lucide-react'
 import { computeTaxDue } from '@/lib/taxes'
 import type { ComplianceDue } from '@/lib/compliance'
 
 /* Top-bar bell: one place for what needs action soon —
    PF to recover after HMO decreases, recurring expenses, BIR tax deadlines,
-   and benefit/government compliance deadlines (Taxes → Compliance Calendar).
+   benefit/government compliance deadlines (Taxes → Compliance Calendar), and
+   tuition promissory payments due within 7 days (AR → Tuition).
    Each source is role-gated by its own API; a 403 just means "not yours". */
 
 const TAX_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
@@ -22,11 +23,12 @@ const dueText = (d: number) => (d < 0 ? `${-d} day${d === -1 ? '' : 's'} overdue
 const getJson = (url: string) => fetch(url).then(r => (r.ok ? r.json() : null)).catch(() => null)
 
 async function loadGroups(role: string): Promise<Group[]> {
-  const [pf, recurring, compliance, expiring] = await Promise.all([
+  const [pf, recurring, compliance, expiring, tuition] = await Promise.all([
     getJson('/api/payroll/hmo-settlement-alerts'),
     getJson('/api/expenses/reminders'),
     getJson('/api/compliance-deadlines?due=1'),
     getJson('/api/official-documents?expiring=1'),
+    getJson('/api/tuition/reminders'),
   ])
   const groups: Group[] = []
 
@@ -93,6 +95,19 @@ async function loadGroups(role: string): Promise<Group[]> {
         key: `doc-${d.id}`, title: d.title,
         detail: `${d.referenceNo ? `${d.referenceNo} · ` : ''}expires ${d.expiryDate.slice(0, 10)}`,
         daysUntil: Math.round((Date.parse(d.expiryDate.slice(0, 10)) - today) / 86_400_000), href: '/official-documents',
+      })),
+    })
+  }
+
+  // Tuition promissory payments due within 7 days or overdue
+  const tuitionDue: { itemId: string; studentName: string; branch: string; seq: number; count: number; dueDate: string; amount: number; daysUntil: number; inPos: boolean }[] = tuition?.reminders || []
+  if (tuitionDue.length) {
+    groups.push({
+      key: 'tuition', label: 'Tuition promissory payments', icon: GraduationCap,
+      items: tuitionDue.map(t => ({
+        key: `tui-${t.itemId}`, title: `${t.studentName} — ${peso(t.amount)}`,
+        detail: `Payment ${t.seq} of ${t.count} · ${t.branch === 'SANDBOX_GREENHILLS' ? 'Greenhills' : 'East'} · ${t.dueDate}${t.inPos ? ' · in the POS queue' : ''}`,
+        daysUntil: t.daysUntil, href: '/accounts-receivable?type=TUITION',
       })),
     })
   }

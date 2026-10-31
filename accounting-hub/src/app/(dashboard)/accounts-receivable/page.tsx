@@ -22,6 +22,7 @@ import SoaReport from './SoaReport'
 import { soaBranchCode } from '@/lib/soa-ref'
 import SubmittedForSoa from './SubmittedForSoa'
 import OthersTab from './OthersTab'
+import TuitionTab from './TuitionTab'
 import ExpandablePanel from './ExpandablePanel'
 import PaymentsCard from './PaymentsCard'
 import { useResizableColumns, ResizableColgroup, ColResizeHandle } from '@/components/useResizableColumns'
@@ -115,6 +116,7 @@ const toNum = (v: unknown) => Number(v) || 0
 // The HMO sub-tabs sharing the Per HMO table block: the plain view, plus its
 // fixed shapes (doctor consults only / submitted-SOA-but-unpaid / follow-up).
 const PER_HMO_LIKE_TABS: readonly string[] = ['per-hmo', 'md-consults', 'follow-up', 'submitted-unpaid']
+type ArTab = 'HMO' | 'GL' | 'TUITION' | 'OTHERS'
 
 function formatDate(d: string) {
   return new Date(d).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
@@ -441,7 +443,9 @@ export default function AccountsReceivablePage() {
   // Overview, but they maintain the Guarantee Letter paper trail, so the GL tab and
   // its Detailed GL sheet are theirs to edit. Other Customers stays hidden.
   const isFrontdesk = ['AHEA_FRONTDESK', 'AHGH_FRONTDESK'].includes(role)
-  const visibleTabs = (isHmoOfficer ? ['HMO'] : isFrontdesk ? ['HMO', 'GL'] : ['HMO', 'GL', 'OTHERS']) as readonly ('HMO' | 'GL' | 'OTHERS')[]
+  // Tuition (Class Hub promissory plans) sits after GL; front desk see it too —
+  // they collect the scheduled payments at the till.
+  const visibleTabs = (isHmoOfficer ? ['HMO'] : isFrontdesk ? ['HMO', 'GL', 'TUITION'] : ['HMO', 'GL', 'TUITION', 'OTHERS']) as readonly ArTab[]
   // Money: recording a payment against an agency or provider stays with the roles
   // that reconcile it.
   const canWrite = !isFrontdesk
@@ -458,12 +462,14 @@ export default function AccountsReceivablePage() {
   const scope = userBranchScope((session?.user as { branch?: string })?.branch)
   const searchParams = useSearchParams()
   // HMO Officers and front desk are locked to the HMO tab only
-  const initialType = ['GL', 'OTHERS'].includes(searchParams.get('type') || '')
+  const initialType = ['GL', 'OTHERS', 'TUITION'].includes(searchParams.get('type') || '')
     && (isHmoOfficer ? false : !(isFrontdesk && searchParams.get('type') === 'OTHERS'))
-    ? (searchParams.get('type') as 'GL' | 'OTHERS') : 'HMO'
+    ? (searchParams.get('type') as ArTab) : 'HMO'
   const initialWallet = searchParams.get('wallet') || ''
 
-  const [tab, setTab] = useState<'HMO' | 'GL' | 'OTHERS'>(initialType as 'HMO' | 'GL' | 'OTHERS')
+  const [tab, setTab] = useState<ArTab>(initialType as ArTab)
+  // Others and Tuition load and render their own data.
+  const ownTab = tab === 'OTHERS' || tab === 'TUITION'
   const [branch, setBranch] = useState(scope.enum || '')
   useEffect(() => { if (scope.enum && branch !== scope.enum) setBranch(scope.enum) }, [scope.enum]) // eslint-disable-line react-hooks/exhaustive-deps
   const [dateFrom, setDateFrom] = useState('')
@@ -708,7 +714,7 @@ export default function AccountsReceivablePage() {
   const canRecomputeSoa = session?.user?.role === 'ADMIN' || session?.user?.role === 'ACCOUNTANT'
 
   const fetchData = useCallback(async () => {
-    if (tab === 'OTHERS') return // Others has its own fetch inside OthersTab
+    if (tab === 'OTHERS' || tab === 'TUITION') return // Others / Tuition fetch their own data
     setLoading(true)
     try {
       const params = new URLSearchParams({ type: tab, sortField, sortDir })
@@ -782,7 +788,7 @@ export default function AccountsReceivablePage() {
 
   // Fetch aging dashboard data whenever tab / branch / period changes
   useEffect(() => {
-    if (tab === 'OTHERS') return
+    if (tab === 'OTHERS' || tab === 'TUITION') return
     const ctl = new AbortController()
     const load = async () => {
       try {
@@ -1490,7 +1496,7 @@ export default function AccountsReceivablePage() {
           </h1>
           <p className="text-sm mt-1" style={{ color: 'var(--mid-gray)' }}>Monitor and record payments from HMO providers and Guarantee Letter agencies</p>
         </div>
-        {tab !== 'OTHERS' && (
+        {!ownTab && (
         <div className="flex items-center gap-3">
           <div className="text-right">
             <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Total Receivable ({tab})</p>
@@ -1514,7 +1520,7 @@ export default function AccountsReceivablePage() {
             style={tab === t
               ? { background: 'var(--teal)', color: 'white' }
               : { background: 'var(--off-white)', color: 'var(--charcoal)' }}>
-            {t === 'HMO' ? 'HMO Providers' : t === 'GL' ? 'Guarantee Letters (GL)' : 'Other Customers'}
+            {t === 'HMO' ? 'HMO Providers' : t === 'GL' ? 'Guarantee Letters (GL)' : t === 'TUITION' ? 'Tuition' : 'Other Customers'}
           </button>
         ))}
       </div>
@@ -2009,8 +2015,11 @@ export default function AccountsReceivablePage() {
       {/* ── Others: receivables from outside customers (e.g. Sandbox Clark) ── */}
       {tab === 'OTHERS' && <OthersTab branch={branch} canWrite={!isHmoOfficer} />}
 
+      {/* ── Tuition: Class Hub promissory notes and their payment plans ── */}
+      {tab === 'TUITION' && <TuitionTab branch={branch} canWrite={canWrite && !isHmoOfficer} canCollect={!isHmoOfficer} />}
+
       {/* ── Overview content (AR Dashboard + Filters + Cards + Table + Payment History) ── */}
-      {tab !== 'OTHERS' && (tab !== 'HMO' || hmoSubTab === 'overview') && (tab !== 'GL' || glSubTab === 'overview') && <>
+      {!ownTab && (tab !== 'HMO' || hmoSubTab === 'overview') && (tab !== 'GL' || glSubTab === 'overview') && <>
 
       {/* ── Dashboard: AR Days + Aging Receivable Details ── */}
       <div className="rounded-2xl border p-4 space-y-4" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
@@ -2431,7 +2440,7 @@ export default function AccountsReceivablePage() {
       })()}
 
       {/* ── Overview content, continued: Filters + Consumption ── */}
-      {tab !== 'OTHERS' && (tab !== 'HMO' || hmoSubTab === 'overview') && (tab !== 'GL' || glSubTab === 'overview') && <>
+      {!ownTab && (tab !== 'HMO' || hmoSubTab === 'overview') && (tab !== 'GL' || glSubTab === 'overview') && <>
 
       {/* Filters */}
       <div className="flex flex-wrap items-end gap-3">

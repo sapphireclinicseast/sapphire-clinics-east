@@ -1690,6 +1690,55 @@ model OtherReceivablePayment {
   @@index([date])
 }
 
+// AR → Tuition: the payment schedule set for a Class Hub promissory note.
+// Students, payments and the note files live in the ops app (Class Hub data,
+// read over EXTERNAL_API_KEY); only the schedule is kept here. A promissory
+// may delay a payment by at most 3 months and never past the end of its
+// semester (Class Hub's Semester 1 = Jun–Aug, 2 = Sep–Dec, 3 = Jan–Apr) —
+// enforced in lib/tuition.ts. Completion is derived from the items.
+model TuitionPaymentPlan {
+  id               String   @id @default(cuid())
+  studentId        String // Class Hub ClassPortalUser.id
+  studentName      String
+  studentEmail     String?
+  patientId        String? // CRM Patient.id matched by email — how the POS recognises the student
+  branch           String // SANDBOX_EAST | SANDBOX_GREENHILLS
+  promissoryNoteId String? // Class Hub ClassPortalPromissoryNote.id
+  schoolYear       Int // first year of the school year (2026 = SY 2026–2027)
+  semester         Int // 1 | 2 | 3
+  originalDueDate  DateTime // the payment the note delays
+  amount           Decimal
+  notes            String?
+  status           String   @default("ACTIVE") // ACTIVE | CANCELLED
+  createdById      String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  items TuitionPaymentPlanItem[]
+
+  @@index([studentId])
+  @@index([patientId])
+  @@index([branch])
+  @@index([status])
+}
+
+// One scheduled payment. classPortalPaymentId is the Class Hub front-desk
+// payment row opened to collect it: it shows in the POS queue as
+// `clsp_<id>`, and the item is paid once that queue item's sale exists.
+model TuitionPaymentPlanItem {
+  id                   String             @id @default(cuid())
+  planId               String
+  plan                 TuitionPaymentPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  seq                  Int
+  dueDate              DateTime
+  amount               Decimal
+  classPortalPaymentId String?            @unique
+  createdAt            DateTime           @default(now())
+
+  @@index([planId])
+  @@index([dueDate])
+}
+
 model ARPaymentItem {
   id        String    @id @default(cuid())
   paymentId String

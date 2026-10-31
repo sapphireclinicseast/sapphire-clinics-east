@@ -453,8 +453,17 @@ export const SECTIONS: Section[] = [
       { k: 'ul', items: [
         `**HMO Providers** — with sub-tabs **Overview · Per HMO · Generate SOA · SOA Submissions · LOA Submission · For Follow Up**.`,
         `**Guarantee Letters (GL)** — with **Overview** and **Detailed GL** (tracks each letter's documents, approval, SOA and payment).`,
+        `**Tuition** — Class Hub students: their tuition payments, the promissory notes uploaded in Class Hub, and the payment plan set for each note.`,
         `**Other Customers** — other credit customers, with staggered payment plans.`,
       ] },
+      { k: 'sub', t: 'Tuition promissory plans' },
+      { k: 'steps', items: [
+        `Open **Tuition** (filter **With promissory notes**). A student whose note has no schedule yet shows **Note — no plan yet**.`,
+        `Click **Set payment plan**: pick the note, the date the payment was **originally due**, the amount it covers, then one or more **scheduled payments** (Split the amount evenly helps).`,
+        `The plan must follow the promissory rule: every payment within **3 months** of the original due date and **inside the same semester** (Semester 1 Jun–Aug, 2 Sep–Dec, 3 Jan–Apr). The form shows the latest allowed date and won't save a schedule that breaks it.`,
+        `From 7 days before each date (and until it's paid) the payment shows in the **bell** and at the **POS** when the student is the patient. **Send to POS** / **Collect now → queue** puts it in the POS queue; the cashier converts it like any Class Hub tuition item, and it turns **Paid** here and in Class Hub.`,
+      ] },
+      { k: 'note', label: 'The POS is the only door for tuition.', t: `Class Hub can no longer confirm a payment by itself — every pending Class Hub payment waits in the POS queue until the cashier completes it, so the cash always becomes a sale. Payments confirmed in Class Hub before this change show as **Confirmed in Class Hub — no linked POS sale** in red: check whether each was rung up as a separate sale; if not, it is missing from the ledger.` },
       { k: 'sub', t: 'Record a collection' },
       { k: 'steps', items: [
         `Open the **HMO** or **GL** tab and click **Record Payment**.`,
@@ -466,7 +475,7 @@ export const SECTIONS: Section[] = [
         `**Generate SOA** builds the statement from eligible unbilled sessions.`,
         `After filing it, click **Submitted** and log the date and proof — the sessions flip to "SOA submitted" and the batch is recorded under **SOA Submissions**.`,
       ] },
-      { k: 'note', label: 'Access.', t: `The **HMO Officer** sees only the HMO tab. Branch front desk get HMO read-only plus an editable GL/Detailed GL, and don't see Other Customers or the **Record Payment** button.` },
+      { k: 'note', label: 'Access.', t: `The **HMO Officer** sees only the HMO tab. Branch front desk get HMO read-only plus an editable GL/Detailed GL, see Tuition (and can send a scheduled payment to the POS queue, but not set plans), and don't see Other Customers or the **Record Payment** button.` },
     ],
   },
   {

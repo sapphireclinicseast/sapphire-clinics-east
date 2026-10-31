@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import {
-  getFrontDeskPaymentsServer, confirmFrontDeskPayment, deleteFrontDeskPayment,
+  getFrontDeskPaymentsServer, deleteFrontDeskPayment,
   recordPaymentOnBehalfOf, hydrateUsers, getAuth,
   changeFrontDeskPaymentMethod, patchFrontDeskPayment,
   type FrontDeskPaymentRow, type PaymentPlan, type StoredUser, type Branch,
@@ -82,24 +82,9 @@ export default function FrontDeskPaymentConfirmations({ canDelete = false }: Fdp
   }
   useEffect(() => { void load() }, [])
 
-  async function handleConfirm(row: FrontDeskPaymentRow) {
-    if (busy) return
-    setErr(null); setBusy(row.classPortalPaymentId)
-    const ok = await confirmFrontDeskPayment(row.classPortalPaymentId)
-    if (!ok) {
-      setErr(`Could not confirm ${row.studentName}'s payment. Please retry.`)
-      setBusy(null)
-      return
-    }
-    // Optimistically flip in-place so the row jumps to the Confirmed
-    // Payments section immediately.
-    setRows(prev => prev.map(r =>
-      r.classPortalPaymentId === row.classPortalPaymentId
-        ? { ...r, status: 'CONVERTED', convertedAt: new Date().toISOString() }
-        : r,
-    ))
-    setBusy(null)
-  }
+  // Confirming happens at the Accounting Hub POS, not here: every pending
+  // row is a queue item there, and the cashier's sale flips it to PAID.
+  // (Confirming here never created the sale, so the cash went unrecorded.)
 
   // Inline edit for the recorded method + instrument. The dropdown is
   // a flat 7-option list (5 Frontdesk-payment instruments + Bank
@@ -201,7 +186,7 @@ export default function FrontDeskPaymentConfirmations({ canDelete = false }: Fdp
           <div>
             <h2 className="text-[18px] leading-tight">Pending confirmations</h2>
             <p className="text-[12.5px] text-[color:var(--mid-gray)] mt-1">
-              Cash + bank-deposit payments waiting for the front desk to verify and confirm. Click <span className="font-semibold">Confirm payment</span> once the cash is collected or the bank deposit is reconciled — the row immediately moves to <span className="font-semibold">Confirmed Payments</span> below and the student&apos;s portal flips to PAID on next refresh.
+              Payments waiting to be completed at the <span className="font-semibold">Accounting Hub POS</span>. Each row is already in the POS queue — once the cashier completes it there (cash collected, deposit or PayMongo receipt sighted), it moves to <span className="font-semibold">Confirmed Payments</span> below and the student&apos;s portal flips to PAID.
             </p>
             <p className="text-[11.5px] text-[color:var(--mid-gray)] mt-1.5 italic" style={{ fontFamily: 'var(--font-display)' }}>
               PayMongo payments are auto-confirmed when the parent finishes checkout — they don&apos;t appear here.
@@ -281,14 +266,13 @@ export default function FrontDeskPaymentConfirmations({ canDelete = false }: Fdp
                     <td className="py-2.5 px-3 text-[12.5px]">{new Date(r.createdAt).toLocaleString()}</td>
                     <td className="py-2.5 px-3 text-right">
                       <div className="inline-flex gap-1.5 items-center justify-end">
-                        <button
-                          type="button"
-                          className="btn-primary text-xs"
-                          onClick={() => void handleConfirm(r)}
-                          disabled={busy === r.classPortalPaymentId}
+                        <span
+                          className="text-[11px] font-semibold px-2 py-1 rounded"
+                          style={{ background: '#fef3c7', color: '#92400e' }}
+                          title="Complete this payment at the Accounting Hub POS — it is in the POS queue."
                         >
-                          {busy === r.classPortalPaymentId ? 'Confirming…' : 'Confirm payment'}
-                        </button>
+                          Waiting in POS
+                        </span>
                         <button
                           type="button"
                           className="text-[11px] px-2 py-1 rounded border hover:bg-[color:var(--paper-2)] disabled:opacity-40"
@@ -548,9 +532,9 @@ function RecordPaymentModal({
         methodDetail === 'PAYMAYA'                  ? 'PayMaya payment shows up in the merchant account' :
                                                       'payment is verified'
       alert(
-        `Recorded ${studentName}'s payment in the Pending queue. ` +
-        `Click "Confirm payment" once the ${verifyHint} ` +
-        `— the row will move to Confirmed Payments and the student's portal will flip to PAID.`
+        `Recorded ${studentName}'s payment. It is now in the Accounting Hub POS queue — ` +
+        `complete it there once the ${verifyHint}; the row will move to Confirmed Payments ` +
+        `and the student's portal will flip to PAID.`
       )
     } finally {
       setBusy(false)
@@ -569,8 +553,8 @@ function RecordPaymentModal({
         <h3 className="text-[18px] leading-tight mb-2">Front-desk override</h3>
         <p className="text-[12px] text-[color:var(--mid-gray)] mb-4">
           Use this when the parent never opened <span className="font-semibold">/pay</span> on their portal — staff is logging
-          the payment themselves. A pending row is created in the queue below; click <span className="font-semibold">Confirm payment</span> on
-          it once the cash / deposit / PayMongo receipt is in hand.
+          the payment themselves. A pending row is created below and in the Accounting Hub POS queue; the cashier
+          completes it there once the cash / deposit / PayMongo receipt is in hand.
         </p>
 
         {err && (
@@ -808,7 +792,7 @@ function EditPaymentModal({ row, onClose, onSaved }: {
       // Setting convertedAt to a value when the row was PENDING flips
       // it to CONVERTED on the server (it's stamped when status is
       // CONVERTED). We don't change status here; that's still the
-      // explicit "Confirm payment" button's job.
+      // Accounting Hub POS's job (the cashier completes the sale).
       patch.convertedAt = newConvertedIso
     }
     const trimmedNotes = notes.trim()

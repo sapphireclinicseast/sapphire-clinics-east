@@ -73,6 +73,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ cl
     const statusSent = typeof body.status === 'string'
     if (statusSent) {
       const status: 'PENDING' | 'CONVERTED' = body.status === 'PENDING' ? 'PENDING' : 'CONVERTED'
+      // The POS is the one door for tuition money (Hannah, 2026-10-31): a
+      // payment confirmed here never became an accounting-hub sale, so cash
+      // went unrecorded. Pending rows wait in the POS queue; the cashier's
+      // conversion flips them to CONVERTED through the internal route.
+      if (status === 'CONVERTED' && existing.status !== 'CONVERTED') {
+        return withCors(NextResponse.json({
+          error: 'Tuition payments are now confirmed at the POS. This payment is waiting in the Accounting Hub POS queue — once the cashier completes it there, it turns PAID here automatically.',
+        }, { status: 409 }), origin)
+      }
       data.status = status
       // Only stamp convertedAt to now() when the caller didn't supply
       // an explicit convertedAt — the explicit override wins below.
