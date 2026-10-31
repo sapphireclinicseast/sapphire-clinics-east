@@ -2309,7 +2309,11 @@ export default function AccountsReceivablePage() {
                         {toNum(p.overpayment) > 0 && (
                           <span className="block text-[10px] font-normal" style={{ color: '#92400e' }}
                             title={p.overpaymentAccount ? `Booked to ${p.overpaymentAccount.accountNumber} ${p.overpaymentAccount.accountTitle}` : undefined}>
-                            incl. {formatCurrency(toNum(p.overpayment))} overpayment
+                            {/* Booked to a VAT account, the excess is VAT the payer added on top
+                                of the billed amount (Intellicare's Jun-2026 PV) — not an overpayment. */}
+                            {/VAT/i.test(p.overpaymentAccount?.accountTitle || '')
+                              ? `incl. ${formatCurrency(toNum(p.overpayment))} VAT top-up added by ${wallet?.patientName || 'the payer'}`
+                              : `incl. ${formatCurrency(toNum(p.overpayment))} overpayment`}
                           </span>
                         )}
                       </td>
