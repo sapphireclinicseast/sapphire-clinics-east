@@ -23,6 +23,8 @@ import { soaBranchCode } from '@/lib/soa-ref'
 import SubmittedForSoa from './SubmittedForSoa'
 import OthersTab from './OthersTab'
 import ExpandablePanel from './ExpandablePanel'
+import PaymentsCard from './PaymentsCard'
+import { useResizableColumns, ResizableColgroup, ColResizeHandle } from '@/components/useResizableColumns'
 import DetailedGl, { type GlCaseRow } from './DetailedGl'
 
 interface ARWallet {
@@ -77,7 +79,7 @@ interface ARSummary {
   totalBilled: number
   byDepartment: { label: string; amount: number }[]
   byProvider: { label: string; amount: number }[]
-  directToClinician?: { orderCount: number; total: number; byProvider: { label: string; amount: number }[] }
+  directToClinician?: { orderCount: number; total: number; paidOrderCount?: number; paidTotal?: number; byProvider: { label: string; amount: number }[] }
 }
 
 interface InvoiceSetting {
@@ -966,6 +968,9 @@ export default function AccountsReceivablePage() {
   }, [arPayments, paySearch, payCols, payFilters, paySort])
 
   const activePayFilters = Object.values(payFilters).filter(v => (v || '').trim()).length
+  // Drag-to-resize Payment History columns; widths are remembered per tab.
+  const payTableRef = useRef<HTMLTableElement>(null)
+  const payRz = useResizableColumns(`ar-payment-history-${tab}`, payTableRef)
 
   const totalReceivable = wallets.reduce((s, w) => s + toNum(w.balance), 0)
   const unpaidOrders = orders.filter(o => o.arPaymentItems.length === 0)
@@ -2201,185 +2206,229 @@ export default function AccountsReceivablePage() {
           sub-tab carrying the Record Payment button (Hannah 2026-10-17). Shown
           even when empty: hiding it made it look as though HMO had no such
           section at all, when in fact no payment had been recorded. */}
-      {((tab === 'HMO' && hmoSubTab === 'payment-history') || (tab === 'GL' && glSubTab === 'overview')) && <>
-      {(
-        <div id="ar-payment-history">
-          <div className="flex flex-wrap items-center gap-2 mb-2">
-            <h3 className="text-sm font-semibold flex items-center gap-2" style={{ color: 'var(--charcoal)' }}>
-              Payment History — {tab}
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
-                {shownPayments.length === arPayments.length ? arPayments.length : `${shownPayments.length} of ${arPayments.length}`}
-              </span>
-            </h3>
-            <div className="relative ml-auto min-w-[240px] flex-1 max-w-sm">
-              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--mid-gray)' }} />
-              <input
-                value={paySearch}
-                onChange={e => setPaySearch(e.target.value)}
-                placeholder={`Search ${tab === 'GL' ? 'agency' : 'provider'}, SI number, amount, notes…`}
-                className="w-full pl-8 pr-7 py-1.5 rounded-lg border text-xs outline-none"
-                style={{ borderColor: 'var(--light-gray)' }} />
-              {paySearch && (
-                <button onClick={() => setPaySearch('')} className="absolute right-2 top-1/2 -translate-y-1/2">
-                  <X size={12} style={{ color: 'var(--mid-gray)' }} />
-                </button>
-              )}
-            </div>
-            {/* Column filters live in the header row and are easy to forget once
-                scrolled past, so the way out sits up here with the count. */}
-            {activePayFilters > 0 && (
-              <button onClick={() => setPayFilters({})}
-                className="text-[11px] font-semibold px-2.5 py-1.5 rounded-lg shrink-0"
-                style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
-                Clear {activePayFilters} filter{activePayFilters === 1 ? '' : 's'}
-              </button>
-            )}
-            {tab === 'HMO' && canWrite && (
-              <button onClick={openPaymentModal}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium text-white shrink-0"
-                style={{ background: 'var(--teal)' }}>
-                <DollarSign size={14} /> Record Payment
+      {((tab === 'HMO' && hmoSubTab === 'payment-history') || (tab === 'GL' && glSubTab === 'overview')) && (() => {
+        const searchBox = (
+          <div className="relative w-[280px]">
+            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--mid-gray)' }} />
+            <input
+              value={paySearch}
+              onChange={e => setPaySearch(e.target.value)}
+              placeholder={`Search ${tab === 'GL' ? 'agency' : 'provider'}, SI number, amount, notes…`}
+              className="w-full pl-8 pr-7 py-1.5 rounded-lg border text-xs outline-none"
+              style={{ borderColor: 'var(--light-gray)' }} />
+            {paySearch && (
+              <button onClick={() => setPaySearch('')} className="absolute right-2 top-1/2 -translate-y-1/2">
+                <X size={12} style={{ color: 'var(--mid-gray)' }} />
               </button>
             )}
           </div>
-          <ExpandablePanel title={`Payment History — ${tab}`} maxHeight={320}>
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="sticky top-0 z-10" style={{ background: 'var(--off-white)' }}>
+        )
+        const clearFilters = (
+          activePayFilters > 0 ? (
+            <button onClick={() => setPayFilters({})}
+              className="text-[11px] font-semibold px-2.5 py-1.5 rounded-lg shrink-0"
+              style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
+              Clear {activePayFilters} filter{activePayFilters === 1 ? '' : 's'}
+            </button>
+          ) : null
+        )
+        const payTable = (
+          <table ref={payTableRef} className="w-full text-xs" style={payRz.tableStyle}>
+            <ResizableColgroup rz={payRz} />
+            <thead>
+              <tr className="sticky top-0 z-10" style={{ background: 'var(--off-white)' }}>
+                {payCols.map((c, ci) => (
+                  <th key={c.key} className="relative text-left px-3 py-2 align-top font-semibold" style={{ color: 'var(--mid-gray)' }}>
+                    <ColResizeHandle rz={payRz} index={ci} />
+                    <button onClick={() => togglePaySort(c.key)}
+                      className="flex items-center gap-1 font-semibold hover:opacity-70"
+                      style={{ marginLeft: c.numeric ? 'auto' : undefined }}>
+                      {c.label}
+                      {paySort.key === c.key
+                        ? (paySort.dir === 'asc' ? <ChevronUp size={11} /> : <ChevronDown size={11} />)
+                        : <ArrowUpDown size={10} style={{ opacity: 0.35 }} />}
+                    </button>
+                    {/* Proof holds links rather than text, so filtering it would
+                        match nothing — the header still sorts. */}
+                    {c.key !== 'proof' && (
+                      <input
+                        value={payFilters[c.key] || ''}
+                        onChange={e => setPayFilters(f => ({ ...f, [c.key]: e.target.value }))}
+                        placeholder="Filter…"
+                        className="mt-1 w-full min-w-[70px] px-1.5 py-0.5 rounded border text-[10px] outline-none font-normal"
+                        style={{ borderColor: 'var(--light-gray)' }} />
+                    )}
+                  </th>
+                ))}
+                <th className="text-left px-3 py-2" />
+              </tr>
+              {/* Subtotals follow the filters: what the rows below add up to,
+                  not the all-time total. */}
+              {shownPayments.length > 0 && (
+                <tr className="sticky z-10" style={{ top: '58px', background: 'var(--pale-teal)' }}>
                   {payCols.map(c => (
-                    <th key={c.key} className="text-left px-3 py-2 align-top font-semibold" style={{ color: 'var(--mid-gray)' }}>
-                      <button onClick={() => togglePaySort(c.key)}
-                        className="flex items-center gap-1 font-semibold hover:opacity-70"
-                        style={{ marginLeft: c.numeric ? 'auto' : undefined }}>
-                        {c.label}
-                        {paySort.key === c.key
-                          ? (paySort.dir === 'asc' ? <ChevronUp size={11} /> : <ChevronDown size={11} />)
-                          : <ArrowUpDown size={10} style={{ opacity: 0.35 }} />}
-                      </button>
-                      {/* Proof holds links rather than text, so filtering it would
-                          match nothing — the header still sorts. */}
-                      {c.key !== 'proof' && (
-                        <input
-                          value={payFilters[c.key] || ''}
-                          onChange={e => setPayFilters(f => ({ ...f, [c.key]: e.target.value }))}
-                          placeholder="Filter…"
-                          className="mt-1 w-full min-w-[70px] px-1.5 py-0.5 rounded border text-[10px] outline-none font-normal"
-                          style={{ borderColor: 'var(--light-gray)' }} />
-                      )}
-                    </th>
+                    <td key={c.key} className={`px-3 py-1.5 font-bold ${c.numeric ? 'text-right font-mono' : ''}`}
+                      style={{ color: 'var(--deep-teal)' }}>
+                      {c.key === 'date' ? `Subtotal (${shownPayments.length})`
+                        : c.key === 'amount' ? formatCurrency(shownPayments.reduce((sum, pp) => sum + toNum(pp.amount), 0))
+                        : c.key === 'discount' ? formatCurrency(shownPayments.reduce((sum, pp) => sum + toNum(pp.discount), 0))
+                        : ''}
+                    </td>
                   ))}
-                  <th className="text-left px-3 py-2" />
+                  <td />
                 </tr>
-                {/* Subtotals follow the filters: what the rows below add up to,
-                    not the all-time total. */}
-                {shownPayments.length > 0 && (
-                  <tr className="sticky z-10" style={{ top: '58px', background: 'var(--pale-teal)' }}>
-                    {payCols.map(c => (
-                      <td key={c.key} className={`px-3 py-1.5 font-bold ${c.numeric ? 'text-right font-mono' : ''}`}
-                        style={{ color: 'var(--deep-teal)' }}>
-                        {c.key === 'date' ? `Subtotal (${shownPayments.length})`
-                          : c.key === 'amount' ? formatCurrency(shownPayments.reduce((sum, pp) => sum + toNum(pp.amount), 0))
-                          : c.key === 'discount' ? formatCurrency(shownPayments.reduce((sum, pp) => sum + toNum(pp.discount), 0))
-                          : ''}
-                      </td>
-                    ))}
-                    <td />
+              )}
+            </thead>
+            <tbody>
+              {shownPayments.length === 0 && (
+                <tr><td colSpan={12} className="text-center py-8 text-xs" style={{ color: 'var(--mid-gray)' }}>
+                  {arPayments.length > 0
+                    ? (paySearch.trim()
+                        ? `No payment matches “${paySearch.trim()}”.`
+                        : 'No payment matches the column filters.')
+                    : `No ${tab} payments recorded yet. Payments recorded against ${tab === 'HMO' ? 'an HMO provider' : 'a Guarantee Letter agency'} appear here, newest first.`}
+                </td></tr>
+              )}
+              {shownPayments.map(p => {
+                const wallet = wallets.find(w => w.id === p.walletId)
+                const proofFiles = parseProofUrls(p.proofUrl)
+                // "[FOR REVIEW]" in the notes: recorded but awaiting the HMO
+                // officer's check (e.g. the Valucare PNs that paid some LOAs twice).
+                const forReview = /\[FOR REVIEW\]/i.test(p.notes || '')
+                return (
+                  <tr key={p.id} className="border-t" style={{ borderColor: 'var(--light-gray)', ...(forReview ? { background: '#fffbeb', boxShadow: 'inset 3px 0 0 #f59e0b' } : {}) }}>
+                    <td className="px-3 py-2">{formatDate(p.paymentDate)}</td>
+                    <td className="px-3 py-2 font-mono whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>
+                      {arRefOf(p.notes) || '—'}
+                      {forReview && (
+                        <span className="block mt-0.5 w-fit px-1.5 py-0.5 rounded-full text-[9px] font-sans font-bold" style={{ background: '#fef3c7', color: '#92400e' }}
+                          title="Recorded, but the HMO officer is double-checking it — see the notes">For review</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 font-mono" style={{ color: 'var(--charcoal)' }}>{p.salesInvoiceNumber || '—'}</td>
+                    <td className="px-3 py-2">{wallet?.patientName || '—'}</td>
+                    <td className="px-3 py-2 font-medium" style={{ color: '#166534' }}>
+                      {formatCurrency(toNum(p.amount))}
+                      {toNum(p.overpayment) > 0 && (
+                        <span className="block text-[10px] font-normal" style={{ color: '#92400e' }}
+                          title={p.overpaymentAccount ? `Booked to ${p.overpaymentAccount.accountNumber} ${p.overpaymentAccount.accountTitle}` : undefined}>
+                          {/* Booked to a VAT account, the excess is VAT the payer added on top
+                              of the billed amount (Intellicare's Jun-2026 PV) — not an overpayment. */}
+                          {/VAT/i.test(p.overpaymentAccount?.accountTitle || '')
+                            ? `incl. ${formatCurrency(toNum(p.overpayment))} VAT top-up added by ${wallet?.patientName || 'the payer'}`
+                            : `incl. ${formatCurrency(toNum(p.overpayment))} overpayment`}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2">{toNum(p.discount) > 0 ? formatCurrency(toNum(p.discount)) : '—'}</td>
+                    <td className="px-3 py-2" style={{ color: 'var(--teal)' }}>{p.cashAccount ? `${p.cashAccount.accountNumber} ${p.cashAccount.accountTitle}` : '—'}</td>
+                    <td className="px-3 py-2">{p.items.length} orders</td>
+                    <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{notesWithoutRef(p.notes) || '—'}</td>
+                    <td className="px-3 py-2">
+                      {proofFiles.length === 0 ? (
+                        <span style={{ color: 'var(--light-gray)' }}>—</span>
+                      ) : (
+                        <div className="flex flex-col gap-1">
+                          {proofFiles.map((url, i) => (
+                            <div key={i} className="flex items-center gap-1.5">
+                              <a href={url} target="_blank" rel="noopener noreferrer"
+                                className="text-xs underline font-medium" style={{ color: 'var(--teal)' }}
+                                title={url.split('/').pop()}>
+                                View {proofFiles.length > 1 ? `#${i + 1}` : ''}
+                              </a>
+                              <a href={url} download
+                                className="p-0.5 rounded hover:bg-teal-50" title="Download">
+                                <Download size={11} style={{ color: 'var(--teal)' }} />
+                              </a>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{p.createdBy.name}</td>
+                    <td className="px-3 py-2 flex items-center gap-1">
+                      <button onClick={() => openEditPaymentModal(p)} className="p-1.5 rounded-lg hover:bg-blue-50" title="Edit payment">
+                        <Pencil size={14} className="text-blue-400" />
+                      </button>
+                      <button onClick={() => deletePayment(p)} className="p-1.5 rounded-lg hover:bg-red-50" title="Delete payment">
+                        <Trash2 size={14} className="text-red-400" />
+                      </button>
+                    </td>
                   </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        )
+        // HMO: our collections and the PVs made out to doctors, as two matching
+        // cards side by side; Expand opens either one's full table (Hannah 2026-10-31).
+        if (tab === 'HMO') {
+          const billed = summary ? summary.totalBilled
+            : orders.reduce((s, o) => s + o.payments.reduce((ps, p) => ps + toNum(p.amount), 0), 0)
+          const received = arPayments.reduce((s, p) => s + toNum(p.amount), 0)
+          return (
+            <div id="ar-payment-history" className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-stretch">
+              <PaymentsCard
+                title="Payment History — HMO"
+                icon={<DollarSign size={15} />}
+                count={shownPayments.length === arPayments.length ? arPayments.length : `${shownPayments.length} of ${arPayments.length}`}
+                subtitle="What the HMOs paid us — cash in our bank, credited against their AR."
+                paid={received}
+                billed={billed}
+                paidCaption={`${formatCurrency(received)} received of ${formatCurrency(billed)}`}
+                recent={[...arPayments]
+                  .sort((a, b) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime())
+                  .map(p => ({
+                    id: p.id,
+                    date: formatDate(p.paymentDate),
+                    ref: arRefOf(p.notes) || p.salesInvoiceNumber || '',
+                    who: wallets.find(w => w.id === p.walletId)?.patientName || '—',
+                    amount: toNum(p.amount),
+                    flagged: /\[FOR REVIEW\]/i.test(p.notes || ''),
+                  }))}
+                action={(
+                  canWrite ? (
+                    <button onClick={openPaymentModal}
+                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium text-white shrink-0"
+                      style={{ background: 'var(--teal)' }}>
+                      <DollarSign size={14} /> Record Payment
+                    </button>
+                  ) : undefined
                 )}
-              </thead>
-              <tbody>
-                {shownPayments.length === 0 && (
-                  <tr><td colSpan={12} className="text-center py-8 text-xs" style={{ color: 'var(--mid-gray)' }}>
-                    {arPayments.length > 0
-                      ? (paySearch.trim()
-                          ? `No payment matches “${paySearch.trim()}”.`
-                          : 'No payment matches the column filters.')
-                      : `No ${tab} payments recorded yet. Payments recorded against ${tab === 'HMO' ? 'an HMO provider' : 'a Guarantee Letter agency'} appear here, newest first.`}
-                  </td></tr>
-                )}
-                {shownPayments.map(p => {
-                  const wallet = wallets.find(w => w.id === p.walletId)
-                  const proofFiles = parseProofUrls(p.proofUrl)
-                  // "[FOR REVIEW]" in the notes: recorded but awaiting the HMO
-                  // officer's check (e.g. the Valucare PNs that paid some LOAs twice).
-                  const forReview = /\[FOR REVIEW\]/i.test(p.notes || '')
-                  return (
-                    <tr key={p.id} className="border-t" style={{ borderColor: 'var(--light-gray)', ...(forReview ? { background: '#fffbeb', boxShadow: 'inset 3px 0 0 #f59e0b' } : {}) }}>
-                      <td className="px-3 py-2">{formatDate(p.paymentDate)}</td>
-                      <td className="px-3 py-2 font-mono whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>
-                        {arRefOf(p.notes) || '—'}
-                        {forReview && (
-                          <span className="block mt-0.5 w-fit px-1.5 py-0.5 rounded-full text-[9px] font-sans font-bold" style={{ background: '#fef3c7', color: '#92400e' }}
-                            title="Recorded, but the HMO officer is double-checking it — see the notes">For review</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 font-mono" style={{ color: 'var(--charcoal)' }}>{p.salesInvoiceNumber || '—'}</td>
-                      <td className="px-3 py-2">{wallet?.patientName || '—'}</td>
-                      <td className="px-3 py-2 font-medium" style={{ color: '#166534' }}>
-                        {formatCurrency(toNum(p.amount))}
-                        {toNum(p.overpayment) > 0 && (
-                          <span className="block text-[10px] font-normal" style={{ color: '#92400e' }}
-                            title={p.overpaymentAccount ? `Booked to ${p.overpaymentAccount.accountNumber} ${p.overpaymentAccount.accountTitle}` : undefined}>
-                            {/* Booked to a VAT account, the excess is VAT the payer added on top
-                                of the billed amount (Intellicare's Jun-2026 PV) — not an overpayment. */}
-                            {/VAT/i.test(p.overpaymentAccount?.accountTitle || '')
-                              ? `incl. ${formatCurrency(toNum(p.overpayment))} VAT top-up added by ${wallet?.patientName || 'the payer'}`
-                              : `incl. ${formatCurrency(toNum(p.overpayment))} overpayment`}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2">{toNum(p.discount) > 0 ? formatCurrency(toNum(p.discount)) : '—'}</td>
-                      <td className="px-3 py-2" style={{ color: 'var(--teal)' }}>{p.cashAccount ? `${p.cashAccount.accountNumber} ${p.cashAccount.accountTitle}` : '—'}</td>
-                      <td className="px-3 py-2">{p.items.length} orders</td>
-                      <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{notesWithoutRef(p.notes) || '—'}</td>
-                      <td className="px-3 py-2">
-                        {proofFiles.length === 0 ? (
-                          <span style={{ color: 'var(--light-gray)' }}>—</span>
-                        ) : (
-                          <div className="flex flex-col gap-1">
-                            {proofFiles.map((url, i) => (
-                              <div key={i} className="flex items-center gap-1.5">
-                                <a href={url} target="_blank" rel="noopener noreferrer"
-                                  className="text-xs underline font-medium" style={{ color: 'var(--teal)' }}
-                                  title={url.split('/').pop()}>
-                                  View {proofFiles.length > 1 ? `#${i + 1}` : ''}
-                                </a>
-                                <a href={url} download
-                                  className="p-0.5 rounded hover:bg-teal-50" title="Download">
-                                  <Download size={11} style={{ color: 'var(--teal)' }} />
-                                </a>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{p.createdBy.name}</td>
-                      <td className="px-3 py-2 flex items-center gap-1">
-                        <button onClick={() => openEditPaymentModal(p)} className="p-1.5 rounded-lg hover:bg-blue-50" title="Edit payment">
-                          <Pencil size={14} className="text-blue-400" />
-                        </button>
-                        <button onClick={() => deletePayment(p)} className="p-1.5 rounded-lg hover:bg-red-50" title="Delete payment">
-                          <Trash2 size={14} className="text-red-400" />
-                        </button>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </ExpandablePanel>
-        </div>
-      )}
-      {/* HMO payments made out to the doctor — documentation only, kept apart
-          from our collections above because they never touch our AR or cash. */}
-      {tab === 'HMO' && (
-        <ClinicianPaymentsPanel
-          wallets={wallets.map(w => ({ id: w.id, name: w.patientName }))}
-          canWrite={canEditGlCase && !isFrontdesk}
-          branch={branch}
-          onSaved={fetchData} />
-      )}
-      </>}
+                toolbar={<>{searchBox}{clearFilters}</>}>
+                {payTable}
+              </PaymentsCard>
+              {/* HMO payments made out to the doctor — documentation only, kept apart
+                  from our collections because they never touch our AR or cash. */}
+              <ClinicianPaymentsPanel
+                wallets={wallets.map(w => ({ id: w.id, name: w.patientName }))}
+                canWrite={canEditGlCase && !isFrontdesk}
+                branch={branch}
+                directToClinician={summary?.directToClinician}
+                onSaved={fetchData} />
+            </div>
+          )
+        }
+        return (
+          <div id="ar-payment-history">
+            <div className="flex flex-wrap items-center gap-2 mb-2">
+              <h3 className="text-sm font-semibold flex items-center gap-2" style={{ color: 'var(--charcoal)' }}>
+                Payment History — {tab}
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
+                  {shownPayments.length === arPayments.length ? arPayments.length : `${shownPayments.length} of ${arPayments.length}`}
+                </span>
+              </h3>
+              <div className="ml-auto">{searchBox}</div>
+              {/* Column filters live in the header row and are easy to forget once
+                  scrolled past, so the way out sits up here with the count. */}
+              {clearFilters}
+            </div>
+            <ExpandablePanel title={`Payment History — ${tab}`} maxHeight={320}>
+              {payTable}
+            </ExpandablePanel>
+          </div>
+        )
+      })()}
 
       {/* ── Overview content, continued: Filters + Consumption ── */}
       {tab !== 'OTHERS' && (tab !== 'HMO' || hmoSubTab === 'overview') && (tab !== 'GL' || glSubTab === 'overview') && <>

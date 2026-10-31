@@ -5,10 +5,11 @@
 // POS product orders paid via "Receivable", or added by hand. Supports a
 // staggered monthly plan (months + interest as % of principal or an absolute
 // add-on) with the monthly equivalent shown, and per-installment payments.
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, X, Plus, Trash2, CalendarClock, HandCoins, ChevronDown, ChevronRight, Eye, Paperclip } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { ScanUpload } from '@/components/ScanUpload'
+import { useResizableColumns, ResizableColgroup, ColResizeHandle } from '@/components/useResizableColumns'
 
 interface ORPayment { id: string; date: string; amount: number; method: string | null; reference: string | null; proofUrl: string | null; notes: string | null }
 interface OtherRec {
@@ -43,6 +44,12 @@ export default function OthersTab({ branch, canWrite }: { branch: string; canWri
   useEffect(() => { load() }, [load])
 
   const shown = useMemo(() => rows.filter(r => showSettled || r.status !== 'SETTLED'), [rows, showSettled])
+  // Drag-to-resize columns, remembered per user. The table first renders once
+  // rows are in, so the starting widths are measured from real content.
+  const tableRef = useRef<HTMLTableElement>(null)
+  const rz = useResizableColumns('ar-other-customers', tableRef)
+  const [loadedOnce, setLoadedOnce] = useState(false)
+  useEffect(() => { if (!loading) setLoadedOnce(true) }, [loading])
   const totalOutstanding = useMemo(() => rows.filter(r => r.status !== 'SETTLED').reduce((s, r) => s + r.balance, 0), [rows])
 
   const toggle = (id: string) => setExpanded(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n })
@@ -102,13 +109,21 @@ export default function OthersTab({ branch, canWrite }: { branch: string; canWri
 
       {error && <p className="text-xs text-red-600">{error}</p>}
 
+      {!loadedOnce ? (
+        <div className="rounded-2xl border bg-white text-center py-10 text-sm" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+          <Loader2 size={16} className="inline animate-spin" /> Loading…
+        </div>
+      ) : (
       <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
-        <table className="w-full text-sm">
+        <table ref={tableRef} className="w-full text-sm" style={rz.tableStyle}>
+          <ResizableColgroup rz={rz} />
           <thead>
             <tr style={{ background: 'var(--off-white)' }}>
               <th className="px-3 py-2.5 w-8" />
-              {['Customer', 'Branch', 'Order #', 'Date', 'Principal', 'Total Due', 'Paid', 'Balance', 'Plan', 'Status', ''].map(h => (
-                <th key={h} className="px-3 py-2.5 text-left text-xs font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{h}</th>
+              {['Customer', 'Branch', 'Order #', 'Date', 'Principal', 'Total Due', 'Paid', 'Balance', 'Plan', 'Status', ''].map((h, hi) => (
+                <th key={h} className={`relative px-3 py-2.5 text-left text-xs font-semibold whitespace-nowrap ${h === 'Customer' ? 'min-w-[260px]' : ''}`} style={{ color: 'var(--charcoal)' }}>
+                  {h}<ColResizeHandle rz={rz} index={hi + 1} />
+                </th>
               ))}
             </tr>
           </thead>
@@ -209,6 +224,7 @@ export default function OthersTab({ branch, canWrite }: { branch: string; canWri
           </tbody>
         </table>
       </div>
+      )}
 
       {planFor && <PlanModal rec={planFor} onClose={() => setPlanFor(null)} onSaved={() => { setPlanFor(null); load() }} />}
       {payFor && <PaymentModal rec={payFor} onClose={() => setPayFor(null)} onSaved={() => { setPayFor(null); load() }} />}

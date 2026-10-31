@@ -7,10 +7,12 @@
 // nothing posts to the GL and our AR is untouched; the consults a PV covers are
 // linked so they read "paid · PV-…" in Per HMO / Doctor Consults.
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Plus, X, Loader2, Stethoscope, Trash2 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { ScanUpload } from '@/components/ScanUpload'
+import { useResizableColumns, ResizableColgroup, ColResizeHandle } from '@/components/useResizableColumns'
+import PaymentsCard from './PaymentsCard'
 
 interface DoctorPayment {
   id: string
@@ -34,10 +36,12 @@ interface Candidate { id: string; orderNumber: number; date: string; patientName
 const fmtDate = (d: string) => new Date(d).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
 const toNum = (v: string) => (Number.isFinite(parseFloat(v)) ? parseFloat(v) : 0)
 
-export default function ClinicianPaymentsPanel({ wallets, canWrite, branch, onSaved }: {
+export default function ClinicianPaymentsPanel({ wallets, canWrite, branch, directToClinician, onSaved }: {
   wallets: { id: string; name: string }[]
   canWrite: boolean
   branch: string
+  /** HMO orders the HMO settles with the doctor, and how much of them a recorded PV covers (AR summary). */
+  directToClinician?: { orderCount: number; total: number; paidOrderCount?: number; paidTotal?: number }
   onSaved?: () => void
 }) {
   const [rows, setRows] = useState<DoctorPayment[] | null>(null)
@@ -59,6 +63,8 @@ export default function ClinicianPaymentsPanel({ wallets, canWrite, branch, onSa
   const [candidates, setCandidates] = useState<Candidate[]>([])
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [q, setQ] = useState('')
+  const tableRef = useRef<HTMLTableElement>(null)
+  const rz = useResizableColumns('ar-payments-to-doctors', tableRef)
 
   const load = useCallback(() => {
     fetch('/api/accounts-receivable/clinician-payments')
@@ -126,28 +132,31 @@ export default function ClinicianPaymentsPanel({ wallets, canWrite, branch, onSa
   const inpStyle = { borderColor: 'var(--light-gray)' }
 
   return (
-    <div className="mt-6">
-      <div className="flex flex-wrap items-center gap-2 mb-2">
-        <h3 className="text-sm font-semibold flex items-center gap-2" style={{ color: 'var(--charcoal)' }}>
-          <Stethoscope size={15} /> Payments to Doctors
-          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>{list.length}</span>
-        </h3>
-        <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>
-          HMO PVs made out to the doctor for consults — for documentation only; not our cash, not our AR.
-        </span>
-        {canWrite && (
-          <button onClick={openForm} className="ml-auto flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium text-white shrink-0" style={{ background: '#9a3412' }}>
+    <>
+      <PaymentsCard
+        title="Payments to Doctors"
+        icon={<Stethoscope size={15} />}
+        count={list.length}
+        subtitle="HMO PVs made out to the doctor for consults — for documentation only; not our cash, not our AR."
+        paid={directToClinician?.paidTotal ?? 0}
+        billed={directToClinician?.total ?? 0}
+        paidCaption={`${formatCurrency(directToClinician?.paidTotal ?? 0)} of ${formatCurrency(directToClinician?.total ?? 0)} direct-to-doctor HMO orders have a PV · ${directToClinician?.paidOrderCount ?? 0} of ${directToClinician?.orderCount ?? 0} consults`}
+        recent={[...list]
+          .sort((a, b) => new Date(b.pvDate).getTime() - new Date(a.pvDate).getTime())
+          .map(p => ({ id: p.id, date: fmtDate(p.pvDate), ref: p.pvNumber || '', who: `${p.clinicianName} · ${p.hmo}`, amount: p.netAmount }))}
+        action={canWrite ? (
+          <button onClick={openForm} className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium text-white shrink-0" style={{ background: '#9a3412' }}>
             <Plus size={14} /> Record doctor payment
           </button>
-        )}
-      </div>
-
-      <div className="rounded-xl border overflow-x-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
-        <table className="w-full text-xs">
+        ) : undefined}>
+        <table ref={tableRef} className="w-full text-xs" style={rz.tableStyle}>
+          <ResizableColgroup rz={rz} />
           <thead>
-            <tr style={{ background: 'var(--off-white)' }}>
-              {['PV Date', 'PV No.', 'HMO', 'Doctor', 'Cheque No.', 'Consults', 'Gross', 'VAT', 'WTax', 'Cheque Amount', 'Proof', 'Notes', 'Recorded By', ''].map(h => (
-                <th key={h} className={`px-3 py-2 font-semibold whitespace-nowrap ${['Gross', 'VAT', 'WTax', 'Cheque Amount'].includes(h) ? 'text-right' : 'text-left'}`} style={{ color: 'var(--mid-gray)' }}>{h}</th>
+            <tr className="sticky top-0 z-10" style={{ background: 'var(--off-white)' }}>
+              {['PV Date', 'PV No.', 'HMO', 'Doctor', 'Cheque No.', 'Consults', 'Gross', 'VAT', 'WTax', 'Cheque Amount', 'Proof', 'Notes', 'Recorded By', ''].map((h, hi) => (
+                <th key={h} className={`relative px-3 py-2 font-semibold whitespace-nowrap ${['Gross', 'VAT', 'WTax', 'Cheque Amount'].includes(h) ? 'text-right' : 'text-left'}`} style={{ color: 'var(--mid-gray)' }}>
+                  {h}{h && <ColResizeHandle rz={rz} index={hi} />}
+                </th>
               ))}
             </tr>
           </thead>
@@ -195,7 +204,7 @@ export default function ClinicianPaymentsPanel({ wallets, canWrite, branch, onSa
             </tfoot>
           )}
         </table>
-      </div>
+      </PaymentsCard>
 
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.4)' }}>
@@ -289,6 +298,6 @@ export default function ClinicianPaymentsPanel({ wallets, canWrite, branch, onSa
           </div>
         </div>
       )}
-    </div>
+    </>
   )
 }

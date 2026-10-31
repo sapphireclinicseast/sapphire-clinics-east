@@ -276,6 +276,7 @@ export async function GET(req: Request) {
     const aggOrders = await prisma.order.findMany({
       where: orderWhere,
       select: {
+        id: true,
         payments: {
           where: { method: type as 'HMO' | 'GL' },
           select: { amount: true, walletId: true },
@@ -292,18 +293,24 @@ export async function GET(req: Request) {
     let totalBilled = 0
     let directBilled = 0
     let directOrderCount = 0
+    // Direct-to-clinician orders and their HMO amount, to measure how much of
+    // them a recorded doctor PV (Payments to Doctors) already covers.
+    const directOrders: { id: string; amount: number }[] = []
 
     for (const o of aggOrders) {
       const isDirect = o.items.length > 0 && o.items.every(it => it.service?.hmoPaysClinicianDirect)
         && !o.payments.some(p => p.walletId && exceptionWalletIds.has(p.walletId))
       if (isDirect) {
         directOrderCount++
+        let orderAmt = 0
         for (const p of o.payments) {
           const amt = Number(p.amount) || 0
           directBilled += amt
+          orderAmt += amt
           const name = (p.walletId && walletNameById.get(p.walletId)) || 'Unknown'
           directProviderTotals.set(name, (directProviderTotals.get(name) || 0) + amt)
         }
+        directOrders.push({ id: o.id, amount: orderAmt })
         continue
       }
       for (const p of o.payments) {
@@ -327,12 +334,23 @@ export async function GET(req: Request) {
       }
     }
 
+    // Never let this annotation take the AR page down (e.g. table not yet created).
+    const pvLinked = directOrders.length
+      ? new Set((await prisma.clinicianHmoPaymentItem.findMany({
+          where: { orderId: { in: directOrders.map(d => d.id) } },
+          select: { orderId: true },
+        }).catch(err => { console.error('[AR] doctor PV coverage lookup failed:', err); return [] })).map(i => i.orderId as string))
+      : new Set<string>()
+    const directPaid = directOrders.filter(d => pvLinked.has(d.id))
+
     const summary = {
       orderCount: aggOrders.length - directOrderCount,
       totalBilled,
       directToClinician: {
         orderCount: directOrderCount,
         total: directBilled,
+        paidOrderCount: directPaid.length,
+        paidTotal: directPaid.reduce((sum, d) => sum + d.amount, 0),
         byProvider: Array.from(directProviderTotals.entries())
           .map(([label, amount]) => ({ label, amount }))
           .sort((a, b) => b.amount - a.amount),
