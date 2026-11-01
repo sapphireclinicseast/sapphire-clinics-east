@@ -24,6 +24,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { loadPosHistory } from '@/lib/pos-history'
 
 // Mirrors /api/patients/dept-breakdown so the two sections cover the same
 // services in the same order.
@@ -52,12 +53,19 @@ function mean(values: number[]): number | null {
   return Math.round(values.reduce((s, v) => s + v, 0) / values.length)
 }
 
+// "Seen once" is now a span of zero days rather than a session count.
+//
+// Once Schedule sessions and POS billing are merged, counts stop being
+// trustworthy: one visit can appear in both sources, so adding them double
+// counts, and the POS side reports a date range rather than a tally. A span of
+// zero says exactly what matters here — first and last contact fell on the same
+// day — and it cannot be inflated by the same visit arriving twice.
 function summarise(spans: Span[]) {
   const all = spans.map((s) => (s.last - s.first) / DAY_MS)
-  const repeat = spans.filter((s) => s.n > 1).map((s) => (s.last - s.first) / DAY_MS)
+  const repeat = all.filter((d) => d > 0)
   return {
     patients: spans.length,
-    oneSession: spans.filter((s) => s.n === 1).length,
+    singleDay: all.filter((d) => d === 0).length,
     avgDaysAll: mean(all),
     avgDaysRepeat: mean(repeat),
     medianDays: median(all),
@@ -114,6 +122,16 @@ export async function GET(req: NextRequest) {
   const perPatient = new Map<string, Span>()
   const firstConsult = new Map<string, number>()
 
+  // Merge a dated range into a span, creating it if the key is new. POS gives
+  // a first/last pair rather than one timestamp per visit, so it widens an
+  // existing span instead of appending to it.
+  const widen = (map: Map<string, Span>, key: string, first: number, last: number) => {
+    const cur = map.get(key)
+    if (!cur) { map.set(key, { first, last, n: 1 }); return }
+    if (first < cur.first) cur.first = first
+    if (last > cur.last) cur.last = last
+  }
+
   const track = (map: Map<string, Span>, key: string, t: number) => {
     const cur = map.get(key)
     if (!cur) map.set(key, { first: t, last: t, n: 1 })
@@ -144,12 +162,41 @@ export async function GET(req: NextRequest) {
   // leaves the rest measured from their first recorded session.
   for (const [pid, span] of perPatient) {
     const fdc = firstConsult.get(pid)
-    if (fdc !== undefined && fdc < span.first) {
-      span.first = fdc
-      // A recorded consult before the first session means this patient was
-      // seen more than once, even if only one session row survives.
-      if (span.n === 1) span.n = 2
+    if (fdc !== undefined && fdc < span.first) span.first = fdc
+  }
+
+  // ── Merge POS billing history ─────────────────────────────────────────────
+  // Schedule alone misses two things: patients whose treatment was billed but
+  // never scheduled in this hub, and the earlier part of a history that began
+  // before a department started using the Clinic Schedule. Both were silently
+  // shortening this metric — worst in the consult-led departments, which is
+  // exactly where the "seen once" reading came from.
+  //
+  // Additive, like every other consumer of this feed: if the Accounting Hub is
+  // unreachable the panel still renders from Schedule alone, just narrower.
+  let posMerged = 0
+  let posOnlyPatients = 0
+  try {
+    const pos = await loadPosHistory(filterBranches, DEPTS)
+    if (pos) {
+      for (const [sk, span] of pos.spans) {
+        const sep = sk.lastIndexOf('|')
+        const key = sk.slice(0, sep)
+        const dept = sk.slice(sep + 1)
+        if (!(DEPTS as readonly string[]).includes(dept)) continue
+
+        const first = new Date(`${span.first}T00:00:00.000Z`).getTime()
+        const last = new Date(`${span.last}T00:00:00.000Z`).getTime()
+        if (!Number.isFinite(first) || !Number.isFinite(last)) continue
+
+        if (!perDept.has(`${key}|${dept}`)) posOnlyPatients++
+        posMerged++
+        widen(perDept, `${key}|${dept}`, first, last)
+        widen(perPatient, key, first, last)
+      }
     }
+  } catch (err) {
+    console.error('[lifetime-by-dept] POS merge failed:', err)
   }
 
   const byDept = new Map<Dept, Span[]>(DEPTS.map((d) => [d, [] as Span[]]))
@@ -165,6 +212,10 @@ export async function GET(req: NextRequest) {
       from: dates.length ? new Date(Math.min(...dates)).toISOString().slice(0, 10) : null,
       to: dates.length ? new Date(Math.max(...dates)).toISOString().slice(0, 10) : null,
     },
+    // Stated rather than hidden: the panel says what the figures rest on, and
+    // zero here means the Accounting Hub did not answer.
+    posSpansMerged: posMerged,
+    posOnlyPatients,
     overall: summarise(Array.from(perPatient.values())),
     departments: DEPTS.map((d) => ({ dept: d, ...summarise(byDept.get(d)!) })),
   })

@@ -10,7 +10,7 @@ import { Hourglass } from 'lucide-react'
 interface DeptRow {
   dept: string
   patients: number
-  oneSession: number
+  singleDay: number
   avgDaysAll: number | null
   avgDaysRepeat: number | null
   medianDays: number | null
@@ -18,6 +18,8 @@ interface DeptRow {
 
 interface Data {
   window: { from: string | null; to: string | null }
+  posSpansMerged: number
+  posOnlyPatients: number
   overall: Omit<DeptRow, 'dept'>
   departments: DeptRow[]
 }
@@ -95,9 +97,11 @@ export default function LifetimeSection({ branches }: { branches: string[] }) {
           </p>
         </div>
         <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
-          How long patients stay with each department — from their first recorded session to
-          their last. Measured within each department, so a patient receiving two services
-          contributes a separate span to each.
+          How long patients stay with each department — from first contact to last.
+          Combines Clinic Schedule sessions with POS billing history, so treatment from
+          before a department used the schedule still counts. Measured within each
+          department, so a patient receiving two services contributes a separate span
+          to each.
         </p>
         {data && (
           <p className="text-[11px] mt-1.5" style={{ color: 'var(--mid-gray)' }}>
@@ -106,10 +110,10 @@ export default function LifetimeSection({ branches }: { branches: string[] }) {
             {data.window.from ? ` between ${monthYear(data.window.from)} and ${monthYear(data.window.to)}` : ''},
             the average is <strong>{days(data.overall.avgDaysAll)}</strong> (median{' '}
             {days(data.overall.medianDays)}).{' '}
-            <span title="A patient seen exactly once has their first and last session on the same day, so their lifetime is genuinely zero. Those patients are counted in the Average column and excluded from Repeat only.">
-              <strong>{data.overall.oneSession.toLocaleString()}</strong> of them
-              ({Math.round((data.overall.oneSession / Math.max(1, data.overall.patients)) * 100)}%)
-              were seen only once, which is what pulls the average below the repeat-patient figure.
+            <span title="First and last contact on the same day, so the lifetime is genuinely zero — a one-off consult rather than a course of treatment. These are counted in the Average column and excluded from Repeat only.">
+              <strong>{data.overall.singleDay.toLocaleString()}</strong> of them
+              ({Math.round((data.overall.singleDay / Math.max(1, data.overall.patients)) * 100)}%)
+              came just the once, which is what pulls the average below the repeat-patient figure.
             </span>
           </p>
         )}
@@ -129,7 +133,7 @@ export default function LifetimeSection({ branches }: { branches: string[] }) {
           <div className="flex items-center gap-3 pb-2 mb-1" style={{ borderBottom: '1px solid var(--light-gray)' }}>
             <div className="flex-shrink-0" style={{ width: 150 }} />
             <div className="flex-1" />
-            {['Average', 'Repeat only', 'Median', 'Seen once'].map((h, i) => (
+            {['Average', 'Repeat only', 'Median', 'Single day'].map((h, i) => (
               <div
                 key={h}
                 className="flex-shrink-0 text-right text-[10px] font-semibold uppercase tracking-wider"
@@ -144,7 +148,7 @@ export default function LifetimeSection({ branches }: { branches: string[] }) {
             {rows.map((r) => {
               const c = DEPT_COLORS[r.dept] ?? '#9CA3AF'
               const barPct = ((r.avgDaysAll ?? 0) / max) * 100
-              const onePct = r.patients > 0 ? Math.round((r.oneSession / r.patients) * 100) : 0
+              const onePct = r.patients > 0 ? Math.round((r.singleDay / r.patients) * 100) : 0
               return (
                 <div key={r.dept} className="flex items-center gap-3">
                   <div className="flex-shrink-0" style={{ width: 150 }}>
@@ -191,7 +195,7 @@ export default function LifetimeSection({ branches }: { branches: string[] }) {
 
                   <div className="flex-shrink-0 text-right" style={{ width: 86 }}>
                     <span className="text-xs" style={{ color: 'var(--mid-gray)', fontVariantNumeric: 'tabular-nums' }}>
-                      {r.patients > 0 ? `${r.oneSession.toLocaleString()} · ${onePct}%` : '—'}
+                      {r.patients > 0 ? `${r.singleDay.toLocaleString()} · ${onePct}%` : '—'}
                     </span>
                   </div>
                 </div>

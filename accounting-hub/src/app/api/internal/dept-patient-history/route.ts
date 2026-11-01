@@ -95,8 +95,19 @@ export async function GET(req: NextRequest) {
 
   // Dedupe to (identity, dept) pairs. A patient billed 40 PT sessions must
   // count once, or the caller's "unique patients" figure stops being unique.
-  const seen = new Set<string>()
-  const rows: { patientId: string | null; patientName: string | null; dept: string }[] = []
+  //
+  // Each pair also carries the first and last date it was billed. The dedupe
+  // used to drop transactionDate entirely, which left callers able to say THAT
+  // a patient was treated by a department but not WHEN — so a patient-lifetime
+  // figure could only be built from the operations hub's own Schedule table and
+  // silently excluded everyone whose history is here instead.
+  const byKey = new Map<string, {
+    patientId: string | null
+    patientName: string | null
+    dept: string
+    first: Date | null
+    last: Date | null
+  }>()
   // Session volume per (month, dept) — the caller needs this for
   // "avg sessions/patient/mo", which cannot be derived from the deduped pairs
   // above. Each order line is one paid session.
@@ -129,11 +140,30 @@ export async function GET(req: NextRequest) {
 
       const identity = o.patientId ?? `name:${o.patientName}`
       const key = `${identity}|${dept}`
-      if (seen.has(key)) continue
-      seen.add(key)
-      rows.push({ patientId: o.patientId, patientName: o.patientName, dept })
+      let agg = byKey.get(key)
+      if (!agg) {
+        agg = { patientId: o.patientId, patientName: o.patientName, dept, first: null, last: null }
+        byKey.set(key, agg)
+      }
+      // Widen on every line rather than only the first, which is the whole
+      // point of keeping the dates — the first order seen is not necessarily
+      // the earliest, since findMany returns no particular order.
+      if (o.transactionDate) {
+        if (!agg.first || o.transactionDate < agg.first) agg.first = o.transactionDate
+        if (!agg.last  || o.transactionDate > agg.last)  agg.last  = o.transactionDate
+      }
     }
   }
+
+  // Shape is additive: existing callers read patientId/patientName/dept and
+  // are unaffected by the two new fields.
+  const rows = Array.from(byKey.values()).map(a => ({
+    patientId: a.patientId,
+    patientName: a.patientName,
+    dept: a.dept,
+    first: a.first ? a.first.toISOString().slice(0, 10) : null,
+    last:  a.last  ? a.last.toISOString().slice(0, 10)  : null,
+  }))
 
   return NextResponse.json({
     window: {

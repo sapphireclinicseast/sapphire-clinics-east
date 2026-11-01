@@ -14,6 +14,15 @@ export interface PosHistory {
    *  identity could be resolved, otherwise an opaque POS identity so real
    *  treatment is still counted rather than discarded. */
   patientDepts: Map<string, Set<string>>
+  /** `${patientKey}|${dept}` → the first and last date that pair was billed,
+   *  as YYYY-MM-DD. Present only for rows the Accounting Hub dated; a pair
+   *  with no dated order is absent rather than guessed at.
+   *
+   *  Two POS identities can resolve onto the same patient (an id row and a
+   *  name-only row for the same person), so spans are merged on the resolved
+   *  key rather than overwritten — otherwise whichever row arrived last would
+   *  decide the patient's history. */
+  spans: Map<string, { first: string; last: string }>
   /** "YYYY-MM" → dept → session count. Volume, not unique patients. */
   monthly: Map<string, Record<string, number>>
   window: { from: string | null; to: string | null }
@@ -56,7 +65,7 @@ export async function loadPosHistory(
 
   let hist: {
     window: { from: string | null; to: string | null }
-    rows: { patientId: string | null; patientName: string | null; dept: string }[]
+    rows: { patientId: string | null; patientName: string | null; dept: string; first?: string | null; last?: string | null }[]
     monthly?: { month: string; dept: string; sessions: number }[]
     skippedNonPatient?: number
   }
@@ -105,6 +114,7 @@ export async function loadPosHistory(
   const match = { byId: 0, byName: 0, byNameVariant: 0, unmatched: 0, ambiguous: 0 }
   const resolved = new Map<string, string | null>()
   const patientDepts = new Map<string, Set<string>>()
+  const spans = new Map<string, { first: string; last: string }>()
 
   for (const r of hist.rows) {
     if (!allowedDepts.includes(r.dept)) continue
@@ -137,6 +147,19 @@ export async function loadPosHistory(
     const key = pid ?? rawIdentity
     if (!patientDepts.has(key)) patientDepts.set(key, new Set())
     patientDepts.get(key)!.add(r.dept)
+
+    // Widen rather than replace: two POS identities can resolve onto one
+    // patient, and an Accounting Hub that predates this field sends no dates
+    // at all, which must leave the span absent rather than empty.
+    if (r.first && r.last) {
+      const sk = `${key}|${r.dept}`
+      const cur = spans.get(sk)
+      if (!cur) spans.set(sk, { first: r.first, last: r.last })
+      else {
+        if (r.first < cur.first) cur.first = r.first
+        if (r.last  > cur.last)  cur.last  = r.last
+      }
+    }
   }
 
   const monthly = new Map<string, Record<string, number>>()
@@ -148,6 +171,7 @@ export async function loadPosHistory(
 
   return {
     patientDepts,
+    spans,
     monthly,
     window: hist.window ?? { from: null, to: null },
     match,
