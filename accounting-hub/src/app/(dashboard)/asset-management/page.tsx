@@ -129,6 +129,11 @@ function formatCurrency(value: number) {
   return Number(value).toLocaleString('en-PH', { style: 'currency', currency: 'PHP' })
 }
 
+function formatPurchaseDate(dateStr: string) {
+  const d = new Date(dateStr)
+  return isNaN(d.getTime()) ? '—' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
+}
+
 function formatEndDate(dateStr: string) {
   if (!dateStr) return '—'
   const d = new Date(dateStr)
@@ -309,7 +314,7 @@ function AssetManagementInner() {
   // the asset that was clicked, then drop ?focus= from the URL.
   const { focus, done } = useFocusTarget()
   useEffect(() => { if (focus) { setSearch(focus); done() } }, [focus, done])
-  type SortKey = 'name' | 'classification' | 'branch' | 'totalAmount' | 'monthlyDepreciation' | 'depreciationEndDate' | 'utilized' | 'auditable' | 'controlNumber'
+  type SortKey = 'name' | 'classification' | 'branch' | 'totalAmount' | 'monthlyDepreciation' | 'depreciationEndDate' | 'dateBought' | 'utilized' | 'auditable' | 'controlNumber'
   const [sortKey, setSortKey] = useState<SortKey>('name')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   type ColFilters = {
@@ -322,7 +327,7 @@ function AssetManagementInner() {
   // Full-screen asset list + drag-to-resize columns (widths persist per user).
   const [expanded, setExpanded] = useState(false)
   const assetTableRef = useRef<HTMLTableElement>(null)
-  const assetRz = useResizableColumns(`asset-management-table-v3${canManage ? '-sel' : ''}`, assetTableRef)
+  const assetRz = useResizableColumns(`asset-management-table-v4${canManage ? '-sel' : ''}`, assetTableRef)
   const selOff = canManage ? 1 : 0 // the tick-box column comes first for managers
 
   // ── Freight calculator state (mirrors Inventory's freight-purchase modal) ──
@@ -847,6 +852,7 @@ function AssetManagementInner() {
       else if (sortKey === 'totalAmount') { av = a.totalAmount; bv = b.totalAmount }
       else if (sortKey === 'monthlyDepreciation') { av = a.monthlyDepreciation; bv = b.monthlyDepreciation }
       else if (sortKey === 'depreciationEndDate') { av = a.depreciationEndDate; bv = b.depreciationEndDate }
+      else if (sortKey === 'dateBought') { av = a.dateBought; bv = b.dateBought }
       else if (sortKey === 'utilized') { av = a.utilized ? 1 : 0; bv = b.utilized ? 1 : 0 }
       else if (sortKey === 'auditable') { av = a.auditable === false ? 0 : 1; bv = b.auditable === false ? 0 : 1 }
       else if (sortKey === 'controlNumber') { av = (a.controlNumber ?? '').toLowerCase(); bv = (b.controlNumber ?? '').toLowerCase() }
@@ -857,9 +863,9 @@ function AssetManagementInner() {
 
   // Download the current (filtered/sorted) asset list — a print guide for naming.
   const exportAssets = (fmt: 'xlsx' | 'pdf') => {
-    const headers = ['Control No.', 'Asset Name', 'Classification', 'Branch', 'Accountable', 'Departments', 'Condition']
+    const headers = ['Control No.', 'Asset Name', 'Classification', 'Branch', 'Date of Purchase', 'Accountable', 'Departments', 'Condition']
     const rows = displayedAssets.map((a) => [
-      a.controlNumber || '', a.name, classificationLabel(a.classification), branchLabel(a.branch),
+      a.controlNumber || '', a.name, classificationLabel(a.classification), branchLabel(a.branch), formatPurchaseDate(a.dateBought),
       a.accountableName || '', (a.departments as string[]).join(', '), a.isDefective ? 'Defective' : 'OK',
     ])
     const scope = branchFilter ? branchLabel(branchFilter) : 'All branches'
@@ -1185,8 +1191,16 @@ function AssetManagementInner() {
                     </div>
                   </th>
 
+                  {/* ── Date of Purchase ── (tells same-name records apart) */}
+                  <th className="relative text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={selOff + 4} />
+                    <button className="flex items-center gap-1 hover:text-gray-800" onClick={() => toggleSort('dateBought')}>
+                      Date of Purchase
+                      {sortKey === 'dateBought' ? (sortDir === 'asc' ? <ChevronUp size={13} /> : <ChevronDown size={13} />) : <ChevronsUpDown size={12} className="text-gray-400" />}
+                    </button>
+                  </th>
+
                   {/* ── Total Amount ── */}
-                  <th className="relative text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={selOff + 4} />
+                  <th className="relative text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={selOff + 5} />
                     <button className="flex items-center gap-1 ml-auto hover:text-gray-800" onClick={() => toggleSort('totalAmount')}>
                       {sortKey === 'totalAmount' ? (sortDir === 'asc' ? <ChevronUp size={13} /> : <ChevronDown size={13} />) : <ChevronsUpDown size={12} className="text-gray-400" />}
                       Total Amount
@@ -1194,7 +1208,7 @@ function AssetManagementInner() {
                   </th>
 
                   {/* ── Monthly Depr. ── */}
-                  <th className="relative text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={selOff + 5} />
+                  <th className="relative text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={selOff + 6} />
                     <button className="flex items-center gap-1 ml-auto hover:text-gray-800" onClick={() => toggleSort('monthlyDepreciation')}>
                       {sortKey === 'monthlyDepreciation' ? (sortDir === 'asc' ? <ChevronUp size={13} /> : <ChevronDown size={13} />) : <ChevronsUpDown size={12} className="text-gray-400" />}
                       Monthly Depr.
@@ -1202,7 +1216,7 @@ function AssetManagementInner() {
                   </th>
 
                   {/* ── End Date ── */}
-                  <th className="relative text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={selOff + 6} />
+                  <th className="relative text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={selOff + 7} />
                     <button className="flex items-center gap-1 hover:text-gray-800" onClick={() => toggleSort('depreciationEndDate')}>
                       End Date
                       {sortKey === 'depreciationEndDate' ? (sortDir === 'asc' ? <ChevronUp size={13} /> : <ChevronDown size={13} />) : <ChevronsUpDown size={12} className="text-gray-400" />}
@@ -1210,7 +1224,7 @@ function AssetManagementInner() {
                   </th>
 
                   {/* ── Utilized ── */}
-                  <th className="relative text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={selOff + 7} />
+                  <th className="relative text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={selOff + 8} />
                     <div className="flex items-center justify-center gap-1">
                       <button className="flex items-center gap-1 hover:text-gray-800" onClick={(e) => { e.stopPropagation(); toggleSort('utilized') }}>
                         Utilized
@@ -1237,7 +1251,7 @@ function AssetManagementInner() {
                   </th>
 
                   {/* ── Auditable ── */}
-                  <th className="relative text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={selOff + 8} />
+                  <th className="relative text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={selOff + 9} />
                     <div className="flex items-center justify-center gap-1">
                       <button className="flex items-center gap-1 hover:text-gray-800" onClick={(e) => { e.stopPropagation(); toggleSort('auditable') }}>
                         Auditable
@@ -1264,39 +1278,39 @@ function AssetManagementInner() {
                   </th>
 
                   {/* ── Condition ── */}
-                  <th className="relative text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={selOff + 9} />
+                  <th className="relative text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={selOff + 10} />
                     <HeadSelectFilter label="Condition" align="center" value={colFilters.condition} options={[{ value: 'ok', label: 'OK' }, { value: 'defective', label: 'Defective' }]}
                       open={openFilterCol === 'condition'} onToggle={() => setOpenFilterCol(openFilterCol === 'condition' ? null : 'condition')}
                       onChange={v => setColFilters(f => ({ ...f, condition: v }))} />
                   </th>
 
                   {/* ── Control No. ── */}
-                  <th className="relative text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={selOff + 10} />
+                  <th className="relative text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={selOff + 11} />
                     <button className="flex items-center gap-1 hover:text-gray-800" onClick={() => toggleSort('controlNumber')}>
                       Control No.
                       {sortKey === 'controlNumber' ? (sortDir === 'asc' ? <ChevronUp size={13} /> : <ChevronDown size={13} />) : <ChevronsUpDown size={12} className="text-gray-400" />}
                     </button>
                   </th>
 
-                  <th className="relative text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={selOff + 11} />
+                  <th className="relative text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={selOff + 12} />
                     <HeadSelectFilter label="Accountability" align="left" value={colFilters.accountable} options={[{ value: NONE, label: '— No one —' }, ...custodianChoices.map(n => ({ value: n, label: n }))]}
                       open={openFilterCol === 'accountable'} onToggle={() => setOpenFilterCol(openFilterCol === 'accountable' ? null : 'accountable')}
                       onChange={v => setColFilters(f => ({ ...f, accountable: v }))} />
                   </th>
-                  <th className="relative text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={selOff + 12} />
+                  <th className="relative text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={selOff + 13} />
                     <HeadSelectFilter label="Departments" align="left" value={colFilters.department} options={[{ value: NONE, label: '— None —' }, ...departmentChoices.map(d => ({ value: d, label: d }))]}
                       open={openFilterCol === 'department'} onToggle={() => setOpenFilterCol(openFilterCol === 'department' ? null : 'department')}
                       onChange={v => setColFilters(f => ({ ...f, department: v }))} />
                   </th>
                   {canWrite && (
-                    <th className="relative text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={selOff + 13} />Actions</th>
+                    <th className="relative text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={selOff + 14} />Actions</th>
                   )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {displayedAssets.length === 0 ? (
                   <tr>
-                    <td colSpan={(canWrite ? 14 : 13) + (canManage ? 1 : 0)} className="text-center py-10 text-gray-400 text-sm">
+                    <td colSpan={(canWrite ? 15 : 14) + (canManage ? 1 : 0)} className="text-center py-10 text-gray-400 text-sm">
                       No assets match your search or filters.
                     </td>
                   </tr>
@@ -1332,6 +1346,7 @@ function AssetManagementInner() {
                     </td>
                     <td className="px-4 py-3 text-gray-600">{classificationLabel(asset.classification)}</td>
                     <td className="px-4 py-3 text-gray-600">{branchLabel(asset.branch)}</td>
+                    <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{formatPurchaseDate(asset.dateBought)}</td>
                     <td className="px-4 py-3 text-right text-gray-900 font-medium">{formatCurrency(asset.totalAmount)}</td>
                     <td className="px-4 py-3 text-right text-gray-600">{formatCurrency(asset.monthlyDepreciation)}</td>
                     <td className="px-4 py-3 text-gray-600">{formatEndDate(asset.depreciationEndDate)}</td>
