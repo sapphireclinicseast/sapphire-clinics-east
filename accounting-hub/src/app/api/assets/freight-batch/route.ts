@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { assetName } from '@/lib/asset-classification'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 const ASSET_BRANCH_CODE: Record<string, string> = { SANDBOX_EAST: 'AHEA', SANDBOX_GREENHILLS: 'AHGH', VERDANA_STORE: 'VERD' }
@@ -74,7 +75,7 @@ export async function POST(req: Request) {
       const controlNumber = await nextControlNumber(branch, bought)
       const asset = await prisma.asset.create({
         data: {
-          branch, name: String(row.name).trim(),
+          branch, name: assetName(String(row.name)),
           purchasePrice: landedUnit,
           quantity: row.qty,
           totalAmount: landedUnit * row.qty,

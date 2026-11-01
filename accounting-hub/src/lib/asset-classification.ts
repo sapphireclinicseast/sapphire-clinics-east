@@ -74,3 +74,8 @@ export const ENTRY_DEPT_TO_ASSET: Record<string, string> = {
   MD: 'Medical Doctor',
   ORTHOSIS: 'Orthosis & Prosthesis',
 }
+
+/** Asset names are stored in capitals so the register reads consistently
+ *  (Hannah, 2026-11-01: a mix of "BROOM SET" and "Broom set" looked awkward). */
+export const assetName = (s: string) => s.trim().toUpperCase()
+

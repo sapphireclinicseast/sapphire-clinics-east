@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { assetClassFromAccountTitle, ASSET_CLASSIFICATION_LABELS, ENTRY_DEPT_TO_ASSET, isDepreciatingClassification } from '@/lib/asset-classification'
+import { assetClassFromAccountTitle, assetName, ASSET_CLASSIFICATION_LABELS, ENTRY_DEPT_TO_ASSET, isDepreciatingClassification } from '@/lib/asset-classification'
 import { sanitizeAssetUnits, summarizeAssetUnits } from '@/lib/asset-units'
 import { netOfVat } from '@/lib/vat'
 
@@ -108,7 +108,7 @@ export async function POST(req: Request) {
     // The dialog's Asset name (pre-filled with the entry's Description); blank →
     // the Description, then the classification label.
     const reqName = typeof body.name === 'string' ? body.name.trim().slice(0, 300) : ''
-    const name = reqName || (e.description || '').trim() || ASSET_CLASSIFICATION_LABELS[classification]
+    const name = assetName(reqName || (e.description || '').trim() || ASSET_CLASSIFICATION_LABELS[classification])
     const dateBought = e.date ? new Date(e.date) : new Date()
     const depEnd = new Date(dateBought); if (years > 0) depEnd.setFullYear(depEnd.getFullYear() + years)
     const deptName = e.department ? ENTRY_DEPT_TO_ASSET[e.department] : undefined

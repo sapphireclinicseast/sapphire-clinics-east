@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { postAssetJournal, reverseAssetJournal } from '@/lib/accounting/post-asset'
+import { assetName } from '@/lib/asset-classification'
 
 // POST { mainId, otherIds: string[], name?: string }
 // Combine asset records that are one item — a 12% VAT line, a delivery fee or
@@ -77,7 +78,7 @@ export async function POST(req: Request) {
 
     const total = Math.round((Number(main.totalAmount) + others.reduce((s, a) => s + Number(a.totalAmount), 0)) * 100) / 100
     const qty = main.quantity || 1
-    const name = typeof body.name === 'string' && body.name.trim() ? body.name.trim().slice(0, 300) : main.name
+    const name = assetName(typeof body.name === 'string' && body.name.trim() ? body.name.trim().slice(0, 300) : main.name)
     const note = `Combined: ${others.map(a => `${a.controlNumber || '—'} ${a.name} ₱${Number(a.totalAmount).toFixed(2)}`).join('; ')}`
     await prisma.asset.update({
       where: { id: main.id },

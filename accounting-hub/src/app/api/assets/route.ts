@@ -4,6 +4,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { postAssetJournal, reverseAssetJournal } from '@/lib/accounting/post-asset'
 import { sanitizeAssetUnits, summarizeAssetUnits } from '@/lib/asset-units'
+import { assetName } from '@/lib/asset-classification'
 
 // Front-desk staff can add/edit assets (photos, renaming) but not delete them.
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
@@ -109,7 +110,7 @@ export async function POST(req: Request) {
     const asset = await prisma.asset.create({
       data: {
         branch,
-        name,
+        name: typeof name === 'string' ? assetName(name) : name,
         purchasePrice,
         quantity: quantity ?? 1,
         totalAmount,
@@ -212,7 +213,7 @@ export async function PUT(req: Request) {
       where: { id },
       data: {
         branch,
-        name,
+        name: typeof name === 'string' ? assetName(name) : name,
         purchasePrice,
         quantity: quantity ?? 1,
         totalAmount,
