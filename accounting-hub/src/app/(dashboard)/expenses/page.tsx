@@ -303,7 +303,7 @@ function ExpensesInner() {
   // Saving a Registered Name: a known supplier brings its address and TIN along.
   const supplierPatch = (name: string): Record<string, string> => {
     const sup = pickByName.get(name.trim().toLowerCase())
-    const patch: Record<string, string> = { registeredName: name }
+    const patch: Record<string, string> = { registeredName: name.trim().toUpperCase() }
     if (sup?.registeredAddress) patch.registeredAddress = sup.registeredAddress
     if (sup?.tin) patch.tinNumber = formatTin(sup.tin)
     return patch
@@ -1621,7 +1621,7 @@ function ExpensesInner() {
                         <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
                           <input className={cellCls} disabled={lk} value={e.registeredAddress || ''} style={{ minWidth: 220 }}
                             onChange={ev => patchLocal(e.id, { registeredAddress: ev.target.value })}
-                            onBlur={ev => saveField(e.id, { registeredAddress: ev.target.value }, false)} />
+                            onBlur={ev => saveField(e.id, { registeredAddress: ev.target.value.trim().toUpperCase() }, false)} />
                         </td>
                         <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
                           <input type="number" step="0.01" className={`${cellCls} text-right`} disabled={lk}

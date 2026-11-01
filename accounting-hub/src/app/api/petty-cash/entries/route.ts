@@ -225,6 +225,8 @@ export async function PUT(req: Request) {
             ? Array.from(new Set(raw.map(d => String(d).toUpperCase()).filter(d => VALID_DEPTS.has(d))))
             : []
         }
+        // Supplier name / address are kept in capitals (Hannah, 2026-11-01).
+        else if (f === 'registeredName' || f === 'registeredAddress') data[f] = typeof body[f] === 'string' && body[f].trim() ? body[f].trim().toUpperCase() : null
         else data[f] = body[f] === '' ? null : body[f]
       }
     }

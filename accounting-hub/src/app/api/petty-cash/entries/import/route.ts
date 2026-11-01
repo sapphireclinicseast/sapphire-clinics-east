@@ -61,7 +61,7 @@ export async function POST(req: Request) {
         }
         for (const f of STR_FIELDS) {
           const v = row?.[f]
-          if (v !== undefined && v !== null && String(v).trim() !== '') data[f] = String(v).trim()
+          if (v !== undefined && v !== null && String(v).trim() !== '') data[f] = f === 'registeredName' || f === 'registeredAddress' ? String(v).trim().toUpperCase() : String(v).trim()
         }
         if (row?.grossAmount !== undefined && row?.grossAmount !== '') data.grossAmount = Number(row.grossAmount) || 0
         if (row?.date) {

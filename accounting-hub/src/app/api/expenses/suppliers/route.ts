@@ -47,7 +47,7 @@ export async function GET(req: Request) {
     }
     return NextResponse.json({
       suppliers: [...out.values()]
-        .map(v => ({ registeredName: v.registeredName, registeredAddress: v.registeredAddress, tin: v.tin, branches: [...v.branches] }))
+        .map(v => ({ registeredName: v.registeredName.toUpperCase(), registeredAddress: v.registeredAddress.toUpperCase(), tin: v.tin, branches: [...v.branches] }))
         .sort((x, y) => x.registeredName.localeCompare(y.registeredName)),
     })
   }
@@ -110,10 +110,31 @@ export async function GET(req: Request) {
     if (!cur) map.set(key, { id: s.id, registeredName: s.registeredName, registeredAddress: s.registeredAddress || '', tin: s.tin || '', branch, branchLabel: BRANCH_LABEL[branch], firstAppeared: null, validity: 'Valid', _fa: null })
     else { cur.id = s.id; if (s.registeredAddress) cur.registeredAddress = s.registeredAddress; if (s.tin) cur.tin = s.tin }
   }
+  // Suppliers entered in Asset Management for this branch's assets (Hannah,
+  // 2026-11-01: a supplier typed there must show here too). Their TIN, when
+  // known, sits in the supplier's notes as "TIN …".
+  const assetSuppliers = await prisma.asset.findMany({
+    where: { branch: branch as never, supplierId: { not: null } },
+    select: { dateBought: true, supplier: { select: { supplierName: true, address: true, notes: true } } },
+  })
+  for (const a of assetSuppliers) {
+    const sup = a.supplier
+    if (!sup?.supplierName?.trim()) continue
+    const key = sup.supplierName.trim().toLowerCase()
+    const tin = sup.notes?.match(/TIN\s*([0-9][0-9-]{8,})/i)?.[1] || ''
+    const cur = map.get(key)
+    if (!cur) map.set(key, { id: null, registeredName: sup.supplierName.trim(), registeredAddress: sup.address || '', tin, branch, branchLabel: BRANCH_LABEL[branch], firstAppeared: null, validity: 'Valid', _fa: a.dateBought })
+    else {
+      if (!cur.registeredAddress && sup.address) cur.registeredAddress = sup.address
+      if (!cur.tin && tin) cur.tin = tin
+      if (!cur._fa || a.dateBought < cur._fa) cur._fa = a.dateBought
+    }
+  }
   // Finalize validity: Invalid only when they have transactions and none are Valid.
   for (const [key, sup] of map) sup.validity = (anyTxn.has(key) && !validAny.get(key)) ? 'Invalid' : 'Valid'
 
-  let list = [...map.values()].map(x => ({ ...x, firstAppeared: x._fa ? x._fa.toISOString().slice(0, 10) : null }))
+  // Names and addresses read in capitals everywhere.
+  let list = [...map.values()].map(x => ({ ...x, registeredName: x.registeredName.toUpperCase(), registeredAddress: x.registeredAddress.toUpperCase(), firstAppeared: x._fa ? x._fa.toISOString().slice(0, 10) : null }))
   if (!all && (from || to)) {
     const f = from ? new Date(from) : null
     let t: Date | null = null
@@ -138,12 +159,12 @@ export async function POST(req: Request) {
   try {
     const { branch, registeredName, registeredAddress, tin } = await req.json()
     if (!VALID_BRANCHES.includes(branch)) return NextResponse.json({ error: 'Valid branch is required' }, { status: 400 })
-    const name = String(registeredName || '').trim()
+    const name = String(registeredName || '').trim().toUpperCase()
     if (!name) return NextResponse.json({ error: 'Registered Name is required' }, { status: 400 })
     const supplier = await prisma.expenseSupplier.upsert({
       where: { branch_registeredName: { branch, registeredName: name } },
-      update: { registeredAddress: registeredAddress ? String(registeredAddress) : null, tin: tin ? String(tin) : null },
-      create: { branch, registeredName: name, registeredAddress: registeredAddress ? String(registeredAddress) : null, tin: tin ? String(tin) : null },
+      update: { registeredAddress: registeredAddress ? String(registeredAddress).trim().toUpperCase() : null, tin: tin ? String(tin) : null },
+      create: { branch, registeredName: name, registeredAddress: registeredAddress ? String(registeredAddress).trim().toUpperCase() : null, tin: tin ? String(tin) : null },
     })
     return NextResponse.json(supplier)
   } catch (e) {
@@ -161,11 +182,11 @@ export async function PUT(req: Request) {
   try {
     const { id, registeredName, registeredAddress, tin } = await req.json()
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
-    const name = String(registeredName || '').trim()
+    const name = String(registeredName || '').trim().toUpperCase()
     if (!name) return NextResponse.json({ error: 'Registered Name is required' }, { status: 400 })
     const updated = await prisma.expenseSupplier.update({
       where: { id },
-      data: { registeredName: name, registeredAddress: registeredAddress ? String(registeredAddress) : null, tin: tin ? String(tin) : null },
+      data: { registeredName: name, registeredAddress: registeredAddress ? String(registeredAddress).trim().toUpperCase() : null, tin: tin ? String(tin) : null },
     })
     return NextResponse.json(updated)
   } catch (e) {
