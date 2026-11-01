@@ -47,8 +47,8 @@ const SITE_CONFIG = {
      score sit at 4.64 while the real average was 4.62. */
   stats: [
     { num: '2',       lbl: 'Branches' },
-    { num: '2,500+',  lbl: 'Patients Served' },
-    { num: '5,200+',  lbl: 'Confirmed Sessions' },
+    { num: '3,100+',  lbl: 'Patients Served' },
+    { num: '28,600+', lbl: 'Confirmed Sessions' },
     { num: '4.62/5★', lbl: 'Satisfaction Score' },
   ],
 
@@ -208,6 +208,7 @@ function buildDynamicContent() {
   buildPartners();
   buildBranches('east');
   buildBranches('greenhills');
+  refreshFooterYear();
 }
 
 function buildHeroSlides() {
@@ -287,6 +288,18 @@ function refreshLiveStats(wrap) {
       });
     })
     .catch(() => { /* keep the hardcoded fallback values */ });
+}
+
+// The footer year was typed into five pages and read "2025" through to
+// November 2026. The year in the markup stays as the no-JS fallback; this
+// corrects it on load so it cannot silently rot again.
+function refreshFooterYear() {
+  const year = String(new Date().getFullYear());
+  document.querySelectorAll('.footer-bottom span').forEach(el => {
+    if (el.textContent.includes('©')) {
+      el.textContent = el.textContent.replace(/©\s*20\d{2}/, '\u00a9 ' + year);
+    }
+  });
 }
 
 function buildHMOs() {
