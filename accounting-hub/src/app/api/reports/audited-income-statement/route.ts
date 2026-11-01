@@ -6,6 +6,7 @@ import { parseMonitoringRemark } from '@/lib/si-monitoring'
 import { takenSiNumbers, isShadowedMonitoringFlag } from '@/lib/si-flag-guard'
 import { isPayrollItem } from '@/lib/payroll-item-guard'
 import { otherMonthSessionPf } from '@/lib/payroll/pf-session-month'
+import { netOfVat } from '@/lib/vat'
 
 /**
  * Audited Income Statement — GET ?year=&branch=
@@ -117,7 +118,7 @@ export async function GET(req: Request) {
     /* ── Valid expenses (net of input VAT) ─────────────────────── */
     const entries = await prisma.pettyCashEntry.findMany({
       where: { validity: 'Valid', date: range },
-      select: { date: true, grossAmount: true, vatable: true, accountTitle: true, description: true, branch: true, branchAllocations: true },
+      select: { date: true, grossAmount: true, vatable: true, vatPortion: true, accountTitle: true, description: true, branch: true, branchAllocations: true },
     })
     const expenseByTitle = new Map<string, number[]>()
     let payrollPatternExcluded = 0
@@ -135,7 +136,7 @@ export async function GET(req: Request) {
         }
       }
       if (gross === 0 || !e.date) continue
-      const net = e.vatable === 'VAT' ? gross / 1.12 : gross
+      const net = netOfVat(e, gross)
       const title = (e.accountTitle || 'Uncategorized').trim() || 'Uncategorized'
       const arr = expenseByTitle.get(title) || emptyMonths()
       arr[monthOf(e.date)] += net

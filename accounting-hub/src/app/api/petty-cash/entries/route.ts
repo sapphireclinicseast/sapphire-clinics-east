@@ -10,7 +10,7 @@ const VALID_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE', '
 
 // Fields a client may set/update on an entry.
 const EDITABLE = [
-  'requestor', 'department', 'pcfStatus', 'date', 'description', 'vatable',
+  'requestor', 'department', 'pcfStatus', 'date', 'description', 'vatable', 'vatPortion',
   'siNumber', 'tinNumber', 'registeredName', 'registeredAddress', 'grossAmount',
   'accountTitle', 'referenceNumber', 'proofUrl', 'proofUrls', 'validity', 'finalized',
   'recurFrequency', 'recurDeadlineDay', 'distributeMonthly', 'amountVaries', 'distributeStart', 'distributeEnd',
@@ -214,6 +214,7 @@ export async function PUT(req: Request) {
     for (const f of EDITABLE) {
       if (f in body) {
         if (f === 'grossAmount') data.grossAmount = Number(body.grossAmount) || 0
+        else if (f === 'vatPortion') data.vatPortion = (body.vatPortion === '' || body.vatPortion == null) ? null : Math.abs(Number(body.vatPortion)) || 0
         else if (f === 'date') data.date = body.date ? new Date(body.date) : null
         else if (f === 'distributeStart' || f === 'distributeEnd') data[f] = body[f] ? new Date(body[f]) : null
         else if (f === 'recurDeadlineDay') data[f] = (body[f] === '' || body[f] == null) ? null : Number(body[f])
@@ -229,6 +230,8 @@ export async function PUT(req: Request) {
       }
     }
     if ('branchAllocations' in body) data.branchAllocations = body.branchAllocations ?? null
+    // Only a VAT entry can have a VAT part.
+    if ('vatable' in body && body.vatable !== 'VAT') data.vatPortion = null
     if ('proofUrls' in body) data.proofUrls = body.proofUrls ?? null
 
     // Asset withdrawal: this entry had assets auto-created from it ("Add to

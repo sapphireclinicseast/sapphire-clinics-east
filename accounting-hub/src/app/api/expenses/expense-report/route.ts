@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { netOfVat } from '@/lib/vat'
 
 const VALID_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE', 'AURA_INSTITUTE']
 const BRANCH_CODE: Record<string, string> = { SANDBOX_EAST: 'AHEA', SANDBOX_GREENHILLS: 'AHGH', VERDANA_STORE: 'VERD' }
@@ -27,7 +28,7 @@ export async function GET(req: Request) {
     select: {
       id: true, recordType: true, requestor: true, paymentBankAccount: true, creditCard: true, creditCardId: true, payrollAccount: true,
       date: true, paidAt: true, paymentMethod: true, checkNumber: true, pcvNumber: true, accountTitle: true, description: true,
-      vatable: true, grossAmount: true, validity: true, filingStatus: true, reimbursementId: true,
+      vatable: true, vatPortion: true, grossAmount: true, validity: true, filingStatus: true, reimbursementId: true,
       reimbursement: { select: { payableTo: true } },
     },
     orderBy: { date: 'asc' },
@@ -41,7 +42,7 @@ export async function GET(req: Request) {
   const pc = await prisma.pettyCashEntry.findMany({
     where: { branch, recordType: 'PETTY_CASH', reimbursement: { is: { paidAt: { not: null } } }, ...dateWhere },
     select: {
-      id: true, date: true, pcvNumber: true, accountTitle: true, description: true, vatable: true, grossAmount: true,
+      id: true, date: true, pcvNumber: true, accountTitle: true, description: true, vatable: true, vatPortion: true, grossAmount: true,
       validity: true, filingStatus: true, reimbursementId: true, reimbursement: { select: { paymentMethod: true, checkNumber: true, transferRef: true, debitAccount: true, refNumber: true, payableTo: true } },
     },
     orderBy: { date: 'asc' },
@@ -110,7 +111,7 @@ export async function GET(req: Request) {
         id: e.id, source: e.recordType, reimbursementId: e.reimbursementId, refNumber: '', payee: e.reimbursement?.payableTo || e.requestor || '', paymentAccount: acct,
         paymentDate: e.date ? new Date(e.date).toISOString().slice(0, 10) : '',
         paymentMethod: e.paymentMethod || '', pcvNumber: e.pcvNumber, accountTitle: e.accountTitle || '',
-        description: e.description || '', netOfVat: netOf(e.vatable, gross), gross,
+        description: e.description || '', netOfVat: netOfVat(e), gross,
         checkInfo,
         validity: e.validity || '', filingStatus: e.filingStatus || 'FOR_FILING',
       }
@@ -127,7 +128,7 @@ export async function GET(req: Request) {
         paymentAccount: e.reimbursement?.debitAccount || '',
         paymentDate: e.date ? new Date(e.date).toISOString().slice(0, 10) : '',
         paymentMethod: pm, pcvNumber: e.pcvNumber, accountTitle: e.accountTitle || '',
-        description: e.description || '', netOfVat: netOf(e.vatable, gross), gross,
+        description: e.description || '', netOfVat: netOfVat(e), gross,
         checkInfo: isCheck && chk ? `${debit} ${chk}`.trim() : (pm === 'Online Fund Transfer' && tref ? `${debit} · Ref ${tref}`.trim() : ''),
         validity: e.validity || '', filingStatus: e.filingStatus || 'FOR_FILING',
       }

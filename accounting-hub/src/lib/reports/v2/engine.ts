@@ -23,6 +23,7 @@
 import { prisma } from '@/lib/prisma'
 import { INCOME_TAX_RATE } from '@/lib/reports/income-statement-totals'
 import { productSubtypeLabel } from '@/lib/sku-taxonomy'
+import { netOfVat } from '@/lib/vat'
 
 /* ── Types ─────────────────────────────────────────────────────── */
 
@@ -1080,7 +1081,7 @@ export async function computeLedgerStatements(
     },
     // branch comes along so an All-Branches run can draw each voucher on its
     // own float rather than lumping every branch onto one.
-    select: { accountTitle: true, date: true, vatable: true, grossAmount: true, validity: true, pcfStatus: true, recordType: true, skipReports: true, pcvNumber: true, description: true, branch: true, paymentBankAccount: true },
+    select: { accountTitle: true, date: true, vatable: true, vatPortion: true, grossAmount: true, validity: true, pcfStatus: true, recordType: true, skipReports: true, pcvNumber: true, description: true, branch: true, paymentBankAccount: true },
   })
   let pcCount = 0
   for (const e of pcEntries) {
@@ -1089,7 +1090,7 @@ export async function computeLedgerStatements(
     if (e.recordType === 'RECURRING' || e.skipReports) continue
     const gross = Number(e.grossAmount)
     if (!gross) continue
-    const net = e.vatable === 'VAT' ? gross / 1.12 : gross
+    const net = netOfVat(e)
     const vat = gross - net
     pcCount++
     postBalanced('petty-cash', monthOf(e.date), `PCV ${e.pcvNumber}${e.description ? ` — ${e.description}` : ''}`, [
@@ -1111,14 +1112,14 @@ export async function computeLedgerStatements(
       distributeStart: { not: null }, distributeEnd: { not: null },
       ...(branch !== 'ALL' ? { branch: orderBranch } : { branch: { not: 'CEO' } }),
     },
-    select: { accountTitle: true, date: true, vatable: true, grossAmount: true, validity: true, pcfStatus: true, distributeStart: true, distributeEnd: true, branch: true, pcvNumber: true, description: true },
+    select: { accountTitle: true, date: true, vatable: true, vatPortion: true, grossAmount: true, validity: true, pcfStatus: true, distributeStart: true, distributeEnd: true, branch: true, pcvNumber: true, description: true },
   })
   for (const e of distEntries) {
     if (!e.accountTitle || !e.distributeStart || !e.distributeEnd) continue
     if (e.pcfStatus === 'Cancelled' || e.validity === 'Cancelled' || e.vatable === 'Cancelled') continue
     const gross = Number(e.grossAmount)
     if (!gross) continue
-    const net = e.vatable === 'VAT' ? gross / 1.12 : gross
+    const net = netOfVat(e)
     const vat = gross - net
     const sd = new Date(e.distributeStart), ed = new Date(e.distributeEnd)
     const sIdx = sd.getUTCFullYear() * 12 + sd.getUTCMonth()
@@ -1147,7 +1148,7 @@ export async function computeLedgerStatements(
   // CEO petty cash allocated across branches
   const ceoEntries = qbEra ? [] : await prisma.pettyCashEntry.findMany({
     where: { branch: 'CEO', date: { gte: start, lt: end } },
-    select: { accountTitle: true, date: true, vatable: true, branchAllocations: true, validity: true, pcfStatus: true, pcvNumber: true, description: true },
+    select: { accountTitle: true, date: true, vatable: true, vatPortion: true, grossAmount: true, branchAllocations: true, validity: true, pcfStatus: true, pcvNumber: true, description: true },
   })
   for (const e of ceoEntries) {
     if (!e.accountTitle || !e.date) continue
@@ -1159,7 +1160,7 @@ export async function computeLedgerStatements(
       const ag = Number(a?.amount) || 0
       if (!ab || !ag) continue
       if (branch !== 'ALL' && ab !== orderBranch) continue
-      const netA = e.vatable === 'VAT' ? ag / 1.12 : ag
+      const netA = netOfVat(e, ag)
       const vatA = ag - netA
       postBalanced('petty-cash-ceo', monthOf(e.date), `PCV ${e.pcvNumber} (CEO allocation)${e.description ? ` — ${e.description}` : ''}`, [
         { acct: parseAccountKey(e.accountTitle), debit: netA },

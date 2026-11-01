@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { sweepNoSiEwtToOtherIncome } from '@/lib/accounting/ewt-income'
+import { netOfVat } from '@/lib/vat'
 
 const SWEEP_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 
@@ -39,7 +40,7 @@ export async function GET(req: Request) {
   // it appears here for separate remittance to the BIR.
   const expenses = await prisma.pettyCashEntry.findMany({
     where: { branch: pcBranch, hasEwt: true, ewtRate: { not: null }, OR: [{ paidAt: { not: null } }, { reimbursementId: { not: null } }] },
-    select: { id: true, pcvNumber: true, requestor: true, description: true, vatable: true, grossAmount: true, ewtRate: true, ewtRemitted: true, paidAt: true, date: true },
+    select: { id: true, pcvNumber: true, requestor: true, description: true, vatable: true, vatPortion: true, grossAmount: true, ewtRate: true, ewtRemitted: true, paidAt: true, date: true },
     orderBy: [{ paidAt: 'desc' }],
   })
   // CEO petty-cash entries with EWT that were RFP'd for THIS branch (rfpBranchMap has
@@ -47,7 +48,7 @@ export async function GET(req: Request) {
   // that branch's Taxes; per-branch remittance is tracked in ewtRemittedBranches.
   const ceoEntries = await prisma.pettyCashEntry.findMany({
     where: { branch: 'CEO', hasEwt: true, ewtRate: { not: null } },
-    select: { id: true, pcvNumber: true, requestor: true, description: true, vatable: true, grossAmount: true, ewtRate: true, paidAt: true, date: true, branchAllocations: true, rfpBranchMap: true, ewtRemittedBranches: true },
+    select: { id: true, pcvNumber: true, requestor: true, description: true, vatable: true, vatPortion: true, grossAmount: true, ewtRate: true, paidAt: true, date: true, branchAllocations: true, rfpBranchMap: true, ewtRemittedBranches: true },
   })
 
   const items = [
@@ -69,8 +70,7 @@ export async function GET(req: Request) {
       }
     }),
     ...expenses.map(e => {
-      const g = Number(e.grossAmount)
-      const net = e.vatable === 'VAT' ? g / 1.12 : g
+      const net = netOfVat(e)
       const rate = e.ewtRate || 0
       // Period = payment date when paid, else the entry date (so RFP'd-not-yet-paid items still slot into a month).
       const when = e.paidAt || e.date
@@ -91,7 +91,7 @@ export async function GET(req: Request) {
       const alloc = allocs.find(a => a?.branch === pcBranch)
       const g = alloc ? Number(alloc.amount) : 0
       if (!(g > 0)) return []
-      const net = e.vatable === 'VAT' ? g / 1.12 : g
+      const net = netOfVat(e, g)
       const rate = e.ewtRate || 0
       const when = e.paidAt || e.date
       const remitMap = (e.ewtRemittedBranches && typeof e.ewtRemittedBranches === 'object') ? e.ewtRemittedBranches as Record<string, boolean> : {}

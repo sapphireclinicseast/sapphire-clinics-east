@@ -7,14 +7,14 @@
 // the amount back in 4070 for the payment. EwtIncomeDeclaration rows (unique
 // per item) carry the link that makes both directions exact and idempotent.
 import type { Prisma, PrismaClient } from '@prisma/client'
+import { netOfVat, type VatSource } from '@/lib/vat'
 
 const PAYROLL_TO_PC: Record<string, string> = { SBEA: 'SANDBOX_EAST', SBGH: 'SANDBOX_GREENHILLS', VERDANA: 'VERDANA_STORE', AHI: 'AURA_INSTITUTE' }
 const r2 = (n: number) => Math.round(n * 100) / 100
 const num = (v: unknown) => Number(v || 0)
 
-const expEwtAmount = (e: { grossAmount: unknown; vatable: string | null; ewtRate: number | null }) => {
-  const g = num(e.grossAmount)
-  const net = e.vatable === 'VAT' ? g / 1.12 : g
+const expEwtAmount = (e: VatSource & { ewtRate: number | null }) => {
+  const net = netOfVat(e)
   return r2(net * ((e.ewtRate || 0) / 100))
 }
 const expYm = (e: { paidAt: Date | null; date: Date | null }) => {

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { netOfVat } from '@/lib/vat'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 const VALID_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE', 'AURA_INSTITUTE']
@@ -22,13 +23,13 @@ export async function GET(req: Request) {
   if (txnName != null) {
     const tx = await prisma.pettyCashEntry.findMany({
       where: { branch, registeredName: { equals: txnName, mode: 'insensitive' } },
-      select: { date: true, description: true, validity: true, grossAmount: true, vatable: true, pcvNumber: true },
+      select: { date: true, description: true, validity: true, grossAmount: true, vatable: true, vatPortion: true, pcvNumber: true },
       orderBy: { date: 'desc' },
     })
     return NextResponse.json({
       transactions: tx.map(e => {
         const gross = Number(e.grossAmount)
-        const netVat = e.vatable === 'VAT' ? gross / 1.12 : gross
+        const netVat = netOfVat(e)
         return {
           date: e.date ? e.date.toISOString().slice(0, 10) : null,
           pcvNumber: e.pcvNumber || '',

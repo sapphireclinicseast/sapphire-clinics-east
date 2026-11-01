@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { assetClassFromAccountTitle, ASSET_CLASSIFICATION_LABELS, ENTRY_DEPT_TO_ASSET, isDepreciatingClassification } from '@/lib/asset-classification'
 import { sanitizeAssetUnits, summarizeAssetUnits } from '@/lib/asset-units'
+import { netOfVat } from '@/lib/vat'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
 const ASSET_BRANCH_CODE: Record<string, string> = { SANDBOX_EAST: 'AHEA', SANDBOX_GREENHILLS: 'AHGH', VERDANA_STORE: 'VERD' }
@@ -46,7 +47,7 @@ export async function POST(req: Request) {
     if (!classification) return NextResponse.json({ error: 'This entry is not an asset classification' }, { status: 400 })
 
     // Price basis: net of VAT (assets are booked ex-VAT; VAT is Input VAT).
-    const vatFactor = e.vatable === 'VAT' ? 1 / 1.12 : 1
+    const vatFactor = Number(e.grossAmount) ? netOfVat(e) / Number(e.grossAmount) : 1
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const allocs = (Array.isArray(e.branchAllocations) ? e.branchAllocations : []) as { branch?: string; amount?: number | string }[]
     const nonZero = allocs.filter(a => a?.branch && Number(a.amount) !== 0)

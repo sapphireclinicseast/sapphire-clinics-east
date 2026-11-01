@@ -2,6 +2,13 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { branchAllowed } from '@/lib/branch-scope'
+import { isMixedVat, netOfVat, vatBase, type VatSource } from '@/lib/vat'
+
+// A CEO branch RFP keeps each entry's allocated portion in meta.items.
+// vatPortion is that portion's VAT part (absent on items saved before mixed-VAT
+// entries existed = all VAT when vatable is VAT).
+type CeoItem = { entryId?: string; gross: number; vatable: string | null; vatPortion?: number | null; hasEwt?: boolean; ewtRate?: number | null }
+const itemVat = (i: CeoItem): VatSource => ({ vatable: i.vatable, grossAmount: i.gross, vatPortion: i.vatPortion ?? null })
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 const VALID_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE', 'AURA_INSTITUTE', 'CEO']
@@ -54,11 +61,11 @@ export async function GET(req: Request) {
   if (id && sp.get('items')) {
     const r = await prisma.reimbursementReport.findUnique({
       where: { id },
-      select: { meta: true, entries: { select: { accountTitle: true, description: true, requestor: true, vatable: true, grossAmount: true, hasEwt: true, ewtRate: true } } },
+      select: { meta: true, entries: { select: { accountTitle: true, description: true, requestor: true, vatable: true, vatPortion: true, grossAmount: true, hasEwt: true, ewtRate: true } } },
     })
     if (!r) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-    const bvLine = (accountTitle: string | null, description: string | null, vatable: string | null, gross: number, hasEwt: boolean, ewtRate: number | null) => {
-      const netVat = vatable === 'VAT' ? gross / 1.12 : gross
+    const bvLine = (accountTitle: string | null, description: string | null, src: VatSource, gross: number, hasEwt: boolean, ewtRate: number | null) => {
+      const netVat = netOfVat(src, gross)
       const vat = gross - netVat
       const ewt = hasEwt && ewtRate ? netVat * (ewtRate / 100) : 0
       return { account: accountTitle || '', description: description || '', gross, vat, netVat, ewt, netEwt: gross - ewt }
@@ -71,12 +78,12 @@ export async function GET(req: Request) {
       const ids = meta.items.map((i: { entryId?: string }) => i.entryId).filter(Boolean)
       const ents = await prisma.pettyCashEntry.findMany({ where: { id: { in: ids } }, select: { id: true, accountTitle: true, description: true, requestor: true } })
       const byId = new Map(ents.map(e => [e.id, e]))
-      lines = meta.items.map((i: { entryId?: string; gross: number; vatable: string | null; hasEwt?: boolean; ewtRate?: number | null }) => {
+      lines = meta.items.map((i: CeoItem) => {
         const e = i.entryId ? byId.get(i.entryId) : null
-        return bvLine(e?.accountTitle ?? null, e?.description || e?.requestor || null, i.vatable ?? null, Number(i.gross), !!i.hasEwt, i.ewtRate ?? null)
+        return bvLine(e?.accountTitle ?? null, e?.description || e?.requestor || null, itemVat(i), Number(i.gross), !!i.hasEwt, i.ewtRate ?? null)
       })
     } else {
-      lines = r.entries.map(e => bvLine(e.accountTitle, e.description || e.requestor, e.vatable, Number(e.grossAmount), e.hasEwt, e.ewtRate))
+      lines = r.entries.map(e => bvLine(e.accountTitle, e.description || e.requestor, e, Number(e.grossAmount), e.hasEwt, e.ewtRate))
     }
     return NextResponse.json({ lines })
   }
@@ -95,7 +102,7 @@ export async function GET(req: Request) {
       id: true, refNumber: true, refSeq: true, grossTotal: true, status: true, kind: true, module: true, paidAt: true, paymentMethod: true, checkNumber: true, transferRef: true,
       debitAccount: true, depositAccount: true, proofUrl: true, payableTo: true, createdAt: true, meta: true,
       _count: { select: { entries: true } },
-      entries: { select: { vatable: true, grossAmount: true, hasEwt: true, ewtRate: true } },
+      entries: { select: { vatable: true, vatPortion: true, grossAmount: true, hasEwt: true, ewtRate: true } },
     },
     orderBy: { createdAt: 'desc' },
   })
@@ -104,23 +111,23 @@ export async function GET(req: Request) {
   // EWT is withheld (VAT is reclaimable input tax, not deducted from the payee).
   // EWT base is the net-of-VAT amount. For CEO branch RFPs the entries live in
   // meta.items (only the branch-allocated portion), not the entries relation.
-  const payableOf = (vatable: string | null, gross: number, hasEwt: boolean, ewtRate: number | null) => {
-    const net = vatable === 'VAT' ? gross / 1.12 : gross
+  const payableOf = (src: VatSource, gross: number, hasEwt: boolean, ewtRate: number | null) => {
+    const net = netOfVat(src, gross)
     const ewt = hasEwt && ewtRate ? net * (ewtRate / 100) : 0
     return gross - ewt
   }
   const withPayable = reports.map(r => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const meta = r.meta as any
-    const ceoItems: { gross: number; vatable: string | null; hasEwt?: boolean; ewtRate?: number | null }[] | null =
+    const ceoItems: CeoItem[] | null =
       meta && Array.isArray(meta.items) ? meta.items : null
     let payableTotal: number
     let count: number
     if (ceoItems) {
-      payableTotal = ceoItems.reduce((s, i) => s + payableOf(i.vatable ?? null, Number(i.gross), !!i.hasEwt, i.ewtRate ?? null), 0)
+      payableTotal = ceoItems.reduce((s, i) => s + payableOf(itemVat(i), Number(i.gross), !!i.hasEwt, i.ewtRate ?? null), 0)
       count = ceoItems.length
     } else {
-      payableTotal = r.entries.reduce((s, e) => s + payableOf(e.vatable, Number(e.grossAmount), e.hasEwt, e.ewtRate), 0)
+      payableTotal = r.entries.reduce((s, e) => s + payableOf(e, Number(e.grossAmount), e.hasEwt, e.ewtRate), 0)
       count = r._count.entries
     }
     const { entries, _count, meta: _m, ...rest } = r
@@ -189,6 +196,10 @@ export async function POST(req: Request) {
         if (ceoEligible.length === 0) throw new Error(`No eligible ${validity.toLowerCase()} entries for this branch (no allocation / already reimbursed for it?)`)
         const items = ceoEligible.map(e => ({
           entryId: e.id, gross: allocAmount(e, ceoBranch), vatable: e.vatable, hasEwt: e.hasEwt, ewtRate: e.ewtRate,
+          // A part-VAT entry: this branch's share of the VAT part, so the item
+          // keeps the entry's VAT mix.
+          vatPortion: isMixedVat(e) && Number(e.grossAmount)
+            ? Math.round(vatBase(e) * (allocAmount(e, ceoBranch) / Number(e.grossAmount)) * 100) / 100 : null,
         }))
         grossTotal = items.reduce((s, i) => s + i.gross, 0)
         meta = { filterBranch: ceoBranch, items }

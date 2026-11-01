@@ -2946,6 +2946,9 @@ model PettyCashEntry {
   date                DateTime?
   description         String?
   vatable             String? // VAT | NV | Invalid | Cancelled
+  // VAT entries only: the VAT-inclusive part of the gross that carries VAT, when
+  // the rest is non-VAT (one ads invoice, part VAT, part not). null = all VAT.
+  vatPortion          Decimal?
   siNumber            String?
   tinNumber           String? // XXX-XXX-XXX-XXXXX
   registeredName      String?

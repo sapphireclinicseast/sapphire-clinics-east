@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { isPayrollItem } from '@/lib/payroll-item-guard'
+import { netOfVat } from '@/lib/vat'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 // CEO: the CEO petty-cash fund's RFPs surface on the Expenses → RFP list
@@ -22,7 +23,7 @@ export async function GET(req: Request) {
     if (r.module === 'EXPENSE') {
       // Order the Billing-Voucher lines the same way they were entered (PCV sequence),
       // matching the RFP Summary — without this Postgres returns them in arbitrary order.
-      const entries = await prisma.pettyCashEntry.findMany({ where: { reimbursementId: id }, orderBy: [{ pcvSeq: 'asc' }, { pcvSub: 'asc' }], select: { accountTitle: true, description: true, requestor: true, grossAmount: true, vatable: true, hasEwt: true, ewtRate: true } })
+      const entries = await prisma.pettyCashEntry.findMany({ where: { reimbursementId: id }, orderBy: [{ pcvSeq: 'asc' }, { pcvSub: 'asc' }], select: { accountTitle: true, description: true, requestor: true, grossAmount: true, vatable: true, vatPortion: true, hasEwt: true, ewtRate: true } })
       // Back-imported RFPs (historical disbursement sheets) carry their lines in
       // meta.items instead of member entries — no PCV rows were created for
       // them, so the P&L never double-counts.
@@ -36,7 +37,7 @@ export async function GET(req: Request) {
       }
       return NextResponse.json({ lines: entries.map(e => {
         const gross = Number(e.grossAmount)
-        const netVat = e.vatable === 'VAT' ? gross / 1.12 : gross
+        const netVat = netOfVat(e)
         const vat = gross - netVat
         const ewt = e.hasEwt && e.ewtRate ? netVat * (e.ewtRate / 100) : 0
         // Amount payable = GROSS − EWT (full gross is reimbursed; only EWT withheld, not VAT).
@@ -67,7 +68,7 @@ export async function GET(req: Request) {
     if (!rep) return NextResponse.json({ error: 'Not found' }, { status: 404 })
     const entries = await prisma.pettyCashEntry.findMany({
       where: { reimbursementId: id },
-      select: { pcvNumber: true, requestor: true, date: true, accountTitle: true, description: true, vatable: true, grossAmount: true, hasEwt: true, ewtRate: true },
+      select: { pcvNumber: true, requestor: true, date: true, accountTitle: true, description: true, vatable: true, vatPortion: true, grossAmount: true, hasEwt: true, ewtRate: true },
       orderBy: { pcvSeq: 'asc' },
     })
     return NextResponse.json({ payableTo: rep.payableTo, refNumber: rep.refNumber, branch: rep.branch, entries: entries.map(e => ({ ...e, grossAmount: Number(e.grossAmount), date: e.date ? e.date.toISOString().slice(0, 10) : null })) })
@@ -93,7 +94,7 @@ export async function GET(req: Request) {
       id: true, refNumber: true, refSeq: true, grossTotal: true, status: true, kind: true, module: true, meta: true, paidAt: true, paymentMethod: true,
       checkNumber: true, transferRef: true, debitAccount: true, creditCardId: true, proofUrl: true, payableTo: true, createdAt: true,
       _count: { select: { entries: true } },
-      entries: { select: { vatable: true, grossAmount: true, hasEwt: true, ewtRate: true } },
+      entries: { select: { vatable: true, vatPortion: true, grossAmount: true, hasEwt: true, ewtRate: true } },
     },
     orderBy: { createdAt: 'desc' },
   })
@@ -105,7 +106,7 @@ export async function GET(req: Request) {
     const payableTotal = r.module === 'EXPENSE'
       ? (r.entries.length ? r.entries.reduce((sum, e) => {
           const g = Number(e.grossAmount)
-          const net = e.vatable === 'VAT' ? g / 1.12 : g
+          const net = netOfVat(e)
           const ewt = e.hasEwt && e.ewtRate ? net * (e.ewtRate / 100) : 0
           return sum + (g - ewt)
         }, 0) : Number(r.grossTotal))

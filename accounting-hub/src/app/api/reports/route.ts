@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { productSubtypeLabel } from '@/lib/sku-taxonomy'
 import { getHistoricalReport } from '@/lib/reports/historical-fs'
+import { netOfVat } from '@/lib/vat'
 
 // PAYROLL_OFFICER shares the med-rep revenue-only view (the page renders them identically).
 const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'MEDREP', 'PAYROLL_OFFICER', 'INVESTOR']
@@ -958,7 +959,7 @@ export async function GET(req: Request) {
         date: { gte: effectiveStart, lt: endDate },
         ...(branch !== 'ALL' ? { branch: orderBranch } : { branch: { not: 'CEO' } }),
       },
-      select: { accountTitle: true, date: true, vatable: true, grossAmount: true, validity: true, pcfStatus: true, recordType: true, distributeMonthly: true, skipReports: true },
+      select: { accountTitle: true, date: true, vatable: true, vatPortion: true, grossAmount: true, validity: true, pcfStatus: true, recordType: true, distributeMonthly: true, skipReports: true },
     })
     for (const e of pettyCashEntries) {
       if (!e.accountTitle || !e.date) continue
@@ -972,7 +973,7 @@ export async function GET(req: Request) {
       if (e.skipReports) continue
       const gross = Number(e.grossAmount)
       if (!gross) continue
-      const net = e.vatable === 'VAT' ? gross / 1.12 : gross
+      const net = netOfVat(e)
       const vat = gross - net
       const m = new Date(e.date).getUTCMonth() + 1
       if (!monthly[m]) continue
@@ -996,14 +997,14 @@ export async function GET(req: Request) {
         distributeEnd: { not: null },
         ...(branch !== 'ALL' ? { branch: orderBranch } : { branch: { not: 'CEO' } }),
       },
-      select: { accountTitle: true, date: true, vatable: true, grossAmount: true, validity: true, pcfStatus: true, distributeStart: true, distributeEnd: true, branch: true },
+      select: { accountTitle: true, date: true, vatable: true, vatPortion: true, grossAmount: true, validity: true, pcfStatus: true, distributeStart: true, distributeEnd: true, branch: true },
     })
     for (const e of distEntries) {
       if (!e.accountTitle || !e.distributeStart || !e.distributeEnd) continue
       if (e.pcfStatus === 'Cancelled' || e.validity === 'Cancelled' || e.vatable === 'Cancelled') continue
       const gross = Number(e.grossAmount)
       if (!gross) continue
-      const net = e.vatable === 'VAT' ? gross / 1.12 : gross
+      const net = netOfVat(e)
       const vat = gross - net
       const sd = new Date(e.distributeStart), ed = new Date(e.distributeEnd)
       const sIdx = sd.getUTCFullYear() * 12 + sd.getUTCMonth()
@@ -1036,7 +1037,7 @@ export async function GET(req: Request) {
     /* ── CEO petty cash → allocated per branch (Gross split across branches) ── */
     const ceoEntries = await prisma.pettyCashEntry.findMany({
       where: { branch: 'CEO', date: { gte: effectiveStart, lt: endDate } },
-      select: { accountTitle: true, date: true, vatable: true, branchAllocations: true, validity: true, pcfStatus: true },
+      select: { accountTitle: true, date: true, vatable: true, vatPortion: true, grossAmount: true, branchAllocations: true, validity: true, pcfStatus: true },
     })
     for (const e of ceoEntries) {
       if (!e.accountTitle || !e.date) continue
@@ -1050,7 +1051,7 @@ export async function GET(req: Request) {
         const ag = Number(a?.amount) || 0
         if (!ab || !ag) continue
         if (branch !== 'ALL' && ab !== orderBranch) continue
-        const netA = e.vatable === 'VAT' ? ag / 1.12 : ag
+        const netA = netOfVat(e, ag)
         const vatA = ag - netA
         monthly[m].expenseByAccount[e.accountTitle] = (monthly[m].expenseByAccount[e.accountTitle] || 0) + netA
         if (vatA > 0) monthly[m].deductionsByAccount['1040 Input VAT'] = (monthly[m].deductionsByAccount['1040 Input VAT'] || 0) + vatA

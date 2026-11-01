@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { productSubtypeLabel } from '@/lib/sku-taxonomy'
+import { netOfVat } from '@/lib/vat'
 
 const READ_ROLES = ['ADMIN', 'VIEWER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 
@@ -318,7 +319,7 @@ export async function GET(req: Request) {
           NOT: { recordType: 'RECURRING' },
           date: { gte: new Date(`${pceFrom}T00:00:00+08:00`), ...(mTo ? { lte: new Date(`${mTo}T23:59:59.999+08:00`) } : {}) },
         },
-        select: { branch: true, description: true, grossAmount: true, vatable: true, pcfStatus: true, validity: true },
+        select: { branch: true, description: true, grossAmount: true, vatable: true, vatPortion: true, pcfStatus: true, validity: true },
       })
       const attributedBranch = (b: string, descr: string | null) => {
         if (b !== 'CEO') return b
@@ -331,8 +332,7 @@ export async function GET(req: Request) {
       for (const e of pceRows) {
         if (e.pcfStatus === 'Cancelled' || e.validity === 'Cancelled' || e.vatable === 'Cancelled') continue
         if (branch && branch !== 'ALL' && attributedBranch(e.branch, e.description) !== branch) continue
-        const gross = Number(e.grossAmount)
-        marketingExpense += e.vatable === 'VAT' ? gross / 1.12 : gross
+        marketingExpense += netOfVat(e)
       }
     }
     marketingExpense = round2(marketingExpense)

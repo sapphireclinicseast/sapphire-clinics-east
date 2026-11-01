@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { WalletType } from '@prisma/client'
 import { productSubtypeLabel } from '@/lib/sku-taxonomy'
+import { netOfVat } from '@/lib/vat'
 
 // HMO / GL payments make an order's revenue a receivable (mirrors the income statement).
 const AR_PAYMENT_METHODS = new Set(['HMO', 'GL'])
@@ -411,7 +412,7 @@ export async function GET(req: Request) {
       for (const e of pcRows) {
         if (e.pcfStatus === 'Cancelled' || e.validity === 'Cancelled' || e.vatable === 'Cancelled') continue
         const gross = Number(e.grossAmount)
-        const net = e.vatable === 'VAT' ? gross / 1.12 : gross
+        const net = netOfVat(e)
         if (!net) continue
         items.push({
           date: e.date ? e.date.toISOString().split('T')[0] : '',
@@ -433,7 +434,7 @@ export async function GET(req: Request) {
         if (e.pcfStatus === 'Cancelled' || e.validity === 'Cancelled' || e.vatable === 'Cancelled') continue
         if (!e.distributeStart || !e.distributeEnd) continue
         const gross = Number(e.grossAmount)
-        const net = e.vatable === 'VAT' ? gross / 1.12 : gross
+        const net = netOfVat(e)
         if (!net) continue
         const sd = new Date(e.distributeStart), ed = new Date(e.distributeEnd)
         const sIdx = sd.getUTCFullYear() * 12 + sd.getUTCMonth()
@@ -472,7 +473,7 @@ export async function GET(req: Request) {
           const ag = Number(a?.amount) || 0
           if (!ab || !ag) continue
           if (branch !== 'ALL' && ab !== orderBranch) continue
-          const netA = e.vatable === 'VAT' ? ag / 1.12 : ag
+          const netA = netOfVat(e, ag)
           if (!netA) continue
           items.push({
             date: e.date ? e.date.toISOString().split('T')[0] : '',

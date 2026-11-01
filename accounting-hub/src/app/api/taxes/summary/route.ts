@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { computeLedgerStatements } from '@/lib/reports/v2/engine'
+import { netOfVat, vatOf } from '@/lib/vat'
 
 const VAT_RATE = 0.12
 const CORP_RATE = 0.20
@@ -44,13 +45,13 @@ export async function GET() {
   }
   const ewtExps = await prisma.pettyCashEntry.findMany({
     where: { hasEwt: true, ewtRate: { not: null }, OR: [{ paidAt: { not: null } }, { reimbursementId: { not: null } }] },
-    select: { grossAmount: true, ewtRate: true, vatable: true, paidAt: true, date: true },
+    select: { grossAmount: true, ewtRate: true, vatable: true, vatPortion: true, paidAt: true, date: true },
   })
   for (const e of ewtExps) {
     const when = e.paidAt || e.date
     if (!when) continue
     const w = new Date(when)
-    const net = e.vatable === 'VAT' ? Number(e.grossAmount) / 1.12 : Number(e.grossAmount)
+    const net = netOfVat(e)
     const ewt = net * ((e.ewtRate || 0) / 100)
     const wym = w.toISOString().slice(0, 7)
     if (wym === ym) ewtMonth += ewt
@@ -65,9 +66,9 @@ export async function GET() {
   const outputVat = orders.reduce((s, o) => s + Number(o.netAmount), 0) * (VAT_RATE / (1 + VAT_RATE))
   const vExps = await prisma.pettyCashEntry.findMany({
     where: { recordType: { in: ['ONE_TIME', 'RECURRING'] }, vatable: 'VAT', paidAt: { not: null }, date: { gte: qStart, lt: qEnd } },
-    select: { grossAmount: true },
+    select: { grossAmount: true, vatable: true, vatPortion: true },
   })
-  const inputVat = vExps.reduce((s, e) => s + Number(e.grossAmount), 0) * (VAT_RATE / (1 + VAT_RATE))
+  const inputVat = vExps.reduce((s, e) => s + vatOf(e), 0)
   const vat = outputVat - inputVat // before input-tax carryover
 
   // ── 1702Q: cumulative net income (pre-tax) through the quarter × 20% ──

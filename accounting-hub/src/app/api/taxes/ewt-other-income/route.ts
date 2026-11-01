@@ -2,14 +2,14 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { undoEwtIncomeDeclarations } from '@/lib/accounting/ewt-income'
+import { netOfVat, type VatSource } from '@/lib/vat'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 const PAYROLL_TO_PC: Record<string, string> = { SBEA: 'SANDBOX_EAST', SBGH: 'SANDBOX_GREENHILLS', VERDANA: 'VERDANA_STORE', AHI: 'AURA_INSTITUTE' }
 
 const r2 = (n: number) => Math.round(n * 100) / 100
-const expEwtAmount = (e: { grossAmount: unknown; vatable: string | null; ewtRate: number | null }) => {
-  const g = Number(e.grossAmount)
-  const net = e.vatable === 'VAT' ? g / 1.12 : g
+const expEwtAmount = (e: VatSource & { ewtRate: number | null }) => {
+  const net = netOfVat(e)
   return r2(net * ((e.ewtRate || 0) / 100))
 }
 const expYm = (e: { paidAt: Date | null; date: Date | null }) => {
@@ -235,7 +235,7 @@ export async function POST(req: Request) {
         const byBranch: Record<string, { items: number; amount: number }> = {}
         const add = (b: string, amt: number) => { const g = byBranch[b] || { items: 0, amount: 0 }; g.items++; g.amount = Math.round((g.amount + amt) * 100) / 100; byBranch[b] = g }
         for (const e of cons) add(e.branch, Number(e.taxAmount))
-        for (const e of exps) { const g = Number(e.grossAmount); const net = e.vatable === 'VAT' ? g / 1.12 : g; add(e.branch, net * ((e.ewtRate || 0) / 100)) }
+        for (const e of exps) { const net = netOfVat(e); add(e.branch, net * ((e.ewtRate || 0) / 100)) }
         const total = Math.round(Object.values(byBranch).reduce((s, g) => s + g.amount, 0) * 100) / 100
         return NextResponse.json({ preview: true, throughMonth, byBranch, total })
       }

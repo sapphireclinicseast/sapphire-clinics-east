@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { undoEwtIncomeDeclarations } from '@/lib/accounting/ewt-income'
+import { netOfVat } from '@/lib/vat'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 // Payroll branch codes → petty-cash branch keys (so tax RFP numbers stay
@@ -127,14 +128,14 @@ export async function POST(req: Request) {
         // allocations are never auto-declared, so nothing to reverse there.
         await undoEwtIncomeDeclarations(tx, cons.map(c => c.id), exps.map(x => x.id))
         const consItems = cons.map(e => { const base = Number(e.grossPay), ewt = Number(e.taxAmount); return { id: e.id, source: 'CONSULTANT', name: e.consultant.name, period: e.cutoffPeriod, base, rate: base > 0 ? Math.round((ewt / base) * 100) : null, ewt } })
-        const expItems = exps.map(e => { const g = Number(e.grossAmount); const net = e.vatable === 'VAT' ? g / 1.12 : g; const rate = e.ewtRate || 0; const when = e.paidAt || e.date; return { id: e.id, source: 'EXPENSE', name: e.requestor || e.pcvNumber, period: when ? new Date(when).toISOString().slice(0, 10) : '', base: net, rate, ewt: net * (rate / 100) } })
+        const expItems = exps.map(e => { const net = netOfVat(e); const rate = e.ewtRate || 0; const when = e.paidAt || e.date; return { id: e.id, source: 'EXPENSE', name: e.requestor || e.pcvNumber, period: when ? new Date(when).toISOString().slice(0, 10) : '', base: net, rate, ewt: net * (rate / 100) } })
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const ceoItems = ceoEntries.flatMap((e: any) => {
           const allocs = Array.isArray(e.branchAllocations) ? e.branchAllocations as { branch?: string; amount?: number | string }[] : []
           const alloc = allocs.find(a => a?.branch === pcBranch)
           const g = alloc ? Number(alloc.amount) : 0
           if (!(g > 0)) return []
-          const net = e.vatable === 'VAT' ? g / 1.12 : g; const rate = e.ewtRate || 0; const when = e.paidAt || e.date
+          const net = netOfVat(e, g); const rate = e.ewtRate || 0; const when = e.paidAt || e.date
           return [{ id: `${e.id}::${pcBranch}`, source: 'EXPENSE', name: `${e.requestor || e.pcvNumber} (CEO)`, period: when ? new Date(when).toISOString().slice(0, 10) : '', base: net, rate, ewt: net * (rate / 100) }]
         })
         items = [...consItems, ...expItems, ...ceoItems]

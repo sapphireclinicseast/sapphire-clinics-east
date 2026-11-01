@@ -17,6 +17,7 @@ import { downloadXlsx, downloadPdf, inDateRange, type ExportFormat } from '@/lib
 import { BillingVoucherModal } from '@/components/BillingVoucherModal'
 import type { RfpMemoParts } from '@/lib/billing-voucher'
 import type { BVLine } from '@/lib/billing-voucher'
+import { isMixedVat, netOfVat as entryNet, vatBase, vatOf as entryVat } from '@/lib/vat'
 
 // ── Constants ──────────────────────────────────────────────────
 const BRANCHES = [
@@ -105,6 +106,7 @@ interface Entry {
   date: string | null
   description: string | null
   vatable: string | null
+  vatPortion: string | number | null
   validity: string | null
   siNumber: string | null
   tinNumber: string | null
@@ -157,8 +159,11 @@ const tinNumber2 = (tin: string | null) => {
 }
 const branchCodeOf = (tin: string | null) => digitsOnly(tin).slice(9, 14)
 const num = (v: string | number | null) => Number(v) || 0
-const netOfVat = (e: Entry) => (e.vatable === 'VAT' ? num(e.grossAmount) / 1.12 : num(e.grossAmount))
-const vatAmount = (e: Entry) => num(e.grossAmount) - netOfVat(e)
+const netOfVat = (e: Entry) => entryNet(e)
+const vatAmount = (e: Entry) => entryVat(e)
+// A part-VAT entry is stored as vatable 'VAT' + vatPortion (lib/vat).
+const PART_VAT = 'VAT + Non-VAT'
+const vatLabel = (e: Entry) => (isMixedVat(e) ? PART_VAT : e.vatable || '')
 // Reference number shown to users: PCV base-sub + VAL/INV once validity is set.
 const refOf = (e: Entry) => `${e.pcvNumber}${e.validity === 'Valid' ? '-VAL' : e.validity === 'Invalid' ? '-INV' : ''}`
 const descForHub = (e: Entry) => (e.description ? `${refOf(e)}; ${e.description}` : refOf(e))
@@ -283,7 +288,7 @@ function PettyCashInner() {
     try {
       // Freight is capitalized net of VAT (VAT is recoverable Input VAT); item
       // cost / replenishment amounts use the gross paid.
-      const net = e.vatable === 'VAT' ? (Number(e.grossAmount) || 0) / 1.12 : (Number(e.grossAmount) || 0)
+      const net = netOfVat(e)
       localStorage.setItem('pcf-inventory-draft', JSON.stringify({
         action, entryId: e.id, name: e.description || '', unitCost: Number(e.grossAmount) || 0,
         freightAmount: Math.round(net * 100) / 100,
@@ -362,7 +367,7 @@ function PettyCashInner() {
   const exportEntries = (fmt: ExportFormat) => {
     const rows = entries.filter(e => inDateRange(e.date, dlFrom, dlTo))
     const headers = ['PCV Number', 'Requestor', 'Department', 'Date', 'Description', 'Vatable', 'SI Number', 'TIN', 'Registered Name', 'Account Title', 'Validity', 'PCF Status', 'Gross Amount']
-    const body = rows.map(e => [e.pcvNumber, e.requestor || '', e.department || '', e.date ? String(e.date).slice(0, 10) : '', e.description || '', e.vatable || '', e.siNumber || '', e.tinNumber || '', e.registeredName || '', e.accountTitle || '', e.validity || '', e.pcfStatus || '', num(e.grossAmount).toFixed(2)])
+    const body = rows.map(e => [e.pcvNumber, e.requestor || '', e.department || '', e.date ? String(e.date).slice(0, 10) : '', e.description || '', vatLabel(e), e.siNumber || '', e.tinNumber || '', e.registeredName || '', e.accountTitle || '', e.validity || '', e.pcfStatus || '', num(e.grossAmount).toFixed(2)])
     if (fmt === 'xlsx') downloadXlsx(`petty-cash-entries-${branch}`, [{ name: 'Petty Cash', headers, rows: body }])
     else downloadPdf({ title: `Petty Cash Entries — ${brName}`, subtitle: `Range: ${dlFrom || 'start'} → ${dlTo || 'end'} · ${body.length} entr${body.length === 1 ? 'y' : 'ies'}`, headers, rows: body, landscape: true })
   }
@@ -559,7 +564,7 @@ function PettyCashInner() {
       const r = await fetch('/api/petty-cash/entries', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ branch, samePcvSeq: null }) })
       if (!r.ok) { alert((await r.json()).error || 'Failed to add row'); return }
       const e = await r.json()
-      const copy = { requestor: src.requestor, department: src.department, pcfStatus: src.pcfStatus === 'Replenished' ? 'For Replenishment' : src.pcfStatus, date: src.date, description: src.description, vatable: src.vatable, siNumber: src.siNumber, tinNumber: src.tinNumber, registeredName: src.registeredName, registeredAddress: src.registeredAddress, grossAmount: src.grossAmount, accountTitle: src.accountTitle, validity: src.validity }
+      const copy = { requestor: src.requestor, department: src.department, pcfStatus: src.pcfStatus === 'Replenished' ? 'For Replenishment' : src.pcfStatus, date: src.date, description: src.description, vatable: src.vatable, vatPortion: src.vatPortion, siNumber: src.siNumber, tinNumber: src.tinNumber, registeredName: src.registeredName, registeredAddress: src.registeredAddress, grossAmount: src.grossAmount, accountTitle: src.accountTitle, validity: src.validity }
       const pr = await fetch('/api/petty-cash/entries', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: e.id, ...copy }) })
       const updated = pr.ok ? await pr.json() : { ...e, ...copy }
       setEntries(prev => [...prev, updated]); setNextPcvSeq(s => s + 1)
@@ -636,7 +641,7 @@ function PettyCashInner() {
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
     // For CEO branch RFPs each row shows only the branch-allocated portion.
     const grossOf = (e: Entry) => ceoBranch ? (allocOf(e, ceoBranch) || 0) : num(e.grossAmount)
-    const netOf = (e: Entry) => { const g = grossOf(e); return e.vatable === 'VAT' ? g / 1.12 : g }
+    const netOf = (e: Entry) => entryNet(e, grossOf(e))
     const vatOf = (e: Entry) => grossOf(e) - netOf(e)
     // CEO petty cash RFP → "CEO Petty Cash" (the allocated branch is in the Ref No.).
     const branchLabel = br === 'CEO' ? 'CEO Petty Cash' : (BRANCHES.find(b => b.value === br)?.label || br)
@@ -656,7 +661,7 @@ function PettyCashInner() {
       head: [['Reference Number', 'Requestor', 'Department', 'PCF Status', 'Date', 'Description', 'Vatable', 'Gross Amount', 'Net of VAT', 'VAT Amount']],
       body: rows.map(e => [
         refOf(e), e.requestor || '', e.department || '', e.pcfStatus || '',
-        e.date ? String(e.date).slice(0, 10) : '', e.description || '', e.vatable || '',
+        e.date ? String(e.date).slice(0, 10) : '', e.description || '', vatLabel(e),
         peso(grossOf(e)), peso(netOf(e)), peso(vatOf(e)),
       ]),
       foot: [['', '', '', '', '', '', 'TOTAL',
@@ -860,7 +865,7 @@ function PettyCashInner() {
       case 'description': return e.description || ''
       case 'descHub': return descForHub(e) || ''
       case 'validity': return e.validity || ''
-      case 'vatable': return e.vatable || ''
+      case 'vatable': return vatLabel(e)
       case 'siNumber': return e.siNumber || ''
       case 'tinNumber': return e.tinNumber || ''
       case 'tinNumber2': return tinNumber2(e.tinNumber) || ''
@@ -1195,16 +1200,34 @@ function PettyCashInner() {
                           </select>
                         </td>
                         <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: lk ? 'transparent' : (e.validity === 'Valid' ? '#fff' : '#f3f4f6') }}>
-                          <select className={cellCls} value={e.vatable || ''} disabled={lk || e.validity !== 'Valid'}
+                          <select className={cellCls} value={vatLabel(e)} disabled={lk || e.validity !== 'Valid'}
                             onChange={ev => {
                               const v = ev.target.value
-                              const patch: Partial<Entry> = { vatable: v }
+                              // Part VAT starts with the whole gross as the VAT part;
+                              // type the VAT-inclusive amount in the box below.
+                              if (v === PART_VAT) { saveField(e.id, { vatable: 'VAT', vatPortion: num(e.grossAmount) }, false); return }
+                              const patch: Partial<Entry> = { vatable: v, vatPortion: null }
                               if (v !== 'VAT' && v !== 'Non-VAT') { patch.siNumber = null; patch.tinNumber = null }
                               saveField(e.id, patch, false)
                             }}>
                             <option value=""></option>
                             {VATABLE.map(v => <option key={v} value={v}>{v}</option>)}
+                            <option value={PART_VAT}>{PART_VAT}</option>
                           </select>
+                          {isMixedVat(e) && (
+                            <div className="px-1 pb-1 space-y-0.5" style={{ minWidth: 150 }}>
+                              <label className="flex items-center gap-1 text-[10px]" style={{ color: 'var(--mid-gray)' }}>
+                                VAT part ₱
+                                <input type="number" step="0.01" className={`${cellCls} text-right`} disabled={lk}
+                                  title="The VAT-inclusive amount bought from a VAT-registered seller. The rest of the gross is non-VAT."
+                                  value={e.vatPortion == null ? '' : String(e.vatPortion)}
+                                  onWheel={ev => ev.currentTarget.blur()}
+                                  onChange={ev => patchLocal(e.id, { vatPortion: ev.target.value })}
+                                  onBlur={ev => saveField(e.id, { vatPortion: Math.min(Math.abs(Number(ev.target.value) || 0), Math.abs(num(e.grossAmount))) }, false)} />
+                              </label>
+                              <p className="text-[10px]" style={{ color: 'var(--mid-gray)' }}>Non-VAT part ₱{peso(num(e.grossAmount) - vatBase(e))}</p>
+                            </div>
+                          )}
                         </td>
                         <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: lk ? 'transparent' : (ve ? '#fff' : '#f3f4f6') }}>
                           <input className={cellCls} disabled={lk || !ve} value={e.siNumber || ''} style={{ minWidth: 140 }}
@@ -1736,7 +1759,7 @@ function PettyCashInner() {
 
       {assetPrompt && (() => {
         const cls = assetClassFromAccountTitle(assetPrompt.accountTitle) || ''
-        const vf = assetPrompt.vatable === 'VAT' ? 1 / 1.12 : 1
+        const vf = num(assetPrompt.grossAmount) ? netOfVat(assetPrompt) / num(assetPrompt.grossAmount) : 1
         const alloc = getAllocArr(assetPrompt).filter(a => a.branch && Number(a.amount) !== 0)
         const targets = alloc.length >= 1
           ? alloc.map(a => ({ branch: a.branch, price: Number(a.amount) * vf }))

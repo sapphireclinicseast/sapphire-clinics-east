@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { vatBase, vatOf } from '@/lib/vat'
 
 const PAYROLL_TO_PC: Record<string, string> = { SBEA: 'SANDBOX_EAST', SBGH: 'SANDBOX_GREENHILLS', VERDANA: 'VERDANA_STORE', AHI: 'AURA_INSTITUTE' }
 const VAT_RATE = 0.12
@@ -49,10 +50,11 @@ export async function GET(req: Request) {
   // Input VAT: paid VATable expenses in the period (VAT-inclusive gross).
   const exps = await prisma.pettyCashEntry.findMany({
     where: { ...branchWhere, recordType: { in: ['ONE_TIME', 'RECURRING'] }, vatable: 'VAT', paidAt: { not: null }, ...(from || to ? { date: range } : {}) },
-    select: { grossAmount: true },
+    select: { grossAmount: true, vatable: true, vatPortion: true },
   })
-  const inputGross = exps.reduce((s, e) => s + Number(e.grossAmount), 0)
-  const inputVat = inputGross * (VAT_RATE / (1 + VAT_RATE))
+  // A mixed entry counts only its VAT part (the rest bought from a non-VAT seller).
+  const inputGross = exps.reduce((s, e) => s + vatBase(e), 0)
+  const inputVat = exps.reduce((s, e) => s + vatOf(e), 0)
 
   return NextResponse.json({
     outputGross, outputVat, orderCount: orders.length,
