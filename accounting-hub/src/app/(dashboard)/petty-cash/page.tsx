@@ -824,14 +824,16 @@ function PettyCashInner() {
   const [gridSort, setGridSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: '', dir: 'asc' })
   const [gridFilters, setGridFilters] = useState<Record<string, string>>({})
   // Replenished rows are hidden by default so the working set sits in view
-  // without scrolling; the tick box shows them, and any header filter
-  // (including the global-search deep link) searches hidden rows too.
+  // without scrolling. The tick box alone decides — a header filter only
+  // searches what is shown (it used to search hidden rows too, so an unticked
+  // box with "tiktok" typed in still listed every replenished TikTok row).
+  // The global-search deep link turns the box on so the clicked PCV is found.
   const [showReplenished, setShowReplenished] = useState(false)
   useEffect(() => { try { setShowReplenished(localStorage.getItem('pcf-show-replenished') === '1') } catch { /* ignore */ } }, [])
   const toggleShowReplenished = () => setShowReplenished(v => { const nv = !v; try { localStorage.setItem('pcf-show-replenished', nv ? '1' : '0') } catch { /* ignore */ } return nv })
   // Deep link from global search — filter the grid to the PCV that was clicked.
   const { focus, done } = useFocusTarget()
-  useEffect(() => { if (focus) { setGridFilters(f => ({ ...f, refNumber: focus })); done() } }, [focus, done])
+  useEffect(() => { if (focus) { setGridFilters(f => ({ ...f, refNumber: focus })); setShowReplenished(true); done() } }, [focus, done])
   const gridToggleSort = (k: string) => setGridSort(s => s.key === k ? { key: k, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key: k, dir: 'asc' })
   const gridCols: { key: string; label: string; plain?: boolean }[] = [
     { key: 'refNumber', label: 'Reference Number' }, { key: 'requestor', label: 'Requestor' }, { key: 'department', label: 'Department' },
@@ -871,11 +873,13 @@ function PettyCashInner() {
       default: return ''
     }
   }
-  // Hide replenished rows unless the tick box is on or any header filter is
-  // active — a filtered/searched grid always looks through the hidden rows.
+  // Hide replenished rows unless the tick box is on. When a filter is typed,
+  // count the replenished rows it would also match so the grid can say so.
   const anyGridFilter = Object.values(gridFilters).some(v => (v || '').trim() !== '')
-  const gridRows = showReplenished || anyGridFilter ? entries : entries.filter(e => e.pcfStatus !== 'Replenished')
+  const gridRows = showReplenished ? entries : entries.filter(e => e.pcfStatus !== 'Replenished')
   const displayed = applySortFilter(gridRows, gridGet, gridSort.key, gridSort.dir, gridFilters)
+  const hiddenMatches = showReplenished || !anyGridFilter ? 0
+    : applySortFilter(entries.filter(e => e.pcfStatus === 'Replenished'), gridGet, '', 'asc', gridFilters).length
   const totalGross = displayed.reduce((s, e) => s + num(e.grossAmount), 0)
 
   // Entries are only selectable after an RFP button is clicked, and only those
@@ -1044,9 +1048,10 @@ function PettyCashInner() {
             <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
               {displayed.length}{displayed.length !== entries.length ? ` of ${entries.length}` : ''} entries · {selected.size} selected · Total Gross <strong style={{ color: 'var(--charcoal)' }}>₱{peso(totalGross)}</strong>
               {' · '}Next PCV #{nextPcvSeq}
+              {hiddenMatches > 0 && <span style={{ color: 'var(--mid-gray)' }}>{' · '}{hiddenMatches} replenished {hiddenMatches === 1 ? 'entry matches' : 'entries match'} this filter (hidden)</span>}
             </p>
             <label className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold cursor-pointer select-none"
-              title="Replenished rows are hidden by default so the working set stays in view. Tick to show them — header filters always search through hidden rows too."
+              title="Replenished rows are hidden by default so the working set stays in view. Tick to show them."
               style={{ borderColor: showReplenished ? 'var(--teal)' : 'var(--light-gray)', color: showReplenished ? 'var(--teal)' : 'var(--mid-gray)' }}>
               <input type="checkbox" checked={showReplenished} onChange={toggleShowReplenished} className="accent-[var(--teal)]" />
               Show replenished
