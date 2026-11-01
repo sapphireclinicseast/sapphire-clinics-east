@@ -265,7 +265,7 @@ function PettyCashInner() {
   // Details typed into the "Add to Asset Management" dialog (photos, custodian, remarks).
   // multi/quantity/unitNames: "more than 1 item" — one asset with per-piece custodians,
   // each piece getting a sub control number (-01, -02, …) under one control number.
-  const [assetForm, setAssetForm] = useState<{ accountableName: string; remarks: string; photoUrls: string[]; multi: boolean; quantity: string; unitNames: string[] }>({ accountableName: '', remarks: '', photoUrls: [], multi: false, quantity: '2', unitNames: [] })
+  const [assetForm, setAssetForm] = useState<{ name: string; accountableName: string; remarks: string; photoUrls: string[]; multi: boolean; quantity: string; unitNames: string[] }>({ name: '', accountableName: '', remarks: '', photoUrls: [], multi: false, quantity: '2', unitNames: [] })
   // HR-Hub staff names for the Accountability typeahead — same source as the Asset
   // Management form, so typed custodians match staff records (and the Accountability
   // summary tab) exactly instead of free-typed spellings.
@@ -801,6 +801,7 @@ function PettyCashInner() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           entryId: assetPrompt.id,
+          name: assetForm.name,
           accountableName: assetForm.accountableName,
           remarks: assetForm.remarks,
           photoUrl: assetForm.photoUrls[0] || null,
@@ -1291,7 +1292,7 @@ function PettyCashInner() {
                             disabled={lk} className={cellCls} placeholder="Type a number or a name…"
                             clearLabel="— Clear —"
                             onChange={v => {
-                              if (e.assetAddedAt && v && assetClassFromAccountTitle(e.accountTitle) && !assetClassFromAccountTitle(v)
+                              if (e.assetAddedAt && v && !assetClassFromAccountTitle(v)
                                 && !confirm(`${refOf(e)} is in Asset Management. Changing it to ${v} removes its asset record from Asset Management (the cost becomes an expense). Continue?`)) return
                               saveField(e.id, { accountTitle: v }, false)
                             }} />
@@ -1309,7 +1310,7 @@ function PettyCashInner() {
                                 <CheckCircle2 size={11} /> In Asset Management
                               </span>
                             ) : (
-                              <button onClick={() => { setAssetForm({ accountableName: '', remarks: '', photoUrls: [], multi: false, quantity: '2', unitNames: [] }); setAssetPrompt(e) }} title="Add this asset to Asset Management"
+                              <button onClick={() => { setAssetForm({ name: e.description || '', accountableName: '', remarks: '', photoUrls: [], multi: false, quantity: '2', unitNames: [] }); setAssetPrompt(e) }} title="Add this asset to Asset Management"
                                 className="mt-1 flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold border whitespace-nowrap"
                                 style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
                                 <Plus size={11} /> Add to Asset Management
@@ -1795,6 +1796,12 @@ function PettyCashInner() {
               </div>
               <div className="space-y-3 mb-4">
                 <div>
+                  <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Asset name <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>— as it will show in Asset Management</span></label>
+                  <input value={assetForm.name} onChange={ev => setAssetForm(f => ({ ...f, name: ev.target.value }))}
+                    className="w-full border rounded-lg px-3 py-2 text-sm" style={{ borderColor: 'var(--light-gray)' }}
+                    placeholder={ASSET_CLASSIFICATION_LABELS[cls as keyof typeof ASSET_CLASSIFICATION_LABELS] || 'Asset name'} />
+                </div>
+                <div>
                   <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Accountability <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>— staff accountable / custodian</span></label>
                   {!assetForm.multi && (
                     <input value={assetForm.accountableName} onChange={ev => setAssetForm(f => ({ ...f, accountableName: ev.target.value }))}
@@ -1897,7 +1904,7 @@ function PettyCashInner() {
             </p>
             <div className="flex gap-2">
               <button onClick={() => setAssetReAddWarn(null)} className="flex-1 py-2.5 rounded-xl text-sm font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Cancel</button>
-              <button onClick={() => { const e = assetReAddWarn; setAssetReAddWarn(null); setAssetPrompt(e) }} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white" style={{ background: '#dc2626' }}>Add again</button>
+              <button onClick={() => { const e = assetReAddWarn; setAssetReAddWarn(null); setAssetForm({ name: e?.description || '', accountableName: '', remarks: '', photoUrls: [], multi: false, quantity: '2', unitNames: [] }); setAssetPrompt(e) }} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white" style={{ background: '#dc2626' }}>Add again</button>
             </div>
           </div>
         </div>

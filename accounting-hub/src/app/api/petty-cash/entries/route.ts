@@ -2,8 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { branchAllowed, canViewPettyCashCeoVerdana, PETTY_CASH_VIEW_ONLY_BRANCHES } from '@/lib/branch-scope'
-import { assetClassFromAccountTitle } from '@/lib/asset-classification'
-import { deleteAssetWithReversal } from '@/lib/accounting/post-asset'
+import { retagEntryAssets } from '@/lib/asset-entry-retag'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 const VALID_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE', 'AURA_INSTITUTE', 'CEO']
@@ -234,25 +233,12 @@ export async function PUT(req: Request) {
     if ('vatable' in body && body.vatable !== 'VAT') data.vatPortion = null
     if ('proofUrls' in body) data.proofUrls = body.proofUrls ?? null
 
-    // Asset withdrawal: this entry had assets auto-created from it ("Add to
-    // Asset Management") and the Account Title is moving OFF an asset
-    // classification (e.g. the fire extinguisher first tagged 2060, later
-    // corrected to an expense account). The register must not keep — and keep
-    // depreciating — an asset whose cost is now expensed, so remove the linked
-    // assets (reversing any acquisition JE) and release the stamp.
-    // A blank title is an edit in progress, not a re-tag: clearing the picker
-    // for a moment (CEO-PCV26-000150, 2026-11-01) deleted the rubber-mat asset
-    // seconds after it was added. Only a real non-asset account withdraws.
-    if ('accountTitle' in data && existing.assetAddedAt && data.accountTitle) {
-      const wasAsset = !!assetClassFromAccountTitle(existing.accountTitle)
-      const isAsset = !!assetClassFromAccountTitle(data.accountTitle)
-      if (wasAsset && !isAsset) {
-        const linked = await prisma.asset.findMany({ where: { sourceEntryId: id }, select: { id: true, name: true } })
-        for (const a of linked) {
-          await deleteAssetWithReversal(prisma, a.id, session.user.id as string, `source entry ${existing.pcvNumber} re-tagged from asset to expense`)
-        }
-        data.assetAddedAt = null
-      }
+    // Assets made from this entry follow its Account Title (lib/asset-entry-retag):
+    // another asset account re-classifies them, an expense account (e.g. the fire
+    // extinguisher first tagged 2060, later corrected to an expense) takes them
+    // out of the register, a blank title leaves them alone.
+    if ('accountTitle' in data) {
+      Object.assign(data, await retagEntryAssets(prisma, existing, data.accountTitle, session.user.id as string))
     }
     const entry = await prisma.pettyCashEntry.update({ where: { id }, data })
     return NextResponse.json(entry)

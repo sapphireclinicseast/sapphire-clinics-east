@@ -70,7 +70,10 @@ export async function POST(req: Request) {
     const depreciates = isDepreciatingClassification(classification)
     const depRow = depreciates ? await prisma.assetDepreciationSetting.findUnique({ where: { classification } }) : null
     const years = depreciates ? (depRow?.years ?? 5) : 0
-    const name = (e.description || '').trim() || ASSET_CLASSIFICATION_LABELS[classification]
+    // The dialog's Asset name (pre-filled with the entry's Description); blank →
+    // the Description, then the classification label.
+    const reqName = typeof body.name === 'string' ? body.name.trim().slice(0, 300) : ''
+    const name = reqName || (e.description || '').trim() || ASSET_CLASSIFICATION_LABELS[classification]
     const dateBought = e.date ? new Date(e.date) : new Date()
     const depEnd = new Date(dateBought); if (years > 0) depEnd.setFullYear(depEnd.getFullYear() + years)
     const deptName = e.department ? ENTRY_DEPT_TO_ASSET[e.department] : undefined
