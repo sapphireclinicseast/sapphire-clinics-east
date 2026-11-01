@@ -34,6 +34,7 @@ import {
 import { downloadXlsx, downloadPdf } from '@/lib/export'
 import AssetCalculator from './AssetCalculator'
 import { useResizableColumns, ResizableColgroup, ColResizeHandle } from '@/components/useResizableColumns'
+import { NameCombobox } from '@/components/NameCombobox'
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -1624,18 +1625,14 @@ function AssetManagementInner() {
                       {quantityNum} items — assign a custodian per item below.
                     </div>
                   ) : (
-                    <input
-                      type="text"
-                      list="asset-staff-list"
+                    <NameCombobox
+                      options={staffNames}
                       value={form.accountableName}
-                      onChange={(e) => setForm((f) => ({ ...f, accountableName: e.target.value }))}
+                      onChange={(v) => setForm((f) => ({ ...f, accountableName: v }))}
                       placeholder="Type or pick a staff name…"
                       className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                     />
                   )}
-                  <datalist id="asset-staff-list">
-                    {staffNames.map((n) => <option key={n} value={n} />)}
-                  </datalist>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Control Number</label>
@@ -1663,14 +1660,13 @@ function AssetManagementInner() {
                         <span className="w-40 shrink-0 font-mono text-xs text-gray-500">
                           {subControlNo(editingAsset ? (form.controlNumber || null) : null, i)}
                         </span>
-                        <input
-                          type="text"
-                          list="asset-staff-list"
+                        <NameCombobox
+                          options={staffNames}
                           value={form.unitNames[i] ?? ''}
-                          onChange={(e) => setForm((f) => {
+                          onChange={(v) => setForm((f) => {
                             const unitNames = [...f.unitNames]
                             while (unitNames.length < quantityNum) unitNames.push('')
-                            unitNames[i] = e.target.value
+                            unitNames[i] = v
                             return { ...f, unitNames }
                           })}
                           placeholder="Type or pick a staff name…"

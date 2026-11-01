@@ -22,6 +22,7 @@ import type { BVLine } from '@/lib/billing-voucher'
 import { isPayrollItem } from '@/lib/payroll-item-guard'
 import { isMixedVat, netOfVat as entryNet, vatBase, vatOf as entryVat } from '@/lib/vat'
 import { ExistingAssetPicker } from '@/components/ExistingAssetPicker'
+import { NameCombobox } from '@/components/NameCombobox'
 
 // ── Constants ──────────────────────────────────────────────────
 const BRANCHES = [
@@ -2219,12 +2220,9 @@ function ExpensesInner() {
                 <div>
                   <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Accountability <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>— staff accountable / custodian</span></label>
                   {!assetForm.multi && (
-                    <input value={assetForm.accountableName} onChange={ev => setAssetForm(f => ({ ...f, accountableName: ev.target.value }))}
-                      list="exp-asset-staff" className="w-full border rounded-lg px-3 py-2 text-sm" style={{ borderColor: 'var(--light-gray)' }} placeholder="Type or pick a staff name…" />
+                    <NameCombobox value={assetForm.accountableName} onChange={v => setAssetForm(f => ({ ...f, accountableName: v }))} options={assetStaffNames}
+                      className="w-full border rounded-lg px-3 py-2 text-sm" style={{ borderColor: 'var(--light-gray)' }} placeholder="Type or pick a staff name…" />
                   )}
-                  <datalist id="exp-asset-staff">
-                    {assetStaffNames.map(n => <option key={n} value={n} />)}
-                  </datalist>
                   <label className="flex items-center gap-2 text-xs mt-2 cursor-pointer" style={{ color: 'var(--charcoal)' }}>
                     <input type="checkbox" checked={assetForm.multi}
                       onChange={ev => setAssetForm(f => ({ ...f, multi: ev.target.checked }))} />
@@ -2244,11 +2242,11 @@ function ExpensesInner() {
                           {Array.from({ length: qty }, (_, i) => (
                             <div key={i} className="flex items-center gap-2">
                               <span className="w-9 shrink-0 font-mono text-[11px]" style={{ color: 'var(--mid-gray)' }}>-{String(i + 1).padStart(2, '0')}</span>
-                              <input value={assetForm.unitNames[i] ?? ''} list="exp-asset-staff"
-                                onChange={ev => setAssetForm(f => {
+                              <NameCombobox value={assetForm.unitNames[i] ?? ''} options={assetStaffNames}
+                                onChange={v => setAssetForm(f => {
                                   const unitNames = [...f.unitNames]
                                   while (unitNames.length < qty) unitNames.push('')
-                                  unitNames[i] = ev.target.value
+                                  unitNames[i] = v
                                   return { ...f, unitNames }
                                 })}
                                 className="flex-1 border rounded-lg px-2.5 py-1.5 text-sm" style={{ borderColor: 'var(--light-gray)' }}
