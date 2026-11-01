@@ -270,18 +270,18 @@ function AssetManagementInner() {
   // the asset that was clicked, then drop ?focus= from the URL.
   const { focus, done } = useFocusTarget()
   useEffect(() => { if (focus) { setSearch(focus); done() } }, [focus, done])
-  type SortKey = 'name' | 'classification' | 'branch' | 'totalAmount' | 'monthlyDepreciation' | 'depreciationEndDate' | 'utilized' | 'controlNumber'
+  type SortKey = 'name' | 'classification' | 'branch' | 'totalAmount' | 'monthlyDepreciation' | 'depreciationEndDate' | 'utilized' | 'auditable' | 'controlNumber'
   const [sortKey, setSortKey] = useState<SortKey>('name')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   type ColFilters = {
-    name: string; classification: string; branch: string; utilized: string;
+    name: string; classification: string; branch: string; utilized: string; auditable: string;
   }
-  const [colFilters, setColFilters] = useState<ColFilters>({ name: '', classification: '', branch: '', utilized: '' })
+  const [colFilters, setColFilters] = useState<ColFilters>({ name: '', classification: '', branch: '', utilized: '', auditable: '' })
   const [openFilterCol, setOpenFilterCol] = useState<string | null>(null)
   // Full-screen asset list + drag-to-resize columns (widths persist per user).
   const [expanded, setExpanded] = useState(false)
   const assetTableRef = useRef<HTMLTableElement>(null)
-  const assetRz = useResizableColumns('asset-management-table', assetTableRef)
+  const assetRz = useResizableColumns('asset-management-table-v2', assetTableRef)
 
   // ── Freight calculator state (mirrors Inventory's freight-purchase modal) ──
   const [acOpen, setAcOpen] = useState(false)
@@ -780,6 +780,8 @@ function AssetManagementInner() {
       if (colFilters.branch && a.branch !== colFilters.branch) return false
       if (colFilters.utilized === 'yes' && !a.utilized) return false
       if (colFilters.utilized === 'no' && a.utilized) return false
+      if (colFilters.auditable === 'yes' && a.auditable === false) return false
+      if (colFilters.auditable === 'no' && a.auditable !== false) return false
       return true
     })
     .sort((a, b) => {
@@ -791,6 +793,7 @@ function AssetManagementInner() {
       else if (sortKey === 'monthlyDepreciation') { av = a.monthlyDepreciation; bv = b.monthlyDepreciation }
       else if (sortKey === 'depreciationEndDate') { av = a.depreciationEndDate; bv = b.depreciationEndDate }
       else if (sortKey === 'utilized') { av = a.utilized ? 1 : 0; bv = b.utilized ? 1 : 0 }
+      else if (sortKey === 'auditable') { av = a.auditable === false ? 0 : 1; bv = b.auditable === false ? 0 : 1 }
       else if (sortKey === 'controlNumber') { av = (a.controlNumber ?? '').toLowerCase(); bv = (b.controlNumber ?? '').toLowerCase() }
       if (av < bv) return sortDir === 'asc' ? -1 : 1
       if (av > bv) return sortDir === 'asc' ? 1 : -1
@@ -945,7 +948,7 @@ function AssetManagementInner() {
         )}
 
         {/* Active filter chips */}
-        {(colFilters.name || colFilters.classification || colFilters.branch || colFilters.utilized) && (
+        {(colFilters.name || colFilters.classification || colFilters.branch || colFilters.utilized || colFilters.auditable) && (
           <div className="flex items-center gap-2 flex-wrap">
             {colFilters.name && (
               <span className="inline-flex items-center gap-1 bg-teal-50 text-teal-700 border border-teal-200 rounded-full px-2.5 py-0.5 text-xs">
@@ -971,7 +974,13 @@ function AssetManagementInner() {
                 <button onClick={() => setColFilters(f => ({ ...f, utilized: '' }))}><X size={10} /></button>
               </span>
             )}
-            <button onClick={() => setColFilters({ name: '', classification: '', branch: '', utilized: '' })} className="text-xs text-gray-500 hover:text-red-600 underline">
+            {colFilters.auditable && (
+              <span className="inline-flex items-center gap-1 bg-teal-50 text-teal-700 border border-teal-200 rounded-full px-2.5 py-0.5 text-xs">
+                Auditable: {colFilters.auditable === 'yes' ? 'Yes' : 'No'}
+                <button onClick={() => setColFilters(f => ({ ...f, auditable: '' }))}><X size={10} /></button>
+              </span>
+            )}
+            <button onClick={() => setColFilters({ name: '', classification: '', branch: '', utilized: '', auditable: '' })} className="text-xs text-gray-500 hover:text-red-600 underline">
               Clear all
             </button>
           </div>
@@ -1132,28 +1141,55 @@ function AssetManagementInner() {
                     </div>
                   </th>
 
+                  {/* ── Auditable ── */}
+                  <th className="relative text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={8} />
+                    <div className="flex items-center justify-center gap-1">
+                      <button className="flex items-center gap-1 hover:text-gray-800" onClick={(e) => { e.stopPropagation(); toggleSort('auditable') }}>
+                        Auditable
+                        {sortKey === 'auditable' ? (sortDir === 'asc' ? <ChevronUp size={13} /> : <ChevronDown size={13} />) : <ChevronsUpDown size={12} className="text-gray-400" />}
+                      </button>
+                      <div className="relative" onClick={(e) => e.stopPropagation()}>
+                        <button onClick={() => setOpenFilterCol(openFilterCol === 'auditable' ? null : 'auditable')}
+                          className={`p-0.5 rounded hover:bg-gray-200 ${colFilters.auditable ? 'text-teal-600' : 'text-gray-400'}`}>
+                          <Filter size={11} />
+                        </button>
+                        {openFilterCol === 'auditable' && (
+                          <div className="absolute top-full left-0 mt-1 z-30 bg-white border border-gray-200 rounded-lg shadow-lg p-2 w-32">
+                            <select value={colFilters.auditable}
+                              onChange={(e) => setColFilters(f => ({ ...f, auditable: e.target.value }))}
+                              className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-teal-500">
+                              <option value="">All</option>
+                              <option value="yes">Yes</option>
+                              <option value="no">No</option>
+                            </select>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </th>
+
                   {/* ── Condition ── */}
-                  <th className="relative text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={8} />Condition</th>
+                  <th className="relative text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={9} />Condition</th>
 
                   {/* ── Control No. ── */}
-                  <th className="relative text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={9} />
+                  <th className="relative text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={10} />
                     <button className="flex items-center gap-1 hover:text-gray-800" onClick={() => toggleSort('controlNumber')}>
                       Control No.
                       {sortKey === 'controlNumber' ? (sortDir === 'asc' ? <ChevronUp size={13} /> : <ChevronDown size={13} />) : <ChevronsUpDown size={12} className="text-gray-400" />}
                     </button>
                   </th>
 
-                  <th className="relative text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={10} />Accountability</th>
-                  <th className="relative text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={11} />Departments</th>
+                  <th className="relative text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={11} />Accountability</th>
+                  <th className="relative text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={12} />Departments</th>
                   {canWrite && (
-                    <th className="relative text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={12} />Actions</th>
+                    <th className="relative text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={13} />Actions</th>
                   )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {displayedAssets.length === 0 ? (
                   <tr>
-                    <td colSpan={canWrite ? 12 : 11} className="text-center py-10 text-gray-400 text-sm">
+                    <td colSpan={canWrite ? 14 : 13} className="text-center py-10 text-gray-400 text-sm">
                       No assets match your search or filters.
                     </td>
                   </tr>
@@ -1193,6 +1229,13 @@ function AssetManagementInner() {
                           : 'bg-gray-100 text-gray-600'
                       }`}>
                         {asset.utilized ? 'Yes' : 'No'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                        asset.auditable !== false ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
+                      }`}>
+                        {asset.auditable !== false ? 'Yes' : 'No'}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-center">
