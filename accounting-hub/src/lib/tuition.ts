@@ -6,6 +6,12 @@
 // Jun–Aug, Semester 2 = Sep–Dec, Semester 3 = Jan–Apr of the school year that
 // starts in June. May is between school years and belongs to no semester.
 // All dates are Manila calendar days written as YYYY-MM-DD.
+//
+// A note covers all the student's past unpaid months, often with the one about
+// to fall due (Hannah, 2026-11-01: Sta. Ana's note is Aug–Nov, not just Sep),
+// so a plan lists every installment it covers. The 3-month / same-semester
+// limit then runs from the later of the note's date and the last month it
+// covers — the signed notes all bundle past months "until Dec 5".
 
 export const MAX_DELAY_MONTHS = 3
 export const MAX_PLAN_PAYMENTS = 6
@@ -87,22 +93,40 @@ export function latestAllowedDate(originalDue: string): { date: string; limitedB
   return byMonths <= end ? { date: byMonths, limitedBy: 'months' } : { date: end, limitedBy: 'semester' }
 }
 
+/** The installments' due dates a plan covers, sorted and de-duplicated. */
+export const cleanCovered = (dates: unknown): string[] =>
+  [...new Set((Array.isArray(dates) ? dates : []).map(String).filter(isYmd))].sort()
+
+/** Where the plan's time limit runs from: the later of the note's date and the last month it covers. */
+export function planAnchor(covered: string[], noteDate?: string | null): string | null {
+  const last = covered.length ? covered[covered.length - 1] : null
+  if (!last) return null
+  return noteDate && isYmd(noteDate) && noteDate > last ? noteDate : last
+}
+
 export interface PlanInput {
-  originalDueDate: string
+  /** Due dates of the installments the note covers. */
+  coveredDueDates: string[]
+  /** When the note was made (its Class Hub upload date). */
+  noteDate?: string | null
   amount: number
   items: { dueDate: string; amount: number }[]
 }
 
 /** Why a schedule breaks the promissory rules, or null when it follows them. */
 export function planProblem(p: PlanInput): string | null {
-  if (!isYmd(p.originalDueDate)) return 'Enter the original due date.'
-  const sem = semesterOf(p.originalDueDate)
-  if (!sem) return 'The original due date falls in May, which is between school years and in no semester.'
+  const covered = cleanCovered(p.coveredDueDates)
+  if (!covered.length) return 'Tick the months the note covers.'
+  if (covered.some(d => !semesterOf(d))) return 'A covered month falls in May, which is between school years and in no semester.'
+  const anchor = planAnchor(covered, p.noteDate)!
+  const sem = semesterOf(anchor)
+  if (!sem) return 'The note is dated in May, which is between school years — set the schedule from the months it covers.'
   if (!(p.amount > 0)) return 'Enter the amount the note covers.'
   if (!p.items.length) return 'Add at least one scheduled payment.'
   if (p.items.length > MAX_PLAN_PAYMENTS) return `A plan can have at most ${MAX_PLAN_PAYMENTS} payments.`
-  const { start } = semesterRange(sem.schoolYear, sem.semester)
-  const limit = latestAllowedDate(p.originalDueDate)!
+  const start = semesterRange(semesterOf(covered[0])!.schoolYear, semesterOf(covered[0])!.semester).start
+  const limit = latestAllowedDate(anchor)!
+  const from = anchor === covered[covered.length - 1] ? 'the last month the note covers' : 'the note\'s date'
   for (const [i, it] of p.items.entries()) {
     const n = `Payment ${i + 1}`
     if (!isYmd(it.dueDate)) return `${n}: enter a date.`
@@ -111,7 +135,7 @@ export function planProblem(p: PlanInput): string | null {
     if (it.dueDate > limit.date) {
       return limit.limitedBy === 'semester'
         ? `${n}: ${it.dueDate} is past the end of the semester (${limit.date}). A promissory cannot carry a payment into the next semester.`
-        : `${n}: ${it.dueDate} is more than ${MAX_DELAY_MONTHS} months after the original due date (latest ${limit.date}).`
+        : `${n}: ${it.dueDate} is more than ${MAX_DELAY_MONTHS} months after ${from} (latest ${limit.date}).`
     }
   }
   const total = Math.round(p.items.reduce((s, it) => s + it.amount, 0) * 100) / 100
@@ -123,7 +147,7 @@ export function planProblem(p: PlanInput): string | null {
 export interface PlanBody {
   studentId?: string
   promissoryNoteId?: string
-  originalDueDate?: string
+  coveredDueDates?: string[]
   amount?: number
   notes?: string
   items?: { id?: string; dueDate: string; amount: number }[]
@@ -199,6 +223,26 @@ export function periodForDate(plan: TuitionPlan, date: string): string {
   return (all.find(p => p.dueDate === date) || [...all].reverse().find(p => p.dueDate <= date) || all[0]).period
 }
 
+/**
+ * The period label a payment toward several installments is recorded under:
+ * months grouped by year ("August, September, October, November 2026",
+ * "December 2026 & January 2027"), other plans joined with " & ". Every
+ * installment it names still matches periodMatches, so the payment settles
+ * them in order (Class Hub's reminders split it the same way).
+ */
+export function coveredLabel(plan: TuitionPlan, dates: string[]): string {
+  const periods = [...new Set(cleanCovered(dates).map(d => periodForDate(plan, d)))]
+  if (plan !== 'MONTHLY') return periods.join(' & ')
+  const byYear: { year: string; months: string[] }[] = []
+  for (const p of periods) {
+    const [month, year] = p.split(' ')
+    const g = byYear[byYear.length - 1]
+    if (g && g.year === year) g.months.push(month)
+    else byYear.push({ year, months: [month] })
+  }
+  return byYear.map(g => `${g.months.join(', ')} ${g.year}`).join(' & ')
+}
+
 const fold = (s: string) => s.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[–—]/g, '-').replace(/\s+/g, ' ').trim()
 
 /** Whether a recorded payment's free-text period is this installment. */
@@ -253,18 +297,18 @@ export interface RegularDue {
   expected: number; paid: number; remaining: number; daysUntil: number
 }
 
+export interface Installment { plan: TuitionPlan; period: string; dueDate: string; expected: number; paid: number; remaining: number }
+
 /**
- * A student's regular installments with something still owed: each recorded
- * payment counts toward the first installment its period names, dues start
- * at the first installment with a payment (a mid-year enrolee owes nothing
- * before it), an overpayment carries to the next installment, and an
- * installment a promissory plan delays is left to that plan.
+ * Every installment of the school year from the student's first payment, with
+ * what settles it: each recorded payment counts toward the first installment
+ * its period names (a mid-year enrolee owes nothing before it), and an
+ * overpayment carries to the next installment.
  */
-export function regularDues(args: {
-  plan: TuitionPlan; rate: number; schoolYear: number; today: string
+export function installmentLedger(args: {
+  plan: TuitionPlan; rate: number; schoolYear: number
   payments: { period: string; amount: number }[]
-  promissoryDueDates?: Set<string>
-}): RegularDue[] {
+}): Installment[] {
   const periods = schoolYearPeriods(args.plan, args.schoolYear)
   const paidBy = new Map<string, number>()
   for (const r of args.payments) {
@@ -273,16 +317,27 @@ export function regularDues(args: {
   }
   const first = periods.findIndex(p => paidBy.has(p.period))
   if (first === -1) return []
-  const out: RegularDue[] = []
   let carry = 0
-  for (const p of periods.slice(first)) {
+  return periods.slice(first).map(p => {
     const paid = Math.round(((paidBy.get(p.period) || 0) + carry) * 100) / 100
     carry = Math.max(0, paid - args.rate)
     const remaining = Math.max(0, Math.round((args.rate - paid) * 100) / 100)
-    if (remaining < 0.01 || args.promissoryDueDates?.has(p.dueDate)) continue
-    out.push({ ...p, expected: args.rate, paid: Math.min(paid, args.rate), remaining, daysUntil: daysBetween(args.today, p.dueDate) })
-  }
-  return out
+    return { ...p, expected: args.rate, paid: Math.min(paid, args.rate), remaining }
+  })
+}
+
+/**
+ * A student's regular installments with something still owed (installmentLedger),
+ * leaving out an installment a promissory plan covers — that plan collects it.
+ */
+export function regularDues(args: {
+  plan: TuitionPlan; rate: number; schoolYear: number; today: string
+  payments: { period: string; amount: number }[]
+  promissoryDueDates?: Set<string>
+}): RegularDue[] {
+  return installmentLedger(args)
+    .filter(p => p.remaining >= 0.01 && !args.promissoryDueDates?.has(p.dueDate))
+    .map(p => ({ ...p, daysUntil: daysBetween(args.today, p.dueDate) }))
 }
 
 /** School months billed in each semester (tuition runs Jun–Mar, 10 months). */

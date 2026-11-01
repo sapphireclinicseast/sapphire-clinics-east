@@ -11,12 +11,12 @@ import { useSession } from 'next-auth/react'
 import { Loader2, X, Plus, Trash2, CalendarClock, ChevronDown, ChevronRight, Eye, AlertTriangle, FileText } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import {
-  ITEM_STATE_LABEL, MAX_PLAN_PAYMENTS, currentSchoolYear, latestAllowedDate, planProblem, schoolYearLabel,
-  semesterLabel, semesterOf, type ItemState,
+  ITEM_STATE_LABEL, MAX_PLAN_PAYMENTS, REMIND_DAYS, asTuitionPlan, coveredLabel, currentSchoolYear, daysBetween, latestAllowedDate,
+  planAnchor, planProblem, schoolYearLabel, schoolYearPeriods, semesterLabel, semesterOf, toYmd, todayManila, type ItemState,
 } from '@/lib/tuition'
 
 interface PlanItem { id: string; seq: number; dueDate: string; amount: number; classPortalPaymentId: string | null; paidOn: string | null; orderNumber: number | null; inPos: boolean; state: ItemState; daysUntil: number }
-interface Plan { id: string; promissoryNoteId: string | null; schoolYear: number; semester: number; originalDueDate: string; amount: number; notes: string | null; status: string; items: PlanItem[]; paid: number; balance: number }
+interface Plan { id: string; promissoryNoteId: string | null; schoolYear: number; semester: number; originalDueDate: string; coveredDueDates: string[]; amount: number; notes: string | null; status: string; items: PlanItem[]; paid: number; balance: number }
 interface Payment { classPortalPaymentId: string; plan: string; period: string; amount: number; status: string; method: string | null; methodDetail: string | null; isPartialPayment: boolean; recordedOn: string; confirmedOn: string | null; orderNumber: number | null; saleDate: string | null; where: 'POS' | 'WAITING' | 'CLASS_HUB_ONLY' | 'VOIDED' }
 interface Note { id: string; fileName: string; fileType: string; notes: string | null; uploadedBy: string | null; createdAt: string }
 interface SemesterRow { semester: number; label: string; start: string; end: string; tuition: number; paid: number; balance: number; started: boolean }
@@ -31,6 +31,8 @@ interface Student {
   semesters: SemesterRow[] | null; yearTuition: number | null; runningBalance: number | null
   /** Regular installments overdue or due within 7 days (Class Hub plan rules, as at the POS). */
   dues: RegularDue[]
+  /** Every installment from the first payment, with what settles it (a plan's months are picked from these). */
+  installments: { period: string; dueDate: string; expected: number; paid: number; remaining: number }[]
   /** Installments settled by discount instead of cash — counted in dues and the running balance. */
   adjustments: Adjustment[]
 }
@@ -393,7 +395,7 @@ export default function TuitionTab({ branch, canWrite }: { branch: string; canWr
                             <div key={p.id} className="rounded-xl border bg-white p-3 mb-2" style={{ borderColor: 'var(--light-gray)', opacity: p.status === 'CANCELLED' ? 0.6 : 1 }}>
                               <div className="flex items-start justify-between gap-2 flex-wrap mb-2">
                                 <div className="text-xs" style={{ color: 'var(--charcoal)' }}>
-                                  <strong>{semesterLabel(p.schoolYear, p.semester)}</strong> · originally due {fmtDate(p.originalDueDate)} · covers <span className="font-mono">{formatCurrency(p.amount)}</span>
+                                  <strong>{semesterLabel(p.schoolYear, p.semester)}</strong> · covers {coveredLabel(asTuitionPlan(s.tuitionPlan) || 'MONTHLY', p.coveredDueDates)} · <span className="font-mono">{formatCurrency(p.amount)}</span>
                                   {' '}· paid <span className="font-mono" style={{ color: '#166534' }}>{formatCurrency(p.paid)}</span> · balance <span className="font-mono" style={{ color: p.balance > 0.005 ? '#c44b00' : '#166534' }}>{formatCurrency(p.balance)}</span>
                                   {p.status === 'CANCELLED' && <span className="ml-2 font-semibold" style={{ color: '#b91c1c' }}>Cancelled</span>}
                                   {p.notes && <div className="text-[11px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>{p.notes}</div>}
@@ -485,17 +487,42 @@ export default function TuitionTab({ branch, canWrite }: { branch: string; canWr
         </table>
       </div>
 
-      {editing && <PlanModal student={editing.student} plan={editing.plan} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); void load() }} />}
+      {editing && <PlanModal student={editing.student} plan={editing.plan} sy={sy} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); void load() }} />}
     </div>
   )
 }
 
-function PlanModal({ student, plan, onClose, onSaved }: { student: Student; plan: Plan | null; onClose: () => void; onSaved: () => void }) {
-  const usedNotes = new Set(student.plans.filter(p => p.status === 'ACTIVE' && p.id !== plan?.id).map(p => p.promissoryNoteId))
+function PlanModal({ student, plan, sy, onClose, onSaved }: { student: Student; plan: Plan | null; sy: number; onClose: () => void; onSaved: () => void }) {
+  const otherPlans = student.plans.filter(p => p.status === 'ACTIVE' && p.id !== plan?.id)
+  const usedNotes = new Set(otherPlans.map(p => p.promissoryNoteId))
   const noteChoices = student.notes.filter(n => !usedNotes.has(n.id))
   const [noteId, setNoteId] = useState(plan?.promissoryNoteId || noteChoices[0]?.id || '')
-  const [originalDue, setOriginalDue] = useState(plan?.originalDueDate || '')
-  const [amount, setAmount] = useState(plan ? String(plan.amount) : '')
+  // The installments the note covers. A note covers all the past unpaid months
+  // (Hannah, 2026-11-01), so a new plan starts with every unpaid installment
+  // already due or due within 7 days ticked.
+  const tPlan = asTuitionPlan(student.tuitionPlan) || 'MONTHLY'
+  const today = todayManila()
+  const takenElsewhere = new Set(otherPlans.flatMap(p => p.coveredDueDates))
+  const months = schoolYearPeriods(tPlan, plan?.schoolYear ?? sy).map(p => {
+    const inst = student.installments.find(i => i.dueDate === p.dueDate)
+    return { ...p, remaining: inst ? inst.remaining : null, taken: takenElsewhere.has(p.dueDate) }
+  })
+  const [covered, setCovered] = useState<string[]>(
+    plan ? plan.coveredDueDates
+      : months.filter(m => !m.taken && (m.remaining ?? 0) > 0.005 && daysBetween(today, m.dueDate) <= REMIND_DAYS).map(m => m.dueDate),
+  )
+  const unpaidOfCovered = Math.round(months.filter(m => covered.includes(m.dueDate)).reduce((t, m) => t + (m.remaining ?? student.rate ?? 0), 0) * 100) / 100
+  const [amount, setAmount] = useState(plan ? String(plan.amount) : unpaidOfCovered > 0 ? String(unpaidOfCovered) : '')
+  // A new plan's amount follows the ticked months until it is typed over.
+  const [amountTouched, setAmountTouched] = useState(!!plan)
+  const toggleMonth = (d: string) => {
+    const next = covered.includes(d) ? covered.filter(x => x !== d) : [...covered, d].sort()
+    setCovered(next)
+    if (!amountTouched) {
+      const sum = Math.round(months.filter(m => next.includes(m.dueDate)).reduce((t, m) => t + (m.remaining ?? student.rate ?? 0), 0) * 100) / 100
+      setAmount(sum > 0 ? String(sum) : '')
+    }
+  }
   const [notes, setNotes] = useState(plan?.notes || '')
   const [rows, setRows] = useState<{ id?: string; dueDate: string; amount: string; locked: boolean }[]>(
     plan ? plan.items.map(i => ({ id: i.id, dueDate: i.dueDate, amount: String(i.amount), locked: !!i.classPortalPaymentId })) : [{ dueDate: '', amount: '', locked: false }],
@@ -505,9 +532,12 @@ function PlanModal({ student, plan, onClose, onSaved }: { student: Student; plan
 
   const amt = Number(amount) || 0
   const parsed = rows.map(r => ({ id: r.id, dueDate: r.dueDate, amount: Number(r.amount) || 0 }))
-  const sem = originalDue ? semesterOf(originalDue) : null
-  const limit = originalDue ? latestAllowedDate(originalDue) : null
-  const problem = planProblem({ originalDueDate: originalDue, amount: amt, items: [...parsed].sort((a, b) => a.dueDate.localeCompare(b.dueDate)) })
+  const note = student.notes.find(n => n.id === noteId)
+  const noteDate = note ? toYmd(note.createdAt) : null
+  const anchor = planAnchor([...covered].sort(), noteDate)
+  const sem = anchor ? semesterOf(anchor) : null
+  const limit = anchor ? latestAllowedDate(anchor) : null
+  const problem = planProblem({ coveredDueDates: covered, noteDate, amount: amt, items: [...parsed].sort((a, b) => a.dueDate.localeCompare(b.dueDate)) })
   const scheduled = parsed.reduce((t, r) => t + r.amount, 0)
 
   // Spread the amount evenly over the rows, leaving locked rows as they are.
@@ -524,7 +554,7 @@ function PlanModal({ student, plan, onClose, onSaved }: { student: Student; plan
   async function save() {
     setSaving(true); setError('')
     try {
-      const body = { studentId: student.id, promissoryNoteId: noteId, originalDueDate: originalDue, amount: amt, notes, items: parsed }
+      const body = { studentId: student.id, promissoryNoteId: noteId, coveredDueDates: covered, amount: amt, notes, items: parsed }
       const res = await fetch(plan ? `/api/tuition/plans/${plan.id}` : '/api/tuition/plans', {
         method: plan ? 'PUT' : 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
       })
@@ -554,20 +584,39 @@ function PlanModal({ student, plan, onClose, onSaved }: { student: Student; plan
           ))}
         </select>
 
-        <div className="grid grid-cols-2 gap-3 mb-1">
-          <div>
-            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Originally due on</label>
-            <input type="date" value={originalDue} onChange={e => setOriginalDue(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }} />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Amount the note covers (₱)</label>
-            <input type="number" min={0} step="0.01" value={amount} onChange={e => setAmount(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }} />
-          </div>
+        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Months the note covers</label>
+        <div className="flex flex-wrap gap-1.5 mb-1">
+          {months.map(m => {
+            const on = covered.includes(m.dueDate)
+            const paid = m.remaining != null && m.remaining < 0.005
+            return (
+              <label key={m.dueDate} title={m.taken ? 'Covered by another payment plan' : `Due ${fmtDate(m.dueDate)}`}
+                className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg border text-xs ${m.taken ? 'opacity-40' : 'cursor-pointer'}`}
+                style={{ borderColor: on ? 'var(--teal)' : 'var(--light-gray)', background: on ? 'var(--pale-teal, #f0fdfa)' : 'white' }}>
+                <input type="checkbox" checked={on} disabled={m.taken} onChange={() => toggleMonth(m.dueDate)} />
+                {m.period.replace(/ SY \d{4}–\d{4}$/, '')}
+                <span className="font-mono text-[11px]" style={{ color: paid ? '#166534' : 'var(--mid-gray)' }}>
+                  {m.taken ? 'other plan' : paid ? 'paid' : m.remaining != null ? formatCurrency(m.remaining) : ''}
+                </span>
+              </label>
+            )
+          })}
         </div>
         <p className="text-[11px] mb-3" style={{ color: 'var(--mid-gray)' }}>
-          {!originalDue ? 'The tuition payment the family could not make on time.'
-            : !sem ? 'May is between school years — pick the date the payment was due within a semester.'
-            : <>{semesterLabel(sem.schoolYear, sem.semester)}. Latest allowed date: <strong style={{ color: 'var(--charcoal)' }}>{fmtDate(limit!.date)}</strong> {limit!.limitedBy === 'semester' ? '(end of the semester — the 3-month limit would cross into the next one)' : '(3 months after the original due date)'}.</>}
+          {covered.length ? <>Covers <strong style={{ color: 'var(--charcoal)' }}>{coveredLabel(tPlan, covered)}</strong> · unpaid in those months {formatCurrency(unpaidOfCovered)}.</> : 'Tick every month the note covers — all the past unpaid months, and the next one if the note includes it.'}
+        </p>
+
+        <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Amount the note covers (₱)</label>
+        <div className="flex items-center gap-2 mb-1">
+          <input type="number" min={0} step="0.01" value={amount} onChange={e => { setAmount(e.target.value); setAmountTouched(true) }} className="w-40 px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }} />
+          {unpaidOfCovered > 0 && Math.abs(unpaidOfCovered - amt) > 0.005 && (
+            <button onClick={() => { setAmount(String(unpaidOfCovered)); setAmountTouched(false) }} className="text-[11px] font-medium" style={{ color: 'var(--teal)' }}>Use {formatCurrency(unpaidOfCovered)}</button>
+          )}
+        </div>
+        <p className="text-[11px] mb-3" style={{ color: 'var(--mid-gray)' }}>
+          {!anchor ? 'The schedule must end within 3 months of the note, and inside its semester.'
+            : !sem ? 'The note is dated in May, between school years.'
+            : <>{semesterLabel(sem.schoolYear, sem.semester)}. Latest allowed date: <strong style={{ color: 'var(--charcoal)' }}>{fmtDate(limit!.date)}</strong> {limit!.limitedBy === 'semester' ? '(end of the semester — a note cannot carry into the next one)' : `(3 months after ${anchor === noteDate ? 'the note\'s date' : 'the last month it covers'})`}.</>}
         </p>
 
         <div className="flex items-center justify-between mb-1">

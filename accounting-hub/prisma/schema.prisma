@@ -1706,7 +1706,10 @@ model TuitionPaymentPlan {
   promissoryNoteId String? // Class Hub ClassPortalPromissoryNote.id
   schoolYear       Int // first year of the school year (2026 = SY 2026–2027)
   semester         Int // 1 | 2 | 3
-  originalDueDate  DateTime // the payment the note delays
+  originalDueDate  DateTime // the first installment the note covers
+  // Every installment the note covers, as YYYY-MM-DD due dates (a note covers
+  // all past unpaid months). Null on older plans = just originalDueDate.
+  coveredDueDates  Json?
   amount           Decimal
   notes            String?
   status           String   @default("ACTIVE") // ACTIVE | CANCELLED

@@ -8,8 +8,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { branchAllowed } from '@/lib/branch-scope'
-import { cleanPlanItems, fromYmd, planProblem, semesterOf, toYmd, type PlanBody } from '@/lib/tuition'
-import { TUITION_WRITE_ROLES, loadPlans, planViews } from '@/lib/tuition-server'
+import { cleanCovered, cleanPlanItems, fromYmd, planAnchor, planProblem, semesterOf, toYmd, type PlanBody } from '@/lib/tuition'
+import { TUITION_WRITE_ROLES, coveredElsewhere, fetchClassHub, loadPlans, planViews } from '@/lib/tuition-server'
 
 async function gate(id: string) {
   const session = await auth()
@@ -30,10 +30,24 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const plan = g.plan!
   const body = await req.json().catch(() => ({})) as PlanBody
   const items = cleanPlanItems(body.items)
+  const covered = cleanCovered(body.coveredDueDates)
   const amount = Math.round(Number(body.amount) * 100) / 100
-  const problem = planProblem({ originalDueDate: body.originalDueDate || '', amount, items })
+  // The time limit runs from the note's date (its Class Hub upload) as well.
+  let noteDate: string | null = null
+  if (plan.promissoryNoteId) {
+    try {
+      const hub = await fetchClassHub({ schoolYear: plan.schoolYear })
+      const note = hub.notes.find(n => n.id === plan.promissoryNoteId)
+      noteDate = note ? toYmd(note.createdAt) : null
+    } catch {
+      return NextResponse.json({ error: 'Could not reach Class Hub. Try again in a minute.' }, { status: 502 })
+    }
+  }
+  const problem = planProblem({ coveredDueDates: covered, noteDate, amount, items })
   if (problem) return NextResponse.json({ error: problem }, { status: 400 })
-  const sem = semesterOf(body.originalDueDate!)!
+  const sem = semesterOf(planAnchor(covered, noteDate)!)!
+  const clash = await coveredElsewhere(plan.studentId, covered, plan.id)
+  if (clash) return NextResponse.json({ error: clash }, { status: 409 })
 
   const locked = plan.items.filter(i => i.classPortalPaymentId)
   for (const l of locked) {
@@ -57,7 +71,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     await tx.tuitionPaymentPlan.update({
       where: { id: plan.id },
       data: {
-        schoolYear: sem.schoolYear, semester: sem.semester, originalDueDate: fromYmd(body.originalDueDate!),
+        schoolYear: sem.schoolYear, semester: sem.semester, originalDueDate: fromYmd(covered[0]), coveredDueDates: covered,
         amount, notes: body.notes?.trim() || null,
       },
     })

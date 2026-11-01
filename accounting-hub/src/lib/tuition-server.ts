@@ -4,8 +4,8 @@
 import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import {
-  CLASS_TO_LEDGER_BRANCH, REMIND_DAYS, asTuitionPlan, daysBetween, itemState, periodForDate, regularDues, semesterBalances,
-  toYmd, todayManila, type ItemState, type SemesterBalance, type TuitionPlan,
+  CLASS_TO_LEDGER_BRANCH, REMIND_DAYS, asTuitionPlan, cleanCovered, coveredLabel, daysBetween, installmentLedger, itemState,
+  regularDues, semesterBalances, toYmd, todayManila, type Installment, type ItemState, type SemesterBalance, type TuitionPlan,
 } from '@/lib/tuition'
 
 const MARKETING_HUB_URL = process.env.MARKETING_HUB_URL || 'https://operations.sapphireclinicseast.org'
@@ -55,6 +55,8 @@ export interface PlanItemView {
 export interface PlanView {
   id: string; studentId: string; studentName: string; patientId: string | null; branch: string; promissoryNoteId: string | null
   schoolYear: number; semester: number; originalDueDate: string; amount: number; notes: string | null; status: string
+  /** Due dates of every installment the note covers. */
+  coveredDueDates: string[]
   items: PlanItemView[]; paid: number; balance: number; createdAt: string
 }
 
@@ -84,13 +86,26 @@ export async function planViews(plans: PlanRow[], confirmedAt?: Map<string, stri
       }
     })
     const paid = items.filter(i => i.paidOn).reduce((s, i) => s + i.amount, 0)
+    const covered = cleanCovered(p.coveredDueDates)
     return {
       id: p.id, studentId: p.studentId, studentName: p.studentName, patientId: p.patientId, branch: p.branch,
       promissoryNoteId: p.promissoryNoteId, schoolYear: p.schoolYear, semester: p.semester,
       originalDueDate: toYmd(p.originalDueDate), amount: Number(p.amount), notes: p.notes, status: p.status,
+      coveredDueDates: covered.length ? covered : [toYmd(p.originalDueDate)],
       items, paid, balance: Math.round((Number(p.amount) - paid) * 100) / 100, createdAt: p.createdAt.toISOString(),
     }
   })
+}
+
+/** Why some of these installments can't go on this plan — another active plan already covers them — or null. */
+export async function coveredElsewhere(studentId: string, covered: string[], exceptPlanId: string | null): Promise<string | null> {
+  const others = await loadPlans({ studentId, status: 'ACTIVE', ...(exceptPlanId ? { id: { not: exceptPlanId } } : {}) })
+  const taken = new Set(others.flatMap(p => {
+    const c = cleanCovered(p.coveredDueDates)
+    return c.length ? c : [toYmd(p.originalDueDate)]
+  }))
+  const both = covered.filter(d => taken.has(d))
+  return both.length ? `Another payment plan already covers ${both.join(', ')}. Edit that plan instead.` : null
 }
 
 export interface TuitionReminder {
@@ -154,6 +169,8 @@ export interface StudentBalance {
    *  runningBalance = tuition of the semesters started so far − paid (negative = paid ahead). */
   semesters: SemesterBalance[] | null; yearTuition: number | null; runningBalance: number | null
   dues: TuitionDue[]; nextDue: TuitionDue | null
+  /** Every installment from the first payment, with what settles it — what a promissory plan picks its months from. */
+  installments: Installment[]
   payments: { period: string; amount: number; date: string; orderNumber: number | null; partial: boolean }[]
   /** Installments settled by discount instead of cash (TuitionAdjustment) — counted
    *  in dues and the running balance, never in paidThisSy. */
@@ -230,7 +247,7 @@ export async function studentBalances(params: { classBranch: string | null; scho
       const owed = regularDues({
         plan, rate, schoolYear: hub.schoolYear, today,
         payments: settled,
-        promissoryDueDates: new Set(myPlans.map(pl => pl.originalDueDate)),
+        promissoryDueDates: new Set(myPlans.flatMap(pl => pl.coveredDueDates)),
       })
       for (const o of owed) {
         const due: TuitionDue = {
@@ -247,7 +264,7 @@ export async function studentBalances(params: { classBranch: string | null; scho
       for (const it of pl.items) {
         if (it.paidOn) continue
         dues.push({
-          key: `pn:${it.id}`, kind: 'PROMISSORY', plan: pPlan, period: periodForDate(pPlan, pl.originalDueDate),
+          key: `pn:${it.id}`, kind: 'PROMISSORY', plan: pPlan, period: coveredLabel(pPlan, pl.coveredDueDates),
           dueDate: it.dueDate, expected: it.amount, paid: 0, remaining: it.amount,
           state: it.state === 'OVERDUE' ? 'OVERDUE' : it.state === 'DUE_SOON' ? 'DUE_SOON' : 'UPCOMING',
           daysUntil: it.daysUntil, planItemId: it.id, seq: it.seq, count: pl.items.length,
@@ -267,6 +284,7 @@ export async function studentBalances(params: { classBranch: string | null; scho
       paidThisSy,
       semesters: bySem?.semesters ?? null, yearTuition: bySem?.yearTuition ?? null, runningBalance: bySem?.runningBalance ?? null,
       dues, nextDue,
+      installments: plan && rate ? installmentLedger({ plan, rate, schoolYear: hub.schoolYear, payments: settled }) : [],
       payments: paidRows.map(r => ({
         period: r.period, amount: r.amountCentavos / 100, date: sales.get(r.classPortalPaymentId)?.date || (r.convertedAt ? toYmd(r.convertedAt) : toYmd(r.createdAt)),
         orderNumber: sales.get(r.classPortalPaymentId)?.orderNumber ?? null, partial: r.isPartialPayment,

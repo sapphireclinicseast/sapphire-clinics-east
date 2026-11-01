@@ -223,6 +223,20 @@ interface StudentPaymentSnapshot {
   paidPeriods: Set<string>
 }
 
+// A promissory-plan payment collected at the Accounting Hub POS covers several
+// installments under one label — "August, September, October, November 2026",
+// "December 2026 & January 2027" (accounting-hub lib/tuition coveredLabel).
+// Each installment it names counts as paid.
+function coveredPeriods(period: string): string[] {
+  const out = [period]
+  for (const part of period.split(' & ')) {
+    const m = /^(.+?)\s+(\d{4})$/.exec(part.trim())
+    if (m && m[1].includes(',')) for (const month of m[1].split(',')) out.push(`${month.trim()} ${m[2]}`)
+    else out.push(part.trim())
+  }
+  return out
+}
+
 async function buildStudentSnapshots(): Promise<StudentPaymentSnapshot[]> {
   // 1) Active students.
   const students = await prisma.classPortalUser.findMany({
@@ -255,7 +269,7 @@ async function buildStudentSnapshots(): Promise<StudentPaymentSnapshot[]> {
       // CONVERTED = paid (front desk confirmed). Treat as suppression
       // regardless of plan — if the student paid for "August 2026" we
       // don't email them about August 2026.
-      if (p.status === 'CONVERTED') paidPeriods.add(p.period)
+      if (p.status === 'CONVERTED') for (const label of coveredPeriods(p.period)) paidPeriods.add(label)
     }
     out.push({
       studentId: s.id,
