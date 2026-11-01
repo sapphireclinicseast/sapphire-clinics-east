@@ -40,14 +40,16 @@ const SITE_CONFIG = {
   ],
 
   /* ── Key Statistics (shown in hero) ──
-     "Patients Served" and "Confirmed Sessions" are refreshed at page load
-     from live operations data (see refreshLiveStats); the values below are
-     the offline fallback — keep them roughly current. */
+     "Patients Served", "Confirmed Sessions" and "Satisfaction Score" are
+     refreshed at page load from live operations data (see refreshLiveStats);
+     the values below are the offline fallback, used only when that call fails.
+     Keep them roughly current — a stale fallback is what let the satisfaction
+     score sit at 4.64 while the real average was 4.62. */
   stats: [
     { num: '2',       lbl: 'Branches' },
     { num: '2,500+',  lbl: 'Patients Served' },
     { num: '5,200+',  lbl: 'Confirmed Sessions' },
-    { num: '4.64/5★', lbl: 'Satisfaction Score' },
+    { num: '4.62/5★', lbl: 'Satisfaction Score' },
   ],
 
   /* ── HMO Partners ── */
@@ -271,6 +273,16 @@ function refreshLiveStats(wrap) {
           numEl.textContent = formatStat(data.patients);
         } else if (lbl === 'Confirmed Sessions' && Number.isFinite(data.sessions)) {
           numEl.textContent = formatStat(data.sessions);
+        } else if (lbl === 'Satisfaction Score' && Number.isFinite(data.satisfaction)) {
+          // Two decimals and the ★, matching the fallback's shape so the tile
+          // does not visibly change size when the live value arrives.
+          numEl.textContent = data.satisfaction.toFixed(2) + '/5★';
+          // The sample size is the honest part of a rating, but it would
+          // crowd the hero. It rides in the tooltip instead.
+          if (Number.isFinite(data.surveyCount) && data.surveyCount > 0) {
+            numEl.title = 'Average of ' + data.surveyCount.toLocaleString('en-US') +
+              ' patient satisfaction surveys';
+          }
         }
       });
     })
