@@ -67,7 +67,7 @@ interface Asset {
   controlNumber: string | null
   accountableName: string | null
   // quantity > 1: per-piece custodians; piece i shows sub control number `${controlNumber}-0${i+1}`
-  units?: { accountableName: string | null }[] | null
+  units?: { accountableName: string | null; name?: string | null; isDefective?: boolean; auditable?: boolean }[] | null
   // Payments behind the cost when there is more than one (combined records, balances).
   parts?: { date: string; label: string; amount: number; ref?: string | null }[] | null
   remarks: string | null
@@ -192,6 +192,8 @@ function emptyForm(branch: string) {
     accountableName: '',
     // Per-piece custodian names when quantity > 1 (index = piece; '' = unassigned)
     unitNames: [] as string[],
+    // Per-piece item name / condition / audit flag, index-aligned with unitNames.
+    unitMeta: [] as { name: string; isDefective: boolean; auditable: boolean }[],
     remarks: '',
   }
 }
@@ -507,6 +509,11 @@ function AssetManagementInner() {
       unitNames: asset.quantity > 1
         ? Array.from({ length: asset.quantity }, (_, i) => asset.units?.[i]?.accountableName ?? '')
         : [],
+      unitMeta: asset.quantity > 1
+        ? Array.from({ length: asset.quantity }, (_, i) => ({
+            name: asset.units?.[i]?.name ?? '', isDefective: !!asset.units?.[i]?.isDefective, auditable: asset.units?.[i]?.auditable !== false,
+          }))
+        : [],
       remarks: asset.remarks ?? '',
     })
     if (asset.photoUrl) {
@@ -643,7 +650,12 @@ function AssetManagementInner() {
         // Per-piece custodians (quantity > 1): the server stores these and keeps
         // accountableName as their summary for the one-line register views.
         units: quantityNum > 1
-          ? Array.from({ length: quantityNum }, (_, i) => ({ accountableName: (form.unitNames[i] || '').trim() || null }))
+          ? Array.from({ length: quantityNum }, (_, i) => ({
+              accountableName: (form.unitNames[i] || '').trim() || null,
+              name: (form.unitMeta[i]?.name || '').trim() || null,
+              isDefective: !!form.unitMeta[i]?.isDefective,
+              auditable: form.unitMeta[i]?.auditable !== false,
+            }))
           : null,
         remarks: form.remarks.trim() || null,
       }
@@ -844,8 +856,9 @@ function AssetManagementInner() {
         const depts = Array.isArray(a.departments) ? a.departments : []
         if (colFilters.department === NONE ? depts.length > 0 : !depts.includes(colFilters.department)) return false
       }
-      if (colFilters.condition === 'ok' && a.isDefective) return false
-      if (colFilters.condition === 'defective' && !a.isDefective) return false
+      const anyDefective = a.isDefective || !!a.units?.some(u => u.isDefective)
+      if (colFilters.condition === 'ok' && anyDefective) return false
+      if (colFilters.condition === 'defective' && !anyDefective) return false
       return true
     })
     .sort((a, b) => {
@@ -1375,6 +1388,12 @@ function AssetManagementInner() {
                       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium" style={asset.isDefective ? { background: '#fee2e2', color: '#b91c1c' } : { background: '#dcfce7', color: '#166534' }}>
                         {asset.isDefective ? 'Defective' : 'OK'}
                       </span>
+                      {/* A multi-piece asset can have some pieces defective. */}
+                      {(asset.units?.filter(u => u.isDefective).length ?? 0) > 0 && (
+                        <span className="block mt-1 text-[10px] font-medium text-red-600 whitespace-nowrap">
+                          {asset.units!.filter(u => u.isDefective).length} of {asset.units!.length} defective
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-gray-600 font-mono text-xs">
                       {asset.controlNumber ?? '—'}
@@ -1798,13 +1817,24 @@ function AssetManagementInner() {
                   sub control number and can be accountable to a different person. */}
               {quantityNum > 1 && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Accountability per item</label>
-                  <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                    {Array.from({ length: quantityNum }, (_, i) => (
-                      <div key={i} className="flex items-center gap-2">
-                        <span className="w-40 shrink-0 font-mono text-xs text-gray-500">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Items</label>
+                  <p className="text-xs text-gray-500 mb-2">One amount and one depreciation for the whole asset; each piece can have its own name, custodian, condition, and whether audits count it.</p>
+                  <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                    {Array.from({ length: quantityNum }, (_, i) => {
+                      const meta = form.unitMeta[i] || { name: '', isDefective: false, auditable: true }
+                      const setMeta = (patch: Partial<typeof meta>) => setForm((f) => {
+                        const unitMeta = [...f.unitMeta]
+                        while (unitMeta.length < quantityNum) unitMeta.push({ name: '', isDefective: false, auditable: true })
+                        unitMeta[i] = { ...unitMeta[i], ...patch }
+                        return { ...f, unitMeta }
+                      })
+                      return (
+                      <div key={i} className="flex flex-wrap items-center gap-2 border-b border-gray-100 pb-2">
+                        <span className="w-32 shrink-0 font-mono text-xs text-gray-500">
                           {subControlNo(editingAsset ? (form.controlNumber || null) : null, i)}
                         </span>
+                        <input value={meta.name} onChange={(e) => setMeta({ name: e.target.value })} placeholder="Item name (optional)"
+                          className="flex-1 min-w-[160px] border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
                         <NameCombobox
                           options={['Not Applicable', ...staffNames]}
                           value={form.unitNames[i] ?? ''}
@@ -1814,11 +1844,14 @@ function AssetManagementInner() {
                             unitNames[i] = v
                             return { ...f, unitNames }
                           })}
-                          placeholder="Type or pick a staff name…"
-                          className="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                          placeholder="Custodian…"
+                          className="flex-1 min-w-[140px] border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                         />
+                        <label className="flex items-center gap-1 text-xs text-gray-600"><input type="checkbox" checked={meta.isDefective} onChange={(e) => setMeta({ isDefective: e.target.checked })} />Defective</label>
+                        <label className="flex items-center gap-1 text-xs text-gray-600"><input type="checkbox" checked={meta.auditable} onChange={(e) => setMeta({ auditable: e.target.checked })} />Auditable</label>
                       </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 </div>
               )}
@@ -2350,12 +2383,29 @@ function AssetViewModal({ asset: a, canEdit, onEdit, onPhotos, onClose }: {
 
           {Array.isArray(a.units) && a.units.length > 0 && (
             <div className="rounded-xl border border-gray-200 p-4">
-              <div className="text-sm font-semibold text-gray-800 mb-2">Accountability per item</div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-sm">
-                {a.units.map((u, i) => (
-                  <div key={i}><span className="font-mono text-xs text-gray-500 mr-2">{subControlNo(a.controlNumber, i)}</span>{u.accountableName || '—'}</div>
-                ))}
-              </div>
+              <div className="text-sm font-semibold text-gray-800 mb-2">Items ({a.units.length})</div>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs text-gray-500 border-b border-gray-200">
+                    <th className="py-1.5 pr-3 font-medium">No.</th>
+                    <th className="py-1.5 pr-3 font-medium">Item</th>
+                    <th className="py-1.5 pr-3 font-medium">Custodian</th>
+                    <th className="py-1.5 pr-3 font-medium">Condition</th>
+                    <th className="py-1.5 font-medium">Auditable</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {a.units.map((u, i) => (
+                    <tr key={i} className="border-b border-gray-100">
+                      <td className="py-1.5 pr-3 font-mono text-xs text-gray-500 whitespace-nowrap">{subControlNo(a.controlNumber, i)}</td>
+                      <td className="py-1.5 pr-3">{u.name || a.name}</td>
+                      <td className="py-1.5 pr-3">{u.accountableName || '—'}</td>
+                      <td className="py-1.5 pr-3">{u.isDefective ? <span className="text-red-600">Defective</span> : 'OK'}</td>
+                      <td className="py-1.5">{u.auditable === false ? 'No' : 'Yes'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
 

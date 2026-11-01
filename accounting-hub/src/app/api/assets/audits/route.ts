@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import type { AssetUnit } from '@/lib/asset-units'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 
@@ -70,10 +71,19 @@ export async function POST(req: Request) {
           refNumber, refSeq: seq, dateFrom: new Date(dateFrom), dateTo: new Date(dateTo),
           auditorName: auditorName.trim(), branch, departments: deps, createdById: session.user!.id ?? null,
           items: {
-            create: assets.map(a => ({
-              assetId: a.id, assetName: a.name, controlNumber: a.controlNumber,
-              classification: a.classification, accountableName: a.accountableName,
-            })),
+            // A multi-piece asset is counted piece by piece (its sub control
+            // numbers), leaving out pieces marked not auditable.
+            create: assets.flatMap(a => {
+              const units = Array.isArray(a.units) ? (a.units as AssetUnit[]) : []
+              if (a.quantity > 1 && units.length) {
+                return units.flatMap((u, i) => u.auditable === false ? [] : [{
+                  assetId: a.id, assetName: u.name ? `${u.name} (${a.name})` : a.name,
+                  controlNumber: a.controlNumber ? `${a.controlNumber}-${String(i + 1).padStart(2, '0')}` : null,
+                  classification: a.classification, accountableName: u.accountableName || a.accountableName,
+                }])
+              }
+              return [{ assetId: a.id, assetName: a.name, controlNumber: a.controlNumber, classification: a.classification, accountableName: a.accountableName }]
+            }),
           },
         },
         include: { items: true },

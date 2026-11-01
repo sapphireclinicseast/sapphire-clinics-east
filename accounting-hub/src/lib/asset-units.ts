@@ -3,14 +3,19 @@
 // displayed as `${controlNumber}-${String(i+1).padStart(2,'0')}` — the sub number is
 // derived, never stored, so the parent's control-number sequence stays intact.
 
-export type AssetUnit = { accountableName: string | null }
+// Each piece can also carry its own item name (one bulk order of different
+// things — Hannah, 2026-11-01: an Amazon order of six toys is one amount and one
+// depreciation, but each toy is named), its own condition and whether it is
+// counted in audits. Older rows only have accountableName.
+export type AssetUnit = { accountableName: string | null; name?: string | null; isDefective?: boolean; auditable?: boolean }
 
 export function sanitizeAssetUnits(units: unknown, quantity: number): AssetUnit[] | null {
   if (quantity <= 1 || !Array.isArray(units)) return null
   return Array.from({ length: Math.min(quantity, 200) }, (_, i) => {
-    const u = units[i] as { accountableName?: unknown } | undefined
+    const u = units[i] as { accountableName?: unknown; name?: unknown; isDefective?: unknown; auditable?: unknown } | undefined
     const n = typeof u?.accountableName === 'string' ? u.accountableName.trim().slice(0, 200) : ''
-    return { accountableName: n || null }
+    const item = typeof u?.name === 'string' ? u.name.trim().toUpperCase().slice(0, 300) : ''
+    return { accountableName: n || null, name: item || null, isDefective: u?.isDefective === true, auditable: u?.auditable !== false }
   })
 }
 
