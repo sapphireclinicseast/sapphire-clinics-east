@@ -313,6 +313,10 @@ function AssetManagementInner() {
 
   // Supplier search
   const [supplierSearch, setSupplierSearch] = useState('')
+  // "+ Add new supplier" from the asset form: saved to the supplier list and to
+  // the branch's expense suppliers (TIN + address, the alphalist source).
+  const [newSup, setNewSup] = useState<{ name: string; tin: string; address: string } | null>(null)
+  const [newSupBusy, setNewSupBusy] = useState(false)
 
   // Search & sort & column filters
   const [search, setSearch] = useState('')
@@ -1674,6 +1678,40 @@ function AssetManagementInner() {
                     <option key={s.id} value={s.id}>{s.supplierName}</option>
                   ))}
                 </select>
+                {newSup ? (
+                  <div className="mt-2 rounded-lg border border-teal-200 bg-teal-50/40 p-3 space-y-2">
+                    <input value={newSup.name} onChange={(e) => setNewSup(v => v && { ...v, name: e.target.value })} placeholder="Registered name (e.g. YEK YEU MERCHANDISING, INC.)"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm" />
+                    <div className="grid grid-cols-2 gap-2">
+                      <input value={newSup.tin} onChange={(e) => setNewSup(v => v && { ...v, tin: e.target.value })} placeholder="TIN (XXX-XXX-XXX-XXXXX)"
+                        className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm font-mono" />
+                      <input value={newSup.address} onChange={(e) => setNewSup(v => v && { ...v, address: e.target.value })} placeholder="Registered address"
+                        className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm" />
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <button type="button" onClick={() => setNewSup(null)} className="px-3 py-1 text-xs border border-gray-300 rounded-lg text-gray-600">Cancel</button>
+                      <button type="button" disabled={newSupBusy || !newSup.name.trim()} onClick={async () => {
+                        if (!newSup) return
+                        setNewSupBusy(true)
+                        try {
+                          const r = await fetch('/api/suppliers', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ supplierName: newSup.name.trim(), address: newSup.address.trim() || null, notes: newSup.tin.trim() ? `TIN ${newSup.tin.trim()}` : null }) })
+                          const d = await r.json().catch(() => ({}))
+                          if (!r.ok) { alert(d.error || 'Could not add the supplier'); return }
+                          // Also into the branch's expense suppliers, where the TIN lives for the alphalist.
+                          await fetch('/api/expenses/suppliers', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ branch: form.branch, registeredName: newSup.name.trim().toUpperCase(), registeredAddress: newSup.address.trim() || null, tin: newSup.tin.trim() || null }) }).catch(() => null)
+                          await fetchSuppliers()
+                          if (d?.id) setForm((f) => ({ ...f, supplierId: d.id }))
+                          setNewSup(null)
+                        } finally { setNewSupBusy(false) }
+                      }} className="px-3 py-1 text-xs rounded-lg text-white bg-teal-700 disabled:opacity-50">{newSupBusy ? 'Adding…' : 'Add supplier'}</button>
+                    </div>
+                  </div>
+                ) : (
+                  <button type="button" onClick={() => setNewSup({ name: supplierSearch.trim(), tin: '', address: '' })}
+                    className="mt-1 text-xs text-teal-700 hover:underline">+ Add new supplier</button>
+                )}
               </div>
 
               {/* Purchased from (funding bank account) + journal-entry preview */}

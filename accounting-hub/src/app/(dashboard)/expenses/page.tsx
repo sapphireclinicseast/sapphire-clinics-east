@@ -287,6 +287,27 @@ function ExpensesInner() {
   const [prepaidAccount, setPrepaidAccount] = useState('')
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [newSupplierPrompt, setNewSupplierPrompt] = useState<{ registeredName: string; registeredAddress: string; tin: string } | null>(null)
+  // One supplier list across every branch (and the CEO fund) for the Registered
+  // Name picker: picking a supplier fills its TIN and address.
+  const [pickSuppliers, setPickSuppliers] = useState<{ registeredName: string; registeredAddress: string; tin: string }[]>([])
+  const loadPickSuppliers = useCallback(() => {
+    fetch('/api/expenses/suppliers?branch=ALL').then(r => (r.ok ? r.json() : { suppliers: [] }))
+      .then((d: { suppliers?: { registeredName: string; registeredAddress?: string; tin?: string }[] }) =>
+        setPickSuppliers((d.suppliers || []).map(s => ({ registeredName: s.registeredName, registeredAddress: s.registeredAddress || '', tin: s.tin || '' }))))
+      .catch(() => setPickSuppliers([]))
+  }, [])
+  useEffect(() => { loadPickSuppliers() }, [loadPickSuppliers])
+  const pickByName = new Map(pickSuppliers.map(s => [s.registeredName.trim().toLowerCase(), s]))
+  const pickNames = pickSuppliers.map(s => s.registeredName)
+  const pickHints = Object.fromEntries(pickSuppliers.filter(s => s.tin).map(s => [s.registeredName, s.tin]))
+  // Saving a Registered Name: a known supplier brings its address and TIN along.
+  const supplierPatch = (name: string): Record<string, string> => {
+    const sup = pickByName.get(name.trim().toLowerCase())
+    const patch: Record<string, string> = { registeredName: name }
+    if (sup?.registeredAddress) patch.registeredAddress = sup.registeredAddress
+    if (sup?.tin) patch.tinNumber = formatTin(sup.tin)
+    return patch
+  }
   // "Add to Asset Management" prompt for one-time entries tagged with a PPE classification.
   const [assetPrompt, setAssetPrompt] = useState<Entry | null>(null)
   // Shared purchase split: one supplier payment expensed across several branches.
@@ -1143,7 +1164,7 @@ function ExpensesInner() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ branch, ...newSupplierPrompt }),
       })
-      if (r.ok) await loadSuppliers(branch)
+      if (r.ok) { await loadSuppliers(branch); loadPickSuppliers() }
     } catch { /* ignore */ }
     setNewSupplierPrompt(null)
   }
@@ -1592,9 +1613,10 @@ function ExpensesInner() {
                           <span className="px-2 py-1.5 block whitespace-nowrap font-mono" style={{ color: 'var(--mid-gray)' }}>{branchCodeOf(e.tinNumber)}</span>
                         </td>
                         <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
-                          <input className={cellCls} disabled={lk} value={e.registeredName || ''} style={{ minWidth: 180 }}
-                            onChange={ev => patchLocal(e.id, { registeredName: ev.target.value })}
-                            onBlur={ev => saveField(e.id, { registeredName: ev.target.value }, false)} />
+                          <NameCombobox options={pickNames} hints={pickHints} disabled={lk} value={e.registeredName || ''}
+                            className={cellCls} style={{ minWidth: 180 }} placeholder="Type or pick a supplier…"
+                            onChange={v => patchLocal(e.id, { registeredName: v })}
+                            onCommit={v => saveField(e.id, supplierPatch(v) as Partial<Entry>, false)} />
                         </td>
                         <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
                           <input className={cellCls} disabled={lk} value={e.registeredAddress || ''} style={{ minWidth: 220 }}

@@ -260,6 +260,27 @@ function PettyCashInner() {
   const [supplierNames, setSupplierNames] = useState<Set<string>>(new Set())
   const [suppliers, setSuppliers] = useState<{ registeredName: string; registeredAddress: string; tin: string }[]>([])
   const [newSupplierPrompt, setNewSupplierPrompt] = useState<{ registeredName: string; registeredAddress: string; tin: string } | null>(null)
+  // One supplier list across every branch (and the CEO fund) for the Registered
+  // Name picker: picking a supplier fills its TIN and address.
+  const [pickSuppliers, setPickSuppliers] = useState<{ registeredName: string; registeredAddress: string; tin: string }[]>([])
+  const loadPickSuppliers = useCallback(() => {
+    fetch('/api/expenses/suppliers?branch=ALL').then(r => (r.ok ? r.json() : { suppliers: [] }))
+      .then((d: { suppliers?: { registeredName: string; registeredAddress?: string; tin?: string }[] }) =>
+        setPickSuppliers((d.suppliers || []).map(s => ({ registeredName: s.registeredName, registeredAddress: s.registeredAddress || '', tin: s.tin || '' }))))
+      .catch(() => setPickSuppliers([]))
+  }, [])
+  useEffect(() => { loadPickSuppliers() }, [loadPickSuppliers])
+  const pickByName = new Map(pickSuppliers.map(s => [s.registeredName.trim().toLowerCase(), s]))
+  const pickNames = pickSuppliers.map(s => s.registeredName)
+  const pickHints = Object.fromEntries(pickSuppliers.filter(s => s.tin).map(s => [s.registeredName, s.tin]))
+  // Saving a Registered Name: a known supplier brings its address and TIN along.
+  const supplierPatch = (name: string): Record<string, string> => {
+    const sup = pickByName.get(name.trim().toLowerCase())
+    const patch: Record<string, string> = { registeredName: name }
+    if (sup?.registeredAddress) patch.registeredAddress = sup.registeredAddress
+    if (sup?.tin) patch.tinNumber = formatTin(sup.tin)
+    return patch
+  }
   // "Add to Asset Management" prompt for entries tagged with a PPE classification.
   const [assetPrompt, setAssetPrompt] = useState<Entry | null>(null)
   const [assetBusy, setAssetBusy] = useState(false)
@@ -831,7 +852,7 @@ function PettyCashInner() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ branch, ...newSupplierPrompt }),
       })
-      if (r.ok) setSupplierNames(prev => new Set(prev).add(newSupplierPrompt.registeredName.trim().toLowerCase()))
+      if (r.ok) { setSupplierNames(prev => new Set(prev).add(newSupplierPrompt.registeredName.trim().toLowerCase())); loadPickSuppliers() }
     } catch { /* ignore */ }
     setNewSupplierPrompt(null)
   }
@@ -933,7 +954,6 @@ function PettyCashInner() {
     .map(([seq, label]) => ({ seq, label }))
     .sort((a, b) => b.seq - a.seq)   // most recent PCV first
   const confirmAddRow = () => { setShowAddPopup(false); addRow(addSameSeq ? Number(addSameSeq) : null); setAddSameSeq('') }
-  const supplierByName = new Map(suppliers.map(s => [s.registeredName.trim().toLowerCase(), s]))
   // Audit status updates even on locked rows (audit happens after RFP).
   const setAudited = async (id: string, audited: boolean) => {
     if (audited) {
@@ -1260,18 +1280,10 @@ function PettyCashInner() {
                           <span className="px-2 py-1.5 block whitespace-nowrap font-mono" style={{ color: 'var(--mid-gray)' }}>{branchCodeOf(e.tinNumber)}</span>
                         </td>
                         <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
-                          <input list="pc-supplier-names" className={cellCls} disabled={lk} value={e.registeredName || ''} style={{ minWidth: 180 }}
-                            onChange={ev => patchLocal(e.id, { registeredName: ev.target.value })}
-                            onBlur={ev => {
-                              const val = ev.target.value
-                              const sup = supplierByName.get(val.trim().toLowerCase())
-                              const patch: Partial<Entry> = { registeredName: val }
-                              if (sup) {
-                                if (sup.registeredAddress) patch.registeredAddress = sup.registeredAddress
-                                if (!e.tinNumber && sup.tin) patch.tinNumber = formatTin(sup.tin)
-                              }
-                              saveField(e.id, patch, false)
-                            }} />
+                          <NameCombobox options={pickNames} hints={pickHints} disabled={lk} value={e.registeredName || ''}
+                            className={cellCls} style={{ minWidth: 180 }} placeholder="Type or pick a supplier…"
+                            onChange={v => patchLocal(e.id, { registeredName: v })}
+                            onCommit={v => saveField(e.id, supplierPatch(v) as Partial<Entry>, false)} />
                         </td>
                         <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
                           <input className={cellCls} disabled={lk} value={e.registeredAddress || ''} style={{ minWidth: 220 }}
@@ -1711,10 +1723,6 @@ function PettyCashInner() {
         </div>
       )}
 
-      {/* Registered-name suggestions from Suppliers */}
-      <datalist id="pc-supplier-names">
-        {suppliers.map(s => <option key={s.registeredName} value={s.registeredName} />)}
-      </datalist>
 
       {showAddPopup && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setShowAddPopup(false)}>

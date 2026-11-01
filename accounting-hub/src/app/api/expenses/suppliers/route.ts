@@ -16,6 +16,41 @@ export async function GET(req: Request) {
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const sp = new URL(req.url).searchParams
   const branch = sp.get('branch') || ''
+  // branch=ALL → one supplier list across every branch and the CEO fund, for the
+  // Registered Name picker in petty cash and expenses (Hannah, 2026-11-01: a
+  // supplier used by one branch must be pickable everywhere, TIN and address
+  // filled in). Newest details win; a saved supplier's details win over entries.
+  if (branch === 'ALL') {
+    const rows = await prisma.pettyCashEntry.findMany({
+      where: { registeredName: { not: null } },
+      select: { registeredName: true, registeredAddress: true, tinNumber: true, branch: true, updatedAt: true },
+      orderBy: { updatedAt: 'asc' },
+    })
+    const out = new Map<string, { registeredName: string; registeredAddress: string; tin: string; branches: Set<string> }>()
+    for (const e of rows) {
+      const name = (e.registeredName || '').trim()
+      if (!name) continue
+      const key = name.toLowerCase()
+      const cur = out.get(key) || { registeredName: name, registeredAddress: '', tin: '', branches: new Set<string>() }
+      if (e.registeredAddress?.trim()) cur.registeredAddress = e.registeredAddress.trim()
+      if (e.tinNumber?.trim()) cur.tin = e.tinNumber.trim()
+      cur.branches.add(BRANCH_LABEL[e.branch] || e.branch)
+      out.set(key, cur)
+    }
+    for (const sv of await prisma.expenseSupplier.findMany()) {
+      const key = sv.registeredName.trim().toLowerCase()
+      const cur = out.get(key) || { registeredName: sv.registeredName.trim(), registeredAddress: '', tin: '', branches: new Set<string>() }
+      if (sv.registeredAddress) cur.registeredAddress = sv.registeredAddress
+      if (sv.tin) cur.tin = sv.tin
+      cur.branches.add(BRANCH_LABEL[sv.branch] || sv.branch)
+      out.set(key, cur)
+    }
+    return NextResponse.json({
+      suppliers: [...out.values()]
+        .map(v => ({ registeredName: v.registeredName, registeredAddress: v.registeredAddress, tin: v.tin, branches: [...v.branches] }))
+        .sort((x, y) => x.registeredName.localeCompare(y.registeredName)),
+    })
+  }
   if (!VALID_BRANCHES.includes(branch)) return NextResponse.json({ error: 'Valid branch is required' }, { status: 400 })
 
   // ?transactions=<registeredName> → the expense entries recorded against that supplier.
