@@ -14,6 +14,7 @@
 
 import type { PrismaClient } from '@prisma/client'
 import { postJournalEntry, UnbalancedJournalEntryError, type PostingLine } from './posting'
+import { addedCostForAsset } from '@/lib/asset-entry-retag'
 
 export interface PostAssetResult {
   posted: boolean
@@ -97,7 +98,11 @@ export async function postAssetJournal(
     return { posted: false, reason: 'ENABLE_GL_POSTING flag is off and no source account selected' }
   }
 
-  const amount = Number(asset.totalAmount)
+  // Balance payments / combined parts that came from expense entries book
+  // their own cost (PettyCashEntry.addedToAssetId) — this purchase JE covers
+  // only the rest of the asset's total.
+  const added = await addedCostForAsset(prisma, asset.id)
+  const amount = Math.round((Number(asset.totalAmount) - added) * 100) / 100
   if (amount <= 0) return { posted: false, reason: 'zero-amount asset — nothing to post' }
 
   // PPE side (DR) — look up the COA account whose accountNumber matches the

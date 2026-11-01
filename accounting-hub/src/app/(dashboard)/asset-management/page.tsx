@@ -205,6 +205,39 @@ const emptyCalcRow: CalcRow = { name: '', classification: '', dimL: '', dimW: ''
 
 // ── Page ──────────────────────────────────────────────────────
 
+// Header-filter sentinel for "no custodian / no department".
+const NONE = '__none'
+// Everyone accountable for an asset: its custodian and each piece's.
+function custodiansOf(a: Asset): string[] {
+  return [a.accountableName, ...(a.units?.map(u => u.accountableName) ?? [])]
+    .map(n => (n || '').trim()).filter(Boolean) as string[]
+}
+
+function HeadSelectFilter({ label, value, options, open, onToggle, onChange, align }: {
+  label: string; value: string; options: { value: string; label: string }[]
+  open: boolean; onToggle: () => void; onChange: (v: string) => void; align: 'left' | 'center'
+}) {
+  return (
+    <div className={`flex items-center gap-1 ${align === 'center' ? 'justify-center' : ''}`}>
+      <span>{label}</span>
+      <div className="relative" onClick={(e) => e.stopPropagation()}>
+        <button onClick={onToggle} className={`p-0.5 rounded hover:bg-gray-200 ${value ? 'text-teal-600' : 'text-gray-400'}`}>
+          <Filter size={11} />
+        </button>
+        {open && (
+          <div className="absolute top-full left-0 mt-1 z-30 bg-white border border-gray-200 rounded-lg shadow-lg p-2 w-52 normal-case tracking-normal font-normal">
+            <select value={value} onChange={(e) => onChange(e.target.value)}
+              className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-teal-500">
+              <option value="">All</option>
+              {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function AssetManagementPage() {
   return <Suspense fallback={null}><AssetManagementInner /></Suspense>
 }
@@ -260,6 +293,11 @@ function AssetManagementInner() {
 
   // Delete confirmation
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  // Tick boxes: delete several records at once, or combine records that are
+  // one item (a 12% VAT line, a delivery fee) into one asset.
+  const [picked, setPicked] = useState<Set<string>>(new Set())
+  const [combineOpen, setCombineOpen] = useState(false)
+  const [bulkBusy, setBulkBusy] = useState(false)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
   // Supplier search
@@ -276,13 +314,16 @@ function AssetManagementInner() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   type ColFilters = {
     name: string; classification: string; branch: string; utilized: string; auditable: string;
+    accountable: string; department: string; condition: string;
   }
-  const [colFilters, setColFilters] = useState<ColFilters>({ name: '', classification: '', branch: '', utilized: '', auditable: '' })
+  const NO_FILTERS: ColFilters = { name: '', classification: '', branch: '', utilized: '', auditable: '', accountable: '', department: '', condition: '' }
+  const [colFilters, setColFilters] = useState<ColFilters>(NO_FILTERS)
   const [openFilterCol, setOpenFilterCol] = useState<string | null>(null)
   // Full-screen asset list + drag-to-resize columns (widths persist per user).
   const [expanded, setExpanded] = useState(false)
   const assetTableRef = useRef<HTMLTableElement>(null)
-  const assetRz = useResizableColumns('asset-management-table-v2', assetTableRef)
+  const assetRz = useResizableColumns(`asset-management-table-v3${canManage ? '-sel' : ''}`, assetTableRef)
+  const selOff = canManage ? 1 : 0 // the tick-box column comes first for managers
 
   // ── Freight calculator state (mirrors Inventory's freight-purchase modal) ──
   const [acOpen, setAcOpen] = useState(false)
@@ -769,6 +810,9 @@ function AssetManagementInner() {
     setOpenFilterCol(null)
   }
 
+  // Choices for the Accountability / Departments header filters.
+  const custodianChoices = Array.from(new Set(assets.flatMap(custodiansOf))).sort((x, y) => x.localeCompare(y))
+  const departmentChoices = Array.from(new Set(assets.flatMap(a => (Array.isArray(a.departments) ? a.departments : []) as string[]))).sort()
   const displayedAssets = assets
     .filter((a) => {
       // The Auditable Assets view is the register minus what cannot be counted —
@@ -783,6 +827,16 @@ function AssetManagementInner() {
       if (colFilters.utilized === 'no' && a.utilized) return false
       if (colFilters.auditable === 'yes' && a.auditable === false) return false
       if (colFilters.auditable === 'no' && a.auditable !== false) return false
+      if (colFilters.accountable) {
+        const names = custodiansOf(a)
+        if (colFilters.accountable === NONE ? names.length > 0 : !names.some(n => n.toLowerCase() === colFilters.accountable.toLowerCase())) return false
+      }
+      if (colFilters.department) {
+        const depts = Array.isArray(a.departments) ? a.departments : []
+        if (colFilters.department === NONE ? depts.length > 0 : !depts.includes(colFilters.department)) return false
+      }
+      if (colFilters.condition === 'ok' && a.isDefective) return false
+      if (colFilters.condition === 'defective' && !a.isDefective) return false
       return true
     })
     .sort((a, b) => {
@@ -949,7 +1003,7 @@ function AssetManagementInner() {
         )}
 
         {/* Active filter chips */}
-        {(colFilters.name || colFilters.classification || colFilters.branch || colFilters.utilized || colFilters.auditable) && (
+        {Object.values(colFilters).some(Boolean) && (
           <div className="flex items-center gap-2 flex-wrap">
             {colFilters.name && (
               <span className="inline-flex items-center gap-1 bg-teal-50 text-teal-700 border border-teal-200 rounded-full px-2.5 py-0.5 text-xs">
@@ -975,13 +1029,19 @@ function AssetManagementInner() {
                 <button onClick={() => setColFilters(f => ({ ...f, utilized: '' }))}><X size={10} /></button>
               </span>
             )}
+            {([['accountable', 'Accountability'], ['department', 'Department'], ['condition', 'Condition']] as const).map(([k, label]) => colFilters[k] && (
+              <span key={k} className="inline-flex items-center gap-1 bg-teal-50 text-teal-700 border border-teal-200 rounded-full px-2.5 py-0.5 text-xs">
+                {label}: {colFilters[k] === NONE ? 'None' : colFilters[k] === 'ok' ? 'OK' : colFilters[k] === 'defective' ? 'Defective' : colFilters[k]}
+                <button onClick={() => setColFilters(f => ({ ...f, [k]: '' }))}><X size={10} /></button>
+              </span>
+            ))}
             {colFilters.auditable && (
               <span className="inline-flex items-center gap-1 bg-teal-50 text-teal-700 border border-teal-200 rounded-full px-2.5 py-0.5 text-xs">
                 Auditable: {colFilters.auditable === 'yes' ? 'Yes' : 'No'}
                 <button onClick={() => setColFilters(f => ({ ...f, auditable: '' }))}><X size={10} /></button>
               </span>
             )}
-            <button onClick={() => setColFilters({ name: '', classification: '', branch: '', utilized: '', auditable: '' })} className="text-xs text-gray-500 hover:text-red-600 underline">
+            <button onClick={() => setColFilters(NO_FILTERS)} className="text-xs text-gray-500 hover:text-red-600 underline">
               Clear all
             </button>
           </div>
@@ -993,6 +1053,33 @@ function AssetManagementInner() {
           {expanded ? <><Minimize2 size={14} /> Collapse</> : <><Maximize2 size={14} /> Expand</>}
         </button>
       </div>
+
+      {canManage && picked.size > 0 && (
+        <div className="flex items-center gap-3 flex-wrap rounded-xl border border-teal-200 bg-teal-50 px-4 py-2 text-sm">
+          <span className="font-semibold text-teal-800">{picked.size} selected</span>
+          {SPLIT_ROLES.includes(userRole) && (
+            <button onClick={() => setCombineOpen(true)} disabled={picked.size < 2 || bulkBusy}
+              className="px-3 py-1 rounded-lg text-xs font-semibold text-white bg-teal-700 hover:bg-teal-800 disabled:opacity-40">
+              Combine into one asset
+            </button>
+          )}
+          <button disabled={bulkBusy} onClick={async () => {
+            const list = assets.filter(a => picked.has(a.id))
+            if (!confirm(`Delete ${list.length} asset record${list.length === 1 ? '' : 's'}?\n\n${list.map(a => `${a.controlNumber || '—'}  ${a.name}`).join('\n')}\n\nThis cannot be undone.`)) return
+            setBulkBusy(true)
+            const failed: string[] = []
+            for (const a of list) {
+              const r = await fetch(`/api/assets?id=${a.id}`, { method: 'DELETE' }).catch(() => null)
+              if (!r || !r.ok) failed.push(a.controlNumber || a.name)
+            }
+            setBulkBusy(false); setPicked(new Set()); fetchAssets()
+            if (failed.length) setError(`Could not delete: ${failed.join(', ')}`)
+          }} className="px-3 py-1 rounded-lg text-xs font-semibold text-white bg-red-600 hover:bg-red-700 disabled:opacity-40">
+            {bulkBusy ? 'Working…' : 'Delete selected'}
+          </button>
+          <button onClick={() => setPicked(new Set())} className="text-xs text-gray-500 hover:text-gray-800 underline">Clear selection</button>
+        </div>
+      )}
 
       {/* Table */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
@@ -1013,11 +1100,18 @@ function AssetManagementInner() {
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
 
+                  {canManage && (
+                    <th className="relative px-3 py-3 w-10"><ColResizeHandle rz={assetRz} index={0} />
+                      <input type="checkbox" title="Select all shown"
+                        checked={displayedAssets.length > 0 && displayedAssets.every(a => picked.has(a.id))}
+                        onChange={(e) => setPicked(e.target.checked ? new Set(displayedAssets.map(a => a.id)) : new Set())} />
+                    </th>
+                  )}
                   {/* ── Photo ── */}
-                  <th className="relative text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={0} />Photo</th>
+                  <th className="relative text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={selOff + 0} />Photo</th>
 
                   {/* ── Asset Name ── */}
-                  <th className="relative text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={1} />
+                  <th className="relative text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={selOff + 1} />
                     <div className="flex items-center gap-1">
                       <button className="flex items-center gap-1 hover:text-gray-800" onClick={(e) => { e.stopPropagation(); toggleSort('name') }}>
                         Asset Name
@@ -1040,7 +1134,7 @@ function AssetManagementInner() {
                   </th>
 
                   {/* ── Classification ── */}
-                  <th className="relative text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={2} />
+                  <th className="relative text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={selOff + 2} />
                     <div className="flex items-center gap-1">
                       <button className="flex items-center gap-1 hover:text-gray-800" onClick={(e) => { e.stopPropagation(); toggleSort('classification') }}>
                         Classification
@@ -1066,7 +1160,7 @@ function AssetManagementInner() {
                   </th>
 
                   {/* ── Branch ── */}
-                  <th className="relative text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={3} />
+                  <th className="relative text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={selOff + 3} />
                     <div className="flex items-center gap-1">
                       <button className="flex items-center gap-1 hover:text-gray-800" onClick={(e) => { e.stopPropagation(); toggleSort('branch') }}>
                         Branch
@@ -1092,7 +1186,7 @@ function AssetManagementInner() {
                   </th>
 
                   {/* ── Total Amount ── */}
-                  <th className="relative text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={4} />
+                  <th className="relative text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={selOff + 4} />
                     <button className="flex items-center gap-1 ml-auto hover:text-gray-800" onClick={() => toggleSort('totalAmount')}>
                       {sortKey === 'totalAmount' ? (sortDir === 'asc' ? <ChevronUp size={13} /> : <ChevronDown size={13} />) : <ChevronsUpDown size={12} className="text-gray-400" />}
                       Total Amount
@@ -1100,7 +1194,7 @@ function AssetManagementInner() {
                   </th>
 
                   {/* ── Monthly Depr. ── */}
-                  <th className="relative text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={5} />
+                  <th className="relative text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={selOff + 5} />
                     <button className="flex items-center gap-1 ml-auto hover:text-gray-800" onClick={() => toggleSort('monthlyDepreciation')}>
                       {sortKey === 'monthlyDepreciation' ? (sortDir === 'asc' ? <ChevronUp size={13} /> : <ChevronDown size={13} />) : <ChevronsUpDown size={12} className="text-gray-400" />}
                       Monthly Depr.
@@ -1108,7 +1202,7 @@ function AssetManagementInner() {
                   </th>
 
                   {/* ── End Date ── */}
-                  <th className="relative text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={6} />
+                  <th className="relative text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={selOff + 6} />
                     <button className="flex items-center gap-1 hover:text-gray-800" onClick={() => toggleSort('depreciationEndDate')}>
                       End Date
                       {sortKey === 'depreciationEndDate' ? (sortDir === 'asc' ? <ChevronUp size={13} /> : <ChevronDown size={13} />) : <ChevronsUpDown size={12} className="text-gray-400" />}
@@ -1116,7 +1210,7 @@ function AssetManagementInner() {
                   </th>
 
                   {/* ── Utilized ── */}
-                  <th className="relative text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={7} />
+                  <th className="relative text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={selOff + 7} />
                     <div className="flex items-center justify-center gap-1">
                       <button className="flex items-center gap-1 hover:text-gray-800" onClick={(e) => { e.stopPropagation(); toggleSort('utilized') }}>
                         Utilized
@@ -1143,7 +1237,7 @@ function AssetManagementInner() {
                   </th>
 
                   {/* ── Auditable ── */}
-                  <th className="relative text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={8} />
+                  <th className="relative text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={selOff + 8} />
                     <div className="flex items-center justify-center gap-1">
                       <button className="flex items-center gap-1 hover:text-gray-800" onClick={(e) => { e.stopPropagation(); toggleSort('auditable') }}>
                         Auditable
@@ -1170,32 +1264,50 @@ function AssetManagementInner() {
                   </th>
 
                   {/* ── Condition ── */}
-                  <th className="relative text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={9} />Condition</th>
+                  <th className="relative text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={selOff + 9} />
+                    <HeadSelectFilter label="Condition" align="center" value={colFilters.condition} options={[{ value: 'ok', label: 'OK' }, { value: 'defective', label: 'Defective' }]}
+                      open={openFilterCol === 'condition'} onToggle={() => setOpenFilterCol(openFilterCol === 'condition' ? null : 'condition')}
+                      onChange={v => setColFilters(f => ({ ...f, condition: v }))} />
+                  </th>
 
                   {/* ── Control No. ── */}
-                  <th className="relative text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={10} />
+                  <th className="relative text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={selOff + 10} />
                     <button className="flex items-center gap-1 hover:text-gray-800" onClick={() => toggleSort('controlNumber')}>
                       Control No.
                       {sortKey === 'controlNumber' ? (sortDir === 'asc' ? <ChevronUp size={13} /> : <ChevronDown size={13} />) : <ChevronsUpDown size={12} className="text-gray-400" />}
                     </button>
                   </th>
 
-                  <th className="relative text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={11} />Accountability</th>
-                  <th className="relative text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={12} />Departments</th>
+                  <th className="relative text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={selOff + 11} />
+                    <HeadSelectFilter label="Accountability" align="left" value={colFilters.accountable} options={[{ value: NONE, label: '— No one —' }, ...custodianChoices.map(n => ({ value: n, label: n }))]}
+                      open={openFilterCol === 'accountable'} onToggle={() => setOpenFilterCol(openFilterCol === 'accountable' ? null : 'accountable')}
+                      onChange={v => setColFilters(f => ({ ...f, accountable: v }))} />
+                  </th>
+                  <th className="relative text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={selOff + 12} />
+                    <HeadSelectFilter label="Departments" align="left" value={colFilters.department} options={[{ value: NONE, label: '— None —' }, ...departmentChoices.map(d => ({ value: d, label: d }))]}
+                      open={openFilterCol === 'department'} onToggle={() => setOpenFilterCol(openFilterCol === 'department' ? null : 'department')}
+                      onChange={v => setColFilters(f => ({ ...f, department: v }))} />
+                  </th>
                   {canWrite && (
-                    <th className="relative text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={13} />Actions</th>
+                    <th className="relative text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={selOff + 13} />Actions</th>
                   )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {displayedAssets.length === 0 ? (
                   <tr>
-                    <td colSpan={canWrite ? 14 : 13} className="text-center py-10 text-gray-400 text-sm">
+                    <td colSpan={(canWrite ? 14 : 13) + (canManage ? 1 : 0)} className="text-center py-10 text-gray-400 text-sm">
                       No assets match your search or filters.
                     </td>
                   </tr>
                 ) : displayedAssets.map((asset) => (
-                  <tr key={asset.id} className="hover:bg-gray-50 transition-colors">
+                  <tr key={asset.id} className="hover:bg-gray-50 transition-colors" style={picked.has(asset.id) ? { background: '#f0fdfa' } : undefined}>
+                    {canManage && (
+                      <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
+                        <input type="checkbox" checked={picked.has(asset.id)}
+                          onChange={() => setPicked(p => { const n = new Set(p); if (n.has(asset.id)) n.delete(asset.id); else n.add(asset.id); return n })} />
+                      </td>
+                    )}
                     <td className="px-4 py-3">
                       {(() => {
                         const photos = photosOf(asset); const main = photos[0]
@@ -1308,6 +1420,12 @@ function AssetManagementInner() {
         )}
       </div>
       </div>)}
+
+      {combineOpen && (
+        <CombineAssetsModal assets={assets.filter(a => picked.has(a.id))}
+          onClose={() => setCombineOpen(false)}
+          onDone={() => { setCombineOpen(false); setPicked(new Set()); fetchAssets() }} />
+      )}
 
       {/* Photo gallery */}
       {galleryAsset && (
@@ -1626,7 +1744,7 @@ function AssetManagementInner() {
                     </div>
                   ) : (
                     <NameCombobox
-                      options={staffNames}
+                      options={['Not Applicable', ...staffNames]}
                       value={form.accountableName}
                       onChange={(v) => setForm((f) => ({ ...f, accountableName: v }))}
                       placeholder="Type or pick a staff name…"
@@ -1661,7 +1779,7 @@ function AssetManagementInner() {
                           {subControlNo(editingAsset ? (form.controlNumber || null) : null, i)}
                         </span>
                         <NameCombobox
-                          options={staffNames}
+                          options={['Not Applicable', ...staffNames]}
                           value={form.unitNames[i] ?? ''}
                           onChange={(v) => setForm((f) => {
                             const unitNames = [...f.unitNames]
@@ -2104,6 +2222,64 @@ function AssetManagementInner() {
 }
 
 // ── Asset recording flowchart ─────────────────────────────────
+// Combine several records that are one item into the chosen main record
+// (POST /api/assets/combine).
+function CombineAssetsModal({ assets, onClose, onDone }: { assets: Asset[]; onClose: () => void; onDone: () => void }) {
+  const biggest = [...assets].sort((a, b) => Number(b.totalAmount) - Number(a.totalAmount))[0]
+  const [mainId, setMainId] = useState(biggest?.id || '')
+  const main = assets.find(a => a.id === mainId)
+  const [name, setName] = useState(biggest?.name || '')
+  const [busy, setBusy] = useState(false)
+  const total = assets.reduce((s, a) => s + Number(a.totalAmount), 0)
+  const mixedBranch = new Set(assets.map(a => a.branch)).size > 1
+  const submit = async () => {
+    setBusy(true)
+    try {
+      const r = await fetch('/api/assets/combine', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mainId, otherIds: assets.filter(a => a.id !== mainId).map(a => a.id), name }),
+      })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) { alert(d.error || 'Failed to combine'); return }
+      onDone()
+    } finally { setBusy(false) }
+  }
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-xl p-6" onClick={e => e.stopPropagation()}>
+        <h3 className="text-lg font-semibold text-gray-900 mb-1">Combine into one asset</h3>
+        <p className="text-xs text-gray-500 mb-4">
+          For records that are one item — a 12% VAT line, a delivery fee, a split payment. Pick the main record: it keeps its control number,
+          classification, purchase date and life; its total becomes {formatCurrency(total)} and the others are removed.
+        </p>
+        {mixedBranch && <p className="text-sm text-red-600 mb-3">These records belong to different branches — only one branch&apos;s records can be combined.</p>}
+        <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 max-h-64 overflow-y-auto mb-4">
+          {assets.map(a => (
+            <label key={a.id} className="flex items-start gap-3 px-3 py-2 text-sm cursor-pointer hover:bg-gray-50">
+              <input type="radio" name="combine-main" className="mt-1" checked={mainId === a.id} onChange={() => { setMainId(a.id); setName(a.name) }} />
+              <span className="flex-1 min-w-0">
+                <span className="block text-gray-900 truncate">{a.name}</span>
+                <span className="text-xs text-gray-500">{a.controlNumber || '—'} · {branchLabel(a.branch)} · {formatEndDate(a.dateBought)} · {classificationLabel(a.classification)}</span>
+              </span>
+              <span className="font-medium text-gray-900 whitespace-nowrap">{formatCurrency(Number(a.totalAmount))}</span>
+            </label>
+          ))}
+        </div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Name of the combined asset</label>
+        <input value={name} onChange={e => setName(e.target.value)}
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-teal-500" />
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50">Cancel</button>
+          <button onClick={submit} disabled={busy || mixedBranch || !main}
+            className="px-4 py-2 text-sm rounded-lg text-white bg-teal-700 hover:bg-teal-800 disabled:opacity-50">
+            {busy ? 'Combining…' : `Combine ${assets.length} records`}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // One asset several branches use: split it into one record per branch so each
 // carries its own share of the depreciation (POST /api/assets/split).
 const SPLIT_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']

@@ -1826,7 +1826,7 @@ function PettyCashInner() {
                 <div>
                   <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Accountability <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>— staff accountable / custodian</span></label>
                   {!assetForm.multi && (
-                    <NameCombobox value={assetForm.accountableName} onChange={v => setAssetForm(f => ({ ...f, accountableName: v }))} options={assetStaffNames}
+                    <NameCombobox value={assetForm.accountableName} onChange={v => setAssetForm(f => ({ ...f, accountableName: v }))} options={['Not Applicable', ...assetStaffNames]}
                       className="w-full border rounded-lg px-3 py-2 text-sm" style={{ borderColor: 'var(--light-gray)' }} placeholder="Type or pick a staff name…" />
                   )}
                   {/* Per-piece custody only fits a single-branch entry — a CEO allocation
@@ -1852,7 +1852,7 @@ function PettyCashInner() {
                           {Array.from({ length: qty }, (_, i) => (
                             <div key={i} className="flex items-center gap-2">
                               <span className="w-9 shrink-0 font-mono text-[11px]" style={{ color: 'var(--mid-gray)' }}>-{String(i + 1).padStart(2, '0')}</span>
-                              <NameCombobox value={assetForm.unitNames[i] ?? ''} options={assetStaffNames}
+                              <NameCombobox value={assetForm.unitNames[i] ?? ''} options={['Not Applicable', ...assetStaffNames]}
                                 onChange={v => setAssetForm(f => {
                                   const unitNames = [...f.unitNames]
                                   while (unitNames.length < qty) unitNames.push('')

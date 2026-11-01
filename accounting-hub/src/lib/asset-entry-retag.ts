@@ -111,3 +111,12 @@ export async function addedCostByAsset(prisma: PrismaClient): Promise<Map<string
   return out
 }
 
+/** The same, for one asset. */
+export async function addedCostForAsset(prisma: PrismaClient, assetId: string): Promise<number> {
+  const rows = await prisma.pettyCashEntry.findMany({
+    where: { addedToAssetId: assetId },
+    select: { id: true, pcvNumber: true, assetAddedAt: true, addedToAssetId: true, branchAllocations: true, grossAmount: true, vatable: true, vatPortion: true },
+  })
+  return rows.reduce((s, e) => s + addedAmount(e), 0)
+}
+
