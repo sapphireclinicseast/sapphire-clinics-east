@@ -430,10 +430,16 @@ function PettyCashInner() {
     patchLocal(id, patch)
     const doSave = async () => {
       try {
-        await fetch('/api/petty-cash/entries', {
+        const r = await fetch('/api/petty-cash/entries', {
           method: 'PUT', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ id, ...patch }),
         })
+        // A title change can take the entry's assets out of Asset Management
+        // server-side — show the stamp the server kept, not the stale one.
+        if ('accountTitle' in patch && r.ok) {
+          const u = await r.json().catch(() => null)
+          if (u && 'assetAddedAt' in u) patchLocal(id, { assetAddedAt: u.assetAddedAt })
+        }
       } catch { /* ignore */ }
     }
     if (saveTimers.current[id]) clearTimeout(saveTimers.current[id])
@@ -1284,7 +1290,11 @@ function PettyCashInner() {
                           <AccountPicker accounts={coaAccounts} value={e.accountTitle || ''} valueKey="numberTitle"
                             disabled={lk} className={cellCls} placeholder="Type a number or a name…"
                             clearLabel="— Clear —"
-                            onChange={v => saveField(e.id, { accountTitle: v }, false)} />
+                            onChange={v => {
+                              if (e.assetAddedAt && v && assetClassFromAccountTitle(e.accountTitle) && !assetClassFromAccountTitle(v)
+                                && !confirm(`${refOf(e)} is in Asset Management. Changing it to ${v} removes its asset record from Asset Management (the cost becomes an expense). Continue?`)) return
+                              saveField(e.id, { accountTitle: v }, false)
+                            }} />
                           {/* Only tangible (depreciating PPE) classifications — not intangibles. */}
                           {(() => {
                             const ac = assetClassFromAccountTitle(e.accountTitle)

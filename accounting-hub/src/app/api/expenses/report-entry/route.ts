@@ -28,7 +28,7 @@ export async function PATCH(req: Request) {
     // auto-created assets out of the register, reversing any acquisition JE.
     if ('accountTitle' in data) {
       const existing = await prisma.pettyCashEntry.findUnique({ where: { id }, select: { accountTitle: true, assetAddedAt: true, pcvNumber: true } })
-      if (existing?.assetAddedAt
+      if (existing?.assetAddedAt && data.accountTitle
         && assetClassFromAccountTitle(existing.accountTitle)
         && !assetClassFromAccountTitle(data.accountTitle)) {
         const linked = await prisma.asset.findMany({ where: { sourceEntryId: id }, select: { id: true } })

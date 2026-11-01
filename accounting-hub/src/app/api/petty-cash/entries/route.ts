@@ -240,7 +240,10 @@ export async function PUT(req: Request) {
     // corrected to an expense account). The register must not keep — and keep
     // depreciating — an asset whose cost is now expensed, so remove the linked
     // assets (reversing any acquisition JE) and release the stamp.
-    if ('accountTitle' in data && existing.assetAddedAt) {
+    // A blank title is an edit in progress, not a re-tag: clearing the picker
+    // for a moment (CEO-PCV26-000150, 2026-11-01) deleted the rubber-mat asset
+    // seconds after it was added. Only a real non-asset account withdraws.
+    if ('accountTitle' in data && existing.assetAddedAt && data.accountTitle) {
       const wasAsset = !!assetClassFromAccountTitle(existing.accountTitle)
       const isAsset = !!assetClassFromAccountTitle(data.accountTitle)
       if (wasAsset && !isAsset) {
