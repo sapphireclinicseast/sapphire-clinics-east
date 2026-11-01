@@ -192,6 +192,8 @@ function emptyForm(branch: string) {
     accountableName: '',
     // Per-piece custodian names when quantity > 1 (index = piece; '' = unassigned)
     unitNames: [] as string[],
+    // Quantity > 1: one custodian (accountableName) for every piece.
+    sameCustodian: false,
     // Per-piece item name / condition / audit flag, index-aligned with unitNames.
     unitMeta: [] as { name: string; isDefective: boolean; auditable: boolean }[],
     remarks: '',
@@ -513,6 +515,8 @@ function AssetManagementInner() {
       unitNames: asset.quantity > 1
         ? Array.from({ length: asset.quantity }, (_, i) => asset.units?.[i]?.accountableName ?? '')
         : [],
+      sameCustodian: asset.quantity > 1 && !!asset.units?.length && asset.units.length >= asset.quantity
+        && !!asset.units[0]?.accountableName && asset.units.every(u => u.accountableName === asset.units![0].accountableName),
       unitMeta: asset.quantity > 1
         ? Array.from({ length: asset.quantity }, (_, i) => ({
             name: asset.units?.[i]?.name ?? '', isDefective: !!asset.units?.[i]?.isDefective, auditable: asset.units?.[i]?.auditable !== false,
@@ -655,7 +659,7 @@ function AssetManagementInner() {
         // accountableName as their summary for the one-line register views.
         units: quantityNum > 1
           ? Array.from({ length: quantityNum }, (_, i) => ({
-              accountableName: (form.unitNames[i] || '').trim() || null,
+              accountableName: ((form.sameCustodian ? form.accountableName : form.unitNames[i]) || '').trim() || null,
               name: (form.unitMeta[i]?.name || '').trim() || null,
               isDefective: !!form.unitMeta[i]?.isDefective,
               auditable: form.unitMeta[i]?.auditable !== false,
@@ -1823,8 +1827,26 @@ function AssetManagementInner() {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Accountability</label>
                   {quantityNum > 1 ? (
-                    <div className="border border-dashed border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-500 bg-gray-50">
-                      {quantityNum} items — assign a custodian per item below.
+                    <div className="space-y-1.5">
+                      {/* One custodian for every piece (Hannah, 2026-11-01). */}
+                      <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                        <input type="checkbox" checked={form.sameCustodian}
+                          onChange={(e) => setForm((f) => ({ ...f, sameCustodian: e.target.checked, accountableName: e.target.checked && !f.accountableName ? (f.unitNames.find(Boolean) || '') : f.accountableName }))} />
+                        Same person for all {quantityNum} items
+                      </label>
+                      {form.sameCustodian ? (
+                        <NameCombobox
+                          options={['Not Applicable', ...staffNames]}
+                          value={form.accountableName}
+                          onChange={(v) => setForm((f) => ({ ...f, accountableName: v }))}
+                          placeholder="Staff accountable for every item…"
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                        />
+                      ) : (
+                        <div className="border border-dashed border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-500 bg-gray-50">
+                          {quantityNum} items — assign a custodian per item below.
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <NameCombobox
@@ -1875,7 +1897,8 @@ function AssetManagementInner() {
                           className="flex-1 min-w-[160px] border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
                         <NameCombobox
                           options={['Not Applicable', ...staffNames]}
-                          value={form.unitNames[i] ?? ''}
+                          value={form.sameCustodian ? form.accountableName : (form.unitNames[i] ?? '')}
+                          disabled={form.sameCustodian}
                           onChange={(v) => setForm((f) => {
                             const unitNames = [...f.unitNames]
                             while (unitNames.length < quantityNum) unitNames.push('')

@@ -318,7 +318,7 @@ function ExpensesInner() {
   // Details typed into the "Add to Asset Management" dialog (photos, custodian, remarks).
   // multi/quantity/unitNames: "more than 1 item" — one asset with per-piece custodians,
   // each piece getting a sub control number (-01, -02, …) under one control number.
-  const [assetForm, setAssetForm] = useState<{ name: string; accountableName: string; remarks: string; photoUrls: string[]; multi: boolean; quantity: string; unitNames: string[]; addTo: boolean; existingAssetId: string }>({ name: '', accountableName: '', remarks: '', photoUrls: [], multi: false, quantity: '2', unitNames: [], addTo: false, existingAssetId: '' })
+  const [assetForm, setAssetForm] = useState<{ name: string; accountableName: string; remarks: string; photoUrls: string[]; multi: boolean; quantity: string; unitNames: string[]; addTo: boolean; existingAssetId: string; sameAll?: boolean }>({ name: '', accountableName: '', remarks: '', photoUrls: [], multi: false, quantity: '2', unitNames: [], addTo: false, existingAssetId: '' })
   // HR-Hub staff names for the Accountability typeahead — same source as the Asset
   // Management form, so typed custodians match staff records (and the Accountability
   // summary tab) exactly instead of free-typed spellings.
@@ -1145,7 +1145,7 @@ function ExpensesInner() {
           photoUrls: assetForm.photoUrls,
           quantity: qty,
           units: qty > 1
-            ? Array.from({ length: qty }, (_, i) => ({ accountableName: (assetForm.unitNames[i] || '').trim() || null }))
+            ? Array.from({ length: qty }, (_, i) => ({ accountableName: ((assetForm.sameAll ? assetForm.accountableName : assetForm.unitNames[i]) || '').trim() || null }))
             : undefined,
         }),
       })
@@ -2260,6 +2260,15 @@ function ExpensesInner() {
                             onChange={ev => setAssetForm(f => ({ ...f, quantity: ev.target.value }))}
                             className="w-20 border rounded-lg px-2.5 py-1.5 text-sm" style={{ borderColor: 'var(--light-gray)' }} />
                         </div>
+                        {/* One custodian for every piece (Hannah, 2026-11-01). */}
+                        <label className="flex items-center gap-2 text-xs cursor-pointer" style={{ color: 'var(--charcoal)' }}>
+                          <input type="checkbox" checked={!!assetForm.sameAll} onChange={ev => setAssetForm(f => ({ ...f, sameAll: ev.target.checked }))} />
+                          Same person for all {qty} items
+                        </label>
+                        {assetForm.sameAll ? (
+                          <NameCombobox value={assetForm.accountableName} onChange={v => setAssetForm(f => ({ ...f, accountableName: v }))} options={['Not Applicable', ...assetStaffNames]}
+                            className="w-full border rounded-lg px-2.5 py-1.5 text-sm" style={{ borderColor: 'var(--light-gray)' }} placeholder="Staff accountable for every piece…" />
+                        ) : (
                         <div className="max-h-40 overflow-y-auto space-y-1.5 pr-1">
                           {Array.from({ length: qty }, (_, i) => (
                             <div key={i} className="flex items-center gap-2">
@@ -2276,6 +2285,7 @@ function ExpensesInner() {
                             </div>
                           ))}
                         </div>
+                        )}
                       </div>
                     )
                   })()}
