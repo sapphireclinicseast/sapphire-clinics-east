@@ -28,9 +28,12 @@ import {
   Lock,
   Calculator,
   Upload,
+  Maximize2,
+  Minimize2,
 } from 'lucide-react'
 import { downloadXlsx, downloadPdf } from '@/lib/export'
 import AssetCalculator from './AssetCalculator'
+import { useResizableColumns, ResizableColgroup, ColResizeHandle } from '@/components/useResizableColumns'
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -275,6 +278,10 @@ function AssetManagementInner() {
   }
   const [colFilters, setColFilters] = useState<ColFilters>({ name: '', classification: '', branch: '', utilized: '' })
   const [openFilterCol, setOpenFilterCol] = useState<string | null>(null)
+  // Full-screen asset list + drag-to-resize columns (widths persist per user).
+  const [expanded, setExpanded] = useState(false)
+  const assetTableRef = useRef<HTMLTableElement>(null)
+  const assetRz = useResizableColumns('asset-management-table', assetTableRef)
 
   // ── Freight calculator state (mirrors Inventory's freight-purchase modal) ──
   const [acOpen, setAcOpen] = useState(false)
@@ -892,7 +899,8 @@ function AssetManagementInner() {
         </div>
       )}
 
-      {(tab === 'assets' || tab === 'auditable') && (<>
+      {(tab === 'assets' || tab === 'auditable') && (
+      <div className={expanded ? 'fixed inset-0 z-40 overflow-auto p-6 space-y-4' : 'space-y-6'} style={expanded ? { background: 'var(--off-white)' } : undefined}>
       {/* Filter bar */}
       <div className="flex flex-wrap items-center gap-3">
         {/* Global search */}
@@ -965,6 +973,12 @@ function AssetManagementInner() {
             </button>
           </div>
         )}
+
+        <button onClick={() => setExpanded(v => !v)}
+          className="ml-auto flex items-center gap-1.5 px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-600 bg-white hover:bg-gray-50"
+          title={expanded ? 'Back to the normal view' : 'Show the asset list full screen'}>
+          {expanded ? <><Minimize2 size={14} /> Collapse</> : <><Maximize2 size={14} /> Expand</>}
+        </button>
       </div>
 
       {/* Table */}
@@ -980,16 +994,17 @@ function AssetManagementInner() {
             <p>No assets found.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto" onClick={() => setOpenFilterCol(null)}>
-            <table className="w-full text-sm">
+          <div className={expanded ? 'overflow-auto' : 'overflow-x-auto'} style={expanded ? { maxHeight: 'calc(100vh - 130px)' } : undefined} onClick={() => setOpenFilterCol(null)}>
+            <table ref={assetTableRef} className="w-full text-sm" style={assetRz.tableStyle}>
+              <ResizableColgroup rz={assetRz} />
               <thead>
-                <tr className="bg-gray-50 border-b border-gray-200">
+                <tr className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
 
                   {/* ── Photo ── */}
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Photo</th>
+                  <th className="relative text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={0} />Photo</th>
 
                   {/* ── Asset Name ── */}
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  <th className="relative text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={1} />
                     <div className="flex items-center gap-1">
                       <button className="flex items-center gap-1 hover:text-gray-800" onClick={(e) => { e.stopPropagation(); toggleSort('name') }}>
                         Asset Name
@@ -1012,7 +1027,7 @@ function AssetManagementInner() {
                   </th>
 
                   {/* ── Classification ── */}
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  <th className="relative text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={2} />
                     <div className="flex items-center gap-1">
                       <button className="flex items-center gap-1 hover:text-gray-800" onClick={(e) => { e.stopPropagation(); toggleSort('classification') }}>
                         Classification
@@ -1038,7 +1053,7 @@ function AssetManagementInner() {
                   </th>
 
                   {/* ── Branch ── */}
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  <th className="relative text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={3} />
                     <div className="flex items-center gap-1">
                       <button className="flex items-center gap-1 hover:text-gray-800" onClick={(e) => { e.stopPropagation(); toggleSort('branch') }}>
                         Branch
@@ -1064,7 +1079,7 @@ function AssetManagementInner() {
                   </th>
 
                   {/* ── Total Amount ── */}
-                  <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  <th className="relative text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={4} />
                     <button className="flex items-center gap-1 ml-auto hover:text-gray-800" onClick={() => toggleSort('totalAmount')}>
                       {sortKey === 'totalAmount' ? (sortDir === 'asc' ? <ChevronUp size={13} /> : <ChevronDown size={13} />) : <ChevronsUpDown size={12} className="text-gray-400" />}
                       Total Amount
@@ -1072,7 +1087,7 @@ function AssetManagementInner() {
                   </th>
 
                   {/* ── Monthly Depr. ── */}
-                  <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  <th className="relative text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={5} />
                     <button className="flex items-center gap-1 ml-auto hover:text-gray-800" onClick={() => toggleSort('monthlyDepreciation')}>
                       {sortKey === 'monthlyDepreciation' ? (sortDir === 'asc' ? <ChevronUp size={13} /> : <ChevronDown size={13} />) : <ChevronsUpDown size={12} className="text-gray-400" />}
                       Monthly Depr.
@@ -1080,7 +1095,7 @@ function AssetManagementInner() {
                   </th>
 
                   {/* ── End Date ── */}
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  <th className="relative text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={6} />
                     <button className="flex items-center gap-1 hover:text-gray-800" onClick={() => toggleSort('depreciationEndDate')}>
                       End Date
                       {sortKey === 'depreciationEndDate' ? (sortDir === 'asc' ? <ChevronUp size={13} /> : <ChevronDown size={13} />) : <ChevronsUpDown size={12} className="text-gray-400" />}
@@ -1088,7 +1103,7 @@ function AssetManagementInner() {
                   </th>
 
                   {/* ── Utilized ── */}
-                  <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  <th className="relative text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={7} />
                     <div className="flex items-center justify-center gap-1">
                       <button className="flex items-center gap-1 hover:text-gray-800" onClick={(e) => { e.stopPropagation(); toggleSort('utilized') }}>
                         Utilized
@@ -1115,20 +1130,20 @@ function AssetManagementInner() {
                   </th>
 
                   {/* ── Condition ── */}
-                  <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Condition</th>
+                  <th className="relative text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={8} />Condition</th>
 
                   {/* ── Control No. ── */}
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  <th className="relative text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={9} />
                     <button className="flex items-center gap-1 hover:text-gray-800" onClick={() => toggleSort('controlNumber')}>
                       Control No.
                       {sortKey === 'controlNumber' ? (sortDir === 'asc' ? <ChevronUp size={13} /> : <ChevronDown size={13} />) : <ChevronsUpDown size={12} className="text-gray-400" />}
                     </button>
                   </th>
 
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Accountability</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Departments</th>
+                  <th className="relative text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={10} />Accountability</th>
+                  <th className="relative text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={11} />Departments</th>
                   {canWrite && (
-                    <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Actions</th>
+                    <th className="relative text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={12} />Actions</th>
                   )}
                 </tr>
               </thead>
@@ -1245,7 +1260,7 @@ function AssetManagementInner() {
           </div>
         )}
       </div>
-      </>)}
+      </div>)}
 
       {/* Photo gallery */}
       {galleryAsset && (
