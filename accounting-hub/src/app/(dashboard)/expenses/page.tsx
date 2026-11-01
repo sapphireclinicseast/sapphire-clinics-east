@@ -1548,17 +1548,19 @@ function ExpensesInner() {
                             <option value={PART_VAT}>{PART_VAT}</option>
                           </select>
                           {isMixedVat(e) && (
-                            <div className="px-1 pb-1 space-y-0.5" style={{ minWidth: 150 }}>
-                              <label className="flex items-center gap-1 text-[10px]" style={{ color: 'var(--mid-gray)' }}>
-                                VAT part ₱
-                                <input type="number" step="0.01" className={`${cellCls} text-right`} disabled={lk}
-                                  title="The VAT-inclusive amount bought from a VAT-registered seller. The rest of the gross is non-VAT."
-                                  value={e.vatPortion == null ? '' : String(e.vatPortion)}
-                                  onWheel={ev => ev.currentTarget.blur()}
-                                  onChange={ev => patchLocal(e.id, { vatPortion: ev.target.value })}
-                                  onBlur={ev => saveField(e.id, { vatPortion: Math.min(Math.abs(Number(ev.target.value) || 0), Math.abs(num(e.grossAmount))) }, false)} />
-                              </label>
-                              <p className="text-[10px]" style={{ color: 'var(--mid-gray)' }}>Non-VAT part ₱{peso(num(e.grossAmount) - vatBase(e))}</p>
+                            // Two aligned rows: labels on the left (one line each),
+                            // the typed VAT part and the computed non-VAT part
+                            // right-aligned in the same column.
+                            <div className="grid grid-cols-[auto_1fr] items-center gap-x-1 px-1 pb-1 text-[10px]" style={{ minWidth: 170, color: 'var(--mid-gray)' }}>
+                              <span className="whitespace-nowrap">VAT part ₱</span>
+                              <input type="number" step="0.01" className={`${cellCls} text-right`} disabled={lk}
+                                title="The VAT-inclusive amount bought from a VAT-registered seller. The rest of the gross is non-VAT."
+                                value={e.vatPortion == null ? '' : String(e.vatPortion)}
+                                onWheel={ev => ev.currentTarget.blur()}
+                                onChange={ev => patchLocal(e.id, { vatPortion: ev.target.value })}
+                                onBlur={ev => saveField(e.id, { vatPortion: Math.min(Math.abs(Number(ev.target.value) || 0), Math.abs(num(e.grossAmount))) }, false)} />
+                              <span className="whitespace-nowrap">Non-VAT part ₱</span>
+                              <span className="px-2 text-xs text-right">{peso(num(e.grossAmount) - vatBase(e))}</span>
                             </div>
                           )}
                         </td>
@@ -2344,6 +2346,7 @@ function SplitPurchaseModal({ accounts, bankOptions, onClose, onDone }: {
   const [description, setDescription] = useState('')
   const [accountTitle, setAccountTitle] = useState('')
   const [vatable, setVatable] = useState('NV')
+  const [vatPart, setVatPart] = useState('')   // VAT + Non-VAT: the VAT-inclusive part of the total
   const [total, setTotal] = useState('')
   const [payNow, setPayNow] = useState(true)
   const [datePaid, setDatePaid] = useState(new Date().toISOString().slice(0, 10))
@@ -2363,6 +2366,8 @@ function SplitPurchaseModal({ accounts, bankOptions, onClose, onDone }: {
     if (chosen.length < 2) { alert('Tick at least two branches — a single-branch purchase is an ordinary Add Row.'); return }
     if (!(totalCents > 0)) { alert('Enter the total amount.'); return }
     if (!date) { alert('Enter the purchase date.'); return }
+    const vatPartCents = Math.round((Number(vatPart) || 0) * 100)
+    if (vatable === PART_VAT && !(vatPartCents > 0 && vatPartCents <= totalCents)) { alert('Enter the VAT part — more than zero and no more than the total.'); return }
     if (payNow && needsRef && (!reference || !bankAccount)) { alert('Enter the reference number and the bank account the payment left from.'); return }
     setBusy(true)
     try {
@@ -2370,7 +2375,8 @@ function SplitPurchaseModal({ accounts, bankOptions, onClose, onDone }: {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           branches: chosen.map(b => b.value), totalAmount: totalCents / 100, date,
-          description, accountTitle, vatable, siNumber, tinNumber, registeredName, registeredAddress,
+          description, accountTitle, siNumber, tinNumber, registeredName, registeredAddress,
+          vatable: vatable === PART_VAT ? 'VAT' : vatable, vatPortion: vatable === PART_VAT ? vatPartCents / 100 : null,
           ...(payNow ? { payment: { datePaid, paymentMethod: method, checkNumber: reference, paymentBankAccount: bankAccount } } : {}),
         }),
       })
@@ -2437,6 +2443,7 @@ function SplitPurchaseModal({ accounts, bankOptions, onClose, onDone }: {
               className="w-full px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }}>
               <option value="NV">NV</option>
               <option value="VAT">VAT</option>
+              <option value={PART_VAT}>{PART_VAT}</option>
             </select>
           </div>
           <div>
@@ -2445,6 +2452,17 @@ function SplitPurchaseModal({ accounts, bankOptions, onClose, onDone }: {
               className="w-full px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }} />
           </div>
         </div>
+
+        {vatable === PART_VAT && (
+          <div className="mb-3">
+            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--dark-teal)' }}>VAT part of the total (₱, VAT-inclusive)</label>
+            <input type="number" min="0" step="0.01" value={vatPart} onChange={e => setVatPart(e.target.value)} placeholder="0.00"
+              className="w-full px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }} />
+            <p className="text-[11px] mt-1" style={{ color: 'var(--mid-gray)' }}>
+              Non-VAT part {peso(Math.max(0, totalCents - Math.round((Number(vatPart) || 0) * 100)) / 100)} · each branch&apos;s share keeps the same VAT / non-VAT split.
+            </p>
+          </div>
+        )}
 
         <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--dark-teal)' }}>Supplier (registered name)</label>
         <input value={registeredName} onChange={e => setRegisteredName(e.target.value)}

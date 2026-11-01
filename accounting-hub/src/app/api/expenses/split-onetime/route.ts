@@ -40,6 +40,10 @@ export async function POST(req: Request) {
 
     const str = (v: unknown) => (v != null && String(v).trim() !== '' ? String(v).trim() : null)
     const vatable = ['VAT', 'NV'].includes(body.vatable) ? body.vatable : null
+    // VAT + Non-VAT (lib/vat): the VAT-inclusive part of the total; null = all VAT.
+    const vatCents = vatable === 'VAT' && body.vatPortion != null && body.vatPortion !== ''
+      ? Math.round(Math.abs(Number(body.vatPortion)) * 100) : null
+    if (vatCents != null && (!Number.isFinite(vatCents) || vatCents > totalCents)) return NextResponse.json({ error: 'The VAT part cannot be more than the total.' }, { status: 400 })
     const splitNote = `split across ${branches.map(b => SHORT[b] || b).join(' + ')}`
     const description = str(body.description) ? `${str(body.description)} — ${splitNote}` : `Shared purchase — ${splitNote}`
 
@@ -54,7 +58,13 @@ export async function POST(req: Request) {
 
     // Equal split in centavos; the remainder goes to the first ticked branch.
     const share = Math.floor(totalCents / branches.length)
-    const shares = branches.map((b, i) => ({ branch: b, cents: share + (i === 0 ? totalCents - share * branches.length : 0) }))
+    // A VAT part splits the same way, never more than the branch's own share.
+    const vatShare = vatCents == null ? 0 : Math.floor(vatCents / branches.length)
+    const shares = branches.map((b, i) => {
+      const cents = share + (i === 0 ? totalCents - share * branches.length : 0)
+      const vat = vatCents == null ? null : Math.min(cents, vatShare + (i === 0 ? vatCents - vatShare * branches.length : 0))
+      return { branch: b, cents, vat }
+    })
 
     const created = await prisma.$transaction(async (tx) => {
       const out: { id: string; branch: string; pcvNumber: string; grossAmount: number }[] = []
@@ -76,6 +86,7 @@ export async function POST(req: Request) {
             date,
             description,
             vatable,
+            vatPortion: s.vat == null ? null : s.vat / 100,
             siNumber: str(body.siNumber),
             tinNumber: str(body.tinNumber),
             registeredName: str(body.registeredName),

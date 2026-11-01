@@ -1215,17 +1215,19 @@ function PettyCashInner() {
                             <option value={PART_VAT}>{PART_VAT}</option>
                           </select>
                           {isMixedVat(e) && (
-                            <div className="px-1 pb-1 space-y-0.5" style={{ minWidth: 150 }}>
-                              <label className="flex items-center gap-1 text-[10px]" style={{ color: 'var(--mid-gray)' }}>
-                                VAT part ₱
-                                <input type="number" step="0.01" className={`${cellCls} text-right`} disabled={lk}
-                                  title="The VAT-inclusive amount bought from a VAT-registered seller. The rest of the gross is non-VAT."
-                                  value={e.vatPortion == null ? '' : String(e.vatPortion)}
-                                  onWheel={ev => ev.currentTarget.blur()}
-                                  onChange={ev => patchLocal(e.id, { vatPortion: ev.target.value })}
-                                  onBlur={ev => saveField(e.id, { vatPortion: Math.min(Math.abs(Number(ev.target.value) || 0), Math.abs(num(e.grossAmount))) }, false)} />
-                              </label>
-                              <p className="text-[10px]" style={{ color: 'var(--mid-gray)' }}>Non-VAT part ₱{peso(num(e.grossAmount) - vatBase(e))}</p>
+                            // Two aligned rows: labels on the left (one line each),
+                            // the typed VAT part and the computed non-VAT part
+                            // right-aligned in the same column.
+                            <div className="grid grid-cols-[auto_1fr] items-center gap-x-1 px-1 pb-1 text-[10px]" style={{ minWidth: 170, color: 'var(--mid-gray)' }}>
+                              <span className="whitespace-nowrap">VAT part ₱</span>
+                              <input type="number" step="0.01" className={`${cellCls} text-right`} disabled={lk}
+                                title="The VAT-inclusive amount bought from a VAT-registered seller. The rest of the gross is non-VAT."
+                                value={e.vatPortion == null ? '' : String(e.vatPortion)}
+                                onWheel={ev => ev.currentTarget.blur()}
+                                onChange={ev => patchLocal(e.id, { vatPortion: ev.target.value })}
+                                onBlur={ev => saveField(e.id, { vatPortion: Math.min(Math.abs(Number(ev.target.value) || 0), Math.abs(num(e.grossAmount))) }, false)} />
+                              <span className="whitespace-nowrap">Non-VAT part ₱</span>
+                              <span className="px-2 text-xs text-right">{peso(num(e.grossAmount) - vatBase(e))}</span>
                             </div>
                           )}
                         </td>
