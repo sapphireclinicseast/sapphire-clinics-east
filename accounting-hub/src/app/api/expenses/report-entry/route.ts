@@ -25,7 +25,7 @@ export async function PATCH(req: Request) {
     // Assets made from this entry follow its Account Title — same rule as the
     // main entries PUT (lib/asset-entry-retag).
     if ('accountTitle' in data) {
-      const existing = await prisma.pettyCashEntry.findUnique({ where: { id }, select: { id: true, assetAddedAt: true, pcvNumber: true } })
+      const existing = await prisma.pettyCashEntry.findUnique({ where: { id }, select: { id: true, assetAddedAt: true, pcvNumber: true, addedToAssetId: true, branchAllocations: true, grossAmount: true, vatable: true, vatPortion: true } })
       if (existing) Object.assign(data, await retagEntryAssets(prisma, existing, data.accountTitle, session.user.id as string))
     }
     await prisma.pettyCashEntry.update({ where: { id }, data })

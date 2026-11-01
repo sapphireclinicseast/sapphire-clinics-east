@@ -18,6 +18,7 @@ import { BillingVoucherModal } from '@/components/BillingVoucherModal'
 import type { RfpMemoParts } from '@/lib/billing-voucher'
 import type { BVLine } from '@/lib/billing-voucher'
 import { isMixedVat, netOfVat as entryNet, vatBase, vatOf as entryVat } from '@/lib/vat'
+import { ExistingAssetPicker } from '@/components/ExistingAssetPicker'
 
 // ── Constants ──────────────────────────────────────────────────
 const BRANCHES = [
@@ -261,11 +262,11 @@ function PettyCashInner() {
   // "Add to Asset Management" prompt for entries tagged with a PPE classification.
   const [assetPrompt, setAssetPrompt] = useState<Entry | null>(null)
   const [assetBusy, setAssetBusy] = useState(false)
-  const [assetResult, setAssetResult] = useState<{ count: number } | null>(null)
+  const [assetResult, setAssetResult] = useState<{ count: number; addedTo?: { name: string; controlNumber: string | null; added: number; totalAmount: number } | null } | null>(null)
   // Details typed into the "Add to Asset Management" dialog (photos, custodian, remarks).
   // multi/quantity/unitNames: "more than 1 item" — one asset with per-piece custodians,
   // each piece getting a sub control number (-01, -02, …) under one control number.
-  const [assetForm, setAssetForm] = useState<{ name: string; accountableName: string; remarks: string; photoUrls: string[]; multi: boolean; quantity: string; unitNames: string[] }>({ name: '', accountableName: '', remarks: '', photoUrls: [], multi: false, quantity: '2', unitNames: [] })
+  const [assetForm, setAssetForm] = useState<{ name: string; accountableName: string; remarks: string; photoUrls: string[]; multi: boolean; quantity: string; unitNames: string[]; addTo: boolean; existingAssetId: string }>({ name: '', accountableName: '', remarks: '', photoUrls: [], multi: false, quantity: '2', unitNames: [], addTo: false, existingAssetId: '' })
   // HR-Hub staff names for the Accountability typeahead — same source as the Asset
   // Management form, so typed custodians match staff records (and the Accountability
   // summary tab) exactly instead of free-typed spellings.
@@ -794,6 +795,7 @@ function PettyCashInner() {
 
   const confirmAddAsset = async () => {
     if (!assetPrompt) return
+    if (assetForm.addTo && !assetForm.existingAssetId) { alert('Pick the asset this payment belongs to.'); return }
     setAssetBusy(true)
     try {
       const qty = assetForm.multi ? Math.max(1, Math.min(200, parseInt(assetForm.quantity) || 1)) : 1
@@ -801,6 +803,7 @@ function PettyCashInner() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           entryId: assetPrompt.id,
+          existingAssetId: assetForm.addTo ? assetForm.existingAssetId : undefined,
           name: assetForm.name,
           accountableName: assetForm.accountableName,
           remarks: assetForm.remarks,
@@ -815,7 +818,7 @@ function PettyCashInner() {
       const d = await r.json()
       if (!r.ok) { alert(d.error || 'Failed to add asset'); setAssetBusy(false); return }
       patchLocal(assetPrompt.id, { assetAddedAt: d.assetAddedAt || new Date().toISOString() })
-      setAssetResult({ count: (d.created || []).length })
+      setAssetResult({ count: (d.created || []).length, addedTo: d.addedTo || null })
       setAssetPrompt(null)
     } catch { alert('Failed to add asset') }
     setAssetBusy(false)
@@ -1310,7 +1313,7 @@ function PettyCashInner() {
                                 <CheckCircle2 size={11} /> In Asset Management
                               </span>
                             ) : (
-                              <button onClick={() => { setAssetForm({ name: e.description || '', accountableName: '', remarks: '', photoUrls: [], multi: false, quantity: '2', unitNames: [] }); setAssetPrompt(e) }} title="Add this asset to Asset Management"
+                              <button onClick={() => { setAssetForm({ name: e.description || '', accountableName: '', remarks: '', photoUrls: [], multi: false, quantity: '2', unitNames: [] , addTo: false, existingAssetId: '' }); setAssetPrompt(e) }} title="Add this asset to Asset Management"
                                 className="mt-1 flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold border whitespace-nowrap"
                                 style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
                                 <Plus size={11} /> Add to Asset Management
@@ -1794,6 +1797,24 @@ function PettyCashInner() {
                 ))}
                 <div className="text-xs pt-1" style={{ color: 'var(--mid-gray)' }}>Amounts are net of VAT · depreciation, supplier &amp; department are pre-filled · Control No. is auto-assigned.</div>
               </div>
+              {targets.length === 1 && (
+                <div className="flex rounded-xl p-1 mb-3 text-xs font-semibold" style={{ background: 'var(--off-white)' }}>
+                  {[[false, 'New asset'], [true, 'Add to an existing asset']].map(([v, label]) => (
+                    <button key={String(v)} type="button" onClick={() => setAssetForm(f => ({ ...f, addTo: v as boolean }))}
+                      className="flex-1 py-1.5 rounded-lg" style={assetForm.addTo === v ? { background: 'white', color: 'var(--teal)', boxShadow: '0 1px 2px rgba(0,0,0,.08)' } : { color: 'var(--mid-gray)' }}>
+                      {label as string}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {assetForm.addTo && targets.length === 1 ? (
+                <div className="mb-4">
+                  <p className="text-xs mb-2" style={{ color: 'var(--mid-gray)' }}>
+                    For a balance payment: the down payment made the asset, so this ₱{peso(Math.round(targets[0].price * 100) / 100)} is added to its cost and its depreciation covers the full price.
+                  </p>
+                  <ExistingAssetPicker branch={targets[0].branch} value={assetForm.existingAssetId} onChange={id => setAssetForm(f => ({ ...f, existingAssetId: id }))} />
+                </div>
+              ) : (
               <div className="space-y-3 mb-4">
                 <div>
                   <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Asset name <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>— as it will show in Asset Management</span></label>
@@ -1870,10 +1891,11 @@ function PettyCashInner() {
                   </div>
                 </div>
               </div>
+              )}
               <div className="flex gap-2">
                 <button onClick={() => setAssetPrompt(null)} className="flex-1 py-2.5 rounded-xl text-sm font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>No, skip</button>
                 <button onClick={confirmAddAsset} disabled={assetBusy} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>
-                  {assetBusy ? 'Creating…' : `Yes, create ${targets.length > 1 ? `${targets.length} assets` : 'asset'}`}
+                  {assetBusy ? 'Saving…' : assetForm.addTo && targets.length === 1 ? 'Add to this asset' : `Yes, create ${targets.length > 1 ? `${targets.length} assets` : 'asset'}`}
                 </button>
               </div>
             </div>
@@ -1886,7 +1908,7 @@ function PettyCashInner() {
           <div className="bg-white rounded-2xl p-6 w-full max-w-sm text-center" onClick={e => e.stopPropagation()}>
             <CheckCircle2 size={32} className="mx-auto mb-2" style={{ color: 'var(--teal)' }} />
             <h2 className="text-lg font-bold mb-1" style={{ color: 'var(--charcoal)' }}>Added to Asset Management</h2>
-            <p className="text-sm mb-4" style={{ color: 'var(--mid-gray)' }}>Created {assetResult.count} asset record{assetResult.count === 1 ? '' : 's'}. Review or add photos in Asset Management.</p>
+            <p className="text-sm mb-4" style={{ color: 'var(--mid-gray)' }}>{assetResult.addedTo ? `Added ₱${peso(assetResult.addedTo.added)} to ${assetResult.addedTo.controlNumber || ''} ${assetResult.addedTo.name} — its cost is now ₱${peso(assetResult.addedTo.totalAmount)}.` : `Created ${assetResult.count} asset record${assetResult.count === 1 ? '' : 's'}. Review or add photos in Asset Management.`}</p>
             <div className="flex gap-2">
               <button onClick={() => setAssetResult(null)} className="flex-1 py-2.5 rounded-xl text-sm font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Close</button>
               <a href="/asset-management" className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white text-center" style={{ background: 'var(--teal)' }}>Go to Asset Management</a>
@@ -1904,7 +1926,7 @@ function PettyCashInner() {
             </p>
             <div className="flex gap-2">
               <button onClick={() => setAssetReAddWarn(null)} className="flex-1 py-2.5 rounded-xl text-sm font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Cancel</button>
-              <button onClick={() => { const e = assetReAddWarn; setAssetReAddWarn(null); setAssetForm({ name: e?.description || '', accountableName: '', remarks: '', photoUrls: [], multi: false, quantity: '2', unitNames: [] }); setAssetPrompt(e) }} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white" style={{ background: '#dc2626' }}>Add again</button>
+              <button onClick={() => { const e = assetReAddWarn; setAssetReAddWarn(null); setAssetForm({ name: e?.description || '', accountableName: '', remarks: '', photoUrls: [], multi: false, quantity: '2', unitNames: [] , addTo: false, existingAssetId: '' }); setAssetPrompt(e) }} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white" style={{ background: '#dc2626' }}>Add again</button>
             </div>
           </div>
         </div>

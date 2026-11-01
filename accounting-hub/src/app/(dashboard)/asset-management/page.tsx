@@ -816,7 +816,10 @@ function AssetManagementInner() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Building2 size={24} className="text-teal-600" />
-          <h1 className="text-2xl font-semibold text-gray-900">Asset Management</h1>
+          <div>
+            <h1 className="text-2xl font-semibold text-gray-900">Asset Management</h1>
+            <p className="text-xs text-gray-500">For property, plant &amp; equipment — long-term assets the clinics use (2020–2100). Stock for sale (1050 Inventory) belongs in Inventory &amp; Procurement.</p>
+          </div>
         </div>
         {(tab === 'assets' || tab === 'auditable') && (
           <div className="flex items-center gap-2">
@@ -1649,6 +1652,9 @@ function AssetManagementInner() {
                   />
                 </div>
               </div>
+              {editingAsset && SPLIT_ROLES.includes(userRole) && (
+                <SplitBranchesPanel asset={editingAsset} onDone={() => { closeModal(); fetchAssets() }} />
+              )}
             </div>
 
             {/* Footer */}
@@ -2059,6 +2065,82 @@ function AssetManagementInner() {
 }
 
 // ── Asset recording flowchart ─────────────────────────────────
+// One asset several branches use: split it into one record per branch so each
+// carries its own share of the depreciation (POST /api/assets/split).
+const SPLIT_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
+function SplitBranchesPanel({ asset, onDone }: { asset: Asset; onDone: () => void }) {
+  const [open, setOpen] = useState(false)
+  const [amts, setAmts] = useState<Record<string, string>>({ [asset.branch]: Number(asset.totalAmount).toFixed(2) })
+  const [busy, setBusy] = useState(false)
+  const totalCents = Math.round(Number(asset.totalAmount) * 100)
+  const picked = BRANCH_OPTIONS.filter(b => b.value in amts)
+  const sumCents = picked.reduce((s, b) => s + Math.round((Number(amts[b.value]) || 0) * 100), 0)
+  const toggle = (v: string) => setAmts(p => { const n = { ...p }; if (v in n) delete n[v]; else n[v] = ''; return n })
+  const evenly = () => {
+    if (!picked.length) return
+    const share = Math.floor(totalCents / picked.length)
+    setAmts(Object.fromEntries(picked.map((b, i) => [b.value, ((share + (i === 0 ? totalCents - share * picked.length : 0)) / 100).toFixed(2)])))
+  }
+  const submit = async () => {
+    if (picked.length < 2) { alert('Tick at least two branches.'); return }
+    if (sumCents !== totalCents) { alert(`The amounts add up to ${formatCurrency(sumCents / 100)} — they must equal the asset's total, ${formatCurrency(totalCents / 100)}.`); return }
+    if (!confirm(`Split "${asset.name}" into ${picked.length} records — ${picked.map(b => `${b.label} ${formatCurrency(Number(amts[b.value]) || 0)}`).join(', ')}?`)) return
+    setBusy(true)
+    try {
+      const r = await fetch('/api/assets/split', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: asset.id, shares: picked.map(b => ({ branch: b.value, amount: Number(amts[b.value]) || 0 })) }),
+      })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) { alert(d.error || 'Failed to split the asset'); return }
+      onDone()
+    } finally { setBusy(false) }
+  }
+  return (
+    <div className="mt-5 border border-gray-200 rounded-xl p-4">
+      <button type="button" onClick={() => setOpen(o => !o)} className="flex items-center justify-between w-full text-left">
+        <span className="text-sm font-medium text-gray-700">Used by more than one branch?</span>
+        {open ? <ChevronUp size={15} className="text-gray-400" /> : <ChevronDown size={15} className="text-gray-400" />}
+      </button>
+      {open && (
+        <div className="mt-3 space-y-3">
+          <p className="text-xs text-gray-500">
+            Split this asset into one record per branch at the amounts below, so each branch carries its own share of the depreciation.
+            Every record keeps the purchase date, classification and life; each new one gets its branch&apos;s control number.
+          </p>
+          <div className="space-y-2">
+            {BRANCH_OPTIONS.map(b => (
+              <div key={b.value} className="flex items-center gap-3">
+                <label className="flex items-center gap-2 text-sm text-gray-700 w-52">
+                  <input type="checkbox" checked={b.value in amts} onChange={() => toggle(b.value)} />
+                  {b.label}
+                </label>
+                {b.value in amts && (
+                  <input type="number" step="0.01" min="0" value={amts[b.value]} onChange={e => setAmts(p => ({ ...p, [b.value]: e.target.value }))}
+                    onWheel={e => e.currentTarget.blur()}
+                    className="w-40 border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-teal-500" />
+                )}
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <span className={`text-xs ${sumCents === totalCents ? 'text-gray-500' : 'text-red-600'}`}>
+              {formatCurrency(sumCents / 100)} of {formatCurrency(totalCents / 100)}
+            </span>
+            <div className="flex gap-2">
+              <button type="button" onClick={evenly} className="px-3 py-1.5 text-xs border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50">Split equally</button>
+              <button type="button" onClick={submit} disabled={busy || picked.length < 2}
+                className="px-3 py-1.5 text-xs rounded-lg text-white bg-teal-700 hover:bg-teal-800 disabled:opacity-50">
+                {busy ? 'Splitting…' : `Split into ${Math.max(picked.length, 2)} records`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function AssetFlowchart() {
   const steps = [
     { n: 1, title: 'Record the purchase as an expense', who: 'Front desk / Bookkeeper', desc: 'Enter the asset purchase in Petty Cash (petty-cash float) or as a One-time Expense. In the Account Title, pick the asset account — a PPE class (2020–2100) or an intangible / other non-current asset (3010–3130).', je: null, tag: 'Petty Cash · One-time Expense' },

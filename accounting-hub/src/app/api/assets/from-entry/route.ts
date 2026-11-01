@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { assetClassFromAccountTitle, ASSET_CLASSIFICATION_LABELS, ENTRY_DEPT_TO_ASSET, isDepreciatingClassification } from '@/lib/asset-classification'
 import { sanitizeAssetUnits, summarizeAssetUnits } from '@/lib/asset-units'
 import { netOfVat } from '@/lib/vat'
+import { postAssetJournal, reverseAssetJournal } from '@/lib/accounting/post-asset'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
 const ASSET_BRANCH_CODE: Record<string, string> = { SANDBOX_EAST: 'AHEA', SANDBOX_GREENHILLS: 'AHGH', VERDANA_STORE: 'VERD' }
@@ -64,6 +65,43 @@ export async function POST(req: Request) {
       if (!VALID_BRANCHES.includes(t.branch)) {
         return NextResponse.json({ error: `CEO / unallocated entries need a branch allocation before they can become assets (got "${t.branch}").` }, { status: 400 })
       }
+    }
+
+    // A balance payment (Hannah 2026-11-01, signage paid down payment + balance):
+    // the down payment made the asset, so the balance adds to that asset's cost
+    // and depreciation (cost ÷ life, same purchase date and end) covers the full price.
+    const existingAssetId = typeof body.existingAssetId === 'string' ? body.existingAssetId : ''
+    if (existingAssetId) {
+      if (targets.length !== 1) return NextResponse.json({ error: 'An entry split across branches cannot be added to one existing asset.' }, { status: 400 })
+      const asset = await prisma.asset.findUnique({
+        where: { id: existingAssetId },
+        select: { id: true, branch: true, name: true, controlNumber: true, totalAmount: true, quantity: true, yearsDepreciation: true, remarks: true },
+      })
+      if (!asset) return NextResponse.json({ error: 'Asset not found' }, { status: 404 })
+      if (asset.branch !== targets[0].branch) return NextResponse.json({ error: 'That asset belongs to another branch.' }, { status: 400 })
+      const added = Math.round(targets[0].price * 100) / 100
+      const total = Math.round((Number(asset.totalAmount) + added) * 100) / 100
+      const qtyNow = asset.quantity || 1
+      await prisma.asset.update({
+        where: { id: asset.id },
+        data: {
+          totalAmount: total,
+          purchasePrice: qtyNow > 1 ? Math.round((total / qtyNow) * 100) / 100 : total,
+          monthlyDepreciation: asset.yearsDepreciation > 0 ? total / (asset.yearsDepreciation * 12) : 0,
+          remarks: [asset.remarks, `+ ₱${added.toFixed(2)} from ${e.pcvNumber}${userRemarks ? ` (${userRemarks})` : ''}`].filter(Boolean).join(' · '),
+        },
+      })
+      // Re-post an acquisition JE only if this asset has one (most from
+      // entries don't — the entries carry the cost).
+      if (await prisma.journalEntry.findFirst({ where: { referenceType: 'ASSET_PURCHASE', referenceId: asset.id }, select: { id: true } })) {
+        try {
+          await reverseAssetJournal(prisma, asset.id, session.user.id as string, `balance ${e.pcvNumber} added`)
+          await postAssetJournal(prisma, asset.id, session.user.id as string)
+        } catch (err) { console.error(`[GL] asset balance posting threw for ${asset.id}:`, err) }
+      }
+      const assetAddedAt = new Date()
+      await prisma.pettyCashEntry.update({ where: { id: e.id }, data: { assetAddedAt, addedToAssetId: asset.id } })
+      return NextResponse.json({ created: [], addedTo: { id: asset.id, name: asset.name, controlNumber: asset.controlNumber, added, totalAmount: total }, assetAddedAt })
     }
 
     // Intangibles / other non-current assets are NOT depreciated.

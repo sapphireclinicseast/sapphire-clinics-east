@@ -296,6 +296,8 @@ export async function DELETE(req: Request) {
         await prisma.pettyCashEntry.update({ where: { id: sourceEntryId }, data: { assetAddedAt: null } }).catch(() => {})
       }
     }
+    // Balance payments that were added onto this asset are free again too.
+    await prisma.pettyCashEntry.updateMany({ where: { addedToAssetId: id }, data: { addedToAssetId: null, assetAddedAt: null } }).catch(() => {})
     return NextResponse.json({ success: true })
   } catch (err) {
     console.error('[DELETE /api/assets]', err)
