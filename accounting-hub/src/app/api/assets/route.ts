@@ -15,7 +15,10 @@ async function nextControlNumber(branch: string, dateBought: string | Date): Pro
   const code = ASSET_BRANCH_CODE[branch] || branch
   const year = new Date(dateBought).getFullYear()
   const prefix = `${code}-${year}-`
-  const existing = await prisma.asset.findMany({ where: { branch: branch as never, controlNumber: { startsWith: prefix } }, select: { controlNumber: true } })
+  // Every asset carrying the prefix, whatever its branch now: an asset moved to
+  // another branch keeps its number (PLS5 Test, AHEA-2026-0035 → Greenhills,
+  // 1 Nov), and a branch-only lookup handed that number out again.
+  const existing = await prisma.asset.findMany({ where: { controlNumber: { startsWith: prefix } }, select: { controlNumber: true } })
   let max = 0
   for (const e of existing) { const m = e.controlNumber?.match(/-(\d+)$/); if (m) max = Math.max(max, parseInt(m[1], 10)) }
   return `${prefix}${String(max + 1).padStart(4, '0')}`
