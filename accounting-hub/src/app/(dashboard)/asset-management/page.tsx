@@ -1810,7 +1810,7 @@ function AssetManagementInner() {
                 </div>
               </div>
               {editingAsset && SPLIT_ROLES.includes(userRole) && (
-                <SplitBranchesPanel asset={editingAsset} onDone={() => { closeModal(); fetchAssets() }} />
+                <SplitBranchesPanel asset={editingAsset} staffNames={staffNames} onDone={() => { closeModal(); fetchAssets() }} />
               )}
             </div>
 
@@ -2283,9 +2283,12 @@ function CombineAssetsModal({ assets, onClose, onDone }: { assets: Asset[]; onCl
 // One asset several branches use: split it into one record per branch so each
 // carries its own share of the depreciation (POST /api/assets/split).
 const SPLIT_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
-function SplitBranchesPanel({ asset, onDone }: { asset: Asset; onDone: () => void }) {
+function SplitBranchesPanel({ asset, staffNames, onDone }: { asset: Asset; staffNames: string[]; onDone: () => void }) {
   const [open, setOpen] = useState(false)
   const [amts, setAmts] = useState<Record<string, string>>({ [asset.branch]: Number(asset.totalAmount).toFixed(2) })
+  // Each branch's record can have its own custodian (e.g. a test kit shared by
+  // East and Greenhills, one person accountable in each).
+  const [custodians, setCustodians] = useState<Record<string, string>>({ [asset.branch]: asset.accountableName || '' })
   const [busy, setBusy] = useState(false)
   const totalCents = Math.round(Number(asset.totalAmount) * 100)
   const picked = BRANCH_OPTIONS.filter(b => b.value in amts)
@@ -2304,7 +2307,7 @@ function SplitBranchesPanel({ asset, onDone }: { asset: Asset; onDone: () => voi
     try {
       const r = await fetch('/api/assets/split', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: asset.id, shares: picked.map(b => ({ branch: b.value, amount: Number(amts[b.value]) || 0 })) }),
+        body: JSON.stringify({ id: asset.id, shares: picked.map(b => ({ branch: b.value, amount: Number(amts[b.value]) || 0, accountableName: (custodians[b.value] || '').trim() || null })) }),
       })
       const d = await r.json().catch(() => ({}))
       if (!r.ok) { alert(d.error || 'Failed to split the asset'); return }
@@ -2320,21 +2323,24 @@ function SplitBranchesPanel({ asset, onDone }: { asset: Asset; onDone: () => voi
       {open && (
         <div className="mt-3 space-y-3">
           <p className="text-xs text-gray-500">
-            Split this asset into one record per branch at the amounts below, so each branch carries its own share of the depreciation.
+            Split this asset into one record per branch at the amounts below, so each branch carries its own share of the depreciation — each with its own accountable person.
             Every record keeps the purchase date, classification and life; each new one gets its branch&apos;s control number.
           </p>
           <div className="space-y-2">
             {BRANCH_OPTIONS.map(b => (
               <div key={b.value} className="flex items-center gap-3">
-                <label className="flex items-center gap-2 text-sm text-gray-700 w-52">
+                <label className="flex items-center gap-2 text-sm text-gray-700 w-44 shrink-0">
                   <input type="checkbox" checked={b.value in amts} onChange={() => toggle(b.value)} />
                   {b.label}
                 </label>
-                {b.value in amts && (
+                {b.value in amts && (<>
                   <input type="number" step="0.01" min="0" value={amts[b.value]} onChange={e => setAmts(p => ({ ...p, [b.value]: e.target.value }))}
                     onWheel={e => e.currentTarget.blur()}
-                    className="w-40 border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-teal-500" />
-                )}
+                    className="w-32 border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-teal-500" />
+                  <NameCombobox options={['Not Applicable', ...staffNames]} value={custodians[b.value] || ''}
+                    onChange={v => setCustodians(p => ({ ...p, [b.value]: v }))} placeholder="Accountable…"
+                    className="flex-1 min-w-0 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+                </>)}
               </div>
             ))}
           </div>

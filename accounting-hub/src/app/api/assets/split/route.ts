@@ -37,9 +37,13 @@ export async function POST(req: Request) {
   try {
     const body = await req.json()
     const id = typeof body.id === 'string' ? body.id : ''
-    const raw: { branch?: string; amount?: number | string }[] = Array.isArray(body.shares) ? body.shares : []
+    const raw: { branch?: string; amount?: number | string; accountableName?: string | null }[] = Array.isArray(body.shares) ? body.shares : []
     const shares = raw
-      .map(s => ({ branch: String(s.branch || ''), cents: Math.round(Number(s.amount) * 100) }))
+      .map(s => ({
+        branch: String(s.branch || ''), cents: Math.round(Number(s.amount) * 100),
+        // Each branch's record can have its own custodian; blank keeps the original's.
+        custodian: typeof s.accountableName === 'string' && s.accountableName.trim() ? s.accountableName.trim().slice(0, 200) : null,
+      }))
       .filter(s => s.cents > 0)
     if (shares.length < 2) return NextResponse.json({ error: 'Give at least two branches an amount.' }, { status: 400 })
     if (shares.some(s => !VALID_BRANCHES.includes(s.branch))) return NextResponse.json({ error: 'Invalid branch.' }, { status: 400 })
@@ -76,6 +80,7 @@ export async function POST(req: Request) {
       data: {
         branch: keep.branch as never,
         ...priced(keep.cents),
+        ...(keep.custodian ? { accountableName: keep.custodian } : {}),
         remarks: [a.remarks, `Shared: ${branchList}`].filter(Boolean).join(' · '),
       },
     })
@@ -99,7 +104,7 @@ export async function POST(req: Request) {
           utilized: a.utilized,
           controlNumber,
           remarks: `Shared with ${a.controlNumber || a.name}: ${branchList}`,
-          accountableName: a.accountableName,
+          accountableName: s.custodian ?? a.accountableName,
           sourceAccountId: a.sourceAccountId,
           fromPettyCash: a.fromPettyCash,
           auditable: a.auditable,
