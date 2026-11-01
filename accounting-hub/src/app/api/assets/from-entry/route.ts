@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { assetClassFromAccountTitle, assetName, ASSET_CLASSIFICATION_LABELS, ENTRY_DEPT_TO_ASSET, isDepreciatingClassification } from '@/lib/asset-classification'
 import { sanitizeAssetUnits, summarizeAssetUnits } from '@/lib/asset-units'
 import { netOfVat } from '@/lib/vat'
+import { partDate, partsJson, partsOf } from '@/lib/asset-parts'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
 const ASSET_BRANCH_CODE: Record<string, string> = { SANDBOX_EAST: 'AHEA', SANDBOX_GREENHILLS: 'AHGH', VERDANA_STORE: 'VERD' }
@@ -77,7 +78,7 @@ export async function POST(req: Request) {
       if (targets.length !== 1) return NextResponse.json({ error: 'An entry split across branches cannot be added to one existing asset.' }, { status: 400 })
       const asset = await prisma.asset.findUnique({
         where: { id: existingAssetId },
-        select: { id: true, branch: true, name: true, controlNumber: true, totalAmount: true, quantity: true, yearsDepreciation: true, remarks: true },
+        select: { id: true, branch: true, name: true, controlNumber: true, totalAmount: true, quantity: true, yearsDepreciation: true, remarks: true, parts: true, dateBought: true },
       })
       if (!asset) return NextResponse.json({ error: 'Asset not found' }, { status: 404 })
       if (asset.branch !== targets[0].branch) return NextResponse.json({ error: 'That asset belongs to another branch.' }, { status: 400 })
@@ -91,6 +92,7 @@ export async function POST(req: Request) {
           purchasePrice: qtyNow > 1 ? Math.round((total / qtyNow) * 100) / 100 : total,
           monthlyDepreciation: asset.yearsDepreciation > 0 ? total / (asset.yearsDepreciation * 12) : 0,
           remarks: [asset.remarks, `+ ₱${added.toFixed(2)} from ${e.pcvNumber}${userRemarks ? ` (${userRemarks})` : ''}`].filter(Boolean).join(' · '),
+          parts: partsJson([...partsOf(asset), { date: partDate(e.date || new Date()), label: (e.description || '').trim() || 'Balance payment', amount: added, ref: e.pcvNumber, entryId: e.id }]),
         },
       })
       // No re-post: this entry books the balance itself, so the asset's own

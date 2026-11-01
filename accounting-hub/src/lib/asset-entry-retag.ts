@@ -6,7 +6,8 @@
 // a moment in between) must keep its asset — the asset follows the new
 // classification. A blank title is an edit in progress and changes nothing.
 // Only a real non-asset (expense) account takes the assets out of the register.
-import type { PrismaClient } from '@prisma/client'
+import type { Prisma, PrismaClient } from '@prisma/client'
+import type { AssetPart } from '@/lib/asset-parts'
 import { assetClassFromAccountTitle, isDepreciatingClassification } from '@/lib/asset-classification'
 import { deleteAssetWithReversal, postAssetJournal, reverseAssetJournal } from '@/lib/accounting/post-asset'
 import { netOfVat, type VatSource } from '@/lib/vat'
@@ -47,7 +48,7 @@ export async function retagEntryAssets(
   // classification; re-tagging the payment to an expense takes its amount back out.
   if (entry.addedToAssetId) {
     if (cls) return {}
-    const asset = await prisma.asset.findUnique({ where: { id: entry.addedToAssetId }, select: { id: true, totalAmount: true, quantity: true, yearsDepreciation: true } })
+    const asset = await prisma.asset.findUnique({ where: { id: entry.addedToAssetId }, select: { id: true, totalAmount: true, quantity: true, yearsDepreciation: true, parts: true } })
     if (asset) {
       const total = Math.max(0, Math.round((Number(asset.totalAmount) - addedAmount(entry)) * 100) / 100)
       const qty = asset.quantity || 1
@@ -57,6 +58,8 @@ export async function retagEntryAssets(
           totalAmount: total,
           purchasePrice: qty > 1 ? Math.round((total / qty) * 100) / 100 : total,
           monthlyDepreciation: asset.yearsDepreciation > 0 ? total / (asset.yearsDepreciation * 12) : 0,
+          // The payment leaves the breakdown too.
+          ...(Array.isArray(asset.parts) ? { parts: (asset.parts as unknown as AssetPart[]).filter(p => p.entryId !== entry.id) as unknown as Prisma.InputJsonValue } : {}),
         },
       })
       // The payment's own entry carried its cost, so the asset's acquisition JE

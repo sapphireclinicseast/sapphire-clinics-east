@@ -68,6 +68,8 @@ interface Asset {
   accountableName: string | null
   // quantity > 1: per-piece custodians; piece i shows sub control number `${controlNumber}-0${i+1}`
   units?: { accountableName: string | null }[] | null
+  // Payments behind the cost when there is more than one (combined records, balances).
+  parts?: { date: string; label: string; amount: number; ref?: string | null }[] | null
   remarks: string | null
   createdById: string
   createdBy: { id: string; name: string }
@@ -302,6 +304,8 @@ function AssetManagementInner() {
   // one item (a 12% VAT line, a delivery fee) into one asset.
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [combineOpen, setCombineOpen] = useState(false)
+  // Clicking a row opens a read-only view; editing only through the pencil.
+  const [viewAsset, setViewAsset] = useState<Asset | null>(null)
   const [bulkBusy, setBulkBusy] = useState(false)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
@@ -1315,7 +1319,8 @@ function AssetManagementInner() {
                     </td>
                   </tr>
                 ) : displayedAssets.map((asset) => (
-                  <tr key={asset.id} className="hover:bg-gray-50 transition-colors" style={picked.has(asset.id) ? { background: '#f0fdfa' } : undefined}>
+                  <tr key={asset.id} className="hover:bg-gray-50 transition-colors cursor-pointer" style={picked.has(asset.id) ? { background: '#f0fdfa' } : undefined}
+                    onClick={() => setViewAsset(asset)} title="View details">
                     {canManage && (
                       <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
                         <input type="checkbox" checked={picked.has(asset.id)}
@@ -1389,7 +1394,7 @@ function AssetManagementInner() {
                       </span>
                     </td>
                     {canWrite && (
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-center gap-1">
                           <button
                             onClick={() => openEdit(asset)}
@@ -1435,6 +1440,13 @@ function AssetManagementInner() {
         )}
       </div>
       </div>)}
+
+      {viewAsset && (
+        <AssetViewModal asset={viewAsset} canEdit={canWrite}
+          onEdit={() => { const a = viewAsset; setViewAsset(null); openEdit(a) }}
+          onPhotos={() => setGalleryAsset(viewAsset)}
+          onClose={() => setViewAsset(null)} />
+      )}
 
       {combineOpen && (
         <CombineAssetsModal assets={assets.filter(a => picked.has(a.id))}
@@ -2237,6 +2249,130 @@ function AssetManagementInner() {
 }
 
 // ── Asset recording flowchart ─────────────────────────────────
+// Read-only view of one asset (row click). Editing is only through the pencil.
+function AssetViewModal({ asset: a, canEdit, onEdit, onPhotos, onClose }: {
+  asset: Asset; canEdit: boolean; onEdit: () => void; onPhotos: () => void; onClose: () => void
+}) {
+  const life = a.yearsDepreciation * 12
+  const bought = new Date(a.dateBought)
+  const now = new Date()
+  const elapsed = life > 0
+    ? Math.max(0, Math.min(life, (now.getUTCFullYear() - bought.getUTCFullYear()) * 12 + (now.getUTCMonth() - bought.getUTCMonth()) + 1))
+    : 0
+  const accumulated = Math.min(Number(a.totalAmount), elapsed * Number(a.monthlyDepreciation))
+  const parts = Array.isArray(a.parts) ? a.parts : []
+  const photos = Array.isArray(a.photoUrls) && a.photoUrls.length ? a.photoUrls : (a.photoUrl ? [a.photoUrl] : [])
+  const row = (label: string, value: React.ReactNode) => (
+    <div className="py-1.5">
+      <div className="text-[11px] uppercase tracking-wide text-gray-400">{label}</div>
+      <div className="text-sm text-gray-900 break-words">{value || '—'}</div>
+    </div>
+  )
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="flex items-start justify-between gap-4 px-6 py-4 border-b border-gray-200 sticky top-0 bg-white z-10">
+          <div className="min-w-0">
+            <div className="font-mono text-xs text-gray-500">{a.controlNumber || '—'}</div>
+            <h2 className="text-lg font-semibold text-gray-900">{a.name}</h2>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {canEdit && (
+              <button onClick={onEdit} className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg text-white bg-teal-700 hover:bg-teal-800">
+                <Pencil size={13} /> Edit
+              </button>
+            )}
+            <button onClick={onClose}><X size={18} className="text-gray-500" /></button>
+          </div>
+        </div>
+        <div className="px-6 py-4 space-y-5">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6">
+            {row('Branch', branchLabel(a.branch))}
+            {row('Classification', classificationLabel(a.classification))}
+            {row('Date of Purchase', formatPurchaseDate(a.dateBought))}
+            {row('Quantity', String(a.quantity))}
+            {row('Total Amount', formatCurrency(Number(a.totalAmount)))}
+            {row('Supplier', a.supplier?.supplierName)}
+            {row('Accountable', a.accountableName)}
+            {row('Departments', (a.departments || []).join(', '))}
+            {row('Condition', a.isDefective ? 'Defective' : 'OK')}
+            {row('Utilized', a.utilized ? 'Yes' : 'No')}
+            {row('Auditable', a.auditable === false ? 'No' : 'Yes')}
+          </div>
+
+          <div className="rounded-xl border border-gray-200 p-4">
+            <div className="text-sm font-semibold text-gray-800 mb-2">Depreciation</div>
+            {life > 0 ? (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 text-sm">
+                {row('Life', `${a.yearsDepreciation} years (${life} months)`)}
+                {row('Monthly', formatCurrency(Number(a.monthlyDepreciation)))}
+                {row('Runs', `${formatPurchaseDate(a.dateBought)} → ${formatPurchaseDate(a.depreciationEndDate)}`)}
+                {row(`To date (${elapsed} mo.)`, `${formatCurrency(accumulated)} · book value ${formatCurrency(Number(a.totalAmount) - accumulated)}`)}
+              </div>
+            ) : <p className="text-sm text-gray-500">Not depreciated (non-depreciating classification).</p>}
+          </div>
+
+          {parts.length > 1 && (
+            <div className="rounded-xl border border-gray-200 p-4">
+              <div className="text-sm font-semibold text-gray-800 mb-1">Payments that make up the cost</div>
+              <p className="text-xs text-gray-500 mb-3">
+                Depreciated as one asset: {formatCurrency(Number(a.totalAmount))}{life > 0 ? ` ÷ ${life} months from ${formatPurchaseDate(a.dateBought)} = ${formatCurrency(Number(a.monthlyDepreciation))} a month` : ''}.
+              </p>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs text-gray-500 border-b border-gray-200">
+                    <th className="py-1.5 pr-3 font-medium">Date paid</th>
+                    <th className="py-1.5 pr-3 font-medium">Payment</th>
+                    <th className="py-1.5 pr-3 font-medium">Reference</th>
+                    <th className="py-1.5 pr-3 font-medium text-right">Amount</th>
+                    <th className="py-1.5 font-medium text-right">Share</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {parts.map((p, i) => (
+                    <tr key={i} className="border-b border-gray-100 align-top">
+                      <td className="py-1.5 pr-3 whitespace-nowrap">{formatPurchaseDate(p.date)}</td>
+                      <td className="py-1.5 pr-3">{p.label}</td>
+                      <td className="py-1.5 pr-3 font-mono text-xs text-gray-500">{p.ref || '—'}</td>
+                      <td className="py-1.5 pr-3 text-right whitespace-nowrap">{formatCurrency(Number(p.amount))}</td>
+                      <td className="py-1.5 text-right text-gray-500">{Number(a.totalAmount) ? `${Math.round((Number(p.amount) / Number(a.totalAmount)) * 100)}%` : '—'}</td>
+                    </tr>
+                  ))}
+                  <tr className="font-semibold">
+                    <td className="py-1.5 pr-3" colSpan={3}>Total</td>
+                    <td className="py-1.5 pr-3 text-right">{formatCurrency(parts.reduce((s, p) => s + Number(p.amount), 0))}</td>
+                    <td />
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {Array.isArray(a.units) && a.units.length > 0 && (
+            <div className="rounded-xl border border-gray-200 p-4">
+              <div className="text-sm font-semibold text-gray-800 mb-2">Accountability per item</div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-sm">
+                {a.units.map((u, i) => (
+                  <div key={i}><span className="font-mono text-xs text-gray-500 mr-2">{subControlNo(a.controlNumber, i)}</span>{u.accountableName || '—'}</div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {row('Remarks', a.remarks)}
+
+          {photos.length > 0 && (
+            <div>
+              <div className="text-[11px] uppercase tracking-wide text-gray-400 mb-1">Photos</div>
+              <button onClick={onPhotos} className="text-sm text-teal-700 underline">View {photos.length} photo{photos.length === 1 ? '' : 's'}</button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // Combine several records that are one item into the chosen main record
 // (POST /api/assets/combine).
 function CombineAssetsModal({ assets, onClose, onDone }: { assets: Asset[]; onClose: () => void; onDone: () => void }) {

@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import type { Prisma } from '@prisma/client'
 import { postAssetJournal, reverseAssetJournal } from '@/lib/accounting/post-asset'
+import { partsJson, partsOf, scaleParts } from '@/lib/asset-parts'
 
 // POST { id, shares: [{ branch, amount }] }
 // An asset several branches use (Hannah 2026-11-01): split it into one record
@@ -80,6 +81,7 @@ export async function POST(req: Request) {
       data: {
         branch: keep.branch as never,
         ...priced(keep.cents),
+        ...(Array.isArray(a.parts) && a.parts.length ? { parts: partsJson(scaleParts(partsOf(a), keep.cents / totalCents)) } : {}),
         ...(keep.custodian ? { accountableName: keep.custodian } : {}),
         remarks: [a.remarks, `Shared: ${branchList}`].filter(Boolean).join(' · '),
       },
@@ -92,6 +94,7 @@ export async function POST(req: Request) {
           branch: s.branch as never,
           name: a.name,
           ...priced(s.cents),
+          ...(Array.isArray(a.parts) && a.parts.length ? { parts: partsJson(scaleParts(partsOf(a), s.cents / totalCents)) } : {}),
           quantity: a.quantity,
           dateBought: a.dateBought,
           classification: a.classification,
