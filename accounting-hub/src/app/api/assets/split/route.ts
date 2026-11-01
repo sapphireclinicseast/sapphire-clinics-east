@@ -53,7 +53,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: `The shares add up to ₱${(sumCents / 100).toFixed(2)} but the asset's total is ₱${(totalCents / 100).toFixed(2)}.` }, { status: 400 })
     }
 
-    const keep = shares.find(s => s.branch === a.branch) || shares[0]
+    // The original record keeps its control number, so it stays with the branch
+    // that number belongs to (AHEA-… → East), else its current branch.
+    const numberBranch = Object.entries(ASSET_BRANCH_CODE).find(([, code]) => a.controlNumber?.startsWith(`${code}-`))?.[0]
+    const keep = shares.find(s => s.branch === numberBranch) || shares.find(s => s.branch === a.branch) || shares[0]
     const others = shares.filter(s => s !== keep)
     const qty = a.quantity || 1
     const life = a.yearsDepreciation

@@ -4,7 +4,6 @@ import { prisma } from '@/lib/prisma'
 import { assetClassFromAccountTitle, ASSET_CLASSIFICATION_LABELS, ENTRY_DEPT_TO_ASSET, isDepreciatingClassification } from '@/lib/asset-classification'
 import { sanitizeAssetUnits, summarizeAssetUnits } from '@/lib/asset-units'
 import { netOfVat } from '@/lib/vat'
-import { postAssetJournal, reverseAssetJournal } from '@/lib/accounting/post-asset'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
 const ASSET_BRANCH_CODE: Record<string, string> = { SANDBOX_EAST: 'AHEA', SANDBOX_GREENHILLS: 'AHGH', VERDANA_STORE: 'VERD' }
@@ -94,14 +93,9 @@ export async function POST(req: Request) {
           remarks: [asset.remarks, `+ ₱${added.toFixed(2)} from ${e.pcvNumber}${userRemarks ? ` (${userRemarks})` : ''}`].filter(Boolean).join(' · '),
         },
       })
-      // Re-post an acquisition JE only if this asset has one (most from
-      // entries don't — the entries carry the cost).
-      if (await prisma.journalEntry.findFirst({ where: { referenceType: 'ASSET_PURCHASE', referenceId: asset.id }, select: { id: true } })) {
-        try {
-          await reverseAssetJournal(prisma, asset.id, session.user.id as string, `balance ${e.pcvNumber} added`)
-          await postAssetJournal(prisma, asset.id, session.user.id as string)
-        } catch (err) { console.error(`[GL] asset balance posting threw for ${asset.id}:`, err) }
-      }
+      // No re-post: this entry books the balance itself, so the asset's own
+      // acquisition JE (if it has one, e.g. a laptop bought outright) stays at
+      // what that purchase cost — re-posting at the new total counted it twice.
       const assetAddedAt = new Date()
       await prisma.pettyCashEntry.update({ where: { id: e.id }, data: { assetAddedAt, addedToAssetId: asset.id } })
       return NextResponse.json({ created: [], addedTo: { id: asset.id, name: asset.name, controlNumber: asset.controlNumber, added, totalAmount: total }, assetAddedAt })

@@ -82,10 +82,14 @@ export async function postAssetJournal(
     where: { id: assetId },
     select: {
       id: true, name: true, branch: true, totalAmount: true,
-      classification: true, dateBought: true, sourceAccountId: true,
+      classification: true, dateBought: true, sourceAccountId: true, sourceEntryId: true,
     },
   })
   if (!asset) return { posted: false, reason: 'asset not found' }
+  // Made from a petty-cash / expense entry ("Add to Asset Management"): the
+  // entry already books the cost. Moving PLS5 Test to Greenhills (1 Nov) re-ran
+  // this and credited AHGH BDO ₱45,944.75 for a purchase the CEO entry carries.
+  if (asset.sourceEntryId) return { posted: false, reason: 'made from an expense entry — the entry carries the cost' }
 
   // Post whenever the user identified the funding bank account (they want the
   // purchase recorded); otherwise fall back to the global Tier-3 GL flag.

@@ -24,6 +24,7 @@ import { prisma } from '@/lib/prisma'
 import { INCOME_TAX_RATE } from '@/lib/reports/income-statement-totals'
 import { productSubtypeLabel } from '@/lib/sku-taxonomy'
 import { netOfVat } from '@/lib/vat'
+import { addedCostByAsset } from '@/lib/asset-entry-retag'
 
 /* ── Types ─────────────────────────────────────────────────────── */
 
@@ -1210,6 +1211,8 @@ export async function computeLedgerStatements(
 
   /* ── 7. Asset purchases this year (synthesized unless ASSET_PURCHASE JE) ── */
   let synthesizedAssets = 0
+  // Balance payments added onto an asset book their own cost through their entry.
+  const addedCost = qbEra ? new Map<string, number>() : await addedCostByAsset(prisma)
   for (const a of qbEra ? [] : assets) {
     const d = new Date(a.dateBought)
     if (d < start || d >= end) continue
@@ -1219,7 +1222,7 @@ export async function computeLedgerStatements(
     // petty-cash pass above. Synthesizing a purchase on top booked the same
     // money twice (Dr classification twice, Cr petty cash twice).
     if (a.fromPettyCash) continue
-    const amt = Number(a.totalAmount)
+    const amt = Number(a.totalAmount) - (addedCost.get(a.id) || 0)
     if (!amt) continue
     synthesizedAssets++
     const ppe = byNumber.get(a.classification) || virt(a.classification || '1500', `PPE (${a.classification})`, 'ASSET', 'PPE', 'DEBIT')

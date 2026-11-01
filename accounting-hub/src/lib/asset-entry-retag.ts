@@ -59,7 +59,8 @@ export async function retagEntryAssets(
           monthlyDepreciation: asset.yearsDepreciation > 0 ? total / (asset.yearsDepreciation * 12) : 0,
         },
       })
-      await repostIfJournaled(prisma, asset.id, userId, `balance ${entry.pcvNumber} re-tagged to expense`)
+      // The payment's own entry carried its cost, so the asset's acquisition JE
+      // (if any) never included it — nothing to re-post.
     }
     return { assetAddedAt: null, addedToAssetId: null }
   }
@@ -94,3 +95,19 @@ export async function retagEntryAssets(
   }
   return {}
 }
+
+/**
+ * Cost added onto each asset by balance payments (PettyCashEntry.addedToAssetId),
+ * net of VAT. Those payments book their own cost, so anything that derives an
+ * asset's purchase from its totalAmount must take this back out.
+ */
+export async function addedCostByAsset(prisma: PrismaClient): Promise<Map<string, number>> {
+  const rows = await prisma.pettyCashEntry.findMany({
+    where: { addedToAssetId: { not: null } },
+    select: { id: true, pcvNumber: true, assetAddedAt: true, addedToAssetId: true, branchAllocations: true, grossAmount: true, vatable: true, vatPortion: true },
+  })
+  const out = new Map<string, number>()
+  for (const e of rows) out.set(e.addedToAssetId!, (out.get(e.addedToAssetId!) || 0) + addedAmount(e))
+  return out
+}
+
