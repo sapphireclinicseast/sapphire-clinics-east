@@ -10,8 +10,13 @@ import {
 } from 'lucide-react'
 
 // ── Form definitions ─────────────────────────────────────────────────────────
-const FORM_TYPES: Array<{ key: string; title: string; sbea: string; sbgh: string | null; subtitle?: string; intro?: string; sbeaSlug?: string; sbghSlug?: string }> = [
-  { key: 'registration',  title: 'Registration Form',          sbea: 'GULaVBpI', sbgh: 'VaCB1bkE', sbeaSlug: 'RegistrationEast', sbghSlug: 'RegistrationGH' },
+// `comboSlug` is a branch chooser on HR: one link that asks which branch and
+// sends the person to the right form. It exists so a poster can carry a single
+// QR code covering both branches instead of two codes people have to read
+// labels to tell apart. Nothing is collected on it — responses still land in
+// the per-branch forms, so the Responses tab is unaffected.
+const FORM_TYPES: Array<{ key: string; title: string; sbea: string; sbgh: string | null; subtitle?: string; intro?: string; sbeaSlug?: string; sbghSlug?: string; comboSlug?: string }> = [
+  { key: 'registration',  title: 'Registration Form',          sbea: 'GULaVBpI', sbgh: 'VaCB1bkE', sbeaSlug: 'RegistrationEast', sbghSlug: 'RegistrationGH', comboSlug: 'Registration' },
   { key: 'group-therapy', title: 'Group Therapy Registration', sbea: 'ChrSrsBF', sbgh: 'tT8QASYo' },
   {
     key:      'sip',
@@ -90,7 +95,10 @@ export default function RegistrationFormsClient({ role }: Props) {
     () => new Set(PARTNER_INSTITUTIONS_FALLBACK.map(n => n.toLowerCase())),
   )
   const [tab, setTab]                   = useState<'qr' | 'results' | 'settings'>('qr')
-  const [qrBranch, setQrBranch]         = useState<'SBEA' | 'SBGH'>('SBEA')
+  // 'BOTH' is QR-and-link only. The Settings tabs edit one branch's form, so
+  // they coerce it back to a real branch rather than trying to edit two.
+  const [qrBranch, setQrBranch]         = useState<'SBEA' | 'SBGH' | 'BOTH'>('SBEA')
+  const settingsBranch: 'SBEA' | 'SBGH' = qrBranch === 'BOTH' ? 'SBEA' : qrBranch
   const [copied, setCopied]             = useState(false)
   const [results, setResults]           = useState<{ fields: any[]; items: ResponseItem[]; total: number } | null>(null)
   const [loading, setLoading]           = useState(false)
@@ -248,7 +256,9 @@ export default function RegistrationFormsClient({ role }: Props) {
 
   // Public link prefers a clean slug when the form defines one, falling back to
   // the raw id. Response-fetching still uses the ids (form.sbea / form.sbgh).
-  const getFormUrl = (form: FormType, branch: 'SBEA' | 'SBGH') => {
+  const getFormUrl = (form: FormType, branch: 'SBEA' | 'SBGH' | 'BOTH') => {
+    // The chooser is a slug of its own — it has no form id to fall back to.
+    if (branch === 'BOTH' && form.comboSlug) return HR_FORM_BASE + form.comboSlug
     const useSbgh = branch === 'SBGH' && !!form.sbgh
     const slug = useSbgh ? form.sbghSlug : form.sbeaSlug
     const id   = useSbgh ? form.sbgh : form.sbea
@@ -478,19 +488,19 @@ export default function RegistrationFormsClient({ role }: Props) {
 
             {tab === 'settings' && (
               <ServiceOptionsSettings
-                formId={qrBranch === 'SBGH' && selectedForm.sbgh ? selectedForm.sbgh : selectedForm.sbea}
-                branchLabel={qrBranch === 'SBGH' && selectedForm.sbgh ? 'Greenhills Branch' : 'East Branch'}
+                formId={settingsBranch === 'SBGH' && selectedForm.sbgh ? selectedForm.sbgh : selectedForm.sbea}
+                branchLabel={settingsBranch === 'SBGH' && selectedForm.sbgh ? 'Greenhills Branch' : 'East Branch'}
                 canEdit={isAdmin}
                 showBranchToggle={isAdmin && !!selectedForm.sbgh}
-                qrBranch={qrBranch}
+                qrBranch={settingsBranch}
                 onBranchChange={setQrBranch}
               />
             )}
 
             {tab === 'settings' && (
               <PartnerInstitutionsSettings
-                formId={qrBranch === 'SBGH' && selectedForm.sbgh ? selectedForm.sbgh : selectedForm.sbea}
-                branchLabel={qrBranch === 'SBGH' && selectedForm.sbgh ? 'Greenhills Branch' : 'East Branch'}
+                formId={settingsBranch === 'SBGH' && selectedForm.sbgh ? selectedForm.sbgh : selectedForm.sbea}
+                branchLabel={settingsBranch === 'SBGH' && selectedForm.sbgh ? 'Greenhills Branch' : 'East Branch'}
                 canEdit={isAdmin}
               />
             )}
@@ -500,8 +510,14 @@ export default function RegistrationFormsClient({ role }: Props) {
                 {/* Branch toggle — hidden for single-branch front desk */}
                 {(isAdmin || (!!selectedForm.sbgh && !branchRole)) && (
                   <div className="flex gap-1 mb-5 p-1 rounded-lg" style={{ background: 'var(--bg-secondary, #f5f5f5)' }}>
-                    {(['SBEA', 'SBGH'] as const).map(b => {
-                      const available = b === 'SBEA' ? true : !!selectedForm.sbgh
+                    {([
+                      'SBEA',
+                      'SBGH',
+                      // Only where a chooser link exists for this form.
+                      ...(selectedForm.comboSlug && selectedForm.sbgh ? (['BOTH'] as const) : []),
+                    ] as const).map(b => {
+                      const available = b === 'SBEA' || b === 'BOTH' ? true : !!selectedForm.sbgh
+                      const label = b === 'SBEA' ? 'East Branch' : b === 'SBGH' ? 'Greenhills Branch' : 'Both Branches'
                       return (
                         <button
                           key={b}
@@ -514,7 +530,7 @@ export default function RegistrationFormsClient({ role }: Props) {
                               : { color: available ? 'var(--text-secondary)' : '#ccc', cursor: available ? 'pointer' : 'not-allowed' }
                           }
                         >
-                          {b === 'SBEA' ? 'East Branch' : 'Greenhills Branch'}
+                          {label}
                           {!available && <span className="ml-1 text-xs opacity-60">(soon)</span>}
                         </button>
                       )
@@ -531,9 +547,16 @@ export default function RegistrationFormsClient({ role }: Props) {
                     height={220}
                   />
                 </div>
-                <p className="text-xs font-semibold mb-4" style={{ color: 'var(--text-secondary)' }}>
-                  {qrBranch === 'SBEA' ? 'East Branch' : 'Greenhills Branch'}
+                <p className="text-xs font-semibold mb-1" style={{ color: 'var(--text-secondary)' }}>
+                  {qrBranch === 'SBEA' ? 'East Branch' : qrBranch === 'SBGH' ? 'Greenhills Branch' : 'Both Branches'}
                 </p>
+                {qrBranch === 'BOTH' && (
+                  <p className="text-xs mb-4 text-center" style={{ color: 'var(--text-secondary)', maxWidth: 360 }}>
+                    Use this one on posters covering both clinics — it asks which branch, then
+                    opens that branch&apos;s form. Responses still arrive under the branch chosen.
+                  </p>
+                )}
+                {qrBranch !== 'BOTH' && <div className="mb-4" />}
 
                 {/* Link */}
                 <div className="flex items-center gap-2 w-full max-w-md">
