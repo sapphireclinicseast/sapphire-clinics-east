@@ -1933,6 +1933,9 @@ model ConsultantUnitPay {
   // 1,000 at East but 1,050 at Greenhills. Branches not listed use `amount`.
   branchAmounts    Json?
   disabled         Boolean    @default(false) // When true, this unit pay is not applicable for this clinician
+  // PF changes per session (e.g. psych tests priced by quotation): payroll makes no
+  // line for it — the payroll officer types each session's PF on the payslip.
+  varies           Boolean    @default(false)
   thresholdEnabled Boolean    @default(false)
   thresholdAmount  Decimal? // Min order netAmount to qualify for full rate
   reducedAmount    Decimal? // Rate used when order netAmount is below threshold

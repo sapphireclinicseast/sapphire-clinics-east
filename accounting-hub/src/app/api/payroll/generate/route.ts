@@ -204,6 +204,7 @@ export async function GET(req: Request) {
       where: orderWhere,
       select: {
         id: true,
+        orderNumber: true,
         clinicianName: true,
         patientName: true,
         branch: true,
@@ -484,6 +485,9 @@ export async function GET(req: Request) {
       // already compensates the doctor directly. They are surfaced in the
       // preview (count + session list) instead of silently dropped.
       const hmoMedicalSkips: { orderId: string; date: string; patientName: string; serviceName: string; quantity: number; orderNetAmount: number }[] = []
+      // Sessions under a "Varies" rate (e.g. psych tests priced per quotation): no PF line
+      // is made — the payroll officer types each session's PF on the payslip.
+      const variesSessions: { orderId: string; orderNumber: number; date: string; patientName: string; serviceName: string; quantity: number; charged: number; orderNetAmount: number; unitPayId: string; unitPayName: string }[] = []
 
       // Group by unit pay — with threshold logic per order
       const unitPayBreakdown: { unitPayId: string; unitPayName: string; unitAmount: number; quantity: number; lineTotal: number; isReduced?: boolean; sessions: { orderId: string; date: string; patientName: string; serviceName: string; quantity: number; orderNetAmount: number; orderStatus: string; charged: number; pf: number; pfAboveOk?: boolean }[] }[] = []
@@ -567,6 +571,14 @@ export async function GET(req: Request) {
           }
 
           const lineTotal = toFloat(item.lineTotal)
+          if (rate.varies) {
+            variesSessions.push({
+              orderId: order.id, orderNumber: order.orderNumber, date: orderDate, patientName: order.patientName || 'N/A', serviceName: item.name,
+              quantity: item.quantity, charged: lineTotal > 0 ? lineTotal : orderNet - paidLinesTotal, orderNetAmount: orderNet,
+              unitPayId: item.service.unitPayId, unitPayName: rate.unitPay.name,
+            })
+            continue
+          }
           const sessionEntry = {
             orderId: order.id, date: orderDate, patientName: order.patientName || 'N/A', serviceName: allOrderServices, quantity: item.quantity, orderNetAmount: orderNet, orderStatus: 'COMPLETED' as string,
             charged: lineTotal > 0 ? lineTotal : orderNet - paidLinesTotal,
@@ -706,6 +718,7 @@ export async function GET(req: Request) {
         // why a session produced no PF line.
         hmoMedicalSkipCount: hmoMedicalSkips.reduce((s, x) => s + (Number(x.quantity) || 1), 0),
         hmoMedicalSkips,
+        variesSessions,
         existingStatus: existingMap.get(c.id) || null,
         storedAdjustments: mergeMentorship((existingEntry?.adjustments as unknown[]) || [], c.id),
         storedExtraItems: (existingEntry?.extraItems as unknown[]) || [],

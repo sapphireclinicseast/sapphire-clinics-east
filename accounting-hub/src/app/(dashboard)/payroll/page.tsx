@@ -55,7 +55,7 @@ interface Consultant {
   bankName?: string | null
   bankAccountNo?: string | null
   isActive: boolean
-  unitPayRates: { id: string; unitPayId: string; unitPay: { id: string; name: string }; amount: number | string; branchAmounts?: Record<string, number | string> | null; disabled?: boolean; thresholdEnabled?: boolean; thresholdAmount?: number | string | null; reducedAmount?: number | string | null }[]
+  unitPayRates: { id: string; unitPayId: string; unitPay: { id: string; name: string }; amount: number | string; branchAmounts?: Record<string, number | string> | null; disabled?: boolean; varies?: boolean; thresholdEnabled?: boolean; thresholdAmount?: number | string | null; reducedAmount?: number | string | null }[]
   benefits?: { id: string; benefitType: string; employeeShare: number | string; employerShare: number | string; isActive: boolean }[]
   extraBranches?: string[]
   affiliatedBranches?: string[]
@@ -96,6 +96,8 @@ interface PayrollPreview {
   // the doctor directly, so no unit-pay line is produced.
   hmoMedicalSkipCount?: number
   hmoMedicalSkips?: { orderId: string; date: string; patientName: string; serviceName: string; quantity: number; orderNetAmount: number }[]
+  // Sessions under a "Varies" rate — the payroll officer types each one's PF.
+  variesSessions?: VariesSession[]
   existingStatus: string | null
   storedAdjustments?: AdjustmentLine[]
   storedExtraItems?: ExtraUnitPayLine[]
@@ -107,6 +109,25 @@ interface ExtraUnitPayLine {
   unitPayName: string
   unitAmount: number
   qty: number
+  sessions?: unknown[] // a typed Varies PF carries its session (vr- lines)
+}
+
+interface VariesSession {
+  orderId: string; orderNumber: number; date: string; patientName: string; serviceName: string
+  quantity: number; charged: number; orderNetAmount: number; unitPayId: string; unitPayName: string
+}
+// A typed Varies PF is saved as an extra unit pay line with this id.
+const variesLineId = (v: VariesSession) => `vr-${v.orderId}-${v.unitPayId}`
+/** Varies sessions with no PF typed yet (missing) or typed above what they were charged (over). */
+function variesProblems(p: PayrollPreview, extras: ExtraUnitPayLine[]) {
+  const missing: VariesSession[] = []
+  const over: VariesSession[] = []
+  for (const v of p.variesSessions || []) {
+    const line = extras.find(e => e.id === variesLineId(v))
+    if (!line || !(line.unitAmount > 0)) missing.push(v)
+    else if (line.unitAmount * line.qty > v.charged + 0.005) over.push(v)
+  }
+  return { missing, over }
 }
 
 interface AdjustmentLine {
@@ -847,7 +868,7 @@ export default function PayrollPage() {
   const [cSortField, setCSortField] = useState('name')
   const [cSortDir, setCSortDir] = useState<'asc' | 'desc'>('asc')
   const [expandedConsultant, setExpandedConsultant] = useState<string | null>(null)
-  const [editingRates, setEditingRates] = useState<Record<string, { amount: number; disabled: boolean; thresholdEnabled: boolean; thresholdAmount: number | null; reducedAmount: number | null; branchAmounts: Record<string, string> }>>({})
+  const [editingRates, setEditingRates] = useState<Record<string, { amount: number; disabled: boolean; varies?: boolean; thresholdEnabled: boolean; thresholdAmount: number | null; reducedAmount: number | null; branchAmounts: Record<string, string> }>>({})
   // The services each unit pay pays the expanded consultant for (with prices) — a PF typed above one is flagged.
   const [rateServices, setRateServices] = useState<{ consultantId: string; byUnitPay: Record<string, PricedService[]> } | null>(null)
   const [editingTax, setEditingTax] = useState('')
@@ -1421,6 +1442,10 @@ export default function PayrollPage() {
         if (freshRes.ok) {
           const freshData = await freshRes.json()
           const freshPreviews = (freshData.payrolls || []) as PayrollPreview[]
+          // A Varies PF left blank or typed above the charge stops the lock.
+          if (!variesOk(freshPreviews.filter(p => p.existingStatus !== 'LOCKED').map(p => ({
+            p, extras: extraUnitPays[p.consultantId] !== undefined ? extraUnitPays[p.consultantId] : ((p.storedExtraItems as unknown as ExtraUnitPayLine[]) || []),
+          })), true)) return
           const entries = freshPreviews
             .filter(p => p.existingStatus !== 'LOCKED')
             .map(p => buildEntry(
@@ -1715,6 +1740,14 @@ export default function PayrollPage() {
   }
 
   /* ── Clinician list helpers ── */
+  // Unit pays that apply to a consultant's department but are neither disabled nor
+  // given an amount — a session under one would pay ₱0 PF. Their row shows red.
+  const zeroUnitPays = (c: Consultant) => unitPays.filter(up =>
+    up.isActive !== false && (!up.departments || up.departments.length === 0 || up.departments.includes(c.department)),
+  ).filter(up => {
+    const r = c.unitPayRates.find(x => x.unitPayId === up.id)
+    return !r || (!r.disabled && !r.varies && !(toNum(r.amount) > 0))
+  })
   const filteredConsultants = consultants
     .filter(c => !cSearch || c.name.toLowerCase().includes(cSearch.toLowerCase()))
     .filter(c => !cDeptFilter || c.department === cDeptFilter)
@@ -1752,10 +1785,11 @@ export default function PayrollPage() {
       .then(r => (r.ok ? r.json() : null))
       .then(d => { if (d?.services) setRateServices({ consultantId: c.id, byUnitPay: d.services }) })
       .catch(() => {})
-    const rateMap: Record<string, { amount: number; disabled: boolean; thresholdEnabled: boolean; thresholdAmount: number | null; reducedAmount: number | null; branchAmounts: Record<string, string> }> = {}
+    const rateMap: Record<string, { amount: number; disabled: boolean; varies?: boolean; thresholdEnabled: boolean; thresholdAmount: number | null; reducedAmount: number | null; branchAmounts: Record<string, string> }> = {}
     for (const r of c.unitPayRates) rateMap[r.unitPayId] = {
       amount: toNum(r.amount),
       disabled: r.disabled || false,
+      varies: r.varies || false,
       thresholdEnabled: r.thresholdEnabled || false,
       thresholdAmount: r.thresholdAmount != null ? toNum(r.thresholdAmount) : null,
       reducedAmount: r.reducedAmount != null ? toNum(r.reducedAmount) : null,
@@ -1807,7 +1841,7 @@ export default function PayrollPage() {
     setSavingConsultant(true)
     try {
       const unitPayRates = Object.entries(editingRates)
-        .filter(([, r]) => r.amount > 0 || r.disabled)
+        .filter(([, r]) => r.amount > 0 || r.disabled || r.varies)
         .map(([unitPayId, r]) => {
           const branchEntries = Object.entries(r.branchAmounts || {})
             .map(([b, v]) => [b, parseFloat(v) || 0] as const)
@@ -1816,6 +1850,7 @@ export default function PayrollPage() {
             unitPayId,
             amount: r.amount,
             disabled: r.disabled,
+            varies: !r.disabled && !!r.varies,
             thresholdEnabled: r.thresholdEnabled || false,
             thresholdAmount: r.thresholdAmount ?? null,
             reducedAmount: r.reducedAmount ?? null,
@@ -2312,6 +2347,7 @@ export default function PayrollPage() {
   }
 
   const savePayslips = async () => {
+    if (!variesOk(payrollPreviews.filter(p => p.existingStatus !== 'LOCKED').map(p => ({ p, extras: extraUnitPays[p.consultantId] || [] })), false)) return
     setSaving(true)
     try {
       const entries = payrollPreviews.filter(p => p.existingStatus !== 'LOCKED').map(p =>
@@ -2353,6 +2389,7 @@ export default function PayrollPage() {
       ? adjustments[cid]
       : ((p.storedAdjustments as unknown as AdjustmentLine[]) || [])
     const status = p.existingStatus === 'FINAL' ? 'FINAL' : 'DRAFT'
+    if (!variesOk([{ p, extras }], status === 'FINAL')) return
     setSavingMap(prev => ({ ...prev, [cid]: true }))
     try {
       await fetch('/api/payroll/generate', {
@@ -2383,6 +2420,7 @@ export default function PayrollPage() {
     const adjs = adjustments[cid] !== undefined
       ? adjustments[cid]
       : ((p.storedAdjustments as unknown as AdjustmentLine[]) || [])
+    if (!variesOk([{ p, extras }], true)) return
     setLockingMap(prev => ({ ...prev, [cid]: true }))
     try {
       // Save current state as FINAL
@@ -2445,6 +2483,7 @@ export default function PayrollPage() {
   }
 
   const finalizeConsultantPayslips = async () => {
+    if (!variesOk(payrollPreviews.filter(p => p.existingStatus === 'DRAFT').map(p => ({ p, extras: extraUnitPays[p.consultantId] || [] })), true)) return
     setSaving(true)
     try {
       const entries = payrollPreviews.filter(p => p.existingStatus === 'DRAFT').map(p =>
@@ -2455,6 +2494,35 @@ export default function PayrollPage() {
       await generatePayslips()
     } catch { setError('Failed to finalize') }
     finally { setSaving(false) }
+  }
+
+  /* ── Varies PF (typed per session; saved as a vr- extra unit pay line) ── */
+  const setVariesPf = (p: PayrollPreview, v: VariesSession, amount: number) => {
+    const cid = p.consultantId
+    setExtraUnitPays(prev => {
+      const base = prev[cid] !== undefined ? prev[cid] : ((p.storedExtraItems as unknown as ExtraUnitPayLine[]) || [])
+      const id = variesLineId(v)
+      const rest = base.filter(l => l.id !== id)
+      if (!(amount > 0)) return { ...prev, [cid]: rest }
+      const line: ExtraUnitPayLine = {
+        id, unitPayId: v.unitPayId, unitPayName: `${v.unitPayName} (varies) — #${v.orderNumber}`, unitAmount: amount, qty: 1,
+        sessions: [{ orderId: v.orderId, date: v.date, patientName: v.patientName, serviceName: v.serviceName, quantity: 1, orderNetAmount: v.orderNetAmount, orderStatus: 'COMPLETED', charged: v.charged, pf: amount }],
+      }
+      return { ...prev, [cid]: [...rest, line] }
+    })
+  }
+  /** Refuse a save while a Varies PF is above what the session was charged (and, when
+   *  finalizing, while one is still blank). Returns true when the save may go ahead. */
+  const variesOk = (list: { p: PayrollPreview; extras: ExtraUnitPayLine[] }[], finalizing: boolean) => {
+    const lines: string[] = []
+    for (const { p, extras } of list) {
+      const { missing, over } = variesProblems(p, extras)
+      for (const v of over) lines.push(`• ${p.consultantName}: #${v.orderNumber} ${v.serviceName} — PF is more than the ${formatCurrency(v.charged)} charged`)
+      if (finalizing) for (const v of missing) lines.push(`• ${p.consultantName}: #${v.orderNumber} ${v.serviceName} — PF not entered (Varies)`)
+    }
+    if (!lines.length) return true
+    alert(`Not saved — fix these Varies PFs first:\n\n${lines.join('\n')}`)
+    return false
   }
 
   /* ── Extra Unit Pay handlers ── */
@@ -3304,14 +3372,24 @@ export default function PayrollPage() {
                       <tr><td colSpan={16} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>
                         No consultants found. Click &quot;Sync from Clinician Database&quot; to import.
                       </td></tr>
-                    ) : filteredConsultants.map(c => (
+                    ) : filteredConsultants.map(c => {
+                      const zeros = zeroUnitPays(c)
+                      return (
                       <>
-                        <tr key={c.id} className="border-t hover:bg-gray-50/50 cursor-pointer"
-                          style={{ borderColor: 'var(--light-gray)' }} onClick={() => expandConsultant(c)}>
+                        <tr key={c.id} className={`border-t cursor-pointer ${zeros.length ? 'hover:bg-red-100/60' : 'hover:bg-gray-50/50'}`}
+                          style={{ borderColor: 'var(--light-gray)', ...(zeros.length ? { background: '#fee2e2' } : {}) }} onClick={() => expandConsultant(c)}
+                          title={zeros.length ? `Unit pays switched on at ₱0: ${zeros.map(z => z.name).join(', ')} — set an amount or untick to disable` : undefined}>
                           <td className="px-4 py-3">
                             <ChevronRight size={14} className={`transition-transform ${expandedConsultant === c.id ? 'rotate-90' : ''}`} style={{ color: 'var(--mid-gray)' }} />
                           </td>
-                          <td className="px-4 py-3 font-medium" style={{ color: 'var(--charcoal)' }}>{c.name}</td>
+                          <td className="px-4 py-3 font-medium" style={{ color: 'var(--charcoal)' }}>
+                            {c.name}
+                            {zeros.length > 0 && (
+                              <span className="block mt-0.5 text-[10px] font-semibold" style={{ color: '#b91c1c' }}>
+                                {zeros.length} unit pay{zeros.length === 1 ? '' : 's'} at ₱0
+                              </span>
+                            )}
+                          </td>
                           <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{DEPT_LABELS[c.department] || c.department}</td>
                           <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
                             {(c.affiliatedBranches && c.affiliatedBranches.length ? c.affiliatedBranches : [c.branch]).map(b => branchLabel(b)).join(', ')}
@@ -3502,10 +3580,25 @@ export default function PayrollPage() {
                                                   <span className="text-xs px-2 py-1 rounded-lg" style={{ color: '#dc2626', background: '#fef2f2' }}>Disabled</span>
                                                 ) : (
                                                   <>
-                                                    <input type="number" min={0} step="0.01" value={r.amount || ''}
-                                                      onChange={e => setEditingRates({ ...editingRates, [up.id]: { ...r, amount: parseFloat(e.target.value) || 0 } })}
-                                                      placeholder="0.00" className="px-3 py-1.5 rounded-lg border text-sm outline-none w-32" style={{ borderColor: 'var(--light-gray)' }} />
-                                                    <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>per unit{interbranch && overrides.length > 0 ? ' (default)' : ''}</span>
+                                                    {r.varies ? (
+                                                      <span className="px-3 py-1.5 rounded-lg text-xs font-medium w-32" style={{ background: '#fef3c7', color: '#92400e' }}
+                                                        title="PF changes per session (e.g. priced by quotation) — the payroll officer types it on the payslip">
+                                                        Varies
+                                                      </span>
+                                                    ) : (
+                                                      <input type="number" min={0} step="0.01" value={r.amount || ''}
+                                                        onChange={e => setEditingRates({ ...editingRates, [up.id]: { ...r, amount: parseFloat(e.target.value) || 0 } })}
+                                                        placeholder="0.00" className="px-3 py-1.5 rounded-lg border text-sm outline-none w-32"
+                                                        style={{ borderColor: r.amount > 0 ? 'var(--light-gray)' : '#f87171', background: r.amount > 0 ? undefined : '#fef2f2' }}
+                                                        title={r.amount > 0 ? undefined : 'Switched on at ₱0 — set an amount, tick Varies, or untick to disable'} />
+                                                    )}
+                                                    <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>{r.varies ? 'typed per session on the payslip' : `per unit${interbranch && overrides.length > 0 ? ' (default)' : ''}`}</span>
+                                                    <label className="flex items-center gap-1 text-[11px] cursor-pointer" style={{ color: 'var(--charcoal)' }}
+                                                      title="Tick when the PF changes per session (e.g. psych tests priced by quotation)">
+                                                      <input type="checkbox" checked={!!r.varies}
+                                                        onChange={e => setEditingRates({ ...editingRates, [up.id]: { ...r, varies: e.target.checked } })} />
+                                                      Varies
+                                                    </label>
                                                     {!over.length && priced.length > 0 && (
                                                       <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}
                                                         title={priced.map(p => `${p.name}: ${formatCurrency(p.price)}`).join('\n')}>
@@ -3527,7 +3620,7 @@ export default function PayrollPage() {
                                                 </p>
                                               )}
                                               {/* Per-branch rate overrides — only offered to interbranch consultants */}
-                                              {!r.disabled && interbranch && (
+                                              {!r.disabled && !r.varies && interbranch && (
                                                 <div className="mt-1 ml-6 flex flex-wrap items-center gap-3">
                                                   {rateBranches.map(b => {
                                                     const ticked = (r.branchAmounts || {})[b] !== undefined
@@ -3613,7 +3706,7 @@ export default function PayrollPage() {
                           </tr>
                         )}
                       </>
-                    ))}
+                    )})}
                   </tbody>
                 </table>
               </div>
@@ -4891,6 +4984,8 @@ export default function PayrollPage() {
                             const isExpanded = expandedPayslip === p.consultantId
                             // Automatic PF recovery lines (overpaid PF from earlier payslips).
                             const prTotal = adjs.filter(a => String(a.id).startsWith('pr-')).reduce((sum, a) => sum + a.amount, 0)
+                            const varies = variesProblems(p, extras)
+                            const variesLeft = varies.missing.length + varies.over.length
 
                             // Unit pays available for this clinician's dept
                             const availableUPs = unitPays.filter(up =>
@@ -4916,6 +5011,12 @@ export default function PayrollPage() {
                                   <td className="px-3 py-2.5 font-medium" style={{ color: 'var(--charcoal)' }}>
                                     {p.consultantName}
                                     <span className="ml-1.5 text-[10px] px-1 py-0.5 rounded" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>{p.department}</span>
+                                    {variesLeft > 0 && (
+                                      <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded font-semibold" style={{ background: '#fef3c7', color: '#92400e' }}
+                                        title="Sessions under a Varies rate — type each one's PF in the payslip">
+                                        Varies: {variesLeft} to enter
+                                      </span>
+                                    )}
                                     {prTotal > 0 && (
                                       <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded font-semibold" style={{ background: '#fee2e2', color: '#b91c1c' }}
                                         title="PF overpaid on an earlier payslip is deducted here automatically — see Adjustments">
@@ -4953,6 +5054,48 @@ export default function PayrollPage() {
                                   <tr key={`${p.consultantId}-detail`}>
                                     <td colSpan={10} className="px-5 py-4" style={{ background: 'var(--off-white)' }}>
                                       <div className="space-y-4">
+                                        {/* ── Varies: PF typed per session ── */}
+                                        {(p.variesSessions?.length ?? 0) > 0 && (
+                                          <div className="rounded-xl border p-3 space-y-2" style={{ borderColor: '#fcd34d', background: '#fffbeb' }}>
+                                            <p className="text-xs font-semibold" style={{ color: '#92400e' }}>
+                                              Varies — enter the PF for each session (e.g. from the quotation)
+                                            </p>
+                                            <p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+                                              These sessions are under a unit pay ticked &quot;Varies&quot;. The PF can&apos;t be more than the session was charged, and the payslip can&apos;t be finalized or locked while one is blank.
+                                            </p>
+                                            <table className="w-full text-xs bg-white rounded-lg overflow-hidden">
+                                              <thead>
+                                                <tr style={{ background: '#fef3c7', color: '#92400e' }}>
+                                                  {['Date', 'Order', 'Patient', 'Service', 'Charged', 'PF'].map(h => <th key={h} className="px-3 py-1.5 text-left font-semibold">{h}</th>)}
+                                                </tr>
+                                              </thead>
+                                              <tbody>
+                                                {p.variesSessions!.map(v => {
+                                                  const line = extras.find(e => e.id === variesLineId(v))
+                                                  const typed = line ? line.unitAmount : 0
+                                                  const over = typed > v.charged + 0.005
+                                                  return (
+                                                    <tr key={variesLineId(v)} className="border-t" style={{ borderColor: '#fde68a', ...(over ? { background: '#fee2e2' } : !typed ? { background: '#fffbeb' } : {}) }}>
+                                                      <td className="px-3 py-1.5">{new Date(v.date + 'T00:00:00').toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}</td>
+                                                      <td className="px-3 py-1.5">#{v.orderNumber}</td>
+                                                      <td className="px-3 py-1.5">{v.patientName}</td>
+                                                      <td className="px-3 py-1.5" style={{ color: 'var(--mid-gray)' }}>{v.serviceName}</td>
+                                                      <td className="px-3 py-1.5 font-mono">{formatCurrency(v.charged)}</td>
+                                                      <td className="px-3 py-1.5" onClick={e => e.stopPropagation()}>
+                                                        <input type="number" min={0} step="0.01" value={typed || ''} disabled={p.existingStatus === 'LOCKED'}
+                                                          onChange={e => setVariesPf(p, v, parseFloat(e.target.value) || 0)}
+                                                          placeholder="Enter PF" className="px-2 py-1 rounded-lg border text-xs w-28 outline-none disabled:bg-gray-100"
+                                                          style={{ borderColor: over ? '#f87171' : !typed ? '#fcd34d' : 'var(--light-gray)' }} />
+                                                        {over && <span className="ml-1.5 text-[10px] font-semibold" style={{ color: '#b91c1c' }}>more than charged</span>}
+                                                      </td>
+                                                    </tr>
+                                                  )
+                                                })}
+                                              </tbody>
+                                            </table>
+                                          </div>
+                                        )}
+
                                         {/* ── Earnings from Orders ── */}
                                         <div>
                                           <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: 'var(--mid-gray)' }}>Earnings from Orders</p>

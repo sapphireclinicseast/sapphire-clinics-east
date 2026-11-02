@@ -50,14 +50,14 @@ function namedDoctor(serviceName: string): string | null {
 
 type ConsultantLite = {
   id: string; name: string; department: string; branch: string; extraBranches: string[]
-  unitPayRates: { unitPayId: string; amount: unknown; disabled: boolean; thresholdEnabled: boolean; thresholdAmount: unknown; reducedAmount: unknown; branchAmounts: unknown; unitPay: { name: string } }[]
+  unitPayRates: { unitPayId: string; amount: unknown; disabled: boolean; varies: boolean; thresholdEnabled: boolean; thresholdAmount: unknown; reducedAmount: unknown; branchAmounts: unknown; unitPay: { name: string } }[]
 }
 
 const CONSULTANT_SELECT = {
   id: true, name: true, department: true, branch: true, extraBranches: true,
   unitPayRates: {
     select: {
-      unitPayId: true, amount: true, disabled: true, thresholdEnabled: true, thresholdAmount: true, reducedAmount: true, branchAmounts: true,
+      unitPayId: true, amount: true, disabled: true, varies: true, thresholdEnabled: true, thresholdAmount: true, reducedAmount: true, branchAmounts: true,
       unitPay: { select: { name: true } },
     },
   },
@@ -136,6 +136,7 @@ export interface ServiceRate {
   branches: string[]
   amount: number
   branchAmounts: unknown
+  varies: boolean
   thresholdEnabled: boolean
   thresholdAmount: number | null
   reducedAmount: number | null
@@ -166,7 +167,7 @@ export async function ratesForService(svc: { id?: string | null; unitPayId: stri
     if (!r || !(Number(r.amount) > 0)) continue
     out.push({
       consultantId: c.id, consultant: c.name, branches: [c.branch, ...(c.extraBranches || [])].filter(Boolean),
-      amount: Number(r.amount), branchAmounts: r.branchAmounts, thresholdEnabled: r.thresholdEnabled,
+      amount: Number(r.amount), branchAmounts: r.branchAmounts, varies: r.varies, thresholdEnabled: r.thresholdEnabled,
       thresholdAmount: r.thresholdAmount != null ? Number(r.thresholdAmount) : null,
       reducedAmount: r.reducedAmount != null ? Number(r.reducedAmount) : null,
     })
@@ -248,7 +249,7 @@ export async function sessionIssues(since: Date, hubStart: string | null, opts: 
            s->>'orderId' AS order_id, s->>'date' AS date, COALESCE((s->>'quantity')::float, 1) AS qty,
            (s->>'charged')::float AS charged, (s->>'orderNetAmount')::float AS order_net
     FROM "PayrollEntry" pe JOIN "Consultant" c ON c.id = pe."consultantId",
-         jsonb_array_elements(pe.items::jsonb) it,
+         jsonb_array_elements(pe.items::jsonb || COALESCE(pe."extraItems"::jsonb, '[]'::jsonb)) it,
          jsonb_array_elements(COALESCE(it->'sessions', '[]'::jsonb)) s
     WHERE s->>'orderId' IS NOT NULL AND s->>'date' >= ${sinceYmd}`
   // A session regenerated into more than one payslip counts once: a finalized one beats a draft.
@@ -337,7 +338,7 @@ export async function sessionIssues(since: Date, hubStart: string | null, opts: 
     const hmoPaid = o.payments.some(p => p.method === 'HMO')
     const branch = ORDER_TO_PAYROLL_BRANCH[o.branch] || o.branch
     const net = Number(o.netAmount) || 0
-    let ownPaid = 0
+    let ownPaid = 0 // varies lines count here too: they are paid, just typed by hand
     for (const i of o.items) {
       const r = i.service?.unitPayEnabled !== false ? rateOf(i.service?.unitPayId) : undefined
       if (r && !r.thresholdEnabled) ownPaid += Number(i.lineTotal) || 0
@@ -352,6 +353,7 @@ export async function sessionIssues(since: Date, hubStart: string | null, opts: 
       const r = rateOf(i.service.unitPayId)
       if (!r) continue
       if (hmoPaid && (String(i.service.department || '').toUpperCase() === 'MD' || i.service.hmoPaysClinicianDirect)) continue
+      if (r.varies) continue // PF is typed per session on the payslip, then checked from there
       paid.push({ item: i, unitPayId: r.unitPayId, unitPay: r.unitPay.name, pay: rateAt(r, branch, basis) })
     }
     const base = { consultantId: c.id, consultant: c.name, orderId: o.id, orderNumber: o.orderNumber, date, patientName: o.patientName, payroll: null, recovered: null }

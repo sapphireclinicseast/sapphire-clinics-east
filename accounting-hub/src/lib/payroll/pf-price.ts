@@ -6,6 +6,7 @@
 export interface PfRate {
   amount: unknown
   disabled?: boolean | null
+  varies?: boolean | null // PF typed per session on the payslip — no fixed rate to check
   thresholdEnabled?: boolean | null
   thresholdAmount?: unknown
   reducedAmount?: unknown
@@ -59,7 +60,7 @@ export function branchPriceMap(rows: { branch: string; price: unknown }[]): Reco
  *  price first. A service sold at every branch is checked at each of the
  *  consultant's branches, since a per-branch rate or price can differ. */
 export function overPrice(rate: PfRate, services: PricedService[], rateBranches: string[]): OverPrice[] {
-  if (rate.disabled) return []
+  if (rate.disabled || rate.varies) return []
   const overrides = (rate.branchAmounts as Record<string, unknown> | null | undefined) || {}
   const out: OverPrice[] = []
   for (const s of services) {
