@@ -720,8 +720,14 @@ function AssetManagementInner() {
     if (!form.name.trim()) { setFormError('Asset Name is required'); return }
     if (!form.branch) { setFormError('Branch is required'); return }
     if (itemPrices.some(p => p < 0)) { setFormError('An item price cannot be negative'); return }
-    if (itemPriced ? totalAmount <= 0 || (!allItemsPriced && purchasePriceNum <= 0) : (!purchasePriceNum || purchasePriceNum <= 0)) {
-      setFormError(itemPriced ? 'Give every item a price (or fill in the Price during Purchase for the blank ones)' : 'Purchase price must be > 0'); return
+    // ₱0 is allowed on purpose for items the clinic keeps but does not own — e.g.
+    // the bank-provided AUB card terminals (Hannah, 2026-11-02): tracked for
+    // custody and audits, nothing to book or depreciate.
+    const typedZero = !itemPriced && form.purchasePrice.trim() !== '' && purchasePriceNum === 0
+    if (typedZero) {
+      if (!confirm('This asset has no cost (₱0). Save it as an item the clinic keeps but does not own (e.g. a bank-provided card terminal)? Nothing is booked or depreciated.')) return
+    } else if (itemPriced ? totalAmount <= 0 || (!allItemsPriced && purchasePriceNum <= 0) : (!purchasePriceNum || purchasePriceNum <= 0)) {
+      setFormError(itemPriced ? 'Give every item a price (or fill in the Price during Purchase for the blank ones)' : 'Purchase price must be > 0 (type 0 for an item the clinic does not own)'); return
     }
     if (!form.dateBought) { setFormError('Date Bought is required'); return }
     if (!form.classification) { setFormError('Classification is required'); return }
