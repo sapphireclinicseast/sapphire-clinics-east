@@ -3360,6 +3360,8 @@ function AuditDetailModal({ id, canWrite, onClose, onChanged }: { id: string; ca
   const [img, setImg] = useState<string | null>(null)
   // Count one room at a time: the grid (and the print) shows only that room's items.
   const [room, setRoom] = useState('')
+  // Expand: the audit fills the screen and the grid gets all the height (Hannah, 2026-11-02).
+  const [full, setFull] = useState(false)
 
   const load = useCallback(async () => {
     const r = await fetch(`/api/assets/audits?id=${id}`)
@@ -3412,14 +3414,20 @@ function AuditDetailModal({ id, canWrite, onClose, onChanged }: { id: string; ca
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 overflow-y-auto" onClick={onClose}>
-      <div className="bg-white rounded-2xl p-6 w-full max-w-5xl my-8" onClick={e => e.stopPropagation()}>
+    <div className={`fixed inset-0 z-50 flex items-start justify-center bg-black/40 ${full ? '' : 'p-4 overflow-y-auto'}`} onClick={onClose}>
+      <div className={`bg-white p-6 w-full ${full ? 'h-full flex flex-col' : 'rounded-2xl max-w-5xl my-8'}`} onClick={e => e.stopPropagation()}>
         {!d ? <div className="py-10 text-center"><Loader2 size={18} className="inline animate-spin" /></div> : (<>
           <div className="flex items-center justify-between mb-1">
             <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">{d.refNumber}
               <span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={d.status === 'FINALIZED' ? { background: '#dcfce7', color: '#166534' } : { background: '#fef9c3', color: '#854d0e' }}>{d.status === 'FINALIZED' ? 'Finalized' : 'Draft'}</span>
             </h2>
-            <button onClick={onClose}><X size={18} className="text-gray-500" /></button>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setFull(v => !v)} title={full ? 'Back to normal size' : 'Expand to full screen'}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+                {full ? <><Minimize2 size={14} /> Shrink</> : <><Maximize2 size={14} /> Expand</>}
+              </button>
+              <button onClick={onClose}><X size={18} className="text-gray-500" /></button>
+            </div>
           </div>
           <p className="text-xs text-gray-500 mb-3">{dISO(d.dateFrom)} → {dISO(d.dateTo)} · {d.branch === 'ALL' ? 'All branches' : branchLabel(d.branch)} · {(d.departments || []).join(', ') || 'All departments'} · Auditor: {d.auditorName}</p>
 
@@ -3437,7 +3445,7 @@ function AuditDetailModal({ id, canWrite, onClose, onChanged }: { id: string; ca
             {room && <span className="text-[11px] text-gray-400">Showing {shown.length} of {items.length} — Print prints this room only.</span>}
           </div>
 
-          <div className="rounded-xl border overflow-auto mb-3" style={{ borderColor: 'var(--light-gray)', maxHeight: '46vh' }}>
+          <div className={`rounded-xl border overflow-auto mb-3 ${full ? 'flex-1 min-h-0' : ''}`} style={{ borderColor: 'var(--light-gray)', maxHeight: full ? undefined : '46vh' }}>
             <table className="w-full text-xs">
               <thead className="sticky top-0" style={{ background: 'var(--off-white)' }}><tr className="text-left text-gray-500">
                 {['Photo', 'Control No.', 'Asset', 'Classification', 'Location', 'Accountable', 'Condition', 'Replace?', 'Remarks'].map(h => <th key={h} className="px-2 py-2 font-semibold">{h}</th>)}
