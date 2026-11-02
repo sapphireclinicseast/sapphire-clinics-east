@@ -32,6 +32,8 @@ export interface SessionIssue {
   // charge: charged is the current line scaled to the order net the payslip saw.
   approx?: boolean
   over: number // (pay − charged) × quantity
+  // Recorded as deducted from the consultant's pay in a later cutoff (PfOverPriceRecovery).
+  recovered: { cutoff: string; note: string | null; recordedBy: string | null; recordedAt: string } | null
   // LINE = a priced line paid more than its own charge; ORDER = a ₱0 "BASIC
   // SESSION" carrier whose PF is more than the rest of the order was charged.
   kind: 'LINE' | 'ORDER'
@@ -308,7 +310,7 @@ export async function sessionIssues(since: Date, hubStart: string | null): Promi
         service: kind === 'ORDER' ? o.items.map(i => i.name).join(' + ') : (priced.length ? priced : matching).map(i => i.name).join(' + ') || o.items.map(i => i.name).join(' + '),
         unitPayId: l.unit_pay_id || '', unitPay: l.unit_pay_name || '', quantity: qty,
         charged: charged / qty, pay: Number(l.unit_amount), over: pf - charged, kind,
-        payroll: { cutoff: l.cutoff, status: l.status }, ...(approx ? { approx } : {}),
+        payroll: { cutoff: l.cutoff, status: l.status }, ...(approx ? { approx } : {}), recovered: null,
       })
     }
   }
@@ -352,7 +354,7 @@ export async function sessionIssues(since: Date, hubStart: string | null): Promi
       if (hmoPaid && (String(i.service.department || '').toUpperCase() === 'MD' || i.service.hmoPaysClinicianDirect)) continue
       paid.push({ item: i, unitPayId: r.unitPayId, unitPay: r.unitPay.name, pay: rateAt(r, branch, basis) })
     }
-    const base = { consultantId: c.id, consultant: c.name, orderId: o.id, orderNumber: o.orderNumber, date, patientName: o.patientName, payroll: null }
+    const base = { consultantId: c.id, consultant: c.name, orderId: o.id, orderNumber: o.orderNumber, date, patientName: o.patientName, payroll: null, recovered: null }
     const notRun = (unitPayId: string) => !onPayslip.has(keyOf(o.id, c.id, unitPayId))
 
     // Priced lines: PF per unit vs what the line was charged per unit.
@@ -380,7 +382,37 @@ export async function sessionIssues(since: Date, hubStart: string | null): Promi
       }
     }
   }
+  // Sessions already recorded as recovered (deducted in a later cutoff).
+  if (out.length) {
+    const recs = await prisma.pfOverPriceRecovery.findMany({ where: { orderId: { in: [...new Set(out.map(x => x.orderId))] } } })
+    const userIds = [...new Set(recs.map(r => r.recordedById).filter((id): id is string => !!id))]
+    const users = userIds.length ? await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } }) : []
+    const userName = new Map(users.map(u => [u.id, u.name || '']))
+    const recOf = new Map(recs.map(r => [keyOf(r.orderId, r.consultantId, r.unitPayId), r]))
+    for (const x of out) {
+      const r = recOf.get(keyOf(x.orderId, x.consultantId, x.unitPayId))
+      if (r) x.recovered = { cutoff: r.cutoffPeriod, note: r.note, recordedBy: r.recordedById ? userName.get(r.recordedById) || null : null, recordedAt: r.recordedAt.toISOString() }
+    }
+  }
   return out.sort((a, b) => b.date.localeCompare(a.date) || a.consultant.localeCompare(b.consultant))
+}
+
+export interface PayslipDeduction { consultantId: string; consultant: string; cutoff: string; status: string; name: string; amount: number }
+
+/** Manual deductions on these consultants' payslips (adjustments that aren't additions; system
+ *  mentorship mm- lines left out) — what the payroll officer may already have recovered. */
+export async function payslipDeductions(consultantIds: string[]): Promise<PayslipDeduction[]> {
+  if (!consultantIds.length) return []
+  const rows = await prisma.$queryRaw<{ consultant_id: string; consultant: string; cutoff: string; status: string; id: string | null; name: string | null; amount: number | null; is_addition: string | null }[]>`
+    SELECT pe."consultantId" AS consultant_id, c.name AS consultant, pe."cutoffPeriod" AS cutoff, pe.status,
+           a->>'id' AS id, COALESCE(NULLIF(a->>'name', ''), a->>'remarks') AS name, (a->>'amount')::float AS amount, a->>'isAddition' AS is_addition
+    FROM "PayrollEntry" pe JOIN "Consultant" c ON c.id = pe."consultantId",
+         jsonb_array_elements(pe.adjustments::jsonb) a
+    WHERE pe."consultantId" = ANY(${consultantIds})`
+  return rows
+    .filter(r => r.is_addition !== 'true' && !(r.id || '').startsWith('mm-') && Number(r.amount) > 0)
+    .map(r => ({ consultantId: r.consultant_id, consultant: r.consultant, cutoff: r.cutoff, status: r.status, name: r.name || 'Deduction', amount: Number(r.amount) }))
+    .sort((a, b) => a.consultant.localeCompare(b.consultant) || a.cutoff.localeCompare(b.cutoff))
 }
 
 // ── Blocking saves: PF can never be set above the price it is paid on ──

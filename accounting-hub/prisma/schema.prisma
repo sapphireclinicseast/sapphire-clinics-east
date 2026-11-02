@@ -2548,6 +2548,24 @@ model MentorshipFeeSetting {
   updatedAt  DateTime @updatedAt
 }
 
+// PF Above Price: a session whose PF came to more than it was charged, recorded as
+// recovered — deducted from the consultant's pay in a later cutoff. Recorded rows
+// drop out of Payroll → PF Above Price and the bell (Show recovered brings them back).
+model PfOverPriceRecovery {
+  id           String   @id @default(cuid())
+  orderId      String
+  consultantId String
+  unitPayId    String
+  cutoffPeriod String // the cutoff the overpaid PF was deducted in, e.g. "2026-08-2"
+  amount       Decimal? // how much was over when recorded
+  note         String?
+  recordedById String?
+  recordedAt   DateTime @default(now())
+
+  @@unique([orderId, consultantId, unitPayId])
+  @@index([consultantId])
+}
+
 model ConsultantCutoffAdjustment {
   id             String     @id @default(cuid())
   consultantId   String

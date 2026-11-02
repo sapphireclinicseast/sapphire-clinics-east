@@ -3199,7 +3199,7 @@ export default function PayrollPage() {
             <PfPriceCheck variant="banner" reloadKey={pfPriceReload} onOpen={() => setSubTab('pf-price')} onCount={setPfPriceCount} />
           )}
           {subTab === 'pf-price' && (
-            <PfPriceCheck variant="full" reloadKey={pfPriceReload} onCount={setPfPriceCount}
+            <PfPriceCheck variant="full" canWrite={!!canWrite} reloadKey={pfPriceReload} onCount={setPfPriceCount}
               onEditConsultant={(id, name) => {
                 setSubTab('list'); setCSearch(name); setCDeptFilter('')
                 const c = consultants.find(x => x.id === id)

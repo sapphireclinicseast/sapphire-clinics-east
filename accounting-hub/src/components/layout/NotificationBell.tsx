@@ -54,7 +54,8 @@ async function loadGroups(role: string): Promise<Group[]> {
 
   // PF above the service price — rates per consultant, then recent sessions per consultant
   const pfRates: { consultant: string; unitPay: string }[] = pfPrice?.rates || []
-  const pfSessions: { consultant: string; over: number }[] = pfPrice?.sessions || []
+  // Sessions already adjusted in a later payroll are done.
+  const pfSessions: { consultant: string; over: number; recovered: unknown }[] = (pfPrice?.sessions || []).filter((x: { recovered?: unknown }) => !x.recovered)
   if (pfRates.length || pfSessions.length) {
     const rateBy = new Map<string, Set<string>>()
     for (const r of pfRates) rateBy.set(r.consultant, (rateBy.get(r.consultant) || new Set()).add(r.unitPay))
