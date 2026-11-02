@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { blockIfRenterNotify } from '@/lib/renter-notify-guard'
+import { emptyReason } from '@/lib/clinician-send-empty-reason'
 
 const BRANCH_CONFIG: Record<string, { httpSmsKey: string; phone: string }> = {
   SBEA: { httpSmsKey: process.env.HTTPSMS_API_KEY_SBEA ?? '', phone: '+639171189289' },
@@ -51,17 +52,24 @@ export async function POST(req: NextRequest) {
   const dayStart = new Date(`${date}T00:00:00.000Z`)
   const dayEnd   = new Date(`${date}T23:59:59.999Z`)
   const schedules = await prisma.schedule.findMany({
-    // Sessions still going ahead. This used to be CONFIRMED only, which meant
-    // a clinician whose day had not been confirmed row by row was told "no
-    // confirmed schedules" for a full day of booked patients — PENDING is the
-    // default for a new booking. Matches send-clinician-email.
-    where:   { staffId, date: { gte: dayStart, lte: dayEnd }, status: { in: ['CONFIRMED', 'PENDING'] } },
+    // CONFIRMED only — what the clinician is told to turn up for has to be
+    // settled with the patient first. PENDING is the default for a new
+    // booking, so it means "nobody has rung them yet", and a clinician who
+    // blocks out their day for a session the patient never agreed to has been
+    // sent to the clinic for nothing. RESCHEDULED, CANCELLED and NO_SHOW are
+    // excluded by the same filter.
+    //
+    // Deliberately stricter than the PATIENT-facing sends in this folder,
+    // which still include PENDING: a reminder to a patient about a booking we
+    // are holding for them is useful either way, and dropping PENDING there
+    // emptied "Email All Patients" (#817). Matches send-clinician-email.
+    where:   { staffId, date: { gte: dayStart, lte: dayEnd }, status: 'CONFIRMED' },
     include: { patient: true },
     orderBy: { startTime: 'asc' },
   })
 
   if (schedules.length === 0)
-    return NextResponse.json({ error: 'No schedules found for this day' }, { status: 400 })
+    return NextResponse.json({ error: await emptyReason(staffId, dayStart, dayEnd) }, { status: 400 })
 
   const branch    = BRANCH_SHORT[callerBranch ?? staff.branch] ?? (callerBranch ?? staff.branch)
   const shortDate = new Date(date + 'T12:00:00').toLocaleDateString('en-PH', {
@@ -77,7 +85,9 @@ export async function POST(req: NextRequest) {
   })
 
   const allLines = [
-    `Hi ${staff.firstName}! Your schedule for ${shortDate} at Aura Health ${branch}:`,
+    // Says "confirmed" because the query guarantees it. Only ever claim this
+    // while the filter above is CONFIRMED-only.
+    `Hi ${staff.firstName}! Your confirmed schedule for ${shortDate} at Aura Health ${branch}:`,
     ...patientLines,
     `${schedules.length} patient${schedules.length !== 1 ? 's' : ''} total.`,
   ]

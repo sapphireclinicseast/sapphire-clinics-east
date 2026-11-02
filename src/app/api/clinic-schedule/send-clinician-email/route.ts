@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { blockIfRenterNotify } from '@/lib/renter-notify-guard'
 import { getGmailClient } from '@/lib/email'
 import { getBranchNotifyConfig, getBranchSender, type BranchNotifyConfig } from '@/lib/branch-notify-config'
+import { emptyReason } from '@/lib/clinician-send-empty-reason'
 
 // This file wants the SHORT display forms — "Aura Health Rehab – East" as
 // the team label, "Aura Health Rehab – East Branch" as the location line —
@@ -79,7 +80,7 @@ function buildClinicianEmailHtml(opts: {
         <tr>
           <td style="padding:12px 40px;background:#cf9d88;text-align:center;">
             <p style="margin:0;font-size:13px;font-weight:bold;color:#fff;letter-spacing:0.05em;text-transform:uppercase;">
-              Your Schedule for ${formatDate(opts.date)}
+              Your Confirmed Schedule for ${formatDate(opts.date)}
             </p>
           </td>
         </tr>
@@ -89,7 +90,7 @@ function buildClinicianEmailHtml(opts: {
           <td style="padding:32px 40px;">
             <p style="margin:0 0 18px;font-size:15px;">Hi <strong>${opts.firstName}</strong>!</p>
             <p style="margin:0 0 20px;color:#444;">
-              Here is your schedule at <strong>${shortLocation(cfg)}</strong>:
+              Here is your confirmed schedule at <strong>${shortLocation(cfg)}</strong>:
             </p>
 
             <!-- Schedule table -->
@@ -108,7 +109,7 @@ function buildClinicianEmailHtml(opts: {
             </table>
 
             <p style="margin:0 0 28px;font-size:13px;color:#666;">
-              Total patients: <strong style="color:#244952;">${total}</strong>
+              Total confirmed patients: <strong style="color:#244952;">${total}</strong>
             </p>
 
             <p style="margin:0 0 4px;color:#555;">Warm regards,</p>
@@ -151,7 +152,7 @@ function buildClinicianEmailPlainText(opts: {
   const lines = [
     `Hi ${opts.firstName}!`,
     '',
-    `Here is your schedule for ${formatDate(opts.date)} at ${shortLocation(cfg)}:`,
+    `Here is your confirmed schedule for ${formatDate(opts.date)} at ${shortLocation(cfg)}:`,
     '',
   ]
 
@@ -162,7 +163,7 @@ function buildClinicianEmailPlainText(opts: {
 
   lines.push(
     '',
-    `Total patients: ${opts.schedules.length}`,
+    `Total confirmed patients: ${opts.schedules.length}`,
     '',
     'Warm regards,',
     `${cfg.brandName} Team`,
@@ -220,21 +221,25 @@ export async function POST(req: NextRequest) {
   const dayEnd   = new Date(`${date}T23:59:59.999Z`)
 
   const schedules = await prisma.schedule.findMany({
-    // Sessions that are still going ahead. RESCHEDULED, CANCELLED and
-    // NO_SHOW are excluded — those were being listed under a heading that
-    // said "confirmed", so a session the patient had already moved read as
-    // one to turn up for.
+    // CONFIRMED only — what the clinician is told to turn up for has to be
+    // settled with the patient first. PENDING is the default for a new
+    // booking, so it means "nobody has rung them yet", and a clinician who
+    // blocks out their day for a session the patient never agreed to has been
+    // sent to the clinic for nothing. RESCHEDULED, CANCELLED and NO_SHOW are
+    // excluded by the same filter — a session the patient already moved must
+    // not read to the therapist as one to attend.
     //
-    // PENDING is included: it is the DEFAULT for a newly booked session.
-    // Filtering to CONFIRMED alone emptied the email for any day that had
-    // not been confirmed row by row, which is most of them.
-    where:   { staffId, date: { gte: dayStart, lte: dayEnd }, status: { in: ['CONFIRMED', 'PENDING'] } },
+    // Deliberately stricter than the PATIENT-facing sends in this folder,
+    // which still include PENDING: a reminder to a patient about a booking we
+    // are holding for them is useful either way, and dropping PENDING there
+    // emptied "Email All Patients" (#817). Matches send-clinician-sms.
+    where:   { staffId, date: { gte: dayStart, lte: dayEnd }, status: 'CONFIRMED' },
     include: { patient: true },
     orderBy: { startTime: 'asc' },
   })
 
   if (schedules.length === 0) {
-    return NextResponse.json({ error: 'No schedules found for this staff on this date' }, { status: 400 })
+    return NextResponse.json({ error: await emptyReason(staffId, dayStart, dayEnd) }, { status: 400 })
   }
 
   const scheduleRows = schedules.map((s) => ({
