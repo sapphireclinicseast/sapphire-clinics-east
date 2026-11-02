@@ -4889,6 +4889,8 @@ export default function PayrollPage() {
                             const t = computeTotals(p, extras, adjs)
                             const adjNet = t.taxedAdj + t.nonTaxedAdj
                             const isExpanded = expandedPayslip === p.consultantId
+                            // Automatic PF recovery lines (overpaid PF from earlier payslips).
+                            const prTotal = adjs.filter(a => String(a.id).startsWith('pr-')).reduce((sum, a) => sum + a.amount, 0)
 
                             // Unit pays available for this clinician's dept
                             const availableUPs = unitPays.filter(up =>
@@ -4909,11 +4911,17 @@ export default function PayrollPage() {
                             return (
                               <React.Fragment key={p.consultantId}>
                                 {/* ── Summary row ── */}
-                                <tr className="border-t hover:bg-gray-50 cursor-pointer" style={{ borderColor: 'var(--light-gray)' }}
+                                <tr className="border-t hover:bg-gray-50 cursor-pointer" style={{ borderColor: 'var(--light-gray)', ...(prTotal > 0 ? { background: '#fef2f2' } : {}) }}
                                   onClick={() => setExpandedPayslip(isExpanded ? null : p.consultantId)}>
                                   <td className="px-3 py-2.5 font-medium" style={{ color: 'var(--charcoal)' }}>
                                     {p.consultantName}
                                     <span className="ml-1.5 text-[10px] px-1 py-0.5 rounded" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>{p.department}</span>
+                                    {prTotal > 0 && (
+                                      <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded font-semibold" style={{ background: '#fee2e2', color: '#b91c1c' }}
+                                        title="PF overpaid on an earlier payslip is deducted here automatically — see Adjustments">
+                                        PF recovery −{formatCurrency(prTotal)}
+                                      </span>
+                                    )}
                                   </td>
                                   <td className="px-3 py-2.5 text-right font-mono">{formatCurrency(t.totalUnitPay)}</td>
                                   <td className="px-3 py-2.5 text-right font-mono">{formatCurrency(p.retainerAmount)}</td>
@@ -5219,8 +5227,17 @@ export default function PayrollPage() {
                                                 </thead>
                                                 <tbody>
                                                   {adjs.map(a => (
-                                                    <tr key={a.id} className="border-t" style={{ borderColor: '#fde68a' }}>
-                                                      <td className="px-3 py-2 font-medium" style={{ color: 'var(--charcoal)' }}>{a.name}</td>
+                                                    <tr key={a.id} className="border-t"
+                                                      style={{ borderColor: '#fde68a', ...(String(a.id).startsWith('pr-') ? { background: '#fef2f2' } : {}) }}>
+                                                      <td className="px-3 py-2 font-medium" style={{ color: 'var(--charcoal)' }}>
+                                                        {a.name}
+                                                        {String(a.id).startsWith('pr-') && (
+                                                          <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded font-semibold" style={{ background: '#fee2e2', color: '#b91c1c' }}
+                                                            title="Added automatically from Payroll → HMO PF Adjustments / PF Above Price. Saving records these sessions as deducted in this cutoff; delete the line to leave them for a later cutoff.">
+                                                            Auto PF recovery
+                                                          </span>
+                                                        )}
+                                                      </td>
                                                       <td className="px-3 py-2 text-center">
                                                         <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold"
                                                           style={a.isTaxed ? { background: '#fef3c7', color: '#78350f' } : { background: '#f3f4f6', color: '#6b7280' }}>

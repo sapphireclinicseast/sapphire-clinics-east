@@ -27,7 +27,7 @@ export interface SessionIssue {
   charged: number // what the session was charged, per unit
   pay: number // PF per unit — what the payroll line paid, or today's rate if not yet in a payroll
   // The hub payroll that carries the session (DRAFT, FINAL or LOCKED); null = not yet run.
-  payroll: { cutoff: string; status: string } | null
+  payroll: { cutoff: string; status: string; branch: string } | null
   // The order changed after that payroll and the payslip didn't keep the line's
   // charge: charged is the current line scaled to the order net the payslip saw.
   approx?: boolean
@@ -209,7 +209,7 @@ export async function hubPayrollStart(): Promise<string | null> {
 }
 
 type PayslipSession = {
-  entry_id: string; cutoff: string; status: string; consultant_id: string; consultant: string
+  entry_id: string; cutoff: string; status: string; branch: string; consultant_id: string; consultant: string
   unit_pay_id: string | null; unit_pay_name: string | null; unit_amount: number
   order_id: string; date: string; qty: number; charged: number | null; order_net: number | null
 }
@@ -235,7 +235,7 @@ const ORDER_SELECT = {
  *   (name match, branch override, threshold basis, no PF on HMO-paid medical) —
  *   never before the hub's first payroll, whose earlier PF was paid outside it.
  */
-export async function sessionIssues(since: Date, hubStart: string | null): Promise<SessionIssue[]> {
+export async function sessionIssues(since: Date, hubStart: string | null, opts: { paidOnly?: boolean } = {}): Promise<SessionIssue[]> {
   const sinceYmd = since.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
   const hubFloor = hubStart ? new Date(`${hubStart}T00:00:00+08:00`) : null
   const notRunSince = hubFloor && hubFloor > since ? hubFloor : since
@@ -243,7 +243,7 @@ export async function sessionIssues(since: Date, hubStart: string | null): Promi
 
   // ── A. Sessions on hub payslips ──
   const lines = await prisma.$queryRaw<PayslipSession[]>`
-    SELECT pe.id AS entry_id, pe."cutoffPeriod" AS cutoff, pe.status, pe."consultantId" AS consultant_id, c.name AS consultant,
+    SELECT pe.id AS entry_id, pe."cutoffPeriod" AS cutoff, pe.status, pe.branch, pe."consultantId" AS consultant_id, c.name AS consultant,
            it->>'unitPayId' AS unit_pay_id, it->>'unitPayName' AS unit_pay_name, (it->>'unitAmount')::float AS unit_amount,
            s->>'orderId' AS order_id, s->>'date' AS date, COALESCE((s->>'quantity')::float, 1) AS qty,
            (s->>'charged')::float AS charged, (s->>'orderNetAmount')::float AS order_net
@@ -310,14 +310,14 @@ export async function sessionIssues(since: Date, hubStart: string | null): Promi
         service: kind === 'ORDER' ? o.items.map(i => i.name).join(' + ') : (priced.length ? priced : matching).map(i => i.name).join(' + ') || o.items.map(i => i.name).join(' + '),
         unitPayId: l.unit_pay_id || '', unitPay: l.unit_pay_name || '', quantity: qty,
         charged: charged / qty, pay: Number(l.unit_amount), over: pf - charged, kind,
-        payroll: { cutoff: l.cutoff, status: l.status }, ...(approx ? { approx } : {}), recovered: null,
+        payroll: { cutoff: l.cutoff, status: l.status, branch: l.branch }, ...(approx ? { approx } : {}), recovered: null,
       })
     }
   }
   const onPayslip = new Set(lines.map(l => keyOf(l.order_id, l.consultant_id, l.unit_pay_id)))
 
   // ── B. Sessions not on a payslip yet: today's rate ──
-  const [consultants, orders] = await Promise.all([
+  const [consultants, orders] = opts.paidOnly ? [[], []] : await Promise.all([
     prisma.consultant.findMany({ where: { isActive: true }, select: CONSULTANT_SELECT }),
     prisma.order.findMany({
       where: {

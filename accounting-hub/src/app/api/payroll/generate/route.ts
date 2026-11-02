@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { notMigratedOrder } from '@/lib/payroll/exclude-migrated'
+import { recoveryLines, stampRecoveries } from '@/lib/payroll/pf-recovery'
 import { commissionFloor, computeDoctorCommissions, normName } from '@/lib/referral-commission'
 
 /** Safely convert a Prisma Decimal (or any value) to a plain JS number */
@@ -346,10 +347,15 @@ export async function GET(req: Request) {
       }
     }
 
-    // Stale mm-/ca-/rc- lines out, current ones in. Manual lines untouched.
+    // ── PF recovery (HMO PF Adjustments + PF Above Price) ──────────────────
+    // PF overpaid on an earlier payslip at this branch comes off this one as
+    // `pr-` deduction lines; saving the payslip records them as deducted here.
+    const prByConsultant = await recoveryLines(cutoffPeriod, branch || '')
+
+    // Stale mm-/ca-/rc-/pr- lines out, current ones in. Manual lines untouched.
     const mergeMentorship = (stored: unknown[], consultantId: string): unknown[] => {
-      const manual = (stored as { id?: string }[]).filter(l => { const id = String(l?.id || ''); return !id.startsWith('mm-') && !id.startsWith('ca-') && !id.startsWith('rc-') })
-      return [...manual, ...(caByConsultant.get(consultantId) || []), ...(mmByConsultant.get(consultantId) || []), ...(rcByConsultant.get(consultantId) || [])]
+      const manual = (stored as { id?: string }[]).filter(l => { const id = String(l?.id || ''); return !id.startsWith('mm-') && !id.startsWith('ca-') && !id.startsWith('rc-') && !id.startsWith('pr-') })
+      return [...manual, ...(caByConsultant.get(consultantId) || []), ...(mmByConsultant.get(consultantId) || []), ...(rcByConsultant.get(consultantId) || []), ...(prByConsultant.get(consultantId) || [])]
     }
     const existingDataMap = new Map(existingEntries.map(e => [e.consultantId, e]))
 
@@ -909,6 +915,12 @@ export async function POST(req: Request) {
           skipDuplicates: true,
         })
       }
+
+      // Record the overpaid PF this payslip's pr- lines deduct (released and re-taken on every save).
+      await stampRecoveries({
+        entryId: result.id, consultantId: entry.consultantId, cutoffPeriod,
+        adjustments: (entry.adjustments || []) as unknown[], userId: (session.user.id as string) || null,
+      })
 
       results.push(result)
     }

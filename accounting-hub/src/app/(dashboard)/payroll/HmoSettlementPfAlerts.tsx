@@ -134,9 +134,10 @@ export default function HmoSettlementPfAlerts({ canWrite, variant = 'full', onOp
         {settledToggle}
       </div>
       <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
-        These sessions were decreased to what the HMO paid after their PF was released at the billed amount. Deduct the overpaid PF
-        from the consultant&apos;s payout, then pick the cutoff it was deducted in and press <strong>Record</strong> — the row then
-        hides (tick <strong>Show settled</strong> to see it again). <strong>Outside hub</strong> = the session&apos;s payroll was run
+        These sessions were decreased to what the HMO paid after their PF was released at the billed amount. The overpaid PF is
+        deducted automatically on the consultant&apos;s next payslip at the same branch (a highlighted <strong>Auto PF recovery</strong>
+        line); saving that payslip records the cutoff and the row hides (tick <strong>Show settled</strong> to see it again). If it was
+        deducted some other way, pick the cutoff and press <strong>Record</strong>. <strong>Outside hub</strong> = the session&apos;s payroll was run
         before the hub (Jan–Mar 2026): PF paid is the rule at the billed amount, so confirm it against the payslip.
       </p>
       {error && <p className="text-xs font-medium text-red-700">{error}</p>}
@@ -178,7 +179,8 @@ export default function HmoSettlementPfAlerts({ canWrite, variant = 'full', onOp
                     {a.settled ? (
                       <span className="flex items-center gap-2">
                         <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold" style={{ background: '#dcfce7', color: '#166534' }}
-                          title={[a.resolvedBy && `Recorded by ${a.resolvedBy}`, a.resolvedAt && formatDate(a.resolvedAt), a.resolvedNote].filter(Boolean).join(' · ')}>
+                          title={[a.resolvedBy && `Recorded by ${a.resolvedBy}`, a.resolvedAt && formatDate(a.resolvedAt),
+                            a.resolvedNote?.startsWith('auto:') ? 'Deducted automatically on the payslip' : a.resolvedNote].filter(Boolean).join(' · ')}>
                           {a.deductedCutoff ? cutoffLabel(a.deductedCutoff) : 'Settled'}
                         </span>
                         {canWrite && (
