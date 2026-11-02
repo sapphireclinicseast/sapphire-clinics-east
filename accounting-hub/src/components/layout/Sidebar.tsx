@@ -33,6 +33,7 @@ import {
   FileText,
   PiggyBank,
   FolderLock,
+  Truck,
  AlertTriangle } from 'lucide-react'
 
 // Roles that see all accounting modules (excludes front desk and HMO Officer).
@@ -96,6 +97,7 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { href: '/petty-cash', icon: Wallet, label: 'Petty Cash', roles: ENTRY_ACCESS },
       { href: '/expenses', icon: CreditCard, label: 'Expenses', roles: ENTRY_ACCESS },
+      { href: '/suppliers', icon: Truck, label: 'Suppliers', roles: ENTRY_ACCESS },
       { href: '/refunds', icon: Undo2, label: 'Refunds', roles: ENTRY_ACCESS },
       { href: '/cash-advances', icon: HandCoins, label: 'Cash Advances', roles: TAX_ACCESS },
       { href: '/inventory', icon: Package, label: 'Inventory & Procurement', roles: INVENTORY_ACCESS },

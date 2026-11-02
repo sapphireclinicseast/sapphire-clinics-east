@@ -55,7 +55,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { supplierName, email, contactNumber, contactPerson, contactMethod, contactHandle, isForeign, currency, defaultExchangeRate, address, notes } = await req.json()
+    const { supplierName, email, contactNumber, contactPerson, contactMethod, contactHandle, isForeign, currency, defaultExchangeRate, address, notes, tin, itemsProvided } = await req.json()
 
     if (!supplierName?.trim()) {
       return NextResponse.json({ error: 'Supplier name is required' }, { status: 400 })
@@ -76,6 +76,8 @@ export async function POST(req: Request) {
         defaultExchangeRate: isForeign && defaultExchangeRate ? parseFloat(defaultExchangeRate) : null,
         address: address?.trim() || null,
         notes: notes?.trim() || null,
+        tin: tin?.trim() || null,
+        itemsProvided: itemsProvided?.trim() || null,
         createdById: session.user.id,
       },
     })
@@ -103,7 +105,7 @@ export async function PUT(req: Request) {
   }
 
   try {
-    const { id, supplierName, email, contactNumber, contactPerson, contactMethod, contactHandle, isForeign, currency, defaultExchangeRate, address, notes } = await req.json()
+    const { id, supplierName, email, contactNumber, contactPerson, contactMethod, contactHandle, isForeign, currency, defaultExchangeRate, address, notes, tin, itemsProvided } = await req.json()
 
     if (!id) {
       return NextResponse.json({ error: 'Supplier ID is required' }, { status: 400 })
@@ -122,6 +124,8 @@ export async function PUT(req: Request) {
     if (defaultExchangeRate !== undefined) data.defaultExchangeRate = defaultExchangeRate ? parseFloat(defaultExchangeRate) : null
     if (address !== undefined) data.address = address?.trim() || null
     if (notes !== undefined) data.notes = notes?.trim() || null
+    if (tin !== undefined) data.tin = tin?.trim() || null
+    if (itemsProvided !== undefined) data.itemsProvided = itemsProvided?.trim() || null
 
     const supplier = await prisma.supplier.update({ where: { id }, data })
 

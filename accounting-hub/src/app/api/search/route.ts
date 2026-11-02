@@ -167,12 +167,12 @@ export async function GET(req: Request) {
   })
   for (const s of expSuppliers) results.push({
     id: s.id || s.registeredName, type: 'Supplier (Expense)', title: s.registeredName, subtitle: `${bl(s.branch)}${s.tin ? ` · TIN ${s.tin}` : ''}`,
-    amount: null, reference: s.tin || '', date: '', href: `/expenses?tab=suppliers&focus=${enc(s.registeredName)}`,
+    amount: null, reference: s.tin || '', date: '', href: `/suppliers?focus=${enc(s.registeredName)}`,
     detail: { 'Registered Name': s.registeredName, 'Registered Address': s.registeredAddress || '—', TIN: s.tin || '—', Branch: bl(s.branch) },
   })
   for (const s of suppliers) results.push({
     id: s.id, type: 'Supplier (Procurement)', title: s.supplierName, subtitle: s.contactNumber || s.email || '',
-    amount: null, reference: '', date: '', href: `/inventory?tab=Suppliers&focus=${enc(s.supplierName)}`,
+    amount: null, reference: '', date: '', href: `/suppliers?focus=${enc(s.supplierName)}`,
     detail: { Name: s.supplierName, Email: s.email || '—', Contact: s.contactNumber || '—', Address: s.address || '—' },
   })
   for (const i of inv) results.push({

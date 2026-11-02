@@ -388,6 +388,11 @@ model Supplier {
   currency            String   @default("PHP")
   defaultExchangeRate Decimal?
   address             String?
+  // One master record per supplier (Suppliers page, Hannah 2026-11-02): its TIN
+  // and what they supply us, typed in. Expense/asset/inventory history is added
+  // to "what they supply" automatically when the list is read.
+  tin                 String?
+  itemsProvided       String?
   notes               String?
   isActive            Boolean  @default(true)
   createdById         String

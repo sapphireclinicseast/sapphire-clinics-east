@@ -349,7 +349,7 @@ const CURRENCIES = [
   { value: 'INR', label: 'INR — Indian Rupee' },
 ]
 
-const TABS = ['Inventory', 'SKU Guide', 'Suppliers', 'Supplier Request', 'Adjustments', 'Consignments', 'Branch Stock', 'Forms', 'Psych Tests'] as const
+const TABS = ['Inventory', 'SKU Guide', 'Supplier Request', 'Adjustments', 'Consignments', 'Branch Stock', 'Forms', 'Psych Tests'] as const
 type Tab = (typeof TABS)[number]
 
 const STATUS_BADGE: Record<string, { bg: string; color: string }> = {
@@ -799,9 +799,6 @@ function InventoryInner() {
   // ── Pagination
   const [invPage, setInvPage] = useState(1)
   const [invPageSize, setInvPageSize] = useState(25)
-  const [supPage, setSupPage] = useState(1)
-  const [supSearch, setSupSearch] = useState('')
-  const [supPageSize, setSupPageSize] = useState(25)
   const [adjPage, setAdjPage] = useState(1)
   const [adjPageSize, setAdjPageSize] = useState(25)
   const [conPage, setConPage] = useState(1)
@@ -1010,24 +1007,9 @@ function InventoryInner() {
   const [inlineSRate, setInlineSRate] = useState('')
 
   // ── Supplier state
-  const [suppliers, setSuppliers] = useState<Supplier[]>([])
+  // The supplier list itself lives on the Suppliers page (2026-11-02); here it
+  // only feeds the item form's supplier picker.
   const [allSuppliers, setAllSuppliers] = useState<Supplier[]>([])
-  const [supplierModalOpen, setSupplierModalOpen] = useState(false)
-  const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null)
-  const [deleteSupplierConfirm, setDeleteSupplierConfirm] = useState<string | null>(null)
-
-  // Supplier form
-  const [sName, setSName] = useState('')
-  const [sPerson, setSPerson] = useState('')
-  const [sMethod, setSMethod] = useState('')
-  const [sHandle, setSHandle] = useState('')
-  const [sEmail, setSEmail] = useState('')
-  const [sContact, setSContact] = useState('')
-  const [sForeign, setSForeign] = useState(false)
-  const [sCurrency, setSCurrency] = useState('USD')
-  const [sRate, setSRate] = useState('')
-  const [sAddress, setSAddress] = useState('')
-  const [sNotes, setSNotes] = useState('')
 
   // ── Adjustment state
   const [adjustments, setAdjustments] = useState<Adjustment[]>([])
@@ -1384,19 +1366,6 @@ function InventoryInner() {
     if (data) setAllItems(Array.isArray(data) ? data : data.data || [])
   }, [fetchJson])
 
-  const fetchSuppliers = useCallback(async () => {
-    const data = await fetchJson('/api/suppliers?pageSize=100')
-    if (data) setSuppliers(data.data || [])
-  }, [fetchJson])
-
-  // Client-side supplier search across the fields anyone would look one up by.
-  const shownSuppliers = useMemo(() => {
-    const q = supSearch.trim().toLowerCase()
-    if (!q) return suppliers
-    return suppliers.filter((s) => [s.supplierName, s.contactPerson, s.contactMethod, s.contactHandle, s.email, s.contactNumber, s.address]
-      .some((f) => (f || '').toLowerCase().includes(q)))
-  }, [suppliers, supSearch])
-
   const fetchAllSuppliers = useCallback(async () => {
     const data = await fetchJson('/api/suppliers?all=true')
     if (data) setAllSuppliers(Array.isArray(data) ? data : data.data || [])
@@ -1450,7 +1419,7 @@ function InventoryInner() {
     }
     initialLoaded.current = true
     setLoading(true)
-    Promise.all([fetchItems(), fetchAllItems(), fetchSuppliers(), fetchAllSuppliers(), fetchAdjustments(), fetchConsignments(), fetchForms(), fetchFormTemplates(), fetchSupplierRequests(), fetchDistributions(), fetchPartnerInstitutions()])
+    Promise.all([fetchItems(), fetchAllItems(), fetchAllSuppliers(), fetchAdjustments(), fetchConsignments(), fetchForms(), fetchFormTemplates(), fetchSupplierRequests(), fetchDistributions(), fetchPartnerInstitutions()])
       .finally(() => setLoading(false))
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionUserId])
@@ -2012,59 +1981,6 @@ function InventoryInner() {
   }
 
   /* ═══════════════════════════════════════════════════════
-     SUPPLIER TAB HANDLERS
-     ═══════════════════════════════════════════════════════ */
-
-  function openSupplierCreate() {
-    setEditingSupplier(null)
-    setSName(''); setSEmail(''); setSContact(''); setSForeign(false)
-    setSPerson(''); setSMethod(''); setSHandle('')
-    setSCurrency('USD'); setSRate(''); setSAddress(''); setSNotes(''); setError('')
-    setSupplierModalOpen(true)
-  }
-
-  function openSupplierEdit(s: Supplier) {
-    setEditingSupplier(s)
-    setSName(s.supplierName); setSEmail(s.email || ''); setSContact(s.contactNumber || '')
-    setSPerson(s.contactPerson || ''); setSMethod(s.contactMethod || ''); setSHandle(s.contactHandle || '')
-    setSForeign(s.isForeign); setSCurrency(s.currency || 'USD')
-    setSRate(s.defaultExchangeRate != null ? String(s.defaultExchangeRate) : '')
-    setSAddress(s.address || ''); setSNotes(s.notes || ''); setError('')
-    setSupplierModalOpen(true)
-  }
-
-  async function handleSupplierSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    setSaving(true); setError('')
-    const body: Record<string, unknown> = {
-      supplierName: sName, email: sEmail || null, contactNumber: sContact || null,
-      contactPerson: sPerson || null, contactMethod: sMethod || null, contactHandle: sHandle || null,
-      isForeign: sForeign, currency: sForeign ? sCurrency : 'PHP',
-      address: sAddress || null, notes: sNotes || null,
-    }
-    if (editingSupplier) body.id = editingSupplier.id
-    try {
-      const res = await fetch('/api/suppliers', {
-        method: editingSupplier ? 'PUT' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-      const data = await res.json()
-      if (!res.ok) { setError(data.error || 'Something went wrong'); setSaving(false); return }
-      setSupplierModalOpen(false); fetchSuppliers(); fetchAllSuppliers()
-    } catch { setError('Network error') }
-    finally { setSaving(false) }
-  }
-
-  async function handleSupplierDelete(id: string) {
-    try {
-      const res = await fetch(`/api/suppliers?id=${id}`, { method: 'DELETE' })
-      if (!res.ok) { const d = await res.json(); setError(d.error || 'Failed to delete'); return }
-      setDeleteSupplierConfirm(null); fetchSuppliers(); fetchAllSuppliers()
-    } catch { setError('Network error') }
-  }
-
-  /* ═══════════════════════════════════════════════════════
      ADJUSTMENT TAB HANDLERS
      ═══════════════════════════════════════════════════════ */
 
@@ -2410,7 +2326,7 @@ function InventoryInner() {
      RENDER
      ═══════════════════════════════════════════════════════ */
 
-  const anyModalOpen = itemModalOpen || supplierModalOpen || adjModalOpen || conModalOpen || pdfModalOpen || bulkEditOpen || formModalOpen
+  const anyModalOpen = itemModalOpen || adjModalOpen || conModalOpen || pdfModalOpen || bulkEditOpen || formModalOpen
 
   // Print bulk barcodes — A6 pages, 10 barcodes per product per page
   const printBulkBarcodes = () => {
@@ -2516,16 +2432,6 @@ setTimeout(()=>window.print(),500);
     }
   }
 
-  const handleDownloadSuppliers = (format: 'xlsx' | 'pdf') => {
-    const headers = ['Supplier Name', 'Email', 'Contact Number', 'Foreign', 'Currency', 'Exchange Rate', 'Address', 'Notes']
-    const rows = suppliers.map(s => [
-      s.supplierName, s.email || '', s.contactNumber || '',
-      s.isForeign ? 'Yes' : 'No', s.currency || 'PHP', s.defaultExchangeRate ?? '', s.address || '', s.notes || ''
-    ])
-    if (format === 'xlsx') downloadXlsx('Suppliers', [{ name: 'Suppliers', headers, rows }])
-    else downloadPdf({ title: 'Suppliers', subtitle: `${rows.length} suppliers`, headers, rows })
-  }
-
   const handleDownloadAdjustments = (format: 'xlsx' | 'pdf') => {
     const headers = ['Date', 'Item', 'SKU', 'Type', 'Qty Change', 'Previous', 'New', 'Remarks', 'Adjusted By']
     const rows = adjustments.map((a: Adjustment) => [
@@ -2593,7 +2499,7 @@ setTimeout(()=>window.print(),500);
         <div className="mb-4 p-3 rounded-xl text-sm flex items-start gap-2 border" style={{ background: '#fffbeb', borderColor: '#f59e0b', color: '#92400e' }}>
           <AlertCircle size={16} className="shrink-0 mt-0.5" />
           <span className="flex-1">{loadError}</span>
-          <button onClick={() => { setLoadError(''); fetchItems(); fetchAllItems(); fetchAdjustments(); fetchConsignments(); fetchSuppliers() }}
+          <button onClick={() => { setLoadError(''); fetchItems(); fetchAllItems(); fetchAdjustments(); fetchConsignments(); fetchAllSuppliers() }}
             className="shrink-0 px-2.5 py-1 rounded-lg text-xs font-semibold border" style={{ borderColor: '#f59e0b' }}>
             Retry
           </button>
@@ -4060,206 +3966,6 @@ setTimeout(()=>window.print(),500);
       {/* ════════════════════════════════════════════════════
          TAB 2: SUPPLIERS
          ════════════════════════════════════════════════════ */}
-      {activeTab === 'Suppliers' && (
-        <>
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
-            <div className="flex items-center gap-3 flex-1">
-              <p className="text-sm shrink-0" style={{ color: 'var(--mid-gray)' }}>Manage supplier information</p>
-              <div className="relative flex-1 max-w-xs">
-                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--mid-gray)' }} />
-                <input value={supSearch} onChange={(e) => { setSupSearch(e.target.value); setSupPage(1) }}
-                  placeholder="Search name, contact person, email…"
-                  className="w-full pl-9 pr-3 py-2 rounded-xl border text-sm outline-none"
-                  style={{ borderColor: 'var(--light-gray)' }} />
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <DownloadMenu onDownload={handleDownloadSuppliers} label="Download" />
-              {canWrite && (
-                <button onClick={openSupplierCreate}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold transition-opacity hover:opacity-90"
-                  style={{ background: 'var(--teal)' }}>
-                  <Plus size={18} />
-                  Add Supplier
-                </button>
-              )}
-            </div>
-          </div>
-
-          <div className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr style={{ background: 'var(--off-white)' }}>
-                    <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Name</th>
-                    <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Email</th>
-                    <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Contact</th>
-                    <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Contact Person</th>
-                    <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Reach via</th>
-                    <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Foreign?</th>
-                    <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Currency</th>
-                    {canWrite && <th className="text-right px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Actions</th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {shownSuppliers.length === 0 ? (
-                    <tr>
-                      <td colSpan={canWrite ? 7 : 6} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>
-                        <Truck size={32} className="mx-auto mb-2 opacity-40" />
-                        <p>No suppliers</p>
-                      </td>
-                    </tr>
-                  ) : shownSuppliers.slice((supPage - 1) * supPageSize, supPage * supPageSize).map((s) => (
-                    <tr key={s.id} className="border-t hover:bg-gray-50/50 transition-colors" style={{ borderColor: 'var(--light-gray)' }}>
-                      <td className="px-4 py-3 font-medium" style={{ color: 'var(--charcoal)' }}>{s.supplierName}</td>
-                      <td className="px-4 py-3" style={{ color: 'var(--mid-gray)' }}>{s.email || '—'}</td>
-                      <td className="px-4 py-3" style={{ color: 'var(--mid-gray)' }}>{s.contactNumber || '—'}</td>
-                      <td className="px-4 py-3" style={{ color: 'var(--charcoal)' }}>{s.contactPerson || '—'}</td>
-                      <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
-                        {s.contactMethod
-                          ? <span className="px-2 py-1 rounded-md font-medium" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>{s.contactMethod}{s.contactHandle ? ` · ${s.contactHandle}` : ''}</span>
-                          : '—'}
-                      </td>
-                      <td className="px-4 py-3">
-                        {s.isForeign ? (
-                          <span className="px-2 py-1 rounded-md text-xs font-medium" style={{ background: '#e0e7ff', color: '#3730a3' }}>Foreign</span>
-                        ) : (
-                          <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>Local</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{s.currency || '—'}</td>
-                      {canWrite && (
-                        <td className="px-4 py-3">
-                          <div className="flex items-center justify-end gap-1">
-                            <button onClick={() => openSupplierEdit(s)} className="p-2 rounded-lg hover:bg-gray-100 transition-colors" title="Edit">
-                              <Pencil size={15} style={{ color: 'var(--teal)' }} />
-                            </button>
-                            <button onClick={() => setDeleteSupplierConfirm(s.id)} className="p-2 rounded-lg hover:bg-red-50 transition-colors" title="Delete">
-                              <Trash2 size={15} className="text-red-500" />
-                            </button>
-                          </div>
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {suppliers.length > 0 && (
-              <Pagination totalItems={shownSuppliers.length} page={supPage} pageSize={supPageSize}
-                onPageChange={setSupPage} onPageSizeChange={setSupPageSize} />
-            )}
-          </div>
-
-          {/* Delete Supplier Confirm */}
-          {deleteSupplierConfirm && (
-            <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-              <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-xl">
-                <h3 className="text-lg font-bold mb-2" style={{ color: 'var(--charcoal)' }}>Delete Supplier</h3>
-                <p className="text-sm mb-6" style={{ color: 'var(--mid-gray)' }}>Are you sure you want to deactivate this supplier?</p>
-                <div className="flex gap-3 justify-end">
-                  <button onClick={() => setDeleteSupplierConfirm(null)} className="px-4 py-2 rounded-lg text-sm border" style={{ borderColor: 'var(--light-gray)' }}>Cancel</button>
-                  <button onClick={() => handleSupplierDelete(deleteSupplierConfirm)} className="px-4 py-2 rounded-lg text-sm text-white bg-red-500 hover:bg-red-600">Delete</button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Add/Edit Supplier Modal */}
-          {supplierModalOpen && (
-            <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-              <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-xl max-h-[90vh] overflow-y-auto">
-                <div className="flex items-center justify-between mb-5">
-                  <h3 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
-                    {editingSupplier ? 'Edit Supplier' : 'Add Supplier'}
-                  </h3>
-                  <button onClick={() => setSupplierModalOpen(false)} className="p-1 hover:bg-gray-100 rounded-lg">
-                    <X size={20} style={{ color: 'var(--mid-gray)' }} />
-                  </button>
-                </div>
-
-                {error && <div className="mb-4 p-3 rounded-lg text-sm bg-red-50 text-red-600">{error}</div>}
-
-                <form onSubmit={handleSupplierSubmit} className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Supplier Name</label>
-                    <input type="text" value={sName} onChange={(e) => setSName(e.target.value)} required
-                      className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Email</label>
-                    <input type="email" value={sEmail} onChange={(e) => setSEmail(e.target.value)}
-                      className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Contact Number</label>
-                    <input type="text" value={sContact} onChange={(e) => setSContact(e.target.value)}
-                      className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Contact Person</label>
-                    <input type="text" value={sPerson} onChange={(e) => setSPerson(e.target.value)}
-                      placeholder="e.g. Kimi"
-                      className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Reach via</label>
-                      <select value={sMethod} onChange={(e) => setSMethod(e.target.value)}
-                        className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
-                        <option value="">— Select —</option>
-                        {['WeChat', 'WhatsApp', 'Viber', 'Facebook', 'Telegram', 'SMS', 'Call', 'Email', 'Other'].map((m) => (
-                          <option key={m} value={m}>{m}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>ID / handle on that app</label>
-                      <input type="text" value={sHandle} onChange={(e) => setSHandle(e.target.value)}
-                        placeholder="optional"
-                        className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
-                    </div>
-                  </div>
-                  <label className="flex items-center gap-2 text-sm" style={{ color: 'var(--charcoal)' }}>
-                    <input type="checkbox" checked={sForeign} onChange={(e) => setSForeign(e.target.checked)} className="rounded" />
-                    Foreign Supplier
-                  </label>
-                  {sForeign && (
-                    <div>
-                      <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Currency</label>
-                      <select value={sCurrency} onChange={(e) => setSCurrency(e.target.value)}
-                        className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
-                        {CURRENCIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-                      </select>
-                    </div>
-                  )}
-                  <div>
-                    <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Address</label>
-                    <input type="text" value={sAddress} onChange={(e) => setSAddress(e.target.value)}
-                      className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Notes</label>
-                    <textarea value={sNotes} onChange={(e) => setSNotes(e.target.value)} rows={2}
-                      className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none resize-none" style={{ borderColor: 'var(--light-gray)' }} />
-                  </div>
-                  <div className="flex gap-3 pt-2">
-                    <button type="button" onClick={() => setSupplierModalOpen(false)}
-                      className="flex-1 py-2.5 rounded-xl border text-sm font-medium"
-                      style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>Cancel</button>
-                    <button type="submit" disabled={saving}
-                      className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold disabled:opacity-50"
-                      style={{ background: 'var(--teal)' }}>
-                      {saving ? 'Saving...' : editingSupplier ? 'Update Supplier' : 'Add Supplier'}
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          )}
-        </>
-      )}
-
       {/* ════════════════════════════════════════════════════
          TAB 3: ADJUSTMENTS
          ════════════════════════════════════════════════════ */}

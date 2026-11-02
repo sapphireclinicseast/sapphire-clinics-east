@@ -1917,7 +1917,7 @@ function AssetManagementInner() {
                         setNewSupBusy(true)
                         try {
                           const r = await fetch('/api/suppliers', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ supplierName: newSup.name.trim(), address: newSup.address.trim() || null, notes: newSup.tin.trim() ? `TIN ${newSup.tin.trim()}` : null }) })
+                            body: JSON.stringify({ supplierName: newSup.name.trim(), address: newSup.address.trim() || null, tin: newSup.tin.trim() || null }) })
                           const d = await r.json().catch(() => ({}))
                           if (!r.ok) { alert(d.error || 'Could not add the supplier'); return }
                           // Also into the branch's expense suppliers, where the TIN lives for the alphalist.

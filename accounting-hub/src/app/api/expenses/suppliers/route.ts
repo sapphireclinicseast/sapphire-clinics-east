@@ -45,6 +45,16 @@ export async function GET(req: Request) {
       cur.branches.add(BRANCH_LABEL[sv.branch] || sv.branch)
       out.set(key, cur)
     }
+    // The Suppliers page's record is the master: active suppliers are pickable
+    // everywhere and their TIN / address win (2026-11-02).
+    for (const m of await prisma.supplier.findMany({ where: { isActive: true }, select: { supplierName: true, address: true, tin: true, notes: true } })) {
+      const key = m.supplierName.trim().toLowerCase()
+      const cur = out.get(key) || { registeredName: m.supplierName.trim(), registeredAddress: '', tin: '', branches: new Set<string>() }
+      const tin = m.tin?.trim() || m.notes?.match(/TIN\s*([0-9][0-9-]{8,})/i)?.[1] || ''
+      if (m.address?.trim()) cur.registeredAddress = m.address.trim()
+      if (tin) cur.tin = tin
+      out.set(key, cur)
+    }
     return NextResponse.json({
       suppliers: [...out.values()]
         .map(v => ({ registeredName: v.registeredName.toUpperCase(), registeredAddress: v.registeredAddress.toUpperCase(), tin: v.tin, branches: [...v.branches] }))
@@ -115,13 +125,13 @@ export async function GET(req: Request) {
   // known, sits in the supplier's notes as "TIN …".
   const assetSuppliers = await prisma.asset.findMany({
     where: { branch: branch as never, supplierId: { not: null } },
-    select: { dateBought: true, supplier: { select: { supplierName: true, address: true, notes: true } } },
+    select: { dateBought: true, supplier: { select: { supplierName: true, address: true, notes: true, tin: true } } },
   })
   for (const a of assetSuppliers) {
     const sup = a.supplier
     if (!sup?.supplierName?.trim()) continue
     const key = sup.supplierName.trim().toLowerCase()
-    const tin = sup.notes?.match(/TIN\s*([0-9][0-9-]{8,})/i)?.[1] || ''
+    const tin = sup.tin?.trim() || sup.notes?.match(/TIN\s*([0-9][0-9-]{8,})/i)?.[1] || ''
     const cur = map.get(key)
     if (!cur) map.set(key, { id: null, registeredName: sup.supplierName.trim(), registeredAddress: sup.address || '', tin, branch, branchLabel: BRANCH_LABEL[branch], firstAppeared: null, validity: 'Valid', _fa: a.dateBought })
     else {

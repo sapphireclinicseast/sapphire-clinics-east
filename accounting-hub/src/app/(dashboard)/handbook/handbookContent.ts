@@ -242,7 +242,6 @@ export const SECTIONS: Section[] = [
         `**Credit Card SOA** — settle a company-card statement.`,
         `**RFP** — the payment batches.`,
         `**Credit Card Report** and **Expense Report** — the paid views.`,
-        `**Suppliers** — the vendor directory.`,
         `**Flowchart** — the process picture. Top-right has branch buttons, **Collapse/Expand** and **Settings**.`,
       ] },
       { k: 'sub', t: 'Record & pay a one-time expense' },
@@ -255,7 +254,7 @@ export const SECTIONS: Section[] = [
       ] },
       { k: 'sub', t: 'Suppliers & credit card' },
       { k: 'ul', items: [
-        `**Suppliers** — **Add Supplier**, edit, or import from Excel (**Template** downloads the format). Click a supplier to see all its transactions.`,
+        `**Suppliers** — now its own page in the sidebar, right under Expenses: one list for Expenses, Inventory & Procurement and Asset Management, with contact person, number, email, **Reach Via**, foreign/currency and **Items / Services Provided**. **Add**, edit, or import from Excel (**Template** downloads the format). Click a supplier to see every expense, asset and inventory item bought from them.`,
         `**Credit card** — on an entry, **Paid by Credit Card**; the charge appears under **Credit Card SOA**, where you **Upload SOA** and settle it by **Request for RFP** or **Pay through petty cash**; once paid it shows in **Credit Card Report**.`,
       ] },
       { k: 'note', label: 'Billing Voucher order & accounts.', t: `Voucher lines print in the exact order they were entered, so always set the **Account Title** on every entry — a blank account prints blank. Payroll/consultant pay cannot be entered here (it runs through Payroll).` },
@@ -301,7 +300,6 @@ export const SECTIONS: Section[] = [
       { k: 'ul', items: [
         `**Inventory** — the item list. **Add Item**, **Import CSV** (with **CSV Template**), print **Barcodes**, or bulk-edit. Click an item to see its movement history and purchase lots.`,
         `**SKU Guide** — the classification dictionary (SKU Code, Department, Main/Sub category). **Add SKU** or **Pre-fill from products**.`,
-        `**Suppliers** — the vendor list. **Add Supplier**, edit, delete.`,
         `**Supplier Request** — raise a purchase request; **Print request sheet (PDF)**.`,
         `**Adjustments** — **Add Stocks** (replenishment, with unit/foreign cost), **Shrinkage of Stocks** (write-off), or **Inventory Audit** (physical count that applies the differences).`,
         `**Consignments** — **New Transfer** stock between branches → **Approve** → **Receive** at the destination; **Generate Transmittal Form PDF**.`,
