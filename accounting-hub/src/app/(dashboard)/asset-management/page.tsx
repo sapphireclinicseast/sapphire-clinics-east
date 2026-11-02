@@ -954,10 +954,15 @@ function AssetManagementInner() {
     }
   }
 
-  // ── Filtered suppliers ────────────────────────────────────────
-  const filteredSuppliers = supplierSearch
-    ? suppliers.filter((s) => s.supplierName.toLowerCase().includes(supplierSearch.toLowerCase()))
-    : suppliers
+  // ── Supplier picker: one field — type and the list drops down (Hannah, 2026-11-02)
+  const supplierByName = (v: string) => suppliers.find(s => s.supplierName.trim().toLowerCase() === v.trim().toLowerCase())
+  // Opening the form shows the asset's supplier in the field.
+  useEffect(() => {
+    if (!showModal) return
+    const cur = suppliers.find(s => s.id === form.supplierId)?.supplierName
+      || (editingAsset?.supplier && editingAsset.supplier.id === form.supplierId ? editingAsset.supplier.supplierName : '')
+    setSupplierSearch(cur || '')
+  }, [showModal]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Sort + filter helpers ─────────────────────────────────────
   function toggleSort(key: SortKey) {
@@ -1899,26 +1904,17 @@ function AssetManagementInner() {
               {/* Supplier */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Supplier</label>
-                <input
-                  type="text"
+                <NameCombobox
                   value={supplierSearch}
-                  onChange={(e) => setSupplierSearch(e.target.value)}
-                  placeholder="Search supplier…"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 mb-1"
-                />
-                <select
-                  value={form.supplierId}
-                  onChange={(e) => {
-                    setForm((f) => ({ ...f, supplierId: e.target.value }))
-                    setSupplierSearch('')
-                  }}
+                  onChange={(v) => { setSupplierSearch(v); setForm((f) => ({ ...f, supplierId: supplierByName(v)?.id || '' })) }}
+                  onCommit={(v) => { const hit = supplierByName(v); if (hit) setSupplierSearch(hit.supplierName) }}
+                  options={suppliers.map((s) => s.supplierName)}
+                  placeholder="Type to search suppliers…"
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                >
-                  <option value="">— No Supplier —</option>
-                  {filteredSuppliers.map((s) => (
-                    <option key={s.id} value={s.id}>{s.supplierName}</option>
-                  ))}
-                </select>
+                />
+                {supplierSearch.trim() && !form.supplierId && (
+                  <p className="mt-1 text-[11px] text-amber-700">Not picked yet — choose a supplier from the list, or add it below.</p>
+                )}
                 {newSup ? (
                   <div className="mt-2 rounded-lg border border-teal-200 bg-teal-50/40 p-3 space-y-2">
                     <input value={newSup.name} onChange={(e) => setNewSup(v => v && { ...v, name: e.target.value })} placeholder="Registered name (e.g. YEK YEU MERCHANDISING, INC.)"
@@ -1943,7 +1939,7 @@ function AssetManagementInner() {
                           await fetch('/api/expenses/suppliers', { method: 'POST', headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ branch: form.branch, registeredName: newSup.name.trim().toUpperCase(), registeredAddress: newSup.address.trim() || null, tin: newSup.tin.trim() || null }) }).catch(() => null)
                           await fetchSuppliers()
-                          if (d?.id) setForm((f) => ({ ...f, supplierId: d.id }))
+                          if (d?.id) { setForm((f) => ({ ...f, supplierId: d.id })); setSupplierSearch(d.supplierName || newSup.name.trim().toUpperCase()) }
                           setNewSup(null)
                         } finally { setNewSupBusy(false) }
                       }} className="px-3 py-1 text-xs rounded-lg text-white bg-teal-700 disabled:opacity-50">{newSupBusy ? 'Adding…' : 'Add supplier'}</button>
