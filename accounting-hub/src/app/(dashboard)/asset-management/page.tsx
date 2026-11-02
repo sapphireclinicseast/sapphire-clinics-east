@@ -378,9 +378,9 @@ function AssetManagementInner() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   type ColFilters = {
     name: string; classification: string; branch: string; utilized: string; auditable: string;
-    accountable: string; department: string; condition: string; location: string; missing: string;
+    accountable: string; department: string; condition: string; location: string; missing: string; photo: string;
   }
-  const NO_FILTERS: ColFilters = { name: '', classification: '', branch: '', utilized: '', auditable: '', accountable: '', department: '', condition: '', location: '', missing: '' }
+  const NO_FILTERS: ColFilters = { name: '', classification: '', branch: '', utilized: '', auditable: '', accountable: '', department: '', condition: '', location: '', missing: '', photo: '' }
   const [colFilters, setColFilters] = useState<ColFilters>(NO_FILTERS)
   const [openFilterCol, setOpenFilterCol] = useState<string | null>(null)
   // A column filter pop-up closes on any click outside it and on Escape (picking a value closes it too).
@@ -453,6 +453,8 @@ function AssetManagementInner() {
     if (arr.length) return arr
     return a.photoUrl ? [a.photoUrl] : []
   }
+  // No photo anywhere — not on the asset, not on any of its items (the "No photo" filter).
+  const hasNoPhoto = (a: Asset) => photosOf(a).length === 0 && !a.units?.some(u => u.photoUrl)
 
   // ── Auth guard ───────────────────────────────────────────────
   if (status === 'unauthenticated') redirect('/login')
@@ -995,6 +997,7 @@ function AssetManagementInner() {
         if (colFilters.department === NONE ? !perPiece.some(d => d.length === 0) : !perPiece.some(d => d.includes(colFilters.department))) return false
       }
       if (colFilters.missing && missingInfo(a).length === 0) return false
+      if (colFilters.photo && !hasNoPhoto(a)) return false
       if (colFilters.location) {
         const here = pieceRooms(a)
         if (colFilters.location === NONE ? !here.includes('') : !here.some(r => r.toLowerCase() === colFilters.location.toLowerCase())) return false
@@ -1189,12 +1192,28 @@ function AssetManagementInner() {
             </button>
           )
         })()}
+        {(() => {
+          const n = assets.filter(a => (tab !== 'auditable' || a.auditable !== false) && hasNoPhoto(a)).length
+          return n > 0 && !colFilters.photo && (
+            <button onClick={() => setColFilters(f => ({ ...f, photo: 'none' }))}
+              className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium border"
+              style={{ background: '#fffbeb', color: '#92400e', borderColor: '#fde68a' }}>
+              <ImageIcon size={13} /> {n} asset{n > 1 ? 's' : ''} without a photo — show only these
+            </button>
+          )
+        })()}
         {Object.values(colFilters).some(Boolean) && (
           <div className="flex items-center gap-2 flex-wrap">
             {colFilters.missing && (
               <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs border" style={{ background: MISSING_BG, color: '#b91c1c', borderColor: '#fecaca' }}>
                 Missing accountability, department or location
                 <button onClick={() => setColFilters(f => ({ ...f, missing: '' }))}><X size={10} /></button>
+              </span>
+            )}
+            {colFilters.photo && (
+              <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs border" style={{ background: '#fffbeb', color: '#92400e', borderColor: '#fde68a' }}>
+                No photo yet
+                <button onClick={() => setColFilters(f => ({ ...f, photo: '' }))}><X size={10} /></button>
               </span>
             )}
             {colFilters.name && (
