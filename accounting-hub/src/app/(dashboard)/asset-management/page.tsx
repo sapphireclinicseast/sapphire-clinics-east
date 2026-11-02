@@ -3,6 +3,7 @@
 import React, { Suspense, useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useFocusTarget } from '@/lib/use-focus-target'
 import { isItemBreakdown } from '@/lib/asset-parts'
+import { pieceDepartments } from '@/lib/asset-units'
 import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
 import { ScanUpload } from '@/components/ScanUpload'
@@ -31,9 +32,11 @@ import {
   Upload,
   Maximize2,
   Minimize2,
+  MapPin,
 } from 'lucide-react'
 import { downloadXlsx, downloadPdf } from '@/lib/export'
 import AssetCalculator from './AssetCalculator'
+import LocationSettings, { type AssetRoom } from './LocationSettings'
 import { useResizableColumns, ResizableColgroup, ColResizeHandle } from '@/components/useResizableColumns'
 import { NameCombobox } from '@/components/NameCombobox'
 
@@ -67,8 +70,10 @@ interface Asset {
   utilized: boolean
   controlNumber: string | null
   accountableName: string | null
+  location?: string | null // room of the branch (Location Settings)
   // quantity > 1: per-piece custodians; piece i shows sub control number `${controlNumber}-0${i+1}`
-  units?: { accountableName: string | null; name?: string | null; isDefective?: boolean; auditable?: boolean }[] | null
+  // A piece's own location / departments override the asset's (null = the asset's).
+  units?: { accountableName: string | null; name?: string | null; isDefective?: boolean; auditable?: boolean; location?: string | null; departments?: string[] | null }[] | null
   // Payments behind the cost when there is more than one (combined records, balances).
   parts?: { date: string; label: string; amount: number; ref?: string | null; qty?: number; unitPrice?: number }[] | null
   remarks: string | null
@@ -195,8 +200,11 @@ function emptyForm(branch: string) {
     unitNames: [] as string[],
     // Quantity > 1: one custodian (accountableName) for every piece.
     sameCustodian: false,
-    // Per-piece item name / condition / audit flag, index-aligned with unitNames.
-    unitMeta: [] as { name: string; isDefective: boolean; auditable: boolean }[],
+    // Room of the branch where it is kept (Location Settings list).
+    location: '',
+    // Per-piece item name / condition / audit flag / room ('' = the asset's room) /
+    // departments ([] = the asset's), index-aligned with unitNames.
+    unitMeta: [] as { name: string; isDefective: boolean; auditable: boolean; location: string; departments: string[] }[],
     remarks: '',
   }
 }
@@ -223,6 +231,18 @@ const NONE = '__none'
 function custodiansOf(a: Asset): string[] {
   return [a.accountableName, ...(a.units?.map(u => u.accountableName) ?? [])]
     .map(n => (n || '').trim()).filter(Boolean) as string[]
+}
+
+// Where each piece is kept: its own room, else the asset's ('' = not set).
+function pieceRooms(a: Asset): string[] {
+  return a.quantity > 1 && a.units?.length
+    ? a.units.map(u => (u.location || a.location || '').trim())
+    : [(a.location || '').trim()]
+}
+
+// Every department any piece serves.
+function assetDepts(a: Asset): string[] {
+  return [...new Set(pieceDepartments(a.departments, a.units, a.quantity).flat())]
 }
 
 function HeadSelectFilter({ label, value, options, open, onToggle, onChange, align }: {
@@ -332,9 +352,9 @@ function AssetManagementInner() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   type ColFilters = {
     name: string; classification: string; branch: string; utilized: string; auditable: string;
-    accountable: string; department: string; condition: string;
+    accountable: string; department: string; condition: string; location: string;
   }
-  const NO_FILTERS: ColFilters = { name: '', classification: '', branch: '', utilized: '', auditable: '', accountable: '', department: '', condition: '' }
+  const NO_FILTERS: ColFilters = { name: '', classification: '', branch: '', utilized: '', auditable: '', accountable: '', department: '', condition: '', location: '' }
   const [colFilters, setColFilters] = useState<ColFilters>(NO_FILTERS)
   const [openFilterCol, setOpenFilterCol] = useState<string | null>(null)
   // A column filter pop-up closes on any click outside it and on Escape (picking a value closes it too).
@@ -349,7 +369,7 @@ function AssetManagementInner() {
   // Full-screen asset list + drag-to-resize columns (widths persist per user).
   const [expanded, setExpanded] = useState(false)
   const assetTableRef = useRef<HTMLTableElement>(null)
-  const assetRz = useResizableColumns(`asset-management-table-v4${canManage ? '-sel' : ''}`, assetTableRef)
+  const assetRz = useResizableColumns(`asset-management-table-v5${canManage ? '-sel' : ''}`, assetTableRef)
   const selOff = canManage ? 1 : 0 // the tick-box column comes first for managers
 
   // ── Freight calculator state (mirrors Inventory's freight-purchase modal) ──
@@ -374,6 +394,13 @@ function AssetManagementInner() {
   const [acSaving, setAcSaving] = useState(false)
   const [acError, setAcError] = useState('')
   const acFileRef = useRef<HTMLInputElement>(null)
+
+  // Rooms per branch (Location Settings) — the choices of the Location dropdown.
+  const [rooms, setRooms] = useState<AssetRoom[]>([])
+  const [showLocSettings, setShowLocSettings] = useState(false)
+  const roomsOf = (branch: string) => rooms.filter(r => r.branch === branch).map(r => r.name)
+  // Asset form: the item row whose department tick boxes are open.
+  const [deptRowOpen, setDeptRowOpen] = useState<number | null>(null)
 
   // Depreciation defaults (classification → years)
   const [depDefaults, setDepDefaults] = useState<Record<string, number>>({})
@@ -475,6 +502,15 @@ function AssetManagementInner() {
     }
   }, [])
 
+  const fetchRooms = useCallback(async () => {
+    try {
+      const res = await fetch('/api/assets/locations')
+      if (res.ok) setRooms((await res.json()).locations ?? [])
+    } catch {
+      // non-critical
+    }
+  }, [])
+
   const fetchBanks = useCallback(async () => {
     try {
       const res = await fetch('/api/bank-accounts')
@@ -488,8 +524,9 @@ function AssetManagementInner() {
       fetchAssets()
       fetchSuppliers()
       fetchDepDefaults()
+      fetchRooms()
     }
-  }, [status, fetchAssets, fetchSuppliers, fetchDepDefaults])
+  }, [status, fetchAssets, fetchSuppliers, fetchDepDefaults, fetchRooms])
 
   // ── Modal helpers ────────────────────────────────────────────
   function openAdd() {
@@ -527,9 +564,12 @@ function AssetManagementInner() {
         : [],
       sameCustodian: asset.quantity > 1 && !!asset.units?.length && asset.units.length >= asset.quantity
         && !!asset.units[0]?.accountableName && asset.units.every(u => u.accountableName === asset.units![0].accountableName),
+      location: asset.location ?? '',
       unitMeta: asset.quantity > 1
         ? Array.from({ length: asset.quantity }, (_, i) => ({
             name: asset.units?.[i]?.name ?? '', isDefective: !!asset.units?.[i]?.isDefective, auditable: asset.units?.[i]?.auditable !== false,
+            location: asset.units?.[i]?.location ?? '',
+            departments: Array.isArray(asset.units?.[i]?.departments) ? asset.units![i].departments! : [],
           }))
         : [],
       remarks: asset.remarks ?? '',
@@ -550,6 +590,7 @@ function AssetManagementInner() {
     setShowModal(false)
     setEditingAsset(null)
     setFormError('')
+    setDeptRowOpen(null)
   }
 
   // ── Photo upload ─────────────────────────────────────────────
@@ -665,6 +706,7 @@ function AssetManagementInner() {
         departments: form.departments,
         utilized: form.utilized,
         accountableName: form.accountableName.trim() || null,
+        location: form.location.trim() || null,
         // Per-piece custodians (quantity > 1): the server stores these and keeps
         // accountableName as their summary for the one-line register views.
         units: quantityNum > 1
@@ -673,6 +715,8 @@ function AssetManagementInner() {
               name: (form.unitMeta[i]?.name || '').trim() || null,
               isDefective: !!form.unitMeta[i]?.isDefective,
               auditable: form.unitMeta[i]?.auditable !== false,
+              location: (form.unitMeta[i]?.location || '').trim() || null,
+              departments: form.unitMeta[i]?.departments?.length ? form.unitMeta[i].departments : null,
             }))
           : null,
         remarks: form.remarks.trim() || null,
@@ -851,14 +895,20 @@ function AssetManagementInner() {
 
   // Choices for the Accountability / Departments header filters.
   const custodianChoices = Array.from(new Set(assets.flatMap(custodiansOf))).sort((x, y) => x.localeCompare(y))
-  const departmentChoices = Array.from(new Set(assets.flatMap(a => (Array.isArray(a.departments) ? a.departments : []) as string[]))).sort()
+  // Rooms in the Location Settings order (current branch view first), then any
+  // name still on an asset that is no longer in the list.
+  const locationChoices = Array.from(new Set([
+    ...rooms.filter(r => !branchFilter || r.branch === branchFilter).map(r => r.name),
+    ...assets.flatMap(pieceRooms).filter(Boolean),
+  ]))
+  const departmentChoices = Array.from(new Set(assets.flatMap(assetDepts))).sort()
   const displayedAssets = assets
     .filter((a) => {
       // The Auditable Assets view is the register minus what cannot be counted —
       // downpayments and part-payments, which are balances rather than objects.
       if (tab === 'auditable' && a.auditable === false) return false
       const q = search.toLowerCase()
-      if (q && ![a.name, a.classification, classificationLabel(a.classification), branchLabel(a.branch), a.controlNumber ?? '', a.accountableName ?? '', ...(a.units?.map(u => u.accountableName ?? '') ?? []), a.remarks ?? ''].some((v) => v.toLowerCase().includes(q))) return false
+      if (q && ![a.name, a.classification, classificationLabel(a.classification), branchLabel(a.branch), a.controlNumber ?? '', a.accountableName ?? '', ...(a.units?.map(u => u.accountableName ?? '') ?? []), ...pieceRooms(a), a.remarks ?? ''].some((v) => v.toLowerCase().includes(q))) return false
       if (colFilters.name && !a.name.toLowerCase().includes(colFilters.name.toLowerCase())) return false
       if (colFilters.classification && a.classification !== colFilters.classification) return false
       if (colFilters.branch && a.branch !== colFilters.branch) return false
@@ -871,8 +921,12 @@ function AssetManagementInner() {
         if (colFilters.accountable === NONE ? names.length > 0 : !names.some(n => n.toLowerCase() === colFilters.accountable.toLowerCase())) return false
       }
       if (colFilters.department) {
-        const depts = Array.isArray(a.departments) ? a.departments : []
-        if (colFilters.department === NONE ? depts.length > 0 : !depts.includes(colFilters.department)) return false
+        const perPiece = pieceDepartments(a.departments, a.units, a.quantity)
+        if (colFilters.department === NONE ? !perPiece.some(d => d.length === 0) : !perPiece.some(d => d.includes(colFilters.department))) return false
+      }
+      if (colFilters.location) {
+        const here = pieceRooms(a)
+        if (colFilters.location === NONE ? !here.includes('') : !here.some(r => r.toLowerCase() === colFilters.location.toLowerCase())) return false
       }
       const anyDefective = a.isDefective || !!a.units?.some(u => u.isDefective)
       if (colFilters.condition === 'ok' && anyDefective) return false
@@ -898,10 +952,10 @@ function AssetManagementInner() {
 
   // Download the current (filtered/sorted) asset list — a print guide for naming.
   const exportAssets = (fmt: 'xlsx' | 'pdf') => {
-    const headers = ['Control No.', 'Asset Name', 'Classification', 'Branch', 'Date of Purchase', 'Accountable', 'Departments', 'Condition']
+    const headers = ['Control No.', 'Asset Name', 'Classification', 'Branch', 'Date of Purchase', 'Accountable', 'Location', 'Departments', 'Condition']
     const rows = displayedAssets.map((a) => [
       a.controlNumber || '', a.name, classificationLabel(a.classification), branchLabel(a.branch), formatPurchaseDate(a.dateBought),
-      a.accountableName || '', (a.departments as string[]).join(', '), a.isDefective ? 'Defective' : 'OK',
+      a.accountableName || '', [...new Set(pieceRooms(a).filter(Boolean))].join(', '), assetDepts(a).join(', '), a.isDefective ? 'Defective' : 'OK',
     ])
     const scope = branchFilter ? branchLabel(branchFilter) : 'All branches'
     if (fmt === 'xlsx') downloadXlsx(`asset-list-${branchFilter || 'all'}`, [{ name: 'Assets', headers, rows }])
@@ -943,6 +997,16 @@ function AssetManagementInner() {
             >
               <Settings2 size={16} />
               Depreciation Settings
+            </button>
+            )}
+            {canManage && (
+            <button
+              onClick={() => setShowLocSettings(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50"
+              title="Set the rooms of each branch — the choices of an asset's Location"
+            >
+              <MapPin size={16} />
+              Location Settings
             </button>
             )}
             {canWrite && (
@@ -1070,7 +1134,7 @@ function AssetManagementInner() {
                 <button onClick={() => setColFilters(f => ({ ...f, utilized: '' }))}><X size={10} /></button>
               </span>
             )}
-            {([['accountable', 'Accountability'], ['department', 'Department'], ['condition', 'Condition']] as const).map(([k, label]) => colFilters[k] && (
+            {([['accountable', 'Accountability'], ['location', 'Location'], ['department', 'Department'], ['condition', 'Condition']] as const).map(([k, label]) => colFilters[k] && (
               <span key={k} className="inline-flex items-center gap-1 bg-teal-50 text-teal-700 border border-teal-200 rounded-full px-2.5 py-0.5 text-xs">
                 {label}: {colFilters[k] === NONE ? 'None' : colFilters[k] === 'ok' ? 'OK' : colFilters[k] === 'defective' ? 'Defective' : colFilters[k]}
                 <button onClick={() => setColFilters(f => ({ ...f, [k]: '' }))}><X size={10} /></button>
@@ -1333,19 +1397,24 @@ function AssetManagementInner() {
                       onChange={v => setColFilters(f => ({ ...f, accountable: v }))} />
                   </th>
                   <th className="relative text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={selOff + 13} />
+                    <HeadSelectFilter label="Location" align="left" value={colFilters.location} options={[{ value: NONE, label: '— Not set —' }, ...locationChoices.map(r => ({ value: r, label: r }))]}
+                      open={openFilterCol === 'location'} onToggle={() => setOpenFilterCol(openFilterCol === 'location' ? null : 'location')}
+                      onChange={v => setColFilters(f => ({ ...f, location: v }))} />
+                  </th>
+                  <th className="relative text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={selOff + 14} />
                     <HeadSelectFilter label="Departments" align="left" value={colFilters.department} options={[{ value: NONE, label: '— None —' }, ...departmentChoices.map(d => ({ value: d, label: d }))]}
                       open={openFilterCol === 'department'} onToggle={() => setOpenFilterCol(openFilterCol === 'department' ? null : 'department')}
                       onChange={v => setColFilters(f => ({ ...f, department: v }))} />
                   </th>
                   {canWrite && (
-                    <th className="relative text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={selOff + 14} />Actions</th>
+                    <th className="relative text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"><ColResizeHandle rz={assetRz} index={selOff + 15} />Actions</th>
                   )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {displayedAssets.length === 0 ? (
                   <tr>
-                    <td colSpan={(canWrite ? 15 : 14) + (canManage ? 1 : 0)} className="text-center py-10 text-gray-400 text-sm">
+                    <td colSpan={(canWrite ? 16 : 15) + (canManage ? 1 : 0)} className="text-center py-10 text-gray-400 text-sm">
                       No assets match your search or filters.
                     </td>
                   </tr>
@@ -1428,11 +1497,25 @@ function AssetManagementInner() {
                       title={asset.units?.length ? asset.units.map((u, i) => `${subControlNo(asset.controlNumber, i)}: ${u.accountableName || '—'}`).join('\n') : undefined}>
                       {asset.accountableName ?? '—'}
                     </td>
+                    {(() => {
+                      // One room, or "N rooms" when the pieces are kept in different rooms.
+                      const here = pieceRooms(asset)
+                      const distinct = [...new Set(here.map(r => r || '—'))]
+                      return (
+                        <td className="px-4 py-3 text-gray-600"
+                          title={asset.quantity > 1 && asset.units?.length ? here.map((r, i) => `${subControlNo(asset.controlNumber, i)}: ${r || '—'}`).join('\n') : undefined}>
+                          {distinct.length <= 1 ? (distinct[0] ?? '—') : (
+                            <>{asset.location || 'Various'}<span className="block text-[10px] text-gray-400 whitespace-nowrap">{distinct.length} rooms · hover to see</span></>
+                          )}
+                        </td>
+                      )
+                    })()}
                     <td className="px-4 py-3 text-gray-600 max-w-[160px]">
-                      <span className="truncate block" title={(asset.departments as string[]).join(', ')}>
-                        {(asset.departments as string[]).length > 0
-                          ? (asset.departments as string[]).join(', ')
-                          : '—'}
+                      <span className="truncate block"
+                        title={asset.quantity > 1 && asset.units?.some(u => u.departments?.length)
+                          ? pieceDepartments(asset.departments, asset.units, asset.quantity).map((d, i) => `${subControlNo(asset.controlNumber, i)}: ${d.join(', ') || '—'}`).join('\n')
+                          : assetDepts(asset).join(', ')}>
+                        {assetDepts(asset).length > 0 ? assetDepts(asset).join(', ') : '—'}
                       </span>
                     </td>
                     {canWrite && (
@@ -1552,7 +1635,12 @@ function AssetManagementInner() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Branch <span className="text-red-500">*</span></label>
                   <select
                     value={form.branch}
-                    onChange={(e) => setForm((f) => ({ ...f, branch: e.target.value }))}
+                    onChange={(e) => {
+                      const branch = e.target.value
+                      const ok = new Set(roomsOf(branch))
+                      // A room belongs to its branch — drop one the new branch does not have.
+                      setForm((f) => ({ ...f, branch, location: ok.has(f.location) ? f.location : '', unitMeta: f.unitMeta.map(m => ({ ...m, location: ok.has(m.location) ? m.location : '' })) }))
+                    }}
                     disabled={isBranchRestricted}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
                   >
@@ -1888,18 +1976,39 @@ function AssetManagementInner() {
                 </div>
               </div>
 
+              {/* Location — a room of the asset's branch (Location Settings). */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Location</label>
+                  <select
+                    value={form.location}
+                    onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  >
+                    <option value="">— Not set —</option>
+                    {roomsOf(form.branch).map(r => <option key={r} value={r}>{r}</option>)}
+                    {form.location && !roomsOf(form.branch).includes(form.location) && <option value={form.location}>{form.location} (not in the list)</option>}
+                  </select>
+                  <p className="text-[11px] text-gray-400 mt-1">
+                    {roomsOf(form.branch).length === 0
+                      ? <>No rooms set for this branch yet{canManage && <> — <button type="button" className="text-teal-700 underline" onClick={() => setShowLocSettings(true)}>add them in Location Settings</button></>}.</>
+                      : quantityNum > 1 ? 'Room of every item unless an item below has its own.' : 'Room of the branch where it is kept.'}
+                  </p>
+                </div>
+              </div>
+
               {/* Per-item custodians — each piece of a multi-pc asset carries its own
                   sub control number and can be accountable to a different person. */}
               {quantityNum > 1 && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Items</label>
-                  <p className="text-xs text-gray-500 mb-2">One amount and one depreciation for the whole asset; each piece can have its own name, custodian, condition, and whether audits count it.</p>
+                  <p className="text-xs text-gray-500 mb-2">One amount and one depreciation for the whole asset; each piece can have its own name, custodian, room, departments, condition, and whether audits count it.</p>
                   <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
                     {Array.from({ length: quantityNum }, (_, i) => {
-                      const meta = form.unitMeta[i] || { name: '', isDefective: false, auditable: true }
+                      const meta = form.unitMeta[i] || { name: '', isDefective: false, auditable: true, location: '', departments: [] as string[] }
                       const setMeta = (patch: Partial<typeof meta>) => setForm((f) => {
                         const unitMeta = [...f.unitMeta]
-                        while (unitMeta.length < quantityNum) unitMeta.push({ name: '', isDefective: false, auditable: true })
+                        while (unitMeta.length < quantityNum) unitMeta.push({ name: '', isDefective: false, auditable: true, location: '', departments: [] })
                         unitMeta[i] = { ...unitMeta[i], ...patch }
                         return { ...f, unitMeta }
                       })
@@ -1923,8 +2032,34 @@ function AssetManagementInner() {
                           placeholder="Custodian…"
                           className="flex-1 min-w-[140px] border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                         />
+                        <select value={meta.location} onChange={(e) => setMeta({ location: e.target.value })} title="Room of this item"
+                          className="min-w-[130px] border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500">
+                          <option value="">{form.location ? `Same room (${form.location})` : 'Room…'}</option>
+                          {roomsOf(form.branch).map(r => <option key={r} value={r}>{r}</option>)}
+                          {meta.location && !roomsOf(form.branch).includes(meta.location) && <option value={meta.location}>{meta.location} (not in the list)</option>}
+                        </select>
+                        <button type="button" onClick={() => setDeptRowOpen(deptRowOpen === i ? null : i)} title="Departments of this item"
+                          className={`max-w-[200px] truncate border rounded-lg px-2 py-1.5 text-sm text-left ${meta.departments.length ? 'border-teal-500 text-teal-800' : 'border-gray-300 text-gray-500'}`}>
+                          {meta.departments.length ? meta.departments.join(', ') : 'Same depts'}
+                        </button>
                         <label className="flex items-center gap-1 text-xs text-gray-600"><input type="checkbox" checked={meta.isDefective} onChange={(e) => setMeta({ isDefective: e.target.checked })} />Defective</label>
                         <label className="flex items-center gap-1 text-xs text-gray-600"><input type="checkbox" checked={meta.auditable} onChange={(e) => setMeta({ auditable: e.target.checked })} />Auditable</label>
+                        {deptRowOpen === i && (
+                          <div className="basis-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+                            <p className="text-[11px] text-gray-500 mb-1.5">
+                              Departments of this item — none ticked = same as the asset{form.departments.length ? ` (${form.departments.join(', ')})` : ''}.
+                            </p>
+                            <div className="grid grid-cols-2 gap-1">
+                              {DEPARTMENT_OPTIONS.map(d => (
+                                <label key={d} className="flex items-center gap-2 text-xs text-gray-700 cursor-pointer">
+                                  <input type="checkbox" checked={meta.departments.includes(d)}
+                                    onChange={() => setMeta({ departments: meta.departments.includes(d) ? meta.departments.filter(x => x !== d) : [...meta.departments, d] })} />
+                                  {d}
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                       )
                     })}
@@ -2263,6 +2398,16 @@ function AssetManagementInner() {
         </div>
       )}
 
+      {showLocSettings && (
+        <LocationSettings
+          branches={isBranchRestricted ? BRANCH_OPTIONS.filter(b => b.value === userBranch) : BRANCH_OPTIONS}
+          rooms={rooms}
+          initialBranch={editingAsset?.branch || form.branch || branchFilter || userBranch || 'SANDBOX_EAST'}
+          onSaved={(list) => { setRooms(list); fetchAssets() }}
+          onClose={() => setShowLocSettings(false)}
+        />
+      )}
+
       {/* ── Depreciation Settings Modal ──────────────────────── */}
       {showDepSettings && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -2403,7 +2548,8 @@ function AssetViewModal({ asset: a, canEdit, onEdit, onPhotos, onClose }: {
             {row('Total Amount', formatCurrency(Number(a.totalAmount)))}
             {row('Supplier', a.supplier?.supplierName)}
             {row('Accountable', a.accountableName)}
-            {row('Departments', (a.departments || []).join(', '))}
+            {row('Location', [...new Set(pieceRooms(a).filter(Boolean))].join(', '))}
+            {row('Departments', assetDepts(a).join(', '))}
             {row('Condition', a.isDefective ? 'Defective' : 'OK')}
             {row('Utilized', a.utilized ? 'Yes' : 'No')}
             {row('Auditable', a.auditable === false ? 'No' : 'Yes')}
@@ -2499,6 +2645,8 @@ function AssetViewModal({ asset: a, canEdit, onEdit, onPhotos, onClose }: {
                     <th className="py-1.5 pr-3 font-medium">No.</th>
                     <th className="py-1.5 pr-3 font-medium">Item</th>
                     <th className="py-1.5 pr-3 font-medium">Custodian</th>
+                    <th className="py-1.5 pr-3 font-medium">Location</th>
+                    <th className="py-1.5 pr-3 font-medium">Departments</th>
                     <th className="py-1.5 pr-3 font-medium">Condition</th>
                     <th className="py-1.5 font-medium">Auditable</th>
                   </tr>
@@ -2509,6 +2657,8 @@ function AssetViewModal({ asset: a, canEdit, onEdit, onPhotos, onClose }: {
                       <td className="py-1.5 pr-3 font-mono text-xs text-gray-500 whitespace-nowrap">{subControlNo(a.controlNumber, i)}</td>
                       <td className="py-1.5 pr-3">{u.name || a.name}</td>
                       <td className="py-1.5 pr-3">{u.accountableName || '—'}</td>
+                      <td className="py-1.5 pr-3">{u.location || a.location || '—'}</td>
+                      <td className="py-1.5 pr-3">{(u.departments?.length ? u.departments : a.departments || []).join(', ') || '—'}</td>
                       <td className="py-1.5 pr-3">{u.isDefective ? <span className="text-red-600">Defective</span> : 'OK'}</td>
                       <td className="py-1.5">{u.auditable === false ? 'No' : 'Yes'}</td>
                     </tr>
@@ -2859,7 +3009,7 @@ function AccountabilityTab({ assets, loading }: { assets: Asset[]; loading: bool
 
 // ── Asset Audit tab ───────────────────────────────────────────
 interface AuditRow { id: string; refNumber: string; dateFrom: string; dateTo: string; auditorName: string; branch: string; departments: string[]; status: string; finalizedAt: string | null; createdAt: string; itemCount: number; replacementCount: number; assessedCount: number }
-interface AuditItem { id: string; assetId: string; assetName: string; controlNumber: string | null; classification: string | null; accountableName: string | null; usable: boolean | null; needsReplacement: boolean; remarks: string | null; photoUrl?: string | null }
+interface AuditItem { id: string; assetId: string; assetName: string; controlNumber: string | null; classification: string | null; accountableName: string | null; usable: boolean | null; needsReplacement: boolean; remarks: string | null; photoUrl?: string | null; location?: string | null }
 interface AuditDetail { id: string; refNumber: string; dateFrom: string; dateTo: string; auditorName: string; branch: string; departments: string[]; status: string; proofUrls: string[] | null; finalizedAt: string | null; items: AuditItem[] }
 
 const dISO = (s: string) => String(s).slice(0, 10)
@@ -2992,6 +3142,8 @@ function AuditDetailModal({ id, canWrite, onClose, onChanged }: { id: string; ca
   const [proofUrls, setProofUrls] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
   const [img, setImg] = useState<string | null>(null)
+  // Count one room at a time: the grid (and the print) shows only that room's items.
+  const [room, setRoom] = useState('')
 
   const load = useCallback(async () => {
     const r = await fetch(`/api/assets/audits?id=${id}`)
@@ -3014,6 +3166,10 @@ function AuditDetailModal({ id, canWrite, onClose, onChanged }: { id: string; ca
     } finally { setBusy(false) }
   }
 
+  const roomChoices = Array.from(new Set(items.map(i => i.location || ''))).sort((x, y) => (x ? x : '\uffff').localeCompare(y ? y : '\uffff'))
+  const shown = room ? items.filter(i => (room === NONE ? !i.location : i.location === room)) : items
+  const roomLabel = room === NONE ? 'No room set' : room
+
   const replacements = items.filter(i => i.needsReplacement)
   const exportReplace = (fmt: 'xlsx' | 'pdf') => {
     const headers = ['Control No.', 'Asset', 'Classification', 'Accountable', 'Usable', 'Remarks']
@@ -3024,16 +3180,16 @@ function AuditDetailModal({ id, canWrite, onClose, onChanged }: { id: string; ca
 
   const printAudit = () => {
     if (!d) return
-    const rowsHtml = items.map(i => `<tr><td>${i.controlNumber || ''}</td><td>${i.assetName}</td><td>${classificationLabel(i.classification || '')}</td><td>${i.accountableName || ''}</td><td style="text-align:center">${i.usable === false ? 'Not usable' : i.usable ? 'Usable' : '—'}</td><td style="text-align:center">${i.needsReplacement ? 'YES' : ''}</td><td>${i.remarks || ''}</td></tr>`).join('')
+    const rowsHtml = shown.map(i => `<tr><td>${i.controlNumber || ''}</td><td>${i.assetName}</td><td>${classificationLabel(i.classification || '')}</td><td>${i.location || ''}</td><td>${i.accountableName || ''}</td><td style="text-align:center">${i.usable === false ? 'Not usable' : i.usable ? 'Usable' : '—'}</td><td style="text-align:center">${i.needsReplacement ? 'YES' : ''}</td><td>${i.remarks || ''}</td></tr>`).join('')
     const w = window.open('', '_blank'); if (!w) return
     w.document.write(`<html><head><title>${d.refNumber}</title><style>
       body{font-family:Arial,sans-serif;padding:28px;color:#111}h1{font-size:18px;margin:0}h2{font-size:13px;color:#555;font-weight:normal;margin:2px 0 14px}
       table{width:100%;border-collapse:collapse;font-size:11px}th,td{border:1px solid #999;padding:4px 6px;text-align:left}th{background:#f0f0f0}
       .sig{margin-top:48px;display:flex;justify-content:space-between}.sig div{width:45%}.line{margin-top:40px;border-top:1px solid #000;padding-top:4px;text-align:center;font-size:12px}
     </style></head><body>
-      <h1>Asset Audit Report — ${d.refNumber}</h1>
+      <h1>Asset Audit Report — ${d.refNumber}${room ? ` · ${roomLabel}` : ''}</h1>
       <h2>Period: ${dISO(d.dateFrom)} to ${dISO(d.dateTo)} &nbsp;·&nbsp; Branch: ${d.branch === 'ALL' ? 'All branches' : branchLabel(d.branch)} &nbsp;·&nbsp; Departments: ${(d.departments || []).join(', ') || 'All'} &nbsp;·&nbsp; Status: ${d.status}</h2>
-      <table><thead><tr><th>Control No.</th><th>Asset</th><th>Classification</th><th>Accountable</th><th>Condition</th><th>Replace</th><th>Remarks</th></tr></thead><tbody>${rowsHtml}</tbody></table>
+      <table><thead><tr><th>Control No.</th><th>Asset</th><th>Classification</th><th>Location</th><th>Accountable</th><th>Condition</th><th>Replace</th><th>Remarks</th></tr></thead><tbody>${rowsHtml}</tbody></table>
       <div class="sig"><div><div class="line">${d.auditorName}</div><div style="text-align:center;font-size:11px;color:#555">Audited by (signature over printed name)</div></div><div><div class="line">&nbsp;</div><div style="text-align:center;font-size:11px;color:#555">Noted by</div></div></div>
     </body></html>`)
     w.document.close(); w.focus(); setTimeout(() => w.print(), 300)
@@ -3051,13 +3207,27 @@ function AuditDetailModal({ id, canWrite, onClose, onChanged }: { id: string; ca
           </div>
           <p className="text-xs text-gray-500 mb-3">{dISO(d.dateFrom)} → {dISO(d.dateTo)} · {d.branch === 'ALL' ? 'All branches' : branchLabel(d.branch)} · {(d.departments || []).join(', ') || 'All departments'} · Auditor: {d.auditorName}</p>
 
+          <div className="flex items-center gap-2 flex-wrap mb-2">
+            <MapPin size={14} className="text-teal-600" />
+            <span className="text-xs text-gray-500">Room:</span>
+            <select value={room} onChange={e => setRoom(e.target.value)} className="px-2 py-1 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }}>
+              <option value="">All rooms ({items.length})</option>
+              {roomChoices.map(r => {
+                const list = items.filter(i => (r ? i.location === r : !i.location))
+                const done = list.filter(i => i.usable !== null && i.usable !== undefined).length
+                return <option key={r || NONE} value={r || NONE}>{r || '— No room set —'} ({done}/{list.length} checked)</option>
+              })}
+            </select>
+            {room && <span className="text-[11px] text-gray-400">Showing {shown.length} of {items.length} — Print prints this room only.</span>}
+          </div>
+
           <div className="rounded-xl border overflow-auto mb-3" style={{ borderColor: 'var(--light-gray)', maxHeight: '46vh' }}>
             <table className="w-full text-xs">
               <thead className="sticky top-0" style={{ background: 'var(--off-white)' }}><tr className="text-left text-gray-500">
-                {['Photo', 'Control No.', 'Asset', 'Classification', 'Accountable', 'Condition', 'Replace?', 'Remarks'].map(h => <th key={h} className="px-2 py-2 font-semibold">{h}</th>)}
+                {['Photo', 'Control No.', 'Asset', 'Classification', 'Location', 'Accountable', 'Condition', 'Replace?', 'Remarks'].map(h => <th key={h} className="px-2 py-2 font-semibold">{h}</th>)}
               </tr></thead>
               <tbody>
-                {items.map(i => (
+                {shown.map(i => (
                   <tr key={i.id} className="border-t" style={{ borderColor: 'var(--light-gray)', background: i.needsReplacement ? '#fef2f2' : undefined }}>
                     <td className="px-2 py-1.5">
                       {i.photoUrl ? (
@@ -3074,6 +3244,7 @@ function AuditDetailModal({ id, canWrite, onClose, onChanged }: { id: string; ca
                     <td className="px-2 py-1.5 font-mono">{i.controlNumber || '—'}</td>
                     <td className="px-2 py-1.5 text-gray-800">{i.assetName}</td>
                     <td className="px-2 py-1.5 text-gray-500">{classificationLabel(i.classification || '')}</td>
+                    <td className="px-2 py-1.5 text-gray-500">{i.location || '—'}</td>
                     <td className="px-2 py-1.5 text-gray-500">{i.accountableName || '—'}</td>
                     <td className="px-2 py-1.5">
                       <select disabled={locked} value={i.usable === null || i.usable === undefined ? '' : i.usable ? 'yes' : 'no'}

@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { postAssetJournal, reverseAssetJournal } from '@/lib/accounting/post-asset'
-import { sanitizeAssetUnits, summarizeAssetUnits } from '@/lib/asset-units'
+import { cleanLocation, sanitizeAssetUnits, summarizeAssetUnits } from '@/lib/asset-units'
 import { assetName } from '@/lib/asset-classification'
 
 // Front-desk staff can add/edit assets (photos, renaming) but not delete them.
@@ -95,6 +95,7 @@ export async function POST(req: Request) {
       departments,
       utilized,
       accountableName,
+      location,
       units,
       remarks,
     } = body
@@ -129,6 +130,7 @@ export async function POST(req: Request) {
         utilized: utilized ?? true,
         controlNumber,
         accountableName: custodian,
+        location: cleanLocation(location),
         units: unitRows ?? Prisma.DbNull,
         remarks: remarks || null,
         createdById: session.user.id,
@@ -194,6 +196,7 @@ export async function PUT(req: Request) {
       departments,
       utilized,
       accountableName,
+      location,
       units,
       remarks,
     } = body
@@ -231,6 +234,8 @@ export async function PUT(req: Request) {
         departments: departments ?? [],
         utilized: utilized ?? true,
         accountableName: custodian,
+        // Only when the form sent it — other callers of this PUT keep the room.
+        ...(location !== undefined ? { location: cleanLocation(location) } : {}),
         // Quantity back down to 1 clears the per-piece list — stale custody rows
         // must not outlive the pieces they described.
         units: unitRows ?? Prisma.DbNull,

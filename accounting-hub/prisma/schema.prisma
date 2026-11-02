@@ -2777,7 +2777,8 @@ model Asset {
   utilized            Boolean   @default(true)
   controlNumber       String?
   accountableName     String? // staff accountable/custodian (from HR Hub); for multi-piece assets this is the summary of the per-piece names
-  units               Json? // quantity > 1: per-piece custody, [{ accountableName }] — piece i carries sub control number `${controlNumber}-${String(i+1).padStart(2,'0')}`
+  location            String? // room/area of the branch where it is kept — picked from that branch's AssetLocation list
+  units               Json? // quantity > 1: per-piece custody, [{ accountableName, location? }] — piece i carries sub control number `${controlNumber}-${String(i+1).padStart(2,'0')}`
   remarks             String?
   // The payments that make up the cost when more than one does (combined
   // records, balance payments): [{ date, label, amount, ref?, entryId? }].
@@ -2835,6 +2836,21 @@ model AssetAuditItem {
 
   @@index([auditId])
   @@index([assetId])
+}
+
+// Rooms/areas of a branch an asset can be kept in (Asset Management → Location
+// Settings). Asset.location and a piece's units[].location hold the name, so a
+// rename here is carried onto the assets by the settings route.
+model AssetLocation {
+  id        String   @id @default(cuid())
+  branch    Branch
+  name      String
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([branch, name])
+  @@index([branch])
 }
 
 // Per-classification default depreciation years (set in Depreciation Settings)

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import type { AssetUnit } from '@/lib/asset-units'
+import { pieceDepartments, type AssetUnit } from '@/lib/asset-units'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 
@@ -16,10 +16,8 @@ async function scopedAssets(branch: string, departments: string[]) {
   const assets = await prisma.asset.findMany({ where, orderBy: { controlNumber: 'asc' } })
   if (!departments.length) return assets
   const sel = new Set(departments)
-  return assets.filter(a => {
-    const deps = Array.isArray(a.departments) ? (a.departments as string[]) : []
-    return deps.some(d => sel.has(d))
-  })
+  // A multi-piece asset is in scope when any of its pieces serves a picked department.
+  return assets.filter(a => pieceDepartments(a.departments, a.units, a.quantity).some(deps => deps.some(d => sel.has(d))))
 }
 
 export async function GET(req: Request) {
@@ -29,11 +27,22 @@ export async function GET(req: Request) {
   if (id) {
     const a = await prisma.assetAudit.findUnique({ where: { id }, include: { items: { orderBy: { controlNumber: 'asc' } } } })
     if (!a) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-    // Attach each asset's current main photo (live lookup, so it works for older
-    // audits too) to make the classification grid easier to fill out.
-    const assets = await prisma.asset.findMany({ where: { id: { in: a.items.map(i => i.assetId) } }, select: { id: true, photoUrl: true, photoUrls: true } })
-    const photoBy = new Map(assets.map(x => [x.id, (Array.isArray(x.photoUrls) && x.photoUrls.length ? (x.photoUrls as string[])[0] : x.photoUrl) || null]))
-    return NextResponse.json({ ...a, items: a.items.map(i => ({ ...i, photoUrl: photoBy.get(i.assetId) || null })) })
+    // Attach each asset's current main photo and room (live lookup, so it works
+    // for older audits too) to make the classification grid easier to fill out
+    // and the count walkable room by room.
+    const assets = await prisma.asset.findMany({ where: { id: { in: a.items.map(i => i.assetId) } }, select: { id: true, photoUrl: true, photoUrls: true, controlNumber: true, location: true, units: true } })
+    const byId = new Map(assets.map(x => [x.id, x]))
+    const photoOf = (x: typeof assets[number]) => (Array.isArray(x.photoUrls) && x.photoUrls.length ? (x.photoUrls as string[])[0] : x.photoUrl) || null
+    // A piece item carries the sub control number `${controlNumber}-NN`; its own room wins over the asset's.
+    const roomOf = (x: typeof assets[number], itemControl: string | null) => {
+      const units = Array.isArray(x.units) ? (x.units as AssetUnit[]) : []
+      const m = x.controlNumber && itemControl?.startsWith(`${x.controlNumber}-`) ? Number(itemControl.slice(x.controlNumber.length + 1)) : NaN
+      return (Number.isInteger(m) && units[m - 1]?.location) || x.location || null
+    }
+    return NextResponse.json({ ...a, items: a.items.map(i => {
+      const x = byId.get(i.assetId)
+      return { ...i, photoUrl: x ? photoOf(x) : null, location: x ? roomOf(x, i.controlNumber) : null }
+    }) })
   }
   const audits = await prisma.assetAudit.findMany({ orderBy: { createdAt: 'desc' }, include: { items: { select: { needsReplacement: true, usable: true } } } })
   return NextResponse.json(audits.map(a => ({
@@ -76,7 +85,10 @@ export async function POST(req: Request) {
             create: assets.flatMap(a => {
               const units = Array.isArray(a.units) ? (a.units as AssetUnit[]) : []
               if (a.quantity > 1 && units.length) {
-                return units.flatMap((u, i) => u.auditable === false ? [] : [{
+                // …and only the pieces of the picked departments.
+                const pieceDeps = pieceDepartments(a.departments, units, a.quantity)
+                const inScope = (i: number) => !deps.length || pieceDeps[i].some(d => deps.includes(d))
+                return units.flatMap((u, i) => u.auditable === false || !inScope(i) ? [] : [{
                   assetId: a.id, assetName: u.name ? `${u.name} (${a.name})` : a.name,
                   controlNumber: a.controlNumber ? `${a.controlNumber}-${String(i + 1).padStart(2, '0')}` : null,
                   classification: a.classification, accountableName: u.accountableName || a.accountableName,
