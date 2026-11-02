@@ -291,6 +291,9 @@ export default function StaffClient({ role }: { role: string }) {
   const [mergeGroup,  setMergeGroup]  = useState<StaffMember[] | null>(null)
   const [mergeKeepId, setMergeKeepId] = useState<string>('')
   const [merging,     setMerging]     = useState(false)
+  // A refusal stays in the modal; the follow-up notes (HR, Accounting) show as a banner after.
+  const [mergeError,  setMergeError]  = useState<string | null>(null)
+  const [mergeNotes,  setMergeNotes]  = useState<string[] | null>(null)
 
   // Staff details popup — opens when an admin clicks a staff name.
   const [selectedStaff, setSelectedStaff] = useState<StaffMember | null>(null)
@@ -393,15 +396,28 @@ export default function StaffClient({ role }: { role: string }) {
     if (!mergeGroup || !mergeKeepId) return
     const deleteIds = mergeGroup.filter(s => s.id !== mergeKeepId).map(s => s.id)
     setMerging(true)
+    setMergeError(null)
+    const notes = new Set<string>()
     for (const deleteId of deleteIds) {
-      await fetch('/api/staff/merge', {
+      const res = await fetch('/api/staff/merge', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ keepId: mergeKeepId, deleteId }),
       })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        // Each merge is all-or-nothing, but in a group of three an earlier one may have gone through.
+        setMergeError(data.error ?? `Merge failed (HTTP ${res.status})`)
+        setMerging(false)
+        load()
+        return
+      }
+      setMergeGroup(g => g?.filter(s => s.id !== deleteId) ?? null)
+      for (const n of (data.notes ?? []) as string[]) notes.add(n)
     }
     setMerging(false)
     setMergeGroup(null)
     setMergeKeepId('')
+    setMergeNotes(notes.size ? [...notes] : null)
     load()
   }
 
@@ -489,6 +505,22 @@ export default function StaffClient({ role }: { role: string }) {
         </div>
       )}
 
+      {/* Merge follow-ups — things the merge cannot do in HR Platform / Accounting Hub */}
+      {mergeNotes && (
+        <div className="rounded-xl px-5 py-3" style={{ background: '#ECFDF5', border: '1px solid #BBF7D0' }}>
+          <div className="flex items-center gap-2 mb-1">
+            <CheckCircle2 size={15} style={{ color: '#065F46' }} />
+            <span className="text-xs font-semibold" style={{ color: '#065F46' }}>Merge complete. Outside this app:</span>
+            <button onClick={() => setMergeNotes(null)} className="ml-auto p-1 rounded hover:bg-green-100">
+              <X size={13} style={{ color: '#065F46' }} />
+            </button>
+          </div>
+          <ul className="text-[11px] list-disc pl-6" style={{ color: '#065F46' }}>
+            {mergeNotes.map((n, i) => <li key={i}>{n}</li>)}
+          </ul>
+        </div>
+      )}
+
       {/* Pending Duplicates */}
       {existingDuplicates.length > 0 && (
         <div className="rounded-xl overflow-hidden" style={{ border: '1.5px solid #F97316' }}>
@@ -522,6 +554,7 @@ export default function StaffClient({ role }: { role: string }) {
                   onClick={() => {
                     const defaultKeep = [...group].sort((a, b) => b.firstName.length - a.firstName.length)[0]
                     setMergeKeepId(defaultKeep.id)
+                    setMergeError(null)
                     setMergeGroup(group)
                   }}
                   className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold"
@@ -916,7 +949,7 @@ export default function StaffClient({ role }: { role: string }) {
                   Merge Duplicate Staff
                 </p>
                 <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
-                  Select which record to keep. All schedules will be transferred to it.
+                  Select which record to keep. Keep the one HR Platform keeps, and the one with the staff portal login.
                 </p>
               </div>
             </div>
@@ -952,11 +985,20 @@ export default function StaffClient({ role }: { role: string }) {
             </div>
 
             <p className="text-xs mb-5 px-1" style={{ color: 'var(--mid-gray)' }}>
-              The other record will be permanently deleted after all schedules, surveys, and history are transferred to the kept record.
+              Schedules, bookings, decking, surveys, peer evaluations and the staff portal login move to the kept record,
+              which also takes on the other record&apos;s branch (interbranch). The other record is then permanently deleted.
             </p>
 
+            {mergeError && (
+              <div className="rounded-lg px-3 py-2 mb-4 text-xs flex gap-2"
+                style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#7F1D1D' }}>
+                <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+                <span>{mergeError}</span>
+              </div>
+            )}
+
             <div className="flex gap-2 justify-end">
-              <button onClick={() => { setMergeGroup(null); setMergeKeepId('') }}
+              <button onClick={() => { setMergeGroup(null); setMergeKeepId(''); setMergeError(null) }}
                 className="px-4 py-2 rounded-lg text-sm font-medium"
                 style={{ background: 'var(--light-gray)', color: 'var(--charcoal)' }}>
                 Cancel
