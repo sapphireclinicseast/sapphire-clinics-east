@@ -28,6 +28,9 @@ export interface SessionIssue {
   pay: number // PF per unit — what the payroll line paid, or today's rate if not yet in a payroll
   // The hub payroll that carries the session (DRAFT, FINAL or LOCKED); null = not yet run.
   payroll: { cutoff: string; status: string } | null
+  // The order changed after that payroll and the payslip didn't keep the line's
+  // charge: charged is the current line scaled to the order net the payslip saw.
+  approx?: boolean
   over: number // (pay − charged) × quantity
   // LINE = a priced line paid more than its own charge; ORDER = a ₱0 "BASIC
   // SESSION" carrier whose PF is more than the rest of the order was charged.
@@ -203,41 +206,128 @@ export async function hubPayrollStart(): Promise<string | null> {
   return `${y}-${m}-${half === '1' ? '01' : '16'}`
 }
 
+type PayslipSession = {
+  entry_id: string; cutoff: string; status: string; consultant_id: string; consultant: string
+  unit_pay_id: string | null; unit_pay_name: string | null; unit_amount: number
+  order_id: string; date: string; qty: number; charged: number | null; order_net: number | null
+}
+
+const ORDER_SELECT = {
+  id: true, orderNumber: true, clinicianName: true, patientName: true, branch: true, transactionDate: true, netAmount: true, status: true,
+  items: {
+    select: {
+      name: true, quantity: true, unitPrice: true, lineTotal: true,
+      service: { select: { department: true, unitPayId: true, unitPayEnabled: true, hmoPaysClinicianDirect: true, allowPfAbovePrice: true } },
+    },
+  },
+  payments: { select: { method: true } },
+} as const
+
 /**
- * Completed sessions since `since` (never before the hub's first payroll) whose
- * PF came to more than they were charged. Sessions already in a hub payroll use
- * the PF that payroll line paid; the rest use the rules payroll/generate pays by
- * today: clinician matched by name, branch rate override, threshold on the order
- * net less separately paid lines, and no PF on HMO-paid medical sessions.
+ * Sessions since `since` whose PF came to more than they were charged.
+ * - On a hub payslip (locked, final or draft): the PF that payslip paid (its
+ *   line's rate × qty) vs what the session was charged at payroll time — the
+ *   charge the payslip kept, else the order's line (scaled to the order net the
+ *   payslip saw if the order changed since).
+ * - Not on a payslip yet: today's rate by the rules payroll/generate pays by
+ *   (name match, branch override, threshold basis, no PF on HMO-paid medical) —
+ *   never before the hub's first payroll, whose earlier PF was paid outside it.
  */
 export async function sessionIssues(since: Date, hubStart: string | null): Promise<SessionIssue[]> {
-  if (hubStart) {
-    const floor = new Date(`${hubStart}T00:00:00+08:00`)
-    if (floor > since) since = floor
+  const sinceYmd = since.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
+  const hubFloor = hubStart ? new Date(`${hubStart}T00:00:00+08:00`) : null
+  const notRunSince = hubFloor && hubFloor > since ? hubFloor : since
+  const out: SessionIssue[] = []
+
+  // ── A. Sessions on hub payslips ──
+  const lines = await prisma.$queryRaw<PayslipSession[]>`
+    SELECT pe.id AS entry_id, pe."cutoffPeriod" AS cutoff, pe.status, pe."consultantId" AS consultant_id, c.name AS consultant,
+           it->>'unitPayId' AS unit_pay_id, it->>'unitPayName' AS unit_pay_name, (it->>'unitAmount')::float AS unit_amount,
+           s->>'orderId' AS order_id, s->>'date' AS date, COALESCE((s->>'quantity')::float, 1) AS qty,
+           (s->>'charged')::float AS charged, (s->>'orderNetAmount')::float AS order_net
+    FROM "PayrollEntry" pe JOIN "Consultant" c ON c.id = pe."consultantId",
+         jsonb_array_elements(pe.items::jsonb) it,
+         jsonb_array_elements(COALESCE(it->'sessions', '[]'::jsonb)) s
+    WHERE s->>'orderId' IS NOT NULL AND s->>'date' >= ${sinceYmd}`
+  // A session regenerated into more than one payslip counts once: a finalized one beats a draft.
+  const keyOf = (orderId: string, consultantId: string, unitPayId: string | null) => `${orderId}|${consultantId}|${unitPayId}`
+  const bestEntry = new Map<string, PayslipSession>()
+  for (const l of lines) {
+    const k = keyOf(l.order_id, l.consultant_id, l.unit_pay_id)
+    const prev = bestEntry.get(k)
+    if (!prev || (prev.status === 'DRAFT' && l.status !== 'DRAFT') || (prev.status === l.status && l.cutoff > prev.cutoff)) bestEntry.set(k, l)
   }
+  const kept = lines.filter(l => bestEntry.get(keyOf(l.order_id, l.consultant_id, l.unit_pay_id))?.entry_id === l.entry_id)
+  const payslipOrders = new Map((await prisma.order.findMany({
+    where: { id: { in: [...new Set(kept.map(l => l.order_id))] } }, select: ORDER_SELECT,
+  })).map(o => [o.id, o]))
+  // Unit pays each consultant was paid on each order (for what a ₱0 line's "rest of the order" excludes).
+  const paidOn = new Map<string, Set<string>>()
+  for (const l of kept) {
+    const k = `${l.order_id}|${l.consultant_id}`
+    paidOn.set(k, (paidOn.get(k) || new Set<string>()).add(l.unit_pay_id || ''))
+  }
+
+  for (const l of kept) {
+    const o = payslipOrders.get(l.order_id)
+    if (!o) continue
+    const qty = Number(l.qty) || 1
+    const matching = o.items.filter(i => i.service?.unitPayId === l.unit_pay_id && i.service?.unitPayEnabled !== false)
+    if (matching.some(i => i.service?.allowPfAbovePrice)) continue
+    const priced = matching.filter(i => Number(i.unitPrice) > 0 || Number(i.lineTotal) > 0)
+    const kind: SessionIssue['kind'] = priced.length || !matching.length ? 'LINE' : 'ORDER'
+
+    let charged: number // total for this session's qty, at payroll time
+    let approx = false
+    if (l.charged != null) {
+      charged = Number(l.charged)
+    } else {
+      const net = Number(o.netAmount) || 0
+      let now: number
+      if (priced.length) {
+        const units = priced.reduce((t, i) => t + (Number(i.quantity) || 1), 0)
+        now = priced.reduce((t, i) => t + (Number(i.lineTotal) || 0), 0) / units * qty
+      } else if (matching.length) {
+        const paidUps = paidOn.get(`${l.order_id}|${l.consultant_id}`) || new Set<string>()
+        now = net - o.items.reduce((t, i) => t + (i.service?.unitPayId && paidUps.has(i.service.unitPayId) ? Number(i.lineTotal) || 0 : 0), 0)
+      } else {
+        now = net // the line is gone from the order — compare with the whole order
+      }
+      const then = l.order_net != null ? Number(l.order_net) : null
+      if (then != null && Math.abs(then - net) > 0.005) {
+        charged = net > 0 ? now * (then / net) : then
+        approx = true
+      } else {
+        charged = now
+      }
+    }
+    const pf = Number(l.unit_amount) * qty
+    if (pf > charged + 0.005) {
+      out.push({
+        consultantId: l.consultant_id, consultant: l.consultant, orderId: o.id, orderNumber: o.orderNumber, date: l.date, patientName: o.patientName,
+        service: kind === 'ORDER' ? o.items.map(i => i.name).join(' + ') : (priced.length ? priced : matching).map(i => i.name).join(' + ') || o.items.map(i => i.name).join(' + '),
+        unitPayId: l.unit_pay_id || '', unitPay: l.unit_pay_name || '', quantity: qty,
+        charged: charged / qty, pay: Number(l.unit_amount), over: pf - charged, kind,
+        payroll: { cutoff: l.cutoff, status: l.status }, ...(approx ? { approx } : {}),
+      })
+    }
+  }
+  const onPayslip = new Set(lines.map(l => keyOf(l.order_id, l.consultant_id, l.unit_pay_id)))
+
+  // ── B. Sessions not on a payslip yet: today's rate ──
   const [consultants, orders] = await Promise.all([
     prisma.consultant.findMany({ where: { isActive: true }, select: CONSULTANT_SELECT }),
     prisma.order.findMany({
       where: {
-        status: 'COMPLETED', clinicianName: { not: null }, transactionDate: { gte: since },
+        status: 'COMPLETED', clinicianName: { not: null }, transactionDate: { gte: notRunSince },
         items: { some: { service: { unitPayId: { not: null } } } },
         AND: [notMigratedOrder],
       },
-      select: {
-        id: true, orderNumber: true, clinicianName: true, patientName: true, branch: true, transactionDate: true, netAmount: true,
-        items: {
-          select: {
-            name: true, quantity: true, unitPrice: true, lineTotal: true,
-            service: { select: { department: true, unitPayId: true, unitPayEnabled: true, hmoPaysClinicianDirect: true, allowPfAbovePrice: true } },
-          },
-        },
-        payments: { select: { method: true } },
-      },
+      select: ORDER_SELECT,
       orderBy: { transactionDate: 'desc' },
     }),
   ])
   const byName = new Map(consultants.map(c => [c.name.trim().toUpperCase(), c]))
-  const out: SessionIssue[] = []
   for (const o of orders) {
     const c = byName.get((o.clinicianName || '').trim().toUpperCase())
     if (!c) continue
@@ -262,56 +352,35 @@ export async function sessionIssues(since: Date, hubStart: string | null): Promi
       if (hmoPaid && (String(i.service.department || '').toUpperCase() === 'MD' || i.service.hmoPaysClinicianDirect)) continue
       paid.push({ item: i, unitPayId: r.unitPayId, unitPay: r.unitPay.name, pay: rateAt(r, branch, basis) })
     }
-    const base = { consultantId: c.id, consultant: c.name, orderId: o.id, orderNumber: o.orderNumber, date, patientName: o.patientName }
+    const base = { consultantId: c.id, consultant: c.name, orderId: o.id, orderNumber: o.orderNumber, date, patientName: o.patientName, payroll: null }
+    const notRun = (unitPayId: string) => !onPayslip.has(keyOf(o.id, c.id, unitPayId))
 
     // Priced lines: PF per unit vs what the line was charged per unit.
     for (const p of paid) {
-      if (p.item.service?.allowPfAbovePrice) continue
+      if (p.item.service?.allowPfAbovePrice || !notRun(p.unitPayId)) continue
       const qty = Number(p.item.quantity) || 1
       const line = Number(p.item.lineTotal) || 0
       if (!(Number(p.item.unitPrice) > 0 || line > 0)) continue
       const charged = line / qty
       if (p.pay > charged + 0.005) {
-        out.push({ ...base, service: p.item.name, unitPayId: p.unitPayId, unitPay: p.unitPay, quantity: qty, charged, pay: p.pay, over: (p.pay - charged) * qty, kind: 'LINE', payroll: null })
+        out.push({ ...base, service: p.item.name, unitPayId: p.unitPayId, unitPay: p.unitPay, quantity: qty, charged, pay: p.pay, over: (p.pay - charged) * qty, kind: 'LINE' })
       }
     }
     // ₱0 carrier lines are paid out of the rest of the order.
     const carriers = paid.filter(p => !(Number(p.item.unitPrice) > 0) && !(Number(p.item.lineTotal) > 0) && !p.item.service?.allowPfAbovePrice)
-    if (carriers.length) {
-      const rest = net - paid.reduce((s, p) => s + (Number(p.item.lineTotal) || 0), 0)
-      const qty = carriers.reduce((s, p) => s + (Number(p.item.quantity) || 1), 0)
-      const pf = carriers.reduce((s, p) => s + p.pay * (Number(p.item.quantity) || 1), 0)
+    if (carriers.length && carriers.every(p => notRun(p.unitPayId))) {
+      const rest = net - paid.reduce((t, p) => t + (Number(p.item.lineTotal) || 0), 0)
+      const qty = carriers.reduce((t, p) => t + (Number(p.item.quantity) || 1), 0)
+      const pf = carriers.reduce((t, p) => t + p.pay * (Number(p.item.quantity) || 1), 0)
       if (pf > rest + 0.005) {
         out.push({
           ...base, service: o.items.map(i => i.name).join(' + '), unitPayId: carriers[0].unitPayId, unitPay: carriers[0].unitPay, quantity: qty,
-          charged: rest / qty, pay: pf / qty, over: pf - rest, kind: 'ORDER', payroll: null,
+          charged: rest / qty, pay: pf / qty, over: pf - rest, kind: 'ORDER',
         })
       }
     }
   }
-  if (!out.length) return out
-
-  // Sessions already in a hub payroll: what that payroll line actually paid.
-  const rows = await prisma.$queryRaw<{ cutoff: string; status: string; consultant_id: string; unit_pay_id: string | null; unit_amount: number; order_id: string }[]>`
-    SELECT pe."cutoffPeriod" AS cutoff, pe.status, pe."consultantId" AS consultant_id, it->>'unitPayId' AS unit_pay_id,
-           (it->>'unitAmount')::float AS unit_amount, s->>'orderId' AS order_id
-    FROM "PayrollEntry" pe,
-         jsonb_array_elements(pe.items::jsonb) it,
-         jsonb_array_elements(COALESCE(it->'sessions', '[]'::jsonb)) s
-    WHERE s->>'orderId' = ANY(${[...new Set(out.map(x => x.orderId))]})`
-  const inPayroll = new Map<string, (typeof rows)[number]>()
-  for (const r of rows) {
-    const key = `${r.order_id}|${r.consultant_id}|${r.unit_pay_id}`
-    const prev = inPayroll.get(key)
-    if (!prev || prev.status === 'DRAFT') inPayroll.set(key, r) // a finalized line beats a draft
-  }
-  return out.flatMap(x => {
-    const r = inPayroll.get(`${x.orderId}|${x.consultantId}|${x.unitPayId}`)
-    if (!r) return [x]
-    const pay = Number(r.unit_amount)
-    const over = (pay - x.charged) * x.quantity
-    return over > 0.005 ? [{ ...x, pay, over, payroll: { cutoff: r.cutoff, status: r.status } }] : []
-  })
+  return out.sort((a, b) => b.date.localeCompare(a.date) || a.consultant.localeCompare(b.consultant))
 }
 
 // ── Blocking saves: PF can never be set above the price it is paid on ──

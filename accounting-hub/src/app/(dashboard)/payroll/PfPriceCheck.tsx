@@ -132,8 +132,8 @@ export default function PfPriceCheck({ variant = 'full', onOpen, onCount, onEdit
           </label>
         </div>
         <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
-          PF is what the session&apos;s payroll line paid; sessions not yet in a payroll show today&apos;s rate.
-          {data.hubStart && <> Sessions before {formatDate(data.hubStart)} aren&apos;t checked — that payroll was run outside the hub.</>}
+          Sessions on a payslip compare the PF that payslip paid with what the session was charged at that time; sessions not yet on a payslip use today&apos;s rate and charge.
+          {data.hubStart && <> Sessions before {formatDate(data.hubStart)} that aren&apos;t on a hub payslip aren&apos;t checked — that payroll was run outside the hub.</>}
         </p>
         {!data.sessions.length ? (
           <div className="rounded-xl border px-4 py-4 text-sm text-center" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
@@ -159,7 +159,9 @@ export default function PfPriceCheck({ variant = 'full', onOpen, onCount, onEdit
                       {s.service}{s.kind === 'ORDER' && <span className="ml-1 text-[10px]" style={{ color: 'var(--mid-gray)' }}>(₱0 line)</span>}
                     </td>
                     <td className={td}>{s.unitPay}</td>
-                    <td className={td}>{formatCurrency(s.charged)}</td>
+                    <td className={td} title={s.approx ? 'The order changed after this payroll — charge estimated from the order net the payslip saw' : undefined}>
+                      {s.approx ? '≈ ' : ''}{formatCurrency(s.charged)}
+                    </td>
                     <td className={td}>{formatCurrency(s.pay)}{s.quantity !== 1 ? ` × ${s.quantity}` : ''}</td>
                     <td className={`${td} font-semibold text-red-700`}>{formatCurrency(s.over)}</td>
                     <td className={td} style={{ color: 'var(--mid-gray)' }}>
