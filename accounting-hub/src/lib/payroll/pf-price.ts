@@ -14,9 +14,11 @@ export interface PfRate {
 }
 
 // Sessions this recent count toward the Payroll badge/banner and the bell; older ones stay listed.
-export const PF_PRICE_RECENT_DAYS = 31
-export const pfPriceRecentSince = () =>
-  new Date(Date.now() - PF_PRICE_RECENT_DAYS * 86_400_000).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
+// Overpaid sessions stay in the badge, banner and bell until they are deducted —
+// counted from Jan 1 of the current year, the same default as the PF Above
+// Price list (Hannah 2026-11-02: the badge said 1 while the list had 4 open).
+export const pfPriceOpenSince = () =>
+  `${new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }).slice(0, 4)}-01-01`
 
 // Order/service branch → the payroll branch code a rate's branchAmounts override is keyed by.
 export const ORDER_TO_PAYROLL_BRANCH: Record<string, string> = {

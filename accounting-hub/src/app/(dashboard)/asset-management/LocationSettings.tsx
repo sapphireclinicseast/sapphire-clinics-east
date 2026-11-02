@@ -31,7 +31,7 @@ export default function LocationSettings({ branches, rooms, initialBranch, onSav
   const dirty = (b: string) => JSON.stringify((drafts[b] ?? []).map(r => [r.id, r.name.trim()])) !== JSON.stringify((original[b] ?? []).map(r => [r.id, r.name]))
 
   const add = () => {
-    const name = adding.replace(/\s+/g, ' ').trim()
+    const name = adding.replace(/\s+/g, ' ').trim().toUpperCase()
     if (!name) return
     if (list.some(r => r.name.trim().toLowerCase() === name.toLowerCase())) { setError(`"${name}" is already listed`); return }
     setList(l => [...l, { name, used: 0 }])
@@ -97,7 +97,7 @@ export default function LocationSettings({ branches, rooms, initialBranch, onSav
             {list.length === 0 && <p className="text-sm text-gray-400 italic">No rooms yet for this branch.</p>}
             {list.map((r, i) => (
               <div key={r.id ?? `new-${i}`} className="flex items-center gap-2">
-                <input value={r.name} onChange={e => { const v = e.target.value; setList(l => l.map((x, k) => k === i ? { ...x, name: v } : x)) }}
+                <input value={r.name} onChange={e => { const v = e.target.value.toUpperCase(); setList(l => l.map((x, k) => k === i ? { ...x, name: v } : x)) }}
                   className="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
                 <span className="w-16 text-right text-[11px] text-gray-400 whitespace-nowrap">{r.used ? `${r.used} asset${r.used > 1 ? 's' : ''}` : ''}</span>
                 <button onClick={() => move(i, -1)} disabled={i === 0} className="p-1 rounded hover:bg-gray-100 text-gray-500 disabled:opacity-30" title="Move up"><ArrowUp size={14} /></button>
@@ -110,8 +110,8 @@ export default function LocationSettings({ branches, rooms, initialBranch, onSav
           </div>
 
           <div className="flex items-center gap-2">
-            <input value={adding} onChange={e => setAdding(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add() } }}
-              placeholder="Add a room, e.g. Reception, Pedia Gym, OT Room 2"
+            <input value={adding} onChange={e => setAdding(e.target.value.toUpperCase())} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add() } }}
+              placeholder="Add a room, e.g. RECEPTION, PEDIA GYM, OT ROOM 2"
               className="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
             <button onClick={add} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium text-teal-700 border border-teal-600 hover:bg-teal-50">
               <Plus size={14} /> Add

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AlertOctagon, CheckCircle2, ChevronRight, Loader2, Pencil } from 'lucide-react'
 import { formatCurrency, formatDate } from '@/lib/utils'
-import { PF_PRICE_RECENT_DAYS, pfPriceRecentSince } from '@/lib/payroll/pf-price'
+import { pfPriceOpenSince } from '@/lib/payroll/pf-price'
 import type { PayslipDeduction, RateIssue, SessionIssue } from '@/lib/payroll/pf-price-server'
 
 const manilaYmd = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
@@ -45,19 +45,19 @@ export default function PfPriceCheck({ variant = 'full', canWrite = false, onOpe
   const [cutoffFor, setCutoffFor] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
-  const recentSince = useMemo(() => pfPriceRecentSince(), [])
+  const openSince = useMemo(() => pfPriceOpenSince(), [])
   const options = useMemo(() => cutoffOptions(), [])
 
   const load = useCallback(() => {
-    fetch(`/api/payroll/pf-price-check?since=${variant === 'banner' ? recentSince : since}`)
+    fetch(`/api/payroll/pf-price-check?since=${variant === 'banner' ? openSince : since}`)
       .then(r => (r.ok ? r.json() : null))
       .then(d => setData({ rates: d?.rates || [], sessions: d?.sessions || [], deductions: d?.deductions || [], hubStart: d?.hubStart || null }))
       .catch(() => setData({ rates: [], sessions: [], deductions: [], hubStart: null }))
-  }, [variant, since, recentSince])
+  }, [variant, since, openSince])
   useEffect(() => { load() }, [load, reloadKey])
 
-  // Sessions already adjusted in a later payroll are done — only the rest count.
-  const recent = useMemo(() => (data?.sessions || []).filter(s => s.date >= recentSince && !s.recovered), [data, recentSince])
+  // Sessions already adjusted in a later payroll are done — every other one this year counts.
+  const notDeducted = useMemo(() => (data?.sessions || []).filter(s => s.date >= openSince && !s.recovered), [data, openSince])
 
   const patch = async (s: SessionIssue, body: Record<string, unknown>) => {
     setBusy(sessionKey(s)); setError('')
@@ -82,13 +82,13 @@ export default function PfPriceCheck({ variant = 'full', canWrite = false, onOpe
     patch(s, { undo: true })
   }
   const rateConsultants = useMemo(() => new Set((data?.rates || []).map(r => r.consultantId)).size, [data])
-  useEffect(() => { if (data) onCount?.(data.rates.length + recent.length) }, [data, recent.length, onCount])
+  useEffect(() => { if (data) onCount?.(data.rates.length + notDeducted.length) }, [data, notDeducted.length, onCount])
 
   if (variant === 'banner') {
-    if (!data || (!data.rates.length && !recent.length)) return null
+    if (!data || (!data.rates.length && !notDeducted.length)) return null
     const parts = [
       data.rates.length ? `${plural(data.rates.length, 'rate')} for ${plural(rateConsultants, 'consultant')}` : '',
-      recent.length ? `${plural(recent.length, 'session')} in the last ${PF_PRICE_RECENT_DAYS} days` : '',
+      notDeducted.length ? `${plural(notDeducted.length, 'session')} not yet deducted` : '',
     ].filter(Boolean)
     return (
       <button onClick={onOpen} className="w-full rounded-xl border px-4 py-2.5 text-sm flex items-center justify-between gap-2 text-left"
@@ -219,7 +219,7 @@ export default function PfPriceCheck({ variant = 'full', canWrite = false, onOpe
               <tbody>
                 {shown.map(s => (
                   <tr key={`${s.orderId}-${s.consultantId}-${s.service}-${s.kind}`} className="border-t"
-                    style={s.recovered ? { borderColor: '#bbf7d0', background: '#dcfce7' } : { borderColor: '#fee2e2', ...(s.date >= recentSince ? { background: '#fff7f7' } : {}) }}>
+                    style={s.recovered ? { borderColor: '#bbf7d0', background: '#dcfce7' } : { borderColor: '#fee2e2', background: '#fff7f7' }}>
                     <td className={td}>{formatDate(s.date)}</td>
                     <td className={td}>#{s.orderNumber}</td>
                     <td className="px-2 py-1.5">{s.patientName || '—'}</td>

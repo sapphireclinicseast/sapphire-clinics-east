@@ -28,9 +28,10 @@ export function sanitizeAssetUnits(units: unknown, quantity: number): AssetUnit[
   })
 }
 
-// A room name as stored on an asset (Location Settings names, trimmed).
+// A room name as stored on an asset (Location Settings names) — trimmed and in
+// capitals, like asset names (Hannah 2026-11-02).
 export function cleanLocation(v: unknown): string | null {
-  return typeof v === 'string' ? v.replace(/\s+/g, ' ').trim().slice(0, 100) || null : null
+  return typeof v === 'string' ? v.replace(/\s+/g, ' ').trim().toUpperCase().slice(0, 100) || null : null
 }
 
 // The departments each piece serves: its own list, else the asset's.

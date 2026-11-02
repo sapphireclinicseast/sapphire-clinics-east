@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Bell, TrendingDown, CalendarClock, Landmark, ShieldCheck, Loader2, FolderLock, GraduationCap, AlertOctagon } from 'lucide-react'
 import { computeTaxDue } from '@/lib/taxes'
 import type { ComplianceDue } from '@/lib/compliance'
-import { PF_PRICE_RECENT_DAYS, pfPriceRecentSince } from '@/lib/payroll/pf-price'
+import { pfPriceOpenSince } from '@/lib/payroll/pf-price'
 
 /* Top-bar bell: one place for what needs action soon —
    PF to recover after HMO decreases, PF above the service price, recurring expenses, BIR tax deadlines,
@@ -26,7 +26,7 @@ const getJson = (url: string) => fetch(url).then(r => (r.ok ? r.json() : null)).
 async function loadGroups(role: string): Promise<Group[]> {
   const [pf, pfPrice, recurring, compliance, expiring, tuition] = await Promise.all([
     getJson('/api/payroll/hmo-settlement-alerts'),
-    getJson(`/api/payroll/pf-price-check?since=${pfPriceRecentSince()}`),
+    getJson(`/api/payroll/pf-price-check?since=${pfPriceOpenSince()}`),
     getJson('/api/expenses/reminders'),
     getJson('/api/compliance-deadlines?due=1'),
     getJson('/api/official-documents?expiring=1'),
@@ -52,7 +52,7 @@ async function loadGroups(role: string): Promise<Group[]> {
     })
   }
 
-  // PF above the service price — rates per consultant, then recent sessions per consultant
+  // PF above the service price — rates per consultant, then not-yet-deducted sessions per consultant
   const pfRates: { consultant: string; unitPay: string }[] = pfPrice?.rates || []
   // Sessions already adjusted in a later payroll are done.
   const pfSessions: { consultant: string; over: number; recovered: unknown }[] = (pfPrice?.sessions || []).filter((x: { recovered?: unknown }) => !x.recovered)
@@ -73,7 +73,7 @@ async function loadGroups(role: string): Promise<Group[]> {
         })),
         ...[...sessBy.entries()].map(([name, g]) => ({
           key: `pfs-${name}`, title: `${name} — ${peso(g.total)}`,
-          detail: `${g.n} session${g.n === 1 ? '' : 's'} in the last ${PF_PRICE_RECENT_DAYS} days paid more PF than charged`,
+          detail: `${g.n} session${g.n === 1 ? '' : 's'} paid more PF than charged — not yet deducted`,
           daysUntil: null, href: '/payroll?sub=pf-price',
         })),
       ],
