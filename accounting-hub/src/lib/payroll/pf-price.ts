@@ -32,35 +32,48 @@ export function rateAt(rate: PfRate, branch: string, basis: number) {
   return reduced ? Number(rate.reducedAmount) : full
 }
 
-/** A service a unit pay pays for. `branch` is the service's branch (ALL, SANDBOX_EAST, …). */
-export interface PricedService { id: string; name: string; price: number; branch: string }
+/** A service a unit pay pays for. `branch` is the service's branch (ALL, SANDBOX_EAST, …);
+ *  `branchPrices` are its per-branch price overrides, keyed by payroll branch (SBEA, SBGH). */
+export interface PricedService { id: string; name: string; price: number; branch: string; branchPrices?: Record<string, number> }
 
 export interface OverPrice {
   serviceId: string
   service: string
   price: number
   pay: number
-  // Set only when a per-branch rate is what goes over the price.
+  // Set only when a per-branch rate or price is what goes over.
   branch: string | null
 }
 
-/** The services whose list price is below the PF this rate pays on them, lowest
+/** Per-branch price overrides (rows keyed SANDBOX_EAST…) re-keyed by payroll branch; blanks dropped. */
+export function branchPriceMap(rows: { branch: string; price: unknown }[]): Record<string, number> {
+  const out: Record<string, number> = {}
+  for (const r of rows) {
+    const n = Number(r.price)
+    if (r.price !== '' && r.price != null && Number.isFinite(n) && n > 0) out[ORDER_TO_PAYROLL_BRANCH[r.branch] || r.branch] = n
+  }
+  return out
+}
+
+/** The services whose price is below the PF this rate pays on them, lowest
  *  price first. A service sold at every branch is checked at each of the
- *  consultant's branches, since a per-branch rate can differ. */
+ *  consultant's branches, since a per-branch rate or price can differ. */
 export function overPrice(rate: PfRate, services: PricedService[], rateBranches: string[]): OverPrice[] {
   if (rate.disabled) return []
   const overrides = (rate.branchAmounts as Record<string, unknown> | null | undefined) || {}
   const out: OverPrice[] = []
   for (const s of services) {
     const branches = s.branch === 'ALL' ? (rateBranches.length ? rateBranches : ['']) : [ORDER_TO_PAYROLL_BRANCH[s.branch] || s.branch]
-    let worst: { pay: number; branch: string } | null = null
+    let worst: { pay: number; price: number; branch: string } | null = null
     for (const b of branches) {
-      const pay = rateAt(rate, b, s.price)
-      if (pay > s.price + 0.005 && (!worst || pay > worst.pay)) worst = { pay, branch: b }
+      const price = s.branchPrices?.[b] ?? s.price
+      if (!(price > 0)) continue // no price at this branch
+      const pay = rateAt(rate, b, price)
+      if (pay > price + 0.005 && (!worst || pay - price > worst.pay - worst.price)) worst = { pay, price, branch: b }
     }
     if (worst) {
-      const perBranch = overrides[worst.branch] != null && overrides[worst.branch] !== ''
-      out.push({ serviceId: s.id, service: s.name, price: s.price, pay: worst.pay, branch: perBranch ? worst.branch : null })
+      const perBranch = (overrides[worst.branch] != null && overrides[worst.branch] !== '') || s.branchPrices?.[worst.branch] != null
+      out.push({ serviceId: s.id, service: s.name, price: worst.price, pay: worst.pay, branch: perBranch ? worst.branch : null })
     }
   }
   return out.sort((a, b) => a.price - b.price || a.service.localeCompare(b.service))

@@ -480,7 +480,7 @@ export async function GET(req: Request) {
       const hmoMedicalSkips: { orderId: string; date: string; patientName: string; serviceName: string; quantity: number; orderNetAmount: number }[] = []
 
       // Group by unit pay — with threshold logic per order
-      const unitPayBreakdown: { unitPayId: string; unitPayName: string; unitAmount: number; quantity: number; lineTotal: number; isReduced?: boolean; sessions: { orderId: string; date: string; patientName: string; serviceName: string; quantity: number; orderNetAmount: number; orderStatus: string }[] }[] = []
+      const unitPayBreakdown: { unitPayId: string; unitPayName: string; unitAmount: number; quantity: number; lineTotal: number; isReduced?: boolean; sessions: { orderId: string; date: string; patientName: string; serviceName: string; quantity: number; orderNetAmount: number; orderStatus: string; charged: number; pf: number }[] }[] = []
 
       for (const order of consultantOrders) {
         const hmoPaid = isHmoPaid(order)
@@ -501,6 +501,16 @@ export async function GET(req: Request) {
 
         // Full list of all service names on this order (shown in payslip session details)
         const allOrderServices = order.items.map(i => i.name).join(', ')
+
+        // What each paid line was charged, for the session details' PF-vs-charge check:
+        // a priced line its own total; a ₱0 BASIC SESSION carrier the rest of the order.
+        let paidLinesTotal = 0
+        for (const item of order.items) {
+          if (!item.service?.unitPayId || item.service.unitPayEnabled === false) continue
+          const r = c.unitPayRates.find(r => r.unitPayId === item.service!.unitPayId)
+          if (!r || r.disabled || (hmoPaid && isMedicalService(item.service))) continue
+          paidLinesTotal += toFloat(item.lineTotal)
+        }
 
         for (const item of order.items) {
           if (!item.service?.unitPayId) continue
@@ -550,7 +560,12 @@ export async function GET(req: Request) {
             }
           }
 
-          const sessionEntry = { orderId: order.id, date: orderDate, patientName: order.patientName || 'N/A', serviceName: allOrderServices, quantity: item.quantity, orderNetAmount: orderNet, orderStatus: 'COMPLETED' as string }
+          const lineTotal = toFloat(item.lineTotal)
+          const sessionEntry = {
+            orderId: order.id, date: orderDate, patientName: order.patientName || 'N/A', serviceName: allOrderServices, quantity: item.quantity, orderNetAmount: orderNet, orderStatus: 'COMPLETED' as string,
+            charged: lineTotal > 0 ? lineTotal : orderNet - paidLinesTotal,
+            pf: effectiveAmount * item.quantity,
+          }
 
           // Aggregate by unitPayId + effectiveRate (so normal and reduced show separately)
           const existing = unitPayBreakdown.find(b =>

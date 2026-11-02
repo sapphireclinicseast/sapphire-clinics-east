@@ -1,15 +1,17 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { userBranchScope } from '@/lib/branch-scope'
 import { useSession } from 'next-auth/react'
 import {
   Plus, Pencil, X, Search, Stethoscope,
   ArrowUpDown, ChevronUp, ChevronDown, AlertCircle, XCircle, FileCheck, History, Loader2,
-  Ban, RotateCcw,
+  Ban, RotateCcw, AlertOctagon,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { pwdUnitPrice, PWD_RATE } from '@/lib/quotations/pricing'
+import { branchPriceMap, overPrice, type PricedService } from '@/lib/payroll/pf-price'
+import type { ServiceRate } from '@/lib/payroll/pf-price-server'
 import { downloadXlsx, downloadPdf } from '@/lib/export'
 import DownloadMenu from '@/components/ui/DownloadMenu'
 import Pagination from '@/components/ui/Pagination'
@@ -81,6 +83,12 @@ const BRANCHES = [
 ]
 
 const BRANCH_LABELS: Record<string, string> = Object.fromEntries(BRANCHES.map(b => [b.value, b.label]))
+const PAYROLL_BRANCH_LABELS: Record<string, string> = { SBEA: 'East', SBGH: 'Greenhills' }
+
+type BranchPriceDraft = { branch: string; price: string; newPrice: string; newPriceDate: string }
+/** The price fields as one string — save asks about PF above the price only when these changed. */
+const priceSig = (price: string, newPrice: string, branchPrices: BranchPriceDraft[], unitPayId: string) =>
+  JSON.stringify([price, newPrice, branchPrices.filter(b => b.price || b.newPrice).map(b => [b.branch, b.price, b.newPrice]), unitPayId])
 
 const DEPT_BADGE: Record<string, { bg: string; color: string }> = {
   PT: { bg: '#dbeafe', color: '#1e40af' },
@@ -180,6 +188,46 @@ export default function ServicesPage() {
   const [eligibleSearch, setEligibleSearch] = useState('')
   const [eligibleResults, setEligibleResults] = useState<Service[]>([])
   const [eligibleLoading, setEligibleLoading] = useState(false)
+
+  // PF above price: the consultants whose unit pay this service pays (fetched for
+  // the service as edited), so a price set below one of their PFs is flagged.
+  const pfQuery = modalOpen && fUnitPayEnabled && fUnitPayId
+    ? new URLSearchParams({ unitPayId: fUnitPayId, name: fName, department: fDept, branch: fBranch, ...(editing ? { serviceId: editing.id } : {}) }).toString()
+    : ''
+  const [pfRates, setPfRates] = useState<{ query: string; rates: ServiceRate[] }>({ query: '', rates: [] })
+  const pfPriceSigAtOpen = useRef('')
+  useEffect(() => {
+    if (!pfQuery) return
+    const ctl = new AbortController()
+    const t = setTimeout(() => {
+      fetch(`/api/payroll/pf-price-check?${pfQuery}`, { signal: ctl.signal })
+        .then(r => (r.ok ? r.json() : null))
+        .then(d => setPfRates({ query: pfQuery, rates: Array.isArray(d?.rates) ? d.rates : [] }))
+        .catch(() => {})
+    }, 400)
+    return () => { clearTimeout(t); ctl.abort() }
+  }, [pfQuery])
+  const pfOver = useMemo(() => {
+    if (!pfQuery || pfRates.query !== pfQuery) return []
+    const bps = fBranch === 'ALL' ? fBranchPrices : []
+    const now: PricedService = { id: 'edit', name: fName, price: parseFloat(fPrice) || 0, branch: fBranch, branchPrices: branchPriceMap(bps) }
+    const hasScheduled = !!fNewPrice || bps.some(b => b.newPrice)
+    const scheduled: PricedService = {
+      ...now, price: parseFloat(fNewPrice) || now.price,
+      branchPrices: branchPriceMap(bps.map(b => ({ branch: b.branch, price: b.newPrice || b.price }))),
+    }
+    const out: { key: string; consultant: string; pay: number; price: number; branch: string | null; scheduled: boolean }[] = []
+    for (const r of pfRates.rates) {
+      for (const o of overPrice(r, [now], r.branches)) out.push({ key: `${r.consultantId}-now`, consultant: r.consultant, pay: o.pay, price: o.price, branch: o.branch, scheduled: false })
+      if (!hasScheduled) continue
+      for (const o of overPrice(r, [scheduled], r.branches)) {
+        if (!out.some(x => x.consultant === r.consultant && x.price === o.price && x.pay === o.pay)) {
+          out.push({ key: `${r.consultantId}-new`, consultant: r.consultant, pay: o.pay, price: o.price, branch: o.branch, scheduled: true })
+        }
+      }
+    }
+    return out
+  }, [pfQuery, pfRates, fName, fPrice, fNewPrice, fBranch, fBranchPrices])
 
   const canWrite = session?.user?.role && ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN'].includes(session.user.role as string)
 
@@ -301,6 +349,7 @@ export default function ServicesPage() {
     setFPriceType('FIXED'); setFRevenueType('EARNED'); setFHasDoctorFee(false); setFDoctorFee('')
     setFClinicFee(''); setFNewDoctorFee(''); setFNewClinicFee(''); setFPwdClinicOnly(false); setFNoPwdDiscount(false); setFIssuedOfficialInvoice(false); setFIsHmoGl(false); setFPaymentType('CASH'); setFHmoDirect(false); setFRecognitionMonths(''); setFDescription('')
     setFWalletType(''); setFVipTier(''); setFPackageSessions(''); setFRevenueAccountId(''); setFRevenueAccountSearch(''); setFUnitPayId(''); setFUnitPayEnabled(false); setFThresholdCounted(false); setFThresholdQty('1'); setFEligibleServices([]); setEligibleSearch(''); setEligibleResults([])
+    pfPriceSigAtOpen.current = '' // a new service always asks
     setError(''); setModalOpen(true)
   }
 
@@ -308,7 +357,9 @@ export default function ServicesPage() {
     setEditing(s)
     setFName(s.name); setFDept(s.department); setFBranch(s.branch)
     setFPrice(String(s.price)); setFNewPrice(s.newPrice != null ? String(s.newPrice) : ''); setFNewPriceDate(s.newPriceEffectiveDate ? String(s.newPriceEffectiveDate).split('T')[0] : '')
-    setFBranchPrices((s.branchPrices || []).map(bp => ({ branch: bp.branch, price: String(bp.price), newPrice: bp.newPrice != null ? String(bp.newPrice) : '', newPriceDate: bp.newPriceEffectiveDate ? String(bp.newPriceEffectiveDate).split('T')[0] : '' })))
+    const bps = (s.branchPrices || []).map(bp => ({ branch: bp.branch, price: String(bp.price), newPrice: bp.newPrice != null ? String(bp.newPrice) : '', newPriceDate: bp.newPriceEffectiveDate ? String(bp.newPriceEffectiveDate).split('T')[0] : '' }))
+    setFBranchPrices(bps)
+    pfPriceSigAtOpen.current = priceSig(String(s.price), s.newPrice != null ? String(s.newPrice) : '', bps, s.unitPayId && s.unitPayEnabled !== false ? s.unitPayId : '')
     setFPriceType(s.priceType); setFRevenueType(s.revenueType)
     setFHasDoctorFee(s.hasDoctorFee)
     setFDoctorFee(s.doctorFee != null ? String(s.doctorFee) : '')
@@ -372,6 +423,12 @@ export default function ServicesPage() {
       setError('The new Doctor’s Fee + Clinic Fee must add up to the new price.')
       return
     }
+    // Price (or unit pay) changed to below a consultant's PF — we can't pay more than we charge.
+    if (pfOver.length && priceSig(fPrice, fNewPrice, fBranchPrices, fUnitPayEnabled ? fUnitPayId : '') !== pfPriceSigAtOpen.current && !confirm(
+      `We can't pay more PF than we charge. This price is below the PF of:\n\n` +
+      pfOver.map(o => `• ${o.consultant}: PF ${formatCurrency(o.pay)} > price ${formatCurrency(o.price)}${o.branch ? ` (${PAYROLL_BRANCH_LABELS[o.branch] || o.branch})` : ''}${o.scheduled ? ' — scheduled price' : ''}`).join('\n') +
+      `\n\nSave anyway?`,
+    )) return
     setSaving(true); setError('')
     const body: Record<string, unknown> = {
       name: fName, department: fDept, branch: fBranch,
@@ -945,6 +1002,22 @@ export default function ServicesPage() {
                 </div>
               )}
 
+              {/* PF above price — the consultants this service pays would earn more than it charges */}
+              {pfOver.length > 0 && (
+                <div className="p-3 rounded-xl border text-xs" style={{ borderColor: '#fecaca', background: '#fef2f2', color: '#991b1b' }}>
+                  <p className="font-semibold flex items-center gap-1.5"><AlertOctagon size={14} /> This price is below the PF we pay — we can&apos;t pay more than we charge.</p>
+                  <ul className="mt-1 ml-5 list-disc space-y-0.5">
+                    {pfOver.map(o => (
+                      <li key={o.key}>
+                        {o.consultant}: PF {formatCurrency(o.pay)} vs price {formatCurrency(o.price)}
+                        {o.branch ? ` at ${PAYROLL_BRANCH_LABELS[o.branch] || o.branch}` : ''}{o.scheduled ? ` (scheduled price${fNewPriceDate ? ` from ${fNewPriceDate}` : ''})` : ''}
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="mt-1" style={{ color: 'var(--mid-gray)' }}>Keep the price at or above the PF, or lower their rate in Payroll → Consultant List.</p>
+                </div>
+              )}
+
               {/* Revenue Type */}
               <div>
                 <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Revenue Classification</label>
@@ -1325,14 +1398,21 @@ export default function ServicesPage() {
                   </span>
                 </label>
                 {fUnitPayEnabled ? (
-                  <select value={fUnitPayId} onChange={(e) => setFUnitPayId(e.target.value)}
-                    className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
-                    style={{ borderColor: fUnitPayId ? 'var(--teal)' : 'var(--light-gray)', background: fUnitPayId ? '#f0fdfa' : 'white' }}>
-                    <option value="">— Select unit pay —</option>
-                    {unitPays.map(u => (
-                      <option key={u.id} value={u.id}>{u.name}</option>
-                    ))}
-                  </select>
+                  <>
+                    <select value={fUnitPayId} onChange={(e) => setFUnitPayId(e.target.value)}
+                      className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
+                      style={{ borderColor: fUnitPayId ? 'var(--teal)' : 'var(--light-gray)', background: fUnitPayId ? '#f0fdfa' : 'white' }}>
+                      <option value="">— Select unit pay —</option>
+                      {unitPays.map(u => (
+                        <option key={u.id} value={u.id}>{u.name}</option>
+                      ))}
+                    </select>
+                    {pfOver.length > 0 && (
+                      <p className="mt-1 text-[11px] font-medium flex items-center gap-1" style={{ color: '#b91c1c' }}>
+                        <AlertOctagon size={12} /> This unit pay pays {new Set(pfOver.map(o => o.consultant)).size} consultant(s) more than the price — see the warning under the price.
+                      </p>
+                    )}
+                  </>
                 ) : (
                   <p className="text-xs px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>No Unit Pay Card</p>
                 )}

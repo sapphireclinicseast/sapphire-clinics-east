@@ -76,7 +76,7 @@ interface PayrollPreview {
   department: string
   branch: string
   taxDeduction: string
-  items: { unitPayId: string; unitPayName: string; unitAmount: number; quantity: number; lineTotal: number; isReduced?: boolean; sessions?: { date: string; patientName: string; serviceName: string; quantity: number; orderNetAmount: number; orderStatus?: string }[] }[]
+  items: { unitPayId: string; unitPayName: string; unitAmount: number; quantity: number; lineTotal: number; isReduced?: boolean; sessions?: { date: string; patientName: string; serviceName: string; quantity: number; orderNetAmount: number; orderStatus?: string; charged?: number; pf?: number }[] }[]
   unitPayTotal: number
   retainerAmount: number
   incentives: IncentiveLine[]
@@ -918,7 +918,8 @@ export default function PayrollPage() {
   const [generating, setGenerating] = useState(false)
   const [saving, setSaving] = useState(false)
 
-  const [sessionBreakdown, setSessionBreakdown] = useState<{ unitPayName: string; sessions: { date: string; patientName: string; serviceName: string; quantity: number; orderNetAmount: number; orderStatus?: string }[] } | null>(null)
+  // unitAmount = the line's rate (null for sessions that carry no PF, e.g. HMO medical skips).
+  const [sessionBreakdown, setSessionBreakdown] = useState<{ unitPayName: string; unitAmount: number | null; sessions: { date: string; patientName: string; serviceName: string; quantity: number; orderNetAmount: number; orderStatus?: string; charged?: number; pf?: number }[] } | null>(null)
 
   /* ── Payslip generation — per-consultant extras ── */
   const [extraUnitPays, setExtraUnitPays] = useState<Record<string, ExtraUnitPayLine[]>>({})
@@ -4955,7 +4956,7 @@ export default function PayrollPage() {
                                                     <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{item.unitPayName}</td>
                                                     <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{formatCurrency(item.unitAmount)}</td>
                                                     <td className="px-3 py-2 cursor-pointer underline" style={{ color: 'var(--teal)' }}
-                                                      onClick={(e) => { e.stopPropagation(); item.sessions?.length ? setSessionBreakdown({ unitPayName: item.unitPayName, sessions: item.sessions }) : undefined }}
+                                                      onClick={(e) => { e.stopPropagation(); item.sessions?.length ? setSessionBreakdown({ unitPayName: item.unitPayName, unitAmount: item.unitAmount, sessions: item.sessions }) : undefined }}
                                                       title="Click to view session details">{item.quantity}</td>
                                                     <td className="px-3 py-2 font-medium" style={{ color: 'var(--charcoal)' }}>{formatCurrency(item.lineTotal)}</td>
                                                   </tr>
@@ -4971,7 +4972,7 @@ export default function PayrollPage() {
                                                       <button
                                                         className="underline"
                                                         style={{ color: 'var(--teal)' }}
-                                                        onClick={(e) => { e.stopPropagation(); setSessionBreakdown({ unitPayName: 'HMO medical — no unit pay', sessions: p.hmoMedicalSkips || [] }) }}>
+                                                        onClick={(e) => { e.stopPropagation(); setSessionBreakdown({ unitPayName: 'HMO medical — no unit pay', unitAmount: null, sessions: p.hmoMedicalSkips || [] }) }}>
                                                         View sessions
                                                       </button>
                                                     </td>
@@ -6372,43 +6373,78 @@ export default function PayrollPage() {
               <h3 className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>Session Details: {sessionBreakdown.unitPayName}</h3>
               <button onClick={() => setSessionBreakdown(null)} className="p-1 rounded-lg hover:bg-gray-100"><X size={16} /></button>
             </div>
-            <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>{sessionBreakdown.sessions.reduce((s, x) => s + (x.quantity ?? 1), 0)} session(s) counted</p>
-            <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
-              <table className="w-full text-xs">
-                <thead>
-                  <tr style={{ background: 'var(--pale-teal)' }}>
-                    <th className="px-3 py-2 text-left font-semibold" style={{ color: 'var(--deep-teal)' }}>Date</th>
-                    <th className="px-3 py-2 text-left font-semibold" style={{ color: 'var(--deep-teal)' }}>Patient</th>
-                    <th className="px-3 py-2 text-left font-semibold" style={{ color: 'var(--deep-teal)' }}>Service</th>
-                    <th className="px-3 py-2 text-center font-semibold" style={{ color: 'var(--deep-teal)' }}>Qty</th>
-                    <th className="px-3 py-2 text-right font-semibold" style={{ color: 'var(--deep-teal)' }}>Order Net</th>
-                    <th className="px-3 py-2 text-center font-semibold" style={{ color: 'var(--deep-teal)' }}>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {[...sessionBreakdown.sessions].sort((a, b) => a.date.localeCompare(b.date)).map((s, i) => {
-                    const status = s.orderStatus || 'COMPLETED'
-                    const isVoided = status === 'CANCELLED' || status === 'VOIDED'
-                    const isReopened = status === 'REOPENED'
-                    return (
-                      <tr key={i} className="border-t" style={{ borderColor: 'var(--light-gray)', opacity: isVoided ? 0.5 : 1 }}>
-                        <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{new Date(s.date + 'T00:00:00').toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}</td>
-                        <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{s.patientName}</td>
-                        <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{s.serviceName}</td>
-                        <td className="px-3 py-2 text-center font-semibold" style={{ color: 'var(--charcoal)' }}>{s.quantity ?? 1}</td>
-                        <td className="px-3 py-2 text-right font-medium" style={{ color: isVoided ? '#991b1b' : 'var(--charcoal)', textDecoration: isVoided ? 'line-through' : 'none' }}>{formatCurrency(s.orderNetAmount)}</td>
-                        <td className="px-3 py-2 text-center">
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
-                            style={isVoided ? { background: '#fee2e2', color: '#991b1b' } : isReopened ? { background: '#fef3c7', color: '#92400e' } : { background: '#dcfce7', color: '#166534' }}>
-                            {isVoided ? 'Voided' : isReopened ? 'Reopened' : 'Completed'}
-                          </span>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
+            {(() => {
+              // PF paid per session vs what the session was charged. Sessions saved before
+              // this check carry no line charge — they fall back to the order net.
+              const rows = [...sessionBreakdown.sessions].sort((a, b) => a.date.localeCompare(b.date)).map(s => {
+                const pf = s.pf ?? (sessionBreakdown.unitAmount != null ? sessionBreakdown.unitAmount * (s.quantity ?? 1) : null)
+                const charged = s.charged ?? s.orderNetAmount
+                const status = s.orderStatus || 'COMPLETED'
+                const isVoided = status === 'CANCELLED' || status === 'VOIDED'
+                return { s, pf, charged, status, isVoided, over: !isVoided && pf != null && pf > charged + 0.005 }
+              })
+              const overCount = rows.filter(r => r.over).length
+              const overTotal = rows.reduce((t, r) => t + (r.over ? r.pf! - r.charged : 0), 0)
+              const showPf = sessionBreakdown.unitAmount != null
+              return (
+                <>
+                  <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>{sessionBreakdown.sessions.reduce((s, x) => s + (x.quantity ?? 1), 0)} session(s) counted</p>
+                  {overCount > 0 && (
+                    <p className="text-xs font-semibold flex items-center gap-1.5 px-3 py-2 rounded-lg" style={{ background: '#fef2f2', color: '#b91c1c' }}>
+                      <AlertOctagon size={14} /> {overCount} session{overCount === 1 ? '' : 's'} paid more PF than we charged — {formatCurrency(overTotal)} over. We can&apos;t pay more than we charge.
+                    </p>
+                  )}
+                  <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr style={{ background: 'var(--pale-teal)' }}>
+                          <th className="px-3 py-2 text-left font-semibold" style={{ color: 'var(--deep-teal)' }}>Date</th>
+                          <th className="px-3 py-2 text-left font-semibold" style={{ color: 'var(--deep-teal)' }}>Patient</th>
+                          <th className="px-3 py-2 text-left font-semibold" style={{ color: 'var(--deep-teal)' }}>Service</th>
+                          <th className="px-3 py-2 text-center font-semibold" style={{ color: 'var(--deep-teal)' }}>Qty</th>
+                          <th className="px-3 py-2 text-right font-semibold" style={{ color: 'var(--deep-teal)' }}>Order Net</th>
+                          {showPf && <th className="px-3 py-2 text-right font-semibold" style={{ color: 'var(--deep-teal)' }} title="What this session's line was charged (a ₱0 session line: the rest of the order)">Charged</th>}
+                          {showPf && <th className="px-3 py-2 text-right font-semibold" style={{ color: 'var(--deep-teal)' }}>PF Paid</th>}
+                          <th className="px-3 py-2 text-center font-semibold" style={{ color: 'var(--deep-teal)' }}>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows.map(({ s, pf, charged, status, isVoided, over }, i) => {
+                          const isReopened = status === 'REOPENED'
+                          return (
+                            <tr key={i} className="border-t"
+                              style={{ borderColor: over ? '#fecaca' : 'var(--light-gray)', background: over ? '#fee2e2' : undefined, opacity: isVoided ? 0.5 : 1 }}
+                              title={over ? `PF ${formatCurrency(pf!)} is more than the ${formatCurrency(charged)} charged` : undefined}>
+                              <td className="px-3 py-2" style={{ color: over ? '#991b1b' : 'var(--charcoal)' }}>{new Date(s.date + 'T00:00:00').toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}</td>
+                              <td className="px-3 py-2" style={{ color: over ? '#991b1b' : 'var(--charcoal)' }}>{s.patientName}</td>
+                              <td className="px-3 py-2" style={{ color: over ? '#991b1b' : 'var(--mid-gray)' }}>{s.serviceName}</td>
+                              <td className="px-3 py-2 text-center font-semibold" style={{ color: over ? '#991b1b' : 'var(--charcoal)' }}>{s.quantity ?? 1}</td>
+                              <td className="px-3 py-2 text-right font-medium" style={{ color: isVoided || over ? '#991b1b' : 'var(--charcoal)', textDecoration: isVoided ? 'line-through' : 'none' }}>{formatCurrency(s.orderNetAmount)}</td>
+                              {showPf && (
+                                <td className="px-3 py-2 text-right" style={{ color: over ? '#991b1b' : 'var(--mid-gray)' }}>
+                                  {formatCurrency(charged)}{s.charged == null && <span className="ml-0.5" title="Saved before line charges were recorded — order net shown">*</span>}
+                                </td>
+                              )}
+                              {showPf && (
+                                <td className="px-3 py-2 text-right font-semibold" style={{ color: over ? '#b91c1c' : 'var(--charcoal)' }}>
+                                  {pf != null ? formatCurrency(pf) : '—'}
+                                </td>
+                              )}
+                              <td className="px-3 py-2 text-center">
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
+                                  style={isVoided ? { background: '#fee2e2', color: '#991b1b' } : isReopened ? { background: '#fef3c7', color: '#92400e' } : { background: '#dcfce7', color: '#166534' }}>
+                                  {isVoided ? 'Voided' : isReopened ? 'Reopened' : 'Completed'}
+                                </span>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )
+            })()}
           </div>
         </div>
       )}
