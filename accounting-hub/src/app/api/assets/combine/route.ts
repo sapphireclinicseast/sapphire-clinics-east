@@ -20,6 +20,10 @@ import { partsJson, partsOf } from '@/lib/asset-parts'
 // - a manual part the reports synthesize from its own row: posted first when
 //   the main record carries no JE of its own.
 // Purchases before 2026 sit in the imported QuickBooks GL, so only rows merge.
+// Across 2026 (Hannah 2026-11-02: a 2025 tablet + its 2026 stand and screen
+// glass): only INTO a pre-2026 main record — its cost stays in the QuickBooks
+// books, and every 2026 part keeps (or first gets) its own 2026 posting. A
+// pre-2026 part can never go into a 2026 record: its cost would be booked twice.
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 const HUB_LEDGER_START = 2026
@@ -42,12 +46,24 @@ export async function POST(req: Request) {
     if (!main || others.length !== otherIds.length) return NextResponse.json({ error: 'Some of those assets no longer exist — refresh and try again.' }, { status: 404 })
     if (others.some(a => a.branch !== main.branch)) return NextResponse.json({ error: 'Only assets of the same branch can be combined.' }, { status: 400 })
     const inHub = (d: Date) => d.getUTCFullYear() >= HUB_LEDGER_START
-    if (others.some(a => inHub(a.dateBought) !== inHub(main.dateBought))) {
-      return NextResponse.json({ error: 'Combine records from the same side of 2026 — purchases before 2026 live in the QuickBooks books.' }, { status: 400 })
+    if (inHub(main.dateBought) && others.some(a => !inHub(a.dateBought))) {
+      return NextResponse.json({ error: 'Pick the pre-2026 record as the main one — a purchase before 2026 sits in the QuickBooks books and cannot be folded into a 2026 record.' }, { status: 400 })
     }
 
     const hasJe = async (id: string) => !!(await prisma.journalEntry.findFirst({ where: { referenceType: 'ASSET_PURCHASE', referenceId: id }, select: { id: true } }))
     const carriedByEntry = (a: typeof main) => !!a.sourceEntryId || a.fromPettyCash
+
+    if (!inHub(main.dateBought)) {
+      // The pre-2026 main never posts in the hub, so each 2026 part must carry
+      // its own 2026 posting before its row goes.
+      for (const a of others) {
+        if (!inHub(a.dateBought) || carriedByEntry(a) || (await hasJe(a.id))) continue
+        const r = await postAssetJournal(prisma, a.id, uid)
+        if (!r.posted && !r.alreadyPosted) {
+          return NextResponse.json({ error: `Could not record ${a.controlNumber || a.name}'s 2026 purchase first (${r.reason}) — nothing was changed.` }, { status: 400 })
+        }
+      }
+    }
 
     if (inHub(main.dateBought)) {
       const mainPosts = !carriedByEntry(main)
