@@ -655,7 +655,7 @@ function StaffCard({ staff, allStaff, selectedDate, schedulingBranch }: { staff:
     setSendingClinicianSms(false)
     if (res.ok) {
       const d = await res.json()
-      showToast(`Schedule sent to ${staff.firstName} (${d.patients} patient${d.patients !== 1 ? 's' : ''})`)
+      showToast(`Schedule sent to ${staff.firstName} (${d.patients} confirmed patient${d.patients !== 1 ? 's' : ''})`)
     } else {
       const d = await res.json()
       showToast(d.error ?? 'Failed to send schedule to clinician')
@@ -706,7 +706,7 @@ function StaffCard({ staff, allStaff, selectedDate, schedulingBranch }: { staff:
     setSendingClinicianEmail(false)
     if (res.ok) {
       const d = await res.json()
-      showToast(`Email sent to ${staff.firstName} (${d.patients} patient${d.patients !== 1 ? 's' : ''})`)
+      showToast(`Email sent to ${staff.firstName} (${d.patients} confirmed patient${d.patients !== 1 ? 's' : ''})`)
     } else {
       const d = await res.json()
       showToast(d.error ?? 'Failed to send email to clinician')
@@ -984,14 +984,14 @@ function StaffCard({ staff, allStaff, selectedDate, schedulingBranch }: { staff:
                 <div className="flex flex-wrap items-center gap-2">
                   <button onClick={sendClinicianSms} disabled={renter || sendingClinicianSms || !staff.phone}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
-                    title={renter ? RENTER_NOTIFY_REASON : !staff.phone ? 'No mobile number on file for this clinician' : `Send schedule to ${staff.firstName}`}
+                    title={renter ? RENTER_NOTIFY_REASON : !staff.phone ? 'No mobile number on file for this clinician' : `Text ${staff.firstName} their confirmed sessions for this day — pending, rescheduled and cancelled rows are left out`}
                     style={{ background: '#16A34A', color: '#fff', opacity: (renter || sendingClinicianSms || !staff.phone) ? 0.5 : 1 }}>
                     <Smartphone size={13} />
                     {sendingClinicianSms ? 'Sending…' : 'Text Clinician'}
                   </button>
                   <button onClick={sendClinicianEmail} disabled={renter || sendingClinicianEmail}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
-                    title={renter ? RENTER_NOTIFY_REASON : `Email schedule to ${staff.firstName}`}
+                    title={renter ? RENTER_NOTIFY_REASON : `Email ${staff.firstName} their confirmed sessions for this day — pending, rescheduled and cancelled rows are left out`}
                     style={{ background: '#16A34A', color: '#fff', opacity: (renter || sendingClinicianEmail) ? 0.5 : 1 }}>
                     <Mail size={13} />
                     {sendingClinicianEmail ? 'Sending…' : 'Email Clinician'}
