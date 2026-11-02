@@ -245,20 +245,23 @@ function assetDepts(a: Asset): string[] {
   return [...new Set(pieceDepartments(a.departments, a.units, a.quantity).flat())]
 }
 
-// What an auditable asset still lacks (Hannah, 2026-11-02): a custodian and a
-// department for every item. Downpayment/part-payment records and pieces kept
+// What an auditable asset still lacks (Hannah, 2026-11-02): a custodian, a
+// department and a room for every item. Downpayment/part-payment records and pieces kept
 // out of the audit have nothing to hand over, so they are never flagged.
 function missingInfo(a: Asset): string[] {
   if (a.auditable === false) return []
   const depts = pieceDepartments(a.departments, a.units, a.quantity)
   const pieces = a.quantity > 1 && a.units?.length
-    ? a.units.map((u, i) => ({ custodian: u.accountableName, depts: depts[i], counted: u.auditable !== false })).filter(p => p.counted)
-    : [{ custodian: a.accountableName, depts: depts[0] }]
+    ? a.units.map((u, i) => ({ custodian: u.accountableName, depts: depts[i], room: u.location || a.location, counted: u.auditable !== false })).filter(p => p.counted)
+    : [{ custodian: a.accountableName, depts: depts[0], room: a.location }]
   const out: string[] = []
   if (pieces.some(p => !(p.custodian || '').trim())) out.push('accountability')
   if (pieces.some(p => p.depts.length === 0)) out.push('department')
+  if (pieces.some(p => !(p.room || '').trim())) out.push('location')
   return out
 }
+// "a", "a and b", "a, b and c"
+const andList = (xs: string[]) => (xs.length > 1 ? `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}` : xs[0] || '')
 const MISSING_BG = '#fef2f2'
 // Not auditable (a downpayment, or an item kept out of the count): greyed out so the eye skips it.
 const SKIP_BG = '#f3f4f6'
@@ -1155,7 +1158,7 @@ function AssetManagementInner() {
             <button onClick={() => setColFilters(f => ({ ...f, missing: 'yes' }))}
               className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium border"
               style={{ background: MISSING_BG, color: '#b91c1c', borderColor: '#fecaca' }}>
-              <AlertCircle size={13} /> {n} asset{n > 1 ? 's' : ''} missing accountability or department — show only these
+              <AlertCircle size={13} /> {n} asset{n > 1 ? 's' : ''} missing accountability, department or location — show only these
             </button>
           )
         })()}
@@ -1163,7 +1166,7 @@ function AssetManagementInner() {
           <div className="flex items-center gap-2 flex-wrap">
             {colFilters.missing && (
               <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs border" style={{ background: MISSING_BG, color: '#b91c1c', borderColor: '#fecaca' }}>
-                Missing accountability or department
+                Missing accountability, department or location
                 <button onClick={() => setColFilters(f => ({ ...f, missing: '' }))}><X size={10} /></button>
               </span>
             )}
@@ -1478,7 +1481,7 @@ function AssetManagementInner() {
                 ) : displayedAssets.map((asset) => { const missing = missingInfo(asset); return (
                   <tr key={asset.id} className={`${missing.length ? 'hover:bg-red-100' : 'hover:bg-gray-50'} ${asset.auditable === false ? 'opacity-50' : ''} transition-colors cursor-pointer`}
                     style={picked.has(asset.id) ? { background: '#f0fdfa' } : missing.length ? { background: MISSING_BG } : asset.auditable === false ? { background: SKIP_BG } : undefined}
-                    onClick={() => setViewAsset(asset)} title={missing.length ? `Missing ${missing.join(' and ')} — view details` : 'View details'}>
+                    onClick={() => setViewAsset(asset)} title={missing.length ? `Missing ${andList(missing)} — view details` : 'View details'}>
                     {canManage && (
                       <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
                         <input type="checkbox" checked={picked.has(asset.id)}
@@ -1566,6 +1569,7 @@ function AssetManagementInner() {
                           {distinct.length <= 1 ? (distinct[0] ?? '—') : (
                             <>{asset.location || 'Various'}<span className="block text-[10px] text-gray-400 whitespace-nowrap">{distinct.length} rooms · hover to see</span></>
                           )}
+                          {missing.includes('location') && <span className="block text-[10px] font-medium text-red-600 whitespace-nowrap">{here.some(Boolean) ? 'some items have none' : 'missing'}</span>}
                         </td>
                       )
                     })()}
@@ -2052,7 +2056,12 @@ function AssetManagementInner() {
               {/* Location — a room of the asset's branch (Location Settings). */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Location</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Location
+                    {form.auditable && !form.location && (quantityNum <= 1 || form.unitMeta.length < quantityNum || form.unitMeta.slice(0, quantityNum).some(m => m.auditable !== false && !m.location)) && (
+                      <span className="ml-2 text-xs font-normal text-red-600">{quantityNum > 1 ? 'missing — pick here or per item below' : 'missing'}</span>
+                    )}
+                  </label>
                   <select
                     value={form.location}
                     onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))}
@@ -2086,8 +2095,9 @@ function AssetManagementInner() {
                         const miss = [
                           !((form.sameCustodian ? form.accountableName : form.unitNames[k]) || '').trim() && 'accountability',
                           !(m.departments.length || form.departments.length) && 'department',
-                        ].filter(Boolean)
-                        return miss.join(' and ')
+                          !(m.location || form.location) && 'location',
+                        ].filter((x): x is string => !!x)
+                        return andList(miss)
                       }
                       const setMeta = (patch: Partial<typeof meta>) => setForm((f) => {
                         const unitMeta = [...f.unitMeta]
@@ -2630,7 +2640,7 @@ function AssetViewModal({ asset: a, canEdit, onEdit, onPhotos, onClose }: {
         <div className="px-6 py-4 space-y-5">
           {missingInfo(a).length > 0 && (
             <div className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm" style={{ background: MISSING_BG, color: '#b91c1c' }}>
-              <AlertCircle size={15} /> Missing {missingInfo(a).join(' and ')}{a.quantity > 1 && a.units?.length ? ' on the items in red below' : ''} — edit the asset to fill it in.
+              <AlertCircle size={15} /> Missing {andList(missingInfo(a))}{a.quantity > 1 && a.units?.length ? ' on the items in red below' : ''} — edit the asset to fill it in.
             </div>
           )}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6">
@@ -2749,7 +2759,7 @@ function AssetViewModal({ asset: a, canEdit, onEdit, onPhotos, onClose }: {
                   {a.units.map((u, i) => (
                     <tr key={i} className={`border-b border-gray-100 ${a.auditable === false || u.auditable === false ? 'text-gray-400' : ''}`}
                       style={a.auditable === false || u.auditable === false ? { background: SKIP_BG }
-                        : !(u.accountableName || '').trim() || !(u.departments?.length || a.departments?.length) ? { background: MISSING_BG } : undefined}>
+                        : !(u.accountableName || '').trim() || !(u.departments?.length || a.departments?.length) || !(u.location || a.location) ? { background: MISSING_BG } : undefined}>
                       <td className="py-1.5 pr-3 font-mono text-xs text-gray-500 whitespace-nowrap">{subControlNo(a.controlNumber, i)}</td>
                       <td className="py-1.5 pr-3">{u.name || a.name}</td>
                       {a.units!.some(x => x.price != null) && <td className="py-1.5 pr-3 text-right whitespace-nowrap">{formatCurrency(Number(u.price ?? a.purchasePrice))}</td>}
