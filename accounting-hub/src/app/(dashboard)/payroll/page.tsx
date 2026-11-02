@@ -76,7 +76,7 @@ interface PayrollPreview {
   department: string
   branch: string
   taxDeduction: string
-  items: { unitPayId: string; unitPayName: string; unitAmount: number; quantity: number; lineTotal: number; isReduced?: boolean; sessions?: { date: string; patientName: string; serviceName: string; quantity: number; orderNetAmount: number; orderStatus?: string; charged?: number; pf?: number }[] }[]
+  items: { unitPayId: string; unitPayName: string; unitAmount: number; quantity: number; lineTotal: number; isReduced?: boolean; sessions?: { date: string; patientName: string; serviceName: string; quantity: number; orderNetAmount: number; orderStatus?: string; charged?: number; pf?: number; pfAboveOk?: boolean }[] }[]
   unitPayTotal: number
   retainerAmount: number
   incentives: IncentiveLine[]
@@ -919,7 +919,7 @@ export default function PayrollPage() {
   const [saving, setSaving] = useState(false)
 
   // unitAmount = the line's rate (null for sessions that carry no PF, e.g. HMO medical skips).
-  const [sessionBreakdown, setSessionBreakdown] = useState<{ unitPayName: string; unitAmount: number | null; sessions: { date: string; patientName: string; serviceName: string; quantity: number; orderNetAmount: number; orderStatus?: string; charged?: number; pf?: number }[] } | null>(null)
+  const [sessionBreakdown, setSessionBreakdown] = useState<{ unitPayName: string; unitAmount: number | null; sessions: { date: string; patientName: string; serviceName: string; quantity: number; orderNetAmount: number; orderStatus?: string; charged?: number; pf?: number; pfAboveOk?: boolean }[] } | null>(null)
 
   /* ── Payslip generation — per-consultant extras ── */
   const [extraUnitPays, setExtraUnitPays] = useState<Record<string, ExtraUnitPayLine[]>>({})
@@ -6381,7 +6381,7 @@ export default function PayrollPage() {
                 const charged = s.charged ?? s.orderNetAmount
                 const status = s.orderStatus || 'COMPLETED'
                 const isVoided = status === 'CANCELLED' || status === 'VOIDED'
-                return { s, pf, charged, status, isVoided, over: !isVoided && pf != null && pf > charged + 0.005 }
+                return { s, pf, charged, status, isVoided, over: !isVoided && !s.pfAboveOk && pf != null && pf > charged + 0.005 }
               })
               const overCount = rows.filter(r => r.over).length
               const overTotal = rows.reduce((t, r) => t + (r.over ? r.pf! - r.charged : 0), 0)

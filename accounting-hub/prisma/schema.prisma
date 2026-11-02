@@ -268,6 +268,9 @@ model Service {
   unitPayId             String?
   unitPay               UnitPay?      @relation(fields: [unitPayId], references: [id], onDelete: SetNull)
   unitPayEnabled        Boolean       @default(true)
+  // PF (unit pay) may be more than the price — e.g. ₱0 mentoring lines. Off by
+  // default: the PF-above-price check flags any consultant paid more than we charge.
+  allowPfAbovePrice     Boolean       @default(false)
   thresholdCounted      Boolean       @default(false) // include in daily patient-threshold incentive count
   thresholdQty          Decimal       @default(1) // sessions credited per unit (e.g. 2 for a 2-hour, 0.5 for a half session)
   issuedOfficialInvoice Boolean       @default(false)

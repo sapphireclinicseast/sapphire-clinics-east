@@ -80,7 +80,7 @@ function fits(s: { name: string; department: string; branch: string }, c: Pick<C
 
 // Unit-pay services that carry a price (base or per-branch) — ₱0 lines are priced through the order.
 const PRICED_SERVICE_WHERE = {
-  isActive: true, unitPayEnabled: true, unitPayId: { not: null },
+  isActive: true, unitPayEnabled: true, unitPayId: { not: null }, allowPfAbovePrice: false,
   OR: [{ price: { gt: 0 } }, { branchPrices: { some: { price: { gt: 0 } } } }],
 }
 
@@ -210,7 +210,7 @@ export async function sessionIssues(since: Date): Promise<SessionIssue[]> {
         items: {
           select: {
             name: true, quantity: true, unitPrice: true, lineTotal: true,
-            service: { select: { department: true, unitPayId: true, unitPayEnabled: true, hmoPaysClinicianDirect: true } },
+            service: { select: { department: true, unitPayId: true, unitPayEnabled: true, hmoPaysClinicianDirect: true, allowPfAbovePrice: true } },
           },
         },
         payments: { select: { method: true } },
@@ -235,6 +235,7 @@ export async function sessionIssues(since: Date): Promise<SessionIssue[]> {
     const basis = net - ownPaid
     const date = o.transactionDate.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
 
+    // Lines whose service allows PF above its price are paid as usual but never flagged.
     const paid: { item: (typeof o.items)[number]; unitPay: string; pay: number }[] = []
     for (const i of o.items) {
       if (!i.service || i.service.unitPayEnabled === false) continue
@@ -247,6 +248,7 @@ export async function sessionIssues(since: Date): Promise<SessionIssue[]> {
 
     // Priced lines: PF per unit vs what the line was charged per unit.
     for (const p of paid) {
+      if (p.item.service?.allowPfAbovePrice) continue
       const qty = Number(p.item.quantity) || 1
       const line = Number(p.item.lineTotal) || 0
       if (!(Number(p.item.unitPrice) > 0 || line > 0)) continue
@@ -256,7 +258,7 @@ export async function sessionIssues(since: Date): Promise<SessionIssue[]> {
       }
     }
     // ₱0 carrier lines are paid out of the rest of the order.
-    const carriers = paid.filter(p => !(Number(p.item.unitPrice) > 0) && !(Number(p.item.lineTotal) > 0))
+    const carriers = paid.filter(p => !(Number(p.item.unitPrice) > 0) && !(Number(p.item.lineTotal) > 0) && !p.item.service?.allowPfAbovePrice)
     if (carriers.length) {
       const rest = net - paid.reduce((s, p) => s + (Number(p.item.lineTotal) || 0), 0)
       const qty = carriers.reduce((s, p) => s + (Number(p.item.quantity) || 1), 0)

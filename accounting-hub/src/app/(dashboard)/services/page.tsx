@@ -48,6 +48,7 @@ interface Service {
   unitPayId?: string | null
   unitPay?: { id: string; name: string } | null
   unitPayEnabled?: boolean
+  allowPfAbovePrice?: boolean
   thresholdCounted?: boolean
   thresholdQty?: number
   isActive: boolean
@@ -181,6 +182,7 @@ export default function ServicesPage() {
   const [revenueAccounts, setRevenueAccounts] = useState<RevenueAccount[]>([])
   const [fUnitPayId, setFUnitPayId] = useState('')
   const [fUnitPayEnabled, setFUnitPayEnabled] = useState(true)
+  const [fAllowPfAbove, setFAllowPfAbove] = useState(false)
   const [fThresholdCounted, setFThresholdCounted] = useState(false)
   const [fThresholdQty, setFThresholdQty] = useState('1')
   const [unitPays, setUnitPays] = useState<{ id: string; name: string }[]>([])
@@ -208,7 +210,7 @@ export default function ServicesPage() {
     return () => { clearTimeout(t); ctl.abort() }
   }, [pfQuery])
   const pfOver = useMemo(() => {
-    if (!pfQuery || pfRates.query !== pfQuery) return []
+    if (fAllowPfAbove || !pfQuery || pfRates.query !== pfQuery) return []
     const bps = fBranch === 'ALL' ? fBranchPrices : []
     const now: PricedService = { id: 'edit', name: fName, price: parseFloat(fPrice) || 0, branch: fBranch, branchPrices: branchPriceMap(bps) }
     const hasScheduled = !!fNewPrice || bps.some(b => b.newPrice)
@@ -227,7 +229,7 @@ export default function ServicesPage() {
       }
     }
     return out
-  }, [pfQuery, pfRates, fName, fPrice, fNewPrice, fBranch, fBranchPrices])
+  }, [fAllowPfAbove, pfQuery, pfRates, fName, fPrice, fNewPrice, fBranch, fBranchPrices])
 
   const canWrite = session?.user?.role && ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN'].includes(session.user.role as string)
 
@@ -348,7 +350,7 @@ export default function ServicesPage() {
     setFName(''); setFDept('PT'); setFBranch('ALL'); setFPrice(''); setFNewPrice(''); setFNewPriceDate(''); setFBranchPrices([])
     setFPriceType('FIXED'); setFRevenueType('EARNED'); setFHasDoctorFee(false); setFDoctorFee('')
     setFClinicFee(''); setFNewDoctorFee(''); setFNewClinicFee(''); setFPwdClinicOnly(false); setFNoPwdDiscount(false); setFIssuedOfficialInvoice(false); setFIsHmoGl(false); setFPaymentType('CASH'); setFHmoDirect(false); setFRecognitionMonths(''); setFDescription('')
-    setFWalletType(''); setFVipTier(''); setFPackageSessions(''); setFRevenueAccountId(''); setFRevenueAccountSearch(''); setFUnitPayId(''); setFUnitPayEnabled(false); setFThresholdCounted(false); setFThresholdQty('1'); setFEligibleServices([]); setEligibleSearch(''); setEligibleResults([])
+    setFWalletType(''); setFVipTier(''); setFPackageSessions(''); setFRevenueAccountId(''); setFRevenueAccountSearch(''); setFUnitPayId(''); setFUnitPayEnabled(false); setFAllowPfAbove(false); setFThresholdCounted(false); setFThresholdQty('1'); setFEligibleServices([]); setEligibleSearch(''); setEligibleResults([])
     pfPriceSigAtOpen.current = '' // a new service always asks
     setError(''); setModalOpen(true)
   }
@@ -381,6 +383,7 @@ export default function ServicesPage() {
     setFRevenueAccountSearch(s.revenueAccount ? `${s.revenueAccount.accountNumber} ${s.revenueAccount.accountTitle}` : '')
     setFUnitPayId(s.unitPayId || '')
     setFUnitPayEnabled(!!s.unitPayId && s.unitPayEnabled !== false)
+    setFAllowPfAbove(!!s.allowPfAbovePrice)
     setFThresholdCounted(!!s.thresholdCounted)
     setFThresholdQty(String(s.thresholdQty ?? 1))
     setFEligibleServices(
@@ -451,6 +454,7 @@ export default function ServicesPage() {
       revenueAccountId: fRevenueAccountId || null,
       unitPayId: fUnitPayEnabled ? (fUnitPayId || null) : null,
       unitPayEnabled: fUnitPayEnabled,
+      allowPfAbovePrice: fUnitPayEnabled && fAllowPfAbove,
       thresholdCounted: fThresholdCounted,
       thresholdQty: fThresholdCounted ? (parseFloat(fThresholdQty) || 1) : 1,
       newPrice: fNewPrice || null,
@@ -724,7 +728,7 @@ export default function ServicesPage() {
                       )}
                       {s.unitPay && (
                         <p className="text-xs mt-0.5" style={{ color: s.unitPayEnabled === false ? 'var(--mid-gray)' : 'var(--gold)' }}>
-                          Unit Pay: {s.unitPay.name}{s.unitPayEnabled === false ? ' (disabled)' : ''}
+                          Unit Pay: {s.unitPay.name}{s.unitPayEnabled === false ? ' (disabled)' : ''}{s.allowPfAbovePrice ? ' · PF may exceed price' : ''}
                         </p>
                       )}
                       {s.description && <p className="text-xs mt-0.5 truncate max-w-[200px]" style={{ color: 'var(--mid-gray)' }}>{s.description}</p>}
@@ -1412,6 +1416,12 @@ export default function ServicesPage() {
                         <AlertOctagon size={12} /> This unit pay pays {new Set(pfOver.map(o => o.consultant)).size} consultant(s) more than the price — see the warning under the price.
                       </p>
                     )}
+                    <label className="flex items-center gap-2 mt-2 cursor-pointer">
+                      <input type="checkbox" checked={fAllowPfAbove} onChange={e => setFAllowPfAbove(e.target.checked)} className="rounded" />
+                      <span className="text-xs font-medium" style={{ color: 'var(--charcoal)' }}>
+                        Allow PF to be higher than price <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>(e.g. ₱0 mentoring lines — not flagged in Payroll → PF Above Price)</span>
+                      </span>
+                    </label>
                   </>
                 ) : (
                   <p className="text-xs px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>No Unit Pay Card</p>

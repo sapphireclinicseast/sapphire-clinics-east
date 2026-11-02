@@ -159,7 +159,7 @@ export async function POST(req: Request) {
     const body = await req.json()
     const { name, department, branch, price, newPrice, newPriceEffectiveDate, priceType, revenueType, walletType, packageSessions,
             hasDoctorFee, doctorFee, clinicFee, pwdDiscountClinicOnly, noPwdDiscount, description,
-            revenueAccountId, unitPayId, unitPayEnabled, thresholdCounted, thresholdQty, issuedOfficialInvoice, isHmoGl, hmoPaysClinicianDirect, recognitionMonths, eligibleServices, branchPrices } = body
+            revenueAccountId, unitPayId, unitPayEnabled, allowPfAbovePrice, thresholdCounted, thresholdQty, issuedOfficialInvoice, isHmoGl, hmoPaysClinicianDirect, recognitionMonths, eligibleServices, branchPrices } = body
 
     const hasBranchPrices = Array.isArray(branchPrices) && branchPrices.some((bp: { price?: unknown }) => bp.price != null && bp.price !== '')
     if (!name?.trim() || !department || !branch || (price == null && !hasBranchPrices)) {
@@ -201,6 +201,7 @@ export async function POST(req: Request) {
         revenueAccountId: revenueAccountId || null,
         unitPayId: unitPayId || null,
         unitPayEnabled: unitPayEnabled !== undefined ? unitPayEnabled : true,
+        allowPfAbovePrice: !!allowPfAbovePrice,
         thresholdCounted: thresholdCounted || false,
         isHmoGl: isHmoGl || false,
         paymentType: ['CASH', 'HMO', 'GL'].includes(body.paymentType) ? body.paymentType : (isHmoGl ? 'HMO' : 'CASH'),
@@ -269,7 +270,7 @@ export async function PUT(req: Request) {
     const body = await req.json()
     const { id, name, department, branch, price, newPrice, newPriceEffectiveDate, priceType, revenueType, walletType, packageSessions,
             hasDoctorFee, doctorFee, clinicFee, pwdDiscountClinicOnly, noPwdDiscount, description,
-            revenueAccountId, unitPayId, unitPayEnabled, thresholdCounted, thresholdQty, issuedOfficialInvoice, isHmoGl, hmoPaysClinicianDirect, recognitionMonths, eligibleServices, branchPrices } = body
+            revenueAccountId, unitPayId, unitPayEnabled, allowPfAbovePrice, thresholdCounted, thresholdQty, issuedOfficialInvoice, isHmoGl, hmoPaysClinicianDirect, recognitionMonths, eligibleServices, branchPrices } = body
 
     if (!id) {
       return NextResponse.json({ error: 'Service ID is required' }, { status: 400 })
@@ -314,6 +315,7 @@ export async function PUT(req: Request) {
     if (revenueAccountId !== undefined) data.revenueAccountId = revenueAccountId || null
     if (unitPayId !== undefined) data.unitPayId = unitPayId || null
     if (unitPayEnabled !== undefined) data.unitPayEnabled = unitPayEnabled
+    if (allowPfAbovePrice !== undefined) data.allowPfAbovePrice = !!allowPfAbovePrice
     if (thresholdCounted !== undefined) data.thresholdCounted = !!thresholdCounted
     if (thresholdQty !== undefined) data.thresholdQty = Math.max(0.5, Math.round((parseFloat(String(thresholdQty)) || 1) * 2) / 2)
     if (issuedOfficialInvoice !== undefined) data.issuedOfficialInvoice = issuedOfficialInvoice

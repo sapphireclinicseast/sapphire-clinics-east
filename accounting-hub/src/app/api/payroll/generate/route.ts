@@ -213,7 +213,7 @@ export async function GET(req: Request) {
             name: true,
             quantity: true,
             lineTotal: true,
-            service: { select: { id: true, name: true, department: true, unitPayId: true, unitPayEnabled: true, thresholdCounted: true, thresholdQty: true, hmoPaysClinicianDirect: true } },
+            service: { select: { id: true, name: true, department: true, unitPayId: true, unitPayEnabled: true, thresholdCounted: true, thresholdQty: true, hmoPaysClinicianDirect: true, allowPfAbovePrice: true } },
           },
         },
         payments: { select: { method: true } },
@@ -480,7 +480,7 @@ export async function GET(req: Request) {
       const hmoMedicalSkips: { orderId: string; date: string; patientName: string; serviceName: string; quantity: number; orderNetAmount: number }[] = []
 
       // Group by unit pay — with threshold logic per order
-      const unitPayBreakdown: { unitPayId: string; unitPayName: string; unitAmount: number; quantity: number; lineTotal: number; isReduced?: boolean; sessions: { orderId: string; date: string; patientName: string; serviceName: string; quantity: number; orderNetAmount: number; orderStatus: string; charged: number; pf: number }[] }[] = []
+      const unitPayBreakdown: { unitPayId: string; unitPayName: string; unitAmount: number; quantity: number; lineTotal: number; isReduced?: boolean; sessions: { orderId: string; date: string; patientName: string; serviceName: string; quantity: number; orderNetAmount: number; orderStatus: string; charged: number; pf: number; pfAboveOk?: boolean }[] }[] = []
 
       for (const order of consultantOrders) {
         const hmoPaid = isHmoPaid(order)
@@ -565,6 +565,8 @@ export async function GET(req: Request) {
             orderId: order.id, date: orderDate, patientName: order.patientName || 'N/A', serviceName: allOrderServices, quantity: item.quantity, orderNetAmount: orderNet, orderStatus: 'COMPLETED' as string,
             charged: lineTotal > 0 ? lineTotal : orderNet - paidLinesTotal,
             pf: effectiveAmount * item.quantity,
+            // The service allows PF above its price (Services → "Allow PF to be higher than price").
+            ...(item.service.allowPfAbovePrice ? { pfAboveOk: true } : {}),
           }
 
           // Aggregate by unitPayId + effectiveRate (so normal and reduced show separately)
