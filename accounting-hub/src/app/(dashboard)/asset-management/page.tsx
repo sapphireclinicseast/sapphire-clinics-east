@@ -202,6 +202,10 @@ function emptyForm(branch: string) {
     sameCustodian: false,
     // Room of the branch where it is kept (Location Settings list).
     location: '',
+    // "Keep the total" (Hannah, 2026-11-02): changing Quantity leaves the
+    // total alone and the price per piece becomes total ÷ quantity.
+    keepTotal: false,
+    lockedTotal: null as number | null,
     // Per-piece item name / condition / audit flag / room ('' = the asset's room) /
     // departments ([] = the asset's) / price ('' = the Price during Purchase), index-aligned with unitNames.
     unitMeta: [] as { name: string; isDefective: boolean; auditable: boolean; location: string; departments: string[]; price: string }[],
@@ -452,9 +456,10 @@ function AssetManagementInner() {
   const itemPriced = itemPrices.some(p => !isNaN(p))
   const allItemsPriced = itemPriced && itemPrices.every(p => !isNaN(p))
   const itemPrice = (i: number) => (isNaN(itemPrices[i]) ? purchasePriceNum : itemPrices[i])
+  const keptTotal = !itemPriced && form.keepTotal && form.lockedTotal != null ? form.lockedTotal : null
   const totalAmount = itemPriced
     ? Math.round(itemPrices.reduce((s, _, i) => s + itemPrice(i), 0) * 100) / 100
-    : purchasePriceNum * quantityNum
+    : keptTotal ?? purchasePriceNum * quantityNum
   const noDep = !isDepreciating(form.classification)
   const yearsNum = noDep ? 0 : (parseInt(form.yearsDepreciation) || 5)
   const monthlyDepreciation = (!noDep && totalAmount > 0) ? totalAmount / (yearsNum * 12) : 0
@@ -603,6 +608,8 @@ function AssetManagementInner() {
       sameCustodian: asset.quantity > 1 && !!asset.units?.length && asset.units.length >= asset.quantity
         && !!asset.units[0]?.accountableName && asset.units.every(u => u.accountableName === asset.units![0].accountableName),
       location: asset.location ?? '',
+      keepTotal: true,
+      lockedTotal: Number(asset.totalAmount),
       unitMeta: asset.quantity > 1
         ? Array.from({ length: asset.quantity }, (_, i) => ({
             name: asset.units?.[i]?.name ?? '', isDefective: !!asset.units?.[i]?.isDefective, auditable: asset.units?.[i]?.auditable !== false,
@@ -738,7 +745,7 @@ function AssetManagementInner() {
         branch: form.branch,
         name: form.name.trim(),
         // With item prices the stored price per piece is their average.
-        purchasePrice: itemPriced ? Math.round((totalAmount / quantityNum) * 100) / 100 : purchasePriceNum,
+        purchasePrice: itemPriced || keptTotal != null ? Math.round((totalAmount / quantityNum) * 100) / 100 : purchasePriceNum,
         quantity: quantityNum,
         totalAmount,
         dateBought: form.dateBought,
@@ -1739,15 +1746,16 @@ function AssetManagementInner() {
                     type="number"
                     min="0"
                     step="0.01"
-                    value={allItemsPriced ? (totalAmount / quantityNum).toFixed(2) : form.purchasePrice}
+                    value={allItemsPriced || keptTotal != null ? (totalAmount / quantityNum).toFixed(2) : form.purchasePrice}
                     onChange={(e) => setForm((f) => ({ ...f, purchasePrice: e.target.value }))}
-                    readOnly={allItemsPriced}
+                    readOnly={allItemsPriced || keptTotal != null}
                     placeholder="0.00"
-                    className={`w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 ${allItemsPriced ? 'bg-gray-50 text-gray-500' : ''}`}
+                    className={`w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 ${allItemsPriced || keptTotal != null ? 'bg-gray-50 text-gray-500' : ''}`}
                   />
                   <p className="text-xs text-gray-400 mt-1">
                     {allItemsPriced ? 'Average of the item prices below — change the prices per item.'
                       : itemPriced ? 'Price of each item below that has no price of its own.'
+                      : keptTotal != null ? 'Total ÷ Quantity — untick "Keep the total" to type a price.'
                       : 'Include all costs to be capitalized (e.g. freight, delivery, installation). Total Amount = Price × Qty.'}
                   </p>
                 </div>
@@ -1758,9 +1766,27 @@ function AssetManagementInner() {
                     min="1"
                     step="1"
                     value={form.quantity}
-                    onChange={(e) => setForm((f) => ({ ...f, quantity: e.target.value }))}
+                    onChange={(e) => {
+                      const quantity = e.target.value
+                      const n = parseInt(quantity) || 1
+                      // With the total kept, the price per piece follows (so items left without
+                      // a price of their own still add up to the kept total).
+                      setForm((f) => ({ ...f, quantity, ...(keptTotal != null ? { purchasePrice: (keptTotal / n).toFixed(2) } : {}) }))
+                    }}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                   />
+                  <label className={`mt-1.5 flex items-center gap-2 text-xs ${itemPriced ? 'text-gray-300' : 'text-gray-600'} cursor-pointer`}
+                    title={itemPriced ? 'The items have their own prices — the total is their sum' : undefined}>
+                    <input type="checkbox" disabled={itemPriced} checked={form.keepTotal && !itemPriced}
+                      onChange={(e) => {
+                        const on = e.target.checked
+                        // Lock the total as it stands now; unticking leaves the price at total ÷ quantity.
+                        setForm((f) => on
+                          ? { ...f, keepTotal: true, lockedTotal: totalAmount }
+                          : { ...f, keepTotal: false, purchasePrice: quantityNum ? (totalAmount / quantityNum).toFixed(2) : f.purchasePrice })
+                      }} />
+                    Keep the total{keptTotal != null ? ` (${formatCurrency(keptTotal)})` : ''} — changing Quantity divides it
+                  </label>
                 </div>
               </div>
 
