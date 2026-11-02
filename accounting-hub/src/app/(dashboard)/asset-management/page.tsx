@@ -73,7 +73,7 @@ interface Asset {
   location?: string | null // room of the branch (Location Settings)
   // quantity > 1: per-piece custodians; piece i shows sub control number `${controlNumber}-0${i+1}`
   // A piece's own location / departments override the asset's (null = the asset's).
-  units?: { accountableName: string | null; name?: string | null; isDefective?: boolean; auditable?: boolean; location?: string | null; departments?: string[] | null }[] | null
+  units?: { accountableName: string | null; name?: string | null; isDefective?: boolean; auditable?: boolean; location?: string | null; departments?: string[] | null; price?: number | null }[] | null
   // Payments behind the cost when there is more than one (combined records, balances).
   parts?: { date: string; label: string; amount: number; ref?: string | null; qty?: number; unitPrice?: number }[] | null
   remarks: string | null
@@ -203,8 +203,8 @@ function emptyForm(branch: string) {
     // Room of the branch where it is kept (Location Settings list).
     location: '',
     // Per-piece item name / condition / audit flag / room ('' = the asset's room) /
-    // departments ([] = the asset's), index-aligned with unitNames.
-    unitMeta: [] as { name: string; isDefective: boolean; auditable: boolean; location: string; departments: string[] }[],
+    // departments ([] = the asset's) / price ('' = the Price during Purchase), index-aligned with unitNames.
+    unitMeta: [] as { name: string; isDefective: boolean; auditable: boolean; location: string; departments: string[]; price: string }[],
     remarks: '',
   }
 }
@@ -260,6 +260,8 @@ function missingInfo(a: Asset): string[] {
   return out
 }
 const MISSING_BG = '#fef2f2'
+// Not auditable (a downpayment, or an item kept out of the count): greyed out so the eye skips it.
+const SKIP_BG = '#f3f4f6'
 
 function HeadSelectFilter({ label, value, options, open, onToggle, onChange, align }: {
   label: string; value: string; options: { value: string; label: string }[]
@@ -440,7 +442,15 @@ function AssetManagementInner() {
   // ── Derived computed values ──────────────────────────────────
   const purchasePriceNum = parseFloat(form.purchasePrice) || 0
   const quantityNum = parseInt(form.quantity) || 1
-  const totalAmount = purchasePriceNum * quantityNum
+  // Items of a multi-piece asset can each have their own price (Hannah, 2026-11-02);
+  // one left blank costs the Price during Purchase, and the total is their sum.
+  const itemPrices = quantityNum > 1 ? Array.from({ length: quantityNum }, (_, i) => parseFloat(form.unitMeta[i]?.price ?? '')) : []
+  const itemPriced = itemPrices.some(p => !isNaN(p))
+  const allItemsPriced = itemPriced && itemPrices.every(p => !isNaN(p))
+  const itemPrice = (i: number) => (isNaN(itemPrices[i]) ? purchasePriceNum : itemPrices[i])
+  const totalAmount = itemPriced
+    ? Math.round(itemPrices.reduce((s, _, i) => s + itemPrice(i), 0) * 100) / 100
+    : purchasePriceNum * quantityNum
   const noDep = !isDepreciating(form.classification)
   const yearsNum = noDep ? 0 : (parseInt(form.yearsDepreciation) || 5)
   const monthlyDepreciation = (!noDep && totalAmount > 0) ? totalAmount / (yearsNum * 12) : 0
@@ -557,6 +567,14 @@ function AssetManagementInner() {
 
   function openEdit(asset: Asset) {
     setEditingAsset(asset)
+    // Item prices: the stored ones, else the receipt's item breakdown when it
+    // lists exactly these pieces and adds up to the cost.
+    const fromReceipt = isItemBreakdown(asset.parts)
+      ? asset.parts!.flatMap(p => Array.from({ length: p.qty || 0 }, () => Number(p.unitPrice ?? (Number(p.amount) / (p.qty || 1)))))
+      : []
+    const receiptFits = fromReceipt.length === asset.quantity && Math.abs(fromReceipt.reduce((s, x) => s + x, 0) - Number(asset.totalAmount)) < 0.01
+    const unitPrices: (number | null)[] = Array.from({ length: asset.quantity }, (_, i) =>
+      asset.units?.[i]?.price ?? (receiptFits ? Math.round(fromReceipt[i] * 100) / 100 : null))
     setForm({
       branch: asset.branch,
       name: asset.name,
@@ -586,6 +604,7 @@ function AssetManagementInner() {
             name: asset.units?.[i]?.name ?? '', isDefective: !!asset.units?.[i]?.isDefective, auditable: asset.units?.[i]?.auditable !== false,
             location: asset.units?.[i]?.location ?? '',
             departments: Array.isArray(asset.units?.[i]?.departments) ? asset.units![i].departments! : [],
+            price: unitPrices[i] != null ? String(unitPrices[i]) : '',
           }))
         : [],
       remarks: asset.remarks ?? '',
@@ -696,7 +715,10 @@ function AssetManagementInner() {
     setFormError('')
     if (!form.name.trim()) { setFormError('Asset Name is required'); return }
     if (!form.branch) { setFormError('Branch is required'); return }
-    if (!purchasePriceNum || purchasePriceNum <= 0) { setFormError('Purchase price must be > 0'); return }
+    if (itemPrices.some(p => p < 0)) { setFormError('An item price cannot be negative'); return }
+    if (itemPriced ? totalAmount <= 0 || (!allItemsPriced && purchasePriceNum <= 0) : (!purchasePriceNum || purchasePriceNum <= 0)) {
+      setFormError(itemPriced ? 'Give every item a price (or fill in the Price during Purchase for the blank ones)' : 'Purchase price must be > 0'); return
+    }
     if (!form.dateBought) { setFormError('Date Bought is required'); return }
     if (!form.classification) { setFormError('Classification is required'); return }
 
@@ -705,7 +727,8 @@ function AssetManagementInner() {
       const payload = {
         branch: form.branch,
         name: form.name.trim(),
-        purchasePrice: purchasePriceNum,
+        // With item prices the stored price per piece is their average.
+        purchasePrice: itemPriced ? Math.round((totalAmount / quantityNum) * 100) / 100 : purchasePriceNum,
         quantity: quantityNum,
         totalAmount,
         dateBought: form.dateBought,
@@ -733,6 +756,7 @@ function AssetManagementInner() {
               auditable: form.unitMeta[i]?.auditable !== false,
               location: (form.unitMeta[i]?.location || '').trim() || null,
               departments: form.unitMeta[i]?.departments?.length ? form.unitMeta[i].departments : null,
+              price: itemPriced ? Math.round(itemPrice(i) * 100) / 100 : null,
             }))
           : null,
         remarks: form.remarks.trim() || null,
@@ -1452,8 +1476,8 @@ function AssetManagementInner() {
                     </td>
                   </tr>
                 ) : displayedAssets.map((asset) => { const missing = missingInfo(asset); return (
-                  <tr key={asset.id} className={`${missing.length ? 'hover:bg-red-100' : 'hover:bg-gray-50'} transition-colors cursor-pointer`}
-                    style={picked.has(asset.id) ? { background: '#f0fdfa' } : missing.length ? { background: MISSING_BG } : undefined}
+                  <tr key={asset.id} className={`${missing.length ? 'hover:bg-red-100' : 'hover:bg-gray-50'} ${asset.auditable === false ? 'opacity-50' : ''} transition-colors cursor-pointer`}
+                    style={picked.has(asset.id) ? { background: '#f0fdfa' } : missing.length ? { background: MISSING_BG } : asset.auditable === false ? { background: SKIP_BG } : undefined}
                     onClick={() => setViewAsset(asset)} title={missing.length ? `Missing ${missing.join(' and ')} — view details` : 'View details'}>
                     {canManage && (
                       <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
@@ -1705,12 +1729,17 @@ function AssetManagementInner() {
                     type="number"
                     min="0"
                     step="0.01"
-                    value={form.purchasePrice}
+                    value={allItemsPriced ? (totalAmount / quantityNum).toFixed(2) : form.purchasePrice}
                     onChange={(e) => setForm((f) => ({ ...f, purchasePrice: e.target.value }))}
+                    readOnly={allItemsPriced}
                     placeholder="0.00"
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    className={`w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 ${allItemsPriced ? 'bg-gray-50 text-gray-500' : ''}`}
                   />
-                  <p className="text-xs text-gray-400 mt-1">Include all costs to be capitalized (e.g. freight, delivery, installation). Total Amount = Price × Qty.</p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    {allItemsPriced ? 'Average of the item prices below — change the prices per item.'
+                      : itemPriced ? 'Price of each item below that has no price of its own.'
+                      : 'Include all costs to be capitalized (e.g. freight, delivery, installation). Total Amount = Price × Qty.'}
+                  </p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Quantity</label>
@@ -1727,7 +1756,7 @@ function AssetManagementInner() {
 
               {/* Total Amount (computed, read-only) */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Total Amount</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Total Amount{itemPriced && <span className="ml-2 text-xs font-normal text-gray-400">sum of the item prices</span>}</label>
                 <div className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-700 font-medium">
                   {formatCurrency(totalAmount)}
                 </div>
@@ -2046,10 +2075,10 @@ function AssetManagementInner() {
               {quantityNum > 1 && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Items</label>
-                  <p className="text-xs text-gray-500 mb-2">One amount and one depreciation for the whole asset; each piece can have its own name, custodian, room, departments, condition, and whether audits count it.</p>
+                  <p className="text-xs text-gray-500 mb-2">One amount and one depreciation for the whole asset; each piece can have its own name, price, custodian, room, departments, condition, and whether audits count it.</p>
                   <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
                     {Array.from({ length: quantityNum }, (_, i) => {
-                      const meta = form.unitMeta[i] || { name: '', isDefective: false, auditable: true, location: '', departments: [] as string[] }
+                      const meta = form.unitMeta[i] || { name: '', isDefective: false, auditable: true, location: '', departments: [] as string[], price: '' }
                       // Red until the item has a custodian and a department (its own or the asset's).
                       const rowMissing = (k: number) => {
                         const m = form.unitMeta[k] || meta
@@ -2062,19 +2091,22 @@ function AssetManagementInner() {
                       }
                       const setMeta = (patch: Partial<typeof meta>) => setForm((f) => {
                         const unitMeta = [...f.unitMeta]
-                        while (unitMeta.length < quantityNum) unitMeta.push({ name: '', isDefective: false, auditable: true, location: '', departments: [] })
+                        while (unitMeta.length < quantityNum) unitMeta.push({ name: '', isDefective: false, auditable: true, location: '', departments: [], price: '' })
                         unitMeta[i] = { ...unitMeta[i], ...patch }
                         return { ...f, unitMeta }
                       })
                       return (
-                      <div key={i} className="flex flex-wrap items-center gap-2 border-b border-gray-100 pb-2 rounded-lg"
-                        style={rowMissing(i) ? { background: MISSING_BG, padding: '6px' } : undefined}
+                      <div key={i} className={`flex flex-wrap items-center gap-2 border-b border-gray-100 pb-2 rounded-lg ${!form.auditable || meta.auditable === false ? 'opacity-50' : ''}`}
+                        style={rowMissing(i) ? { background: MISSING_BG, padding: '6px' } : !form.auditable || meta.auditable === false ? { background: SKIP_BG, padding: '6px' } : undefined}
                         title={rowMissing(i) ? `Missing ${rowMissing(i)}` : undefined}>
                         <span className="w-32 shrink-0 font-mono text-xs text-gray-500">
                           {subControlNo(editingAsset ? (form.controlNumber || null) : null, i)}
                         </span>
                         <input value={meta.name} onChange={(e) => setMeta({ name: e.target.value })} placeholder="Item name (optional)"
                           className="flex-1 min-w-[160px] border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+                        <input type="number" min="0" step="0.01" value={meta.price} onChange={(e) => setMeta({ price: e.target.value })}
+                          placeholder={purchasePriceNum ? `₱${purchasePriceNum}` : 'Price'} title="Price of this item (blank = Price during Purchase)"
+                          className="w-28 border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-teal-500" />
                         <NameCombobox
                           options={['Not Applicable', ...staffNames]}
                           value={form.sameCustodian ? form.accountableName : (form.unitNames[i] ?? '')}
@@ -2705,6 +2737,7 @@ function AssetViewModal({ asset: a, canEdit, onEdit, onPhotos, onClose }: {
                   <tr className="text-left text-xs text-gray-500 border-b border-gray-200">
                     <th className="py-1.5 pr-3 font-medium">No.</th>
                     <th className="py-1.5 pr-3 font-medium">Item</th>
+                    {a.units.some(u => u.price != null) && <th className="py-1.5 pr-3 font-medium text-right">Price</th>}
                     <th className="py-1.5 pr-3 font-medium">Custodian</th>
                     <th className="py-1.5 pr-3 font-medium">Location</th>
                     <th className="py-1.5 pr-3 font-medium">Departments</th>
@@ -2714,10 +2747,12 @@ function AssetViewModal({ asset: a, canEdit, onEdit, onPhotos, onClose }: {
                 </thead>
                 <tbody>
                   {a.units.map((u, i) => (
-                    <tr key={i} className="border-b border-gray-100"
-                      style={a.auditable !== false && u.auditable !== false && (!(u.accountableName || '').trim() || !(u.departments?.length || a.departments?.length)) ? { background: MISSING_BG } : undefined}>
+                    <tr key={i} className={`border-b border-gray-100 ${a.auditable === false || u.auditable === false ? 'text-gray-400' : ''}`}
+                      style={a.auditable === false || u.auditable === false ? { background: SKIP_BG }
+                        : !(u.accountableName || '').trim() || !(u.departments?.length || a.departments?.length) ? { background: MISSING_BG } : undefined}>
                       <td className="py-1.5 pr-3 font-mono text-xs text-gray-500 whitespace-nowrap">{subControlNo(a.controlNumber, i)}</td>
                       <td className="py-1.5 pr-3">{u.name || a.name}</td>
+                      {a.units!.some(x => x.price != null) && <td className="py-1.5 pr-3 text-right whitespace-nowrap">{formatCurrency(Number(u.price ?? a.purchasePrice))}</td>}
                       <td className="py-1.5 pr-3">{u.accountableName || '—'}</td>
                       <td className="py-1.5 pr-3">{u.location || a.location || '—'}</td>
                       <td className="py-1.5 pr-3">{(u.departments?.length ? u.departments : a.departments || []).join(', ') || '—'}</td>
@@ -2954,7 +2989,7 @@ function AccountabilityTab({ assets, loading }: { assets: Asset[]; loading: bool
       if (a.quantity > 1 && a.units?.length) {
         const share = a.totalAmount / a.quantity
         a.units.forEach((u, i) => push(u.accountableName, {
-          ...base, controlNo: subControlNo(a.controlNumber, i), pieces: 1, value: share,
+          ...base, controlNo: subControlNo(a.controlNumber, i), pieces: 1, value: u.price ?? share,
         }))
       } else {
         push(a.accountableName, {
