@@ -427,6 +427,14 @@ function AssetManagementInner() {
   const roomsOf = (branch: string) => rooms.filter(r => r.branch === branch).map(r => r.name).sort((x, y) => x.localeCompare(y))
   // Asset form: the item row whose department tick boxes are open.
   const [deptRowOpen, setDeptRowOpen] = useState<number | null>(null)
+  // Asset form photos: drag a thumbnail onto another to reorder (the first is Main).
+  const [dragPhoto, setDragPhoto] = useState<number | null>(null)
+  const [dropPhoto, setDropPhoto] = useState<number | null>(null)
+  const movePhoto = (from: number, to: number) => setForm(f => {
+    if (from === to || from < 0 || to < 0 || from >= f.photoUrls.length || to >= f.photoUrls.length) return f
+    const a = [...f.photoUrls]; const [m] = a.splice(from, 1); a.splice(to, 0, m)
+    return { ...f, photoUrls: a }
+  })
 
   // Depreciation defaults (classification → years)
   const [depDefaults, setDepDefaults] = useState<Record<string, number>>({})
@@ -1944,14 +1952,21 @@ function AssetManagementInner() {
 
               {/* Photos (main + gallery) */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Photos of Asset <span className="font-normal text-gray-400">— first is the Main photo (shown in the list); add more than one</span></label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Photos of Asset <span className="font-normal text-gray-400">— first is the Main photo (shown in the list); drag to rearrange; add more than one</span></label>
                 <div className="flex items-center gap-2 flex-wrap mb-2">
                   {form.photoUrls.map((url, i) => (
-                    <div key={url} className="relative">
+                    <div key={url} className={`relative rounded-lg transition-transform ${dragPhoto === i ? 'opacity-40' : ''} ${dropPhoto === i && dragPhoto !== i ? 'ring-2 ring-teal-500 scale-105' : ''}`}
+                      draggable
+                      onDragStart={(e) => { setDragPhoto(i); e.dataTransfer.effectAllowed = 'move' }}
+                      onDragOver={(e) => { e.preventDefault(); if (dropPhoto !== i) setDropPhoto(i) }}
+                      onDragLeave={() => setDropPhoto(d => (d === i ? null : d))}
+                      onDrop={(e) => { e.preventDefault(); if (dragPhoto != null) movePhoto(dragPhoto, i); setDragPhoto(null); setDropPhoto(null) }}
+                      onDragEnd={() => { setDragPhoto(null); setDropPhoto(null) }}
+                      title="Drag to move">
                       {/\.(jpg|jpeg|png|webp)$/i.test(url) ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={url} alt="" className="w-16 h-16 object-cover rounded-lg border border-gray-200 cursor-pointer hover:opacity-80"
-                          onClick={() => setLightboxUrl(url)} title="Click to enlarge" />
+                        <img src={url} alt="" draggable={false} className="w-16 h-16 object-cover rounded-lg border border-gray-200 cursor-grab hover:opacity-80"
+                          onClick={() => setLightboxUrl(url)} title="Click to enlarge · drag to move" />
                       ) : (
                         <button onClick={() => window.open(url, '_blank')} className="w-16 h-16 rounded-lg border border-gray-200 flex items-center justify-center text-teal-600"><FileText size={20} /></button>
                       )}
@@ -1960,6 +1975,13 @@ function AssetManagementInner() {
                         {i !== 0 && <button onClick={() => setForm(f => { const a = [...f.photoUrls]; const [m] = a.splice(i, 1); return { ...f, photoUrls: [m, ...a] } })} title="Make main" className="w-4 h-4 rounded-full bg-teal-600 text-white text-[9px] flex items-center justify-center">★</button>}
                         <button onClick={() => setForm(f => ({ ...f, photoUrls: f.photoUrls.filter(u => u !== url) }))} title="Remove" className="w-4 h-4 rounded-full bg-red-500 text-white flex items-center justify-center"><X size={9} /></button>
                       </div>
+                      {/* Tap-to-move for phones and tablets, where dragging is awkward. */}
+                      {form.photoUrls.length > 1 && (
+                        <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 flex gap-0.5">
+                          {i > 0 && <button type="button" onClick={() => movePhoto(i, i - 1)} title="Move left" className="w-4 h-4 rounded-full bg-white border border-gray-300 text-gray-600 text-[10px] leading-none flex items-center justify-center">‹</button>}
+                          {i < form.photoUrls.length - 1 && <button type="button" onClick={() => movePhoto(i, i + 1)} title="Move right" className="w-4 h-4 rounded-full bg-white border border-gray-300 text-gray-600 text-[10px] leading-none flex items-center justify-center">›</button>}
+                        </div>
+                      )}
                     </div>
                   ))}
                   <ScanUpload
