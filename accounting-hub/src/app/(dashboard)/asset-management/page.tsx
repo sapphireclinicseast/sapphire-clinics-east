@@ -245,6 +245,22 @@ function assetDepts(a: Asset): string[] {
   return [...new Set(pieceDepartments(a.departments, a.units, a.quantity).flat())]
 }
 
+// What an auditable asset still lacks (Hannah, 2026-11-02): a custodian and a
+// department for every item. Downpayment/part-payment records and pieces kept
+// out of the audit have nothing to hand over, so they are never flagged.
+function missingInfo(a: Asset): string[] {
+  if (a.auditable === false) return []
+  const depts = pieceDepartments(a.departments, a.units, a.quantity)
+  const pieces = a.quantity > 1 && a.units?.length
+    ? a.units.map((u, i) => ({ custodian: u.accountableName, depts: depts[i], counted: u.auditable !== false })).filter(p => p.counted)
+    : [{ custodian: a.accountableName, depts: depts[0] }]
+  const out: string[] = []
+  if (pieces.some(p => !(p.custodian || '').trim())) out.push('accountability')
+  if (pieces.some(p => p.depts.length === 0)) out.push('department')
+  return out
+}
+const MISSING_BG = '#fef2f2'
+
 function HeadSelectFilter({ label, value, options, open, onToggle, onChange, align }: {
   label: string; value: string; options: { value: string; label: string }[]
   open: boolean; onToggle: () => void; onChange: (v: string) => void; align: 'left' | 'center'
@@ -352,9 +368,9 @@ function AssetManagementInner() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   type ColFilters = {
     name: string; classification: string; branch: string; utilized: string; auditable: string;
-    accountable: string; department: string; condition: string; location: string;
+    accountable: string; department: string; condition: string; location: string; missing: string;
   }
-  const NO_FILTERS: ColFilters = { name: '', classification: '', branch: '', utilized: '', auditable: '', accountable: '', department: '', condition: '', location: '' }
+  const NO_FILTERS: ColFilters = { name: '', classification: '', branch: '', utilized: '', auditable: '', accountable: '', department: '', condition: '', location: '', missing: '' }
   const [colFilters, setColFilters] = useState<ColFilters>(NO_FILTERS)
   const [openFilterCol, setOpenFilterCol] = useState<string | null>(null)
   // A column filter pop-up closes on any click outside it and on Escape (picking a value closes it too).
@@ -924,6 +940,7 @@ function AssetManagementInner() {
         const perPiece = pieceDepartments(a.departments, a.units, a.quantity)
         if (colFilters.department === NONE ? !perPiece.some(d => d.length === 0) : !perPiece.some(d => d.includes(colFilters.department))) return false
       }
+      if (colFilters.missing && missingInfo(a).length === 0) return false
       if (colFilters.location) {
         const here = pieceRooms(a)
         if (colFilters.location === NONE ? !here.includes('') : !here.some(r => r.toLowerCase() === colFilters.location.toLowerCase())) return false
@@ -1108,8 +1125,24 @@ function AssetManagementInner() {
         )}
 
         {/* Active filter chips */}
+        {(() => {
+          const n = assets.filter(a => (tab !== 'auditable' || a.auditable !== false) && missingInfo(a).length > 0).length
+          return n > 0 && !colFilters.missing && (
+            <button onClick={() => setColFilters(f => ({ ...f, missing: 'yes' }))}
+              className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium border"
+              style={{ background: MISSING_BG, color: '#b91c1c', borderColor: '#fecaca' }}>
+              <AlertCircle size={13} /> {n} asset{n > 1 ? 's' : ''} missing accountability or department — show only these
+            </button>
+          )
+        })()}
         {Object.values(colFilters).some(Boolean) && (
           <div className="flex items-center gap-2 flex-wrap">
+            {colFilters.missing && (
+              <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs border" style={{ background: MISSING_BG, color: '#b91c1c', borderColor: '#fecaca' }}>
+                Missing accountability or department
+                <button onClick={() => setColFilters(f => ({ ...f, missing: '' }))}><X size={10} /></button>
+              </span>
+            )}
             {colFilters.name && (
               <span className="inline-flex items-center gap-1 bg-teal-50 text-teal-700 border border-teal-200 rounded-full px-2.5 py-0.5 text-xs">
                 Name: {colFilters.name}
@@ -1418,9 +1451,10 @@ function AssetManagementInner() {
                       No assets match your search or filters.
                     </td>
                   </tr>
-                ) : displayedAssets.map((asset) => (
-                  <tr key={asset.id} className="hover:bg-gray-50 transition-colors cursor-pointer" style={picked.has(asset.id) ? { background: '#f0fdfa' } : undefined}
-                    onClick={() => setViewAsset(asset)} title="View details">
+                ) : displayedAssets.map((asset) => { const missing = missingInfo(asset); return (
+                  <tr key={asset.id} className={`${missing.length ? 'hover:bg-red-100' : 'hover:bg-gray-50'} transition-colors cursor-pointer`}
+                    style={picked.has(asset.id) ? { background: '#f0fdfa' } : missing.length ? { background: MISSING_BG } : undefined}
+                    onClick={() => setViewAsset(asset)} title={missing.length ? `Missing ${missing.join(' and ')} — view details` : 'View details'}>
                     {canManage && (
                       <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
                         <input type="checkbox" checked={picked.has(asset.id)}
@@ -1496,6 +1530,7 @@ function AssetManagementInner() {
                     <td className="px-4 py-3 text-gray-600"
                       title={asset.units?.length ? asset.units.map((u, i) => `${subControlNo(asset.controlNumber, i)}: ${u.accountableName || '—'}`).join('\n') : undefined}>
                       {asset.accountableName ?? '—'}
+                      {missing.includes('accountability') && <span className="block text-[10px] font-medium text-red-600 whitespace-nowrap">{asset.quantity > 1 && asset.units?.length ? 'some items unassigned' : 'missing'}</span>}
                     </td>
                     {(() => {
                       // One room, or "N rooms" when the pieces are kept in different rooms.
@@ -1517,6 +1552,7 @@ function AssetManagementInner() {
                           : assetDepts(asset).join(', ')}>
                         {assetDepts(asset).length > 0 ? assetDepts(asset).join(', ') : '—'}
                       </span>
+                      {missing.includes('department') && <span className="block text-[10px] font-medium text-red-600 whitespace-nowrap">{assetDepts(asset).length ? 'some items have none' : 'missing'}</span>}
                     </td>
                     {canWrite && (
                       <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
@@ -1558,7 +1594,7 @@ function AssetManagementInner() {
                       </td>
                     )}
                   </tr>
-                ))}
+                )})}
               </tbody>
             </table>
           </div>
@@ -1890,7 +1926,12 @@ function AssetManagementInner() {
 
               {/* Departments */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Departments</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Departments
+                  {form.auditable && form.departments.length === 0 && (quantityNum <= 1 || form.unitMeta.slice(0, quantityNum).some((m) => m.auditable !== false && !m.departments.length) || form.unitMeta.length < quantityNum) && (
+                    <span className="ml-2 text-xs font-normal text-red-600">{quantityNum > 1 ? 'missing — tick here or per item below' : 'missing'}</span>
+                  )}
+                </label>
                 <div className="grid grid-cols-2 gap-2">
                   {DEPARTMENT_OPTIONS.map((dept) => (
                     <label key={dept} className="flex items-center gap-2 cursor-pointer">
@@ -1928,7 +1969,10 @@ function AssetManagementInner() {
               {/* Accountability + Control Number */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Accountability</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Accountability
+                    {form.auditable && quantityNum <= 1 && !form.accountableName.trim() && <span className="ml-2 text-xs font-normal text-red-600">missing</span>}
+                  </label>
                   {quantityNum > 1 ? (
                     <div className="space-y-1.5">
                       {/* One custodian for every piece (Hannah, 2026-11-01). */}
@@ -2006,6 +2050,16 @@ function AssetManagementInner() {
                   <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
                     {Array.from({ length: quantityNum }, (_, i) => {
                       const meta = form.unitMeta[i] || { name: '', isDefective: false, auditable: true, location: '', departments: [] as string[] }
+                      // Red until the item has a custodian and a department (its own or the asset's).
+                      const rowMissing = (k: number) => {
+                        const m = form.unitMeta[k] || meta
+                        if (!form.auditable || m.auditable === false) return ''
+                        const miss = [
+                          !((form.sameCustodian ? form.accountableName : form.unitNames[k]) || '').trim() && 'accountability',
+                          !(m.departments.length || form.departments.length) && 'department',
+                        ].filter(Boolean)
+                        return miss.join(' and ')
+                      }
                       const setMeta = (patch: Partial<typeof meta>) => setForm((f) => {
                         const unitMeta = [...f.unitMeta]
                         while (unitMeta.length < quantityNum) unitMeta.push({ name: '', isDefective: false, auditable: true, location: '', departments: [] })
@@ -2013,7 +2067,9 @@ function AssetManagementInner() {
                         return { ...f, unitMeta }
                       })
                       return (
-                      <div key={i} className="flex flex-wrap items-center gap-2 border-b border-gray-100 pb-2">
+                      <div key={i} className="flex flex-wrap items-center gap-2 border-b border-gray-100 pb-2 rounded-lg"
+                        style={rowMissing(i) ? { background: MISSING_BG, padding: '6px' } : undefined}
+                        title={rowMissing(i) ? `Missing ${rowMissing(i)}` : undefined}>
                         <span className="w-32 shrink-0 font-mono text-xs text-gray-500">
                           {subControlNo(editingAsset ? (form.controlNumber || null) : null, i)}
                         </span>
@@ -2540,6 +2596,11 @@ function AssetViewModal({ asset: a, canEdit, onEdit, onPhotos, onClose }: {
           </div>
         </div>
         <div className="px-6 py-4 space-y-5">
+          {missingInfo(a).length > 0 && (
+            <div className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm" style={{ background: MISSING_BG, color: '#b91c1c' }}>
+              <AlertCircle size={15} /> Missing {missingInfo(a).join(' and ')}{a.quantity > 1 && a.units?.length ? ' on the items in red below' : ''} — edit the asset to fill it in.
+            </div>
+          )}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6">
             {row('Branch', branchLabel(a.branch))}
             {row('Classification', classificationLabel(a.classification))}
@@ -2653,7 +2714,8 @@ function AssetViewModal({ asset: a, canEdit, onEdit, onPhotos, onClose }: {
                 </thead>
                 <tbody>
                   {a.units.map((u, i) => (
-                    <tr key={i} className="border-b border-gray-100">
+                    <tr key={i} className="border-b border-gray-100"
+                      style={a.auditable !== false && u.auditable !== false && (!(u.accountableName || '').trim() || !(u.departments?.length || a.departments?.length)) ? { background: MISSING_BG } : undefined}>
                       <td className="py-1.5 pr-3 font-mono text-xs text-gray-500 whitespace-nowrap">{subControlNo(a.controlNumber, i)}</td>
                       <td className="py-1.5 pr-3">{u.name || a.name}</td>
                       <td className="py-1.5 pr-3">{u.accountableName || '—'}</td>
