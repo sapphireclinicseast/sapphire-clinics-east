@@ -3,6 +3,8 @@
 // 40% / 40% / 20% payments and their dates). An asset with one payment has no
 // parts; the first combine or balance payment seeds the list with the asset's
 // own original payment.
+// A part may instead be a receipt line — qty × unitPrice (Hannah, 2026-11-02: one
+// receipt, one asset row, but "3 fans + 1 air cooler" must show what each cost).
 import type { Prisma } from '@prisma/client'
 
 export interface AssetPart {
@@ -11,7 +13,13 @@ export interface AssetPart {
   amount: number
   ref?: string | null     // control number / PCV / check reference
   entryId?: string | null // the expense entry that paid it, when there is one
+  qty?: number            // receipt line: how many of this item…
+  unitPrice?: number      // …at this price each (amount = qty × unitPrice)
 }
+
+/** Parts that are receipt lines (qty × unit price) rather than payments. */
+export const isItemBreakdown = (parts: AssetPart[] | null | undefined) =>
+  Array.isArray(parts) && parts.length > 0 && parts.every(p => Number(p.qty) > 0)
 
 type PartSource = { parts?: Prisma.JsonValue | null; dateBought: Date; name: string; totalAmount: Prisma.Decimal | number; controlNumber: string | null }
 

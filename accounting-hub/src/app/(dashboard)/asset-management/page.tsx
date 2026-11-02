@@ -2,6 +2,7 @@
 
 import React, { Suspense, useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useFocusTarget } from '@/lib/use-focus-target'
+import { isItemBreakdown } from '@/lib/asset-parts'
 import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
 import { ScanUpload } from '@/components/ScanUpload'
@@ -69,7 +70,7 @@ interface Asset {
   // quantity > 1: per-piece custodians; piece i shows sub control number `${controlNumber}-0${i+1}`
   units?: { accountableName: string | null; name?: string | null; isDefective?: boolean; auditable?: boolean }[] | null
   // Payments behind the cost when there is more than one (combined records, balances).
-  parts?: { date: string; label: string; amount: number; ref?: string | null }[] | null
+  parts?: { date: string; label: string; amount: number; ref?: string | null; qty?: number; unitPrice?: number }[] | null
   remarks: string | null
   createdById: string
   createdBy: { id: string; name: string }
@@ -231,13 +232,13 @@ function HeadSelectFilter({ label, value, options, open, onToggle, onChange, ali
   return (
     <div className={`flex items-center gap-1 ${align === 'center' ? 'justify-center' : ''}`}>
       <span>{label}</span>
-      <div className="relative" onClick={(e) => e.stopPropagation()}>
+      <div className="relative" data-col-filter onClick={(e) => e.stopPropagation()}>
         <button onClick={onToggle} className={`p-0.5 rounded hover:bg-gray-200 ${value ? 'text-teal-600' : 'text-gray-400'}`}>
           <Filter size={11} />
         </button>
         {open && (
           <div className="absolute top-full left-0 mt-1 z-30 bg-white border border-gray-200 rounded-lg shadow-lg p-2 w-52 normal-case tracking-normal font-normal">
-            <select value={value} onChange={(e) => onChange(e.target.value)}
+            <select value={value} onChange={(e) => { onChange(e.target.value); onToggle() }}
               className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-teal-500">
               <option value="">All</option>
               {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -336,6 +337,15 @@ function AssetManagementInner() {
   const NO_FILTERS: ColFilters = { name: '', classification: '', branch: '', utilized: '', auditable: '', accountable: '', department: '', condition: '' }
   const [colFilters, setColFilters] = useState<ColFilters>(NO_FILTERS)
   const [openFilterCol, setOpenFilterCol] = useState<string | null>(null)
+  // A column filter pop-up closes on any click outside it and on Escape (picking a value closes it too).
+  useEffect(() => {
+    if (!openFilterCol) return
+    const onDown = (e: MouseEvent) => { if (!(e.target as Element | null)?.closest?.('[data-col-filter]')) setOpenFilterCol(null) }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpenFilterCol(null) }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey) }
+  }, [openFilterCol])
   // Full-screen asset list + drag-to-resize columns (widths persist per user).
   const [expanded, setExpanded] = useState(false)
   const assetTableRef = useRef<HTMLTableElement>(null)
@@ -1148,7 +1158,7 @@ function AssetManagementInner() {
                         Asset Name
                         {sortKey === 'name' ? (sortDir === 'asc' ? <ChevronUp size={13} /> : <ChevronDown size={13} />) : <ChevronsUpDown size={12} className="text-gray-400" />}
                       </button>
-                      <div className="relative" onClick={(e) => e.stopPropagation()}>
+                      <div className="relative" data-col-filter onClick={(e) => e.stopPropagation()}>
                         <button onClick={() => setOpenFilterCol(openFilterCol === 'name' ? null : 'name')}
                           className={`p-0.5 rounded hover:bg-gray-200 ${colFilters.name ? 'text-teal-600' : 'text-gray-400'}`}>
                           <Filter size={11} />
@@ -1171,7 +1181,7 @@ function AssetManagementInner() {
                         Classification
                         {sortKey === 'classification' ? (sortDir === 'asc' ? <ChevronUp size={13} /> : <ChevronDown size={13} />) : <ChevronsUpDown size={12} className="text-gray-400" />}
                       </button>
-                      <div className="relative" onClick={(e) => e.stopPropagation()}>
+                      <div className="relative" data-col-filter onClick={(e) => e.stopPropagation()}>
                         <button onClick={() => setOpenFilterCol(openFilterCol === 'classification' ? null : 'classification')}
                           className={`p-0.5 rounded hover:bg-gray-200 ${colFilters.classification ? 'text-teal-600' : 'text-gray-400'}`}>
                           <Filter size={11} />
@@ -1179,7 +1189,7 @@ function AssetManagementInner() {
                         {openFilterCol === 'classification' && (
                           <div className="absolute top-full left-0 mt-1 z-30 bg-white border border-gray-200 rounded-lg shadow-lg p-2 w-56">
                             <select value={colFilters.classification}
-                              onChange={(e) => setColFilters(f => ({ ...f, classification: e.target.value }))}
+                              onChange={(e) => { setColFilters(f => ({ ...f, classification: e.target.value })); setOpenFilterCol(null) }}
                               className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-teal-500">
                               <option value="">All</option>
                               {CLASSIFICATION_OPTIONS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
@@ -1197,7 +1207,7 @@ function AssetManagementInner() {
                         Branch
                         {sortKey === 'branch' ? (sortDir === 'asc' ? <ChevronUp size={13} /> : <ChevronDown size={13} />) : <ChevronsUpDown size={12} className="text-gray-400" />}
                       </button>
-                      <div className="relative" onClick={(e) => e.stopPropagation()}>
+                      <div className="relative" data-col-filter onClick={(e) => e.stopPropagation()}>
                         <button onClick={() => setOpenFilterCol(openFilterCol === 'branch' ? null : 'branch')}
                           className={`p-0.5 rounded hover:bg-gray-200 ${colFilters.branch ? 'text-teal-600' : 'text-gray-400'}`}>
                           <Filter size={11} />
@@ -1205,7 +1215,7 @@ function AssetManagementInner() {
                         {openFilterCol === 'branch' && (
                           <div className="absolute top-full left-0 mt-1 z-30 bg-white border border-gray-200 rounded-lg shadow-lg p-2 w-48">
                             <select value={colFilters.branch}
-                              onChange={(e) => setColFilters(f => ({ ...f, branch: e.target.value }))}
+                              onChange={(e) => { setColFilters(f => ({ ...f, branch: e.target.value })); setOpenFilterCol(null) }}
                               className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-teal-500">
                               <option value="">All</option>
                               {BRANCH_OPTIONS.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
@@ -1255,7 +1265,7 @@ function AssetManagementInner() {
                         Utilized
                         {sortKey === 'utilized' ? (sortDir === 'asc' ? <ChevronUp size={13} /> : <ChevronDown size={13} />) : <ChevronsUpDown size={12} className="text-gray-400" />}
                       </button>
-                      <div className="relative" onClick={(e) => e.stopPropagation()}>
+                      <div className="relative" data-col-filter onClick={(e) => e.stopPropagation()}>
                         <button onClick={() => setOpenFilterCol(openFilterCol === 'utilized' ? null : 'utilized')}
                           className={`p-0.5 rounded hover:bg-gray-200 ${colFilters.utilized ? 'text-teal-600' : 'text-gray-400'}`}>
                           <Filter size={11} />
@@ -1263,7 +1273,7 @@ function AssetManagementInner() {
                         {openFilterCol === 'utilized' && (
                           <div className="absolute top-full left-0 mt-1 z-30 bg-white border border-gray-200 rounded-lg shadow-lg p-2 w-32">
                             <select value={colFilters.utilized}
-                              onChange={(e) => setColFilters(f => ({ ...f, utilized: e.target.value }))}
+                              onChange={(e) => { setColFilters(f => ({ ...f, utilized: e.target.value })); setOpenFilterCol(null) }}
                               className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-teal-500">
                               <option value="">All</option>
                               <option value="yes">Yes</option>
@@ -1282,7 +1292,7 @@ function AssetManagementInner() {
                         Auditable
                         {sortKey === 'auditable' ? (sortDir === 'asc' ? <ChevronUp size={13} /> : <ChevronDown size={13} />) : <ChevronsUpDown size={12} className="text-gray-400" />}
                       </button>
-                      <div className="relative" onClick={(e) => e.stopPropagation()}>
+                      <div className="relative" data-col-filter onClick={(e) => e.stopPropagation()}>
                         <button onClick={() => setOpenFilterCol(openFilterCol === 'auditable' ? null : 'auditable')}
                           className={`p-0.5 rounded hover:bg-gray-200 ${colFilters.auditable ? 'text-teal-600' : 'text-gray-400'}`}>
                           <Filter size={11} />
@@ -1290,7 +1300,7 @@ function AssetManagementInner() {
                         {openFilterCol === 'auditable' && (
                           <div className="absolute top-full left-0 mt-1 z-30 bg-white border border-gray-200 rounded-lg shadow-lg p-2 w-32">
                             <select value={colFilters.auditable}
-                              onChange={(e) => setColFilters(f => ({ ...f, auditable: e.target.value }))}
+                              onChange={(e) => { setColFilters(f => ({ ...f, auditable: e.target.value })); setOpenFilterCol(null) }}
                               className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-teal-500">
                               <option value="">All</option>
                               <option value="yes">Yes</option>
@@ -1369,6 +1379,11 @@ function AssetManagementInner() {
                     <td className="px-4 py-3 font-medium text-gray-900">
                       {asset.name}
                       {asset.isDefective && <span className="ml-2 px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#fee2e2', color: '#b91c1c' }}>Defective</span>}
+                      {isItemBreakdown(asset.parts) && (
+                        <span className="block mt-0.5 text-[11px] font-normal text-gray-500">
+                          {asset.parts!.map(p => `${p.qty} × ${p.label} @ ${formatCurrency(Number(p.unitPrice))} = ${formatCurrency(Number(p.amount))}`).join(' · ')}
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-gray-600">{classificationLabel(asset.classification)}</td>
                     <td className="px-4 py-3 text-gray-600">{branchLabel(asset.branch)}</td>
@@ -2406,7 +2421,40 @@ function AssetViewModal({ asset: a, canEdit, onEdit, onPhotos, onClose }: {
             ) : <p className="text-sm text-gray-500">Not depreciated (non-depreciating classification).</p>}
           </div>
 
-          {parts.length > 1 && (
+          {isItemBreakdown(parts) && (
+            <div className="rounded-xl border border-gray-200 p-4">
+              <div className="text-sm font-semibold text-gray-800 mb-1">Items on the receipt</div>
+              <p className="text-xs text-gray-500 mb-3">One receipt, one asset row: the items below add up to its {formatCurrency(Number(a.totalAmount))} cost.</p>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs text-gray-500 border-b border-gray-200">
+                    <th className="py-1.5 pr-3 font-medium">Item</th>
+                    <th className="py-1.5 pr-3 font-medium text-right">Qty</th>
+                    <th className="py-1.5 pr-3 font-medium text-right">Unit price</th>
+                    <th className="py-1.5 font-medium text-right">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {parts.map((p, i) => (
+                    <tr key={i} className="border-b border-gray-100 align-top">
+                      <td className="py-1.5 pr-3">{p.label}{p.ref ? <span className="ml-1.5 font-mono text-xs text-gray-400">{p.ref}</span> : null}</td>
+                      <td className="py-1.5 pr-3 text-right">{p.qty}</td>
+                      <td className="py-1.5 pr-3 text-right whitespace-nowrap">{formatCurrency(Number(p.unitPrice))}</td>
+                      <td className="py-1.5 text-right whitespace-nowrap">{formatCurrency(Number(p.amount))}</td>
+                    </tr>
+                  ))}
+                  <tr className="font-semibold">
+                    <td className="py-1.5 pr-3">Total</td>
+                    <td className="py-1.5 pr-3 text-right">{parts.reduce((t, p) => t + Number(p.qty || 0), 0)}</td>
+                    <td />
+                    <td className="py-1.5 text-right">{formatCurrency(parts.reduce((t, p) => t + Number(p.amount), 0))}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {parts.length > 1 && !isItemBreakdown(parts) && (
             <div className="rounded-xl border border-gray-200 p-4">
               <div className="text-sm font-semibold text-gray-800 mb-1">Payments that make up the cost</div>
               <p className="text-xs text-gray-500 mb-3">
