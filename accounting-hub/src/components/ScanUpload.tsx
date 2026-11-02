@@ -10,6 +10,10 @@ import { compressImageFile } from '@/lib/client-image-compress'
  *  - "Choose from File" — desktop picker, saved as <prefix>-NN via /api/upload.
  *  - "Scan QR"          — phone opens /m/<token>, takes photos, they stream back
  *                         here (renamed the same way) via an UploadSession poll.
+ *                         The poll keeps running after the QR window is closed,
+ *                         until the session expires (45 min), and reopening the
+ *                         QR reuses the same session — so a photo taken after
+ *                         closing the window still arrives (Hannah, 2026-11-02).
  * `existingCount` seeds the -NN sequence so a 2nd photo becomes -02, etc.
  */
 export function ScanUpload({
@@ -28,6 +32,9 @@ export function ScanUpload({
   const [token, setToken] = useState('')
   const [origin, setOrigin] = useState('')
   const [received, setReceived] = useState(0)
+  // The session stays live (and polled) after the QR window closes, until it expires.
+  const [listening, setListening] = useState(false)
+  const startedAt = useRef(0)
   const seen = useRef<Set<string>>(new Set())
 
   const pickFiles = async (files: FileList | null) => {
@@ -62,12 +69,14 @@ export function ScanUpload({
   }
 
   const openQr = async () => {
-    seen.current = new Set(); setReceived(0)
     setOrigin(window.location.origin)
+    // Same QR while the session lasts — photos already taken with it keep their place.
+    if (token && listening && Date.now() - startedAt.current < 44 * 60 * 1000) { setQrOpen(true); return }
+    seen.current = new Set(); setReceived(0)
     try {
       const r = await fetch('/api/upload-session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prefix: prefix || section, section }) })
       if (!r.ok) { alert('Could not start the QR session.'); return }
-      setToken((await r.json()).token); setQrOpen(true)
+      setToken((await r.json()).token); startedAt.current = Date.now(); setListening(true); setQrOpen(true)
     } catch { alert('Could not start the QR session.') }
   }
 
@@ -80,14 +89,17 @@ export function ScanUpload({
       for (const u of (d.urls || []) as string[]) {
         if (!seen.current.has(u)) { seen.current.add(u); onUploaded(u); setReceived(seen.current.size) }
       }
+      if (d.expired) setListening(false)
     } catch { /* ignore */ }
   }, [token, onUploaded])
 
   useEffect(() => {
-    if (!qrOpen || !token) return
-    const iv = setInterval(poll, 2000)
+    if (!token || !listening) return
+    const iv = setInterval(poll, qrOpen ? 2000 : 3000)
     return () => clearInterval(iv)
-  }, [qrOpen, token, poll])
+  }, [qrOpen, token, listening, poll])
+
+  const closeQr = () => { setQrOpen(false); poll() }
 
   const btn = compact
     ? 'inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs border cursor-pointer'
@@ -101,17 +113,19 @@ export function ScanUpload({
           {uploading ? <Loader2 size={sz} className="animate-spin" /> : <Upload size={sz} />} {label}
           <input type="file" multiple accept={accept} className="hidden" onChange={e => { pickFiles(e.target.files); e.target.value = '' }} />
         </label>
-        <button type="button" onClick={openQr} className={btn} style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+        <button type="button" onClick={openQr} className={btn} style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}
+          title={listening && !qrOpen ? 'Still receiving photos from your phone — tap to show the same QR again' : undefined}>
           <QrCode size={sz} /> Scan QR
+          {listening && !qrOpen && <Loader2 size={sz - 2} className="animate-spin" />}
         </button>
       </div>
 
       {qrOpen && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4" onClick={() => setQrOpen(false)}>
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4" onClick={closeQr}>
           <div className="bg-white rounded-2xl p-6 w-full max-w-sm text-center" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-base font-bold" style={{ color: 'var(--charcoal)' }}>Scan to upload from your phone</h3>
-              <button onClick={() => setQrOpen(false)}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button>
+              <button onClick={closeQr}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button>
             </div>
             <p className="text-xs mb-4" style={{ color: 'var(--mid-gray)' }}>Open your phone camera and point it here. Take as many photos as you need — they appear below automatically.</p>
             <div className="flex justify-center mb-4">
@@ -122,7 +136,8 @@ export function ScanUpload({
             <p className="text-sm font-semibold mb-3 flex items-center justify-center gap-1.5" style={{ color: received > 0 ? 'var(--deep-teal)' : 'var(--mid-gray)' }}>
               {received > 0 ? <><Check size={15} /> {received} photo{received > 1 ? 's' : ''} received</> : <><Loader2 size={14} className="animate-spin" /> Waiting for photos…</>}
             </p>
-            <button onClick={() => setQrOpen(false)} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}>Done</button>
+            <p className="text-[11px] mb-3" style={{ color: 'var(--mid-gray)' }}>You can close this — photos taken with this QR still come in for 45 minutes while this form is open.</p>
+            <button onClick={closeQr} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}>Done</button>
           </div>
         </div>
       )}
