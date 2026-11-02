@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { pfBlockMessage, servicePriceBlocks } from '@/lib/payroll/pf-price-server'
 import { parsePagination, paginatedResult } from '@/lib/pagination'
 
 const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
@@ -176,6 +177,16 @@ export async function POST(req: Request) {
 
     const priceNum = price != null && price !== '' ? parseFloat(price) : 0
 
+    // We can't pay more PF than we charge: refuse a price below a consultant's PF on it.
+    const pfBlocks = await servicePriceBlocks({
+      unitPayId: unitPayId || null, unitPayEnabled: unitPayEnabled !== undefined ? !!unitPayEnabled : true, allowPfAbovePrice: !!allowPfAbovePrice,
+      name: name.trim(), department, branch, price: isNaN(priceNum) ? 0 : priceNum, newPrice: newPrice ? parseFloat(newPrice) : null,
+      branchPrices: Array.isArray(branchPrices) ? branchPrices : [],
+    })
+    if (pfBlocks.length) {
+      return NextResponse.json({ error: pfBlockMessage(pfBlocks, 'raise the price, or lower their rate in Payroll first (or tick "Allow PF to be higher than price").'), blocks: pfBlocks }, { status: 400 })
+    }
+
     const service = await prisma.service.create({
       data: {
         name: name.trim(),
@@ -274,6 +285,25 @@ export async function PUT(req: Request) {
 
     if (!id) {
       return NextResponse.json({ error: 'Service ID is required' }, { status: 400 })
+    }
+
+    // We can't pay more PF than we charge: refuse a price (or unit pay) that puts it below a
+    // consultant's PF. Fields not sent keep their saved values.
+    const current = await prisma.service.findUnique({ where: { id }, include: { branchPrices: true } })
+    if (current) {
+      const pick = <T,>(sent: T | undefined, saved: T) => (sent !== undefined ? sent : saved)
+      const p = price !== undefined ? parseFloat(price) : Number(current.price)
+      const np = newPrice !== undefined ? (newPrice ? parseFloat(newPrice) : null) : (current.newPrice != null ? Number(current.newPrice) : null)
+      const pfBlocks = await servicePriceBlocks({
+        id, unitPayId: pick(unitPayId, current.unitPayId) || null, unitPayEnabled: !!pick(unitPayEnabled, current.unitPayEnabled),
+        allowPfAbovePrice: !!pick(allowPfAbovePrice, current.allowPfAbovePrice),
+        name: pick(name, current.name), department: pick(department, current.department), branch: pick(branch, current.branch),
+        price: isNaN(p) ? Number(current.price) : p, newPrice: np,
+        branchPrices: Array.isArray(branchPrices) ? branchPrices : current.branchPrices,
+      })
+      if (pfBlocks.length) {
+        return NextResponse.json({ error: pfBlockMessage(pfBlocks, 'raise the price, or lower their rate in Payroll first (or tick "Allow PF to be higher than price").'), blocks: pfBlocks }, { status: 400 })
+      }
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

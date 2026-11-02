@@ -4,7 +4,7 @@
 
 import { prisma } from '@/lib/prisma'
 import { notMigratedOrder } from './exclude-migrated'
-import { ORDER_TO_PAYROLL_BRANCH, branchPriceMap, overPrice, rateAt, type OverPrice, type PricedService } from './pf-price'
+import { ORDER_TO_PAYROLL_BRANCH, branchPriceMap, overPrice, rateAt, type OverPrice, type PfRate, type PricedService } from './pf-price'
 
 export interface RateIssue extends OverPrice {
   consultantId: string
@@ -21,10 +21,13 @@ export interface SessionIssue {
   date: string
   patientName: string | null
   service: string
+  unitPayId: string
   unitPay: string
   quantity: number
   charged: number // what the session was charged, per unit
-  pay: number // PF per unit
+  pay: number // PF per unit — what the payroll line paid, or today's rate if not yet in a payroll
+  // The hub payroll that carries the session (DRAFT, FINAL or LOCKED); null = not yet run.
+  payroll: { cutoff: string; status: string } | null
   over: number // (pay − charged) × quantity
   // LINE = a priced line paid more than its own charge; ORDER = a ₱0 "BASIC
   // SESSION" carrier whose PF is more than the rest of the order was charged.
@@ -190,13 +193,28 @@ export async function rateIssues(): Promise<RateIssue[]> {
   return out.sort((a, b) => a.consultant.localeCompare(b.consultant) || a.unitPay.localeCompare(b.unitPay))
 }
 
+/** First day of the hub's first consultant payroll cutoff (e.g. "2026-04-01") — earlier
+ *  sessions were paid outside the hub, so their PF isn't known here. Null if none run yet. */
+export async function hubPayrollStart(): Promise<string | null> {
+  const [row] = await prisma.$queryRaw<{ first: string | null }[]>`
+    SELECT min("cutoffPeriod") AS first FROM "PayrollEntry" WHERE "cutoffPeriod" ~ '^[0-9]{4}-[0-9]{2}-[12]$'`
+  if (!row?.first) return null
+  const [y, m, half] = row.first.split('-')
+  return `${y}-${m}-${half === '1' ? '01' : '16'}`
+}
+
 /**
- * Completed sessions since `since` whose PF came to more than they were
- * charged, with the same rules payroll/generate pays by: clinician matched by
- * name, branch rate override, threshold on the order net less separately paid
- * lines, and no PF on HMO-paid medical sessions.
+ * Completed sessions since `since` (never before the hub's first payroll) whose
+ * PF came to more than they were charged. Sessions already in a hub payroll use
+ * the PF that payroll line paid; the rest use the rules payroll/generate pays by
+ * today: clinician matched by name, branch rate override, threshold on the order
+ * net less separately paid lines, and no PF on HMO-paid medical sessions.
  */
-export async function sessionIssues(since: Date): Promise<SessionIssue[]> {
+export async function sessionIssues(since: Date, hubStart: string | null): Promise<SessionIssue[]> {
+  if (hubStart) {
+    const floor = new Date(`${hubStart}T00:00:00+08:00`)
+    if (floor > since) since = floor
+  }
   const [consultants, orders] = await Promise.all([
     prisma.consultant.findMany({ where: { isActive: true }, select: CONSULTANT_SELECT }),
     prisma.order.findMany({
@@ -236,13 +254,13 @@ export async function sessionIssues(since: Date): Promise<SessionIssue[]> {
     const date = o.transactionDate.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
 
     // Lines whose service allows PF above its price are paid as usual but never flagged.
-    const paid: { item: (typeof o.items)[number]; unitPay: string; pay: number }[] = []
+    const paid: { item: (typeof o.items)[number]; unitPayId: string; unitPay: string; pay: number }[] = []
     for (const i of o.items) {
       if (!i.service || i.service.unitPayEnabled === false) continue
       const r = rateOf(i.service.unitPayId)
       if (!r) continue
       if (hmoPaid && (String(i.service.department || '').toUpperCase() === 'MD' || i.service.hmoPaysClinicianDirect)) continue
-      paid.push({ item: i, unitPay: r.unitPay.name, pay: rateAt(r, branch, basis) })
+      paid.push({ item: i, unitPayId: r.unitPayId, unitPay: r.unitPay.name, pay: rateAt(r, branch, basis) })
     }
     const base = { consultantId: c.id, consultant: c.name, orderId: o.id, orderNumber: o.orderNumber, date, patientName: o.patientName }
 
@@ -254,7 +272,7 @@ export async function sessionIssues(since: Date): Promise<SessionIssue[]> {
       if (!(Number(p.item.unitPrice) > 0 || line > 0)) continue
       const charged = line / qty
       if (p.pay > charged + 0.005) {
-        out.push({ ...base, service: p.item.name, unitPay: p.unitPay, quantity: qty, charged, pay: p.pay, over: (p.pay - charged) * qty, kind: 'LINE' })
+        out.push({ ...base, service: p.item.name, unitPayId: p.unitPayId, unitPay: p.unitPay, quantity: qty, charged, pay: p.pay, over: (p.pay - charged) * qty, kind: 'LINE', payroll: null })
       }
     }
     // ₱0 carrier lines are paid out of the rest of the order.
@@ -265,11 +283,92 @@ export async function sessionIssues(since: Date): Promise<SessionIssue[]> {
       const pf = carriers.reduce((s, p) => s + p.pay * (Number(p.item.quantity) || 1), 0)
       if (pf > rest + 0.005) {
         out.push({
-          ...base, service: o.items.map(i => i.name).join(' + '), unitPay: carriers[0].unitPay, quantity: qty,
-          charged: rest / qty, pay: pf / qty, over: pf - rest, kind: 'ORDER',
+          ...base, service: o.items.map(i => i.name).join(' + '), unitPayId: carriers[0].unitPayId, unitPay: carriers[0].unitPay, quantity: qty,
+          charged: rest / qty, pay: pf / qty, over: pf - rest, kind: 'ORDER', payroll: null,
         })
       }
     }
   }
+  if (!out.length) return out
+
+  // Sessions already in a hub payroll: what that payroll line actually paid.
+  const rows = await prisma.$queryRaw<{ cutoff: string; status: string; consultant_id: string; unit_pay_id: string | null; unit_amount: number; order_id: string }[]>`
+    SELECT pe."cutoffPeriod" AS cutoff, pe.status, pe."consultantId" AS consultant_id, it->>'unitPayId' AS unit_pay_id,
+           (it->>'unitAmount')::float AS unit_amount, s->>'orderId' AS order_id
+    FROM "PayrollEntry" pe,
+         jsonb_array_elements(pe.items::jsonb) it,
+         jsonb_array_elements(COALESCE(it->'sessions', '[]'::jsonb)) s
+    WHERE s->>'orderId' = ANY(${[...new Set(out.map(x => x.orderId))]})`
+  const inPayroll = new Map<string, (typeof rows)[number]>()
+  for (const r of rows) {
+    const key = `${r.order_id}|${r.consultant_id}|${r.unit_pay_id}`
+    const prev = inPayroll.get(key)
+    if (!prev || prev.status === 'DRAFT') inPayroll.set(key, r) // a finalized line beats a draft
+  }
+  return out.flatMap(x => {
+    const r = inPayroll.get(`${x.orderId}|${x.consultantId}|${x.unitPayId}`)
+    if (!r) return [x]
+    const pay = Number(r.unit_amount)
+    const over = (pay - x.charged) * x.quantity
+    return over > 0.005 ? [{ ...x, pay, over, payroll: { cutoff: r.cutoff, status: r.status } }] : []
+  })
+}
+
+// ── Blocking saves: PF can never be set above the price it is paid on ──
+
+const peso = (n: number) => `₱${n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+const BRANCH_NAME: Record<string, string> = { SBEA: 'East', SBGH: 'Greenhills' }
+const overText = (o: OverPrice) => `PF ${peso(o.pay)} > ${o.service} ${peso(o.price)}${o.branch ? ` at ${BRANCH_NAME[o.branch] || o.branch}` : ''}`
+
+/** The 400 message for a refused save. */
+export const pfBlockMessage = (blocks: string[], fix: string) =>
+  `PF can't be higher than the service price — ${fix}\n${blocks.map(b => `• ${b}`).join('\n')}`
+
+/** Rates about to be saved that pay more than a service they cover is priced at, one line each. */
+export async function rateBlocks(entries: { consultantId: string; rates: (PfRate & { unitPayId: string })[] }[]): Promise<string[]> {
+  const consultants = await prisma.consultant.findMany({ where: { id: { in: entries.map(e => e.consultantId) } }, select: CONSULTANT_SELECT })
+  if (!consultants.length) return []
+  const [services, unitPays] = await Promise.all([
+    servicesFor(consultants),
+    prisma.unitPay.findMany({ select: { id: true, name: true } }),
+  ])
+  const upName = new Map(unitPays.map(u => [u.id, u.name]))
+  const out: string[] = []
+  for (const e of entries) {
+    const c = consultants.find(x => x.id === e.consultantId)
+    if (!c) continue
+    for (const r of e.rates) {
+      if (r.disabled || !(Number(r.amount) > 0)) continue
+      const overrides = Object.keys((r.branchAmounts as Record<string, unknown> | null | undefined) || {})
+      const branches = [...new Set([c.branch, ...(c.extraBranches || []), ...overrides])].filter(Boolean)
+      const o = overPrice(r, services.get(c.id)?.[r.unitPayId] || [], branches)[0]
+      if (o) out.push(`${entries.length > 1 ? `${c.name} — ` : ''}${upName.get(r.unitPayId) || 'Unit pay'}: ${overText(o)}`)
+    }
+  }
   return out
+}
+
+/** For a service about to be saved: each consultant it would pay more PF than it
+ *  charges (now, or at its scheduled price). Empty when PF above price is allowed. */
+export async function servicePriceBlocks(svc: {
+  id?: string | null; unitPayId: string | null; unitPayEnabled: boolean; allowPfAbovePrice: boolean
+  name: string; department: string; branch: string; price: number; newPrice: number | null
+  branchPrices: { branch: string; price: unknown; newPrice?: unknown }[]
+}): Promise<string[]> {
+  if (!svc.unitPayId || !svc.unitPayEnabled || svc.allowPfAbovePrice) return []
+  const rates = await ratesForService({ ...svc, unitPayId: svc.unitPayId })
+  if (!rates.length) return []
+  const bps = svc.branch === 'ALL' ? svc.branchPrices : []
+  const now: PricedService = { id: svc.id || 'new', name: svc.name, price: svc.price, branch: svc.branch, branchPrices: branchPriceMap(bps) }
+  const scheduled: PricedService | null = svc.newPrice || bps.some(b => b.newPrice)
+    ? { ...now, price: svc.newPrice || svc.price, branchPrices: branchPriceMap(bps.map(b => ({ branch: b.branch, price: b.newPrice || b.price }))) }
+    : null
+  const out = new Set<string>()
+  for (const r of rates) {
+    for (const [s, label] of [[now, ''], [scheduled, ' (scheduled price)']] as const) {
+      const o = s ? overPrice(r, [s], r.branches)[0] : undefined
+      if (o) out.add(`${r.consultant}: PF ${peso(o.pay)} > price ${peso(o.price)}${o.branch ? ` at ${BRANCH_NAME[o.branch] || o.branch}` : ''}${label}`)
+    }
+  }
+  return [...out]
 }

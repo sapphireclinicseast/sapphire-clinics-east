@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
-import { consultantServices, rateIssues, ratesForService, sessionIssues } from '@/lib/payroll/pf-price-server'
+import { consultantServices, hubPayrollStart, rateIssues, ratesForService, sessionIssues } from '@/lib/payroll/pf-price-server'
 
 const READ_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'VIEWER']
 const YMD = /^\d{4}-\d{2}-\d{2}$/
@@ -9,7 +9,8 @@ const YMD = /^\d{4}-\d{2}-\d{2}$/
  * GET /api/payroll/pf-price-check[?since=YYYY-MM-DD]
  * PF (unit pay) above what the clinic charges: consultant rates set above the
  * price of a service they cover, and sessions since `since` (default Jan 1 this
- * year) whose PF came to more than they were charged.
+ * year, never before the hub's first payroll cutoff — `hubStart`) whose PF came
+ * to more than they were charged.
  *
  * GET /api/payroll/pf-price-check?consultantId=…
  * The services each unit pay pays that consultant for, with prices — the rate
@@ -44,9 +45,10 @@ export async function GET(req: Request) {
 
   const thisYear = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }).slice(0, 4)
   const since = YMD.test(sp.get('since') || '') ? sp.get('since')! : `${thisYear}-01-01`
+  const hubStart = await hubPayrollStart()
   const [rates, sessions] = await Promise.all([
     rateIssues(),
-    sessionIssues(new Date(`${since}T00:00:00+08:00`)),
+    sessionIssues(new Date(`${since}T00:00:00+08:00`), hubStart),
   ])
-  return NextResponse.json({ since, rates, sessions })
+  return NextResponse.json({ since, hubStart, rates, sessions })
 }

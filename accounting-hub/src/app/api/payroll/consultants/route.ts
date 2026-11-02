@@ -5,6 +5,7 @@ import { notMigratedOrder } from '@/lib/payroll/exclude-migrated'
 import { fetchExternalStaffForSync } from '@/lib/external-staff'
 import { consultantBranchesOf } from '@/lib/branch-roles'
 import { recordStaffSync } from '@/lib/staff-directory'
+import { pfBlockMessage, rateBlocks } from '@/lib/payroll/pf-price-server'
 
 const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 
@@ -310,6 +311,14 @@ export async function PUT(req: Request) {
   try {
     const { id, taxDeduction, monthlyRetainer, retainerByBranch, unitPayRates, isActive, name, department, branch, birAddress } = await req.json()
     if (!id) return NextResponse.json({ error: 'ID is required' }, { status: 400 })
+
+    // We can't pay more PF than we charge: a rate above the price of a service it pays is refused.
+    if (Array.isArray(unitPayRates)) {
+      const blocks = await rateBlocks([{ consultantId: id, rates: unitPayRates }])
+      if (blocks.length) {
+        return NextResponse.json({ error: pfBlockMessage(blocks, 'lower the rate, or raise the service price / set up a new service first.'), blocks }, { status: 400 })
+      }
+    }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data: any = {}

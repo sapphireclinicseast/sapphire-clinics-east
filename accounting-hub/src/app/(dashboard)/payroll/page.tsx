@@ -1795,12 +1795,15 @@ export default function PayrollPage() {
   }
 
   const saveConsultantConfig = async (c: Consultant) => {
+    // We can't pay more PF than we charge — saving is blocked until the rate or the price is fixed.
     const over = ratesOverPrice(c)
-    if (over.length && !confirm(
-      `We can't pay more PF than we charge. These rates are above the service price:\n\n` +
-      over.map(o => `• ${o.unitPay}: PF ${formatCurrency(o.over[0].pay)} > ${o.over[0].service} ${formatCurrency(o.over[0].price)}${o.over.length > 1 ? ` (+${o.over.length - 1} more)` : ''}`).join('\n') +
-      `\n\nSave anyway?`,
-    )) return
+    if (over.length) {
+      alert(
+        `Not saved — PF can't be higher than the service price. Lower the rate, or raise the service price / set up a new service first:\n\n` +
+        over.map(o => `• ${o.unitPay}: PF ${formatCurrency(o.over[0].pay)} > ${o.over[0].service} ${formatCurrency(o.over[0].price)}${o.over.length > 1 ? ` (+${o.over.length - 1} more)` : ''}`).join('\n'),
+      )
+      return
+    }
     setSavingConsultant(true)
     try {
       const unitPayRates = Object.entries(editingRates)
@@ -1837,7 +1840,11 @@ export default function PayrollPage() {
       if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error || 'Failed to save') }
       await fetchConsultants()
       setPfPriceReload(k => k + 1)
-    } catch { setError('Failed to save') }
+    } catch (e) {
+      const msg = e instanceof Error && e.message ? e.message : 'Failed to save'
+      setError(msg)
+      if (msg.startsWith('PF can')) alert(`Not saved — ${msg}`)
+    }
     finally { setSavingConsultant(false) }
   }
 
@@ -3515,7 +3522,7 @@ export default function PayrollPage() {
                                                   <AlertOctagon size={12} className="mt-px shrink-0" />
                                                   <span>
                                                     PF {formatCurrency(over[0].pay)}{over[0].branch ? ` at ${branchLabel(over[0].branch)}` : ''} is more than the {formatCurrency(over[0].price)} price
-                                                    of {over[0].service}{over.length > 1 ? ` (and ${over.length - 1} more: ${over.slice(1).map(o => `${o.service} ${formatCurrency(o.price)}`).join(', ')})` : ''} — we can&apos;t pay more than we charge.
+                                                    of {over[0].service}{over.length > 1 ? ` (and ${over.length - 1} more: ${over.slice(1).map(o => `${o.service} ${formatCurrency(o.price)}`).join(', ')})` : ''} — we can&apos;t pay more than we charge. Saving is blocked until the rate is at or below the price.
                                                   </span>
                                                 </p>
                                               )}

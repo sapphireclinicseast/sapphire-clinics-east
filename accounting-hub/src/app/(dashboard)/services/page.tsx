@@ -86,11 +86,6 @@ const BRANCHES = [
 const BRANCH_LABELS: Record<string, string> = Object.fromEntries(BRANCHES.map(b => [b.value, b.label]))
 const PAYROLL_BRANCH_LABELS: Record<string, string> = { SBEA: 'East', SBGH: 'Greenhills' }
 
-type BranchPriceDraft = { branch: string; price: string; newPrice: string; newPriceDate: string }
-/** The price fields as one string — save asks about PF above the price only when these changed. */
-const priceSig = (price: string, newPrice: string, branchPrices: BranchPriceDraft[], unitPayId: string) =>
-  JSON.stringify([price, newPrice, branchPrices.filter(b => b.price || b.newPrice).map(b => [b.branch, b.price, b.newPrice]), unitPayId])
-
 const DEPT_BADGE: Record<string, { bg: string; color: string }> = {
   PT: { bg: '#dbeafe', color: '#1e40af' },
   MD: { bg: '#dcfce7', color: '#166534' },
@@ -197,7 +192,6 @@ export default function ServicesPage() {
     ? new URLSearchParams({ unitPayId: fUnitPayId, name: fName, department: fDept, branch: fBranch, ...(editing ? { serviceId: editing.id } : {}) }).toString()
     : ''
   const [pfRates, setPfRates] = useState<{ query: string; rates: ServiceRate[] }>({ query: '', rates: [] })
-  const pfPriceSigAtOpen = useRef('')
   useEffect(() => {
     if (!pfQuery) return
     const ctl = new AbortController()
@@ -351,7 +345,6 @@ export default function ServicesPage() {
     setFPriceType('FIXED'); setFRevenueType('EARNED'); setFHasDoctorFee(false); setFDoctorFee('')
     setFClinicFee(''); setFNewDoctorFee(''); setFNewClinicFee(''); setFPwdClinicOnly(false); setFNoPwdDiscount(false); setFIssuedOfficialInvoice(false); setFIsHmoGl(false); setFPaymentType('CASH'); setFHmoDirect(false); setFRecognitionMonths(''); setFDescription('')
     setFWalletType(''); setFVipTier(''); setFPackageSessions(''); setFRevenueAccountId(''); setFRevenueAccountSearch(''); setFUnitPayId(''); setFUnitPayEnabled(false); setFAllowPfAbove(false); setFThresholdCounted(false); setFThresholdQty('1'); setFEligibleServices([]); setEligibleSearch(''); setEligibleResults([])
-    pfPriceSigAtOpen.current = '' // a new service always asks
     setError(''); setModalOpen(true)
   }
 
@@ -361,7 +354,6 @@ export default function ServicesPage() {
     setFPrice(String(s.price)); setFNewPrice(s.newPrice != null ? String(s.newPrice) : ''); setFNewPriceDate(s.newPriceEffectiveDate ? String(s.newPriceEffectiveDate).split('T')[0] : '')
     const bps = (s.branchPrices || []).map(bp => ({ branch: bp.branch, price: String(bp.price), newPrice: bp.newPrice != null ? String(bp.newPrice) : '', newPriceDate: bp.newPriceEffectiveDate ? String(bp.newPriceEffectiveDate).split('T')[0] : '' }))
     setFBranchPrices(bps)
-    pfPriceSigAtOpen.current = priceSig(String(s.price), s.newPrice != null ? String(s.newPrice) : '', bps, s.unitPayId && s.unitPayEnabled !== false ? s.unitPayId : '')
     setFPriceType(s.priceType); setFRevenueType(s.revenueType)
     setFHasDoctorFee(s.hasDoctorFee)
     setFDoctorFee(s.doctorFee != null ? String(s.doctorFee) : '')
@@ -426,12 +418,12 @@ export default function ServicesPage() {
       setError('The new Doctor’s Fee + Clinic Fee must add up to the new price.')
       return
     }
-    // Price (or unit pay) changed to below a consultant's PF — we can't pay more than we charge.
-    if (pfOver.length && priceSig(fPrice, fNewPrice, fBranchPrices, fUnitPayEnabled ? fUnitPayId : '') !== pfPriceSigAtOpen.current && !confirm(
-      `We can't pay more PF than we charge. This price is below the PF of:\n\n` +
-      pfOver.map(o => `• ${o.consultant}: PF ${formatCurrency(o.pay)} > price ${formatCurrency(o.price)}${o.branch ? ` (${PAYROLL_BRANCH_LABELS[o.branch] || o.branch})` : ''}${o.scheduled ? ' — scheduled price' : ''}`).join('\n') +
-      `\n\nSave anyway?`,
-    )) return
+    // We can't pay more PF than we charge — a price below a consultant's PF is not saved.
+    if (pfOver.length) {
+      const msg = `Not saved — this price is below the PF of ${pfOver.map(o => `${o.consultant} (${formatCurrency(o.pay)})`).join(', ')}. Raise the price, set up a new service, or lower their rate in Payroll first.`
+      setError(msg); alert(msg)
+      return
+    }
     setSaving(true); setError('')
     const body: Record<string, unknown> = {
       name: fName, department: fDept, branch: fBranch,
@@ -1018,7 +1010,7 @@ export default function ServicesPage() {
                       </li>
                     ))}
                   </ul>
-                  <p className="mt-1" style={{ color: 'var(--mid-gray)' }}>Keep the price at or above the PF, or lower their rate in Payroll → Consultant List.</p>
+                  <p className="mt-1" style={{ color: 'var(--mid-gray)' }}>Saving is blocked: raise the price, set up a new service, or lower their rate in Payroll → Consultant List first.</p>
                 </div>
               )}
 

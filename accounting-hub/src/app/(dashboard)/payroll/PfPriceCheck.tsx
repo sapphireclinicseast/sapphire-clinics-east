@@ -9,6 +9,9 @@ import type { RateIssue, SessionIssue } from '@/lib/payroll/pf-price-server'
 const manilaYmd = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`
 const branchName = (b: string) => (b === 'SBEA' ? 'East' : b === 'SBGH' ? 'Greenhills' : b)
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+/** "2026-10-2" → "Oct 2026 · 2nd". */
+const cutoffLabel = (p: string) => { const [y, m, h] = p.split('-'); return `${MONTHS[parseInt(m, 10) - 1] ?? m} ${y} · ${h === '1' ? '1st' : '2nd'}` }
 
 /**
  * Payroll → PF Above Price: we can't pay a consultant more PF than the clinic
@@ -25,15 +28,15 @@ export default function PfPriceCheck({ variant = 'full', onOpen, onCount, onEdit
   onEditConsultant?: (consultantId: string, name: string) => void
   reloadKey?: number
 }) {
-  const [data, setData] = useState<{ rates: RateIssue[]; sessions: SessionIssue[] } | null>(null)
+  const [data, setData] = useState<{ rates: RateIssue[]; sessions: SessionIssue[]; hubStart: string | null } | null>(null)
   const [since, setSince] = useState(() => `${manilaYmd(new Date()).slice(0, 4)}-01-01`)
   const recentSince = useMemo(() => pfPriceRecentSince(), [])
 
   const load = useCallback(() => {
     fetch(`/api/payroll/pf-price-check?since=${variant === 'banner' ? recentSince : since}`)
       .then(r => (r.ok ? r.json() : null))
-      .then(d => setData({ rates: d?.rates || [], sessions: d?.sessions || [] }))
-      .catch(() => setData({ rates: [], sessions: [] }))
+      .then(d => setData({ rates: d?.rates || [], sessions: d?.sessions || [], hubStart: d?.hubStart || null }))
+      .catch(() => setData({ rates: [], sessions: [], hubStart: null }))
   }, [variant, since, recentSince])
   useEffect(() => { load() }, [load, reloadKey])
 
@@ -128,6 +131,10 @@ export default function PfPriceCheck({ variant = 'full', onOpen, onCount, onEdit
               className="px-2 py-1 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} />
           </label>
         </div>
+        <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+          PF is what the session&apos;s payroll line paid; sessions not yet in a payroll show today&apos;s rate.
+          {data.hubStart && <> Sessions before {formatDate(data.hubStart)} aren&apos;t checked — that payroll was run outside the hub.</>}
+        </p>
         {!data.sessions.length ? (
           <div className="rounded-xl border px-4 py-4 text-sm text-center" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
             No session since {formatDate(since)} paid more PF than it was charged.
@@ -137,7 +144,7 @@ export default function PfPriceCheck({ variant = 'full', onOpen, onCount, onEdit
             <table className="w-full text-xs" style={{ color: 'var(--charcoal)' }}>
               <thead>
                 <tr style={{ background: '#fee2e2', color: '#991b1b' }}>
-                  {['Date', 'Order', 'Patient', 'Consultant', 'Service', 'Unit pay', 'Charged', 'PF', 'Over'].map(h => <th key={h} className={th}>{h}</th>)}
+                  {['Date', 'Order', 'Patient', 'Consultant', 'Service', 'Unit pay', 'Charged', 'PF', 'Over', 'Payroll'].map(h => <th key={h} className={th}>{h}</th>)}
                 </tr>
               </thead>
               <tbody>
@@ -155,6 +162,11 @@ export default function PfPriceCheck({ variant = 'full', onOpen, onCount, onEdit
                     <td className={td}>{formatCurrency(s.charged)}</td>
                     <td className={td}>{formatCurrency(s.pay)}{s.quantity !== 1 ? ` × ${s.quantity}` : ''}</td>
                     <td className={`${td} font-semibold text-red-700`}>{formatCurrency(s.over)}</td>
+                    <td className={td} style={{ color: 'var(--mid-gray)' }}>
+                      {s.payroll
+                        ? `${s.payroll.status === 'DRAFT' ? 'Draft' : 'Paid'} · ${cutoffLabel(s.payroll.cutoff)}`
+                        : <span title="Not in a payroll run yet — PF shown at today's rate">Not yet run</span>}
+                    </td>
                   </tr>
                 ))}
               </tbody>

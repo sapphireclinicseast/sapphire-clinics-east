@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { pfBlockMessage, rateBlocks } from '@/lib/payroll/pf-price-server'
 
 const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 
@@ -35,8 +36,17 @@ export async function POST(req: Request) {
 
     const consultants = await prisma.consultant.findMany({
       where: { department, isActive: true },
-      select: { id: true },
+      select: { id: true, unitPayRates: { where: { unitPayId } } },
     })
+
+    // We can't pay more PF than we charge: refuse an amount above a service price it pays on.
+    const blocks = await rateBlocks(consultants.map(c => {
+      const existing = c.unitPayRates[0]
+      return { consultantId: c.id, rates: [{ ...(existing || {}), unitPayId, amount: numAmount, disabled: existing?.disabled ?? false }] }
+    }))
+    if (blocks.length) {
+      return NextResponse.json({ error: pfBlockMessage(blocks, 'use a lower amount, or raise the service price / set up a new service first.'), blocks }, { status: 400 })
+    }
 
     if (consultants.length === 0) {
       return NextResponse.json({ updated: 0, department, unitPayName: unitPay.name, amount: numAmount })
