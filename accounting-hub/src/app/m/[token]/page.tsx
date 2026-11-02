@@ -7,7 +7,7 @@ import { useParams } from 'next/navigation'
 export default function MobileUploadPage() {
   const params = useParams()
   const token = String(params?.token || '')
-  const [items, setItems] = useState<{ preview: string; done: boolean; error?: boolean }[]>([])
+  const [items, setItems] = useState<{ preview: string; done: boolean; error?: boolean; pdf?: boolean }[]>([])
   const [busy, setBusy] = useState(false)
   const [expired, setExpired] = useState(false)
 
@@ -18,9 +18,10 @@ export default function MobileUploadPage() {
       // Downscale big photos so slow mobile data finishes inside the proxy timeout.
       const file = await compressImageFile(raw)
       const preview = URL.createObjectURL(file)
-      setItems(prev => [...prev, { preview, done: false }])
+      const pdf = file.type === 'application/pdf'
+      setItems(prev => [...prev, { preview, done: false, pdf }])
       const mark = (patch: { done: boolean; error?: boolean }) =>
-        setItems(prev => prev.map(x => x.preview === preview ? { preview, ...patch } : x))
+        setItems(prev => prev.map(x => x.preview === preview ? { preview, pdf, ...patch } : x))
       try {
         const fd = new FormData(); fd.append('token', token); fd.append('file', file)
         const r = await fetch('/api/upload-session/file', { method: 'POST', body: fd })
@@ -41,23 +42,35 @@ export default function MobileUploadPage() {
         <h1 style={{ fontSize: 22, fontWeight: 800, marginBottom: 4 }}>Upload photos</h1>
         <p style={{ fontSize: 13, opacity: 0.85, marginBottom: 20 }}>
           {expired ? 'This link has expired — please generate a new QR on the computer.'
-            : 'Take or choose photos. They appear on the computer automatically. You can add several.'}
+            : 'Take a photo, or choose photos / PDFs already on your phone. They appear on the computer automatically. You can add several.'}
         </p>
 
         {!expired && (
           <>
-            <label style={{ display: 'block', background: '#fff', color: '#0f766e', textAlign: 'center', fontWeight: 700, padding: '16px', borderRadius: 16, fontSize: 16, marginBottom: 12, cursor: 'pointer' }}>
-              📷 Take / choose photos
-              <input type="file" accept="image/*,application/pdf" capture="environment" multiple style={{ display: 'none' }} onChange={e => onFiles(e.target.files)} />
+            {/* Two doors (Hannah, 2026-11-02): "capture" forces the camera on most
+                phones, so picking an existing photo or PDF needs its own input. */}
+            <label style={{ display: 'block', background: '#fff', color: '#0f766e', textAlign: 'center', fontWeight: 700, padding: '16px', borderRadius: 16, fontSize: 16, marginBottom: 10, cursor: 'pointer' }}>
+              📷 Take a photo
+              <input type="file" accept="image/*" capture="environment" style={{ display: 'none' }}
+                onChange={e => { onFiles(e.target.files); e.target.value = '' }} />
+            </label>
+            <label style={{ display: 'block', background: 'transparent', color: '#fff', border: '2px solid #fff', textAlign: 'center', fontWeight: 700, padding: '14px', borderRadius: 16, fontSize: 16, marginBottom: 12, cursor: 'pointer' }}>
+              🖼️ Choose from phone (photos / PDF)
+              <input type="file" accept="image/*,application/pdf" multiple style={{ display: 'none' }}
+                onChange={e => { onFiles(e.target.files); e.target.value = '' }} />
             </label>
             {busy && <p style={{ fontSize: 13, textAlign: 'center', opacity: 0.9 }}>Uploading…</p>}
-            {doneCount > 0 && <p style={{ fontSize: 14, textAlign: 'center', fontWeight: 700, marginBottom: 12 }}>✓ {doneCount} photo{doneCount > 1 ? 's' : ''} uploaded</p>}
+            {doneCount > 0 && <p style={{ fontSize: 14, textAlign: 'center', fontWeight: 700, marginBottom: 12 }}>✓ {doneCount} file{doneCount > 1 ? 's' : ''} uploaded</p>}
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
               {items.map((it, i) => (
                 <div key={i} style={{ position: 'relative', aspectRatio: '1', borderRadius: 10, overflow: 'hidden', background: '#134e4a' }}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={it.preview} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: it.done ? 1 : 0.5 }} />
+                  {it.pdf ? (
+                    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, opacity: it.done ? 1 : 0.5 }}>📄</div>
+                  ) : (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={it.preview} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: it.done ? 1 : 0.5 }} />
+                  )}
                   <span style={{ position: 'absolute', bottom: 4, right: 4, fontSize: 14 }}>{it.error ? '⚠️' : it.done ? '✓' : '…'}</span>
                 </div>
               ))}
