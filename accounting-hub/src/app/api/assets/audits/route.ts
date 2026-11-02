@@ -39,9 +39,15 @@ export async function GET(req: Request) {
       const m = x.controlNumber && itemControl?.startsWith(`${x.controlNumber}-`) ? Number(itemControl.slice(x.controlNumber.length + 1)) : NaN
       return (Number.isInteger(m) && units[m - 1]?.location) || x.location || null
     }
+    // …and a piece with a photo of its own shows that one.
+    const pieceOf = (x: typeof assets[number], itemControl: string | null) => {
+      const units = Array.isArray(x.units) ? (x.units as AssetUnit[]) : []
+      const m = x.controlNumber && itemControl?.startsWith(`${x.controlNumber}-`) ? Number(itemControl.slice(x.controlNumber.length + 1)) : NaN
+      return Number.isInteger(m) ? units[m - 1] : undefined
+    }
     return NextResponse.json({ ...a, items: a.items.map(i => {
       const x = byId.get(i.assetId)
-      return { ...i, photoUrl: x ? photoOf(x) : null, location: x ? roomOf(x, i.controlNumber) : null }
+      return { ...i, photoUrl: x ? (pieceOf(x, i.controlNumber)?.photoUrl || photoOf(x)) : null, location: x ? roomOf(x, i.controlNumber) : null }
     }) })
   }
   const audits = await prisma.assetAudit.findMany({ orderBy: { createdAt: 'desc' }, include: { items: { select: { needsReplacement: true, usable: true } } } })

@@ -10,13 +10,14 @@
 // A piece kept somewhere other than the asset's own location carries that room,
 // and a piece assigned to other departments carries its own list (null = the
 // asset's room / departments). Items bought at different prices carry their own
-// price (the asset's totalAmount is then their sum; null = all the same price).
-export type AssetUnit = { accountableName: string | null; name?: string | null; isDefective?: boolean; auditable?: boolean; location?: string | null; departments?: string[] | null; price?: number | null }
+// price (the asset's totalAmount is then their sum; null = all the same price),
+// and its own photo — one of the asset's uploaded photos.
+export type AssetUnit = { accountableName: string | null; name?: string | null; isDefective?: boolean; auditable?: boolean; location?: string | null; departments?: string[] | null; price?: number | null; photoUrl?: string | null }
 
 export function sanitizeAssetUnits(units: unknown, quantity: number): AssetUnit[] | null {
   if (quantity <= 1 || !Array.isArray(units)) return null
   return Array.from({ length: Math.min(quantity, 200) }, (_, i) => {
-    const u = units[i] as { accountableName?: unknown; name?: unknown; isDefective?: unknown; auditable?: unknown; location?: unknown; departments?: unknown; price?: unknown } | undefined
+    const u = units[i] as { accountableName?: unknown; name?: unknown; isDefective?: unknown; auditable?: unknown; location?: unknown; departments?: unknown; price?: unknown; photoUrl?: unknown } | undefined
     const price = u?.price === null || u?.price === undefined || u?.price === '' ? NaN : Number(u.price)
     const depts = Array.isArray(u?.departments)
       ? [...new Set(u.departments.filter((d): d is string => typeof d === 'string').map(d => d.trim()).filter(Boolean))].slice(0, 20)
@@ -24,7 +25,8 @@ export function sanitizeAssetUnits(units: unknown, quantity: number): AssetUnit[
     const n = typeof u?.accountableName === 'string' ? u.accountableName.trim().slice(0, 200) : ''
     const item = typeof u?.name === 'string' ? u.name.trim().toUpperCase().slice(0, 300) : ''
     return { accountableName: n || null, name: item || null, isDefective: u?.isDefective === true, auditable: u?.auditable !== false, location: cleanLocation(u?.location), departments: depts.length ? depts : null,
-      price: Number.isFinite(price) && price >= 0 ? Math.round(price * 100) / 100 : null }
+      price: Number.isFinite(price) && price >= 0 ? Math.round(price * 100) / 100 : null,
+      photoUrl: typeof u?.photoUrl === 'string' && u.photoUrl.trim() ? u.photoUrl.trim().slice(0, 500) : null }
   })
 }
 

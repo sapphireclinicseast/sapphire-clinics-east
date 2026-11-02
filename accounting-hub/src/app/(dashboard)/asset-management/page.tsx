@@ -73,7 +73,7 @@ interface Asset {
   location?: string | null // room of the branch (Location Settings)
   // quantity > 1: per-piece custodians; piece i shows sub control number `${controlNumber}-0${i+1}`
   // A piece's own location / departments override the asset's (null = the asset's).
-  units?: { accountableName: string | null; name?: string | null; isDefective?: boolean; auditable?: boolean; location?: string | null; departments?: string[] | null; price?: number | null }[] | null
+  units?: { accountableName: string | null; name?: string | null; isDefective?: boolean; auditable?: boolean; location?: string | null; departments?: string[] | null; price?: number | null; photoUrl?: string | null }[] | null
   // Payments behind the cost when there is more than one (combined records, balances).
   parts?: { date: string; label: string; amount: number; ref?: string | null; qty?: number; unitPrice?: number }[] | null
   remarks: string | null
@@ -207,8 +207,9 @@ function emptyForm(branch: string) {
     keepTotal: false,
     lockedTotal: null as number | null,
     // Per-piece item name / condition / audit flag / room ('' = the asset's room) /
-    // departments ([] = the asset's) / price ('' = the Price during Purchase), index-aligned with unitNames.
-    unitMeta: [] as { name: string; isDefective: boolean; auditable: boolean; location: string; departments: string[]; price: string }[],
+    // departments ([] = the asset's) / price ('' = the Price during Purchase) /
+    // photo (one of the asset's photos, '' = none), index-aligned with unitNames.
+    unitMeta: [] as { name: string; isDefective: boolean; auditable: boolean; location: string; departments: string[]; price: string; photo: string }[],
     remarks: '',
   }
 }
@@ -425,8 +426,9 @@ function AssetManagementInner() {
   const [showLocSettings, setShowLocSettings] = useState(false)
   // Dropdowns list a branch's rooms alphabetically (Hannah, 2026-11-02).
   const roomsOf = (branch: string) => rooms.filter(r => r.branch === branch).map(r => r.name).sort((x, y) => x.localeCompare(y))
-  // Asset form: the item row whose department tick boxes are open.
+  // Asset form: the item row whose department tick boxes / photo picker are open.
   const [deptRowOpen, setDeptRowOpen] = useState<number | null>(null)
+  const [photoRowOpen, setPhotoRowOpen] = useState<number | null>(null)
   // Asset form photos: drag a thumbnail onto another to reorder (the first is Main).
   const [dragPhoto, setDragPhoto] = useState<number | null>(null)
   const [dropPhoto, setDropPhoto] = useState<number | null>(null)
@@ -624,6 +626,7 @@ function AssetManagementInner() {
             location: asset.units?.[i]?.location ?? '',
             departments: Array.isArray(asset.units?.[i]?.departments) ? asset.units![i].departments! : [],
             price: unitPrices[i] != null ? String(unitPrices[i]) : '',
+            photo: asset.units?.[i]?.photoUrl ?? '',
           }))
         : [],
       remarks: asset.remarks ?? '',
@@ -645,6 +648,7 @@ function AssetManagementInner() {
     setEditingAsset(null)
     setFormError('')
     setDeptRowOpen(null)
+    setPhotoRowOpen(null)
   }
 
   // ── Photo upload ─────────────────────────────────────────────
@@ -782,6 +786,8 @@ function AssetManagementInner() {
               location: (form.unitMeta[i]?.location || '').trim() || null,
               departments: form.unitMeta[i]?.departments?.length ? form.unitMeta[i].departments : null,
               price: itemPriced ? Math.round(itemPrice(i) * 100) / 100 : null,
+              // Only a photo still on the asset — a removed photo drops off its item too.
+              photoUrl: form.unitMeta[i]?.photo && form.photoUrls.includes(form.unitMeta[i].photo) ? form.unitMeta[i].photo : null,
             }))
           : null,
         remarks: form.remarks.trim() || null,
@@ -2138,10 +2144,10 @@ function AssetManagementInner() {
               {quantityNum > 1 && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Items</label>
-                  <p className="text-xs text-gray-500 mb-2">One amount and one depreciation for the whole asset; each piece can have its own name, price, custodian, room, departments, condition, and whether audits count it.</p>
+                  <p className="text-xs text-gray-500 mb-2">One amount and one depreciation for the whole asset; each piece can have its own photo, name, price, custodian, room, departments, condition, and whether audits count it.</p>
                   <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
                     {Array.from({ length: quantityNum }, (_, i) => {
-                      const meta = form.unitMeta[i] || { name: '', isDefective: false, auditable: true, location: '', departments: [] as string[], price: '' }
+                      const meta = form.unitMeta[i] || { name: '', isDefective: false, auditable: true, location: '', departments: [] as string[], price: '', photo: '' }
                       // Red until the item has a custodian and a department (its own or the asset's).
                       const rowMissing = (k: number) => {
                         const m = form.unitMeta[k] || meta
@@ -2155,7 +2161,7 @@ function AssetManagementInner() {
                       }
                       const setMeta = (patch: Partial<typeof meta>) => setForm((f) => {
                         const unitMeta = [...f.unitMeta]
-                        while (unitMeta.length < quantityNum) unitMeta.push({ name: '', isDefective: false, auditable: true, location: '', departments: [], price: '' })
+                        while (unitMeta.length < quantityNum) unitMeta.push({ name: '', isDefective: false, auditable: true, location: '', departments: [], price: '', photo: '' })
                         unitMeta[i] = { ...unitMeta[i], ...patch }
                         return { ...f, unitMeta }
                       })
@@ -2163,6 +2169,20 @@ function AssetManagementInner() {
                       <div key={i} className={`flex flex-wrap items-center gap-2 border-b border-gray-100 pb-2 rounded-lg ${!form.auditable || meta.auditable === false ? 'opacity-50' : ''}`}
                         style={rowMissing(i) ? { background: MISSING_BG, padding: '6px' } : !form.auditable || meta.auditable === false ? { background: SKIP_BG, padding: '6px' } : undefined}
                         title={rowMissing(i) ? `Missing ${rowMissing(i)}` : undefined}>
+                        {/* The item's own photo, picked from the asset's photos above. */}
+                        {(() => {
+                          const ph = meta.photo && form.photoUrls.includes(meta.photo) ? meta.photo : ''
+                          return (
+                            <button type="button" onClick={() => setPhotoRowOpen(photoRowOpen === i ? null : i)}
+                              title={form.photoUrls.length ? 'Photo of this item — pick one of the photos above' : 'Add photos above first, then pick this item’s photo'}
+                              className={`w-9 h-9 shrink-0 rounded-md border overflow-hidden flex items-center justify-center ${ph ? 'border-teal-500' : 'border-dashed border-gray-300 text-gray-300'}`}>
+                              {ph && /\.(jpg|jpeg|png|webp)$/i.test(ph)
+                                // eslint-disable-next-line @next/next/no-img-element
+                                ? <img src={ph} alt="" className="w-full h-full object-cover" />
+                                : ph ? <FileText size={14} className="text-teal-600" /> : <ImageIcon size={14} />}
+                            </button>
+                          )
+                        })()}
                         <span className="w-32 shrink-0 font-mono text-xs text-gray-500">
                           {subControlNo(editingAsset ? (form.controlNumber || null) : null, i)}
                         </span>
@@ -2196,6 +2216,28 @@ function AssetManagementInner() {
                         </button>
                         <label className="flex items-center gap-1 text-xs text-gray-600"><input type="checkbox" checked={meta.isDefective} onChange={(e) => setMeta({ isDefective: e.target.checked })} />Defective</label>
                         <label className="flex items-center gap-1 text-xs text-gray-600"><input type="checkbox" checked={meta.auditable} onChange={(e) => setMeta({ auditable: e.target.checked })} />Auditable</label>
+                        {photoRowOpen === i && (
+                          <div className="basis-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+                            <p className="text-[11px] text-gray-500 mb-1.5">
+                              {form.photoUrls.length ? 'Photo of this item — tap one of the asset’s photos.' : 'No photos yet — add them in Photos of Asset above, then pick one here.'}
+                            </p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {form.photoUrls.map(u => (
+                                <button key={u} type="button" onClick={() => { setMeta({ photo: u }); setPhotoRowOpen(null) }}
+                                  className={`w-12 h-12 rounded-md overflow-hidden border-2 ${meta.photo === u ? 'border-teal-600' : 'border-transparent hover:border-gray-300'}`}>
+                                  {/\.(jpg|jpeg|png|webp)$/i.test(u)
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    ? <img src={u} alt="" className="w-full h-full object-cover" />
+                                    : <span className="w-full h-full flex items-center justify-center bg-white text-teal-600"><FileText size={16} /></span>}
+                                </button>
+                              ))}
+                              {meta.photo && (
+                                <button type="button" onClick={() => { setMeta({ photo: '' }); setPhotoRowOpen(null) }}
+                                  className="px-2 h-12 rounded-md border border-gray-300 text-xs text-gray-500 hover:bg-white">No photo</button>
+                              )}
+                            </div>
+                          </div>
+                        )}
                         {deptRowOpen === i && (
                           <div className="basis-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
                             <p className="text-[11px] text-gray-500 mb-1.5">
@@ -2799,6 +2841,7 @@ function AssetViewModal({ asset: a, canEdit, onEdit, onPhotos, onClose }: {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-xs text-gray-500 border-b border-gray-200">
+                    {a.units.some(u => u.photoUrl) && <th className="py-1.5 pr-3 font-medium">Photo</th>}
                     <th className="py-1.5 pr-3 font-medium">No.</th>
                     <th className="py-1.5 pr-3 font-medium">Item</th>
                     {a.units.some(u => u.price != null) && <th className="py-1.5 pr-3 font-medium text-right">Price</th>}
@@ -2814,6 +2857,18 @@ function AssetViewModal({ asset: a, canEdit, onEdit, onPhotos, onClose }: {
                     <tr key={i} className={`border-b border-gray-100 ${a.auditable === false || u.auditable === false ? 'text-gray-400' : ''}`}
                       style={a.auditable === false || u.auditable === false ? { background: SKIP_BG }
                         : !(u.accountableName || '').trim() || !(u.departments?.length || a.departments?.length) || !(u.location || a.location) ? { background: MISSING_BG } : undefined}>
+                      {a.units!.some(x => x.photoUrl) && (
+                        <td className="py-1.5 pr-3">
+                          {u.photoUrl ? (
+                            <a href={u.photoUrl} target="_blank" rel="noopener noreferrer" title="Open photo">
+                              {/\.(jpg|jpeg|png|webp)$/i.test(u.photoUrl)
+                                // eslint-disable-next-line @next/next/no-img-element
+                                ? <img src={u.photoUrl} alt="" className="w-10 h-10 rounded object-cover border border-gray-200" />
+                                : <span className="w-10 h-10 rounded border border-gray-200 flex items-center justify-center text-teal-600"><FileText size={14} /></span>}
+                            </a>
+                          ) : <span className="text-gray-300">—</span>}
+                        </td>
+                      )}
                       <td className="py-1.5 pr-3 font-mono text-xs text-gray-500 whitespace-nowrap">{subControlNo(a.controlNumber, i)}</td>
                       <td className="py-1.5 pr-3">{u.name || a.name}</td>
                       {a.units!.some(x => x.price != null) && <td className="py-1.5 pr-3 text-right whitespace-nowrap">{formatCurrency(Number(u.price ?? a.purchasePrice))}</td>}
