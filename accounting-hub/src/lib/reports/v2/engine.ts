@@ -25,6 +25,7 @@ import { INCOME_TAX_RATE } from '@/lib/reports/income-statement-totals'
 import { productSubtypeLabel } from '@/lib/sku-taxonomy'
 import { netOfVat } from '@/lib/vat'
 import { addedCostByAsset } from '@/lib/asset-entry-retag'
+import { carriedTotal } from '@/lib/asset-parts'
 
 /* ── Types ─────────────────────────────────────────────────────── */
 
@@ -1174,7 +1175,7 @@ export async function computeLedgerStatements(
   /* ── 6. Depreciation schedule (synthesized unless DEPRECIATION JEs exist) ── */
   const assets = await prisma.asset.findMany({
     where: { ...(branch !== 'ALL' ? { branch: orderBranch as never } : {}) },
-    select: { id: true, name: true, dateBought: true, depreciationEndDate: true, monthlyDepreciation: true, classification: true, totalAmount: true, fromPettyCash: true, sourceAccountId: true, branch: true },
+    select: { id: true, name: true, dateBought: true, depreciationEndDate: true, monthlyDepreciation: true, classification: true, totalAmount: true, fromPettyCash: true, sourceAccountId: true, branch: true, parts: true },
   })
   const depAcct = byNumber.get('8070') || virt('8070', 'Depreciation Expense', 'EXPENSE', 'NON_OPERATING_EXPENSES', 'DEBIT')
   const accumDep = byNumber.get('2010') || findByTitle(/accumulated dep/i) || virt('2010', 'Accumulated Depreciation', 'ASSET', 'PPE', 'CREDIT')
@@ -1222,7 +1223,8 @@ export async function computeLedgerStatements(
     // petty-cash pass above. Synthesizing a purchase on top booked the same
     // money twice (Dr classification twice, Cr petty cash twice).
     if (a.fromPettyCash) continue
-    const amt = Number(a.totalAmount) - (addedCost.get(a.id) || 0)
+    // Combined parts their own petty-cash vouchers book are left out too.
+    const amt = Number(a.totalAmount) - (addedCost.get(a.id) || 0) - carriedTotal(a.parts)
     if (!amt) continue
     synthesizedAssets++
     const ppe = byNumber.get(a.classification) || virt(a.classification || '1500', `PPE (${a.classification})`, 'ASSET', 'PPE', 'DEBIT')

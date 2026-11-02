@@ -18,7 +18,10 @@ import { partsJson, partsOf } from '@/lib/asset-parts'
 // - a part with its own purchase JE: folded into the main record's JE when the
 //   main record carries one, otherwise left posted;
 // - a manual part the reports synthesize from its own row: posted first when
-//   the main record carries no JE of its own.
+//   the main record carries no JE of its own;
+// - a part paid from petty cash with no entry linked: its voucher books it, so
+//   it joins the parts marked carried and the main record's posting leaves it out.
+// Photos of every record are kept on the main one.
 // Purchases before 2026 sit in the imported QuickBooks GL, so only rows merge.
 // Across 2026 (Hannah 2026-11-02: a 2025 tablet + its 2026 stand and screen
 // glass): only INTO a pre-2026 main record — its cost stays in the QuickBooks
@@ -67,9 +70,6 @@ export async function POST(req: Request) {
 
     if (inHub(main.dateBought)) {
       const mainPosts = !carriedByEntry(main)
-      if (mainPosts && others.some(a => a.fromPettyCash && !a.sourceEntryId)) {
-        return NextResponse.json({ error: 'A record paid from petty cash can only be combined into a main record that is also from petty cash or an entry — pick that one as the main record.' }, { status: 400 })
-      }
       for (const a of others) {
         if (carriedByEntry(a)) continue
         if (mainPosts) {
@@ -97,11 +97,16 @@ export async function POST(req: Request) {
     const qty = main.quantity || 1
     const name = assetName(typeof body.name === 'string' && body.name.trim() ? body.name.trim().slice(0, 300) : main.name)
     const note = `Combined: ${others.map(a => `${a.controlNumber || '—'} ${a.name} ₱${Number(a.totalAmount).toFixed(2)}`).join('; ')}`
-    const parts = [...partsOf(main), ...others.flatMap(a => partsOf(a))]
+    // A petty-cash part with no entry linked stays booked by its voucher.
+    const voucherOnly = (a: typeof main) => a.fromPettyCash && !a.sourceEntryId
+    const parts = [...partsOf(main), ...others.flatMap(a => voucherOnly(a) && !main.fromPettyCash ? partsOf(a).map(p => ({ ...p, carried: true })) : partsOf(a))]
+    const photosOf = (a: typeof main) => [...(Array.isArray(a.photoUrls) ? (a.photoUrls as unknown[]).filter((u): u is string => typeof u === 'string') : []), ...(a.photoUrl ? [a.photoUrl] : [])]
+    const photos = [...new Set([main, ...others].flatMap(photosOf))]
     await prisma.asset.update({
       where: { id: main.id },
       data: {
         parts: partsJson(parts),
+        ...(photos.length ? { photoUrls: photos, photoUrl: main.photoUrl || photos[0] } : {}),
         name,
         totalAmount: total,
         purchasePrice: qty > 1 ? Math.round((total / qty) * 100) / 100 : total,
