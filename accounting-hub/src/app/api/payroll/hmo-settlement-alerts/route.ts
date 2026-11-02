@@ -1,15 +1,12 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { ORDER_TO_PAYROLL_BRANCH, rateAt } from '@/lib/payroll/pf-price'
 
 const READ_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'VIEWER']
 const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 
 const round2 = (n: number) => Math.round(n * 100) / 100
-// Order branch → the payroll branch code a rate's branchAmounts override is keyed by.
-const ORDER_TO_PAYROLL_BRANCH: Record<string, string> = {
-  SANDBOX_EAST: 'SBEA', SANDBOX_GREENHILLS: 'SBGH', VERDANA_STORE: 'VERDANA', AURA_INSTITUTE: 'AHI',
-}
 const CUTOFF_RE = /^\d{4}-(0[1-9]|1[0-2])-[12]$/
 // The deduction cutoff rides at the head of pfResolvedNote: "cutoff:2026-11-1 — note".
 const NOTE_RE = /^cutoff:(\d{4}-\d{2}-[12])(?: — ([\s\S]*))?$/
@@ -30,24 +27,6 @@ interface SessionRow {
   unit_amount: number
   qty: number
   order_id: string
-}
-
-interface Rate {
-  amount: unknown
-  thresholdEnabled: boolean | null
-  thresholdAmount: unknown
-  reducedAmount: unknown
-  branchAmounts: unknown
-}
-
-/** The consultant's unit pay for one session at a given threshold basis — the
- *  same rule payroll/generate applies (branch override, then threshold → reduced). */
-function rateAt(rate: Rate, branch: string, basis: number) {
-  const override = (rate.branchAmounts as Record<string, unknown> | null)?.[branch]
-  const full = override != null && Number.isFinite(Number(override)) ? Number(override) : Number(rate.amount)
-  const reduced = rate.thresholdEnabled === true && rate.thresholdAmount != null && rate.reducedAmount != null &&
-    basis < Number(rate.thresholdAmount)
-  return reduced ? Number(rate.reducedAmount) : full
 }
 
 /**

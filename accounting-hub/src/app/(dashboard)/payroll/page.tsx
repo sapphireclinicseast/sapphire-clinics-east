@@ -11,13 +11,15 @@ import {
   ChevronUp, ChevronDown, ArrowUpDown, Search, X, AlertCircle,
   RefreshCw, Loader2, ChevronRight, Download, Mail, Trash2,
   PlusCircle, CheckCircle2, ToggleLeft, ToggleRight, Receipt, Shield, ShieldOff, Upload,
-  Lock, LockOpen, ClipboardList, Eye, UserX, TrendingUp, TrendingDown,
+  Lock, LockOpen, ClipboardList, Eye, UserX, TrendingUp, TrendingDown, AlertOctagon,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { useRfpOtherFees, RfpOtherFeesSection } from '@/components/RfpOtherFees'
 import EmployeePayroll from './EmployeePayroll'
 import MentorshipMeetingsTab from './MentorshipMeetingsTab'
 import HmoSettlementPfAlerts from './HmoSettlementPfAlerts'
+import PfPriceCheck from './PfPriceCheck'
+import { overPrice, type OverPrice, type PricedService } from '@/lib/payroll/pf-price'
 import PayrollHistoryTab from './PayrollHistoryTab'
 
 const toNum = (v: unknown) => Number(v) || 0
@@ -797,12 +799,16 @@ export default function PayrollPage() {
   const cutoffPeriod = `${cutoffYear}-${String(cutoffMonth).padStart(2, '0')}-${cutoffHalf}`
 
   const [mainTab, setMainTab] = useState<'consultants' | 'employees' | 'tax-payable' | 'salaries-payable' | 'benefits-payable' | 'payroll-settings' | 'payroll-history'>('consultants')
-  const [subTab, setSubTab] = useState<'list' | 'unit-pay' | 'pay-rules' | 'adjustments' | 'initial-eval' | 'progress-report' | 'payslips' | 'benefits' | 'mentorship' | 'directory' | 'hmo-pf'>('list')
+  const [subTab, setSubTab] = useState<'list' | 'unit-pay' | 'pay-rules' | 'adjustments' | 'initial-eval' | 'progress-report' | 'payslips' | 'benefits' | 'mentorship' | 'directory' | 'hmo-pf' | 'pf-price'>('list')
   // Count for the HMO PF Adjustments tab badge (reported by the banner's fetch).
   const [hmoPfCount, setHmoPfCount] = useState(0)
-  // Deep link from the top-bar bell: /payroll?sub=hmo-pf
+  // PF Above Price: badge count, and a key bumped after rates are saved so it re-checks.
+  const [pfPriceCount, setPfPriceCount] = useState(0)
+  const [pfPriceReload, setPfPriceReload] = useState(0)
+  // Deep links from the top-bar bell: /payroll?sub=hmo-pf, /payroll?sub=pf-price
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).get('sub') === 'hmo-pf') { setMainTab('consultants'); setSubTab('hmo-pf') }
+    const sub = new URLSearchParams(window.location.search).get('sub')
+    if (sub === 'hmo-pf' || sub === 'pf-price') { setMainTab('consultants'); setSubTab(sub) }
   }, [])
   // Consultant Benefits Setting (mirror Employees)
   const [conBenefitSelIds, setConBenefitSelIds] = useState<Set<string>>(new Set())
@@ -842,6 +848,8 @@ export default function PayrollPage() {
   const [cSortDir, setCSortDir] = useState<'asc' | 'desc'>('asc')
   const [expandedConsultant, setExpandedConsultant] = useState<string | null>(null)
   const [editingRates, setEditingRates] = useState<Record<string, { amount: number; disabled: boolean; thresholdEnabled: boolean; thresholdAmount: number | null; reducedAmount: number | null; branchAmounts: Record<string, string> }>>({})
+  // The services each unit pay pays the expanded consultant for (with prices) — a PF typed above one is flagged.
+  const [rateServices, setRateServices] = useState<{ consultantId: string; byUnitPay: Record<string, PricedService[]> } | null>(null)
   const [editingTax, setEditingTax] = useState('')
   const [editingRetainer, setEditingRetainer] = useState('')
   // Per-branch retainer amounts while editing, keyed by branch code. A branch present here is
@@ -1738,6 +1746,11 @@ export default function PayrollPage() {
   const expandConsultant = (c: Consultant) => {
     if (expandedConsultant === c.id) { setExpandedConsultant(null); return }
     setExpandedConsultant(c.id)
+    setRateServices(null)
+    fetch(`/api/payroll/pf-price-check?consultantId=${c.id}`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (d?.services) setRateServices({ consultantId: c.id, byUnitPay: d.services }) })
+      .catch(() => {})
     const rateMap: Record<string, { amount: number; disabled: boolean; thresholdEnabled: boolean; thresholdAmount: number | null; reducedAmount: number | null; branchAmounts: Record<string, string> }> = {}
     for (const r of c.unitPayRates) rateMap[r.unitPayId] = {
       amount: toNum(r.amount),
@@ -1770,7 +1783,23 @@ export default function PayrollPage() {
     finally { setLoadingClinicianPayslips(false) }
   }
 
+  /** Unit pay rates being edited for `c` that pay more than a service they cover is priced at. */
+  const ratesOverPrice = (c: Consultant): { unitPay: string; over: OverPrice[] }[] => {
+    if (rateServices?.consultantId !== c.id) return []
+    const branches = (c.affiliatedBranches && c.affiliatedBranches.length ? c.affiliatedBranches : [c.branch]).filter(Boolean)
+    return unitPays
+      .filter(up => (editingRates[up.id]?.amount || 0) > 0)
+      .map(up => ({ unitPay: up.name, over: overPrice(editingRates[up.id], rateServices.byUnitPay[up.id] || [], branches) }))
+      .filter(x => x.over.length > 0)
+  }
+
   const saveConsultantConfig = async (c: Consultant) => {
+    const over = ratesOverPrice(c)
+    if (over.length && !confirm(
+      `We can't pay more PF than we charge. These rates are above the service price:\n\n` +
+      over.map(o => `• ${o.unitPay}: PF ${formatCurrency(o.over[0].pay)} > ${o.over[0].service} ${formatCurrency(o.over[0].price)}${o.over.length > 1 ? ` (+${o.over.length - 1} more)` : ''}`).join('\n') +
+      `\n\nSave anyway?`,
+    )) return
     setSavingConsultant(true)
     try {
       const unitPayRates = Object.entries(editingRates)
@@ -1806,6 +1835,7 @@ export default function PayrollPage() {
       })
       if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error || 'Failed to save') }
       await fetchConsultants()
+      setPfPriceReload(k => k + 1)
     } catch { setError('Failed to save') }
     finally { setSavingConsultant(false) }
   }
@@ -3133,13 +3163,17 @@ export default function PayrollPage() {
               { key: 'mentorship' as const, label: 'Mentorship Meetings', icon: Users },
               { key: 'directory' as const, label: 'Staff Directory', icon: UserX },
               { key: 'hmo-pf' as const, label: 'HMO PF Adjustments', icon: TrendingDown },
+              { key: 'pf-price' as const, label: 'PF Above Price', icon: AlertOctagon },
             ].map(t => (
               <button key={t.key} onClick={() => { setSubTab(t.key); setIeprSearch(''); setIeprExpanded(new Set()) }}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors"
-                style={subTab === t.key ? { background: 'var(--pale-teal)', color: 'var(--deep-teal)' } : { color: t.key === 'hmo-pf' && hmoPfCount > 0 ? '#b45309' : 'var(--mid-gray)' }}>
+                style={subTab === t.key ? { background: 'var(--pale-teal)', color: 'var(--deep-teal)' } : { color: t.key === 'hmo-pf' && hmoPfCount > 0 ? '#b45309' : t.key === 'pf-price' && pfPriceCount > 0 ? '#b91c1c' : 'var(--mid-gray)' }}>
                 <t.icon size={14} /> {t.label}
                 {t.key === 'hmo-pf' && hmoPfCount > 0 && (
                   <span className="ml-0.5 px-1.5 rounded-full text-[10px] font-bold text-white" style={{ background: '#dc2626' }}>{hmoPfCount}</span>
+                )}
+                {t.key === 'pf-price' && pfPriceCount > 0 && (
+                  <span className="ml-0.5 px-1.5 rounded-full text-[10px] font-bold text-white" style={{ background: '#dc2626' }}>{pfPriceCount}</span>
                 )}
               </button>
             ))}
@@ -3151,6 +3185,18 @@ export default function PayrollPage() {
           )}
           {subTab === 'hmo-pf' && (
             <HmoSettlementPfAlerts canWrite={!!canWrite} variant="full" onCount={setHmoPfCount} />
+          )}
+          {/* PF rates or sessions paying more than the service is priced at */}
+          {subTab !== 'pf-price' && (
+            <PfPriceCheck variant="banner" reloadKey={pfPriceReload} onOpen={() => setSubTab('pf-price')} onCount={setPfPriceCount} />
+          )}
+          {subTab === 'pf-price' && (
+            <PfPriceCheck variant="full" reloadKey={pfPriceReload} onCount={setPfPriceCount}
+              onEditConsultant={(id, name) => {
+                setSubTab('list'); setCSearch(name); setCDeptFilter('')
+                const c = consultants.find(x => x.id === id)
+                if (c && expandedConsultant !== id) expandConsultant(c)
+              }} />
           )}
 
           {error && <p className="text-xs text-red-600 flex items-center gap-1"><AlertCircle size={12} />{error}</p>}
@@ -3432,6 +3478,9 @@ export default function PayrollPage() {
                                             if (v === null) delete next[b]; else next[b] = v
                                             setEditingRates({ ...editingRates, [up.id]: { ...r, branchAmounts: next } })
                                           }
+                                          // Services this unit pay pays them for, and any priced below the PF being typed.
+                                          const priced = rateServices?.consultantId === c.id ? rateServices.byUnitPay[up.id] || [] : []
+                                          const over = r.amount > 0 ? overPrice(r, priced, rateBranches) : []
                                           return (
                                             <div key={up.id}>
                                               <div className="flex items-center gap-3">
@@ -3449,9 +3498,26 @@ export default function PayrollPage() {
                                                       onChange={e => setEditingRates({ ...editingRates, [up.id]: { ...r, amount: parseFloat(e.target.value) || 0 } })}
                                                       placeholder="0.00" className="px-3 py-1.5 rounded-lg border text-sm outline-none w-32" style={{ borderColor: 'var(--light-gray)' }} />
                                                     <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>per unit{interbranch && overrides.length > 0 ? ' (default)' : ''}</span>
+                                                    {!over.length && priced.length > 0 && (
+                                                      <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}
+                                                        title={priced.map(p => `${p.name}: ${formatCurrency(p.price)}`).join('\n')}>
+                                                        · price {priced.length === 1
+                                                          ? formatCurrency(priced[0].price)
+                                                          : `${formatCurrency(Math.min(...priced.map(p => p.price)))}–${formatCurrency(Math.max(...priced.map(p => p.price)))}`}
+                                                      </span>
+                                                    )}
                                                   </>
                                                 )}
                                               </div>
+                                              {!r.disabled && over.length > 0 && (
+                                                <p className="mt-1 ml-[10.75rem] text-[11px] font-medium flex items-start gap-1" style={{ color: '#b91c1c' }}>
+                                                  <AlertOctagon size={12} className="mt-px shrink-0" />
+                                                  <span>
+                                                    PF {formatCurrency(over[0].pay)}{over[0].branch ? ` at ${branchLabel(over[0].branch)}` : ''} is more than the {formatCurrency(over[0].price)} price
+                                                    of {over[0].service}{over.length > 1 ? ` (and ${over.length - 1} more: ${over.slice(1).map(o => `${o.service} ${formatCurrency(o.price)}`).join(', ')})` : ''} — we can&apos;t pay more than we charge.
+                                                  </span>
+                                                </p>
+                                              )}
                                               {/* Per-branch rate overrides — only offered to interbranch consultants */}
                                               {!r.disabled && interbranch && (
                                                 <div className="mt-1 ml-6 flex flex-wrap items-center gap-3">
