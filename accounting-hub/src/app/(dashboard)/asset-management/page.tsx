@@ -416,7 +416,8 @@ function AssetManagementInner() {
   // Rooms per branch (Location Settings) — the choices of the Location dropdown.
   const [rooms, setRooms] = useState<AssetRoom[]>([])
   const [showLocSettings, setShowLocSettings] = useState(false)
-  const roomsOf = (branch: string) => rooms.filter(r => r.branch === branch).map(r => r.name)
+  // Dropdowns list a branch's rooms alphabetically (Hannah, 2026-11-02).
+  const roomsOf = (branch: string) => rooms.filter(r => r.branch === branch).map(r => r.name).sort((x, y) => x.localeCompare(y))
   // Asset form: the item row whose department tick boxes are open.
   const [deptRowOpen, setDeptRowOpen] = useState<number | null>(null)
 
@@ -935,12 +936,11 @@ function AssetManagementInner() {
 
   // Choices for the Accountability / Departments header filters.
   const custodianChoices = Array.from(new Set(assets.flatMap(custodiansOf))).sort((x, y) => x.localeCompare(y))
-  // Rooms in the Location Settings order (current branch view first), then any
-  // name still on an asset that is no longer in the list.
+  // Rooms of the branch in view plus any name still on an asset, alphabetically.
   const locationChoices = Array.from(new Set([
     ...rooms.filter(r => !branchFilter || r.branch === branchFilter).map(r => r.name),
     ...assets.flatMap(pieceRooms).filter(Boolean),
-  ]))
+  ])).sort((x, y) => x.localeCompare(y))
   const departmentChoices = Array.from(new Set(assets.flatMap(assetDepts))).sort()
   const displayedAssets = assets
     .filter((a) => {

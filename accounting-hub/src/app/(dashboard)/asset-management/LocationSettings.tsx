@@ -1,9 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import { ArrowDown, ArrowUp, Loader2, MapPin, Plus, Trash2, X } from 'lucide-react'
+import { Loader2, MapPin, Plus, Trash2, X } from 'lucide-react'
 
-// Rooms per branch for the asset Location dropdown (Hannah, 2026-11-02).
+// Rooms per branch for the asset Location dropdown (Hannah, 2026-11-02), kept
+// alphabetical here as in the dropdowns.
 export type AssetRoom = { id: string; branch: string; name: string; sortOrder: number; used: number }
 type Draft = { id?: string; name: string; orig?: string; used: number }
 
@@ -15,9 +16,10 @@ export default function LocationSettings({ branches, rooms, initialBranch, onSav
   onClose: () => void
 }) {
   const [branch, setBranch] = useState(branches.some(b => b.value === initialBranch) ? initialBranch : branches[0]?.value ?? '')
+  const byName = (x: Draft, y: Draft) => x.name.localeCompare(y.name)
   const fromServer = (list: AssetRoom[]) => {
     const out: Record<string, Draft[]> = {}
-    for (const b of branches) out[b.value] = list.filter(r => r.branch === b.value).map(r => ({ id: r.id, name: r.name, orig: r.name, used: r.used }))
+    for (const b of branches) out[b.value] = list.filter(r => r.branch === b.value).map(r => ({ id: r.id, name: r.name, orig: r.name, used: r.used })).sort(byName)
     return out
   }
   const [drafts, setDrafts] = useState<Record<string, Draft[]>>(() => fromServer(rooms))
@@ -34,15 +36,9 @@ export default function LocationSettings({ branches, rooms, initialBranch, onSav
     const name = adding.replace(/\s+/g, ' ').trim().toUpperCase()
     if (!name) return
     if (list.some(r => r.name.trim().toLowerCase() === name.toLowerCase())) { setError(`"${name}" is already listed`); return }
-    setList(l => [...l, { name, used: 0 }])
+    setList(l => [...l, { name, used: 0 }].sort(byName))
     setAdding(''); setError('')
   }
-  const move = (i: number, by: number) => setList(l => {
-    const j = i + by
-    if (j < 0 || j >= l.length) return l
-    const next = [...l]; [next[i], next[j]] = [next[j], next[i]]
-    return next
-  })
 
   const save = async () => {
     setSaving(true); setError('')
@@ -100,8 +96,6 @@ export default function LocationSettings({ branches, rooms, initialBranch, onSav
                 <input value={r.name} onChange={e => { const v = e.target.value.toUpperCase(); setList(l => l.map((x, k) => k === i ? { ...x, name: v } : x)) }}
                   className="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
                 <span className="w-16 text-right text-[11px] text-gray-400 whitespace-nowrap">{r.used ? `${r.used} asset${r.used > 1 ? 's' : ''}` : ''}</span>
-                <button onClick={() => move(i, -1)} disabled={i === 0} className="p-1 rounded hover:bg-gray-100 text-gray-500 disabled:opacity-30" title="Move up"><ArrowUp size={14} /></button>
-                <button onClick={() => move(i, 1)} disabled={i === list.length - 1} className="p-1 rounded hover:bg-gray-100 text-gray-500 disabled:opacity-30" title="Move down"><ArrowDown size={14} /></button>
                 <button onClick={() => setList(l => l.filter((_, k) => k !== i))} disabled={r.used > 0}
                   className="p-1 rounded hover:bg-red-50 text-red-500 disabled:opacity-30 disabled:cursor-not-allowed"
                   title={r.used > 0 ? 'Assets are still in this room — move them first' : 'Remove'}><Trash2 size={14} /></button>
