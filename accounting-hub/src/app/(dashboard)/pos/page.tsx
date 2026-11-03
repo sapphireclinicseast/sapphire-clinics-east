@@ -3538,7 +3538,7 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
 
     const headers = ['Order #', 'Date', 'Branch', 'Type', 'Patient', 'Item(s)', 'Clinician',
                      'Ref #', 'Gross', 'Discount', 'Refund', 'Net', 'Payment', 'Status']
-    const body = rows.map(o => [
+    const describe = (o: Order) => [
       o.orderNumber,
       new Date(o.transactionDate).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'Asia/Manila' }),
       BRANCHES.find(b => b.value === o.branch)?.label || o.branch,
@@ -3547,18 +3547,45 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
       (o.items || []).map(i => `${i.name}${i.quantity > 1 ? ` x${i.quantity}` : ''}`).join(', '),
       o.clinicianName || '',
       o.referenceNumber || '',
+    ]
+    const orderRow = (o: Order) => [
+      ...describe(o),
       money(o.subtotal).toFixed(2),
       money(o.discountAmount).toFixed(2),
       refundOf(o).toFixed(2),
       money(o.netAmount).toFixed(2),
       (o.payments || []).map(p => p.method).join(', '),
       o.status,
-    ])
+    ]
+    const body = rows.map(orderRow)
+
+    // Excel only: an order paid with more than one method becomes one row per
+    // method, Net = that method's amount, so the sheet can be filtered or
+    // pivoted by payment method. Gross, Discount and Refund sit on the first
+    // row only, so every column still totals to the unsplit order. An order
+    // whose payment lines don't add up to its Net (refunded, or keyed before
+    // the till enforced payments = net) can't be split honestly and stays one row.
+    const excelBody = rows.flatMap(o => {
+      const byMethod = new Map<string, number>()
+      for (const p of o.payments || []) byMethod.set(p.method, (byMethod.get(p.method) || 0) + money(p.amount))
+      const paid = [...byMethod.values()].reduce((s, v) => s + v, 0)
+      if (byMethod.size < 2 || paid.toFixed(2) !== money(o.netAmount).toFixed(2)) return [orderRow(o)]
+      return [...byMethod].map(([method, amount], k) => [
+        ...describe(o),
+        k === 0 ? money(o.subtotal).toFixed(2) : '',
+        k === 0 ? money(o.discountAmount).toFixed(2) : '0.00',
+        k === 0 ? refundOf(o).toFixed(2) : '0.00',
+        amount.toFixed(2),
+        method,
+        o.status,
+      ])
+    })
+
     const totalRow = ['TOTAL', '', '', '', '', '', '', '',
                       totals.gross.toFixed(2), totals.discount.toFixed(2), totals.refund.toFixed(2),
                       totals.net.toFixed(2), '', `${rows.length} orders`]
 
-    return { rows, headers, body, totalRow, totals, scope }
+    return { rows, headers, body, excelBody, totalRow, totals, scope }
   }, [selectedBranch, dateFrom, dateTo, statusFilter, debouncedSearch, showVoided, applyOrderGuards])
 
   const downloadOrdersExcel = async () => {
@@ -3574,7 +3601,7 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
           ['Refunds', x.totals.refund.toFixed(2)],
           ['Net sales', x.totals.net.toFixed(2)],
         ] },
-        { name: 'Orders', headers: x.headers, rows: [...x.body, x.totalRow] },
+        { name: 'Orders', headers: x.headers, rows: [...x.excelBody, x.totalRow] },
       ])
     } finally { setExporting(false); setShowOrdDownload(false) }
   }
