@@ -149,7 +149,11 @@ export default function SpecialPayRuns({ canWrite, branch, cutoffMonth, cutoffYe
   const lockGroup = async (cutoffPeriod: string, br: string, group: Run[]) => {
     const total = group.reduce((s, x) => s + x.net, 0)
     const held = group.some(x => x.details.holdFromStaff === true)
-    if (!confirm(`Lock and post ${group.length} payslip(s) for ${group[0] ? SPECIAL_LABEL[group[0].type] : cutoffPeriod} — ${BRANCH_LABEL[br] || br}?\n\nNet to pay: ${peso(total)}. This posts the journal entry and sends the net pay to Salaries Payable.${held ? '\n\nStaff are not notified: no email goes out, and the payslips stay hidden from their My Payslips until you click Release to staff.' : ''}`)) return
+    const thirteenth = group[0]?.type === 'THIRTEENTH'
+    const staffNote = held
+      ? '\n\nStaff are not notified: no email goes out, and the payslips stay hidden from their My Payslips until you click Release to staff.'
+      : thirteenth ? '\n\nNo email goes out to staff. 13th-month pay is never emailed; it goes out with the succeeding regular payroll.' : ''
+    if (!confirm(`Lock and post ${group.length} payslip(s) for ${group[0] ? SPECIAL_LABEL[group[0].type] : cutoffPeriod} — ${BRANCH_LABEL[br] || br}?\n\nNet to pay: ${peso(total)}. This posts the journal entry and sends the net pay to Salaries Payable.${staffNote}`)) return
     setBusy(`lock:${cutoffPeriod}|${br}`); setError(''); setNotice('')
     try {
       const draftIds = group.filter(x => x.status === 'DRAFT').map(x => x.id)

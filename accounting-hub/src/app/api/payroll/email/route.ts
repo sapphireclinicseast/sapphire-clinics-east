@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { sendGmail, gmailConfigured, mailboxAddress, type Mailbox } from '@/lib/gmail'
+import { parseSpecialPeriod } from '@/lib/payroll/special-runs'
 
 const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 
@@ -147,6 +148,16 @@ export async function POST(req: Request) {
 
     if (!email || !pdfBase64 || !cutoffPeriod) {
       return NextResponse.json({ error: 'email, pdfBase64, and cutoffPeriod are required' }, { status: 400 })
+    }
+
+    // 13th-month pay is never emailed (Hannah, 2026-11-03): it is carried into
+    // the succeeding regular payrolls, and those are what staff get by email.
+    // Checked here rather than in a button so no screen can send one.
+    if (parseSpecialPeriod(cutoffPeriod)?.type === 'THIRTEENTH') {
+      return NextResponse.json(
+        { error: '13th-month payslips are not emailed to staff. The amount goes out with the succeeding regular payroll.' },
+        { status: 400 },
+      )
     }
 
     const periodLabel = getPeriodLabel(cutoffPeriod)

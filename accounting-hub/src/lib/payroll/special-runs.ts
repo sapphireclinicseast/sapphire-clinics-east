@@ -33,7 +33,8 @@
  *
  * `details.holdFromStaff` keeps a 13th-month payslip out of the staff's My
  * Payslips (teletherapy hub) until payroll releases it. Locking never emails
- * or notifies anyone.
+ * or notifies anyone, and /api/payroll/email refuses a 13th-month period
+ * outright (Hannah, 2026-11-03: it goes out with the succeeding payrolls).
  */
 
 export type SpecialRunType = 'THIRTEENTH' | 'MATERNITY' | 'FINAL'
