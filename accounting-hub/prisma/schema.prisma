@@ -958,6 +958,9 @@ model DigitalWallet {
   // totalGlAmount alone, so it was being kept in a spreadsheet outside the app.
   // All optional — existing letters keep working with these blank.
   glRequestedAmount Decimal? // Requested GL, before approval trimmed it
+  // Where the letter sits in the OP's payment process (Detailed GL first column):
+  // STAR OFFICE | BILLING | ACCOUNTING | CASHIER. Hannah, 2026-11-03.
+  glStage           String?
   glDocsSubmittedAt DateTime? // Date the supporting documents were submitted
   glReleasedAt      DateTime? // Date the approved GL was released
   soaAmount         Decimal? // Amount billed on the SOA (differs from the approved GL)
@@ -1012,6 +1015,7 @@ model GlCase {
 
   // The same paper trail the wallet-backed rows carry. Held here too, because an
   // untagged case has no wallet to read them from.
+  glStage           String? // STAR OFFICE | BILLING | ACCOUNTING | CASHIER
   glRequestedAmount Decimal?
   glDocsSubmittedAt DateTime?
   glReleasedAt      DateTime?

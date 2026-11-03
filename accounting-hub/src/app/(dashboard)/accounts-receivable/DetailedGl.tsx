@@ -6,6 +6,7 @@ import { formatCurrency } from '@/lib/utils'
 import { branchLabel } from '@/lib/branch'
 import { downloadXlsx, downloadReportPdf } from '@/lib/export'
 import ExpandablePanel from './ExpandablePanel'
+import { GL_STAGES } from '@/lib/gl-stage'
 
 /** One GL letter, as the AR endpoint returns it. */
 export interface GlCaseWallet {
@@ -38,6 +39,7 @@ export interface GlCaseWallet {
   soaCommissionRate?: number | string | null
   payoutBatch?: string | null
   qbEntry?: string | null
+  glStage?: string | null
   /** True when any order has been billed against the letter. */
   hasOrders?: boolean
   dateObtained?: string | null
@@ -67,6 +69,7 @@ export interface GlCaseRow {
   qbEntry?: string | null
   paidAt?: string | null
   notes?: string | null
+  glStage?: string | null
 }
 
 const num = (v: unknown) => Number(v ?? 0) || 0
@@ -125,6 +128,8 @@ interface Row {
   soaCommissionRate?: number | string | null
   payoutBatch?: string | null
   qbEntry?: string | null
+  /** Where the letter is in the OP's payment process (STAR OFFICE → CASHIER). */
+  glStage?: string | null
   /** Remaining on the tagged wallet in POS; null when nothing is tagged. */
   posBalance: number | null
   /** Has the letter actually been drawn down — balance below the approved amount. */
@@ -189,6 +194,7 @@ function rowOf(c: GlCaseRow | null, w: GlCaseWallet | null): Row {
     soaCommissionRate: pick(c?.soaCommissionRate, w?.soaCommissionRate),
     payoutBatch: pick(c?.payoutBatch, w?.payoutBatch),
     qbEntry: pick(c?.qbEntry, w?.qbEntry),
+    glStage: pick(c?.glStage, w?.glStage),
     posBalance: posBalanceOf(w),
     rendered: drawnDown(w),
     paid: w ? num(w.paidTotal) > 0 : !!c?.paidAt,
@@ -339,7 +345,7 @@ function commissionOf(r: Row): number {
 
 /** Columns in the order the OPGL SUMMARY sheet uses, with Branch added. */
 type ColKey =
-  | 'name' | 'branch' | 'docsDate' | 'requested' | 'released' | 'approved' | 'soaAmount'
+  | 'stage' | 'name' | 'branch' | 'docsDate' | 'requested' | 'released' | 'approved' | 'soaAmount'
   | 'posBalance'
   | 'rendered' | 'soaSubmitted' | 'soaDate' | 'soaResubDate' | 'status' | 'paidDate' | 'arDays' | 'arDaysResub' | 'perMonths'
   | 'guardian' | 'drive' | 'commission' | 'payout' | 'qb' | 'linked'
@@ -347,6 +353,8 @@ type ColKey =
 interface Col { key: ColKey; label: string; numeric?: boolean }
 
 const COLS: Col[] = [
+  // Hannah, 2026-11-03: which OP office the letter is at, so each stage can be chased.
+  { key: 'stage', label: 'Stage' },
   { key: 'name', label: 'Name' },
   { key: 'branch', label: 'Branch' },
   { key: 'linked', label: 'POS wallet' },
@@ -375,6 +383,7 @@ const COLS: Col[] = [
 
 function cellText(r: Row, k: ColKey): string {
   switch (k) {
+    case 'stage': return r.glStage || '—'
     case 'name': return r.patientName || ''
     case 'branch': return branchLabel(r.branch) || '—'
     case 'linked': return r.wallet ? r.wallet.patientName : 'needs GL wallet in POS'
@@ -412,6 +421,8 @@ function cellText(r: Row, k: ColKey): string {
 
 function sortValue(r: Row, k: ColKey): string | number {
   switch (k) {
+    // Process order (STAR OFFICE first, CASHIER last), letters with no stage after them.
+    case 'stage': { const i = (GL_STAGES as readonly string[]).indexOf(r.glStage || ''); return i < 0 ? GL_STAGES.length : i }
     case 'name': return r.patientName || ''
     case 'branch': return branchLabel(r.branch) || ''
     case 'linked': return r.wallet ? 'tagged' : (r.caseId ? 'needs GL wallet in POS' : 'POS')
@@ -458,7 +469,27 @@ export default function DetailedGl({
   const [editing, setEditing] = useState<GlCaseWallet | null>(null)
   const [editingCase, setEditingCase] = useState<GlCaseRow | 'new' | null>(null)
 
-  const allRows = useMemo(() => buildRows(wallets, glCases), [wallets, glCases])
+  // Stage picked in the table, shown at once while it saves.
+  const [stageEdits, setStageEdits] = useState<Record<string, string | null>>({})
+  const [stageError, setStageError] = useState('')
+  const allRows = useMemo(
+    () => buildRows(wallets, glCases).map(r => (r.key in stageEdits ? { ...r, glStage: stageEdits[r.key] } : r)),
+    [wallets, glCases, stageEdits],
+  )
+  const saveStage = async (r: Row, value: string) => {
+    const glStage = value || null
+    setStageError('')
+    setStageEdits(m => ({ ...m, [r.key]: glStage }))
+    try {
+      const res = r.caseId
+        ? await fetch('/api/accounts-receivable/gl-case', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ caseId: r.caseId, glStage }) })
+        : await fetch('/api/accounts-receivable/gl-case', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: r.wallet?.id, glStage }) })
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Could not save the stage')
+    } catch (e) {
+      setStageEdits(m => { const n = { ...m }; delete n[r.key]; return n })
+      setStageError(`${r.patientName}: ${e instanceof Error ? e.message : 'Could not save the stage'}`)
+    }
+  }
 
   // A global-search hit lands here with ?focus=<wallet or case id>: scroll the
   // row into view and flash it once the data is in.
@@ -553,12 +584,22 @@ export default function DetailedGl({
                   ? (sortDir === 'asc' ? <ChevronUp size={11} /> : <ChevronDown size={11} />)
                   : <ArrowUpDown size={10} style={{ opacity: 0.35 }} />}
               </button>
+              {c.key === 'stage' ? (
+                <select value={filters.stage || ''} onChange={e => setFilters(f => ({ ...f, stage: e.target.value }))}
+                  className="mt-1 w-full min-w-[110px] px-1 py-0.5 rounded border text-[10px] outline-none font-normal bg-white"
+                  style={{ borderColor: 'var(--light-gray)' }}>
+                  <option value="">All</option>
+                  {GL_STAGES.map(s => <option key={s} value={s}>{s}</option>)}
+                  <option value="—">Not set</option>
+                </select>
+              ) : (
               <input
                 value={filters[c.key] || ''}
                 onChange={e => setFilters(f => ({ ...f, [c.key]: e.target.value }))}
                 placeholder="Filter…"
                 className="mt-1 w-full min-w-[70px] px-1.5 py-0.5 rounded border text-[10px] outline-none font-normal"
                 style={{ borderColor: 'var(--light-gray)' }} />
+              )}
             </th>
           ))}
         </tr>
@@ -589,7 +630,16 @@ export default function DetailedGl({
               <td key={c.key}
                 className={`px-2 py-1.5 whitespace-nowrap ${c.numeric ? 'text-right tabular-nums' : ''}`}
                 style={{ color: cellText(r, c.key) === '—' ? 'var(--light-gray)' : 'var(--charcoal)' }}>
-                {c.key === 'drive'
+                {c.key === 'stage'
+                  ? (canWrite && (r.caseId || r.wallet)
+                      ? <select value={r.glStage || ''} onChange={e => saveStage(r, e.target.value)}
+                          className="px-1.5 py-0.5 rounded border text-[11px] font-semibold outline-none bg-white"
+                          style={{ borderColor: r.glStage ? 'var(--teal)' : 'var(--light-gray)', color: r.glStage ? 'var(--deep-teal)' : 'var(--mid-gray)' }}>
+                          <option value="">— set stage —</option>
+                          {GL_STAGES.map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                      : cellText(r, c.key))
+                  : c.key === 'drive'
                   ? (r.files.length
                       ? r.files.map((u, i) => (
                           <a key={u + i} href={u} target="_blank" rel="noreferrer"
@@ -809,6 +859,7 @@ export default function DetailedGl({
         </button>
       </div>
 
+      {stageError && <p className="text-xs text-red-600 mb-1">{stageError}</p>}
       <ExpandablePanel title="Detailed GL" subtitle="Every Guarantee Letter, in the OPGL summary layout" maxHeight={520}>
         {table}
       </ExpandablePanel>

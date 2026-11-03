@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { GL_STAGES } from '@/lib/gl-stage'
 
 /**
  * PATCH /api/accounts-receivable/gl-case
@@ -29,6 +30,14 @@ const TEXT_FIELDS = ['guardianName', 'payoutBatch', 'qbEntry'] as const
 const CASE_DATE_FIELDS = [...DATE_FIELDS, 'paidAt'] as const
 const CASE_MONEY_FIELDS = [...MONEY_FIELDS, 'approvedAmount'] as const
 const CASE_TEXT_FIELDS = [...TEXT_FIELDS, 'notes'] as const
+
+/** Blank clears; anything else must be one of GL_STAGES. */
+function parseStage(v: unknown): { ok: true; value: string | null } | { ok: false } {
+  const s = String(v ?? '').trim().toUpperCase()
+  if (!s) return { ok: true, value: null }
+  return (GL_STAGES as readonly string[]).includes(s) ? { ok: true, value: s } : { ok: false }
+}
+const STAGE_ERROR = `Stage must be one of: ${GL_STAGES.join(', ')}`
 
 const asDate = (v: unknown) =>
   v ? new Date(`${String(v).slice(0, 10)}T00:00:00+08:00`) : null
@@ -128,6 +137,11 @@ export async function PATCH(req: Request) {
       if (!(f in body)) continue
       data[f] = String(body[f] ?? '').trim() || null
     }
+    if ('glStage' in body) {
+      const st = parseStage(body.glStage)
+      if (!st.ok) return NextResponse.json({ error: STAGE_ERROR }, { status: 400 })
+      data.glStage = st.value
+    }
 
     if (Object.keys(data).length === 0) {
       return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
@@ -139,7 +153,7 @@ export async function PATCH(req: Request) {
       select: {
         id: true, glRequestedAmount: true, glDocsSubmittedAt: true, glReleasedAt: true,
         soaAmount: true, soaSubmittedAt: true, soaResubmittedAt: true, guardianName: true,
-        soaCommissionRate: true, payoutBatch: true, qbEntry: true,
+        soaCommissionRate: true, payoutBatch: true, qbEntry: true, glStage: true,
       },
     })
     return NextResponse.json(updated)
@@ -154,7 +168,7 @@ const CASE_SELECT = {
   glRequestedAmount: true, glDocsSubmittedAt: true, glReleasedAt: true,
   approvedAmount: true, soaAmount: true, soaSubmittedAt: true,
   soaResubmittedAt: true, guardianName: true, soaCommissionRate: true, payoutBatch: true,
-  qbEntry: true, paidAt: true, notes: true, createdAt: true,
+  qbEntry: true, paidAt: true, notes: true, createdAt: true, glStage: true,
   processorRfpId: true, processorPaidAt: true, processorProofUrl: true,
 } as const
 
@@ -256,6 +270,11 @@ export async function PUT(req: Request) {
       data[f] = p.value
     }
     for (const f of CASE_TEXT_FIELDS) if (f in body) data[f] = String(body[f] ?? '').trim() || null
+    if ('glStage' in body) {
+      const st = parseStage(body.glStage)
+      if (!st.ok) return NextResponse.json({ error: STAGE_ERROR }, { status: 400 })
+      data.glStage = st.value
+    }
 
     if (Object.keys(data).length === 0) {
       return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
