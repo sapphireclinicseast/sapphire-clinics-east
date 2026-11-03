@@ -121,8 +121,9 @@ export default function TuitionDesk({ branch, onCollect }: { branch: string; onC
   const nowDue = (s: Student, state: Due['state']) => s.dues.filter(d => d.state === state).reduce((t, d) => t + d.remaining, 0)
   const overdueStudents = owing.filter(s => s.dues.some(d => d.state === 'OVERDUE'))
   const soonStudents = owing.filter(s => !s.dues.some(d => d.state === 'OVERDUE') && s.dues.some(d => d.state === 'DUE_SOON'))
-  const overdueTotal = owing.reduce((t, s) => t + nowDue(s, 'OVERDUE'), 0)
-  const soonTotal = owing.reduce((t, s) => t + nowDue(s, 'DUE_SOON'), 0)
+  // Totals per student group, matching the table: an overdue student's installment due this week counts with them.
+  const overdueTotal = overdueStudents.reduce((t, s) => t + nowDue(s, 'OVERDUE') + nowDue(s, 'DUE_SOON'), 0)
+  const soonTotal = soonStudents.reduce((t, s) => t + nowDue(s, 'DUE_SOON'), 0)
   const sorted = [...shown].sort((a, b) => urgency(a) - urgency(b) || a.name.localeCompare(b.name))
 
   return (
@@ -135,9 +136,9 @@ export default function TuitionDesk({ branch, onCollect }: { branch: string; onC
               {overdueStudents.length} overdue · {formatCurrency(overdueTotal)}
             </span>
           )}
-          {soonTotal > 0.005 && (
+          {soonStudents.length > 0 && (
             <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: '#ffedd5', color: '#c2410c' }}>
-              {soonStudents.length > 0 ? `${soonStudents.length} ` : ''}due this week · {formatCurrency(soonTotal)}
+              {soonStudents.length} due this week · {formatCurrency(soonTotal)}
             </span>
           )}
           {newcomers.length > 0 && (
