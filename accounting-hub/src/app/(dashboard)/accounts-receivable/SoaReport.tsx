@@ -903,7 +903,7 @@ export default function SoaReport({ wallets, isAdmin, canWrite = true, branch = 
                 <th className="text-left px-4 py-3 text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>By</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>Submitted</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>SOA Ref</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>Delivery Proof</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>Delivery Proof/Email Proof</th>
                 <th className="text-right px-4 py-3 text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>Actions</th>
               </tr>
             </thead>
@@ -966,14 +966,14 @@ export default function SoaReport({ wallets, isAdmin, canWrite = true, branch = 
                       {(r.proofOfDeliveryUrls || []).map((u, i) => (
                         <a key={u} href={u} target="_blank" rel="noopener noreferrer"
                           className="text-xs font-medium underline whitespace-nowrap" style={{ color: 'var(--teal)' }}
-                          title={`Open delivery proof ${i + 1}`}>#{i + 1}</a>
+                          title={`Open delivery/email proof ${i + 1}`}>#{i + 1}</a>
                       ))}
                       {canWrite ? (
                         <button
                           onClick={() => { setPodFor(r); setPodUrls(Array.isArray(r.proofOfDeliveryUrls) ? r.proofOfDeliveryUrls : []); setPodError('') }}
                           className="flex items-center gap-1 px-2 py-1 rounded-lg border text-[11px] font-medium hover:bg-gray-50"
                           style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}
-                          title="Attach proof of delivery — upload a file or scan with your phone via QR">
+                          title="Attach delivery or email proof — upload a file or scan with your phone via QR">
                           <Upload size={10} /> {(r.proofOfDeliveryUrls?.length || 0) > 0 ? 'Edit' : 'Attach'}
                         </button>
                       ) : (r.proofOfDeliveryUrls?.length || 0) === 0 ? (
@@ -1080,15 +1080,15 @@ export default function SoaReport({ wallets, isAdmin, canWrite = true, branch = 
         </div>
       )}
 
-      {/* Proof-of-delivery dialog (the Attach button in the Delivery Proof column) */}
+      {/* Proof-of-delivery dialog (the Attach button in the Delivery Proof/Email Proof column) */}
       {podFor && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="fixed inset-0 bg-black/40" onClick={() => !podBusy && setPodFor(null)} />
           <div className="relative z-10 w-full max-w-sm rounded-2xl bg-white shadow-2xl p-5 space-y-4">
-            <h3 className="text-base font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>Proof of delivery</h3>
+            <h3 className="text-base font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>Delivery Proof/Email Proof</h3>
             <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
               <strong>{podFor.walletName}</strong> — {periodLabel(podFor.period)}.
-              Attach proof this SOA reached the HMO (delivery receipt photo, courier tracking screenshot).
+              Attach proof this SOA reached the HMO (delivery receipt photo, courier tracking screenshot, or a screenshot of the email it was sent in).
               Upload a file or scan the QR with your phone to snap a photo.
             </p>
             {podUrls.length > 0 && (
