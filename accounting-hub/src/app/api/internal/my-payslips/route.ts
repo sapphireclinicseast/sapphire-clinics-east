@@ -12,6 +12,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { isHeldFromStaff } from '@/lib/payroll/special-runs'
 import { existsSync } from 'fs'
 import path from 'path'
 
@@ -78,7 +79,8 @@ export async function GET(req: NextRequest) {
     // streams the on-disk file if it exists (accountant-vetted) and
     // otherwise generates one server-side from the DB row, so View
     // and Download always work.
-    ...empSlips.map((s) => ({
+    // A 13th-month payslip payroll has not released yet stays out of the list.
+    ...empSlips.filter((s) => !isHeldFromStaff(s.details)).map((s) => ({
       kind: 'employee' as const,
       id: s.id,
       cutoffPeriod: s.cutoffPeriod,

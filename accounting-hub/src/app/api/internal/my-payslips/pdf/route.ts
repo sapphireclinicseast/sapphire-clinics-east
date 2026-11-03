@@ -14,7 +14,7 @@
  *
  * Auth: Authorization: Bearer ${TELETHERAPY_INTERNAL_API_KEY}
  */
-import { specialPeriodLabel } from '@/lib/payroll/special-runs'
+import { specialPeriodLabel, isHeldFromStaff } from '@/lib/payroll/special-runs'
 import { NextRequest, NextResponse } from 'next/server'
 import { SCEI_LOGO_DATA_URI, SCEI_LOGO_W, SCEI_LOGO_H } from '@/lib/scei-logo'
 import { prisma } from '@/lib/prisma'
@@ -416,7 +416,7 @@ export async function GET(req: NextRequest) {
       where: { id },
       include: { employee: { select: { email: true, firstName: true, lastName: true } } },
     })
-    if (!slip || slip.status !== 'LOCKED') {
+    if (!slip || slip.status !== 'LOCKED' || isHeldFromStaff(slip.details)) {
       return NextResponse.json({ error: 'Not found or not locked' }, { status: 404 })
     }
     if ((slip.employee.email ?? '').toLowerCase() !== email) {

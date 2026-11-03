@@ -2238,6 +2238,7 @@ model EmployeeSettings {
   // Employee request approval settings
   requestApprovalExcludedPositions Json? // JSON array of job titles that branch admins cannot approve (requires ADMIN/ACCOUNTANT)
   leaveMaxDays                     Json? // { "VACATION": 5, "SICK": 5, "SIL": 5, "BDAY": 1, ... } — max per leave type per year
+  thirteenthMonthSchedule          Json? // { "2026": [{ "month": 11, "cutoff": 1, "percent": 50 }, ...] } — owned by /api/payroll/special-runs
   updatedAt                        DateTime @updatedAt
 }
 

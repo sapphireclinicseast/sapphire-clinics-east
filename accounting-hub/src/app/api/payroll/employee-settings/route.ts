@@ -28,8 +28,9 @@ export async function PUT(req: Request) {
   const body = await req.json()
   // Strip id and timestamps — these are not updatable. The consultant timing is
   // owned by /api/payroll/consultant-benefits/timing; a stale copy in the employee
-  // settings form must not overwrite it.
-  const { id: _id, createdAt: _ca, updatedAt: _ua, consultantBenefitDeductionTiming: _cbt, ...data } = body
+  // settings form must not overwrite it. The 13th-month payout schedule is
+  // owned by /api/payroll/special-runs for the same reason.
+  const { id: _id, createdAt: _ca, updatedAt: _ua, consultantBenefitDeductionTiming: _cbt, thirteenthMonthSchedule: _tms, ...data } = body
 
   try {
     let settings = await prisma.employeeSettings.findFirst()

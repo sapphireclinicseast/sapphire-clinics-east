@@ -9,6 +9,7 @@
  * contribution catch-up (`YYYY-MM-GOVCON`) already uses:
  *
  *   2026-12-13TH              one 13th-month run per month, shared by a branch
+ *   2026-11-13TH-1            one part of a scheduled 13th month, paid with that cutoff
  *   2026-10-MAT-<employee>    one maternity run per employee
  *   2026-10-FINAL-<employee>  one final-pay run per employee
  *
@@ -21,6 +22,18 @@
  * `details.specialRun` marks the row and `details.taxableIncome` is ALWAYS set:
  * the 1601-C falls back to treating the whole gross as taxable when it is
  * missing, which would tax an exempt 13th month.
+ *
+ * 13th-month payout schedule (Hannah, 2026-11-03): a year can release the 13th
+ * month in parts, each with a regular cutoff, e.g. 50% with the November 1st
+ * cutoff and the rest with the November 2nd. Each part is its own run
+ * (`YYYY-MM-13TH-<cutoff>`), locked, posted and paid on its own. A part pays up
+ * to its CUMULATIVE share of the 13th month less what is already paid, so the
+ * last part always pays the balance, trued up to the basic salary on file by
+ * then. A year with no schedule keeps the single run per month.
+ *
+ * `details.holdFromStaff` keeps a 13th-month payslip out of the staff's My
+ * Payslips (teletherapy hub) until payroll releases it. Locking never emails
+ * or notifies anyone.
  */
 
 export type SpecialRunType = 'THIRTEENTH' | 'MATERNITY' | 'FINAL'
@@ -49,11 +62,12 @@ const REGULAR_RX = /^\d{4}-\d{2}-[12]$/
 /** A regular cutoff payslip ("2026-03-1" / "2026-03-2") — the only rows that count toward basic salary earned. */
 export const isRegularCutoff = (cutoffPeriod: string) => REGULAR_RX.test(cutoffPeriod)
 
-export function parseSpecialPeriod(cutoffPeriod: string): { year: number; month: number; type: SpecialRunType; key: string | null } | null {
+export function parseSpecialPeriod(cutoffPeriod: string): { year: number; month: number; type: SpecialRunType; key: string | null; cutoff: 1 | 2 | null } | null {
   const m = SPECIAL_RX.exec(cutoffPeriod || '')
   if (!m) return null
   const type: SpecialRunType = m[3] === '13TH' ? 'THIRTEENTH' : m[3] === 'MAT' ? 'MATERNITY' : 'FINAL'
-  return { year: parseInt(m[1], 10), month: parseInt(m[2], 10), type, key: m[4] || null }
+  const cutoff = type === 'THIRTEENTH' && (m[4] === '1' || m[4] === '2') ? (Number(m[4]) as 1 | 2) : null
+  return { year: parseInt(m[1], 10), month: parseInt(m[2], 10), type, key: m[4] || null, cutoff }
 }
 
 export const isSpecialPeriod = (cutoffPeriod: string) => SPECIAL_RX.test(cutoffPeriod || '')
@@ -65,12 +79,65 @@ export function specialPeriod(type: SpecialRunType, year: number, month: number,
   return `${base}-${String(employeeId || '').slice(-8).toUpperCase()}`
 }
 
+/** A 13th-month run: the whole month (`2026-12-13TH`), or one scheduled part paid with a cutoff (`2026-11-13TH-1`). */
+export const thirteenthPeriod = (year: number, month: number, cutoff?: number | null) =>
+  `${specialPeriod('THIRTEENTH', year, month)}${cutoff === 1 || cutoff === 2 ? `-${cutoff}` : ''}`
+
+export const cutoffLabel = (cutoff: number) => (cutoff === 1 ? '1st cutoff' : '2nd cutoff')
+
+/** One scheduled part of the 13th month: paid with that month's cutoff, `percent` of the full 13th month. */
+export interface ThirteenthTranche { month: number; cutoff: 1 | 2; percent: number }
+/** Stored on EmployeeSettings.thirteenthMonthSchedule, keyed by year. */
+export type ThirteenthSchedule = Record<string, ThirteenthTranche[]>
+
+/** Validate and sort a year's tranches. An empty list is valid: it clears the schedule. */
+export function cleanTranches(raw: unknown): { tranches: ThirteenthTranche[]; problem: string | null } {
+  const list = Array.isArray(raw) ? raw : []
+  const tranches = list.map(t => ({
+    month: parseInt(String((t as ThirteenthTranche)?.month), 10),
+    cutoff: parseInt(String((t as ThirteenthTranche)?.cutoff), 10) as 1 | 2,
+    percent: r2(Number((t as ThirteenthTranche)?.percent)),
+  })).sort((a, b) => a.month - b.month || a.cutoff - b.cutoff)
+  if (tranches.length === 0) return { tranches, problem: null }
+  if (tranches.length > 6) return { tranches, problem: 'A 13th month can be split into at most 6 payouts.' }
+  for (const t of tranches) {
+    if (!(t.month >= 1 && t.month <= 12) || (t.cutoff !== 1 && t.cutoff !== 2)) return { tranches, problem: 'Each payout needs a month and a cutoff.' }
+    if (!(t.percent > 0 && t.percent <= 100)) return { tranches, problem: 'Each payout needs a percentage above 0.' }
+  }
+  const seen = new Set(tranches.map(t => `${t.month}-${t.cutoff}`))
+  if (seen.size !== tranches.length) return { tranches, problem: 'Two payouts are set for the same cutoff.' }
+  const total = r2(tranches.reduce((s, t) => s + t.percent, 0))
+  if (Math.abs(total - 100) > 0.001) return { tranches, problem: `The payouts add up to ${total}% — they must add up to 100%.` }
+  return { tranches, problem: null }
+}
+
+/**
+ * Where a cutoff sits in a year's schedule. `cumPercent` is the share of the
+ * 13th month that should be paid once this part is out; the last part is
+ * always 100%, so it pays whatever is left.
+ */
+export function trancheFor(tranches: ThirteenthTranche[], month: number, cutoff: number) {
+  const index = tranches.findIndex(t => t.month === month && t.cutoff === cutoff)
+  if (index < 0) return null
+  const isLast = index === tranches.length - 1
+  const cumPercent = isLast ? 100 : r2(tranches.slice(0, index + 1).reduce((s, t) => s + t.percent, 0))
+  return { ...tranches[index], index, count: tranches.length, isLast, cumPercent }
+}
+
+/** What this part pays: its cumulative share of the 13th month, less what is already paid. */
+export const trancheDue = (accrued: number, cumPercent: number, alreadyPaid: number) =>
+  r2(Math.max(0, accrued * (cumPercent / 100) - alreadyPaid))
+
+/** True when payroll is still keeping this payslip out of the staff's My Payslips. */
+export const isHeldFromStaff = (details: unknown) =>
+  !!details && typeof details === 'object' && (details as { holdFromStaff?: unknown }).holdFromStaff === true
+
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 
 /** Human label for any payroll period — regular cutoffs, special runs and the gov-con catch-up. Null when it is none of them. */
 export function specialPeriodLabel(cutoffPeriod: string): string | null {
   const s = parseSpecialPeriod(cutoffPeriod)
-  if (s) return `${SPECIAL_LABEL[s.type]} — ${MONTHS[s.month - 1] || s.month} ${s.year}`
+  if (s) return `${SPECIAL_LABEL[s.type]} — ${MONTHS[s.month - 1] || s.month} ${s.year}${s.cutoff ? `, ${cutoffLabel(s.cutoff)}` : ''}`
   const g = /^(\d{4})-(\d{2})-GOVCON$/.exec(cutoffPeriod || '')
   if (g) return `Gov't contribution catch-up — ${MONTHS[parseInt(g[2], 10) - 1]} ${g[1]}`
   return null

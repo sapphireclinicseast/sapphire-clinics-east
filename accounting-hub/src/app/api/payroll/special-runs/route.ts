@@ -8,12 +8,14 @@
  * /api/payroll/finalize), so a special run is posted and paid exactly like a
  * regular cutoff.
  *
- *   GET  ?year=&branch=                         saved runs for the year
+ *   GET  ?year=&branch=                         saved runs + the 13th-month payout schedule for the year
  *   GET  ?employees=1&branch=                   employee picker (active + inactive)
- *   GET  ?compute=THIRTEENTH&year=&month=&branch=   13th-month worksheet, all active employees
+ *   GET  ?compute=THIRTEENTH&year=&month=&cutoff?=&branch=   13th-month worksheet, all active employees
  *   GET  ?compute=FINAL&employeeId=&year=&month=    final-pay worksheet for one employee
  *   GET  ?compute=MATERNITY&employeeId=             maternity worksheet for one employee
- *   POST { type, year, month, payDate?, rows[] }    save / replace DRAFT runs
+ *   POST { type, year, month, cutoff?, payDate?, rows[] }   save / replace DRAFT runs
+ *   PUT  { year, tranches[] }                       save the year's 13th-month payout schedule ([] clears it)
+ *   PATCH { cutoffPeriod, branch, holdFromStaff }   hide / release a 13th-month run in the staff's My Payslips
  *   DELETE ?id=                                     delete a DRAFT or FINAL (not LOCKED) run
  */
 import { NextResponse } from 'next/server'
@@ -22,9 +24,12 @@ import { prisma } from '@/lib/prisma'
 import {
   SpecialRunType, SpecialLine, SpecialDeduction, SPECIAL_LABEL, classifyLines, marginalTax, isRegularCutoff,
   parseSpecialPeriod, specialPeriod, r2, LEAVE_CONVERSION_EXEMPT_DAYS, THIRTEENTH_EXEMPT_CEILING,
+  thirteenthPeriod, cleanTranches, trancheFor, trancheDue, cutoffLabel, type ThirteenthSchedule, type ThirteenthTranche,
 } from '@/lib/payroll/special-runs'
 
 const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
+// The payout schedule is company-wide, so branch admins cannot change it.
+const SCHEDULE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER']
 const READ_ROLES = [...WRITE_ROLES, 'VIEWER']
 const TYPES: SpecialRunType[] = ['THIRTEENTH', 'MATERNITY', 'FINAL']
 
@@ -38,6 +43,26 @@ function allowedBranches(role: string): string[] | null {
 const DEFAULT_LEAVE_MAX: Record<string, number> = { VACATION: 5, SICK: 5, SIL: 5 }
 const num = (v: unknown) => Number(v) || 0
 type Details = Record<string, unknown> & { specialRun?: string; taxableIncome?: number; exempt13th?: number; lines?: SpecialLine[] }
+
+/** The year's 13th-month payout schedule — empty when the year has none (one run per month). */
+async function scheduleFor(year: number): Promise<ThirteenthTranche[]> {
+  const settings = await prisma.employeeSettings.findFirst({ select: { thirteenthMonthSchedule: true } })
+  const all = (settings?.thirteenthMonthSchedule ?? {}) as unknown as ThirteenthSchedule
+  return cleanTranches(all[String(year)]).tranches
+}
+
+/**
+ * The scheduled part a 13th-month run is for. Null `cutoff` = the whole month
+ * (no schedule). A cutoff that is not on the schedule is an error, so a part
+ * can never be computed or saved off-schedule.
+ */
+async function resolveTranche(year: number, month: number, cutoffRaw: unknown) {
+  const cutoff = parseInt(String(cutoffRaw ?? ''), 10)
+  if (cutoff !== 1 && cutoff !== 2) return { tranche: null, error: null }
+  const tranche = trancheFor(await scheduleFor(year), month, cutoff)
+  if (!tranche) return { tranche: null, error: `No 13th-month payout is scheduled for the ${cutoffLabel(cutoff)} of month ${month}, ${year}.` }
+  return { tranche, error: null }
+}
 
 /** Equivalent daily rate — the same conversion regular payslips use. */
 const dailyRateOf = (e: { rateType: string; dailyRate: unknown; monthlyRate: unknown }) =>
@@ -122,13 +147,16 @@ export async function GET(req: Request) {
 
     // ── 13th-month worksheet ──
     if (compute === 'THIRTEENTH') {
+      const { tranche, error: trancheError } = await resolveTranche(year, month, sp.get('cutoff'))
+      if (trancheError) return NextResponse.json({ error: trancheError }, { status: 400 })
+      const cumPercent = tranche ? tranche.cumPercent : 100
       const employees = await prisma.employee.findMany({
         where: { isActive: true, ...branchWhere },
         select: { id: true, firstName: true, lastName: true, branch: true, isMWE: true, dateHired: true },
         orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
       })
       const earned = await basicEarnedByEmployee(year, employees.map(e => e.id))
-      const period = specialPeriod('THIRTEENTH', year, month)
+      const period = thirteenthPeriod(year, month, tranche?.cutoff)
       const existing = await prisma.employeePayslip.findMany({
         where: { cutoffPeriod: period, employeeId: { in: employees.map(e => e.id) } },
         select: { id: true, employeeId: true, status: true, grossPay: true, details: true },
@@ -146,12 +174,12 @@ export async function GET(req: Request) {
           employeeId: e.id, name: `${e.lastName}, ${e.firstName}`, branch: e.branch, isMWE: e.isMWE, dateHired: e.dateHired,
           basicPay: r2(v.basic), leavePay: r2(v.leave), lates: r2(v.lates), basis: r2(v.basis),
           cutoffs: v.cutoffs, draftCutoffs: v.draftCutoffs,
-          accrued, alreadyPaid: paidElsewhere, due: r2(Math.max(0, accrued - paidElsewhere)),
+          accrued, alreadyPaid: paidElsewhere, due: trancheDue(accrued, cumPercent, paidElsewhere),
           exemptUsed: r2(v.exemptUsed - num(exD.exempt13th)),
           existing: ex ? { id: ex.id, status: ex.status, amount: num(ex.grossPay), extraBasic: num((exD as { extraBasic?: number }).extraBasic) } : null,
         }
       })
-      return NextResponse.json({ period, year, month, exemptCeiling: THIRTEENTH_EXEMPT_CEILING, rows })
+      return NextResponse.json({ period, year, month, tranche, cumPercent, exemptCeiling: THIRTEENTH_EXEMPT_CEILING, rows })
     }
 
     // ── Final-pay / maternity worksheet for one employee ──
@@ -239,7 +267,7 @@ export async function GET(req: Request) {
         salariesRemitted: s.salariesRemitted, taxRemitted: s.taxRemitted, details: d,
       }
     })
-    return NextResponse.json({ runs })
+    return NextResponse.json({ runs, schedule: await scheduleFor(year) })
   } catch (err) {
     console.error('[special-runs] GET failed:', err)
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Failed' }, { status: 500 })
@@ -268,6 +296,8 @@ export async function POST(req: Request) {
     if (!TYPES.includes(type) || !(year > 2000) || !(month >= 1 && month <= 12) || rowsIn.length === 0) {
       return NextResponse.json({ error: 'type, year, month and at least one row are required' }, { status: 400 })
     }
+    const { tranche, error: trancheError } = type === 'THIRTEENTH' ? await resolveTranche(year, month, b.cutoff) : { tranche: null, error: null }
+    if (trancheError) return NextResponse.json({ error: trancheError }, { status: 400 })
     const allowed = allowedBranches(role)
     const employees = await prisma.employee.findMany({ where: { id: { in: rowsIn.map(r => r.employeeId) } } })
     const empBy = new Map(employees.map(e => [e.id, e]))
@@ -281,7 +311,7 @@ export async function POST(req: Request) {
       if (!e) { skipped.push({ employeeId: row.employeeId, name: row.employeeId, reason: 'Employee not found' }); continue }
       const name = `${e.firstName} ${e.lastName}`
       if (allowed && !allowed.includes(e.branch)) { skipped.push({ employeeId: e.id, name, reason: 'Not your branch' }); continue }
-      const period = specialPeriod(type, year, month, e.id)
+      const period = type === 'THIRTEENTH' ? thirteenthPeriod(year, month, tranche?.cutoff) : specialPeriod(type, year, month, e.id)
       const branch = e.branch
 
       const existing = await prisma.employeePayslip.findUnique({ where: { employeeId_cutoffPeriod_branch: { employeeId: e.id, cutoffPeriod: period, branch } } })
@@ -319,7 +349,12 @@ export async function POST(req: Request) {
         taxableIncome: c.taxable, exempt13th: c.exempt13th, exemptOther: c.exemptOther,
         lines, deductions, computedTax, taxOverridden: tax !== computedTax,
         payDate: b.payDate || null, notes: row.notes ? String(row.notes).slice(0, 500) : null,
-        ...(type === 'THIRTEENTH' ? { extraBasic: r2(row.extraBasic || 0), basis: r2(earned.get(e.id)?.basis || 0) } : {}),
+        ...(type === 'THIRTEENTH' ? {
+          extraBasic: r2(row.extraBasic || 0), basis: r2(earned.get(e.id)?.basis || 0),
+          ...(tranche ? { tranche: { month: tranche.month, cutoff: tranche.cutoff, percent: tranche.percent, cumPercent: tranche.cumPercent, isLast: tranche.isLast } } : {}),
+          // Kept out of the staff's My Payslips until payroll releases it; a run already released stays released.
+          holdFromStaff: prevD.holdFromStaff === false ? false : true,
+        } : {}),
         ...(mat ? { maternity: mat } : {}),
         ...(prevD.availmentId ? { availmentId: prevD.availmentId } : {}),
       } as Record<string, unknown>
@@ -373,6 +408,55 @@ export async function POST(req: Request) {
     return NextResponse.json({ saved, skipped })
   } catch (err) {
     console.error('[special-runs] POST failed:', err)
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Failed' }, { status: 500 })
+  }
+}
+
+export async function PUT(req: Request) {
+  const session = await auth()
+  const role = session?.user?.role as string
+  if (!session?.user || !SCHEDULE_ROLES.includes(role)) return NextResponse.json({ error: 'Only admin, payroll and accounting can change the 13th-month payout schedule.' }, { status: 401 })
+  try {
+    const b = await req.json()
+    const year = parseInt(b.year, 10)
+    if (!(year > 2000)) return NextResponse.json({ error: 'year is required' }, { status: 400 })
+    const { tranches, problem } = cleanTranches(b.tranches)
+    if (problem) return NextResponse.json({ error: problem }, { status: 400 })
+    let settings = await prisma.employeeSettings.findFirst({ select: { id: true, thirteenthMonthSchedule: true } })
+    if (!settings) settings = await prisma.employeeSettings.create({ data: {}, select: { id: true, thirteenthMonthSchedule: true } })
+    const all = { ...((settings.thirteenthMonthSchedule ?? {}) as unknown as ThirteenthSchedule) }
+    if (tranches.length) all[String(year)] = tranches
+    else delete all[String(year)]
+    await prisma.employeeSettings.update({ where: { id: settings.id }, data: { thirteenthMonthSchedule: all as unknown as object } })
+    return NextResponse.json({ year, schedule: tranches })
+  } catch (err) {
+    console.error('[special-runs] PUT failed:', err)
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Failed' }, { status: 500 })
+  }
+}
+
+export async function PATCH(req: Request) {
+  const session = await auth()
+  const role = session?.user?.role as string
+  if (!session?.user || !WRITE_ROLES.includes(role)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  try {
+    const b = await req.json()
+    const cutoffPeriod = String(b.cutoffPeriod || ''), branch = String(b.branch || '')
+    if (parseSpecialPeriod(cutoffPeriod)?.type !== 'THIRTEENTH' || !branch) return NextResponse.json({ error: 'A 13th-month run and its branch are required.' }, { status: 400 })
+    const allowed = allowedBranches(role)
+    if (allowed && !allowed.includes(branch)) return NextResponse.json({ error: 'Access denied for this branch' }, { status: 403 })
+    const hold = b.holdFromStaff !== false
+    const slips = await prisma.employeePayslip.findMany({ where: { cutoffPeriod, branch }, select: { id: true, details: true } })
+    if (!slips.length) return NextResponse.json({ error: 'Run not found' }, { status: 404 })
+    const at = new Date().toISOString()
+    // Only the visibility flag changes; the payslip, its journal entry and its payment are untouched.
+    await prisma.$transaction(slips.map(sl => prisma.employeePayslip.update({
+      where: { id: sl.id },
+      data: { details: { ...((sl.details ?? {}) as Details), holdFromStaff: hold, ...(hold ? {} : { releasedToStaffAt: at, releasedToStaffBy: session.user!.id as string }) } as unknown as object },
+    })))
+    return NextResponse.json({ updated: slips.length, holdFromStaff: hold })
+  } catch (err) {
+    console.error('[special-runs] PATCH failed:', err)
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Failed' }, { status: 500 })
   }
 }

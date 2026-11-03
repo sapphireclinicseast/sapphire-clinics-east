@@ -8,11 +8,19 @@
  * is posted to the ledger, lands in Salaries Payable for payment, and shows up
  * in Taxes › Withholding on Compensation by itself. This screen only prepares
  * the figures; Lock & Post / Unlock call the same endpoints as a regular cutoff.
+ *
+ * A year can have a 13th-month payout schedule (e.g. 50% with the November 1st
+ * cutoff, the rest with the 2nd); each payout is then prepared and locked on
+ * its own. 13th-month payslips stay out of the staff's My Payslips until
+ * payroll clicks Release to staff.
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { Gift, Baby, LogOut, Loader2, RefreshCw, Save, Lock, Unlock, Trash2, Plus, X, AlertCircle, Info, CheckCircle2 } from 'lucide-react'
-import { SPECIAL_LABEL, THIRTEENTH_EXEMPT_CEILING, LEAVE_CONVERSION_EXEMPT_DAYS, classifyLines, type SpecialRunType, type SpecialLine } from '@/lib/payroll/special-runs'
+import { Gift, Baby, LogOut, Loader2, RefreshCw, Save, Lock, Unlock, Trash2, Plus, X, AlertCircle, Info, CheckCircle2, Eye, EyeOff, CalendarClock } from 'lucide-react'
+import {
+  SPECIAL_LABEL, THIRTEENTH_EXEMPT_CEILING, LEAVE_CONVERSION_EXEMPT_DAYS, classifyLines, parseSpecialPeriod,
+  cleanTranches, trancheFor, trancheDue, cutoffLabel, type SpecialRunType, type SpecialLine, type ThirteenthTranche,
+} from '@/lib/payroll/special-runs'
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 const peso = (v: unknown) => `₱${(Number(v) || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -26,7 +34,12 @@ interface Run {
   id: string; type: SpecialRunType; cutoffPeriod: string; year: number; month: number; branch: string; status: string
   employeeId: string; name: string; gross: number; taxable: number; exempt: number; tax: number; deductions: number; net: number
   salariesRemitted: boolean; taxRemitted: boolean
-  details: { lines?: SpecialLine[]; deductions?: { label: string; amount: number }[]; notes?: string | null; maternity?: { days: number; sssBenefit: number; fullPay: number; periodFrom?: string | null; periodTo?: string | null } }
+  details: {
+    lines?: SpecialLine[]; deductions?: { label: string; amount: number }[]; notes?: string | null
+    maternity?: { days: number; sssBenefit: number; fullPay: number; periodFrom?: string | null; periodTo?: string | null }
+    tranche?: { month: number; cutoff: number; percent: number; cumPercent: number; isLast: boolean }
+    holdFromStaff?: boolean
+  }
 }
 interface ThirteenthRow {
   employeeId: string; name: string; branch: string; isMWE: boolean
@@ -50,6 +63,7 @@ interface MatSheet {
   existing: { id: string; status: string } | null
 }
 interface ExtraLine { key: string; label: string; amount: string; taxable: boolean }
+interface TrancheEdit { key: string; month: string; cutoff: string; percent: string }
 interface DedLine { key: string; label: string; amount: string; staffLoanId?: string | null }
 
 const TABS: { key: SpecialRunType; label: string; icon: typeof Gift }[] = [
@@ -70,6 +84,7 @@ export default function SpecialPayRuns({ canWrite, branch, cutoffMonth, cutoffYe
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+  const [schedule, setSchedule] = useState<ThirteenthTranche[]>([])   // the year's 13th-month payout schedule; [] = one run per month
 
   const fetchRuns = useCallback(async () => {
     setLoadingRuns(true)
@@ -79,14 +94,47 @@ export default function SpecialPayRuns({ canWrite, branch, cutoffMonth, cutoffYe
       const d = await res.json()
       if (!res.ok) { setError(d.error || 'Failed to load special runs'); return }
       setRuns(Array.isArray(d.runs) ? d.runs : [])
+      setSchedule(Array.isArray(d.schedule) ? d.schedule : [])
     } catch (e) { setError(String(e)) } finally { setLoadingRuns(false) }
   }, [year, branch])
   useEffect(() => { fetchRuns() }, [fetchRuns])
 
-  const save = async (type: SpecialRunType, rows: unknown[]) => {
+  /* ── 13th-month payout schedule for the year ── */
+  const [schedEdit, setSchedEdit] = useState<TrancheEdit[] | null>(null)   // null = not editing
+  const [t13PickRaw, setT13Pick] = useState('')   // "<month>-<cutoff>" of the payout being prepared
+  // The payout being prepared — defaults to the one in the payroll month on screen, else the first.
+  const pick = useMemo(() => {
+    if (!schedule.length) return null
+    const [m, c] = t13PickRaw.split('-').map(Number)
+    const fallback = schedule.find(t => t.month === cutoffMonth) || schedule[0]
+    return trancheFor(schedule, m, c) || trancheFor(schedule, fallback.month, fallback.cutoff)
+  }, [schedule, t13PickRaw, cutoffMonth])
+  const t13Month = pick ? pick.month : month
+  const t13Cutoff = pick ? pick.cutoff : null
+  const t13Cum = pick ? pick.cumPercent : 100
+  const trancheText = (t: { percent: number; isLast: boolean }, count: number) => (t.isLast && count > 1 ? 'balance' : `${t.percent}%`)
+
+  const schedProblem = schedEdit ? cleanTranches(schedEdit.map(t => ({ month: t.month, cutoff: t.cutoff, percent: t.percent }))).problem : null
+  const schedTotal = schedEdit ? r2(schedEdit.reduce((s, t) => s + n(t.percent), 0)) : 0
+  const startSchedEdit = () => setSchedEdit(schedule.length
+    ? schedule.map((t, i) => ({ key: `t${i}`, month: String(t.month), cutoff: String(t.cutoff), percent: String(t.percent) }))
+    : [{ key: 't0', month: String(month), cutoff: '1', percent: '50' }, { key: 't1', month: String(month), cutoff: '2', percent: '50' }])
+  const saveSchedule = async (tranches: TrancheEdit[]) => {
+    setError(''); setNotice(''); setBusy('schedule')
+    try {
+      const res = await fetch('/api/payroll/special-runs', { method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ year, tranches: tranches.map(t => ({ month: n(t.month), cutoff: n(t.cutoff), percent: n(t.percent) })) }) })
+      const d = await res.json()
+      if (!res.ok) { setError(d.error || 'Failed to save the payout schedule'); return }
+      setSchedule(d.schedule || []); setSchedEdit(null); setT13([])
+      setNotice(d.schedule?.length ? `13th-month payout schedule for ${year} saved.` : `Payout schedule for ${year} removed — the 13th month is paid in one run again.`)
+    } catch (e) { setError(String(e)) } finally { setBusy('') }
+  }
+
+  const save = async (type: SpecialRunType, rows: unknown[], at?: { month: number; cutoff: number | null }) => {
     setError(''); setNotice(''); setBusy('save')
     try {
-      const res = await fetch('/api/payroll/special-runs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type, year, month, rows }) })
+      const res = await fetch('/api/payroll/special-runs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type, year, month: at ? at.month : month, cutoff: at?.cutoff ?? null, rows }) })
       const d = await res.json()
       if (!res.ok) { setError(d.error || 'Failed to save'); return false }
       const skipped: { name: string; reason: string }[] = d.skipped || []
@@ -100,7 +148,8 @@ export default function SpecialPayRuns({ canWrite, branch, cutoffMonth, cutoffYe
   /* ── Lock & post / unlock / delete — the regular payroll endpoints ── */
   const lockGroup = async (cutoffPeriod: string, br: string, group: Run[]) => {
     const total = group.reduce((s, x) => s + x.net, 0)
-    if (!confirm(`Lock and post ${group.length} payslip(s) for ${group[0] ? SPECIAL_LABEL[group[0].type] : cutoffPeriod} — ${BRANCH_LABEL[br] || br}?\n\nNet to pay: ${peso(total)}. This posts the journal entry and sends the net pay to Salaries Payable.`)) return
+    const held = group.some(x => x.details.holdFromStaff === true)
+    if (!confirm(`Lock and post ${group.length} payslip(s) for ${group[0] ? SPECIAL_LABEL[group[0].type] : cutoffPeriod} — ${BRANCH_LABEL[br] || br}?\n\nNet to pay: ${peso(total)}. This posts the journal entry and sends the net pay to Salaries Payable.${held ? '\n\nStaff are not notified: no email goes out, and the payslips stay hidden from their My Payslips until you click Release to staff.' : ''}`)) return
     setBusy(`lock:${cutoffPeriod}|${br}`); setError(''); setNotice('')
     try {
       const draftIds = group.filter(x => x.status === 'DRAFT').map(x => x.id)
@@ -111,7 +160,7 @@ export default function SpecialPayRuns({ canWrite, branch, cutoffMonth, cutoffYe
       const res = await fetch('/api/payroll/finalize', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cutoffPeriod, branch: br, payrollType: 'EMPLOYEE' }) })
       const d = await res.json()
       if (!res.ok) { setError(d.error || 'Failed to lock'); return }
-      setNotice('Locked and posted. It is now in Salaries Payable for payment, and in Taxes › Withholding on Compensation.')
+      setNotice(`Locked and posted. It is now in Salaries Payable for payment, and in Taxes › Withholding on Compensation.${held ? ' Staff cannot see it yet — click Release to staff when you are ready.' : ''}`)
     } catch (e) { setError(String(e)) } finally { setBusy(''); fetchRuns() }
   }
   const unlockGroup = async (cutoffPeriod: string, br: string) => {
@@ -132,6 +181,29 @@ export default function SpecialPayRuns({ canWrite, branch, cutoffMonth, cutoffYe
       if (!res.ok) setError((await res.json()).error || 'Failed to delete')
     } catch (e) { setError(String(e)) } finally { setBusy(''); fetchRuns() }
   }
+  const removeDrafts = async (key: string, label: string, drafts: Run[]) => {
+    if (!confirm(`Delete all ${drafts.length} unlocked payslip(s) of ${label}?`)) return
+    setBusy(`deldrafts:${key}`); setError('')
+    try {
+      for (const r of drafts) {
+        const res = await fetch(`/api/payroll/special-runs?id=${r.id}`, { method: 'DELETE' })
+        if (!res.ok) { setError(`${r.name}: ${(await res.json()).error || 'Failed to delete'}`); break }
+      }
+    } catch (e) { setError(String(e)) } finally { setBusy(''); fetchRuns() }
+  }
+  /** Show or hide a 13th-month run in the staff's My Payslips (teletherapy hub). Nothing is emailed either way. */
+  const setStaffVisibility = async (cutoffPeriod: string, br: string, count: number, release: boolean) => {
+    if (!confirm(release
+      ? `Show these ${count} 13th-month payslip(s) in the staff's My Payslips?\n\nNo email or notice is sent — staff see them the next time they open My Payslips.`
+      : `Hide these ${count} 13th-month payslip(s) from the staff's My Payslips again?`)) return
+    setBusy(`vis:${cutoffPeriod}|${br}`); setError(''); setNotice('')
+    try {
+      const res = await fetch('/api/payroll/special-runs', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cutoffPeriod, branch: br, holdFromStaff: !release }) })
+      const d = await res.json()
+      if (!res.ok) { setError(d.error || 'Failed to update'); return }
+      setNotice(release ? 'Released — staff can now see these payslips in My Payslips.' : 'Hidden from staff again.')
+    } catch (e) { setError(String(e)) } finally { setBusy(''); fetchRuns() }
+  }
 
   /* ══ 13th month ══ */
   const [t13, setT13] = useState<ThirteenthRow[]>([])
@@ -140,7 +212,8 @@ export default function SpecialPayRuns({ canWrite, branch, cutoffMonth, cutoffYe
   const load13 = useCallback(async () => {
     setT13Loading(true); setError('')
     try {
-      const q = new URLSearchParams({ compute: 'THIRTEENTH', year: String(year), month: String(month) }); if (branch) q.set('branch', branch)
+      const q = new URLSearchParams({ compute: 'THIRTEENTH', year: String(year), month: String(t13Month) }); if (branch) q.set('branch', branch)
+      if (t13Cutoff) q.set('cutoff', String(t13Cutoff))
       const res = await fetch(`/api/payroll/special-runs?${q}`)
       const d = await res.json()
       if (!res.ok) { setError(d.error || 'Failed to compute'); return }
@@ -159,7 +232,7 @@ export default function SpecialPayRuns({ canWrite, branch, cutoffMonth, cutoffYe
       }
       setT13Edit(ed)
     } catch (e) { setError(String(e)) } finally { setT13Loading(false) }
-  }, [year, month, branch])
+  }, [year, t13Month, t13Cutoff, branch])
 
   const set13 = (id: string, patch: Partial<{ include: boolean; extra: string; amount: string; touched: boolean; tax: string }>) =>
     setT13Edit(prev => {
@@ -168,7 +241,7 @@ export default function SpecialPayRuns({ canWrite, branch, cutoffMonth, cutoffYe
       // Changing the extra basic pay recomputes the amount, unless the amount was typed by hand.
       if (patch.extra !== undefined && !next.touched) {
         const row = t13.find(r => r.employeeId === id)
-        if (row) next.amount = String(r2(Math.max(0, (row.basis + n(patch.extra)) / 12 - row.alreadyPaid)))
+        if (row) next.amount = String(trancheDue((row.basis + n(patch.extra)) / 12, t13Cum, row.alreadyPaid))
       }
       return { ...prev, [id]: next }
     })
@@ -176,12 +249,12 @@ export default function SpecialPayRuns({ canWrite, branch, cutoffMonth, cutoffYe
   const save13 = async () => {
     const rows = t13.filter(r => t13Edit[r.employeeId]?.include && n(t13Edit[r.employeeId].amount) > 0).map(r => ({
       employeeId: r.employeeId, extraBasic: n(t13Edit[r.employeeId].extra),
-      lines: [{ kind: 'THIRTEENTH', label: `13th month pay ${year}`, amount: n(t13Edit[r.employeeId].amount) }],
+      lines: [{ kind: 'THIRTEENTH', label: `13th month pay ${year}${pick ? ` — ${trancheText(pick, pick.count)} (${MONTHS[pick.month - 1]} ${cutoffLabel(pick.cutoff)})` : ''}`, amount: n(t13Edit[r.employeeId].amount) }],
       // Blank = let the hub compute the withholding; a typed figure (0 included) overrides it.
       taxOverride: t13Edit[r.employeeId].tax === '' ? null : n(t13Edit[r.employeeId].tax),
     }))
     if (!rows.length) { setError('Tick at least one employee with an amount to pay.'); return }
-    if (await save('THIRTEENTH', rows)) load13()
+    if (await save('THIRTEENTH', rows, { month: t13Month, cutoff: t13Cutoff })) load13()
   }
 
   /* ══ Employee picker (maternity + final pay) ══ */
@@ -294,7 +367,12 @@ export default function SpecialPayRuns({ canWrite, branch, cutoffMonth, cutoffYe
   const groups = useMemo(() => {
     const m = new Map<string, Run[]>()
     for (const r of tabRuns) { const k = `${r.cutoffPeriod}|${r.branch}`; if (!m.has(k)) m.set(k, []); m.get(k)!.push(r) }
-    return [...m.entries()].map(([k, g]) => ({ key: k, cutoffPeriod: g[0].cutoffPeriod, branch: g[0].branch, month: g[0].month, year: g[0].year, runs: g.sort((a, b) => a.name.localeCompare(b.name)) }))
+    return [...m.entries()].map(([k, g]) => ({
+      key: k, cutoffPeriod: g[0].cutoffPeriod, branch: g[0].branch, month: g[0].month, year: g[0].year,
+      cutoff: parseSpecialPeriod(g[0].cutoffPeriod)?.cutoff ?? null, tranche: g[0].details.tranche ?? null,
+      held: g.some(r => r.details.holdFromStaff === true),
+      runs: g.sort((a, b) => a.name.localeCompare(b.name)),
+    }))
       .sort((a, b) => b.cutoffPeriod.localeCompare(a.cutoffPeriod) || a.branch.localeCompare(b.branch))
   }, [tabRuns])
 
@@ -326,12 +404,21 @@ export default function SpecialPayRuns({ canWrite, branch, cutoffMonth, cutoffYe
           ))}
         </div>
         <div className="flex items-end gap-2">
-          <div>
-            <label className="block text-[10px] font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Paid in (month)</label>
-            <select value={month} onChange={e => setMonth(parseInt(e.target.value))} className={inputCls} style={inputStyle}>
-              {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
-            </select>
-          </div>
+          {tab === 'THIRTEENTH' && pick ? (
+            <div>
+              <label className="block text-[10px] font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Payout</label>
+              <select value={`${pick.month}-${pick.cutoff}`} onChange={e => { setT13Pick(e.target.value); setT13([]) }} className={inputCls} style={inputStyle}>
+                {schedule.map((t, i) => <option key={`${t.month}-${t.cutoff}`} value={`${t.month}-${t.cutoff}`}>{MONTHS[t.month - 1]} · {cutoffLabel(t.cutoff)} — {trancheText({ percent: t.percent, isLast: i === schedule.length - 1 }, schedule.length)}</option>)}
+              </select>
+            </div>
+          ) : (
+            <div>
+              <label className="block text-[10px] font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Paid in (month)</label>
+              <select value={month} onChange={e => setMonth(parseInt(e.target.value))} className={inputCls} style={inputStyle}>
+                {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+              </select>
+            </div>
+          )}
           <div>
             <label className="block text-[10px] font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Year</label>
             <input type="number" value={year} onChange={e => setYear(parseInt(e.target.value) || year)} className={`${inputCls} w-20`} style={inputStyle} />
@@ -347,7 +434,73 @@ export default function SpecialPayRuns({ canWrite, branch, cutoffMonth, cutoffYe
         <div className="space-y-3">
           <Note>
             <b>13th month = basic salary earned in {year} ÷ 12.</b> Basic salary is the basic pay and paid leave on the finalized or locked cutoff payslips, less tardiness and undertime — overtime, holiday and rest-day premiums, night differential and allowances are not included. Use <b>Add&apos;l basic pay</b> for basic salary that is not in the hub yet (e.g. cutoffs still to be run before year-end). 13th-month pay is tax-exempt up to {peso(THIRTEENTH_EXEMPT_CEILING)} a year; only the excess is taxed. Every computed figure is a starting point: type over <b>Amount to pay</b> or <b>Withholding tax</b> to override it.
+            {' '}Locking a 13th-month run notifies no one: it stays hidden from the staff&apos;s <b>My Payslips</b> until you click <b>Release to staff</b>.
           </Note>
+
+          {/* Payout schedule — which cutoffs the 13th month is paid with, and how much in each */}
+          <div className="rounded-xl border p-3 space-y-2" style={{ borderColor: 'var(--light-gray)' }}>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 text-xs font-bold" style={{ color: 'var(--charcoal)' }}><CalendarClock size={14} style={{ color: 'var(--teal)' }} /> Payout schedule — {year}</div>
+              {canWrite && !schedEdit && (
+                <button onClick={startSchedEdit} className="text-[11px] font-semibold" style={{ color: 'var(--teal)' }}>{schedule.length ? 'Edit schedule' : 'Set up payout schedule'}</button>
+              )}
+            </div>
+            {!schedEdit && (schedule.length === 0
+              ? <div className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>Not set: the whole 13th month is paid in one run, in the month you pick above. Set a schedule to pay it in parts with regular cutoffs, e.g. 50% with the November 1st cutoff and 50% with the 2nd.</div>
+              : <div className="flex flex-wrap gap-1.5">
+                  {schedule.map((t, i) => (
+                    <span key={`${t.month}-${t.cutoff}`} className="px-2 py-1 rounded-lg text-[11px] font-medium" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
+                      {MONTHS[t.month - 1]} · {cutoffLabel(t.cutoff)} — {t.percent}%{i === schedule.length - 1 && schedule.length > 1 ? ' (pays the balance)' : ''}
+                    </span>
+                  ))}
+                </div>)}
+            {schedEdit && (
+              <div className="space-y-2">
+                {schedEdit.map(t => (
+                  <div key={t.key} className="flex flex-wrap items-center gap-2">
+                    <select value={t.month} onChange={e => setSchedEdit(p => p && p.map(x => x.key === t.key ? { ...x, month: e.target.value } : x))} className={inputCls} style={inputStyle}>
+                      {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+                    </select>
+                    <select value={t.cutoff} onChange={e => setSchedEdit(p => p && p.map(x => x.key === t.key ? { ...x, cutoff: e.target.value } : x))} className={inputCls} style={inputStyle}>
+                      <option value="1">1st cutoff</option><option value="2">2nd cutoff</option>
+                    </select>
+                    <div className="flex items-center gap-1">
+                      <input type="number" value={t.percent} onChange={e => setSchedEdit(p => p && p.map(x => x.key === t.key ? { ...x, percent: e.target.value } : x))} className={`${inputCls} w-20 text-right`} style={inputStyle} />
+                      <span className="text-xs">% of the 13th month</span>
+                    </div>
+                    <button onClick={() => setSchedEdit(p => p && p.filter(x => x.key !== t.key))} title="Remove this payout"><X size={13} style={{ color: 'var(--mid-gray)' }} /></button>
+                  </div>
+                ))}
+                <div className="flex flex-wrap items-center gap-3">
+                  <button onClick={() => setSchedEdit(p => p && [...p, { key: `t${Date.now()}`, month: String(month), cutoff: '2', percent: '' }])} className="flex items-center gap-1 text-[11px] font-medium" style={{ color: 'var(--teal)' }}><Plus size={12} /> Add payout</button>
+                  <span className="text-[11px] font-semibold" style={{ color: Math.abs(schedTotal - 100) > 0.001 ? '#dc2626' : '#166534' }}>Total {schedTotal}%</span>
+                  {schedProblem && schedEdit.length > 0 && <span className="text-[11px]" style={{ color: '#dc2626' }}>{schedProblem}</span>}
+                </div>
+                <div className="text-[10px]" style={{ color: 'var(--mid-gray)' }}>Each payout pays its share of the 13th month as computed when you run it; the last one pays whatever is left, so it also picks up basic salary earned after the earlier payouts.</div>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => saveSchedule(schedEdit)} disabled={busy === 'schedule' || (schedEdit.length > 0 && !!schedProblem)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white disabled:opacity-60" style={{ background: 'var(--deep-teal)' }}>
+                    {busy === 'schedule' ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} {schedEdit.length ? 'Save schedule' : 'Remove schedule'}
+                  </button>
+                  <button onClick={() => setSchedEdit(null)} className="px-3 py-1.5 rounded-lg text-xs font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Cancel</button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* A whole-month draft saved before the schedule counts as already paid and would zero the scheduled payouts. */}
+          {schedule.length > 0 && groups.filter(g => !g.cutoff && g.runs.some(r => r.status !== 'LOCKED')).map(g => (
+            <div key={`legacy-${g.key}`} className="flex items-start gap-2 p-3 rounded-lg text-xs" style={{ background: '#fffbeb', color: '#92400e' }}>
+              <AlertCircle size={14} className="mt-0.5 shrink-0" />
+              <span>The <b>{MONTHS[g.month - 1]} {g.year} · {BRANCH_LABEL[g.branch] || g.branch}</b> 13th-month draft was saved before the payout schedule, as one full payment. It counts as already paid, so the scheduled payouts would come out as ₱0 — use <b>Delete drafts</b> on it below, then compute again.</span>
+            </div>
+          ))}
+          {pick && (
+            <div className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+              {pick.isLast && pick.count > 1
+                ? <><b>{MONTHS[pick.month - 1]} {cutoffLabel(pick.cutoff)}</b> is the last payout: it pays the balance — the full 13th month less what is already paid.</>
+                : <><b>{MONTHS[pick.month - 1]} {cutoffLabel(pick.cutoff)}</b> pays {pick.percent}% of the 13th month{pick.index > 0 ? ` (${pick.cumPercent}% in total once it is out, less what is already paid)` : ''}.</>}
+            </div>
+          )}
           <div className="flex items-center gap-2">
             <button onClick={load13} disabled={t13Loading} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white disabled:opacity-60" style={{ background: 'var(--teal)' }}>
               {t13Loading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} {t13.length ? 'Recompute' : 'Compute 13th month'}
@@ -365,7 +518,7 @@ export default function SpecialPayRuns({ canWrite, branch, cutoffMonth, cutoffYe
             <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--light-gray)' }}>
               <table className="w-full text-xs">
                 <thead><tr style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
-                  {['', 'Employee', 'Branch', 'Cutoffs', 'Basic salary earned', "Add'l basic pay", '13th month accrued', 'Already paid', 'Amount to pay', 'Taxable', 'Withholding tax', 'Status'].map(h => <th key={h} className="px-3 py-2 text-left font-semibold whitespace-nowrap">{h}</th>)}
+                  {['', 'Employee', 'Branch', 'Cutoffs', 'Basic salary earned', "Add'l basic pay", '13th month accrued', 'Already paid', pick ? `This payout (${trancheText(pick, pick.count)})` : 'Amount to pay', 'Taxable', 'Withholding tax', 'Status'].map(h => <th key={h} className="px-3 py-2 text-left font-semibold whitespace-nowrap">{h}</th>)}
                 </tr></thead>
                 <tbody>
                   {t13.map(r => {
@@ -546,9 +699,27 @@ export default function SpecialPayRuns({ canWrite, branch, cutoffMonth, cutoffYe
           return (
             <div key={g.key} className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
               <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2" style={{ background: 'var(--off-white)' }}>
-                <div className="text-xs font-semibold">{MONTHS[g.month - 1]} {g.year} · {BRANCH_LABEL[g.branch] || g.branch} <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>· {g.runs.length} payslip{g.runs.length === 1 ? '' : 's'} · net {peso(g.runs.reduce((s, r) => s + r.net, 0))}</span></div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="text-xs font-semibold">
+                    {MONTHS[g.month - 1]} {g.year}{g.cutoff ? ` · ${cutoffLabel(g.cutoff)}` : ''}{g.tranche ? ` (${g.tranche.isLast && g.tranche.cumPercent === 100 && g.tranche.percent < 100 ? 'balance' : `${g.tranche.percent}%`})` : ''} · {BRANCH_LABEL[g.branch] || g.branch}
+                    <span className="font-normal" style={{ color: 'var(--mid-gray)' }}> · {g.runs.length} payslip{g.runs.length === 1 ? '' : 's'} · net {peso(g.runs.reduce((s, r) => s + r.net, 0))}</span>
+                  </div>
+                  {tab === 'THIRTEENTH' && (g.held
+                    ? <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#f3f4f6', color: '#4b5563' }} title="Not shown in the staff's My Payslips"><EyeOff size={11} /> Hidden from staff</span>
+                    : g.runs.some(r => r.status === 'LOCKED') && <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#dcfce7', color: '#166534' }}><Eye size={11} /> In staff&apos;s My Payslips</span>)}
+                </div>
                 {canWrite && (
                   <div className="flex items-center gap-2">
+                    {tab === 'THIRTEENTH' && g.runs.some(r => r.status === 'LOCKED') && (
+                      <button onClick={() => setStaffVisibility(g.cutoffPeriod, g.branch, g.runs.length, g.held)} disabled={!!busy} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border disabled:opacity-60" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+                        {busy === `vis:${g.key}` ? <Loader2 size={13} className="animate-spin" /> : g.held ? <Eye size={13} /> : <EyeOff size={13} />} {g.held ? 'Release to staff' : 'Hide from staff'}
+                      </button>
+                    )}
+                    {open.length > 0 && (
+                      <button onClick={() => removeDrafts(g.key, `${MONTHS[g.month - 1]} ${g.year}${g.cutoff ? ` ${cutoffLabel(g.cutoff)}` : ''} · ${BRANCH_LABEL[g.branch] || g.branch}`, open)} disabled={!!busy} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border disabled:opacity-60" style={{ borderColor: 'var(--light-gray)', color: '#dc2626' }}>
+                        {busy === `deldrafts:${g.key}` ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />} Delete drafts
+                      </button>
+                    )}
                     {!allLocked && (
                       <button onClick={() => lockGroup(g.cutoffPeriod, g.branch, open)} disabled={!!busy} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white disabled:opacity-60" style={{ background: '#dc2626' }}>
                         {busy === `lock:${g.key}` ? <Loader2 size={13} className="animate-spin" /> : <Lock size={13} />} Lock &amp; Post
