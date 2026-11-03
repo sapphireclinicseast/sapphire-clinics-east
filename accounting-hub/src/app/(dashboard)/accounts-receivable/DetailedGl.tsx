@@ -234,6 +234,27 @@ function rowTone(r: Row): RowTone {
   if (soaSubmitted(r)) return 'soa'
   return null
 }
+// Stage colours run red → green: each step is one closer to the cheque.
+const STAGE_STYLE: Record<string, { bg: string; fg: string; bar: string }> = {
+  'STAR OFFICE': { bg: '#fee2e2', fg: '#b91c1c', bar: '#ef4444' },
+  BILLING: { bg: '#ffedd5', fg: '#c2410c', bar: '#f97316' },
+  ACCOUNTING: { bg: '#ecfccb', fg: '#4d7c0f', bar: '#84cc16' },
+  CASHIER: { bg: '#dcfce7', fg: '#15803d', bar: '#16a34a' },
+}
+const stageIndex = (s?: string | null) => (GL_STAGES as readonly string[]).indexOf(s || '')
+
+/** Four segments filled up to the letter's stage, each in its own step colour. */
+function StageSteps({ stage }: { stage?: string | null }) {
+  const at = stageIndex(stage)
+  return (
+    <span className="inline-flex items-center gap-0.5 ml-1.5 align-middle" title={at < 0 ? 'Stage not set' : `Step ${at + 1} of ${GL_STAGES.length}: ${stage}`}>
+      {GL_STAGES.map((st, i) => (
+        <span key={st} className="inline-block h-1.5 w-3 rounded-full" style={{ background: i <= at ? STAGE_STYLE[st].bar : 'var(--light-gray)' }} />
+      ))}
+    </span>
+  )
+}
+
 const TONE_BG: Record<'nowallet' | 'paid' | 'soa', string> = {
   nowallet: '#fef2f2',  // red-50
   paid: '#f0fdf4',      // green-50
@@ -541,6 +562,21 @@ export default function DetailedGl({
     return out
   }, [allRows, search, filters, ticked, branchOptions, noSoaOnly])
 
+  const baseRowsNoStage = useMemo(() => {
+    if (!(filters.stage || '').trim()) return baseRows
+    const q = search.trim().toLowerCase()
+    let out = allRows
+    if (ticked.length !== branchOptions.length) out = out.filter(r => ticked.includes(r.branch || ''))
+    if (q) out = out.filter(r => COLS.some(c => cellText(r, c.key).toLowerCase().includes(q)))
+    if (noSoaOnly) out = out.filter(r => !soaSubmitted(r))
+    for (const [k, v] of Object.entries(filters)) {
+      const needle = (v || '').trim().toLowerCase()
+      if (!needle || k === 'stage') continue
+      out = out.filter(r => cellText(r, k as ColKey).toLowerCase().includes(needle))
+    }
+    return out
+  }, [baseRows, allRows, search, filters, ticked, branchOptions, noSoaOnly])
+
   const rows = useMemo(() => {
     let out = baseRows
     if (toneTicks.length) out = out.filter(r => { const t = rowTone(r); return t !== null && toneTicks.includes(t) })
@@ -631,14 +667,22 @@ export default function DetailedGl({
                 className={`px-2 py-1.5 whitespace-nowrap ${c.numeric ? 'text-right tabular-nums' : ''}`}
                 style={{ color: cellText(r, c.key) === '—' ? 'var(--light-gray)' : 'var(--charcoal)' }}>
                 {c.key === 'stage'
-                  ? (canWrite && (r.caseId || r.wallet)
-                      ? <select value={r.glStage || ''} onChange={e => saveStage(r, e.target.value)}
-                          className="px-1.5 py-0.5 rounded border text-[11px] font-semibold outline-none bg-white"
-                          style={{ borderColor: r.glStage ? 'var(--teal)' : 'var(--light-gray)', color: r.glStage ? 'var(--deep-teal)' : 'var(--mid-gray)' }}>
-                          <option value="">— set stage —</option>
-                          {GL_STAGES.map(s => <option key={s} value={s}>{s}</option>)}
-                        </select>
-                      : cellText(r, c.key))
+                  ? (() => {
+                      const st = r.glStage ? STAGE_STYLE[r.glStage] : null
+                      return (
+                        <span className="inline-flex items-center">
+                          {canWrite && (r.caseId || r.wallet)
+                            ? <select value={r.glStage || ''} onChange={e => saveStage(r, e.target.value)}
+                                className="px-1.5 py-0.5 rounded border text-[11px] font-semibold outline-none"
+                                style={st ? { background: st.bg, color: st.fg, borderColor: st.bar } : { background: 'white', color: 'var(--mid-gray)', borderColor: 'var(--light-gray)' }}>
+                                <option value="">— set stage —</option>
+                                {GL_STAGES.map(s => <option key={s} value={s}>{s}</option>)}
+                              </select>
+                            : <span className="px-1.5 py-0.5 rounded text-[11px] font-semibold" style={st ? { background: st.bg, color: st.fg } : { color: 'var(--light-gray)' }}>{r.glStage || '—'}</span>}
+                          <StageSteps stage={r.glStage} />
+                        </span>
+                      )
+                    })()
                   : c.key === 'drive'
                   ? (r.files.length
                       ? r.files.map((u, i) => (
@@ -859,6 +903,37 @@ export default function DetailedGl({
         </button>
       </div>
 
+      {(() => {
+        // Counted over every filter except the stage filter itself, so clicking a stage keeps the others visible.
+        const base = baseRowsNoStage
+        const steps = [...GL_STAGES.map(st => ({ key: st as string, label: st as string, rows: base.filter(r => r.glStage === st) })),
+          { key: '—', label: 'Not set', rows: base.filter(r => !r.glStage) }]
+        return (
+          <div className="flex items-stretch gap-1 flex-wrap mb-2">
+            {steps.map((x, i) => {
+              const st = STAGE_STYLE[x.key]
+              const on = (filters.stage || '') === x.key
+              const amt = x.rows.reduce((t, r) => t + num(r.soaAmount || r.approved), 0)
+              return (
+                <div key={x.key} className="flex items-center gap-1">
+                  <button onClick={() => setFilters(f => ({ ...f, stage: on ? '' : x.key }))}
+                    className="px-3 py-1.5 rounded-xl border text-left"
+                    style={{ background: st ? st.bg : 'white', borderColor: on ? (st ? st.bar : 'var(--charcoal)') : 'var(--light-gray)', borderWidth: on ? 2 : 1 }}
+                    title={on ? 'Show every stage' : `Show only ${x.label}`}>
+                    <span className="block text-[10px] font-bold uppercase tracking-wide" style={{ color: st ? st.fg : 'var(--mid-gray)' }}>
+                      {st ? `${i + 1}. ` : ''}{x.label}
+                    </span>
+                    <span className="block text-sm font-bold" style={{ color: 'var(--charcoal)' }}>
+                      {x.rows.length} <span className="text-[11px] font-normal" style={{ color: 'var(--mid-gray)' }}>· {formatCurrency(amt)}</span>
+                    </span>
+                  </button>
+                  {i < GL_STAGES.length - 1 && <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>→</span>}
+                </div>
+              )
+            })}
+          </div>
+        )
+      })()}
       {stageError && <p className="text-xs text-red-600 mb-1">{stageError}</p>}
       <ExpandablePanel title="Detailed GL" subtitle="Every Guarantee Letter, in the OPGL summary layout" maxHeight={520}>
         {table}
