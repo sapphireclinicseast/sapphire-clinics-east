@@ -37,6 +37,34 @@ const TUITION_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS']
 const DISCOUNT_ROLES = ['ADMIN', 'ACCOUNTANT']
 const fmtDate = (d: string) => new Date(`${d}T00:00:00`).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
 const dueText = (d: Due) => (d.daysUntil < 0 ? `${-d.daysUntil} day${d.daysUntil === -1 ? '' : 's'} overdue` : d.daysUntil === 0 ? 'due today' : `due in ${d.daysUntil} day${d.daysUntil === 1 ? '' : 's'}`)
+// "August 2026, September 2026, October 2026" → "Aug, Sep, Oct 2026"; other plans keep their own labels.
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+function periodsText(dues: Due[]) {
+  const byYear = new Map<string, string[]>()
+  const other: string[] = []
+  for (const d of dues) {
+    const m = d.period.match(/^(\w+) (\d{4})$/)
+    if (m && MONTHS.includes(m[1])) byYear.set(m[2], [...(byYear.get(m[2]) || []), m[1].slice(0, 3)])
+    else other.push(d.kind === 'PROMISSORY' ? `${d.period} (promissory ${d.seq} of ${d.count})` : d.period)
+  }
+  return [...[...byYear].map(([y, ms]) => `${[...new Set(ms)].join(', ')} ${y}`), ...other].join(' · ')
+}
+// Most urgent first: the oldest overdue installment, then the nearest due date.
+const urgency = (s: Student) => {
+  const now = s.dues.filter(d => d.state !== 'UPCOMING')
+  if (!now.length) return s.dues.length ? 100000 + Math.min(...s.dues.map(d => d.daysUntil)) : 200000
+  return Math.min(...now.map(d => d.daysUntil))
+}
+const GROUPS = [
+  { key: 'OVERDUE', label: 'Overdue — collect now', color: '#b91c1c', bg: '#fef2f2' },
+  { key: 'DUE_SOON', label: 'Due within 7 days', color: '#c2410c', bg: '#fff7ed' },
+  { key: 'UPCOMING', label: 'Coming up', color: 'var(--charcoal)', bg: 'transparent' },
+  { key: 'NEW', label: 'New — no payment yet', color: '#075985', bg: '#f0f9ff' },
+  { key: 'NONE', label: 'Nothing due', color: 'var(--mid-gray)', bg: 'transparent' },
+] as const
+const groupOf = (s: Student): typeof GROUPS[number]['key'] =>
+  s.dues.some(d => d.state === 'OVERDUE') ? 'OVERDUE' : s.dues.some(d => d.state === 'DUE_SOON') ? 'DUE_SOON'
+    : s.dues.length ? 'UPCOMING' : s.isNew ? 'NEW' : 'NONE'
 const STATE_STYLE = {
   OVERDUE: { background: '#fee2e2', color: '#b91c1c' },
   DUE_SOON: { background: '#ffedd5', color: '#c2410c' },
@@ -88,19 +116,28 @@ export default function TuitionDesk({ branch, onCollect }: { branch: string; onC
     if (!q) return [...owing, ...newcomers.filter(s => !owing.includes(s))]
     return students.filter(s => `${s.name} ${s.email}`.toLowerCase().includes(q))
   }, [students, owing, newcomers, search])
-  const student = students.find(s => s.id === picked) || null
 
   if (!enabled) return null
-  const totalDue = owing.reduce((t, s) => t + s.dues.filter(d => d.state !== 'UPCOMING').reduce((u, d) => u + d.remaining, 0), 0)
+  const nowDue = (s: Student, state: Due['state']) => s.dues.filter(d => d.state === state).reduce((t, d) => t + d.remaining, 0)
+  const overdueStudents = owing.filter(s => s.dues.some(d => d.state === 'OVERDUE'))
+  const soonStudents = owing.filter(s => !s.dues.some(d => d.state === 'OVERDUE') && s.dues.some(d => d.state === 'DUE_SOON'))
+  const overdueTotal = owing.reduce((t, s) => t + nowDue(s, 'OVERDUE'), 0)
+  const soonTotal = owing.reduce((t, s) => t + nowDue(s, 'DUE_SOON'), 0)
+  const sorted = [...shown].sort((a, b) => urgency(a) - urgency(b) || a.name.localeCompare(b.name))
 
   return (
     <div className="rounded-2xl border bg-white" style={{ borderColor: 'var(--light-gray)' }}>
       <button onClick={() => setOpen(!open)} className="w-full px-5 py-3 flex items-center justify-between">
         <span className="flex items-center gap-2 text-sm font-semibold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>
           <GraduationCap size={16} style={{ color: 'var(--teal)' }} /> Tuition — Class Hub students
-          {owing.length > 0 && (
+          {overdueStudents.length > 0 && (
+            <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: '#fee2e2', color: '#b91c1c' }}>
+              {overdueStudents.length} overdue · {formatCurrency(overdueTotal)}
+            </span>
+          )}
+          {soonTotal > 0.005 && (
             <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: '#ffedd5', color: '#c2410c' }}>
-              {owing.length} with dues · {formatCurrency(totalDue)}
+              {soonStudents.length > 0 ? `${soonStudents.length} ` : ''}due this week · {formatCurrency(soonTotal)}
             </span>
           )}
           {newcomers.length > 0 && (
@@ -127,24 +164,80 @@ export default function TuitionDesk({ branch, onCollect }: { branch: string; onC
           {loading && students.length === 0 ? (
             <p className="text-xs py-3" style={{ color: 'var(--mid-gray)' }}><Loader2 size={13} className="inline animate-spin" /> Loading from Class Hub…</p>
           ) : (
-            <div className="flex flex-wrap gap-2 mb-3">
-              {shown.length === 0 && <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>{search ? 'No student matches.' : 'No tuition due within 7 days and no new students. Search a student to collect anyway.'}</span>}
-              {shown.slice(0, 24).map(s => {
-                const overdue = s.dues.some(d => d.state === 'OVERDUE')
-                return (
-                  <button key={s.id} onClick={() => setPicked(picked === s.id ? '' : s.id)} className="px-3 py-1.5 rounded-xl border text-xs text-left"
-                    style={picked === s.id ? { background: 'var(--teal)', color: 'white', borderColor: 'var(--teal)' } : { borderColor: overdue ? '#fca5a5' : 'var(--light-gray)', color: 'var(--charcoal)' }}>
-                    <span className="font-semibold">{s.name}</span>
-                    {s.dues.length > 0 && <span className="ml-1.5" style={picked === s.id ? {} : { color: overdue ? '#b91c1c' : '#c2410c' }}>{formatCurrency(s.dues.reduce((t, d) => t + d.remaining, 0))}</span>}
-                    {s.isNew && <span className="ml-1.5 text-[10px] font-bold uppercase" style={picked === s.id ? {} : { color: '#075985' }}>New</span>}
-                  </button>
-                )
-              })}
+            <div className="rounded-xl border overflow-x-auto" style={{ borderColor: 'var(--light-gray)' }}>
+              {sorted.length === 0 && <p className="text-xs px-3 py-3" style={{ color: 'var(--mid-gray)' }}>{search ? 'No student matches.' : 'No tuition due within 7 days and no new students. Search a student to collect anyway.'}</p>}
+              {sorted.length > 0 && (
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr style={{ background: 'var(--off-white)' }}>
+                      {['Student', 'For', 'Due', 'Charge now', 'Later', ''].map((h, i) => (
+                        <th key={i} className={`px-3 py-2 font-semibold ${i >= 3 && i <= 4 ? 'text-right' : 'text-left'}`} style={{ color: 'var(--mid-gray)' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {GROUPS.map(g => {
+                      const rows = sorted.filter(s => groupOf(s) === g.key)
+                      if (!rows.length) return null
+                      const sum = rows.reduce((t, s) => t + s.dues.filter(d => (g.key === 'UPCOMING' ? true : d.state !== 'UPCOMING')).reduce((u, d) => u + d.remaining, 0), 0)
+                      return [
+                        <tr key={`g-${g.key}`}>
+                          <td colSpan={6} className="px-3 pt-3 pb-1 text-[11px] font-bold uppercase tracking-wide" style={{ color: g.color }}>
+                            {g.label} · {rows.length}{sum > 0.005 ? ` · ${formatCurrency(sum)}` : ''}
+                          </td>
+                        </tr>,
+                        ...rows.flatMap(s => {
+                          const now = s.dues.filter(d => d.state !== 'UPCOMING')
+                          const later = s.dues.filter(d => d.state === 'UPCOMING')
+                          const lead = now[0] ? now.reduce((a, b) => (a.daysUntil < b.daysUntil ? a : b)) : later[0] ? later.reduce((a, b) => (a.daysUntil < b.daysUntil ? a : b)) : null
+                          const isOpen = picked === s.id
+                          return [
+                            <tr key={s.id} className="border-t cursor-pointer hover:bg-gray-50" style={{ borderColor: 'var(--light-gray)', background: isOpen ? '#ecfdf5' : g.bg }}
+                              onClick={() => setPicked(isOpen ? '' : s.id)}>
+                              <td className="px-3 py-2 font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>
+                                {s.name}
+                                <span className="block text-[10px] font-normal" style={{ color: 'var(--mid-gray)' }}>
+                                  {s.plan ? `${s.plan.toLowerCase()} plan` : 'no plan yet'}{s.level ? ` · ${s.level}` : ''}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>
+                                {now.length ? periodsText(now) : later.length ? periodsText(later) : s.isNew ? 'First payment' : '—'}
+                                {now.length > 0 && later.length > 0 && <span className="block text-[10px]" style={{ color: 'var(--mid-gray)' }}>then {periodsText(later)}</span>}
+                              </td>
+                              <td className="px-3 py-2 whitespace-nowrap">
+                                {lead ? (
+                                  <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={STATE_STYLE[lead.state]}>{fmtDate(lead.dueDate)} · {dueText(lead)}</span>
+                                ) : <span style={{ color: 'var(--mid-gray)' }}>—</span>}
+                              </td>
+                              <td className="px-3 py-2 text-right font-mono font-semibold" style={{ color: now.length ? (g.key === 'OVERDUE' ? '#b91c1c' : '#c2410c') : 'var(--mid-gray)' }}>
+                                {now.length ? formatCurrency(now.reduce((t, d) => t + d.remaining, 0)) : '—'}
+                              </td>
+                              <td className="px-3 py-2 text-right font-mono" style={{ color: 'var(--mid-gray)' }}>
+                                {later.length ? formatCurrency(later.reduce((t, d) => t + d.remaining, 0)) : '—'}
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                <button className="px-3 py-1 rounded-lg text-xs font-semibold" onClick={e => { e.stopPropagation(); setPicked(isOpen ? '' : s.id) }}
+                                  style={isOpen ? { background: 'white', border: '1px solid var(--teal)', color: 'var(--teal)' } : { background: 'var(--teal)', color: 'white' }}>
+                                  {isOpen ? 'Close' : 'Collect'}
+                                </button>
+                              </td>
+                            </tr>,
+                            isOpen ? (
+                              <tr key={`${s.id}-card`}>
+                                <td colSpan={6} className="px-3 pb-3">
+                                  <StudentCard key={`${s.id}:${s.dues.map(d => `${d.key}=${d.remaining}`).join()}`} student={s} onCollect={onCollect}
+                                    schoolYear={schoolYear} canDiscount={canDiscount} onChanged={load} />
+                                </td>
+                              </tr>
+                            ) : null,
+                          ]
+                        }),
+                      ]
+                    })}
+                  </tbody>
+                </table>
+              )}
             </div>
-          )}
-          {student && (
-            <StudentCard key={`${student.id}:${student.dues.map(d => `${d.key}=${d.remaining}`).join()}`} student={student} onCollect={onCollect}
-              schoolYear={schoolYear} canDiscount={canDiscount} onChanged={load} />
           )}
         </div>
       )}
