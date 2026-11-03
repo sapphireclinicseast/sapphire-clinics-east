@@ -2,7 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSession } from 'next-auth/react'
-import { Download, Loader2, Maximize2, Minimize2, Pencil, Plus, Search, Trash2, Truck, Upload, X } from 'lucide-react'
+import { Download, Loader2, Maximize2, Merge, Minimize2, Pencil, Plus, Search, Trash2, Truck, Upload, X } from 'lucide-react'
 import { userBranchScope } from '@/lib/branch-scope'
 import { useFocusTarget } from '@/lib/use-focus-target'
 import { downloadPdf, downloadXlsx, type ExportFormat } from '@/lib/export'
@@ -102,6 +102,13 @@ function SuppliersInner() {
   const [historyFor, setHistoryFor] = useState<DirectoryRow | null>(null)
   const [history, setHistory] = useState<History | null>(null)
   const [importing, setImporting] = useState(false)
+  // Merge: tick the rows that are one supplier written several ways, keep one name.
+  const [picked, setPicked] = useState<Set<string>>(new Set())
+  const [mergeOpen, setMergeOpen] = useState(false)
+  const [keepKey, setKeepKey] = useState('')
+  const [mergeName, setMergeName] = useState('')
+  const [mergeBusy, setMergeBusy] = useState(false)
+  const [mergeError, setMergeError] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
 
   const { focus, done } = useFocusTarget()
@@ -177,6 +184,28 @@ function SuppliersInner() {
   const reactivate = async (r: DirectoryRow) => {
     const res = await fetch('/api/suppliers/directory', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: r.key, name: r.name, isActive: true }) })
     if (res.ok) await load()
+  }
+
+  const togglePick = (key: string) => setPicked(p => { const n = new Set(p); if (n.has(key)) n.delete(key); else n.add(key); return n })
+  const pickedRows = rows.filter(r => picked.has(r.key))
+  const openMerge = () => {
+    // Suggest keeping the one with the most behind it (entries, then a saved record).
+    const best = [...pickedRows].sort((a, b) => (b.entryCount - a.entryCount) || (Number(!!b.masterId) - Number(!!a.masterId)) || (b.name.length - a.name.length))[0]
+    setKeepKey(best?.key || ''); setMergeName(''); setMergeError(''); setMergeOpen(true)
+  }
+  const doMerge = async () => {
+    setMergeBusy(true); setMergeError('')
+    try {
+      const res = await fetch('/api/suppliers/directory/merge', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keys: pickedRows.map(r => r.key), keepKey, name: mergeName.trim() || undefined }),
+      })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) { setMergeError(d.error || 'Merge failed'); return }
+      setMergeOpen(false); setPicked(new Set())
+      await load()
+      alert(`Merged into ${d.name}: ${d.entries} expense entr${d.entries === 1 ? 'y' : 'ies'} renamed, ${d.expenseFolded} duplicate Expenses-list row(s) folded, ${d.mastersFolded} supplier record(s) folded, ${d.assetsMoved} asset(s) and ${d.itemsMoved} inventory item(s) moved.`)
+    } catch { setMergeError('Merge failed') } finally { setMergeBusy(false) }
   }
 
   const openHistory = async (r: DirectoryRow) => {
@@ -288,6 +317,15 @@ function SuppliersInner() {
             </button>
           )}
           <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) importFile(f); e.target.value = '' }} />
+          {canWrite && picked.size > 0 && (
+            <>
+              <button onClick={openMerge} disabled={picked.size < 2} title={picked.size < 2 ? 'Tick at least two suppliers' : 'One supplier written several ways — keep one name'}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: '#7c3aed' }}>
+                <Merge size={15} /> Merge {picked.size} into one
+              </button>
+              <button onClick={() => setPicked(new Set())} className="px-2 py-2 text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Clear ticks</button>
+            </>
+          )}
           {canWrite && (
             <button onClick={() => openEdit('new')} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}><Plus size={15} /> Add</button>
           )}
@@ -305,6 +343,11 @@ function SuppliersInner() {
                   <th key={c.key} className={`border-r border-b px-3 py-2 text-left font-semibold align-top ${i === 0 ? 'sticky left-0 z-30' : ''}`}
                     style={{ color: 'var(--charcoal)', borderColor: 'var(--light-gray)', background: 'var(--off-white)', minWidth: c.w, maxWidth: c.w + 80 }}>
                     <button onClick={() => toggleSort(c.key)} className="flex items-center gap-1 whitespace-nowrap">
+                      {i === 0 && canWrite && (
+                        <input type="checkbox" title="Tick all shown" className="mr-1" onClick={e => e.stopPropagation()}
+                          checked={shown.length > 0 && shown.every(r => picked.has(r.key))}
+                          onChange={e => setPicked(p => { const n = new Set(p); for (const r of shown) { if (e.target.checked) n.add(r.key); else n.delete(r.key) } return n })} />
+                      )}
                       {c.label}
                       <span style={{ color: sortKey === c.key ? 'var(--teal)' : 'var(--light-gray)' }}>{sortKey === c.key ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}</span>
                     </button>
@@ -322,6 +365,7 @@ function SuppliersInner() {
                 return (
                   <tr key={r.key} onClick={() => openHistory(r)} className="cursor-pointer hover:bg-gray-50" style={r.isActive ? undefined : { opacity: 0.5 }} title="See what we bought from this supplier">
                     <td className={`${td} sticky left-0 z-10 bg-white`} style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)', fontWeight: 600 }}>
+                      {canWrite && <input type="checkbox" className="mr-2 align-middle" checked={picked.has(r.key)} onClick={e => e.stopPropagation()} onChange={() => togglePick(r.key)} title="Tick to merge" />}
                       {r.name}{!r.isActive && <span className="ml-1 text-[10px] font-normal" style={{ color: 'var(--mid-gray)' }}>(inactive)</span>}
                     </td>
                     <td className={`${td} font-mono whitespace-nowrap`} style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>{r.tin || '—'}</td>
@@ -367,6 +411,42 @@ function SuppliersInner() {
           </table>
         )}
       </div>
+
+      {mergeOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={() => !mergeBusy && setMergeOpen(false)}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-lg font-bold flex items-center gap-2" style={{ color: 'var(--charcoal)' }}><Merge size={18} style={{ color: '#7c3aed' }} /> Merge {pickedRows.length} suppliers into one</h2>
+              <button onClick={() => setMergeOpen(false)} disabled={mergeBusy}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button>
+            </div>
+            <p className="text-xs mb-3" style={{ color: 'var(--mid-gray)' }}>
+              Pick the name to keep. Expense entries, each branch&apos;s Expenses supplier list, assets and inventory items under the other names all move to it,
+              and contact details, TIN and address the kept one lacks are copied over.
+            </p>
+            <div className="space-y-1.5">
+              {pickedRows.map(r => (
+                <label key={r.key} className="flex items-start gap-2 rounded-xl border px-3 py-2 cursor-pointer" style={{ borderColor: keepKey === r.key ? '#7c3aed' : 'var(--light-gray)', background: keepKey === r.key ? '#f5f3ff' : '#fff' }}>
+                  <input type="radio" name="keep" className="mt-1" checked={keepKey === r.key} onChange={() => setKeepKey(r.key)} />
+                  <span className="text-sm">
+                    <span className="font-semibold" style={{ color: 'var(--charcoal)' }}>{r.name}</span>
+                    <span className="block text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+                      {[r.branches.join(', ') || 'no branch yet', `${r.entryCount} expense entr${r.entryCount === 1 ? 'y' : 'ies'}`, r.provided.assetCount ? `${r.provided.assetCount} asset(s)` : '', r.tin ? `TIN ${r.tin}` : '', r.contactNumber || r.email || ''].filter(Boolean).join(' · ')}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </div>
+            <label className="block text-xs font-semibold mt-3 mb-1" style={{ color: 'var(--mid-gray)' }}>Or correct the kept name (optional)</label>
+            <input value={mergeName} onChange={e => setMergeName(e.target.value.toUpperCase())} placeholder={pickedRows.find(r => r.key === keepKey)?.name || ''}
+              className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+            <p className="text-[11px] mt-2" style={{ color: '#b45309' }}>Merging can&apos;t be undone from this page. The registered name on the merged expense entries changes to the kept name.</p>
+            {mergeError && <p className="text-sm text-red-600 mt-2">{mergeError}</p>}
+            <button onClick={doMerge} disabled={mergeBusy || !keepKey} className="mt-4 w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2" style={{ background: '#7c3aed' }}>
+              {mergeBusy && <Loader2 size={14} className="animate-spin" />}Merge into {mergeName.trim() || pickedRows.find(r => r.key === keepKey)?.name || '…'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {editing && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={() => setEditing(null)}>
