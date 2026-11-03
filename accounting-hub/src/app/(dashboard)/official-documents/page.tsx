@@ -60,6 +60,10 @@ export default function OfficialDocumentsPage() {
   const [docs, setDocs] = useState<OfficialDocument[] | null>(null)
   const [tab, setTab] = useState('ALL')
   const [search, setSearch] = useState('')
+  // Branch filter (Hannah, 2026-11-03). Company-wide papers (SEC, BIR COR…) cover
+  // every branch, so they stay listed under a branch unless unticked.
+  const [branchFilter, setBranchFilter] = useState('ALL')
+  const [withCompanyWide, setWithCompanyWide] = useState(true)
   const [form, setForm] = useState<Form | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -72,16 +76,24 @@ export default function OfficialDocumentsPage() {
   }, [])
   useEffect(() => { load() }, [load])
 
-  const counts = useMemo(() => {
-    const m: Record<string, number> = { ALL: (docs || []).length }
-    for (const d of docs || []) m[d.category] = (m[d.category] || 0) + 1
+  const inBranch = useCallback((d: OfficialDocument) => branchFilter === 'ALL' || (d.branch || '') === branchFilter
+    || (withCompanyWide && branchFilter !== '' && !d.branch), [branchFilter, withCompanyWide])
+  const branchCounts = useMemo(() => {
+    const m: Record<string, number> = {}
+    for (const d of docs || []) m[d.branch || ''] = (m[d.branch || ''] || 0) + 1
     return m
   }, [docs])
+  const counts = useMemo(() => {
+    const list = (docs || []).filter(inBranch)
+    const m: Record<string, number> = { ALL: list.length }
+    for (const d of list) m[d.category] = (m[d.category] || 0) + 1
+    return m
+  }, [docs, inBranch])
   const shown = useMemo(() => {
     const q = search.trim().toLowerCase()
-    return (docs || []).filter(d => (tab === 'ALL' || d.category === tab)
+    return (docs || []).filter(d => inBranch(d) && (tab === 'ALL' || d.category === tab)
       && (!q || `${d.title} ${d.referenceNo || ''} ${d.notes || ''} ${BRANCH_LABEL[d.branch || ''] || ''}`.toLowerCase().includes(q)))
-  }, [docs, tab, search])
+  }, [docs, tab, search, inBranch])
 
   const save = async () => {
     if (!form || !form.title.trim()) { setError('Title is required'); return }
@@ -191,6 +203,15 @@ export default function OfficialDocumentsPage() {
         <div className="p-3 border-b flex items-center gap-2" style={{ borderColor: 'var(--light-gray)' }}>
           <Search size={15} style={{ color: 'var(--mid-gray)' }} />
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search title, reference no., notes, branch…" className="flex-1 text-sm outline-none" />
+          <select value={branchFilter} onChange={e => setBranchFilter(e.target.value)} className="px-3 py-1.5 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }} title="Filter by branch">
+            <option value="ALL">All branches ({(docs || []).length})</option>
+            {BRANCHES.map(b => <option key={b.key} value={b.key}>{b.label} ({branchCounts[b.key] || 0})</option>)}
+          </select>
+          {branchFilter !== 'ALL' && branchFilter !== '' && (
+            <label className="flex items-center gap-1.5 text-xs whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>
+              <input type="checkbox" checked={withCompanyWide} onChange={e => setWithCompanyWide(e.target.checked)} /> Include company-wide
+            </label>
+          )}
         </div>
         {docs === null ? (
           <p className="p-6 text-xs flex items-center gap-2" style={{ color: 'var(--mid-gray)' }}><Loader2 size={13} className="animate-spin" /> Loading…</p>
