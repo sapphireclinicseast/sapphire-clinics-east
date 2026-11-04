@@ -1640,6 +1640,8 @@ export default function AccountsReceivablePage() {
           .reduce((s, p) => s + toNum(p.amount), 0)
         const pctConsumed = totalApproved > 0 ? Math.min(100, (totalConsumed / totalApproved) * 100) : 0
         const pctPaid = totalApproved > 0 ? Math.min(100, (totalPaid / totalApproved) * 100) : 0
+        // How much of what was actually used has been collected. Not capped: an agency can pay ahead of consumption.
+        const pctPaidOfConsumed = totalConsumed > 0 ? (totalPaid / totalConsumed) * 100 : 0
         const writtenOffWallets = branchWallets.filter(w => toNum(w.writtenOffTotal) > 0)
         const totalWrittenOff = writtenOffWallets.reduce((s, w) => s + toNum(w.writtenOffTotal), 0)
 
@@ -1770,7 +1772,7 @@ export default function AccountsReceivablePage() {
             </div>
 
             {/* % cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6 gap-4">
               {/* Active GL wallets count — isActive=true and remaining balance > 0 */}
               <div className="rounded-xl p-4 border" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
                 <p className="text-xs uppercase tracking-wide font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Active GL Wallets</p>
@@ -1806,6 +1808,18 @@ export default function AccountsReceivablePage() {
                   <div style={{ width: `${pctPaid}%`, background: '#16a34a', height: '100%', transition: 'width 0.4s' }} />
                 </div>
                 <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>{formatCurrency(totalPaid)} received of {formatCurrency(totalApproved)}</p>
+              </div>
+
+              {/* % Paid of what was consumed */}
+              <div className="rounded-xl p-4 border" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                <p className="text-xs uppercase tracking-wide font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Paid vs Consumed</p>
+                <p className="text-xl font-bold" style={{ color: '#166534' }}>
+                  {pctPaidOfConsumed.toFixed(1)}%
+                </p>
+                <div className="mt-2 rounded-full overflow-hidden h-2" style={{ background: 'var(--light-gray)' }}>
+                  <div style={{ width: `${Math.min(100, pctPaidOfConsumed)}%`, background: '#16a34a', height: '100%', transition: 'width 0.4s' }} />
+                </div>
+                <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>{formatCurrency(totalPaid)} received of {formatCurrency(totalConsumed)} consumed</p>
               </div>
 
               {/* Written off */}
