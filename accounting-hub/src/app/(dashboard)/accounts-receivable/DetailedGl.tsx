@@ -23,6 +23,7 @@ export interface GlCaseWallet {
   consumedOutstanding?: number
   totalGlAmount?: number | string | null
   paidTotal?: number
+  writtenOffTotal?: number
   lastPaymentDate?: string | null
   monthsToPay?: number | null
   soaStatus?: string | null
@@ -135,6 +136,10 @@ interface Row {
   /** Has the letter actually been drawn down — balance below the approved amount. */
   rendered: boolean
   paid: boolean
+  /** Cash that came in. An untagged entry has no payments, only a date of payment, so its SOA stands in. */
+  received: number
+  /** Given up as uncollectible; closes the letter without any cash. */
+  writtenOff: number
   lastPaymentDate?: string | null
   monthsToPay?: number | null
   files: string[]
@@ -201,6 +206,8 @@ function rowOf(c: GlCaseRow | null, w: GlCaseWallet | null): Row {
     posBalance: posBalanceOf(w),
     rendered: drawnDown(w),
     paid,
+    received: w ? num(w.paidTotal) : c?.paidAt ? num(c.soaAmount ?? c.approvedAmount) : 0,
+    writtenOff: num(w?.writtenOffTotal),
     lastPaymentDate: w ? (w.lastPaymentDate ?? null) : (c?.paidAt ?? null),
     monthsToPay: w?.monthsToPay ?? null,
     files: w ? fileUrls(w) : [],
@@ -488,6 +495,7 @@ export default function DetailedGl({
   const [noSoaOnly, setNoSoaOnly] = useState(false)
   // State tickboxes (Paid / SOA submitted / Needs a GL wallet) — multiple ticked = union
   const [toneTicks, setToneTicks] = useState<Exclude<RowTone, null>[]>([])
+  const [writtenOffOnly, setWrittenOffOnly] = useState(false)
   const [filters, setFilters] = useState<Partial<Record<ColKey, string>>>({})
   const [sortKey, setSortKey] = useState<ColKey>('name')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
@@ -584,6 +592,7 @@ export default function DetailedGl({
   const rows = useMemo(() => {
     let out = baseRows
     if (toneTicks.length) out = out.filter(r => { const t = rowTone(r); return t !== null && toneTicks.includes(t) })
+    if (writtenOffOnly) out = out.filter(r => r.writtenOff > 0)
     return [...out].sort((a, b) => {
       const av = sortValue(a, sortKey), bv = sortValue(b, sortKey)
       const cmp = typeof av === 'number' && typeof bv === 'number'
@@ -591,7 +600,7 @@ export default function DetailedGl({
         : String(av).localeCompare(String(bv))
       return sortDir === 'asc' ? cmp : -cmp
     })
-  }, [baseRows, toneTicks, sortKey, sortDir])
+  }, [baseRows, toneTicks, writtenOffOnly, sortKey, sortDir])
 
   const toggleSort = (k: ColKey) => {
     if (sortKey === k) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'))
@@ -912,12 +921,14 @@ export default function DetailedGl({
         const base = baseRowsNoStage
         const steps = [...GL_STAGES.map(st => ({ key: st as string, label: st as string, rows: base.filter(r => r.glStage === st) })),
           { key: '—', label: 'Not set', rows: base.filter(r => !r.glStage) }]
+        const writtenOff = base.filter(r => r.writtenOff > 0)
         return (
           <div className="flex items-stretch gap-1 flex-wrap mb-2">
             {steps.map((x, i) => {
               const st = STAGE_STYLE[x.key]
               const on = (filters.stage || '') === x.key
-              const amt = x.rows.reduce((t, r) => t + num(r.soaAmount || r.approved), 0)
+              // PAID counts the cash that came in; the steps before it, what the SOA asks for.
+              const amt = x.rows.reduce((t, r) => t + (x.key === 'PAID' ? r.received : num(r.soaAmount || r.approved)), 0)
               return (
                 <div key={x.key} className="flex items-center gap-1">
                   <button onClick={() => setFilters(f => ({ ...f, stage: on ? '' : x.key }))}
@@ -932,6 +943,17 @@ export default function DetailedGl({
                     </span>
                   </button>
                   {i < GL_STAGES.length - 1 && <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>→</span>}
+                  {x.key === 'PAID' && (
+                    <button onClick={() => setWrittenOffOnly(v => !v)}
+                      className="px-3 py-1.5 rounded-xl border text-left ml-0.5"
+                      style={{ background: '#f5f5f4', borderColor: writtenOffOnly ? '#57534e' : 'var(--light-gray)', borderWidth: writtenOffOnly ? 2 : 1 }}
+                      title={writtenOffOnly ? 'Show every letter' : 'Show only written-off letters'}>
+                      <span className="block text-[10px] font-bold uppercase tracking-wide" style={{ color: '#57534e' }}>Written off</span>
+                      <span className="block text-sm font-bold" style={{ color: 'var(--charcoal)' }}>
+                        {writtenOff.length} <span className="text-[11px] font-normal" style={{ color: 'var(--mid-gray)' }}>· {formatCurrency(writtenOff.reduce((t, r) => t + r.writtenOff, 0))}</span>
+                      </span>
+                    </button>
+                  )}
                 </div>
               )
             })}

@@ -65,6 +65,17 @@ export async function GET(req: Request) {
       lastPaymentDate: p._max.paymentDate,
     }]))
 
+    // A GL write-off is a discount posted to Bad Debts Expense. It closes the
+    // letter without any cash coming in, so it is never part of Paid.
+    const writeOffAgg = type === 'GL'
+      ? await prisma.aRPayment.groupBy({
+          by: ['walletId'],
+          where: { wallet: { walletType: 'GL' }, discountAccount: { accountNumber: '8370' } },
+          _sum: { discount: true },
+        })
+      : []
+    const writtenOffByWallet = new Map(writeOffAgg.map(p => [p.walletId, Number(p._sum.discount || 0)]))
+
     // Build order filter
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const paymentFilter: any = { method: type }
@@ -259,6 +270,7 @@ export async function GET(req: Request) {
         totalConsumedAmount,
         paidTotal,
         commissionTotal,
+        writtenOffTotal: writtenOffByWallet.get(w.id) ?? 0,
         soaDate,
         lastPaymentDate,
         monthsToPay,
@@ -343,9 +355,20 @@ export async function GET(req: Request) {
       : new Set<string>()
     const directPaid = directOrders.filter(d => pvLinked.has(d.id))
 
+    // HMOs have no write-offs: a short-paid session is repriced to what the HMO
+    // paid. Same rows as the Revised Session Amount tab, so the two figures tie.
+    const hmoDecreaseAgg = type === 'HMO'
+      ? await prisma.orderHmoSettlement.aggregate({
+          where: { order: { status: { not: 'VOIDED' }, ...(branch ? { branch } : {}) } },
+          _sum: { difference: true },
+          _count: true,
+        }).catch(err => { console.error('[AR] HMO decrease total failed:', err); return null })
+      : null
+
     const summary = {
       orderCount: aggOrders.length - directOrderCount,
       totalBilled,
+      hmoDecrease: { total: Number(hmoDecreaseAgg?._sum.difference || 0), sessionCount: hmoDecreaseAgg?._count ?? 0 },
       directToClinician: {
         orderCount: directOrderCount,
         total: directBilled,

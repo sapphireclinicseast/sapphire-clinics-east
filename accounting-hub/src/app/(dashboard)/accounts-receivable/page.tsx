@@ -43,6 +43,8 @@ interface ARWallet {
   // Lifetime settled by this agency (cash + tax withheld), and how long it took.
   paidTotal?: number
   commissionTotal?: number
+  // Given up as uncollectible (posted to Bad Debts). Never part of paidTotal.
+  writtenOffTotal?: number
   // When the letter/SOA was obtained (dateObtained, else the record's createdAt).
   // monthsToPay counts from this date, so the two always reconcile.
   soaDate?: string | null
@@ -81,6 +83,7 @@ interface ARSummary {
   byDepartment: { label: string; amount: number }[]
   byProvider: { label: string; amount: number }[]
   directToClinician?: { orderCount: number; total: number; paidOrderCount?: number; paidTotal?: number; byProvider: { label: string; amount: number }[] }
+  hmoDecrease?: { total: number; sessionCount: number }
 }
 
 interface InvoiceSetting {
@@ -1637,6 +1640,8 @@ export default function AccountsReceivablePage() {
           .reduce((s, p) => s + toNum(p.amount), 0)
         const pctConsumed = totalApproved > 0 ? Math.min(100, (totalConsumed / totalApproved) * 100) : 0
         const pctPaid = totalApproved > 0 ? Math.min(100, (totalPaid / totalApproved) * 100) : 0
+        const writtenOffWallets = branchWallets.filter(w => toNum(w.writtenOffTotal) > 0)
+        const totalWrittenOff = writtenOffWallets.reduce((s, w) => s + toNum(w.writtenOffTotal), 0)
 
         // Active GL wallets: isActive=true (from API) AND remaining balance > 0 (not fully exhausted).
         // The AR API overrides w.balance with totalGlAmount for GL (approved-amount AR),
@@ -1765,7 +1770,7 @@ export default function AccountsReceivablePage() {
             </div>
 
             {/* % cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
               {/* Active GL wallets count — isActive=true and remaining balance > 0 */}
               <div className="rounded-xl p-4 border" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
                 <p className="text-xs uppercase tracking-wide font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Active GL Wallets</p>
@@ -1801,6 +1806,15 @@ export default function AccountsReceivablePage() {
                   <div style={{ width: `${pctPaid}%`, background: '#16a34a', height: '100%', transition: 'width 0.4s' }} />
                 </div>
                 <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>{formatCurrency(totalPaid)} received of {formatCurrency(totalApproved)}</p>
+              </div>
+
+              {/* Written off */}
+              <div className="rounded-xl p-4 border" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                <p className="text-xs uppercase tracking-wide font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Written Off</p>
+                <p className="text-xl font-bold" style={{ color: 'var(--charcoal)' }}>{formatCurrency(totalWrittenOff)}</p>
+                <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>
+                  {writtenOffWallets.length ? `Not collected, not in received: ${writtenOffWallets.map(w => w.patientName).join(', ')}` : 'None so far'}
+                </p>
               </div>
             </div>
 
@@ -1988,6 +2002,15 @@ export default function AccountsReceivablePage() {
                 <p className="text-xl font-bold" style={{ color: 'var(--deep-teal)' }}>{formatCurrency(totalHmoOrders)}</p>
                 <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>Total outstanding: {formatCurrency(totalHmoOrders - totalPaid)}</p>
               </div>
+              <button type="button" onClick={() => setHmoSubTab('revised-amounts')}
+                className="rounded-xl p-4 border text-left" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}
+                title="Open Revised Session Amount">
+                <p className="text-xs uppercase tracking-wide font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Decrease due to HMO Payment</p>
+                <p className="text-xl font-bold" style={{ color: 'var(--charcoal)' }}>{formatCurrency(summary?.hmoDecrease?.total ?? 0)}</p>
+                <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>
+                  {summary?.hmoDecrease?.sessionCount ?? 0} session{summary?.hmoDecrease?.sessionCount === 1 ? '' : 's'} repriced to what the HMO paid, already out of Total HMO Billed
+                </p>
+              </button>
               {(summary?.directToClinician?.orderCount ?? 0) > 0 && (
                 <div className="rounded-xl p-4 border" style={{ borderColor: '#fdba74', background: '#fff7ed' }}>
                   <p className="text-xs uppercase tracking-wide font-semibold mb-1" style={{ color: '#9a3412' }}>Paid Direct to Clinician</p>

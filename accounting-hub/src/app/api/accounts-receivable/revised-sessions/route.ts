@@ -27,7 +27,8 @@ export async function GET(req: NextRequest) {
   const branch = enforceBranch(user.branch, user.branches, sp.get('branch')) ?? (sp.get('branch') || '')
 
   const settlements = await prisma.orderHmoSettlement.findMany({
-    where: branch ? { order: { branch } } : {},
+    // A voided order is no longer a sale, so there is nothing left to have decreased.
+    where: { order: { status: { not: 'VOIDED' }, ...(branch ? { branch } : {}) } },
     include: {
       order: {
         select: {
