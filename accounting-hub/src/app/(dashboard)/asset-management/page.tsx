@@ -75,7 +75,7 @@ interface Asset {
   location?: string | null // room of the branch (Location Settings)
   // quantity > 1: per-piece custodians; piece i shows sub control number `${controlNumber}-0${i+1}`
   // A piece's own location / departments override the asset's (null = the asset's).
-  units?: { accountableName: string | null; name?: string | null; isDefective?: boolean; isMissing?: boolean; auditable?: boolean; location?: string | null; departments?: string[] | null; price?: number | null; photoUrl?: string | null }[] | null
+  units?: { accountableName: string | null; name?: string | null; isDefective?: boolean; isMissing?: boolean; utilized?: boolean; auditable?: boolean; location?: string | null; departments?: string[] | null; price?: number | null; photoUrl?: string | null }[] | null
   // Payments behind the cost when there is more than one (combined records, balances).
   parts?: { date: string; label: string; amount: number; ref?: string | null; qty?: number; unitPrice?: number }[] | null
   remarks: string | null
@@ -214,7 +214,7 @@ function emptyForm(branch: string) {
     // Per-piece item name / condition / audit flag / room ('' = the asset's room) /
     // departments ([] = the asset's) / price ('' = the Price during Purchase) /
     // photo (one of the asset's photos, '' = none), index-aligned with unitNames.
-    unitMeta: [] as { name: string; isDefective: boolean; isMissing: boolean; auditable: boolean; location: string; departments: string[]; price: string; photo: string }[],
+    unitMeta: [] as { name: string; isDefective: boolean; isMissing: boolean; utilized: boolean; auditable: boolean; location: string; departments: string[]; price: string; photo: string }[],
     remarks: '',
   }
 }
@@ -274,6 +274,13 @@ function missingInfo(a: Asset): string[] {
 }
 // "a", "a and b", "a, b and c"
 const andList = (xs: string[]) => (xs.length > 1 ? `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}` : xs[0] || '')
+// Pieces not in use. The asset's own Utilized = No covers all of them.
+const notUsedCount = (a: Asset) => (!a.utilized ? (a.quantity || 1) : a.quantity > 1 ? (a.units?.filter(u => u.utilized === false).length ?? 0) : 0)
+const isUsed = (a: Asset) => notUsedCount(a) < (a.quantity || 1)
+const utilizedLabel = (a: Asset) => {
+  const n = notUsedCount(a), qty = a.quantity || 1
+  return n === 0 ? 'Yes' : n >= qty ? 'No' : `${qty - n} of ${qty}`
+}
 const MISSING_BG = '#fef2f2'
 // Condition of an asset or item. Missing means it can't be found: a label only, so
 // its cost and depreciation stay on the books. It outranks Defective.
@@ -642,7 +649,7 @@ function AssetManagementInner() {
       wasDepreciationOff: isDepreciationOff(asset),
       unitMeta: asset.quantity > 1
         ? Array.from({ length: asset.quantity }, (_, i) => ({
-            name: asset.units?.[i]?.name ?? '', isDefective: !!asset.units?.[i]?.isDefective, isMissing: !!asset.units?.[i]?.isMissing, auditable: asset.units?.[i]?.auditable !== false,
+            name: asset.units?.[i]?.name ?? '', isDefective: !!asset.units?.[i]?.isDefective, isMissing: !!asset.units?.[i]?.isMissing, utilized: asset.units?.[i]?.utilized !== false, auditable: asset.units?.[i]?.auditable !== false,
             location: asset.units?.[i]?.location ?? '',
             departments: Array.isArray(asset.units?.[i]?.departments) ? asset.units![i].departments! : [],
             price: unitPrices[i] != null ? String(unitPrices[i]) : '',
@@ -805,6 +812,7 @@ function AssetManagementInner() {
               name: (form.unitMeta[i]?.name || '').trim() || null,
               isDefective: !!form.unitMeta[i]?.isDefective,
               isMissing: !!form.unitMeta[i]?.isMissing,
+              utilized: form.unitMeta[i]?.utilized !== false,
               auditable: form.unitMeta[i]?.auditable !== false,
               location: form.isMissing || form.unitMeta[i]?.isMissing ? null : (form.unitMeta[i]?.location || '').trim() || null,
               departments: form.unitMeta[i]?.departments?.length ? form.unitMeta[i].departments : null,
@@ -1010,8 +1018,8 @@ function AssetManagementInner() {
       if (colFilters.name && !a.name.toLowerCase().includes(colFilters.name.toLowerCase())) return false
       if (colFilters.classification && a.classification !== colFilters.classification) return false
       if (colFilters.branch && a.branch !== colFilters.branch) return false
-      if (colFilters.utilized === 'yes' && !a.utilized) return false
-      if (colFilters.utilized === 'no' && a.utilized) return false
+      if (colFilters.utilized === 'yes' && !isUsed(a)) return false
+      if (colFilters.utilized === 'no' && notUsedCount(a) === 0) return false
       if (colFilters.auditable === 'yes' && a.auditable === false) return false
       if (colFilters.auditable === 'no' && a.auditable !== false) return false
       if (colFilters.accountable) {
@@ -1044,7 +1052,7 @@ function AssetManagementInner() {
       else if (sortKey === 'monthlyDepreciation') { av = a.monthlyDepreciation; bv = b.monthlyDepreciation }
       else if (sortKey === 'depreciationEndDate') { av = a.depreciationEndDate; bv = b.depreciationEndDate }
       else if (sortKey === 'dateBought') { av = a.dateBought; bv = b.dateBought }
-      else if (sortKey === 'utilized') { av = a.utilized ? 1 : 0; bv = b.utilized ? 1 : 0 }
+      else if (sortKey === 'utilized') { av = isUsed(a) ? 1 : 0; bv = isUsed(b) ? 1 : 0 }
       else if (sortKey === 'auditable') { av = a.auditable === false ? 0 : 1; bv = b.auditable === false ? 0 : 1 }
       else if (sortKey === 'controlNumber') { av = (a.controlNumber ?? '').toLowerCase(); bv = (b.controlNumber ?? '').toLowerCase() }
       if (av < bv) return sortDir === 'asc' ? -1 : 1
@@ -1054,10 +1062,10 @@ function AssetManagementInner() {
 
   // Download the current (filtered/sorted) asset list — a print guide for naming.
   const exportAssets = (fmt: 'xlsx' | 'pdf') => {
-    const headers = ['Control No.', 'Asset Name', 'Classification', 'Branch', 'Date of Purchase', 'Accountable', 'Location', 'Departments', 'Condition']
+    const headers = ['Control No.', 'Asset Name', 'Classification', 'Branch', 'Date of Purchase', 'Accountable', 'Location', 'Departments', 'Condition', 'Utilized']
     const rows = displayedAssets.map((a) => [
       a.controlNumber || '', a.name, classificationLabel(a.classification), branchLabel(a.branch), formatPurchaseDate(a.dateBought),
-      a.accountableName || '', [...new Set(pieceRooms(a).filter(Boolean))].join(', '), assetDepts(a).join(', '), conditionOf(a),
+      a.accountableName || '', [...new Set(pieceRooms(a).filter(Boolean))].join(', '), assetDepts(a).join(', '), conditionOf(a), utilizedLabel(a),
     ])
     const scope = branchFilter ? branchLabel(branchFilter) : 'All branches'
     if (fmt === 'xlsx') downloadXlsx(`asset-list-${branchFilter || 'all'}`, [{ name: 'Assets', headers, rows }])
@@ -1598,12 +1606,17 @@ function AssetManagementInner() {
                     <td className="px-4 py-3 text-gray-600">{formatEndDate(asset.depreciationEndDate)}</td>
                     <td className="px-4 py-3 text-center">
                       <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                        asset.utilized
+                        isUsed(asset)
                           ? 'bg-green-100 text-green-700'
                           : 'bg-gray-100 text-gray-600'
                       }`}>
-                        {asset.utilized ? 'Yes' : 'No'}
+                        {isUsed(asset) ? 'Yes' : 'No'}
                       </span>
+                      {isUsed(asset) && notUsedCount(asset) > 0 && (
+                        <span className="block mt-1 text-[10px] font-medium text-gray-500 whitespace-nowrap">
+                          {notUsedCount(asset)} of {asset.quantity} not used
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-center">
                       <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
@@ -2202,7 +2215,7 @@ function AssetManagementInner() {
                   <p className="text-xs text-gray-500 mb-2">One amount and one depreciation for the whole asset; each piece can have its own photo, name, price, custodian, room, departments, condition, and whether audits count it.</p>
                   <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
                     {Array.from({ length: quantityNum }, (_, i) => {
-                      const meta = form.unitMeta[i] || { name: '', isDefective: false, isMissing: false, auditable: true, location: '', departments: [] as string[], price: '', photo: '' }
+                      const meta = form.unitMeta[i] || { name: '', isDefective: false, isMissing: false, utilized: true, auditable: true, location: '', departments: [] as string[], price: '', photo: '' }
                       // Red until the item has a custodian and a department (its own or the asset's).
                       const rowMissing = (k: number) => {
                         const m = form.unitMeta[k] || meta
@@ -2216,7 +2229,7 @@ function AssetManagementInner() {
                       }
                       const setMeta = (patch: Partial<typeof meta>) => setForm((f) => {
                         const unitMeta = [...f.unitMeta]
-                        while (unitMeta.length < quantityNum) unitMeta.push({ name: '', isDefective: false, isMissing: false, auditable: true, location: '', departments: [], price: '', photo: '' })
+                        while (unitMeta.length < quantityNum) unitMeta.push({ name: '', isDefective: false, isMissing: false, utilized: true, auditable: true, location: '', departments: [], price: '', photo: '' })
                         unitMeta[i] = { ...unitMeta[i], ...patch }
                         return { ...f, unitMeta }
                       })
@@ -2271,6 +2284,7 @@ function AssetManagementInner() {
                         </button>
                         <label className="flex items-center gap-1 text-xs text-gray-600"><input type="checkbox" checked={meta.isDefective} onChange={(e) => setMeta({ isDefective: e.target.checked })} />Defective</label>
                         <label className="flex items-center gap-1 text-xs text-gray-600" title="Can't be found. A label only: the cost and depreciation stay on the books."><input type="checkbox" checked={meta.isMissing} onChange={(e) => setMeta({ isMissing: e.target.checked, ...(e.target.checked ? { location: '' } : {}) })} />Missing</label>
+                        <label className="flex items-center gap-1 text-xs text-gray-600" title="Whether this item is in use. Untick if it is not being used."><input type="checkbox" checked={form.utilized && meta.utilized} disabled={!form.utilized} onChange={(e) => setMeta({ utilized: e.target.checked })} />Utilized</label>
                         <label className="flex items-center gap-1 text-xs text-gray-600"><input type="checkbox" checked={meta.auditable} onChange={(e) => setMeta({ auditable: e.target.checked })} />Auditable</label>
                         {photoRowOpen === i && (
                           <div className="basis-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
@@ -2806,7 +2820,7 @@ function AssetViewModal({ asset: a, canEdit, onEdit, onPhotos, onClose }: {
             {row('Location', [...new Set(pieceRooms(a).filter(Boolean))].join(', '))}
             {row('Departments', assetDepts(a).join(', '))}
             {row('Condition', conditionOf(a))}
-            {row('Utilized', a.utilized ? 'Yes' : 'No')}
+            {row('Utilized', utilizedLabel(a))}
             {row('Auditable', a.auditable === false ? 'No' : 'Yes')}
           </div>
 
@@ -2905,6 +2919,7 @@ function AssetViewModal({ asset: a, canEdit, onEdit, onPhotos, onClose }: {
                     <th className="py-1.5 pr-3 font-medium">Location</th>
                     <th className="py-1.5 pr-3 font-medium">Departments</th>
                     <th className="py-1.5 pr-3 font-medium">Condition</th>
+                    <th className="py-1.5 pr-3 font-medium">Utilized</th>
                     <th className="py-1.5 font-medium">Auditable</th>
                   </tr>
                 </thead>
@@ -2932,6 +2947,7 @@ function AssetViewModal({ asset: a, canEdit, onEdit, onPhotos, onClose }: {
                       <td className="py-1.5 pr-3">{a.isMissing || u.isMissing ? '—' : u.location || a.location || '—'}</td>
                       <td className="py-1.5 pr-3">{(u.departments?.length ? u.departments : a.departments || []).join(', ') || '—'}</td>
                       <td className="py-1.5 pr-3">{u.isMissing ? <span style={{ color: CONDITION_STYLE.Missing.color }}>Missing</span> : u.isDefective ? <span className="text-red-600">Defective</span> : 'OK'}</td>
+                      <td className="py-1.5 pr-3">{a.utilized && u.utilized !== false ? 'Yes' : 'No'}</td>
                       <td className="py-1.5">{u.auditable === false ? 'No' : 'Yes'}</td>
                     </tr>
                   ))}
