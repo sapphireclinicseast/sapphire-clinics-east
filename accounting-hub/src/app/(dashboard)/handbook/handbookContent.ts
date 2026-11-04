@@ -330,6 +330,7 @@ export const SECTIONS: Section[] = [
       { k: 'ul', items: [
         `**Assets** — the full register.`,
         `**Auditable Assets** — the ones that can be physically counted.`,
+        `**Missing** — tick it on an asset or a single item that can't be found. Its room is cleared and locked. It is only a label: the cost and depreciation stay on the books. The item stays on audit counts unless you also untick **Auditable**.`,
         `**Asset Audit** — run a physical count; **Add New Audit**, mark each item **Usable** or **For Replacement**, then **Finalize** to lock it.`,
         `**Recording Flowchart** — the process picture.`,
       ] },

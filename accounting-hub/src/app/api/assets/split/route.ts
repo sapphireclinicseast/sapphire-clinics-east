@@ -122,6 +122,7 @@ export async function POST(req: Request) {
           sourceAccountId: a.sourceAccountId,
           fromPettyCash: a.fromPettyCash,
           auditable: a.auditable,
+          isMissing: a.isMissing,
           // Same source entry, so a later Account Title change on the entry
           // re-classifies / withdraws every branch's record together.
           sourceEntryId: a.sourceEntryId,

@@ -597,6 +597,7 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 -- Asset audit + asset photo gallery / defective flag
 ALTER TABLE "Asset" ADD COLUMN IF NOT EXISTS "photoUrls" JSONB;
 ALTER TABLE "Asset" ADD COLUMN IF NOT EXISTS "isDefective" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "Asset" ADD COLUMN IF NOT EXISTS "isMissing" BOOLEAN NOT NULL DEFAULT false;
 
 CREATE TABLE IF NOT EXISTS "AssetAudit" (
   "id" TEXT NOT NULL,

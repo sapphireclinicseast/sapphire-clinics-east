@@ -37,6 +37,7 @@ export async function GET(req: Request) {
     const roomOf = (x: typeof assets[number], itemControl: string | null) => {
       const units = Array.isArray(x.units) ? (x.units as AssetUnit[]) : []
       const m = x.controlNumber && itemControl?.startsWith(`${x.controlNumber}-`) ? Number(itemControl.slice(x.controlNumber.length + 1)) : NaN
+      if (Number.isInteger(m) && units[m - 1]?.isMissing) return null // a missing piece has no room
       return (Number.isInteger(m) && units[m - 1]?.location) || x.location || null
     }
     // …and a piece with a photo of its own shows that one.
