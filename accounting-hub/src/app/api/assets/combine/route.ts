@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { postAssetJournal, reverseAssetJournal } from '@/lib/accounting/post-asset'
+import { assetBookableCost, assetGlNetCents, HUB_LEDGER_START, postAssetJournal, repostAssetJournal, reverseAssetJournal } from '@/lib/accounting/post-asset'
 import { assetName, isDepreciationOff } from '@/lib/asset-classification'
 import { partsJson, partsOf } from '@/lib/asset-parts'
 
@@ -29,7 +29,6 @@ import { partsJson, partsOf } from '@/lib/asset-parts'
 // pre-2026 part can never go into a 2026 record: its cost would be booked twice.
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
-const HUB_LEDGER_START = 2026
 
 export async function POST(req: Request) {
   const session = await auth()
@@ -68,8 +67,13 @@ export async function POST(req: Request) {
       }
     }
 
+    // What the main record's own purchase entry covers now; its re-post below
+    // adds only what this combine moved into it.
+    const costBefore = await assetBookableCost(prisma, main)
+
     if (inHub(main.dateBought)) {
-      const mainPosts = !carriedByEntry(main)
+      // A main record whose purchase entry was reversed can't take a part's cost.
+      const mainPosts = !carriedByEntry(main) && (!(await hasJe(main.id)) || (await assetGlNetCents(prisma, main.id)) > 0)
       for (const a of others) {
         if (carriedByEntry(a)) continue
         if (mainPosts) {
@@ -102,7 +106,7 @@ export async function POST(req: Request) {
     const parts = [...partsOf(main), ...others.flatMap(a => voucherOnly(a) && !main.fromPettyCash ? partsOf(a).map(p => ({ ...p, carried: true })) : partsOf(a))]
     const photosOf = (a: typeof main) => [...(Array.isArray(a.photoUrls) ? (a.photoUrls as unknown[]).filter((u): u is string => typeof u === 'string') : []), ...(a.photoUrl ? [a.photoUrl] : [])]
     const photos = [...new Set([main, ...others].flatMap(photosOf))]
-    await prisma.asset.update({
+    const combined = await prisma.asset.update({
       where: { id: main.id },
       data: {
         parts: partsJson(parts),
@@ -119,8 +123,7 @@ export async function POST(req: Request) {
 
     if (inHub(main.dateBought) && !carriedByEntry(main) && (await hasJe(main.id))) {
       try {
-        await reverseAssetJournal(prisma, main.id, uid, 'assets combined')
-        await postAssetJournal(prisma, main.id, uid)
+        await repostAssetJournal(prisma, main.id, uid, 'assets combined', (await assetBookableCost(prisma, combined)) - costBefore)
       } catch (err) { console.error(`[GL] combine posting threw for ${main.id}:`, err) }
     }
     return NextResponse.json({ ok: true, id: main.id, controlNumber: main.controlNumber, totalAmount: total, removed: others.map(a => a.controlNumber) })

@@ -1225,7 +1225,7 @@ export async function computeLedgerStatements(
     if (a.fromPettyCash) continue
     // Combined parts their own petty-cash vouchers book are left out too.
     const amt = Number(a.totalAmount) - (addedCost.get(a.id) || 0) - carriedTotal(a.parts)
-    if (!amt) continue
+    if (Math.abs(amt) < 0.005) continue
     synthesizedAssets++
     const ppe = byNumber.get(a.classification) || virt(a.classification || '1500', `PPE (${a.classification})`, 'ASSET', 'PPE', 'DEBIT')
     const creditA = a.sourceAccountId ? (byId.get(a.sourceAccountId) || defaultCash(a.branch))

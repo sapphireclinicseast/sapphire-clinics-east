@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import type { Prisma } from '@prisma/client'
-import { postAssetJournal, reverseAssetJournal } from '@/lib/accounting/post-asset'
 import { partsJson, partsOf, scaleParts } from '@/lib/asset-parts'
 
 // POST { id, shares: [{ branch, amount }] }
@@ -12,6 +11,12 @@ import { partsJson, partsOf, scaleParts } from '@/lib/asset-parts'
 // asset per branch). The original record keeps its branch's share (or the first
 // share when its branch isn't one of them); the others are new records with
 // their own control numbers, same purchase date, classification and life.
+//
+// A split is for depreciation only and never touches the ledger (Hannah
+// 2026-11-04): the purchase was paid once and cash is matched in bank recon. The
+// original's purchase entry keeps the whole cost. The new records carry none, so
+// all their parts are marked carried: nothing posts for them later, and the
+// reports don't synthesize a purchase for a 2026 record.
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 const ASSET_BRANCH_CODE: Record<string, string> = { SANDBOX_EAST: 'AHEA', SANDBOX_GREENHILLS: 'AHGH', VERDANA_STORE: 'VERD' }
@@ -72,8 +77,15 @@ export async function POST(req: Request) {
         monthlyDepreciation: Number(a.monthlyDepreciation) * (cents / totalCents),
       }
     }
+    // A new record's parts: the original's payment mix at its share, adding up
+    // to the share exactly so nothing is left over to post or synthesize.
+    const carriedParts = (cents: number) => {
+      const parts = scaleParts(partsOf(a), cents / totalCents).map(p => ({ ...p, carried: true }))
+      const others = parts.slice(0, -1).reduce((s, p) => s + Math.round(p.amount * 100), 0)
+      parts[parts.length - 1].amount = (cents - others) / 100
+      return partsJson(parts)
+    }
     const branchList = shares.map(s => `${SHORT[s.branch] || s.branch} ₱${(s.cents / 100).toFixed(2)}`).join(' / ')
-    const hadJe = !!(await prisma.journalEntry.findFirst({ where: { referenceType: 'ASSET_PURCHASE', referenceId: a.id }, select: { id: true } }))
 
     await prisma.asset.update({
       where: { id: a.id },
@@ -93,7 +105,7 @@ export async function POST(req: Request) {
           branch: s.branch as never,
           name: a.name,
           ...priced(s.cents),
-          ...(Array.isArray(a.parts) && a.parts.length ? { parts: partsJson(scaleParts(partsOf(a), s.cents / totalCents)) } : {}),
+          parts: carriedParts(s.cents),
           quantity: a.quantity,
           dateBought: a.dateBought,
           classification: a.classification,
@@ -118,15 +130,6 @@ export async function POST(req: Request) {
         select: { id: true, branch: true, controlNumber: true },
       })
       created.push(n)
-    }
-    // Acquisition JEs only where the original had one (most assets made from
-    // entries don't — the entry carries the cost).
-    if (hadJe) {
-      try {
-        await reverseAssetJournal(prisma, a.id, session.user.id as string, 'asset split across branches')
-        await postAssetJournal(prisma, a.id, session.user.id as string)
-        for (const n of created) await postAssetJournal(prisma, n.id, session.user.id as string)
-      } catch (err) { console.error(`[GL] asset split posting threw for ${a.id}:`, err) }
     }
     return NextResponse.json({ ok: true, kept: { id: a.id, branch: keep.branch }, created })
   } catch (e) {

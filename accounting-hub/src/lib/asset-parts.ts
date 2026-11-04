@@ -15,10 +15,10 @@ export interface AssetPart {
   entryId?: string | null // the expense entry that paid it, when there is one
   qty?: number            // receipt line: how many of this item…
   unitPrice?: number      // …at this price each (amount = qty × unitPrice)
-  carried?: boolean       // booked by its own petty-cash voucher, not this asset's purchase entry
+  carried?: boolean       // booked elsewhere, not by this asset's purchase entry: its own petty-cash voucher, or (a split-off branch share) the original record's entry
 }
 
-/** Cost of the parts a petty-cash voucher already books — left out of the asset's own purchase posting. */
+/** Cost of the parts booked elsewhere — left out of the asset's own purchase posting. */
 export const carriedTotal = (parts: unknown) =>
   Array.isArray(parts) ? (parts as AssetPart[]).reduce((s, p) => s + (p?.carried ? Number(p.amount) || 0 : 0), 0) : 0
 
