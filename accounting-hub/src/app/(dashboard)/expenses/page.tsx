@@ -17,7 +17,7 @@ import { ReimbursementPayModal } from '@/components/ReimbursementPayModal'
 import type { RfpMemoParts } from '@/lib/billing-voucher'
 import { ScanUpload } from '@/components/ScanUpload'
 import { DownloadBar } from '@/components/DownloadBar'
-import { downloadXlsx, downloadPdf, inDateRange, type ExportFormat } from '@/lib/export'
+import { downloadXlsx, downloadPdf, amountCells, inDateRange, type ExportFormat } from '@/lib/export'
 import type { BVLine } from '@/lib/billing-voucher'
 import { isPayrollItem } from '@/lib/payroll-item-guard'
 import { isMixedVat, netOfVat as entryNet, vatBase, vatOf as entryVat } from '@/lib/vat'
@@ -3248,7 +3248,7 @@ function ExpenseReportTab({ branch, canWrite, canEdit }: { branch: string; canWr
   const exportExcel = async () => {
     const XLSX = await import('xlsx')
     const total = view === 'Valid' ? totalValid : totalInvalid
-    const aoa = [COLS_ER, ...shown.map(rowCells), ['', '', '', '', '', '', '', '', `TOTAL ${view}`, total.toFixed(2), '']]
+    const aoa = [COLS_ER, ...[...shown.map(rowCells), ['', '', '', '', '', '', '', '', `TOTAL ${view}`, total.toFixed(2), '']].map(amountCells)]
     const ws = XLSX.utils.aoa_to_sheet(aoa)
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, `${view} Expenses`)

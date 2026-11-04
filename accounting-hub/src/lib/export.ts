@@ -13,10 +13,24 @@ interface ExportSheet {
   rows: (string | number | null | undefined)[][]
 }
 
+// Exports hand amounts over as text ('1250.00', '₱1,250.00'), which Excel shows
+// but SUM skips. Text that reads exactly like a two-decimal amount becomes a real
+// number. Order, reference and TIN numbers never read that way, so they stay text.
+const AMOUNT_TEXT = /^-?₱?\d+(,\d{3})*\.\d{2}$/
+const amountOf = (v: unknown) => (typeof v === 'string' && AMOUNT_TEXT.test(v) ? Number(v.replace(/[₱,]/g, '')) : null)
+
+/** A row ready for aoa_to_sheet, with its amounts as real numbers shown as 1,250.00. */
+export function amountCells(row: (string | number | null | undefined)[]) {
+  return row.map(v => {
+    const n = amountOf(v)
+    return n === null ? v : { t: 'n' as const, v: n, z: '#,##0.00' }
+  })
+}
+
 export function downloadXlsx(filename: string, sheets: ExportSheet[]) {
   const wb = XLSX.utils.book_new()
   for (const sheet of sheets) {
-    const data = [sheet.headers, ...sheet.rows]
+    const data = [sheet.headers, ...sheet.rows.map(amountCells)]
     const ws = XLSX.utils.aoa_to_sheet(data)
 
     // Auto-size columns
@@ -24,7 +38,8 @@ export function downloadXlsx(filename: string, sheets: ExportSheet[]) {
       let max = h.length
       for (const row of sheet.rows) {
         const v = row[i]
-        const len = v != null ? String(v).length : 0
+        const n = amountOf(v)
+        const len = n !== null ? n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).length : v != null ? String(v).length : 0
         if (len > max) max = len
       }
       return { wch: Math.min(max + 2, 50) }

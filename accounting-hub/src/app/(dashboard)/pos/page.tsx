@@ -3595,7 +3595,7 @@ function OrdersPanel({ branch, canSelectBranch, focusOrderId, onFocusHandled }: 
       downloadXlsx(`sales-orders-${dateFrom || 'start'}_to_${dateTo || 'today'}`, [
         { name: 'Summary', headers: ['Figure', 'Value'], rows: [
           ['Filters', x.scope],
-          ['Orders', String(x.rows.length)],
+          ['Orders', x.rows.length],
           ['Gross sales', x.totals.gross.toFixed(2)],
           ['Discounts', x.totals.discount.toFixed(2)],
           ['Refunds', x.totals.refund.toFixed(2)],
