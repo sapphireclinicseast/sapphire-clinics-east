@@ -563,6 +563,7 @@ export const SECTIONS: Section[] = [
       { k: 'sub', t: 'Run consultant payroll' },
       { k: 'steps', items: [
         `**Consultants → Payslip Generation** → **Generate Payslips** → **Save All as Draft** → **Finalize All** → **Lock Payroll**.`,
+        `A consultant who is **red** in the **Consultant List** (unit pays at ₱0) is skipped by all of these and is not paid. Set an amount, tick **Varies**, or untick each red unit pay, click **Regenerate**, then **Lock Payroll** again to add them.`,
         `In **Mentorship Meetings**, tick a meeting to charge the mentee the set fee and pay the mentor — both appear as adjustment lines on the next payslip preview.`,
       ] },
       { k: 'note', label: 'Which month the fees land in.', t: `Fees are booked in the month each **session** happened, not the month the cutoff is paid. The 1st cutoff pays the 26th to the end of the previous month, so when it is locked those sessions' fees go to the previous month (an accrual on its last day, reversed on the 1st). Retainers, incentives and adjustment lines have no session date and stay in the cutoff's month.` },

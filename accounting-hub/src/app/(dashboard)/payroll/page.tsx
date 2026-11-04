@@ -20,6 +20,7 @@ import MentorshipMeetingsTab from './MentorshipMeetingsTab'
 import HmoSettlementPfAlerts from './HmoSettlementPfAlerts'
 import PfPriceCheck from './PfPriceCheck'
 import { overPrice, type OverPrice, type PricedService } from '@/lib/payroll/pf-price'
+import { redBlockMessage, zeroUnitPays as zeroUnitPaysOf } from '@/lib/payroll/unit-pay-gaps'
 import PayrollHistoryTab from './PayrollHistoryTab'
 
 const toNum = (v: unknown) => Number(v) || 0
@@ -98,6 +99,8 @@ interface PayrollPreview {
   hmoMedicalSkips?: { orderId: string; date: string; patientName: string; serviceName: string; quantity: number; orderNetAmount: number }[]
   // Sessions under a "Varies" rate — the payroll officer types each one's PF.
   variesSessions?: VariesSession[]
+  // Unit pays still at ₱0: the consultant is red in the Consultant List.
+  zeroUnitPays?: string[]
   existingStatus: string | null
   storedAdjustments?: AdjustmentLine[]
   storedExtraItems?: ExtraUnitPayLine[]
@@ -116,6 +119,8 @@ interface VariesSession {
   orderId: string; orderNumber: number; date: string; patientName: string; serviceName: string
   quantity: number; charged: number; orderNetAmount: number; unitPayId: string; unitPayName: string
 }
+// Red in the Consultant List: payroll won't process them. A locked payslip stays as it is.
+const payrollBlocked = (p: PayrollPreview) => (p.zeroUnitPays?.length ?? 0) > 0 && p.existingStatus !== 'LOCKED'
 // A typed Varies PF is saved as an extra unit pay line with this id.
 const variesLineId = (v: VariesSession) => `vr-${v.orderId}-${v.unitPayId}`
 /** Varies sessions with no PF typed yet (missing) or typed above what they were charged (over). */
@@ -1429,6 +1434,7 @@ export default function PayrollPage() {
   const lockAndFinalize = async (payrollType: 'CONSULTANT' | 'EMPLOYEE') => {
     if (!confirm(`Lock and finalize all ${payrollType === 'CONSULTANT' ? 'consultant' : 'employee'} payslips for ${cutoffPeriod} — ${branch || 'all branches'}? This cannot be undone.`)) return
     setFinalizing(true)
+    let leftOut: string[] = []
     try {
       // Consultant payroll: save a fresh FINAL snapshot from live orders before locking,
       // so Lock can never freeze stale items left behind by an un-saved Re-run.
@@ -1441,7 +1447,9 @@ export default function PayrollPage() {
         const freshRes = await fetch(`/api/payroll/generate?${freshParams}`)
         if (freshRes.ok) {
           const freshData = await freshRes.json()
-          const freshPreviews = (freshData.payrolls || []) as PayrollPreview[]
+          const allFresh = (freshData.payrolls || []) as PayrollPreview[]
+          leftOut = allFresh.filter(p => payrollBlocked(p) && (p.grossPay > 0 || p.orderCount > 0 || p.existingStatus !== null)).map(p => p.consultantName)
+          const freshPreviews = allFresh.filter(p => !payrollBlocked(p))
           // A Varies PF left blank or typed above the charge stops the lock.
           if (!variesOk(freshPreviews.filter(p => p.existingStatus !== 'LOCKED').map(p => ({
             p, extras: extraUnitPays[p.consultantId] !== undefined ? extraUnitPays[p.consultantId] : ((p.storedExtraItems as unknown as ExtraUnitPayLine[]) || []),
@@ -1478,7 +1486,7 @@ export default function PayrollPage() {
       const data = await res.json()
       if (!res.ok) { setError(data.error || 'Failed to finalize'); return }
       setError('')
-      alert(`Payroll locked! ${data.lockedCount} payslips finalized. Journal entry created.`)
+      alert(`Payroll locked! ${data.lockedCount} payslips finalized. Journal entry created.${leftOut.length ? `\n\nNOT locked, still red in the Consultant List: ${leftOut.join(', ')}` : ''}`)
       // Refresh data and restore adjustments from DB
       if (payrollType === 'CONSULTANT') {
         const previewRes = await fetch(`/api/payroll/generate?cutoffPeriod=${cutoffPeriod}&branch=${branch || 'SBEA'}`)
@@ -1742,12 +1750,7 @@ export default function PayrollPage() {
   /* ── Clinician list helpers ── */
   // Unit pays that apply to a consultant's department but are neither disabled nor
   // given an amount — a session under one would pay ₱0 PF. Their row shows red.
-  const zeroUnitPays = (c: Consultant) => unitPays.filter(up =>
-    up.isActive !== false && (!up.departments || up.departments.length === 0 || up.departments.includes(c.department)),
-  ).filter(up => {
-    const r = c.unitPayRates.find(x => x.unitPayId === up.id)
-    return !r || (!r.disabled && !r.varies && !(toNum(r.amount) > 0))
-  })
+  const zeroUnitPays = (c: Consultant) => zeroUnitPaysOf(c.department, c.unitPayRates, unitPays)
   const filteredConsultants = consultants
     .filter(c => !cSearch || c.name.toLowerCase().includes(cSearch.toLowerCase()))
     .filter(c => !cDeptFilter || c.department === cDeptFilter)
@@ -2347,10 +2350,11 @@ export default function PayrollPage() {
   }
 
   const savePayslips = async () => {
-    if (!variesOk(payrollPreviews.filter(p => p.existingStatus !== 'LOCKED').map(p => ({ p, extras: extraUnitPays[p.consultantId] || [] })), false)) return
+    const toSave = payrollPreviews.filter(p => p.existingStatus !== 'LOCKED' && !payrollBlocked(p))
+    if (!variesOk(toSave.map(p => ({ p, extras: extraUnitPays[p.consultantId] || [] })), false)) return
     setSaving(true)
     try {
-      const entries = payrollPreviews.filter(p => p.existingStatus !== 'LOCKED').map(p =>
+      const entries = toSave.map(p =>
         buildEntry(p, extraUnitPays[p.consultantId] || [], adjustments[p.consultantId] || [], 'DRAFT')
       )
       if (entries.length === 0) return
@@ -2392,11 +2396,12 @@ export default function PayrollPage() {
     if (!variesOk([{ p, extras }], status === 'FINAL')) return
     setSavingMap(prev => ({ ...prev, [cid]: true }))
     try {
-      await fetch('/api/payroll/generate', {
+      const res = await fetch('/api/payroll/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ cutoffPeriod, branch, entries: [buildEntry(p, extras, adjs, status)] }),
       })
+      if (!res.ok) { setError((await res.json().catch(() => null))?.error || 'Failed to save'); return }
       setSavedMap(prev => ({ ...prev, [cid]: true }))
       setTimeout(() => setSavedMap(prev => ({ ...prev, [cid]: false })), 2500)
       // Update local existingStatus so consultant stays visible in the list
@@ -2424,11 +2429,12 @@ export default function PayrollPage() {
     setLockingMap(prev => ({ ...prev, [cid]: true }))
     try {
       // Save current state as FINAL
-      await fetch('/api/payroll/generate', {
+      const res = await fetch('/api/payroll/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ cutoffPeriod, branch, entries: [buildEntry(p, extras, adjs, 'FINAL')] }),
       })
+      if (!res.ok) { setError((await res.json().catch(() => null))?.error || 'Failed to lock'); return }
       setPayrollPreviews(prev => prev.map(pr =>
         pr.consultantId === cid ? { ...pr, existingStatus: 'FINAL' } : pr
       ))
@@ -2483,10 +2489,11 @@ export default function PayrollPage() {
   }
 
   const finalizeConsultantPayslips = async () => {
-    if (!variesOk(payrollPreviews.filter(p => p.existingStatus === 'DRAFT').map(p => ({ p, extras: extraUnitPays[p.consultantId] || [] })), true)) return
+    const toFinalize = payrollPreviews.filter(p => p.existingStatus === 'DRAFT' && !payrollBlocked(p))
+    if (!variesOk(toFinalize.map(p => ({ p, extras: extraUnitPays[p.consultantId] || [] })), true)) return
     setSaving(true)
     try {
-      const entries = payrollPreviews.filter(p => p.existingStatus === 'DRAFT').map(p =>
+      const entries = toFinalize.map(p =>
         buildEntry(p, extraUnitPays[p.consultantId] || [], adjustments[p.consultantId] || [], 'FINAL')
       )
       if (entries.length === 0) return
@@ -2749,7 +2756,7 @@ export default function PayrollPage() {
     // still allows one deliberately, with a confirm).
     const visible = payrollPreviews.filter(p => {
       const { net } = computeTotals(p, extraUnitPays[p.consultantId] || [], adjustments[p.consultantId] || [])
-      return net > 0
+      return net > 0 && !payrollBlocked(p)
     })
     for (const p of visible) {
       try { await emailClinician(p) } catch (e) { console.error('Email error for', p.consultantName, e) }
@@ -4845,7 +4852,7 @@ export default function PayrollPage() {
             <div className="space-y-4">
               {/* Controls row */}
               {(() => {
-                const activeConsultants = payrollPreviews
+                const activeConsultants = payrollPreviews.filter(p => !payrollBlocked(p))
                 const allConsultantLocked = activeConsultants.length > 0 && activeConsultants.every(p => p.existingStatus === 'LOCKED')
                 return (
               <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -4958,6 +4965,19 @@ export default function PayrollPage() {
                     Payroll for: {getCutoffLabel(cutoffPeriod)} — {visiblePreviews.length} consultant(s)
                   </p>
 
+                  {visiblePreviews.some(payrollBlocked) && (
+                    <div className="flex items-start justify-between gap-3 rounded-xl border px-4 py-3 text-xs" style={{ background: '#fef2f2', borderColor: '#fecaca', color: '#991b1b' }}>
+                      <div>
+                        <p className="font-semibold">{visiblePreviews.filter(payrollBlocked).length} can&apos;t be processed: saving, finalizing and locking skip them.</p>
+                        <p className="mt-1">{redBlockMessage(visiblePreviews.filter(payrollBlocked).map(p => p.consultantName))}</p>
+                        <p className="mt-1">After fixing them, click Regenerate or their Re-run.</p>
+                      </div>
+                      <button onClick={() => setSubTab('list')} className="shrink-0 px-3 py-1.5 rounded-lg border font-medium" style={{ borderColor: '#fca5a5', color: '#991b1b' }}>
+                        Open Consultant List
+                      </button>
+                    </div>
+                  )}
+
                   {visiblePreviews.length > 0 ? (
                     <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--light-gray)' }}>
                       <table className="w-full text-xs">
@@ -5011,6 +5031,12 @@ export default function PayrollPage() {
                                   <td className="px-3 py-2.5 font-medium" style={{ color: 'var(--charcoal)' }}>
                                     {p.consultantName}
                                     <span className="ml-1.5 text-[10px] px-1 py-0.5 rounded" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>{p.department}</span>
+                                    {payrollBlocked(p) && (
+                                      <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded font-semibold" style={{ background: '#fee2e2', color: '#b91c1c' }}
+                                        title={`Unit pays at ₱0: ${p.zeroUnitPays!.join(', ')}`}>
+                                        {p.zeroUnitPays!.length} unit pay{p.zeroUnitPays!.length === 1 ? '' : 's'} at ₱0: blocked
+                                      </span>
+                                    )}
                                     {variesLeft > 0 && (
                                       <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded font-semibold" style={{ background: '#fef3c7', color: '#92400e' }}
                                         title="Sessions under a Varies rate — type each one's PF in the payslip">
@@ -5481,7 +5507,7 @@ export default function PayrollPage() {
                                             style={{ borderColor: 'var(--charcoal)', color: 'var(--charcoal)' }}>
                                             <Download size={13} /> PDF
                                           </button>
-                                          {p.existingStatus !== 'LOCKED' && p.existingStatus !== 'FINAL' && (
+                                          {p.existingStatus !== 'LOCKED' && p.existingStatus !== 'FINAL' && !payrollBlocked(p) && (
                                             <button onClick={(e) => { e.stopPropagation(); saveSingleConsultant(p.consultantId) }} disabled={savingMap[p.consultantId]}
                                               className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium text-white disabled:opacity-50"
                                               style={{ background: savedMap[p.consultantId] ? '#059669' : 'var(--deep-teal)', transition: 'background 0.3s' }}>
@@ -5500,7 +5526,7 @@ export default function PayrollPage() {
                                             </button>
                                           )}
                                           {/* Lock per person: DRAFT → FINAL */}
-                                          {(!p.existingStatus || p.existingStatus === 'DRAFT') && (
+                                          {(!p.existingStatus || p.existingStatus === 'DRAFT') && !payrollBlocked(p) && (
                                             <button onClick={(e) => { e.stopPropagation(); lockSingleConsultant(p.consultantId) }} disabled={lockingMap[p.consultantId]}
                                               className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium text-white disabled:opacity-50"
                                               style={{ background: '#4338ca' }}
@@ -5519,12 +5545,14 @@ export default function PayrollPage() {
                                               {unlockingMap[p.consultantId] ? 'Unlocking...' : 'Unlock'}
                                             </button>
                                           )}
-                                          <button onClick={(e) => { e.stopPropagation(); emailClinician(p) }} disabled={isSendingThis || emailSt === 'success'}
-                                            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium text-white disabled:opacity-50"
-                                            style={{ background: emailSt === 'success' ? '#059669' : '#c44b00' }}>
-                                            {isSendingThis ? <Loader2 size={13} className="animate-spin" /> : emailSt === 'success' ? <CheckCircle2 size={13} /> : <Mail size={13} />}
-                                            {isSendingThis ? 'Sending...' : emailSt === 'success' ? 'Sent' : 'Email'}
-                                          </button>
+                                          {!payrollBlocked(p) && (
+                                            <button onClick={(e) => { e.stopPropagation(); emailClinician(p) }} disabled={isSendingThis || emailSt === 'success'}
+                                              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium text-white disabled:opacity-50"
+                                              style={{ background: emailSt === 'success' ? '#059669' : '#c44b00' }}>
+                                              {isSendingThis ? <Loader2 size={13} className="animate-spin" /> : emailSt === 'success' ? <CheckCircle2 size={13} /> : <Mail size={13} />}
+                                              {isSendingThis ? 'Sending...' : emailSt === 'success' ? 'Sent' : 'Email'}
+                                            </button>
+                                          )}
                                           {emailSt === 'error' && (
                                             <span className="flex items-center gap-1 text-xs text-red-600">
                                               <AlertCircle size={13} /> {emailMsg[p.consultantId]}

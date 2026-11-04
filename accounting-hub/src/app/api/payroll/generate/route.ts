@@ -3,6 +3,8 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { notMigratedOrder } from '@/lib/payroll/exclude-migrated'
 import { recoveryLines, stampRecoveries } from '@/lib/payroll/pf-recovery'
+import { redBlockMessage, zeroUnitPays } from '@/lib/payroll/unit-pay-gaps'
+import { redConsultants } from '@/lib/payroll/unit-pay-gaps-server'
 import { commissionFloor, computeDoctorCommissions, normName } from '@/lib/referral-commission'
 
 /** Safely convert a Prisma Decimal (or any value) to a plain JS number */
@@ -128,6 +130,9 @@ export async function GET(req: Request) {
       },
       orderBy: { name: 'asc' },
     })
+
+    // Red in the Consultant List = payroll won't process them (see unit-pay-gaps).
+    const activeUnitPays = await prisma.unitPay.findMany({ where: { isActive: true }, select: { id: true, name: true, departments: true } })
 
     // Benefit deduction cadence — consultants have their own setting (Consultants →
     // Benefits Setting), independent of the employee one.
@@ -719,6 +724,7 @@ export async function GET(req: Request) {
         hmoMedicalSkipCount: hmoMedicalSkips.reduce((s, x) => s + (Number(x.quantity) || 1), 0),
         hmoMedicalSkips,
         variesSessions,
+        zeroUnitPays: zeroUnitPays(c.department, c.unitPayRates, activeUnitPays).map(u => u.name),
         existingStatus: existingMap.get(c.id) || null,
         storedAdjustments: mergeMentorship((existingEntry?.adjustments as unknown[]) || [], c.id),
         storedExtraItems: (existingEntry?.extraItems as unknown[]) || [],
@@ -747,6 +753,11 @@ export async function PATCH(req: Request) {
     const { cutoffPeriod, branch, consultantId, action } = await req.json()
     if (!cutoffPeriod || !consultantId || !['lock', 'unlock'].includes(action)) {
       return NextResponse.json({ error: 'cutoffPeriod, consultantId, and action (lock|unlock) are required' }, { status: 400 })
+    }
+
+    if (action === 'lock') {
+      const red = await redConsultants([consultantId])
+      if (red.size > 0) return NextResponse.json({ error: redBlockMessage([...red.values()]) }, { status: 400 })
     }
 
     const newStatus = action === 'lock' ? 'FINAL' : 'DRAFT'
@@ -837,8 +848,12 @@ export async function POST(req: Request) {
       }
     }
 
+    const red = await redConsultants((entries as { consultantId: string }[]).map(e => e.consultantId))
     const results = []
     for (const entry of entries) {
+      // Consultants still red in the Consultant List aren't processed; the rest of the run is.
+      if (red.has(entry.consultantId)) continue
+
       // Never overwrite LOCKED entries
       const existing = await prisma.payrollEntry.findUnique({
         where: { consultantId_cutoffPeriod_branch: { consultantId: entry.consultantId, cutoffPeriod, branch: branch || entry.branch || '' } },
@@ -938,7 +953,10 @@ export async function POST(req: Request) {
       results.push(result)
     }
 
-    return NextResponse.json({ saved: results.length }, { status: 201 })
+    if (results.length === 0 && red.size > 0) {
+      return NextResponse.json({ error: redBlockMessage([...red.values()]) }, { status: 400 })
+    }
+    return NextResponse.json({ saved: results.length, blocked: [...red.values()] }, { status: 201 })
   } catch (err) {
     console.error('Payroll save error:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

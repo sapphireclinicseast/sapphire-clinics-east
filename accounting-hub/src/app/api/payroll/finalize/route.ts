@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { sweepNoSiEwtToOtherIncome } from '@/lib/accounting/ewt-income'
 import { lockAndNotifyMentorshipCharges } from '@/lib/mentorship'
 import { consultantContribAccounts } from '@/lib/payroll/consultant-contrib'
+import { redConsultants } from '@/lib/payroll/unit-pay-gaps-server'
 import { deletePfSessionAccruals, syncPfSessionAccruals } from '@/lib/payroll/pf-session-month'
 
 const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
@@ -105,6 +106,15 @@ export async function POST(req: Request) {
     // with the company's employer-contribution chain.
     const contrib = payrollType === 'CONSULTANT' ? await consultantContribAccounts() : { expenseId: null, payableId: null }
 
+    // Consultants still red in the Consultant List stay out of the lock (Hannah
+    // 2026-11-04). Once their unit pays are set, Lock Payroll again adds them and
+    // restates the journal entry.
+    const openEntries = payrollType === 'CONSULTANT'
+      ? await prisma.payrollEntry.findMany({ where: { cutoffPeriod, branch, status: { in: ['FINAL', 'DRAFT'] } }, select: { consultantId: true } })
+      : []
+    const redIds = [...(await redConsultants(openEntries.map(e => e.consultantId))).keys()]
+    const notRed = { consultantId: { notIn: redIds } }
+
     // Check for existing finalization
     const existingPayable = await prisma.payrollPayableStatus.findUnique({
       where: { cutoffPeriod_branch_payrollType: { cutoffPeriod, branch, payrollType } },
@@ -130,9 +140,9 @@ export async function POST(req: Request) {
         // after finalization silently drifted away from the JE. Re-running
         // finalize now always converges the JE and payable to payslip truth,
         // so it doubles as a "re-sync" after corrections.
-        const addEntries = await prisma.payrollEntry.findMany({ where: { cutoffPeriod, branch, status: 'FINAL' } })
+        const addEntries = await prisma.payrollEntry.findMany({ where: { cutoffPeriod, branch, status: 'FINAL', ...notRed } })
         if (addEntries.length === 0) {
-          const draftCount = await prisma.payrollEntry.count({ where: { cutoffPeriod, branch, status: 'DRAFT' } })
+          const draftCount = await prisma.payrollEntry.count({ where: { cutoffPeriod, branch, status: 'DRAFT', ...notRed } })
           if (draftCount > 0) {
             return NextResponse.json({
               error: `${draftCount} payslip(s) are still in Draft status — please approve them to Final before locking payroll.`,
@@ -146,7 +156,7 @@ export async function POST(req: Request) {
         const journalEntryId: string = existingPayable.journalEntryId
 
         const result = await prisma.$transaction(async (tx) => {
-          await tx.payrollEntry.updateMany({ where: { cutoffPeriod, branch, status: 'FINAL' }, data: { status: 'LOCKED' } })
+          await tx.payrollEntry.updateMany({ where: { cutoffPeriod, branch, status: 'FINAL', ...notRed }, data: { status: 'LOCKED' } })
           const all = await tx.payrollEntry.findMany({ where: { cutoffPeriod, branch, status: 'LOCKED' } })
           let totalGross = 0, totalTax = 0, totalNet = 0, totalEeContrib = 0, totalShouldered = 0
           for (const e of all) {
@@ -292,13 +302,13 @@ export async function POST(req: Request) {
 
         // Load all FINAL consultant payslips
         const entries = await tx.payrollEntry.findMany({
-          where: { cutoffPeriod, branch, status: 'FINAL' },
+          where: { cutoffPeriod, branch, status: 'FINAL', ...notRed },
         })
         if (entries.length === 0) throw new Error('No finalized consultant payslips found for this period.')
 
         // Lock them
         await tx.payrollEntry.updateMany({
-          where: { cutoffPeriod, branch, status: 'FINAL' },
+          where: { cutoffPeriod, branch, status: 'FINAL', ...notRed },
           data: { status: 'LOCKED' },
         })
 
