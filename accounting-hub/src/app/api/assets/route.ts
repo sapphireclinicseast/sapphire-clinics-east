@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { Prisma } from '@prisma/client'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { postAssetJournal, reverseAssetJournal } from '@/lib/accounting/post-asset'
+import { postAssetJournal, repostAssetJournal, reverseAssetJournal } from '@/lib/accounting/post-asset'
 import { cleanLocation, sanitizeAssetUnits, summarizeAssetUnits } from '@/lib/asset-units'
 import { assetName } from '@/lib/asset-classification'
 
@@ -247,17 +247,20 @@ export async function PUT(req: Request) {
       },
     })
 
-    // Tier 3 Step 6: Reverse and re-post if any GL-affecting field changed.
+    // Tier 3 Step 6: Replace the live purchase entry if any GL-affecting field
+    // changed. In centavos: the form recomputes price × quantity, and float noise
+    // (9794.640000000001) must not count as an edit.
+    const priorCents = Math.round(Number(prior?.totalAmount) * 100)
+    const newCents = Math.round(Number(asset.totalAmount) * 100)
     const materialChange = !prior
-      || Number(prior.totalAmount) !== Number(asset.totalAmount)
+      || priorCents !== newCents
       || prior.classification !== asset.classification
       || prior.dateBought.getTime() !== asset.dateBought.getTime()
       || prior.branch !== asset.branch
       || prior.sourceAccountId !== asset.sourceAccountId
     if (materialChange) {
       try {
-        await reverseAssetJournal(prisma, id, session.user.id, 'asset edited')
-        await postAssetJournal(prisma, id, session.user.id)
+        await repostAssetJournal(prisma, id, session.user.id, 'asset edited', prior ? (newCents - priorCents) / 100 : 0)
       } catch (postErr) {
         console.error(`[GL] Asset update posting threw for ${id}:`, postErr)
       }

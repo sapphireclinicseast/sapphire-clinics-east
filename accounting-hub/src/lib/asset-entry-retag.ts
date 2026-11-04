@@ -9,7 +9,7 @@
 import type { Prisma, PrismaClient } from '@prisma/client'
 import type { AssetPart } from '@/lib/asset-parts'
 import { assetClassFromAccountTitle, isDepreciatingClassification } from '@/lib/asset-classification'
-import { deleteAssetWithReversal, postAssetJournal, reverseAssetJournal } from '@/lib/accounting/post-asset'
+import { deleteAssetWithReversal, repostAssetJournal } from '@/lib/accounting/post-asset'
 import { netOfVat, type VatSource } from '@/lib/vat'
 
 type RetagEntry = VatSource & {
@@ -26,10 +26,8 @@ function addedAmount(e: RetagEntry): number {
 }
 
 async function repostIfJournaled(prisma: PrismaClient, assetId: string, userId: string, reason: string) {
-  if (!(await prisma.journalEntry.findFirst({ where: { referenceType: 'ASSET_PURCHASE', referenceId: assetId }, select: { id: true } }))) return
   try {
-    await reverseAssetJournal(prisma, assetId, userId, reason)
-    await postAssetJournal(prisma, assetId, userId)
+    await repostAssetJournal(prisma, assetId, userId, reason)
   } catch (err) {
     console.error(`[GL] asset re-post threw for ${assetId}:`, err)
   }
