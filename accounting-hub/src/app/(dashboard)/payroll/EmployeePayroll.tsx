@@ -8,6 +8,7 @@ import {
   DollarSign, Shield, ShieldOff, Star, Mail, FileDown, ArrowUpDown, Landmark, Gift
 } from 'lucide-react'
 import SpecialPayRuns from './SpecialPayRuns'
+import WeeklyAccomplishmentsTab, { WeeklyAccomplishmentsNotice } from './WeeklyAccomplishmentsTab'
 import { formatCurrency } from '@/lib/utils'
 import { BRANCH_INFO } from '@/lib/branch-info'
 
@@ -279,7 +280,7 @@ interface TkUploadRecord {
 export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoffMonth: parentCutoffMonth, cutoffYear: parentCutoffYear, cutoffHalf: parentCutoffHalf, cutoffPeriod: parentCutoffPeriod }: { canWrite: boolean; branch: string; cutoffMonth: number; cutoffYear: number; cutoffHalf: number; cutoffPeriod: string }) {
   const now = new Date()
 
-  const [subTab, setSubTab] = useState<'list' | 'settings' | 'requests' | 'tk-upload' | 'tk-data' | 'benefits' | 'leave-settings' | 'adjustments' | 'holidays' | 'payslips' | 'special' | 'lates'>('list')
+  const [subTab, setSubTab] = useState<'list' | 'settings' | 'requests' | 'tk-upload' | 'tk-data' | 'benefits' | 'leave-settings' | 'adjustments' | 'holidays' | 'weekly-accomplishments' | 'payslips' | 'special' | 'lates'>('list')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -2306,6 +2307,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
     { key: 'leave-settings', label: 'Leave Setting', icon: Star },
     { key: 'adjustments', label: 'Allowance/Deduction', icon: DollarSign },
     { key: 'holidays', label: 'Holiday Setting', icon: Calendar },
+    { key: 'weekly-accomplishments', label: 'Weekly Accomplishments', icon: CheckCircle2 },
     { key: 'payslips', label: 'Payslip Generation', icon: FileText },
     { key: 'special', label: '13th Month / Maternity / Final Pay', icon: Gift },
     { key: 'lates', label: 'Lates', icon: AlertCircle },
@@ -4862,8 +4864,13 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
       {/* ═══════════════════════════════════════════════════════════════
          TAB: PAYSLIP GENERATION
          ═══════════════════════════════════════════════════════════════ */}
+      {subTab === 'weekly-accomplishments' && (
+        <WeeklyAccomplishmentsTab cutoffPeriod={cutoffPeriod} branch={branch} />
+      )}
+
       {subTab === 'payslips' && (
         <div className="space-y-3">
+          <WeeklyAccomplishmentsNotice cutoffPeriod={cutoffPeriod} branch={branch} onOpen={() => setSubTab('weekly-accomplishments')} />
           {/* Controls */}
           {(() => {
             const allLocked = payslips.length > 0 && payslips.every(p => p.status === 'LOCKED')
