@@ -377,6 +377,7 @@ function AssetManagementInner() {
   // one item (a 12% VAT line, a delivery fee) into one asset.
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [combineOpen, setCombineOpen] = useState(false)
+  const [assignOpen, setAssignOpen] = useState(false)
   // Clicking a row opens a read-only view; editing only through the pencil.
   const [viewAsset, setViewAsset] = useState<Asset | null>(null)
   const [bulkBusy, setBulkBusy] = useState(false)
@@ -1304,6 +1305,10 @@ function AssetManagementInner() {
       {canManage && picked.size > 0 && (
         <div className="flex items-center gap-3 flex-wrap rounded-xl border border-teal-200 bg-teal-50 px-4 py-2 text-sm">
           <span className="font-semibold text-teal-800">{picked.size} selected</span>
+          <button onClick={() => setAssignOpen(true)} disabled={bulkBusy}
+            className="px-3 py-1 rounded-lg text-xs font-semibold text-white bg-teal-700 hover:bg-teal-800 disabled:opacity-40">
+            Set location, accountable or departments
+          </button>
           {SPLIT_ROLES.includes(userRole) && (
             <button onClick={() => setCombineOpen(true)} disabled={picked.size < 2 || bulkBusy}
               className="px-3 py-1 rounded-lg text-xs font-semibold text-white bg-teal-700 hover:bg-teal-800 disabled:opacity-40">
@@ -1728,6 +1733,12 @@ function AssetManagementInner() {
           onEdit={() => { const a = viewAsset; setViewAsset(null); openEdit(a) }}
           onPhotos={() => setGalleryAsset(viewAsset)}
           onClose={() => setViewAsset(null)} />
+      )}
+
+      {assignOpen && (
+        <BulkAssignModal assets={assets.filter(a => picked.has(a.id))} rooms={rooms}
+          onClose={() => setAssignOpen(false)}
+          onDone={() => { setAssignOpen(false); setPicked(new Set()); fetchAssets() }} />
       )}
 
       {combineOpen && (
@@ -2972,6 +2983,93 @@ function AssetViewModal({ asset: a, canEdit, onEdit, onPhotos, onClose }: {
 
 // Combine several records that are one item into the chosen main record
 // (POST /api/assets/combine).
+// Tick boxes: put several records under one room, one custodian and/or the same departments.
+function BulkAssignModal({ assets, rooms, onClose, onDone }: { assets: Asset[]; rooms: AssetRoom[]; onClose: () => void; onDone: () => void }) {
+  const [location, setLocation] = useState('')
+  const [accountable, setAccountable] = useState('')
+  const [departments, setDepartments] = useState<string[]>([])
+  const [staffNames, setStaffNames] = useState<string[]>([])
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const branches = [...new Set(assets.map(a => a.branch))]
+  // Rooms are per branch, so only rooms every ticked record's branch has.
+  const roomChoices = [...new Set(rooms.filter(r => r.branch === branches[0]).map(r => r.name))]
+    .filter(n => branches.every(b => rooms.some(r => r.branch === b && r.name === n)))
+    .sort((x, y) => x.localeCompare(y))
+  const staffBranch = branches.length !== 1 ? '' : branches[0] === 'SANDBOX_EAST' ? 'SBEA' : branches[0] === 'SANDBOX_GREENHILLS' ? 'SBGH' : branches[0] === 'VERDANA_STORE' ? 'VERDANA' : ''
+  useEffect(() => {
+    fetch(`/api/pos/staff${staffBranch ? `?branch=${staffBranch}` : ''}`).then(r => r.ok ? r.json() : [])
+      .then((d: unknown) => {
+        const list = (Array.isArray(d) ? d : ((d as { staff?: unknown[] })?.staff ?? [])) as { name?: string }[]
+        setStaffNames([...new Set(list.map(s => s.name || '').filter(Boolean))])
+      })
+      .catch(() => setStaffNames([]))
+  }, [staffBranch])
+  const missingCount = assets.filter(a => a.isMissing).length
+  const nothingPicked = !location && !accountable.trim() && departments.length === 0
+  const submit = async () => {
+    setBusy(true); setError('')
+    try {
+      const res = await fetch('/api/assets/bulk-assign', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: assets.map(a => a.id), location: location || undefined, accountableName: accountable.trim() || undefined, departments }),
+      })
+      const d = await res.json().catch(() => null)
+      if (!res.ok) { setError(d?.error || 'Could not update the assets.'); return }
+      onDone()
+    } catch { setError('Could not update the assets.') }
+    finally { setBusy(false) }
+  }
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-xl p-6" onClick={e => e.stopPropagation()}>
+        <h3 className="text-lg font-semibold text-gray-900 mb-1">Set for {assets.length} ticked record{assets.length === 1 ? '' : 's'}</h3>
+        <p className="text-xs text-gray-500 mb-4">
+          Anything you leave blank stays as it is. What you set applies to every item in these records, replacing an item&apos;s own room, custodian or departments.
+        </p>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Location</label>
+            <select value={location} onChange={e => setLocation(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500">
+              <option value="">Keep as is</option>
+              {roomChoices.map(r => <option key={r} value={r}>{r}</option>)}
+            </select>
+            {branches.length > 1 && <p className="text-[11px] text-gray-400 mt-1">These records are in {branches.length} branches, so only rooms they all have are listed.</p>}
+            {!!location && missingCount > 0 && <p className="text-[11px] text-amber-700 mt-1">{missingCount} marked Missing will keep no room.</p>}
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Accountable</label>
+            <NameCombobox options={['Not Applicable', ...staffNames]} value={accountable} onChange={setAccountable}
+              placeholder="Keep as is, or type or pick a staff name…"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Departments</label>
+            <div className="grid grid-cols-2 gap-2">
+              {DEPARTMENT_OPTIONS.map(dept => (
+                <label key={dept} className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={departments.includes(dept)}
+                    onChange={() => setDepartments(ds => ds.includes(dept) ? ds.filter(x => x !== dept) : [...ds, dept])}
+                    className="w-4 h-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500" />
+                  <span className="text-sm text-gray-700">{dept}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
+        {error && <p className="text-sm text-red-600 mt-3">{error}</p>}
+        <div className="flex justify-end gap-2 mt-5">
+          <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm border border-gray-300 text-gray-700">Cancel</button>
+          <button onClick={submit} disabled={busy || nothingPicked} className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-teal-700 hover:bg-teal-800 disabled:opacity-40">
+            {busy ? 'Saving…' : `Apply to ${assets.length} record${assets.length === 1 ? '' : 's'}`}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function CombineAssetsModal({ assets, onClose, onDone }: { assets: Asset[]; onClose: () => void; onDone: () => void }) {
   const biggest = [...assets].sort((a, b) => Number(b.totalAmount) - Number(a.totalAmount))[0]
   const [mainId, setMainId] = useState(biggest?.id || '')
