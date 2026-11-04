@@ -4,7 +4,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { postAssetJournal, reverseAssetJournal } from '@/lib/accounting/post-asset'
 import { cleanLocation, sanitizeAssetUnits, summarizeAssetUnits } from '@/lib/asset-units'
-import { assetName } from '@/lib/asset-classification'
+import { assetName, isDepreciationOff, monthlyDepreciationOnSave } from '@/lib/asset-classification'
 
 // Front-desk staff can add/edit assets (photos, renaming) but not delete them.
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
@@ -209,8 +209,10 @@ export async function PUT(req: Request) {
     // Capture pre-edit state to detect material changes affecting the JE.
     const prior = await prisma.asset.findUnique({
       where: { id },
-      select: { totalAmount: true, classification: true, dateBought: true, branch: true, sourceAccountId: true },
+      select: { totalAmount: true, classification: true, dateBought: true, branch: true, sourceAccountId: true, yearsDepreciation: true, monthlyDepreciation: true },
     })
+    // Not in the books yet: saving neither depreciates it nor posts a purchase.
+    const stayOff = !!prior && isDepreciationOff(prior) && body.depreciationOff !== false
 
     const asset = await prisma.asset.update({
       where: { id },
@@ -223,7 +225,7 @@ export async function PUT(req: Request) {
         dateBought: new Date(dateBought),
         classification,
         yearsDepreciation,
-        monthlyDepreciation,
+        monthlyDepreciation: monthlyDepreciationOnSave(prior, { classification, totalAmount, yearsDepreciation, monthlyDepreciation }, body.depreciationOff),
         depreciationEndDate: new Date(depreciationEndDate),
         supplierId: supplierId || null,
         sourceAccountId: sourceAccountId || null,
@@ -254,7 +256,7 @@ export async function PUT(req: Request) {
       || prior.dateBought.getTime() !== asset.dateBought.getTime()
       || prior.branch !== asset.branch
       || prior.sourceAccountId !== asset.sourceAccountId
-    if (materialChange) {
+    if (materialChange && !stayOff) {
       try {
         await reverseAssetJournal(prisma, id, session.user.id, 'asset edited')
         await postAssetJournal(prisma, id, session.user.id)

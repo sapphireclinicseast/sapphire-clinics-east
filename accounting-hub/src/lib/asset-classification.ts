@@ -39,6 +39,34 @@ export function isDepreciatingClassification(code: string): boolean {
   return code in PPE_CLASSIFICATION_LABELS
 }
 
+/**
+ * Depreciation is off: a depreciating class with a cost but ₱0 a month. These are
+ * listed for custody and audits only, not yet in the books (AHEA-2024-0248 on,
+ * Hannah 2026-11-04), so no save may turn depreciation on or post a purchase by
+ * itself. Someone turns it on in Edit Asset once the booking is decided.
+ */
+export function isDepreciationOff(a: { classification: string; totalAmount: unknown; monthlyDepreciation: unknown }): boolean {
+  return isDepreciatingClassification(a.classification) && Number(a.totalAmount) > 0 && Number(a.monthlyDepreciation) === 0
+}
+
+/**
+ * What an Edit Asset save stores as the monthly depreciation. It stays as stored
+ * unless the cost, life or class changed: the form always offers cost ÷ life, and
+ * a record can rightly hold less when part of it is not in the books yet.
+ */
+export function monthlyDepreciationOnSave(
+  prior: { classification: string; totalAmount: unknown; yearsDepreciation: unknown; monthlyDepreciation: unknown } | null,
+  next: { classification: string; totalAmount: unknown; yearsDepreciation: unknown; monthlyDepreciation: unknown },
+  depreciationOff?: unknown,
+): number {
+  if (!prior) return Number(next.monthlyDepreciation)
+  if (isDepreciationOff(prior)) return depreciationOff === false ? Number(next.monthlyDepreciation) : 0
+  const sameBasis = prior.classification === next.classification
+    && Number(prior.yearsDepreciation) === Number(next.yearsDepreciation)
+    && Math.round(Number(prior.totalAmount) * 100) === Math.round(Number(next.totalAmount) * 100)
+  return sameBasis ? Number(prior.monthlyDepreciation) : Number(next.monthlyDepreciation)
+}
+
 /** Returns the classification code ("2050") if the account title is a PPE account, else null. */
 export function assetClassFromAccountTitle(accountTitle?: string | null): string | null {
   if (!accountTitle) return null

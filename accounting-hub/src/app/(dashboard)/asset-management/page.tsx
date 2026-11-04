@@ -4,6 +4,7 @@ import React, { Suspense, useState, useEffect, useCallback, useMemo, useRef } fr
 import { useFocusTarget } from '@/lib/use-focus-target'
 import { isItemBreakdown } from '@/lib/asset-parts'
 import { pieceDepartments } from '@/lib/asset-units'
+import { isDepreciationOff } from '@/lib/asset-classification'
 import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
 import { ScanUpload } from '@/components/ScanUpload'
@@ -206,6 +207,8 @@ function emptyForm(branch: string) {
     // total alone and the price per piece becomes total ÷ quantity.
     keepTotal: false,
     lockedTotal: null as number | null,
+    depreciationOff: false,
+    wasDepreciationOff: false,
     // Per-piece item name / condition / audit flag / room ('' = the asset's room) /
     // departments ([] = the asset's) / price ('' = the Price during Purchase) /
     // photo (one of the asset's photos, '' = none), index-aligned with unitNames.
@@ -474,7 +477,7 @@ function AssetManagementInner() {
     : keptTotal ?? purchasePriceNum * quantityNum
   const noDep = !isDepreciating(form.classification)
   const yearsNum = noDep ? 0 : (parseInt(form.yearsDepreciation) || 5)
-  const monthlyDepreciation = (!noDep && totalAmount > 0) ? totalAmount / (yearsNum * 12) : 0
+  const monthlyDepreciation = (!noDep && !form.depreciationOff && totalAmount > 0) ? totalAmount / (yearsNum * 12) : 0
   const depreciationEndDate = noDep ? (form.dateBought || '') : (form.dateBought ? computeEndDate(form.dateBought, yearsNum) : '')
 
   // Freight calculator: total freight in PHP (real-time)
@@ -622,6 +625,8 @@ function AssetManagementInner() {
       location: asset.location ?? '',
       keepTotal: true,
       lockedTotal: Number(asset.totalAmount),
+      depreciationOff: isDepreciationOff(asset),
+      wasDepreciationOff: isDepreciationOff(asset),
       unitMeta: asset.quantity > 1
         ? Array.from({ length: asset.quantity }, (_, i) => ({
             name: asset.units?.[i]?.name ?? '', isDefective: !!asset.units?.[i]?.isDefective, auditable: asset.units?.[i]?.auditable !== false,
@@ -766,6 +771,7 @@ function AssetManagementInner() {
         classification: form.classification,
         yearsDepreciation: yearsNum,
         monthlyDepreciation,
+        ...(form.wasDepreciationOff ? { depreciationOff: form.depreciationOff } : {}),
         depreciationEndDate,
         supplierId: form.supplierId || null,
         sourceAccountId: form.sourceAccountId || null,
@@ -1898,6 +1904,12 @@ function AssetManagementInner() {
                       </div>
                     </div>
                   </div>
+                  {form.wasDepreciationOff && (
+                    <label className="flex items-start gap-2 rounded-lg px-3 py-2 text-sm cursor-pointer" style={{ background: '#fffbeb', color: '#92400e' }}>
+                      <input type="checkbox" className="mt-0.5" checked={form.depreciationOff} onChange={(e) => setForm((f) => ({ ...f, depreciationOff: e.target.checked }))} />
+                      <span>Depreciation off: not yet in the books. It is listed for custody and audits only. Untick this once it has been booked.</span>
+                    </label>
+                  )}
                 </>
               )}
 

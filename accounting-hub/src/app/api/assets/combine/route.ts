@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { postAssetJournal, reverseAssetJournal } from '@/lib/accounting/post-asset'
-import { assetName } from '@/lib/asset-classification'
+import { assetName, isDepreciationOff } from '@/lib/asset-classification'
 import { partsJson, partsOf } from '@/lib/asset-parts'
 
 // POST { mainId, otherIds: string[], name?: string }
@@ -110,7 +110,8 @@ export async function POST(req: Request) {
         name,
         totalAmount: total,
         purchasePrice: qty > 1 ? Math.round((total / qty) * 100) / 100 : total,
-        monthlyDepreciation: main.yearsDepreciation > 0 ? total / (main.yearsDepreciation * 12) : 0,
+        // A part not in the books yet (depreciation off) adds no depreciation.
+        monthlyDepreciation: main.yearsDepreciation > 0 ? [main, ...others].filter(a => !isDepreciationOff(a)).reduce((s, a) => s + Number(a.totalAmount), 0) / (main.yearsDepreciation * 12) : 0,
         remarks: [main.remarks, note].filter(Boolean).join(' · '),
       },
     })

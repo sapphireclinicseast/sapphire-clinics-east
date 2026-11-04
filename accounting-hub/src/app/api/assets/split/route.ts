@@ -64,13 +64,12 @@ export async function POST(req: Request) {
     const keep = shares.find(s => s.branch === numberBranch) || shares.find(s => s.branch === a.branch) || shares[0]
     const others = shares.filter(s => s !== keep)
     const qty = a.quantity || 1
-    const life = a.yearsDepreciation
     const priced = (cents: number) => {
       const total = cents / 100
       return {
         totalAmount: total,
         purchasePrice: qty > 1 ? Math.round((total / qty) * 100) / 100 : total,
-        monthlyDepreciation: life > 0 ? total / (life * 12) : 0,
+        monthlyDepreciation: Number(a.monthlyDepreciation) * (cents / totalCents),
       }
     }
     const branchList = shares.map(s => `${SHORT[s.branch] || s.branch} ₱${(s.cents / 100).toFixed(2)}`).join(' / ')

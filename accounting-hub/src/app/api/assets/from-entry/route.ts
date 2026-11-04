@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { assetClassFromAccountTitle, assetName, ASSET_CLASSIFICATION_LABELS, ENTRY_DEPT_TO_ASSET, isDepreciatingClassification } from '@/lib/asset-classification'
+import { assetClassFromAccountTitle, assetName, ASSET_CLASSIFICATION_LABELS, ENTRY_DEPT_TO_ASSET, isDepreciatingClassification, isDepreciationOff } from '@/lib/asset-classification'
 import { sanitizeAssetUnits, summarizeAssetUnits } from '@/lib/asset-units'
 import { netOfVat } from '@/lib/vat'
 import { partDate, partsJson, partsOf } from '@/lib/asset-parts'
@@ -79,7 +79,7 @@ export async function POST(req: Request) {
       if (targets.length !== 1) return NextResponse.json({ error: 'An entry split across branches cannot be added to one existing asset.' }, { status: 400 })
       const asset = await prisma.asset.findUnique({
         where: { id: existingAssetId },
-        select: { id: true, branch: true, name: true, controlNumber: true, totalAmount: true, quantity: true, yearsDepreciation: true, remarks: true, parts: true, dateBought: true, supplierId: true },
+        select: { id: true, branch: true, name: true, controlNumber: true, totalAmount: true, quantity: true, classification: true, yearsDepreciation: true, monthlyDepreciation: true, remarks: true, parts: true, dateBought: true, supplierId: true },
       })
       if (!asset) return NextResponse.json({ error: 'Asset not found' }, { status: 404 })
       if (asset.branch !== targets[0].branch) return NextResponse.json({ error: 'That asset belongs to another branch.' }, { status: 400 })
@@ -91,7 +91,7 @@ export async function POST(req: Request) {
         data: {
           totalAmount: total,
           purchasePrice: qtyNow > 1 ? Math.round((total / qtyNow) * 100) / 100 : total,
-          monthlyDepreciation: asset.yearsDepreciation > 0 ? total / (asset.yearsDepreciation * 12) : 0,
+          monthlyDepreciation: asset.yearsDepreciation > 0 && !isDepreciationOff(asset) ? total / (asset.yearsDepreciation * 12) : 0,
           remarks: [asset.remarks, `+ ₱${added.toFixed(2)} from ${e.pcvNumber}${userRemarks ? ` (${userRemarks})` : ''}`].filter(Boolean).join(' · '),
           parts: partsJson([...partsOf(asset), { date: partDate(e.date || new Date()), label: (e.description || '').trim() || 'Balance payment', amount: added, ref: e.pcvNumber, entryId: e.id }]),
           // An asset with no supplier yet takes this entry's.
