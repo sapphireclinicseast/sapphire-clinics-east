@@ -128,7 +128,7 @@ interface Row {
   soaCommissionRate?: number | string | null
   payoutBatch?: string | null
   qbEntry?: string | null
-  /** Where the letter is in the OP's payment process (STAR OFFICE → CASHIER). */
+  /** Where the letter is in the OP's payment process (STAR OFFICE → PAID). */
   glStage?: string | null
   /** Remaining on the tagged wallet in POS; null when nothing is tagged. */
   posBalance: number | null
@@ -172,6 +172,7 @@ function rowOf(c: GlCaseRow | null, w: GlCaseWallet | null): Row {
   // A case's own paper trail wins over the wallet's — it is the record staff
   // maintain — but the live figures below always come from the wallet.
   const pick = <T,>(a: T | null | undefined, b: T | null | undefined) => (a ?? b ?? null)
+  const paid = w ? num(w.paidTotal) > 0 : !!c?.paidAt
   return {
     key: c ? `case:${c.id}` : `wallet:${w!.id}`,
     caseId: c?.id ?? null,
@@ -194,10 +195,12 @@ function rowOf(c: GlCaseRow | null, w: GlCaseWallet | null): Row {
     soaCommissionRate: pick(c?.soaCommissionRate, w?.soaCommissionRate),
     payoutBatch: pick(c?.payoutBatch, w?.payoutBatch),
     qbEntry: pick(c?.qbEntry, w?.qbEntry),
-    glStage: pick(c?.glStage, w?.glStage),
+    // A recorded payment settles the stage. The stored stage stays underneath, so
+    // undoing the payment puts the letter back where it was.
+    glStage: paid ? 'PAID' : pick(c?.glStage, w?.glStage),
     posBalance: posBalanceOf(w),
     rendered: drawnDown(w),
-    paid: w ? num(w.paidTotal) > 0 : !!c?.paidAt,
+    paid,
     lastPaymentDate: w ? (w.lastPaymentDate ?? null) : (c?.paidAt ?? null),
     monthsToPay: w?.monthsToPay ?? null,
     files: w ? fileUrls(w) : [],
@@ -240,10 +243,11 @@ const STAGE_STYLE: Record<string, { bg: string; fg: string; bar: string }> = {
   BILLING: { bg: '#ffedd5', fg: '#c2410c', bar: '#f97316' },
   ACCOUNTING: { bg: '#ecfccb', fg: '#4d7c0f', bar: '#84cc16' },
   CASHIER: { bg: '#dcfce7', fg: '#15803d', bar: '#16a34a' },
+  PAID: { bg: '#bbf7d0', fg: '#14532d', bar: '#15803d' },
 }
 const stageIndex = (s?: string | null) => (GL_STAGES as readonly string[]).indexOf(s || '')
 
-/** Four segments filled up to the letter's stage, each in its own step colour. */
+/** One segment per step, filled up to the letter's stage, each in its own step colour. */
 function StageSteps({ stage }: { stage?: string | null }) {
   const at = stageIndex(stage)
   return (
@@ -442,7 +446,7 @@ function cellText(r: Row, k: ColKey): string {
 
 function sortValue(r: Row, k: ColKey): string | number {
   switch (k) {
-    // Process order (STAR OFFICE first, CASHIER last), letters with no stage after them.
+    // Process order (STAR OFFICE first, PAID last), letters with no stage after them.
     case 'stage': { const i = (GL_STAGES as readonly string[]).indexOf(r.glStage || ''); return i < 0 ? GL_STAGES.length : i }
     case 'name': return r.patientName || ''
     case 'branch': return branchLabel(r.branch) || ''
@@ -494,7 +498,7 @@ export default function DetailedGl({
   const [stageEdits, setStageEdits] = useState<Record<string, string | null>>({})
   const [stageError, setStageError] = useState('')
   const allRows = useMemo(
-    () => buildRows(wallets, glCases).map(r => (r.key in stageEdits ? { ...r, glStage: stageEdits[r.key] } : r)),
+    () => buildRows(wallets, glCases).map(r => (r.key in stageEdits && !r.paid ? { ...r, glStage: stageEdits[r.key] } : r)),
     [wallets, glCases, stageEdits],
   )
   const saveStage = async (r: Row, value: string) => {
@@ -671,14 +675,14 @@ export default function DetailedGl({
                       const st = r.glStage ? STAGE_STYLE[r.glStage] : null
                       return (
                         <span className="inline-flex items-center">
-                          {canWrite && (r.caseId || r.wallet)
+                          {canWrite && (r.caseId || r.wallet) && !r.paid
                             ? <select value={r.glStage || ''} onChange={e => saveStage(r, e.target.value)}
                                 className="px-1.5 py-0.5 rounded border text-[11px] font-semibold outline-none"
                                 style={st ? { background: st.bg, color: st.fg, borderColor: st.bar } : { background: 'white', color: 'var(--mid-gray)', borderColor: 'var(--light-gray)' }}>
                                 <option value="">— set stage —</option>
                                 {GL_STAGES.map(s => <option key={s} value={s}>{s}</option>)}
                               </select>
-                            : <span className="px-1.5 py-0.5 rounded text-[11px] font-semibold" style={st ? { background: st.bg, color: st.fg } : { color: 'var(--light-gray)' }}>{r.glStage || '—'}</span>}
+                            : <span className="px-1.5 py-0.5 rounded text-[11px] font-semibold" title={r.paid ? 'A payment is recorded for this letter' : undefined} style={st ? { background: st.bg, color: st.fg } : { color: 'var(--light-gray)' }}>{r.glStage || '—'}</span>}
                           <StageSteps stage={r.glStage} />
                         </span>
                       )

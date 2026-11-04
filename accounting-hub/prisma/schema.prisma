@@ -959,7 +959,7 @@ model DigitalWallet {
   // All optional — existing letters keep working with these blank.
   glRequestedAmount Decimal? // Requested GL, before approval trimmed it
   // Where the letter sits in the OP's payment process (Detailed GL first column):
-  // STAR OFFICE | BILLING | ACCOUNTING | CASHIER. Hannah, 2026-11-03.
+  // STAR OFFICE | BILLING | ACCOUNTING | CASHIER | PAID. Hannah, 2026-11-03.
   glStage           String?
   glDocsSubmittedAt DateTime? // Date the supporting documents were submitted
   glReleasedAt      DateTime? // Date the approved GL was released
@@ -1015,7 +1015,7 @@ model GlCase {
 
   // The same paper trail the wallet-backed rows carry. Held here too, because an
   // untagged case has no wallet to read them from.
-  glStage           String? // STAR OFFICE | BILLING | ACCOUNTING | CASHIER
+  glStage           String? // STAR OFFICE | BILLING | ACCOUNTING | CASHIER | PAID
   glRequestedAmount Decimal?
   glDocsSubmittedAt DateTime?
   glReleasedAt      DateTime?
