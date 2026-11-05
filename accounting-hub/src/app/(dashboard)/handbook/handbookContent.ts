@@ -330,6 +330,7 @@ export const SECTIONS: Section[] = [
       { k: 'ul', items: [
         `**Assets** — the full register.`,
         `**Auditable Assets** — the ones that can be physically counted.`,
+        `**By Department** — asset totals per department, for all branches or one. An asset serving several departments is shared equally, so the costs add up to the register total.`,
         `**Missing** — tick it on an asset or a single item that can't be found. Its room is cleared and locked. It is only a label: the cost and depreciation stay on the books. The item stays on audit counts unless you also untick **Auditable**.`,
         `**Utilized** — whether an asset is in use. Set it for the whole asset, or untick it on a single item.`,
         `**Tick boxes** — tick several records, then **Set location, accountable or departments** to put them all under one room, one person or the same departments. It replaces what each item had.`,

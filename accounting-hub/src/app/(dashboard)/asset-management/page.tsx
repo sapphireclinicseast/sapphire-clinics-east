@@ -4,6 +4,7 @@ import React, { Suspense, useState, useEffect, useCallback, useMemo, useRef } fr
 import { useFocusTarget } from '@/lib/use-focus-target'
 import { isItemBreakdown } from '@/lib/asset-parts'
 import { pieceDepartments } from '@/lib/asset-units'
+import { departmentTotals, NO_DEPARTMENT } from '@/lib/asset-dept-totals'
 import { isDepreciationOff } from '@/lib/asset-classification'
 import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
@@ -470,7 +471,7 @@ function AssetManagementInner() {
   // Lightbox + photo gallery
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null)
   const [galleryAsset, setGalleryAsset] = useState<Asset | null>(null)
-  const [tab, setTab] = useState<'assets' | 'auditable' | 'accountability' | 'audit' | 'flowchart'>('assets')
+  const [tab, setTab] = useState<'assets' | 'auditable' | 'accountability' | 'departments' | 'audit' | 'flowchart'>('assets')
   const photosOf = (a: Asset): string[] => {
     const arr = Array.isArray(a.photoUrls) ? a.photoUrls : []
     if (arr.length) return arr
@@ -1157,13 +1158,17 @@ function AssetManagementInner() {
 
       {/* Tabs */}
       <div className="flex items-center gap-1 border-b" style={{ borderColor: 'var(--light-gray)' }}>
-        {([['assets', 'Assets'], ['auditable', 'Auditable Assets'], ['accountability', 'Accountability'], ['audit', 'Asset Audit'], ['flowchart', 'Recording Flowchart']] as const).map(([v, label]) => (
+        {([['assets', 'Assets'], ['auditable', 'Auditable Assets'], ['accountability', 'Accountability'], ['departments', 'By Department'], ['audit', 'Asset Audit'], ['flowchart', 'Recording Flowchart']] as const).map(([v, label]) => (
           <button key={v} onClick={() => setTab(v)} className="px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors"
             style={{ borderColor: tab === v ? 'var(--teal)' : 'transparent', color: tab === v ? 'var(--teal)' : 'var(--mid-gray)' }}>{label}</button>
         ))}
       </div>
 
       {tab === 'accountability' && <AccountabilityTab assets={assets} loading={loading} />}
+      {tab === 'departments' && (
+        <DepartmentTotalsTab assets={assets} loading={loading} branchFilter={branchFilter} setBranchFilter={setBranchFilter}
+          lockedBranch={isBranchRestricted ? branchLabel(userBranch) : ''} onOpen={setViewAsset} />
+      )}
       {tab === 'audit' && <AssetAuditTab canWrite={canManage} />}
       {tab === 'flowchart' && <AssetFlowchart />}
 
@@ -3256,6 +3261,140 @@ interface CustodyRow {
   missing: boolean
   pieces: number
   value: number
+}
+
+// Asset totals per department, for all branches or one.
+function DepartmentTotalsTab({ assets, loading, branchFilter, setBranchFilter, lockedBranch, onOpen }: {
+  assets: Asset[]; loading: boolean; branchFilter: string; setBranchFilter: (b: string) => void; lockedBranch: string; onOpen: (a: Asset) => void
+}) {
+  const [open, setOpen] = useState<Set<string>>(new Set())
+  const rows = useMemo(() => departmentTotals(assets), [assets])
+  const totals = useMemo(() => ({
+    cost: rows.reduce((s, r) => s + r.cost, 0),
+    monthly: rows.reduce((s, r) => s + r.monthly, 0),
+    accumulated: rows.reduce((s, r) => s + r.accumulated, 0),
+    items: assets.reduce((s, a) => s + (a.quantity || 1), 0),
+  }), [rows, assets])
+  const pct = (cost: number) => (totals.cost > 0 ? (cost / totals.cost) * 100 : 0)
+  const scope = lockedBranch || (branchFilter ? branchLabel(branchFilter) : 'All branches')
+  const toggle = (d: string) => setOpen(prev => {
+    const next = new Set(prev)
+    if (next.has(d)) next.delete(d); else next.add(d)
+    return next
+  })
+  const exportTotals = (fmt: 'xlsx' | 'pdf') => {
+    const headers = ['Department', 'Records', 'Items', 'Cost', '% of cost', 'Monthly depreciation', 'Depreciated to date', 'Book value']
+    const summary = [
+      ...rows.map(r => [r.department, String(r.records), String(r.items), r.cost.toFixed(2), `${pct(r.cost).toFixed(1)}%`, r.monthly.toFixed(2), r.accumulated.toFixed(2), r.bookValue.toFixed(2)]),
+      ['Total', String(assets.length), String(totals.items), totals.cost.toFixed(2), '100.0%', totals.monthly.toFixed(2), totals.accumulated.toFixed(2), (totals.cost - totals.accumulated).toFixed(2)],
+    ]
+    if (fmt === 'pdf') {
+      downloadPdf({ title: 'Asset Totals by Department', subtitle: `${scope} · ${assets.length} record(s)`, headers, rows: summary, landscape: true })
+      return
+    }
+    const detailHeaders = ['Department', 'Control No.', 'Asset', 'Branch', 'Classification', 'Pcs', 'Shared', 'Cost', 'Monthly depreciation', 'Depreciated to date', 'Book value']
+    const detail = rows.flatMap(r => r.lines.map(l => [
+      r.department, l.controlNumber || '', l.name, branchLabel(l.branch), classificationLabel(l.classification), String(l.pieces), l.shared ? 'Yes' : 'No',
+      l.cost.toFixed(2), l.monthly.toFixed(2), l.accumulated.toFixed(2), (l.cost - l.accumulated).toFixed(2),
+    ]))
+    downloadXlsx(`asset-totals-by-department-${branchFilter || 'all'}`, [{ name: 'By Department', headers, rows: summary }, { name: 'Assets', headers: detailHeaders, rows: detail }])
+  }
+  if (loading) return <div className="flex items-center gap-2 text-sm text-gray-500 py-10 justify-center"><Loader2 size={16} className="animate-spin" /> Loading assets…</div>
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-3">
+        {lockedBranch ? (
+          <span className="text-sm text-gray-500">Showing: <strong>{lockedBranch}</strong></span>
+        ) : (
+          <div>
+            <label className="text-xs font-medium text-gray-500 mr-2">Branch</label>
+            <select value={branchFilter} onChange={e => setBranchFilter(e.target.value)}
+              className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500">
+              <option value="">All Branches</option>
+              {BRANCH_OPTIONS.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
+            </select>
+          </div>
+        )}
+        <p className="text-sm text-gray-500">{assets.length} record(s) · {formatCurrency(totals.cost)} total cost</p>
+        <div className="ml-auto flex items-center gap-2">
+          <button onClick={() => exportTotals('xlsx')} className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50">Excel</button>
+          <button onClick={() => exportTotals('pdf')} className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50">PDF</button>
+        </div>
+      </div>
+      <p className="text-xs text-gray-500">
+        An asset serving several departments is shared equally between them, so the costs add up to the total. It still counts as a record and its items under each department, so those columns can add up to more than the total. Click a department to see its assets.
+      </p>
+      <div className="bg-white border border-gray-200 rounded-xl overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-gray-50 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              <th className="text-left px-4 py-3">Department</th>
+              <th className="text-right px-4 py-3">Records</th>
+              <th className="text-right px-4 py-3">Items</th>
+              <th className="text-right px-4 py-3">Cost</th>
+              <th className="text-right px-4 py-3">% of cost</th>
+              <th className="text-right px-4 py-3">Monthly depreciation</th>
+              <th className="text-right px-4 py-3">Depreciated to date</th>
+              <th className="text-right px-4 py-3">Book value</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 && <tr><td colSpan={8} className="text-center text-gray-400 py-10">No assets for this branch.</td></tr>}
+            {rows.map(r => (
+              <React.Fragment key={r.department}>
+                <tr onClick={() => toggle(r.department)} className="border-t border-gray-100 cursor-pointer hover:bg-gray-50">
+                  <td className={`px-4 py-3 font-medium ${r.department === NO_DEPARTMENT ? 'text-amber-600' : 'text-gray-900'}`}>
+                    <span className="inline-flex items-center gap-2">
+                      {open.has(r.department) ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />}
+                      {r.department}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-right text-gray-700">{r.records}</td>
+                  <td className="px-4 py-3 text-right text-gray-700">{r.items}</td>
+                  <td className="px-4 py-3 text-right font-medium text-gray-900 whitespace-nowrap">{formatCurrency(r.cost)}</td>
+                  <td className="px-4 py-3 text-right text-gray-500">{pct(r.cost).toFixed(1)}%</td>
+                  <td className="px-4 py-3 text-right text-gray-700 whitespace-nowrap">{formatCurrency(r.monthly)}</td>
+                  <td className="px-4 py-3 text-right text-gray-700 whitespace-nowrap">{formatCurrency(r.accumulated)}</td>
+                  <td className="px-4 py-3 text-right text-gray-700 whitespace-nowrap">{formatCurrency(r.bookValue)}</td>
+                </tr>
+                {open.has(r.department) && r.lines.map(l => (
+                  <tr key={l.assetId} onClick={() => { const a = assets.find(x => x.id === l.assetId); if (a) onOpen(a) }}
+                    className="border-t border-gray-50 bg-gray-50/60 cursor-pointer hover:bg-gray-100 text-xs text-gray-600">
+                    <td className="pl-10 pr-4 py-2">
+                      <span className="font-mono text-gray-500 mr-2">{l.controlNumber || '—'}</span>{l.name}
+                      {!branchFilter && !lockedBranch && <span className="ml-2 text-gray-400">{branchLabel(l.branch)}</span>}
+                      {l.shared && <span className="ml-2 text-teal-700">shared</span>}
+                    </td>
+                    <td className="px-4 py-2" />
+                    <td className="px-4 py-2 text-right">{l.pieces}</td>
+                    <td className="px-4 py-2 text-right whitespace-nowrap">{formatCurrency(l.cost)}</td>
+                    <td className="px-4 py-2" />
+                    <td className="px-4 py-2 text-right whitespace-nowrap">{formatCurrency(l.monthly)}</td>
+                    <td className="px-4 py-2 text-right whitespace-nowrap">{formatCurrency(l.accumulated)}</td>
+                    <td className="px-4 py-2 text-right whitespace-nowrap">{formatCurrency(l.cost - l.accumulated)}</td>
+                  </tr>
+                ))}
+              </React.Fragment>
+            ))}
+          </tbody>
+          {rows.length > 0 && (
+            <tfoot>
+              <tr className="border-t-2 border-gray-200 bg-gray-50 font-semibold text-gray-900">
+                <td className="px-4 py-3">Total</td>
+                <td className="px-4 py-3 text-right">{assets.length}</td>
+                <td className="px-4 py-3 text-right">{totals.items}</td>
+                <td className="px-4 py-3 text-right whitespace-nowrap">{formatCurrency(totals.cost)}</td>
+                <td className="px-4 py-3 text-right">100.0%</td>
+                <td className="px-4 py-3 text-right whitespace-nowrap">{formatCurrency(totals.monthly)}</td>
+                <td className="px-4 py-3 text-right whitespace-nowrap">{formatCurrency(totals.accumulated)}</td>
+                <td className="px-4 py-3 text-right whitespace-nowrap">{formatCurrency(totals.cost - totals.accumulated)}</td>
+              </tr>
+            </tfoot>
+          )}
+        </table>
+      </div>
+    </div>
+  )
 }
 
 function AccountabilityTab({ assets, loading }: { assets: Asset[]; loading: boolean }) {
