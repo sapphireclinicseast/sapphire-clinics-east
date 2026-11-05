@@ -59,7 +59,11 @@ const MD_SUB_PATTERNS: [RegExp, string][] = [
   // "MD OTHERS - MEDICAL CERTIFICATE (PSYCHIATRY)" alike.
   [/PSYCHIATR/i,                                              'PSYCHIATRY'],
   [/DEVELOPMENTAL\s+PEDIATRIC|^\s*PEDIATRICS\b/i,             'DEVELOPMENTAL_PEDIATRICS'],
-  [/REHABILITATION\s+SCIENCE|REHAB\w*\s+MEDICINE|PHYSICAL\s+MEDICINE/i,
+  // PHYSIATR is here for the same reason the Operations Hub matches it on job
+  // titles: it is the formal name for the practice and a plausible wording for
+  // a future service item, even though today's items all say "REHABILITATION
+  // SCIENCE".
+  [/REHABILITATION\s+SCIENCE|REHAB\w*\s+MEDICINE|PHYSICAL\s+MEDICINE|PHYSIATR/i,
                                                               'REHABILITATION_MEDICINE'],
 ]
 

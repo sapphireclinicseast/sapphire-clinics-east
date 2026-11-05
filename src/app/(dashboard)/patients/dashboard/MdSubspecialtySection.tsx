@@ -309,8 +309,9 @@ export default function MdSubspecialtySection({
       </div>
       <p className="text-[10px] mt-2" style={{ color: 'var(--mid-gray)' }}>
         Ringed cells are the expected pairings · ⚠ age-confounded means the raw counts and the
-        age-adjusted figure disagree — read the adjusted one · Subspecialty comes from the doctor&apos;s HR
-        job title on Clinic Schedule sessions, and from the POS service name where it states one
+        age-adjusted figure disagree — read the adjusted one · Subspecialty comes from the occupation on
+        the doctor&apos;s HR Staff Profile (Job Title) for sessions in the Clinic Schedule, and from the
+        POS service name where that states one
       </p>
     </div>
   )

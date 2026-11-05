@@ -76,19 +76,33 @@ const MD_SUB_EXPECTED: Record<MdSub, readonly Dept[]> = {
 const THERAPY_DEPTS = ['OT', 'PT', 'SLP', 'SPED', 'PSYCHOLOGY'] as const satisfies readonly Dept[]
 
 /**
- * Subspecialty of an MD staff member, from the HR job title.
+ * Subspecialty of an MD staff member, from the occupation on their HR Staff
+ * Profile — the Job Title field.
  *
- * StaffDepartment has PSYCHIATRY / DEVELOPMENTAL_PEDIATRICIAN /
- * REHABILITATION_MEDICINE values, but no row uses them — all 16 doctors are
- * filed under MD, and the job title is where the subspecialty actually lives
- * ("Developmental Pediatrician", "Rehab Medicine Doctor", "Psychiatrist").
- * Matched loosely so an HR rewording doesn't silently drop a doctor.
+ * HR has one "Medicine" department, so the department never carries the
+ * subspecialty (StaffDepartment's PSYCHIATRY / DEVELOPMENTAL_PEDIATRICIAN /
+ * REHABILITATION_MEDICINE values exist but no row uses them). The job title
+ * does, and it is a controlled vocabulary in HR Settings → Job Titles, with
+ * exactly three entries that belong to Medicine:
+ *
+ *     psychiatrist                → "Psychiatrist"
+ *     developmental-pediatrician  → "Developmental Pediatrician"
+ *     physiatrist                 → "Rehab Medicine Doctor"
+ *
+ * Both forms have to be matched. The HR staff feed resolves the id to its
+ * label and only falls back to the raw id when the lookup fails, so this field
+ * normally holds the label — but the label is admin-editable from Settings
+ * while the id is not, and "physiatrist" shares no words with "Rehab Medicine
+ * Doctor". Matching one form only would mean a renamed title, or a single
+ * failed lookup, silently emptying a row of this panel rather than erroring.
  */
 function subFromJobTitle(title: string | null | undefined): MdSub | null {
   if (!title) return null
-  if (/PSYCHIATR/i.test(title))     return 'PSYCHIATRY'
-  if (/DEVELOPMENTAL/i.test(title)) return 'DEVELOPMENTAL_PEDIATRICS'
-  if (/REHAB/i.test(title))         return 'REHABILITATION_MEDICINE'
+  // "physiatrist" does not contain "psychiatr" (phy- vs psy-), so the order of
+  // these two is not load-bearing — but they are easy to misread as clashing.
+  if (/PSYCHIATR/i.test(title))                 return 'PSYCHIATRY'
+  if (/DEVELOPMENTAL/i.test(title))             return 'DEVELOPMENTAL_PEDIATRICS'
+  if (/REHAB|PHYSIATR|PHYSICAL\s+MEDICINE/i.test(title)) return 'REHABILITATION_MEDICINE'
   return null
 }
 
