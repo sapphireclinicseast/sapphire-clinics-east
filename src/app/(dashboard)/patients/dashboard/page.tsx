@@ -10,6 +10,8 @@ import { branchLabel } from '@/lib/branch-label'
 
 import DeptBreakdownSection from './DeptBreakdownSection'
 import LifetimeSection from './LifetimeSection'
+import MdSubspecialtySection from './MdSubspecialtySection'
+import { rrPhrase, type AffinityEntry, type MdSubRow, type MdSubCoverage } from './affinity'
 
 const PatientMap = dynamic(() => import('@/components/patients/PatientMap'), { ssr: false })
 
@@ -30,36 +32,6 @@ interface Stats {
   branchDist: Record<string, number>
 }
 
-interface AffinityEntry {
-  target: string
-  color: string
-  confidencePct: number
-  lift: number
-  coCount: number
-  phi: number
-  pValue: number
-  pLabel: string
-  pSig: boolean
-  smallCell: boolean
-  /** Fisher's exact was used instead of χ² (expected cell < 5). */
-  exact?: boolean
-  /** Benjamini–Hochberg adjusted p across the 15 distinct pairs. */
-  qValue?: number
-  qLabel?: string
-  /** Odds ratio holding patient type constant (Mantel–Haenszel), 95% CI. */
-  oddsRatio?: number | null
-  oddsCiLow?: number | null
-  oddsCiHigh?: number | null
-  crudeOddsRatio?: number | null
-  /** How much more likely the column service is for patients who use the row
-   *  service, vs patients who do not. Age-adjusted, 95% CI. */
-  riskRatio?: number | null
-  riskCiLow?: number | null
-  riskCiHigh?: number | null
-  /** Pooled and age-adjusted estimates disagree — read the adjusted one. */
-  ageConfounded?: boolean
-}
-
 interface InterdeptStats {
   totalPatients: number
   deptCounts: Record<string, number>
@@ -67,6 +39,10 @@ interface InterdeptStats {
   affinityMatrix: { dept: string; color: string; count: number; affinities: AffinityEntry[] }[]
   avgSessionsPerMonth: Record<string, number>
   comboTotal?: number
+  /** MD broken out into DevPed / Rehab Med / Psychiatry. Absent when the API
+   *  predates the panel, so the section must render conditionally. */
+  mdSubMatrix?: MdSubRow[]
+  mdSubCoverage?: MdSubCoverage
 }
 
 const ALL_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE'] as const
@@ -151,20 +127,6 @@ function DiagnosisValueLabel(props: {
       {n} · {payload.pct ?? 0}%
     </text>
   )
-}
-
-// Reads the risk ratio aloud, with its interval, and says nothing when the
-// interval crosses 1 — a point estimate quoted without that caveat is how a
-// coincidence becomes a referral policy.
-function rrPhrase(a: AffinityEntry): string {
-  if (a.riskRatio == null) return ''
-  const ci = (a.riskCiLow != null && a.riskCiHigh != null)
-    ? ` (95% CI ${a.riskCiLow.toFixed(2)}–${a.riskCiHigh.toFixed(2)})`
-    : ''
-  const spansOne = a.riskCiLow != null && a.riskCiHigh != null
-    && a.riskCiLow <= 1 && a.riskCiHigh >= 1
-  if (spansOne) return `${ci} — but the interval includes 1, so the direction is not settled`
-  return ` — ${a.riskRatio.toFixed(1)}× as likely as patients who do not${ci}`
 }
 
 // ── Custom Y-axis tick for diagnosis names (truncate to 20 chars) ─────────────
@@ -773,6 +735,17 @@ export default function PatientDashboardPage() {
                 ⚠ = expected cell count &lt; 5; chi-square less reliable for those cells · φ (phi) is the effect size: |φ| &lt; 0.1 = negligible, 0.1–0.3 = small, 0.3–0.5 = medium, &gt; 0.5 = large
               </p>
             </div>
+
+            {/* ── MD by subspecialty ── the MD row above averages three
+                 practices that refer into different therapy lines, so it is
+                 split out rather than read as one pattern */}
+            {interdeptStats.mdSubMatrix && (
+              <MdSubspecialtySection
+                rows={interdeptStats.mdSubMatrix}
+                coverage={interdeptStats.mdSubCoverage}
+                totalPatients={interdeptStats.totalPatients}
+              />
+            )}
 
             {/* ── Combination counts ── */}
             <div>
