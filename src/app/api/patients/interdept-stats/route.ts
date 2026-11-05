@@ -33,6 +33,79 @@ const DEPT_COLORS: Record<Dept, string> = {
 // controlling the family-wise error rate.
 const PAIR_COUNT = (FOCUS_DEPTS.length * (FOCUS_DEPTS.length - 1)) / 2
 
+// ── MD subspecialties ───────────────────────────────────────────────────────
+// "MD" is one department but three practices that refer into quite different
+// therapy lines, so a single MD row in the affinity matrix averages them into a
+// pattern none of them actually has. These three are broken out in their own
+// panel rather than added to FOCUS_DEPTS: putting them in the matrix would make
+// it 8×8 with 28 pairs to correct across, cost every existing pair statistical
+// power, and lose the aggregate MD row that the rest of the dashboard quotes.
+const MD_SUBS = ['DEVELOPMENTAL_PEDIATRICS', 'REHABILITATION_MEDICINE', 'PSYCHIATRY'] as const
+type MdSub = (typeof MD_SUBS)[number]
+
+const MD_SUB_LABELS: Record<MdSub, string> = {
+  DEVELOPMENTAL_PEDIATRICS: 'Developmental Pediatrics',
+  REHABILITATION_MEDICINE:  'Rehabilitation Medicine',
+  PSYCHIATRY:               'Psychiatry',
+}
+const MD_SUB_SHORT: Record<MdSub, string> = {
+  DEVELOPMENTAL_PEDIATRICS: 'DevPed',
+  REHABILITATION_MEDICINE:  'Rehab Med',
+  PSYCHIATRY:               'Psychiatry',
+}
+// Reds and pinks, so the subspecialty rows read as a split of MD's own #DC2626
+// rather than as three new departments.
+const MD_SUB_COLORS: Record<MdSub, string> = {
+  DEVELOPMENTAL_PEDIATRICS: '#DC2626',
+  REHABILITATION_MEDICINE:  '#EA580C',
+  PSYCHIATRY:               '#BE185D',
+}
+
+// The therapy lines each subspecialty is clinically expected to refer into.
+// This marks an expectation; it does not filter anything. Every subspecialty is
+// scored against every therapy service precisely so a pattern that does NOT
+// match the expectation is as visible as one that does.
+const MD_SUB_EXPECTED: Record<MdSub, readonly Dept[]> = {
+  DEVELOPMENTAL_PEDIATRICS: ['OT', 'PT', 'SLP', 'SPED'],
+  REHABILITATION_MEDICINE:  ['PT'],
+  PSYCHIATRY:               ['PSYCHOLOGY'],
+}
+
+// MD itself is not a column: the question is which therapy a doctor's patients
+// go on to use, and every patient in a subspecialty row has MD by construction.
+const THERAPY_DEPTS = ['OT', 'PT', 'SLP', 'SPED', 'PSYCHOLOGY'] as const satisfies readonly Dept[]
+
+/**
+ * Subspecialty of an MD staff member, from the occupation on their HR Staff
+ * Profile — the Job Title field.
+ *
+ * HR has one "Medicine" department, so the department never carries the
+ * subspecialty (StaffDepartment's PSYCHIATRY / DEVELOPMENTAL_PEDIATRICIAN /
+ * REHABILITATION_MEDICINE values exist but no row uses them). The job title
+ * does, and it is a controlled vocabulary in HR Settings → Job Titles, with
+ * exactly three entries that belong to Medicine:
+ *
+ *     psychiatrist                → "Psychiatrist"
+ *     developmental-pediatrician  → "Developmental Pediatrician"
+ *     physiatrist                 → "Rehab Medicine Doctor"
+ *
+ * Both forms have to be matched. The HR staff feed resolves the id to its
+ * label and only falls back to the raw id when the lookup fails, so this field
+ * normally holds the label — but the label is admin-editable from Settings
+ * while the id is not, and "physiatrist" shares no words with "Rehab Medicine
+ * Doctor". Matching one form only would mean a renamed title, or a single
+ * failed lookup, silently emptying a row of this panel rather than erroring.
+ */
+function subFromJobTitle(title: string | null | undefined): MdSub | null {
+  if (!title) return null
+  // "physiatrist" does not contain "psychiatr" (phy- vs psy-), so the order of
+  // these two is not load-bearing — but they are easy to misread as clashing.
+  if (/PSYCHIATR/i.test(title))                 return 'PSYCHIATRY'
+  if (/DEVELOPMENTAL/i.test(title))             return 'DEVELOPMENTAL_PEDIATRICS'
+  if (/REHAB|PHYSIATR|PHYSICAL\s+MEDICINE/i.test(title)) return 'REHABILITATION_MEDICINE'
+  return null
+}
+
 // Empty per-department tally, used for monthly volume and patient counts.
 function zeroByDept(): Record<Dept, number> {
   return Object.fromEntries(FOCUS_DEPTS.map(d => [d, 0])) as Record<Dept, number>
@@ -138,7 +211,7 @@ export async function GET(req: NextRequest) {
     select: {
       patientId: true,
       date:      true,
-      staff:     { select: { department: true } },
+      staff:     { select: { department: true, jobTitle: true } },
       patient:   { select: { branches: true, branch: true, patientType: true } },
     },
   })
@@ -168,12 +241,23 @@ export async function GET(req: NextRequest) {
   // table answers a question nobody asked.
   const patientStratum = new Map<string, 'PEDIATRIC' | 'ADULT'>()
   const monthDept: Record<string, Record<Dept, number>> = {}
+  // Which MD subspecialties each patient has actually seen. Absent means "no
+  // attributable doctor", which is not the same as "no doctor" — see the
+  // coverage figures returned at the bottom.
+  const patientMdSubs = new Map<string, Set<MdSub>>()
 
   for (const s of relevant) {
     if (!s.patientId) continue
     const dept = s.staff.department as Dept
     if (!patientDepts.has(s.patientId)) patientDepts.set(s.patientId, new Set())
     patientDepts.get(s.patientId)!.add(dept)
+    if (dept === 'MD') {
+      const sub = subFromJobTitle(s.staff.jobTitle)
+      if (sub) {
+        if (!patientMdSubs.has(s.patientId)) patientMdSubs.set(s.patientId, new Set())
+        patientMdSubs.get(s.patientId)!.add(sub)
+      }
+    }
     const pt = s.patient?.patientType as string | undefined
     if (pt === 'PEDIATRIC' || pt === 'ADULT') patientStratum.set(s.patientId, pt)
 
@@ -196,6 +280,17 @@ export async function GET(req: NextRequest) {
       for (const d of depts) {
         if ((FOCUS_DEPTS as readonly string[]).includes(d)) {
           patientDepts.get(key)!.add(d as Dept)
+        }
+      }
+    }
+    // POS names the subspecialty in the service text for roughly a third of MD
+    // billing; the rest is the generic QuickBooks/HMO "Medical Consultation"
+    // and stays unattributed rather than being guessed at.
+    for (const [key, subs] of pos.mdSubs) {
+      for (const s of subs) {
+        if ((MD_SUBS as readonly string[]).includes(s)) {
+          if (!patientMdSubs.has(key)) patientMdSubs.set(key, new Set())
+          patientMdSubs.get(key)!.add(s as MdSub)
         }
       }
     }
@@ -357,6 +452,115 @@ export async function GET(req: NextRequest) {
       }
   }
 
+  // ── MD subspecialty → therapy service ───────────────────────────────────────
+  // Same statistics as the matrix above, same patient set and same denominator
+  // N, with the exposure narrowed from "sees a doctor" to "sees THIS kind of
+  // doctor". That makes it directly comparable to the MD row above it.
+  //
+  // The attribution is incomplete, and knowingly so. A patient whose only MD
+  // record is a generic "Medical Consultation" counts as unexposed in every
+  // subspecialty row even though they did see one of these doctors. That
+  // misclassification puts genuinely exposed patients into the comparison
+  // group, which pulls every risk ratio TOWARD 1 — so these figures understate
+  // the referral relationships rather than inventing them. The coverage
+  // numbers are returned alongside so the panel can say so.
+  const mdPatients = new Set<string>()
+  for (const [pid, depts] of patientDepts) if (depts.has('MD')) mdPatients.add(pid)
+  const mdAttributed = new Set<string>()
+  for (const pid of patientMdSubs.keys()) if (mdPatients.has(pid)) mdAttributed.add(pid)
+
+  /** 2×2 for "has this subspecialty" × "has this therapy service". */
+  function tableSub(
+    sub: MdSub,
+    target: Dept,
+    stratum: 'PEDIATRIC' | 'ADULT' | null,
+  ): [number, number, number, number] {
+    let a = 0, b = 0, c = 0, d = 0
+    for (const [pid, depts] of patientDepts) {
+      if (stratum && patientStratum.get(pid) !== stratum) continue
+      const h1 = patientMdSubs.get(pid)?.has(sub) ?? false
+      const h2 = depts.has(target)
+      if (h1 && h2) a++
+      else if (h1)  b++
+      else if (h2)  c++
+      else          d++
+    }
+    return [a, b, c, d]
+  }
+
+  const mdSubMatrix = MD_SUBS.map((sub) => {
+    const subCount = [...patientMdSubs.values()].filter((s) => s.has(sub)).length
+    return {
+      sub,
+      label: MD_SUB_LABELS[sub],
+      short: MD_SUB_SHORT[sub],
+      color: MD_SUB_COLORS[sub],
+      count: subCount,
+      affinities: THERAPY_DEPTS.map((target) => {
+        const [a, b, c, d] = tableSub(sub, target, null)
+        const chi    = chiSquareTest(a, b, c, d)
+        const strata = [tableSub(sub, target, 'PEDIATRIC'), tableSub(sub, target, 'ADULT')] as Array<[number, number, number, number]>
+        const crude  = [a, b, c, d] as [number, number, number, number]
+        const mh = mantelHaenszel(strata, crude)
+        const rr = mantelHaenszelRR(strata, crude)
+        return {
+          target,
+          color:         DEPT_COLORS[target],
+          expected:      (MD_SUB_EXPECTED[sub] as readonly string[]).includes(target),
+          // Of this subspecialty's patients, the share who also use the therapy.
+          confidencePct: subCount > 0 ? Math.round((a / subCount) * 100) : 0,
+          lift:          Number((subCount && deptCounts[target]
+                            ? (a * N) / (subCount * deptCounts[target])
+                            : 0).toFixed(2)),
+          coCount:       a,
+          phi:           Number(chi.phi.toFixed(3)),
+          pValue:        Number(chi.pValue.toFixed(4)),
+          pLabel:        chi.pLabel,
+          pSig:          chi.pSig,
+          smallCell:     chi.smallCell,
+          exact:         chi.exact,
+          oddsRatio:      Number.isFinite(mh.or)      ? Number(mh.or.toFixed(2))      : null,
+          oddsCiLow:      Number.isFinite(mh.ciLow)   ? Number(mh.ciLow.toFixed(2))   : null,
+          oddsCiHigh:     Number.isFinite(mh.ciHigh)  ? Number(mh.ciHigh.toFixed(2))  : null,
+          crudeOddsRatio: Number.isFinite(mh.crudeOr) ? Number(mh.crudeOr.toFixed(2)) : null,
+          riskRatio:      Number.isFinite(rr.rr)      ? Number(rr.rr.toFixed(2))      : null,
+          riskCiLow:      Number.isFinite(rr.ciLow)   ? Number(rr.ciLow.toFixed(2))   : null,
+          riskCiHigh:     Number.isFinite(rr.ciHigh)  ? Number(rr.ciHigh.toFixed(2))  : null,
+          ageConfounded:  mh.confounded,
+          qValue:         0,
+          qLabel:         '',
+        }
+      }),
+    }
+  })
+
+  // Its own Benjamini–Hochberg family. These 15 tests are a separate screening
+  // question from the 15 department pairs above, and pooling the two families
+  // would let one panel's findings decide the other's threshold. Unlike the
+  // matrix, every cell here is a distinct pair — the table is not symmetric, so
+  // there is nothing to de-duplicate.
+  {
+    const flat = mdSubMatrix.flatMap((r) => r.affinities)
+    const qs = benjaminiHochberg(flat.map((a) => a.pValue))
+    flat.forEach((aff, i) => {
+      const qv = qs[i]
+      aff.qValue = Number(qv.toFixed(4))
+      aff.qLabel = qv < 0.001 ? 'q < 0.001'
+                 : qv < 0.05  ? `q = ${qv.toFixed(3)}`
+                 : `q = ${qv.toFixed(2)} (n.s.)`
+      aff.pSig = qv < 0.05
+    })
+  }
+
+  const mdSubCoverage = {
+    mdPatients:     mdPatients.size,
+    attributed:     mdAttributed.size,
+    unattributed:   mdPatients.size - mdAttributed.size,
+    // Patients who have seen more than one kind of doctor. Small, but it is why
+    // the three row counts sum to more than `attributed`.
+    multiSub:       [...patientMdSubs.values()].filter((s) => s.size > 1).length,
+  }
+
   // ── Avg sessions per patient per month ───────────────────────────────────────
   const months = Object.values(monthDept)
   const avgSessionsPerMonth: Record<string, number> = {}
@@ -376,6 +580,8 @@ export async function GET(req: NextRequest) {
     deptCounts,
     comboStats,
     affinityMatrix,
+    mdSubMatrix,
+    mdSubCoverage,
     avgSessionsPerMonth,
     comboTotal,
     posMerged: !!pos,

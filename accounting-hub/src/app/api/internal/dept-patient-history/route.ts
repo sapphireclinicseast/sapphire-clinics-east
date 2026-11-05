@@ -41,6 +41,39 @@ const DEPT_MAP: Record<string, string> = {
 // departments). Counting them under a department would invent treatment that
 // didn't happen, so they're skipped and reported rather than silently dropped.
 
+// MD covers three subspecialties that refer into quite different therapy lines,
+// and the Operations Hub patient dashboard breaks the MD→therapy relationship
+// down by them. Only the service NAME carries the subspecialty — Service.department
+// is a single 'MD' bucket — so classify on the name and leave the rest unlabelled
+// rather than guessing.
+//
+// Unlabelled is the common case here, not an edge: the 2024-25 QuickBooks import
+// books everything as a generic "Medical Consultation", as do the HMO consult
+// items and the "MD OTHERS" fees. 1,912 of 2,756 MD order lines (1,244 of 1,644
+// billing identities) cannot be attributed. A caller that read "no subspecialty"
+// as "general MD" would be inventing a fourth subspecialty out of them, so an
+// unattributable line contributes no subspecialty at all and the caller is left
+// to report its own coverage.
+const MD_SUB_PATTERNS: [RegExp, string][] = [
+  // Catches "PSYCHIATRY - DR. X (CONSULT)" and
+  // "MD OTHERS - MEDICAL CERTIFICATE (PSYCHIATRY)" alike.
+  [/PSYCHIATR/i,                                              'PSYCHIATRY'],
+  [/DEVELOPMENTAL\s+PEDIATRIC|^\s*PEDIATRICS\b/i,             'DEVELOPMENTAL_PEDIATRICS'],
+  // PHYSIATR is here for the same reason the Operations Hub matches it on job
+  // titles: it is the formal name for the practice and a plausible wording for
+  // a future service item, even though today's items all say "REHABILITATION
+  // SCIENCE".
+  [/REHABILITATION\s+SCIENCE|REHAB\w*\s+MEDICINE|PHYSICAL\s+MEDICINE|PHYSIATR/i,
+                                                              'REHABILITATION_MEDICINE'],
+]
+
+/** Subspecialty named by an MD service, or null when the name doesn't say. */
+function mdSubspecialty(serviceName: string | null | undefined): string | null {
+  if (!serviceName) return null
+  for (const [re, sub] of MD_SUB_PATTERNS) if (re.test(serviceName)) return sub
+  return null
+}
+
 // Order.patientName is free text and, in the migrated history, sometimes holds
 // something that isn't a patient: a service description pasted in
 // ("PT - THERAPIST (SINGLE) - MSK/ORTHO..."), an institution or HMO
@@ -89,7 +122,7 @@ export async function GET(req: NextRequest) {
       patientId: true,
       patientName: true,
       transactionDate: true,
-      items: { select: { service: { select: { department: true } } } },
+      items: { select: { service: { select: { department: true, name: true } } } },
     },
   })
 
@@ -107,6 +140,11 @@ export async function GET(req: NextRequest) {
     dept: string
     first: Date | null
     last: Date | null
+    // Every MD subspecialty this patient was billed for, collected onto the one
+    // (identity, dept) row rather than split into separate rows — splitting
+    // would change the row cardinality every existing caller already dedupes
+    // against, for a field only one of them reads.
+    mdSubs: Set<string>
   }>()
   // Session volume per (month, dept) — the caller needs this for
   // "avg sessions/patient/mo", which cannot be derived from the deduped pairs
@@ -142,7 +180,7 @@ export async function GET(req: NextRequest) {
       const key = `${identity}|${dept}`
       let agg = byKey.get(key)
       if (!agg) {
-        agg = { patientId: o.patientId, patientName: o.patientName, dept, first: null, last: null }
+        agg = { patientId: o.patientId, patientName: o.patientName, dept, first: null, last: null, mdSubs: new Set() }
         byKey.set(key, agg)
       }
       // Widen on every line rather than only the first, which is the whole
@@ -152,17 +190,24 @@ export async function GET(req: NextRequest) {
         if (!agg.first || o.transactionDate < agg.first) agg.first = o.transactionDate
         if (!agg.last  || o.transactionDate > agg.last)  agg.last  = o.transactionDate
       }
+      if (dept === 'MD') {
+        const sub = mdSubspecialty(it.service?.name)
+        if (sub) agg.mdSubs.add(sub)
+      }
     }
   }
 
   // Shape is additive: existing callers read patientId/patientName/dept and
-  // are unaffected by the two new fields.
+  // are unaffected by the extra fields. mdSubs is omitted entirely on non-MD
+  // rows and on MD rows whose service names never named a subspecialty, so an
+  // absent field and an empty one mean the same thing — "not attributable".
   const rows = Array.from(byKey.values()).map(a => ({
     patientId: a.patientId,
     patientName: a.patientName,
     dept: a.dept,
     first: a.first ? a.first.toISOString().slice(0, 10) : null,
     last:  a.last  ? a.last.toISOString().slice(0, 10)  : null,
+    ...(a.mdSubs.size > 0 ? { mdSubs: [...a.mdSubs] } : {}),
   }))
 
   return NextResponse.json({

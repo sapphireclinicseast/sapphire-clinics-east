@@ -25,6 +25,15 @@ export interface PosHistory {
   spans: Map<string, { first: string; last: string }>
   /** "YYYY-MM" → dept → session count. Volume, not unique patients. */
   monthly: Map<string, Record<string, number>>
+  /** patientKey → MD subspecialties billed (PSYCHIATRY,
+   *  DEVELOPMENTAL_PEDIATRICS, REHABILITATION_MEDICINE).
+   *
+   *  Present only for patients whose MD service names actually named one. Most
+   *  historical MD billing does not: the 2024-25 QuickBooks import, the HMO
+   *  consult items and the "MD OTHERS" fees are all generic. A patient who
+   *  appears in `patientDepts` under MD but is missing here has seen a doctor
+   *  whose subspecialty POS cannot tell us — not a doctor without one. */
+  mdSubs: Map<string, Set<string>>
   window: { from: string | null; to: string | null }
   match: { byId: number; byName: number; byNameVariant: number; unmatched: number; ambiguous: number }
   skippedNonPatient: number
@@ -65,7 +74,7 @@ export async function loadPosHistory(
 
   let hist: {
     window: { from: string | null; to: string | null }
-    rows: { patientId: string | null; patientName: string | null; dept: string; first?: string | null; last?: string | null }[]
+    rows: { patientId: string | null; patientName: string | null; dept: string; first?: string | null; last?: string | null; mdSubs?: string[] }[]
     monthly?: { month: string; dept: string; sessions: number }[]
     skippedNonPatient?: number
   }
@@ -115,6 +124,7 @@ export async function loadPosHistory(
   const resolved = new Map<string, string | null>()
   const patientDepts = new Map<string, Set<string>>()
   const spans = new Map<string, { first: string; last: string }>()
+  const mdSubs = new Map<string, Set<string>>()
 
   for (const r of hist.rows) {
     if (!allowedDepts.includes(r.dept)) continue
@@ -148,6 +158,13 @@ export async function loadPosHistory(
     if (!patientDepts.has(key)) patientDepts.set(key, new Set())
     patientDepts.get(key)!.add(r.dept)
 
+    // Union rather than assign: two POS identities can resolve onto one patient,
+    // and an Accounting Hub that predates this field sends none at all.
+    if (r.mdSubs?.length) {
+      if (!mdSubs.has(key)) mdSubs.set(key, new Set())
+      for (const s of r.mdSubs) mdSubs.get(key)!.add(s)
+    }
+
     // Widen rather than replace: two POS identities can resolve onto one
     // patient, and an Accounting Hub that predates this field sends no dates
     // at all, which must leave the span absent rather than empty.
@@ -173,6 +190,7 @@ export async function loadPosHistory(
     patientDepts,
     spans,
     monthly,
+    mdSubs,
     window: hist.window ?? { from: null, to: null },
     match,
     skippedNonPatient: hist.skippedNonPatient ?? 0,
