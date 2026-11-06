@@ -1,15 +1,16 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { Fragment, useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { userBranchScope } from '@/lib/branch-scope'
 import { useSession } from 'next-auth/react'
 import {
   Plus, Pencil, X, Search, Stethoscope,
-  ArrowUpDown, ChevronUp, ChevronDown, AlertCircle, XCircle, FileCheck, History, Loader2,
+  ArrowUpDown, ChevronUp, ChevronDown, ChevronRight, AlertCircle, XCircle, FileCheck, History, Loader2,
   Ban, RotateCcw, AlertOctagon,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { pwdUnitPrice, PWD_RATE } from '@/lib/quotations/pricing'
+import { groupServices, subServiceLabel, type ServiceGroup } from '@/lib/service-groups'
 import { branchPriceMap, overPrice, type PricedService } from '@/lib/payroll/pf-price'
 import type { ServiceRate } from '@/lib/payroll/pf-price-server'
 import { downloadXlsx, downloadPdf } from '@/lib/export'
@@ -96,6 +97,13 @@ const DEPT_BADGE: Record<string, { bg: string; color: string }> = {
   ORTHOSIS_PROSTHESIS: { bg: '#ccfbf1', color: '#115e59' },
 }
 
+function PayChip({ type }: { type: string }) {
+  const chip = type === 'HMO' ? { bg: '#ffedd5', color: '#c2410c', label: 'HMO' }
+    : type === 'GL' ? { bg: '#dbeafe', color: '#1d4ed8', label: 'GL' }
+    : { bg: '#dcfce7', color: '#166534', label: 'Cash' }
+  return <span className="px-2 py-1 rounded-md text-xs font-medium" style={{ background: chip.bg, color: chip.color }}>{chip.label}</span>
+}
+
 export default function ServicesPage() {
   // ── Price history ────────────────────────────────────────
   type PriceRow = { id: string; field: string; branch: string | null; oldValue: number | null; newValue: number | null; source: string; note: string | null; changedAt: string; by: string | null }
@@ -138,6 +146,10 @@ export default function ServicesPage() {
   const [error, setError] = useState('')
   const [svcPage, setSvcPage] = useState(1)
   const [svcPageSize, setSvcPageSize] = useState(25)
+  // Parents are closed by default and open while searching; this holds the ones
+  // clicked the other way.
+  const [toggledGroups, setToggledGroups] = useState<Set<string>>(new Set())
+  const [resultsSearch, setResultsSearch] = useState('')
 
   // Modal state
   const [modalOpen, setModalOpen] = useState(false)
@@ -243,7 +255,7 @@ export default function ServicesPage() {
     fetchAbortRef.current = ctl
     const seq = ++fetchSeqRef.current
     try {
-      const params = new URLSearchParams({ pageSize: '500', sortField, sortDir })
+      const params = new URLSearchParams({ pageSize: '1000', sortField, sortDir })
       if (search) params.set('search', search)
       if (filterDept) params.set('department', filterDept)
       if (filterBranch) params.set('branch', filterBranch)
@@ -253,6 +265,7 @@ export default function ServicesPage() {
       if (seq !== fetchSeqRef.current) return
       if (!res.ok) { setError(data.error || 'Failed to load services'); return }
       setServices(data.data || [])
+      setResultsSearch(search)
       setError('')
     } catch (e) {
       if ((e as Error)?.name === 'AbortError' || seq !== fetchSeqRef.current) return
@@ -332,6 +345,14 @@ export default function ServicesPage() {
   // Payment type of a service — pre-backfill rows fall back to the legacy flag.
   const payTypeOf = (s: Service) => s.paymentType || (s.isHmoGl ? 'HMO' : 'CASH')
   const visibleServices = filterPayType ? services.filter(s => payTypeOf(s) === filterPayType) : services
+  const serviceEntries = groupServices(visibleServices)
+  const groupOpen = (key: string) => toggledGroups.has(key) !== (resultsSearch.trim() !== '')
+  const toggleGroup = (key: string) => setToggledGroups(prev => {
+    const next = new Set(prev)
+    if (next.has(key)) next.delete(key)
+    else next.add(key)
+    return next
+  })
 
   function SortIcon({ field }: { field: string }) {
     if (sortField !== field) return <ArrowUpDown size={12} className="opacity-30" />
@@ -346,6 +367,19 @@ export default function ServicesPage() {
     setFClinicFee(''); setFNewDoctorFee(''); setFNewClinicFee(''); setFPwdClinicOnly(false); setFNoPwdDiscount(false); setFIssuedOfficialInvoice(false); setFIsHmoGl(false); setFPaymentType('CASH'); setFHmoDirect(false); setFRecognitionMonths(''); setFDescription('')
     setFWalletType(''); setFVipTier(''); setFPackageSessions(''); setFRevenueAccountId(''); setFRevenueAccountSearch(''); setFUnitPayId(''); setFUnitPayEnabled(false); setFAllowPfAbove(false); setFThresholdCounted(false); setFThresholdQty('1'); setFEligibleServices([]); setEligibleSearch(''); setEligibleResults([])
     setError(''); setModalOpen(true)
+  }
+
+  // New service under a parent: carries whatever all its siblings agree on.
+  function openCreateSub(g: ServiceGroup<Service>) {
+    openCreate()
+    setFName(`${g.label} - `)
+    const only = <V,>(values: V[]) => (new Set(values).size === 1 ? values[0] : undefined)
+    const dept = only(g.services.map(s => s.department))
+    if (dept) setFDept(dept)
+    const branch = only(g.services.map(s => s.branch))
+    if (branch) setFBranch(branch)
+    const pay = only(g.services.map(payTypeOf))
+    if (pay) { setFPaymentType(pay); setFIsHmoGl(pay !== 'CASH') }
   }
 
   function openEdit(s: Service) {
@@ -563,6 +597,195 @@ export default function ServicesPage() {
     else downloadPdf({ title, subtitle: `${rows.length} services · ${subtitle}`, headers, rows, landscape: true })
   }
 
+  const renderServiceRow = (s: Service, nested = false) => {
+    const price = Number(s.price)
+    const doctor = s.doctorFee != null ? Number(s.doctorFee) : null
+    const clinic = s.clinicFee != null ? Number(s.clinicFee) : null
+    // Price after the 20% PWD/SC discount — same rule the POS and quotations use
+    // (null when the service is not eligible, i.e. noPwdDiscount).
+    const pwdPrice = pwdUnitPrice({ kind: 'SERVICE', name: s.name, grossPrice: price, quantity: 1, noPwdDiscount: s.noPwdDiscount, hasDoctorFee: s.hasDoctorFee, pwdDiscountClinicOnly: s.pwdDiscountClinicOnly, clinicFee: clinic })
+    const badge = DEPT_BADGE[s.department] || { bg: '#f3f4f6', color: '#374151' }
+
+    return (
+      <tr key={s.id} className="border-t hover:bg-gray-50/50 transition-colors" style={{ borderColor: 'var(--light-gray)', opacity: s.isActive ? 1 : 0.6, background: nested ? 'var(--off-white)' : undefined }}>
+        <td className="px-4 py-3 font-medium" style={{ color: 'var(--charcoal)', paddingLeft: nested ? 44 : undefined }}>
+          <span className="flex items-center gap-1.5" title={nested ? s.name : undefined}>
+            {nested ? subServiceLabel(s.name) : s.name}
+            {s.issuedOfficialInvoice && (
+              <span title="Issued Official Sales Invoice" className="flex-shrink-0"><FileCheck size={14} style={{ color: '#16a34a' }} /></span>
+            )}
+            {!s.isActive && (
+              <span className="flex-shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#f3f4f6', color: '#6b7280' }}>Disabled</span>
+            )}
+          </span>
+          {s.revenueAccount && (
+            <p className="text-xs mt-0.5" style={{ color: 'var(--teal)' }}>{s.revenueAccount.accountNumber} {s.revenueAccount.accountTitle}</p>
+          )}
+          {s.unitPay && (
+            <p className="text-xs mt-0.5" style={{ color: s.unitPayEnabled === false ? 'var(--mid-gray)' : 'var(--gold)' }}>
+              Unit Pay: {s.unitPay.name}{s.unitPayEnabled === false ? ' (disabled)' : ''}{s.allowPfAbovePrice ? ' · PF may exceed price' : ''}
+            </p>
+          )}
+          {s.description && <p className="text-xs mt-0.5 truncate max-w-[200px]" style={{ color: 'var(--mid-gray)' }}>{s.description}</p>}
+        </td>
+        <td className="px-4 py-3">
+          <span className="px-2 py-1 rounded-md text-xs font-medium" style={{ background: badge.bg, color: badge.color }}>
+            {DEPT_LABELS[s.department] || s.department}
+          </span>
+        </td>
+        <td className="px-4 py-3">
+          <PayChip type={payTypeOf(s)} />
+        </td>
+        <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
+          {BRANCH_LABELS[s.branch] || s.branch}
+        </td>
+        <td className="px-4 py-3 text-right font-medium" style={{ color: 'var(--charcoal)' }}>
+          {formatCurrency(price)}
+          {s.hasDoctorFee && doctor != null && clinic != null && (
+            <div className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+              Dr: {formatCurrency(doctor)} + Clinic: {formatCurrency(clinic)}
+            </div>
+          )}
+          {s.newPrice != null && Number(s.newPrice) > 0 && (
+            <div className="text-xs mt-0.5" style={{ color: '#2563eb' }}>
+              → {formatCurrency(Number(s.newPrice))}
+              {s.newPriceEffectiveDate && <span className="ml-1" style={{ color: 'var(--mid-gray)' }}>({new Date(s.newPriceEffectiveDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })})</span>}
+            </div>
+          )}
+          {s.branchPrices && s.branchPrices.length > 0 && (
+            <div className="text-xs mt-1 space-y-0.5">
+              {s.branchPrices.map(bp => (
+                <div key={bp.branch} style={{ color: 'var(--mid-gray)' }}>
+                  {bp.branch === 'SANDBOX_EAST' ? 'East' : 'GH'}: {formatCurrency(Number(bp.price))}
+                  {bp.newPrice != null && Number(bp.newPrice) > 0 && (
+                    <span style={{ color: '#2563eb' }}> → {formatCurrency(Number(bp.newPrice))}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </td>
+        <td className="px-4 py-3 text-right font-medium" style={{ color: 'var(--charcoal)' }}>
+          {pwdPrice != null ? (
+            <>
+              <span style={{ color: '#166534' }}>{formatCurrency(pwdPrice)}</span>
+              <div className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+                {s.hasDoctorFee && s.pwdDiscountClinicOnly ? 'clinic fee only' : `−${(PWD_RATE * 100).toFixed(0)}%`} · save {formatCurrency(price - pwdPrice)}
+              </div>
+            </>
+          ) : (
+            <span style={{ color: 'var(--mid-gray)' }} title="Not eligible for the PWD/SC discount">—</span>
+          )}
+        </td>
+        <td className="px-4 py-3">
+          <span className="px-2 py-1 rounded-md text-xs font-medium"
+            style={s.priceType === 'FIXED'
+              ? { background: '#f3f4f6', color: '#374151' }
+              : { background: '#fef3c7', color: '#92400e' }}>
+            {s.priceType === 'FIXED' ? 'Fixed' : 'Adjustable'}
+          </span>
+        </td>
+        <td className="px-4 py-3">
+          <span className="px-2 py-1 rounded-md text-xs font-medium"
+            style={s.revenueType === 'EARNED'
+              ? { background: '#dcfce7', color: '#166534' }
+              : { background: '#fef3c7', color: '#92400e' }}>
+            {s.revenueType === 'EARNED' ? 'Sales' : s.walletType ? `${s.walletType.replace('_', ' ')}${s.packageSessions ? ` (${s.packageSessions}s)` : ''}` : 'Unearned'}
+          </span>
+        </td>
+        <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
+          {s.noPwdDiscount ? (
+            <span className="flex items-center gap-1 text-red-500 font-medium">
+              <XCircle size={12} /> No PWD Discount
+            </span>
+          ) : s.hasDoctorFee && s.pwdDiscountClinicOnly ? (
+            <span className="flex items-center gap-1 text-amber-600 font-medium">
+              <AlertCircle size={12} /> Clinic fee only
+            </span>
+          ) : (
+            <span>Standard (20% total)</span>
+          )}
+        </td>
+        <td className="px-4 py-3">
+          <div className="flex items-center justify-end gap-1">
+            <button onClick={() => openPriceHistory(s)} className="p-2 rounded-lg hover:bg-gray-100 transition-colors" title="Price History">
+              <History size={15} style={{ color: 'var(--mid-gray)' }} />
+            </button>
+            {canWrite && (
+              <>
+                <button onClick={() => openEdit(s)} className="p-2 rounded-lg hover:bg-gray-100 transition-colors" title="Edit">
+                  <Pencil size={15} style={{ color: 'var(--teal)' }} />
+                </button>
+                {s.isActive ? (
+                  <button onClick={() => setDeleteConfirm(s)} className="p-2 rounded-lg hover:bg-amber-50 transition-colors" title="Disable (hides from new orders, keeps all history)">
+                    <Ban size={15} className="text-amber-600" />
+                  </button>
+                ) : (
+                  <button onClick={() => handleReactivate(s.id)} className="p-2 rounded-lg hover:bg-emerald-50 transition-colors" title="Enable (make available for new orders again)">
+                    <RotateCcw size={15} className="text-emerald-600" />
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        </td>
+      </tr>
+    )
+  }
+
+  const renderGroupRow = (g: ServiceGroup<Service>) => {
+    const open = groupOpen(g.key)
+    const prices = g.services.map(s => Number(s.price))
+    const lo = Math.min(...prices)
+    const hi = Math.max(...prices)
+    const depts = Array.from(new Set(g.services.map(s => s.department)))
+    const payTypes = Array.from(new Set(g.services.map(payTypeOf)))
+    const branches = Array.from(new Set(g.services.map(s => s.branch)))
+
+    return (
+      <tr className="border-t cursor-pointer hover:bg-gray-50/50 transition-colors" style={{ borderColor: 'var(--light-gray)' }} onClick={() => toggleGroup(g.key)}>
+        <td className="px-4 py-3" style={{ color: 'var(--charcoal)' }}>
+          <button type="button" aria-expanded={open} className="flex items-center gap-1.5 font-semibold text-left">
+            {open ? <ChevronDown size={15} className="flex-shrink-0" /> : <ChevronRight size={15} className="flex-shrink-0" />}
+            {g.label}
+            <span className="flex-shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>{g.services.length}</span>
+          </button>
+        </td>
+        <td className="px-4 py-3">
+          <div className="flex flex-wrap gap-1">
+            {depts.map(d => {
+              const badge = DEPT_BADGE[d] || { bg: '#f3f4f6', color: '#374151' }
+              return (
+                <span key={d} className="px-2 py-1 rounded-md text-xs font-medium" style={{ background: badge.bg, color: badge.color }} title={DEPT_LABELS[d] || d}>
+                  {depts.length === 1 ? (DEPT_LABELS[d] || d) : d === 'ORTHOSIS_PROSTHESIS' ? 'O&P' : d}
+                </span>
+              )
+            })}
+          </div>
+        </td>
+        <td className="px-4 py-3">
+          <div className="flex flex-wrap gap-1">{payTypes.map(t => <PayChip key={t} type={t} />)}</div>
+        </td>
+        <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
+          {branches.map(b => BRANCH_LABELS[b] || b).join(', ')}
+        </td>
+        <td className="px-4 py-3 text-right font-medium whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>
+          {lo === hi ? formatCurrency(lo) : `${formatCurrency(lo)} – ${formatCurrency(hi)}`}
+        </td>
+        <td colSpan={4} />
+        <td className="px-4 py-3">
+          <div className="flex items-center justify-end gap-1">
+            {canWrite && (
+              <button onClick={(e) => { e.stopPropagation(); openCreateSub(g) }} className="p-2 rounded-lg hover:bg-gray-100 transition-colors" title={`Add a service under ${g.label}`}>
+                <Plus size={15} style={{ color: 'var(--teal)' }} />
+              </button>
+            )}
+          </div>
+        </td>
+      </tr>
+    )
+  }
+
   if (loading && !initialLoaded.current) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -607,11 +830,11 @@ export default function ServicesPage() {
         <div className="relative flex-1 max-w-sm">
           <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--mid-gray)' }} />
           <input type="text" placeholder="Search services..." value={search}
-            onChange={(e) => { setSearch(e.target.value); setSvcPage(1) }}
+            onChange={(e) => { setSearch(e.target.value); setSvcPage(1); setToggledGroups(new Set()) }}
             className="w-full pl-10 pr-4 py-2.5 rounded-xl border text-sm outline-none"
             style={{ borderColor: 'var(--light-gray)', background: 'white' }} />
         </div>
-        <select value={filterDept} onChange={(e) => setFilterDept(e.target.value)}
+        <select value={filterDept} onChange={(e) => { setFilterDept(e.target.value); setSvcPage(1) }}
           className="px-3 py-2.5 rounded-xl border text-sm outline-none"
           style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
           <option value="">All Departments</option>
@@ -631,7 +854,7 @@ export default function ServicesPage() {
             {BRANCHES.find(b => b.value === filterBranch)?.label || filterBranch}
           </span>
         ) : (
-          <select value={filterBranch} onChange={(e) => setFilterBranch(e.target.value)} disabled={!!lockBranch}
+          <select value={filterBranch} onChange={(e) => { setFilterBranch(e.target.value); setSvcPage(1) }} disabled={!!lockBranch}
             className="px-3 py-2.5 rounded-xl border text-sm outline-none"
             style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
             {!lockBranch && <option value="">All Branches</option>}
@@ -694,152 +917,19 @@ export default function ServicesPage() {
                     {canWrite && <p className="text-xs mt-1">Add clinic services to get started</p>}
                   </td>
                 </tr>
-              ) : visibleServices.slice((svcPage - 1) * svcPageSize, svcPage * svcPageSize).map((s) => {
-                const price = Number(s.price)
-                const doctor = s.doctorFee != null ? Number(s.doctorFee) : null
-                const clinic = s.clinicFee != null ? Number(s.clinicFee) : null
-                // Price after the 20% PWD/SC discount — same rule the POS and quotations use
-                // (null when the service is not eligible, i.e. noPwdDiscount).
-                const pwdPrice = pwdUnitPrice({ kind: 'SERVICE', name: s.name, grossPrice: price, quantity: 1, noPwdDiscount: s.noPwdDiscount, hasDoctorFee: s.hasDoctorFee, pwdDiscountClinicOnly: s.pwdDiscountClinicOnly, clinicFee: clinic })
-                const badge = DEPT_BADGE[s.department] || { bg: '#f3f4f6', color: '#374151' }
-
-                return (
-                  <tr key={s.id} className="border-t hover:bg-gray-50/50 transition-colors" style={{ borderColor: 'var(--light-gray)', opacity: s.isActive ? 1 : 0.6 }}>
-                    <td className="px-4 py-3 font-medium" style={{ color: 'var(--charcoal)' }}>
-                      <span className="flex items-center gap-1.5">
-                        {s.name}
-                        {s.issuedOfficialInvoice && (
-                          <span title="Issued Official Sales Invoice" className="flex-shrink-0"><FileCheck size={14} style={{ color: '#16a34a' }} /></span>
-                        )}
-                        {!s.isActive && (
-                          <span className="flex-shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#f3f4f6', color: '#6b7280' }}>Disabled</span>
-                        )}
-                      </span>
-                      {s.revenueAccount && (
-                        <p className="text-xs mt-0.5" style={{ color: 'var(--teal)' }}>{s.revenueAccount.accountNumber} {s.revenueAccount.accountTitle}</p>
-                      )}
-                      {s.unitPay && (
-                        <p className="text-xs mt-0.5" style={{ color: s.unitPayEnabled === false ? 'var(--mid-gray)' : 'var(--gold)' }}>
-                          Unit Pay: {s.unitPay.name}{s.unitPayEnabled === false ? ' (disabled)' : ''}{s.allowPfAbovePrice ? ' · PF may exceed price' : ''}
-                        </p>
-                      )}
-                      {s.description && <p className="text-xs mt-0.5 truncate max-w-[200px]" style={{ color: 'var(--mid-gray)' }}>{s.description}</p>}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="px-2 py-1 rounded-md text-xs font-medium" style={{ background: badge.bg, color: badge.color }}>
-                        {DEPT_LABELS[s.department] || s.department}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      {(() => {
-                        const pt = payTypeOf(s)
-                        const chip = pt === 'HMO' ? { bg: '#ffedd5', color: '#c2410c', label: 'HMO' }
-                          : pt === 'GL' ? { bg: '#dbeafe', color: '#1d4ed8', label: 'GL' }
-                          : { bg: '#dcfce7', color: '#166534', label: 'Cash' }
-                        return <span className="px-2 py-1 rounded-md text-xs font-medium" style={{ background: chip.bg, color: chip.color }}>{chip.label}</span>
-                      })()}
-                    </td>
-                    <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
-                      {BRANCH_LABELS[s.branch] || s.branch}
-                    </td>
-                    <td className="px-4 py-3 text-right font-medium" style={{ color: 'var(--charcoal)' }}>
-                      {formatCurrency(price)}
-                      {s.hasDoctorFee && doctor != null && clinic != null && (
-                        <div className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
-                          Dr: {formatCurrency(doctor)} + Clinic: {formatCurrency(clinic)}
-                        </div>
-                      )}
-                      {s.newPrice != null && Number(s.newPrice) > 0 && (
-                        <div className="text-xs mt-0.5" style={{ color: '#2563eb' }}>
-                          → {formatCurrency(Number(s.newPrice))}
-                          {s.newPriceEffectiveDate && <span className="ml-1" style={{ color: 'var(--mid-gray)' }}>({new Date(s.newPriceEffectiveDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })})</span>}
-                        </div>
-                      )}
-                      {s.branchPrices && s.branchPrices.length > 0 && (
-                        <div className="text-xs mt-1 space-y-0.5">
-                          {s.branchPrices.map(bp => (
-                            <div key={bp.branch} style={{ color: 'var(--mid-gray)' }}>
-                              {bp.branch === 'SANDBOX_EAST' ? 'East' : 'GH'}: {formatCurrency(Number(bp.price))}
-                              {bp.newPrice != null && Number(bp.newPrice) > 0 && (
-                                <span style={{ color: '#2563eb' }}> → {formatCurrency(Number(bp.newPrice))}</span>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-right font-medium" style={{ color: 'var(--charcoal)' }}>
-                      {pwdPrice != null ? (
-                        <>
-                          <span style={{ color: '#166534' }}>{formatCurrency(pwdPrice)}</span>
-                          <div className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
-                            {s.hasDoctorFee && s.pwdDiscountClinicOnly ? 'clinic fee only' : `−${(PWD_RATE * 100).toFixed(0)}%`} · save {formatCurrency(price - pwdPrice)}
-                          </div>
-                        </>
-                      ) : (
-                        <span style={{ color: 'var(--mid-gray)' }} title="Not eligible for the PWD/SC discount">—</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="px-2 py-1 rounded-md text-xs font-medium"
-                        style={s.priceType === 'FIXED'
-                          ? { background: '#f3f4f6', color: '#374151' }
-                          : { background: '#fef3c7', color: '#92400e' }}>
-                        {s.priceType === 'FIXED' ? 'Fixed' : 'Adjustable'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="px-2 py-1 rounded-md text-xs font-medium"
-                        style={s.revenueType === 'EARNED'
-                          ? { background: '#dcfce7', color: '#166534' }
-                          : { background: '#fef3c7', color: '#92400e' }}>
-                        {s.revenueType === 'EARNED' ? 'Sales' : s.walletType ? `${s.walletType.replace('_', ' ')}${s.packageSessions ? ` (${s.packageSessions}s)` : ''}` : 'Unearned'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
-                      {s.noPwdDiscount ? (
-                        <span className="flex items-center gap-1 text-red-500 font-medium">
-                          <XCircle size={12} /> No PWD Discount
-                        </span>
-                      ) : s.hasDoctorFee && s.pwdDiscountClinicOnly ? (
-                        <span className="flex items-center gap-1 text-amber-600 font-medium">
-                          <AlertCircle size={12} /> Clinic fee only
-                        </span>
-                      ) : (
-                        <span>Standard (20% total)</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-1">
-                        <button onClick={() => openPriceHistory(s)} className="p-2 rounded-lg hover:bg-gray-100 transition-colors" title="Price History">
-                          <History size={15} style={{ color: 'var(--mid-gray)' }} />
-                        </button>
-                        {canWrite && (
-                          <>
-                            <button onClick={() => openEdit(s)} className="p-2 rounded-lg hover:bg-gray-100 transition-colors" title="Edit">
-                              <Pencil size={15} style={{ color: 'var(--teal)' }} />
-                            </button>
-                            {s.isActive ? (
-                              <button onClick={() => setDeleteConfirm(s)} className="p-2 rounded-lg hover:bg-amber-50 transition-colors" title="Disable (hides from new orders, keeps all history)">
-                                <Ban size={15} className="text-amber-600" />
-                              </button>
-                            ) : (
-                              <button onClick={() => handleReactivate(s.id)} className="p-2 rounded-lg hover:bg-emerald-50 transition-colors" title="Enable (make available for new orders again)">
-                                <RotateCcw size={15} className="text-emerald-600" />
-                              </button>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                )
-              })}
+              ) : serviceEntries.slice((svcPage - 1) * svcPageSize, svcPage * svcPageSize).map((entry) => entry.kind === 'single'
+                ? renderServiceRow(entry.service)
+                : (
+                  <Fragment key={entry.key}>
+                    {renderGroupRow(entry)}
+                    {groupOpen(entry.key) && entry.services.map(s => renderServiceRow(s, true))}
+                  </Fragment>
+                ))}
             </tbody>
           </table>
         </div>
         {visibleServices.length > 0 && (
-          <Pagination totalItems={visibleServices.length} page={svcPage} pageSize={svcPageSize}
+          <Pagination totalItems={serviceEntries.length} page={svcPage} pageSize={svcPageSize}
             onPageChange={setSvcPage} onPageSizeChange={setSvcPageSize} />
         )}
       </div>
@@ -886,6 +976,7 @@ export default function ServicesPage() {
                   placeholder="e.g. Physical Therapy Session"
                   className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
                   style={{ borderColor: 'var(--light-gray)' }} />
+                <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>To list it under a parent, start with the parent&apos;s name and a dash, e.g. COCOLIFE - Medical Consultation.</p>
               </div>
 
               {/* Department + Branch */}

@@ -352,6 +352,7 @@ export const SECTIONS: Section[] = [
     blocks: [
       { k: 'p', t: `The **catalogue of clinic services** and their prices — "Manage clinic services, pricing, and PWD discount rules." What you set here drives the prices in Point of Sale and PayMongo.` },
       { k: 'p', t: `Columns: **Service Name · Department · Payment Type · Branch · Price · Pricing · Revenue · PWD Rule · Actions.** Filter by search, department, payment type or branch. **Download** exports the list.` },
+      { k: 'p', t: `Services sharing a lead name are **grouped under one row**: click **COCOLIFE** to open everything under it, click again to close. The part before " - " is the parent, so **COCOLIFE - Medical Consultation** sits under **COCOLIFE**, and the **＋** on a parent adds another service under it. Searching opens the matching parents. The grouping is only on this page: Point of Sale, payroll and **Download** still use each service by its full name.` },
       { k: 'sub', t: 'Add or edit a service' },
       { k: 'steps', items: [
         `Click **＋ Add Service**.`,
