@@ -38,6 +38,7 @@ interface Consultant {
   corUploadedAt?: string | null
   no2303At?: string | null
   isActive?: boolean
+  taxDeduction?: string
 }
 interface Submission { consultantId: string; month: string; siUrl: string | null; uploadedAt: string }
 interface Breakdown {
@@ -99,7 +100,8 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
   const [consultants, setConsultants] = useState<Consultant[]>([])
   const [loading, setLoading] = useState(true)
   const [q, setQ] = useState('')
-  const [view, setView] = useState<'track' | 'matrix' | 'gen2307' | 'settings2307'>('track')
+  const [view, setView] = useState<'track' | 'matrix' | 'cor' | 'gen2307' | 'settings2307'>('track')
+  const [noTaxOnly, setNoTaxOnly] = useState(false)
   const [corTarget, setCorTarget] = useState<Consultant | null>(null)
   const [siTarget, setSiTarget] = useState<Consultant | null>(null)
   const [breakdowns, setBreakdowns] = useState<Record<string, Breakdown | 'loading' | { error: string }>>({})
@@ -244,6 +246,9 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
   const withCor = filtered.filter(c => c.corUrl)
   const withoutCor = filtered.filter(c => !c.corUrl && !c.no2303At)
   const no2303 = filtered.filter(c => !c.corUrl && c.no2303At)
+  // COR sub-tab: on file or not, read from the upload itself so it can't go stale.
+  const corRows = noTaxOnly ? filtered.filter(c => c.taxDeduction !== 'FIVE_PERCENT') : filtered
+  const noTaxCount = filtered.filter(c => c.taxDeduction !== 'FIVE_PERCENT').length
 
   const Row = ({ c }: { c: Consultant }) => {
     const b = breakdowns[c.id]
@@ -401,7 +406,7 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
           ))}
         </div>
       )}
-      <div className="flex rounded-xl overflow-hidden border w-fit" style={{ borderColor: 'var(--light-gray)' }}>
+      <div className="flex flex-wrap rounded-xl overflow-hidden border w-fit max-w-full" style={{ borderColor: 'var(--light-gray)' }}>
         <button onClick={() => setView('track')} className="px-4 py-2 text-xs font-semibold"
           style={view === 'track' ? { background: 'var(--teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' }}>
           Tracking & Reminders
@@ -409,6 +414,10 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
         <button onClick={() => setView('matrix')} className="px-4 py-2 text-xs font-semibold"
           style={view === 'matrix' ? { background: 'var(--teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' }}>
           Compliance by Person
+        </button>
+        <button onClick={() => setView('cor')} className="px-4 py-2 text-xs font-semibold"
+          style={view === 'cor' ? { background: 'var(--teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' }}>
+          COR
         </button>
         <button onClick={() => setView('gen2307')} className="px-4 py-2 text-xs font-semibold"
           style={view === 'gen2307' ? { background: 'var(--teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' }}>
@@ -424,6 +433,86 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
         <Bir2307Generator branch={branch} canWrite={canWrite} />
       ) : view === 'settings2307' ? (
         <Bir2307Settings canWrite={canWrite} />
+      ) : view === 'cor' ? (
+        <>
+          <div className="flex items-center gap-2 flex-wrap">
+            <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search consultant…"
+              className="px-3 py-2 rounded-xl border text-xs flex-1 min-w-[160px]" style={{ borderColor: 'var(--light-gray)' }} />
+            <button onClick={() => setNoTaxOnly(v => !v)} className="px-3 py-2 rounded-xl text-xs font-semibold border"
+              style={noTaxOnly ? { background: 'var(--teal)', color: '#fff', borderColor: 'var(--teal)' } : { background: '#fff', color: 'var(--charcoal)', borderColor: 'var(--light-gray)' }}>
+              No 5% withholding ({noTaxCount})
+            </button>
+          </div>
+          {loading ? (
+            <div className="py-12 text-center"><Loader2 size={18} className="animate-spin mx-auto" style={{ color: 'var(--teal)' }} /></div>
+          ) : (
+            ([
+              { title: 'COR on file', rows: corRows.filter(c => c.corUrl), color: 'var(--deep-teal)' },
+              { title: 'No COR', rows: corRows.filter(c => !c.corUrl), color: 'var(--mid-gray)' },
+            ]).map(group => (
+              <div key={group.title}>
+                <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: group.color }}>{group.title} ({group.rows.length})</p>
+                {group.rows.length === 0 ? (
+                  <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>{q.trim() || noTaxOnly ? 'No consultant matches.' : group.title === 'COR on file' ? 'No consultant has a COR uploaded yet.' : 'Every consultant has a COR on file.'}</p>
+                ) : (
+                  <div className="rounded-xl border overflow-x-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr style={{ color: 'var(--mid-gray)', borderBottom: '1px solid var(--light-gray)' }}>
+                          {['Consultant', 'Department', 'Branch', '5% withholding', 'COR', ''].map(h => (
+                            <th key={h} className="px-3 py-2 text-left font-semibold whitespace-nowrap">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {group.rows.map(c => (
+                          <tr key={c.id} style={{ borderBottom: '1px solid var(--light-gray)' }}>
+                            <td className="px-3 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>{c.name}</td>
+                            <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{c.department}</td>
+                            <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{branchCode(c.branch)}</td>
+                            <td className="px-3 py-2 whitespace-nowrap">
+                              {c.taxDeduction === 'FIVE_PERCENT'
+                                ? <span style={{ color: 'var(--mid-gray)' }}>5%</span>
+                                : <span className="font-semibold" style={{ color: '#92400e' }}>None</span>}
+                            </td>
+                            <td className="px-3 py-2 whitespace-nowrap">
+                              {c.corUrl ? (
+                                <span className="inline-flex items-center gap-2">
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ background: '#dcfce7', color: '#166534' }}>On file</span>
+                                  <span style={{ color: 'var(--mid-gray)' }}>{String(c.corUploadedAt || '').slice(0, 10)}</span>
+                                  <a href={c.corUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-semibold" style={{ color: 'var(--teal)' }}>
+                                    <Eye size={12} /> View
+                                  </a>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1">
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ background: '#fee2e2', color: '#b91c1c' }}>No COR</span>
+                                  {c.no2303At && (
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ background: '#f1f5f9', color: '#64748b' }}
+                                      title={`Marked as not BIR-registered on ${String(c.no2303At).slice(0, 10)}`}>
+                                      No 2303
+                                    </span>
+                                  )}
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-right whitespace-nowrap">
+                              {canWrite && (
+                                <button onClick={() => setCorTarget(c)} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}>
+                                  <Upload size={12} /> {c.corUrl ? 'Replace' : 'Upload COR'}
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            ))
+          )}
+        </>
       ) : view === 'matrix' ? (
         <>
           <div className="flex items-center gap-2 flex-wrap">
@@ -587,7 +676,7 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-2xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-2">
-              <h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>For SI Submission — {corTarget.name}</h2>
+              <h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>{view === 'cor' ? 'Upload COR' : 'For SI Submission'} — {corTarget.name}</h2>
               <button onClick={() => setCorTarget(null)}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button>
             </div>
             <p className="text-sm mb-3" style={{ color: 'var(--mid-gray)' }}>
