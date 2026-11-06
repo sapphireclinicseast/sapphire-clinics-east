@@ -20,8 +20,11 @@ const dateOrNull = (v: unknown) => {
 
 function clean(body: Record<string, unknown>) {
   const files = Array.isArray(body.fileUrls) ? body.fileUrls.filter((u): u is string => typeof u === 'string' && u.startsWith('/api/files/')).slice(0, 30) : []
+  const category = CATEGORIES.includes(String(body.category)) ? String(body.category) : 'OTHER'
+  const year = Number(body.year)
   return {
-    category: CATEGORIES.includes(String(body.category)) ? String(body.category) : 'OTHER',
+    category,
+    year: category === 'BUSINESS' && Number.isInteger(year) && year >= 2000 && year <= 2100 ? year : null,
     title: String(body.title || '').trim().slice(0, 200),
     branch: BRANCHES.includes(String(body.branch)) ? String(body.branch) : null,
     referenceNo: typeof body.referenceNo === 'string' && body.referenceNo.trim() ? body.referenceNo.trim().slice(0, 120) : null,

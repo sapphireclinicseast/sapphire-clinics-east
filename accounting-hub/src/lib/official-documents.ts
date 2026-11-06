@@ -6,10 +6,11 @@ const YEAR = /\b20\d{2}\b/
 
 export const NO_YEAR = 'No year'
 
-// A year in the title wins, because some papers carry no dates and a renewal can
-// be issued the year before.
-export const docYear = (d: { title: string; expiryDate: string | null; issuedDate: string | null }) =>
-  d.title.match(YEAR)?.[0] || d.expiryDate?.slice(0, 4) || d.issuedDate?.slice(0, 4) || NO_YEAR
+// The Year field decides, so a paper filed under the wrong year can be moved. A row
+// with none falls back to its title, because some papers carry no dates and a renewal
+// can be issued the year before, then its dates.
+export const docYear = (d: { year?: number | null; title: string; expiryDate: string | null; issuedDate: string | null }) =>
+  (d.year ? String(d.year) : '') || d.title.match(YEAR)?.[0] || d.expiryDate?.slice(0, 4) || d.issuedDate?.slice(0, 4) || NO_YEAR
 
 // "Business Permit 2024" stops counting once the same branch has "Business Permit 2026".
 export function latestRenewals<T extends { category: string; branch: string | null; title: string; expiryDate: Date | null }>(docs: T[]): T[] {

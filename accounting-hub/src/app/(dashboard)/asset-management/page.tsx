@@ -2077,7 +2077,7 @@ function AssetManagementInner() {
                     onUploaded={(url) => setForm((f) => ({ ...f, photoUrls: [...f.photoUrls, url] }))}
                   />
                 </div>
-                <p className="text-xs text-gray-400">JPG, PNG, or PDF — max 10MB each</p>
+                <p className="text-xs text-gray-400">JPG, PNG, or PDF — max 30MB each</p>
               </div>
 
               {/* Defective */}

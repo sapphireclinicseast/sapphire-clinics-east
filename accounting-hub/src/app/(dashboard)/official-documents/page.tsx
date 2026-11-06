@@ -12,6 +12,7 @@ interface OfficialDocument {
   title: string
   branch: string | null
   referenceNo: string | null
+  year: number | null
   issuedDate: string | null
   expiryDate: string | null
   fileUrls: string[]
@@ -50,7 +51,7 @@ function expiryBadge(iso: string | null) {
   return { text: `Valid until ${iso.slice(0, 10)}`, style: { background: '#dcfce7', color: '#166534' } }
 }
 
-const EMPTY = { id: '', category: 'BUSINESS', title: '', branch: '', referenceNo: '', issuedDate: '', expiryDate: '', notes: '', fileUrls: [] as string[] }
+const EMPTY = { id: '', category: 'BUSINESS', title: '', branch: '', referenceNo: '', year: String(new Date().getFullYear()), issuedDate: '', expiryDate: '', notes: '', fileUrls: [] as string[] }
 type Form = typeof EMPTY
 
 export default function OfficialDocumentsPage() {
@@ -104,12 +105,16 @@ export default function OfficialDocumentsPage() {
 
   const save = async () => {
     if (!form || !form.title.trim()) { setError('Title is required'); return }
+    const isBusiness = form.category === 'BUSINESS'
+    if (isBusiness && !/^20\d{2}$/.test(form.year)) { setError('Enter the year this document belongs to, e.g. 2026'); return }
     setSaving(true); setError('')
     try {
       const r = await fetch('/api/official-documents', {
         method: form.id ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form),
       })
       if (!r.ok) { setError((await r.json()).error || 'Could not save'); return }
+      // Open its year, so a document moved to another year is still in view.
+      if (isBusiness) setOpenYears(y => (y.includes(form.year) ? y : [...y, form.year]))
       setForm(null); load()
     } finally { setSaving(false) }
   }
@@ -153,7 +158,7 @@ export default function OfficialDocumentsPage() {
           <div className="flex gap-1">
             {canWrite && (
               <button title="Edit" className="p-1.5 rounded-lg hover:bg-gray-100"
-                onClick={() => { setForm({ id: d.id, category: d.category, title: d.title, branch: d.branch || '', referenceNo: d.referenceNo || '', issuedDate: ymd(d.issuedDate), expiryDate: ymd(d.expiryDate), notes: d.notes || '', fileUrls: d.fileUrls || [] }); setError(''); window.scrollTo({ top: 0, behavior: 'smooth' }) }}>
+                onClick={() => { const year = docYear(d); setForm({ id: d.id, category: d.category, title: d.title, branch: d.branch || '', referenceNo: d.referenceNo || '', year: year === NO_YEAR ? '' : year, issuedDate: ymd(d.issuedDate), expiryDate: ymd(d.expiryDate), notes: d.notes || '', fileUrls: d.fileUrls || [] }); setError(''); window.scrollTo({ top: 0, behavior: 'smooth' }) }}>
                 <Pencil size={13} style={{ color: 'var(--mid-gray)' }} />
               </button>
             )}
@@ -202,14 +207,21 @@ export default function OfficialDocumentsPage() {
             </select>
             <span className="block mt-1 text-[11px]">{CATEGORIES.find(c => c.key === form.category)?.hint}</span>
           </label>
-          <label className="text-xs" style={{ color: 'var(--mid-gray)' }}>Branch
-            <select className={input} value={form.branch} onChange={e => setForm({ ...form, branch: e.target.value })}>
-              {BRANCHES.map(b => <option key={b.key} value={b.key}>{b.label}</option>)}
-            </select>
-          </label>
+          <div className={form.category === 'BUSINESS' ? 'grid grid-cols-2 gap-3' : ''}>
+            <label className="text-xs" style={{ color: 'var(--mid-gray)' }}>Branch
+              <select className={input} value={form.branch} onChange={e => setForm({ ...form, branch: e.target.value })}>
+                {BRANCHES.map(b => <option key={b.key} value={b.key}>{b.label}</option>)}
+              </select>
+            </label>
+            {form.category === 'BUSINESS' && (
+              <label className="text-xs" style={{ color: 'var(--mid-gray)' }}>Year
+                <input type="number" min={2000} max={2100} className={input} value={form.year} onChange={e => setForm({ ...form, year: e.target.value })} />
+                <span className="block mt-1 text-[11px]">The year it is listed under. Change it to move the document.</span>
+              </label>
+            )}
+          </div>
           <label className="text-xs sm:col-span-2" style={{ color: 'var(--mid-gray)' }}>Title
             <input className={input} value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="e.g. SEC Certificate of Incorporation" />
-            {form.category === 'BUSINESS' && <span className="block mt-1 text-[11px]">Listed under the year in the title (e.g. Business Permit 2027), otherwise its expiry or issued year.</span>}
           </label>
           <label className="text-xs" style={{ color: 'var(--mid-gray)' }}>Reference / registration no.
             <input className={input} value={form.referenceNo} onChange={e => setForm({ ...form, referenceNo: e.target.value })} placeholder="e.g. 2024040147438-01" />
@@ -239,7 +251,7 @@ export default function OfficialDocumentsPage() {
             <ScanUpload section="official-documents" prefix={uploadPrefix} existingCount={form.fileUrls.length}
               accept="image/*,.pdf,.doc,.docx,.xls,.xlsx" label={form.fileUrls.length ? 'Add another file' : 'Upload file'}
               onUploaded={url => setForm(f => (f ? { ...f, fileUrls: [...f.fileUrls, url] } : f))} />
-            <p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>PDF, image, Word or Excel — up to 10 MB per file.</p>
+            <p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>PDF, image, Word or Excel — up to 30 MB per file.</p>
           </div>
           {error && <p className="text-xs text-red-600 sm:col-span-2">{error}</p>}
           <div className="flex gap-2 sm:col-span-2">

@@ -36,9 +36,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'File must be an image (JPG, PNG, WebP, HEIC, GIF), PDF, Word, or Excel document' }, { status: 400 })
     }
 
-    // Max 10MB
-    if (file.size > 10 * 1024 * 1024) {
-      return NextResponse.json({ error: 'File too large (max 10MB)' }, { status: 400 })
+    // Max 30MB (nginx allows 31M for this app, leaving room for the form fields)
+    if (file.size > 30 * 1024 * 1024) {
+      return NextResponse.json({ error: 'File too large (max 30MB)' }, { status: 400 })
     }
 
     const bytes = await file.arrayBuffer()

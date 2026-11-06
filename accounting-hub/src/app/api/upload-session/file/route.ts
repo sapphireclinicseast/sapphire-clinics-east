@@ -19,7 +19,7 @@ export async function POST(req: Request) {
     if (sess.expiresAt < new Date()) return NextResponse.json({ error: 'This upload link has expired' }, { status: 410 })
 
     if (!ALLOWED.includes(file.type)) return NextResponse.json({ error: 'Only images or PDF are allowed' }, { status: 400 })
-    if (file.size > 10 * 1024 * 1024) return NextResponse.json({ error: 'File too large (max 10MB)' }, { status: 400 })
+    if (file.size > 30 * 1024 * 1024) return NextResponse.json({ error: 'File too large (max 30MB)' }, { status: 400 })
 
     const uploadsDir = process.env.UPLOADS_DIR || join(process.cwd(), 'uploads')
     await mkdir(uploadsDir, { recursive: true })

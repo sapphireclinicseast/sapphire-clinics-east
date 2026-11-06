@@ -527,7 +527,7 @@ export default function SubmittedForSoa({ wallets, canWrite }: { wallets: ARWall
                     </label>
                     <div className="space-y-1.5">
                       <FileRow urls={fTransmittal} onRemove={i => setFTransmittal(p => p.filter((_, x) => x !== i))} />
-                      <Uploader target="transmittal" label={fTransmittal.length ? 'Add another file' : 'Upload (JPG, PNG, PDF — max 10MB)'} />
+                      <Uploader target="transmittal" label={fTransmittal.length ? 'Add another file' : 'Upload (JPG, PNG, PDF — max 30MB)'} />
                     </div>
                   </div>
                   <div>
@@ -536,7 +536,7 @@ export default function SubmittedForSoa({ wallets, canWrite }: { wallets: ARWall
                     </label>
                     <div className="space-y-1.5">
                       <FileRow urls={fDocuments} onRemove={i => setFDocuments(p => p.filter((_, x) => x !== i))} />
-                      <Uploader target="documents" label={fDocuments.length ? 'Add another file' : 'Upload (JPG, PNG, PDF — max 10MB)'} />
+                      <Uploader target="documents" label={fDocuments.length ? 'Add another file' : 'Upload (JPG, PNG, PDF — max 30MB)'} />
                     </div>
                   </div>
                 </div>

@@ -1211,6 +1211,7 @@ model OfficialDocument {
   title          String
   branch         String? // null = company-wide; else SANDBOX_EAST | SANDBOX_GREENHILLS | VERDANA_STORE | AURA_INSTITUTE
   referenceNo    String? // permit / certificate / registration no.
+  year           Int? // BUSINESS only: the year it is listed under on the page
   issuedDate     DateTime?
   expiryDate     DateTime?
   fileUrls       Json      @default("[]") // ["/api/files/…"]
