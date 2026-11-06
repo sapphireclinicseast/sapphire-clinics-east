@@ -465,6 +465,7 @@ export const SECTIONS: Section[] = [
         `Click **Set payment plan**: pick the note, the date the payment was **originally due**, the amount it covers, then one or more **scheduled payments** (Split the amount evenly helps).`,
         `The plan must follow the promissory rule: every payment within **3 months** of the original due date and **inside the same semester** (Semester 1 Jun–Aug, 2 Sep–Dec, 3 Jan–Apr). The form shows the latest allowed date and won't save a schedule that breaks it.`,
         `From 7 days before each date (and until it's paid) the payment shows in the **bell**, in **POS → Tuition**, and under the patient name when the student is rung up. Collect it there; the sale marks it **Paid** here and in Class Hub.`,
+        `A payment for a month the note covers pays the note down, even when it is collected as another period rather than on the promissory row: the balance drops and that month leaves the note's label.`,
       ] },
       { k: 'sub', t: 'Collecting tuition at the POS' },
       { k: 'steps', items: [

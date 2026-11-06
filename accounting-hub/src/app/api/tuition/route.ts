@@ -29,9 +29,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Could not reach Class Hub. Try again in a minute.' }, { status: 502 })
   }
 
-  const confirmedAt = new Map(hub.payments.filter(p => p.status === 'CONVERTED' && p.convertedAt).map(p => [p.classPortalPaymentId, toYmd(p.convertedAt!)]))
   const [plans, sales, balances] = await Promise.all([
-    loadPlans({ studentId: { in: hub.students.map(s => s.id) }, schoolYear: hub.schoolYear }).then(rows => planViews(rows, confirmedAt)),
+    loadPlans({ studentId: { in: hub.students.map(s => s.id) }, schoolYear: hub.schoolYear }).then(rows => planViews(rows, hub)),
     posSalesFor(hub.payments.map(p => p.classPortalPaymentId)),
     // What each student owes under Class Hub's plan rules — the same figures
     // the POS Tuition picker shows — so students who are behind with no

@@ -292,6 +292,55 @@ export function tuitionPrefillFor(
   }
 }
 
+export interface PlanPayment { id: string; period: string; amount: number; enteredAt: string; date: string; orderNumber: number | null }
+export interface PlanItemPaid { paid: number; paidOn: string | null; orderNumber: number | null }
+
+/**
+ * What has come in toward each payment of a promissory plan. A payment counts
+ * when it is linked to one of the plan's items, or when it was entered after the
+ * plan was set and names a month the plan covers: a cashier can collect a covered
+ * month through "another period" rather than the promissory row, and that money
+ * still pays down the note. Payments entered before the plan are left out because
+ * its amount was set net of them. A linked payment goes to its own item first;
+ * the rest fills the items oldest first.
+ */
+export function allocatePlanPayments(args: {
+  plan: TuitionPlan; coveredDueDates: string[]; createdAt: string
+  items: { id: string; dueDate: string; amount: number; classPortalPaymentId: string | null }[]
+  payments: PlanPayment[]
+}): Map<string, PlanItemPaid> {
+  const r2 = (n: number) => Math.round(n * 100) / 100
+  const set = new Date(args.createdAt).getTime()
+  const covered = cleanCovered(args.coveredDueDates).map(d => ({ plan: args.plan, period: periodForDate(args.plan, d), dueDate: d }))
+  const linkedTo = new Map(args.items.filter(i => i.classPortalPaymentId).map(i => [i.classPortalPaymentId as string, i.id]))
+  const counted = args.payments
+    .filter(p => linkedTo.has(p.id) || (new Date(p.enteredAt).getTime() >= set && covered.some(c => periodMatches(p.period, c))))
+    .sort((a, b) => new Date(a.enteredAt).getTime() - new Date(b.enteredAt).getTime())
+
+  const items = [...args.items].sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+  const out = new Map<string, PlanItemPaid>(items.map(i => [i.id, { paid: 0, paidOn: null, orderNumber: null }]))
+  const pay = (item: typeof items[number], p: PlanPayment, amount: number) => {
+    const row = out.get(item.id) as PlanItemPaid
+    const take = Math.min(amount, r2(item.amount - row.paid))
+    if (take <= 0) return amount
+    row.paid = r2(row.paid + take)
+    row.orderNumber = p.orderNumber ?? row.orderNumber
+    if (row.paid >= item.amount - 0.005) row.paidOn = p.date
+    return r2(amount - take)
+  }
+  const left = counted.map(p => {
+    const own = items.find(i => i.id === linkedTo.get(p.id))
+    return { p, amount: own ? pay(own, p, p.amount) : p.amount }
+  })
+  for (const l of left) {
+    for (const item of items) {
+      if (l.amount <= 0) break
+      l.amount = pay(item, l.p, l.amount)
+    }
+  }
+  return out
+}
+
 export interface RegularDue {
   plan: TuitionPlan; period: string; dueDate: string
   expected: number; paid: number; remaining: number; daysUntil: number

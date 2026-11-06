@@ -15,7 +15,7 @@ import {
   planAnchor, planProblem, schoolYearLabel, schoolYearPeriods, semesterLabel, semesterOf, toYmd, todayManila, type ItemState,
 } from '@/lib/tuition'
 
-interface PlanItem { id: string; seq: number; dueDate: string; amount: number; classPortalPaymentId: string | null; paidOn: string | null; orderNumber: number | null; inPos: boolean; state: ItemState; daysUntil: number }
+interface PlanItem { id: string; seq: number; dueDate: string; amount: number; classPortalPaymentId: string | null; paid: number; paidOn: string | null; orderNumber: number | null; inPos: boolean; state: ItemState; daysUntil: number }
 interface Plan { id: string; promissoryNoteId: string | null; schoolYear: number; semester: number; originalDueDate: string; coveredDueDates: string[]; amount: number; notes: string | null; status: string; items: PlanItem[]; paid: number; balance: number }
 interface Payment { classPortalPaymentId: string; plan: string; period: string; amount: number; status: string; method: string | null; methodDetail: string | null; isPartialPayment: boolean; recordedOn: string; confirmedOn: string | null; orderNumber: number | null; saleDate: string | null; where: 'POS' | 'WAITING' | 'CLASS_HUB_ONLY' | 'VOIDED' }
 interface Note { id: string; fileName: string; fileType: string; notes: string | null; uploadedBy: string | null; createdAt: string }
@@ -143,7 +143,7 @@ export default function TuitionTab({ branch, canWrite }: { branch: string; canWr
 
   const totals = useMemo(() => {
     const items = students.flatMap(s => s.plans.filter(p => p.status === 'ACTIVE').flatMap(p => p.items))
-    const sum = (xs: PlanItem[]) => xs.reduce((t, i) => t + i.amount, 0)
+    const sum = (xs: PlanItem[]) => xs.reduce((t, i) => t + i.amount - i.paid, 0)
     const outside = students.flatMap(s => s.payments.filter(p => p.where === 'CLASS_HUB_ONLY'))
     return {
       withNotes: students.filter(s => s.notes.length).length,
@@ -247,7 +247,7 @@ export default function TuitionTab({ branch, canWrite }: { branch: string; canWr
               const paid = s.payments.filter(p => p.where === 'POS' || p.where === 'CLASS_HUB_ONLY').reduce((t, p) => t + p.amount, 0)
               const discounted = (s.adjustments || []).reduce((t, a) => t + a.amount, 0)
               const overdue = overdueOf(s)
-              const overdueAmt = overdue.reduce((t, d) => t + d.remaining, 0) + s.plans.filter(p => p.status === 'ACTIVE').flatMap(p => p.items).filter(i => i.state === 'OVERDUE').reduce((t, i) => t + i.amount, 0)
+              const overdueAmt = overdue.reduce((t, d) => t + d.remaining, 0) + s.plans.filter(p => p.status === 'ACTIVE').flatMap(p => p.items).filter(i => i.state === 'OVERDUE').reduce((t, i) => t + i.amount - i.paid, 0)
               const st = PLAN_STATUS[planStatus(s)]
               const next = nextPayment(s)
               const active = s.plans.filter(p => p.status === 'ACTIVE')
@@ -284,7 +284,7 @@ export default function TuitionTab({ branch, canWrite }: { branch: string; canWr
                       {st ? <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap" style={st.style}>{st.text}</span> : <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>—</span>}
                     </td>
                     <td className="px-3 py-2.5 text-xs whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>
-                      {next ? <>{fmtDate(next.dueDate)} · <span className="font-mono">{formatCurrency(next.amount)}</span></>
+                      {next ? <>{fmtDate(next.dueDate)} · <span className="font-mono">{formatCurrency(next.amount - next.paid)}</span></>
                         : s.dues.find(d => d.state === 'DUE_SOON') ? (() => { const d = s.dues.find(x => x.state === 'DUE_SOON')!; return <>{fmtDate(d.dueDate)} · <span className="font-mono">{formatCurrency(d.remaining)}</span> <span style={{ color: 'var(--mid-gray)' }}>({d.period})</span></> })()
                         : '—'}
                     </td>
@@ -421,7 +421,7 @@ export default function TuitionTab({ branch, canWrite }: { branch: string; canWr
                                         </span>
                                       </td>
                                       <td className="pr-4 py-1 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>
-                                        {i.paidOn ? <>{fmtDate(i.paidOn)}{i.orderNumber ? ` · POS #${i.orderNumber}` : ' · Class Hub only'}</> : i.inPos ? 'Waiting in POS' : '—'}
+                                        {i.paidOn ? <>{fmtDate(i.paidOn)}{i.orderNumber ? ` · POS #${i.orderNumber}` : ' · Class Hub only'}</> : i.paid > 0.005 ? `${formatCurrency(i.paid)} collected, ${formatCurrency(i.amount - i.paid)} left` : i.inPos ? 'Waiting in POS' : '—'}
                                       </td>
                                       <td className="py-1 text-right text-[11px]" style={{ color: 'var(--mid-gray)' }}>
                                         {p.status === 'ACTIVE' && !i.paidOn && !i.inPos && 'Collect at POS → Tuition'}

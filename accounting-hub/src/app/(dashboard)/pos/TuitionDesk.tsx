@@ -346,7 +346,7 @@ function StudentCard({ student, onCollect, schoolYear, canDiscount, onChanged }:
                   <td className="pr-3 py-1">
                     {d.period}
                     {d.kind === 'PROMISSORY' && <span className="ml-1 text-[11px] font-semibold" style={{ color: '#7c3aed' }}>promissory {d.seq} of {d.count}</span>}
-                    {d.paid > 0.005 && d.kind === 'REGULAR' && <span className="ml-1 text-[11px]" style={{ color: 'var(--mid-gray)' }}>({formatCurrency(d.paid)} of {formatCurrency(d.expected)} paid)</span>}
+                    {d.paid > 0.005 && <span className="ml-1 text-[11px]" style={{ color: 'var(--mid-gray)' }}>({formatCurrency(d.paid)} of {formatCurrency(d.expected)} paid)</span>}
                   </td>
                   <td className="pr-3 py-1 font-mono">{formatCurrency(d.remaining)}</td>
                   <td className="pr-3 py-1">

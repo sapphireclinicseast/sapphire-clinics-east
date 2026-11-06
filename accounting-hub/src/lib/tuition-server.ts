@@ -4,8 +4,8 @@
 import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import {
-  CLASS_TO_LEDGER_BRANCH, REMIND_DAYS, asTuitionPlan, cleanCovered, coveredLabel, daysBetween, installmentLedger, itemState,
-  regularDues, semesterBalances, toYmd, todayManila, type Installment, type ItemState, type SemesterBalance, type TuitionPlan,
+  CLASS_TO_LEDGER_BRANCH, REMIND_DAYS, allocatePlanPayments, asTuitionPlan, cleanCovered, coveredLabel, daysBetween, installmentLedger, itemState,
+  regularDues, semesterBalances, toYmd, todayManila, type Installment, type ItemState, type PlanPayment, type SemesterBalance, type TuitionPlan,
 } from '@/lib/tuition'
 
 const MARKETING_HUB_URL = process.env.MARKETING_HUB_URL || 'https://operations.sapphireclinicseast.org'
@@ -35,21 +35,23 @@ export async function fetchClassHubNote(id: string): Promise<Response> {
 }
 
 /** POS sales that collected Class Hub payment rows, keyed by classPortalPaymentId. */
-export async function posSalesFor(paymentIds: string[]): Promise<Map<string, { orderId: string; orderNumber: number; date: string }>> {
-  const out = new Map<string, { orderId: string; orderNumber: number; date: string }>()
+export async function posSalesFor(paymentIds: string[]): Promise<Map<string, { orderId: string; orderNumber: number; date: string; amount: number; enteredAt: string }>> {
+  const out = new Map<string, { orderId: string; orderNumber: number; date: string; amount: number; enteredAt: string }>()
   if (!paymentIds.length) return out
   const orders = await prisma.order.findMany({
     where: { queueItemId: { in: paymentIds.map(id => `clsp_${id}`) }, status: { not: 'VOIDED' } },
-    select: { id: true, orderNumber: true, transactionDate: true, queueItemId: true },
+    select: { id: true, orderNumber: true, transactionDate: true, queueItemId: true, netAmount: true, createdAt: true },
   })
   for (const o of orders) {
-    out.set((o.queueItemId || '').slice('clsp_'.length), { orderId: o.id, orderNumber: o.orderNumber, date: toYmd(o.transactionDate) })
+    out.set((o.queueItemId || '').slice('clsp_'.length), { orderId: o.id, orderNumber: o.orderNumber, date: toYmd(o.transactionDate), amount: Number(o.netAmount), enteredAt: o.createdAt.toISOString() })
   }
   return out
 }
 
 export interface PlanItemView {
   id: string; seq: number; dueDate: string; amount: number; classPortalPaymentId: string | null
+  /** Collected so far; the item is settled (paidOn) once this reaches amount. */
+  paid: number
   paidOn: string | null; orderNumber: number | null; inPos: boolean; state: ItemState; daysUntil: number
 }
 export interface PlanView {
@@ -66,32 +68,54 @@ export function loadPlans(where: Prisma.TuitionPaymentPlanWhereInput) {
 }
 
 /**
- * Plan rows → views with each item's paid state. An item is paid once the POS
- * sale for its Class Hub row exists; `confirmedAt` covers a row confirmed in
- * Class Hub before the POS became the one door.
+ * Plan rows → views with what each item has collected (allocatePlanPayments).
+ * Pass the Class Hub snapshot wherever one is at hand: without it only the sales
+ * linked to the items are known, not a covered month collected some other way.
  */
-export async function planViews(plans: PlanRow[], confirmedAt?: Map<string, string>): Promise<PlanView[]> {
-  const ids = plans.flatMap(p => p.items.map(i => i.classPortalPaymentId).filter((x): x is string => !!x))
-  const sales = await posSalesFor(ids)
+export async function planViews(plans: PlanRow[], hub?: ClassHubSnapshot): Promise<PlanView[]> {
+  const linked = plans.flatMap(p => p.items.map(i => i.classPortalPaymentId).filter((x): x is string => !!x))
+  const studentIds = new Set(plans.map(p => p.studentId))
+  const hubRows = (hub?.payments ?? []).filter(r => studentIds.has(r.studentId))
+  const sales = await posSalesFor([...new Set([...linked, ...hubRows.map(r => r.classPortalPaymentId)])])
   const today = todayManila()
   return plans.map(p => {
+    const rows = hubRows.filter(r => r.studentId === p.studentId && r.status !== 'VOIDED')
+    const payments: PlanPayment[] = hub
+      ? rows.filter(r => r.status === 'CONVERTED' || sales.has(r.classPortalPaymentId)).map(r => {
+          const sale = sales.get(r.classPortalPaymentId)
+          return {
+            id: r.classPortalPaymentId, period: r.period, amount: r.amountCentavos / 100,
+            enteredAt: sale?.enteredAt ?? r.convertedAt ?? r.createdAt,
+            date: sale?.date ?? toYmd(r.convertedAt ?? r.createdAt), orderNumber: sale?.orderNumber ?? null,
+          }
+        })
+      : p.items.flatMap(i => {
+          const sale = i.classPortalPaymentId ? sales.get(i.classPortalPaymentId) : undefined
+          return sale ? [{ id: i.classPortalPaymentId as string, period: '', amount: sale.amount, enteredAt: sale.enteredAt, date: sale.date, orderNumber: sale.orderNumber }] : []
+        })
+    const covered = cleanCovered(p.coveredDueDates)
+    const coveredDueDates = covered.length ? covered : [toYmd(p.originalDueDate)]
+    const collected = allocatePlanPayments({
+      plan: asTuitionPlan(rows[rows.length - 1]?.plan) || 'MONTHLY', coveredDueDates, createdAt: p.createdAt.toISOString(),
+      items: p.items.map(i => ({ id: i.id, dueDate: toYmd(i.dueDate), amount: Number(i.amount), classPortalPaymentId: i.classPortalPaymentId })),
+      payments,
+    })
     const items: PlanItemView[] = p.items.map(i => {
       const dueDate = toYmd(i.dueDate)
-      const sale = i.classPortalPaymentId ? sales.get(i.classPortalPaymentId) : undefined
-      const paidOn = sale?.date ?? (i.classPortalPaymentId ? confirmedAt?.get(i.classPortalPaymentId) ?? null : null)
+      const c = collected.get(i.id)
       return {
         id: i.id, seq: i.seq, dueDate, amount: Number(i.amount), classPortalPaymentId: i.classPortalPaymentId,
-        paidOn, orderNumber: sale?.orderNumber ?? null, inPos: !!i.classPortalPaymentId && !paidOn,
-        state: itemState(dueDate, paidOn, today), daysUntil: daysBetween(today, dueDate),
+        paid: c?.paid ?? 0, paidOn: c?.paidOn ?? null, orderNumber: c?.orderNumber ?? null,
+        inPos: !!i.classPortalPaymentId && !payments.some(x => x.id === i.classPortalPaymentId),
+        state: itemState(dueDate, c?.paidOn ?? null, today), daysUntil: daysBetween(today, dueDate),
       }
     })
-    const paid = items.filter(i => i.paidOn).reduce((s, i) => s + i.amount, 0)
-    const covered = cleanCovered(p.coveredDueDates)
+    const paid = Math.round(items.reduce((t, i) => t + i.paid, 0) * 100) / 100
     return {
       id: p.id, studentId: p.studentId, studentName: p.studentName, patientId: p.patientId, branch: p.branch,
       promissoryNoteId: p.promissoryNoteId, schoolYear: p.schoolYear, semester: p.semester,
       originalDueDate: toYmd(p.originalDueDate), amount: Number(p.amount), notes: p.notes, status: p.status,
-      coveredDueDates: covered.length ? covered : [toYmd(p.originalDueDate)],
+      coveredDueDates,
       items, paid, balance: Math.round((Number(p.amount) - paid) * 100) / 100, createdAt: p.createdAt.toISOString(),
     }
   })
@@ -116,14 +140,20 @@ export interface TuitionReminder {
 /** Unpaid plan payments due within REMIND_DAYS, or overdue, on active plans. */
 export async function dueReminders(branches: string[] | null): Promise<TuitionReminder[]> {
   const plans = await loadPlans({ status: 'ACTIVE', ...(branches ? { branch: { in: branches } } : {}) })
-  const views = await planViews(plans)
+  let views = await planViews(plans)
+  // Class Hub is only asked when something is due; if it can't be reached the
+  // reminder still goes out, just without any payment made outside the plan.
+  if (views.some(p => p.items.some(i => !i.paidOn && i.daysUntil <= REMIND_DAYS))) {
+    const hub = await fetchClassHub({}).catch(err => { console.error('[tuition] reminders: Class Hub fetch failed', err); return null })
+    if (hub) views = await planViews(plans, hub)
+  }
   const out: TuitionReminder[] = []
   for (const p of views) {
     for (const i of p.items) {
       if (i.paidOn || i.daysUntil > REMIND_DAYS) continue
       out.push({
         itemId: i.id, planId: p.id, studentId: p.studentId, studentName: p.studentName, patientId: p.patientId,
-        branch: p.branch, seq: i.seq, count: p.items.length, dueDate: i.dueDate, amount: i.amount,
+        branch: p.branch, seq: i.seq, count: p.items.length, dueDate: i.dueDate, amount: Math.round((i.amount - i.paid) * 100) / 100,
         daysUntil: i.daysUntil, inPos: i.inPos,
       })
     }
@@ -205,9 +235,8 @@ export async function tuitionAdjustments(studentIds: string[], schoolYear: numbe
  */
 export async function studentBalances(params: { classBranch: string | null; schoolYear?: number; hub?: ClassHubSnapshot }): Promise<{ schoolYear: number; students: StudentBalance[] }> {
   const hub = params.hub ?? await fetchClassHub({ classBranch: params.classBranch, schoolYear: params.schoolYear })
-  const confirmedAt = new Map(hub.payments.filter(p => p.status === 'CONVERTED' && p.convertedAt).map(p => [p.classPortalPaymentId, toYmd(p.convertedAt!)]))
   const [plans, sales, adjustmentsOf] = await Promise.all([
-    loadPlans({ studentId: { in: hub.students.map(s => s.id) }, status: 'ACTIVE' }).then(rows => planViews(rows, confirmedAt)),
+    loadPlans({ studentId: { in: hub.students.map(s => s.id) }, status: 'ACTIVE' }).then(rows => planViews(rows, hub)),
     posSalesFor(hub.payments.map(p => p.classPortalPaymentId)),
     tuitionAdjustments(hub.students.map(s => s.id), hub.schoolYear),
   ])
@@ -259,13 +288,16 @@ export async function studentBalances(params: { classBranch: string | null; scho
         else if (!nextDue) nextDue = due
       }
     }
+    const ledger = plan && rate ? installmentLedger({ plan, rate, schoolYear: hub.schoolYear, payments: settled }) : []
     for (const pl of myPlans) {
       const pPlan = plan || 'MONTHLY'
+      // A covered month already settled drops off the label the cashier collects under.
+      const open = pl.coveredDueDates.filter(d => (ledger.find(x => x.dueDate === d)?.remaining ?? 1) >= 0.01)
       for (const it of pl.items) {
         if (it.paidOn) continue
         dues.push({
-          key: `pn:${it.id}`, kind: 'PROMISSORY', plan: pPlan, period: coveredLabel(pPlan, pl.coveredDueDates),
-          dueDate: it.dueDate, expected: it.amount, paid: 0, remaining: it.amount,
+          key: `pn:${it.id}`, kind: 'PROMISSORY', plan: pPlan, period: coveredLabel(pPlan, open.length ? open : pl.coveredDueDates),
+          dueDate: it.dueDate, expected: it.amount, paid: it.paid, remaining: Math.round((it.amount - it.paid) * 100) / 100,
           state: it.state === 'OVERDUE' ? 'OVERDUE' : it.state === 'DUE_SOON' ? 'DUE_SOON' : 'UPCOMING',
           daysUntil: it.daysUntil, planItemId: it.id, seq: it.seq, count: pl.items.length,
         })
@@ -284,7 +316,7 @@ export async function studentBalances(params: { classBranch: string | null; scho
       paidThisSy,
       semesters: bySem?.semesters ?? null, yearTuition: bySem?.yearTuition ?? null, runningBalance: bySem?.runningBalance ?? null,
       dues, nextDue,
-      installments: plan && rate ? installmentLedger({ plan, rate, schoolYear: hub.schoolYear, payments: settled }) : [],
+      installments: ledger,
       payments: paidRows.map(r => ({
         period: r.period, amount: r.amountCentavos / 100, date: sales.get(r.classPortalPaymentId)?.date || (r.convertedAt ? toYmd(r.convertedAt) : toYmd(r.createdAt)),
         orderNumber: sales.get(r.classPortalPaymentId)?.orderNumber ?? null, partial: r.isPartialPayment,
