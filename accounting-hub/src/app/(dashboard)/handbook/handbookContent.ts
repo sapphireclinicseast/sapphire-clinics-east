@@ -61,7 +61,7 @@ export const SECTIONS: Section[] = [
         `**Bookkeeper** — same as Accountant **except** the final audit sign-off, and no Sales/Products Analysis.`,
         `**Payroll Officer** — Payroll, plus Services and Point of Sale.`,
         `**Front Desk (AHEA / AHGH)** — Point of Sale, Services, Asset Management, PayMongo, Quotations, Dashboard, Sales Summary and Referral — limited to their branch.`,
-        `**HMO Officer** — the HMO side of Accounts Receivable (and Chart of Accounts, read paths).`,
+        `**HMO Officer** — the HMO side of Accounts Receivable (and Chart of Accounts, read paths), plus **Official Documents** to open and download for HMO submissions.`,
         `**Medical Representative** — the Referral directory and Reports (revenue only).`,
         `**Investor** — the Financial Reports and the Investor Subsidiary Ledger, view-only, with no patient-level detail.`,
         `**Viewer** — a read-only view across most finance screens.`,
@@ -454,10 +454,17 @@ export const SECTIONS: Section[] = [
       { k: 'p', t: `Tracks and collects money **owed to the clinic** — mainly by **HMO providers** and **Guarantee-Letter (GL) agencies**, plus other credit customers. Subtitle: "Monitor and record payments from HMO providers and Guarantee Letter agencies."` },
       { k: 'sub', t: 'Tabs' },
       { k: 'ul', items: [
-        `**HMO Providers** — with sub-tabs **Overview · Per HMO · Generate SOA · SOA Submissions · LOA Submission · For Follow Up**.`,
+        `**HMO Providers** — with sub-tabs **Overview · Per HMO · Generate SOA · SOA Submissions · LOA Submission · For Follow Up · HMO Directory**.`,
         `**Guarantee Letters (GL)** — with **Overview** and **Detailed GL** (tracks each letter's documents, approval, SOA and payment).`,
         `**Tuition** — Class Hub students: their tuition payments, the promissory notes uploaded in Class Hub, and the payment plan set for each note.`,
         `**Other Customers** — other credit customers, with staggered payment plans.`,
+      ] },
+      { k: 'sub', t: 'HMO Directory' },
+      { k: 'ul', items: [
+        `One card per HMO: accredited branches, the accreditation, submission and collection contacts, who is paid for medical doctors, the early submission discount, the LOA application link, and PDFs of the signed MOA and the price list submitted.`,
+        `**Category in Services Section**: pick the HMO's category and open **Show prices** to see its services and current prices beside the price list submitted.`,
+        `**MOA valid until**: from 30 days before that date and every day after it, HMO officers, the main user and accounting get a popup and a bell item. To stop it, click **Renew**, enter the new date and upload the new signed MOA.`,
+        `The doctor-payment tick is a record of what the MOA says. It does not change what posts to the GL or what shows in AR.`,
       ] },
       { k: 'sub', t: 'Tuition promissory plans' },
       { k: 'steps', items: [

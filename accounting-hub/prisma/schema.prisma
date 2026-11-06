@@ -989,6 +989,7 @@ model DigitalWallet {
   arPayments ARPayment[]
   soaSubmissions SoaSubmission[]
   glCase     GlCase?        @relation("WalletGlCase")
+  hmoDirectory HmoDirectory?
 
   @@index([patientId, walletType])
   @@index([patientName])
@@ -997,6 +998,40 @@ model DigitalWallet {
   @@index([accountId])
   @@index([paymentModeId])
   @@index([branch])
+}
+
+/// AR → HMO Directory: who to call at each HMO and what our MOA with it says.
+/// One row per HMO wallet, created on the first save. Reference only: nothing
+/// here moves money or changes what posts. mdPayment records what the MOA says;
+/// GL and AR still follow DigitalWallet.paysClinicForMd.
+model HmoDirectory {
+  id                  String        @id @default(cuid())
+  walletId            String        @unique
+  wallet              DigitalWallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  accreditedBranches  Json          @default("[]") // ["SANDBOX_EAST", "SANDBOX_GREENHILLS"]
+  accreditationName   String?
+  accreditationEmail  String?
+  accreditationNumber String?
+  submissionName      String?
+  submissionEmail     String?
+  submissionNumber    String?
+  collectionName      String?
+  collectionEmail     String?
+  collectionNumber    String?
+  moaValidUntil       DateTime? // Drives the renewal popup: from 30 days before until a later date is saved.
+  moaFileUrls         Json          @default("[]") // Signed MOA PDFs, newest first; renewals keep the old copies.
+  priceListFileUrls   Json          @default("[]") // Price list PDFs submitted to the HMO, newest first.
+  mdPayment           String? // DOCTOR_DIRECT | CLINIC; blank until someone records it
+  earlyDiscountPct    Decimal?
+  earlyDiscountDays   Int?
+  earlyDiscountNotes  String?
+  loaApplicationUrl   String?
+  serviceCategory     String? // Category on the Services page whose rows carry this HMO's prices.
+  updatedByName       String?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  @@index([moaValidUntil])
 }
 
 /// A Guarantee Letter case entered by accounting, which may not have a POS

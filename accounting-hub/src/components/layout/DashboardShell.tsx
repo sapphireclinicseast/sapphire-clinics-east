@@ -6,6 +6,7 @@ import TopBar from './TopBar'
 import { ReminderPopup } from '@/components/dashboard/RecurringReminders'
 import { TaxDeadlinePopup } from '@/components/dashboard/TaxDeadlinePopup'
 import { ScholarReminderPopup } from '@/components/dashboard/ScholarReminders'
+import { MoaRenewalPopup } from '@/components/dashboard/MoaRenewalPopup'
 
 interface DashboardShellProps {
   user: {
@@ -74,6 +75,7 @@ export default function DashboardShell({ user, children }: DashboardShellProps) 
       <ReminderPopup />
       <TaxDeadlinePopup role={user.role} />
       <ScholarReminderPopup />
+      <MoaRenewalPopup role={user.role} userId={user.id} />
     </div>
   )
 }

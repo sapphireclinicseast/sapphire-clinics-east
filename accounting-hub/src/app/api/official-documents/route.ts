@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
-const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'PAYROLL_OFFICER']
+// HMO officers open and download these for HMO submissions (Hannah, 2026-11-06).
+const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'PAYROLL_OFFICER', 'HMO_OFFICER']
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 const DELETE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 const CATEGORIES = ['BUSINESS', 'SEC', 'BIR', 'BENEFITS', 'OTHER']
@@ -40,6 +41,8 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
   }
   if (new URL(req.url).searchParams.get('expiring') === '1') {
+    // Renewing these stays with accounting, so they stay out of the HMO officer's bell.
+    if (session.user.role === 'HMO_OFFICER') return NextResponse.json({ documents: [] })
     const horizon = new Date(Date.now() + EXPIRY_WINDOW_DAYS * 86_400_000)
     const docs = await prisma.officialDocument.findMany({
       where: { expiryDate: { not: null, lte: horizon } },

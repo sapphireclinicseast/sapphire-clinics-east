@@ -1054,4 +1054,38 @@ ALTER TABLE "ARPayment" ADD COLUMN IF NOT EXISTS "siDeclaredDate" TIMESTAMP(3);
 ALTER TABLE "SalesInvoiceFlag" ADD COLUMN IF NOT EXISTS "declaredDate" TIMESTAMP(3);
 SQL
 
+# ── AR → HMO Directory (contacts, MOA, price list, accredited branches) ──
+docker exec -i accounting_db psql -U sapphire -d sapphire_accounting <<'SQL'
+CREATE TABLE IF NOT EXISTS "HmoDirectory" (
+  "id"                  TEXT NOT NULL,
+  "walletId"            TEXT NOT NULL,
+  "accreditedBranches"  JSONB NOT NULL DEFAULT '[]',
+  "accreditationName"   TEXT,
+  "accreditationEmail"  TEXT,
+  "accreditationNumber" TEXT,
+  "submissionName"      TEXT,
+  "submissionEmail"     TEXT,
+  "submissionNumber"    TEXT,
+  "collectionName"      TEXT,
+  "collectionEmail"     TEXT,
+  "collectionNumber"    TEXT,
+  "moaValidUntil"       TIMESTAMP(3),
+  "moaFileUrls"         JSONB NOT NULL DEFAULT '[]',
+  "priceListFileUrls"   JSONB NOT NULL DEFAULT '[]',
+  "mdPayment"           TEXT,
+  "earlyDiscountPct"    DECIMAL(65,30),
+  "earlyDiscountDays"   INTEGER,
+  "earlyDiscountNotes"  TEXT,
+  "loaApplicationUrl"   TEXT,
+  "serviceCategory"     TEXT,
+  "updatedByName"       TEXT,
+  "createdAt"           TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt"           TIMESTAMP(3) NOT NULL,
+  CONSTRAINT "HmoDirectory_pkey" PRIMARY KEY ("id"),
+  CONSTRAINT "HmoDirectory_walletId_fkey" FOREIGN KEY ("walletId") REFERENCES "DigitalWallet"("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+CREATE UNIQUE INDEX IF NOT EXISTS "HmoDirectory_walletId_key" ON "HmoDirectory"("walletId");
+CREATE INDEX IF NOT EXISTS "HmoDirectory_moaValidUntil_idx" ON "HmoDirectory"("moaValidUntil");
+SQL
+
 echo "Redeploy complete."

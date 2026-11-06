@@ -138,7 +138,7 @@ const NAV_SECTIONS: NavSection[] = [
     // Business, SEC, BIR and benefit-agency papers (permits, registrations, filings).
     label: 'Company Records',
     items: [
-      { href: '/official-documents', icon: FolderLock, label: 'Official Documents', roles: [...FULL_ACCESS, 'PAYROLL_OFFICER'] },
+      { href: '/official-documents', icon: FolderLock, label: 'Official Documents', roles: [...FULL_ACCESS, 'PAYROLL_OFFICER', 'HMO_OFFICER'] },
     ],
   },
   {

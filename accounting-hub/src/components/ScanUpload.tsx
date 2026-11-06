@@ -17,7 +17,7 @@ import { compressImageFile } from '@/lib/client-image-compress'
  * `existingCount` seeds the -NN sequence so a 2nd photo becomes -02, etc.
  */
 export function ScanUpload({
-  prefix, section, existingCount = 0, onUploaded, accept = 'image/*,.pdf', label = 'Choose from File', compact = false,
+  prefix, section, existingCount = 0, onUploaded, accept = 'image/*,.pdf', label = 'Choose from File', compact = false, qr = true,
 }: {
   prefix: string
   section: string
@@ -26,6 +26,8 @@ export function ScanUpload({
   accept?: string
   label?: string
   compact?: boolean
+  /** False hides "Scan QR", for PDF-only fields: the phone flow sends photos. */
+  qr?: boolean
 }) {
   const [uploading, setUploading] = useState(false)
   const [qrOpen, setQrOpen] = useState(false)
@@ -113,11 +115,13 @@ export function ScanUpload({
           {uploading ? <Loader2 size={sz} className="animate-spin" /> : <Upload size={sz} />} {label}
           <input type="file" multiple accept={accept} className="hidden" onChange={e => { pickFiles(e.target.files); e.target.value = '' }} />
         </label>
+        {qr && (
         <button type="button" onClick={openQr} className={btn} style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}
           title={listening && !qrOpen ? 'Still receiving photos from your phone — tap to show the same QR again' : undefined}>
           <QrCode size={sz} /> Scan QR
           {listening && !qrOpen && <Loader2 size={sz - 2} className="animate-spin" />}
         </button>
+        )}
       </div>
 
       {qrOpen && (

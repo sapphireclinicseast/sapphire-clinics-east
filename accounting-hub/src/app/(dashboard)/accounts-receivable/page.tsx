@@ -23,6 +23,8 @@ import { soaBranchCode } from '@/lib/soa-ref'
 import SubmittedForSoa from './SubmittedForSoa'
 import OthersTab from './OthersTab'
 import TuitionTab from './TuitionTab'
+import HmoDirectoryTab from './HmoDirectoryTab'
+import { DIRECTORY_WRITE_ROLES } from '@/lib/hmo-directory'
 import ExpandablePanel from './ExpandablePanel'
 import PaymentsCard from './PaymentsCard'
 import { useResizableColumns, ResizableColgroup, ColResizeHandle } from '@/components/useResizableColumns'
@@ -580,7 +582,7 @@ export default function AccountsReceivablePage() {
   // HMO sub-tab state. 'md-consults' and 'submitted-unpaid' are the Per HMO
   // view in fixed shapes (doctor-consult sessions only / on a submitted SOA but
   // still unpaid) — all four render through the same block below.
-  const [hmoSubTab, setHmoSubTab] = useState<'overview' | 'per-hmo' | 'md-consults' | 'soa-report' | 'submitted-soa' | 'submitted-unpaid' | 'loa' | 'follow-up' | 'revised-amounts' | 'payment-history'>('overview')
+  const [hmoSubTab, setHmoSubTab] = useState<'overview' | 'per-hmo' | 'md-consults' | 'soa-report' | 'submitted-soa' | 'submitted-unpaid' | 'loa' | 'follow-up' | 'revised-amounts' | 'payment-history' | 'directory'>(searchParams.get('sub') === 'directory' ? 'directory' : 'overview')
   // useSession resolves after the first render, so the initial tab/sub-tab are
   // picked before the role is known. Snap them back once it arrives — a ?type=
   // link or a stale sub-tab must not park a restricted user on a hidden view.
@@ -1530,7 +1532,8 @@ export default function AccountsReceivablePage() {
         ))}
       </div>
 
-      {/* Branch filter */}
+      {/* Branch filter — the directory is per HMO, not per branch */}
+      {!(tab === 'HMO' && hmoSubTab === 'directory') && (
       <div className="flex items-center gap-2 flex-wrap">
         <span className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Branch:</span>
         {([
@@ -1551,10 +1554,11 @@ export default function AccountsReceivablePage() {
           </button>
         ))}
       </div>
+      )}
 
       {/* HMO Sub-tabs */}
       {tab === 'HMO' && (
-        <div className="flex gap-2 border-b pb-0" style={{ borderColor: 'var(--light-gray)' }}>
+        <div className="flex flex-wrap gap-2 border-b pb-0" style={{ borderColor: 'var(--light-gray)' }}>
           {([
             { key: 'overview', label: 'Overview' },
             { key: 'per-hmo', label: 'Per HMO' },
@@ -1575,6 +1579,8 @@ export default function AccountsReceivablePage() {
             // Recorded HMO payments + the Record Payment button, out of Overview
             // (Hannah 2026-10-17).
             { key: 'payment-history', label: 'Payment History' },
+            // Contacts, MOA and price list per HMO (Hannah 2026-11-06).
+            { key: 'directory', label: 'HMO Directory' },
           ] as const).filter(st => !(isFrontdesk && st.key === 'overview')).map(st => (
             <button key={st.key} onClick={() => setHmoSubTab(st.key)}
               className="px-4 py-2 text-sm font-medium transition-colors"
@@ -2605,6 +2611,10 @@ export default function AccountsReceivablePage() {
       {tab === 'HMO' && hmoSubTab === 'loa' && <LoaSubmissionsTab />}
 
       {tab === 'HMO' && hmoSubTab === 'revised-amounts' && <RevisedSessionsTab branch={branch} />}
+
+      {tab === 'HMO' && hmoSubTab === 'directory' && (
+        <HmoDirectoryTab canEdit={DIRECTORY_WRITE_ROLES.includes(role)} focusWalletId={searchParams.get('hmo') || ''} />
+      )}
 
       {tab === 'HMO' && PER_HMO_LIKE_TABS.includes(hmoSubTab) && (() => {
         // Fixed shapes of the Per HMO view:

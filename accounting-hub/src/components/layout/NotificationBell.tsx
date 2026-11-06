@@ -1,15 +1,16 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Bell, TrendingDown, CalendarClock, Landmark, ShieldCheck, Loader2, FolderLock, GraduationCap, AlertOctagon } from 'lucide-react'
+import { Bell, TrendingDown, CalendarClock, Landmark, ShieldCheck, Loader2, FolderLock, GraduationCap, AlertOctagon, FileWarning } from 'lucide-react'
 import { computeTaxDue } from '@/lib/taxes'
 import type { ComplianceDue } from '@/lib/compliance'
 import { pfPriceOpenSince } from '@/lib/payroll/pf-price'
 
 /* Top-bar bell: one place for what needs action soon —
    PF to recover after HMO decreases, PF above the service price, recurring expenses, BIR tax deadlines,
-   benefit/government compliance deadlines (Taxes → Compliance Calendar), and
-   tuition promissory payments due within 7 days (AR → Tuition).
+   benefit/government compliance deadlines (Taxes → Compliance Calendar),
+   tuition promissory payments due within 7 days (AR → Tuition), and HMO MOAs
+   due for renewal (AR → HMO Directory).
    Each source is role-gated by its own API; a 403 just means "not yours". */
 
 const TAX_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
@@ -24,13 +25,14 @@ const dueText = (d: number) => (d < 0 ? `${-d} day${d === -1 ? '' : 's'} overdue
 const getJson = (url: string) => fetch(url).then(r => (r.ok ? r.json() : null)).catch(() => null)
 
 async function loadGroups(role: string): Promise<Group[]> {
-  const [pf, pfPrice, recurring, compliance, expiring, tuition] = await Promise.all([
+  const [pf, pfPrice, recurring, compliance, expiring, tuition, moa] = await Promise.all([
     getJson('/api/payroll/hmo-settlement-alerts'),
     getJson(`/api/payroll/pf-price-check?since=${pfPriceOpenSince()}`),
     getJson('/api/expenses/reminders'),
     getJson('/api/compliance-deadlines?due=1'),
     getJson('/api/official-documents?expiring=1'),
     getJson('/api/tuition/reminders'),
+    getJson('/api/accounts-receivable/hmo-directory?alerts=1'),
   ])
   const groups: Group[] = []
 
@@ -138,6 +140,18 @@ async function loadGroups(role: string): Promise<Group[]> {
         key: `tui-${t.itemId}`, title: `${t.studentName} — ${peso(t.amount)}`,
         detail: `Payment ${t.seq} of ${t.count} · ${t.branch === 'SANDBOX_GREENHILLS' ? 'Greenhills' : 'East'} · ${t.dueDate}${t.inPos ? ' · in the POS queue' : ''}`,
         daysUntil: t.daysUntil, href: '/accounts-receivable?type=TUITION',
+      })),
+    })
+  }
+
+  // HMO MOAs expiring within 30 days or already expired
+  const moaDue: { walletId: string; hmoName: string; validUntil: string; daysLeft: number }[] = moa?.alerts || []
+  if (moaDue.length) {
+    groups.push({
+      key: 'moa', label: 'HMO MOA renewals', icon: FileWarning,
+      items: moaDue.map(m => ({
+        key: `moa-${m.walletId}`, title: m.hmoName, detail: `MOA valid until ${m.validUntil}`,
+        daysUntil: m.daysLeft, href: `/accounts-receivable?sub=directory&hmo=${encodeURIComponent(m.walletId)}`,
       })),
     })
   }
