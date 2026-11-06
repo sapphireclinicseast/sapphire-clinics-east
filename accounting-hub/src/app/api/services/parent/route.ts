@@ -1,24 +1,26 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { parentFromName, parentOptions } from '@/lib/service-groups'
+import { parentOptions } from '@/lib/service-groups'
 
 const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 
-async function allParents() {
-  const rows = await prisma.service.findMany({ where: { isActive: true }, select: { name: true, parentGroup: true } })
-  return parentOptions(rows)
+function activeServices() {
+  return prisma.service.findMany({ where: { isActive: true }, select: { id: true, name: true, parentGroup: true }, orderBy: { name: 'asc' } })
 }
 
-export async function GET() {
+// The categories in use; ?services=1 adds every active service to pick from.
+export async function GET(req: Request) {
   const session = await auth()
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  return NextResponse.json({ parents: await allParents() })
+  const rows = await activeServices()
+  const withServices = new URL(req.url).searchParams.get('services') === '1'
+  return NextResponse.json({ parents: parentOptions(rows), ...(withServices ? { services: rows } : {}) })
 }
 
-// Files services under a parent on the Services page. Only parentGroup changes:
+// Files services under a category on the Services page. Only parentGroup changes:
 // the name, price and every link POS and payroll use stay as they are. A blank
-// parent puts a service back where its name places it.
+// category puts a service back where its name places it.
 export async function POST(req: Request) {
   const session = await auth()
   if (!session?.user || !WRITE_ROLES.includes(session.user.role as string)) {
@@ -32,25 +34,24 @@ export async function POST(req: Request) {
 
   // Typing "cocolife" joins the existing COCOLIFE instead of starting a second one.
   const parent = typed
-    ? (await allParents()).find(p => p.toUpperCase() === typed.toUpperCase()) ?? typed
-    : ''
+    ? parentOptions(await activeServices()).find(p => p.toUpperCase() === typed.toUpperCase()) ?? typed
+    : null
 
-  const rows = await prisma.service.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, parentGroup: true } })
+  const rows = await prisma.service.findMany({ where: { id: { in: ids } }, select: { id: true, parentGroup: true } })
   if (!rows.length) return NextResponse.json({ error: 'Service not found' }, { status: 404 })
 
-  const nextFor = (name: string) => (parent && parent.toUpperCase() !== parentFromName(name).toUpperCase() ? parent : null)
   await prisma.$transaction([
-    ...rows.map(r => prisma.service.update({ where: { id: r.id }, data: { parentGroup: nextFor(r.name) } })),
+    prisma.service.updateMany({ where: { id: { in: rows.map(r => r.id) } }, data: { parentGroup: parent } }),
     prisma.auditLog.createMany({
       data: rows.map(r => ({
         userId: session.user.id,
         action: 'UPDATE' as const,
         entity: 'service',
         entityId: r.id,
-        details: { updated: ['parentGroup'], from: r.parentGroup, to: nextFor(r.name) },
+        details: { updated: ['parentGroup'], from: r.parentGroup, to: parent },
       })),
     }),
   ])
 
-  return NextResponse.json({ moved: rows.length, parent: parent || null })
+  return NextResponse.json({ moved: rows.length, parent })
 }

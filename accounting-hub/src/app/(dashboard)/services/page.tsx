@@ -10,7 +10,8 @@ import {
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { pwdUnitPrice, PWD_RATE } from '@/lib/quotations/pricing'
-import { groupServices, subServiceLabel, type ServiceGroup } from '@/lib/service-groups'
+import { groupServices, parentFromName, type ServiceGroup } from '@/lib/service-groups'
+import AddCategoryModal from './AddCategoryModal'
 import { branchPriceMap, overPrice, type PricedService } from '@/lib/payroll/pf-price'
 import type { ServiceRate } from '@/lib/payroll/pf-price-server'
 import { downloadXlsx, downloadPdf } from '@/lib/export'
@@ -154,6 +155,8 @@ export default function ServicesPage() {
   const [moveTargets, setMoveTargets] = useState<Service[] | null>(null)
   const [moveParent, setMoveParent] = useState('')
   const [moveOptions, setMoveOptions] = useState<string[]>([])
+  const [fParentGroup, setFParentGroup] = useState('')
+  const [addingCategory, setAddingCategory] = useState(false)
   const [moveSaving, setMoveSaving] = useState(false)
   const [moveError, setMoveError] = useState('')
   const [notice, setNotice] = useState('')
@@ -369,6 +372,7 @@ export default function ServicesPage() {
   // Form handlers
   function openCreate() {
     setEditing(null)
+    setFParentGroup(''); loadCategories()
     setFName(''); setFDept('PT'); setFBranch('ALL'); setFPrice(''); setFNewPrice(''); setFNewPriceDate(''); setFBranchPrices([])
     setFPriceType('FIXED'); setFRevenueType('EARNED'); setFHasDoctorFee(false); setFDoctorFee('')
     setFClinicFee(''); setFNewDoctorFee(''); setFNewClinicFee(''); setFPwdClinicOnly(false); setFNoPwdDiscount(false); setFIssuedOfficialInvoice(false); setFIsHmoGl(false); setFPaymentType('CASH'); setFHmoDirect(false); setFRecognitionMonths(''); setFDescription('')
@@ -379,7 +383,10 @@ export default function ServicesPage() {
   // New service under a parent: carries whatever all its siblings agree on.
   function openCreateSub(g: ServiceGroup<Service>) {
     openCreate()
-    setFName(`${g.label} - `)
+    // HMO-style categories come from the name, so a new row follows that; a category
+    // set by hand is simply filled in.
+    if (g.services.some(s => parentFromName(s.name).toUpperCase() === g.key)) setFName(`${g.label} - `)
+    else setFParentGroup(g.label)
     const only = <V,>(values: V[]) => (new Set(values).size === 1 ? values[0] : undefined)
     const dept = only(g.services.map(s => s.department))
     if (dept) setFDept(dept)
@@ -389,12 +396,21 @@ export default function ServicesPage() {
     if (pay) { setFPaymentType(pay); setFIsHmoGl(pay !== 'CASH') }
   }
 
-  function openMove(targets: Service[]) {
-    setMoveTargets(targets); setMoveParent(''); setMoveError(''); setNotice('')
+  function loadCategories() {
     fetch('/api/services/parent')
       .then(r => r.json())
       .then(d => setMoveOptions(d.parents || []))
       .catch(() => setMoveOptions([]))
+  }
+
+  function openMove(targets: Service[]) {
+    setMoveTargets(targets); setMoveParent(''); setMoveError(''); setNotice('')
+    loadCategories()
+  }
+
+  // A category just filed to opens by itself so the move is visible.
+  function showCategory(category: string) {
+    if (!resultsSearch.trim()) setToggledGroups(prev => new Set(prev).add(category.toUpperCase()))
   }
 
   async function saveMove(parent: string) {
@@ -409,8 +425,8 @@ export default function ServicesPage() {
       const d = await res.json()
       if (!res.ok) { setMoveError(d.error || 'Failed to move'); return }
       const what = moveTargets.length === 1 ? moveTargets[0].name : `${moveTargets.length} services`
-      setNotice(d.parent ? `Moved ${what} under ${d.parent}` : `Took ${what} out of its parent`)
-      if (d.parent && !resultsSearch.trim()) setToggledGroups(prev => new Set(prev).add(d.parent.toUpperCase()))
+      setNotice(d.parent ? `Moved ${what} to ${d.parent}` : `Took ${what} out of its category`)
+      if (d.parent) showCategory(d.parent)
       setMoveTargets(null)
       fetchServices()
     } catch {
@@ -422,6 +438,7 @@ export default function ServicesPage() {
 
   function openEdit(s: Service) {
     setEditing(s)
+    setFParentGroup(s.parentGroup || ''); loadCategories()
     setFName(s.name); setFDept(s.department); setFBranch(s.branch)
     setFPrice(String(s.price)); setFNewPrice(s.newPrice != null ? String(s.newPrice) : ''); setFNewPriceDate(s.newPriceEffectiveDate ? String(s.newPriceEffectiveDate).split('T')[0] : '')
     const bps = (s.branchPrices || []).map(bp => ({ branch: bp.branch, price: String(bp.price), newPrice: bp.newPrice != null ? String(bp.newPrice) : '', newPriceDate: bp.newPriceEffectiveDate ? String(bp.newPriceEffectiveDate).split('T')[0] : '' }))
@@ -499,6 +516,7 @@ export default function ServicesPage() {
     setSaving(true); setError('')
     const body: Record<string, unknown> = {
       name: fName, department: fDept, branch: fBranch,
+      parentGroup: moveOptions.find(p => p.toUpperCase() === fParentGroup.trim().toUpperCase()) ?? fParentGroup.trim(),
       price: fPrice, priceType: fPriceType, revenueType: fRevenueType,
       walletType: fRevenueType === 'UNEARNED' ? (fWalletType || null) : null,
       vipTier: fRevenueType === 'UNEARNED' && fWalletType === 'VIP' ? (fVipTier || null) : null,
@@ -647,8 +665,8 @@ export default function ServicesPage() {
     return (
       <tr key={s.id} className="border-t hover:bg-gray-50/50 transition-colors" style={{ borderColor: 'var(--light-gray)', opacity: s.isActive ? 1 : 0.6, background: nested ? 'var(--off-white)' : undefined }}>
         <td className="px-4 py-3 font-medium" style={{ color: 'var(--charcoal)', paddingLeft: nested ? 44 : undefined }}>
-          <span className="flex items-center gap-1.5" title={nested ? s.name : undefined}>
-            {nested ? subServiceLabel(s) : s.name}
+          <span className="flex items-center gap-1.5">
+            {s.name}
             {s.issuedOfficialInvoice && (
               <span title="Issued Official Sales Invoice" className="flex-shrink-0"><FileCheck size={14} style={{ color: '#16a34a' }} /></span>
             )}
@@ -754,7 +772,7 @@ export default function ServicesPage() {
                 <button onClick={() => openEdit(s)} className="p-2 rounded-lg hover:bg-gray-100 transition-colors" title="Edit">
                   <Pencil size={15} style={{ color: 'var(--teal)' }} />
                 </button>
-                <button onClick={() => openMove([s])} className="p-2 rounded-lg hover:bg-gray-100 transition-colors" title="Move under a parent">
+                <button onClick={() => openMove([s])} className="p-2 rounded-lg hover:bg-gray-100 transition-colors" title="Move to a category">
                   <CornerDownRight size={15} style={{ color: 'var(--teal)' }} />
                 </button>
                 {s.isActive ? (
@@ -821,7 +839,7 @@ export default function ServicesPage() {
                 <button onClick={(e) => { e.stopPropagation(); openCreateSub(g) }} className="p-2 rounded-lg hover:bg-gray-100 transition-colors" title={`Add a service under ${g.label}`}>
                   <Plus size={15} style={{ color: 'var(--teal)' }} />
                 </button>
-                <button onClick={(e) => { e.stopPropagation(); openMove(g.services) }} className="p-2 rounded-lg hover:bg-gray-100 transition-colors" title={`Move these ${g.services.length} services under another parent`}>
+                <button onClick={(e) => { e.stopPropagation(); openMove(g.services) }} className="p-2 rounded-lg hover:bg-gray-100 transition-colors" title={`Move these ${g.services.length} services to another category`}>
                   <CornerDownRight size={15} style={{ color: 'var(--teal)' }} />
                 </button>
               </>
@@ -859,6 +877,13 @@ export default function ServicesPage() {
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border transition-opacity hover:opacity-90 disabled:opacity-50"
               style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }} title="Tag PT/OT/SLP HMO providers + '- OP' GL services as HMO/GL">
               {taggingHmoGl ? '…' : 'Auto-tag HMO/GL'}
+            </button>
+          )}
+          {canWrite && (
+            <button onClick={() => { setNotice(''); setAddingCategory(true) }}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border transition-opacity hover:opacity-90"
+              style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+              <Plus size={18} /> Add Category
             </button>
           )}
           {canWrite && (
@@ -984,29 +1009,47 @@ export default function ServicesPage() {
         )}
       </div>
 
-      {/* Move under a parent */}
+      <datalist id="service-parent-options">
+        {moveOptions.map(p => <option key={p} value={p} />)}
+      </datalist>
+
+      {addingCategory && (
+        <AddCategoryModal
+          onClose={() => setAddingCategory(false)}
+          onSaved={(category, count) => {
+            setAddingCategory(false)
+            setNotice(`Added ${category} with ${count} service${count === 1 ? '' : 's'}`)
+            showCategory(category)
+            fetchServices()
+          }}
+          onNoServices={(category) => {
+            setAddingCategory(false)
+            openCreate()
+            setFParentGroup(category)
+          }}
+        />
+      )}
+
+      {/* Move to a category */}
       {moveTargets && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-xl">
-            <h3 className="text-lg font-bold mb-2" style={{ color: 'var(--charcoal)' }}>Move under a parent</h3>
+            <h3 className="text-lg font-bold mb-2" style={{ color: 'var(--charcoal)' }}>Move to a category</h3>
             <p className="text-sm mb-4" style={{ color: 'var(--mid-gray)' }}>
               <strong>{moveTargets.length === 1 ? moveTargets[0].name : `${moveTargets.length} services`}</strong>
             </p>
-            <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Parent</label>
+            <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Category</label>
             <input type="text" list="service-parent-options" value={moveParent} onChange={(e) => setMoveParent(e.target.value)}
-              placeholder="Pick a parent or type a new one" autoFocus
+              placeholder="Pick a category or type a new one" autoFocus
               className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
               style={{ borderColor: 'var(--light-gray)' }} />
-            <datalist id="service-parent-options">
-              {moveOptions.map(p => <option key={p} value={p} />)}
-            </datalist>
             <p className="text-xs mt-1.5 mb-5" style={{ color: 'var(--mid-gray)' }}>
               This only changes where it is listed on this page. Its name, price, checkout and payroll stay the same.
             </p>
             {moveError && <div className="mb-4 p-3 rounded-lg text-sm bg-red-50 text-red-600">{moveError}</div>}
             <div className="flex gap-3 justify-end flex-wrap">
-              {moveTargets.some(s => s.parentGroup) && (
-                <button type="button" onClick={() => saveMove('')} disabled={moveSaving} className="px-4 py-2 rounded-lg text-sm border mr-auto disabled:opacity-50" style={{ borderColor: 'var(--light-gray)' }}>Remove from parent</button>
+              {moveTargets.some(s => s.parentGroup && s.parentGroup.toUpperCase() !== parentFromName(s.name).toUpperCase()) && (
+                <button type="button" onClick={() => saveMove('')} disabled={moveSaving} className="px-4 py-2 rounded-lg text-sm border mr-auto disabled:opacity-50" style={{ borderColor: 'var(--light-gray)' }}>Remove from category</button>
               )}
               <button type="button" onClick={() => setMoveTargets(null)} className="px-4 py-2 rounded-lg text-sm border" style={{ borderColor: 'var(--light-gray)' }}>Cancel</button>
               <button type="button" onClick={() => saveMove(moveParent)} disabled={moveSaving || !moveParent.trim()} className="px-4 py-2 rounded-lg text-sm text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>Move</button>
@@ -1057,7 +1100,16 @@ export default function ServicesPage() {
                   placeholder="e.g. Physical Therapy Session"
                   className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
                   style={{ borderColor: 'var(--light-gray)' }} />
-                <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>To list it under a parent, start with the parent&apos;s name and a dash, e.g. COCOLIFE - Medical Consultation.</p>
+              </div>
+
+              {/* Category */}
+              <div>
+                <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Category</label>
+                <input type="text" list="service-parent-options" value={fParentGroup} onChange={(e) => setFParentGroup(e.target.value)}
+                  placeholder="Optional: pick a category or type a new one"
+                  className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
+                  style={{ borderColor: 'var(--light-gray)' }} />
+                <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>Left blank, a name like COCOLIFE - Medical Consultation still goes under COCOLIFE. This only sets where it is listed here.</p>
               </div>
 
               {/* Department + Branch */}

@@ -220,6 +220,7 @@ export async function POST(req: Request) {
         recognitionMonths: recognitionMonths ? Number(recognitionMonths) : null,
         thresholdQty: thresholdQty != null ? Math.max(0.5, Math.round((parseFloat(String(thresholdQty)) || 1) * 2) / 2) : 1,
         issuedOfficialInvoice: issuedOfficialInvoice || false,
+        parentGroup: typeof body.parentGroup === 'string' && body.parentGroup.trim() ? body.parentGroup.trim() : null,
         createdById: session.user.id,
       },
     })
@@ -351,6 +352,7 @@ export async function PUT(req: Request) {
     if (issuedOfficialInvoice !== undefined) data.issuedOfficialInvoice = issuedOfficialInvoice
     if (isHmoGl !== undefined) data.isHmoGl = !!isHmoGl
     if (body.paymentType !== undefined && ['CASH', 'HMO', 'GL'].includes(body.paymentType)) data.paymentType = body.paymentType
+    if (body.parentGroup !== undefined) data.parentGroup = typeof body.parentGroup === 'string' && body.parentGroup.trim() ? body.parentGroup.trim() : null
     if (hmoPaysClinicianDirect !== undefined) data.hmoPaysClinicianDirect = !!hmoPaysClinicianDirect
     if (recognitionMonths !== undefined) data.recognitionMonths = recognitionMonths ? Number(recognitionMonths) : null
 

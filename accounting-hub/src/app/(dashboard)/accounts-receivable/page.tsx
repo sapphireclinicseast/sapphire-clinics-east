@@ -946,7 +946,8 @@ export default function AccountsReceivablePage() {
     { key: 'notes',   label: 'Notes',           text: (p: ARPaymentRecord) => notesWithoutRef(p.notes) },
     { key: 'proof',   label: 'Proof',           text: () => '' },
     { key: 'by',      label: 'Recorded By',     text: (p: ARPaymentRecord) => p.createdBy?.name || '' },
-  ]), [wallets])
+    // GL payments are not matched to orders, so the column only applies to HMO.
+  ].filter(c => tab !== 'GL' || c.key !== 'orders')), [wallets, tab])
 
   const [paySort, setPaySort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'date', dir: 'desc' })
   const [payFilters, setPayFilters] = useState<Record<string, string>>({})
@@ -977,9 +978,10 @@ export default function AccountsReceivablePage() {
   }, [arPayments, paySearch, payCols, payFilters, paySort])
 
   const activePayFilters = Object.values(payFilters).filter(v => (v || '').trim()).length
-  // Drag-to-resize Payment History columns; widths are remembered per tab.
+  // Drag-to-resize Payment History columns; widths are remembered per tab. GL has
+  // its own key since losing the Orders column, or saved widths would shift by one.
   const payTableRef = useRef<HTMLTableElement>(null)
-  const payRz = useResizableColumns(`ar-payment-history-${tab}`, payTableRef)
+  const payRz = useResizableColumns(tab === 'GL' ? 'ar-payment-history-GL-v2' : `ar-payment-history-${tab}`, payTableRef)
 
   const totalReceivable = wallets.reduce((s, w) => s + toNum(w.balance), 0)
   const unpaidOrders = orders.filter(o => o.arPaymentItems.length === 0)
@@ -1412,7 +1414,7 @@ export default function AccountsReceivablePage() {
       money(toNum(p.amount)),
       money(toNum(p.discount)),
       p.cashAccount ? `${p.cashAccount.accountNumber} ${p.cashAccount.accountTitle}` : '—',
-      String(p.items?.length ?? 0),
+      ...(isGL ? [] : [String(p.items?.length ?? 0)]),
       notesWithoutRef(p.notes),
       p.createdBy?.name || '—',
     ])
@@ -1443,7 +1445,7 @@ export default function AccountsReceivablePage() {
         ]),
         {
           heading: 'Payment History',
-          headers: ['Date', 'Reference No.', 'SI Number', isGL ? 'Agency' : 'Provider', 'Amount', 'Discount', 'Debit Account', 'Orders', 'Notes', 'Recorded By'],
+          headers: ['Date', 'Reference No.', 'SI Number', isGL ? 'Agency' : 'Provider', 'Amount', 'Discount', 'Debit Account', ...(isGL ? [] : ['Orders']), 'Notes', 'Recorded By'],
           rows: paymentRows,
         },
       ],
@@ -2368,7 +2370,7 @@ export default function AccountsReceivablePage() {
                     </td>
                     <td className="px-3 py-2">{toNum(p.discount) > 0 ? formatCurrency(toNum(p.discount)) : '—'}</td>
                     <td className="px-3 py-2" style={{ color: 'var(--teal)' }}>{p.cashAccount ? `${p.cashAccount.accountNumber} ${p.cashAccount.accountTitle}` : '—'}</td>
-                    <td className="px-3 py-2">{p.items.length} orders</td>
+                    {tab !== 'GL' && <td className="px-3 py-2">{p.items.length} orders</td>}
                     <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{notesWithoutRef(p.notes) || '—'}</td>
                     <td className="px-3 py-2">
                       {proofFiles.length === 0 ? (

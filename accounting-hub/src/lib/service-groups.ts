@@ -1,6 +1,6 @@
-// Services page grouping. "COCOLIFE - MD Consult" sits under the parent
-// "COCOLIFE", services sharing a lead name collapse into one row, and "Move under
-// a parent" can file any service under another without touching its name.
+// Services page categories. "COCOLIFE - MD Consult" sits under the category
+// "COCOLIFE", services sharing a lead name collapse into one row, and any service
+// can be filed under another category without touching its name (parentGroup).
 // List view only: every sub-service stays its own Service row, so POS, payroll
 // and reports keep picking and posting the same services they always did.
 
@@ -17,17 +17,12 @@ export function serviceParentName(s: Groupable): string {
   return s.parentGroup?.trim() || parentFromName(s.name)
 }
 
-export function subServiceLabel(s: Groupable): string {
-  const prefix = `${serviceParentName(s)}${SEPARATOR}`
-  return s.name.toUpperCase().startsWith(prefix.toUpperCase()) ? s.name.slice(prefix.length).trim() : s.name
-}
-
 export type ServiceGroup<T> = { kind: 'group'; key: string; label: string; services: T[] }
 export type ServiceEntry<T> = { kind: 'single'; service: T } | ServiceGroup<T>
 
 // Keeps the incoming sort: a group takes the place of its first row, and its
-// rows keep their order. A lone row stays a plain row under its full name,
-// unless it was moved under a parent on purpose.
+// rows keep their order. A lone row stays a plain row, unless it was filed under
+// a category on purpose.
 export function groupServices<T extends Groupable>(services: T[]): ServiceEntry<T>[] {
   const byKey = new Map<string, T[]>()
   for (const s of services) {
