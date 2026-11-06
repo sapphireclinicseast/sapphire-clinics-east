@@ -62,6 +62,7 @@ type Form = Record<ContactField, string> & {
   earlyDiscountDays: string
   earlyDiscountNotes: string
   loaApplicationUrl: string
+  serviceCategory: string
 }
 
 const BRANCH_LABEL: Record<string, string> = { SANDBOX_EAST: 'East', SANDBOX_GREENHILLS: 'Greenhills', VERDANA_STORE: 'Verdana', ALL: 'All branches' }
@@ -85,6 +86,7 @@ function toForm(e: Entry): Form {
     earlyDiscountDays: e.earlyDiscountDays != null ? String(e.earlyDiscountDays) : '',
     earlyDiscountNotes: e.earlyDiscountNotes || '',
     loaApplicationUrl: e.loaApplicationUrl || '',
+    serviceCategory: e.serviceCategory || '',
   } as Form
   for (const c of CONTACTS) {
     for (const f of ['Name', 'Email', 'Number'] as const) form[`${c.key}${f}`] = e[`${c.key}${f}`] || ''
@@ -234,13 +236,11 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
   const [renewalOnly, setRenewalOnly] = useState(false)
   // Rows flipped from their default: closed normally, open while searching.
   const [toggledRows, setToggledRows] = useState<Set<string>>(new Set())
-  const [openPrices, setOpenPrices] = useState<Set<string>>(new Set())
+  // Same idea for a row's prices: showing normally, hidden while searching.
+  const [flippedPrices, setFlippedPrices] = useState<Set<string>>(new Set())
   const [form, setForm] = useState<Form | null>(null)
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
-  const [rowError, setRowError] = useState<{ walletId: string; message: string } | null>(null)
-  // What is typed in a row's category box before it is picked and saved.
-  const [categoryDraft, setCategoryDraft] = useState<Record<string, string>>({})
   const focusedOnce = useRef(false)
 
   const load = useCallback(() => {
@@ -273,11 +273,23 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
     })
   }, [entries, search, renewalOnly])
 
+  const editing = form ? entries?.find(e => e.walletId === form.walletId) : null
+
+  // A category on the Services page, or the saved one if it has since been renamed there.
+  const resolveCategory = (typed: string) => {
+    const text = typed.trim().toUpperCase()
+    const saved = editing?.serviceCategory || ''
+    return categories.find(c => c.name.toUpperCase() === text)?.name ?? (saved && saved.toUpperCase() === text ? saved : undefined)
+  }
+
   const save = async () => {
     if (!form) return
+    const serviceCategory = form.serviceCategory.trim() ? resolveCategory(form.serviceCategory) : ''
+    if (serviceCategory === undefined) { setFormError('Pick the Category in Services Section from the list.'); return }
     setSaving(true); setFormError('')
     try {
-      const { hmoName: _hmoName, ...body } = form
+      const { hmoName: _hmoName, ...fields } = form
+      const body = { ...fields, serviceCategory }
       const r = await fetch(API, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       if (!r.ok) { setFormError((await r.json().catch(() => null))?.error || 'Could not save'); return }
       setForm(null)
@@ -289,31 +301,6 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
 
   const categoryHints = useMemo(() => Object.fromEntries(categories.map(c => [c.name, `${c.count} service${c.count === 1 ? '' : 's'}`])), [categories])
 
-  const chooseCategory = async (walletId: string, typed: string, saved: string) => {
-    setRowError(null)
-    const text = typed.trim()
-    if (text.toUpperCase() === saved.toUpperCase()) {
-      setCategoryDraft(d => ({ ...d, [walletId]: saved }))
-      return
-    }
-    const serviceCategory = text ? categories.find(c => c.name.toUpperCase() === text.toUpperCase())?.name : ''
-    if (serviceCategory === undefined) { setRowError({ walletId, message: 'Pick a category from the list.' }); return }
-    try {
-      const r = await fetch(API, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ walletId, serviceCategory }) })
-      if (!r.ok) { setRowError({ walletId, message: (await r.json().catch(() => null))?.error || 'Could not save the category' }); return }
-      await load()
-      setCategoryDraft(d => ({ ...d, [walletId]: serviceCategory }))
-      setOpenPrices(prev => {
-        const next = new Set(prev)
-        if (serviceCategory) next.add(walletId)
-        else next.delete(walletId)
-        return next
-      })
-    } catch {
-      setRowError({ walletId, message: 'Could not save the category. Check your connection and try again.' })
-    }
-  }
-
   const toggleRow = (walletId: string) => setToggledRows(prev => {
     const next = new Set(prev)
     if (next.has(walletId)) next.delete(walletId)
@@ -321,14 +308,16 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
     return next
   })
 
-  const togglePrices = (walletId: string) => setOpenPrices(prev => {
+  const togglePrices = (walletId: string) => setFlippedPrices(prev => {
     const next = new Set(prev)
     if (next.has(walletId)) next.delete(walletId)
     else next.add(walletId)
     return next
   })
 
-  const editing = form ? entries?.find(e => e.walletId === form.walletId) : null
+  const categoryNames = categories.map(c => c.name)
+  const formMatches = form ? categoriesMatching(form.hmoName, categoryNames) : []
+  const formCategory = form?.serviceCategory.trim() ? resolveCategory(form.serviceCategory) : undefined
 
   return (
     <div className="space-y-3">
@@ -358,9 +347,7 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
       <div className="space-y-2">
       {shown.map(e => {
         const chosen = e.serviceCategory || ''
-        const names = categories.map(c => c.name)
-        const matches = categoriesMatching(e.hmoName, names)
-        const pricesOpen = !!chosen && openPrices.has(e.walletId)
+        const pricesOpen = !!chosen && flippedPrices.has(e.walletId) === !!search.trim()
         const isOpen = toggledRows.has(e.walletId) !== !!search.trim()
         const branches = ACCREDITABLE_BRANCHES.filter(b => (e.accreditedBranches || []).includes(b.value))
         return (
@@ -416,31 +403,16 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
 
             <div className="border-t pt-3" style={{ borderColor: 'var(--light-gray)' }}>
               <div className="flex flex-wrap items-center gap-2">
-                {canEdit ? (
-                  <label className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>Category in Services Section</span>
-                    <span className="block w-72 max-w-full">
-                      <NameCombobox value={categoryDraft[e.walletId] ?? chosen}
-                        onChange={v => setCategoryDraft(d => ({ ...d, [e.walletId]: v }))}
-                        onCommit={v => chooseCategory(e.walletId, v, chosen)}
-                        options={[...matches, ...names.filter(n => !matches.includes(n))]}
-                        hints={categoryHints} maxOptions={names.length} placeholder="Choose a category…"
-                        className="w-full px-2 py-1.5 rounded-lg border text-xs" style={inputStyle} />
-                    </span>
-                  </label>
-                ) : (
-                  <p className="text-xs">
-                    <span className="font-semibold" style={{ color: 'var(--charcoal)' }}>Category in Services Section: </span>
-                    <span style={{ color: chosen ? 'var(--charcoal)' : 'var(--mid-gray)' }}>{chosen || 'Not chosen yet'}</span>
-                  </p>
-                )}
+                <p className="text-xs">
+                  <span className="font-semibold" style={{ color: 'var(--charcoal)' }}>Category in Services Section: </span>
+                  <span style={{ color: chosen ? 'var(--charcoal)' : 'var(--mid-gray)' }}>{chosen || (canEdit ? 'Not chosen yet. Choose it in Edit.' : 'Not chosen yet')}</span>
+                </p>
                 {chosen && (
                   <button onClick={() => togglePrices(e.walletId)} className="inline-flex items-center gap-1 text-xs font-medium" style={{ color: 'var(--teal)' }}>
                     {pricesOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />} {pricesOpen ? 'Hide prices' : 'Show prices'}
                   </button>
                 )}
               </div>
-              {rowError?.walletId === e.walletId && <p className="text-xs mt-1" style={{ color: '#b91c1c' }}>{rowError.message}</p>}
               {pricesOpen && <ServicePrices category={chosen} />}
             </div>
             </div>
@@ -506,6 +478,23 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
                 <PdfField label="Price list submitted to the HMO" prefix={`PRICELIST-${form.hmoName}`} urls={form.priceListFileUrls}
                   onChange={urls => setForm(f => (f ? { ...f, priceListFileUrls: urls } : f))} onRejected={() => setFormError('The price list must be a PDF.')} />
               </div>
+            </section>
+
+            <section>
+              <label className="block">
+                <span className="text-sm font-semibold block mb-1" style={{ color: 'var(--charcoal)' }}>Category in Services Section</span>
+                <NameCombobox value={form.serviceCategory} onChange={v => setForm(f => (f ? { ...f, serviceCategory: v } : f))}
+                  options={[...formMatches, ...categoryNames.filter(n => !formMatches.includes(n))]}
+                  hints={categoryHints} maxOptions={categoryNames.length} placeholder="Choose this HMO's category…"
+                  className={inputClass} style={inputStyle} />
+              </label>
+              {formCategory ? (
+                <div className="max-h-72 overflow-y-auto"><ServicePrices category={formCategory} /></div>
+              ) : (
+                <p className="text-[11px] mt-1" style={{ color: 'var(--mid-gray)' }}>
+                  {form.serviceCategory.trim() ? 'Pick a category from the list to show its services and prices.' : 'Its services and prices show here once chosen.'}
+                </p>
+              )}
             </section>
 
             <section>
