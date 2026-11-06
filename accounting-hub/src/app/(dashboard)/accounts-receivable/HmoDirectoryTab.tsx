@@ -232,6 +232,8 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
   const [loadError, setLoadError] = useState('')
   const [search, setSearch] = useState('')
   const [renewalOnly, setRenewalOnly] = useState(false)
+  // Rows flipped from their default: closed normally, open while searching.
+  const [toggledRows, setToggledRows] = useState<Set<string>>(new Set())
   const [openPrices, setOpenPrices] = useState<Set<string>>(new Set())
   const [form, setForm] = useState<Form | null>(null)
   const [saving, setSaving] = useState(false)
@@ -255,6 +257,7 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
     const match = entries.find(e => e.walletId === focusWalletId)
     if (!match) return
     focusedOnce.current = true
+    setToggledRows(prev => new Set(prev).add(match.walletId))
     setFormError('')
     setForm(toForm(match))
   }, [focusWalletId, entries, canEdit])
@@ -311,6 +314,13 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
     }
   }
 
+  const toggleRow = (walletId: string) => setToggledRows(prev => {
+    const next = new Set(prev)
+    if (next.has(walletId)) next.delete(walletId)
+    else next.add(walletId)
+    return next
+  })
+
   const togglePrices = (walletId: string) => setOpenPrices(prev => {
     const next = new Set(prev)
     if (next.has(walletId)) next.delete(walletId)
@@ -345,29 +355,37 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
         </p>
       )}
 
+      <div className="space-y-2">
       {shown.map(e => {
         const chosen = e.serviceCategory || ''
         const names = categories.map(c => c.name)
         const matches = categoriesMatching(e.hmoName, names)
         const pricesOpen = !!chosen && openPrices.has(e.walletId)
+        const isOpen = toggledRows.has(e.walletId) !== !!search.trim()
         const branches = ACCREDITABLE_BRANCHES.filter(b => (e.accreditedBranches || []).includes(b.value))
         return (
-          <div key={e.walletId} className="rounded-xl border p-4 space-y-3" style={{ borderColor: 'var(--light-gray)', background: '#fff' }}>
+          <div key={e.walletId} className="rounded-xl border" style={{ borderColor: 'var(--light-gray)', background: '#fff' }}>
+            <h3 className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>
+              <button type="button" aria-expanded={isOpen} onClick={() => toggleRow(e.walletId)} className="w-full flex flex-wrap items-center gap-2 px-4 py-3 text-left">
+                {isOpen ? <ChevronDown size={16} style={{ color: 'var(--mid-gray)' }} /> : <ChevronRight size={16} style={{ color: 'var(--mid-gray)' }} />}
+                <span>{e.hmoName}</span>
+                <MoaBadge validUntil={e.moaValidUntil} />
+              </button>
+            </h3>
+
+            {isOpen && (
+            <div className="border-t px-4 py-3 space-y-3" style={{ borderColor: 'var(--light-gray)' }}>
             <div className="flex flex-wrap items-center gap-2">
-              <h3 className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>{e.hmoName}</h3>
-              <MoaBadge validUntil={e.moaValidUntil} />
-              <div className="flex flex-wrap items-center gap-2 ml-auto">
-                <FileChips label="MOA" urls={e.moaFileUrls || []} missing="No MOA file" />
-                <FileChips label="Price list" urls={e.priceListFileUrls || []} missing="No price list" />
-                {e.loaApplicationUrl
-                  ? <a href={e.loaApplicationUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs border" style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}><ExternalLink size={12} /> LOA application</a>
-                  : <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>No LOA link</span>}
-                {canEdit && (
-                  <button onClick={() => { setFormError(''); setForm(toForm(e)) }} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium text-white" style={{ background: 'var(--teal)' }}>
-                    <Pencil size={12} /> Edit
-                  </button>
-                )}
-              </div>
+              <FileChips label="MOA" urls={e.moaFileUrls || []} missing="No MOA file" />
+              <FileChips label="Price list" urls={e.priceListFileUrls || []} missing="No price list" />
+              {e.loaApplicationUrl
+                ? <a href={e.loaApplicationUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs border" style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}><ExternalLink size={12} /> LOA application</a>
+                : <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>No LOA link</span>}
+              {canEdit && (
+                <button onClick={() => { setFormError(''); setForm(toForm(e)) }} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium text-white" style={{ background: 'var(--teal)' }}>
+                  <Pencil size={12} /> Edit
+                </button>
+              )}
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
@@ -425,9 +443,12 @@ export default function HmoDirectoryTab({ canEdit, focusWalletId = '' }: { canEd
               {rowError?.walletId === e.walletId && <p className="text-xs mt-1" style={{ color: '#b91c1c' }}>{rowError.message}</p>}
               {pricesOpen && <ServicePrices category={chosen} />}
             </div>
+            </div>
+            )}
           </div>
         )
       })}
+      </div>
 
       {form && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
