@@ -15,13 +15,16 @@ interface Props {
   className?: string
   style?: React.CSSProperties
   disabled?: boolean
+  autoFocus?: boolean
+  /** How many suggestions to list at once. */
+  maxOptions?: number
   /** Small grey text shown beside an option (e.g. a supplier's TIN). */
   hints?: Record<string, string>
   /** Called with the final value when an option is picked or the field loses focus. */
   onCommit?: (v: string) => void
 }
 
-export function NameCombobox({ value, onChange, options, placeholder, className, style, disabled, hints, onCommit }: Props) {
+export function NameCombobox({ value, onChange, options, placeholder, className, style, disabled, autoFocus, maxOptions = 60, hints, onCommit }: Props) {
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState(0)
   const [rect, setRect] = useState<{ left: number; top: number; width: number; below: boolean } | null>(null)
@@ -30,8 +33,8 @@ export function NameCombobox({ value, onChange, options, placeholder, className,
 
   const q = value.trim().toLowerCase()
   const shown = useMemo(
-    () => options.filter(o => !q || o.toLowerCase().includes(q)).slice(0, 60),
-    [options, q],
+    () => options.filter(o => !q || o.toLowerCase().includes(q)).slice(0, maxOptions),
+    [options, q, maxOptions],
   )
 
   useEffect(() => {
@@ -75,7 +78,7 @@ export function NameCombobox({ value, onChange, options, placeholder, className,
 
   return (
     <>
-      <input ref={inputRef} type="text" value={value} disabled={disabled} placeholder={placeholder}
+      <input ref={inputRef} type="text" value={value} disabled={disabled} autoFocus={autoFocus} placeholder={placeholder}
         className={className} style={style} autoComplete="off"
         onFocus={() => { committed.current = value; setOpen(true) }}
         // Suggestions keep focus (mousedown is prevented), so a blur is a real leave.
@@ -90,7 +93,7 @@ export function NameCombobox({ value, onChange, options, placeholder, className,
             borderColor: 'var(--light-gray, #e5e7eb)',
           }}>
           {shown.map((o, i) => (
-            <button key={o} type="button" onMouseDown={e => e.preventDefault()} onClick={() => pick(o)}
+            <button key={o} type="button" title={o} onMouseDown={e => e.preventDefault()} onClick={() => pick(o)}
               onMouseEnter={() => setActive(i)}
               className="block w-full text-left px-3 py-1.5 text-sm truncate"
               style={{ background: i === active ? 'var(--pale-teal, #f0fdfa)' : undefined, color: 'var(--charcoal, #1f2937)' }}>

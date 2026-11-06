@@ -15,6 +15,7 @@ import AddCategoryModal from './AddCategoryModal'
 import { branchPriceMap, overPrice, type PricedService } from '@/lib/payroll/pf-price'
 import type { ServiceRate } from '@/lib/payroll/pf-price-server'
 import { downloadXlsx, downloadPdf } from '@/lib/export'
+import { NameCombobox } from '@/components/NameCombobox'
 import DownloadMenu from '@/components/ui/DownloadMenu'
 import Pagination from '@/components/ui/Pagination'
 
@@ -1009,10 +1010,6 @@ export default function ServicesPage() {
         )}
       </div>
 
-      <datalist id="service-parent-options">
-        {moveOptions.map(p => <option key={p} value={p} />)}
-      </datalist>
-
       {addingCategory && (
         <AddCategoryModal
           onClose={() => setAddingCategory(false)}
@@ -1039,7 +1036,7 @@ export default function ServicesPage() {
               <strong>{moveTargets.length === 1 ? moveTargets[0].name : `${moveTargets.length} services`}</strong>
             </p>
             <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Category</label>
-            <input type="text" list="service-parent-options" value={moveParent} onChange={(e) => setMoveParent(e.target.value)}
+            <NameCombobox options={moveOptions} maxOptions={moveOptions.length} value={moveParent} onChange={setMoveParent}
               placeholder="Pick a category or type a new one" autoFocus
               className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
               style={{ borderColor: 'var(--light-gray)' }} />
@@ -1105,7 +1102,7 @@ export default function ServicesPage() {
               {/* Category */}
               <div>
                 <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Category</label>
-                <input type="text" list="service-parent-options" value={fParentGroup} onChange={(e) => setFParentGroup(e.target.value)}
+                <NameCombobox options={moveOptions} maxOptions={moveOptions.length} value={fParentGroup} onChange={setFParentGroup}
                   placeholder="Optional: pick a category or type a new one"
                   className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
                   style={{ borderColor: 'var(--light-gray)' }} />
