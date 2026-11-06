@@ -121,6 +121,45 @@ const toNum = (v: unknown) => Number(v) || 0
 // The HMO sub-tabs sharing the Per HMO table block: the plain view, plus its
 // fixed shapes (doctor consults only / submitted-SOA-but-unpaid / follow-up).
 const PER_HMO_LIKE_TABS: readonly string[] = ['per-hmo', 'md-consults', 'follow-up', 'submitted-unpaid']
+// HMO sub-tabs under their header cards (Hannah 2026-11-06). The headers only
+// organize the page; who can open what is decided by role further down.
+const HMO_SUB_TAB_GROUPS = [
+  {
+    title: 'Frontdesk and HMO', background: 'var(--teal)', color: 'white',
+    tabs: [
+      { key: 'per-hmo', label: 'Per HMO' },
+      // Per HMO narrowed to doctor-consult sessions (MD-department services).
+      { key: 'md-consults', label: 'Doctor Consults' },
+      // Letters of Authorization are raised in the Operations Hub; this is
+      // the HMO officer's read-only window onto them.
+      { key: 'loa', label: 'LOA Submission' },
+      { key: 'soa-report', label: 'Generate SOA' },
+      { key: 'submitted-soa', label: 'SOA Submissions' },
+    ],
+  },
+  {
+    title: 'Finance', background: 'var(--gold-light)', color: 'var(--charcoal)',
+    tabs: [{ key: 'follow-up', label: 'For Follow Up' }],
+  },
+  {
+    title: 'Accounting and Payroll', background: 'var(--bright-teal)', color: 'white',
+    tabs: [
+      // Recorded HMO payments + the Record Payment button, out of Overview
+      // (Hannah 2026-10-17).
+      { key: 'payment-history', label: 'Payment History' },
+      // Sessions decreased to the HMO-paid amount (Hannah 2026-10-30).
+      { key: 'revised-amounts', label: 'Revised Session Amount' },
+    ],
+  },
+] as const
+// The two labels inside For Follow Up.
+const HMO_FOLLOW_UP_VIEWS = [
+  // Unpaid HMO sessions past 180 AR days.
+  { key: 'follow-up', label: '>180 days' },
+  // Sessions LEFT OUT of payment tagging: on a submitted SOA whose
+  // batch-mates are already tagged paid, while this one is not.
+  { key: 'submitted-unpaid', label: 'Left Out Sessions' },
+] as const
 type ArTab = 'HMO' | 'GL' | 'TUITION' | 'OTHERS'
 
 function formatDate(d: string) {
@@ -1557,41 +1596,62 @@ export default function AccountsReceivablePage() {
       )}
 
       {/* HMO Sub-tabs */}
-      {tab === 'HMO' && (
-        <div className="flex flex-wrap gap-2 border-b pb-0" style={{ borderColor: 'var(--light-gray)' }}>
-          {([
-            { key: 'overview', label: 'Overview' },
-            { key: 'per-hmo', label: 'Per HMO' },
-            // Per HMO narrowed to doctor-consult sessions (MD-department services).
-            { key: 'md-consults', label: 'Doctor Consults' },
-            { key: 'soa-report', label: 'Generate SOA' },
-            { key: 'submitted-soa', label: 'SOA Submissions' },
-            // Sessions LEFT OUT of payment tagging: on a submitted SOA whose
-            // batch-mates are already tagged paid, while this one is not.
-            { key: 'submitted-unpaid', label: 'Left Out Sessions' },
-            // Letters of Authorization are raised in the Operations Hub; this is
-            // the HMO officer's read-only window onto them.
-            { key: 'loa', label: 'LOA Submission' },
-            // Unpaid HMO sessions since the beginning — the follow-up worklist.
-            { key: 'follow-up', label: 'For Follow Up' },
-            // Sessions decreased to the HMO-paid amount (Hannah 2026-10-30).
-            { key: 'revised-amounts', label: 'Revised Session Amount' },
-            // Recorded HMO payments + the Record Payment button, out of Overview
-            // (Hannah 2026-10-17).
-            { key: 'payment-history', label: 'Payment History' },
-            // Contacts, MOA and price list per HMO (Hannah 2026-11-06).
-            { key: 'directory', label: 'HMO Directory' },
-          ] as const).filter(st => !(isFrontdesk && st.key === 'overview')).map(st => (
-            <button key={st.key} onClick={() => setHmoSubTab(st.key)}
-              className="px-4 py-2 text-sm font-medium transition-colors"
-              style={hmoSubTab === st.key
-                ? { color: 'var(--teal)', borderBottom: '2px solid var(--teal)' }
-                : { color: 'var(--mid-gray)', borderBottom: '2px solid transparent' }}>
-              {st.label}
-            </button>
-          ))}
-        </div>
-      )}
+      {tab === 'HMO' && (() => {
+        const inFollowUp = HMO_FOLLOW_UP_VIEWS.some(v => v.key === hmoSubTab)
+        const finance = HMO_SUB_TAB_GROUPS[1]
+        return (
+          <div className="space-y-3">
+            <div className="flex flex-wrap gap-2 border-b pb-0" style={{ borderColor: 'var(--light-gray)' }}>
+              {([
+                { key: 'overview', label: 'Overview' },
+                // Contacts, MOA and price list per HMO (Hannah 2026-11-06).
+                { key: 'directory', label: 'HMO Directory' },
+              ] as const).filter(st => !(isFrontdesk && st.key === 'overview')).map(st => (
+                <button key={st.key} onClick={() => setHmoSubTab(st.key)}
+                  className="px-4 py-2 text-sm font-medium transition-colors"
+                  style={hmoSubTab === st.key
+                    ? { color: 'var(--teal)', borderBottom: '2px solid var(--teal)' }
+                    : { color: 'var(--mid-gray)', borderBottom: '2px solid transparent' }}>
+                  {st.label}
+                </button>
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {HMO_SUB_TAB_GROUPS.map(group => (
+                <div key={group.title} className="flex-auto rounded-xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+                  <p className="px-3 py-1.5 text-xs font-bold" style={{ background: group.background, color: group.color }}>{group.title}</p>
+                  <div className="flex flex-wrap gap-1 p-2">
+                    {group.tabs.map(st => {
+                      const active = hmoSubTab === st.key || (st.key === 'follow-up' && inFollowUp)
+                      return (
+                        <button key={st.key} onClick={() => setHmoSubTab(st.key)} aria-current={active ? 'page' : undefined}
+                          className="px-2 py-1.5 rounded-lg text-[13px] font-medium transition-colors whitespace-nowrap"
+                          style={active ? { background: group.background, color: group.color } : { color: 'var(--charcoal)' }}>
+                          {st.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+            {inFollowUp && (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>For Follow Up:</span>
+                {HMO_FOLLOW_UP_VIEWS.map(v => (
+                  <button key={v.key} onClick={() => setHmoSubTab(v.key)} aria-current={hmoSubTab === v.key ? 'true' : undefined}
+                    className="px-3 py-1 rounded-full text-xs font-medium transition-colors"
+                    style={hmoSubTab === v.key
+                      ? { background: finance.background, color: finance.color }
+                      : { background: 'var(--off-white)', color: 'var(--charcoal)', border: '1px solid var(--light-gray)' }}>
+                    {v.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )
+      })()}
 
       {/* GL Sub-tabs */}
       {tab === 'GL' && (
