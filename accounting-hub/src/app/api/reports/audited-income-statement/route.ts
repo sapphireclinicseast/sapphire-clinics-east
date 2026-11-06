@@ -7,6 +7,7 @@ import { takenSiNumbers, isShadowedMonitoringFlag } from '@/lib/si-flag-guard'
 import { isPayrollItem } from '@/lib/payroll-item-guard'
 import { otherMonthSessionPf } from '@/lib/payroll/pf-session-month'
 import { netOfVat } from '@/lib/vat'
+import { syncCorFromHr } from '@/lib/payroll/hr-cor-server'
 
 /**
  * Audited Income Statement — GET ?year=&branch=
@@ -48,6 +49,9 @@ export async function GET(req: Request) {
   if (!(year >= 2000 && year <= 2100)) return NextResponse.json({ error: 'A valid year is required' }, { status: 400 })
   const branch = enforceBranch((session.user as { branch?: string; branches?: string[] }).branch, (session.user as { branches?: string[] }).branches, sp.get('branch')) ?? (sp.get('branch') || 'ALL')
   if (!VALID_BRANCHES.includes(branch)) return NextResponse.json({ error: 'Invalid branch' }, { status: 400 })
+
+  // Consultant PF is split below by who has a COR, and CORs are uploaded in the HR Hub.
+  await syncCorFromHr()
 
   // Manila-anchored year window.
   const from = new Date(`${year}-01-01T00:00:00+08:00`)

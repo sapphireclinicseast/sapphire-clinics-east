@@ -19,6 +19,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Loader2, FileText, Mail, MessageSquare, CheckCircle2, Upload, X, Eye, ChevronDown } from 'lucide-react'
 import { ScanUpload } from '@/components/ScanUpload'
 import { Bir2307Generator, Bir2307Settings } from './Bir2307'
+import { isHrCorUrl } from '@/lib/payroll/hr-cor'
 
 // Payroll stores the legacy Sandbox branch codes (SBEA/SBGH); everything the
 // clinics show outwardly is Aura Health branded — display the AHEA/AHGH codes
@@ -102,6 +103,7 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
   const [q, setQ] = useState('')
   const [view, setView] = useState<'track' | 'matrix' | 'cor' | 'gen2307' | 'settings2307'>('track')
   const [noTaxOnly, setNoTaxOnly] = useState(false)
+  const [hrSync, setHrSync] = useState<{ reached: boolean; unmatched: string[] } | null>(null)
   const [corTarget, setCorTarget] = useState<Consultant | null>(null)
   const [siTarget, setSiTarget] = useState<Consultant | null>(null)
   const [breakdowns, setBreakdowns] = useState<Record<string, Breakdown | 'loading' | { error: string }>>({})
@@ -159,6 +161,9 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
   const load = useCallback(async () => {
     setLoading(true)
     try {
+      // CORs are uploaded in the HR Hub; pull them in before listing anyone.
+      const synced = await fetch('/api/payroll/consultants/cor/sync', { method: 'POST' }).then(x => (x.ok ? x.json() : null)).catch(() => null)
+      setHrSync(synced)
       const params = new URLSearchParams()
       if (branch) params.set('branch', branch)
       const r = await fetch(`/api/payroll/consultants?${params}`)
@@ -325,10 +330,12 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
               </a>
               {canWrite && (
                 <>
-                  <button onClick={() => setCorTarget(c)} title="Replace or remove the COR"
-                    className="px-2 py-1.5 rounded-lg text-xs border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
-                    <Upload size={12} />
-                  </button>
+                  {!isHrCorUrl(c.corUrl) && (
+                    <button onClick={() => setCorTarget(c)} title="Replace or remove the COR"
+                      className="px-2 py-1.5 rounded-lg text-xs border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                      <Upload size={12} />
+                    </button>
+                  )}
                   <button onClick={() => { setSendTarget({ c, channel: 'EMAIL' }); if (!breakdowns[c.id] || 'error' in (breakdowns[c.id] as object)) fetchPreview(c) }}
                     disabled={!c.email} title={c.email ? `Email ${c.email}` : 'No email on file'}
                     className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold border disabled:opacity-40"
@@ -443,6 +450,13 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
               No 5% withholding ({noTaxCount})
             </button>
           </div>
+          <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>CORs uploaded in the HR Hub under Staff Profiles → COR show here automatically.</p>
+          {hrSync && !hrSync.reached && (
+            <p className="text-xs" style={{ color: '#92400e' }}>Could not reach the HR Hub just now, so this list may be behind. Reopen this tab to try again.</p>
+          )}
+          {!!hrSync?.unmatched.length && (
+            <p className="text-xs" style={{ color: '#92400e' }}>In the HR Hub with a COR, but no payroll consultant has this name: {hrSync.unmatched.join(', ')}.</p>
+          )}
           {loading ? (
             <div className="py-12 text-center"><Loader2 size={18} className="animate-spin mx-auto" style={{ color: 'var(--teal)' }} /></div>
           ) : (
@@ -479,6 +493,7 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
                               {c.corUrl ? (
                                 <span className="inline-flex items-center gap-2">
                                   <span className="px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ background: '#dcfce7', color: '#166534' }}>On file</span>
+                                  {isHrCorUrl(c.corUrl) && <span style={{ color: 'var(--mid-gray)' }}>HR Hub</span>}
                                   <span style={{ color: 'var(--mid-gray)' }}>{String(c.corUploadedAt || '').slice(0, 10)}</span>
                                   <a href={c.corUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-semibold" style={{ color: 'var(--teal)' }}>
                                     <Eye size={12} /> View
@@ -497,7 +512,7 @@ export default function ServiceInvoiceTab({ branch: branchProp, canWrite }: { br
                               )}
                             </td>
                             <td className="px-3 py-2 text-right whitespace-nowrap">
-                              {canWrite && (
+                              {canWrite && !isHrCorUrl(c.corUrl) && (
                                 <button onClick={() => setCorTarget(c)} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}>
                                   <Upload size={12} /> {c.corUrl ? 'Replace' : 'Upload COR'}
                                 </button>

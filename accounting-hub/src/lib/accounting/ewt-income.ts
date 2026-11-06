@@ -8,6 +8,7 @@
 // per item) carry the link that makes both directions exact and idempotent.
 import type { Prisma, PrismaClient } from '@prisma/client'
 import { netOfVat, type VatSource } from '@/lib/vat'
+import { syncCorFromHr } from '@/lib/payroll/hr-cor-server'
 
 const PAYROLL_TO_PC: Record<string, string> = { SBEA: 'SANDBOX_EAST', SBGH: 'SANDBOX_GREENHILLS', VERDANA: 'VERDANA_STORE', AHI: 'AURA_INSTITUTE' }
 const r2 = (n: number) => Math.round(n * 100) / 100
@@ -27,6 +28,8 @@ const expYm = (e: { paidAt: Date | null; date: Date | null }) => {
 // hard-blocked by the unique constraints; a quiet run with nothing to declare
 // costs two indexed queries. Safe to call after payroll locks and on tab loads.
 export async function sweepNoSiEwtToOtherIncome(db: PrismaClient, createdById: string): Promise<{ entries: number; items: number; totalAmount: number }> {
+  // Who has a COR decides what is swept, and CORs are uploaded in the HR Hub.
+  await syncCorFromHr()
   const zero = { entries: 0, items: 0, totalAmount: 0 }
   const now = new Date()
   const throughMonth = now.toISOString().slice(0, 7)
