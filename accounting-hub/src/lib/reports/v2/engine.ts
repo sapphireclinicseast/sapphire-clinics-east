@@ -57,6 +57,10 @@ export interface V2AccountRow {
   /** Jan..Dec period movement, signed in the account's normal direction */
   monthly: number[]
   virtual: boolean
+  /** Income statement rows, with the `daily` option: dated movement by "MM-DD", same sign as monthly. */
+  dated?: Record<string, number>
+  /** With `daily`: Jan..Dec movement that belongs to a month but no one day (payroll, schedules). */
+  undated?: number[]
   /** Bank-flagged in the CoA or cash-titled — grouped as Cash and Cash Equivalents on the BS. */
   cash: boolean
   /** Clearing / undeposited money on its way to a bank — grouped as Cash in Transit, never as cash. */
@@ -273,6 +277,7 @@ export async function computeLedgerStatements(
   year: number,
   branch: string,
   collect?: { account: string; month?: number; cumulative?: boolean },
+  options?: { daily?: boolean },
 ): Promise<V2Statements> {
   const start = new Date(Date.UTC(year, 0, 1))
   const end = new Date(Date.UTC(year + 1, 0, 1))
@@ -416,7 +421,33 @@ export async function computeLedgerStatements(
   const mov = new Map<string, Movement>()
   const movMonthly = new Map<string, { debit: number[]; credit: number[] }>()
   const opening = new Map<string, number>() // signed in normal direction
-  const add = (acct: AcctInfo, month: number, debit: number, credit: number, source: string, label: string) => {
+  /* Day detail for reports on exact dates. An amount keeps the month it was posted
+     to, so days always add up to the month; a date that falls outside that month
+     (a cutoff's payroll, a clamped date) has no day here and counts as undated.
+     Dates are read in Philippine time first, because some are stored as local
+     midnight, which is the evening before in UTC. */
+  const movDated = new Map<string, Map<string, number>>()
+  const movUndated = new Map<string, number[]>()
+  const dayInMonth = (date: Date | string | undefined, month: number): string | null => {
+    if (!date) return null
+    const dt = new Date(date)
+    for (const t of [new Date(dt.getTime() + 8 * 3600_000), dt]) {
+      if (t.getUTCFullYear() === year && t.getUTCMonth() + 1 === month) return t.toISOString().slice(5, 10)
+    }
+    return null
+  }
+  const add = (acct: AcctInfo, month: number, debit: number, credit: number, source: string, label: string, date?: Date | string) => {
+    if (options?.daily) {
+      const day = dayInMonth(date, month)
+      if (day) {
+        if (!movDated.has(acct.number)) movDated.set(acct.number, new Map())
+        const days = movDated.get(acct.number)!
+        days.set(day, (days.get(day) || 0) + debit - credit)
+      } else {
+        if (!movUndated.has(acct.number)) movUndated.set(acct.number, Array(12).fill(0))
+        movUndated.get(acct.number)![month - 1] += debit - credit
+      }
+    }
     if (!mov.has(acct.number)) mov.set(acct.number, { debit: 0, credit: 0 })
     const m = mov.get(acct.number)!
     m.debit += debit
@@ -430,18 +461,18 @@ export async function computeLedgerStatements(
     }
   }
   // A source posts lines through a collector that guarantees balance:
-  const postBalanced = (source: string, month: number, label: string, lines: { acct: AcctInfo; debit?: number; credit?: number }[]) => {
+  const postBalanced = (source: string, month: number, label: string, lines: { acct: AcctInfo; debit?: number; credit?: number }[], date?: Date | string) => {
     let dr = 0, cr = 0
     for (const l of lines) {
       const d = round2(l.debit || 0), c = round2(l.credit || 0)
       if (!d && !c) continue
-      add(l.acct, month, d, c, source, label)
+      add(l.acct, month, d, c, source, label, date)
       dr += d; cr += c
     }
     const diff = round2(dr - cr)
     if (Math.abs(diff) >= 0.01) {
       const plug = virt(IMBALANCE_PLUG, 'Derivation Imbalance (see validation)', 'EQUITY', 'OWNERS_EQUITY', 'CREDIT')
-      add(plug, month, diff < 0 ? -diff : 0, diff > 0 ? diff : 0, source, `${label} — did not balance`)
+      add(plug, month, diff < 0 ? -diff : 0, diff > 0 ? diff : 0, source, `${label} — did not balance`, date)
       const existing = validation.imbalancePlugs.find(p => p.source === source)
       if (existing) existing.amount = round2(existing.amount + diff)
       else validation.imbalancePlugs.push({ source, amount: diff })
@@ -730,7 +761,9 @@ export async function computeLedgerStatements(
         ? { acct: interbranchAcct(), credit: net }
         : { acct: interbranchAcct(), debit: -net })
     }
-    postBalanced(`journal:${je.referenceType || 'manual'}`, jeMonth, je.description || `Journal entry ${je.id.slice(-6)}`, jeLines)
+    // Payroll and its accruals cover a cutoff, so no single day is theirs.
+    postBalanced(`journal:${je.referenceType || 'manual'}`, jeMonth, je.description || `Journal entry ${je.id.slice(-6)}`, jeLines,
+      je.referenceType?.includes('PAYROLL') ? undefined : je.entryDate)
   }
   validation.fromLedger = Array.from(glRefTypes).sort()
   const hasRef = (type: string, id: string) => glRefIds.get(type)?.has(id) || false
@@ -787,7 +820,7 @@ export async function computeLedgerStatements(
         // payments" is what made the July drill-down read as a duplicate.
         postBalanced(`journal:${je.referenceType || 'LOAN_PAYMENT'}`, monthOf(je.entryDate), `${je.description || 'Loan payment'} (${Math.round(share * 100)}% branch share)`, [
           ...items, { acct: bankAcct, credit: totalShare },
-        ])
+        ], je.entryDate)
       }
     }
   }
@@ -913,7 +946,7 @@ export async function computeLedgerStatements(
       }
       if (Number(o.discountAmount) > 0.005) lines.push({ acct: discountAcct(o.discountLabel, o.discountType), debit: Number(o.discountAmount) })
     }
-    postBalanced('orders', oMonth, oLabel, lines)
+    postBalanced('orders', oMonth, oLabel, lines, o.transactionDate)
 
     // COGS / free samples at FIFO cost against inventory
     for (const it of o.items) {
@@ -925,7 +958,7 @@ export async function computeLedgerStatements(
       postBalanced('cogs', oMonth, `${oLabel} — cost of goods`, [
         { acct: exp, debit: cogs },
         { acct: inventoryAcct(it.inventoryItem?.accountSubType), credit: cogs },
-      ])
+      ], o.transactionDate)
     }
   }
   if (synthesizedOrders) validation.synthesized.push(`orders (${synthesizedOrders})`)
@@ -979,7 +1012,7 @@ export async function computeLedgerStatements(
       if (startAbs >= 1 && startAbs <= 12) {
         postBalanced('period-fee-deferral', startAbs, `${label} — deferred over ${N} months`, [
           { acct: rev, debit: net }, { acct: unearnedAccount(), credit: net },
-        ])
+        ], td)
         periodFees++
       }
       const per = round2(net / N)
@@ -1016,7 +1049,7 @@ export async function computeLedgerStatements(
       const dA = p.discountAccount ? byNumber.get(p.discountAccount.accountNumber) : undefined
       lines.push({ acct: dA || discountAcct('other'), debit: Number(p.discount) })
     }
-    postBalanced('ar-collections', monthOf(p.paymentDate), `HMO/GL collection${p.wallet?.patientName ? ` — ${p.wallet.patientName}` : ''}`, lines)
+    postBalanced('ar-collections', monthOf(p.paymentDate), `HMO/GL collection${p.wallet?.patientName ? ` — ${p.wallet.patientName}` : ''}`, lines, p.paymentDate)
   }
   if (synthesizedAr) validation.synthesized.push(`ar-collections (${synthesizedAr})`)
 
@@ -1099,7 +1132,7 @@ export async function computeLedgerStatements(
       { acct: parseAccountKey(e.accountTitle), debit: net },
       ...(vat > 0.005 ? [{ acct: inputVat(), debit: vat }] : []),
       { acct: settlementFor(e), credit: gross },
-    ])
+    ], e.date)
   }
   if (pcCount) validation.synthesized.push(`petty-cash (${pcCount})`)
 
@@ -1136,7 +1169,7 @@ export async function computeLedgerStatements(
         { acct: prepaid, debit: net },
         ...(vat > 0.005 ? [{ acct: inputVat(), debit: vat }] : []),
         { acct: pcCashFor(e.branch || branch), credit: gross },
-      ])
+      ], e.date)
     }
     for (let idx = sIdx; idx <= eIdx; idx++) {
       if (Math.floor(idx / 12) !== year) continue
@@ -1168,7 +1201,7 @@ export async function computeLedgerStatements(
         { acct: parseAccountKey(e.accountTitle), debit: netA },
         ...(vatA > 0.005 ? [{ acct: inputVat(), debit: vatA }] : []),
         { acct: pcCashFor(ab), credit: ag },
-      ])
+      ], e.date)
     }
   }
 
@@ -1233,7 +1266,7 @@ export async function computeLedgerStatements(
     postBalanced('asset-purchases', monthOf(a.dateBought), `Asset purchase — ${a.name}`, [
       { acct: ppe, debit: amt },
       { acct: creditA, credit: amt },
-    ])
+    ], a.dateBought)
   }
   if (synthesizedAssets) validation.synthesized.push(`asset-purchases (${synthesizedAssets})`)
 
@@ -1494,6 +1527,10 @@ export async function computeLedgerStatements(
       number: n, title: a.title, type: a.type, subType: a.subType,
       opening: round2(open), debit: round2(m.debit), credit: round2(m.credit),
       closing: round2(closing), monthly, virtual: a.virtual,
+      ...(options?.daily && (a.type === 'REVENUE' || a.type === 'EXPENSE') ? {
+        dated: Object.fromEntries([...(movDated.get(n) || [])].map(([day, net]) => [day, round2(a.normalBalance === 'DEBIT' ? net : -net)])),
+        undated: (movUndated.get(n) || Array(12).fill(0)).map(net => round2(a.normalBalance === 'DEBIT' ? net : -net)),
+      } : {}),
       cash: isCashLine(a, bankFlagged),
       transit: isTransitAccount(a, bankFlagged),
     })

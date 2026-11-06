@@ -2,7 +2,8 @@
 
 /**
  * Year-over-Year comparison — the Income Statement for a chosen month range
- * (e.g. Jan–Oct) in one year against the same months of another year.
+ * (e.g. Jan–Oct) in one year against the same months of another year, or for any
+ * two date ranges (ledger basis only; see lib/reports/date-range.ts).
  *
  * Ledger basis (default): both years come from the ledger engine
  * (/api/reports/v2), the same source the Income Statement tab renders, so every
@@ -22,6 +23,7 @@ import { Loader2, Download, Printer, CalendarRange, ChevronRight, ChevronDown } 
 import { downloadXlsx, downloadPdf } from '@/lib/export'
 import { INCOME_TAX_RATE } from '@/lib/reports/income-statement-totals'
 import { LAST_MANUAL_YEAR, type HistoricalReportPayload } from '@/lib/reports/historical-fs'
+import { amountInDates, cutsMonth, datesLabel, sameDateIn } from '@/lib/reports/date-range'
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 const FIRST_YEAR = 2024 // neither the ledger nor the audited package goes further back
@@ -37,10 +39,11 @@ const BRANCHES = [
 const BY_BRANCH = ['SBEA', 'SBGH', 'VERDANA_STORE', 'AURA_INSTITUTE']
 type View = 'single' | 'byBranch'
 
-interface EngineRow { number: string; title: string; monthly: number[] }
+interface EngineRow { number: string; title: string; monthly: number[]; dated?: Record<string, number>; undated?: number[] }
 interface EngineSection { key: string; rows: EngineRow[] }
 interface EnginePayload { incomeStatement?: { sections: EngineSection[] } }
 type Basis = 'ledger' | 'audited'
+type Side = 'a' | 'b'
 
 const SECTION_KEYS = ['REVENUE', 'DISCOUNTS', 'COGS', 'OPEX', 'DEPRECIATION', 'INTEREST', 'NON_OPERATING'] as const
 type SectionKey = typeof SECTION_KEYS[number]
@@ -107,12 +110,13 @@ function summarize(f: Figures): Summary {
 }
 type BranchGroup = { key: string; label: string; kind: 'branch' | 'residual' | 'total'; rows: { label: string; a: number; b: number }[] }
 
-function ledgerFigures(p: EnginePayload, from: number, to: number): Figures {
-  const rangeSum = (m: number[]) => {
-    let s = 0
-    for (let i = from - 1; i <= to - 1; i++) s += m?.[i] || 0
-    return s
-  }
+function monthsSum(m: number[], from: number, to: number) {
+  let s = 0
+  for (let i = from - 1; i <= to - 1; i++) s += m?.[i] || 0
+  return s
+}
+
+function ledgerFigures(p: EnginePayload, amountOf: (row: EngineRow) => number): Figures {
   const totals = {} as Record<SectionKey, number>
   const lines = {} as NonNullable<Figures['lines']>
   for (const key of SECTION_KEYS) {
@@ -120,7 +124,7 @@ function ledgerFigures(p: EnginePayload, from: number, to: number): Figures {
     for (const row of p.incomeStatement?.sections.find(s => s.key === key)?.rows || []) {
       const id = row.number || row.title
       const cur = map.get(id) || { number: row.number, title: row.title, v: 0 }
-      cur.v = r2(cur.v + rangeSum(row.monthly))
+      cur.v = r2(cur.v + amountOf(row))
       map.set(id, cur)
     }
     lines[key] = map
@@ -180,12 +184,22 @@ export default function YoYComparison({ lockedBranch }: { lockedBranch?: string 
   const now = new Date()
   const thisYear = now.getFullYear()
   const thisMonth = now.getMonth() + 1
+  const today = `${thisYear}-${String(thisMonth).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
   const yearOptions = Array.from({ length: thisYear - FIRST_YEAR + 1 }, (_, i) => thisYear - i)
 
-  const [yearA, setYearA] = useState(thisYear)
-  const [yearB, setYearB] = useState(Math.max(FIRST_YEAR, thisYear - 1))
+  const [pickedA, setPickedA] = useState(thisYear)
+  const [pickedB, setPickedB] = useState(Math.max(FIRST_YEAR, thisYear - 1))
   const [fromM, setFromM] = useState(1)
   const [toM, setToM] = useState(thisMonth)
+  const [byDates, setByDates] = useState(false)
+  const [fromA, setFromA] = useState(`${thisYear}-01-01`)
+  const [toA, setToA] = useState(today)
+  const [fromB, setFromB] = useState(sameDateIn(`${thisYear}-01-01`, thisYear - 1))
+  const [toB, setToB] = useState(sameDateIn(today, thisYear - 1))
+  // The comparison dates follow the selected ones, a year back, until edited.
+  const [linked, setLinked] = useState(true)
+  const yearA = byDates ? +fromA.slice(0, 4) : pickedA
+  const yearB = byDates ? +fromB.slice(0, 4) : pickedB
   const [branch, setBranch] = useState(lockedBranch || 'ALL')
   const [basis, setBasis] = useState<Basis>('ledger')
   const [view, setView] = useState<View>('single')
@@ -199,15 +213,25 @@ export default function YoYComparison({ lockedBranch }: { lockedBranch?: string 
 
   // Which source serves a year: the audited package only exists through
   // FY2025, and only when that basis is chosen.
-  const sourceOf = (y: number) => (basis === 'audited' && y <= LAST_MANUAL_YEAR ? 'aud' : 'v2')
+  const sourceOf = (y: number) => (byDates ? 'daily' : basis === 'audited' && y <= LAST_MANUAL_YEAR ? 'aud' : 'v2')
   const keyFor = (y: number, b: string = branch) => `${sourceOf(y)}:${y}|${b}`
   const byBranch = view === 'byBranch' && !lockedBranch
-  const auditedApplies = yearA <= LAST_MANUAL_YEAR || yearB <= LAST_MANUAL_YEAR
+  const auditedApplies = !byDates && (yearA <= LAST_MANUAL_YEAR || yearB <= LAST_MANUAL_YEAR)
+
+  // The engine computes one year at a time, and has nothing before FIRST_YEAR.
+  const rangeProblem = (from: string, to: string) => {
+    if (!from || !to) return 'Pick both dates.'
+    if (from > to) return `${from} is after ${to}.`
+    if (from.slice(0, 4) !== to.slice(0, 4)) return 'Each date range has to stay within one calendar year.'
+    if (+from.slice(0, 4) < FIRST_YEAR || +from.slice(0, 4) > thisYear) return `Pick dates from ${FIRST_YEAR} to ${thisYear}.`
+    return ''
+  }
+  const dateProblem = byDates ? rangeProblem(fromA, toA) || rangeProblem(fromB, toB) : ''
 
   // Load what the two years need. Each year+branch+source is cached, so
   // changing only the month range is instant; a newer load supersedes an older.
   useEffect(() => {
-    const keys = [...new Set(byBranch
+    const keys = dateProblem ? [] : [...new Set(byBranch
       ? [yearA, yearB].flatMap(y => ['ALL', ...BY_BRANCH].map(b => keyFor(y, b)))
       : [keyFor(yearA), keyFor(yearB)])]
     const missing = keys.filter(k => !cache[k])
@@ -225,7 +249,7 @@ export default function YoYComparison({ lockedBranch }: { lockedBranch?: string 
       const [y, b] = rest.split('|')
       const url = src === 'aud'
         ? `/api/reports?year=${y}&branch=${encodeURIComponent(b)}`
-        : `/api/reports/v2?year=${y}&branch=${encodeURIComponent(b)}`
+        : `/api/reports/v2?year=${y}&branch=${encodeURIComponent(b)}${src === 'daily' ? '&daily=1' : ''}`
       const r = await fetch(url, { signal: ctl.signal })
       const j = await r.json()
       if (!r.ok) throw new Error(j.error || `Could not load ${y}`)
@@ -238,17 +262,19 @@ export default function YoYComparison({ lockedBranch }: { lockedBranch?: string 
     return () => ctl.abort()
     // keyFor folds in basis and branch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [yearA, yearB, branch, basis, byBranch, cache])
+  }, [yearA, yearB, branch, basis, byBranch, byDates, dateProblem, cache])
 
-  const figuresFor = (y: number, b: string = branch): Figures | string | null => {
+  const figuresFor = (side: Side, b: string = branch): Figures | string | null => {
+    if (dateProblem) return null
+    const y = side === 'a' ? yearA : yearB
     const p = cache[keyFor(y, b)]
     if (!p) return null
-    return sourceOf(y) === 'aud'
-      ? auditedFigures(p as HistoricalReportPayload, fromM, toM)
-      : ledgerFigures(p as EnginePayload, fromM, toM)
+    if (sourceOf(y) === 'aud') return auditedFigures(p as HistoricalReportPayload, fromM, toM)
+    const [from, to] = side === 'a' ? [fromA, toA] : [fromB, toB]
+    return ledgerFigures(p as EnginePayload, row => (byDates ? amountInDates(row, from, to) : monthsSum(row.monthly, fromM, toM)))
   }
-  const figA = figuresFor(yearA)
-  const figB = figuresFor(yearB)
+  const figA = figuresFor('a')
+  const figB = figuresFor('b')
   const figError = typeof figA === 'string' ? `${yearA}: ${figA}` : typeof figB === 'string' ? `${yearB}: ${figB}` : ''
 
   // By-branch view: the headline lines for each branch, then whatever the books
@@ -257,8 +283,9 @@ export default function YoYComparison({ lockedBranch }: { lockedBranch?: string 
   const branchView = (() => {
     if (!byBranch) return null
     const notes = new Set<string>()
-    const summaryOf = (y: number, b: string): Summary | null => {
-      const f = figuresFor(y, b)
+    const summaryOf = (side: Side, b: string): Summary | null => {
+      const y = side === 'a' ? yearA : yearB
+      const f = figuresFor(side, b)
       if (f === null) return null // still loading
       // A branch with no statements for a year (e.g. Verdana before 2026) is a
       // zero here, not an error that hides the other branches.
@@ -268,7 +295,7 @@ export default function YoYComparison({ lockedBranch }: { lockedBranch?: string 
     }
     const cells: Record<string, { a: Summary; b: Summary }> = {}
     for (const b of ['ALL', ...BY_BRANCH]) {
-      const sa = summaryOf(yearA, b), sb = summaryOf(yearB, b)
+      const sa = summaryOf('a', b), sb = summaryOf('b', b)
       if (!sa || !sb) return null
       cells[b] = { a: sa, b: sb }
     }
@@ -344,10 +371,12 @@ export default function YoYComparison({ lockedBranch }: { lockedBranch?: string 
 
   const rangeLabel = fromM === toM ? MONTHS[fromM - 1] : `${MONTHS[fromM - 1]}–${MONTHS[toM - 1]}`
   const tagOf = (y: number) => (sourceOf(y) === 'aud' ? ' (audited)' : '')
-  const colA = `${rangeLabel} ${yearA}${tagOf(yearA)}`
-  const colB = `${rangeLabel} ${yearB}${tagOf(yearB)}`
+  const colA = byDates && !dateProblem ? datesLabel(fromA, toA) : `${rangeLabel} ${yearA}${tagOf(yearA)}`
+  const colB = byDates && !dateProblem ? datesLabel(fromB, toB) : `${rangeLabel} ${yearB}${tagOf(yearB)}`
   const branchLabel = BRANCHES.find(b => b.value === branch)?.label || branch
-  const inProgress = (yearA === thisYear || yearB === thisYear) && toM >= thisMonth
+  const inProgress = byDates
+    ? (fromA <= today && toA >= today) || (fromB <= today && toB >= today)
+    : (yearA === thisYear || yearB === thisYear) && toM >= thisMonth
   const auditedInUse = auditedApplies && basis === 'audited'
   const yearNotes = [figB, figA].flatMap(f => (f && typeof f !== 'string' ? f.notes : []))
   const toggle = (k: string) => setOpen(prev => { const n = new Set(prev); if (n.has(k)) n.delete(k); else n.add(k); return n })
@@ -374,7 +403,8 @@ export default function YoYComparison({ lockedBranch }: { lockedBranch?: string 
   }
   const headers = [byBranch ? 'Branch — Line' : 'Line', colB, colA, 'Change (₱)', 'Change (%)']
   const basisTag = `${auditedInUse ? 'audited-basis' : 'ledger'}${byBranch ? '-by-branch' : ''}`
-  const exportXlsx = () => downloadXlsx(`yoy-${rangeLabel}-${yearA}-vs-${yearB}-${branch}-${basisTag}`, [{ name: byBranch ? 'YoY by Branch' : 'YoY Comparison', headers, rows: exportRows() }])
+  const fileRange = byDates ? `${fromA}_${toA}-vs-${fromB}_${toB}` : `${rangeLabel}-${yearA}-vs-${yearB}`
+  const exportXlsx = () => downloadXlsx(`yoy-${fileRange}-${branch}-${basisTag}`, [{ name: byBranch ? 'YoY by Branch' : 'YoY Comparison', headers, rows: exportRows() }])
   const exportPdf = () => downloadPdf({
     title: `Year-over-Year Comparison — ${colA} vs ${colB}`,
     subtitle: `${byBranch ? 'By branch' : branchLabel}${auditedInUse ? ' · FY2024–FY2025 on the audited basis' : ''}`,
@@ -384,6 +414,10 @@ export default function YoYComparison({ lockedBranch }: { lockedBranch?: string 
   })
 
   const sel = 'px-3 py-2 rounded-xl border text-sm bg-white'
+  const setDatesA = (from: string, to: string) => {
+    setFromA(from); setToA(to)
+    if (linked && from && to) { setFromB(sameDateIn(from, +from.slice(0, 4) - 1)); setToB(sameDateIn(to, +to.slice(0, 4) - 1)) }
+  }
   const ChangeCells = ({ a, b, good, strong }: { a: number; b: number; good: 'up' | 'down'; strong?: boolean }) => {
     const c = change(a, b, good)
     const color = c.better === null ? 'var(--mid-gray)' : c.better ? '#15803d' : '#b91c1c'
@@ -401,29 +435,59 @@ export default function YoYComparison({ lockedBranch }: { lockedBranch?: string 
     )
   }
 
-  const shownError = error || figError
+  const shownError = error || figError || dateProblem
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <span className="flex items-center gap-1.5 text-sm font-semibold mr-1" style={{ color: 'var(--deep-teal)' }}>
           <CalendarRange size={16} /> Year-over-Year
         </span>
-        <label className="text-xs" style={{ color: 'var(--mid-gray)' }}>From</label>
-        <select value={fromM} onChange={e => { const v = parseInt(e.target.value); setFromM(v); if (toM < v) setToM(v) }} className={sel} style={{ borderColor: 'var(--light-gray)' }}>
-          {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
-        </select>
-        <label className="text-xs" style={{ color: 'var(--mid-gray)' }}>to</label>
-        <select value={toM} onChange={e => { const v = parseInt(e.target.value); setToM(v); if (fromM > v) setFromM(v) }} className={sel} style={{ borderColor: 'var(--light-gray)' }}>
-          {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
-        </select>
-        <span className="mx-1 h-6 w-px" style={{ background: 'var(--light-gray)' }} />
-        <select value={yearA} onChange={e => setYearA(parseInt(e.target.value))} className={sel} style={{ borderColor: 'var(--light-gray)' }}>
-          {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
-        </select>
-        <label className="text-xs" style={{ color: 'var(--mid-gray)' }}>vs</label>
-        <select value={yearB} onChange={e => setYearB(parseInt(e.target.value))} className={sel} style={{ borderColor: 'var(--light-gray)' }}>
-          {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
-        </select>
+        <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: 'var(--light-gray)' }}>
+          {([[false, 'By month'], [true, 'By dates']] as const).map(([v, label]) => (
+            <button key={label} onClick={() => setByDates(v)} className="px-3 py-2 text-xs font-semibold"
+              style={byDates === v ? { background: 'var(--teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' }}>
+              {label}
+            </button>
+          ))}
+        </div>
+        {byDates ? (
+          <>
+            <label className="text-xs" style={{ color: 'var(--mid-gray)' }}>From</label>
+            <input type="date" aria-label="From date" value={fromA} onChange={e => setDatesA(e.target.value, toA)} className={sel} style={{ borderColor: 'var(--light-gray)' }} />
+            <label className="text-xs" style={{ color: 'var(--mid-gray)' }}>to</label>
+            <input type="date" aria-label="To date" value={toA} onChange={e => setDatesA(fromA, e.target.value)} className={sel} style={{ borderColor: 'var(--light-gray)' }} />
+            <span className="mx-1 h-6 w-px" style={{ background: 'var(--light-gray)' }} />
+            <label className="text-xs" style={{ color: 'var(--mid-gray)' }}>vs</label>
+            <input type="date" aria-label="Comparison from date" value={fromB} onChange={e => { setFromB(e.target.value); setLinked(false) }} className={sel} style={{ borderColor: 'var(--light-gray)' }} />
+            <label className="text-xs" style={{ color: 'var(--mid-gray)' }}>to</label>
+            <input type="date" aria-label="Comparison to date" value={toB} onChange={e => { setToB(e.target.value); setLinked(false) }} className={sel} style={{ borderColor: 'var(--light-gray)' }} />
+            {!linked && (
+              <button onClick={() => { setLinked(true); setFromB(sameDateIn(fromA, +fromA.slice(0, 4) - 1)); setToB(sameDateIn(toA, +toA.slice(0, 4) - 1)) }}
+                className="px-3 py-2 rounded-xl border text-xs font-semibold" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                Same dates last year
+              </button>
+            )}
+          </>
+        ) : (
+          <>
+            <label className="text-xs" style={{ color: 'var(--mid-gray)' }}>From</label>
+            <select value={fromM} onChange={e => { const v = parseInt(e.target.value); setFromM(v); if (toM < v) setToM(v) }} className={sel} style={{ borderColor: 'var(--light-gray)' }}>
+              {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+            </select>
+            <label className="text-xs" style={{ color: 'var(--mid-gray)' }}>to</label>
+            <select value={toM} onChange={e => { const v = parseInt(e.target.value); setToM(v); if (fromM > v) setFromM(v) }} className={sel} style={{ borderColor: 'var(--light-gray)' }}>
+              {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+            </select>
+            <span className="mx-1 h-6 w-px" style={{ background: 'var(--light-gray)' }} />
+            <select value={pickedA} onChange={e => setPickedA(parseInt(e.target.value))} className={sel} style={{ borderColor: 'var(--light-gray)' }}>
+              {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+            <label className="text-xs" style={{ color: 'var(--mid-gray)' }}>vs</label>
+            <select value={pickedB} onChange={e => setPickedB(parseInt(e.target.value))} className={sel} style={{ borderColor: 'var(--light-gray)' }}>
+              {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+          </>
+        )}
         {!lockedBranch && (
           <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: 'var(--light-gray)' }}>
             {([['single', 'One branch'], ['byBranch', 'By branch']] as const).map(([v, label]) => (
@@ -460,14 +524,18 @@ export default function YoYComparison({ lockedBranch }: { lockedBranch?: string 
       </div>
 
       <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
-        Income Statement for <strong>{rangeLabel}</strong> of {yearA} against the same months of {yearB}
+        {byDates
+          ? <>Income Statement for <strong>{colA}</strong> against <strong>{colB}</strong></>
+          : <>Income Statement for <strong>{rangeLabel}</strong> of {yearA} against the same months of {yearB}</>}
         {auditedInUse
           ? <>, with FY2024–FY2025 taken from the <strong>audited management accounts</strong> (summary lines only — account detail isn&apos;t available on that basis).</>
           : <>, from the same ledger as the Income Statement tab. Click a section to see its accounts.</>}
         {byBranch && <> Each branch is shown on its own, then anything the books carry company-wide without a branch, then the company total — so the rows add up.</>}
         {' '}Green means better (revenue and profit up, costs down); red means worse.
         {!auditedInUse && auditedApplies && <> FY2024–FY2025 can also be compared on the <strong>audited</strong> basis — the 2025 ledger lacks the year-end adjustments, so its profit lines differ from the audited statements.</>}
-        {yearA === yearB && <> <strong>Both years are the same</strong> — pick a different comparison year.</>}
+        {byDates && <> Entries count on their own date. From 2026, payroll, depreciation and other monthly schedules have no single date, so they are spread evenly across their month; 2024–2025 follow the dates booked in QuickBooks.</>}
+        {byDates && !dateProblem && (cutsMonth(fromA, toA) || cutsMonth(fromB, toB)) && <> <strong>These dates cut through a month.</strong> Revenue is recorded daily, but many expenses are dated the last day of the month (nearly half of 2025&apos;s by amount), so expense and profit lines can read lower than they were.</>}
+        {!byDates && yearA === yearB && <> <strong>Both years are the same</strong> — pick a different comparison year.</>}
         {inProgress && <> <strong>{MONTHS[thisMonth - 1]} {thisYear} is still in progress</strong>, so its figures are partial.</>}
       </p>
       {(() => {
@@ -483,8 +551,8 @@ export default function YoYComparison({ lockedBranch }: { lockedBranch?: string 
       })()}
 
       {byBranch ? (
-        error ? (
-          <div className="px-4 py-3 rounded-xl text-sm bg-red-50 text-red-700">{error}</div>
+        error || dateProblem ? (
+          <div className="px-4 py-3 rounded-xl text-sm bg-red-50 text-red-700">{error || dateProblem}</div>
         ) : loading || !branchView ? (
           <div className="py-16 text-center text-sm" style={{ color: 'var(--mid-gray)' }}>
             <Loader2 size={20} className="inline animate-spin mr-2" style={{ color: 'var(--teal)' }} /> Building every branch for both years… (about 15 seconds the first time)

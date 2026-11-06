@@ -20,10 +20,13 @@ export async function GET(req: Request) {
   const monthParam = searchParams.get('month')
   const month = monthParam ? parseInt(monthParam) : undefined
   const cumulative = searchParams.get('cumulative') === '1'
+  // Day detail for the income statement rows, for reports on exact dates.
+  const daily = searchParams.get('daily') === '1'
   try {
     const statements = await computeLedgerStatements(
       year, branch,
       account ? { account, ...(month && month >= 1 && month <= 12 ? { month, ...(cumulative ? { cumulative: true } : {}) } : {}) } : undefined,
+      daily ? { daily: true } : undefined,
     )
     /* Investors see the subsidiary ledger — every line, every amount, so the
        ledger provably ties to the statements — but not who was treated or
