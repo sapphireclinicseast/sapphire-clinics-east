@@ -1,9 +1,10 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
-import { FolderLock, Plus, Search, Pencil, Trash2, X, Loader2, FileText, Download, Check } from 'lucide-react'
+import { FolderLock, Plus, Search, Pencil, Trash2, X, Loader2, FileText, Download, Check, ChevronDown, ChevronRight } from 'lucide-react'
 import { ScanUpload } from '@/components/ScanUpload'
+import { docYear, NO_YEAR } from '@/lib/official-documents'
 
 interface OfficialDocument {
   id: string
@@ -64,6 +65,7 @@ export default function OfficialDocumentsPage() {
   // every branch, so they stay listed under a branch unless unticked.
   const [branchFilter, setBranchFilter] = useState('ALL')
   const [withCompanyWide, setWithCompanyWide] = useState(true)
+  const [openYears, setOpenYears] = useState<string[]>([])
   const [form, setForm] = useState<Form | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -94,6 +96,11 @@ export default function OfficialDocumentsPage() {
     return (docs || []).filter(d => inBranch(d) && (tab === 'ALL' || d.category === tab)
       && (!q || `${d.title} ${d.referenceNo || ''} ${d.notes || ''} ${BRANCH_LABEL[d.branch || ''] || ''}`.toLowerCase().includes(q)))
   }, [docs, tab, search, inBranch])
+  const businessYears = useMemo(() => {
+    const m = new Map<string, OfficialDocument[]>()
+    for (const d of shown) if (d.category === 'BUSINESS') m.set(docYear(d), [...(m.get(docYear(d)) || []), d])
+    return [...m.entries()].sort(([a], [b]) => (a === NO_YEAR ? 1 : b === NO_YEAR ? -1 : b.localeCompare(a)))
+  }, [shown])
 
   const save = async () => {
     if (!form || !form.title.trim()) { setError('Title is required'); return }
@@ -115,6 +122,50 @@ export default function OfficialDocumentsPage() {
   const input = 'w-full px-3 py-2 rounded-xl border text-sm'
   const uploadPrefix = form ? `DOC-${form.category}-${(form.title || 'document').replace(/[^a-zA-Z0-9]+/g, '-').slice(0, 40)}` : 'DOC'
 
+  const docRow = (d: OfficialDocument) => {
+    const badge = expiryBadge(d.expiryDate)
+    return (
+      <tr key={d.id} className="border-b align-top" style={{ borderColor: 'var(--light-gray)' }}>
+        <td className="px-3 py-2.5">
+          <p className="font-semibold" style={{ color: 'var(--charcoal)' }}>{d.title}</p>
+          {d.referenceNo && <p className="text-[11px] font-mono" style={{ color: 'var(--mid-gray)' }}>{d.referenceNo}</p>}
+          {d.notes && <p className="text-[11px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>{d.notes}</p>}
+        </td>
+        <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{CATEGORY_LABEL[d.category] || d.category}</td>
+        <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{BRANCH_LABEL[d.branch || ''] || d.branch}</td>
+        <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{ymd(d.issuedDate) || '—'}</td>
+        <td className="px-3 py-2.5 whitespace-nowrap">
+          {badge ? <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={badge.style}>{badge.text}</span> : <span style={{ color: 'var(--mid-gray)' }}>No expiry</span>}
+        </td>
+        <td className="px-3 py-2.5">
+          <div className="space-y-1">
+            {(d.fileUrls || []).map(url => (
+              <div key={url} className="flex items-center gap-1.5">
+                <a href={url} target="_blank" rel="noopener noreferrer" className="underline truncate max-w-[14rem]" style={{ color: 'var(--teal)' }}>{fileName(url)}</a>
+                <a href={url} download title="Download"><Download size={12} style={{ color: 'var(--teal)' }} /></a>
+              </div>
+            ))}
+            {!(d.fileUrls || []).length && <span style={{ color: 'var(--mid-gray)' }}>—</span>}
+          </div>
+        </td>
+        <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{ymd(d.createdAt)}{d.uploadedByName ? ` · ${d.uploadedByName}` : ''}</td>
+        <td className="px-3 py-2.5">
+          <div className="flex gap-1">
+            {canWrite && (
+              <button title="Edit" className="p-1.5 rounded-lg hover:bg-gray-100"
+                onClick={() => { setForm({ id: d.id, category: d.category, title: d.title, branch: d.branch || '', referenceNo: d.referenceNo || '', issuedDate: ymd(d.issuedDate), expiryDate: ymd(d.expiryDate), notes: d.notes || '', fileUrls: d.fileUrls || [] }); setError(''); window.scrollTo({ top: 0, behavior: 'smooth' }) }}>
+                <Pencil size={13} style={{ color: 'var(--mid-gray)' }} />
+              </button>
+            )}
+            {canDelete && (
+              <button title="Delete" onClick={() => remove(d)} className="p-1.5 rounded-lg hover:bg-red-50"><Trash2 size={13} className="text-red-500" /></button>
+            )}
+          </div>
+        </td>
+      </tr>
+    )
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -129,7 +180,7 @@ export default function OfficialDocumentsPage() {
         )}
       </div>
       <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
-        The company&apos;s business, SEC, BIR and benefit-agency documents. Documents with an expiry date show in the bell 30 days before they lapse.
+        The company&apos;s business, SEC, BIR and benefit-agency documents. Documents with an expiry date show in the bell 30 days before they lapse, until a later year of the same document is filed.
       </p>
 
       {/* Category tabs */}
@@ -158,6 +209,7 @@ export default function OfficialDocumentsPage() {
           </label>
           <label className="text-xs sm:col-span-2" style={{ color: 'var(--mid-gray)' }}>Title
             <input className={input} value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="e.g. SEC Certificate of Incorporation" />
+            {form.category === 'BUSINESS' && <span className="block mt-1 text-[11px]">Listed under the year in the title (e.g. Business Permit 2027), otherwise its expiry or issued year.</span>}
           </label>
           <label className="text-xs" style={{ color: 'var(--mid-gray)' }}>Reference / registration no.
             <input className={input} value={form.referenceNo} onChange={e => setForm({ ...form, referenceNo: e.target.value })} placeholder="e.g. 2024040147438-01" />
@@ -230,49 +282,27 @@ export default function OfficialDocumentsPage() {
                 </tr>
               </thead>
               <tbody>
-                {shown.map(d => {
-                  const badge = expiryBadge(d.expiryDate)
+                {businessYears.map(([year, rows]) => {
+                  // A search shows its matches without needing a click.
+                  const open = !!search.trim() || openYears.includes(year)
                   return (
-                    <tr key={d.id} className="border-b align-top" style={{ borderColor: 'var(--light-gray)' }}>
-                      <td className="px-3 py-2.5">
-                        <p className="font-semibold" style={{ color: 'var(--charcoal)' }}>{d.title}</p>
-                        {d.referenceNo && <p className="text-[11px] font-mono" style={{ color: 'var(--mid-gray)' }}>{d.referenceNo}</p>}
-                        {d.notes && <p className="text-[11px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>{d.notes}</p>}
-                      </td>
-                      <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{CATEGORY_LABEL[d.category] || d.category}</td>
-                      <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{BRANCH_LABEL[d.branch || ''] || d.branch}</td>
-                      <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{ymd(d.issuedDate) || '—'}</td>
-                      <td className="px-3 py-2.5 whitespace-nowrap">
-                        {badge ? <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={badge.style}>{badge.text}</span> : <span style={{ color: 'var(--mid-gray)' }}>No expiry</span>}
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <div className="space-y-1">
-                          {(d.fileUrls || []).map(url => (
-                            <div key={url} className="flex items-center gap-1.5">
-                              <a href={url} target="_blank" rel="noopener noreferrer" className="underline truncate max-w-[14rem]" style={{ color: 'var(--teal)' }}>{fileName(url)}</a>
-                              <a href={url} download title="Download"><Download size={12} style={{ color: 'var(--teal)' }} /></a>
-                            </div>
-                          ))}
-                          {!(d.fileUrls || []).length && <span style={{ color: 'var(--mid-gray)' }}>—</span>}
-                        </div>
-                      </td>
-                      <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{ymd(d.createdAt)}{d.uploadedByName ? ` · ${d.uploadedByName}` : ''}</td>
-                      <td className="px-3 py-2.5">
-                        <div className="flex gap-1">
-                          {canWrite && (
-                            <button title="Edit" className="p-1.5 rounded-lg hover:bg-gray-100"
-                              onClick={() => { setForm({ id: d.id, category: d.category, title: d.title, branch: d.branch || '', referenceNo: d.referenceNo || '', issuedDate: ymd(d.issuedDate), expiryDate: ymd(d.expiryDate), notes: d.notes || '', fileUrls: d.fileUrls || [] }); setError(''); window.scrollTo({ top: 0, behavior: 'smooth' }) }}>
-                              <Pencil size={13} style={{ color: 'var(--mid-gray)' }} />
-                            </button>
-                          )}
-                          {canDelete && (
-                            <button title="Delete" onClick={() => remove(d)} className="p-1.5 rounded-lg hover:bg-red-50"><Trash2 size={13} className="text-red-500" /></button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
+                    <Fragment key={year}>
+                      <tr className="border-b" style={{ borderColor: 'var(--light-gray)' }}>
+                        <td colSpan={8} className="p-0">
+                          <button type="button" aria-expanded={open}
+                            onClick={() => setOpenYears(y => (y.includes(year) ? y.filter(v => v !== year) : [...y, year]))}
+                            className="w-full flex items-center gap-2 px-3 py-2.5 text-left font-semibold hover:bg-gray-50" style={{ color: 'var(--charcoal)' }}>
+                            {open ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+                            {tab === 'ALL' ? `Business ${year}` : year}
+                            <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>{rows.length} document{rows.length === 1 ? '' : 's'}</span>
+                          </button>
+                        </td>
+                      </tr>
+                      {open && rows.map(docRow)}
+                    </Fragment>
                   )
                 })}
+                {shown.filter(d => d.category !== 'BUSINESS').map(docRow)}
               </tbody>
             </table>
           </div>

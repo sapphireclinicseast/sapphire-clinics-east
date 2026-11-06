@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { latestRenewals } from '@/lib/official-documents'
 
 // HMO officers open and download these for HMO submissions (Hannah, 2026-11-06).
 const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'PAYROLL_OFFICER', 'HMO_OFFICER']
@@ -33,7 +34,7 @@ function clean(body: Record<string, unknown>) {
 
 /**
  * GET /api/official-documents             → every document, newest first
- * GET /api/official-documents?expiring=1  → expired or expiring within 30 days (the bell)
+ * GET /api/official-documents?expiring=1  → expired or expiring within 30 days, latest year of each paper (the bell)
  */
 export async function GET(req: Request) {
   const session = await auth()
@@ -45,11 +46,11 @@ export async function GET(req: Request) {
     if (session.user.role === 'HMO_OFFICER') return NextResponse.json({ documents: [] })
     const horizon = new Date(Date.now() + EXPIRY_WINDOW_DAYS * 86_400_000)
     const docs = await prisma.officialDocument.findMany({
-      where: { expiryDate: { not: null, lte: horizon } },
+      where: { expiryDate: { not: null } },
       orderBy: { expiryDate: 'asc' },
       select: { id: true, title: true, category: true, branch: true, referenceNo: true, expiryDate: true },
     })
-    return NextResponse.json({ documents: docs })
+    return NextResponse.json({ documents: latestRenewals(docs).filter(d => d.expiryDate && d.expiryDate <= horizon) })
   }
   const docs = await prisma.officialDocument.findMany({ orderBy: [{ category: 'asc' }, { title: 'asc' }] })
   return NextResponse.json({ documents: docs })
