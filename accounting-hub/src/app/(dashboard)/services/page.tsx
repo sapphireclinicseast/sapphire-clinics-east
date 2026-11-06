@@ -6,7 +6,7 @@ import { useSession } from 'next-auth/react'
 import {
   Plus, Pencil, X, Search, Stethoscope,
   ArrowUpDown, ChevronUp, ChevronDown, ChevronRight, AlertCircle, XCircle, FileCheck, History, Loader2,
-  Ban, RotateCcw, AlertOctagon,
+  Ban, RotateCcw, AlertOctagon, CornerDownRight,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { pwdUnitPrice, PWD_RATE } from '@/lib/quotations/pricing'
@@ -52,6 +52,7 @@ interface Service {
   allowPfAbovePrice?: boolean
   thresholdCounted?: boolean
   thresholdQty?: number
+  parentGroup?: string | null
   isActive: boolean
   createdAt: string
   eligibleFor?: { eligibleService: { id: string; name: string; department: string; price: string | number }; discountPercent?: number | string | null; sessionCost?: number | string | null }[]
@@ -150,6 +151,12 @@ export default function ServicesPage() {
   // clicked the other way.
   const [toggledGroups, setToggledGroups] = useState<Set<string>>(new Set())
   const [resultsSearch, setResultsSearch] = useState('')
+  const [moveTargets, setMoveTargets] = useState<Service[] | null>(null)
+  const [moveParent, setMoveParent] = useState('')
+  const [moveOptions, setMoveOptions] = useState<string[]>([])
+  const [moveSaving, setMoveSaving] = useState(false)
+  const [moveError, setMoveError] = useState('')
+  const [notice, setNotice] = useState('')
 
   // Modal state
   const [modalOpen, setModalOpen] = useState(false)
@@ -382,6 +389,37 @@ export default function ServicesPage() {
     if (pay) { setFPaymentType(pay); setFIsHmoGl(pay !== 'CASH') }
   }
 
+  function openMove(targets: Service[]) {
+    setMoveTargets(targets); setMoveParent(''); setMoveError(''); setNotice('')
+    fetch('/api/services/parent')
+      .then(r => r.json())
+      .then(d => setMoveOptions(d.parents || []))
+      .catch(() => setMoveOptions([]))
+  }
+
+  async function saveMove(parent: string) {
+    if (!moveTargets) return
+    setMoveSaving(true); setMoveError('')
+    try {
+      const res = await fetch('/api/services/parent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: moveTargets.map(s => s.id), parentGroup: parent }),
+      })
+      const d = await res.json()
+      if (!res.ok) { setMoveError(d.error || 'Failed to move'); return }
+      const what = moveTargets.length === 1 ? moveTargets[0].name : `${moveTargets.length} services`
+      setNotice(d.parent ? `Moved ${what} under ${d.parent}` : `Took ${what} out of its parent`)
+      if (d.parent && !resultsSearch.trim()) setToggledGroups(prev => new Set(prev).add(d.parent.toUpperCase()))
+      setMoveTargets(null)
+      fetchServices()
+    } catch {
+      setMoveError('Failed to move — check the connection and try again')
+    } finally {
+      setMoveSaving(false)
+    }
+  }
+
   function openEdit(s: Service) {
     setEditing(s)
     setFName(s.name); setFDept(s.department); setFBranch(s.branch)
@@ -610,7 +648,7 @@ export default function ServicesPage() {
       <tr key={s.id} className="border-t hover:bg-gray-50/50 transition-colors" style={{ borderColor: 'var(--light-gray)', opacity: s.isActive ? 1 : 0.6, background: nested ? 'var(--off-white)' : undefined }}>
         <td className="px-4 py-3 font-medium" style={{ color: 'var(--charcoal)', paddingLeft: nested ? 44 : undefined }}>
           <span className="flex items-center gap-1.5" title={nested ? s.name : undefined}>
-            {nested ? subServiceLabel(s.name) : s.name}
+            {nested ? subServiceLabel(s) : s.name}
             {s.issuedOfficialInvoice && (
               <span title="Issued Official Sales Invoice" className="flex-shrink-0"><FileCheck size={14} style={{ color: '#16a34a' }} /></span>
             )}
@@ -716,6 +754,9 @@ export default function ServicesPage() {
                 <button onClick={() => openEdit(s)} className="p-2 rounded-lg hover:bg-gray-100 transition-colors" title="Edit">
                   <Pencil size={15} style={{ color: 'var(--teal)' }} />
                 </button>
+                <button onClick={() => openMove([s])} className="p-2 rounded-lg hover:bg-gray-100 transition-colors" title="Move under a parent">
+                  <CornerDownRight size={15} style={{ color: 'var(--teal)' }} />
+                </button>
                 {s.isActive ? (
                   <button onClick={() => setDeleteConfirm(s)} className="p-2 rounded-lg hover:bg-amber-50 transition-colors" title="Disable (hides from new orders, keeps all history)">
                     <Ban size={15} className="text-amber-600" />
@@ -776,9 +817,14 @@ export default function ServicesPage() {
         <td className="px-4 py-3">
           <div className="flex items-center justify-end gap-1">
             {canWrite && (
-              <button onClick={(e) => { e.stopPropagation(); openCreateSub(g) }} className="p-2 rounded-lg hover:bg-gray-100 transition-colors" title={`Add a service under ${g.label}`}>
-                <Plus size={15} style={{ color: 'var(--teal)' }} />
-              </button>
+              <>
+                <button onClick={(e) => { e.stopPropagation(); openCreateSub(g) }} className="p-2 rounded-lg hover:bg-gray-100 transition-colors" title={`Add a service under ${g.label}`}>
+                  <Plus size={15} style={{ color: 'var(--teal)' }} />
+                </button>
+                <button onClick={(e) => { e.stopPropagation(); openMove(g.services) }} className="p-2 rounded-lg hover:bg-gray-100 transition-colors" title={`Move these ${g.services.length} services under another parent`}>
+                  <CornerDownRight size={15} style={{ color: 'var(--teal)' }} />
+                </button>
+              </>
             )}
           </div>
         </td>
@@ -876,6 +922,10 @@ export default function ServicesPage() {
         <div className="mb-4 p-3 rounded-lg text-sm bg-red-50 text-red-600">{error}</div>
       )}
 
+      {notice && !modalOpen && (
+        <div className="mb-4 p-3 rounded-lg text-sm bg-green-50 text-green-700">{notice}</div>
+      )}
+
       {/* Table */}
       <div className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
         <div className="overflow-x-auto">
@@ -933,6 +983,37 @@ export default function ServicesPage() {
             onPageChange={setSvcPage} onPageSizeChange={setSvcPageSize} />
         )}
       </div>
+
+      {/* Move under a parent */}
+      {moveTargets && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-xl">
+            <h3 className="text-lg font-bold mb-2" style={{ color: 'var(--charcoal)' }}>Move under a parent</h3>
+            <p className="text-sm mb-4" style={{ color: 'var(--mid-gray)' }}>
+              <strong>{moveTargets.length === 1 ? moveTargets[0].name : `${moveTargets.length} services`}</strong>
+            </p>
+            <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>Parent</label>
+            <input type="text" list="service-parent-options" value={moveParent} onChange={(e) => setMoveParent(e.target.value)}
+              placeholder="Pick a parent or type a new one" autoFocus
+              className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
+              style={{ borderColor: 'var(--light-gray)' }} />
+            <datalist id="service-parent-options">
+              {moveOptions.map(p => <option key={p} value={p} />)}
+            </datalist>
+            <p className="text-xs mt-1.5 mb-5" style={{ color: 'var(--mid-gray)' }}>
+              This only changes where it is listed on this page. Its name, price, checkout and payroll stay the same.
+            </p>
+            {moveError && <div className="mb-4 p-3 rounded-lg text-sm bg-red-50 text-red-600">{moveError}</div>}
+            <div className="flex gap-3 justify-end flex-wrap">
+              {moveTargets.some(s => s.parentGroup) && (
+                <button type="button" onClick={() => saveMove('')} disabled={moveSaving} className="px-4 py-2 rounded-lg text-sm border mr-auto disabled:opacity-50" style={{ borderColor: 'var(--light-gray)' }}>Remove from parent</button>
+              )}
+              <button type="button" onClick={() => setMoveTargets(null)} className="px-4 py-2 rounded-lg text-sm border" style={{ borderColor: 'var(--light-gray)' }}>Cancel</button>
+              <button type="button" onClick={() => saveMove(moveParent)} disabled={moveSaving || !moveParent.trim()} className="px-4 py-2 rounded-lg text-sm text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>Move</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete Confirm */}
       {deleteConfirm && (
