@@ -24,6 +24,7 @@ import SubmittedForSoa from './SubmittedForSoa'
 import OthersTab from './OthersTab'
 import TuitionTab from './TuitionTab'
 import HmoDirectoryTab from './HmoDirectoryTab'
+import BreakdownDonut, { type DonutItem } from './BreakdownDonut'
 import { DIRECTORY_WRITE_ROLES } from '@/lib/hmo-directory'
 import ExpandablePanel from './ExpandablePanel'
 import PaymentsCard from './PaymentsCard'
@@ -1734,68 +1735,9 @@ export default function AccountsReceivablePage() {
             for (const s of svcs) svcTypeMap.set(s, (svcTypeMap.get(s) || 0) + 1)
           }
         }
-        const svcTotal = Array.from(svcTypeMap.values()).reduce((s, v) => s + v, 0)
-        const svcEntries = Array.from(svcTypeMap.entries()).sort((a, b) => b[1] - a[1])
-        const SVC_COLORS = ['#0d9488','#0891b2','#7c3aed','#db2777','#d97706','#16a34a','#dc2626','#9333ea']
-
-        // Build SVG pie for service types
-        const buildSvcPie = (entries: [string, number][], total: number) => {
-          let cum = -90
-          return entries.map(([label, val], i) => {
-            const pct = total > 0 ? val / total : 0
-            const sweep = pct * 360
-            const s1 = (cum * Math.PI) / 180
-            const e1 = ((cum + sweep) * Math.PI) / 180
-            const r = 60
-            const x1 = 70 + r * Math.cos(s1), y1 = 70 + r * Math.sin(s1)
-            const x2 = 70 + r * Math.cos(e1), y2 = 70 + r * Math.sin(e1)
-            const large = sweep > 180 ? 1 : 0
-            const d = pct === 1
-              ? `M70,70 m-${r},0 a${r},${r} 0 1,1 ${r*2},0 a${r},${r} 0 1,1 -${r*2},0`
-              : `M70,70 L${x1},${y1} A${r},${r} 0 ${large},1 ${x2},${y2} Z`
-            const result = { label, val, pct, color: SVC_COLORS[i % SVC_COLORS.length], d }
-            cum += sweep
-            return result
-          })
-        }
-        const svcSlices = buildSvcPie(svcEntries, svcTotal)
-
-        // Department breakdown from GL orders
-        const deptMap = new Map<string, number>()
-        for (const o of orders) {
-          for (const it of o.items) {
-            const dept = it.service?.department || 'Other'
-            const pay = o.payments.find(p => p.walletId && wallets.some(w => w.id === p.walletId))
-            const amt = pay ? toNum(pay.amount) : toNum(o.netAmount)
-            deptMap.set(dept, (deptMap.get(dept) || 0) + amt)
-          }
-        }
-        const deptTotal = Array.from(deptMap.values()).reduce((s, v) => s + v, 0)
-        const deptEntries = Array.from(deptMap.entries())
-          .sort((a, b) => b[1] - a[1])
-        const PIE_COLORS = ['#0d9488','#0891b2','#7c3aed','#db2777','#d97706','#16a34a','#dc2626','#9333ea','#0ea5e9','#f59e0b']
-
-        // Build SVG pie chart
-        let cumAngle = -90 // start at top
-        const pieSlices = deptEntries.map(([ dept, val ], i) => {
-          const pct = deptTotal > 0 ? val / deptTotal : 0
-          const sweep = pct * 360
-          const startRad = (cumAngle * Math.PI) / 180
-          const endRad = ((cumAngle + sweep) * Math.PI) / 180
-          const r = 60
-          const x1 = 70 + r * Math.cos(startRad)
-          const y1 = 70 + r * Math.sin(startRad)
-          const x2 = 70 + r * Math.cos(endRad)
-          const y2 = 70 + r * Math.sin(endRad)
-          const large = sweep > 180 ? 1 : 0
-          const d = pct === 1
-            ? `M70,70 m-${r},0 a${r},${r} 0 1,1 ${r*2},0 a${r},${r} 0 1,1 -${r*2},0`
-            : `M70,70 L${x1},${y1} A${r},${r} 0 ${large},1 ${x2},${y2} Z`
-          const result = { dept, val, pct, color: PIE_COLORS[i % PIE_COLORS.length], d }
-          cumAngle += sweep
-          return result
-        })
-
+        const svcItems: DonutItem[] = Array.from(svcTypeMap.entries()).map(([label, value]) => ({ label, value }))
+        // From the API's full history: the `orders` list stops at the newest 500.
+        const glDeptItems: DonutItem[] = (summary?.byDepartment || []).map(d => ({ label: d.label, value: d.amount }))
         return (
           <div className="rounded-2xl border p-4 space-y-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
             <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -1876,6 +1818,7 @@ export default function AccountsReceivablePage() {
                   <div style={{ width: `${pctPaid}%`, background: '#16a34a', height: '100%', transition: 'width 0.4s' }} />
                 </div>
                 <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>{formatCurrency(totalPaid)} received of {formatCurrency(totalApproved)}</p>
+                <p className="text-xs mt-0.5 font-semibold" style={{ color: '#b91c1c' }}>{formatCurrency(Math.max(0, totalApproved - totalPaid))} of approved not yet paid</p>
               </div>
 
               {/* % Paid of what was consumed */}
@@ -1888,6 +1831,7 @@ export default function AccountsReceivablePage() {
                   <div style={{ width: `${Math.min(100, pctPaidOfConsumed)}%`, background: '#16a34a', height: '100%', transition: 'width 0.4s' }} />
                 </div>
                 <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>{formatCurrency(totalPaid)} received of {formatCurrency(totalConsumed)} consumed</p>
+                <p className="text-xs mt-0.5 font-semibold" style={{ color: '#b91c1c' }}>{formatCurrency(Math.max(0, totalConsumed - totalPaid))} of consumed not yet paid</p>
               </div>
 
               {/* Written off */}
@@ -1901,60 +1845,14 @@ export default function AccountsReceivablePage() {
             </div>
 
             {/* Two-column chart row */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Department pie chart */}
-              {deptEntries.length > 0 && (
-                <div>
-                  <p className="text-xs font-semibold mb-3" style={{ color: 'var(--mid-gray)' }}>GL Orders by Department</p>
-                  <div className="flex flex-wrap items-center gap-6">
-                    <svg viewBox="0 0 140 140" width={140} height={140} className="flex-shrink-0">
-                      {pieSlices.map((s, i) => (
-                        <path key={i} d={s.d} fill={s.color} stroke="white" strokeWidth={1.5} />
-                      ))}
-                    </svg>
-                    <div className="flex flex-col gap-1.5 flex-1 min-w-0">
-                      {pieSlices.map((s, i) => (
-                        <div key={i} className="flex items-center gap-2">
-                          <span className="w-3 h-3 rounded-sm flex-shrink-0" style={{ background: s.color }} />
-                          <span className="text-xs font-medium truncate" style={{ color: 'var(--charcoal)' }}>{s.dept}</span>
-                          <span className="text-xs ml-auto flex-shrink-0" style={{ color: 'var(--mid-gray)' }}>
-                            {formatCurrency(s.val)} <span className="font-semibold">({(s.pct * 100).toFixed(1)}%)</span>
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Service type pie chart — from approvedServices on GL wallets */}
-              {svcSlices.length > 0 && (
-                <div>
-                  <p className="text-xs font-semibold mb-3" style={{ color: 'var(--mid-gray)' }}>GL Applications by Service Type</p>
-                  <div className="flex flex-wrap items-center gap-6">
-                    <svg viewBox="0 0 140 140" width={140} height={140} className="flex-shrink-0">
-                      {svcSlices.map((s, i) => (
-                        <path key={i} d={s.d} fill={s.color} stroke="white" strokeWidth={1.5} />
-                      ))}
-                    </svg>
-                    <div className="flex flex-col gap-1.5 flex-1 min-w-0">
-                      {svcSlices.map((s, i) => (
-                        <div key={i} className="flex items-center gap-2">
-                          <span className="w-3 h-3 rounded-sm flex-shrink-0" style={{ background: s.color }} />
-                          <span className="text-xs font-medium truncate" style={{ color: 'var(--charcoal)' }}>{s.label}</span>
-                          <span className="text-xs ml-auto flex-shrink-0" style={{ color: 'var(--mid-gray)' }}>
-                            {s.val} wallet{s.val !== 1 ? 's' : ''} <span className="font-semibold">({(s.pct * 100).toFixed(1)}%)</span>
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  <p className="text-[10px] mt-2" style={{ color: 'var(--mid-gray)' }}>
-                    Count of GL wallets with each approved service type. One wallet may appear in multiple types.
-                  </p>
-                </div>
-              )}
-            </div>
+            {(glDeptItems.length > 0 || svcItems.length > 0) && (
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                <BreakdownDonut title="GL Orders by Department" items={glDeptItems} />
+                <BreakdownDonut title="GL Applications by Service Type" items={svcItems} totalLabel="Approved services" formatTotal={n => String(n)}
+                  format={n => `${n} wallet${n === 1 ? '' : 's'}`}
+                  note="Count of GL wallets with each approved service type. One wallet may appear in multiple types." />
+              </div>
+            )}
           </div>
         )
       })()}
@@ -1969,29 +1867,6 @@ export default function AccountsReceivablePage() {
           : orders.reduce((s, o) => s + o.payments.reduce((ps, p) => ps + toNum(p.amount), 0), 0)
         const totalPaid = arPayments.reduce((s, p) => s + toNum(p.amount), 0)
         const pctPaid = totalHmoOrders > 0 ? Math.min(100, (totalPaid / totalHmoOrders) * 100) : 0
-
-        const PIE_COLORS = ['#0d9488','#0891b2','#7c3aed','#db2777','#d97706','#16a34a','#dc2626','#9333ea','#0ea5e9','#f59e0b']
-
-        // Helper: build SVG pie slices from a Map<string, number>
-        const buildPie = (entries: [string, number][], total: number) => {
-          let cum = -90
-          return entries.map(([label, val], i) => {
-            const pct = total > 0 ? val / total : 0
-            const sweep = pct * 360
-            const s1 = (cum * Math.PI) / 180
-            const e1 = ((cum + sweep) * Math.PI) / 180
-            const r = 60
-            const x1 = 70 + r * Math.cos(s1), y1 = 70 + r * Math.sin(s1)
-            const x2 = 70 + r * Math.cos(e1), y2 = 70 + r * Math.sin(e1)
-            const large = sweep > 180 ? 1 : 0
-            const d = pct === 1
-              ? `M70,70 m-${r},0 a${r},${r} 0 1,1 ${r*2},0 a${r},${r} 0 1,1 -${r*2},0`
-              : `M70,70 L${x1},${y1} A${r},${r} 0 ${large},1 ${x2},${y2} Z`
-            const result = { label, val, pct, color: PIE_COLORS[i % PIE_COLORS.length], d }
-            cum += sweep
-            return result
-          })
-        }
 
         // Department breakdown — split each order's payment proportionally across
         // departments. Served by the API across all orders; the local pass is the
@@ -2016,9 +1891,7 @@ export default function AccountsReceivablePage() {
             }
           }
         }
-        const deptEntries = Array.from(deptMap.entries()).sort((a, b) => b[1] - a[1])
-        const deptTotal = deptEntries.reduce((s, [, v]) => s + v, 0)
-        const deptSlices = buildPie(deptEntries, deptTotal)
+        const deptItems: DonutItem[] = Array.from(deptMap.entries()).map(([label, value]) => ({ label, value }))
 
         // Provider breakdown (HMO orders by wallet/provider)
         const provMap = new Map<string, number>()
@@ -2033,34 +1906,25 @@ export default function AccountsReceivablePage() {
             }
           }
         }
-        const provEntries = Array.from(provMap.entries()).sort((a, b) => b[1] - a[1])
-        const provTotal = provEntries.reduce((s, [, v]) => s + v, 0)
-        const provSlices = buildPie(provEntries, provTotal)
-
-        // Shared pie chart renderer
-        const PieChart = ({ slices, title }: { slices: { label: string; val: number; pct: number; color: string; d: string }[]; title: string }) => (
-          slices.length === 0 ? null : (
-            <div>
-              <p className="text-xs font-semibold mb-3" style={{ color: 'var(--mid-gray)' }}>{title}</p>
-              <div className="flex flex-wrap items-start gap-4">
-                <svg viewBox="0 0 140 140" width={120} height={120} className="flex-shrink-0">
-                  {slices.map((s, i) => <path key={i} d={s.d} fill={s.color} stroke="white" strokeWidth={1.5} />)}
-                </svg>
-                <div className="flex flex-col gap-1.5 flex-1 min-w-0">
-                  {slices.map((s, i) => (
-                    <div key={i} className="flex items-center gap-2 min-w-0">
-                      <span className="w-3 h-3 rounded-sm flex-shrink-0" style={{ background: s.color }} />
-                      <span className="text-xs font-medium truncate" style={{ color: 'var(--charcoal)' }}>{s.label}</span>
-                      <span className="text-xs ml-auto flex-shrink-0 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>
-                        {formatCurrency(s.val)} <span className="font-semibold">({(s.pct * 100).toFixed(1)}%)</span>
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )
-        )
+        // What each HMO has paid, for its hover card. Same payments as the % paid card.
+        const receivedByProvider = new Map<string, number>()
+        for (const p of arPayments) {
+          const name = wallets.find(w => w.id === p.walletId)?.patientName
+          if (name) receivedByProvider.set(name, (receivedByProvider.get(name) || 0) + toNum(p.amount))
+        }
+        const provItems: DonutItem[] = Array.from(provMap.entries()).map(([label, value]) => {
+          const received = receivedByProvider.get(label) || 0
+          return {
+            label,
+            value,
+            details: [
+              { label: 'Received', value: formatCurrency(received) },
+              received > value
+                ? { label: 'Received above billed', value: formatCurrency(received - value) }
+                : { label: 'Not yet paid', value: formatCurrency(value - received) },
+            ],
+          }
+        })
 
         return (
           <div className="rounded-2xl border p-4 space-y-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
@@ -2078,6 +1942,7 @@ export default function AccountsReceivablePage() {
                   <div style={{ width: `${pctPaid}%`, background: '#16a34a', height: '100%', transition: 'width 0.4s' }} />
                 </div>
                 <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>{formatCurrency(totalPaid)} received of {formatCurrency(totalHmoOrders)}</p>
+                <p className="text-xs mt-0.5 font-semibold" style={{ color: '#b91c1c' }}>{formatCurrency(Math.max(0, totalHmoOrders - totalPaid))} not yet paid</p>
               </div>
               <div className="rounded-xl p-4 border" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
                 <p className="text-xs uppercase tracking-wide font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Total HMO Billed</p>
@@ -2106,11 +1971,10 @@ export default function AccountsReceivablePage() {
                 </div>
               )}
             </div>
-            {/* Two pie charts side by side */}
-            {(deptSlices.length > 0 || provSlices.length > 0) && (
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 pt-2 border-t" style={{ borderColor: 'var(--light-gray)' }}>
-                <PieChart slices={deptSlices} title="HMO Orders by Department" />
-                <PieChart slices={provSlices} title="HMO Orders by Provider" />
+            {(deptItems.length > 0 || provItems.length > 0) && (
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                <BreakdownDonut title="HMO Orders by Department" items={deptItems} />
+                <BreakdownDonut title="HMO Orders by Provider" items={provItems} />
               </div>
             )}
           </div>
@@ -2489,7 +2353,7 @@ export default function AccountsReceivablePage() {
                 subtitle="What the HMOs paid us — cash in our bank, credited against their AR."
                 paid={received}
                 billed={billed}
-                paidCaption={`${formatCurrency(received)} received of ${formatCurrency(billed)}`}
+                paidCaption={`${formatCurrency(received)} received of ${formatCurrency(billed)} · ${formatCurrency(Math.max(0, billed - received))} not yet paid`}
                 recent={[...arPayments]
                   .sort((a, b) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime())
                   .map(p => ({

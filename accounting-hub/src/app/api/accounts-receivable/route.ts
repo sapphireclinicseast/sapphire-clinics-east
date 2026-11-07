@@ -310,7 +310,7 @@ export async function GET(req: Request) {
     const directOrders: { id: string; amount: number }[] = []
 
     for (const o of aggOrders) {
-      const isDirect = o.items.length > 0 && o.items.every(it => it.service?.hmoPaysClinicianDirect)
+      const isDirect = type === 'HMO' && o.items.length > 0 && o.items.every(it => it.service?.hmoPaysClinicianDirect)
         && !o.payments.some(p => p.walletId && exceptionWalletIds.has(p.walletId))
       if (isDirect) {
         directOrderCount++
