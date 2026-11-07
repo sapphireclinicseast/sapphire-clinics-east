@@ -3,6 +3,7 @@
 import { Suspense, useState, useEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { toChequeInput } from '@/lib/cheque-number'
+import { sharesAfterGrossChange } from '@/lib/petty-cash-shares'
 import { AccountPicker, type PickableAccount } from '@/components/AccountPicker'
 import { useFocusTarget } from '@/lib/use-focus-target'
 import { useSession } from 'next-auth/react'
@@ -1295,7 +1296,11 @@ function PettyCashInner() {
                             value={num(e.grossAmount) === 0 ? '' : String(e.grossAmount)} style={{ minWidth: 110 }}
                             onWheel={ev => ev.currentTarget.blur()}
                             onChange={ev => patchLocal(e.id, { grossAmount: ev.target.value })}
-                            onBlur={ev => saveField(e.id, { grossAmount: Number(ev.target.value) || 0 }, false)} />
+                            onBlur={ev => {
+                              const gross = Number(ev.target.value) || 0
+                              const shares = sharesAfterGrossChange(e.branchAllocations, gross)
+                              saveField(e.id, { grossAmount: gross, ...(shares ? { branchAllocations: shares } : {}) }, false)
+                            }} />
                         </td>
                         <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: lk ? 'transparent' : '#fafafa' }}>
                           <span className="px-2 py-1.5 block text-right" style={{ color: 'var(--mid-gray)' }}>{peso(netOfVat(e))}</span>

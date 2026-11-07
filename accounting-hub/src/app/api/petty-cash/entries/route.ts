@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { branchAllowed, canViewPettyCashCeoVerdana, PETTY_CASH_VIEW_ONLY_BRANCHES } from '@/lib/branch-scope'
 import { retagEntryAssets } from '@/lib/asset-entry-retag'
+import { sharesAfterGrossChange } from '@/lib/petty-cash-shares'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 const VALID_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE', 'AURA_INSTITUTE', 'CEO']
@@ -231,6 +232,11 @@ export async function PUT(req: Request) {
       }
     }
     if ('branchAllocations' in body) data.branchAllocations = body.branchAllocations ?? null
+    else if ('grossAmount' in data) {
+      // Here as well as on the screen, so no caller can leave a one-branch share behind.
+      const shares = sharesAfterGrossChange(existing.branchAllocations, data.grossAmount)
+      if (shares) data.branchAllocations = shares
+    }
     // Only a VAT entry can have a VAT part.
     if ('vatable' in body && body.vatable !== 'VAT') data.vatPortion = null
     if ('proofUrls' in body) data.proofUrls = body.proofUrls ?? null
