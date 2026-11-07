@@ -954,6 +954,20 @@ model CancellationLog {
   feeDeductedAt   DateTime?
   feePaidOnReturn Boolean   @default(false)
   feePaidAt       DateTime?
+  // Settled at the POS. Written by the Accounting Hub when the cashier links
+  // the fee they just collected to this specific cancellation, which replaces
+  // guessing from order-line names and dates: a name match could only ever say
+  // a fee had been collected for SOMEBODY, never which cancellation it settled.
+  //
+  // A link, not a flag. Front desk can open the order it came from, and two
+  // cancellations by the same patient on the same day stop being
+  // interchangeable.
+  paidOrderId     String?
+  paidOrderNumber Int?
+  paidLineName    String?
+  paidAmount      Float?
+  /// Who took the payment, as the Accounting Hub knows them.
+  paidByName      String?
   deletedAt       DateTime?
   deletedBy       String?
   deleteReason    String?
@@ -963,6 +977,7 @@ model CancellationLog {
   @@index([scheduleId])
   @@index([patientId])
   @@index([createdAt])
+  @@index([paidOrderId])
 }
 
 // ── Patient No-Show Logs ─────────────────────────────────────────────────────

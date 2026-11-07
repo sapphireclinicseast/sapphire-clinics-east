@@ -27,6 +27,7 @@ import { TUITION_SERVICE_NAME, normName, tuitionPrefillFor, type TuitionPlan, ty
 import TuitionDesk from './TuitionDesk'
 import { buildSoaPdf, MONTH_OPTIONS, periodLabel, type SoaSettings, type SoaOrder } from '@/lib/soa-pdf'
 import { EARLIEST_OBTAINED, latestObtained, obtainedDateError } from '@/lib/wallet-dates'
+import CancellationLinkModal, { type FeeLine } from './CancellationLinkModal'
 
 /* ─────────────────────────── TYPES ─────────────────────────── */
 
@@ -381,6 +382,29 @@ const PAYMENT_METHODS_PRODUCT = [
   // creates an entry under Accounts Receivable → Others, collected there later.
   { value: 'RECEIVABLE', label: 'Receivable (charge to customer)' },
 ]
+
+/* Which order lines are a cancellation fee.
+ *
+ * The same three patterns the Operations Hub matches on (FEE_NAME_PATTERN),
+ * kept in step deliberately: if the till prompts for a line the hub does not
+ * count, the cashier links a payment that never shows as paid.
+ *
+ * "cancellation (" keeps its bracket so the fee items CANCELLATION (VALID) /
+ * (INVALID) match while the session products — "OT - THERAPIST (SINGLE) -
+ * CANCELLATION- RETAINER - ..." — do not. Those are a retained slot, not a fee.
+ */
+const CANCELLATION_FEE_PATTERNS = ['late cancellation', 'cancellation (', 'no show fee']
+
+function cancellationFeeLines(
+  items: { name: string; lineTotal: number | string }[],
+): FeeLine[] {
+  return items
+    .filter(it => {
+      const n = String(it.name ?? '').toLowerCase()
+      return CANCELLATION_FEE_PATTERNS.some(p => n.includes(p))
+    })
+    .map(it => ({ name: String(it.name ?? ''), amount: Number(it.lineTotal) || 0 }))
+}
 
 const ORDER_STATUS_BADGE: Record<string, { bg: string; color: string }> = {
   COMPLETED: { bg: '#dcfce7', color: '#166534' },
@@ -1121,6 +1145,12 @@ function OrderFormModal({
   const [referenceNumber, setReferenceNumber] = useState('')
   const [orderNotes, setOrderNotes] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  /* Set after a sale that carried a cancellation fee, which opens the linking
+     prompt. The order is already created by then — a till that cannot be closed
+     until a form is filled in is a queue of waiting patients. */
+  const [feeLink, setFeeLink] = useState<
+    { orderId: string; orderNumber: number; branch: string; patientName: string; feeLines: FeeLine[] } | null
+  >(null)
   // Synchronous re-entrancy guard: blocks duplicate orders from rapid re-clicks
   // before React re-renders the disabled button (state updates lag a render).
   const submittingRef = useRef(false)
@@ -1962,6 +1992,21 @@ function OrderFormModal({
       })
       const data = await res.json()
       if (!res.ok) { setError(data.error || 'Failed to create order'); setSubmitting(false); return }
+
+      // A cancellation fee was taken: ask which cancellation it settles. Queued
+      // here and shown once the sale finishes unwinding, so the receipt and the
+      // wallet deductions below are untouched by it.
+      const feeLines = cancellationFeeLines(items)
+      if (feeLines.length > 0 && data.id) {
+        setFeeLink({
+          orderId: data.id,
+          orderNumber: data.orderNumber,
+          branch,
+          patientName: patientName || '',
+          feeLines,
+        })
+      }
+
       if (tuitionMeta) {
         if (data.tuitionRecorded === false) alert(`Order #${data.orderNumber} is saved, but Class Hub could not be updated. Tell accounting so the payment is added to the student's Class Hub record.`)
         window.dispatchEvent(new Event('pos-tuition-refresh'))
@@ -3264,6 +3309,21 @@ function OrderFormModal({
               </button>
             </div>
           </div>
+        )}
+
+        {/* A cancellation fee was taken on this sale: ask which cancellation
+            it settles. Blocking by design — no close control, no backdrop
+            dismiss — but opened only once the order exists, so the till is
+            never held shut with a patient waiting. */}
+        {feeLink && (
+          <CancellationLinkModal
+            orderId={feeLink.orderId}
+            orderNumber={feeLink.orderNumber}
+            branch={feeLink.branch}
+            patientName={feeLink.patientName}
+            feeLines={feeLink.feeLines}
+            onDone={() => setFeeLink(null)}
+          />
         )}
       </div>
     </div>

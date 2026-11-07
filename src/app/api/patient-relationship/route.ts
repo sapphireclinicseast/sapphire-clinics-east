@@ -433,9 +433,30 @@ export async function GET(req: NextRequest) {
       const feeBearingIds = new Set(feeBearingLogs.map(l => l.id))
 
       // Settled fees, oldest cancellation paired with oldest payment.
+      //
+      // Name matching is now the FALLBACK. Where the cashier linked the payment
+      // at the till (paidOrderId), that link wins outright: it names the
+      // cancellation the money settled, which a name-and-date match can only
+      // ever guess at. Pairing is still run for everything else, because every
+      // fee collected before the till started asking has no link at all.
       const paidFees = feeIndex
-        ? pairFeesToLogs(feeBearingLogs, feeIndex.byPatient.get(p.id) ?? [])
+        ? pairFeesToLogs(
+            feeBearingLogs.filter(l => !l.paidOrderId),
+            feeIndex.byPatient.get(p.id) ?? [],
+          )
         : new Map()
+      for (const l of feeBearingLogs) {
+        if (!l.paidOrderId) continue
+        paidFees.set(l.id, {
+          orderNumber: l.paidOrderNumber ?? 0,
+          paidAt: (l.feePaidAt ?? l.createdAt).toISOString(),
+          amount: l.paidAmount ?? 0,
+          lineName: l.paidLineName ?? '',
+          // Says which of the two this came from, so the UI can show a linked
+          // payment as certain and a matched one as inferred.
+          linked: true,
+        })
+      }
 
       // A patient can have a long history and still have nothing inside the
       // window. Left unsaid, a 0/2 sitting next to a lifetime total of 7 reads
