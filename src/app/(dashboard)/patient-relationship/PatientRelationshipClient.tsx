@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback, useMemo, Fragment } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef, Fragment } from 'react'
 import {
   HeartHandshake, Phone, Mail, Clock, AlertTriangle, CheckCircle, MessageSquare, Check,
   Calendar, Filter, Users, XCircle, ChevronDown, ChevronRight,
@@ -96,6 +96,33 @@ const FORM_CHIP: Record<string, { label: string; bg: string; fg: string }> = {
   psych:           { label: 'Psych',         bg: '#E0E7FF', fg: '#3730A3' },
 }
 
+// ── Service chips ────────────────────────────────────────────────────────────
+// The intake forms spell the doctor options out in full — "Medical consultation
+// - Development Pediatrician" is 47 characters, and three of those in one row
+// would push every other column off screen. Only the "Medical consultation -"
+// prefix is shortened, and only in the table: the distinguishing word is kept
+// intact, the full label is on the cell's tooltip, and the filter list shows
+// the labels exactly as the form words them. Abbreviating further would leave
+// a chip that doesn't obviously correspond to anything you can tick.
+function shortService(label: string): string {
+  return label.replace(/^\s*medical consultation\s*-\s*/i, 'MD: ').trim()
+}
+
+// Coloured by service family so a glance down the column separates doctors from
+// therapy from psychology. An unrecognised service — an "Other" write-in, or a
+// line added to a form after this was written — gets neutral grey rather than
+// being forced into a family it may not belong to.
+function serviceChip(label: string): { bg: string; fg: string } {
+  const l = label.toLowerCase()
+  if (l.includes('medical consultation'))                   return { bg: '#FEE2E2', fg: '#B91C1C' }
+  if (l.includes('speech'))                                 return { bg: '#FEF3C7', fg: '#92400E' }
+  if (l.includes('occupational'))                           return { bg: '#CCFBF1', fg: '#115E59' }
+  if (l.includes('physical therapy'))                       return { bg: '#CFFAFE', fg: '#155E75' }
+  if (l.includes('sped') || l.includes('special education')) return { bg: '#EDE9FE', fg: '#5B21B6' }
+  if (l.includes('psycholog'))                              return { bg: '#E0E7FF', fg: '#3730A3' }
+  return { bg: '#F1F5F9', fg: '#475569' }
+}
+
 // ── Sorting ──────────────────────────────────────────────────────────────────
 // All four tabs render the same table shell over different row shapes, so the
 // sort lives here once and each tab supplies accessors for its own columns.
@@ -109,6 +136,11 @@ type SortCol = {
   get?: (row: any) => string | number | null | undefined
   // Opt this column into the filter row — see useFilters below.
   filter?: FilterKind
+  // 'multi' columns only: the cell's individual values. One row can hold
+  // several (a patient asking for Speech Therapy *and* OT), which a single
+  // `get` string cannot express without the filter having to re-split it.
+  // `get` stays the joined string, so sorting and display are unaffected.
+  values?: (row: any) => string[]
 }
 
 function useSort(cols: SortCol[], rows: any[]) {
@@ -184,12 +216,13 @@ function SortHeaders({ cols, sortKey, sortDir, onToggle }: {
 //   'text'   substring match  (names, free text)
 //   'select' exact match from a dropdown of the values actually present
 //   'number' min/max range    (counts, day gaps)
+//   'multi'  tick/untick several values; a row is kept if it has ANY ticked one
 //
 // A column with no accessor can't be filtered for the same reason it can't be
 // sorted — there is no value behind it.
 
-type FilterKind = 'text' | 'select' | 'number'
-type FilterVal = { text?: string; min?: string; max?: string }
+type FilterKind = 'text' | 'select' | 'number' | 'multi'
+type FilterVal = { text?: string; min?: string; max?: string; set?: string[] }
 
 function useFilters(cols: SortCol[], rows: any[], onChange?: () => void) {
   const [filters, setFilters] = useState<Record<string, FilterVal>>({})
@@ -198,9 +231,11 @@ function useFilters(cols: SortCol[], rows: any[], onChange?: () => void) {
     setFilters(f => {
       const next = { ...f, [key]: { ...f[key], ...patch } }
       // Drop emptied entries so the active count stays honest and Clear resets
-      // to a genuinely empty state rather than a map of blank strings.
+      // to a genuinely empty state rather than a map of blank strings. An empty
+      // tick list counts as emptied too — nothing ticked means no filter, not
+      // a filter that matches nothing.
       const v = next[key]
-      if (!v.text && !v.min && !v.max) delete next[key]
+      if (!v.text && !v.min && !v.max && !v.set?.length) delete next[key]
       return next
     })
     onChange?.()
@@ -214,6 +249,16 @@ function useFilters(cols: SortCol[], rows: any[], onChange?: () => void) {
       const f = filters[c.key]
       if (!f || !c.get) return true
       const raw = c.get(row)
+      if (c.filter === 'multi') {
+        const want = f.set ?? []
+        if (want.length === 0) return true
+        // ANY, not ALL: ticking Speech Therapy and OT asks for the rows
+        // involving either, which is how "include these services in the view"
+        // reads. A row with none of them drops out — including a row with no
+        // services recorded at all, which cannot satisfy a request for one.
+        const have = c.values ? c.values(row) : String(raw ?? '').split(', ').filter(Boolean)
+        return have.some(v => want.includes(v))
+      }
       if (c.filter === 'number') {
         const n = raw === null || raw === undefined || raw === '' ? NaN : Number(raw)
         // A row with no number can't satisfy a range, so it drops out — same
@@ -239,6 +284,135 @@ const filterInputStyle: React.CSSProperties = {
   color: 'var(--charcoal)', fontFamily: 'inherit',
 }
 
+// Tick/untick list for a 'multi' column. A dropdown rather than a row of
+// checkboxes because the service list runs to a dozen entries and would
+// otherwise set the height of the whole filter row.
+function MultiFilter({ label, options, selected, onChange }: {
+  label: string; options: string[]; selected: string[]
+  onChange: (next: string[]) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const box = useRef<HTMLDivElement>(null)
+  const btn = useRef<HTMLButtonElement>(null)
+
+  // The panel is positioned fixed, against the button's viewport rect, rather
+  // than absolutely inside this cell. It lives in a table that scrolls
+  // horizontally and sits in a rounded card, and an absolutely positioned panel
+  // gets clipped by either of those — on a short result list the options simply
+  // disappear below the card's edge. Re-placed on scroll and resize so it stays
+  // on the button rather than drifting off it.
+  const [at, setAt] = useState<{ top: number; left: number; width: number } | null>(null)
+  const place = useCallback(() => {
+    const r = btn.current?.getBoundingClientRect()
+    if (!r) return
+    const width = Math.max(r.width, 240)
+    // Keep it on screen when the cell sits near the right edge.
+    const left = Math.max(8, Math.min(r.left, window.innerWidth - width - 8))
+    setAt({ top: r.bottom + 4, left, width })
+  }, [])
+
+  useEffect(() => {
+    if (!open) return
+    place()
+    // Capture phase: the scroll that matters is the table's, not the window's.
+    window.addEventListener('scroll', place, true)
+    window.addEventListener('resize', place)
+    return () => {
+      window.removeEventListener('scroll', place, true)
+      window.removeEventListener('resize', place)
+    }
+  }, [open, place])
+
+  // Close on an outside click or Escape. Without this the panel stays open
+  // behind whatever the user clicks next, over the rows they are trying to read.
+  //
+  // The dismissing click is also swallowed, in the capture phase, because every
+  // row behind this panel is itself clickable: without it, clicking away to put
+  // the list down expands whichever submission happened to be underneath, which
+  // reads as the table doing something you didn't ask for.
+  useEffect(() => {
+    if (!open) return
+    const outside = (t: EventTarget | null) => !!box.current && !box.current.contains(t as Node)
+    function onDown(e: MouseEvent) { if (outside(e.target)) setOpen(false) }
+    function onClickCapture(e: MouseEvent) {
+      if (outside(e.target)) { e.stopPropagation(); e.preventDefault() }
+    }
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('click', onClickCapture, true)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('click', onClickCapture, true)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  const summary = selected.length === 0
+    ? 'All'
+    : selected.length === 1 ? selected[0] : `${selected.length} selected`
+
+  return (
+    <div ref={box} style={{ position: 'relative' }}>
+      <button ref={btn} type="button" onClick={() => setOpen(v => !v)}
+        aria-haspopup="true" aria-expanded={open}
+        aria-label={`Filter by ${label}`}
+        title={selected.length ? selected.join(', ') : `Filter by ${label}`}
+        style={{
+          ...filterInputStyle, textAlign: 'left', cursor: 'pointer',
+          display: 'flex', alignItems: 'center', gap: 4,
+          borderColor: selected.length ? 'var(--teal)' : '#E2E8F0',
+          color: selected.length ? 'var(--teal)' : 'var(--charcoal)',
+          fontWeight: selected.length ? 600 : 400,
+        }}>
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+          {summary}
+        </span>
+        <ChevronDown size={11} style={{ flexShrink: 0, opacity: 0.6 }} />
+      </button>
+
+      {open && at && (
+        <div style={{
+          position: 'fixed', top: at.top, left: at.left, zIndex: 60,
+          minWidth: at.width, maxWidth: 340, maxHeight: 280, overflowY: 'auto',
+          background: '#fff', border: '1px solid #E2E8F0', borderRadius: 8,
+          boxShadow: '0 8px 24px rgba(15,23,42,0.12)', padding: 6,
+        }}>
+          <div className="flex items-center justify-between px-1.5 pb-1.5 mb-1"
+            style={{ borderBottom: '1px solid #F1F5F9' }}>
+            <span style={{ fontSize: '0.66rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#94A3B8', fontWeight: 700 }}>
+              {label}
+            </span>
+            {selected.length > 0 && (
+              <button type="button" onClick={() => onChange([])}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.68rem', color: '#6B7280', textDecoration: 'underline', fontWeight: 600 }}>
+                Clear
+              </button>
+            )}
+          </div>
+          {options.length === 0 ? (
+            <p className="px-1.5 py-2" style={{ fontSize: '0.7rem', color: '#9CA3AF' }}>
+              Nothing to filter by yet.
+            </p>
+          ) : options.map(o => {
+            const on = selected.includes(o)
+            return (
+              <label key={o} className="flex items-start gap-2 px-1.5 py-1 rounded"
+                style={{ cursor: 'pointer', fontSize: '0.72rem', lineHeight: 1.35,
+                         background: on ? '#F0FDFA' : 'transparent', fontWeight: on ? 600 : 400 }}>
+                <input type="checkbox" checked={on}
+                  onChange={() => onChange(on ? selected.filter(s => s !== o) : [...selected, o])}
+                  style={{ marginTop: 2, accentColor: 'var(--teal)', cursor: 'pointer', flexShrink: 0 }} />
+                <span style={{ color: on ? 'var(--teal)' : 'var(--charcoal)' }}>{o}</span>
+              </label>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function FilterRow({ cols, rows, filters, setFilter }: {
   cols: SortCol[]; rows: any[]
   filters: Record<string, FilterVal>; setFilter: (k: string, p: FilterVal) => void
@@ -250,7 +424,20 @@ function FilterRow({ cols, rows, filters, setFilter }: {
         const f = filters[c.key] ?? {}
         return (
           <th key={c.key} className="px-4 py-2" style={{ fontWeight: 400 }}>
-            {c.filter === 'number' ? (
+            {c.filter === 'multi' ? (
+              <MultiFilter
+                label={c.label}
+                // Options come from the rows the tab passes in — post-search
+                // but pre-column-filter — for the same reason as the select
+                // above: ticking one service must not make the others vanish
+                // from the list you are ticking them in.
+                options={Array.from(new Set(
+                  rows.flatMap(r => (c.values ? c.values(r) : [])),
+                )).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))}
+                selected={f.set ?? []}
+                onChange={next => setFilter(c.key, { set: next })}
+              />
+            ) : c.filter === 'number' ? (
               <div className="flex items-center gap-1">
                 <input type="number" placeholder="min" value={f.min ?? ''} aria-label={`${c.label} minimum`}
                   onChange={e => setFilter(c.key, { min: e.target.value })} style={filterInputStyle} />
@@ -451,6 +638,14 @@ function WaitlistTab({ branch }: { branch: string }) {
     return 'Unknown'
   }
 
+  // Services the patient ticked on their intake form. The API resolves the
+  // service question per form and stamps the labels on, so there is nothing to
+  // parse here — but an older API, or a form with no service question, sends
+  // nothing, and the column has to read as "none recorded" rather than break.
+  function getServices(item: any): string[] {
+    return Array.isArray(item?._services) ? item._services : []
+  }
+
   const filtered = search
     ? responses.filter(r => getName(r).toLowerCase().includes(search.toLowerCase()))
     : responses
@@ -459,6 +654,16 @@ function WaitlistTab({ branch }: { branch: string }) {
     { key: 'expand', label: '' },                                   // chevron
     { key: 'name',   label: 'Name', get: r => getName(r), filter: 'text' },
     { key: 'form',   label: 'Form', get: r => r._formTitle ?? '', filter: 'select' },
+    // What the patient actually asked for. Stamped per response by the API
+    // (see _services there) because the service question has a different field
+    // id on every form and the answers carry ids, not titles.
+    //
+    // Sorts on the joined string so a row asking for one service still orders
+    // sensibly; filters on the list, because a row with two services belongs
+    // under both.
+    { key: 'services', label: 'Services', filter: 'multi',
+      get:    r => getServices(r).join(', '),
+      values: r => getServices(r) },
     // Which branch's form this came in on. The API already stamps every
     // response with _branch from the HR form it was pulled from, so this is
     // the submission's own origin, not the branch filter currently applied —
@@ -574,15 +779,22 @@ function WaitlistTab({ branch }: { branch: string }) {
         <FilterToggle open={showFilters} onToggle={() => setShowFilters(v => !v)} activeCount={activeCount} onClear={clearAll} />
       </div>
 
-      <div className="rounded-xl overflow-hidden" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
+      {/* overflow-x-auto, not overflow-hidden: this table is wider than a
+          phone, and hidden clipped Branch and Date out of reach instead of
+          letting them be scrolled to. The Services filter panel is positioned
+          fixed so this scroll container cannot clip it either. */}
+      <div className="rounded-xl overflow-x-auto" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
         <table className="w-full text-left" style={{ fontSize: '0.82rem' }}>
           <thead>
             <SortHeaders cols={COLS} sortKey={sortKey} sortDir={sortDir} onToggle={toggle} />
             {showFilters && <FilterRow cols={COLS} rows={filtered} filters={filters} setFilter={setFilter} />}
           </thead>
           <tbody>
+            {/* colSpan is COLS.length rather than a literal below — the count has
+                to follow the column list, and a stale one leaves the empty-state
+                cell short and the table visibly ragged. */}
             {paginated.length === 0 ? (
-              <tr><td colSpan={5} className="text-center py-10" style={{ color: '#9ca3af' }}>{activeCount > 0 ? 'No responses match these filters.' : 'No responses found.'}</td></tr>
+              <tr><td colSpan={COLS.length} className="text-center py-10" style={{ color: '#9ca3af' }}>{activeCount > 0 ? 'No responses match these filters.' : 'No responses found.'}</td></tr>
             ) : paginated.map((item: any) => {
               const converted = isConverted(item)
               const declined = !!item._followUp
@@ -623,6 +835,38 @@ function WaitlistTab({ branch }: { branch: string }) {
                       )
                     })()}
                   </td>
+                  {/* What they asked for. Chips rather than a sentence so the
+                      two-and-three-service rows stay as scannable as the rest. */}
+                  <td className="px-4 py-3">
+                    {(() => {
+                      const svcs = getServices(item)
+                      if (svcs.length === 0) return <span style={{ color: '#9CA3AF' }}>&mdash;</span>
+                      // Two fit the column; beyond that the count carries it and
+                      // the full list is on the row's title. Showing all of them
+                      // would set the row height off the longest submission.
+                      const shown = svcs.slice(0, 2)
+                      const rest  = svcs.length - shown.length
+                      return (
+                        <span className="flex flex-wrap items-center gap-1" title={svcs.join('\n')}>
+                          {shown.map(s => {
+                            const c = serviceChip(s)
+                            return (
+                              <span key={s} className="text-xs px-2 py-0.5 rounded-full"
+                                style={{ background: c.bg, color: c.fg, fontWeight: 600, fontSize: '0.65rem', whiteSpace: 'nowrap' }}>
+                                {shortService(s)}
+                              </span>
+                            )
+                          })}
+                          {rest > 0 && (
+                            <span className="text-xs px-1.5 py-0.5 rounded-full"
+                              style={{ background: '#F1F5F9', color: '#64748B', fontWeight: 600, fontSize: '0.65rem' }}>
+                              +{rest}
+                            </span>
+                          )}
+                        </span>
+                      )
+                    })()}
+                  </td>
                   <td className="px-4 py-3">
                     {item._branch ? (
                       <span className="text-xs px-2 py-0.5 rounded-full" style={{
@@ -645,7 +889,7 @@ function WaitlistTab({ branch }: { branch: string }) {
                 </tr>
                 {expanded === item.landing_id && (
                   <tr key={item.landing_id + '-detail'}>
-                    <td colSpan={5} className="px-6 py-4" style={{ background: '#F8FAFC' }}>
+                    <td colSpan={COLS.length} className="px-6 py-4" style={{ background: '#F8FAFC' }}>
                       <div className="space-y-2">
                         <p className="text-xs font-bold uppercase" style={{ color: 'var(--teal)', letterSpacing: '0.05em' }}>Form Responses</p>
                         {(item.answers || []).map((a: any, i: number) => {
