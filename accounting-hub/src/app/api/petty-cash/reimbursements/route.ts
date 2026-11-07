@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { branchAllowed } from '@/lib/branch-scope'
 import { isMixedVat, netOfVat, vatBase, type VatSource } from '@/lib/vat'
+import { sharesProblem } from '@/lib/petty-cash-shares'
 
 // A CEO branch RFP keeps each entry's allocated portion in meta.items.
 // vatPortion is that portion's VAT part (absent on items saved before mixed-VAT
@@ -188,6 +189,9 @@ export async function POST(req: Request) {
         const entries = await tx.pettyCashEntry.findMany({
           where: { id: { in: entryIds }, branch: 'CEO', audited: true, validity },
         })
+        // An RFP pays the share, so never build one on a share that doesn't match its entry.
+        const offShares = entries.filter(e => sharesProblem(e.branchAllocations, e.grossAmount))
+        if (offShares.length) throw new Error(`Branch shares don't match the entry on ${offShares.map(e => e.pcvNumber).join(', ')}. Correct them in Petty Cash first.`)
         // Eligible = has a nonzero allocation to this branch and not already RFP'd for it.
         ceoEligible = entries.filter(e => {
           const map = (e.rfpBranchMap && typeof e.rfpBranchMap === 'object') ? e.rfpBranchMap as Record<string, string> : {}

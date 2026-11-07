@@ -3,7 +3,6 @@
 import { Suspense, useState, useEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { toChequeInput } from '@/lib/cheque-number'
-import { sharesAfterGrossChange } from '@/lib/petty-cash-shares'
 import { AccountPicker, type PickableAccount } from '@/components/AccountPicker'
 import { useFocusTarget } from '@/lib/use-focus-target'
 import { useSession } from 'next-auth/react'
@@ -21,6 +20,7 @@ import type { BVLine } from '@/lib/billing-voucher'
 import { isMixedVat, netOfVat as entryNet, vatBase, vatOf as entryVat } from '@/lib/vat'
 import { ExistingAssetPicker } from '@/components/ExistingAssetPicker'
 import { NameCombobox } from '@/components/NameCombobox'
+import { balanceShares, typeShare } from '@/lib/petty-cash-shares'
 
 // ── Constants ──────────────────────────────────────────────────
 const BRANCHES = [
@@ -458,11 +458,19 @@ function PettyCashInner() {
           method: 'PUT', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ id, ...patch }),
         })
+        if ('branchAllocations' in patch && !r.ok) {
+          const d = await r.json().catch(() => ({}))
+          alert(d.error || 'Could not save the branch shares.')
+          loadEntries(branch)
+          return
+        }
         // A title change can take the entry's assets out of Asset Management
-        // server-side — show the stamp the server kept, not the stale one.
-        if ('accountTitle' in patch && r.ok) {
+        // server-side — show the stamp the server kept, not the stale one. A new
+        // amount carries the branch shares with it, so show those too.
+        if (('accountTitle' in patch || 'grossAmount' in patch) && r.ok) {
           const u = await r.json().catch(() => null)
-          if (u && 'assetAddedAt' in u) patchLocal(id, { assetAddedAt: u.assetAddedAt })
+          if ('accountTitle' in patch && u && 'assetAddedAt' in u) patchLocal(id, { assetAddedAt: u.assetAddedAt })
+          if ('grossAmount' in patch && u && 'branchAllocations' in u) patchLocal(id, { branchAllocations: u.branchAllocations })
         }
       } catch { /* ignore */ }
     }
@@ -609,15 +617,10 @@ function PettyCashInner() {
     const arr = getAllocArr(e).slice()
     const i = arr.findIndex(x => x.branch === bv)
     if (i >= 0) arr.splice(i, 1); else arr.push({ branch: bv, amount: 0 })
-    if (arr.length === 1) arr[0].amount = num(e.grossAmount)
-    saveAlloc(e, arr)
+    saveAlloc(e, balanceShares(arr, num(e.grossAmount)))
   }
   const setAllocAmt = (e: Entry, bv: string, val: string) => {
-    const arr = getAllocArr(e).slice()
-    const amt = Number(val) || 0
-    const i = arr.findIndex(x => x.branch === bv)
-    if (i >= 0) arr[i] = { branch: bv, amount: amt }; else arr.push({ branch: bv, amount: amt })
-    saveAlloc(e, arr, true)
+    saveAlloc(e, typeShare(getAllocArr(e), bv, val, num(e.grossAmount)), true)
   }
 
   const proofsOf = (e: Entry): string[] => {
@@ -1296,11 +1299,7 @@ function PettyCashInner() {
                             value={num(e.grossAmount) === 0 ? '' : String(e.grossAmount)} style={{ minWidth: 110 }}
                             onWheel={ev => ev.currentTarget.blur()}
                             onChange={ev => patchLocal(e.id, { grossAmount: ev.target.value })}
-                            onBlur={ev => {
-                              const gross = Number(ev.target.value) || 0
-                              const shares = sharesAfterGrossChange(e.branchAllocations, gross)
-                              saveField(e.id, { grossAmount: gross, ...(shares ? { branchAllocations: shares } : {}) }, false)
-                            }} />
+                            onBlur={ev => saveField(e.id, { grossAmount: Number(ev.target.value) || 0 }, false)} />
                         </td>
                         <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: lk ? 'transparent' : '#fafafa' }}>
                           <span className="px-2 py-1.5 block text-right" style={{ color: 'var(--mid-gray)' }}>{peso(netOfVat(e))}</span>
@@ -1359,16 +1358,19 @@ function PettyCashInner() {
                             <div className="px-1 py-1" style={{ minWidth: 210 }}>
                               {ALLOC_BRANCHES.map(b => {
                                 const checked = allocOf(e, b.value) !== undefined
+                                // The last ticked branch takes whatever the others leave (lib/petty-cash-shares).
+                                const fillsItself = checked && getAllocArr(e).at(-1)?.branch === b.value
                                 return (
                                   <div key={b.value} className="flex items-center gap-1 mb-0.5">
                                     <label className="flex items-center gap-1 text-[11px]" style={{ minWidth: 56 }}>
                                       <input type="checkbox" checked={checked} disabled={lk} onChange={() => toggleAlloc(e, b.value)} /> {b.label}
                                     </label>
-                                    <input type="number" step="0.01" disabled={lk || !checked} placeholder="0"
+                                    <input type="number" step="0.01" disabled={lk || !checked || fillsItself} placeholder="0"
+                                      title={fillsItself ? 'Fills itself with the rest of the entry' : undefined}
                                       value={checked ? String(allocOf(e, b.value) ?? '') : ''}
                                       onWheel={ev => ev.currentTarget.blur()}
                                       onChange={ev => setAllocAmt(e, b.value, ev.target.value)}
-                                      className="w-20 px-1 py-0.5 text-[11px] border rounded text-right" style={{ borderColor: 'var(--light-gray)' }} />
+                                      className="w-20 px-1 py-0.5 text-[11px] border rounded text-right" style={{ borderColor: 'var(--light-gray)', ...(fillsItself ? { background: 'var(--off-white)' } : {}) }} />
                                   </div>
                                 )
                               })}

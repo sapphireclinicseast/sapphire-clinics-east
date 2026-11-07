@@ -3,7 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { branchAllowed, canViewPettyCashCeoVerdana, PETTY_CASH_VIEW_ONLY_BRANCHES } from '@/lib/branch-scope'
 import { retagEntryAssets } from '@/lib/asset-entry-retag'
-import { sharesAfterGrossChange } from '@/lib/petty-cash-shares'
+import { balanceShares, namedShares, sharesForNewGross, sharesProblem } from '@/lib/petty-cash-shares'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 const VALID_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE', 'AURA_INSTITUTE', 'CEO']
@@ -232,10 +232,19 @@ export async function PUT(req: Request) {
       }
     }
     if ('branchAllocations' in body) data.branchAllocations = body.branchAllocations ?? null
-    else if ('grossAmount' in data) {
-      // Here as well as on the screen, so no caller can leave a one-branch share behind.
-      const shares = sharesAfterGrossChange(existing.branchAllocations, data.grossAmount)
-      if (shares) data.branchAllocations = shares
+    // Branch shares always add up to the entry (lib/petty-cash-shares): sent shares
+    // are checked against the amount, and a new amount carries the shares with it.
+    if ('branchAllocations' in data || 'grossAmount' in data) {
+      const gross = 'grossAmount' in data ? data.grossAmount : existing.grossAmount
+      if ('branchAllocations' in data) {
+        const sent = namedShares(data.branchAllocations)
+        const shares = sent.length === 1 ? balanceShares(sent, gross) : sent
+        const problem = sharesProblem(shares, gross)
+        if (problem) return NextResponse.json({ error: problem }, { status: 400 })
+        if (data.branchAllocations) data.branchAllocations = shares
+      } else if (namedShares(existing.branchAllocations).length) {
+        data.branchAllocations = sharesForNewGross(existing.branchAllocations, gross)
+      }
     }
     // Only a VAT entry can have a VAT part.
     if ('vatable' in body && body.vatable !== 'VAT') data.vatPortion = null

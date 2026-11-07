@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { retagEntryAssets } from '@/lib/asset-entry-retag'
+import { namedShares, sharesForNewGross } from '@/lib/petty-cash-shares'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 
@@ -21,7 +22,12 @@ export async function PATCH(req: Request) {
     if ('date' in body) data.date = body.date ? new Date(body.date) : null
     if ('accountTitle' in body) data.accountTitle = body.accountTitle || null
     if ('description' in body) data.description = body.description || null
-    if ('grossAmount' in body) data.grossAmount = Number(body.grossAmount) || 0
+    if ('grossAmount' in body) {
+      data.grossAmount = Number(body.grossAmount) || 0
+      // Branch shares follow the entry's amount (lib/petty-cash-shares).
+      const current = await prisma.pettyCashEntry.findUnique({ where: { id }, select: { branchAllocations: true } })
+      if (namedShares(current?.branchAllocations).length) data.branchAllocations = sharesForNewGross(current?.branchAllocations, data.grossAmount)
+    }
     // Assets made from this entry follow its Account Title — same rule as the
     // main entries PUT (lib/asset-entry-retag).
     if ('accountTitle' in data) {
