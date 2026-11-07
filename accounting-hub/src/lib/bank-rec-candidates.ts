@@ -427,16 +427,31 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
       },
     })
     if (billLines.length) {
-      const settled = new Set((await prisma.journalEntry.findMany({
+      // A bill stays open for whatever its settlements have not covered, and
+      // closes once they cover it. Counted from the entries, in PHP, because the
+      // bank lines behind them may be in another currency.
+      const paid = new Map<string, number>()
+      for (const j of await prisma.journalEntry.findMany({
         where: { referenceId: { in: billLines.map(l => `APSETTLE:${l.journalEntry.id}`) } },
-        select: { referenceId: true },
-      })).map(j => (j.referenceId || '').slice('APSETTLE:'.length)))
+        select: { referenceId: true, totalAmount: true },
+      })) {
+        const billId = (j.referenceId || '').slice('APSETTLE:'.length)
+        paid.set(billId, (paid.get(billId) ?? 0) + num(j.totalAmount))
+      }
+      const bills = new Map<string, { entry: (typeof billLines)[number]['journalEntry']; credit: number }>()
       for (const l of billLines) {
-        if (settled.has(l.journalEntry.id)) continue
+        const b = bills.get(l.journalEntry.id)
+        if (b) b.credit += num(l.credit)
+        else bills.set(l.journalEntry.id, { entry: l.journalEntry, credit: num(l.credit) })
+      }
+      for (const { entry, credit } of bills.values()) {
+        const already = Math.round((paid.get(entry.id) ?? 0) * 100) / 100
+        if (credit - already <= 0.005) continue
         out.push({
-          type: 'AP_BILL', id: l.journalEntry.id,
-          label: `${(l.journalEntry.description || 'Payable bill').slice(0, 140)} · unpaid A/P bill`,
-          date: l.journalEntry.entryDate, amount: num(l.credit), dir: 'out',
+          type: 'AP_BILL', id: entry.id,
+          label: `${(entry.description || 'Payable bill').slice(0, 140)} · unpaid A/P bill`,
+          date: entry.entryDate, amount: credit, dir: 'out',
+          settled: { in: 0, out: already },
         })
       }
     }
@@ -519,7 +534,8 @@ async function markSettled(list: Candidate[]) {
   }
   for (const c of list) {
     const s = by.get(c.id)
-    if (s) c.settled = s
+    // An A/P bill already carries what its settlement entries covered.
+    if (s && c.type !== 'AP_BILL') c.settled = s
   }
 }
 

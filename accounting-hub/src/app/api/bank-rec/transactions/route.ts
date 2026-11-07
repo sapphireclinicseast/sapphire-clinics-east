@@ -510,7 +510,9 @@ export async function PATCH(req: Request) {
       // replenishment is consumed once on each side, so what is checked is the
       // amount already matched in this line's direction — not merely whether
       // the record has been used before.
-      if (body.matchId && body.matchType) {
+      // An A/P bill is checked further down, against the entries that settled it,
+      // because its bank lines may be in another currency.
+      if (body.matchId && body.matchType && body.matchType !== 'AP_BILL') {
         // A combination match stores its record ids comma-joined, both in this
         // request and on lines already posted — every id must be checked, and a
         // record counts as used wherever its id appears inside a joined match.
@@ -575,8 +577,21 @@ export async function PATCH(req: Request) {
       const diffAccountId: string | null = body.differenceAccountId || null
       const isSpent = Number(txn.spent) > 0
       const bankAmt = isSpent ? Number(txn.spent) : Number(txn.received)
+      const bankAcct = await prisma.account.findUnique({ where: { id: txn.bankAccountId }, select: { currency: true, accountTitle: true } })
+      const cur = bankAcct?.currency || 'PHP'
+      // A/P bills are in PHP, so on an account held in another currency the line
+      // is stated in PHP at the rate for its date, the way categorise does it.
+      let apRate: number | null = null
+      if (body.matchType === 'AP_BILL' && body.matchId && isForeign(cur)) {
+        const rate = body.fxRate ? { phpPerUnit: Number(body.fxRate) } : await rateFor(cur, txn.date)
+        if (!rate || !(rate.phpPerUnit > 0)) {
+          return NextResponse.json({ error: `No ${cur} exchange rate is on file for ${txn.date.toISOString().slice(0, 10)}. Enter the rate for this line to post the A/P settlement.`, needsRate: true, currency: cur }, { status: 400 })
+        }
+        apRate = rate.phpPerUnit
+      }
+      const lineValue = apRate ? toPhp(bankAmt, apRate) : bankAmt
       // bank − records: positive means the bank moved more than the records explain.
-      const raw = diffAccountId ? Math.round((bankAmt - Number(body.recordsTotal ?? bankAmt)) * 100) / 100 : 0
+      const raw = diffAccountId ? Math.round((lineValue - Number(body.recordsTotal ?? lineValue)) * 100) / 100 : 0
       const hasDiff = Math.abs(raw) >= 0.005
       let diffPosting: {
         amount: number
@@ -588,10 +603,8 @@ export async function PATCH(req: Request) {
           return NextResponse.json({ error: 'The difference cannot go to this line\'s own bank account — the entry would cancel itself out.' }, { status: 400 })
         }
         if (hasDiff) {
-          const bankAcct = await prisma.account.findUnique({ where: { id: txn.bankAccountId }, select: { currency: true, accountTitle: true } })
-          const cur = bankAcct?.currency || 'PHP'
           let amount = Math.abs(raw)
-          if (isForeign(cur)) {
+          if (isForeign(cur) && !apRate) {
             const rate = body.fxRate ? { phpPerUnit: Number(body.fxRate) } : await rateFor(cur, txn.date)
             if (!rate || !(rate.phpPerUnit > 0)) {
               return NextResponse.json({ error: `No ${cur} exchange rate is on file for ${txn.date.toISOString().slice(0, 10)}, so the difference cannot be stated in PHP.`, needsRate: true, currency: cur }, { status: 400 })
@@ -624,11 +637,15 @@ export async function PATCH(req: Request) {
           where: { id: body.matchId as string },
           include: { lines: { include: { account: { select: { accountNumber: true } } } } },
         })
-        const payLine = bill?.lines.find(l => Number(l.credit) > 0 && ['4010', '5040'].includes(l.account.accountNumber))
+        const payLines = bill?.lines.filter(l => Number(l.credit) > 0 && ['4010', '5040'].includes(l.account.accountNumber)) ?? []
+        const payLine = payLines[0]
         if (!bill || !payLine) return NextResponse.json({ error: 'That record is not an open payable bill.' }, { status: 400 })
         if (!isSpent || !(bankAmt > 0)) return NextResponse.json({ error: 'An A/P bill settles a money-out bank line.' }, { status: 400 })
-        const already = await prisma.journalEntry.findFirst({ where: { referenceId: `APSETTLE:${bill.id}` } })
-        if (already) return NextResponse.json({ error: 'That bill is already settled by another bank line.' }, { status: 400 })
+        // Each bank line of a part payment posts its own settlement, so a bill is
+        // open for whatever those have not covered and closes once they cover it.
+        const settledSoFar = await prisma.journalEntry.aggregate({ where: { referenceId: `APSETTLE:${bill.id}` }, _sum: { totalAmount: true } })
+        const billLeft = Math.round((payLines.reduce((t, l) => t + Number(l.credit), 0) - Number(settledSoFar._sum.totalAmount || 0)) * 100) / 100
+        if (billLeft <= 0.005) return NextResponse.json({ error: 'That bill is already settled in full by other bank lines.' }, { status: 400 })
         const preQb = txn.date < new Date(Date.UTC(2026, 0, 1))
         // The difference entry is BANK_REC, which QB-era statements never read.
         if (preQb && hasDiff) {
@@ -636,11 +653,14 @@ export async function PATCH(req: Request) {
         }
         // The settlement clears the bill and the difference carries the rest of
         // the line, so together they move the bank by exactly the line's amount.
-        const settleAmt = hasDiff ? Math.round((bankAmt - raw) * 100) / 100 : bankAmt
+        const settleAmt = hasDiff ? Math.round((lineValue - raw) * 100) / 100 : lineValue
+        if (settleAmt > billLeft + 0.005) {
+          return NextResponse.json({ error: `This line comes to ${money(settleAmt)}, but only ${money(billLeft)} is left on this bill. Tick the bill and choose an account for the ${money(settleAmt - billLeft)} difference.` }, { status: 400 })
+        }
         const je = await prisma.journalEntry.create({
           data: {
             entryDate: txn.date,
-            description: `A/P settlement — ${bill.description || 'bill'} — bank: ${txn.description}`.slice(0, 250),
+            description: `A/P settlement — ${bill.description || 'bill'} — bank: ${txn.description}${apRate ? ` (${money(bankAmt)} ${cur} @ ${apRate})` : ''}`.slice(0, 250),
             referenceType: preQb ? 'QB_IMPORT_JE' : 'AP_SETTLEMENT',
             referenceId: `APSETTLE:${bill.id}`,
             branch: bill.branch, totalAmount: settleAmt,
@@ -668,7 +688,7 @@ export async function PATCH(req: Request) {
         })
         diffJournalId = je.id
       }
-      await prisma.bankTransaction.update({ where: { id }, data: { status: 'POSTED', matchType: body.matchType || 'MANUAL', matchId: body.matchId || null, matchLabel: body.matchLabel || null, categoryAccountId: null, journalEntryId: apJournalId ?? diffJournalId } })
+      await prisma.bankTransaction.update({ where: { id }, data: { status: 'POSTED', matchType: body.matchType || 'MANUAL', matchId: body.matchId || null, matchLabel: body.matchLabel || null, categoryAccountId: null, journalEntryId: apJournalId ?? diffJournalId, ...(apRate ? { fxRate: apRate } : {}) } })
       return NextResponse.json({ success: true, differenceJournalEntryId: diffJournalId })
     }
     // Cash drawn from a branch's petty cash account into the officer's hands.

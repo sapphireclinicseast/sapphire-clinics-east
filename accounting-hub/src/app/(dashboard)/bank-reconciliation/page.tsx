@@ -562,7 +562,7 @@ export default function BankReconciliationPage() {
       {showUpload && account && <UploadModal bankAccountId={account.id} onClose={() => setShowUpload(false)} onDone={async () => { setShowUpload(false); await refreshAll() }} />}
       {showAdd && account && <AddModal bankAccountId={account.id} onClose={() => setShowAdd(false)} onDone={async () => { setShowAdd(false); await refreshAll() }} />}
       {catFor && <CategoriseModal txn={catFor} coa={coa} account={account} onClose={() => setCatFor(null)} onDone={async () => { setCatFor(null); await refreshAll() }} />}
-      {matchFor && <MatchModal txn={matchFor} coa={coa} onClose={() => setMatchFor(null)} onCategorise={() => { setCatFor(matchFor); setMatchFor(null) }} onDone={async () => { setMatchFor(null); await refreshAll() }} />}
+      {matchFor && <MatchModal txn={matchFor} coa={coa} account={account} onClose={() => setMatchFor(null)} onCategorise={() => { setCatFor(matchFor); setMatchFor(null) }} onDone={async () => { setMatchFor(null); await refreshAll() }} />}
       {splitFor && <SplitModal txn={splitFor} money={money} onClose={() => setSplitFor(null)} onDone={async () => { setSplitFor(null); await refreshAll() }} />}
     </div>
   )
@@ -1103,8 +1103,13 @@ function PosSettlementPicker({ txn, onDone }: { txn: Txn; onDone: () => void }) 
   )
 }
 
-function MatchModal({ txn, coa, onClose, onDone, onCategorise }: { txn: Txn; coa: Coa[]; onClose: () => void; onDone: () => void; onCategorise: () => void }) {
+function MatchModal({ txn, coa, account, onClose, onDone, onCategorise }: { txn: Txn; coa: Coa[]; account: BankAcct | null; onClose: () => void; onDone: () => void; onCategorise: () => void }) {
   const [matches, setMatches] = useState<Match[] | null>(null)
+  // An A/P bill is in PHP, so a line on a foreign-currency account is stated in
+  // PHP to compare with it and to post it, at this rate or the one on file.
+  const foreign = !!account && account.currency !== 'PHP'
+  const [rateOnFile, setRateOnFile] = useState<number | null>(null)
+  const [rateInput, setRateInput] = useState('')
   // Where the sliver goes when the ticked records don't reach the bank amount
   // to the centavo (bank interest, a charge, a rounding difference).
   const [diffAcct, setDiffAcct] = useState('')
@@ -1130,7 +1135,7 @@ function MatchModal({ txn, coa, onClose, onDone, onCategorise }: { txn: Txn; coa
       if (from) p.set('from', from)
       if (to) p.set('to', to)
       fetch(`/api/bank-rec/matches?${p}`).then(r => r.ok ? r.json() : { matches: [] })
-        .then(d => { setMatches(d.matches || []); setPartials(d.partials || []); setBigger(d.bigger || []) })
+        .then(d => { setMatches(d.matches || []); setPartials(d.partials || []); setBigger(d.bigger || []); setRateOnFile(d.fx?.rate ?? null) })
         .catch(() => { setMatches([]); setPartials([]) })
     }, q.trim() ? 350 : 0)
     return () => clearTimeout(t)
@@ -1154,9 +1159,9 @@ function MatchModal({ txn, coa, onClose, onDone, onCategorise }: { txn: Txn; coa
       // record is often months from the deposit (a subscription recorded at
       // year end, paid in June) and is then reached by search rather than by
       // the suggestions.
-      const isPart = m.type !== 'INTERBANK' && m.type !== 'INTERBANK_RFP' && m.type !== 'POS_SALE' && m.type !== 'POS_DAY' && m.amount > target + 0.01
+      const isPart = m.type !== 'INTERBANK' && m.type !== 'INTERBANK_RFP' && m.type !== 'POS_SALE' && m.type !== 'POS_DAY' && m.amount > lineFor(m) + 0.01
       const partLabel = isPart
-        ? `Part payment ₱${peso(target)} of ₱${peso(m.amount)} · ${m.label}`.slice(0, 500)
+        ? `Part payment ₱${peso(lineFor(m))} of ₱${peso(m.amount)} · ${m.label}`.slice(0, 500)
         : m.label
       // An INTERBANK_RFP candidate pairs the two legs AND settles the named
       // RFP in one confirmation — its id carries "<counterpartLineId>|<rfpId>".
@@ -1164,7 +1169,7 @@ function MatchModal({ txn, coa, onClose, onDone, onCategorise }: { txn: Txn; coa
         ? { id: txn.id, action: 'match-interbank', counterpartId: m.id }
         : m.type === 'INTERBANK_RFP'
         ? { id: txn.id, action: 'match-interbank', counterpartId: m.id.split('|')[0], rfpId: m.id.split('|')[1] }
-        : { id: txn.id, action: 'match', matchType: m.type, matchId: m.id, matchLabel: partLabel }
+        : { id: txn.id, action: 'match', matchType: m.type, matchId: m.id, matchLabel: partLabel, ...(m.type === 'AP_BILL' && effRate > 0 ? { fxRate: effRate } : {}) }
       const r = await fetch('/api/bank-rec/transactions', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d.error || 'Failed to match'); return }
       onDone()
@@ -1183,8 +1188,14 @@ function MatchModal({ txn, coa, onClose, onDone, onCategorise }: { txn: Txn; coa
   })
   const selList = Object.values(sel)
   const target = txn.spent > 0 ? txn.spent : txn.received
+  const effRate = foreign ? (Number(rateInput) || rateOnFile || 0) : 0
+  const targetPhp = effRate > 0 ? Math.round(target * effRate * 100) / 100 : target
+  const lineText = `${foreign ? `${account!.currency} ` : '₱'}${peso(target)}`
+  const lineFor = (m: Match) => (m.type === 'AP_BILL' ? targetPhp : target)
+  const apOnly = selList.length > 0 && selList.every(m => m.type === 'AP_BILL')
+  const selTarget = apOnly ? targetPhp : target
   const selTotal = Math.round(selList.reduce((s, m) => s + m.amount, 0) * 100) / 100
-  const selDiff = Math.round((selTotal - target) * 100) / 100
+  const selDiff = Math.round((selTotal - selTarget) * 100) / 100
 
   const pickMany = async () => {
     if (selList.length < 1) return
@@ -1204,6 +1215,7 @@ function MatchModal({ txn, coa, onClose, onDone, onCategorise }: { txn: Txn; coa
         matchId: selList.map(m => m.id).join(','),
         matchLabel: label.slice(0, 500),
         ...(selDiff !== 0 && diffAcct ? { differenceAccountId: diffAcct, recordsTotal: selTotal } : {}),
+        ...(apOnly && effRate > 0 ? { fxRate: effRate } : {}),
       }
       const r = await fetch('/api/bank-rec/transactions', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d.error || 'Failed to match'); return }
@@ -1225,7 +1237,24 @@ function MatchModal({ txn, coa, onClose, onDone, onCategorise }: { txn: Txn; coa
   }
   return (
     <Modal title="Match to a recorded transaction" onClose={onClose}>
-      <p className="text-sm mb-3" style={{ color: 'var(--mid-gray)' }}>{txn.date} · {txn.description} · <strong>₱{peso(txn.spent > 0 ? txn.spent : txn.received)}</strong></p>
+      <p className="text-sm mb-3" style={{ color: 'var(--mid-gray)' }}>{txn.date} · {txn.description} · <strong>{lineText}</strong></p>
+
+      {foreign && txn.spent > 0 && (
+        <div className="rounded-xl border px-3 py-2 mb-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+          <p className="text-[11px] mb-1.5" style={{ color: 'var(--mid-gray)' }}>
+            A/P bills are in PHP, so this line settles one at the rate below. Other records are not affected.
+          </p>
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>PHP per 1 {account!.currency}</label>
+            <input value={rateInput} onChange={e => setRateInput(e.target.value)} inputMode="decimal"
+              placeholder={rateOnFile ? String(rateOnFile) : '0.0000'}
+              className="w-28 px-2 py-1 rounded-lg border text-xs font-mono" style={{ borderColor: 'var(--light-gray)' }} />
+            <span className="text-xs font-semibold ml-auto" style={{ color: 'var(--deep-teal)' }}>
+              {effRate > 0 ? `= ₱${peso(targetPhp)}` : 'no rate on file'}
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Money in: offer settling a batch of POS order payments (daily cash
           deposit / card-GCash settlement, net of mode deductions). */}
@@ -1295,7 +1324,7 @@ function MatchModal({ txn, coa, onClose, onDone, onCategorise }: { txn: Txn; coa
               <div className="rounded-xl border px-3 py-2 flex items-center justify-between gap-3 flex-wrap"
                 style={{ borderColor: selDiff === 0 ? '#16a34a' : 'var(--gold)', background: selDiff === 0 ? '#dcfce7' : '#fefce8' }}>
                 <div className="text-xs" style={{ color: 'var(--charcoal)' }}>
-                  <strong>{selList.length} selected</strong> · ₱{peso(selTotal)} of ₱{peso(target)}
+                  <strong>{selList.length} selected</strong> · ₱{peso(selTotal)} of ₱{peso(selTarget)}
                   <span className="ml-2 font-semibold" style={{ color: selDiff === 0 ? '#166534' : '#b45309' }}>
                     {selDiff === 0 ? 'adds up exactly' : `${selDiff > 0 ? 'over' : 'short'} by ₱${peso(Math.abs(selDiff))}`}
                   </span>
@@ -1326,7 +1355,7 @@ function MatchModal({ txn, coa, onClose, onDone, onCategorise }: { txn: Txn; coa
                 <button onClick={() => pick(selList[0])} disabled={busy}
                   className="px-3 py-1.5 rounded-xl text-xs font-semibold text-white disabled:opacity-50"
                   style={{ background: 'var(--teal)' }}>
-                  Record ₱{peso(target)} as part payment
+                  Record ₱{peso(selTarget)} as part payment
                 </button>
               </div>
             )}
@@ -1378,7 +1407,7 @@ function MatchModal({ txn, coa, onClose, onDone, onCategorise }: { txn: Txn; coa
                   Or combine several records
                 </p>
                 <p className="text-[11px] mb-2" style={{ color: 'var(--mid-gray)' }}>
-                  Smaller records in the same period — tick the ones this deposit paid for until they add up to ₱{peso(target)}.
+                  Smaller records in the same period — tick the ones this deposit paid for until they add up to {lineText}.
                 </p>
                 <div className="space-y-1.5">
                   {partials.map(m => (
@@ -1406,7 +1435,7 @@ function MatchModal({ txn, coa, onClose, onDone, onCategorise }: { txn: Txn; coa
                   Or this line is part of a bigger record
                 </p>
                 <p className="text-[11px] mb-2" style={{ color: 'var(--mid-gray)' }}>
-                  Records larger than ₱{peso(target)} in the same period. Pick one if this deposit paid only part of it — the rest stays open for the other bank lines that made it up.
+                  Records larger than {lineText} in the same period. Pick one if this deposit paid only part of it — the rest stays open for the other bank lines that made it up.
                 </p>
                 <div className="space-y-1.5">
                   {bigger.map(m => (
@@ -1416,7 +1445,7 @@ function MatchModal({ txn, coa, onClose, onDone, onCategorise }: { txn: Txn; coa
                       <span className="min-w-0">
                         <span className="block text-sm font-semibold truncate" style={{ color: 'var(--charcoal)' }}>{m.label}</span>
                         <span className="block text-[11px]" style={{ color: 'var(--mid-gray)' }}>
-                          {m.date} · this line covers ₱{peso(target)}, leaving ₱{peso(Math.round((m.amount - target) * 100) / 100)}
+                          {m.date} · this line covers ₱{peso(lineFor(m))}, leaving ₱{peso(Math.round((m.amount - lineFor(m)) * 100) / 100)}
                         </span>
                       </span>
                       <span className="text-sm font-semibold whitespace-nowrap" style={{ color: 'var(--deep-teal)' }}>₱{peso(m.amount)}</span>

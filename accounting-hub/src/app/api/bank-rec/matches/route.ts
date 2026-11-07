@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { candidates, forDirection, remainingOn } from '@/lib/bank-rec-candidates'
 import { posSettlementShapes } from '@/lib/pos-settlement-shapes'
+import { isForeign, rateFor, toPhp } from '@/lib/fx'
 
 const WINDOW_DAYS = 7
 // A currency exchange settles within a few days of being keyed, so both the
@@ -187,6 +188,11 @@ export async function GET(req: Request) {
 
   const isSpent = Number(txn.spent) > 0
   const amount = isSpent ? Number(txn.spent) : Number(txn.received)
+  // A/P bills are in PHP, so on an account held in another currency they are
+  // compared with the line's PHP value at the rate for its date.
+  const lineCurrency = (await prisma.account.findUnique({ where: { id: txn.bankAccountId }, select: { currency: true } }))?.currency
+  const lineRate = isForeign(lineCurrency) ? (await rateFor(lineCurrency as string, txn.date))?.phpPerUnit ?? null : null
+  const lineFor = (c: { type: string }) => (c.type === 'AP_BILL' && lineRate ? toPhp(amount, lineRate) : amount)
 
   // Explicit search: ?q= filters candidate labels, ?from/?to= widen the date
   // window. Either one switches off the same-amount requirement — the point is
@@ -244,7 +250,7 @@ export async function GET(req: Request) {
   const out = forDirection(all, isSpent)
     .filter(c => searching
       ? (!q || c.label.toLowerCase().includes(q))
-      : (gte(c.date) && near(remOf(c), amount) && (!c.fx || withinFxWindow(c.date, txn.date))))
+      : (gte(c.date) && near(remOf(c), lineFor(c)) && (!c.fx || withinFxWindow(c.date, txn.date))))
     .map(c => row(c))
 
   // Closest dates first.
@@ -256,7 +262,7 @@ export async function GET(req: Request) {
   // in the same window as a combinable part, for the picker to tick and total.
   const chosen = new Set(out.map(c => `${c.type}-${c.id}`))
   const partials = searching ? [] : forDirection(all, isSpent)
-    .filter(c => gte(c.date) && !c.fx && remOf(c) > 0 && remOf(c) < amount - 0.01
+    .filter(c => gte(c.date) && !c.fx && remOf(c) > 0 && remOf(c) < lineFor(c) - 0.01
       && !chosen.has(`${c.type}-${c.id}`))
     .map(c => row(c, { partial: true }))
     .sort((a, b) => Math.abs(+new Date(a.date) - +txn.date) - Math.abs(+new Date(b.date) - +txn.date))
@@ -269,7 +275,7 @@ export async function GET(req: Request) {
   // larger than this line as part payments — matching one leaves the record
   // available for the other lines, since a match posts no entry of its own.
   const bigger = searching ? [] : forDirection(all, isSpent)
-    .filter(c => gte(c.date) && !c.fx && remOf(c) > amount + 0.01
+    .filter(c => gte(c.date) && !c.fx && remOf(c) > lineFor(c) + 0.01
       && !chosen.has(`${c.type}-${c.id}`))
     .map(c => row(c, { partOf: true }))
     .sort((a, b) => Math.abs(+new Date(a.date) - +txn.date) - Math.abs(+new Date(b.date) - +txn.date))
@@ -360,5 +366,6 @@ export async function GET(req: Request) {
     partials,
     bigger,
     searching,
+    fx: isForeign(lineCurrency) ? { currency: lineCurrency, rate: lineRate } : null,
   })
 }

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { rateFor } from '@/lib/fx'
 import { prisma } from '@/lib/prisma'
-import { candidates, forDirection } from '@/lib/bank-rec-candidates'
+import { candidates, forDirection, remainingOn } from '@/lib/bank-rec-candidates'
 import { ruleMatches } from '@/lib/bank-rec-rules'
 
 // Which bank lines look like they correspond to something already recorded in
@@ -190,9 +190,10 @@ export async function GET(req: Request) {
       continue
     }
 
-    const hit = forDirection(recorded, out).find(c => within(c.date, t.date) && close(c.amount, amount))
+    // What is left of a record, as the Match picker offers it, not its face amount.
+    const hit = forDirection(recorded, out).find(c => within(c.date, t.date) && close(remainingOn(c, out), amount))
     if (hit) {
-      hints[t.id] = { kind: KIND[hit.type] || 'Recorded', label: hit.label, amount: hit.amount, date: dayKey(hit.date), n: 1 }
+      hints[t.id] = { kind: KIND[hit.type] || 'Recorded', label: hit.label, amount: remainingOn(hit, out), date: dayKey(hit.date), n: 1 }
       continue
     }
     if (out) continue        // the settlement shapes below are money-in only
