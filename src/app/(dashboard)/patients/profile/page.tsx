@@ -6,6 +6,7 @@ import {
   AlertTriangle, Users, Activity, CheckCircle, XCircle,
   Clock, RotateCcw, Loader2,
 } from 'lucide-react'
+import { CertificatesCard } from '@/components/patients/DischargeCertificates'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -349,6 +350,13 @@ export default function PatientProfilePage() {
 
           {/* Documents & Files */}
           <DocumentsCard patientId={p?.id ?? null} referralUrl={p?.referralUrl ?? null} pwdIdUrl={p?.pwdIdUrl ?? null} />
+
+          {/* Discharge certificates — beside Documents, since both are things
+              the patient is given rather than things the clinic records. */}
+          <CertificatesCard
+            patientId={p?.id ?? null}
+            patientName={p ? `${p.firstName ?? ''} ${p.lastName ?? ''}`.trim() : ''}
+          />
 
           {/* Session Stats */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">

@@ -1,15 +1,15 @@
 // GET /api/public/patients/certificates/[id]/file?token=…
 // Streams one of the signed-in patient's own discharge certificates.
 //
-// Ownership is checked HERE, against the portal token, and again by HR, which
-// is given the same id list and refuses anything outside it. Either check
-// alone would be enough today; both are kept because a certificate id is a
-// short opaque string that will end up in browser history and print dialogs,
-// and it must never be sufficient on its own to fetch somebody else's.
+// Ownership is checked against the portal token before anything is read. A
+// certificate id is a short opaque string that ends up in browser history and
+// print dialogs, so it is never sufficient on its own.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
 import { verifyPatientToken } from '@/lib/patient-session'
 import { linkedPatientIds } from '@/lib/patient-links'
+import { CERT_DIR, readStored } from '@/lib/certificate-files'
 
 export async function GET(
   req: NextRequest,
@@ -20,45 +20,25 @@ export async function GET(
   const session = verifyPatientToken(token)
   if (!session) return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
 
+  const row = await prisma.dischargeCertificate.findUnique({
+    where: { id }, select: { patientId: true, filePath: true },
+  })
+
+  // One 404 for "no such certificate" and for "not yours" alike: telling a
+  // caller which it was confirms that an id exists.
   const patientIds = await linkedPatientIds(session.patientId)
-  if (patientIds.length === 0) {
+  if (!row || !patientIds.includes(row.patientId)) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
-  const base = process.env.HR_PLATFORM_URL || 'http://127.0.0.1:3457'
-  const key  = process.env.HR_PLATFORM_API_KEY || process.env.EXTERNAL_API_KEY || ''
-  if (!key) {
-    console.error('[patients/certificates/file] no HR service key configured')
-    return NextResponse.json({ error: 'Not available' }, { status: 503 })
-  }
+  const buf = await readStored(CERT_DIR, row.filePath)
+  if (!buf) return NextResponse.json({ error: 'File missing on disk' }, { status: 404 })
 
-  let upstream: Response
-  try {
-    const url = new URL(`${base}/external/discharge-certificates/${encodeURIComponent(id)}/file`)
-    url.searchParams.set('patientIds', patientIds.join(','))
-    upstream = await fetch(url, {
-      headers: { 'x-api-key': key },
-      cache: 'no-store',
-      signal: AbortSignal.timeout(15000),
-    })
-  } catch (err) {
-    console.error('[patients/certificates/file] HR unreachable:', (err as Error).message)
-    return NextResponse.json({ error: 'Certificate temporarily unavailable' }, { status: 502 })
-  }
-
-  // HR answers 404 both for "no such certificate" and "not this patient's".
-  // Pass that through unchanged rather than distinguishing them — telling a
-  // caller which of the two it was confirms that an id exists.
-  if (!upstream.ok) {
-    return NextResponse.json({ error: 'Not found' }, { status: upstream.status === 404 ? 404 : 502 })
-  }
-
-  const buf = Buffer.from(await upstream.arrayBuffer())
   return new NextResponse(buf as unknown as BodyInit, {
     headers: {
       'Content-Type': 'application/pdf',
       // inline: families open these to look at and print, not to file away.
-      'Content-Disposition': `inline; filename="discharge-certificate.pdf"`,
+      'Content-Disposition': 'inline; filename="discharge-certificate.pdf"',
       'Cache-Control': 'private, no-store',
     },
   })
