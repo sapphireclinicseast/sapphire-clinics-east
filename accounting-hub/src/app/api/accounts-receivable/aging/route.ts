@@ -2,7 +2,8 @@
  * AR Aging & Days-Outstanding dashboard API
  *
  * Returns:
- *   - totalAR            GL: sum of (totalGlAmount - arPaid) per wallet
+ *   - totalAR            GL: sum of (totalGlAmount - arPaid) per wallet; a branch
+ *                        view counts letters of that branch and ALL
  *                        HMO: sum of unpaid outstanding order amounts
  *   - totalRevenue       netAmount total of COMPLETED orders in the window
  *   - arDaysOverall      (totalAR / totalRevenue) * periodDays  (DSO, days)
@@ -54,8 +55,11 @@ export async function GET(req: Request) {
   const isGL = type === 'GL'
 
   try {
+    // A GL letter belongs to a branch (or to ALL, funding every branch), so a
+    // branch view counts only its own letters — the rule GL Summary uses. HMO
+    // wallets serve every branch; their AR is scoped through the orders below.
     const wallets = await prisma.digitalWallet.findMany({
-      where: { walletType: type, isActive: true },
+      where: { walletType: type, isActive: true, ...(isGL && branch ? { branch: { in: [branch, 'ALL'] } } : {}) },
       select: { id: true, patientName: true, totalGlAmount: true, agency: true, dateObtained: true, createdAt: true },
       orderBy: { patientName: 'asc' },
     })

@@ -481,6 +481,26 @@ function ProofCell({ orderId, currentUrl, onChange }: {
   )
 }
 
+// Read while a tab's figures are still loading. One shared empty list, so memos
+// that depend on it don't recompute on every render.
+const NO_ROWS: never[] = []
+
+// Stands in for a summary until its own figures arrive, so no number shows
+// until it is the right one.
+function SummaryLoading({ title }: { title: string }) {
+  return (
+    <div className="rounded-2xl border p-4 space-y-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }} aria-busy="true">
+      <h2 className="text-base font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>{title}</h2>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {[0, 1, 2].map(i => (
+          <div key={i} className="rounded-xl border h-28 animate-pulse motion-reduce:animate-none" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }} />
+        ))}
+      </div>
+      <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Loading…</p>
+    </div>
+  )
+}
+
 export default function AccountsReceivablePage() {
   const { data: session } = useSession()
   const role = (session?.user as { role?: string })?.role || ''
@@ -534,15 +554,27 @@ export default function AccountsReceivablePage() {
     else { setConsSortKey(k); setConsSortDir('asc') }
   }
 
-  const [wallets, setWallets] = useState<ARWallet[]>([])
-  const [orders, setOrders] = useState<AROrder[]>([])
-  const [arPayments, setArPayments] = useState<ARPaymentRecord[]>([])
+  const [walletsLoaded, setWallets] = useState<ARWallet[]>([])
+  const [ordersLoaded, setOrders] = useState<AROrder[]>([])
+  const [arPaymentsLoaded, setArPayments] = useState<ARPaymentRecord[]>([])
   // Detailed GL entries created without a POS wallet behind them.
-  const [glCases, setGlCases] = useState<GlCaseRow[]>([])
+  const [glCasesLoaded, setGlCases] = useState<GlCaseRow[]>([])
   // Full-history totals from the API. The `orders` list is capped at 500, so
   // summary figures must come from here or older years drop out silently.
-  const [summary, setSummary] = useState<ARSummary | null>(null)
+  const [summaryLoaded, setSummary] = useState<ARSummary | null>(null)
   const [loading, setLoading] = useState(true)
+  // Which tab, branch and filters the figures above belong to. Until the answer for
+  // the current ones arrives the page shows nothing, not the last tab's figures:
+  // switching between HMO and GL used to flash the other tab's totals first.
+  const dataKey = [tab, branch, dateFrom, dateTo, walletFilter].join('|')
+  const [dataFor, setDataFor] = useState('')
+  const dataReady = dataFor === dataKey
+  const wallets = dataReady ? walletsLoaded : NO_ROWS
+  const orders = dataReady ? ordersLoaded : NO_ROWS
+  const arPayments = dataReady ? arPaymentsLoaded : NO_ROWS
+  const glCases = dataReady ? glCasesLoaded : NO_ROWS
+  const summary = dataReady ? summaryLoaded : null
+  const fetchCtl = useRef<AbortController | null>(null)
 
   // Aging dashboard state
   type AgingBucket = 'b0_30' | 'b31_60' | 'b61_90' | 'b90plus'
@@ -551,10 +583,12 @@ export default function AccountsReceivablePage() {
     aging: { b0_30: number; b31_60: number; b61_90: number; b90plus: number };
     orderIdsByBucket: Record<AgingBucket, string[]>;
   }
-  const [agingData, setAgingData] = useState<{
-    periodDays: number; totalAR: number; totalRevenue: number; totalAllDeptRevenue: number; arDaysOverall: number; perWallet: AgingRow[];
+  const [agingLoaded, setAgingData] = useState<{
+    key: string; periodDays: number; totalAR: number; totalRevenue: number; totalAllDeptRevenue: number; arDaysOverall: number; perWallet: AgingRow[];
   } | null>(null)
   const [agingPeriodDays, setAgingPeriodDays] = useState(90)
+  // Same rule as the figures above: the dashboard shows only its own tab's numbers.
+  const agingData = agingLoaded?.key === `${tab}|${branch}|${agingPeriodDays}` ? agingLoaded : null
   // When user clicks a cell, filter the orders table to that bucket's ids
   const [bucketFilterIds, setBucketFilterIds] = useState<string[] | null>(null)
   const [bucketFilterLabel, setBucketFilterLabel] = useState('')
@@ -761,6 +795,11 @@ export default function AccountsReceivablePage() {
 
   const fetchData = useCallback(async () => {
     if (tab === 'OTHERS' || tab === 'TUITION') return // Others / Tuition fetch their own data
+    // A slower answer for the tab just left must never land on this one.
+    fetchCtl.current?.abort()
+    const ctl = new AbortController()
+    fetchCtl.current = ctl
+    const key = [tab, branch, dateFrom, dateTo, walletFilter].join('|')
     setLoading(true)
     try {
       const params = new URLSearchParams({ type: tab, sortField, sortDir })
@@ -768,19 +807,25 @@ export default function AccountsReceivablePage() {
       if (dateFrom) params.set('dateFrom', dateFrom)
       if (dateTo) params.set('dateTo', dateTo)
       if (walletFilter) params.set('walletId', walletFilter)
-      const res = await fetch(`/api/accounts-receivable?${params}`)
+      const res = await fetch(`/api/accounts-receivable?${params}`, { signal: ctl.signal })
       const data = await res.json()
+      if (ctl.signal.aborted) return
       setWallets(data.wallets || [])
       setOrders(data.orders || [])
       setArPayments(data.arPayments || [])
       setGlCases(data.glCases || [])
       setSummary(data.summary || null)
+      setDataFor(key)
     } catch {
+      if (ctl.signal.aborted) return
+      setWallets([])
       setOrders([])
+      setArPayments([])
       setGlCases([])
       setSummary(null)
+      setDataFor(key)
     } finally {
-      setLoading(false)
+      if (!ctl.signal.aborted) setLoading(false)
     }
   }, [tab, branch, dateFrom, dateTo, walletFilter, sortField, sortDir])
 
@@ -843,7 +888,8 @@ export default function AccountsReceivablePage() {
         const r = await fetch(`/api/accounts-receivable/aging?${p}`, { signal: ctl.signal })
         if (!r.ok) return
         const d = await r.json()
-        setAgingData(d)
+        if (ctl.signal.aborted) return
+        setAgingData({ ...d, key: `${tab}|${branch}|${agingPeriodDays}` })
       } catch { /* ignore abort / network */ }
     }
     load()
@@ -1548,7 +1594,7 @@ export default function AccountsReceivablePage() {
         <div className="flex items-center gap-3">
           <div className="text-right">
             <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Total Receivable ({tab})</p>
-            <p className="text-lg font-bold" style={{ color: 'var(--deep-teal)' }}>{formatCurrency(totalReceivable)}</p>
+            <p className="text-lg font-bold" style={{ color: 'var(--deep-teal)' }}>{dataReady ? formatCurrency(totalReceivable) : '—'}</p>
           </div>
           {/* For HMO the Record Payment button lives in its Payment History sub-tab. */}
           {canWrite && tab !== 'HMO' && (
@@ -1686,7 +1732,8 @@ export default function AccountsReceivablePage() {
       )}
 
       {/* ── GL Summary: % consumed, % paid, department pie chart ── */}
-      {tab === 'GL' && (() => {
+      {tab === 'GL' && !dataReady && <SummaryLoading title="GL Summary" />}
+      {tab === 'GL' && dataReady && (() => {
         // Per-session agencies have no approved amount, so they are left out of the
         // approved-basis percentages — including them would divide a consumed figure
         // by a denominator that does not contain it.
@@ -1859,7 +1906,8 @@ export default function AccountsReceivablePage() {
       })()}
 
       {/* ── HMO Summary ── */}
-      {tab === 'HMO' && hmoSubTab === 'overview' && (() => {
+      {tab === 'HMO' && hmoSubTab === 'overview' && !dataReady && <SummaryLoading title="HMO Summary" />}
+      {tab === 'HMO' && hmoSubTab === 'overview' && dataReady && (() => {
         const totalProviders = wallets.length
         // Billed comes from the API's full-history aggregate, not the capped
         // `orders` list — otherwise 2024/2025 orders are excluded from the total.
@@ -2262,7 +2310,7 @@ export default function AccountsReceivablePage() {
             <tbody>
               {shownPayments.length === 0 && (
                 <tr><td colSpan={12} className="text-center py-8 text-xs" style={{ color: 'var(--mid-gray)' }}>
-                  {arPayments.length > 0
+                  {!dataReady ? 'Loading payments…' : arPayments.length > 0
                     ? (paySearch.trim()
                         ? `No payment matches “${paySearch.trim()}”.`
                         : 'No payment matches the column filters.')
@@ -2457,6 +2505,9 @@ export default function AccountsReceivablePage() {
             onFilter={(k, v) => setConsFilters(f => ({ ...f, [k]: v }))}
           />
           <tbody>
+            {!dataReady && (
+              <tr><td colSpan={consumptionCols.length} className="px-3 py-6 text-center text-xs" style={{ color: 'var(--mid-gray)' }}>Loading…</td></tr>
+            )}
             {/* Approved-SOA agencies first, then the per-session ones under their own
                 heading: they are read differently, so they are not mixed in. */}
             {consumptionRows.map((w, i, arr) => {
