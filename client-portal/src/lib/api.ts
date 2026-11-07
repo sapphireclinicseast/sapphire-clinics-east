@@ -400,6 +400,31 @@ export function homeProgressFileUrl(fileId: string, token: string) {
   return `${API_BASE}/patients/home-progress/file/${encodeURIComponent(fileId)}?token=${encodeURIComponent(token)}`
 }
 
+/* ── Discharge certificates ──────────────────────────────────────────────────
+   Issued by front desk in the HR Platform; the hub reads them through on the
+   patient's behalf. The portal never talks to HR directly. */
+
+export interface DischargeCertificateRow {
+  id: string
+  service: string
+  /** Already worded for print, e.g. "7 November 2026". */
+  awardedOn: string
+  dischargeDate: string
+  therapistName: string
+  managerName: string
+}
+
+export function listCertificates(token: string) {
+  return jsonFetch<{ certificates: DischargeCertificateRow[] }>(
+    `/patients/certificates?token=${encodeURIComponent(token)}`,
+  )
+}
+
+// Same-origin URL for opening a certificate PDF.
+export function certificateFileUrl(id: string, token: string) {
+  return `${API_BASE}/patients/certificates/${encodeURIComponent(id)}/file?token=${encodeURIComponent(token)}`
+}
+
 // Multipart upload of one media file with progress (%), via XHR.
 export function uploadHomeProgressFile(
   token: string,
