@@ -845,7 +845,7 @@ export async function computeLedgerStatements(
       payments: {
         select: {
           method: true, amount: true, walletId: true,
-          paymentMode: { select: { account: { select: { accountNumber: true } }, settlementBankAccount: { select: { accountNumber: true } }, deductions: { select: { rate: true, valueType: true, account: { select: { accountNumber: true } } } } } },
+          paymentMode: { select: { account: { select: { accountNumber: true } }, settlementBankAccount: { select: { accountNumber: true } }, deductions: { select: { rate: true, valueType: true, effectiveFrom: true, effectiveTo: true, account: { select: { accountNumber: true } } } } } },
         },
       },
     },
@@ -917,10 +917,18 @@ export async function computeLedgerStatements(
       }
       let net = amt
       for (const d of p.paymentMode?.deductions || []) {
-        const dAmt = d.valueType === 'PERCENT' || Number(d.rate) < 1 ? amt * Number(d.rate) / (d.valueType === 'PERCENT' ? 100 : 1) : Number(d.rate)
-        if (!dAmt || !d.account) continue
+        /* Same rule as the live posting (post-order.ts dedAmt): valueType is
+           "PERCENTAGE" (the default, % of gross) or "FIXED" (pesos), rounded
+           to the centavo. This used to test for "PERCENT", a value the column
+           never holds, so a 2.2% card MDR was taken as a flat ₱2.20. A
+           deduction counts only when the SALE date falls in its rate era
+           [effectiveFrom, effectiveTo] (netOfDeductions in pos-settlement-shapes). */
+        if (d.effectiveFrom && o.transactionDate < d.effectiveFrom) continue
+        if (d.effectiveTo && o.transactionDate > d.effectiveTo) continue
+        const dAmt = round2(d.valueType === 'FIXED' ? Number(d.rate) : amt * Number(d.rate) / 100)
+        if (dAmt <= 0 || !d.account) continue
         lines.push({ acct: byNumber.get(d.account.accountNumber) || parseAccountKey(`${d.account.accountNumber} deduction`), debit: dAmt })
-        net -= dAmt
+        net = round2(net - dAmt)
       }
       /* Synthesized history: cash goes where it actually SETTLED. Modes now
          point at a clearing account for sale-time posting (live JEs reclass
