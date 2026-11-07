@@ -43,9 +43,11 @@ const isPre2026Settlement = (e: LinkedEntry) =>
 // the caller, which is updating or deleting the line anyway. A link to an entry
 // that no longer exists counts as neither deleted nor kept.
 export async function removeOwnedEntries(db: Db, lines: LinkedLine[]): Promise<{ deleted: number; kept: number }> {
-  // A POS settlement batch holds its order payments captive; release it with the
-  // line so the payments can settle again (and its reclass entry goes below).
-  const settled = lines.filter(l => l.matchType === 'POS_SETTLEMENT').map(l => l.id)
+  // A settlement batch holds its order payments captive; release it with the line
+  // so the payments can settle again (and a reclass entry goes below). AUB/card
+  // deposits carry POS_SETTLEMENT; BDO cash deposits keep SALES_DEPOSIT and hang
+  // their batch off the line (bdo-cash-match).
+  const settled = lines.filter(l => l.matchType === 'POS_SETTLEMENT' || l.matchType === 'SALES_DEPOSIT').map(l => l.id)
   if (settled.length) await db.posSettlementBatch.deleteMany({ where: { bankTransactionId: { in: settled } } })
   const linked = lines.filter(l => l.journalEntryId)
   if (linked.length === 0) return { deleted: 0, kept: 0 }
