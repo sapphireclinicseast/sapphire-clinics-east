@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { loadSupplierNameIndex, snapRegisteredName } from '@/lib/supplier-snap-server'
 import { branchAllowed, canViewPettyCashCeoVerdana, PETTY_CASH_VIEW_ONLY_BRANCHES } from '@/lib/branch-scope'
 import { retagEntryAssets } from '@/lib/asset-entry-retag'
 import { balanceShares, namedShares, sharesForNewGross, sharesProblem } from '@/lib/petty-cash-shares'
@@ -231,6 +232,8 @@ export async function PUT(req: Request) {
         else data[f] = body[f] === '' ? null : body[f]
       }
     }
+    // A near-miss of a supplier we already have is saved under that supplier (lib/supplier-snap).
+    if (data.registeredName) data.registeredName = snapRegisteredName(data.registeredName, await loadSupplierNameIndex(prisma)).name
     if ('branchAllocations' in body) data.branchAllocations = body.branchAllocations ?? null
     // Branch shares always add up to the entry (lib/petty-cash-shares): sent shares
     // are checked against the amount, and a new amount carries the shares with it.

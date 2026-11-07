@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { loadSupplierNameIndex, snapRegisteredName } from '@/lib/supplier-snap-server'
 import { Prisma } from '@prisma/client'
 import { postJournalEntry } from '@/lib/accounting/posting'
 import { fromAnnualPct, fromMonthlyAmort } from '@/lib/amortization'
@@ -91,6 +92,14 @@ function chargeRows(b: any): { date: Date; description: string; registeredName: 
 // Deducted charges are marked paid from the loan's bank, so the bank reconciliation
 // nets them against the gross principal inflow.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
+// A bank charge's Registered Name that is a near-miss of a known supplier is
+// saved under that supplier (lib/supplier-snap).
+async function snapChargeNames<T extends { registeredName: string | null }>(charges: T[]): Promise<T[]> {
+  if (!charges.some(c => c.registeredName)) return charges
+  const names = await loadSupplierNameIndex(prisma)
+  return charges.map(c => (c.registeredName ? { ...c, registeredName: snapRegisteredName(c.registeredName, names).name } : c))
+}
+
 async function createChargeEntry(tx: any, c: { date: Date; description: string; registeredName: string | null; vatable: string | null; amount: number; siNumber: string | null; chargeAccountId: string | null; deductedFromDebit: boolean; proofUrls: string[] }, loan: { name: string; dateAcquired: Date; bankAccountId: string | null }, userId: string): Promise<string> {
   const branch = 'CEO'
   let accountTitle: string | null = null
@@ -177,7 +186,7 @@ export async function POST(req: Request) {
     const interest = computeInterest({ ...b, principalAmount: principal })
     const alloc = allocationRows(b, principal)
     if (alloc.error) return NextResponse.json({ error: alloc.error }, { status: 400 })
-    const charges = chargeRows(b)
+    const charges = await snapChargeNames(chargeRows(b))
     const deducted = charges.filter(c => c.deductedFromDebit).reduce((s, c) => s + c.amount, 0)
     const netDebit = Math.round((principal - deducted) * 100) / 100
     const created = await prisma.$transaction(async (tx) => {
@@ -208,7 +217,7 @@ export async function PUT(req: Request) {
     const interest = computeInterest({ ...b, principalAmount: principal })
     const alloc = allocationRows(b, principal)
     if (alloc.error) return NextResponse.json({ error: alloc.error }, { status: 400 })
-    const charges = chargeRows(b)
+    const charges = await snapChargeNames(chargeRows(b))
     const deducted = charges.filter(c => c.deductedFromDebit).reduce((s, c) => s + c.amount, 0)
     const netDebit = Math.round((principal - deducted) * 100) / 100
     await prisma.$transaction(async (tx) => {

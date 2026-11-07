@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { loadSupplierNameIndex, snapRegisteredName } from '@/lib/supplier-snap-server'
 import { branchAllowed } from '@/lib/branch-scope'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
@@ -66,6 +67,10 @@ export async function POST(req: Request) {
       return { branch: b, cents, vat }
     })
 
+    // A near-miss of a known supplier is saved under that supplier (lib/supplier-snap).
+    const typedSupplier = str(body.registeredName)
+    const supplierName = typedSupplier ? snapRegisteredName(typedSupplier, await loadSupplierNameIndex(prisma)).name : null
+
     const created = await prisma.$transaction(async (tx) => {
       const out: { id: string; branch: string; pcvNumber: string; grossAmount: number }[] = []
       for (const s of shares) {
@@ -89,7 +94,7 @@ export async function POST(req: Request) {
             vatPortion: s.vat == null ? null : s.vat / 100,
             siNumber: str(body.siNumber),
             tinNumber: str(body.tinNumber),
-            registeredName: str(body.registeredName)?.toUpperCase() ?? null,
+            registeredName: supplierName,
             registeredAddress: str(body.registeredAddress)?.toUpperCase() ?? null,
             requestor: str(body.requestor),
             accountTitle: str(body.accountTitle),

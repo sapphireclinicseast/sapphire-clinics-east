@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { loadSupplierNameIndex, snapRegisteredName } from '@/lib/supplier-snap-server'
 import { branchAllowed } from '@/lib/branch-scope'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
@@ -46,6 +47,11 @@ export async function POST(req: Request) {
       }, { status: 400 })
     }
 
+    // Near-miss supplier names are filed under the supplier we already have;
+    // the reply lists each one so the person importing can see what changed.
+    const names = await loadSupplierNameIndex(prisma)
+    const snapped = new Map<string, string>()
+
     const created = await prisma.$transaction(async (tx) => {
       let settings = await tx.pettyCashSettings.findUnique({ where: { branch } })
       if (!settings) settings = await tx.pettyCashSettings.create({ data: { branch, nextPcvSeq: 1 } })
@@ -63,6 +69,11 @@ export async function POST(req: Request) {
           const v = row?.[f]
           if (v !== undefined && v !== null && String(v).trim() !== '') data[f] = f === 'registeredName' || f === 'registeredAddress' ? String(v).trim().toUpperCase() : String(v).trim()
         }
+        if (data.registeredName) {
+          const r = snapRegisteredName(data.registeredName, names)
+          if (r.snappedFrom) snapped.set(r.snappedFrom.toUpperCase(), r.name)
+          data.registeredName = r.name
+        }
         if (row?.grossAmount !== undefined && row?.grossAmount !== '') data.grossAmount = Number(row.grossAmount) || 0
         if (row?.date) {
           const d = new Date(row.date)
@@ -75,7 +86,7 @@ export async function POST(req: Request) {
       return out
     })
 
-    return NextResponse.json({ created: created.length, entries: created })
+    return NextResponse.json({ created: created.length, entries: created, suppliersMatched: [...snapped].map(([from, to]) => ({ from, to })) })
   } catch (e) {
     console.error('Petty cash import error:', e)
     return NextResponse.json({ error: 'Failed to import' }, { status: 500 })

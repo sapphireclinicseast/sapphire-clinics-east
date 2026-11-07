@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { loadSupplierNameIndex, snapRegisteredName } from '@/lib/supplier-snap-server'
 import { postJournalEntry } from '@/lib/accounting/posting'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
@@ -68,12 +69,14 @@ export async function POST(req: Request) {
       ]
     }
 
+    // A near-miss of a known supplier is saved under that supplier (lib/supplier-snap).
+    const supplierName = registeredName?.trim() ? snapRegisteredName(registeredName, await loadSupplierNameIndex(prisma)).name : null
     const line = await prisma.$transaction(async (tx) => {
       const created = await tx.cashAdvanceLine.create({
         data: {
           advanceId, kind, date: new Date(date), accountTitle: accountTitle?.trim() || null, description: description?.trim() || null,
           vatable: kind === 'LIQUIDATION' ? (vatable || 'Non-VAT') : null, amount: amt, siNumber: siNumber?.trim() || null,
-          registeredName: registeredName?.trim() || null, proofUrl: proofUrl || (Array.isArray(proofUrls) ? proofUrls[0] : null) || null,
+          registeredName: supplierName, proofUrl: proofUrl || (Array.isArray(proofUrls) ? proofUrls[0] : null) || null,
           proofUrls: Array.isArray(proofUrls) ? proofUrls : undefined, bankAccountId: bankAccountId || null, createdById: session.user!.id ?? null,
           requestor: kind === 'LIQUIDATION' ? (requestor?.trim() || null) : null,
           department: kind === 'LIQUIDATION' ? (department?.trim() || null) : null,

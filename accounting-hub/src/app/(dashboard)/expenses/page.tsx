@@ -23,6 +23,7 @@ import { isPayrollItem } from '@/lib/payroll-item-guard'
 import { isMixedVat, netOfVat as entryNet, vatBase, vatOf as entryVat } from '@/lib/vat'
 import { ExistingAssetPicker } from '@/components/ExistingAssetPicker'
 import { NameCombobox } from '@/components/NameCombobox'
+import { snapSupplierName, supplierNameIndex } from '@/lib/supplier-snap'
 
 // ── Constants ──────────────────────────────────────────────────
 const BRANCHES = [
@@ -299,7 +300,10 @@ function ExpensesInner() {
   const pickNames = pickSuppliers.map(s => s.registeredName)
   const pickHints = Object.fromEntries(pickSuppliers.filter(s => s.tin).map(s => [s.registeredName, s.tin]))
   // Saving a Registered Name: a known supplier brings its address and TIN along.
-  const supplierPatch = (name: string): Record<string, string> => {
+  // A near-miss of a known supplier ("SHOPPEE") is saved as that supplier and
+  // brings its address and TIN too — same rule the server applies (lib/supplier-snap).
+  const supplierPatch = (typed: string): Record<string, string> => {
+    const name = snapSupplierName(typed, supplierNameIndex(pickNames)).name
     const sup = pickByName.get(name.trim().toLowerCase())
     const patch: Record<string, string> = { registeredName: name.trim().toUpperCase() }
     if (sup?.registeredAddress) patch.registeredAddress = sup.registeredAddress
@@ -685,9 +689,11 @@ function ExpensesInner() {
         })
         // A title change can take the entry's assets out of Asset Management
         // server-side — show the stamp the server kept, not the stale one.
-        if ('accountTitle' in patch && r.ok) {
+        // The server may file a Registered Name under a known supplier — show what it saved.
+        if (('accountTitle' in patch || 'registeredName' in patch) && r.ok) {
           const u = await r.json().catch(() => null)
-          if (u && 'assetAddedAt' in u) patchLocal(id, { assetAddedAt: u.assetAddedAt })
+          if ('accountTitle' in patch && u && 'assetAddedAt' in u) patchLocal(id, { assetAddedAt: u.assetAddedAt })
+          if ('registeredName' in patch && u && 'registeredName' in u && u.registeredName !== patch.registeredName) patchLocal(id, { registeredName: u.registeredName })
         }
       } catch { /* ignore */ }
     }

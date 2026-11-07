@@ -20,6 +20,7 @@ import type { BVLine } from '@/lib/billing-voucher'
 import { isMixedVat, netOfVat as entryNet, vatBase, vatOf as entryVat } from '@/lib/vat'
 import { ExistingAssetPicker } from '@/components/ExistingAssetPicker'
 import { NameCombobox } from '@/components/NameCombobox'
+import { snapSupplierName, supplierNameIndex } from '@/lib/supplier-snap'
 import { balanceShares, typeShare } from '@/lib/petty-cash-shares'
 
 // ── Constants ──────────────────────────────────────────────────
@@ -275,7 +276,10 @@ function PettyCashInner() {
   const pickNames = pickSuppliers.map(s => s.registeredName)
   const pickHints = Object.fromEntries(pickSuppliers.filter(s => s.tin).map(s => [s.registeredName, s.tin]))
   // Saving a Registered Name: a known supplier brings its address and TIN along.
-  const supplierPatch = (name: string): Record<string, string> => {
+  // A near-miss of a known supplier ("SHOPPEE") is saved as that supplier and
+  // brings its address and TIN too — same rule the server applies (lib/supplier-snap).
+  const supplierPatch = (typed: string): Record<string, string> => {
+    const name = snapSupplierName(typed, supplierNameIndex(pickNames)).name
     const sup = pickByName.get(name.trim().toLowerCase())
     const patch: Record<string, string> = { registeredName: name.trim().toUpperCase() }
     if (sup?.registeredAddress) patch.registeredAddress = sup.registeredAddress
@@ -467,10 +471,12 @@ function PettyCashInner() {
         // A title change can take the entry's assets out of Asset Management
         // server-side — show the stamp the server kept, not the stale one. A new
         // amount carries the branch shares with it, so show those too.
-        if (('accountTitle' in patch || 'grossAmount' in patch) && r.ok) {
+        // The server may file a Registered Name under a known supplier — show what it saved.
+        if (('accountTitle' in patch || 'grossAmount' in patch || 'registeredName' in patch) && r.ok) {
           const u = await r.json().catch(() => null)
           if ('accountTitle' in patch && u && 'assetAddedAt' in u) patchLocal(id, { assetAddedAt: u.assetAddedAt })
           if ('grossAmount' in patch && u && 'branchAllocations' in u) patchLocal(id, { branchAllocations: u.branchAllocations })
+          if ('registeredName' in patch && u && 'registeredName' in u && u.registeredName !== patch.registeredName) patchLocal(id, { registeredName: u.registeredName })
         }
       } catch { /* ignore */ }
     }
@@ -568,7 +574,11 @@ function PettyCashInner() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ branch, rows }),
       })
-      if (res.ok) { const d = await res.json(); await loadEntries(branch); await loadSettings(branch); alert(`Imported ${d.created} row(s).`) }
+      if (res.ok) {
+        const d = await res.json(); await loadEntries(branch); await loadSettings(branch)
+        const matched = (d.suppliersMatched || []) as { from: string; to: string }[]
+        alert(`Imported ${d.created} row(s).` + (matched.length ? `\n\nSupplier names filed under the supplier already on record:\n${matched.map(m => `• ${m.from} → ${m.to}`).join('\n')}` : ''))
+      }
       else alert((await res.json()).error || 'Import failed')
     } catch (e) { console.error(e); alert('Could not read the file. Use the downloaded template (.xlsx or .csv).') }
     setImporting(false)
