@@ -101,6 +101,7 @@ interface InvoiceSetting {
 interface ARPaymentRecord {
   id: string
   walletId: string
+  wallet?: { patientName: string } | null
   paymentDate: string
   amount: number | string
   discount: number | string
@@ -977,7 +978,7 @@ export default function AccountsReceivablePage() {
       sort: (p: ARPaymentRecord) => new Date(p.paymentDate).getTime() },
     { key: 'ref',     label: 'Reference No.',   text: (p: ARPaymentRecord) => arRefOf(p.notes) },
     { key: 'si',      label: 'SI Number',       text: (p: ARPaymentRecord) => p.salesInvoiceNumber || '' },
-    { key: 'agency',  label: 'Provider/Agency', text: (p: ARPaymentRecord) => wallets.find(w => w.id === p.walletId)?.patientName || '' },
+    { key: 'agency',  label: 'Provider/Agency', text: (p: ARPaymentRecord) => wallets.find(w => w.id === p.walletId)?.patientName || p.wallet?.patientName || '' },
     { key: 'amount',  label: 'Amount',          text: (p: ARPaymentRecord) => formatCurrency(toNum(p.amount)),
       sort: (p: ARPaymentRecord) => toNum(p.amount), numeric: true },
     { key: 'discount', label: 'Discount',       text: (p: ARPaymentRecord) => toNum(p.discount) ? formatCurrency(toNum(p.discount)) : '',
@@ -1452,7 +1453,7 @@ export default function AccountsReceivablePage() {
       formatDate(p.paymentDate),
       arRefOf(p.notes) || '—',
       p.salesInvoiceNumber || '—',
-      wallets.find(w => w.id === p.walletId)?.patientName || '—',
+      wallets.find(w => w.id === p.walletId)?.patientName || p.wallet?.patientName || '—',
       money(toNum(p.amount)),
       money(toNum(p.discount)),
       p.cashAccount ? `${p.cashAccount.accountNumber} ${p.cashAccount.accountTitle}` : '—',
@@ -2285,7 +2286,7 @@ export default function AccountsReceivablePage() {
                       )}
                     </td>
                     <td className="px-3 py-2 font-mono" style={{ color: 'var(--charcoal)' }}>{p.salesInvoiceNumber || '—'}</td>
-                    <td className="px-3 py-2">{wallet?.patientName || '—'}</td>
+                    <td className="px-3 py-2">{wallet?.patientName || p.wallet?.patientName || '—'}</td>
                     <td className="px-3 py-2 font-medium" style={{ color: '#166534' }}>
                       {formatCurrency(toNum(p.amount))}
                       {toNum(p.overpayment) > 0 && (
@@ -2361,7 +2362,7 @@ export default function AccountsReceivablePage() {
                     id: p.id,
                     date: formatDate(p.paymentDate),
                     ref: arRefOf(p.notes) || p.salesInvoiceNumber || '',
-                    who: wallets.find(w => w.id === p.walletId)?.patientName || '—',
+                    who: wallets.find(w => w.id === p.walletId)?.patientName || p.wallet?.patientName || '—',
                     amount: toNum(p.amount),
                     flagged: /\[FOR REVIEW\]/i.test(p.notes || ''),
                   }))}

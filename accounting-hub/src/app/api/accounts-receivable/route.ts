@@ -399,6 +399,8 @@ export async function GET(req: Request) {
       select: {
         id: true,
         walletId: true,
+        // A payment keeps its payer's name after that wallet is deactivated.
+        wallet: { select: { patientName: true } },
         paymentDate: true,
         amount: true,
         discount: true,
