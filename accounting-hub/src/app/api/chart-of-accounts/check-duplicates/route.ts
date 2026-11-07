@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { accountTitleKey } from '@/lib/account-title'
 
 export async function POST(req: Request) {
   const session = await auth()
@@ -18,22 +19,17 @@ export async function POST(req: Request) {
     const numbers = accounts.map((a: { accountNumber: string }) => a.accountNumber?.trim()).filter(Boolean)
     const titles = accounts.map((a: { accountTitle: string }) => a.accountTitle?.trim()).filter(Boolean)
 
-    const existing = await prisma.account.findMany({
-      where: {
-        OR: [
-          ...(numbers.length > 0 ? [{ accountNumber: { in: numbers } }] : []),
-          ...(titles.length > 0 ? [{ accountTitle: { in: titles } }] : []),
-        ],
-      },
-      select: { accountNumber: true, accountTitle: true },
-    })
+    const existing = titles.length > 0
+      ? await prisma.account.findMany({ select: { accountNumber: true, accountTitle: true } })
+      : await prisma.account.findMany({ where: { accountNumber: { in: numbers } }, select: { accountNumber: true, accountTitle: true } })
 
     const existingNumbers = new Set(existing.map((e) => e.accountNumber))
-    const existingTitles = new Set(existing.map((e) => e.accountTitle.toLowerCase()))
+    // Same comparison the import itself enforces: case and extra spaces ignored.
+    const existingTitles = new Set(existing.map((e) => accountTitleKey(e.accountTitle)))
 
     const duplicates = accounts.map((acc: { accountNumber: string; accountTitle: string }, index: number) => {
       const numberMatch = existingNumbers.has(acc.accountNumber?.trim())
-      const titleMatch = existingTitles.has(acc.accountTitle?.trim().toLowerCase())
+      const titleMatch = !!acc.accountTitle?.trim() && existingTitles.has(accountTitleKey(acc.accountTitle))
 
       if (numberMatch || titleMatch) {
         return { index, numberMatch, titleMatch }

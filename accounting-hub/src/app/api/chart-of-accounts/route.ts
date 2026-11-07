@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { parsePagination, paginatedResult } from '@/lib/pagination'
+import { accountTitleKey, titleHolder, titleTakenMessage } from '@/lib/account-title'
 
 const VALID_TYPES = ['ASSET', 'LIABILITY', 'EQUITY', 'REVENUE', 'EXPENSE']
 const VALID_BALANCES = ['DEBIT', 'CREDIT']
@@ -112,6 +113,12 @@ export async function POST(req: Request) {
       }, { status: 409 })
     }
 
+    const named = titleHolder(
+      await prisma.account.findMany({ select: { id: true, accountNumber: true, accountTitle: true, isActive: true } }),
+      accountTitle,
+    )
+    if (named) return NextResponse.json({ error: titleTakenMessage(named) }, { status: 409 })
+
     const account = await prisma.account.create({
       data: {
         accountNumber: accountNumber.trim(),
@@ -199,6 +206,15 @@ export async function PUT(req: Request) {
       if (existing && existing.id !== id) {
         return NextResponse.json({ error: 'Account number already exists' }, { status: 409 })
       }
+    }
+
+    // Only a change of name is checked, so an account already sharing its name
+    // with an older one can still be edited (and the older one removed).
+    if (accountTitle?.trim()) {
+      const all = await prisma.account.findMany({ select: { id: true, accountNumber: true, accountTitle: true, isActive: true } })
+      const self = all.find((a) => a.id === id)
+      const named = self && accountTitleKey(self.accountTitle) === accountTitleKey(accountTitle) ? null : titleHolder(all, accountTitle, id)
+      if (named) return NextResponse.json({ error: titleTakenMessage(named) }, { status: 409 })
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

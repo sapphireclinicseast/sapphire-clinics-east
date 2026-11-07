@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { accountTitleKey, titleTakenMessage } from '@/lib/account-title'
 
 const VALID_TYPES = ['ASSET', 'LIABILITY', 'EQUITY', 'REVENUE', 'EXPENSE']
 const VALID_BALANCES = ['DEBIT', 'CREDIT']
@@ -68,9 +69,23 @@ export async function POST(req: Request) {
     let imported = 0
     const importErrors: { accountNumber: string; error: string }[] = []
 
+    // A name already in the chart, or repeated earlier in this same file, is
+    // refused per row like a repeated number.
+    const byTitle = new Map(
+      (await prisma.account.findMany({ select: { id: true, accountNumber: true, accountTitle: true, isActive: true } }))
+        .map((a) => [accountTitleKey(a.accountTitle), a]),
+    )
+
     for (const acc of validated) {
+      const row = acc as { accountNumber: string; accountTitle: string }
+      const named = byTitle.get(accountTitleKey(row.accountTitle))
+      if (named) {
+        importErrors.push({ accountNumber: row.accountNumber, error: titleTakenMessage(named) })
+        continue
+      }
       try {
-        await prisma.account.create({ data: acc as Parameters<typeof prisma.account.create>[0]['data'] })
+        const created = await prisma.account.create({ data: acc as Parameters<typeof prisma.account.create>[0]['data'] })
+        byTitle.set(accountTitleKey(created.accountTitle), created)
         imported++
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : 'Unknown error'
