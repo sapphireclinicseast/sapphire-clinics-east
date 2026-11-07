@@ -1087,6 +1087,10 @@ CREATE TABLE IF NOT EXISTS "HmoDirectory" (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS "HmoDirectory_walletId_key" ON "HmoDirectory"("walletId");
 CREATE INDEX IF NOT EXISTS "HmoDirectory_moaValidUntil_idx" ON "HmoDirectory"("moaValidUntil");
+-- A payable owed in another currency (A/P register).
+ALTER TABLE "APItem" ADD COLUMN IF NOT EXISTS "currency" TEXT NOT NULL DEFAULT 'PHP';
+ALTER TABLE "APItem" ADD COLUMN IF NOT EXISTS "foreignAmount" DECIMAL(65,30);
+ALTER TABLE "APItem" ADD COLUMN IF NOT EXISTS "fxRate" DECIMAL(65,30);
 SQL
 
 echo "Redeploy complete."

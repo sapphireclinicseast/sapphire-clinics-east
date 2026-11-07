@@ -4245,7 +4245,12 @@ model APItem {
   id                  String    @id @default(cuid())
   vendor              String
   description         String?
-  amount              Decimal
+  amount              Decimal // always PHP: what the 4010 balance carries for this item
+  // Owed in another currency: foreignAmount is the amount owed and fxRate is the
+  // PHP per 1 unit it was recorded at, which gives `amount`.
+  currency            String    @default("PHP")
+  foreignAmount       Decimal?
+  fxRate              Decimal?
   dateIncurred        DateTime
   branch              String    @default("ALL")
   status              String    @default("OPEN") // OPEN | CLOSED

@@ -1,9 +1,17 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { HOME_CURRENCY, isForeign, rateFor, toPhp } from '@/lib/fx'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 const AP_NUMBER = '4010'
+const FX_NUMBER = '8400' // Exchange Gain or Loss
+
+// The rate typed in, or the one on file for the date. Null asks the user for one.
+async function rateOn(currency: string, date: Date, typed: unknown): Promise<number | null> {
+  if (Number(typed) > 0) return Number(typed)
+  return (await rateFor(currency, date))?.phpPerUnit ?? null
+}
 
 async function apAccount() {
   const a = await prisma.account.findFirst({ where: { accountNumber: AP_NUMBER }, select: { id: true } })
@@ -45,10 +53,20 @@ export async function POST(req: Request) {
   if (!b.vendor?.trim()) return NextResponse.json({ error: 'Who is this payable to?' }, { status: 400 })
   if (!(amount > 0)) return NextResponse.json({ error: 'Enter the amount owed' }, { status: 400 })
   if (!b.dateIncurred) return NextResponse.json({ error: 'When was it incurred?' }, { status: 400 })
+  // The ledger is in PHP, so an amount owed in another currency is carried at its
+  // PHP value on the rate it was recorded at, and the foreign figures are kept.
+  const currency = String(b.currency || HOME_CURRENCY)
+  const dateIncurred = new Date(b.dateIncurred)
+  const fxRate = isForeign(currency) ? await rateOn(currency, dateIncurred, b.fxRate) : null
+  if (isForeign(currency) && !fxRate) {
+    return NextResponse.json({ error: `No ${currency} exchange rate is on file for ${b.dateIncurred}. Enter the rate.`, needsRate: true, currency }, { status: 400 })
+  }
   const item = await prisma.aPItem.create({
     data: {
       vendor: b.vendor.trim(), description: b.description?.trim() || null,
-      amount, dateIncurred: new Date(b.dateIncurred), branch: b.branch || 'ALL',
+      amount: fxRate ? toPhp(amount, fxRate) : amount,
+      currency, foreignAmount: fxRate ? amount : null, fxRate,
+      dateIncurred, branch: b.branch || 'ALL',
       createdById: session.user.id as string,
     },
   })
@@ -82,17 +100,34 @@ export async function PATCH(req: Request) {
     if (b.closeAccountId === apId) return NextResponse.json({ error: 'That is 4010 itself — the entry would cancel out' }, { status: 400 })
     const amount = Number(item.amount)
     const when = b.closedOn ? new Date(b.closedOn) : new Date()
+    // 4010 is relieved at what it carries. An item owed in another currency costs
+    // its foreign amount at the rate on the day it is paid, and the gap between
+    // the two is an exchange gain or loss.
+    let paid = amount
+    let fxNote = ''
+    if (isForeign(item.currency) && item.foreignAmount) {
+      const rate = await rateOn(item.currency, when, b.fxRate)
+      if (!rate) {
+        return NextResponse.json({ error: `No ${item.currency} exchange rate is on file for ${when.toISOString().slice(0, 10)}. Enter the rate it was paid at.`, needsRate: true, currency: item.currency }, { status: 400 })
+      }
+      paid = toPhp(Number(item.foreignAmount), rate)
+      fxNote = ` (${Number(item.foreignAmount).toLocaleString('en-PH', { minimumFractionDigits: 2 })} ${item.currency} @ ${rate})`
+    }
+    const fxGap = Math.round((paid - amount) * 100) / 100
+    const fxAccount = fxGap ? await prisma.account.findFirst({ where: { accountNumber: FX_NUMBER }, select: { id: true } }) : null
+    if (fxGap && !fxAccount) return NextResponse.json({ error: `No ${FX_NUMBER} Exchange Gain or Loss account in the chart` }, { status: 400 })
     const closed = await prisma.$transaction(async (tx) => {
       const je = await tx.journalEntry.create({
         data: {
           entryDate: when,
-          description: `AP settled — ${item.vendor}${item.description ? `: ${item.description}` : ''}${b.note ? ` (${b.note})` : ''}`,
+          description: `AP settled — ${item.vendor}${item.description ? `: ${item.description}` : ''}${fxNote}${b.note ? ` (${b.note})` : ''}`,
           referenceType: 'AP_SETTLEMENT', referenceId: item.id,
-          totalAmount: amount, createdById: session.user!.id as string,
+          totalAmount: Math.max(amount, paid), createdById: session.user!.id as string,
           lines: {
             create: [
               { accountId: apId, debit: amount, credit: 0, description: item.vendor },
-              { accountId: b.closeAccountId, debit: 0, credit: amount, description: item.vendor },
+              { accountId: b.closeAccountId, debit: 0, credit: paid, description: item.vendor },
+              ...(fxAccount ? [{ accountId: fxAccount.id, debit: Math.max(fxGap, 0), credit: Math.max(-fxGap, 0), description: `Exchange difference — ${item.vendor}`.slice(0, 250) }] : []),
             ],
           },
         },

@@ -10,6 +10,7 @@ import { FileText, Plus, Loader2, Trash2, CheckCircle2, RotateCcw, X } from 'luc
 
 interface Item {
   id: string; vendor: string; description: string | null; amount: string
+  currency: string; foreignAmount: string | null; fxRate: string | null
   dateIncurred: string; branch: string; status: string
   closedAt: string | null; closeAccountLabel: string | null; closeNote: string | null
 }
@@ -17,6 +18,23 @@ interface Coa { id: string; accountNumber: string; accountTitle: string }
 
 const peso = (v: number) => v.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
+const CURRENCIES = ['PHP', 'CNY', 'USD', 'EUR', 'JPY', 'KRW', 'SGD', 'HKD', 'GBP']
+
+/** The rate on file for a currency on a date, to suggest in a rate box. */
+function useRateOnFile(currency: string, date: string): number | null {
+  const [found, setFound] = useState<{ key: string; rate: number | null }>({ key: '', rate: null })
+  const key = `${currency}|${date}`
+  useEffect(() => {
+    if (currency === 'PHP') return
+    let stale = false
+    fetch(`/api/reports/fx-rate?currency=${currency}${date ? `&asOf=${date}` : ''}`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (!stale) setFound({ key, rate: Number(d?.phpPerUnit) > 0 ? Number(d.phpPerUnit) : null }) })
+      .catch(() => {})
+    return () => { stale = true }
+  }, [currency, date, key])
+  return currency !== 'PHP' && found.key === key ? found.rate : null
+}
 
 export default function AccountsPayablePage() {
   const { data: session } = useSession()
@@ -122,7 +140,12 @@ export default function AccountsPayablePage() {
                   <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{i.description || '—'}</td>
                   <td className="px-3 py-2 tabular-nums">{String(i.dateIncurred).slice(0, 10)}</td>
                   <td className="px-3 py-2 text-xs">{i.branch}</td>
-                  <td className="px-3 py-2 text-right tabular-nums font-semibold">₱{peso(Number(i.amount))}</td>
+                  <td className="px-3 py-2 text-right tabular-nums font-semibold">
+                    ₱{peso(Number(i.amount))}
+                    {i.currency !== 'PHP' && i.foreignAmount && (
+                      <span className="block text-[11px] font-normal" style={{ color: 'var(--mid-gray)' }}>{i.currency} {peso(Number(i.foreignAmount))} @ {Number(i.fxRate)}</span>
+                    )}
+                  </td>
                   {tab === 'CLOSED' && (
                     <td className="px-3 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>
                       {i.closeAccountLabel}{i.closedAt ? ` · ${String(i.closedAt).slice(0, 10)}` : ''}{i.closeNote ? ` · ${i.closeNote}` : ''}
@@ -173,11 +196,17 @@ function AddModal({ onClose, onDone }: { onClose: () => void; onDone: () => void
   const [amount, setAmount] = useState('')
   const [dateIncurred, setDateIncurred] = useState('')
   const [branch, setBranch] = useState('ALL')
+  const [currency, setCurrency] = useState('PHP')
+  const [rate, setRate] = useState('')
   const [busy, setBusy] = useState(false)
+  const foreign = currency !== 'PHP'
+  const rateOnFile = useRateOnFile(currency, dateIncurred)
+  const effRate = foreign ? (Number(rate) || rateOnFile || 0) : 0
   const save = async () => {
+    if (foreign && !(effRate > 0)) { alert(`Enter the PHP rate for 1 ${currency}.`); return }
     setBusy(true)
     try {
-      const r = await fetch('/api/accounts-payable', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ vendor, description, amount: Number(amount), dateIncurred, branch }) })
+      const r = await fetch('/api/accounts-payable', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ vendor, description, amount: Number(amount), dateIncurred, branch, currency, ...(foreign ? { fxRate: effRate } : {}) }) })
       if (!r.ok) { alert((await r.json()).error || 'Failed'); return }
       onDone()
     } finally { setBusy(false) }
@@ -191,12 +220,27 @@ function AddModal({ onClose, onDone }: { onClose: () => void; onDone: () => void
         <input value={vendor} onChange={e => setVendor(e.target.value)} placeholder="Vendor / who it is owed to" className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
         <input value={description} onChange={e => setDescription(e.target.value)} placeholder="What for (optional)" className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
         <div className="flex gap-2">
-          <input type="number" value={amount} onChange={e => setAmount(e.target.value)} placeholder="Amount" className="flex-1 px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
-          <input type="date" value={dateIncurred} onChange={e => setDateIncurred(e.target.value)} className="px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
-          <select value={branch} onChange={e => setBranch(e.target.value)} className="px-2 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }}>
+          <select value={currency} onChange={e => { setCurrency(e.target.value); setRate('') }} aria-label="Currency" className="px-2 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }}>
+            {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <input type="number" value={amount} onChange={e => setAmount(e.target.value)} placeholder={foreign ? `Amount in ${currency}` : 'Amount'} className="flex-1 min-w-0 px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+        </div>
+        <div className="flex gap-2">
+          <input type="date" value={dateIncurred} onChange={e => setDateIncurred(e.target.value)} className="flex-1 min-w-0 px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+          <select value={branch} onChange={e => setBranch(e.target.value)} className="flex-1 min-w-0 px-2 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }}>
             {['ALL', 'SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA', 'VERDANA_STORE'].map(b => <option key={b} value={b}>{b}</option>)}
           </select>
         </div>
+        {foreign && (
+          <div className="rounded-xl border px-3 py-2 flex items-center gap-2 flex-wrap" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+            <label className="text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>PHP per 1 {currency}</label>
+            <input value={rate} onChange={e => setRate(e.target.value)} inputMode="decimal" placeholder={rateOnFile ? String(rateOnFile) : '0.0000'}
+              className="w-28 px-2 py-1 rounded-lg border text-xs font-mono" style={{ borderColor: 'var(--light-gray)' }} />
+            <span className="text-xs font-semibold ml-auto" style={{ color: 'var(--deep-teal)' }}>
+              {effRate > 0 ? `= ₱${peso(Math.round(Number(amount) * effRate * 100) / 100)}` : 'no rate on file'}
+            </span>
+          </div>
+        )}
         <div className="flex justify-end gap-2 pt-2">
           <button onClick={onClose} className="px-4 py-2 rounded-xl text-sm border" style={{ borderColor: 'var(--light-gray)' }}>Cancel</button>
           <button onClick={save} disabled={busy} className="px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}>{busy ? <Loader2 className="animate-spin inline" size={14} /> : 'Add'}</button>
@@ -215,11 +259,18 @@ function CloseModal({ item, coa, onClose, onDone }: { item: Item; coa: Coa[]; on
   const [busy, setBusy] = useState(false)
   const filtered = useMemo(() => coa.filter(c => q && `${c.accountNumber} ${c.accountTitle}`.toLowerCase().includes(q.toLowerCase())).slice(0, 8), [coa, q])
   const chosen = coa.find(c => c.id === closeAccountId)
+  const foreign = item.currency !== 'PHP' && !!item.foreignAmount
+  const [rate, setRate] = useState('')
+  const rateOnFile = useRateOnFile(foreign ? item.currency : 'PHP', closedOn)
+  const effRate = foreign ? (Number(rate) || rateOnFile || 0) : 0
+  const paid = foreign && effRate > 0 ? Math.round(Number(item.foreignAmount) * effRate * 100) / 100 : Number(item.amount)
+  const fxGap = Math.round((paid - Number(item.amount)) * 100) / 100
   const save = async () => {
     if (!noJournal && !closeAccountId) { alert('Choose the account that settles this payable.'); return }
+    if (!noJournal && foreign && !(effRate > 0)) { alert(`Enter the PHP rate for 1 ${item.currency} it was paid at.`); return }
     setBusy(true)
     try {
-      const r = await fetch('/api/accounts-payable', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: item.id, action: 'close', closeAccountId, closedOn, note, noJournal }) })
+      const r = await fetch('/api/accounts-payable', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: item.id, action: 'close', closeAccountId, closedOn, note, noJournal, ...(foreign ? { fxRate: effRate } : {}) }) })
       if (!r.ok) { alert((await r.json()).error || 'Failed'); return }
       onDone()
     } finally { setBusy(false) }
@@ -227,7 +278,7 @@ function CloseModal({ item, coa, onClose, onDone }: { item: Item; coa: Coa[]; on
   return (
     <Modal title={`Close — ${item.vendor}`} onClose={onClose}>
       <p className="text-sm mb-3" style={{ color: 'var(--mid-gray)' }}>
-        ₱{peso(Number(item.amount))}{item.description ? ` · ${item.description}` : ''}. Closing posts
+        ₱{peso(Number(item.amount))}{foreign ? ` (${item.currency} ${peso(Number(item.foreignAmount))} @ ${Number(item.fxRate)})` : ''}{item.description ? ` · ${item.description}` : ''}. Closing posts
         {' '}<strong>Dr 4010 Accounts Payable / Cr the account below</strong> — the bank or petty cash it was paid from,
         or an income/equity account if it is being written off.
       </p>
@@ -250,6 +301,23 @@ function CloseModal({ item, coa, onClose, onDone }: { item: Item; coa: Coa[]; on
             </div>
           )}
         </div>
+        )}
+        {!noJournal && foreign && (
+          <div className="rounded-xl border px-3 py-2" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+            <div className="flex items-center gap-2 flex-wrap">
+              <label className="text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>Paid at: PHP per 1 {item.currency}</label>
+              <input value={rate} onChange={e => setRate(e.target.value)} inputMode="decimal" placeholder={rateOnFile ? String(rateOnFile) : '0.0000'}
+                className="w-28 px-2 py-1 rounded-lg border text-xs font-mono" style={{ borderColor: 'var(--light-gray)' }} />
+              <span className="text-xs font-semibold ml-auto" style={{ color: 'var(--deep-teal)' }}>
+                {effRate > 0 ? `= ₱${peso(paid)}` : 'no rate on file'}
+              </span>
+            </div>
+            {effRate > 0 && fxGap !== 0 && (
+              <p className="text-[11px] mt-1" style={{ color: 'var(--mid-gray)' }}>
+                ₱{peso(Math.abs(fxGap))} exchange {fxGap > 0 ? 'loss' : 'gain'} posts to 8400 Exchange Gain or Loss.
+              </p>
+            )}
+          </div>
         )}
         <div className="flex gap-2">
           <input type="date" value={closedOn} onChange={e => setClosedOn(e.target.value)} className="px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />

@@ -512,6 +512,11 @@ export const SECTIONS: Section[] = [
         `When it's paid, click **Close** on the row → either tick **"Already settled — close without posting"**, or pick the **Settling account** (search the chart), the date and a note. Closing posts **debit 4010 Accounts Payable / credit the settling account**.`,
         `**Reopen** on a closed row removes that settling entry.`,
       ] },
+      { k: 'sub', t: 'Payables in another currency' },
+      { k: 'steps', items: [
+        `In **Add payable**, change **PHP** to the currency owed, enter the amount in that currency and the **PHP rate**. The rate on file fills in; type over it if yours differs. The register carries the PHP value.`,
+        `When you **Close** it, enter the rate it was **paid at**. Any gap against the recorded rate posts to **8400 Exchange Gain or Loss**.`,
+      ] },
     ],
   },
   {
