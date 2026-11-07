@@ -34,6 +34,49 @@ async function hrFetch(path: string, opts: RequestInit = {}): Promise<Response> 
 // lib/followup-groups.ts so this tab and the SMS follow-up audiences read the
 // same rule; they used to be two copies that could silently disagree.
 
+// ── The "what service do you need" question on an intake form ────────────────
+// HR identifies this question by its title rather than by a per-form field id
+// (see scei-hr-platform api/routes/forms.js, service-options), because the id
+// differs on every form — JDDgcP6dDgDg on East registration, 1o03H9TqpiGY on
+// Greenhills, RNzQBYx1OVfK on ALAGA. Same approach here so a new intake form
+// needs no change on this side.
+//
+// Widened from HR's /what service/i to allow words in between: the group
+// therapy forms word it "What group therapy service does the patient need?".
+// Anchored at "what" so it cannot pick up "Type of Psychological Service" or
+// "History of Psychological Services", which are follow-up questions about a
+// service rather than the service being asked for. Verified to match exactly
+// one field on each of the six waitlist forms.
+const SERVICE_QUESTION = /^\s*what\b.*\bservice/i
+
+// HR stores "__other__" as a bare sentinel when someone ticks Other, and does
+// not keep the text they typed alongside it — so there is nothing to show but
+// the fact that it was Other. A handful of older submissions carry the literal
+// label "Other" instead. Folded together so the column and its filter offer
+// one bucket rather than two that mean the same thing.
+const OTHER_LABEL = 'Other'
+
+/** Services chosen on one form answer, in the order the patient picked them. */
+function serviceLabelsFrom(answer: any): string[] {
+  if (!answer) return []
+  const raw: string[] = [
+    ...(Array.isArray(answer.choices?.labels) ? answer.choices.labels : []),
+    answer.choices?.other,
+    answer.choice?.label,
+    answer.choice?.other,
+  ].filter((l): l is string => typeof l === 'string' && l.trim() !== '')
+
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const l of raw) {
+    const label = l === '__other__' ? OTHER_LABEL : l.trim()
+    if (seen.has(label)) continue
+    seen.add(label)
+    out.push(label)
+  }
+  return out
+}
+
 // Free cancellation allowance per 6-month window (before fees apply)
 const FREE_CANCELLATIONS = 2
 const CANCELLATION_WINDOW_DAYS = 180
@@ -95,22 +138,39 @@ export async function GET(req: NextRequest) {
         try {
           const res = await hrFetch(`/forms/external/${s.formId}/responses`, { cache: 'no-store' })
           const d = await res.json()
-          if (!d.ok || !d.items) return { s, items: [] as any[], failed: !d.ok }
-          return { s, items: d.items as any[], failed: false }
+          if (!d.ok || !d.items) return { s, items: [] as any[], fields: [] as any[], failed: !d.ok }
+          return { s, items: d.items as any[], fields: (d.fields ?? []) as any[], failed: false }
         } catch {
-          return { s, items: [] as any[], failed: true }
+          return { s, items: [] as any[], fields: [] as any[], failed: true }
         }
       }))
 
       const failedSources = settled.filter(r => r.failed).map(r => r.s.title)
-      for (const { s, items } of settled) {
+      for (const { s, items, fields } of settled) {
+        // HR returns the field list once per form, beside the responses, while
+        // each answer carries only a field id. Resolve the service question
+        // here — once per form, not once per row — and stamp the chosen labels
+        // onto every response, so the table can show and filter services
+        // without knowing anything about form ids.
+        const serviceFieldId: string | undefined = fields.find(
+          (f: any) => f?.type === 'multiple_choice' && SERVICE_QUESTION.test(f?.title ?? ''),
+        )?.id
+
         for (const item of items) {
+          // Absent when a form has no service question at all; empty when it
+          // has one the patient left blank. Both render as "—", but only the
+          // second is a gap in the submission.
+          const answer = serviceFieldId
+            ? (item.answers ?? []).find((a: any) => a?.field?.id === serviceFieldId)
+            : undefined
+
           responses.push({
             ...item,
             _branch: s.branch,
             _formTitle: s.title,
             _formId: s.formId,
             _formKey: s.key,
+            _services: serviceLabelsFrom(answer),
           })
         }
       }
