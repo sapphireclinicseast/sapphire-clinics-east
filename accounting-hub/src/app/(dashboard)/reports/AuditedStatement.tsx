@@ -6,8 +6,9 @@
  * Only the Income Statement, built from source records under the audit rules:
  *   · Sales WITH a Sales Invoice only (POS orders by SI-declared date,
  *     AR collections issued an SI, migrated workbook invoices)
- *   · Expenses tagged Valid only (VAT entries net of input VAT; payroll-pattern
- *     lines excluded — compensation reports from Payroll, never twice)
+ *   · Expenses tagged Valid only (VAT entries net of input VAT), under the rules
+ *     in lib/reports/audited-expense-rules. Salaries and consultant fees come
+ *     from these rows before April 2026, from Payroll after, never twice
  *   · All salaries to employees (finalized payslips, gross)
  *   · Professional fees ONLY for consultants with a BIR COR (2303) on file
  */
@@ -29,7 +30,13 @@ interface AuditedData {
   year: number
   branch: string
   sales: { orders: number[]; arCollections: number[]; migrated: number[]; byMonth: number[]; total: number; migratedUndated: number }
-  expenses: { lines: { title: string; byMonth: number[]; total: number }[]; byMonth: number[]; total: number; payrollPatternExcluded: number }
+  expenses: {
+    lines: { title: string; byMonth: number[]; total: number }[]
+    byMonth: number[]
+    total: number
+    leftOut: Record<'coveredByPayroll' | 'recurringSetup' | 'recurringCopy' | 'cardBill' | 'noValidSi', { count: number; amount: number }>
+    noBranch: { count: number; amount: number }
+  }
   salaries: { byMonth: number[]; total: number }
   professionalFees: { byMonth: number[]; total: number; excludedNoCorTotal: number; excludedNoCorCount: number }
   netIncome: { byMonth: number[]; total: number }
@@ -39,6 +46,9 @@ const n2 = (v: number) =>
   v === 0 ? '—' : v < 0
     ? `(${Math.abs(v).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`
     : v.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+const rowsNote = ({ count, amount }: { count: number; amount: number }, what: string) =>
+  count > 0 ? <p>· {count} {what} totalling ₱{amount.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</p> : null
 
 export default function AuditedStatement() {
   const now = new Date()
@@ -123,7 +133,7 @@ export default function AuditedStatement() {
       </div>
 
       <p className="text-xs print:hidden" style={{ color: 'var(--mid-gray)' }}>
-        Declarable view only: sales <strong>with a Sales Invoice</strong> (attributed to their SI declaration date), expenses tagged <strong>Valid</strong> (VAT entries net of input VAT), all <strong>employee salaries</strong>, and professional fees for consultants <strong>with a COR on file</strong>. Everything else is left out by design.
+        Declarable view only: sales <strong>with a Sales Invoice</strong> (attributed to their SI declaration date), expenses tagged <strong>Valid</strong> (VAT entries net of input VAT), all <strong>employee salaries</strong>, and professional fees for consultants <strong>with a COR on file</strong>. Payroll has no records before April 2026, so until then salaries and consultant fees appear under Valid Expenses, from their entries tagged Valid. Everything else is left out by design.
       </p>
 
       {loading ? (
@@ -168,7 +178,12 @@ export default function AuditedStatement() {
           <div className="rounded-xl border px-4 py-3 text-xs space-y-1 print:hidden" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
             <p><strong style={{ color: 'var(--charcoal)' }}>Left out by the audit rules:</strong></p>
             <p>· Professional fees without a COR: {data.professionalFees.excludedNoCorCount} payroll entr{data.professionalFees.excludedNoCorCount === 1 ? 'y' : 'ies'} totalling ₱{data.professionalFees.excludedNoCorTotal.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</p>
-            {data.expenses.payrollPatternExcluded > 0 && <p>· {data.expenses.payrollPatternExcluded} Valid expense entr{data.expenses.payrollPatternExcluded === 1 ? 'y' : 'ies'} with a salary/payroll pattern — compensation is reported from Payroll above, never twice</p>}
+            {rowsNote(data.expenses.leftOut.coveredByPayroll, 'salary or consultant fee entries from April 2026 onward, reported from Payroll above, never twice,')}
+            {rowsNote(data.expenses.leftOut.recurringSetup, 'recurring setups, because the one-time entries made from them are the expense,')}
+            {rowsNote(data.expenses.leftOut.recurringCopy, 'one-time copies of recurring entries that already count,')}
+            {rowsNote(data.expenses.leftOut.cardBill, 'card bill payments, because the card purchases are the expense and count once tagged Valid,')}
+            {rowsNote(data.expenses.leftOut.noValidSi, 'Valid entries whose memo says no valid SI,')}
+            {rowsNote(data.expenses.noBranch, 'Valid entries with no branch, which count only under All Branches,')}
             {data.sales.migratedUndated > 0 && <p>· {data.sales.migratedUndated} migrated workbook invoice(s) carry no date and cannot join a monthly statement</p>}
             <p>· Sales without a Sales Invoice, expenses tagged Invalid or untagged, and non-COR professional fees are excluded by design.</p>
           </div>

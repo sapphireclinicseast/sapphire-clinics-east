@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { enforceBranch } from '@/lib/branch-scope'
 import { parseMonitoringRemark } from '@/lib/si-monitoring'
 import { takenSiNumbers, isShadowedMonitoringFlag } from '@/lib/si-flag-guard'
-import { isPayrollItem } from '@/lib/payroll-item-guard'
+import { auditedBranchAmount, auditedExclusion, hasNoBranch, type AuditedExclusion } from '@/lib/reports/audited-expense-rules'
 import { otherMonthSessionPf } from '@/lib/payroll/pf-session-month'
 import { netOfVat } from '@/lib/vat'
 import { syncCorFromHr } from '@/lib/payroll/hr-cor-server'
@@ -20,9 +20,11 @@ import { syncCorFromHr } from '@/lib/payroll/hr-cor-server'
  *               month of siDeclaredDate when set, transactionDate otherwise,
  *               matching the With SI book), AR collections issued an SI, and
  *               dated invoices migrated from the manual SI monitoring workbook.
- *   Expenses  — petty-cash / one-time entries tagged Valid, excluding
- *               payroll-pattern lines (compensation is reported from Payroll
- *               below, never twice). VAT entries count net of input VAT.
+ *   Expenses  — petty-cash / one-time entries tagged Valid, under the rules in
+ *               lib/reports/audited-expense-rules. Before April 2026 these are
+ *               the only record of salaries and consultant fees; from then on
+ *               Payroll below reports them, never twice. VAT entries count net
+ *               of input VAT.
  *   Salaries  — every finalized employee payslip (gross pay).
  *   Prof fees — finalized consultant payroll gross, ONLY for consultants with
  *               a BIR Certificate of Registration (2303) on file.
@@ -122,24 +124,32 @@ export async function GET(req: Request) {
     /* ── Valid expenses (net of input VAT) ─────────────────────── */
     const entries = await prisma.pettyCashEntry.findMany({
       where: { validity: 'Valid', date: range },
-      select: { date: true, grossAmount: true, vatable: true, vatPortion: true, accountTitle: true, description: true, branch: true, branchAllocations: true },
+      select: { date: true, grossAmount: true, vatable: true, vatPortion: true, accountTitle: true, description: true, branch: true, branchAllocations: true, recordType: true, distributeMonthly: true, sourceRecurringId: true, skipReports: true },
     })
     const expenseByTitle = new Map<string, number[]>()
-    let payrollPatternExcluded = 0
+    const leftOut: Record<AuditedExclusion, { count: number; amount: number }> = {
+      coveredByPayroll: { count: 0, amount: 0 },
+      recurringSetup: { count: 0, amount: 0 },
+      recurringCopy: { count: 0, amount: 0 },
+      cardBill: { count: 0, amount: 0 },
+      noValidSi: { count: 0, amount: 0 },
+    }
+    const noBranch = { count: 0, amount: 0 }
     for (const e of entries) {
-      // Compensation is reported from Payroll below — a salary-pattern entry
-      // here would double-count it.
-      if (isPayrollItem(e)) { payrollPatternExcluded++; continue }
-      const allocs = (Array.isArray(e.branchAllocations) ? e.branchAllocations : []) as { branch?: string; amount?: number | string }[]
-      let gross = Number(e.grossAmount) || 0
-      if (branch !== 'ALL') {
-        if (allocs.some(a => a?.branch)) {
-          gross = allocs.filter(a => a?.branch === branch).reduce((s, a) => s + (Number(a.amount) || 0), 0)
-        } else if (e.branch !== branch) {
-          gross = 0
-        }
+      if (!e.date) continue
+      const why = auditedExclusion(e)
+      if (branch !== 'ALL' && !why && hasNoBranch(e)) {
+        noBranch.count++
+        noBranch.amount += Number(e.grossAmount) || 0
+        continue
       }
-      if (gross === 0 || !e.date) continue
+      const gross = branch === 'ALL' ? Number(e.grossAmount) || 0 : auditedBranchAmount(e, branch)
+      if (gross === 0) continue
+      if (why) {
+        leftOut[why].count++
+        leftOut[why].amount += gross
+        continue
+      }
       const net = netOfVat(e, gross)
       const title = (e.accountTitle || 'Uncategorized').trim() || 'Uncategorized'
       const arr = expenseByTitle.get(title) || emptyMonths()
@@ -217,7 +227,11 @@ export async function GET(req: Request) {
         orders: siOrders.map(r2), arCollections: siAr.map(r2), migrated: siMigrated.map(r2),
         byMonth: salesByMonth, total: sum(salesByMonth), migratedUndated,
       },
-      expenses: { lines: expenses, byMonth: expenseTotalByMonth, total: sum(expenseTotalByMonth), payrollPatternExcluded },
+      expenses: {
+        lines: expenses, byMonth: expenseTotalByMonth, total: sum(expenseTotalByMonth),
+        leftOut: Object.fromEntries(Object.entries(leftOut).map(([k, v]) => [k, { count: v.count, amount: r2(v.amount) }])),
+        noBranch: { count: noBranch.count, amount: r2(noBranch.amount) },
+      },
       salaries: { byMonth: salaries.map(r2), total: sum(salaries) },
       professionalFees: { byMonth: pf.map(r2), total: sum(pf), excludedNoCorTotal: r2(pfExcludedNoCor), excludedNoCorCount: pfNoCor._count },
       netIncome: { byMonth: netByMonth, total: sum(netByMonth) },
