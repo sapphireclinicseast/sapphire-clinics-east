@@ -1867,6 +1867,10 @@ export default function AccountsReceivablePage() {
           : orders.reduce((s, o) => s + o.payments.reduce((ps, p) => ps + toNum(p.amount), 0), 0)
         const totalPaid = arPayments.reduce((s, p) => s + toNum(p.amount), 0)
         const pctPaid = totalHmoOrders > 0 ? Math.min(100, (totalPaid / totalHmoOrders) * 100) : 0
+        // What's owed is the sessions still unpaid (totalReceivable), not billed minus
+        // cash: SCI (BGC) era sessions are settled by a ₱0 marker payment, and the
+        // settlement itself sits outside AR.
+        const settledWithoutCash = totalHmoOrders - totalPaid - totalReceivable
 
         // Department breakdown — split each order's payment proportionally across
         // departments. Served by the API across all orders; the local pass is the
@@ -1906,22 +1910,16 @@ export default function AccountsReceivablePage() {
             }
           }
         }
-        // What each HMO has paid, for its hover card. Same payments as the % paid card.
-        const receivedByProvider = new Map<string, number>()
-        for (const p of arPayments) {
-          const name = wallets.find(w => w.id === p.walletId)?.patientName
-          if (name) receivedByProvider.set(name, (receivedByProvider.get(name) || 0) + toNum(p.amount))
-        }
+        // Each HMO's hover card, by session: the same numbers as Total Receivable. Cash by
+        // wallet would mislead, since a remittance can settle another wallet's sessions.
         const provItems: DonutItem[] = Array.from(provMap.entries()).map(([label, value]) => {
-          const received = receivedByProvider.get(label) || 0
+          const unpaid = toNum(wallets.find(w => w.patientName === label)?.balance)
           return {
             label,
             value,
             details: [
-              { label: 'Received', value: formatCurrency(received) },
-              received > value
-                ? { label: 'Received above billed', value: formatCurrency(received - value) }
-                : { label: 'Not yet paid', value: formatCurrency(value - received) },
+              { label: 'Settled', value: formatCurrency(Math.max(0, value - unpaid)) },
+              { label: 'Not yet paid', value: formatCurrency(unpaid) },
             ],
           }
         })
@@ -1942,12 +1940,15 @@ export default function AccountsReceivablePage() {
                   <div style={{ width: `${pctPaid}%`, background: '#16a34a', height: '100%', transition: 'width 0.4s' }} />
                 </div>
                 <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>{formatCurrency(totalPaid)} received of {formatCurrency(totalHmoOrders)}</p>
-                <p className="text-xs mt-0.5 font-semibold" style={{ color: '#b91c1c' }}>{formatCurrency(Math.max(0, totalHmoOrders - totalPaid))} not yet paid</p>
+                <p className="text-xs mt-0.5 font-semibold" style={{ color: '#b91c1c' }}>{formatCurrency(totalReceivable)} not yet paid</p>
+                {settledWithoutCash > 0 && (
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>{formatCurrency(settledWithoutCash)} settled without cash here, mostly SCI (BGC) era</p>
+                )}
               </div>
               <div className="rounded-xl p-4 border" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
                 <p className="text-xs uppercase tracking-wide font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Total HMO Billed</p>
                 <p className="text-xl font-bold" style={{ color: 'var(--deep-teal)' }}>{formatCurrency(totalHmoOrders)}</p>
-                <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>Total outstanding: {formatCurrency(totalHmoOrders - totalPaid)}</p>
+                <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>Total outstanding: {formatCurrency(totalReceivable)}</p>
               </div>
               <button type="button" onClick={() => setHmoSubTab('revised-amounts')}
                 className="rounded-xl p-4 border text-left" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}
@@ -2353,7 +2354,7 @@ export default function AccountsReceivablePage() {
                 subtitle="What the HMOs paid us — cash in our bank, credited against their AR."
                 paid={received}
                 billed={billed}
-                paidCaption={`${formatCurrency(received)} received of ${formatCurrency(billed)} · ${formatCurrency(Math.max(0, billed - received))} not yet paid`}
+                paidCaption={`${formatCurrency(received)} received of ${formatCurrency(billed)} · ${formatCurrency(totalReceivable)} not yet paid`}
                 recent={[...arPayments]
                   .sort((a, b) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime())
                   .map(p => ({
