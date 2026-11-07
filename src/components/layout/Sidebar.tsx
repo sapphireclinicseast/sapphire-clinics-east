@@ -5,8 +5,8 @@ import Image from 'next/image'
 import { usePathname } from 'next/navigation'
 import { useState } from 'react'
 import {
-  LayoutDashboard, Send, Calendar, Cake, Sparkles,
-  Users, Mail, BookOpen, Clock, ChevronRight, Link2, ChevronDown, X, BarChart2,
+  LayoutDashboard,
+  Users, Mail, BookOpen, ChevronRight, Link2, ChevronDown, X, BarChart2,
   UserCog, ListOrdered, CalendarDays, ClipboardCheck, Layers, HeartHandshake,
   UsersRound, FileText, Activity, FileCheck, Building2,
   MessageSquare, Inbox,
@@ -50,21 +50,6 @@ function getFullNav(isAdmin: boolean, isMarketingAdmin: boolean) {
     {
       label: 'Overview',
       items: [{ href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' }],
-    },
-    {
-      label: 'Social Media',
-      items: [
-        { href: '/social/compose', icon: Send, label: 'New Post' },
-        { href: '/social/scheduled', icon: Clock, label: 'Scheduled' },
-        { href: '/social/published', icon: Calendar, label: 'Published' },
-      ],
-    },
-    {
-      label: 'Templates',
-      items: [
-        { href: '/templates/birthday', icon: Cake, label: 'Birthday Posts' },
-        { href: '/templates/holiday', icon: Sparkles, label: 'Holiday Posts' },
-      ],
     },
     {
       label: 'Patients & Email',

@@ -163,6 +163,7 @@ function FilterDropdown({
           </label>
         ))}
       </div>
+
     </div>
   )
 }
@@ -454,7 +455,18 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
   }, [searchParams, displayPatients, pageSize])
 
   // ── Data fetching ─────────────────────────────────────────────────────────
+  // Every fetch takes a ticket, and only the newest may write to state.
+  //
+  // Searching is server-side and fired on each keystroke, so typing "aurora"
+  // starts six overlapping requests. The early, broad ones match thousands of
+  // patients and are far slower than the narrow one that follows, so "a"
+  // routinely landed AFTER "aurora" and overwrote it — the screen then listed
+  // names beginning with A and looked like the search was broken. It wasn't:
+  // the right rows arrived and were replaced by stale ones.
+  const fetchSeq = useRef(0)
+
   async function fetchPatients() {
+    const seq = ++fetchSeq.current
     setLoading(true)
     try {
       const params = new URLSearchParams()
@@ -463,19 +475,30 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
       if (branchFilter) params.set('branch', branchFilter)
       const res  = await fetch(`/api/patients?${params}`)
       const data = await res.json()
+      if (seq !== fetchSeq.current) return          // a later keystroke owns the list now
       setPatients(data.patients || [])
       // Only ever populated for a branch-locked user whose scoped search found
       // nothing — see the cross-branch note in /api/patients.
       setOutOfBranch(data.outOfBranch || [])
     } catch {
+      if (seq !== fetchSeq.current) return
       setPatients([])
       setOutOfBranch([])
     } finally {
-      setLoading(false)
+      // Only the newest request may clear the spinner, or an abandoned one
+      // reports "done" while the current search is still in flight.
+      if (seq === fetchSeq.current) setLoading(false)
     }
   }
 
-  useEffect(() => { fetchPatients() }, [search, typeFilter, branchFilter])
+  // Debounced while typing, immediate for the filter dropdowns: a search fires
+  // once the typing stops rather than once per letter. The ticket above is what
+  // makes it CORRECT; this is what stops six requests being made at all.
+  useEffect(() => {
+    const t = setTimeout(() => { fetchPatients() }, search ? 250 : 0)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, typeFilter, branchFilter])
 
   /** Attach this front desk's own branch to a patient already registered elsewhere. */
   async function addMyBranch(patientId: string) {
@@ -717,6 +740,10 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
   /* Certificate counts per patient, for the badge on the row action. A count
      map rather than the rows themselves, so opening the directory does not
      pull every certificate into the browser. */
+  /* Row click opens a read-only summary. The pencil still opens the edit form —
+     a row that silently became editable on a stray click is how a diagnosis gets
+     overwritten by someone who only meant to look. */
+  const [viewing, setViewing] = useState<Patient | null>(null)
   const [certCounts, setCertCounts] = useState<Record<string, number>>({})
   const loadCertCounts = useCallback(() => {
     fetch('/api/patients/certificates?counts=1', { cache: 'no-store' })
@@ -1392,8 +1419,12 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
             ) : displayPatients.slice((page - 1) * pageSize, page * pageSize).map((p) => (
               <>
                 <tr key={p.id} data-row-id={p.id}
-                  title={missingDiagnosis(p) ? 'No diagnosis recorded — click the pencil to add one' : undefined}
+                  onClick={() => setViewing(p)}
+                  title={missingDiagnosis(p)
+                    ? 'No diagnosis recorded — click the pencil to add one'
+                    : 'Click to view this patient'}
                   style={{
+                    cursor: 'pointer',
                     borderBottom: editingId === p.id ? 'none' : '1px solid var(--light-gray)',
                     // Flagged, not shouted: a wash this pale stays readable across
                     // two thirds of the table, where a saturated red would make the
@@ -1437,7 +1468,9 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
                       )}
                     </div>
                   </td>
-                  <td className="px-4 py-3">
+                  {/* Actions swallow the click: pressing Edit or Delete must not
+                      also throw the summary open on top of them. */}
+                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center gap-1">
                       <button
                         onClick={() => editingId === p.id ? closeEdit() : openEdit(p)}
@@ -1804,6 +1837,75 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
           </div>
         </div>
       )}
+      {/* Read-only summary, opened by clicking a row. */}
+      {viewing && (
+        <div
+          onClick={() => setViewing(null)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 70, background: 'rgba(15,23,42,0.45)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+          }}>
+          <div onClick={(e) => e.stopPropagation()} className="rounded-2xl"
+            style={{
+              background: '#fff', width: '100%', maxWidth: 560, maxHeight: '86vh',
+              overflowY: 'auto', boxShadow: '0 20px 60px rgba(15,23,42,0.25)',
+            }}>
+            <div className="px-5 py-4 flex items-start justify-between gap-3"
+              style={{ borderBottom: '1px solid var(--light-gray)' }}>
+              <div>
+                <p className="text-base font-bold"
+                  style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+                  {viewing.firstName} {viewing.lastName}
+                </p>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+                  {viewing.patientType === 'PEDIATRIC' ? 'Pediatric' : 'Adult'}
+                  {viewing.dob ? ` · ${ageFrom(viewing.dob)}` : ''}
+                </p>
+              </div>
+              <button onClick={() => setViewing(null)} className="p-1 rounded-lg hover:bg-gray-100"
+                style={{ lineHeight: 0 }} title="Close">
+                <X size={16} style={{ color: 'var(--mid-gray)' }} />
+              </button>
+            </div>
+
+            <div className="px-5 py-4 grid grid-cols-2 gap-x-5 gap-y-3">
+              <ViewField label="Email"      value={viewing.email} />
+              <ViewField label="Cellphone"  value={viewing.phone} />
+              <ViewField label="Sex"        value={viewing.sex} />
+              <ViewField label="Birthday"   value={viewing.dob ? new Date(viewing.dob).toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' }) : ''} />
+              <ViewField label="City"       value={viewing.city} />
+              <ViewField label="Nationality" value={viewing.nationality} />
+              <ViewField label="Address"    value={viewing.address} wide />
+              <ViewField label="Diagnosis"
+                value={(viewing.diagnoses?.length ? viewing.diagnoses.join(', ') : viewing.diagnosis) || ''} wide />
+              <ViewField label="Branches"
+                value={(viewing.branches ?? []).map(branchLabel).join(', ')} wide />
+              {viewing.notes ? <ViewField label="Notes" value={viewing.notes} wide /> : null}
+            </div>
+
+            <div className="px-5 py-4 flex items-center justify-between gap-2"
+              style={{ borderTop: '1px solid var(--light-gray)' }}>
+              <a href={`/patients/profile?id=${viewing.id}`}
+                className="text-xs font-semibold" style={{ color: 'var(--teal)' }}>
+                Open full profile →
+              </a>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { const p = viewing; setViewing(null); openEdit(p) }}
+                  className="px-4 py-2 rounded-lg text-sm font-semibold"
+                  style={{ background: '#fff', border: '1px solid var(--light-gray)', color: 'var(--mid-gray)' }}>
+                  Edit
+                </button>
+                <button onClick={() => setViewing(null)}
+                  className="px-4 py-2 rounded-lg text-sm font-semibold"
+                  style={{ background: 'var(--teal)', color: '#fff' }}>
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -2027,3 +2129,26 @@ function SmsUnsubscribeToggle({ value, onChange }: { value: boolean; onChange: (
   )
 }
 
+/** One labelled value in the row-click summary; an empty one still shows, so a
+ *  blank field reads as "not recorded" rather than silently vanishing. */
+function ViewField({ label, value, wide }: { label: string; value?: string | null; wide?: boolean }) {
+  return (
+    <div className={wide ? 'col-span-2' : ''}>
+      <p className="text-[10px] font-semibold uppercase tracking-widest"
+        style={{ color: 'var(--mid-gray)' }}>{label}</p>
+      <p className="text-sm mt-0.5" style={{ color: value ? 'var(--charcoal)' : '#9CA3AF' }}>
+        {value || '—'}
+      </p>
+    </div>
+  )
+}
+
+function ageFrom(dob: string): string {
+  const d = new Date(dob)
+  if (Number.isNaN(d.getTime())) return ''
+  const now = new Date()
+  let a = now.getFullYear() - d.getFullYear()
+  const m = now.getMonth() - d.getMonth()
+  if (m < 0 || (m === 0 && now.getDate() < d.getDate())) a--
+  return a >= 0 ? `${a} years old` : ''
+}
