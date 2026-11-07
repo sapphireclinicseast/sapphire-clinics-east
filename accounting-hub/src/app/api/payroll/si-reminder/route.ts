@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { sendGmail, gmailConfigured, type Mailbox } from '@/lib/gmail'
+import { CUTOFF_RX, siFigures, type CutoffPay } from '@/lib/payroll/si-coverage'
 
 const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
 
@@ -12,18 +13,7 @@ const HR_MAILBOX: Record<string, Mailbox> = {
   SBEA: 'hr.east', SANDBOX_EAST: 'hr.east',
   SBGH: 'hr.gh', SANDBOX_GREENHILLS: 'hr.gh',
 }
-const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
-const DEPT_SERVICE: Record<string, string> = {
-  PT: 'physical therapy services', OT: 'occupational therapy services', SLP: 'speech therapy services',
-  SPED: 'special education services', MD: 'medical consultation services', PSYCHOLOGY: 'psychological services',
-  ORTHOSIS: 'orthosis and prosthesis services', EDU: 'training services',
-}
 const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-
-function cutoffLabel(cp: string): string {
-  const [y, m, h] = cp.split('-')
-  return `${MONTHS[parseInt(m) - 1]} ${y} (${h === '1' ? '1st' : '2nd'} half)`
-}
 
 /**
  * POST /api/payroll/si-reminder
@@ -45,7 +35,7 @@ export async function POST(req: Request) {
   try {
     const { consultantId, cutoffPeriods, channel, preview } = await req.json()
     if (!consultantId) return NextResponse.json({ error: 'consultantId is required' }, { status: 400 })
-    const cutoffs: string[] = Array.isArray(cutoffPeriods) ? cutoffPeriods.filter(c => /^\d{4}-\d{2}-[12]$/.test(String(c))) : []
+    const cutoffs: string[] = Array.isArray(cutoffPeriods) ? cutoffPeriods.filter(c => CUTOFF_RX.test(String(c))) : []
     if (!cutoffs.length) return NextResponse.json({ error: 'Pick at least one cutoff' }, { status: 400 })
 
     const consultant = await prisma.consultant.findUnique({
@@ -64,21 +54,22 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'No finalized payroll for the selected cutoff(s) — generate/finalize payroll first.' }, { status: 400 })
     }
 
-    const gross = entries.reduce((s, e) => s + Number(e.grossPay), 0)
-    const ewt = entries.reduce((s, e) => s + Number(e.taxAmount), 0)
-    const net = gross - ewt
-    const ewtRate = gross > 0 ? Math.round((ewt / gross) * 1000) / 10 : 0
-    const periods = [...new Set(entries.map(e => e.cutoffPeriod))].sort()
-    const periodLabels = periods.map(cutoffLabel).join(', ')
-    const service = DEPT_SERVICE[consultant.department] || 'professional services'
-    const description = `Professional fees — ${service} rendered to Aura Health Rehab, ${periodLabels}`
+    // Same figures and wording as the Service Invoice screen shows: one
+    // shared computation, so the reminder and the upload dialog never differ.
+    const pay: Record<string, CutoffPay> = {}
+    for (const e of entries) {
+      const p = (pay[e.cutoffPeriod] ||= { gross: 0, tax: 0, net: 0 })
+      p.gross += Number(e.grossPay); p.tax += Number(e.taxAmount); p.net += Number(e.netPay)
+    }
+    const fig = siFigures(consultant.department, cutoffs, pay)
+    const { periodLabels, description, ewtRate } = fig
     const breakdown = {
       consultant: consultant.name,
-      periods, periodLabels,
-      gross: Math.round(gross * 100) / 100,
-      ewt: Math.round(ewt * 100) / 100,
+      periods: fig.paidCutoffs, periodLabels,
+      gross: fig.gross,
+      ewt: fig.ewt,
       ewtRate,
-      net: Math.round(net * 100) / 100,
+      net: fig.net,
       description,
       coveredEntries: entries.length,
       email: consultant.email || null,
