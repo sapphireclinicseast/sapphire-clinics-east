@@ -160,6 +160,10 @@ export default function ServicesPage() {
   const [addingCategory, setAddingCategory] = useState(false)
   const [moveSaving, setMoveSaving] = useState(false)
   const [moveError, setMoveError] = useState('')
+  const [renaming, setRenaming] = useState<ServiceGroup<Service> | null>(null)
+  const [renameTo, setRenameTo] = useState('')
+  const [renameSaving, setRenameSaving] = useState(false)
+  const [renameError, setRenameError] = useState('')
   const [notice, setNotice] = useState('')
 
   // Modal state
@@ -412,6 +416,37 @@ export default function ServicesPage() {
   // A category just filed to opens by itself so the move is visible.
   function showCategory(category: string) {
     if (!resultsSearch.trim()) setToggledGroups(prev => new Set(prev).add(category.toUpperCase()))
+  }
+
+  function openRename(g: ServiceGroup<Service>) {
+    setRenaming(g); setRenameTo(g.label); setRenameError(''); setNotice('')
+  }
+
+  async function saveRename() {
+    if (!renaming) return
+    setRenameSaving(true); setRenameError('')
+    try {
+      const res = await fetch('/api/services/parent', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ from: renaming.label, to: renameTo }),
+      })
+      const d = await res.json()
+      if (!res.ok) { setRenameError(d.error || 'Failed to rename'); return }
+      setNotice(`Renamed ${renaming.label} to ${d.category}`)
+      // An open category stays open under its new name.
+      setToggledGroups(prev => {
+        const next = new Set(prev)
+        if (next.delete(renaming.key)) next.add(d.category.toUpperCase())
+        return next
+      })
+      setRenaming(null)
+      fetchServices()
+    } catch {
+      setRenameError('Failed to rename — check the connection and try again')
+    } finally {
+      setRenameSaving(false)
+    }
   }
 
   async function saveMove(parent: string) {
@@ -840,6 +875,9 @@ export default function ServicesPage() {
                 <button onClick={(e) => { e.stopPropagation(); openCreateSub(g) }} className="p-2 rounded-lg hover:bg-gray-100 transition-colors" title={`Add a service under ${g.label}`}>
                   <Plus size={15} style={{ color: 'var(--teal)' }} />
                 </button>
+                <button onClick={(e) => { e.stopPropagation(); openRename(g) }} className="p-2 rounded-lg hover:bg-gray-100 transition-colors" title={`Rename ${g.label}`}>
+                  <Pencil size={15} style={{ color: 'var(--teal)' }} />
+                </button>
                 <button onClick={(e) => { e.stopPropagation(); openMove(g.services) }} className="p-2 rounded-lg hover:bg-gray-100 transition-colors" title={`Move these ${g.services.length} services to another category`}>
                   <CornerDownRight size={15} style={{ color: 'var(--teal)' }} />
                 </button>
@@ -1052,6 +1090,30 @@ export default function ServicesPage() {
               <button type="button" onClick={() => saveMove(moveParent)} disabled={moveSaving || !moveParent.trim()} className="px-4 py-2 rounded-lg text-sm text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>Move</button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Rename a category */}
+      {renaming && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <form onSubmit={(e) => { e.preventDefault(); saveRename() }} className="bg-white rounded-2xl p-6 max-w-md w-full shadow-xl">
+            <h3 className="text-lg font-bold mb-2" style={{ color: 'var(--charcoal)' }}>Rename category</h3>
+            <p className="text-sm mb-4" style={{ color: 'var(--mid-gray)' }}><strong>{renaming.label}</strong></p>
+            <label htmlFor="rename-category" className="block text-xs font-medium mb-1.5" style={{ color: 'var(--charcoal)' }}>New name</label>
+            <input id="rename-category" value={renameTo} onChange={(e) => setRenameTo(e.target.value)} autoFocus
+              className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+            <p className="text-xs mt-1.5 mb-5" style={{ color: 'var(--mid-gray)' }}>
+              Only the category name changes. Its services keep their names and prices, and checkout and payroll stay the same.
+            </p>
+            {renameError && <div className="mb-4 p-3 rounded-lg text-sm bg-red-50 text-red-600">{renameError}</div>}
+            <div className="flex gap-3 justify-end">
+              <button type="button" onClick={() => setRenaming(null)} className="px-4 py-2 rounded-lg text-sm border" style={{ borderColor: 'var(--light-gray)' }}>Cancel</button>
+              <button type="submit" disabled={renameSaving || !renameTo.trim() || renameTo.trim() === renaming.label}
+                className="px-4 py-2 rounded-lg text-sm text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>
+                {renameSaving ? 'Saving...' : 'Rename'}
+              </button>
+            </div>
+          </form>
         </div>
       )}
 
