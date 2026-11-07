@@ -4,6 +4,7 @@ import { retrieveCheckout, parsePayment, accountForBranch } from '@/lib/paymongo
 import { postOrderJournal } from '@/lib/accounting/post-order'
 import { postJournalEntry } from '@/lib/accounting/posting'
 import { resolvePaymongoAccounts } from '@/lib/accounting/paymongo-accounts'
+import { postPaymongoSale, PAYMONGO_SALE_BENIGN_REASONS, type PaymongoSaleResult } from '@/lib/accounting/post-paymongo-sale'
 
 // A real user id is required for JE.createdById / Account.createdById. Prefer the
 // checkout's creator; fall back to any admin so posting never fails.
@@ -11,6 +12,44 @@ export async function systemUserId(checkout: PaymongoCheckout): Promise<string |
   if (checkout.createdById) return checkout.createdById
   const admin = await prisma.user.findFirst({ where: { role: 'ADMIN' }, select: { id: true } })
   return admin?.id ?? null
+}
+
+/**
+ * The ONE thing to do when a checkout is learned to be PAID, whichever path learned it
+ * (webhook, POS sync, PayMongo-tab Sync). Two kinds of checkout, two bookings:
+ *
+ *   · POS-links checkout (orderId set at creation): settle that order — payment row,
+ *     PAID, sale entry in cash form, exact fee entry (settleLinkedOrder, unchanged).
+ *   · Standalone payment link (orderId null — Book & Pay, Services pay links): post the
+ *     collection entry, DR Clearing + Fees / CR 4050 (postPaymongoSale). The order the
+ *     cashier later raises from it draws 4050 down (postOrderJournal). Nobody has to
+ *     open the PayMongo tab for the money to reach the ledger.
+ *
+ * Both halves are idempotent, so a duplicate webhook or a Sync click after the
+ * webhook changes nothing. Never throws: a posting failure is logged and reported
+ * back, the PAID flip that preceded it stands, and the next safety-net pass
+ * (Sync, Convert-to-Order, backfill) retries it.
+ */
+export async function recordPaidCheckout(checkout: PaymongoCheckout, feePhp: number): Promise<PaymongoSaleResult> {
+  if (checkout.orderId) {
+    try { await settleLinkedOrder(checkout, feePhp) } catch (e) { console.error('[PayMongo] settleLinkedOrder threw:', e) }
+    return { posted: false, reason: 'posted via POS order' }
+  }
+  const uid = await systemUserId(checkout)
+  if (!uid) {
+    console.error('[PayMongo] no user to attribute the collection entry to', checkout.checkoutId)
+    return { posted: false, reason: 'no user to attribute posting' }
+  }
+  try {
+    const res = await postPaymongoSale(prisma, { checkoutId: checkout.checkoutId, userId: uid })
+    if (!res.posted && res.reason && !(PAYMONGO_SALE_BENIGN_REASONS as readonly string[]).includes(res.reason)) {
+      console.error('[PayMongo] collection entry not posted for', checkout.checkoutId, '—', res.reason)
+    }
+    return res
+  } catch (e) {
+    console.error('[PayMongo] collection entry threw for', checkout.checkoutId, e)
+    return { posted: false, reason: e instanceof Error ? e.message : 'posting failed' }
+  }
 }
 
 /**
@@ -110,7 +149,7 @@ export async function syncPendingCheckouts(limit = 40): Promise<{ settled: numbe
           raw: (cs as object) ?? rec.raw as object,
         },
       })
-      await settleLinkedOrder(updated, parsed ? parsed.feePhp : Number(rec.fee || 0))
+      await recordPaidCheckout(updated, parsed ? parsed.feePhp : Number(rec.fee || 0))
       settled++
     } catch (e) { console.error('[PayMongo] sync retrieve failed for', rec.checkoutId, e) }
   }

@@ -1,10 +1,15 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { verifyWebhookSignature, parsePayment } from '@/lib/paymongo'
-import { settleLinkedOrder } from '@/lib/paymongo-settle'
+import { verifyWebhookSignature, parsePayment, resolvePaymentMethodUsed } from '@/lib/paymongo'
+import { recordPaidCheckout } from '@/lib/paymongo-settle'
 
 // PayMongo webhook (PUBLIC — no session; authenticated by HMAC signature instead).
 // Register in the PayMongo dashboard for: checkout_session.payment.paid, payment.paid, payment.failed.
+//
+// A paid event does two things, in order: flip our checkout row to PAID, then book the
+// money (recordPaidCheckout — the collection entry for a payment link, or the settled
+// order for a POS-links checkout). The booking is idempotent under a per-checkout lock,
+// so PayMongo's retries and a Sync click racing this handler cannot post it twice.
 export async function POST(req: Request) {
   const raw = await req.text()
   const sig = req.headers.get('paymongo-signature')
@@ -36,10 +41,13 @@ export async function POST(req: Request) {
               paidAt: parsed?.paidAt || new Date(),
               livemode,
               raw: event as object,
+              // Which instrument paid — the Sync path records this too; Convert-to-Order
+              // uses it to tag the order's payment mode instead of guessing.
+              ...(payment && resolvePaymentMethodUsed(payment) ? { paymentMethodUsed: resolvePaymentMethodUsed(payment) } : {}),
             },
           })
-          // Phase 2: turn the paid checkout into a settled POS sale, net of fee.
-          await settleLinkedOrder(updated, parsed ? parsed.feePhp : Number(existing.fee || 0))
+          // Book it: settled POS sale for a linked order, collection entry for a payment link.
+          await recordPaidCheckout(updated, parsed ? parsed.feePhp : Number(existing.fee || 0))
         } else {
           console.warn('PayMongo webhook: no local checkout for', checkoutId)
         }
@@ -53,9 +61,12 @@ export async function POST(req: Request) {
         if (match) {
           const updated = await prisma.paymongoCheckout.update({
             where: { id: match.id },
-            data: { status: 'PAID', paymentId: parsed.paymentId, fee: parsed.feePhp, netAmount: parsed.netPhp, paidAt: parsed.paidAt || new Date(), livemode, raw: event as object },
+            data: {
+              status: 'PAID', paymentId: parsed.paymentId, fee: parsed.feePhp, netAmount: parsed.netPhp, paidAt: parsed.paidAt || new Date(), livemode, raw: event as object,
+              ...(resolvePaymentMethodUsed(resource) ? { paymentMethodUsed: resolvePaymentMethodUsed(resource) } : {}),
+            },
           })
-          await settleLinkedOrder(updated, parsed.feePhp)
+          await recordPaidCheckout(updated, parsed.feePhp)
         }
       }
     } else if (type === 'payment.failed') {

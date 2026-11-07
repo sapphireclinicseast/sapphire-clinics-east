@@ -6,6 +6,9 @@
  *   DR Cash (per payment-mode account)         net cash received
  *   DR Deductions (MDR/CWT, per account)       deduction amounts
  *   DR AR (per HMO/GL wallet account)          HMO/GL portions
+ *   DR Unearned Revenue 4050                   PAYMONGO leg of an order raised from a
+ *                                              paid payment link (the collection entry
+ *                                              PAYMONGO_SALE already holds the cash)
  *   DR Discount (contra-revenue)               discount amount
  *   DR Sales Returns 7160 (contra-revenue)     item refund amounts
  *     CR Revenue (per item revenue account)    gross item subtotal
@@ -42,7 +45,7 @@ export interface PostOrderResult {
  * sale?" — and the balance answers it where the history can't (see the
  * rationale at each call site).
  */
-async function orderGlNetCents(prisma: PrismaClient, orderId: string): Promise<number> {
+export async function orderGlNetCents(prisma: PrismaClient, orderId: string): Promise<number> {
   const jes = await prisma.journalEntry.findMany({
     where: { referenceId: orderId, referenceType: { in: ['POS_ORDER', 'POS_ORDER_REVERSAL'] } },
     select: { referenceType: true, lines: { select: { debit: true } } },
@@ -164,6 +167,33 @@ export async function postOrderJournal(
     pmByBranchMethod.set(k, pmByBranchMethod.has(k) ? null : pm)
   }
   const dsByLabel = new Map(discountSettings.map(d => [d.name.trim().toLowerCase(), d]))
+
+  /* ── 0a. PayMongo payment-link collections ──────────────────────
+     An order raised from a paid PayMongo LINK (Convert-to-Order, or a POS-links
+     checkout whose order posted late) is money the ledger already holds: the
+     moment the link was paid, postPaymongoSale booked DR Clearing + DR Fees /
+     CR 4050 Unearned Revenue (referenceType PAYMONGO_SALE). This order is the
+     service being delivered, so its PAYMONGO leg must DRAW DOWN that liability
+     — DR 4050 — exactly like a wallet-funded leg, not debit the payment mode's
+     cash account a second time. Routing it as cash counted the clearing twice
+     and left 4050 standing forever (the 2026-09 "bucket A" double-counts).
+     Only legs whose checkout actually carries a standing PAYMONGO_SALE entry
+     are routed this way; a POS-links order settled in cash form by
+     settleLinkedOrder has no such entry and keeps today's cash treatment. */
+  let paymongoLinkCollected = false
+  if (order.payments.some(p => p.method === 'PAYMONGO')) {
+    const linked = await prisma.paymongoCheckout.findMany({
+      where: { orderId: order.id, status: 'PAID', livemode: true },
+      select: { checkoutId: true },
+    })
+    if (linked.length > 0) {
+      const sale = await prisma.journalEntry.findFirst({
+        where: { referenceType: 'PAYMONGO_SALE', referenceId: { in: linked.map(l => l.checkoutId) } },
+        select: { id: true },
+      })
+      paymongoLinkCollected = !!sale
+    }
+  }
 
   // Aggregator: accountId → { debit, credit }
   const agg = new Map<string, { debit: number; credit: number; description?: string }>()
@@ -296,6 +326,16 @@ export async function postOrderJournal(
       // Simpler: if UNEARNED, also credit Unearned Revenue and zero out the
       // matching Revenue credit. We do this in step 5 below.
       addLine(arAcct.id, 'debit', gross, `AR — ${p.method}`)
+      continue
+    }
+
+    if (p.method === 'PAYMONGO' && paymongoLinkCollected) {
+      // Collected online earlier (PAYMONGO_SALE) — apply the deposit, no cash side and
+      // no mode deductions: the exact processor fee was expensed with the collection.
+      if (!defaultUnearnedAccount) {
+        return { posted: false, reason: `PayMongo link payment of ${gross} has no 4050 Unearned Revenue account to draw down` }
+      }
+      addLine(defaultUnearnedAccount.id, 'debit', gross, 'Online collection applied — PayMongo')
       continue
     }
 
