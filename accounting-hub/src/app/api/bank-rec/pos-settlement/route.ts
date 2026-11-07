@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { postJournalEntry } from '@/lib/accounting/posting'
+import { CARD_QR_METHODS, SettlementGapError, postSettlementReclass, reclassApplies } from '@/lib/accounting/settlement-reclass'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 
@@ -21,9 +22,12 @@ const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_AD
 //                             straight into this bank account — post the
 //                             reclassifying entry (Dr Bank / Cr Clearing) that
 //                             moves the settled net out of clearing. Deduction
-//                             fees (MDR/CWT) were already expensed at order
-//                             time (post-order.ts), so this JE only ever
-//                             carries the two cash-movement legs.
+//                             fees (MDR) were already expensed at order time
+//                             (post-order.ts). Card/QR modes post through
+//                             lib/accounting/settlement-reclass.ts: the bank's
+//                             exact credit, the acquirer's withholding to 1140,
+//                             and nothing for deposits before Nov 2026 (the
+//                             monthly in-transit true-ups moved those).
 //
 // Net per payment: gross − Σ(percentage deductions × gross) − Σ(fixed).
 
@@ -142,7 +146,8 @@ export async function POST(req: Request) {
     // being reconciled) need no reclass — the money was already there.
     const netRounded = Math.round(net * 100) / 100
     const clearingAccountId = mode?.accountId && mode.accountId !== txn.bankAccountId ? mode.accountId : null
-    const needsReclass = Boolean(clearingAccountId) && netRounded > 0
+    const cardQr = !!mode && CARD_QR_METHODS.includes(String(mode.paymentMethod))
+    const needsReclass = Boolean(clearingAccountId) && netRounded > 0 && (!cardQr || reclassApplies(txn.date))
 
     const batch = await prisma.$transaction(async (tx) => {
       const b = await tx.posSettlementBatch.create({
@@ -153,12 +158,16 @@ export async function POST(req: Request) {
           payments: { create: payments.map(p => ({ orderPaymentId: p.id, amount: Number(p.amount) })) },
         },
       })
-      await tx.bankTransaction.update({
-        where: { id: txn.id },
-        data: { status: 'POSTED', matchType: 'POS_SETTLEMENT', matchId: b.id, matchLabel: label, categoryAccountId: null },
-      })
-      if (needsReclass && clearingAccountId) {
-        await postJournalEntry(tx, {
+      let journalEntryId: string | null = null
+      if (needsReclass && clearingAccountId && cardQr) {
+        journalEntryId = await postSettlementReclass(tx, {
+          batchId: b.id,
+          bankLine: { date: txn.date, bankAccountId: txn.bankAccountId, received: Number(txn.received) },
+          payments: payments.map(p => ({ gross: Number(p.amount), saleDate: p.order.transactionDate, clearingAccountId, deductions: mode!.deductions })),
+          label, createdById: session.user!.id as string,
+        })
+      } else if (needsReclass && clearingAccountId) {
+        const je = await postJournalEntry(tx, {
           entryDate: txn.date,
           description: `POS settlement reclass — ${label}`,
           referenceType: 'POS_SETTLEMENT_RECLASS',
@@ -170,11 +179,18 @@ export async function POST(req: Request) {
             { accountId: clearingAccountId, credit: netRounded, description: `Cleared from ${mode?.name || 'clearing'}` },
           ],
         })
+        journalEntryId = je.id
       }
+      // The line owns its reclass entry (bank-rec-entry-ownership), so Undo removes both.
+      await tx.bankTransaction.update({
+        where: { id: txn.id },
+        data: { status: 'POSTED', matchType: 'POS_SETTLEMENT', matchId: b.id, matchLabel: label, categoryAccountId: null, journalEntryId },
+      })
       return b
     })
     return NextResponse.json({ success: true, batchId: batch.id, label, gross, net, reclassPosted: needsReclass })
   } catch (e) {
+    if (e instanceof SettlementGapError) return NextResponse.json({ error: e.message }, { status: 400 })
     console.error('POS settlement error:', e)
     return NextResponse.json({ error: e instanceof Error ? e.message : 'Failed' }, { status: 500 })
   }

@@ -5,14 +5,17 @@ import type { Prisma } from '@prisma/client'
 // line, so undoing the line takes that entry with it. Every other link points at
 // an entry that belongs to something else (a dividend, buyback, loan, QB import,
 // RFP posting), and one entry can be shared by several lines, so undoing the line
-// only clears the link.
+// only clears the link. A POS settlement owns its reclass entry (the move out of
+// undeposited funds, see lib/accounting/settlement-reclass.ts) and its batch of
+// order payments; the two always go together.
 
 type LinkedLine = { id: string; matchType: string | null; matchId: string | null; journalEntryId: string | null }
 type LinkedEntry = { referenceType: string | null; referenceId: string | null }
-type Db = Pick<Prisma.TransactionClient, 'journalEntry' | 'beginningBalance' | 'account'>
+type Db = Pick<Prisma.TransactionClient, 'journalEntry' | 'beginningBalance' | 'account' | 'posSettlementBatch'>
 
 export function lineOwnsEntry(line: LinkedLine, entry: LinkedEntry): boolean {
   if (entry.referenceType === 'BANK_REC' && entry.referenceId === line.id) return true
+  if (entry.referenceType === 'POS_SETTLEMENT_RECLASS' && line.matchType === 'POS_SETTLEMENT' && !!line.matchId && entry.referenceId === line.matchId) return true
   return line.matchType === 'AP_BILL' && !!line.matchId && entry.referenceId === `APSETTLE:${line.matchId}`
 }
 
@@ -40,6 +43,10 @@ const isPre2026Settlement = (e: LinkedEntry) =>
 // the caller, which is updating or deleting the line anyway. A link to an entry
 // that no longer exists counts as neither deleted nor kept.
 export async function removeOwnedEntries(db: Db, lines: LinkedLine[]): Promise<{ deleted: number; kept: number }> {
+  // A POS settlement batch holds its order payments captive; release it with the
+  // line so the payments can settle again (and its reclass entry goes below).
+  const settled = lines.filter(l => l.matchType === 'POS_SETTLEMENT').map(l => l.id)
+  if (settled.length) await db.posSettlementBatch.deleteMany({ where: { bankTransactionId: { in: settled } } })
   const linked = lines.filter(l => l.journalEntryId)
   if (linked.length === 0) return { deleted: 0, kept: 0 }
   // A difference on an A/P match has no link of its own, because the line's one

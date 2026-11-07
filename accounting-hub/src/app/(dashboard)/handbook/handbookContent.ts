@@ -189,6 +189,7 @@ export const SECTIONS: Section[] = [
         `**Upload from file** — upload the bank's CSV/Excel, map the **Date / Description / Spent / Received / Balance** columns (there's a **Download Template**), then **Import N rows**.`,
         `**Auto-rules** — teach the system that a recurring payee always maps to a certain account; then **Apply rules to N pending** and one-click **Auto-post**.`,
         `**Match settlements** — bulk-match a day's card/e-wallet settlement to its POS orders. **Match transfers** — bulk-pair transfers between your own accounts.`,
+        `Card, debit, GCash and PayMaya sales wait in **1170 Undeposited Funds** until the bank pays them out. From **November 2026**, matching an AUB deposit to its sales moves the money into the bank in the same step: the bank's exact amount, with the 0.5% the bank withholds going to **1140 Creditable Withholding Tax**. Undo takes the entry back out. Deposits up to October were moved by the monthly in-transit true-ups instead.`,
         `**Record Fund Transfer** and **Add transaction** let you record a transfer or a manual bank line here.`,
       ] },
       { k: 'note', label: 'Opening balance & start date.', t: `The **Opening balance** panel sets, per bank account, the figure the Balance Sheet starts from and the **date reconciliation begins counting** Hub entries. Lines dated before that are kept but **Archived** (locked from tagging). Use **Read from statements** to fill it, then **Save**. (This is the same figure you can set in **Beginning Balances**.)` },

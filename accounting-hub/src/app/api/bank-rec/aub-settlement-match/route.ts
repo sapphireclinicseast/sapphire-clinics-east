@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { SettlementGapError, postSettlementReclass, reclassApplies } from '@/lib/accounting/settlement-reclass'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 // The AUB checking account(s) a branch's card/QR terminal batches settle into.
@@ -27,7 +28,7 @@ const bankingDays = (a: Date, b: Date) => {
   return n
 }
 
-type Pay = { id: string; gross: number; net: number; netCents: number }
+type Pay = { id: string; gross: number; net: number; netCents: number; modeId: string; saleDate: Date }
 type Line = { id: string; date: Date; received: number; recvCents: number; acctId: string; claimed: boolean }
 
 // 0/1-knapsack reachability over payment net-cents: return a subset of `items`
@@ -92,9 +93,11 @@ function partitionExact(pays: Pay[], targets: number[], tolCents: number): numbe
 // is covered by the set of bank lines (1 per MID) whose NETS sum to the day's
 // channel net, settled 0-maxLag banking days later. Dry-run by default. Apply
 // creates a PosSettlementBatch + PosSettlementPayment links on each covered bank
-// line (payments partitioned across the lines) and tags the lines POS_SETTLEMENT
-// — NO journal posts, because the POS order already booked the money into AUB at
-// sale time; this only ties the payments so the day clears.
+// line (payments partitioned across the lines) and tags the lines POS_SETTLEMENT.
+// The till booked these sales to 1170 Undeposited Funds, so each covered line
+// dated Nov 2026 onward also posts the move into AUB (DR AUB / DR 1140 withheld
+// tax / CR 1170, lib/accounting/settlement-reclass.ts). Earlier lines post
+// nothing: the monthly in-transit true-ups already moved that money.
 //
 // Net basis: gross − the mode's MDR − gross×whtRate (the 0.5% creditable
 // withholding the acquirer nets out). whtRate is a param to confirm with a dry-run.
@@ -129,7 +132,7 @@ export async function POST(req: Request) {
     // Settlement modes feeding these AUB account(s), with their MDR deductions.
     const modesRaw = await prisma.paymentMode.findMany({
       where: { OR: [{ settlementBankAccountId: { in: [...acctIds] } }, { accountId: { in: [...acctIds] } }] },
-      select: { id: true, paymentMethod: true, deductions: { select: { rate: true, valueType: true } } },
+      select: { id: true, paymentMethod: true, accountId: true, deductions: { select: { rate: true, valueType: true, effectiveFrom: true, effectiveTo: true } } },
     })
     const modes = modesRaw.filter(m => SETTLEMENT_METHODS.includes(String(m.paymentMethod)))
     if (!modes.length) return NextResponse.json({ error: 'No settlement payment modes map to this AUB account' }, { status: 400 })
@@ -190,7 +193,7 @@ export async function POST(req: Request) {
         let g = groups.get(k)
         if (!g) { g = { day, channel, gross: 0, net: 0, pays: [] }; groups.set(k, g) }
         g.gross = round2(g.gross + Number(p.amount)); g.net = round2(g.net + net)
-        g.pays.push({ id: p.id, gross: round2(Number(p.amount)), net, netCents: Math.round(net * 100) })
+        g.pays.push({ id: p.id, gross: round2(Number(p.amount)), net, netCents: Math.round(net * 100), modeId: p.paymentModeId, saleDate: o.transactionDate || o.createdAt })
       }
     }
 
@@ -253,7 +256,9 @@ export async function POST(req: Request) {
       .map(g => ({ day: g.day, channel: g.channel, gross: g.gross, net: g.net, payCount: g.pays.length }))
       .sort((a, b) => a.day.localeCompare(b.day))
 
-    let applied = 0, linesPosted = 0
+    let applied = 0, linesPosted = 0, reclassPosted = 0
+    const refused: { day: string; channel: string; reason: string }[] = []
+    const lineById = new Map(lines.map(l => [l.id, l]))
     if (!dryRun && matches.length) {
       const actorId = session?.user?.id
         ?? (await prisma.user.findFirst({ where: { role: 'ADMIN' }, orderBy: { createdAt: 'asc' }, select: { id: true } }))?.id
@@ -270,22 +275,45 @@ export async function POST(req: Request) {
               const part = m.parts[ci]
               if (!part.payIdxs.length) continue
               const label = `AUB settlement (auto) — ${part.payIdxs.length} × ${m.channel} on ${m.day} · ₱${part.gross.toLocaleString('en-PH', { minimumFractionDigits: 2 })} gross, ₱${part.net.toLocaleString('en-PH', { minimumFractionDigits: 2 })} net${m.parts.length > 1 ? ` (MID ${ci + 1}/${m.parts.length})` : ''}`
-              await tx.posSettlementBatch.create({
+              const batch = await tx.posSettlementBatch.create({
                 data: {
                   bankTransactionId: part.lineId, paymentModeId: null, label,
                   grossTotal: part.gross, netTotal: part.net, createdById: actorId,
                   payments: { create: part.payIdxs.map(ix => ({ orderPaymentId: g.pays[ix].id, amount: g.pays[ix].gross })) },
                 },
               })
+              const line = lineById.get(part.lineId)!
+              let journalEntryId: string | null = null
+              const settled = part.payIdxs.map(ix => {
+                const pay = g.pays[ix]; const mode = modeById.get(pay.modeId)!
+                return { gross: pay.gross, saleDate: pay.saleDate, clearingAccountId: mode.accountId || line.acctId, deductions: mode.deductions }
+              })
+              const viaClearing = settled.filter(x => x.clearingAccountId !== line.acctId)
+              if (reclassApplies(line.date) && viaClearing.length) {
+                if (viaClearing.length !== settled.length) {
+                  throw new SettlementGapError('Some of these payments book straight to AUB and some to undeposited funds; match this deposit by hand.')
+                }
+                if (!actorId) throw new Error('No admin user to post the settlement entry as')
+                journalEntryId = await postSettlementReclass(tx, {
+                  batchId: batch.id,
+                  bankLine: { date: line.date, bankAccountId: line.acctId, received: line.received },
+                  payments: viaClearing, label, createdById: actorId,
+                })
+              }
+              // matchId names the batch, so Undo frees its payments and removes the entry.
               await tx.bankTransaction.update({
                 where: { id: part.lineId },
-                data: { status: 'POSTED', matchType: 'POS_SETTLEMENT', matchLabel: label.slice(0, 200) },
+                data: { status: 'POSTED', matchType: 'POS_SETTLEMENT', matchId: batch.id, matchLabel: label.slice(0, 200), journalEntryId },
               })
               linesPosted++
+              if (journalEntryId) reclassPosted++
             }
           })
           applied++
-        } catch (e) { console.error('AUB settlement match apply error for', m.day, m.channel, e) }
+        } catch (e) {
+          if (e instanceof SettlementGapError) refused.push({ day: m.day, channel: m.channel, reason: e.message })
+          else console.error('AUB settlement match apply error for', m.day, m.channel, e)
+        }
       }
     }
 
@@ -298,8 +326,9 @@ export async function POST(req: Request) {
         matchedNet: round2(matches.reduce((a, m) => a + m.net, 0)),
         unmatchedLines: unmatchedLines.length,
         unmatchedGroups: unmatchedGroups.length,
-        applied, linesPosted,
+        applied, linesPosted, reclassPosted,
       },
+      refused,
       matches: matches.slice(0, 60).map(m => ({
         day: m.day, channel: m.channel, net: m.net, payCount: m.payCount,
         lines: m.parts.map(p => ({ net: p.net, payCount: p.payIdxs.length })),

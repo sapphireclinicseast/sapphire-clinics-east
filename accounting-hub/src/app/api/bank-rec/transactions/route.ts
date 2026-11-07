@@ -742,9 +742,8 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ success: true })
     }
     if (action === 'exclude') {
+      // Also releases a POS settlement's batch of order payments.
       const { kept } = await prisma.$transaction(tx => removeOwnedEntries(tx, [txn]))
-      // A POS settlement batch holds its order payments captive — release them.
-      if (txn.matchType === 'POS_SETTLEMENT' && txn.matchId) await prisma.posSettlementBatch.delete({ where: { id: txn.matchId } }).catch(() => {})
       await prisma.bankTransaction.update({ where: { id }, data: { status: 'EXCLUDED', journalEntryId: null, categoryAccountId: null, matchType: null, matchId: null, matchLabel: null } })
       return NextResponse.json({ success: true, entryKept: kept > 0 })
     }
@@ -756,9 +755,8 @@ export async function PATCH(req: Request) {
       if (txn.status === 'EXCLUDED' && /^\[(SPLIT into|COMBINED into)/.test(txn.note || '')) {
         return NextResponse.json({ error: 'This line was split/combined. Restore it with the Undo button on its split legs or combined line (Pending tab) — restoring it here would double-count the money.' }, { status: 400 })
       }
-      const { kept } = await prisma.$transaction(tx => removeOwnedEntries(tx, [txn]))
       // Undoing a POS settlement frees its order payments for a new batch.
-      if (txn.matchType === 'POS_SETTLEMENT' && txn.matchId) await prisma.posSettlementBatch.delete({ where: { id: txn.matchId } }).catch(() => {})
+      const { kept } = await prisma.$transaction(tx => removeOwnedEntries(tx, [txn]))
       // A currency exchange or internal transfer is one FundTransfer spanning
       // two bank lines, so undoing either side must release both and drop the
       // transfer they created — otherwise the other line stays posted against
