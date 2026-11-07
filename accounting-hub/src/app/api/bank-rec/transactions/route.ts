@@ -8,7 +8,7 @@ import { applyBankRules } from '@/lib/bank-rec-rules'
 import { branchForBankAccount, isPostableBranch } from '@/lib/branch'
 import { recordAmountById } from '@/lib/bank-rec-candidates'
 import { isForMatching } from '@/lib/bank-rec-flag'
-import { removeOwnedEntries } from '@/lib/bank-rec-entry-ownership'
+import { removeOwnedEntries, shiftOpeningsForSettlement } from '@/lib/bank-rec-entry-ownership'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 
@@ -601,17 +601,7 @@ export async function PATCH(req: Request) {
           },
         })
         apJournalId = je.id
-        if (preQb) {
-          const re = await prisma.account.findFirst({ where: { accountNumber: '6030' }, select: { id: true } })
-          const bumps: Array<[string, number]> = [[payLine.accountId, -bankAmt]]
-          if (re) bumps.push([re.id, bankAmt])
-          for (const [acctId, delta] of bumps) {
-            await prisma.beginningBalance.updateMany({
-              where: { accountId: acctId, periodYear: 2026 },
-              data: { amount: { increment: delta } },
-            })
-          }
-        }
+        if (preQb) await shiftOpeningsForSettlement(prisma, payLine.accountId, -bankAmt)
       }
       // A deposit rarely lands to the centavo: ₱1,000,000.43 arrives against a
       // ₱1,000,000.00 equity record because the bank added interest, or took a
@@ -649,7 +639,7 @@ export async function PATCH(req: Request) {
           const lines = bankIsDebit
             ? [{ accountId: txn.bankAccountId, debit: amount, credit: 0 }, { accountId: diffAccountId, debit: 0, credit: amount }]
             : [{ accountId: diffAccountId, debit: amount, credit: 0 }, { accountId: txn.bankAccountId, debit: 0, credit: amount }]
-          await removeOwnedEntries(prisma, [txn])
+          await prisma.$transaction(tx => removeOwnedEntries(tx, [txn]))
           const je = await prisma.journalEntry.create({
             data: {
               entryDate: txn.date,
@@ -716,7 +706,7 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ success: true })
     }
     if (action === 'exclude') {
-      const { kept } = await removeOwnedEntries(prisma, [txn])
+      const { kept } = await prisma.$transaction(tx => removeOwnedEntries(tx, [txn]))
       // A POS settlement batch holds its order payments captive — release them.
       if (txn.matchType === 'POS_SETTLEMENT' && txn.matchId) await prisma.posSettlementBatch.delete({ where: { id: txn.matchId } }).catch(() => {})
       await prisma.bankTransaction.update({ where: { id }, data: { status: 'EXCLUDED', journalEntryId: null, categoryAccountId: null, matchType: null, matchId: null, matchLabel: null } })
@@ -730,7 +720,7 @@ export async function PATCH(req: Request) {
       if (txn.status === 'EXCLUDED' && /^\[(SPLIT into|COMBINED into)/.test(txn.note || '')) {
         return NextResponse.json({ error: 'This line was split/combined. Restore it with the Undo button on its split legs or combined line (Pending tab) — restoring it here would double-count the money.' }, { status: 400 })
       }
-      const { kept } = await removeOwnedEntries(prisma, [txn])
+      const { kept } = await prisma.$transaction(tx => removeOwnedEntries(tx, [txn]))
       // Undoing a POS settlement frees its order payments for a new batch.
       if (txn.matchType === 'POS_SETTLEMENT' && txn.matchId) await prisma.posSettlementBatch.delete({ where: { id: txn.matchId } }).catch(() => {})
       // A currency exchange or internal transfer is one FundTransfer spanning
@@ -786,7 +776,7 @@ export async function DELETE(req: Request) {
   if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
   try {
     const txn = await prisma.bankTransaction.findUnique({ where: { id } })
-    if (txn) await removeOwnedEntries(prisma, [txn])
+    if (txn) await prisma.$transaction(tx => removeOwnedEntries(tx, [txn]))
     await prisma.bankTransaction.delete({ where: { id } })
     return NextResponse.json({ success: true })
   } catch { return NextResponse.json({ error: 'Failed to delete' }, { status: 500 }) }
