@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { obtainedDateError } from '@/lib/wallet-dates'
 
 const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
 
@@ -302,7 +303,15 @@ export async function PUT(
     // GL: balance is set once at wallet creation and auto-managed by orders thereafter
     //     (decremented on order, restored on void) — read-only after creation.
     // VIP / PREPAID_CARD / DOWNPAYMENT / ADVANCE / PACKAGE: user-maintained balances.
-    const existing = await prisma.digitalWallet.findUnique({ where: { id }, select: { walletType: true, totalGlAmount: true } })
+    const existing = await prisma.digitalWallet.findUnique({ where: { id }, select: { walletType: true, totalGlAmount: true, dateObtained: true } })
+    // Only a changed date is checked, so a wallet still carrying an old typo can
+    // be edited otherwise until someone corrects it.
+    const savedDate = existing?.dateObtained ? existing.dateObtained.toISOString().slice(0, 10) : ''
+    const sentDate = typeof dateObtained === 'string' ? dateObtained.slice(0, 10) : ''
+    if (dateObtained !== undefined && sentDate !== savedDate) {
+      const dateError = obtainedDateError(dateObtained)
+      if (dateError) return NextResponse.json({ error: dateError }, { status: 400 })
+    }
     const isBalanceReadOnly = existing?.walletType === 'HMO' || existing?.walletType === 'GL'
     const existingGlAmount = existing?.totalGlAmount != null ? Number(existing.totalGlAmount) : null
 

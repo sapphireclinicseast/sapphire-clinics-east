@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { parsePagination, paginatedResult } from '@/lib/pagination'
+import { obtainedDateError } from '@/lib/wallet-dates'
 
 const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
 
@@ -133,6 +134,8 @@ export async function POST(req: Request) {
     if (!patientName?.trim()) {
       return NextResponse.json({ error: 'Patient name is required' }, { status: 400 })
     }
+    const dateError = obtainedDateError(dateObtained)
+    if (dateError) return NextResponse.json({ error: dateError }, { status: 400 })
 
     if (!walletType || !TYPE_PREFIX[walletType]) {
       return NextResponse.json(

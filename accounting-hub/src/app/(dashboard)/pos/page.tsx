@@ -26,6 +26,7 @@ import { patientViewPath } from '@/lib/patient-view'
 import { TUITION_SERVICE_NAME, normName, tuitionPrefillFor, type TuitionPlan, type TuitionPrefill } from '@/lib/tuition'
 import TuitionDesk from './TuitionDesk'
 import { buildSoaPdf, MONTH_OPTIONS, periodLabel, type SoaSettings, type SoaOrder } from '@/lib/soa-pdf'
+import { EARLIEST_OBTAINED, latestObtained, obtainedDateError } from '@/lib/wallet-dates'
 
 /* ─────────────────────────── TYPES ─────────────────────────── */
 
@@ -5077,6 +5078,8 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
   const [createApplicationNo, setCreateApplicationNo] = useState('2nd Application')
   const createWallet = async (allowDuplicate = false) => {
     if (!createForm.patientName.trim()) { setCreateError('Name is required'); return }
+    const dateError = obtainedDateError(createForm.dateObtained)
+    if (dateError) { setCreateError(dateError); return }
     setCreateError('')
     try {
       // When allowing a duplicate GL wallet, append the application label to the name
@@ -5248,6 +5251,9 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
 
   const saveWalletEdit = async () => {
     if (!walletDetail) return
+    const savedDate = walletDetail.dateObtained ? String(walletDetail.dateObtained).slice(0, 10) : ''
+    const dateError = (walletEditForm.dateObtained || '') !== savedDate ? obtainedDateError(walletEditForm.dateObtained) : null
+    if (dateError) { setWalletEditError(dateError); return }
     setWalletEditSaving(true)
     setWalletEditError('')
     try {
@@ -6374,7 +6380,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
               {walletTypeFilter !== 'HMO' && (
                 <div>
                   <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Date Obtained</label>
-                  <input type="date" value={createForm.dateObtained}
+                  <input type="date" value={createForm.dateObtained} min={EARLIEST_OBTAINED} max={latestObtained()}
                     onChange={e => setCreateForm({ ...createForm, dateObtained: e.target.value })}
                     className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
                 </div>
@@ -6620,7 +6626,7 @@ function WalletPanel({ session }: { session: { user?: Record<string, unknown> } 
                   </div>
                   <div>
                     <label className="font-medium mb-1 block" style={{ color: 'var(--mid-gray)' }}>Date Obtained</label>
-                    <input type="date" value={walletEditForm.dateObtained || ''} onChange={e => setWalletEditForm(p => ({ ...p, dateObtained: e.target.value }))}
+                    <input type="date" value={walletEditForm.dateObtained || ''} min={EARLIEST_OBTAINED} max={latestObtained()} onChange={e => setWalletEditForm(p => ({ ...p, dateObtained: e.target.value }))}
                       className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
                   </div>
                   {/* HMO balance is auto-computed from unpaid POS orders — read-only.
