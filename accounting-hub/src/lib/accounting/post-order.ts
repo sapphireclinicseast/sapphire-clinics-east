@@ -313,12 +313,21 @@ export async function postOrderJournal(
       // so gross always splits exactly.
       const dedAmt = (d: { rate: unknown; valueType?: string | null }) =>
         Math.round((d.valueType === 'FIXED' ? Number(d.rate) : gross * (Number(d.rate) / 100)) * 100) / 100
-      const deductionAmt = (pm?.deductions || []).reduce((s, d) => s + dedAmt(d), 0)
+      // Rate eras: banks reprice MDR (AUB credit card 2.5% → 2.2% from Oct 2025),
+      // so a deduction applies only when the SALE date falls inside
+      // [effectiveFrom, effectiveTo] — the same window rule settlement matching
+      // uses (netOfDeductions in pos-settlement-shapes) and the reports engine
+      // uses for synthesized orders. Undated rows apply forever. Without this,
+      // a mode with two eras charged both rates on every sale.
+      const saleDate = order.transactionDate
+      const deductions = (pm?.deductions || []).filter(d =>
+        !(d.effectiveFrom && saleDate < d.effectiveFrom) && !(d.effectiveTo && saleDate > d.effectiveTo))
+      const deductionAmt = deductions.reduce((s, d) => s + dedAmt(d), 0)
       const netCash = Math.round((gross - deductionAmt) * 100) / 100
 
       addLine(cashAcct.id, 'debit', netCash, `Cash receipt — ${p.method}`)
 
-      for (const d of pm?.deductions || []) {
+      for (const d of deductions) {
         const amt = dedAmt(d)
         if (amt <= 0) continue
         if (!d.account) {
