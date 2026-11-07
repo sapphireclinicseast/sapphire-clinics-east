@@ -43,6 +43,21 @@ services:
       # HR dividend-release ping). Set ACCOUNTING_INTERNAL_KEY in docker/.env to the same value HR uses.
       ACCOUNTING_INTERNAL_KEY: ${ACCOUNTING_INTERNAL_KEY:-}
       EXTERNAL_API_KEY: ${EXTERNAL_API_KEY}
+      # Which POS order lines count as a cancellation fee, for the Operations
+      # Hub's Patient Relationship > Cancellations tab. The defaults in
+      # api/internal/cancellation-fees ("cancellation fee", "cancel fee", ...)
+      # match 6 lines in the whole database, because this clinic's POS names
+      # them differently — so every fee read as unpaid, including the ones that
+      # had been collected.
+      #
+      # "cancellation (" deliberately keeps the bracket: it selects the fee
+      # items CANCELLATION (VALID) / (INVALID) and their "- PT PEDIA" variants,
+      # while leaving the session products alone — "OT - THERAPIST (SINGLE) -
+      # CANCELLATION- RETAINER - ..." is a retained slot, not a fee. Lines that
+      # spell the fee out inside a retainer description ("... / JULY 08 LATE
+      # CANCELLATION FEE") are caught by "late cancellation", which is correct:
+      # they say what they are.
+      FEE_NAME_PATTERN: "${FEE_NAME_PATTERN:-late cancellation,cancellation (,no show fee}"
       # Gmail API for outbound mail (src/lib/gmail.ts), replacing Resend. As with
       # PayMongo below, only the NAMES appear here — the values live in
       # DEPLOY_DIR/docker/.env. Compose passes variables through explicitly, so
