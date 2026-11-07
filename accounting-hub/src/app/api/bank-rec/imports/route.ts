@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { removeOwnedEntries } from '@/lib/bank-rec-entry-ownership'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 
@@ -85,10 +86,9 @@ export async function DELETE(req: Request) {
     }, { status: 409 })
   }
 
-  const jeIds = rows.map(r => r.journalEntryId).filter(Boolean) as string[]
   const fxIds = [...new Set(rows.filter(r => r.matchType === 'FOREX' && r.matchId).map(r => r.matchId as string))]
-  const deleted = await prisma.$transaction(async (tx) => {
-    if (jeIds.length) await tx.journalEntry.deleteMany({ where: { id: { in: jeIds } } })
+  const { deleted, entriesKept } = await prisma.$transaction(async (tx) => {
+    const { kept } = await removeOwnedEntries(tx, rows)
     // Release the far side of any currency exchange these rows took part in.
     if (fxIds.length) {
       await tx.bankTransaction.updateMany({
@@ -99,7 +99,7 @@ export async function DELETE(req: Request) {
     }
     const res = await tx.bankTransaction.deleteMany({ where: { importBatch: id } })
     await tx.bankImportBatch.delete({ where: { id } }).catch(() => {})
-    return res.count
+    return { deleted: res.count, entriesKept: kept }
   })
-  return NextResponse.json({ deleted })
+  return NextResponse.json({ deleted, entriesKept })
 }

@@ -126,7 +126,7 @@ export async function PATCH(req: Request) {
     await prisma.$transaction(async (tx) => {
       // Remember which bank lines were matched to the old entry before it goes.
       const matched = bb.journalEntryId
-        ? await tx.bankTransaction.findMany({ where: { journalEntryId: bb.journalEntryId }, select: { id: true, matchId: true } })
+        ? await tx.bankTransaction.findMany({ where: { OR: [{ journalEntryId: bb.journalEntryId }, { matchId: bb.journalEntryId }] }, select: { id: true, matchId: true, journalEntryId: true } })
         : []
       await tx.shareBuyback.update({ where: { id }, data: {
         date, shares, price, bankAccountId, treasuryAccountId,
@@ -136,7 +136,10 @@ export async function PATCH(req: Request) {
       const jeId = await postEquityBuyback(tx, { refId: id, date, amount: shares * price, bankAccountId, treasuryAccountId, investor: holderName, createdById: session.user!.id as string })
       await tx.shareBuyback.update({ where: { id }, data: { journalEntryId: jeId } })
       if (jeId) for (const m of matched) {
-        await tx.bankTransaction.update({ where: { id: m.id }, data: { journalEntryId: jeId, ...(m.matchId === bb.journalEntryId ? { matchId: jeId } : {}) } })
+        await tx.bankTransaction.update({ where: { id: m.id }, data: {
+          ...(m.journalEntryId === bb.journalEntryId ? { journalEntryId: jeId } : {}),
+          ...(m.matchId === bb.journalEntryId ? { matchId: jeId } : {}),
+        } })
       }
     })
     return NextResponse.json({ success: true })

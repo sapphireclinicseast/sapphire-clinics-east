@@ -8,6 +8,7 @@ import { applyBankRules } from '@/lib/bank-rec-rules'
 import { branchForBankAccount, isPostableBranch } from '@/lib/branch'
 import { recordAmountById } from '@/lib/bank-rec-candidates'
 import { isForMatching } from '@/lib/bank-rec-flag'
+import { removeOwnedEntries } from '@/lib/bank-rec-entry-ownership'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 
@@ -277,7 +278,7 @@ export async function PATCH(req: Request) {
         ? [{ accountId: categoryAccountId, debit: amount, credit: 0 }, { accountId: txn.bankAccountId, debit: 0, credit: amount }]
         : [{ accountId: txn.bankAccountId, debit: amount, credit: 0 }, { accountId: categoryAccountId, debit: 0, credit: amount }]
       const je = await prisma.$transaction(async (tx) => {
-        if (txn.journalEntryId) await tx.journalEntry.delete({ where: { id: txn.journalEntryId } }).catch(() => {})
+        await removeOwnedEntries(tx, [txn])
         const created = await tx.journalEntry.create({
           data: {
             entryDate: txn.date,
@@ -648,7 +649,7 @@ export async function PATCH(req: Request) {
           const lines = bankIsDebit
             ? [{ accountId: txn.bankAccountId, debit: amount, credit: 0 }, { accountId: diffAccountId, debit: 0, credit: amount }]
             : [{ accountId: diffAccountId, debit: amount, credit: 0 }, { accountId: txn.bankAccountId, debit: 0, credit: amount }]
-          if (txn.journalEntryId) await prisma.journalEntry.delete({ where: { id: txn.journalEntryId } }).catch(() => {})
+          await removeOwnedEntries(prisma, [txn])
           const je = await prisma.journalEntry.create({
             data: {
               entryDate: txn.date,
@@ -715,11 +716,11 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ success: true })
     }
     if (action === 'exclude') {
-      if (txn.journalEntryId) await prisma.journalEntry.delete({ where: { id: txn.journalEntryId } }).catch(() => {})
+      const { kept } = await removeOwnedEntries(prisma, [txn])
       // A POS settlement batch holds its order payments captive — release them.
       if (txn.matchType === 'POS_SETTLEMENT' && txn.matchId) await prisma.posSettlementBatch.delete({ where: { id: txn.matchId } }).catch(() => {})
       await prisma.bankTransaction.update({ where: { id }, data: { status: 'EXCLUDED', journalEntryId: null, categoryAccountId: null, matchType: null, matchId: null, matchLabel: null } })
-      return NextResponse.json({ success: true })
+      return NextResponse.json({ success: true, entryKept: kept > 0 })
     }
     if (action === 'unpost') {
       // An original consumed by a Split or Combine must come back through the
@@ -729,7 +730,7 @@ export async function PATCH(req: Request) {
       if (txn.status === 'EXCLUDED' && /^\[(SPLIT into|COMBINED into)/.test(txn.note || '')) {
         return NextResponse.json({ error: 'This line was split/combined. Restore it with the Undo button on its split legs or combined line (Pending tab) — restoring it here would double-count the money.' }, { status: 400 })
       }
-      if (txn.journalEntryId) await prisma.journalEntry.delete({ where: { id: txn.journalEntryId } }).catch(() => {})
+      const { kept } = await removeOwnedEntries(prisma, [txn])
       // Undoing a POS settlement frees its order payments for a new batch.
       if (txn.matchType === 'POS_SETTLEMENT' && txn.matchId) await prisma.posSettlementBatch.delete({ where: { id: txn.matchId } }).catch(() => {})
       // A currency exchange or internal transfer is one FundTransfer spanning
@@ -753,7 +754,7 @@ export async function PATCH(req: Request) {
         return NextResponse.json({ success: true, released: both.length })
       }
       await prisma.bankTransaction.update({ where: { id }, data: { status: 'PENDING', journalEntryId: null, categoryAccountId: null, matchType: null, matchId: null, matchLabel: null } })
-      return NextResponse.json({ success: true })
+      return NextResponse.json({ success: true, entryKept: kept > 0 })
     }
     if (action === 'update') {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -785,7 +786,7 @@ export async function DELETE(req: Request) {
   if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
   try {
     const txn = await prisma.bankTransaction.findUnique({ where: { id } })
-    if (txn?.journalEntryId) await prisma.journalEntry.delete({ where: { id: txn.journalEntryId } }).catch(() => {})
+    if (txn) await removeOwnedEntries(prisma, [txn])
     await prisma.bankTransaction.delete({ where: { id } })
     return NextResponse.json({ success: true })
   } catch { return NextResponse.json({ error: 'Failed to delete' }, { status: 500 }) }

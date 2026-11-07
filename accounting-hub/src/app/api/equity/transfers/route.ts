@@ -259,7 +259,7 @@ export async function PATCH(req: Request) {
 
     await prisma.$transaction(async (tx) => {
       const matched = t.journalEntryId
-        ? await tx.bankTransaction.findMany({ where: { journalEntryId: t.journalEntryId }, select: { id: true, matchId: true } })
+        ? await tx.bankTransaction.findMany({ where: { OR: [{ journalEntryId: t.journalEntryId }, { matchId: t.journalEntryId }] }, select: { id: true, matchId: true, journalEntryId: true } })
         : []
       await tx.shareTransfer.update({ where: { id }, data: {
         date, shares, price, ...(Array.isArray(b.proofUrls) ? { proofUrls: b.proofUrls } : {}),
@@ -299,7 +299,10 @@ export async function PATCH(req: Request) {
       })
       await tx.shareTransfer.update({ where: { id }, data: { journalEntryId: jeId } })
       if (jeId) for (const m of matched) {
-        await tx.bankTransaction.update({ where: { id: m.id }, data: { journalEntryId: jeId, ...(m.matchId === t.journalEntryId ? { matchId: jeId } : {}) } })
+        await tx.bankTransaction.update({ where: { id: m.id }, data: {
+          ...(m.journalEntryId === t.journalEntryId ? { journalEntryId: jeId } : {}),
+          ...(m.matchId === t.journalEntryId ? { matchId: jeId } : {}),
+        } })
       }
     })
     return NextResponse.json({ success: true })

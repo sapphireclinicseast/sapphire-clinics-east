@@ -176,13 +176,13 @@ export default function BankReconciliationPage() {
       if (!d.needsForce) alert(d.error || 'Failed')
       return
     }
-    alert(`Deleted ${d.deleted} line(s).`)
+    alert(`Deleted ${d.deleted} line(s).${d.entriesKept ? `\n\n${d.entriesKept} journal entr${d.entriesKept === 1 ? 'y' : 'ies'} they were tied to belong to other records and stay in the books.` : ''}`)
     await refreshAll()
   }
   // The petty cash accounts are the only ones where a withdrawal is not a
   // payment — it is the branch officer drawing the float into cash.
   const isPettyCashAccount = /petty cash/i.test(account?.accountTitle || '')
-  const act = async (body: Record<string, unknown>) => { const r = await fetch('/api/bank-rec/transactions', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); if (!r.ok) { alert((await r.json()).error || 'Failed'); return } await refreshAll() }
+  const act = async (body: Record<string, unknown>) => { const r = await fetch('/api/bank-rec/transactions', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); const d = await r.json().catch(() => ({})); if (!r.ok) { alert(d.error || 'Failed'); return } if (d.entryKept) alert('The journal entry this line was tied to belongs to another record, so it stays in the books. Do not Categorise this line if that entry is still right: it would post the same money twice.'); await refreshAll() }
   const reshape = async (body: Record<string, unknown>) => {
     setReshaping(true)
     try {
