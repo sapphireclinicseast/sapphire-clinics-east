@@ -12,6 +12,7 @@ import { isLikelyChinoy } from '@/lib/chinoy-surnames'
 import { branchLabel } from '@/lib/branch-label'
 import { useSearchParams } from 'next/navigation'
 import { flashRow } from '@/lib/highlight-row'
+import { CertificateActionButton, CertificateSettingsButton } from '@/components/patients/DischargeCertificates'
 
 interface Patient {
   id: string
@@ -713,6 +714,19 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
   const adultCount     = patients.filter((p) => p.patientType === 'ADULT').length
 
   // ── Table column config ───────────────────────────────────────────────────
+  /* Certificate counts per patient, for the badge on the row action. A count
+     map rather than the rows themselves, so opening the directory does not
+     pull every certificate into the browser. */
+  const [certCounts, setCertCounts] = useState<Record<string, number>>({})
+  const loadCertCounts = useCallback(() => {
+    fetch('/api/patients/certificates?counts=1', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d?.counts) setCertCounts(d.counts) })
+      // A directory that still lists patients beats one that fails over a badge.
+      .catch(() => {})
+  }, [])
+  useEffect(() => { loadCertCounts() }, [loadCertCounts])
+
   const COLS: { key: SortCol; label: string; filterable?: FilterableCol }[] = [
     { key: 'name',      label: 'Name'      },
     { key: 'type',      label: 'Type',      filterable: 'type'      },
@@ -737,6 +751,7 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
             Patient CRM
           </h1>
         </div>
+        <CertificateSettingsButton />
         <button
           onClick={() => setOnlyMissingDx((v) => !v)}
           className="relative flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold flex-shrink-0"
@@ -1434,6 +1449,11 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
                         title="Edit patient">
                         <Pencil size={13} />
                       </button>
+                      <CertificateActionButton
+                        patient={p}
+                        count={certCounts[p.id] ?? 0}
+                        onIssued={loadCertCounts}
+                      />
                       <button
                         onClick={() => deletePatient(p.id, `${p.firstName} ${p.lastName}`)}
                         className="p-1.5 rounded-lg hover:bg-red-50 transition-colors"
