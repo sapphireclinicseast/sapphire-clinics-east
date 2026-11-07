@@ -42,8 +42,16 @@ const isPre2026Settlement = (e: LinkedEntry) =>
 export async function removeOwnedEntries(db: Db, lines: LinkedLine[]): Promise<{ deleted: number; kept: number }> {
   const linked = lines.filter(l => l.journalEntryId)
   if (linked.length === 0) return { deleted: 0, kept: 0 }
+  // A difference on an A/P match has no link of its own, because the line's one
+  // link holds the settlement. It names the line in referenceId instead.
+  const apLineIds = new Set(linked.filter(l => l.matchType === 'AP_BILL').map(l => l.id))
   const entries = await db.journalEntry.findMany({
-    where: { id: { in: linked.map(l => l.journalEntryId as string) } },
+    where: {
+      OR: [
+        { id: { in: linked.map(l => l.journalEntryId as string) } },
+        { referenceType: 'BANK_REC', referenceId: { in: [...apLineIds] } },
+      ],
+    },
     select: {
       id: true, referenceType: true, referenceId: true,
       lines: { where: { debit: { gt: 0 } }, select: { accountId: true, debit: true } },
@@ -54,6 +62,9 @@ export async function removeOwnedEntries(db: Db, lines: LinkedLine[]): Promise<{
   for (const l of linked) {
     const entry = byId.get(l.journalEntryId as string)
     if (entry && lineOwnsEntry(l, entry)) owned.set(entry.id, entry)
+  }
+  for (const e of entries) {
+    if (e.referenceType === 'BANK_REC' && apLineIds.has(e.referenceId ?? '')) owned.set(e.id, e)
   }
   const settlements = [...owned.values()].filter(isPre2026Settlement)
   const others = [...owned.values()].filter(e => !isPre2026Settlement(e))
