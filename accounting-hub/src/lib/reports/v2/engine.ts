@@ -24,6 +24,7 @@ import { prisma } from '@/lib/prisma'
 import { INCOME_TAX_RATE } from '@/lib/reports/income-statement-totals'
 import { productSubtypeLabel } from '@/lib/sku-taxonomy'
 import { netOfVat } from '@/lib/vat'
+import { hasNoBranch } from '@/lib/reports/audited-expense-rules'
 import { addedCostByAsset } from '@/lib/asset-entry-retag'
 import { carriedTotal } from '@/lib/asset-parts'
 
@@ -1191,11 +1192,28 @@ export async function computeLedgerStatements(
   // CEO petty cash allocated across branches
   const ceoEntries = qbEra ? [] : await prisma.pettyCashEntry.findMany({
     where: { branch: 'CEO', date: { gte: start, lt: end } },
-    select: { accountTitle: true, date: true, vatable: true, vatPortion: true, grossAmount: true, branchAllocations: true, validity: true, pcfStatus: true, pcvNumber: true, description: true },
+    select: { accountTitle: true, date: true, vatable: true, vatPortion: true, grossAmount: true, branchAllocations: true, validity: true, pcfStatus: true, pcvNumber: true, description: true, branch: true, recordType: true, skipReports: true, paymentBankAccount: true },
   })
   for (const e of ceoEntries) {
     if (!e.accountTitle || !e.date) continue
     if (e.pcfStatus === 'Cancelled' || e.validity === 'Cancelled' || e.vatable === 'Cancelled') continue
+    // A CEO row with no branch share belongs to no branch, so it counts under All
+    // Branches only, paid from the account on the row — the Audited tab's rule
+    // (hasNoBranch). Without this the loop below posted nothing for it, which left
+    // the ₱25,000 January 2026 board honoraria out of every Income Statement.
+    if (hasNoBranch(e)) {
+      if (branch !== 'ALL' || e.recordType === 'RECURRING' || e.skipReports) continue
+      const gross = Number(e.grossAmount)
+      if (!gross) continue
+      const net = netOfVat(e)
+      const vat = gross - net
+      postBalanced('petty-cash-ceo', monthOf(e.date), `PCV ${e.pcvNumber} (CEO, no branch)${e.description ? ` — ${e.description}` : ''}`, [
+        { acct: parseAccountKey(e.accountTitle), debit: net },
+        ...(vat > 0.005 ? [{ acct: inputVat(), debit: vat }] : []),
+        { acct: settlementFor(e), credit: gross },
+      ], e.date)
+      continue
+    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const allocs = Array.isArray(e.branchAllocations) ? (e.branchAllocations as any[]) : []
     for (const a of allocs) {
