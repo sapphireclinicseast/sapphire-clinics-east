@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { netOfDeductions } from '@/lib/pos-settlement-shapes'
+import { FOR_MATCHING_PREFIX, forMatchingText } from '@/lib/bank-rec-flag'
 
 /**
  * Everything the Hub has recorded that a bank line could correspond to.
@@ -441,6 +442,30 @@ export async function candidates(bankAccountId: string | null, lo: Date, hi: Dat
     }
   }
 
+  // A journal entry flagged for matching: its money is already in the books and
+  // the bank line was left open to be tied to it. Matching only tags the line, so
+  // nothing posts twice, and Undo leaves the entry alone.
+  const flaggedEntries = await prisma.journalEntry.findMany({
+    where: { description: { startsWith: FOR_MATCHING_PREFIX }, entryDate: range },
+    select: {
+      id: true, description: true, entryDate: true, referenceId: true,
+      lines: {
+        where: bankAccountId ? { accountId: bankAccountId } : { account: { isBankAccount: true } },
+        select: { debit: true, credit: true },
+      },
+    },
+  })
+  for (const j of flaggedEntries) {
+    for (const l of j.lines) {
+      const isIn = num(l.debit) > 0
+      out.push({
+        type: 'JOURNAL', id: j.id,
+        label: `JE ${j.referenceId || ''} - ${forMatchingText(j.description || '')}`.slice(0, 200),
+        date: j.entryDate, amount: isIn ? num(l.debit) : num(l.credit), dir: isIn ? 'in' : 'out',
+      })
+    }
+  }
+
   await markSettled(out)
   return out
 }
@@ -533,7 +558,7 @@ export function remainingOn(c: Candidate, isSpent: boolean): number {
  * not a real concern. Returns null when nothing answers to the id.
  */
 export async function recordAmountById(id: string, isSpent: boolean): Promise<number | null> {
-  const [ft, rfp, order, ar, sal, ben, tax, ca, pce, adv, loan, cs, ps, ed, bb, ap, lp, sl, apBillLine] = await Promise.all([
+  const [ft, rfp, order, ar, sal, ben, tax, ca, pce, adv, loan, cs, ps, ed, bb, ap, lp, sl, apBillLine, flaggedEntry] = await Promise.all([
     prisma.fundTransfer.findUnique({ where: { id }, select: { amount: true, toAmount: true } }),
     prisma.reimbursementReport.findUnique({ where: { id }, select: { grossTotal: true } }),
     prisma.order.findUnique({ where: { id }, select: { netAmount: true } }),
@@ -556,6 +581,10 @@ export async function recordAmountById(id: string, isSpent: boolean): Promise<nu
       where: { journalEntryId: id, credit: { gt: 0 }, account: { accountNumber: { in: ['4010', '5040'] } } },
       select: { credit: true },
     }),
+    prisma.journalEntry.findFirst({
+      where: { id, description: { startsWith: FOR_MATCHING_PREFIX } },
+      select: { totalAmount: true },
+    }),
   ])
   if (ft) return !isSpent && num(ft.toAmount) > 0 ? num(ft.toAmount) : num(ft.amount)
   if (rfp) return num(rfp.grossTotal)
@@ -576,5 +605,6 @@ export async function recordAmountById(id: string, isSpent: boolean): Promise<nu
   if (lp) return num(lp.amount)
   if (sl) return num(sl.principal)
   if (apBillLine) return num(apBillLine.credit)
+  if (flaggedEntry) return num(flaggedEntry.totalAmount)
   return null
 }

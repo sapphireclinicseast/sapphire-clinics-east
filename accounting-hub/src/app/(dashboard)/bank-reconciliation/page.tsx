@@ -4,7 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { SortFilterHead, applySortFilter, type SortCol } from '@/components/SortFilterHead'
 import { branchForBankAccount, branchLabel } from '@/lib/branch'
-import { ArrowLeftRight, Upload, Plus, Loader2, X, Search, Check, Link2, Ban, RotateCcw, Trash2, Download, Lock, Unlock, Wallet, Wand2, Save, HandCoins, Scissors, Merge } from 'lucide-react'
+import { isForMatching, forMatchingText } from '@/lib/bank-rec-flag'
+import { ArrowLeftRight, Upload, Plus, Loader2, X, Search, Check, Link2, Ban, RotateCcw, Trash2, Download, Lock, Unlock, Wallet, Wand2, Save, HandCoins, Scissors, Merge, Flag } from 'lucide-react'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -450,9 +451,11 @@ export default function BankReconciliationPage() {
                   <tr key={t.id} className="border-t" style={{ borderColor: 'var(--light-gray)', background: hints[t.id] ? '#fef9c3' : undefined }}>
                     {canWrite && tab === 'PENDING' && (
                       <td className="px-3 py-2.5">
-                        <input type="checkbox" checked={picked.has(t.id)}
-                          onChange={() => setPicked(prev => { const n = new Set(prev); n.has(t.id) ? n.delete(t.id) : n.add(t.id); return n })}
-                          title="Tick 2+ lines to combine them into one matchable line" />
+                        {!isForMatching(t.note) && (
+                          <input type="checkbox" checked={picked.has(t.id)}
+                            onChange={() => setPicked(prev => { const n = new Set(prev); n.has(t.id) ? n.delete(t.id) : n.add(t.id); return n })}
+                            title="Tick 2+ lines to combine them into one matchable line" />
+                        )}
                       </td>
                     )}
                     <td className="px-3 py-2.5 text-xs whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{t.date}</td>
@@ -460,6 +463,12 @@ export default function BankReconciliationPage() {
                       {t.description}
                       {t.splitFromId && <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full font-semibold" style={{ background: '#e0e7ff', color: '#3730a3' }}>split leg</span>}
                       {(t.sourceRowIds?.length || 0) > 0 && <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full font-semibold" style={{ background: '#e0e7ff', color: '#3730a3' }}>combined</span>}
+                      {t.status === 'PENDING' && isForMatching(t.note) && (
+                        <span className="block text-[11px] leading-snug mt-1" style={{ color: '#854d0e' }}>
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full font-semibold mr-1.5 whitespace-nowrap" style={{ background: '#fde68a' }}><Flag size={10} /> For matching</span>
+                          {forMatchingText(t.note as string)}
+                        </span>
+                      )}
                       {hints[t.id] && (
                         <span className="block text-[10px] mt-0.5" style={{ color: '#854d0e' }} title={`${hints[t.id].label} · ₱${peso(hints[t.id].amount)} on ${hints[t.id].date}`}>
                           Likely {hints[t.id].kind.toLowerCase()}: {hints[t.id].label}
@@ -479,7 +488,7 @@ export default function BankReconciliationPage() {
                     <td className="px-3 py-2.5 text-right whitespace-nowrap">
                       {canWrite && t.status === 'PENDING' && (
                         <>
-                          {autoRules[t.id] && (
+                          {autoRules[t.id] && !isForMatching(t.note) && (
                             <button onClick={async () => {
                               setAutoPosting(t.id)
                               try {
@@ -495,8 +504,12 @@ export default function BankReconciliationPage() {
                             </button>
                           )}
                           <button onClick={() => setMatchFor(t)} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border mr-1" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}><Link2 size={13} /> Match</button>
+                          {!isForMatching(t.note) && (
                           <button onClick={() => setCatFor(t)} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium text-white mr-1" style={{ background: 'var(--teal)' }}><Check size={13} /> Categorise</button>
+                          )}
+                          {!isForMatching(t.note) && (
                           <button onClick={() => setFtFor(t)} title="Record this line as a transfer to another of our accounts, or to a petty cash box" className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border mr-1" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}><ArrowLeftRight size={13} /> Transfer</button>
+                          )}
                           {/* A withdrawal from a petty cash account is the officer drawing the
                               float as cash — the same money, in hand rather than in the passbook.
                               Nothing to post and nothing to match, so it needs its own way to close. */}
@@ -506,8 +519,10 @@ export default function BankReconciliationPage() {
                               act({ id: t.id, action: 'close-petty-cash-withdrawal' })
                             }} title="Cash withdrawn to the box — reconcile without posting" className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border mr-1" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}><HandCoins size={13} /> Cash on hand</button>
                           )}
+                          {!isForMatching(t.note) && (
                           <button onClick={() => setSplitFor(t)} title="Split this line into smaller legs — e.g. one deposit covering several separately-recorded sales"
                             className="inline-flex items-center px-2 py-1 rounded-lg text-xs border mr-1" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}><Scissors size={13} /></button>
+                          )}
                           {(t.splitFromId || (t.sourceRowIds?.length || 0) > 0) && (
                             <button onClick={() => {
                               if (confirm(t.splitFromId

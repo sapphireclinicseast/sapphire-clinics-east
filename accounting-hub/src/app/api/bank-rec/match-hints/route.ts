@@ -20,6 +20,7 @@ const TOLERANCE = 1.0   // pesos; absorbs per-item rounding inside a settlement
 type Hint = { kind: string; label: string; amount: number; date: string; n: number }
 
 const KIND: Record<string, string> = {
+  JOURNAL: 'Flagged journal entry',
   FUND_TRANSFER: 'Fund transfer', RFP: 'Paid RFP', ORDER: 'Sale', AR_PAYMENT: 'AR receipt',
   SALARY: 'Salaries payable', BENEFIT: 'Benefits payable', TAX: 'Tax payment',
   CASH_ADVANCE: 'Cash advance', EQUITY: 'Equity deposit', ADVANCE: 'Advance received',

@@ -15,7 +15,7 @@ const LABELS: Record<string, string> = {
   AR_PAYMENT: 'AR receipts', SALARY: 'Salaries payable', BENEFIT: 'Benefits payable',
   TAX: 'Tax payments', CASH_ADVANCE: 'Cash advances', EQUITY: 'Equity deposits',
   EQUITY_DEPOSIT: 'Equity deposits (itemised)',
-  ADVANCE: 'Advances received',
+  ADVANCE: 'Advances received', JOURNAL: 'Journal entries flagged for matching',
 }
 
 export async function GET(req: Request) {

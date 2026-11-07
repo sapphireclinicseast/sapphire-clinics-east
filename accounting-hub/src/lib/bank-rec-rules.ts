@@ -1,4 +1,5 @@
 import { branchForBankAccount } from '@/lib/branch'
+import { isForMatching } from '@/lib/bank-rec-flag'
 
 // A rule matches a PENDING bank line when its pattern appears (case-
 // insensitively) in the description or the payee, the direction agrees, and
@@ -36,7 +37,7 @@ export async function applyBankRules(prisma: any, userId: string, opts: { ruleId
     orderBy: { createdAt: 'asc' },
   })
   if (!rules.length) return { posted: 0, skippedFx: 0, skippedSelf: 0, capped: false, perRule: {}, errors: [] as string[] }
-  const pending = await prisma.bankTransaction.findMany({
+  const pending = (await prisma.bankTransaction.findMany({
     where: {
       status: 'PENDING',
       ...(opts.importBatch ? { importBatch: opts.importBatch } : {}),
@@ -44,7 +45,7 @@ export async function applyBankRules(prisma: any, userId: string, opts: { ruleId
       ...(opts.transactionId ? { id: opts.transactionId } : {}),
     },
     orderBy: { date: 'asc' },
-  })
+  })).filter((t: { note: string | null }) => !isForMatching(t.note)) // its entry is already posted; a rule would post it twice
   const bankAccts = await prisma.account.findMany({
     where: { id: { in: [...new Set(pending.map((t: { bankAccountId: string }) => t.bankAccountId))] } },
     select: { id: true, currency: true, accountTitle: true },

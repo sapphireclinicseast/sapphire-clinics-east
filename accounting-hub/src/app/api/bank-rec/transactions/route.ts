@@ -7,6 +7,7 @@ import { isForeign, rateFor, recordRate, toPhp } from '@/lib/fx'
 import { applyBankRules } from '@/lib/bank-rec-rules'
 import { branchForBankAccount, isPostableBranch } from '@/lib/branch'
 import { recordAmountById } from '@/lib/bank-rec-candidates'
+import { isForMatching } from '@/lib/bank-rec-flag'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 
@@ -226,6 +227,11 @@ export async function PATCH(req: Request) {
     }
 
     if (action === 'categorise') {
+      if (isForMatching(txn.note)) {
+        return NextResponse.json({
+          error: 'This line is flagged for matching: its entry is already posted, so categorising it would post the money twice. Use Match instead.',
+        }, { status: 409 })
+      }
       const categoryAccountId = body.categoryAccountId
       if (!categoryAccountId) return NextResponse.json({ error: 'Choose a category account' }, { status: 400 })
       // Categorising a bank line to the account it is already on would debit and
