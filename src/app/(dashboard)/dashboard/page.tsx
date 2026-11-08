@@ -6,9 +6,6 @@ import {
   Users,
   Eye,
   TrendingUp,
-  Send,
-  Calendar,
-  Cake,
   Activity,
 } from 'lucide-react'
 import { formatDate } from '@/lib/utils'
@@ -57,42 +54,13 @@ async function getDashboardData() {
   const now = new Date()
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
 
-  const [scheduledCount, publishedCount, draftCount, upcomingPosts, recentPosts, insights] =
-    await Promise.all([
-      prisma.scheduledPost.count({ where: { status: 'SCHEDULED' } }),
-      prisma.scheduledPost.count({ where: { status: 'PUBLISHED' } }),
-      prisma.scheduledPost.count({ where: { status: 'DRAFT' } }),
-      prisma.scheduledPost.findMany({
-        where: { status: 'SCHEDULED', scheduledAt: { gte: now } },
-        orderBy: { scheduledAt: 'asc' },
-        take: 5,
-        include: { createdBy: { select: { name: true } } },
-      }),
-      prisma.scheduledPost.findMany({
-        where: { status: 'PUBLISHED' },
-        orderBy: { updatedAt: 'desc' },
-        take: 5,
-        include: { createdBy: { select: { name: true } } },
-      }),
-      getFacebookInsights(thirtyDaysAgo, now).catch(() => ({
-        reach: 0, impressions: 0, engagement: 0, followers: 0,
-      })),
-    ])
+  // Only the page insights remain: the scheduled-post counts and lists went with
+  // the social posting feature, which had never been used.
+  const insights = await getFacebookInsights(thirtyDaysAgo, now).catch(() => ({
+    reach: 0, impressions: 0, engagement: 0, followers: 0,
+  }))
 
-  return {
-    scheduledCount,
-    publishedCount,
-    draftCount,
-    upcomingPosts,
-    recentPosts,
-    insights,
-  }
-}
-
-const PLATFORM_COLORS: Record<string, string> = {
-  FACEBOOK: '#1877F2',
-  INSTAGRAM: '#E1306C',
-  TIKTOK: '#000000',
+  return { insights }
 }
 
 export default async function DashboardPage() {
@@ -133,9 +101,6 @@ export default async function DashboardPage() {
     />
   )
 
-  // (Marketing-hub stats view below is kept as dead code in case we ever want
-  // a separate route for it; remove if unused after a few weeks.)
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const data = await getDashboardData()
 
   const statCards = [
@@ -215,149 +180,11 @@ export default async function DashboardPage() {
         ))}
       </div>
 
-      {/* Post Status Summary */}
-      <div className="grid grid-cols-3 gap-4">
-        {[
-          { label: 'Scheduled', count: data.scheduledCount, icon: Calendar, color: 'var(--teal)' },
-          { label: 'Published', count: data.publishedCount, icon: Send, color: 'var(--gold)' },
-          { label: 'Drafts', count: data.draftCount, icon: Cake, color: 'var(--mid-gray)' },
-        ].map(({ label, count, icon: Icon, color }) => (
-          <div
-            key={label}
-            className="rounded-xl p-4 flex items-center gap-4"
-            style={{ background: '#fff', border: '1px solid var(--light-gray)' }}
-          >
-            <div
-              className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-              style={{ background: `${color}18` }}
-            >
-              <Icon size={20} style={{ color }} />
-            </div>
-            <div>
-              <p className="text-2xl font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
-                {count}
-              </p>
-              <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>{label}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Upcoming Posts */}
-      <div className="grid lg:grid-cols-2 gap-4">
-        <div
-          className="rounded-xl p-5"
-          style={{ background: '#fff', border: '1px solid var(--light-gray)' }}
-        >
-          <div className="flex items-center justify-between mb-4">
-            <h2
-              className="font-bold text-sm"
-              style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}
-            >
-              Upcoming Scheduled Posts
-            </h2>
-            <a
-              href="/social/scheduled"
-              className="text-xs font-semibold"
-              style={{ color: 'var(--teal)' }}
-            >
-              View all
-            </a>
-          </div>
-          {data.upcomingPosts.length === 0 ? (
-            <p className="text-sm text-center py-8" style={{ color: 'var(--mid-gray)' }}>
-              No posts scheduled yet
-            </p>
-          ) : (
-            <ul className="space-y-3">
-              {data.upcomingPosts.map((post) => (
-                <li
-                  key={post.id}
-                  className="flex items-start gap-3 pb-3"
-                  style={{ borderBottom: '1px solid var(--light-gray)' }}
-                >
-                  <div
-                    className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0"
-                    style={{ background: 'var(--teal)' }}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate" style={{ color: 'var(--charcoal)' }}>
-                      {post.content.slice(0, 80)}…
-                    </p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>
-                        {formatDate(post.scheduledAt)}
-                      </span>
-                      {post.platforms.map((p) => (
-                        <span
-                          key={p}
-                          className="text-xs px-1.5 py-0.5 rounded font-medium"
-                          style={{
-                            background: `${PLATFORM_COLORS[p]}18`,
-                            color: PLATFORM_COLORS[p],
-                          }}
-                        >
-                          {p}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
-        {/* Recently Published */}
-        <div
-          className="rounded-xl p-5"
-          style={{ background: '#fff', border: '1px solid var(--light-gray)' }}
-        >
-          <div className="flex items-center justify-between mb-4">
-            <h2
-              className="font-bold text-sm"
-              style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}
-            >
-              Recently Published
-            </h2>
-            <a
-              href="/social/published"
-              className="text-xs font-semibold"
-              style={{ color: 'var(--teal)' }}
-            >
-              View all
-            </a>
-          </div>
-          {data.recentPosts.length === 0 ? (
-            <p className="text-sm text-center py-8" style={{ color: 'var(--mid-gray)' }}>
-              No posts published yet
-            </p>
-          ) : (
-            <ul className="space-y-3">
-              {data.recentPosts.map((post) => (
-                <li
-                  key={post.id}
-                  className="flex items-start gap-3 pb-3"
-                  style={{ borderBottom: '1px solid var(--light-gray)' }}
-                >
-                  <div
-                    className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0"
-                    style={{ background: 'var(--gold)' }}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate" style={{ color: 'var(--charcoal)' }}>
-                      {post.content.slice(0, 80)}…
-                    </p>
-                    <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>
-                      {post.createdBy.name} · {formatDate(post.updatedAt)}
-                    </p>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </div>
+      {/* The post-status summary and the scheduled/published lists that used
+          to sit here went with the social posting feature. Nothing had ever
+          been scheduled through it, so the boxes stood empty and linked to
+          pages that no longer exist. The page insights above still come
+          straight from Meta and are unaffected. */}
     </div>
   )
 }
