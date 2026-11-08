@@ -1,20 +1,20 @@
 'use client'
 
+// Budget — enter the year's budget in Income-Statement format per branch, lock
+// each month, and read Budget vs Actual for the locked months or the full year.
+// All Branches is a read-only rollup (the API sums every branch). The arithmetic
+// lives in ./budget-math.ts and the grid/table pieces in ./BudgetViews.tsx.
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useSession } from 'next-auth/react'
-import { Target, Lock, Unlock, Save, Loader2, LineChart } from 'lucide-react'
+import { AlertTriangle, Check, Info, LineChart, Loader2, Lock, Save, Target } from 'lucide-react'
 import { PPE_CLASSIFICATION_LABELS, NON_DEPRECIATING_CLASSIFICATION_LABELS } from '@/lib/asset-classification'
-import { formatCurrency } from '@/lib/utils'
-
-type LineType = 'REVENUE' | 'COGS' | 'EXPENSE' | 'CAPEX'
-interface Line { key: string; label: string; type: LineType }
-interface Acct { accountNumber: string; accountTitle: string }
-interface MonthData { cogs?: number; revenueByAccount?: Record<string, number>; expenseByAccount?: Record<string, number> }
-interface ReportData { accounts?: Record<string, Record<string, Acct[]>>; monthly?: Record<number, MonthData> }
+import {
+  MS, buildLines, isDirty, monthEntries, netIncomeRow, seedInputs, totalRow, vsRows, vsTotals, yearTotal,
+  type ReportData,
+} from './budget-math'
+import { BudgetGrid, LockStrip, MON, PctOfBudget, Tile, Variance, VsTable, pesoSigned, FAV, UNFAV } from './BudgetViews'
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
-const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-const MS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
 const BRANCHES = [
   { value: 'ALL', label: 'All Branches' },
   { value: 'SANDBOX_EAST', label: 'Aura Health East' },
@@ -22,7 +22,12 @@ const BRANCHES = [
   { value: 'VERDANA_STORE', label: 'Verdana' },
   { value: 'AURA_INSTITUTE', label: 'Aura Health Institute' },
 ]
-const peso = (n: number) => formatCurrency(n)
+const CAPEX_LABELS = { ...PPE_CLASSIFICATION_LABELS, ...NON_DEPRECIATING_CLASSIFICATION_LABELS }
+type Period = 'H1' | 'H2' | 'FY'
+const PERIOD_MONTHS: Record<Period, number[]> = { H1: [1, 2, 3, 4, 5, 6], H2: [7, 8, 9, 10, 11, 12], FY: MS }
+const card = { borderColor: 'var(--light-gray)', background: 'white' }
+const muted = { color: 'var(--mid-gray)' }
+const seg = (on: boolean) => (on ? { background: 'var(--teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' })
 
 export default function BudgetsPage() {
   const { data: session } = useSession()
@@ -40,42 +45,58 @@ export default function BudgetsPage() {
   const [report, setReport] = useState<ReportData | null>(null)
   const [budgetsByMonth, setBudgetsByMonth] = useState<Record<number, Record<string, number>>>({})
   const [lockedMonths, setLockedMonths] = useState<number[]>([])
+  const [capexActual, setCapexActual] = useState<Record<number, Record<string, number>>>({})
   const [inputs, setInputs] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
+  const [reload, setReload] = useState(0)
   const [saving, setSaving] = useState(false)
+  const [lockBusy, setLockBusy] = useState<number | null>(null)
   const [msg, setMsg] = useState('')
   const [vsMonth, setVsMonth] = useState(now.getMonth() + 1)
+  // Layout preferences
+  const [period, setPeriod] = useState<Period>(() => (now.getMonth() < 6 ? 'H1' : 'H2'))
+  const [hideEmptyPref, setHideEmpty] = useState<boolean | null>(null)
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
 
   const lockedSet = useMemo(() => new Set(lockedMonths), [lockedMonths])
+  // Read-only views start with the empty lines hidden; editors start seeing every line.
+  const hideEmpty = hideEmptyPref ?? (view === 'vs' || !canEdit)
 
   const loadReport = useCallback(async () => {
     const params = new URLSearchParams({ year: String(year) })
     if (branch !== 'ALL') params.set('branch', branch)
-    try { const r = await fetch(`/api/reports?${params}`); setReport(r.ok ? await r.json() : null) } catch { setReport(null) }
+    try {
+      const r = await fetch(`/api/reports?${params}`)
+      setReport(r.ok ? await r.json() : null)
+      return r.ok ? '' : `the chart of accounts and actuals (HTTP ${r.status})`
+    } catch { setReport(null); return 'the chart of accounts and actuals' }
   }, [year, branch])
 
-  const [capexActual, setCapexActual] = useState<Record<number, Record<string, number>>>({})
   const loadCapexActual = useCallback(async () => {
     try {
       const r = await fetch(`/api/budgets/capex-actual?year=${year}&branch=${branch}`)
       setCapexActual(r.ok ? (await r.json()).capexByMonth || {} : {})
-    } catch { setCapexActual({}) }
+      return r.ok ? '' : `asset purchases (HTTP ${r.status})`
+    } catch { setCapexActual({}); return 'asset purchases' }
   }, [year, branch])
 
   const loadBudget = useCallback(async () => {
     try {
       const r = await fetch(`/api/budgets?year=${year}&branch=${branch}`)
-      if (r.ok) { const d = await r.json(); setBudgetsByMonth(d.budgetsByMonth || {}); setLockedMonths(d.lockedMonths || []) }
-      else { setBudgetsByMonth({}); setLockedMonths([]) }
-    } catch { setBudgetsByMonth({}); setLockedMonths([]) }
+      if (r.ok) { const d = await r.json(); setBudgetsByMonth(d.budgetsByMonth || {}); setLockedMonths(d.lockedMonths || []); return '' }
+      setBudgetsByMonth({}); setLockedMonths([]); return `the budget (HTTP ${r.status})`
+    } catch { setBudgetsByMonth({}); setLockedMonths([]); return 'the budget' }
   }, [year, branch])
 
-  useEffect(() => { setLoading(true); Promise.all([loadReport(), loadBudget(), loadCapexActual()]).finally(() => setLoading(false)) }, [loadReport, loadBudget, loadCapexActual])
   useEffect(() => {
-    const seed: Record<string, string> = {}
-    for (const [m, map] of Object.entries(budgetsByMonth)) for (const [k, v] of Object.entries(map)) seed[`${m}:${k}`] = String(v)
-    setInputs(seed)
-  }, [budgetsByMonth])
+    setLoading(true); setLoadError('')
+    Promise.all([loadReport(), loadBudget(), loadCapexActual()])
+      .then(errs => { const e = errs.filter(Boolean); if (e.length) setLoadError(`Could not load ${e.join(', ')}.`) })
+      .finally(() => setLoading(false))
+  }, [loadReport, loadBudget, loadCapexActual, reload])
+  const seed = useMemo(() => seedInputs(budgetsByMonth), [budgetsByMonth])
+  useEffect(() => { setInputs(seed) }, [seed])
   // Keep the vs-actual month pointed at a locked month; 0 = the Full Year view,
   // which is always available (and the only option before any month is locked).
   useEffect(() => {
@@ -83,265 +104,256 @@ export default function BudgetsPage() {
     else if (vsMonth !== 0 && !lockedSet.has(vsMonth)) setVsMonth(lockedMonths[0])
   }, [lockedMonths]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const { revLines, cogsLine, expLines, capexLines } = useMemo(() => {
-    const revAccts = Object.values(report?.accounts?.REVENUE || {}).flat()
-    const expAccts = Object.values(report?.accounts?.EXPENSE || {}).flat()
-    const revLines: Line[] = revAccts.map(a => { const key = `${a.accountNumber} ${a.accountTitle}`; return { key, label: key, type: 'REVENUE' as LineType } })
-    const expLines: Line[] = expAccts.map(a => { const key = `${a.accountNumber} ${a.accountTitle}`; return { key, label: key, type: 'EXPENSE' as LineType } })
-    const cogsLine: Line = { key: 'COGS — Cost of Sales', label: 'Cost of Sales (COGS)', type: 'COGS' }
-    // Capital expenditure: budgeted per asset classification, so Budget vs Actual can be
-    // compared against what Asset Management actually recorded as purchased.
-    const capexLines: Line[] = Object.entries({ ...PPE_CLASSIFICATION_LABELS, ...NON_DEPRECIATING_CLASSIFICATION_LABELS })
-      .map(([code, label]) => ({ key: `${code} ${label}`, label: `${code} ${label}`, type: 'CAPEX' as LineType }))
-    return { revLines, cogsLine, expLines, capexLines }
-  }, [report])
+  const lines = useMemo(() => buildLines(report, CAPEX_LABELS), [report])
+  const { revLines, cogsLine, expLines, capexLines } = lines
   const allLines = useMemo(() => [...revLines, cogsLine, ...expLines, ...capexLines], [revLines, cogsLine, expLines, capexLines])
+  const dirty = useMemo(() => isDirty(inputs, seed), [inputs, seed])
 
-  const bOf = (m: number, key: string) => parseFloat(inputs[`${m}:${key}`] || '0') || 0
-  const yearTotal = (key: string) => MS.reduce((s, m) => s + bOf(m, key), 0)
-  const monthSum = (lines: Line[], m: number) => lines.reduce((s, l) => s + bOf(m, l.key), 0)
+  // Year-grid totals (same rows as before: revenue, cost & expenses, net income, capex).
+  const totals = useMemo(() => ({
+    rev: totalRow(inputs, revLines),
+    ce: totalRow(inputs, [cogsLine, ...expLines]),
+    net: netIncomeRow(inputs, revLines, cogsLine, expLines),
+    capex: totalRow(inputs, capexLines),
+  }), [inputs, revLines, cogsLine, expLines, capexLines])
 
-  const monthEntries = (m: number) => allLines.map(l => ({ accountKey: l.key, accountType: l.type, amount: bOf(m, l.key) }))
+  const vs = useMemo(() => vsRows(lines, report, vsMonth === 0 ? MS : [vsMonth], budgetsByMonth, capexActual),
+    [lines, report, vsMonth, budgetsByMonth, capexActual])
+  const vsT = useMemo(() => vsTotals(vs), [vs])
 
   const save = async () => {
     setSaving(true); setMsg('')
     const monthly: Record<number, { accountKey: string; accountType: string; amount: number }[]> = {}
-    for (const m of MS) if (!lockedSet.has(m)) monthly[m] = monthEntries(m)
+    for (const m of MS) if (!lockedSet.has(m)) monthly[m] = monthEntries(inputs, allLines, m)
     try {
       const r = await fetch('/api/budgets', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ year, branch, monthly }) })
-      if (r.ok) { setMsg('Saved'); await loadBudget() } else setMsg((await r.json()).error || 'Failed to save')
-    } finally { setSaving(false) }
+      if (r.ok) { setMsg('Saved'); await loadBudget() } else setMsg((await r.json().catch(() => ({}))).error || 'Failed to save')
+    } catch { setMsg('Failed to save — check the connection') } finally { setSaving(false) }
   }
   const toggleLock = async (m: number) => {
     const locked = lockedSet.has(m)
-    if (!locked) {
-      // Persist that month's latest figures before locking.
-      await fetch('/api/budgets', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ year, branch, monthly: { [m]: monthEntries(m) } }) })
+    // Locking reloads the budget, which would drop unsaved figures in other months.
+    if (!locked && dirty) {
+      if (!window.confirm(`You have unsaved changes. Save all of them, then lock ${MONTHS[m - 1]}?`)) return
+      await save()
     }
-    const r = await fetch('/api/budgets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: locked ? 'unlock' : 'lock', year, month: m, branch }) })
-    if (r.ok) await loadBudget()
-  }
-
-  // ── Cells & rows for the year grid ──────────────────────────────
-  const cellCls = 'px-1.5 py-1 text-right'
-  const stickyCol = 'sticky left-0 z-10 min-w-[240px] max-w-[240px]'
-
-  const LineRow = ({ l }: { l: Line }) => (
-    <tr className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
-      <td className={`${stickyCol} px-4 py-1.5 text-sm bg-white`} style={{ color: 'var(--charcoal)' }} title={l.label}>
-        <span className="block truncate">{l.label}</span>
-      </td>
-      {MS.map(m => (
-        <td key={m} className={cellCls}>
-          <input inputMode="decimal" disabled={!canEdit || lockedSet.has(m)} value={inputs[`${m}:${l.key}`] ?? ''}
-            onChange={e => setInputs(p => ({ ...p, [`${m}:${l.key}`]: e.target.value }))} placeholder="0"
-            className="w-20 px-1.5 py-1 rounded-md border text-xs text-right font-mono disabled:bg-gray-50 disabled:text-gray-400"
-            style={{ borderColor: 'var(--light-gray)' }} />
-        </td>
-      ))}
-      <td className={`${cellCls} font-mono text-xs font-semibold`} style={{ color: 'var(--deep-teal)' }}>{peso(yearTotal(l.key))}</td>
-    </tr>
-  )
-  const SectionHeader = ({ title }: { title: string }) => (
-    <tr style={{ background: 'var(--off-white)' }}>
-      <td className={`${stickyCol} px-4 py-1.5 text-xs font-bold uppercase tracking-wide`} style={{ background: 'var(--off-white)', color: 'var(--deep-teal)' }}>{title}</td>
-      <td colSpan={13} style={{ background: 'var(--off-white)' }} />
-    </tr>
-  )
-  const TotalRow = ({ label, lines, net }: { label: string; lines: Line[]; net?: boolean }) => {
-    const monthVal = (m: number) => net ? (monthSum(revLines, m) - monthSum([cogsLine], m) - monthSum(expLines, m)) : monthSum(lines, m)
-    const yr = MS.reduce((s, m) => s + monthVal(m), 0)
-    return (
-      <tr className={net ? 'border-t-2 font-bold' : 'border-t font-semibold'} style={{ borderColor: net ? 'var(--deep-teal)' : 'var(--light-gray)', background: net ? 'var(--pale-teal)' : '#f5f8f8' }}>
-        <td className={`${stickyCol} px-4 py-1.5 text-sm`} style={{ background: net ? 'var(--pale-teal)' : '#f5f8f8', color: net ? 'var(--deep-teal)' : 'var(--charcoal)' }}>{label}</td>
-        {MS.map(m => <td key={m} className={`${cellCls} font-mono text-xs`} style={{ color: net ? 'var(--deep-teal)' : 'var(--charcoal)' }}>{peso(monthVal(m))}</td>)}
-        <td className={`${cellCls} font-mono text-xs`} style={{ color: 'var(--deep-teal)' }}>{peso(yr)}</td>
-      </tr>
-    )
-  }
-
-  // ── Budget vs Actual (locked months only) ───────────────────────
-  const vs = useMemo(() => {
-    // vsMonth 0 = Full Year: every line is the 12-month sum of both budget and
-    // actual, so the annual plan reads against the year to date in one table.
-    const months = vsMonth === 0 ? MS : [vsMonth]
-    const row = (l: Line) => {
-      let actual = 0, budget = 0
-      for (const mm of months) {
-        const m = report?.monthly?.[mm] || {}
-        actual += l.type === 'REVENUE' ? ((m.revenueByAccount || {})[l.key] || 0)
-          : l.type === 'COGS' ? (m.cogs || 0)
-          : l.type === 'CAPEX' ? ((capexActual[mm] || {})[l.key.split(' ')[0]] || 0)
-          : ((m.expenseByAccount || {})[l.key] || 0)
-        budget += (budgetsByMonth[mm] || {})[l.key] || 0
+    setLockBusy(m)
+    try {
+      if (!locked) {
+        // Persist that month's latest figures before locking.
+        await fetch('/api/budgets', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ year, branch, monthly: { [m]: monthEntries(inputs, allLines, m) } }) })
       }
-      const variance = actual - budget
-      const favorable = l.type === 'REVENUE' ? actual >= budget : actual <= budget
-      return { l, actual, budget, variance, favorable }
-    }
-    return { rev: revLines.map(row), cogs: row(cogsLine), exp: expLines.map(row), capex: capexLines.map(row) }
-  }, [report, vsMonth, budgetsByMonth, revLines, cogsLine, expLines, capexLines, capexActual])
-
-  const VsTable = () => {
-    const rows = [...vs.rev, vs.cogs, ...vs.exp]
-    const sum = (rs: typeof rows) => rs.reduce((a, r) => ({ b: a.b + r.budget, a: a.a + r.actual }), { b: 0, a: 0 })
-    const tr = sum(vs.rev), tce = sum([vs.cogs, ...vs.exp])
-    const netB = tr.b - tce.b, netA = tr.a - tce.a
-    const VCell = ({ v, ok }: { v: number; ok: boolean }) => <span className="font-semibold" style={{ color: ok ? '#16a34a' : '#dc2626' }}>{v >= 0 ? '+' : '−'}{peso(Math.abs(v))}</span>
-    const Sec = ({ title, rs }: { title: string; rs: typeof rows }) => (<>
-      <tr style={{ background: 'var(--off-white)' }}><td colSpan={4} className="px-4 py-2 text-xs font-bold uppercase tracking-wide" style={{ color: 'var(--deep-teal)' }}>{title}</td></tr>
-      {rs.map(r => (
-        <tr key={r.l.key} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
-          <td className="px-4 py-2 text-sm" style={{ color: 'var(--charcoal)' }}>{r.l.label}</td>
-          <td className="px-4 py-2 text-right text-sm font-mono" style={{ color: 'var(--charcoal)' }}>{peso(r.budget)}</td>
-          <td className="px-4 py-2 text-right text-sm font-mono" style={{ color: 'var(--charcoal)' }}>{peso(r.actual)}</td>
-          <td className="px-4 py-2 text-right text-sm font-mono"><VCell v={r.variance} ok={r.favorable} /></td>
-        </tr>
-      ))}
-    </>)
-    return (
-      <div className="rounded-2xl border" style={{ borderColor: 'var(--light-gray)' }}>
-        <table className="w-full text-sm">
-          {/* Sticky needs the wrapper free of overflow clipping (the header pins against
-              the dashboard <main> scroll, so no overflow-x-auto here — main scrolls if
-              narrow) AND must sit on the th cells: Chromium ignores sticky on tr/thead,
-              which is why the first attempt never locked. */}
-          <thead><tr>
-            {['{M} {Y} — Line Item'.replace('{M}', vsMonth === 0 ? 'Full Year' : MONTHS[vsMonth - 1]).replace('{Y}', String(year)), 'Budget', 'Actual', 'Variance'].map((h, i) =>
-              <th key={h} className={`sticky top-0 z-10 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-white ${i === 0 ? 'text-left rounded-tl-2xl' : 'text-right'} ${i === 3 ? 'rounded-tr-2xl' : ''}`} style={{ background: 'var(--charcoal)' }}>{h}</th>)}
-          </tr></thead>
-          <tbody>
-            <Sec title="Revenue" rs={vs.rev} />
-            <tr className="border-t font-semibold" style={{ borderColor: 'var(--light-gray)', background: '#f5f8f8' }}>
-              <td className="px-4 py-2 text-sm">Total Revenue</td><td className="px-4 py-2 text-right text-sm font-mono">{peso(tr.b)}</td><td className="px-4 py-2 text-right text-sm font-mono">{peso(tr.a)}</td>
-              <td className="px-4 py-2 text-right text-sm font-mono"><VCell v={tr.a - tr.b} ok={tr.a >= tr.b} /></td>
-            </tr>
-            <Sec title="Cost of Sales" rs={[vs.cogs]} />
-            <Sec title="Operating Expenses" rs={vs.exp} />
-            <Sec title="Capital Expenditure (Asset Purchases)" rs={vs.capex} />
-            <tr className="border-t font-semibold" style={{ borderColor: 'var(--light-gray)', background: '#f5f8f8' }}>
-              <td className="px-4 py-2 text-sm">Total Cost &amp; Expenses</td><td className="px-4 py-2 text-right text-sm font-mono">{peso(tce.b)}</td><td className="px-4 py-2 text-right text-sm font-mono">{peso(tce.a)}</td>
-              <td className="px-4 py-2 text-right text-sm font-mono"><VCell v={tce.a - tce.b} ok={tce.a <= tce.b} /></td>
-            </tr>
-            <tr className="border-t-2 font-bold" style={{ borderColor: 'var(--deep-teal)', background: 'var(--pale-teal)' }}>
-              <td className="px-4 py-3 text-sm" style={{ color: 'var(--deep-teal)' }}>NET INCOME</td>
-              <td className="px-4 py-3 text-right text-sm font-mono" style={{ color: 'var(--deep-teal)' }}>{peso(netB)}</td>
-              <td className="px-4 py-3 text-right text-sm font-mono" style={{ color: 'var(--deep-teal)' }}>{peso(netA)}</td>
-              <td className="px-4 py-3 text-right text-sm font-mono"><VCell v={netA - netB} ok={netA >= netB} /></td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    )
+      const r = await fetch('/api/budgets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: locked ? 'unlock' : 'lock', year, month: m, branch }) })
+      if (r.ok) await loadBudget()
+      else setMsg((await r.json().catch(() => ({}))).error || `Could not ${locked ? 'unlock' : 'lock'} ${MON[m - 1]}`)
+    } finally { setLockBusy(null) }
   }
+  // Switching year or branch reloads the grid; don't drop typed figures silently.
+  const guard = (fn: () => void) => () => { if (!dirty || window.confirm('Discard the budget changes you have not saved?')) { setMsg(''); fn() } }
+  const toggleSection = (id: string) => setCollapsed(s => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n })
 
   if (!session?.user) return null
 
+  const branchLabel = BRANCHES.find(b => b.value === branch)?.label || branch
+  const vsHeading = `${vsMonth === 0 ? `Full year ${year}` : `${MONTHS[vsMonth - 1]} ${year}`}`
+  const margin = totals.rev.year ? (totals.net.year / totals.rev.year) * 100 : null
+
   return (
-    <div className="p-6 max-w-[1400px] mx-auto">
-      <div className="flex items-center gap-3 mb-1">
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'var(--teal)' }}><Target size={20} className="text-white" /></div>
-        <div>
-          <h1 className="text-xl font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>Budget</h1>
-          <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>Enter the whole year&apos;s budget in Income-Statement format, then lock each month. Budget vs Actual is generated once a month is locked.</p>
-        </div>
-      </div>
-
-      {/* Controls */}
-      <div className="flex items-center gap-2 flex-wrap my-4">
-        <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: 'var(--light-gray)' }}>
-          <button onClick={() => setView('enter')} className="px-4 py-2 text-sm font-semibold" style={view === 'enter' ? { background: 'var(--teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' }}>Enter Budget</button>
-          <button onClick={() => setView('vs')} className="px-4 py-2 text-sm font-semibold flex items-center gap-1.5" style={view === 'vs' ? { background: 'var(--teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' }}><LineChart size={14} /> Budget vs Actual</button>
-        </div>
-        <select value={year} onChange={e => setYear(parseInt(e.target.value))} className="px-3 py-2 rounded-xl border text-sm bg-white" style={{ borderColor: 'var(--light-gray)' }}>{[0, 1, 2, 3, 4].map(i => now.getFullYear() - i).map(y => <option key={y} value={y}>{y}</option>)}</select>
-        <select value={branch} onChange={e => setBranch(e.target.value)} className="px-3 py-2 rounded-xl border text-sm bg-white" style={{ borderColor: 'var(--light-gray)' }}>{BRANCHES.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}</select>
-        {view === 'enter' && (
-          <div className="ml-auto flex items-center gap-2">
-            {msg && <span className="text-xs" style={{ color: msg === 'Saved' ? '#16a34a' : '#dc2626' }}>{msg}</span>}
-            {canEdit && <button onClick={save} disabled={saving} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>{saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Save all</button>}
+    <div className="space-y-4">
+      {/* ── Title + controls ── */}
+      <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-10 h-10 shrink-0 rounded-xl flex items-center justify-center" style={{ background: 'var(--teal)' }}><Target size={20} className="text-white" /></div>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>Budget</h1>
+            <p className="text-xs mt-0.5 max-w-2xl" style={muted}>Enter the year&apos;s budget in Income-Statement format, then lock each month. Budget vs Actual is ready once a month is locked.</p>
           </div>
-        )}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: 'var(--light-gray)' }}>
+            <button onClick={() => setView('enter')} className="px-3.5 py-2 text-sm font-semibold" style={seg(view === 'enter')}>Enter budget</button>
+            <button onClick={() => setView('vs')} className="px-3.5 py-2 text-sm font-semibold flex items-center gap-1.5" style={seg(view === 'vs')}><LineChart size={14} /> Budget vs Actual</button>
+          </div>
+          <select value={year} aria-label="Year" onChange={e => { const y = parseInt(e.target.value); guard(() => setYear(y))() }}
+            className="px-3 py-2 rounded-xl border text-sm bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+            {[0, 1, 2, 3, 4].map(i => now.getFullYear() - i).map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+          <select value={branch} aria-label="Branch" onChange={e => { const b = e.target.value; guard(() => setBranch(b))() }}
+            className="px-3 py-2 rounded-xl border text-sm bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+            {BRANCHES.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
+          </select>
+        </div>
       </div>
 
-      {loading ? (
-        <div className="py-20 text-center"><Loader2 size={22} className="inline animate-spin" style={{ color: 'var(--teal)' }} /></div>
-      ) : view === 'enter' ? (
+      {loadError && (
+        <div className="rounded-2xl border px-4 py-3 flex flex-wrap items-center gap-3" style={{ borderColor: '#fecaca', background: '#fef2f2', color: '#b91c1c' }}>
+          <AlertTriangle size={18} />
+          <p className="text-sm flex-1 min-w-0">{loadError} The figures below may be incomplete.</p>
+          <button onClick={() => setReload(n => n + 1)} className="px-3 py-1.5 rounded-xl border text-sm font-medium bg-white" style={{ borderColor: '#fecaca' }}>Try again</button>
+        </div>
+      )}
+
+      {loading ? <LoadingState /> : view === 'enter' ? (
         <>
-          {/* This grid must keep its own horizontal scroll (12 months + total), so the
-              sticky header pins inside the wrapper: cap its height and scroll both axes here. */}
-          <div className="overflow-auto rounded-2xl border max-h-[calc(100vh-210px)]" style={{ borderColor: 'var(--light-gray)' }}>
-            <table className="text-sm border-collapse">
-              <thead>
-                {/* Sticky must be per-th (Chromium ignores it on tr/thead), and each th
-                    carries its own background: a row's paint doesn't follow a stuck cell.
-                    z order: corner (both axes) > month headers > body's sticky first col. */}
-                <tr>
-                  <th className="sticky left-0 top-0 z-30 min-w-[240px] max-w-[240px] px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-white" style={{ background: 'var(--charcoal)' }}>{year} — Line Item</th>
-                  {MS.map(m => (
-                    <th key={m} className="sticky top-0 z-20 px-1.5 py-2 text-center text-xs font-semibold text-white min-w-[92px]" style={{ background: 'var(--charcoal)' }}>
-                      <div className="flex flex-col items-center gap-0.5">
-                        <span>{MON[m - 1]}</span>
-                        {canEdit && (
-                          <button onClick={() => toggleLock(m)} title={lockedSet.has(m) ? 'Unlock month' : 'Lock month'} className="p-0.5 rounded hover:bg-white/20">
-                            {lockedSet.has(m) ? <Lock size={12} className="text-amber-300" /> : <Unlock size={12} className="text-white/60" />}
-                          </button>
-                        )}
-                      </div>
-                    </th>
-                  ))}
-                  <th className="sticky top-0 z-20 px-2 py-3 text-right text-xs font-semibold uppercase tracking-wide text-white min-w-[96px]" style={{ background: 'var(--charcoal)' }}>Year Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                <SectionHeader title="Revenue" />
-                {revLines.map(l => <LineRow key={l.key} l={l} />)}
-                <TotalRow label="Total Revenue" lines={revLines} />
-                <SectionHeader title="Cost of Sales" />
-                <LineRow l={cogsLine} />
-                <SectionHeader title="Operating Expenses" />
-                {expLines.map(l => <LineRow key={l.key} l={l} />)}
-                <TotalRow label="Total Cost & Expenses" lines={[cogsLine, ...expLines]} />
-                <TotalRow label="NET INCOME" lines={[]} net />
-                {/* Capital expenditure — asset purchases, budgeted per classification.
-                    Sits below net income because capex is a balance-sheet outlay, not an
-                    expense; it never feeds the income-statement totals above. */}
-                <SectionHeader title="Capital Expenditure (Asset Purchases)" />
-                {capexLines.map(l => <LineRow key={l.key} l={l} />)}
-                <TotalRow label="Total Asset Purchases" lines={capexLines} />
-              </tbody>
-            </table>
+          {/* ── Year at a glance ── */}
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+            <Tile label={`Revenue budget ${year}`} value={pesoSigned(totals.rev.year)} note={branchLabel} />
+            <Tile label="Cost & expenses" value={pesoSigned(totals.ce.year)} note="COGS + operating expenses" />
+            <Tile label="Net income" value={pesoSigned(totals.net.year)} note={margin == null ? '—' : `${margin.toFixed(1)}% of revenue`} tone="strong" />
+            <Tile label="Asset purchases" value={pesoSigned(totals.capex.year)} note="capex, outside net income" />
+            <div className="col-span-2 lg:col-span-1">
+              <Tile label="Months locked" value={`${lockedMonths.length} of 12`} note={isRollup ? 'locked in every branch' : lockedMonths.length === 12 ? 'whole year locked' : lockedMonths.length ? 'locked months are read-only' : 'none yet'}>
+                <LockStrip locked={lockedSet} />
+              </Tile>
+            </div>
           </div>
-          <p className="text-[11px] mt-3" style={{ color: 'var(--mid-gray)' }}>
+
+          {isRollup && (
+            <div className="rounded-2xl border px-4 py-2.5 text-xs flex items-start gap-2" style={{ borderColor: 'var(--bright-teal)', background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
+              <Info size={14} className="mt-px shrink-0" />
+              <span>All Branches shows the <strong>total of every branch&apos;s budget</strong> and is read-only. Pick a branch above to enter amounts or lock months; a month shows as locked here once every branch has locked it.</span>
+            </div>
+          )}
+
+          {/* ── The grid ── */}
+          <div className="rounded-2xl border overflow-hidden" style={card}>
+            <div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-4 py-2.5 border-b" style={{ borderColor: 'var(--light-gray)' }}>
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: 'var(--light-gray)' }}>
+                  {([['H1', 'Jan – Jun'], ['H2', 'Jul – Dec'], ['FY', 'Full year']] as [Period, string][]).map(([p, l]) => (
+                    <button key={p} onClick={() => setPeriod(p)} className="px-3 py-1.5 text-xs font-semibold" style={seg(period === p)}>{l}</button>
+                  ))}
+                </div>
+                <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none" style={{ color: 'var(--charcoal)' }}>
+                  <input type="checkbox" checked={hideEmpty} onChange={e => setHideEmpty(e.target.checked)} /> Hide empty lines
+                </label>
+              </div>
+              {canEdit && (
+                <div className="flex items-center gap-2 ml-auto">
+                  {dirty ? <span className="text-xs font-medium flex items-center gap-1" style={{ color: '#b45309' }}><span className="w-1.5 h-1.5 rounded-full" style={{ background: '#d97706' }} />Unsaved changes</span>
+                    : msg === 'Saved' ? <span className="text-xs font-medium flex items-center gap-1" style={{ color: FAV }}><Check size={13} /> Saved</span> : null}
+                  {msg && msg !== 'Saved' && <span className="text-xs" style={{ color: UNFAV }}>{msg}</span>}
+                  <button onClick={save} disabled={saving || !dirty}
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>
+                    {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Save all
+                  </button>
+                </div>
+              )}
+            </div>
+            <div className="overflow-auto max-h-[calc(100vh-260px)] min-h-[320px]">
+                <BudgetGrid
+                  months={PERIOD_MONTHS[period]}
+                  sections={[
+                    { id: 'rev', title: 'Revenue', lines: revLines },
+                    { id: 'cogs', title: 'Cost of sales', lines: [cogsLine] },
+                    { id: 'exp', title: 'Operating expenses', lines: expLines },
+                    // Capital expenditure — asset purchases, budgeted per classification.
+                    // Sits below net income because capex is a balance-sheet outlay, not an
+                    // expense; it never feeds the income-statement totals above.
+                    { id: 'capex', title: 'Capital expenditure (asset purchases)', lines: capexLines },
+                  ]}
+                  totalsAfter={{
+                    rev: [{ label: 'Total revenue', row: totals.rev }],
+                    exp: [{ label: 'Total cost & expenses', row: totals.ce }, { label: 'Net income', row: totals.net, net: true }],
+                    capex: [{ label: 'Total asset purchases', row: totals.capex }],
+                  }}
+                  inputs={inputs}
+                  setInput={(k, v) => { setMsg(''); setInputs(p => ({ ...p, [k]: v })) }}
+                  canEdit={canEdit}
+                  locked={lockedSet}
+                  onToggleLock={toggleLock}
+                  lockBusy={lockBusy}
+                  hideEmpty={hideEmpty}
+                  collapsed={collapsed}
+                  onToggleSection={toggleSection}
+                  yearTotalOf={key => yearTotal(inputs, key)}
+                />
+            </div>
+          </div>
+          <p className="text-[11px]" style={muted}>
             {isRollup
-              ? <>All Branches shows the <strong>total of every branch&apos;s budget</strong> — read-only. Pick a branch above to enter amounts or lock months; a month shows as locked here once every branch has locked it.</>
-              : <>Enter each line&apos;s monthly budget. <Lock size={10} className="inline" /> locks a month (its figures are saved first); locked months turn grey and can&apos;t be edited until unlocked. Only Admin/Accountant/Bookkeeper can edit and lock.</>}
+              ? <>Read-only total of every branch. Year total always covers all twelve months, whichever half is shown.</>
+              : canEdit
+                ? <>Type each line&apos;s monthly budget and press <strong>Save all</strong>. <Lock size={10} className="inline" /> <strong>Open</strong> / <strong>Locked</strong> under each month locks it (its figures are saved first); locked months turn grey and can&apos;t be edited until unlocked. Year total always covers all twelve months.</>
+                : <>Only Admin, Accountant and Bookkeeper can enter and lock the budget.</>}
           </p>
         </>
       ) : (
-        // Budget vs Actual — one locked month, or the Full Year roll-up
+        // ── Budget vs Actual — one locked month, or the Full Year roll-up ──
         <>
-          <div className="flex items-center gap-1.5 flex-wrap mb-3">
-            <span className="text-xs font-semibold mr-1" style={{ color: 'var(--mid-gray)' }}>View:</span>
-            <button onClick={() => setVsMonth(0)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border flex items-center gap-1"
-              style={vsMonth === 0 ? { background: 'var(--teal)', color: '#fff', borderColor: 'var(--teal)' } : { background: '#fff', color: 'var(--mid-gray)', borderColor: 'var(--light-gray)' }}>
-              <LineChart size={10} /> Full Year {year}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-xs font-semibold mr-1" style={muted}>Compare</span>
+            <button onClick={() => setVsMonth(0)} className="px-3 py-1.5 rounded-full text-xs font-semibold border flex items-center gap-1"
+              style={vsMonth === 0 ? { background: 'var(--teal)', color: '#fff', borderColor: 'var(--teal)' } : { background: '#fff', color: 'var(--charcoal)', borderColor: 'var(--light-gray)' }}>
+              <LineChart size={11} /> Full year {year}
             </button>
             {[...lockedMonths].sort((a, b) => a - b).map(m => (
-              <button key={m} onClick={() => setVsMonth(m)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border flex items-center gap-1"
-                style={vsMonth === m ? { background: 'var(--teal)', color: '#fff', borderColor: 'var(--teal)' } : { background: '#fff', color: 'var(--mid-gray)', borderColor: 'var(--light-gray)' }}>
-                <Lock size={10} /> {MON[m - 1]} {year}
+              <button key={m} onClick={() => setVsMonth(m)} className="px-3 py-1.5 rounded-full text-xs font-semibold border flex items-center gap-1"
+                style={vsMonth === m ? { background: 'var(--teal)', color: '#fff', borderColor: 'var(--teal)' } : { background: '#fff', color: 'var(--charcoal)', borderColor: 'var(--light-gray)' }}>
+                <Lock size={10} /> {MON[m - 1]}
               </button>
             ))}
+            {!lockedMonths.length && <span className="text-xs ml-1" style={muted}>Single months appear here once they are locked.</span>}
           </div>
-          <VsTable />
-          <p className="text-[11px] mt-3" style={{ color: 'var(--mid-gray)' }}>
+
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <VsTile label="Revenue" b={vsT.tr.b} a={vsT.tr.a} ok={vsT.tr.a >= vsT.tr.b} />
+            <VsTile label="Cost & expenses" b={vsT.tce.b} a={vsT.tce.a} ok={vsT.tce.a <= vsT.tce.b} />
+            <VsTile label="Net income" b={vsT.netB} a={vsT.netA} ok={vsT.netA >= vsT.netB} strong />
+            <VsTile label="Asset purchases" b={vsT.capex.b} a={vsT.capex.a} ok={vsT.capex.a <= vsT.capex.b} />
+          </div>
+
+          <div className="rounded-2xl border" style={card}>
+            <div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-4 py-2.5 border-b" style={{ borderColor: 'var(--light-gray)' }}>
+              <h2 className="text-sm font-semibold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>{vsHeading} · {branchLabel}</h2>
+              <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none" style={{ color: 'var(--charcoal)' }}>
+                <input type="checkbox" checked={hideEmpty} onChange={e => setHideEmpty(e.target.checked)} /> Hide empty lines
+              </label>
+            </div>
+            <div className="overflow-x-auto">
+              <VsTable heading="Line item" hideEmpty={hideEmpty} sections={[
+                { title: 'Revenue', rows: vs.rev, total: [{ label: 'Total revenue', b: vsT.tr.b, a: vsT.tr.a, ok: vsT.tr.a >= vsT.tr.b }] },
+                { title: 'Cost of sales', rows: [vs.cogs] },
+                { title: 'Operating expenses', rows: vs.exp, total: [
+                  { label: 'Total cost & expenses', b: vsT.tce.b, a: vsT.tce.a, ok: vsT.tce.a <= vsT.tce.b },
+                  { label: 'Net income', b: vsT.netB, a: vsT.netA, ok: vsT.netA >= vsT.netB, net: true },
+                ] },
+                { title: 'Capital expenditure (asset purchases)', rows: vs.capex, total: [{ label: 'Total asset purchases', b: vsT.capex.b, a: vsT.capex.a, ok: vsT.capex.a <= vsT.capex.b }] },
+              ]} />
+            </div>
+          </div>
+          <p className="text-[11px]" style={muted}>
             {vsMonth === 0
-              ? <>Full Year compares the entire {year} budget (all twelve months as entered) against the year&apos;s actual Income-Statement figures to date{branch !== 'ALL' ? ` · ${BRANCHES.find(b => b.value === branch)?.label}` : ''}.</>
-              : <>Actuals are the Income-Statement figures for {MONTHS[vsMonth - 1]} {year}{branch !== 'ALL' ? ` · ${BRANCHES.find(b => b.value === branch)?.label}` : ''}.</>}
-            {' '}Variance is <span style={{ color: '#16a34a' }}>green</span> when favorable (revenue at/over target, cost/expense at/under budget), <span style={{ color: '#dc2626' }}>red</span> when unfavorable.
+              ? <>Full year compares the entire {year} budget (all twelve months as entered) against the year&apos;s actual Income-Statement figures to date.</>
+              : <>Actuals are the Income-Statement figures for {MONTHS[vsMonth - 1]} {year}.</>}
+            {' '}Variance is <span style={{ color: FAV }}>green</span> when favorable (revenue at or over target, cost and expenses at or under budget) and <span style={{ color: UNFAV }}>red</span> when not. Asset purchases sit outside net income.
           </p>
         </>
       )}
     </div>
   )
 }
+
+function VsTile({ label, b, a, ok, strong }: { label: string; b: number; a: number; ok: boolean; strong?: boolean }) {
+  return (
+    <Tile label={label} value={pesoSigned(a)} tone={strong ? 'strong' : undefined}
+      note={<span className="flex flex-wrap items-center gap-x-2">
+        <span>budget {pesoSigned(b)}</span>
+        <span className="font-semibold"><Variance v={a - b} ok={ok} /></span>
+        <PctOfBudget actual={a} budget={b} ok={ok} />
+      </span>} />
+  )
+}
+
+function LoadingState() {
+  const pulse = 'rounded-2xl border animate-pulse motion-reduce:animate-none'
+  const tone = { borderColor: 'var(--light-gray)', background: 'var(--off-white)' }
+  return (
+    <div className="space-y-3" aria-busy="true">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">{[0, 1, 2, 3, 4].map(i => <div key={i} className={`${pulse} h-[92px]`} style={tone} />)}</div>
+      <div className={`${pulse} h-[420px]`} style={tone} />
+      <p className="text-xs flex items-center gap-2" style={muted}><Loader2 size={14} className="animate-spin" /> Loading the budget…</p>
+    </div>
+  )
+}
+
