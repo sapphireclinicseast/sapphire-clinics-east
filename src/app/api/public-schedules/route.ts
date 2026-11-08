@@ -56,7 +56,11 @@ export async function GET(req: NextRequest) {
       },
     }),
     prisma.deckingTherapistConfig.findMany({
-      where: { branch, department },
+      // Interns do not appear on a public schedule.
+      where: {
+        branch, department,
+        OR: [{ staff: { employmentType: null } }, { staff: { employmentType: { not: 'intern' } } }],
+      },
       select: { staffId: true, workDays: true },
     }),
   ])

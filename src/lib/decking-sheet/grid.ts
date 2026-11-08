@@ -98,6 +98,9 @@ const cell = (value: string, fmt: Record<string, unknown> = {}): Cell => ({
   userEnteredFormat: {
     horizontalAlignment: 'CENTER', verticalAlignment: 'MIDDLE', wrapStrategy: 'WRAP',
     borders: BORDER, ...fmt,
+    // Merged rather than spread, so a cell can still choose its own size,
+    // weight and colour without dropping the typeface.
+    textFormat: { fontFamily: 'Roboto', ...((fmt.textFormat as Record<string, unknown>) ?? {}) },
   },
 })
 const blank = (): Cell => ({ userEnteredValue: {}, userEnteredFormat: {} })

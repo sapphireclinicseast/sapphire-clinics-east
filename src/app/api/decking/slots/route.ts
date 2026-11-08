@@ -13,10 +13,18 @@ export async function GET(req: NextRequest) {
   const staffId   = searchParams.get('staffId')
   const branch    = searchParams.get('branch')
   const dayOfWeek = searchParams.get('dayOfWeek')
+  const supervised = searchParams.get('includeSupervised') === '1'
 
   const slots = await prisma.deckingSlot.findMany({
     where: {
-      ...(staffId   ? { staffId }   : {}),
+      // With includeSupervised, a clinician's slots AND the intern slots they
+      // supervise. Clinic Schedule lodges an intern's session under the
+      // supervising clinician, so when front desk schedule that clinician the
+      // intern's decked hours have to be offered there too — otherwise the
+      // intern has hours in Decking that can never become a session.
+      ...(staffId
+        ? (supervised ? { OR: [{ staffId }, { supervisorId: staffId }] } : { staffId })
+        : {}),
       ...(branch    ? { branch }    : {}),
       ...(dayOfWeek ? { dayOfWeek } : {}),
       // The weekly board draws recurring slots only. A dated one-off would
@@ -25,6 +33,9 @@ export async function GET(req: NextRequest) {
     },
     include: {
       patient: { select: { id: true, firstName: true, lastName: true } },
+      // Named so the caller can tell an intern's slot from the clinician's own
+      // and label the two differently.
+      staff: { select: { id: true, firstName: true, lastName: true, employmentType: true } },
     },
     orderBy: [{ dayOfWeek: 'asc' }, { startTime: 'asc' }],
   })

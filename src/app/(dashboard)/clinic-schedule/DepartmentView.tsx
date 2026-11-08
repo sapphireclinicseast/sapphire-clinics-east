@@ -447,7 +447,12 @@ function StaffCard({ staff, allStaff, selectedDate, schedulingBranch }: { staff:
   // Last-week suggestions
   const [lastWeekSuggestions, setLastWeekSuggestions] = useState<Schedule[]>([])
   // Decking suggestions
-  const [deckingSuggestions, setDeckingSuggestions] = useState<{ id: string; patient: Patient | null; startTime: string; endTime: string; dayOfWeek: string }[]>([])
+  // `staff` rides along so an intern's decked hour can be told from the
+  // clinician's own: with includeSupervised the list holds both.
+  const [deckingSuggestions, setDeckingSuggestions] = useState<{
+    id: string; patient: Patient | null; startTime: string; endTime: string; dayOfWeek: string
+    staff?: { id: string; firstName: string; lastName: string; employmentType: string | null } | null
+  }[]>([])
 
   const loadSchedules = useCallback(async () => {
     setLoadingSchedules(true)
@@ -502,7 +507,8 @@ function StaffCard({ staff, allStaff, selectedDate, schedulingBranch }: { staff:
     const DOW_NAMES = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT']
     const dow = DOW_NAMES[new Date(selectedDate + 'T12:00:00').getDay()]
     try {
-      const res = await fetch(`/api/decking/slots?staffId=${staff.id}&dayOfWeek=${dow}`)
+      // includeSupervised: also the intern hours this clinician oversees.
+      const res = await fetch(`/api/decking/slots?staffId=${staff.id}&dayOfWeek=${dow}&includeSupervised=1`)
       if (res.ok) setDeckingSuggestions(await res.json())
     } catch { /* silent */ }
   }
@@ -833,14 +839,23 @@ function StaffCard({ staff, allStaff, selectedDate, schedulingBranch }: { staff:
                           status: 'PENDING',
                           notes: '',
                           isTeletherapy: false,
-                          internStaffId: '',
+                          // An intern's decked hour fills the intern in, since
+                          // that is how the session is recorded: the clinician
+                          // is the staff member, the intern is named alongside.
+                          internStaffId: s.staff && s.staff.id !== staff.id ? s.staff.id : '',
                           withMentor: false,
                         })}
                         className="px-3 py-1 rounded-full text-xs font-medium transition-colors hover:opacity-80"
-                        style={{ background: '#ED6823', color: '#fff' }}
+                        style={{
+                          background: s.staff && s.staff.id !== staff.id ? '#4338CA' : '#ED6823',
+                          color: '#fff',
+                        }}
                       >
                         {s.patient ? `${s.patient.lastName}, ${s.patient.firstName[0]}.` : '(slot)'}
                         {' · '}{formatTime(s.startTime)}
+                        {s.staff && s.staff.id !== staff.id
+                          ? ` · intern ${s.staff.lastName}`
+                          : ''}
                       </button>
                     ))}
                   </div>
