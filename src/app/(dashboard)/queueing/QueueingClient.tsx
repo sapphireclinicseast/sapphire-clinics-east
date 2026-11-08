@@ -1,11 +1,14 @@
 'use client'
 
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useMemo, useState, useRef, useCallback, type CSSProperties, type ReactNode } from 'react'
 import { localTodayStr } from '@/lib/utils'
 import {
   UserPlus, Trash2, ChevronUp, ChevronDown, Upload, Tv2,
   X, Plus, ExternalLink, ImageIcon, Film, RefreshCw,
+  ListOrdered, Megaphone, CalendarDays, CalendarCheck, CheckCircle2, AlertTriangle,
+  Loader2, Building2, Info, Clock, Users, Trophy, MessageSquareWarning, Timer, XCircle,
 } from 'lucide-react'
+import { CARD_STYLE, DashCard, KpiCard, Skeleton, EmptyState } from '../patients/dashboard/ui'
 
 // ─── Department colours (light theme) ────────────────────────────────────────
 const DEPT_COLORS: Record<string, { bg: string; color: string }> = {
@@ -17,14 +20,17 @@ const DEPT_COLORS: Record<string, { bg: string; color: string }> = {
   PSYCHOLOGY: { bg: '#CFFAFE', color: '#0891B2' },
   ORTHOSIS:   { bg: '#FEF9C3', color: '#CA8A04' },
 }
+const DEPT_FALLBACK = { bg: '#F3F4F6', color: '#374151' }
 
-const STATUS_COLORS: Record<string, { bg: string; color: string }> = {
-  PENDING:     { bg: '#FFF9EC', color: '#92400E' },
-  CONFIRMED:   { bg: '#CCFBF1', color: '#0F766E' },
-  CANCELLED:   { bg: '#FEE2E2', color: '#DC2626' },
-  RESCHEDULED: { bg: '#EDE9FE', color: '#5B21B6' },
-  NO_SHOW: { bg: '#FFEDD5', color: '#9A3412' },   // amber: not cancelled, not rescheduled
+// Appointment status badges — same bg/fg/border + dot vocabulary as LOA Submission.
+const STATUS_STYLE: Record<string, { bg: string; fg: string; border: string; label: string }> = {
+  PENDING:     { bg: '#FFF7E6', fg: '#8A5A00', border: '#F3D9A5', label: 'Pending' },
+  CONFIRMED:   { bg: '#DFF5E4', fg: '#166534', border: '#B6E5C2', label: 'Confirmed' },
+  CANCELLED:   { bg: '#FDE4E4', fg: '#991B1B', border: '#F5C2C2', label: 'Cancelled' },
+  RESCHEDULED: { bg: '#EFE8FB', fg: '#5B21B6', border: '#DDD0F3', label: 'Rescheduled' },
+  NO_SHOW:     { bg: '#FFEDD5', fg: '#9A3412', border: '#FBD3AE', label: 'No-show' },   // amber: not cancelled, not rescheduled
 }
+const INACTIVE_STATUSES = new Set(['CANCELLED', 'RESCHEDULED', 'NO_SHOW'])
 
 const TIME_SLOTS = [
   '08:00','08:30','09:00','09:30','10:00','10:30',
@@ -83,6 +89,16 @@ function visibleBranches(role: string): string[] {
   if (role.startsWith('SBGH_')) return ['SBGH']
   return ['SBEA', 'SBGH']
 }
+/** "Mon, Nov 9" for a YYYY-MM-DD string, read as a local calendar date. */
+function formatDay(ymd: string): string {
+  const [y, m, d] = ymd.split('-').map(Number)
+  if (!y || !m || !d) return ymd
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+}
+/** Local wall-clock time as "HH:MM", comparable with queue startTime/endTime. */
+function nowHHMM(d: Date): string {
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface QueueEntry {
@@ -127,16 +143,117 @@ function isEligibleIntern(s: StaffMember, forDate: string): boolean {
   return true
 }
 
-// ─── Input style helper ───────────────────────────────────────────────────────
-const inp = {
-  border: '1.5px solid rgba(25,72,80,0.25)', background: '#fff',
-  color: 'var(--charcoal)', borderRadius: '0.5rem',
-  padding: '0.45rem 0.7rem', fontSize: '0.85rem', width: '100%',
+// ─── Presentation ─────────────────────────────────────────────────────────────
+// Same control/button vocabulary as Partner Institutions, LOA Submission and
+// Patient Relationship, so the page reads as part of the same app.
+const CONTROL = 'h-9 px-3 rounded-lg text-sm outline-none focus:border-[var(--teal)]'
+const CONTROL_STYLE: CSSProperties = { background: '#fff', border: '1px solid var(--light-gray)', color: 'var(--charcoal)', fontFamily: 'var(--font-body)' }
+const BTN_PRIMARY = 'inline-flex items-center justify-center gap-1.5 h-9 px-3.5 rounded-lg text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50'
+const BTN_SECONDARY = 'inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-lg text-sm font-semibold transition-colors hover:bg-gray-50 disabled:opacity-60'
+const BTN_ICON = 'inline-flex items-center justify-center w-7 h-7 rounded-lg transition-colors hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed'
+const SECTION_LABEL = 'text-[10.5px] font-bold uppercase tracking-wider'
+const SUBTLE_BG = '#F6F9F8'
+
+// Form fields (walk-in modal)
+const FIELD = 'w-full h-9 px-3 rounded-lg text-sm outline-none focus:border-[var(--teal)]'
+const FIELD_STYLE: CSSProperties = CONTROL_STYLE
+const FIELD_READONLY: CSSProperties = { ...CONTROL_STYLE, background: SUBTLE_BG, color: 'var(--mid-gray)' }
+
+function Label({ children }: { children: ReactNode }) {
+  return (
+    <label className={`block mb-1 ${SECTION_LABEL}`} style={{ color: 'var(--mid-gray)' }}>{children}</label>
+  )
 }
-const lbl = {
-  display: 'block', fontSize: '0.72rem', fontWeight: 600 as const,
-  color: 'var(--mid-gray)', marginBottom: '0.25rem',
-  textTransform: 'uppercase' as const, letterSpacing: '0.05em',
+
+function StatusBadge({ status }: { status: string }) {
+  const st = STATUS_STYLE[status] ?? {
+    bg: '#F3F4F6', fg: '#374151', border: '#E5E7EB',
+    label: status.charAt(0) + status.slice(1).toLowerCase(),
+  }
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold leading-4 whitespace-nowrap"
+      style={{ background: st.bg, color: st.fg, border: `1px solid ${st.border}` }}>
+      <span className="w-1.5 h-1.5 rounded-full" style={{ background: st.fg }} />
+      {st.label}
+    </span>
+  )
+}
+
+function DeptPill({ dept }: { dept: string }) {
+  const c = DEPT_COLORS[dept] ?? DEPT_FALLBACK
+  return (
+    <span className="inline-block text-[10.5px] font-bold px-1.5 py-0.5 rounded leading-none whitespace-nowrap"
+      style={{ background: c.bg, color: c.color }}>
+      {dept}
+    </span>
+  )
+}
+
+/** Segmented control — the page tabs and the branch switcher. */
+function Segmented<T extends string>({ items, value, onChange, label, size = 'sm' }: {
+  items: { key: T; label: string; icon?: ReactNode }[]
+  value: T; onChange: (k: T) => void; label: string; size?: 'md' | 'sm'
+}) {
+  return (
+    <div role="tablist" aria-label={label}
+      className="flex gap-1 p-1 rounded-xl overflow-x-auto max-w-full w-fit"
+      style={size === 'md' ? CARD_STYLE : { background: '#EEF3F1' }}>
+      {items.map(({ key, label: l, icon }) => {
+        const active = value === key
+        return (
+          <button key={key} type="button" role="tab" aria-selected={active} onClick={() => onChange(key)}
+            className={`flex items-center justify-center gap-1.5 rounded-lg font-semibold whitespace-nowrap transition-colors ${size === 'md' ? 'px-4 py-2 text-sm' : 'px-3 py-1.5 text-xs'} ${active ? '' : 'hover:bg-black/[0.04]'}`}
+            style={active
+              ? size === 'md'
+                ? { background: 'var(--teal)', color: '#fff' }
+                : { background: '#fff', color: 'var(--teal)', boxShadow: '0 1px 2px rgba(0,0,0,0.08)' }
+              : { background: 'transparent', color: 'var(--mid-gray)' }}>
+            {icon}
+            {l}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+/** Visual on/off switch wrapped around the existing sr-only checkbox. */
+function SwitchVisual({ on, busy }: { on: boolean; busy: boolean }) {
+  return (
+    <div aria-hidden style={{
+      width: '2.5rem', height: '1.4rem', borderRadius: '99px',
+      background: on ? 'var(--teal)' : '#D6DEDB',
+      position: 'relative', transition: 'background 0.2s',
+      opacity: busy ? 0.6 : 1,
+      cursor: busy ? 'wait' : 'pointer',
+    }}>
+      <div style={{
+        width: '1.05rem', height: '1.05rem', borderRadius: '50%',
+        background: '#fff', position: 'absolute', top: '0.175rem',
+        left: on ? '1.275rem' : '0.175rem',
+        transition: 'left 0.2s',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+      }} />
+    </div>
+  )
+}
+
+function SettingRow({ icon, tone, title, hint, children }: {
+  icon: ReactNode; tone: { bg: string; fg: string }; title: string; hint: ReactNode; children?: ReactNode
+}) {
+  return (
+    <div className="flex items-start gap-3 min-w-0">
+      <span className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+        style={{ background: tone.bg, color: tone.fg }}>
+        {icon}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>{title}</p>
+        <p className="text-xs mt-0.5 leading-snug" style={{ color: 'var(--mid-gray)' }}>{hint}</p>
+      </div>
+      {children}
+    </div>
+  )
 }
 
 // ─── Patient search typeahead ─────────────────────────────────────────────────
@@ -163,23 +280,23 @@ function PatientSearch({ value, label, onChange }: {
 
   return (
     <div className="relative">
-      <input style={inp} placeholder="Search existing patient…" value={query}
+      <input className={FIELD} style={FIELD_STYLE} placeholder="Search existing patient…" value={query}
         onChange={e => handleInput(e.target.value)}
         onBlur={() => setTimeout(() => setOpen(false), 150)} autoComplete="off" />
       {open && results.length > 0 && (
-        <div className="absolute z-50 w-full mt-1 rounded-lg shadow-lg overflow-hidden"
+        <div className="absolute z-50 w-full mt-1 rounded-xl shadow-lg overflow-hidden max-h-64 overflow-y-auto"
           style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
           {results.map(p => (
             <button key={p.id} type="button"
-              className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 transition-colors"
+              className="w-full flex items-center justify-between gap-3 text-left px-3 py-2 text-sm hover:bg-[#F6F9F8] transition-colors"
               style={{ color: 'var(--charcoal)', borderBottom: '1px solid var(--light-gray)' }}
               onMouseDown={() => {
                 onChange(p.id, `${p.lastName}, ${p.firstName}`, p)
                 setQuery(`${p.lastName}, ${p.firstName}`)
                 setOpen(false)
               }}>
-              <span className="font-medium">{p.lastName}, {p.firstName}</span>
-              {p.phone && <span className="ml-2 text-xs" style={{ color: 'var(--mid-gray)' }}>{p.phone}</span>}
+              <span className="font-semibold truncate">{p.lastName}, {p.firstName}</span>
+              {p.phone && <span className="text-xs flex-shrink-0 tabular-nums" style={{ color: 'var(--mid-gray)' }}>{p.phone}</span>}
             </button>
           ))}
         </div>
@@ -259,197 +376,221 @@ function WalkInModal({ staff, defaultBranch, defaultDate, onClose, onSaved }: {
     else { const d = await res.json(); setError(d.error ?? 'Failed to save.') }
   }
 
+  const stepHeading = (n: number, title: string, right?: ReactNode) => (
+    <div className="flex items-center justify-between gap-3 mb-3">
+      <p className="flex items-center gap-2 text-[13px] font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+        <span className="w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold"
+          style={{ background: 'var(--teal)', color: '#fff' }}>{n}</span>
+        {title}
+      </p>
+      {right}
+    </div>
+  )
+
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto py-6"
-      style={{ background: 'rgba(0,0,0,0.45)' }}>
-      <div className="rounded-2xl shadow-xl w-full max-w-2xl mx-4" style={{ background: '#fff' }}>
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 sm:py-8"
+      style={{ background: 'rgba(15,23,42,0.45)', backdropFilter: 'blur(4px)' }}>
+      <div role="dialog" aria-modal="true" aria-labelledby="walkin-title"
+        className="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b"
-          style={{ borderColor: 'var(--light-gray)' }}>
-          <p className="font-bold text-base" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
-            Add Walk-in Patient
-          </p>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100">
+        <div className="flex items-start justify-between gap-3 px-6 py-4" style={{ borderBottom: '1px solid var(--light-gray)' }}>
+          <div className="flex items-start gap-3 min-w-0">
+            <span className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
+              style={{ background: 'var(--pale-teal)', color: 'var(--teal)' }}>
+              <UserPlus size={17} />
+            </span>
+            <div className="min-w-0">
+              <h3 id="walkin-title" className="text-lg font-bold leading-snug" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+                Add Walk-in Patient
+              </h3>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+                {BRANCH_LABEL[defaultBranch] ?? defaultBranch} · {formatDay(defaultDate)}
+              </p>
+            </div>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close"
+            className="p-1.5 rounded-lg hover:bg-gray-100 flex-shrink-0">
             <X size={16} style={{ color: 'var(--mid-gray)' }} />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="px-6 py-5 space-y-5">
-          {error && <div className="rounded-lg px-3 py-2 text-xs" style={{ background: '#FEE2E2', color: '#DC2626' }}>{error}</div>}
-
-          {/* ── Patient section ─────────────────────────────────────────── */}
-          <div>
-            <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--teal)' }}>
-              1. Patient
-            </p>
-            {!isNew ? (
-              <div className="space-y-2">
-                <label style={lbl}>Search Existing Patient</label>
-                <PatientSearch value={patientId} label={patientLabel}
-                  onChange={(id, lbl) => { setPatientId(id); setPatientLabel(lbl) }} />
-                <button type="button" onClick={() => { setIsNew(true); setPatientId(''); setPatientLabel('') }}
-                  className="text-xs font-semibold mt-1" style={{ color: 'var(--teal)' }}>
-                  + New patient (not in CRM)
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>New Patient</span>
-                  <button type="button" onClick={() => setIsNew(false)}
-                    className="text-xs font-semibold" style={{ color: 'var(--teal)' }}>
-                    Search existing instead
-                  </button>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label style={lbl}>First Name *</label>
-                    <input style={inp} value={firstName} onChange={e => setFirstName(e.target.value)} required />
-                  </div>
-                  <div>
-                    <label style={lbl}>Last Name *</label>
-                    <input style={inp} value={lastName} onChange={e => setLastName(e.target.value)} required />
-                  </div>
-                  <div>
-                    <label style={lbl}>Phone / Cellphone No.</label>
-                    <input style={inp} value={phone} onChange={e => setPhone(e.target.value)} />
-                  </div>
-                  <div>
-                    <label style={lbl}>Email</label>
-                    <input style={inp} type="email" value={email} onChange={e => setEmail(e.target.value)} />
-                  </div>
-                  <div>
-                    <label style={lbl}>Date of Birth</label>
-                    <input style={inp} type="date" value={dob} onChange={e => setDob(e.target.value)} />
-                  </div>
-                  <div>
-                    <label style={lbl}>Sex</label>
-                    <select style={inp} value={sex} onChange={e => setSex(e.target.value)}>
-                      <option value="">Select</option>
-                      <option value="Male">Male</option>
-                      <option value="Female">Female</option>
-                    </select>
-                  </div>
-                  <div className="col-span-2">
-                    <label style={lbl}>Address / Barangay</label>
-                    <input style={inp} value={address} onChange={e => setAddress(e.target.value)} />
-                  </div>
-                  <div className="col-span-2">
-                    <label style={lbl}>Diagnosis</label>
-                    <input style={inp} value={diagnosis} onChange={e => setDiagnosis(e.target.value)} />
-                  </div>
-                </div>
+        <form onSubmit={handleSubmit}>
+          <div className="px-6 py-5 space-y-6">
+            {error && (
+              <div role="alert" className="flex items-start gap-2 rounded-lg px-3 py-2 text-xs font-medium"
+                style={{ background: '#FDE4E4', color: '#991B1B', border: '1px solid #F5C2C2' }}>
+                <AlertTriangle size={13} className="flex-shrink-0 mt-px" /> {error}
               </div>
             )}
-          </div>
 
-          {/* ── Schedule section ─────────────────────────────────────────── */}
-          <div>
-            <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--teal)' }}>
-              2. Schedule
-            </p>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="col-span-2">
-                <label style={lbl}>Therapist *</label>
-                <select style={inp} value={staffId} onChange={e => { setStaffId(e.target.value); setSessionType('') }}>
-                  <option value="">Select therapist…</option>
-                  {branchStaff.map(s => (
-                    <option key={s.id} value={s.id}>
-                      {s.lastName}, {s.firstName} ({s.department})
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label style={lbl}>Date</label>
-                <input type="date" value={defaultDate} readOnly
-                  style={{ ...inp, background: 'var(--off-white)', color: 'var(--mid-gray)' }} />
-              </div>
-              <div>
-                <label style={lbl}>Start Time</label>
-                <select style={inp} value={startTime} onChange={e => handleStart(e.target.value)}>
-                  {TIME_SLOTS.map(t => <option key={t} value={t}>{formatTime(t)}</option>)}
-                </select>
-              </div>
-              <div>
-                <label style={lbl}>Duration</label>
-                <select style={inp} value={duration} onChange={e => handleDuration(e.target.value)}>
-                  <option value="1h">1 Hour</option>
-                  <option value="1.5h">1.5 Hours</option>
-                  <option value="2h">2 Hours</option>
-                  <option value="custom">Custom</option>
-                </select>
-              </div>
-              <div>
-                <label style={lbl}>End Time</label>
-                {duration === 'custom' ? (
-                  <input
-                    type="time"
-                    step="60"
-                    style={inp}
-                    value={endTime}
-                    onChange={e => setEndTime(e.target.value)}
-                  />
-                ) : (
-                  <input style={{ ...inp, background: 'var(--off-white)', color: 'var(--mid-gray)' }}
-                    value={endTime ? formatTime(endTime) : '—'} readOnly />
-                )}
-              </div>
-              <div>
-                <label style={lbl}>Session Type *</label>
-                <select style={inp} value={sessionType} onChange={e => {
-                  const val = e.target.value
-                  setSessionType(val)
-                  if (!INTERN_SESSION_TYPES.has(val)) setInternStaffId('')
-                }}>
-                  <option value="">Select type</option>
-                  {deptTypes.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-              </div>
-              {INTERN_SESSION_TYPES.has(sessionType) && (
+            {/* ── Patient section ─────────────────────────────────────────── */}
+            <div>
+              {stepHeading(1, 'Patient', isNew ? (
+                <button type="button" onClick={() => setIsNew(false)}
+                  className="text-xs font-semibold hover:underline" style={{ color: 'var(--teal)' }}>
+                  Search existing instead
+                </button>
+              ) : undefined)}
+              {!isNew ? (
                 <div>
-                  <label style={lbl}>Select Intern</label>
-                  {(() => {
-                    const eligible = selectedStaff
-                      ? staff
-                          .filter(s => s.department === selectedStaff.department && isEligibleIntern(s, defaultDate))
-                          .sort((a, b) => a.lastName.localeCompare(b.lastName) || a.firstName.localeCompare(b.firstName))
-                      : []
-                    return eligible.length === 0 ? (
-                      <div style={{ ...inp, background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
-                        No active {selectedStaff?.department} interns right now
-                      </div>
-                    ) : (
-                      <select style={inp} value={internStaffId} onChange={e => setInternStaffId(e.target.value)}>
-                        <option value="">Select intern…</option>
-                        {eligible.map(s => <option key={s.id} value={s.id}>{s.lastName}, {s.firstName}</option>)}
+                  <Label>Search Existing Patient</Label>
+                  <PatientSearch value={patientId} label={patientLabel}
+                    onChange={(id, lbl) => { setPatientId(id); setPatientLabel(lbl) }} />
+                  <button type="button" onClick={() => { setIsNew(true); setPatientId(''); setPatientLabel('') }}
+                    className="inline-flex items-center gap-1 text-xs font-semibold mt-2 hover:underline" style={{ color: 'var(--teal)' }}>
+                    <Plus size={12} /> New patient (not in CRM)
+                  </button>
+                </div>
+              ) : (
+                <div className="rounded-xl p-4" style={{ background: SUBTLE_BG, border: '1px solid var(--light-gray)' }}>
+                  <p className={`mb-3 ${SECTION_LABEL}`} style={{ color: 'var(--teal)' }}>New Patient</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <Label>First Name *</Label>
+                      <input className={FIELD} style={FIELD_STYLE} value={firstName} onChange={e => setFirstName(e.target.value)} required />
+                    </div>
+                    <div>
+                      <Label>Last Name *</Label>
+                      <input className={FIELD} style={FIELD_STYLE} value={lastName} onChange={e => setLastName(e.target.value)} required />
+                    </div>
+                    <div>
+                      <Label>Phone / Cellphone No.</Label>
+                      <input className={FIELD} style={FIELD_STYLE} value={phone} onChange={e => setPhone(e.target.value)} />
+                    </div>
+                    <div>
+                      <Label>Email</Label>
+                      <input className={FIELD} style={FIELD_STYLE} type="email" value={email} onChange={e => setEmail(e.target.value)} />
+                    </div>
+                    <div>
+                      <Label>Date of Birth</Label>
+                      <input className={FIELD} style={FIELD_STYLE} type="date" value={dob} onChange={e => setDob(e.target.value)} />
+                    </div>
+                    <div>
+                      <Label>Sex</Label>
+                      <select className={FIELD} style={FIELD_STYLE} value={sex} onChange={e => setSex(e.target.value)}>
+                        <option value="">Select</option>
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
                       </select>
-                    )
-                  })()}
+                    </div>
+                    <div className="sm:col-span-2">
+                      <Label>Address / Barangay</Label>
+                      <input className={FIELD} style={FIELD_STYLE} value={address} onChange={e => setAddress(e.target.value)} />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <Label>Diagnosis</Label>
+                      <input className={FIELD} style={FIELD_STYLE} value={diagnosis} onChange={e => setDiagnosis(e.target.value)} />
+                    </div>
+                  </div>
                 </div>
               )}
-              <div>
-                <label style={lbl}>Status</label>
-                <select style={inp} value={status} onChange={e => setStatus(e.target.value)}>
-                  <option value="PENDING">Pending</option>
-                  <option value="CONFIRMED">Confirmed</option>
-                </select>
-              </div>
-              <div className="col-span-2">
-                <label style={lbl}>Notes (optional)</label>
-                <textarea style={{ ...inp, resize: 'vertical', minHeight: '60px' } as React.CSSProperties}
-                  value={notes} onChange={e => setNotes(e.target.value)} />
+            </div>
+
+            {/* ── Schedule section ─────────────────────────────────────────── */}
+            <div>
+              {stepHeading(2, 'Schedule')}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="sm:col-span-2">
+                  <Label>Therapist *</Label>
+                  <select className={FIELD} style={FIELD_STYLE} value={staffId} onChange={e => { setStaffId(e.target.value); setSessionType('') }}>
+                    <option value="">Select therapist…</option>
+                    {branchStaff.map(s => (
+                      <option key={s.id} value={s.id}>
+                        {s.lastName}, {s.firstName} ({s.department})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <Label>Date</Label>
+                  <input type="date" value={defaultDate} readOnly className={FIELD} style={FIELD_READONLY} />
+                </div>
+                <div>
+                  <Label>Start Time</Label>
+                  <select className={FIELD} style={FIELD_STYLE} value={startTime} onChange={e => handleStart(e.target.value)}>
+                    {TIME_SLOTS.map(t => <option key={t} value={t}>{formatTime(t)}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <Label>Duration</Label>
+                  <select className={FIELD} style={FIELD_STYLE} value={duration} onChange={e => handleDuration(e.target.value)}>
+                    <option value="1h">1 Hour</option>
+                    <option value="1.5h">1.5 Hours</option>
+                    <option value="2h">2 Hours</option>
+                    <option value="custom">Custom</option>
+                  </select>
+                </div>
+                <div>
+                  <Label>End Time</Label>
+                  {duration === 'custom' ? (
+                    <input
+                      type="time"
+                      step="60"
+                      className={FIELD}
+                      style={FIELD_STYLE}
+                      value={endTime}
+                      onChange={e => setEndTime(e.target.value)}
+                    />
+                  ) : (
+                    <input className={FIELD} style={FIELD_READONLY}
+                      value={endTime ? formatTime(endTime) : '—'} readOnly />
+                  )}
+                </div>
+                <div>
+                  <Label>Session Type *</Label>
+                  <select className={FIELD} style={FIELD_STYLE} value={sessionType} onChange={e => {
+                    const val = e.target.value
+                    setSessionType(val)
+                    if (!INTERN_SESSION_TYPES.has(val)) setInternStaffId('')
+                  }}>
+                    <option value="">{selectedStaff ? 'Select type' : 'Pick a therapist first'}</option>
+                    {deptTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+                {INTERN_SESSION_TYPES.has(sessionType) && (
+                  <div>
+                    <Label>Select Intern</Label>
+                    {(() => {
+                      const eligible = selectedStaff
+                        ? staff
+                            .filter(s => s.department === selectedStaff.department && isEligibleIntern(s, defaultDate))
+                            .sort((a, b) => a.lastName.localeCompare(b.lastName) || a.firstName.localeCompare(b.firstName))
+                        : []
+                      return eligible.length === 0 ? (
+                        <div className={`${FIELD} flex items-center text-xs`} style={FIELD_READONLY}>
+                          No active {selectedStaff?.department} interns right now
+                        </div>
+                      ) : (
+                        <select className={FIELD} style={FIELD_STYLE} value={internStaffId} onChange={e => setInternStaffId(e.target.value)}>
+                          <option value="">Select intern…</option>
+                          {eligible.map(s => <option key={s.id} value={s.id}>{s.lastName}, {s.firstName}</option>)}
+                        </select>
+                      )
+                    })()}
+                  </div>
+                )}
+                <div>
+                  <Label>Status</Label>
+                  <select className={FIELD} style={FIELD_STYLE} value={status} onChange={e => setStatus(e.target.value)}>
+                    <option value="PENDING">Pending</option>
+                    <option value="CONFIRMED">Confirmed</option>
+                  </select>
+                </div>
+                <div className="sm:col-span-2">
+                  <Label>Notes (optional)</Label>
+                  <textarea className="w-full px-3 py-2 rounded-lg text-sm outline-none focus:border-[var(--teal)]"
+                    style={{ ...FIELD_STYLE, resize: 'vertical', minHeight: '64px' }}
+                    value={notes} onChange={e => setNotes(e.target.value)} />
+                </div>
               </div>
             </div>
           </div>
 
           {/* Actions */}
-          <div className="flex gap-2 justify-end pt-1 border-t" style={{ borderColor: 'var(--light-gray)' }}>
-            <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg text-sm font-medium"
-              style={{ background: 'var(--light-gray)', color: 'var(--charcoal)' }}>Cancel</button>
-            <button type="submit" disabled={saving} className="px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2"
-              style={{ background: 'var(--teal)', color: '#fff', opacity: saving ? 0.7 : 1 }}>
-              <Plus size={14} />
+          <div className="flex gap-2 justify-end px-6 py-3.5" style={{ borderTop: '1px solid var(--light-gray)', background: SUBTLE_BG }}>
+            <button type="button" onClick={onClose} className={BTN_SECONDARY} style={CONTROL_STYLE}>Cancel</button>
+            <button type="submit" disabled={saving} className={BTN_PRIMARY} style={{ background: 'var(--teal)' }}>
+              {saving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
               {saving ? 'Saving…' : 'Add to Queue'}
             </button>
           </div>
@@ -468,20 +609,12 @@ const BRANCH_OPTIONS = [
   { value: 'SBEA', label: 'East Branch Only',     color: '#0D9488' },
   { value: 'SBGH', label: 'Greenhills Branch Only', color: '#2563EB' },
 ]
-function branchBadge(branch: string) {
-  const opt = BRANCH_OPTIONS.find(o => o.value === branch) ?? BRANCH_OPTIONS[0]
-  return (
-    <span style={{
-      fontSize: '0.65rem', fontWeight: 700, padding: '0.15rem 0.5rem',
-      borderRadius: '99px', background: `${opt.color}22`, color: opt.color,
-      whiteSpace: 'nowrap', letterSpacing: '0.04em',
-    }}>{opt.label}</span>
-  )
-}
 
 // ─── Ads Manager ─────────────────────────────────────────────────────────────
 function AdsManager({ role }: { role: string }) {
   const [ads, setAds]           = useState<Ad[]>([])
+  const [adsLoaded, setAdsLoaded] = useState(false)
+  const [adsError, setAdsError] = useState('')
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
   const [uploadCurrent, setUploadCurrent] = useState(0)
@@ -506,8 +639,15 @@ function AdsManager({ role }: { role: string }) {
   const [uploadBranch, setUploadBranch] = useState(allowedBranches[0].value)
 
   const loadAds = useCallback(async () => {
-    const res = await fetch('/api/queue-ads')
-    if (res.ok) setAds(await res.json())
+    try {
+      const res = await fetch('/api/queue-ads')
+      if (res.ok) { setAds(await res.json()); setAdsError('') }
+      else setAdsError(`Could not load the ad list (HTTP ${res.status}).`)
+    } catch (e) {
+      setAdsError(e instanceof Error ? e.message : 'Could not load the ad list.')
+    } finally {
+      setAdsLoaded(true)
+    }
   }, [])
 
   // Load settings (leaderboard + complaint form)
@@ -631,264 +771,278 @@ function AdsManager({ role }: { role: string }) {
     loadAds()
   }
 
+  const videoCount = ads.filter(a => a.mimeType.startsWith('video/')).length
+
   return (
-    <div className="space-y-4">
-      {/* Upload area */}
-      <div className="rounded-xl p-5 flex flex-col items-center gap-3 text-center"
-        style={{ border: '2px dashed rgba(25,72,80,0.25)', background: 'var(--pale-teal)' }}>
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center"
-          style={{ background: 'var(--teal)' }}>
-          <Upload size={18} style={{ color: '#fff' }} />
-        </div>
-        <div>
-          <p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>Upload Ad</p>
-          <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>
-            Video (.mp4, .webm, .mov) or Image (.jpg, .png, .gif, .webp) — max 200 MB
-          </p>
-          <p className="text-xs mt-1 font-medium" style={{ color: 'var(--teal)' }}>
-            📐 Optimal for TV display: <strong>1152 × 960 px</strong> (matches 60% panel on 1080p TV) — or <strong>1080 × 900 px</strong> minimum. Avoid portrait 9:16 (heavy cropping).
-          </p>
-        </div>
-        {/* Branch selector */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>Show on:</span>
-          <div style={{ display: 'flex', gap: '0.35rem' }}>
-            {allowedBranches.map(opt => (
-              <button key={opt.value} type="button"
-                onClick={() => setUploadBranch(opt.value)}
-                className="text-xs font-semibold px-3 py-1 rounded-lg transition-colors"
-                style={{
-                  background: uploadBranch === opt.value ? opt.color : 'var(--light-gray)',
-                  color: uploadBranch === opt.value ? '#fff' : 'var(--mid-gray)',
-                  border: 'none', cursor: 'pointer',
-                }}>
-                {opt.label}
-              </button>
-            ))}
-          </div>
-        </div>
-        <label className="cursor-pointer px-4 py-2 rounded-lg text-sm font-medium"
-          style={{ background: 'var(--teal)', color: '#fff', opacity: uploading ? 0.6 : 1 }}>
-          {uploading
-            ? uploadTotal > 1
-              ? `Uploading ${uploadCurrent}/${uploadTotal} (${uploadProgress}%)…`
-              : `Uploading ${uploadProgress}%…`
-            : 'Choose Files'}
-          <input ref={fileRef} type="file" multiple className="hidden"
-            accept="video/mp4,video/webm,video/ogg,video/quicktime,.mp4,.webm,.ogg,.mov,image/jpeg,image/png,image/gif,image/webp,.jpg,.jpeg,.png,.gif,.webp"
-            onChange={handleUpload} disabled={uploading} />
-        </label>
-        {uploadErr && <p className="text-xs" style={{ color: '#DC2626' }}>{uploadErr}</p>}
-      </div>
+    <div className="grid gap-5 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] items-start min-w-0">
+      <div className="space-y-5 min-w-0">
+        {/* Upload */}
+        <DashCard title="Upload ads" icon={<Upload size={15} />}
+          description="Videos and images play in order on the TV queue display, next to the patient list.">
+          <div className="space-y-4">
+            {/* Branch selector */}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={SECTION_LABEL} style={{ color: 'var(--mid-gray)' }}>Show on</span>
+              <div className="flex flex-wrap gap-1 p-1 rounded-xl" style={{ background: '#EEF3F1' }}>
+                {allowedBranches.map(opt => {
+                  const on = uploadBranch === opt.value
+                  return (
+                    <button key={opt.value} type="button" aria-pressed={on}
+                      onClick={() => setUploadBranch(opt.value)}
+                      className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors ${on ? '' : 'hover:bg-black/[0.04]'}`}
+                      style={on
+                        ? { background: '#fff', color: opt.color, boxShadow: '0 1px 2px rgba(0,0,0,0.08)' }
+                        : { background: 'transparent', color: 'var(--mid-gray)' }}>
+                      <span className="w-1.5 h-1.5 rounded-full" style={{ background: opt.color }} />
+                      {opt.label}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
 
-      {/* Ads list */}
-      {ads.length === 0 ? (
-        <p className="text-sm text-center py-6" style={{ color: 'var(--mid-gray)' }}>No ads uploaded yet.</p>
-      ) : (
-        <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--light-gray)' }}>
-          <table className="w-full text-xs">
-            <thead>
-              <tr style={{ background: 'var(--off-white)', borderBottom: '1px solid var(--light-gray)' }}>
-                {['Order', 'Type', 'File Name', 'Show On', 'Preview', ''].map(h => (
-                  <th key={h} className="px-3 py-2 text-left font-semibold uppercase tracking-wider"
-                    style={{ color: 'var(--mid-gray)' }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {ads.map((ad, idx) => (
-                <tr key={ad.id} className="hover:bg-gray-50 transition-colors"
-                  style={{ borderBottom: '1px solid var(--light-gray)' }}>
-                  <td className="px-3 py-2 font-bold" style={{ color: 'var(--charcoal)' }}>{idx + 1}</td>
-                  <td className="px-3 py-2">
-                    {ad.mimeType.startsWith('video/') ? (
-                      <Film size={14} style={{ color: 'var(--teal)' }} />
-                    ) : (
-                      <ImageIcon size={14} style={{ color: 'var(--teal)' }} />
-                    )}
-                  </td>
-                  <td className="px-3 py-2" style={{ color: 'var(--charcoal)', maxWidth: '16rem' }}>
-                    <span className="truncate block">{ad.fileName}</span>
-                  </td>
-                  <td className="px-3 py-2">
-                    <select
-                      value={ad.branch ?? 'ALL'}
-                      onChange={e => handleBranchChange(ad.id, e.target.value)}
-                      disabled={allowedBranches.length === 1}
-                      className="text-xs rounded-lg px-2 py-1 font-semibold"
-                      style={{
-                        border: '1.5px solid rgba(25,72,80,0.2)',
-                        background: '#fff', color: 'var(--charcoal)',
-                        cursor: allowedBranches.length === 1 ? 'default' : 'pointer',
-                        opacity: allowedBranches.length === 1 ? 0.7 : 1,
-                      }}>
-                      {allowedBranches.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                    </select>
-                  </td>
-                  <td className="px-3 py-2">
-                    <a href={`/api/queue-ads/stream/${ad.id}`} target="_blank" rel="noreferrer"
-                      className="inline-flex items-center gap-1 text-xs font-medium"
-                      style={{ color: 'var(--teal)' }}>
-                      <ExternalLink size={11} /> View
-                    </a>
-                  </td>
-                  <td className="px-3 py-2">
-                    <div className="flex items-center gap-1 justify-end">
-                      <button onClick={() => handleReorder(ad.id, 'up')} disabled={idx === 0}
-                        className="p-1 rounded hover:bg-gray-100" title="Move up">
-                        <ChevronUp size={13} style={{ color: idx === 0 ? 'var(--light-gray)' : 'var(--mid-gray)' }} />
-                      </button>
-                      <button onClick={() => handleReorder(ad.id, 'down')} disabled={idx === ads.length - 1}
-                        className="p-1 rounded hover:bg-gray-100" title="Move down">
-                        <ChevronDown size={13} style={{ color: idx === ads.length - 1 ? 'var(--light-gray)' : 'var(--mid-gray)' }} />
-                      </button>
-                      <button onClick={() => handleDelete(ad.id)} disabled={deletingId === ad.id}
-                        className="p-1 rounded hover:bg-red-50" title="Delete">
-                        <Trash2 size={13} style={{ color: deletingId === ad.id ? 'var(--mid-gray)' : '#DC2626' }} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+            {/* Drop zone (clicking anywhere opens the file picker) */}
+            <label className={`flex flex-col items-center gap-2 text-center rounded-xl px-5 py-7 transition-colors ${uploading ? 'cursor-wait' : 'cursor-pointer hover:bg-[#EAF4F2]'}`}
+              style={{ border: '1.5px dashed rgba(25,72,80,0.28)', background: SUBTLE_BG }}>
+              <span className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'var(--teal)', color: '#fff' }}>
+                {uploading ? <Loader2 size={18} className="animate-spin" /> : <Upload size={18} />}
+              </span>
+              <span className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>
+                {uploading
+                  ? uploadTotal > 1
+                    ? `Uploading ${uploadCurrent}/${uploadTotal} (${uploadProgress}%)…`
+                    : `Uploading ${uploadProgress}%…`
+                  : 'Choose files to upload'}
+              </span>
+              {uploading ? (
+                <span className="w-full max-w-xs h-1.5 rounded-full overflow-hidden" style={{ background: '#DCE7E4' }}>
+                  <span className="block h-full rounded-full transition-[width] duration-200"
+                    style={{ width: `${uploadProgress}%`, background: 'var(--teal)' }} />
+                </span>
+              ) : (
+                <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+                  Video (.mp4, .webm, .mov) or Image (.jpg, .png, .gif, .webp) — max 200 MB
+                </span>
+              )}
+              <input ref={fileRef} type="file" multiple className="hidden"
+                accept="video/mp4,video/webm,video/ogg,video/quicktime,.mp4,.webm,.ogg,.mov,image/jpeg,image/png,image/gif,image/webp,.jpg,.jpeg,.png,.gif,.webp"
+                onChange={handleUpload} disabled={uploading} />
+            </label>
 
-      {/* Leaderboard toggle */}
-      <div className="rounded-xl px-4 py-3 flex items-center justify-between"
-        style={{ border: '1px solid var(--light-gray)', background: '#fff' }}>
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center"
-            style={{ background: 'var(--pale-teal)' }}>
-            <span style={{ fontSize: '1rem' }}>🏆</span>
-          </div>
-          <div>
-            <p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>
-              Show Leaderboard
-            </p>
-            <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
-              Display clinician satisfaction leaderboard on the TV queue display, alternating with ads.
-            </p>
-          </div>
-        </div>
-        <label className="relative inline-flex items-center cursor-pointer">
-          <input
-            type="checkbox"
-            checked={showLeaderboard}
-            onChange={e => handleToggleLeaderboard(e.target.checked)}
-            disabled={togglingLb}
-            className="sr-only peer"
-          />
-          <div style={{
-            width: '2.75rem', height: '1.5rem', borderRadius: '99px',
-            background: showLeaderboard ? 'var(--teal)' : 'var(--light-gray)',
-            position: 'relative', transition: 'background 0.2s',
-            opacity: togglingLb ? 0.6 : 1,
-            cursor: togglingLb ? 'wait' : 'pointer',
-          }}>
-            <div style={{
-              width: '1.15rem', height: '1.15rem', borderRadius: '50%',
-              background: '#fff', position: 'absolute', top: '0.175rem',
-              left: showLeaderboard ? '1.4rem' : '0.2rem',
-              transition: 'left 0.2s',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
-            }} />
-          </div>
-        </label>
-      </div>
+            <div className="flex items-start gap-2 rounded-lg px-3 py-2" style={{ background: 'var(--pale-teal)' }}>
+              <Info size={13} className="flex-shrink-0 mt-0.5" style={{ color: 'var(--teal)' }} />
+              <p className="text-xs leading-relaxed" style={{ color: 'var(--teal)' }}>
+                Optimal for TV display: <strong>1152 × 960 px</strong> (matches 60% panel on 1080p TV) — or <strong>1080 × 900 px</strong> minimum. Avoid portrait 9:16 (heavy cropping).
+              </p>
+            </div>
 
-      {/* Patient Complaint Form toggle */}
-      <div className="rounded-xl px-4 py-3 flex items-center justify-between"
-        style={{ border: '1px solid var(--light-gray)', background: '#fff' }}>
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center"
-            style={{ background: 'rgba(198,128,119,0.12)' }}>
-            <span style={{ fontSize: '1rem' }}>📋</span>
-          </div>
-          <div>
-            <p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>
-              Show Patient Complaint Form
-            </p>
-            <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
-              Display a QR code on the TV for patients to submit concerns or incidents.
-            </p>
-          </div>
-        </div>
-        <label className="relative inline-flex items-center cursor-pointer">
-          <input
-            type="checkbox"
-            checked={showComplaintForm}
-            onChange={e => handleToggleComplaintForm(e.target.checked)}
-            disabled={togglingCf}
-            className="sr-only peer"
-          />
-          <div style={{
-            width: '2.75rem', height: '1.5rem', borderRadius: '99px',
-            background: showComplaintForm ? 'var(--teal)' : 'var(--light-gray)',
-            position: 'relative', transition: 'background 0.2s',
-            opacity: togglingCf ? 0.6 : 1,
-            cursor: togglingCf ? 'wait' : 'pointer',
-          }}>
-            <div style={{
-              width: '1.15rem', height: '1.15rem', borderRadius: '50%',
-              background: '#fff', position: 'absolute', top: '0.175rem',
-              left: showComplaintForm ? '1.4rem' : '0.2rem',
-              transition: 'left 0.2s',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
-            }} />
-          </div>
-        </label>
-      </div>
-
-      {/* Image slide duration */}
-      <div className="rounded-xl px-4 py-3"
-        style={{ border: '1px solid var(--light-gray)', background: '#fff' }}>
-        <div className="flex items-center gap-3 mb-3">
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-            style={{ background: 'var(--pale-teal)' }}>
-            <span style={{ fontSize: '1rem' }}>⏱</span>
-          </div>
-          <div>
-            <p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>
-              Image Slide Duration
-            </p>
-            <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
-              How many seconds each static image ad stays on screen before advancing to the next.
-            </p>
-          </div>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <input
-            type="range"
-            min={5} max={60} step={1}
-            value={adSlideDuration}
-            onChange={e => handleSlideDurationChange(Number(e.target.value))}
-            style={{ flex: 1, accentColor: 'var(--teal)' }}
-          />
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexShrink: 0 }}>
-            <input
-              type="number"
-              min={5} max={120}
-              value={adSlideDuration}
-              onChange={e => handleSlideDurationChange(Number(e.target.value))}
-              style={{
-                width: '4rem', textAlign: 'center', fontWeight: 700,
-                border: '1.5px solid rgba(25,72,80,0.25)', borderRadius: '0.5rem',
-                padding: '0.3rem 0.4rem', fontSize: '0.9rem', color: 'var(--charcoal)',
-              }}
-            />
-            <span className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>sec</span>
-            {savingDuration && (
-              <span className="text-xs" style={{ color: 'var(--teal)' }}>Saving…</span>
+            {uploadErr && (
+              <div role="alert" className="flex items-start gap-2 rounded-lg px-3 py-2 text-xs font-medium"
+                style={{ background: '#FDE4E4', color: '#991B1B', border: '1px solid #F5C2C2' }}>
+                <AlertTriangle size={13} className="flex-shrink-0 mt-px" /> {uploadErr}
+              </div>
             )}
           </div>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.25rem' }}>
-          <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>5s</span>
-          <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>60s</span>
-        </div>
+        </DashCard>
+
+        {/* Ads list */}
+        <DashCard title="Ad playlist" icon={<ListOrdered size={15} />} flush
+          description="Plays top to bottom. Use the arrows to change the order."
+          action={adsLoaded && ads.length > 0 ? (
+            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full tabular-nums"
+              style={{ background: SUBTLE_BG, color: 'var(--mid-gray)', border: '1px solid var(--light-gray)' }}>
+              {ads.length} ad{ads.length === 1 ? '' : 's'} · {videoCount} video{videoCount === 1 ? '' : 's'}
+            </span>
+          ) : undefined}>
+          {adsError && (
+            <div role="alert" className="flex flex-wrap items-center gap-2 px-5 py-2.5 text-xs font-medium"
+              style={{ background: '#FDE4E4', color: '#991B1B', borderBottom: '1px solid #F5C2C2' }}>
+              <AlertTriangle size={13} /> {adsError}
+              <button type="button" onClick={loadAds} className="ml-auto inline-flex items-center gap-1 font-semibold hover:underline">
+                <RefreshCw size={11} /> Try again
+              </button>
+            </div>
+          )}
+          {!adsLoaded ? (
+            <div aria-hidden>
+              {Array.from({ length: 3 }).map((_, n) => (
+                <div key={n} className="flex items-center gap-4 px-5 py-3.5" style={{ borderTop: n ? '1px solid var(--light-gray)' : undefined }}>
+                  <Skeleton className="h-4 w-5" />
+                  <Skeleton className="h-8 w-8 rounded-lg" />
+                  <Skeleton className="h-4 flex-1" style={{ maxWidth: 260 }} />
+                  <Skeleton className="h-7 w-32 rounded-full" />
+                  <Skeleton className="h-7 w-24" />
+                </div>
+              ))}
+            </div>
+          ) : ads.length === 0 ? (
+            !adsError && (
+              <div className="flex flex-col items-center">
+                <Megaphone size={26} className="mt-10 -mb-8" style={{ color: 'var(--light-gray)' }} />
+                <EmptyState title="No ads uploaded yet." hint="Upload a video or image above and it will start playing on the TV display." />
+              </div>
+            )
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm" style={{ borderCollapse: 'collapse', minWidth: 600 }}>
+                <thead>
+                  <tr style={{ background: SUBTLE_BG }}>
+                    {['#', 'File', 'Show On', ''].map((h, i) => (
+                      <th key={`${h}-${i}`} className={`px-4 py-2 text-left whitespace-nowrap ${SECTION_LABEL}`}
+                        style={{ color: 'var(--mid-gray)', borderBottom: '1px solid var(--light-gray)' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {ads.map((ad, idx) => {
+                    const isVideo = ad.mimeType.startsWith('video/')
+                    const deleting = deletingId === ad.id
+                    return (
+                      <tr key={ad.id} className="transition-colors hover:bg-[#F8FAF9]"
+                        style={{ borderTop: idx ? '1px solid var(--light-gray)' : undefined, opacity: deleting ? 0.5 : 1 }}>
+                        <td className="pl-4 pr-2 py-2.5 w-10">
+                          <span className="inline-flex items-center justify-center w-6 h-6 rounded-md text-[11px] font-bold tabular-nums"
+                            style={{ background: SUBTLE_BG, color: 'var(--charcoal)', border: '1px solid var(--light-gray)' }}>
+                            {idx + 1}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2.5 max-w-0 w-full">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <span className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                              style={isVideo ? { background: '#EFE8FB', color: '#5B21B6' } : { background: '#E3EEFB', color: '#14507F' }}
+                              title={isVideo ? 'Video' : 'Image'}>
+                              {isVideo ? <Film size={14} /> : <ImageIcon size={14} />}
+                            </span>
+                            <div className="min-w-0">
+                              <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--charcoal)' }} title={ad.fileName}>{ad.fileName}</p>
+                              <a href={`/api/queue-ads/stream/${ad.id}`} target="_blank" rel="noreferrer"
+                                className="inline-flex items-center gap-1 text-[11px] font-semibold hover:underline"
+                                style={{ color: 'var(--teal)' }}>
+                                <ExternalLink size={10} /> {isVideo ? 'Play' : 'View'}
+                              </a>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-4 py-2.5 whitespace-nowrap">
+                          <select
+                            value={ad.branch ?? 'ALL'}
+                            onChange={e => handleBranchChange(ad.id, e.target.value)}
+                            disabled={allowedBranches.length === 1}
+                            aria-label="Show on"
+                            className="h-8 pl-2.5 pr-1 rounded-lg text-xs font-semibold outline-none focus:border-[var(--teal)] disabled:opacity-70"
+                            style={{
+                              ...CONTROL_STYLE,
+                              cursor: allowedBranches.length === 1 ? 'default' : 'pointer',
+                            }}>
+                            {allowedBranches.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                          </select>
+                        </td>
+                        <td className="pl-2 pr-4 py-2.5 whitespace-nowrap">
+                          <div className="flex items-center gap-0.5 justify-end">
+                            <button type="button" onClick={() => handleReorder(ad.id, 'up')} disabled={idx === 0}
+                              className={BTN_ICON} title="Move up" aria-label="Move up" style={{ color: 'var(--mid-gray)' }}>
+                              <ChevronUp size={15} />
+                            </button>
+                            <button type="button" onClick={() => handleReorder(ad.id, 'down')} disabled={idx === ads.length - 1}
+                              className={BTN_ICON} title="Move down" aria-label="Move down" style={{ color: 'var(--mid-gray)' }}>
+                              <ChevronDown size={15} />
+                            </button>
+                            <button type="button" onClick={() => handleDelete(ad.id)} disabled={deleting}
+                              className={BTN_ICON.replace('hover:bg-gray-100', 'hover:bg-red-50')} title="Delete" aria-label="Delete" style={{ color: '#DC2626' }}>
+                              {deleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </DashCard>
       </div>
+
+      {/* Display settings */}
+      <DashCard title="TV display settings" icon={<Tv2 size={15} />}
+        description="Applies to the TV queue display. Changes save automatically.">
+        <div className="space-y-5">
+          {/* Leaderboard toggle */}
+          <SettingRow icon={<Trophy size={15} />} tone={{ bg: 'var(--pale-teal)', fg: 'var(--teal)' }}
+            title="Show Leaderboard"
+            hint="Display clinician satisfaction leaderboard on the TV queue display, alternating with ads.">
+            <label className="relative inline-flex items-center cursor-pointer flex-shrink-0 mt-1">
+              <input
+                type="checkbox"
+                checked={showLeaderboard}
+                onChange={e => handleToggleLeaderboard(e.target.checked)}
+                disabled={togglingLb}
+                className="sr-only peer"
+                aria-label="Show Leaderboard"
+              />
+              <SwitchVisual on={showLeaderboard} busy={togglingLb} />
+            </label>
+          </SettingRow>
+
+          <div style={{ borderTop: '1px solid var(--light-gray)' }} />
+
+          {/* Patient Complaint Form toggle */}
+          <SettingRow icon={<MessageSquareWarning size={15} />} tone={{ bg: 'rgba(198,128,119,0.14)', fg: '#A65B52' }}
+            title="Show Patient Complaint Form"
+            hint="Display a QR code on the TV for patients to submit concerns or incidents.">
+            <label className="relative inline-flex items-center cursor-pointer flex-shrink-0 mt-1">
+              <input
+                type="checkbox"
+                checked={showComplaintForm}
+                onChange={e => handleToggleComplaintForm(e.target.checked)}
+                disabled={togglingCf}
+                className="sr-only peer"
+                aria-label="Show Patient Complaint Form"
+              />
+              <SwitchVisual on={showComplaintForm} busy={togglingCf} />
+            </label>
+          </SettingRow>
+
+          <div style={{ borderTop: '1px solid var(--light-gray)' }} />
+
+          {/* Image slide duration */}
+          <div>
+            <SettingRow icon={<Timer size={15} />} tone={{ bg: 'var(--pale-teal)', fg: 'var(--teal)' }}
+              title="Image Slide Duration"
+              hint="How many seconds each static image ad stays on screen before advancing to the next." />
+            <div className="flex items-center gap-3 mt-3 pl-11">
+              <input
+                type="range"
+                min={5} max={60} step={1}
+                value={adSlideDuration}
+                onChange={e => handleSlideDurationChange(Number(e.target.value))}
+                aria-label="Image slide duration"
+                className="min-w-0"
+                style={{ flex: 1, accentColor: 'var(--teal)' }}
+              />
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                <input
+                  type="number"
+                  min={5} max={120}
+                  value={adSlideDuration}
+                  onChange={e => handleSlideDurationChange(Number(e.target.value))}
+                  aria-label="Image slide duration in seconds"
+                  className="h-8 w-16 px-2 rounded-lg text-sm font-bold text-center outline-none focus:border-[var(--teal)] tabular-nums"
+                  style={CONTROL_STYLE}
+                />
+                <span className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>sec</span>
+              </div>
+            </div>
+            <div className="flex justify-between mt-1 pl-11 pr-[5.5rem] text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+              <span>5s</span>
+              <span>60s</span>
+            </div>
+            <p className="pl-11 mt-1 h-4 text-[11px] font-semibold flex items-center gap-1" style={{ color: 'var(--teal)' }} aria-live="polite">
+              {savingDuration && <><Loader2 size={11} className="animate-spin" /> Saving…</>}
+            </p>
+          </div>
+        </div>
+      </DashCard>
     </div>
   )
 }
@@ -918,6 +1072,10 @@ export default function QueueingClient({ role }: { role: string }) {
   const [queue, setQueue]           = useState<QueueEntry[]>([])
   const [staff, setStaff]           = useState<StaffMember[]>([])
   const [loadingQueue, setLoadingQueue] = useState(false)
+  // Display-only: which branch|date the list on screen belongs to (so a
+  // refresh keeps the rows up instead of blanking them), and any load error.
+  const [loadedKey, setLoadedKey]   = useState('')
+  const [queueError, setQueueError] = useState('')
   const [showWalkIn, setShowWalkIn] = useState(false)
   const [showTvMenu, setShowTvMenu] = useState(false)
   const tvMenuRef = useRef<HTMLDivElement>(null)
@@ -938,6 +1096,13 @@ export default function QueueingClient({ role }: { role: string }) {
     setToast(msg)
     setTimeout(() => setToast(''), 3500)
   }
+
+  // Display-only clock so "In session" / "Up next" tags stay current. No fetch.
+  const [now, setNow] = useState(() => new Date())
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 60_000)
+    return () => clearInterval(t)
+  }, [])
 
   // Load staff
   useEffect(() => {
@@ -968,223 +1133,355 @@ export default function QueueingClient({ role }: { role: string }) {
           ...item,
           patientName: nameMap[item.id] ?? null,
         })))
+        setQueueError('')
+      } else {
+        setQueueError(`The queue could not be loaded (HTTP ${res.status}).`)
       }
+    } catch (e) {
+      setQueueError(e instanceof Error ? e.message : 'The queue could not be loaded.')
     } finally {
       setLoadingQueue(false)
+      setLoadedKey(`${activeBranch}|${selectedDate}`)
     }
   }, [activeBranch, selectedDate])
 
   useEffect(() => { loadQueue() }, [loadQueue])
 
   const queueUrl = `https://queue.sapphireclinicseast.org/${tvSlug(activeBranch)}`
+  const today = localTodayStr()
+  const isToday = selectedDate === today
+  // Until the first load for this branch + date lands, show skeletons rather
+  // than the previous branch's rows. After that, refreshes keep rows on screen.
+  const stale = loadedKey !== `${activeBranch}|${selectedDate}`
+
+  // Headline numbers + now/next tags — derived from the rows already loaded.
+  const stats = useMemo(() => {
+    const by: Record<string, number> = {}
+    const depts = new Set<string>()
+    for (const e of queue) {
+      by[e.status] = (by[e.status] ?? 0) + 1
+      depts.add(e.department)
+    }
+    const active = queue.filter(e => !INACTIVE_STATUSES.has(e.status))
+    const hhmm = nowHHMM(now)
+    const inSession = new Set(
+      isToday ? active.filter(e => e.startTime <= hhmm && hhmm < e.endTime).map(e => e.id) : [],
+    )
+    const upcoming = isToday ? active.filter(e => e.startTime > hhmm) : []
+    const nextStart = upcoming.reduce<string | null>((m, e) => (m === null || e.startTime < m ? e.startTime : m), null)
+    const upNext = new Set(upcoming.filter(e => e.startTime === nextStart).map(e => e.id))
+    const firstStart = active.reduce<string | null>((m, e) => (m === null || e.startTime < m ? e.startTime : m), null)
+    const lastEnd = active.reduce<string | null>((m, e) => (m === null || e.endTime > m ? e.endTime : m), null)
+    return {
+      total: queue.length, by, depts: depts.size, activeCount: active.length,
+      inSession, upNext, nextStart, firstStart, lastEnd,
+    }
+  }, [queue, now, isToday])
+
+  const cancelledOrNoShow = (stats.by.CANCELLED ?? 0) + (stats.by.NO_SHOW ?? 0)
+
+  const tvButton = branches.length === 1 ? (
+    <a href={`https://queue.sapphireclinicseast.org/${tvSlug(branches[0])}`}
+      target="_blank" rel="noreferrer"
+      className={BTN_PRIMARY}
+      style={{ background: 'var(--teal)', textDecoration: 'none' }}>
+      <Tv2 size={15} /> Open TV Display
+    </a>
+  ) : (
+    <div ref={tvMenuRef} style={{ position: 'relative' }}>
+      <button
+        type="button"
+        onClick={() => setShowTvMenu(v => !v)}
+        aria-expanded={showTvMenu}
+        className={BTN_PRIMARY}
+        style={{ background: 'var(--teal)', border: 'none', cursor: 'pointer' }}>
+        <Tv2 size={15} />
+        Open TV Display
+        <ChevronDown size={13} style={{
+          transition: 'transform 0.2s',
+          transform: showTvMenu ? 'rotate(180deg)' : 'rotate(0deg)',
+        }} />
+      </button>
+
+      {showTvMenu && (
+        <div className="absolute right-0 z-50 rounded-xl overflow-hidden shadow-xl"
+          style={{ top: 'calc(100% + 0.4rem)', minWidth: '16rem', background: '#fff', border: '1px solid var(--light-gray)' }}>
+          {branches.map((b, i) => {
+            const col = BRANCH_TV_COLORS[b] ?? { bg: '#F3F4F6', color: '#374151' }
+            return (
+              <a key={b}
+                href={`https://queue.sapphireclinicseast.org/${tvSlug(b)}`}
+                target="_blank" rel="noreferrer"
+                onClick={() => setShowTvMenu(false)}
+                className="flex items-center gap-3 px-4 py-3 hover:bg-[#F6F9F8] transition-colors"
+                style={{
+                  textDecoration: 'none',
+                  borderBottom: i < branches.length - 1 ? '1px solid var(--light-gray)' : 'none',
+                }}>
+                <span className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: col.bg }}>
+                  <Tv2 size={14} style={{ color: col.color }} />
+                </span>
+                <span className="flex-1 min-w-0">
+                  <span className="block text-[13px] font-bold leading-tight" style={{ color: 'var(--charcoal)' }}>
+                    {BRANCH_TV_LABELS[b] ?? b}
+                  </span>
+                  <span className="block text-[11px] mt-0.5 truncate" style={{ color: 'var(--mid-gray)' }}>
+                    queue.sapphireclinicseast.org/{tvSlug(b)}
+                  </span>
+                </span>
+                <ExternalLink size={12} style={{ color: 'var(--mid-gray)', flexShrink: 0 }} />
+              </a>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
 
   return (
-    <div className="space-y-5">
-      {/* Header */}
-      <div className="flex items-start justify-between flex-wrap gap-3">
-        <div>
+    <div className="max-w-[1200px] mx-auto min-w-0 space-y-5">
+      {/* ── Header ── */}
+      <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+        <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: 'var(--teal)' }}>
             Clinic Tools
           </p>
-          <h1 className="text-2xl font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+          <h1 className="text-2xl font-bold leading-tight flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+            <ListOrdered size={24} style={{ color: 'var(--teal)' }} />
             Queueing
           </h1>
           <p className="text-sm mt-1" style={{ color: 'var(--mid-gray)' }}>
-            Manage today's patient queue and upload clinic ads for the TV display.
+            Manage today&apos;s patient queue and upload clinic ads for the TV display.
           </p>
         </div>
-        {/* TV Display — single branch: direct link; multi-branch: dropdown */}
-        {branches.length === 1 ? (
-          <a href={`https://queue.sapphireclinicseast.org/${tvSlug(branches[0])}`}
-            target="_blank" rel="noreferrer"
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold"
-            style={{ background: 'var(--teal)', color: '#fff', textDecoration: 'none' }}>
-            <Tv2 size={15} /> Open TV Display
-          </a>
-        ) : (
-          <div ref={tvMenuRef} style={{ position: 'relative' }}>
-            <button
-              onClick={() => setShowTvMenu(v => !v)}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold"
-              style={{ background: 'var(--teal)', color: '#fff', border: 'none', cursor: 'pointer' }}>
-              <Tv2 size={15} />
-              Open TV Display
-              <ChevronDown size={13} style={{
-                transition: 'transform 0.2s',
-                transform: showTvMenu ? 'rotate(180deg)' : 'rotate(0deg)',
-              }} />
-            </button>
-
-            {showTvMenu && (
-              <div style={{
-                position: 'absolute', top: 'calc(100% + 0.5rem)', right: 0,
-                background: '#fff', borderRadius: '0.85rem',
-                border: '1px solid var(--light-gray)',
-                boxShadow: '0 8px 28px rgba(0,0,0,0.12)',
-                overflow: 'hidden', minWidth: '15rem', zIndex: 50,
-              }}>
-                {branches.map((b, i) => {
-                  const col = BRANCH_TV_COLORS[b] ?? { bg: '#F3F4F6', color: '#374151' }
-                  return (
-                    <a key={b}
-                      href={`https://queue.sapphireclinicseast.org/${tvSlug(b)}`}
-                      target="_blank" rel="noreferrer"
-                      onClick={() => setShowTvMenu(false)}
-                      className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors"
-                      style={{
-                        textDecoration: 'none',
-                        borderBottom: i < branches.length - 1 ? '1px solid var(--light-gray)' : 'none',
-                      }}>
-                      <div style={{
-                        width: '2.1rem', height: '2.1rem', borderRadius: '0.5rem', flexShrink: 0,
-                        background: col.bg, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      }}>
-                        <Tv2 size={13} style={{ color: col.color }} />
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        <p style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--charcoal)', lineHeight: 1.2 }}>
-                          {BRANCH_TV_LABELS[b] ?? b}
-                        </p>
-                        <p style={{ fontSize: '0.68rem', color: 'var(--mid-gray)', marginTop: '0.15rem' }}>
-                          queue.sapphireclinicseast.org/{tvSlug(b)}
-                        </p>
-                      </div>
-                      <ExternalLink size={11} style={{ color: 'var(--mid-gray)', flexShrink: 0 }} />
-                    </a>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {activeTab === 'queue' && (branches.length > 1 ? (
+            <Segmented label="Branch" value={activeBranch} onChange={setActiveBranch}
+              items={branches.map(b => ({ key: b, label: BRANCH_LABEL[b] ?? b }))} />
+          ) : (
+            <span className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-xs font-semibold"
+              title="Your account is scoped to this branch"
+              style={{ ...CONTROL_STYLE, background: SUBTLE_BG, color: 'var(--mid-gray)' }}>
+              <Building2 size={13} style={{ color: 'var(--teal)' }} />
+              {BRANCH_LABEL[activeBranch] ?? activeBranch}
+            </span>
+          ))}
+          {tvButton}
+        </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-1 border-b" style={{ borderColor: 'var(--light-gray)' }}>
-        {[
-          { id: 'queue' as const, label: 'Patient Queue' },
-          { id: 'ads'   as const, label: 'Ads Manager' },
-        ].map(t => (
-          <button key={t.id} onClick={() => setActiveTab(t.id)}
-            className="px-4 py-2.5 text-sm font-medium transition-colors relative"
-            style={{
-              color: activeTab === t.id ? 'var(--teal)' : 'var(--mid-gray)',
-              borderBottom: activeTab === t.id ? '2px solid var(--teal)' : '2px solid transparent',
-              marginBottom: '-1px',
-            }}>
-            {t.label}
-          </button>
-        ))}
-      </div>
+      {/* ── Tabs ── */}
+      <Segmented label="Queueing sections" size="md" value={activeTab} onChange={setActiveTab}
+        items={[
+          { key: 'queue', label: 'Patient Queue', icon: <ListOrdered size={15} /> },
+          { key: 'ads',   label: 'Ads Manager',   icon: <Megaphone size={15} /> },
+        ]} />
 
       {/* Toast */}
       {toast && (
-        <div className="rounded-lg px-4 py-2 text-sm font-medium"
-          style={{ background: 'var(--pale-teal)', color: 'var(--teal)' }}>
+        <div role="status" className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold"
+          style={{ background: '#DFF5E4', color: '#166534', border: '1px solid #B6E5C2' }}>
+          <CheckCircle2 size={15} className="flex-shrink-0" />
           {toast}
         </div>
       )}
 
       {/* ── Queue tab ─────────────────────────────────────────────────────── */}
       {activeTab === 'queue' && (
-        <div className="space-y-4">
-          {/* Controls */}
-          <div className="flex flex-wrap items-center gap-3">
-            {branches.length > 1 && (
-              <div className="flex rounded-lg overflow-hidden" style={{ border: '1px solid var(--light-gray)' }}>
-                {branches.map(b => (
-                  <button key={b} onClick={() => setActiveBranch(b)}
-                    className="px-4 py-1.5 text-sm font-medium transition-colors"
-                    style={activeBranch === b
-                      ? { background: 'var(--teal)', color: '#fff' }
-                      : { background: '#fff', color: 'var(--mid-gray)' }}>
-                    {BRANCH_LABEL[b] ?? b}
-                  </button>
-                ))}
-              </div>
-            )}
+        <div className="space-y-5">
+          {/* Toolbar */}
+          <div className="rounded-xl px-4 py-3 flex flex-wrap items-center gap-2" style={CARD_STYLE}>
             <div className="flex items-center gap-2">
-              <label className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>Date</label>
-              <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)}
-                className="rounded-lg px-3 py-1.5 text-sm"
-                style={{ border: '1.5px solid rgba(25,72,80,0.25)', background: '#fff', color: 'var(--charcoal)' }} />
+              <CalendarDays size={15} style={{ color: 'var(--teal)' }} />
+              <label htmlFor="queue-date" className={SECTION_LABEL} style={{ color: 'var(--mid-gray)' }}>Date</label>
+              <input id="queue-date" type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)}
+                className={CONTROL} style={CONTROL_STYLE} />
             </div>
-            <button onClick={loadQueue} className="p-2 rounded-lg hover:bg-gray-100" title="Refresh">
-              <RefreshCw size={14} style={{ color: 'var(--teal)' }} />
-            </button>
-            <div className="ml-auto">
-              <button onClick={() => setShowWalkIn(true)}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold"
-                style={{ background: 'var(--teal)', color: '#fff' }}>
+            {!isToday && (
+              <button type="button" onClick={() => setSelectedDate(localTodayStr())}
+                className={`${BTN_SECONDARY} text-xs`} style={{ ...CONTROL_STYLE, color: 'var(--teal)' }}>
+                Back to today
+              </button>
+            )}
+            <span className="text-xs font-medium hidden sm:inline" style={{ color: 'var(--mid-gray)' }}>
+              {formatDay(selectedDate)}{isToday ? ' · Today' : ''}
+            </span>
+            <div className="ml-auto flex items-center gap-2">
+              <button type="button" onClick={loadQueue} disabled={loadingQueue}
+                className={BTN_SECONDARY} style={CONTROL_STYLE} title="Refresh">
+                <RefreshCw size={14} className={loadingQueue ? 'animate-spin' : ''} style={{ color: 'var(--teal)' }} />
+                Refresh
+              </button>
+              <button type="button" onClick={() => setShowWalkIn(true)}
+                className={BTN_PRIMARY} style={{ background: 'var(--teal)' }}>
                 <UserPlus size={14} /> Add Walk-in Patient
               </button>
             </div>
           </div>
 
-          {/* Queue table */}
-          {loadingQueue ? (
-            <p className="text-sm text-center py-10" style={{ color: 'var(--mid-gray)' }}>Loading queue…</p>
-          ) : queue.length === 0 ? (
-            <div className="rounded-xl py-16 flex flex-col items-center gap-3"
-              style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
-              <p className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>No appointments for this day</p>
-              <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
-                Add a walk-in patient or check the Clinic Schedule module.
-              </p>
+          {/* KPIs */}
+          {!queueError && (
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              {stale ? (
+                Array.from({ length: 4 }).map((_, n) => (
+                  <div key={n} className="rounded-xl px-4 py-3.5" style={CARD_STYLE} aria-hidden>
+                    <Skeleton className="h-3 w-20" />
+                    <Skeleton className="h-7 w-14 mt-2" />
+                    <Skeleton className="h-3 w-24 mt-2" />
+                  </div>
+                ))
+              ) : (
+                <>
+                  <KpiCard label="Appointments" icon={<Users size={16} />} value={stats.total}
+                    sub={stats.total ? `${stats.depts} department${stats.depts === 1 ? '' : 's'}` : 'None booked'} />
+                  <KpiCard label="Confirmed" icon={<CalendarCheck size={16} />} accent={STATUS_STYLE.CONFIRMED.fg}
+                    value={stats.by.CONFIRMED ?? 0}
+                    sub={(stats.by.PENDING ?? 0) > 0 ? `${stats.by.PENDING} still pending` : isToday ? 'Shown on the TV display' : 'None pending'} />
+                  {isToday ? (
+                    <KpiCard label="Up next" icon={<Clock size={16} />} accent="#14507F"
+                      value={stats.nextStart ? formatTime(stats.nextStart) : '—'}
+                      sub={stats.inSession.size > 0
+                        ? `${stats.inSession.size} in session now`
+                        : stats.nextStart ? `${stats.upNext.size} starting then` : stats.activeCount ? 'No more starts today' : 'Nothing scheduled'} />
+                  ) : (
+                    <KpiCard label="First appointment" icon={<Clock size={16} />} accent="#14507F"
+                      value={stats.firstStart ? formatTime(stats.firstStart) : '—'}
+                      sub={stats.lastEnd ? `Last ends ${formatTime(stats.lastEnd)}` : 'Nothing scheduled'} />
+                  )}
+                  <KpiCard label="Cancelled / no-show" icon={<XCircle size={16} />} accent={STATUS_STYLE.CANCELLED.fg}
+                    value={cancelledOrNoShow}
+                    sub={(stats.by.RESCHEDULED ?? 0) > 0 ? `${stats.by.RESCHEDULED} rescheduled` : 'None rescheduled'} />
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Queue list */}
+          {queueError ? (
+            <div role="alert" className="rounded-xl text-center px-6 py-10" style={{ background: '#fff', border: '1px solid #FECACA' }}>
+              <AlertTriangle size={20} className="mx-auto mb-2" style={{ color: '#DC2626' }} />
+              <p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>Couldn&rsquo;t load the queue</p>
+              <p className="text-xs mt-1 max-w-md mx-auto" style={{ color: '#991B1B' }}>{queueError}</p>
+              <button type="button" onClick={loadQueue} disabled={loadingQueue}
+                className={`${BTN_SECONDARY} mt-4 text-xs`} style={{ ...CONTROL_STYLE, color: 'var(--teal)' }}>
+                <RefreshCw size={12} className={loadingQueue ? 'animate-spin' : ''} /> Try again
+              </button>
             </div>
           ) : (
-            <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--light-gray)' }}>
-              <table className="w-full text-xs">
-                <thead>
-                  <tr style={{ background: 'var(--off-white)', borderBottom: '1px solid var(--light-gray)' }}>
-                    {['#', 'Time', 'Patient', 'Initials', 'Dept', 'Therapist', 'Session Type', 'Status'].map(h => (
-                      <th key={h} className="px-3 py-2 text-left font-semibold uppercase tracking-wider"
-                        style={{ color: 'var(--mid-gray)' }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {queue.map((entry, i) => {
-                    const deptColor  = DEPT_COLORS[entry.department]  ?? { bg: '#f3f4f6', color: '#374151' }
-                    const statColor  = STATUS_COLORS[entry.status]    ?? { bg: '#f3f4f6', color: '#374151' }
-                    return (
-                      <tr key={entry.id} className="hover:bg-gray-50 transition-colors"
-                        style={{ borderBottom: '1px solid var(--light-gray)' }}>
-                        <td className="px-3 py-2 font-bold" style={{ color: 'var(--mid-gray)' }}>{i + 1}</td>
-                        <td className="px-3 py-2 font-medium whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>
-                          {formatTime(entry.startTime)} – {formatTime(entry.endTime)}
-                        </td>
-                        <td className="px-3 py-2 font-medium" style={{ color: 'var(--charcoal)' }}>
-                          {entry.patientName ?? <span style={{ color: 'var(--mid-gray)' }}>—</span>}
-                        </td>
-                        <td className="px-3 py-2">
-                          <span className="font-bold text-sm px-2 py-0.5 rounded"
-                            style={{ background: deptColor.bg, color: deptColor.color }}>
-                            {entry.initials}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2">
-                          <span className="px-2 py-0.5 rounded-full font-semibold"
-                            style={deptColor}>{entry.department}</span>
-                        </td>
-                        <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{entry.therapist}</td>
-                        <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{entry.sessionType}</td>
-                        <td className="px-3 py-2">
-                          <span className="px-2 py-0.5 rounded-full font-semibold"
-                            style={statColor}>
-                            {entry.status.charAt(0) + entry.status.slice(1).toLowerCase()}
-                          </span>
-                        </td>
+            <section className="rounded-xl overflow-hidden min-w-0" style={CARD_STYLE}>
+              <header className="px-5 py-3 flex flex-wrap items-center justify-between gap-2" style={{ borderBottom: '1px solid var(--light-gray)' }}>
+                <h2 className="text-[14px] font-bold flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+                  {stale ? 'Appointments' : `${queue.length} appointment${queue.length !== 1 ? 's' : ''}`}
+                  <span className="font-normal text-xs" style={{ color: 'var(--mid-gray)', fontFamily: 'var(--font-body)' }}>
+                    · {BRANCH_LABEL[activeBranch] ?? activeBranch} · {formatDay(selectedDate)}
+                  </span>
+                  {loadingQueue && !stale && <Loader2 size={13} className="animate-spin" style={{ color: 'var(--mid-gray)' }} />}
+                </h2>
+                {isToday && !stale && queue.length > 0 && (
+                  <span className="inline-flex items-center gap-3 text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+                    <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ background: '#16A34A' }} /> In session</span>
+                    <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ background: '#2563EB' }} /> Up next</span>
+                  </span>
+                )}
+              </header>
+
+              {stale ? (
+                <div aria-hidden>
+                  {Array.from({ length: 6 }).map((_, n) => (
+                    <div key={n} className="flex items-center gap-5 px-5 py-3.5" style={{ borderTop: n ? '1px solid var(--light-gray)' : undefined }}>
+                      <div className="w-24"><Skeleton className="h-4 w-16" /><Skeleton className="h-3 w-12 mt-1.5" /></div>
+                      <Skeleton className="h-9 w-9 rounded-full" />
+                      <div className="flex-1"><Skeleton className="h-4 w-40" /><Skeleton className="h-3 w-24 mt-1.5" /></div>
+                      <Skeleton className="h-4 w-28" />
+                      <Skeleton className="h-6 w-24 rounded-full" />
+                    </div>
+                  ))}
+                </div>
+              ) : queue.length === 0 ? (
+                <div className="flex flex-col items-center">
+                  <CalendarDays size={26} className="mt-10 -mb-8" style={{ color: 'var(--light-gray)' }} />
+                  <EmptyState title="No appointments for this day"
+                    hint="Add a walk-in patient or check the Clinic Schedule module." />
+                  <button type="button" onClick={() => setShowWalkIn(true)}
+                    className={`${BTN_SECONDARY} -mt-6 mb-8 text-xs`} style={{ ...CONTROL_STYLE, color: 'var(--teal)' }}>
+                    <UserPlus size={12} /> Add Walk-in Patient
+                  </button>
+                </div>
+              ) : (
+                <div className="overflow-x-auto" style={{ opacity: loadingQueue ? 0.7 : 1, transition: 'opacity 0.15s' }}>
+                  <table className="w-full text-sm" style={{ borderCollapse: 'collapse', minWidth: 820 }}>
+                    <thead>
+                      <tr style={{ background: SUBTLE_BG }}>
+                        {['#', 'Time', 'Patient', 'Department', 'Therapist', 'Session Type', 'Status'].map(h => (
+                          <th key={h} className={`px-4 py-2 text-left whitespace-nowrap ${SECTION_LABEL}`}
+                            style={{ color: 'var(--mid-gray)', borderBottom: '1px solid var(--light-gray)' }}>{h}</th>
+                        ))}
                       </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-              <div className="px-4 py-2 text-xs" style={{ borderTop: '1px solid var(--light-gray)', background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
-                {queue.length} appointment{queue.length !== 1 ? 's' : ''} · TV display:{' '}
-                <a href={queueUrl} target="_blank" rel="noreferrer" style={{ color: 'var(--teal)' }}>{queueUrl}</a>
+                    </thead>
+                    <tbody>
+                      {queue.map((entry, i) => {
+                        const deptColor = DEPT_COLORS[entry.department] ?? DEPT_FALLBACK
+                        const inactive = INACTIVE_STATUSES.has(entry.status)
+                        const live = stats.inSession.has(entry.id)
+                        const next = stats.upNext.has(entry.id)
+                        const accent = live ? '#16A34A' : next ? '#2563EB' : 'transparent'
+                        return (
+                          <tr key={entry.id} className="transition-colors hover:bg-[#F8FAF9]"
+                            style={{
+                              borderTop: i ? '1px solid var(--light-gray)' : undefined,
+                              background: live ? '#F3FBF5' : next ? '#F5F8FE' : undefined,
+                              boxShadow: `inset 3px 0 0 ${accent}`,
+                            }}>
+                            <td className="px-4 py-3 text-xs font-bold tabular-nums w-10" style={{ color: 'var(--mid-gray)' }}>{i + 1}</td>
+                            <td className="px-4 py-3 whitespace-nowrap">
+                              <p className="text-[13px] font-bold tabular-nums" style={{ color: inactive ? 'var(--mid-gray)' : 'var(--charcoal)' }}>
+                                {formatTime(entry.startTime)}
+                              </p>
+                              <p className="text-[11px] tabular-nums" style={{ color: 'var(--mid-gray)' }}>
+                                to {formatTime(entry.endTime)}
+                              </p>
+                            </td>
+                            <td className="px-4 py-3 min-w-[200px]">
+                              <div className="flex items-center gap-2.5">
+                                <span className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 text-[12px] font-bold"
+                                  style={{ background: deptColor.bg, color: deptColor.color }} title="Initials shown on the TV display">
+                                  {entry.initials}
+                                </span>
+                                <div className="min-w-0">
+                                  <p className={`text-[13.5px] font-semibold leading-snug ${inactive ? 'line-through decoration-1' : ''}`}
+                                    style={{ color: entry.patientName ? (inactive ? 'var(--mid-gray)' : 'var(--charcoal)') : 'var(--mid-gray)' }}>
+                                    {entry.patientName ?? '—'}
+                                  </p>
+                                  {(live || next) && (
+                                    <span className="inline-flex items-center gap-1 text-[10.5px] font-bold uppercase tracking-wider mt-0.5"
+                                      style={{ color: accent }}>
+                                      <span className={`w-1.5 h-1.5 rounded-full ${live ? 'animate-pulse' : ''}`} style={{ background: accent }} />
+                                      {live ? 'In session' : 'Up next'}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3"><DeptPill dept={entry.department} /></td>
+                            <td className="px-4 py-3 text-[13px]" style={{ color: 'var(--charcoal)' }}>{entry.therapist}</td>
+                            <td className="px-4 py-3 text-[13px]" style={{ color: 'var(--charcoal)' }}>{entry.sessionType}</td>
+                            <td className="px-4 py-3"><StatusBadge status={entry.status} /></td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              <div className="px-5 py-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs"
+                style={{ borderTop: '1px solid var(--light-gray)', background: SUBTLE_BG, color: 'var(--mid-gray)' }}>
+                <Tv2 size={12} style={{ color: 'var(--teal)' }} />
+                TV display:
+                <a href={queueUrl} target="_blank" rel="noreferrer" className="font-semibold hover:underline break-all" style={{ color: 'var(--teal)' }}>{queueUrl}</a>
+                <span className="hidden md:inline">· shows today&apos;s confirmed appointments</span>
               </div>
-            </div>
+            </section>
           )}
         </div>
       )}
