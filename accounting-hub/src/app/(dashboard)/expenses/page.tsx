@@ -24,6 +24,7 @@ import { isMixedVat, netOfVat as entryNet, vatBase, vatOf as entryVat } from '@/
 import { ExistingAssetPicker } from '@/components/ExistingAssetPicker'
 import { NameCombobox } from '@/components/NameCombobox'
 import { snapSupplierName, supplierNameIndex } from '@/lib/supplier-snap'
+import { HR_PAGE_CLASS, HR_PAGE_STYLE, HrShimmerStyle, hrBtn } from '@/components/ui/hr-look'
 
 // ── Constants ──────────────────────────────────────────────────
 const BRANCHES = [
@@ -256,6 +257,50 @@ const monthlyAmt = (e: Entry) => {
 }
 
 // Upload via XHR so we can report upload progress (0–100%).
+// Grid columns per tab (module level so the column-width hook can be seeded
+// before the rest of the page's state).
+type GridCol = { key: string; label: string; plain?: boolean }
+const expenseGridCols = (tab: string): GridCol[] => {
+  const recordType = TABS.find(t => t.key === tab)?.recordType || ''
+  const isRecurringTab = recordType === 'RECURRING'
+  return [
+    { key: 'refNumber', label: 'Reference Number' }, { key: 'requestor', label: 'Payee' }, { key: 'department', label: 'Department' },
+    { key: 'date', label: 'Date' }, { key: 'description', label: 'Description' }, { key: 'descHub', label: 'Description for Hub' },
+    { key: 'validity', label: 'Valid/Invalid' }, { key: 'vatable', label: 'Vatable' }, { key: 'siNumber', label: 'SI Number' },
+    { key: 'tinNumber', label: 'TIN Number' }, { key: 'tinNumber2', label: 'TIN Number 2' }, { key: 'branchCode', label: 'Branch Code' },
+    { key: 'registeredName', label: 'Registered name' }, { key: 'registeredAddress', label: 'Registered Address' },
+    { key: 'grossAmount', label: 'Gross Amount' }, { key: 'netOfVat', label: 'Net of VAT' }, { key: 'vatAmount', label: 'VAT Amount' },
+    { key: 'accountTitle', label: 'Account Title' }, { key: 'hasEwt', label: 'Has EWT?' }, { key: 'ewtRate', label: 'EWT %' },
+    ...(isRecurringTab ? [
+      { key: 'recurFrequency', label: 'Recurs' }, { key: 'recurDeadlineDay', label: 'Deadline (day)' },
+      { key: 'amountVaries', label: 'Amount changes monthly?' }, { key: 'distributeMonthly', label: 'Distribute monthly?' },
+      { key: 'monthlyAmount', label: 'Monthly Amount' }, { key: 'distributeStart', label: 'Charge from' }, { key: 'distributeEnd', label: 'Charge to' },
+    ] : []),
+    { key: 'payment', label: 'Payment' }, { key: 'proof', label: 'Proof', plain: true },
+    ...(recordType === 'ONE_TIME' ? [{ key: 'audited', label: 'Audited' }] : []),
+  ]
+}
+// Starting widths, wide enough for each column's content (the old widths were
+// measured from the header labels and cut payees, dates and references off).
+const EXP_COL_W: Record<string, number> = {
+  refNumber: 236, requestor: 190, department: 108, date: 136, description: 260, descHub: 280, validity: 108, vatable: 140,
+  siNumber: 132, tinNumber: 164, tinNumber2: 116, branchCode: 96, registeredName: 224, registeredAddress: 240,
+  grossAmount: 128, netOfVat: 116, vatAmount: 108, accountTitle: 256, hasEwt: 96, ewtRate: 88,
+  recurFrequency: 124, recurDeadlineDay: 112, amountVaries: 150, distributeMonthly: 140, monthlyAmount: 128,
+  distributeStart: 136, distributeEnd: 136, payment: 230, proof: 184, audited: 100,
+}
+const EXP_SELECT_W = 44
+const EXP_ACTIONS_W = 160
+// Row colour by state — same order as before, softer shades, coloured edge.
+const EXP_TONES = {
+  paid:      { bg: '#f2faf5', line: '#059669', label: 'Paid' },
+  rfp:       { bg: '#fffbeb', line: '#d97706', label: 'In an RFP' },
+  soa:       { bg: '#faf5ff', line: '#9333ea', label: 'In a credit-card SOA' },
+  finalized: { bg: '#f8fbf1', line: '#4A8073', label: 'Finalized' },
+  draft:     { bg: '#ffffff', line: '#DDE6CC', label: 'Draft' },
+} as const
+const expTone = (e: Entry) => e.paidAt ? EXP_TONES.paid : e.reimbursementId ? EXP_TONES.rfp : e.soaId ? EXP_TONES.soa : e.finalized ? EXP_TONES.finalized : EXP_TONES.draft
+
 export default function ExpensesPage() {
   return <Suspense fallback={null}><ExpensesInner /></Suspense>
 }
@@ -435,7 +480,9 @@ function ExpensesInner() {
   }, [urlTab, focus])
   const scrollRef = useRef<HTMLDivElement>(null)
   const gridTableRef = useRef<HTMLTableElement>(null)
-  const gridRz = useResizableColumns(`expenses-entries-grid-${tab}`, gridTableRef)
+  // v2: starting widths from EXP_COL_W (the v1 widths were measured from the header labels alone).
+  const gridRz = useResizableColumns(`expenses-entries-grid-v2-${tab}`, gridTableRef,
+    [EXP_SELECT_W, ...expenseGridCols(tab).map(c => EXP_COL_W[c.key] ?? 120), EXP_ACTIONS_W])
 
   const recordType = TABS.find(t => t.key === tab)?.recordType || ''
   const isRecording = recordType === 'RECURRING' || recordType === 'ONE_TIME'
@@ -1191,7 +1238,7 @@ function ExpensesInner() {
     setNewSupplierPrompt(null)
   }
 
-  const cellCls = 'w-full bg-transparent px-2 py-1.5 text-xs outline-none focus:bg-[var(--pale-teal)] rounded'
+  const cellCls = 'w-full bg-transparent px-2 py-1.5 text-xs outline-none rounded enabled:hover:bg-[rgba(35,48,56,0.04)] focus:bg-[var(--pale-teal)]'
   const tdCls = 'border-r border-b align-top'
   // Column sort/filter for the recording grid.
   const [gridSort, setGridSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: '', dir: 'asc' })
@@ -1225,22 +1272,7 @@ function ExpensesInner() {
     : entries
 
   // Per-column header sort/filter. `plain` columns (proof/actions) get no controls.
-  const gridCols: { key: string; label: string; plain?: boolean }[] = [
-    { key: 'refNumber', label: 'Reference Number' }, { key: 'requestor', label: 'Payee' }, { key: 'department', label: 'Department' },
-    { key: 'date', label: 'Date' }, { key: 'description', label: 'Description' }, { key: 'descHub', label: 'Description for Hub' },
-    { key: 'validity', label: 'Valid/Invalid' }, { key: 'vatable', label: 'Vatable' }, { key: 'siNumber', label: 'SI Number' },
-    { key: 'tinNumber', label: 'TIN Number' }, { key: 'tinNumber2', label: 'TIN Number 2' }, { key: 'branchCode', label: 'Branch Code' },
-    { key: 'registeredName', label: 'Registered name' }, { key: 'registeredAddress', label: 'Registered Address' },
-    { key: 'grossAmount', label: 'Gross Amount' }, { key: 'netOfVat', label: 'Net of VAT' }, { key: 'vatAmount', label: 'VAT Amount' },
-    { key: 'accountTitle', label: 'Account Title' }, { key: 'hasEwt', label: 'Has EWT?' }, { key: 'ewtRate', label: 'EWT %' },
-    ...(isRecurringTab ? [
-      { key: 'recurFrequency', label: 'Recurs' }, { key: 'recurDeadlineDay', label: 'Deadline (day)' },
-      { key: 'amountVaries', label: 'Amount changes monthly?' }, { key: 'distributeMonthly', label: 'Distribute monthly?' },
-      { key: 'monthlyAmount', label: 'Monthly Amount' }, { key: 'distributeStart', label: 'Charge from' }, { key: 'distributeEnd', label: 'Charge to' },
-    ] : []),
-    { key: 'payment', label: 'Payment' }, { key: 'proof', label: 'Proof', plain: true },
-    ...(recordType === 'ONE_TIME' ? [{ key: 'audited', label: 'Audited' }] : []),
-  ]
+  const gridCols = expenseGridCols(tab)
   const gridGet = (e: Entry, k: string): string | number => {
     switch (k) {
       case 'refNumber': return refOf(e) || ''
@@ -1291,108 +1323,79 @@ function ExpensesInner() {
   const toggleAll = () => setSelected(allSelected ? new Set() : new Set(selectableIds))
   const toggleOne = (id: string) => setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
 
+  const { ghost: ghostBtn, primary: primaryBtn, outline: outlineBtn } = hrBtn
+  const activeTab = TABS.find(t => t.key === tab)
   return (
-    <div className={expanded ? 'fixed inset-0 z-50 overflow-auto p-6 space-y-4' : 'space-y-4'} style={expanded ? { background: 'var(--off-white)' } : undefined}>
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-2xl font-bold flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
-          <Wallet size={22} style={{ color: 'var(--teal)' }} /> Expenses
-        </h1>
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: 'var(--light-gray)' }}>
-            {(scope.enum ? BRANCHES.filter(b => b.value === scope.enum) : BRANCHES).map(b => (
-              <button key={b.value} onClick={() => setBranch(b.value)}
-                className="px-4 py-2 text-xs font-semibold transition-colors"
-                style={branch === b.value ? { background: 'var(--teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' }}>
-                {b.label}
-              </button>
-            ))}
-          </div>
-          <button onClick={() => setExpanded(v => !v)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border"
-            style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
-            {expanded ? <><Minimize2 size={14} /> Collapse</> : <><Maximize2 size={14} /> Expand</>}
-          </button>
-          <button onClick={() => setShowSettings(true)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border"
-            style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+    <div className={expanded ? 'fixed inset-0 z-50 overflow-auto p-4 lg:p-6 space-y-4' : HR_PAGE_CLASS} style={HR_PAGE_STYLE}>
+      <HrShimmerStyle />
+
+      {/* Header: title + branch */}
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold leading-tight flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+            <Wallet size={22} style={{ color: 'var(--teal)' }} /> Expenses
+          </h1>
+          <p className="mt-1 text-[13px] max-w-2xl" style={{ color: 'var(--mid-gray)' }}>
+            Record recurring and one-time expenses, file them for an RFP or a credit-card SOA, and see the reports.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Branch">
+          {(scope.enum ? BRANCHES.filter(b => b.value === scope.enum) : BRANCHES).map(b => (
+            <button key={b.value} onClick={() => setBranch(b.value)} aria-pressed={branch === b.value}
+              className="px-3.5 py-1.5 rounded-full border text-[13px] font-semibold whitespace-nowrap transition-colors"
+              style={branch === b.value
+                ? { background: 'var(--teal)', borderColor: 'var(--teal)', color: '#fff', fontFamily: 'var(--font-display)' }
+                : { background: '#fff', borderColor: 'var(--light-gray)', color: 'var(--mid-gray)', fontFamily: 'var(--font-display)' }}>
+              {b.label}
+            </button>
+          ))}
+          <span className="w-px h-6 mx-1" style={{ background: 'var(--light-gray)' }} />
+          <button onClick={() => setShowSettings(true)} className={ghostBtn} style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
             <Settings size={14} /> Settings
+          </button>
+          <button onClick={() => setExpanded(v => !v)} className={ghostBtn} style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}
+            title={expanded ? 'Back to the normal page' : 'Fill the screen with the grid'}>
+            {expanded ? <><Minimize2 size={14} /> Collapse</> : <><Maximize2 size={14} /> Expand</>}
           </button>
         </div>
       </div>
 
-      {/* Sub-tabs, grouped */}
-      <div className="flex items-end justify-between flex-wrap gap-3">
-        <div className="flex items-end flex-wrap gap-4">
-          {TAB_GROUPS.map(g => {
+      {/* Tabs, grouped */}
+      <div className="flex flex-wrap items-end gap-x-4 gap-y-2 border-b-2" style={{ borderColor: 'var(--light-gray)' }}>
+        {/* One row; swipes sideways on narrow screens instead of widening the page. */}
+        <div className="flex items-end -mb-[2px] max-w-full overflow-x-auto" role="tablist">
+          {TAB_GROUPS.map((g, gi) => {
             const groupTabs = TABS.filter(t => t.group === g)
             if (groupTabs.length === 0) return null
             return (
-              <div key={g}>
-                <p className="text-[10px] font-semibold uppercase tracking-wide mb-1 ml-1" style={{ color: 'var(--mid-gray)' }}>{g}</p>
-                <div className="flex rounded-xl overflow-hidden border flex-wrap" style={{ borderColor: 'var(--light-gray)' }}>
-                  {groupTabs.map(t => (
-                    <button key={t.key} onClick={() => setTab(t.key)}
-                      className="px-4 py-2 text-xs font-semibold transition-colors"
-                      style={tab === t.key ? { background: 'var(--deep-teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' }}>
-                      {t.label}
-                    </button>
-                  ))}
-                </div>
+              <div key={g} className={`flex items-end flex-shrink-0 ${gi ? 'ml-2 pl-2 border-l' : ''}`} style={{ borderColor: 'var(--light-gray)' }}>
+                <span className="hidden xl:block self-center mr-1 text-[10px] font-bold uppercase tracking-[.5px]" style={{ color: 'var(--hr-faint)' }}>
+                  {g.replace('Expense ', '')}
+                </span>
+                {groupTabs.map(t => (
+                  <button key={t.key} onClick={() => setTab(t.key)} role="tab" aria-selected={tab === t.key}
+                    className="px-3 py-2.5 border-b-2 text-[13px] font-semibold whitespace-nowrap transition-colors hover:text-[var(--teal)]"
+                    style={{ fontFamily: 'var(--font-display)', borderColor: tab === t.key ? 'var(--teal)' : 'transparent', color: tab === t.key ? 'var(--teal)' : 'var(--mid-gray)' }}>
+                    {t.label}
+                  </button>
+                ))}
               </div>
             )
           })}
         </div>
-        {recordType === 'ONE_TIME' && canWrite && (
-          <div className="flex items-center gap-2 flex-wrap">
-            {ccMode ? (
-              <>
-                <span className="text-xs font-bold" style={{ color: '#7c3aed' }}>Select entries paid by credit card</span>
-                <button onClick={() => setShowCcPick(true)} disabled={selected.size === 0}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-40" style={{ background: '#7c3aed' }}>
-                  <CreditCard size={15} /> Paid by Credit Card{selected.size > 0 ? ` · ${selected.size}` : ''}
-                </button>
-                <button onClick={cancelCc} className="px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Cancel</button>
-              </>
-            ) : rfpMode === null ? (
-              <>
-                <button onClick={() => startRfp('VALID')}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}>
-                  <CreditCard size={15} /> RFP (Valid)
-                </button>
-                <button onClick={() => startRfp('INVALID')}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold border" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
-                  <CreditCard size={15} /> RFP (Invalid)
-                </button>
-                <button onClick={startCc}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: '#7c3aed' }}>
-                  <CreditCard size={15} /> Paid by Credit Card
-                </button>
-              </>
-            ) : (
-              <>
-                <span className="text-xs font-bold" style={{ color: '#dc2626' }}>Select {rfpMode === 'VALID' ? 'Valid' : 'Invalid'} Entries</span>
-                <button onClick={() => setShowRfpModal(true)} disabled={selected.size === 0}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-40" style={{ background: 'var(--teal)' }}>
-                  <CreditCard size={15} /> Generate RFP ({rfpMode === 'VALID' ? 'Valid' : 'Invalid'}){selected.size > 0 ? ` · ${selected.size}` : ''}
-                </button>
-                <button onClick={cancelRfp} className="px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Cancel</button>
-              </>
-            )}
-          </div>
-        )}
       </div>
 
       {recordType === 'ONE_TIME' && recurringDue.length > 0 && (
-        <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+        <div className="rounded-lg border p-4" style={{ borderColor: '#fde68a', background: '#fffbeb', borderLeft: '4px solid #d97706' }}>
           <div className="flex items-center gap-2 mb-2">
-            <CreditCard size={16} style={{ color: 'var(--teal)' }} />
+            <CreditCard size={16} style={{ color: '#b45309' }} />
             <h3 className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>Recurring expenses to enter</h3>
             <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>{recurringDue.length}</span>
           </div>
           <p className="text-[11px] mb-3" style={{ color: 'var(--mid-gray)' }}>Due soon (from Recurring setups). Click Enter to create a One-time entry pre-filled for the accountant to validate.</p>
           <div className="space-y-2">
             {recurringDue.map(d => (
-              <div key={d.id} className="flex items-center justify-between gap-3 rounded-xl px-3 py-2 bg-white border" style={{ borderColor: 'var(--light-gray)' }}>
+              <div key={d.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg px-3 py-2 bg-white border" style={{ borderColor: 'var(--light-gray)' }}>
                 <div className="min-w-0">
                   <p className="text-sm font-medium truncate" style={{ color: 'var(--charcoal)' }}>{d.payee || d.description || d.accountTitle || 'Recurring expense'}</p>
                   <p className="text-[11px] truncate" style={{ color: 'var(--mid-gray)' }}>
@@ -1419,117 +1422,198 @@ function ExpensesInner() {
 
       {isRecording && (
         <>
-          <DownloadBar from={dlFrom} to={dlTo} onFrom={setDlFrom} onTo={setDlTo} onExport={exportEntries}
-            dateLabel="Expense date"
-            note={isWindowed ? 'exports the full range' : `${entries.filter(e => inDateRange(e.date, dlFrom, dlTo)).length} in range`} />
-          {/* Search + scroll controls */}
-          <div className="flex items-center justify-between flex-wrap gap-3">
-            <div className="relative flex-1 min-w-[240px] max-w-md">
-              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--mid-gray)' }} />
-              <input value={search} onChange={e => setSearch(e.target.value)}
-                placeholder={isWindowed ? 'Search all entries — payee, description, PCV, account…' : 'Search payee, description, PCV, account…'}
-                className="w-full pl-9 pr-8 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
-              {search && <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2"><X size={15} style={{ color: 'var(--mid-gray)' }} /></button>}
+          <section className="rounded-lg border bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+            <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2 px-4 pt-3.5 pb-3">
+              <div className="min-w-0">
+                <h2 className="text-[15px] font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+                  {activeTab?.label}{' '}
+                  <span className="ml-1 text-xs font-semibold" style={{ color: 'var(--mid-gray)', fontFamily: 'var(--font-body)' }}>
+                    {displayed.length}{isWindowed && totalCount > displayed.length ? ` of ${totalCount}` : displayed.length !== entries.length ? ` of ${entries.length}` : ''} entries
+                  </span>
+                </h2>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+                  Total gross <strong style={{ color: 'var(--charcoal)' }}>₱{peso(totalGross)}</strong> · Next PCV #{nextPcvSeq}{selected.size ? ` · ${selected.size} selected` : ''}
+                </p>
+              </div>
+              {canWrite && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <button onClick={addRow} disabled={adding} className={primaryBtn} style={{ background: 'var(--teal)' }}>
+                    {adding ? <Loader2 size={14} className="animate-spin" /> : <Plus size={15} />} Add entry
+                  </button>
+                  <button onClick={duplicateLast} disabled={adding || entries.length === 0} className={outlineBtn}
+                    style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }} title="Copy the last entry's details into a new row (change the amount)">
+                    <Plus size={15} /> Duplicate previous entry
+                  </button>
+                  {recordType === 'ONE_TIME' && !scope.locked && (
+                    <button onClick={() => setShowSplit(true)} disabled={adding} className={outlineBtn}
+                      style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}
+                      title="One purchase shared by several branches (e.g. a supplier TT from the AUB CNY account) — tick the branches and the amount is split equally, one entry per branch">
+                      <Plus size={15} /> Shared purchase (split)
+                    </button>
+                  )}
+                  {recordType === 'ONE_TIME' && rfpMode === null && !ccMode && (
+                    <>
+                      <button onClick={() => startRfp('VALID')} className={outlineBtn} style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+                        <FileText size={15} /> RFP (Valid)
+                      </button>
+                      <button onClick={() => startRfp('INVALID')} className={outlineBtn} style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+                        <FileText size={15} /> RFP (Invalid)
+                      </button>
+                      <button onClick={startCc} className={outlineBtn} style={{ borderColor: '#c4b5fd', color: '#6d28d9' }}>
+                        <CreditCard size={15} /> Paid by Credit Card
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
-            <div className="flex items-center gap-2">
-              {isWindowed && (
-                <select value={period} onChange={e => setPeriod(e.target.value as PeriodKey)} disabled={!!q}
-                  title={q ? 'Search covers every entry, so the period does not apply' : 'How far back to load into the grid'}
-                  className="px-3 py-2 rounded-xl border text-xs font-semibold outline-none disabled:opacity-50"
-                  style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
-                  {PERIODS.map(p => <option key={p.key} value={p.key}>{p.label}</option>)}
-                </select>
-              )}
-              {recordType === 'ONE_TIME' && (
-                <label className="flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold cursor-pointer select-none"
-                  title="Keep unpaid rows at the bottom of the table (paid and in-RFP/SOA rows float to the top)"
-                  style={{ borderColor: unpaidLast ? 'var(--teal)' : 'var(--light-gray)', color: unpaidLast ? 'var(--teal)' : 'var(--mid-gray)' }}>
-                  <input type="checkbox" checked={unpaidLast} onChange={toggleUnpaidLast} className="accent-[var(--teal)]" />
-                  Unpaid at bottom
-                </label>
-              )}
-              {recordType === 'ONE_TIME' && (
-                <label className="flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold cursor-pointer select-none"
-                  title="Paid rows are hidden by default so open work stays in view. Tick to show them — the search bar always looks through paid rows too."
-                  style={{ borderColor: showPaid ? 'var(--teal)' : 'var(--light-gray)', color: showPaid ? 'var(--teal)' : 'var(--mid-gray)' }}>
-                  <input type="checkbox" checked={showPaid} onChange={toggleShowPaid} className="accent-[var(--teal)]" />
-                  Show paid
-                </label>
-              )}
-              <button onClick={() => scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
-                className="flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
-                <ArrowUp size={14} /> Top
-              </button>
-              <button onClick={() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })}
-                className="flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
-                <ArrowDown size={14} /> Bottom
-              </button>
-            </div>
-          </div>
 
-          <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
-            {displayed.length}{isWindowed && totalCount > displayed.length ? ` of ${totalCount}` : displayed.length !== entries.length ? ` of ${entries.length}` : ''} entries
-            {' · '}{selected.size} selected · Total Gross <strong style={{ color: 'var(--charcoal)' }}>₱{peso(totalGross)}</strong>
-            {' · '}Next PCV #{nextPcvSeq}
-          </p>
-          {isWindowed && (
-            <p className="text-[11px] -mt-2" style={{ color: 'var(--mid-gray)' }}>
-              {q
-                ? searchCapped
-                  ? 'Showing the first 500 matches from every entry on record — narrow the search to see fewer.'
-                  : 'Searching every entry on record, not just the period above.'
-                : `Showing ${PERIODS.find(p => p.key === period)?.label.toLowerCase()} — Total Gross covers these rows only. Search to reach older entries, or widen the period. The Excel/PDF export always covers its full From/To range.`}
-            </p>
-          )}
+            {recordType === 'ONE_TIME' && canWrite && ccMode ? (
+              <div className="flex flex-wrap items-center gap-3 px-4 py-3 border-y" style={{ background: '#faf5ff', borderColor: '#e9d5ff' }}>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[13px] font-bold" style={{ color: '#6b21a8', fontFamily: 'var(--font-display)' }}>Tick the entries paid by credit card</p>
+                  <p className="text-xs" style={{ color: '#7e22ce' }}>They go into the card's statement (SOA) instead of an RFP.</p>
+                </div>
+                <button onClick={() => setShowCcPick(true)} disabled={selected.size === 0} className={primaryBtn} style={{ background: '#7c3aed' }}>
+                  <CreditCard size={15} /> Paid by Credit Card{selected.size > 0 ? ` · ${selected.size}` : ''}
+                </button>
+                <button onClick={cancelCc} className={outlineBtn} style={{ borderColor: '#e9d5ff', color: '#6b21a8' }}>Cancel</button>
+              </div>
+            ) : recordType === 'ONE_TIME' && canWrite && rfpMode !== null ? (
+              <div className="flex flex-wrap items-center gap-3 px-4 py-3 border-y" style={{ background: '#fffbeb', borderColor: '#fde68a' }}>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[13px] font-bold" style={{ color: '#92400e', fontFamily: 'var(--font-display)' }}>
+                    Tick the {rfpMode === 'VALID' ? 'valid' : 'invalid'} entries for this RFP
+                  </p>
+                  <p className="text-xs" style={{ color: '#b45309' }}>{selectableIds.length.toLocaleString()} of the {displayed.length.toLocaleString()} shown can be ticked.</p>
+                </div>
+                <button onClick={() => setShowRfpModal(true)} disabled={selected.size === 0} className={primaryBtn} style={{ background: 'var(--teal)' }}>
+                  <FileText size={15} /> Generate RFP ({rfpMode === 'VALID' ? 'Valid' : 'Invalid'}){selected.size > 0 ? ` · ${selected.size}` : ''}
+                </button>
+                <button onClick={cancelRfp} className={outlineBtn} style={{ borderColor: '#fcd34d', color: '#92400e' }}>Cancel</button>
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-y" style={{ background: '#fcfdfa', borderColor: 'var(--light-gray)' }}>
+                <label className="flex items-center gap-1.5 h-9 px-3 w-full sm:w-80 rounded-lg border bg-white focus-within:border-[var(--teal)] focus-within:shadow-[0_0_0_3px_rgba(74,128,115,0.12)]"
+                  style={{ borderColor: 'var(--light-gray)', color: 'var(--hr-faint)' }}>
+                  <Search size={15} className="flex-shrink-0" />
+                  <input value={search} onChange={e => setSearch(e.target.value)}
+                    placeholder={isWindowed ? 'Search all entries — payee, description, PCV, account…' : 'Search payee, description, PCV, account…'}
+                    className="flex-1 min-w-0 bg-transparent outline-none text-[13px]" style={{ color: 'var(--charcoal)' }} />
+                  {search && <button onClick={() => setSearch('')} title="Clear search"><X size={14} /></button>}
+                </label>
+                {isWindowed && (
+                  <select value={period} onChange={e => setPeriod(e.target.value as PeriodKey)} disabled={!!q}
+                    title={q ? 'Search covers every entry, so the period does not apply' : 'How far back to load into the grid'}
+                    className="h-9 px-2.5 rounded-lg border bg-white text-[13px] outline-none disabled:opacity-50"
+                    style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+                    {PERIODS.map(p => <option key={p.key} value={p.key}>{p.label}</option>)}
+                  </select>
+                )}
+                {recordType === 'ONE_TIME' && (
+                  <button onClick={toggleUnpaidLast} aria-pressed={unpaidLast}
+                    title="Keep unpaid rows at the bottom of the table (paid and in-RFP/SOA rows float to the top)"
+                    className="h-8 px-3 rounded-full border text-xs font-semibold whitespace-nowrap"
+                    style={unpaidLast ? { background: 'var(--teal)', borderColor: 'var(--teal)', color: '#fff' } : { background: '#fff', borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                    Unpaid at bottom
+                  </button>
+                )}
+                {recordType === 'ONE_TIME' && (
+                  <button onClick={toggleShowPaid} aria-pressed={showPaid}
+                    title="Paid rows are hidden by default so open work stays in view. Turn on to show them — the search bar always looks through paid rows too."
+                    className="h-8 px-3 rounded-full border text-xs font-semibold whitespace-nowrap"
+                    style={showPaid ? { background: 'var(--teal)', borderColor: 'var(--teal)', color: '#fff' } : { background: '#fff', borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                    Show paid
+                  </button>
+                )}
+                <button onClick={() => scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })} className={ghostBtn}
+                  style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }} title="Scroll to the first row">
+                  <ArrowUp size={14} /> Top
+                </button>
+                <button onClick={() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })} className={ghostBtn}
+                  style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }} title="Scroll to the last row">
+                  <ArrowDown size={14} /> Bottom
+                </button>
+                <div className="ml-auto hidden xl:flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+                  {Object.values(EXP_TONES).map(t => (
+                    <span key={t.label} className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                      <span className="w-3 h-3 rounded-[3px] border" style={{ background: t.bg, borderColor: 'var(--light-gray)', boxShadow: `inset 3px 0 0 ${t.line}` }} />
+                      {t.label}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {isWindowed && (
+              <p className="px-4 py-2 text-[11px] border-b" style={{ color: 'var(--mid-gray)', borderColor: 'var(--hr-line)' }}>
+                {q
+                  ? searchCapped
+                    ? 'Showing the first 500 matches from every entry on record — narrow the search to see fewer.'
+                    : 'Searching every entry on record, not just the period above.'
+                  : `Showing ${PERIODS.find(p => p.key === period)?.label.toLowerCase()} — Total gross covers these rows only. Search to reach older entries, or widen the period. The Excel/PDF export always covers its full From/To range.`}
+              </p>
+            )}
 
-          <div ref={scrollRef} className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)', maxHeight: expanded ? 'calc(100vh - 260px)' : '66vh' }}>
+            <div ref={scrollRef} className="overflow-auto" style={{ maxHeight: expanded ? 'calc(100vh - 300px)' : '66vh' }}>
             {loading ? (
-              <div className="flex items-center justify-center py-16"><Loader2 className="animate-spin" size={20} style={{ color: 'var(--teal)' }} /></div>
+              <div className="p-4 space-y-2" aria-busy="true">
+                {Array.from({ length: 7 }, (_, i) => <div key={i} className="h-10 rounded-md hr-shimmer" />)}
+              </div>
             ) : (
               <table ref={gridTableRef} className="text-xs rz-grid" style={{ borderCollapse: 'collapse', minWidth: isRecurringTab ? 3160 : 2360, ...gridRz.tableStyle }}>
                 <ResizableColgroup rz={gridRz} />
                 <thead className="sticky top-0 z-10">
-                  <tr style={{ background: 'var(--off-white)' }}>
-                    <th className="border-r border-b px-2 py-2 text-center" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
-                      <input type="checkbox" checked={allSelected} onChange={toggleAll} disabled={!canWrite || selectableIds.length === 0} title="Select all" />
+                  <tr>
+                    <th className="border-b px-2 py-2 text-center" style={{ borderColor: 'var(--light-gray)', background: 'var(--hr-head)', position: 'sticky', left: 0, zIndex: 25 }}>
+                      <input type="checkbox" checked={allSelected} onChange={toggleAll} disabled={!canWrite || selectableIds.length === 0} title="Select all" className="accent-[var(--teal)]" />
                     </th>
                     {gridCols.map((col, ci) => (
-                      <th key={col.key} className="border-r border-b px-2 py-2 text-left align-top whitespace-nowrap relative"
-                        style={{ color: 'var(--charcoal)', borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                      <th key={col.key} className={`border-r border-b px-2 py-2 text-left align-top whitespace-nowrap relative ${col.key === 'refNumber' ? 'sm:sticky' : ''}`}
+                        style={{
+                          color: 'var(--mid-gray)', borderColor: 'var(--hr-line)', borderBottomColor: 'var(--light-gray)', background: 'var(--hr-head)',
+                          // above the other columns' resize grips (z 20) when scrolled sideways
+                          ...(col.key === 'refNumber' ? { left: gridRz.widths[0] || EXP_SELECT_W, zIndex: 25, boxShadow: '4px 0 6px -4px rgba(35,48,56,0.14)' } : {}),
+                        }}>
                         {col.plain ? (
-                          <span className="font-semibold">{col.label}</span>
+                          <span className="text-[11px] font-bold uppercase tracking-[.5px]">{col.label}</span>
                         ) : (
                           <>
-                            <button onClick={() => gridToggleSort(col.key)} className="flex items-center gap-1 font-semibold">
+                            <button onClick={() => gridToggleSort(col.key)}
+                              className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-[.5px] hover:text-[var(--teal)]"
+                              style={gridSort.key === col.key ? { color: 'var(--teal)' } : undefined}>
                               {col.label}
-                              <span style={{ color: gridSort.key === col.key ? 'var(--teal)' : 'var(--light-gray)' }}>{gridSort.key === col.key ? (gridSort.dir === 'asc' ? '▲' : '▼') : '↕'}</span>
+                              <span className="text-[10px]" style={{ opacity: gridSort.key === col.key ? 1 : 0.45 }}>{gridSort.key === col.key ? (gridSort.dir === 'asc' ? '▲' : '▼') : '↕'}</span>
                             </button>
-                            <input value={gridFilters[col.key] || ''} onChange={ev => setGridFilters(f => ({ ...f, [col.key]: ev.target.value }))} placeholder="filter…"
-                              className="mt-1 w-full px-1.5 py-0.5 rounded border text-[11px] font-normal" style={{ borderColor: 'var(--light-gray)' }} />
+                            <input value={gridFilters[col.key] || ''} onChange={ev => setGridFilters(f => ({ ...f, [col.key]: ev.target.value }))} placeholder="Filter"
+                              className="mt-1.5 w-full px-2 py-1 rounded-md border bg-white text-[11px] font-normal outline-none focus:border-[var(--teal)]"
+                              style={{ borderColor: gridFilters[col.key] ? 'var(--teal)' : 'var(--hr-line)', color: 'var(--charcoal)' }} />
                           </>
                         )}
                         <ColResizeHandle rz={gridRz} index={ci + 1} />
                       </th>
                     ))}
-                    <th className="border-r border-b px-2 py-2 text-center text-[11px] font-semibold whitespace-nowrap" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)', position: 'sticky', right: 0, zIndex: 12, color: 'var(--mid-gray)' }}>Actions</th>
+                    <th className="border-b px-2 py-2 text-center text-[11px] font-bold uppercase tracking-[.5px] whitespace-nowrap" style={{ borderColor: 'var(--light-gray)', background: 'var(--hr-head)', position: 'sticky', right: 0, zIndex: 25, color: 'var(--mid-gray)', boxShadow: '-4px 0 6px -4px rgba(35,48,56,0.14)' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {displayed.map(e => {
                     const lk = locked(e)
                     const ve = vatEditable(e)
+                    const tone = expTone(e)
                     return (
-                      <tr key={e.id} style={{ background: e.paidAt ? '#dcfce7' : e.reimbursementId ? '#ffedd5' : e.soaId ? '#f3e8ff' : e.finalized ? '#fef9c3' : '#fff' }}>
-                        <td className="border-r border-b text-center" style={{ borderColor: 'var(--light-gray)' }}>
-                          <input type="checkbox" checked={selected.has(e.id)} disabled={!isSelectable(e)}
+                      // Colour by state (paid → in an RFP → in a credit-card SOA → finalized → draft); see EXP_TONES.
+                      <tr key={e.id} style={{ background: tone.bg }}>
+                        <td className="border-b text-center align-top pt-2" title={tone.label}
+                          style={{ borderColor: 'var(--hr-line)', position: 'sticky', left: 0, zIndex: 2, background: 'inherit', boxShadow: `inset 4px 0 0 ${tone.line}` }}>
+                          <input type="checkbox" className="accent-[var(--teal)]" checked={selected.has(e.id)} disabled={!isSelectable(e)}
                             onChange={() => toggleOne(e.id)} title={e.paidAt ? 'Locked (paid)' : ''} />
                         </td>
-                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
+                        <td className={`${tdCls} sm:sticky`} style={{ borderColor: 'var(--hr-line)', left: gridRz.widths[0] || EXP_SELECT_W, zIndex: 2, background: 'inherit', boxShadow: '4px 0 6px -4px rgba(35,48,56,0.14)' }}>
                           {(e.reimbursementId || e.paidAt || e.soaId || !canWrite) ? (
-                            <span className="px-2 py-1.5 block whitespace-nowrap font-mono" style={{ color: 'var(--charcoal)' }}>{refOf(e)}</span>
+                            <span className="px-2 py-1.5 block whitespace-nowrap font-mono font-semibold" style={{ color: 'var(--charcoal)' }}>{refOf(e)}</span>
                           ) : (
                             <div className="flex items-center whitespace-nowrap">
-                              <input key={e.pcvNumber} defaultValue={e.pcvNumber} className={`${cellCls} font-mono`} style={{ minWidth: 150 }}
+                              <input key={e.pcvNumber} defaultValue={e.pcvNumber} className={`${cellCls} font-mono font-semibold flex-1 min-w-0`}
                                 title="Reference number — edit to match your physical hard copy"
                                 onBlur={ev => savePcv(e, ev.target.value)}
                                 onKeyDown={ev => { if (ev.key === 'Enter') (ev.target as HTMLInputElement).blur() }} />
@@ -1537,7 +1621,7 @@ function ExpensesInner() {
                               {pcvBases.length > 0 && (
                                 <select value="" title="Assign to a previous PCV number"
                                   onChange={ev => { const s = ev.target.value; if (s) { if (confirm(`Assign this entry under ${pcvBases.find(b => String(b.seq) === s)?.label}?`)) assignPcv(e, Number(s)); ev.target.value = '' } }}
-                                  className="text-[10px] rounded border bg-white" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)', maxWidth: 24 }}>
+                                  className="text-[10px] rounded border bg-white" style={{ borderColor: 'var(--hr-line)', color: 'var(--mid-gray)', maxWidth: 24 }}>
                                   <option value="">⋯</option>
                                   {pcvBases.filter(b => b.seq !== e.pcvSeq).map(b => <option key={b.seq} value={b.seq}>Assign to {b.label}</option>)}
                                 </select>
@@ -1545,7 +1629,7 @@ function ExpensesInner() {
                             </div>
                           )}
                         </td>
-                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
+                        <td className={tdCls} style={{ borderColor: 'var(--hr-line)' }}>
                           <SupplierCombo value={e.requestor || ''} disabled={lk} placeholder="Payee" suppliers={suppliers}
                             onCommit={(val, sup) => {
                               const patch: Partial<Entry> = { requestor: val }
@@ -1557,24 +1641,24 @@ function ExpensesInner() {
                               saveField(e.id, patch, false)
                             }} />
                         </td>
-                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
+                        <td className={tdCls} style={{ borderColor: 'var(--hr-line)' }}>
                           <DeptTagCell value={(e as unknown as { departments?: string[] }).departments || []} disabled={lk}
                             onSave={next => saveField(e.id, { departments: next } as unknown as Partial<Entry>, false)} />
                         </td>
-                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
+                        <td className={tdCls} style={{ borderColor: 'var(--hr-line)' }}>
                           <input type="date" className={cellCls} disabled={lk}
                             value={e.date ? String(e.date).slice(0, 10) : ''}
                             onChange={ev => saveField(e.id, { date: ev.target.value }, false)} />
                         </td>
-                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
+                        <td className={tdCls} style={{ borderColor: 'var(--hr-line)' }}>
                           <input className={cellCls} disabled={lk} value={e.description || ''} style={{ minWidth: 220 }}
                             onChange={ev => patchLocal(e.id, { description: ev.target.value })}
                             onBlur={ev => saveField(e.id, { description: ev.target.value }, false)} />
                         </td>
-                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: lk ? 'transparent' : '#fafafa' }}>
+                        <td className={tdCls} style={{ borderColor: 'var(--hr-line)', background: lk ? 'transparent' : '#fafafa' }}>
                           <span className="px-2 py-1.5 block" style={{ color: 'var(--mid-gray)', minWidth: 240 }}>{descForHub(e)}</span>
                         </td>
-                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
+                        <td className={tdCls} style={{ borderColor: 'var(--hr-line)' }}>
                           <select className={cellCls} value={e.validity || ''} disabled={lk}
                             onChange={ev => {
                               const v = ev.target.value
@@ -1586,7 +1670,7 @@ function ExpensesInner() {
                             {VALIDITY.map(v => <option key={v} value={v}>{v}</option>)}
                           </select>
                         </td>
-                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: lk ? 'transparent' : (e.validity === 'Valid' ? '#fff' : '#f3f4f6') }}>
+                        <td className={tdCls} style={{ borderColor: 'var(--hr-line)', background: lk ? 'transparent' : (e.validity === 'Valid' ? '#fff' : '#f3f4f6') }}>
                           <select className={cellCls} value={vatLabel(e)} disabled={lk || e.validity !== 'Valid'}
                             onChange={ev => {
                               const v = ev.target.value
@@ -1618,47 +1702,47 @@ function ExpensesInner() {
                             </div>
                           )}
                         </td>
-                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: lk ? 'transparent' : (ve ? '#fff' : '#f3f4f6') }}>
+                        <td className={tdCls} style={{ borderColor: 'var(--hr-line)', background: lk ? 'transparent' : (ve ? '#fff' : '#f3f4f6') }}>
                           <input className={cellCls} disabled={lk || !ve} value={e.siNumber || ''} style={{ minWidth: 140 }}
                             onChange={ev => patchLocal(e.id, { siNumber: ev.target.value })}
                             onBlur={ev => saveField(e.id, { siNumber: ev.target.value }, false)} />
                         </td>
-                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: lk ? 'transparent' : (ve ? '#fff' : '#f3f4f6') }}>
+                        <td className={tdCls} style={{ borderColor: 'var(--hr-line)', background: lk ? 'transparent' : (ve ? '#fff' : '#f3f4f6') }}>
                           <input className={cellCls} disabled={lk || !ve} value={e.tinNumber || ''} placeholder="XXX-XXX-XXX-XXXXX" style={{ minWidth: 150 }}
                             onChange={ev => patchLocal(e.id, { tinNumber: formatTin(ev.target.value) })}
                             onBlur={ev => saveField(e.id, { tinNumber: formatTin(ev.target.value) }, false)} />
                         </td>
-                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: lk ? 'transparent' : '#fafafa' }}>
+                        <td className={tdCls} style={{ borderColor: 'var(--hr-line)', background: lk ? 'transparent' : '#fafafa' }}>
                           <span className="px-2 py-1.5 block whitespace-nowrap font-mono" style={{ color: 'var(--mid-gray)' }}>{tinNumber2(e.tinNumber)}</span>
                         </td>
-                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: lk ? 'transparent' : '#fafafa' }}>
+                        <td className={tdCls} style={{ borderColor: 'var(--hr-line)', background: lk ? 'transparent' : '#fafafa' }}>
                           <span className="px-2 py-1.5 block whitespace-nowrap font-mono" style={{ color: 'var(--mid-gray)' }}>{branchCodeOf(e.tinNumber)}</span>
                         </td>
-                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
+                        <td className={tdCls} style={{ borderColor: 'var(--hr-line)' }}>
                           <NameCombobox options={pickNames} hints={pickHints} disabled={lk} value={e.registeredName || ''}
                             className={cellCls} style={{ minWidth: 180 }} placeholder="Type or pick a supplier…"
                             onChange={v => patchLocal(e.id, { registeredName: v })}
                             onCommit={v => saveField(e.id, supplierPatch(v) as Partial<Entry>, false)} />
                         </td>
-                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
+                        <td className={tdCls} style={{ borderColor: 'var(--hr-line)' }}>
                           <input className={cellCls} disabled={lk} value={e.registeredAddress || ''} style={{ minWidth: 220 }}
                             onChange={ev => patchLocal(e.id, { registeredAddress: ev.target.value })}
                             onBlur={ev => saveField(e.id, { registeredAddress: ev.target.value.trim().toUpperCase() }, false)} />
                         </td>
-                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
+                        <td className={tdCls} style={{ borderColor: 'var(--hr-line)' }}>
                           <input type="number" step="0.01" className={`${cellCls} text-right`} disabled={lk}
                             value={num(e.grossAmount) === 0 ? '' : String(e.grossAmount)} style={{ minWidth: 110 }}
                             onWheel={ev => ev.currentTarget.blur()}
                             onChange={ev => patchLocal(e.id, { grossAmount: ev.target.value })}
                             onBlur={ev => saveField(e.id, { grossAmount: Number(ev.target.value) || 0 }, false)} />
                         </td>
-                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: lk ? 'transparent' : '#fafafa' }}>
+                        <td className={tdCls} style={{ borderColor: 'var(--hr-line)', background: lk ? 'transparent' : '#fafafa' }}>
                           <span className="px-2 py-1.5 block text-right" style={{ color: 'var(--mid-gray)' }}>{peso(netOfVat(e))}</span>
                         </td>
-                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: lk ? 'transparent' : '#fafafa' }}>
+                        <td className={tdCls} style={{ borderColor: 'var(--hr-line)', background: lk ? 'transparent' : '#fafafa' }}>
                           <span className="px-2 py-1.5 block text-right" style={{ color: 'var(--mid-gray)' }}>{peso(vatAmount(e))}</span>
                         </td>
-                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
+                        <td className={tdCls} style={{ borderColor: 'var(--hr-line)' }}>
                           <AccountPicker accounts={coaAccounts} value={e.accountTitle || ''} valueKey="numberTitle"
                             disabled={lk} className={cellCls} placeholder="Type a number or a name…"
                             clearLabel="— Clear —"
@@ -1704,14 +1788,14 @@ function ExpensesInner() {
                             )
                           )}
                         </td>
-                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
+                        <td className={tdCls} style={{ borderColor: 'var(--hr-line)' }}>
                           <select className={cellCls} value={e.hasEwt ? 'Yes' : 'No'} disabled={lk} style={{ minWidth: 70 }}
                             onChange={ev => { const yes = ev.target.value === 'Yes'; saveField(e.id, { hasEwt: yes, ewtRate: yes ? (e.ewtRate || 5) : null }, false) }}>
                             <option value="No">No</option>
                             <option value="Yes">Yes</option>
                           </select>
                         </td>
-                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: lk ? 'transparent' : (e.hasEwt ? '#fff' : '#f3f4f6') }}>
+                        <td className={tdCls} style={{ borderColor: 'var(--hr-line)', background: lk ? 'transparent' : (e.hasEwt ? '#fff' : '#f3f4f6') }}>
                           <select className={cellCls} value={e.ewtRate ?? ''} disabled={lk || !e.hasEwt} style={{ minWidth: 70 }}
                             onChange={ev => saveField(e.id, { ewtRate: ev.target.value ? Number(ev.target.value) : null }, false)}>
                             <option value=""></option>
@@ -1724,7 +1808,7 @@ function ExpensesInner() {
                           const canDistribute = !!e.recurFrequency && !freqMonthly
                           return (
                             <>
-                              <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
+                              <td className={tdCls} style={{ borderColor: 'var(--hr-line)' }}>
                                 <select className={cellCls} value={e.recurFrequency || ''} disabled={lk} style={{ minWidth: 120 }}
                                   onChange={ev => {
                                     const v = ev.target.value
@@ -1736,13 +1820,13 @@ function ExpensesInner() {
                                   {RECUR_FREQ.map(f => <option key={f.v} value={f.v}>{f.label}</option>)}
                                 </select>
                               </td>
-                              <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
+                              <td className={tdCls} style={{ borderColor: 'var(--hr-line)' }}>
                                 <input type="number" min="1" max="31" className={`${cellCls} text-center`} disabled={lk} placeholder="nth"
                                   value={e.recurDeadlineDay ?? ''} style={{ minWidth: 80 }}
                                   onChange={ev => patchLocal(e.id, { recurDeadlineDay: ev.target.value ? Number(ev.target.value) : null })}
                                   onBlur={ev => saveField(e.id, { recurDeadlineDay: ev.target.value ? Number(ev.target.value) : null }, false)} />
                               </td>
-                              <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
+                              <td className={tdCls} style={{ borderColor: 'var(--hr-line)' }}>
                                 <select className={cellCls} value={e.amountVaries ? 'Yes' : 'No'} disabled={lk} style={{ minWidth: 80 }}
                                   title="e.g. rent that changes each month — the generated One-time entry's amount is left blank for the accountant"
                                   onChange={ev => {
@@ -1755,7 +1839,7 @@ function ExpensesInner() {
                                   <option value="Yes">Yes</option>
                                 </select>
                               </td>
-                              <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: lk ? 'transparent' : (canDistribute && !e.amountVaries ? '#fff' : '#f3f4f6') }}>
+                              <td className={tdCls} style={{ borderColor: 'var(--hr-line)', background: lk ? 'transparent' : (canDistribute && !e.amountVaries ? '#fff' : '#f3f4f6') }}>
                                 <select className={cellCls} value={e.distributeMonthly ? 'Yes' : 'No'} disabled={lk || !canDistribute || e.amountVaries} style={{ minWidth: 80 }}
                                   onChange={ev => {
                                     const yes = ev.target.value === 'Yes'
@@ -1767,17 +1851,17 @@ function ExpensesInner() {
                                   <option value="Yes">Yes</option>
                                 </select>
                               </td>
-                              <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: lk ? 'transparent' : '#fafafa' }}>
+                              <td className={tdCls} style={{ borderColor: 'var(--hr-line)', background: lk ? 'transparent' : '#fafafa' }}>
                                 <span className="px-2 py-1.5 block text-right" style={{ color: 'var(--mid-gray)', minWidth: 100 }}>
                                   {e.distributeMonthly ? peso(monthlyAmt(e)) : '—'}
                                 </span>
                               </td>
-                              <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: lk ? 'transparent' : (e.distributeMonthly ? '#fff' : '#f3f4f6') }}>
+                              <td className={tdCls} style={{ borderColor: 'var(--hr-line)', background: lk ? 'transparent' : (e.distributeMonthly ? '#fff' : '#f3f4f6') }}>
                                 <input type="month" className={cellCls} disabled={lk || !e.distributeMonthly} style={{ minWidth: 130 }}
                                   value={monthInput(e.distributeStart)}
                                   onChange={ev => saveField(e.id, { distributeStart: ev.target.value ? `${ev.target.value}-01` : null }, false)} />
                               </td>
-                              <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: lk ? 'transparent' : (e.distributeMonthly ? '#fff' : '#f3f4f6') }}>
+                              <td className={tdCls} style={{ borderColor: 'var(--hr-line)', background: lk ? 'transparent' : (e.distributeMonthly ? '#fff' : '#f3f4f6') }}>
                                 <input type="month" className={cellCls} disabled={lk || !e.distributeMonthly} style={{ minWidth: 130 }}
                                   value={monthInput(e.distributeEnd)}
                                   onChange={ev => saveField(e.id, { distributeEnd: ev.target.value ? `${ev.target.value}-01` : null }, false)} />
@@ -1785,7 +1869,7 @@ function ExpensesInner() {
                             </>
                           )
                         })()}
-                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
+                        <td className={tdCls} style={{ borderColor: 'var(--hr-line)' }}>
                           {e.paidAt ? (
                             <div className="px-2 py-1 text-[11px]" style={{ minWidth: 160, color: 'var(--charcoal)' }}>
                               <div className="font-semibold">{new Date(e.paidAt).toLocaleDateString('en-PH')}</div>
@@ -1803,13 +1887,13 @@ function ExpensesInner() {
                             <span className="px-2 py-1.5 block text-[11px]" style={{ color: 'var(--mid-gray)', minWidth: 160 }}>Not yet in RFP</span>
                           )}
                         </td>
-                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
+                        <td className={tdCls} style={{ borderColor: 'var(--hr-line)' }}>
                           <div className="flex flex-col gap-1 px-1 py-1" style={{ minWidth: 120 }}>
                             {proofsOf(e).map((url, i) => (
                               <div key={url} className="flex items-center gap-1 whitespace-nowrap">
                                 <a href={url} target="_blank" rel="noopener noreferrer" title="View proof"
                                   className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border text-[11px]"
-                                  style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+                                  style={{ borderColor: 'var(--hr-line)', color: 'var(--charcoal)' }}>
                                   <Eye size={12} /> {i + 1}
                                 </a>
                                 {!lk && (
@@ -1829,7 +1913,7 @@ function ExpensesInner() {
                           </div>
                         </td>
                         {recordType === 'ONE_TIME' && (
-                          <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
+                          <td className={tdCls} style={{ borderColor: 'var(--hr-line)' }}>
                             <select className={cellCls} value={e.audited ? 'Yes' : 'No'} disabled={!canAudit}
                               title={!canAudit ? 'Only an Accountant or Admin can change the audit status' : ''}
                               onChange={ev => setAudited(e.id, ev.target.value === 'Yes')} style={{ minWidth: 70 }}>
@@ -1838,7 +1922,7 @@ function ExpensesInner() {
                             </select>
                           </td>
                         )}
-                        <td className="border-b px-2 py-1 text-center align-middle" style={{ borderColor: 'var(--light-gray)', position: 'sticky', right: 0, zIndex: 4, background: '#fff', boxShadow: '-5px 0 6px -4px rgba(0,0,0,0.18)', minWidth: 132 }}>
+                        <td className="border-b px-2 py-1 text-center align-middle" style={{ borderColor: 'var(--hr-line)', position: 'sticky', right: 0, zIndex: 4, background: '#fff', boxShadow: '-5px 0 6px -4px rgba(0,0,0,0.18)', minWidth: 132 }}>
                           {canWrite && !e.reimbursementId && (e.recordType === 'RECURRING' || !e.paidAt) && (
                             <div className="flex flex-col items-center gap-1">
                               <div className="flex items-center justify-center gap-0.5">
@@ -1870,38 +1954,45 @@ function ExpensesInner() {
                       </tr>
                     )
                   })}
-                  {displayed.length === 0 && (
-                    <tr><td colSpan={isRecurringTab ? 31 : 25} className="text-center py-10" style={{ color: 'var(--mid-gray)' }}>
-                      {q || Object.values(gridFilters).some(Boolean) ? 'No entries match your search/filters.' : 'No entries yet. Click "Add Row" to start.'}
-                    </td></tr>
-                  )}
                 </tbody>
               </table>
             )}
-          </div>
-
-          {canWrite && (
-            <div className="flex items-center gap-2">
-              <button onClick={addRow} disabled={adding}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
-                style={{ background: 'var(--teal)' }}>
-                {adding ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Add Row
-              </button>
-              <button onClick={duplicateLast} disabled={adding || entries.length === 0}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold border disabled:opacity-50"
-                style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }} title="Copy the last entry's details into a new row (change the amount)">
-                <Plus size={14} /> Duplicate previous entry
-              </button>
-              {recordType === 'ONE_TIME' && !scope.locked && (
-                <button onClick={() => setShowSplit(true)} disabled={adding}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold border disabled:opacity-50"
-                  style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}
-                  title="One purchase shared by several branches (e.g. a supplier TT from the AUB CNY account) — tick the branches and the amount is split equally, one entry per branch">
-                  <Plus size={14} /> Shared purchase (split)
-                </button>
-              )}
+            {!loading && displayed.length === 0 && (
+              // A plain block under the header row: exactly as wide as the visible grid.
+              <div className="sticky left-0 px-6 py-14 flex flex-col items-center text-center">
+                <p className="text-sm font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+                  {q || Object.values(gridFilters).some(Boolean) ? 'No entries match' : 'No entries yet'}
+                </p>
+                <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>
+                  {q || Object.values(gridFilters).some(Boolean) ? 'Nothing fits the search and column filters.' : canWrite ? 'Add the first entry to start.' : 'Nothing has been recorded here yet.'}
+                </p>
+                {canWrite && !(q || Object.values(gridFilters).some(Boolean)) && (
+                  <button onClick={addRow} disabled={adding} className={`${primaryBtn} mt-4`} style={{ background: 'var(--teal)' }}>
+                    <Plus size={15} /> Add entry
+                  </button>
+                )}
+              </div>
+            )}
             </div>
-          )}
+
+            {/* Export (same files as before) */}
+            <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-t text-xs" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+              <span className="font-semibold" style={{ color: 'var(--charcoal)' }}>Export expenses dated</span>
+              <input type="date" value={dlFrom} onChange={e => setDlFrom(e.target.value)} aria-label="From"
+                className="h-8 px-2 rounded-lg border bg-white text-xs" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }} />
+              <span>to</span>
+              <input type="date" value={dlTo} onChange={e => setDlTo(e.target.value)} aria-label="To"
+                className="h-8 px-2 rounded-lg border bg-white text-xs" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }} />
+              {(dlFrom || dlTo) && <button onClick={() => { setDlFrom(''); setDlTo('') }} className="underline">clear</button>}
+              <span className="ml-auto">{isWindowed ? 'exports the full range' : `${entries.filter(e => inDateRange(e.date, dlFrom, dlTo)).length} in range`}</span>
+              <button onClick={() => exportEntries('xlsx')} className={ghostBtn} style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+                <Download size={14} style={{ color: '#166534' }} /> Excel
+              </button>
+              <button onClick={() => exportEntries('pdf')} className={ghostBtn} style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+                <Download size={14} style={{ color: '#b91c1c' }} /> PDF
+              </button>
+            </div>
+          </section>
         </>
       )}
 
