@@ -78,6 +78,9 @@ interface AROrder {
   soaApprovalStatus?: string | null   // APPROVED | DISAPPROVED | null (pending)
   soaBranch?: string | null           // Reassign: branch whose SOA generation picks this up; null = own branch
   clinicianPayment?: { pvNumber: string | null; clinicianName: string; pvDate: string } | null // HMO paid the doctor directly (Payments to Doctors)
+  // Order numbers of standing orders with the same HMO, patient, day, services,
+  // amount and remarks (lib/hmo-duplicates) — a possible duplicate session.
+  possibleDuplicateOf?: number[]
 }
 
 interface ARSummary {
@@ -149,8 +152,10 @@ const HMO_SUB_TAB_GROUPS = [
       // Recorded HMO payments + the Record Payment button, out of Overview
       // (Hannah 2026-10-17).
       { key: 'payment-history', label: 'Payment History' },
-      // Sessions decreased to the HMO-paid amount (Hannah 2026-10-30).
-      { key: 'revised-amounts', label: 'Revised Session Amount' },
+      // Sessions decreased to the HMO-paid amount (Hannah 2026-10-30), and voided
+      // HMO sessions — renamed from "Revised Session Amount" to cover both
+      // (Hannah 2026-11-09).
+      { key: 'revised-amounts', label: 'Session Adjustments' },
     ],
   },
 ] as const
@@ -739,6 +744,8 @@ export default function AccountsReceivablePage() {
   }, [tab, hmoSubTab])
   // HMO column: tick-box multi-select of provider names
   const [perHmoHmoTicks, setPerHmoHmoTicks] = useState<string[]>([])
+  // Per HMO: show only the sessions flagged as possible duplicates.
+  const [perHmoDupOnly, setPerHmoDupOnly] = useState(false)
   const [perHmoHmoOpen, setPerHmoHmoOpen] = useState(false)
   // Per HMO fetches its own period rather than sifting the page list. That list
   // is the 500 newest orders, which reaches back only a few months, so every
@@ -2001,7 +2008,7 @@ export default function AccountsReceivablePage() {
               </div>
               <button type="button" onClick={() => setHmoSubTab('revised-amounts')}
                 className="rounded-xl p-4 border text-left" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}
-                title="Open Revised Session Amount">
+                title="Open Session Adjustments">
                 <p className="text-xs uppercase tracking-wide font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Decrease due to HMO Payment</p>
                 <p className="text-xl font-bold" style={{ color: 'var(--charcoal)' }}>{formatCurrency(summary?.hmoDecrease?.total ?? 0)}</p>
                 <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>
@@ -2711,6 +2718,11 @@ export default function AccountsReceivablePage() {
         if (perHmoHmoTicks.length) {
           perHmoOrders = perHmoOrders.filter(o => perHmoHmoTicks.includes(hmoNameOf(o)))
         }
+        // Possible duplicates among the rows in view (before the toggle below).
+        const perHmoDupCount = perHmoOrders.filter(o => (o.possibleDuplicateOf?.length || 0) > 0).length
+        if (perHmoDupOnly && perHmoDupCount > 0) {
+          perHmoOrders = perHmoOrders.filter(o => (o.possibleDuplicateOf?.length || 0) > 0)
+        }
 
         // Sort
         perHmoOrders = [...perHmoOrders].sort((a, b) => {
@@ -2973,6 +2985,26 @@ export default function AccountsReceivablePage() {
                 )}
               </div>
             )}
+            {/* Possible duplicate sessions (Hannah 2026-11-09). Kept flagged, not
+                voided: different sessions say so in their remarks (that clears
+                the flag); a confirmed duplicate is voided in POS and moves to
+                Session Adjustments, where any PF already paid is recovered. */}
+            {perHmoDupCount > 0 && (
+              <div className="rounded-xl px-4 py-3 mb-3 text-sm flex flex-wrap items-center gap-3"
+                style={{ background: '#FFFBEB', color: '#92400E', border: '1px solid #FCD34D' }}>
+                <span>
+                  <strong>{perHmoDupCount} session{perHmoDupCount === 1 ? '' : 's'} flagged as possible duplicate{perHmoDupCount === 1 ? '' : 's'}</strong>
+                  {' '}&mdash; same patient, day, service, amount and remarks as another order. If they are different sessions,
+                  say so in the remarks of either order and the flag clears. If one is a duplicate, void it in POS: it moves to
+                  {' '}<strong>Session Adjustments</strong>, where any PF already paid out on it is recovered.
+                </span>
+                <button type="button" onClick={() => setPerHmoDupOnly(v => !v)}
+                  className="ml-auto px-3 py-1.5 rounded-lg text-xs font-semibold border whitespace-nowrap"
+                  style={{ borderColor: '#F59E0B', background: perHmoDupOnly ? '#F59E0B' : 'white', color: perHmoDupOnly ? 'white' : '#92400E' }}>
+                  {perHmoDupOnly ? 'Show all sessions' : 'Show only these'}
+                </button>
+              </div>
+            )}
             {/* Sortable/filterable table — drag a header's right edge to resize
                 that column (double-click the edge resets all widths) */}
             {/* Vertical scrolling must happen inside this box (not the page) or
@@ -3179,6 +3211,13 @@ export default function AccountsReceivablePage() {
                               title={`Paid by the HMO to ${o.clinicianPayment.clinicianName} on ${formatDate(o.clinicianPayment.pvDate)} — Payment History → Payments to Doctors`}
                               style={{ background: '#dcfce7', color: '#166534' }}>
                               paid{o.clinicianPayment.pvNumber ? ` · ${o.clinicianPayment.pvNumber}` : ''}
+                            </span>
+                          )}
+                          {(o.possibleDuplicateOf?.length || 0) > 0 && (
+                            <span className="ml-1 px-1.5 py-0.5 rounded-full text-[9px] font-semibold whitespace-nowrap"
+                              title={`Possible duplicate of ${o.possibleDuplicateOf!.map(n => `#${n}`).join(', ')} — same patient, day, service, amount and remarks. Different sessions: say so in the remarks. A duplicate: void it in POS (it moves to Session Adjustments).`}
+                              style={{ background: '#fef3c7', color: '#92400e' }}>
+                              possible duplicate · {o.possibleDuplicateOf!.map(n => `#${n}`).join(', ')}
                             </span>
                           )}
                         </td>

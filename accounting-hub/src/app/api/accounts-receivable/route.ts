@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { decreaseRowsOnly } from '@/lib/hmo-session-void'
+import { possibleDuplicates } from '@/lib/hmo-duplicates'
 
 const READ_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'HMO_OFFICER', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
 // This role never sees GL wallets, so ?type= is ignored for it rather than
@@ -356,10 +358,11 @@ export async function GET(req: Request) {
     const directPaid = directOrders.filter(d => pvLinked.has(d.id))
 
     // HMOs have no write-offs: a short-paid session is repriced to what the HMO
-    // paid. Same rows as the Revised Session Amount tab, so the two figures tie.
+    // paid. Same rows as the "Amount revised" rows of Session Adjustments, so the
+    // two figures tie (voided sessions are no longer sales, so not counted here).
     const hmoDecreaseAgg = type === 'HMO'
       ? await prisma.orderHmoSettlement.aggregate({
-          where: { order: { status: { not: 'VOIDED' }, ...(branch ? { branch } : {}) } },
+          where: { AND: [{ order: { status: { not: 'VOIDED' }, ...(branch ? { branch } : {}) } }, decreaseRowsOnly] },
           _sum: { difference: true },
           _count: true,
         }).catch(err => { console.error('[AR] HMO decrease total failed:', err); return null })
@@ -446,7 +449,13 @@ export async function GET(req: Request) {
         }).catch(err => { console.error('[AR] clinician payments lookup failed:', err); return [] })
       : []
     const cpByOrder = new Map(cpItems.map(i => [i.orderId as string, i.payment]))
-    const ordersOut = orders.map(o => ({ ...o, clinicianPayment: cpByOrder.get(o.id) ?? null }))
+    // Possible duplicate sessions (Hannah 2026-11-09): same HMO, patient, day,
+    // services, amount and remarks as another standing order. Different
+    // sessions say so in their remarks, which clears the flag.
+    const dupOf = type === 'HMO' && orders.length
+      ? await possibleDuplicates(prisma, orders.map(o => o.id)).catch(err => { console.error('[AR] possible-duplicate check failed:', err); return new Map<string, number[]>() })
+      : new Map<string, number[]>()
+    const ordersOut = orders.map(o => ({ ...o, clinicianPayment: cpByOrder.get(o.id) ?? null, possibleDuplicateOf: dupOf.get(o.id) ?? [] }))
 
     return NextResponse.json({ wallets: walletsOut, orders: ordersOut, arPayments, summary, glCases })
   } catch (err) {

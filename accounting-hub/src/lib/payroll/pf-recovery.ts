@@ -84,7 +84,7 @@ export async function recoveryLines(cutoffPeriod: string, branch: string): Promi
   const out = new Map<string, PrLine[]>()
   for (const [consultantId, b] of byConsultant) {
     const lines: PrLine[] = []
-    if (b.hmo.length) lines.push(line('pr-hmo', 'PF overpaid — HMO decreases', b.hmo))
+    if (b.hmo.length) lines.push(line('pr-hmo', 'PF overpaid — HMO decreases & voids', b.hmo))
     if (b.price.length) lines.push(line('pr-price', 'PF above what was charged', b.price))
     if (lines.length) out.set(consultantId, lines)
   }

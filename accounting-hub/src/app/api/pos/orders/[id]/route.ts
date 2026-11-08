@@ -7,6 +7,7 @@ import { restoreFifoLots, recalcWeightedUnitCost } from '@/lib/fifo'
 import { postOrderJournal, reverseOrderJournal } from '@/lib/accounting/post-order'
 import { linkReferredPatientFromOrder } from '@/lib/referral-link'
 import { normalizeSI } from '@/lib/sales-invoice'
+import { recordHmoSessionVoid, decreaseRowsOnly } from '@/lib/hmo-session-void'
 
 const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK']
 
@@ -40,6 +41,7 @@ export async function GET(
         createdBy: { select: { id: true, name: true } },
         arPaymentItems: { select: { paymentId: true } },
         hmoSettlements: {
+          where: decreaseRowsOnly,
           select: { id: true, billedAmount: true, paidAmount: true, difference: true, reference: true, note: true, createdAt: true, createdByName: true },
           orderBy: { createdAt: 'asc' },
         },
@@ -453,6 +455,13 @@ export async function PUT(
           },
         },
       })
+
+      // A voided HMO session lands in AR → Session Adjustments, and any PF
+      // already paid on it shows as overpaid in Payroll (HMO PF Adjustments).
+      if (newStatus === 'VOIDED' && existing.status !== 'VOIDED') {
+        try { await recordHmoSessionVoid(prisma, updated, { id: session.user.id, name: session.user.name }, body.reason || null) }
+        catch (e) { console.error('[HMO] session-void adjustment failed:', e) }
+      }
 
       // Class-portal callback: orders converted from a class-portal tuition
       // queue item carry queueItemId="clsp_<classPortalPaymentId>". When the

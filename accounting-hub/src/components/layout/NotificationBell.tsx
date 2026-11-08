@@ -45,7 +45,7 @@ async function loadGroups(role: string): Promise<Group[]> {
       g.total += a.overpaid; g.n += 1; by.set(a.consultant, g)
     }
     groups.push({
-      key: 'pf', label: 'PF to recover (HMO decreases)', icon: TrendingDown,
+      key: 'pf', label: 'PF to recover (HMO decreases & voids)', icon: TrendingDown,
       items: [...by.entries()].map(([name, g]) => ({
         key: `pf-${name}`, title: `${name} — ${peso(g.total)}`,
         detail: `${g.n} session${g.n === 1 ? '' : 's'} decreased to the HMO-paid amount after PF was released`,

@@ -9,6 +9,7 @@ import { consumeFifoLots, recalcWeightedUnitCost } from '@/lib/fifo'
 import { postJournalEntry, UnbalancedJournalEntryError } from '@/lib/accounting/posting'
 import { postOrderJournal } from '@/lib/accounting/post-order'
 import { linkReferredPatientFromOrder } from '@/lib/referral-link'
+import { decreaseRowsOnly } from '@/lib/hmo-session-void'
 
 /* ── Free-sample JE: DR 8120 Marketing, CR Inventory ──────────────
    Tier 3: routed through the central posting service so any future
@@ -128,6 +129,7 @@ export async function GET(req: Request) {
           payments: true,
           arPaymentItems: { select: { paymentId: true } },
           hmoSettlements: {
+            where: decreaseRowsOnly,
             select: { id: true, billedAmount: true, paidAmount: true, difference: true, reference: true, note: true, createdAt: true, createdByName: true },
             orderBy: { createdAt: 'asc' },
           },

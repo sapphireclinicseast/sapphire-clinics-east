@@ -12,6 +12,7 @@ interface PfAlert {
   patientName: string | null
   billedAmount: number
   paidAmount: number
+  voided?: boolean // the HMO order was voided (e.g. a confirmed duplicate) — no PF is earned
   source: 'HUB' | 'OUTSIDE_HUB'
   consultant: string
   cutoffPeriod: string | null
@@ -101,7 +102,7 @@ export default function HmoSettlementPfAlerts({ canWrite, variant = 'full', onOp
 
   const total = open.reduce((s, a) => s + a.overpaid, 0)
   const byConsultant = open.reduce<Record<string, number>>((m, a) => { m[a.consultant] = (m[a.consultant] || 0) + a.overpaid; return m }, {})
-  const headline = `PF overpaid after HMO decreases: ${formatCurrency(total)} across ${open.length} session${open.length === 1 ? '' : 's'} — ${Object.entries(byConsultant).map(([n, v]) => `${n} ${formatCurrency(v)}`).join(' · ')}`
+  const headline = `PF overpaid after HMO decreases & voids: ${formatCurrency(total)} across ${open.length} session${open.length === 1 ? '' : 's'} — ${Object.entries(byConsultant).map(([n, v]) => `${n} ${formatCurrency(v)}`).join(' · ')}`
 
   if (variant === 'banner') {
     if (!open.length) return null
@@ -134,7 +135,8 @@ export default function HmoSettlementPfAlerts({ canWrite, variant = 'full', onOp
         {settledToggle}
       </div>
       <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
-        These sessions were decreased to what the HMO paid after their PF was released at the billed amount. The overpaid PF is
+        These sessions were decreased to what the HMO paid, or voided (e.g. a confirmed duplicate), after their PF was released at the
+        billed amount — a voided session earns no PF, so all of it is overpaid. The overpaid PF is
         deducted automatically on the consultant&apos;s next payslip at the same branch (a highlighted <strong>Auto PF recovery</strong>
         line); saving that payslip records the cutoff and the row hides (tick <strong>Show settled</strong> to see it again). If it was
         deducted some other way, pick the cutoff and press <strong>Record</strong>. <strong>Outside hub</strong> = the session&apos;s payroll was run
@@ -144,7 +146,7 @@ export default function HmoSettlementPfAlerts({ canWrite, variant = 'full', onOp
 
       {!list.length ? (
         <div className="rounded-xl border px-4 py-6 text-sm text-center" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
-          {showSettled ? 'Nothing recorded yet.' : 'When a session is decreased with “Decrease due to HMO Payment” after its PF was released, it appears here.'}
+          {showSettled ? 'Nothing recorded yet.' : 'When a session is decreased with “Decrease due to HMO Payment”, or its HMO order is voided, after its PF was released, it appears here.'}
         </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border bg-white" style={{ borderColor: '#fde68a' }}>
@@ -171,7 +173,9 @@ export default function HmoSettlementPfAlerts({ canWrite, variant = 'full', onOp
                   <td className="px-2 py-1.5">#{a.orderNumber}</td>
                   <td className="px-2 py-1.5 whitespace-nowrap">{formatDate(a.sessionDate)}</td>
                   <td className="px-2 py-1.5">{a.patientName || '—'}</td>
-                  <td className="px-2 py-1.5 whitespace-nowrap">{formatCurrency(a.billedAmount)} → {formatCurrency(a.paidAmount)}</td>
+                  <td className="px-2 py-1.5 whitespace-nowrap">
+                    {formatCurrency(a.billedAmount)} → {a.voided ? <span className="font-semibold" style={{ color: '#991b1b' }}>voided</span> : formatCurrency(a.paidAmount)}
+                  </td>
                   <td className="px-2 py-1.5 whitespace-nowrap">{formatCurrency(a.pfPaid)}{a.quantity !== 1 ? ` × ${a.quantity}` : ''}</td>
                   <td className="px-2 py-1.5 whitespace-nowrap">{formatCurrency(a.pfPolicy)}</td>
                   <td className={`px-2 py-1.5 font-semibold whitespace-nowrap ${a.settled ? '' : 'text-red-700'}`}>{formatCurrency(a.overpaid)}</td>
