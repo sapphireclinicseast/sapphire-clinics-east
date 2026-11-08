@@ -81,7 +81,10 @@ interface SlotSummary {
 
 function SlotSummaryCard({ title, summary }: { title: React.ReactNode; summary: SlotSummary }) {
   const { total, booked, blocked, open, pay } = summary
-  const pctOf = (n: number) => (total > 0 ? Math.round((n / total) * 100) : 0)
+  // Percentages are of the bookable hours (booked + open). Unavailable hours
+  // are reported as a count only and never enter the computation.
+  const bookable = booked + open
+  const pctOf = (n: number) => (bookable > 0 ? Math.round((n / bookable) * 100) : 0)
 
   // Mixed is only shown when it happens — a permanent zero would invite the
   // question of what it is on every board that never has one.
@@ -100,12 +103,11 @@ function SlotSummaryCard({ title, summary }: { title: React.ReactNode; summary: 
         </p>
       ) : (
         <>
-          <CapacityBar booked={booked} open={open} blocked={blocked} height={8} />
+          <CapacityBar booked={booked} open={open} blocked={0} height={8} />
           <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1 text-xs" style={{ color: 'var(--charcoal)' }}>
             {([
               { label: 'Booked', n: booked, c: '#7FB2E5' },
               { label: 'Open', n: open, c: '#9AD7AB' },
-              { label: 'Unavailable', n: blocked, c: '#D2D7DC' },
             ]).map(k => (
               <span key={k.label} className="inline-flex items-center gap-1.5">
                 <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: k.c }} />
@@ -119,7 +121,7 @@ function SlotSummaryCard({ title, summary }: { title: React.ReactNode; summary: 
             /* Named rather than folded into "open": a blocked hour is not
                capacity anyone can book into. */
             <p className="mt-1.5 text-[11px]" style={{ color: 'var(--mid-gray)' }}>
-              {blocked} marked unavailable, not counted as open.
+              {blocked} marked unavailable — not counted in the totals or percentages.
             </p>
           )}
         </>
@@ -636,7 +638,10 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
     }
     return { total, booked, blocked, open: total - booked - blocked }
   })()
-  const utilPct = util.total > 0 ? Math.round((util.booked / util.total) * 100) : 0
+  // Unavailable hours are not capacity anyone can book into, so they are left
+  // out of "x of y booked" and its % entirely — y is booked + open only.
+  const utilBookable = util.booked + util.open
+  const utilPct = utilBookable > 0 ? Math.round((util.booked / utilBookable) * 100) : 0
 
   const compact = density === 'compact'
   const rowH = compact ? 28 : 36          // every hour row is the same height
@@ -707,15 +712,15 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
 
         {util.total > 0 && (
           <div className="order-last w-full sm:order-none sm:w-44"
-            title={`${util.booked} booked · ${util.open} open · ${util.blocked} unavailable`}>
+            title={`${util.booked} booked · ${util.open} open${util.blocked > 0 ? ` · ${util.blocked} unavailable (not counted)` : ''}`}>
             <div className="flex items-baseline justify-between gap-2 text-[11px] mb-1" style={{ color: 'var(--mid-gray)' }}>
               <span>
                 <strong className="tabular-nums" style={{ color: 'var(--charcoal)' }}>{util.booked}</strong> of{' '}
-                <span className="tabular-nums">{util.total}</span> booked
+                <span className="tabular-nums">{utilBookable}</span> booked
               </span>
               <span className="tabular-nums font-semibold">{utilPct}%</span>
             </div>
-            <CapacityBar booked={util.booked} open={util.open} blocked={util.blocked} />
+            <CapacityBar booked={util.booked} open={util.open} blocked={0} />
           </div>
         )}
 
@@ -1582,7 +1587,9 @@ export default function DeckingClient({ role }: { role: string }) {
   const boardLoading = loadingStaff || (!staffError && !dataError && loadedBranch !== activeBranch)
   const boardRefreshing = !boardLoading && loadingData
   const staffDecked = filteredStaff.filter(st => ((configMap.get(st.id)?.workDays as string[] | undefined)?.length ?? 0) > 0).length
-  const pctBooked = slotSummary.total > 0 ? Math.round((slotSummary.booked / slotSummary.total) * 100) : 0
+  // Of the bookable hours only — unavailable hours are excluded, as on each card.
+  const bookableSlots = slotSummary.booked + slotSummary.open
+  const pctBooked = bookableSlots > 0 ? Math.round((slotSummary.booked / bookableSlots) * 100) : 0
   const deptOptions = presentDepts.includes(activeDept) ? presentDepts : [activeDept, ...presentDepts]
   const allCollapsed = filteredStaff.length > 0 && filteredStaff.every(st => collapsed.has(st.id))
   const activeSectionMeta = DECK_SECTIONS.find(sec => sec.key === activeSection)
@@ -1760,7 +1767,7 @@ export default function DeckingClient({ role }: { role: string }) {
                   sub={slotSummary.blocked > 0 ? `${slotSummary.blocked} more marked unavailable` : 'ready to book'} />
                 <KpiCard label="Booked slots" icon={<CalendarCheck size={15} />} accent={PAY_STYLE.CASH.fg}
                   value={slotSummary.booked}
-                  sub={`of ${slotSummary.total} hourly slots`} />
+                  sub={`of ${bookableSlots} bookable slots`} />
                 <KpiCard label="Booked this week" icon={<Percent size={15} />}
                   value={`${pctBooked}%`}
                   sub={<>{branchName} &middot; {activeDept}{activeSection === 'all' ? ' · all modes' : ''}</>} />
