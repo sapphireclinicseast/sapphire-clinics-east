@@ -63,13 +63,14 @@ async function loadDepartment(branch: string, department: string) {
       orderBy: { staff: { lastName: 'asc' } },
     }),
     prisma.deckingSlot.findMany({
-      // Recurring slots only. A dated one-off belongs to the psych/MD dated
-      // boards, and drawn on the weekly grid it would claim its weekday for
-      // ever — see the guards added with DeckingSlot.date.
-      where: { branch, department, isClass: false, date: null },
+      // BOTH kinds. They are separated below: the weekly pattern draws the
+      // grid, and the one-offs get their own dated blocks underneath it. A
+      // one-off left out of the sheet entirely — which is what happened before
+      // this — exists in the hub and nowhere front desk can see it.
+      where: { branch, department, isClass: false },
       select: {
         id: true, staffId: true, dayOfWeek: true, startTime: true, disabled: true,
-        paymentType: true, hmoProvider: true, notes: true, patientId: true,
+        paymentType: true, hmoProvider: true, notes: true, patientId: true, date: true,
         patient: { select: { firstName: true, lastName: true } },
         patientBookings: { where: { paidAt: { not: null } }, select: { downpayment: true }, take: 1 },
       },
@@ -98,7 +99,12 @@ async function loadDepartment(branch: string, department: string) {
     dp: s.patientBookings[0]?.downpayment ? Number(s.patientBookings[0].downpayment) : null,
   }))
 
-  return { staff, slots: sheetSlots, raw: slots }
+  return {
+    staff,
+    slots: sheetSlots.filter(x => !x.date),
+    dated: sheetSlots.filter(x => !!x.date),
+    raw: slots,
+  }
 }
 
 // Two different spellings of the same branch live in this database: decking,
@@ -297,10 +303,10 @@ async function pushPatients(api: sheets_v4.Sheets, spreadsheetId: string, names:
 
 /** The snapshot: one row per editable cell, with what this push wrote in it. */
 async function pushMap(api: sheets_v4.Sheets, spreadsheetId: string, entries: (CellRef & { tab: string })[]) {
-  const { id: sheetId, rowCount } = await tabId(api, spreadsheetId, MAP_TAB, 8, entries.length + 200, true)
+  const { id: sheetId, rowCount } = await tabId(api, spreadsheetId, MAP_TAB, 9, entries.length + 200, true)
   const span = Math.max(rowCount, entries.length + 200)
   const rows = [
-    { values: ['TAB', 'ROW', 'COL', 'LINE', 'STAFF', 'DAY', 'TIME', 'WROTE'].map(h => ({ userEnteredValue: { stringValue: h } })) },
+    { values: ['TAB', 'ROW', 'COL', 'LINE', 'STAFF', 'DAY', 'TIME', 'WROTE', 'DATE'].map(h => ({ userEnteredValue: { stringValue: h } })) },
     ...entries.map(e => ({ values: [
       { userEnteredValue: { stringValue: e.tab } },
       { userEnteredValue: { numberValue: e.row } },
@@ -310,11 +316,12 @@ async function pushMap(api: sheets_v4.Sheets, spreadsheetId: string, entries: (C
       { userEnteredValue: { stringValue: e.dayOfWeek } },
       { userEnteredValue: { stringValue: e.startTime } },
       { userEnteredValue: { stringValue: e.wrote } },
+      { userEnteredValue: { stringValue: e.date ?? '' } },
     ] })),
   ]
   await api.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: [
-    { updateSheetProperties: { properties: { sheetId, hidden: true, gridProperties: { rowCount: span, columnCount: 8 } }, fields: 'hidden,gridProperties.rowCount,gridProperties.columnCount' } },
-    { updateCells: { range: { sheetId, startRowIndex: 0, endRowIndex: span, startColumnIndex: 0, endColumnIndex: 8 }, fields: 'userEnteredValue' } },
+    { updateSheetProperties: { properties: { sheetId, hidden: true, gridProperties: { rowCount: span, columnCount: 9 } }, fields: 'hidden,gridProperties.rowCount,gridProperties.columnCount' } },
+    { updateCells: { range: { sheetId, startRowIndex: 0, endRowIndex: span, startColumnIndex: 0, endColumnIndex: 9 }, fields: 'userEnteredValue' } },
   ] } })
   for (let i = 0; i < rows.length; i += 500) {
     await api.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: [
@@ -370,7 +377,7 @@ const same = (a: Triple, b: Triple) =>
 async function pullTabs(
   api: sheets_v4.Sheets, spreadsheetId: string, branch: string, report: SyncReport,
 ) {
-  const map = await api.spreadsheets.values.get({ spreadsheetId, range: `${MAP_TAB}!A2:H` }).catch(() => null)
+  const map = await api.spreadsheets.values.get({ spreadsheetId, range: `${MAP_TAB}!A2:I` }).catch(() => null)
   const entries = (map?.data.values ?? []).filter(r => r.length >= 8)
   if (entries.length === 0) return            // nothing has been pushed yet
 
@@ -382,14 +389,18 @@ async function pullTabs(
   }
 
   // Group the three lines of each slot back together.
-  const bySlot = new Map<string, { tab: string; staffId: string; day: string; time: string; sheet: Triple; snap: Triple; ref: string }>()
+  const bySlot = new Map<string, { tab: string; staffId: string; day: string; time: string; date: string; sheet: Triple; snap: Triple; ref: string }>()
   for (const r of entries) {
-    const [tab, row, col, line, staffId, day, time, wrote] = r
-    const key = `${tab}|${staffId}|${day}|${time}`
+    const [tab, row, col, line, staffId, day, time, wrote, dateStr] = r
+    // The date is part of a cell's identity: the same staff, day and hour can
+    // be both a weekly slot and a one-off, and writing one into the other
+    // would move a booking between them.
+    const key = `${tab}|${staffId}|${day}|${time}|${dateStr ?? ''}`
     const grid = values.get(String(tab)) ?? []
     const now = String(grid[Number(row)]?.[Number(col)] ?? '')
     const slot = bySlot.get(key) ?? {
       tab: String(tab), staffId: String(staffId), day: String(day), time: String(time),
+      date: String(dateStr ?? ''),
       sheet: { name: '', pay: '', notes: '', extras: [] }, snap: { name: '', pay: '', notes: '', extras: [] },
       ref: `${tab} r${Number(row) + 1}`,
     }
@@ -420,7 +431,11 @@ async function pullTabs(
 
     const dept = slot.tab
     const existing = await prisma.deckingSlot.findMany({
-      where: { staffId: slot.staffId, dayOfWeek: slot.day, startTime: slot.time, branch, department: dept, isClass: false, date: null },
+      where: {
+        staffId: slot.staffId, dayOfWeek: slot.day, startTime: slot.time,
+        branch, department: dept, isClass: false,
+        date: slot.date ? new Date(`${slot.date}T00:00:00Z`) : null,
+      },
       select: { id: true, patientId: true, disabled: true, paymentType: true, hmoProvider: true, notes: true, patient: { select: { firstName: true, lastName: true } } },
     })
     const occupants = existing.filter(e => e.patientId)
@@ -459,6 +474,7 @@ async function pullTabs(
             staffId: slot.staffId, dayOfWeek: slot.day, startTime: slot.time,
             endTime: hhmm(parseInt(slot.time.slice(0, 2), 10) + 1),
             branch, department: dept, disabled: true, notes: keepNote,
+            date: slot.date ? new Date(`${slot.date}T00:00:00Z`) : null,
           } })
         }
         report.applied.push({ tab: slot.tab, cell: `${slot.day} ${slot.time}`, what: slot.sheet.name })
@@ -519,6 +535,7 @@ async function pullTabs(
           staffId: slot.staffId, dayOfWeek: slot.day, startTime: slot.time,
           endTime: hhmm(parseInt(slot.time.slice(0, 2), 10) + 1),
           branch, department: dept, ...data,
+          date: slot.date ? new Date(`${slot.date}T00:00:00Z`) : null,
         } })
       }
       // Anyone the sheet no longer lists has been taken off this hour.
@@ -565,8 +582,8 @@ export async function syncBranch(branch: string, spreadsheetId: string): Promise
   const mapEntries: (CellRef & { tab: string })[] = []
   for (const dept of DEPARTMENTS) {
     try {
-      const { staff, slots } = await loadDepartment(branch, dept)
-      const grid = buildGrid({ staff, slots })
+      const { staff, slots, dated } = await loadDepartment(branch, dept)
+      const grid = buildGrid({ staff, slots, dated })
       if (!grid) continue
       const res = await pushTab(api, spreadsheetId, dept, grid, patientRows, payOptions, client.identity)
       for (const c of grid.cells) mapEntries.push({ ...c, tab: dept })

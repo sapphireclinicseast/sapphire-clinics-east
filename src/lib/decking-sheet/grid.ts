@@ -57,6 +57,8 @@ export interface SheetSlot {
   patient: string | null      // "SURNAME, Firstname", already uppercased upstream
   patientId: string | null
   dp: number | null           // downpayment taken against this slot, if any
+  /** YYYY-MM-DD when this is a one-off rather than part of the weekly pattern. */
+  date?: string | null
 }
 
 /** What one editable cell stands for, and what the sheet was last set to. */
@@ -66,6 +68,8 @@ export interface CellRef {
   staffId: string
   dayOfWeek: string
   startTime: string
+  /** YYYY-MM-DD for a one-off, empty for the weekly pattern. */
+  date: string
   /** Which of the three lines this is. */
   line: 'name' | 'pay' | 'remark'
   /** The value this sync wrote. The next pull compares against it. */
@@ -163,7 +167,9 @@ export function remarkFor(occupants: SheetSlot[], blocked: SheetSlot | undefined
     .join('  ·  ')
 }
 
-export function buildGrid({ staff, slots }: { staff: SheetStaff[]; slots: SheetSlot[] }): Grid | null {
+export function buildGrid(
+  { staff, slots, dated = [] }: { staff: SheetStaff[]; slots: SheetSlot[]; dated?: SheetSlot[] },
+): Grid | null {
   const live = staff.filter(s => (s.workDays ?? []).length > 0 && hoursBetween(s.startTime, s.endTime).length > 0)
   if (live.length === 0) return null
 
@@ -286,7 +292,7 @@ export function buildGrid({ staff, slots }: { staff: SheetStaff[]; slots: SheetS
           const remark = remarkFor(occupants, blocked)
 
           const value = line === 'name' ? name : line === 'pay' ? pay : remark
-          cells.push({ row: top + r, col: base + c, staffId: blk.st.id, dayOfWeek: day.key, startTime: hhmm(h), line, wrote: value })
+          cells.push({ row: top + r, col: base + c, staffId: blk.st.id, dayOfWeek: day.key, startTime: hhmm(h), date: '', line, wrote: value })
 
           if (line !== 'remark') validate.push({ row: top + r, col: base + c, kind: line })
 
@@ -327,6 +333,123 @@ export function buildGrid({ staff, slots }: { staff: SheetStaff[]; slots: SheetS
     // clears nothing, which stranded old block headers under new ones.
     rows.push({ values: Array.from({ length: totalCols }, () => blank()) })
     rows.push({ values: Array.from({ length: totalCols }, () => blank()) })
+  }
+
+  // ── One-off dates ─────────────────────────────────────────────────────────
+  //
+  // Consultants who give the clinic named days rather than a standing week —
+  // medical doctors mostly, and psychology, some of whom come once a quarter.
+  // They cannot go in the grid above: a cell in a weekday column means "every
+  // Tuesday", and a single visit drawn there would claim that hour for ever.
+  //
+  // So they are their own blocks, below, each headed with its actual date. The
+  // clinic's own psych sheet is kept exactly this way, which is where the shape
+  // comes from.
+  const byStaffDate = new Map<string, SheetSlot[]>()
+  for (const d of dated) {
+    if (!d.date) continue
+    const key = `${d.staffId}|${d.date.slice(0, 10)}`
+    byStaffDate.set(key, [...(byStaffDate.get(key) ?? []), d])
+  }
+  const nameOf = new Map(staff.map(st => [st.id, `${st.lastName}, ${st.firstName}`.toUpperCase()]))
+
+  if (byStaffDate.size > 0) {
+    rows.push({ values: Array.from({ length: totalCols }, () => blank()) })
+    const head = Array.from({ length: totalCols }, () => blank())
+    head[0] = cell('ONE-OFF DATES', {
+      backgroundColor: rgb('#BE185D'),
+      textFormat: { bold: true, fontSize: 10, foregroundColor: rgb('#FFFFFF') },
+      horizontalAlignment: 'LEFT',
+    })
+    for (let c = 1; c < totalCols; c++) head[c] = cell('', { backgroundColor: rgb('#BE185D') })
+    merges.push({ startRowIndex: rows.length, endRowIndex: rows.length + 1, startColumnIndex: 0, endColumnIndex: totalCols })
+    rows.push({ values: head })
+
+    const keys = [...byStaffDate.keys()].sort((a, b) => {
+      const [sa, da] = a.split('|'); const [sb, db] = b.split('|')
+      return da.localeCompare(db) || String(nameOf.get(sa)).localeCompare(String(nameOf.get(sb)))
+    })
+
+    for (let i = 0; i < keys.length; i += perBand) {
+      const band = keys.slice(i, i + perBand)
+      const tallest = Math.max(...band.map(key => (byStaffDate.get(key) ?? []).length))
+      const top = rows.length
+      const bandRows = 2 + tallest * ROWS_PER_HOUR
+
+      for (let r = 0; r < bandRows; r++) {
+        const values: Cell[] = Array.from({ length: totalCols }, () => blank())
+        band.forEach((key, bi) => {
+          const base = bi * stride
+          const put = (off: number, c: Cell) => { values[base + off] = c }
+          const [staffId, dateStr] = key.split('|')
+          const mine = (byStaffDate.get(key) ?? []).sort((a, b) => a.startTime.localeCompare(b.startTime))
+          const when = new Date(`${dateStr}T00:00:00Z`)
+
+          if (r === 0) {
+            put(0, cell(nameOf.get(staffId) ?? '', {
+              backgroundColor: rgb('#9D174D'),
+              textFormat: { bold: true, fontSize: 10, foregroundColor: rgb('#FFFFFF') },
+            }))
+            for (let c = 1; c <= k; c++) put(c, cell('', { backgroundColor: rgb('#9D174D') }))
+            merges.push({ startRowIndex: top, endRowIndex: top + 1, startColumnIndex: base, endColumnIndex: base + k + 1 })
+            return
+          }
+          if (r === 1) {
+            put(0, cell('TIME', { backgroundColor: rgb('#FBCFE8'), textFormat: { bold: true, fontSize: 9 } }))
+            // The date IS the column heading here, with its weekday beside it —
+            // a one-off is read as "12 November", not as "a Thursday".
+            put(1, cell(when.toLocaleDateString('en-PH', { day: 'numeric', month: 'long', timeZone: 'UTC' })
+              + ' · ' + when.toLocaleDateString('en-PH', { weekday: 'long', timeZone: 'UTC' }).toUpperCase(),
+              { backgroundColor: rgb('#FBCFE8'), textFormat: { bold: true, fontSize: 9 } }))
+            for (let c = 2; c <= k; c++) put(c, cell('', { backgroundColor: rgb('#FBCFE8') }))
+            if (k > 1) merges.push({ startRowIndex: top + 1, endRowIndex: top + 2, startColumnIndex: base + 1, endColumnIndex: base + k + 1 })
+            return
+          }
+
+          const idx = r - 2
+          const hourIdx = Math.floor(idx / ROWS_PER_HOUR)
+          const line: CellRef['line'] = idx % ROWS_PER_HOUR === 0 ? 'name' : idx % ROWS_PER_HOUR === 1 ? 'pay' : 'remark'
+          const slot = mine[hourIdx]
+          if (!slot) return
+
+          if (line === 'name') {
+            put(0, cell(hourLabel(parseInt(slot.startTime.slice(0, 2), 10)), { textFormat: { bold: true, fontSize: 9 } }))
+            merges.push({ startRowIndex: top + r, endRowIndex: top + r + ROWS_PER_HOUR, startColumnIndex: base, endColumnIndex: base + 1 })
+          } else {
+            put(0, cell(''))
+          }
+
+          const occupants = slot.patient ? [slot] : []
+          const blocked = slot.disabled ? slot : undefined
+          const name = nameFor(occupants, blocked)
+          const pay = blocked || !occupants[0] ? '' : payLabel(occupants[0].paymentType, occupants[0].hmoProvider)
+          const remark = remarkFor(occupants, blocked)
+          const value = line === 'name' ? name : line === 'pay' ? pay : remark
+
+          cells.push({ row: top + r, col: base + 1, staffId, dayOfWeek: slot.dayOfWeek, startTime: slot.startTime, date: dateStr, line, wrote: value })
+          if (line !== 'remark') validate.push({ row: top + r, col: base + 1, kind: line })
+          if (line === 'name' && !blocked) {
+            editable.push({ startRowIndex: top + r, endRowIndex: top + r + ROWS_PER_HOUR, startColumnIndex: base + 1, endColumnIndex: base + 2 })
+          }
+
+          if (line === 'remark') {
+            put(1, remark
+              ? cell(remark, { backgroundColor: rgb(REMARK_BG), textFormat: { fontSize: 8, italic: true, foregroundColor: rgb('#6B7280') } })
+              : cell(FREE_TEXT_HINT, { backgroundColor: rgb(REMARK_BG), textFormat: { fontSize: 8, italic: true, foregroundColor: rgb('#B3AFA4') } }))
+          } else if (line === 'pay') {
+            put(1, cell(pay, { backgroundColor: rgb(PAY_BG), textFormat: { bold: true, fontSize: 8, foregroundColor: rgb(pay.startsWith('HMO') ? INK.HMO : INK[pay as keyof typeof INK] ?? INK.CASH) } }))
+          } else {
+            put(1, name === BLOCKED || name === BREAK
+              ? cell(name, { textFormat: { bold: true, fontSize: 9, foregroundColor: rgb(INK.NA) } })
+              : cell(name, { textFormat: { bold: true, fontSize: 9 } }))
+          }
+          for (let c = 2; c <= k; c++) put(c, cell('', { backgroundColor: rgb(OFF_BG) }))
+        })
+        rows.push({ values })
+      }
+      rows.push({ values: Array.from({ length: totalCols }, () => blank()) })
+      rows.push({ values: Array.from({ length: totalCols }, () => blank()) })
+    }
   }
 
   return { rows, merges, validate, editable, cells, totalCols, perBand, k, staffCount: live.length }
