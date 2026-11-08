@@ -806,6 +806,17 @@ export default function FrontDeskWelcome({
         )}
       </header>
 
+      {/* ── Front desk reference ── kept directly under the greeting, where
+          they were asked for (#717/#725): two equal columns, one per row on a
+          narrow screen. ── */}
+      <section aria-labelledby="reference-heading">
+        <SectionHeading id="reference-heading" title="Front desk reference" />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+          <DeskShortcutCard />
+          <PactCancellationReminder />
+        </div>
+      </section>
+
       {/* ── Needs your attention ── one tile per work queue on this page. Six
           tiles: 3 across from 1280px, 2 on tablet, 1 on a phone — no orphan. */}
       <section aria-labelledby="attention-heading">
@@ -1159,16 +1170,6 @@ export default function FrontDeskWelcome({
           <div className="min-w-0">
             <PastProgressReports />
           </div>
-        </div>
-      </section>
-
-      {/* ── Reference: read once and remembered, so they come after the work.
-          Two equal columns, one per row on a narrow screen. ── */}
-      <section aria-labelledby="reference-heading">
-        <SectionHeading id="reference-heading" title="Front desk reference" />
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
-          <DeskShortcutCard />
-          <PactCancellationReminder />
         </div>
       </section>
     </div>
