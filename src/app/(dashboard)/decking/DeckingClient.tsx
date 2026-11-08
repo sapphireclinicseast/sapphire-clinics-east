@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useRef, useCallback } from 'react'
-import { ChevronDown, Plus, X, Settings2, Ban, Search, Users, CalendarCheck, CalendarPlus, Percent, BarChart3, Info, Lock, Loader2, Clock, Rows3, Rows4, ChevronsDownUp, ChevronsUpDown, GraduationCap } from 'lucide-react'
+import { ChevronDown, Plus, X, Settings2, Ban, Search, Users, CalendarCheck, CalendarPlus, Percent, BarChart3, Info, Lock, Loader2, Clock, Rows3, Rows4, ChevronsDownUp, ChevronsUpDown, GraduationCap, UserCheck, AlertTriangle } from 'lucide-react'
 import { DashCard, KpiCard, Skeleton, EmptyState, DeptChip, CARD_STYLE } from '../patients/dashboard/ui'
 import {
   CONTROL, CONTROL_SM, CONTROL_STYLE, LABEL, BTN_PRIMARY, BTN_SECONDARY, BTN_SM, SUBTLE_BG, TEAL_HEX, DECK_CSS,
@@ -2156,23 +2156,39 @@ export default function DeckingClient({ role }: { role: string }) {
                     these hours are supervised teaching time and are excluded
                     from public availability, utilisation and capacity. */}
                 {internStaff.length > 0 && (
-                  <div className="mt-5">
-                    <div className="flex flex-wrap items-center gap-2 mb-2">
-                      <GraduationCap size={14} style={{ color: '#4338CA' }} />
-                      <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: '#4338CA' }}>
-                        Interns &mdash; {activeDept}
-                      </p>
-                      <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>
-                        {internStaff.length} on placement
+                  <section className="mt-6 rounded-xl overflow-hidden" style={CARD_STYLE} aria-label={`Interns — ${activeDept}`}>
+                    <div className="flex flex-wrap items-start gap-3 px-4 py-3" style={{ borderBottom: '1px solid var(--light-gray)', background: '#FAFAFF' }}>
+                      <span className="inline-flex items-center justify-center w-9 h-9 rounded-lg flex-shrink-0" style={{ background: '#EEF0FF', color: '#4338CA' }}>
+                        <GraduationCap size={18} />
                       </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="text-sm font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>
+                            Interns
+                          </h3>
+                          <span className="text-[11px] font-semibold rounded-full px-2 py-0.5" style={{ background: '#EEF0FF', color: '#4338CA' }}>
+                            {activeDept}
+                          </span>
+                          <span className="text-[11px] tabular-nums rounded-full px-2 py-0.5" style={{ background: SUBTLE_BG, color: 'var(--mid-gray)' }}>
+                            {internStaff.length} on placement
+                          </span>
+                        </div>
+                        <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+                          Supervised teaching hours, each under a named supervisor &mdash; not counted in availability or capacity.
+                        </p>
+                      </div>
                     </div>
                     {supervisorOptions.length === 0 && (
-                      <p className="text-[11px] mb-2 rounded-lg px-3 py-2"
+                      <div className="flex items-start gap-2 mx-4 mt-3 rounded-lg px-3 py-2 text-xs"
                         style={{ background: '#FFFBEB', border: '1px solid #FDE68A', color: '#92400E' }}>
-                        No one in {activeDept} at this branch carries the Clinical Supervisor badge, so there is
-                        nobody to assign. Tick it on their HR staff profile and it appears here.
-                      </p>
+                        <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
+                        <span>
+                          No one in {activeDept} at this branch carries the Clinical Supervisor badge, so there is
+                          nobody to assign. Tick it on their HR staff profile and it appears here.
+                        </span>
+                      </div>
                     )}
+                    <div className="p-3 sm:p-4">
                     <div className={`flex flex-col ${density === 'compact' ? 'gap-2' : 'gap-3'}`}>
                       {internStaff.map(s => {
                         // Whatever their existing hours already say, so the
@@ -2182,14 +2198,19 @@ export default function DeckingClient({ role }: { role: string }) {
                           ?? mine.find(sl => sl.supervisorId)?.supervisorId
                           ?? ''
                         return (
-                          <div key={s.id} className="rounded-xl" style={{ border: '1px solid #C7CCF7', background: '#F8F9FF' }}>
-                            <div className="flex flex-wrap items-center gap-2 px-3 pt-2.5">
-                              <span className="text-[11px] font-semibold" style={{ color: '#4338CA' }}>Supervised by</span>
+                          <div key={s.id} className="rounded-xl overflow-hidden"
+                            style={{ border: `1px solid ${current ? '#DADDF7' : '#FCD9A8'}`, borderLeft: `3px solid ${current ? '#6366F1' : '#F59E0B'}`, background: '#fff' }}>
+                            <div className="flex flex-wrap items-center gap-2 px-3 py-2" style={{ background: current ? '#FAFAFF' : '#FFFBEB', borderBottom: '1px solid var(--light-gray)' }}>
+                              <UserCheck size={14} style={{ color: current ? '#4338CA' : '#B45309' }} aria-hidden />
+                              <label htmlFor={`intern-sup-${s.id}`} className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: current ? '#4338CA' : '#B45309' }}>
+                                Supervised by
+                              </label>
                               <select
+                                id={`intern-sup-${s.id}`}
                                 value={current}
                                 onChange={e => setInternSupervisor(s.id, e.target.value)}
-                                className="text-xs rounded-lg px-2 py-1"
-                                style={{ border: '1px solid #C7CCF7', background: '#fff', color: 'var(--charcoal)' }}
+                                className={CONTROL_SM}
+                                style={{ ...CONTROL_STYLE, minWidth: 200 }}
                               >
                                 <option value="">Choose a supervisor…</option>
                                 {supervisorOptions.map(sup => (
@@ -2197,8 +2218,10 @@ export default function DeckingClient({ role }: { role: string }) {
                                 ))}
                               </select>
                               {!current && (
-                                <span className="text-[11px]" style={{ color: '#B45309' }}>
-                                  unassigned &mdash; these hours will not show on anyone&rsquo;s schedule
+                                <span className="inline-flex items-center gap-1 text-[11px] font-semibold rounded-full px-2 py-0.5"
+                                  style={{ background: '#FEF3C7', color: '#92400E' }}>
+                                  <AlertTriangle size={11} aria-hidden />
+                                  Unassigned &mdash; these hours won&rsquo;t show on anyone&rsquo;s schedule
                                 </span>
                               )}
                             </div>
@@ -2219,12 +2242,14 @@ export default function DeckingClient({ role }: { role: string }) {
                               density={density}
                               collapsed={collapsed.has(s.id)}
                               onToggleCollapse={() => toggleCollapsed(s.id)}
+                              showCapacity={false}
                             />
                           </div>
                         )
                       })}
                     </div>
-                  </div>
+                    </div>
+                  </section>
                 )}
               </>
             )}
