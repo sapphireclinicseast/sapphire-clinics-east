@@ -11,7 +11,7 @@ import PatientRequestsPanel from './PatientRequestsPanel'
 import { DAY_KEYS, DAY_LABEL, DAY_SHORT, sortDays } from '@/lib/decking-days'
 import SlotLoaPanel, { type LoaLite } from './SlotLoaPanel'
 import { DECK_SECTIONS, DECK_GROUPS, inSection, arrangementFor, servesSectionAnywhere, slotInSection, isDualTagged, soleDeliveryMode, DELIVERY_MODES, type DeckSection } from '@/lib/work-arrangement'
-import DeckingPerDay from './DeckingPerDay'
+import DeckingPerDay, { PerDaySkeleton } from './DeckingPerDay'
 import SpedClassBoard from './SpedClassBoard'
 import InterdepartmentBoard from './InterdepartmentBoard'
 import DeckingHistory from './DeckingHistory'
@@ -2104,7 +2104,7 @@ export default function DeckingClient({ role }: { role: string }) {
             ) : dataError ? (
               <ErrorCard title={`Couldn't load the ${branchName} board`} hint="Check your connection, then try again." onRetry={() => { void loadBranchData(activeBranch) }} />
             ) : boardLoading ? (
-              boardSkeleton
+              activeSection === 'perday' ? <PerDaySkeleton /> : boardSkeleton
             ) : activeSection === 'history' ? (
               /* The board over time, from the daily snapshots — the board
                  itself keeps no dated record. */
