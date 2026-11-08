@@ -9,7 +9,6 @@ import {
   Trash2,
   Zap,
   CheckCircle,
-  AlertCircle,
   ChevronDown,
   ChevronUp,
   ExternalLink,
@@ -17,8 +16,16 @@ import {
   Mail,
   KeyRound,
   Building2,
+  Palette,
+  X,
 } from 'lucide-react'
 import { branchLabel } from '@/lib/branch-label'
+import { CARD_STYLE, KpiCard, Skeleton, EmptyState } from '../../patients/dashboard/ui'
+import {
+  SettingsHeader, GroupLabel, StatusPill, ProviderTile, ProviderCard, Banner,
+  CONTROL, CONTROL_STYLE, LABEL, BTN_PRIMARY, BTN_SECONDARY, BTN_SM, BTN_DANGER_GHOST, DANGER, SUBTLE_BG, TH,
+  fmtDate, relTime,
+} from '../ui'
 
 interface SocialAccount {
   id: string
@@ -29,6 +36,8 @@ interface SocialAccount {
   profileUrl?: string
   accessToken: string // masked
   connectedAt: string
+  /** Sent by GET /api/social/accounts (Prisma @updatedAt); display only. */
+  updatedAt?: string
 }
 
 const PLATFORM_META = {
@@ -41,10 +50,47 @@ const PLATFORM_META = {
   ), color: '#000000', bg: '#00000012' },
 }
 
+const FB_BLUE = '#1877F2'
+const IG_PINK = '#E1306C'
+const GMAIL_RED = '#EA4335'
+const CANVA_PURPLE = '#7B2FBE'
+const AMBER = { bg: '#FFFBEB', fg: '#92400E', border: '#FDE68A' }
+
+/** Placeholder KPI tile while its source loads. */
+function KpiSkeleton() {
+  return (
+    <div className="rounded-xl px-4 py-3.5" style={CARD_STYLE} aria-hidden>
+      <Skeleton className="h-3 w-20" />
+      <Skeleton className="h-7 w-14 mt-2" />
+      <Skeleton className="h-3 w-24 mt-2" />
+    </div>
+  )
+}
+
+/** Placeholder rows inside a provider card while its list loads. */
+function RowsSkeleton({ rows = 2 }: { rows?: number }) {
+  return (
+    <div aria-hidden>
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} className="flex items-center gap-4 px-5 py-3.5" style={{ borderTop: i ? '1px solid var(--light-gray)' : undefined }}>
+          <Skeleton className="w-8 h-8 rounded-lg" />
+          <div className="flex-1 min-w-0 space-y-1.5">
+            <Skeleton className="h-3.5" style={{ width: `${55 - i * 10}%` }} />
+            <Skeleton className="h-2.5" style={{ width: `${40 - i * 8}%` }} />
+          </div>
+          <Skeleton className="h-8 w-24" />
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function AccountsPage() {
   const searchParams = useSearchParams()
   const [accounts, setAccounts] = useState<SocialAccount[]>([])
   const [loading, setLoading] = useState(true)
+  // Display only: a failed list load used to leave "Loading accounts…" up forever.
+  const [accountsError, setAccountsError] = useState('')
   const [showAutoImport, setShowAutoImport] = useState(false)
   const [showManual, setShowManual] = useState(false)
   const [userToken, setUserToken] = useState('')
@@ -59,9 +105,14 @@ export default function AccountsPage() {
   const canvaError = searchParams.get('canva') === 'error' ? (searchParams.get('message') || 'unknown_error') : null
   const [canvaAccount, setCanvaAccount] = useState<{ displayName?: string; connectedAt?: string } | null>(null)
   const [loadingCanva, setLoadingCanva] = useState(true)
+  // Display only: GET /api/canva/disconnect reports connected=false with a
+  // connectedAt when a Canva row exists but its token could not be refreshed.
+  const [canvaStale, setCanvaStale] = useState(false)
+  const [canvaCheckFailed, setCanvaCheckFailed] = useState(false)
   const [googleConnected, setGoogleConnected] = useState(googleJustConnected)
   const [gmailAccounts, setGmailAccounts] = useState<{ id: string; email: string; displayName?: string; connectedAt: string }[]>([])
   const [loadingGmail, setLoadingGmail] = useState(true)
+  const [gmailError, setGmailError] = useState(false)
   const [manualForm, setManualForm] = useState({
     platform: 'FACEBOOK',
     pageId: '',
@@ -78,10 +129,17 @@ export default function AccountsPage() {
 
   async function fetchAccounts() {
     setLoading(true)
-    const res = await fetch('/api/social/accounts')
-    const data = await res.json()
-    setAccounts(data.accounts || [])
-    setLoading(false)
+    setAccountsError('')
+    try {
+      const res = await fetch('/api/social/accounts')
+      const data = await res.json()
+      if (!res.ok) setAccountsError(data.error || `Server error (HTTP ${res.status})`)
+      setAccounts(data.accounts || [])
+    } catch (err) {
+      setAccountsError(err instanceof Error ? err.message : 'Could not load accounts')
+    } finally {
+      setLoading(false)
+    }
   }
 
   useEffect(() => { fetchAccounts() }, [])
@@ -91,7 +149,9 @@ export default function AccountsPage() {
       .then((r) => r.json())
       .then((d) => {
         if (d.connected) setCanvaAccount({ displayName: d.displayName, connectedAt: d.connectedAt })
+        else if (d.connectedAt) setCanvaStale(true)
       })
+      .catch(() => setCanvaCheckFailed(true))
       .finally(() => setLoadingCanva(false))
   }, [])
 
@@ -106,6 +166,7 @@ export default function AccountsPage() {
     fetch('/api/gmail-accounts')
       .then((r) => r.json())
       .then((d) => setGmailAccounts(d.accounts || []))
+      .catch(() => setGmailError(true))
       .finally(() => setLoadingGmail(false))
   }, [])
 
@@ -226,533 +287,537 @@ export default function AccountsPage() {
 
   const fbAccounts = accounts.filter((a) => a.platform === 'FACEBOOK')
   const igAccounts = accounts.filter((a) => a.platform === 'INSTAGRAM')
+  const socialInitial = loading && accounts.length === 0
+
+  const metaStatus = socialInitial
+    ? <StatusPill tone="checking">Checking…</StatusPill>
+    : accountsError
+      ? <StatusPill tone="error">Error</StatusPill>
+      : accounts.length > 0
+        ? <StatusPill tone="connected">Connected · {accounts.length}</StatusPill>
+        : <StatusPill tone="off">Not connected</StatusPill>
+
+  const gmailStatus = loadingGmail
+    ? <StatusPill tone="checking">Checking…</StatusPill>
+    : gmailError
+      ? <StatusPill tone="error">Error</StatusPill>
+      : gmailAccounts.length > 0
+        ? <StatusPill tone="connected">Connected · {gmailAccounts.length}</StatusPill>
+        : <StatusPill tone="off">Not connected</StatusPill>
+
+  const canvaStatus = loadingCanva
+    ? <StatusPill tone="checking">Checking…</StatusPill>
+    : canvaAccount
+      ? <StatusPill tone="connected">Connected</StatusPill>
+      : canvaStale
+        ? <StatusPill tone="expired" title="A Canva account is saved but its access could not be refreshed. Connect again.">Expired</StatusPill>
+        : canvaCheckFailed
+          ? <StatusPill tone="error" title="Could not check the Canva connection">Error</StatusPill>
+          : <StatusPill tone="off">Not connected</StatusPill>
 
   return (
-    <div className="max-w-3xl space-y-6">
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: 'var(--teal)' }}>
-          Settings
-        </p>
-        <h1 className="text-2xl font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
-          Connected Accounts
-        </h1>
-        <p className="text-sm mt-1" style={{ color: 'var(--mid-gray)' }}>
-          Connect your Facebook pages and Instagram accounts to enable scheduling.
-          You can connect up to all 3 Facebook + 3 Instagram pages.
-        </p>
-      </div>
-
-      {/* Summary cards */}
-      <div className="grid grid-cols-2 gap-4">
-        {[
-          { label: 'Facebook Pages', count: fbAccounts.length, max: 3, color: '#1877F2', icon: Facebook },
-          { label: 'Instagram Accounts', count: igAccounts.length, max: 3, color: '#E1306C', icon: Instagram },
-        ].map(({ label, count, max, color, icon: Icon }) => (
-          <div key={label} className="rounded-xl p-4 flex items-center gap-4" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: `${color}18` }}>
-              <Icon size={20} style={{ color }} />
-            </div>
-            <div>
-              <p className="text-xl font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
-                {count} <span className="text-sm font-normal" style={{ color: 'var(--mid-gray)' }}>/ {max}</span>
-              </p>
-              <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>{label}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Facebook OAuth success/error banners */}
-      {fbConnectedParam && (
-        <div className="flex items-center gap-2 px-4 py-3 rounded-lg text-sm" style={{ background: 'var(--pale-teal)', color: 'var(--teal)' }}>
-          <CheckCircle size={16} />
-          Facebook &amp; Instagram connected successfully! All your pages have been imported.
-        </div>
-      )}
-      {fbError && (
-        <div className="flex items-center gap-2 px-4 py-3 rounded-lg text-sm" style={{ background: '#FEE2E2', color: '#DC2626' }}>
-          <AlertCircle size={16} />
-          {fbError === 'no_pages_found'
-            ? 'No Facebook Pages found. Make sure you manage at least one Facebook Page with your account.'
-            : fbError === 'You cancelled the Facebook connection.'
-            ? 'Connection cancelled.'
-            : `Facebook error: ${fbError}`}
-        </div>
-      )}
-      {importResult && (
-        <div className="flex items-center gap-2 px-4 py-3 rounded-lg text-sm" style={{ background: 'var(--pale-teal)', color: 'var(--teal)' }}>
-          <CheckCircle size={16} />
-          {importResult}
-        </div>
-      )}
-      {importError && (
-        <div className="flex items-center gap-2 px-4 py-3 rounded-lg text-sm" style={{ background: '#FEE2E2', color: '#DC2626' }}>
-          <AlertCircle size={16} />
-          {importError}
-        </div>
-      )}
-
-      {/* ── Primary: Connect with Facebook OAuth ── */}
-      <div className="rounded-xl p-5" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: '#1877F218' }}>
-              <Facebook size={20} style={{ color: '#1877F2' }} />
-            </div>
-            <div>
-              <p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>Connect Facebook &amp; Instagram</p>
-              <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
-                One click — imports all your Pages and linked Instagram accounts automatically
-              </p>
-            </div>
-          </div>
-          <a
-            href="/api/social/facebook/auth"
-            className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold whitespace-nowrap"
-            style={{ background: '#1877F2', color: '#fff', fontFamily: 'var(--font-display)' }}
-          >
-            <Facebook size={15} />
-            Connect with Facebook
-          </a>
-        </div>
-        <p className="text-xs mt-3 pt-3" style={{ color: 'var(--mid-gray)', borderTop: '1px solid var(--light-gray)' }}>
-          You&apos;ll be taken to Facebook to sign in and grant page permissions. All Facebook Pages you manage will be imported, along with any linked Instagram Business accounts. Tokens never expire for Page Access Tokens obtained this way.
-        </p>
-      </div>
-
-      {/* ── Fallback: Manual token entry ── */}
-      <div className="flex gap-3">
-        <button
-          onClick={() => { setShowManual(!showManual); setShowAutoImport(false) }}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold"
-          style={{ background: 'var(--light-gray)', color: 'var(--mid-gray)' }}
-        >
-          <Plus size={13} />
-          Add / update token manually
-          {showManual ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-        </button>
-      </div>
-
-      {/* Legacy auto-import panel (hidden by default) */}
-      {showAutoImport && (
-        <div className="rounded-xl p-5 space-y-4" style={{ background: 'var(--pale-teal)', border: '1px solid rgba(26,123,138,0.2)' }}>
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={userToken}
-              onChange={(e) => setUserToken(e.target.value)}
-              placeholder="EAAxxxxxxxx... (User Access Token)"
-              className="flex-1 px-3 py-2.5 rounded-lg text-sm outline-none font-mono"
-              style={{ border: '1px solid rgba(26,123,138,0.3)', background: '#fff', color: 'var(--charcoal)' }}
-            />
-            <button
-              onClick={handleAutoImport}
-              disabled={importing || !userToken.trim()}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold whitespace-nowrap"
-              style={{ background: 'var(--teal)', color: '#fff' }}
-            >
-              {importing ? <RefreshCw size={14} className="animate-spin" /> : <Zap size={14} />}
-              {importing ? 'Importing…' : 'Import'}
-            </button>
-          </div>
-          <div className="rounded-lg p-3 text-xs" style={{ background: '#FEF3C7', color: '#92400E', border: '1px solid #FCD34D' }}>
-            <p className="font-bold mb-0.5">Placeholder kept for legacy reference</p>
-          </div>
-        </div>
-      )}
-
-      {/* Manual add panel */}
-      {showManual && (
-        <div className="rounded-xl p-5 space-y-4" style={{ background: '#fff', border: '1px solid var(--teal)' }}>
-          <p className="text-sm font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
-            Add Account Manually
-          </p>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-widest mb-1.5" style={{ color: 'var(--mid-gray)' }}>Platform</label>
-              <select
-                value={manualForm.platform}
-                onChange={(e) => setManualForm((f) => ({ ...f, platform: e.target.value }))}
-                className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
-                style={{ border: '1.5px solid var(--light-gray)', color: 'var(--charcoal)' }}
-              >
-                <option value="FACEBOOK">Facebook Page</option>
-                <option value="INSTAGRAM">Instagram Business</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-widest mb-1.5" style={{ color: 'var(--mid-gray)' }}>
-                {manualForm.platform === 'FACEBOOK' ? 'Page ID' : 'IG Account ID'}
-              </label>
-              <input
-                type="text"
-                value={manualForm.pageId}
-                onChange={(e) => setManualForm((f) => ({ ...f, pageId: e.target.value }))}
-                placeholder="e.g. 123456789012345"
-                className="w-full px-3 py-2.5 rounded-lg text-sm outline-none font-mono"
-                style={{ border: '1.5px solid var(--light-gray)', color: 'var(--charcoal)' }}
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-widest mb-1.5" style={{ color: 'var(--mid-gray)' }}>
-                Page / Account Name
-              </label>
-              <input
-                type="text"
-                value={manualForm.pageName}
-                onChange={(e) => setManualForm((f) => ({ ...f, pageName: e.target.value }))}
-                placeholder="e.g. Sapphire Clinics East"
-                className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
-                style={{ border: '1.5px solid var(--light-gray)', color: 'var(--charcoal)' }}
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-widest mb-1.5" style={{ color: 'var(--mid-gray)' }}>Profile URL (optional)</label>
-              <input
-                type="text"
-                value={manualForm.profileUrl}
-                onChange={(e) => setManualForm((f) => ({ ...f, profileUrl: e.target.value }))}
-                placeholder="https://facebook.com/yourpage"
-                className="w-full px-3 py-2.5 rounded-lg text-sm outline-none"
-                style={{ border: '1.5px solid var(--light-gray)', color: 'var(--charcoal)' }}
-              />
-            </div>
-            <div className="col-span-2">
-              <label className="block text-xs font-semibold uppercase tracking-widest mb-1.5" style={{ color: 'var(--mid-gray)' }}>Page Access Token</label>
-              <input
-                type="text"
-                value={manualForm.accessToken}
-                onChange={(e) => setManualForm((f) => ({ ...f, accessToken: e.target.value }))}
-                placeholder="EAAxxxxxxxx... (Page Access Token)"
-                className="w-full px-3 py-2.5 rounded-lg text-sm outline-none font-mono"
-                style={{ border: '1.5px solid var(--light-gray)', color: 'var(--charcoal)' }}
-              />
-            </div>
-          </div>
-          <div className="flex gap-3 justify-end">
-            <button onClick={() => setShowManual(false)} className="px-4 py-2 rounded-lg text-sm" style={{ background: 'var(--light-gray)', color: 'var(--charcoal)' }}>Cancel</button>
-            <button
-              onClick={handleManualAdd}
-              disabled={saving || !manualForm.pageId || !manualForm.accessToken}
-              className="px-4 py-2 rounded-lg text-sm font-semibold"
-              style={{ background: 'var(--teal)', color: '#fff' }}
-            >
-              {saving ? 'Connecting…' : 'Connect Account'}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Sync names */}
-      {accounts.length > 0 && (
-        <div className="flex items-center gap-3">
+    <div className="max-w-[1100px] mx-auto space-y-6 min-w-0">
+      <SettingsHeader
+        title="Connected Accounts"
+        subtitle={<>Connect your Facebook pages and Instagram accounts to enable scheduling — up to 3 Facebook + 3 Instagram pages — plus the Gmail senders and Canva account the hub uses.</>}
+        actions={accounts.length > 0 ? (
           <button
             onClick={handleSyncNames}
             disabled={syncingNames}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold"
-            style={{ background: 'var(--pale-teal)', color: 'var(--teal)', border: '1px solid rgba(26,123,138,0.2)' }}
+            className={BTN_SECONDARY}
+            style={CONTROL_STYLE}
+            title="Re-read page names from Facebook"
           >
-            <RefreshCw size={12} className={syncingNames ? 'animate-spin' : ''} />
+            <RefreshCw size={14} className={syncingNames ? 'animate-spin' : ''} style={{ color: 'var(--teal)' }} />
             {syncingNames ? 'Syncing…' : 'Sync Names from Facebook'}
           </button>
-          {syncResult && (
-            <span className="text-xs" style={{ color: 'var(--teal)' }}>{syncResult}</span>
+        ) : undefined}
+      />
+
+      {/* ── KPIs ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {socialInitial ? <><KpiSkeleton /><KpiSkeleton /></> : (
+          <>
+            <KpiCard label="Facebook Pages" icon={<Facebook size={16} />} accent={FB_BLUE}
+              value={<>{fbAccounts.length} <span className="text-sm font-normal" style={{ color: 'var(--mid-gray)' }}>/ 3</span></>}
+              sub={fbAccounts.length >= 3 ? 'All slots used' : `${3 - fbAccounts.length} slot${3 - fbAccounts.length === 1 ? '' : 's'} free`} />
+            <KpiCard label="Instagram Accounts" icon={<Instagram size={16} />} accent={IG_PINK}
+              value={<>{igAccounts.length} <span className="text-sm font-normal" style={{ color: 'var(--mid-gray)' }}>/ 3</span></>}
+              sub={igAccounts.length >= 3 ? 'All slots used' : `${3 - igAccounts.length} slot${3 - igAccounts.length === 1 ? '' : 's'} free`} />
+          </>
+        )}
+        {loadingGmail ? <KpiSkeleton /> : (
+          <KpiCard label="Gmail Senders" icon={<Mail size={16} />} accent={GMAIL_RED}
+            value={gmailError ? '—' : gmailAccounts.length}
+            sub={gmailError ? 'Could not load' : gmailAccounts.length ? 'For email campaigns' : 'None connected'} />
+        )}
+        {loadingCanva ? <KpiSkeleton /> : (
+          <KpiCard label="Canva" icon={<Palette size={16} />} accent={CANVA_PURPLE}
+            value={<span className="text-lg">{canvaAccount ? 'Connected' : canvaStale ? 'Expired' : 'Off'}</span>}
+            sub={canvaAccount?.displayName ? `as ${canvaAccount.displayName}` : canvaAccount ? 'Design import on' : 'Design import off'} />
+        )}
+      </div>
+
+      {/* ── OAuth / import results ── */}
+      {(fbConnectedParam || fbError || importResult || importError) && (
+        <div className="space-y-2">
+          {fbConnectedParam && (
+            <Banner tone="success">Facebook &amp; Instagram connected successfully! All your pages have been imported.</Banner>
           )}
+          {fbError && (
+            <Banner tone="error">
+              {fbError === 'no_pages_found'
+                ? 'No Facebook Pages found. Make sure you manage at least one Facebook Page with your account.'
+                : fbError === 'You cancelled the Facebook connection.'
+                ? 'Connection cancelled.'
+                : `Facebook error: ${fbError}`}
+            </Banner>
+          )}
+          {importResult && <Banner tone="success">{importResult}</Banner>}
+          {importError && <Banner tone="error">{importError}</Banner>}
         </div>
       )}
 
-      {/* Connected accounts list */}
-      {loading ? (
-        <div className="text-sm text-center py-8" style={{ color: 'var(--mid-gray)' }}>Loading accounts…</div>
-      ) : accounts.length === 0 ? (
-        <div
-          className="rounded-xl p-10 flex flex-col items-center text-center"
-          style={{ background: '#fff', border: '2px dashed var(--light-gray)' }}
-        >
-          <Facebook size={36} className="mb-3" style={{ color: 'var(--light-gray)' }} />
-          <p className="font-semibold mb-1" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>No accounts connected</p>
-          <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>
-            Use the Auto-Import button above to connect all your Facebook pages and Instagram accounts at once.
-          </p>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {accounts.map((account) => {
-            const meta = PLATFORM_META[account.platform]
-            const Icon = meta.icon
-            const isRefreshTarget = refreshTargetId === account.id
-            return (
-              <div
-                key={account.id}
-                className="rounded-xl overflow-hidden"
-                style={{ background: '#fff', border: '1px solid var(--light-gray)' }}
+      {/* ═════ Social media ═════ */}
+      <div className="space-y-3">
+        <GroupLabel hint="Scheduling and publishing posts">Social media</GroupLabel>
+
+        {syncResult && <Banner tone="info">{syncResult}</Banner>}
+        {accountsError && (
+          <Banner tone="error" onRetry={fetchAccounts}>
+            <strong>Couldn&rsquo;t load connected social accounts.</strong> {accountsError}
+          </Banner>
+        )}
+
+        <ProviderCard
+          tile={<ProviderTile color={FB_BLUE}><Facebook size={20} /></ProviderTile>}
+          name="Facebook & Instagram"
+          description="One click — imports all your Pages and linked Instagram accounts automatically"
+          status={metaStatus}
+          actions={
+            <>
+              <button
+                onClick={() => { setShowManual(!showManual); setShowAutoImport(false) }}
+                className={BTN_SECONDARY}
+                style={{ ...CONTROL_STYLE, color: 'var(--mid-gray)' }}
+                aria-expanded={showManual}
               >
-                <div className="p-4 flex items-center gap-4">
-                  <div
-                    className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-                    style={{ background: meta.bg }}
+                <Plus size={13} />
+                Add / update token manually
+                {showManual ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+              </button>
+              <a
+                href="/api/social/facebook/auth"
+                className={BTN_PRIMARY}
+                style={{ background: FB_BLUE, fontFamily: 'var(--font-display)' }}
+              >
+                <Facebook size={15} />
+                Connect with Facebook
+              </a>
+            </>
+          }
+          footer={<>You&apos;ll be taken to Facebook to sign in and grant page permissions. All Facebook Pages you manage will be imported, along with any linked Instagram Business accounts. Tokens never expire for Page Access Tokens obtained this way.</>}
+        >
+          {/* Legacy auto-import panel (hidden by default) */}
+          {showAutoImport && (
+            <div className="px-5 py-4 space-y-3" style={{ background: 'var(--pale-teal)', borderBottom: '1px solid var(--light-gray)' }}>
+              <div className="flex flex-wrap gap-2">
+                <input
+                  type="text"
+                  value={userToken}
+                  onChange={(e) => setUserToken(e.target.value)}
+                  placeholder="EAAxxxxxxxx... (User Access Token)"
+                  className={`${CONTROL} flex-1 min-w-[220px] font-mono`}
+                  style={CONTROL_STYLE}
+                />
+                <button
+                  onClick={handleAutoImport}
+                  disabled={importing || !userToken.trim()}
+                  className={BTN_PRIMARY}
+                  style={{ background: 'var(--teal)' }}
+                >
+                  {importing ? <RefreshCw size={14} className="animate-spin" /> : <Zap size={14} />}
+                  {importing ? 'Importing…' : 'Import'}
+                </button>
+              </div>
+              <div className="rounded-lg px-3 py-2 text-xs" style={{ background: AMBER.bg, color: AMBER.fg, border: `1px solid ${AMBER.border}` }}>
+                <p className="font-bold">Placeholder kept for legacy reference</p>
+              </div>
+            </div>
+          )}
+
+          {/* Manual add panel */}
+          {showManual && (
+            <div className="px-5 py-4 space-y-4" style={{ background: SUBTLE_BG, borderBottom: '1px solid var(--light-gray)' }}>
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+                  Add Account Manually
+                </p>
+                <button onClick={() => setShowManual(false)} aria-label="Close manual entry"
+                  className="inline-flex items-center justify-center w-7 h-7 rounded-lg hover:bg-black/[0.05]" style={{ color: 'var(--mid-gray)' }}>
+                  <X size={14} />
+                </button>
+              </div>
+              <div className="grid sm:grid-cols-2 gap-3">
+                <div className="min-w-0">
+                  <label className={LABEL} style={{ color: 'var(--mid-gray)' }}>Platform</label>
+                  <select
+                    value={manualForm.platform}
+                    onChange={(e) => setManualForm((f) => ({ ...f, platform: e.target.value }))}
+                    className={CONTROL}
+                    style={CONTROL_STYLE}
                   >
-                    <Icon size={20} style={{ color: meta.color }} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>
-                        {account.pageName || account.accountId}
-                      </p>
-                      <span
-                        className="text-xs px-2 py-0.5 rounded-full font-semibold"
-                        style={{ background: meta.bg, color: meta.color }}
-                      >
-                        {meta.label}
-                      </span>
-                      <span className="flex items-center gap-1 text-xs" style={{ color: 'var(--teal)' }}>
-                        <CheckCircle size={11} />
-                        Connected
-                      </span>
+                    <option value="FACEBOOK">Facebook Page</option>
+                    <option value="INSTAGRAM">Instagram Business</option>
+                  </select>
+                </div>
+                <div className="min-w-0">
+                  <label className={LABEL} style={{ color: 'var(--mid-gray)' }}>
+                    {manualForm.platform === 'FACEBOOK' ? 'Page ID' : 'IG Account ID'}
+                  </label>
+                  <input
+                    type="text"
+                    value={manualForm.pageId}
+                    onChange={(e) => setManualForm((f) => ({ ...f, pageId: e.target.value }))}
+                    placeholder="e.g. 123456789012345"
+                    className={`${CONTROL} font-mono`}
+                    style={CONTROL_STYLE}
+                  />
+                </div>
+                <div className="min-w-0">
+                  <label className={LABEL} style={{ color: 'var(--mid-gray)' }}>
+                    Page / Account Name
+                  </label>
+                  <input
+                    type="text"
+                    value={manualForm.pageName}
+                    onChange={(e) => setManualForm((f) => ({ ...f, pageName: e.target.value }))}
+                    placeholder="e.g. Sapphire Clinics East"
+                    className={CONTROL}
+                    style={CONTROL_STYLE}
+                  />
+                </div>
+                <div className="min-w-0">
+                  <label className={LABEL} style={{ color: 'var(--mid-gray)' }}>Profile URL (optional)</label>
+                  <input
+                    type="text"
+                    value={manualForm.profileUrl}
+                    onChange={(e) => setManualForm((f) => ({ ...f, profileUrl: e.target.value }))}
+                    placeholder="https://facebook.com/yourpage"
+                    className={CONTROL}
+                    style={CONTROL_STYLE}
+                  />
+                </div>
+                <div className="sm:col-span-2 min-w-0">
+                  <label className={LABEL} style={{ color: 'var(--mid-gray)' }}>Page Access Token</label>
+                  <input
+                    type="text"
+                    value={manualForm.accessToken}
+                    onChange={(e) => setManualForm((f) => ({ ...f, accessToken: e.target.value }))}
+                    placeholder="EAAxxxxxxxx... (Page Access Token)"
+                    className={`${CONTROL} font-mono`}
+                    style={CONTROL_STYLE}
+                  />
+                </div>
+              </div>
+              <div className="flex gap-2 justify-end">
+                <button onClick={() => setShowManual(false)} className={BTN_SECONDARY} style={CONTROL_STYLE}>Cancel</button>
+                <button
+                  onClick={handleManualAdd}
+                  disabled={saving || !manualForm.pageId || !manualForm.accessToken}
+                  className={BTN_PRIMARY}
+                  style={{ background: 'var(--teal)' }}
+                >
+                  {saving ? 'Connecting…' : 'Connect Account'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Connected accounts list */}
+          {socialInitial ? (
+            <RowsSkeleton rows={3} />
+          ) : accounts.length === 0 ? (
+            accountsError ? null : (
+              <div className="flex flex-col items-center">
+                <Facebook size={26} className="mt-10 -mb-8" style={{ color: 'var(--light-gray)' }} />
+                <EmptyState
+                  title="No accounts connected"
+                  hint="Use Connect with Facebook above to connect all your Facebook pages and Instagram accounts at once." />
+              </div>
+            )
+          ) : (
+            <ul>
+              {accounts.map((account, i) => {
+                const meta = PLATFORM_META[account.platform]
+                const Icon = meta.icon
+                const isRefreshTarget = refreshTargetId === account.id
+                return (
+                  <li key={account.id} style={{ borderTop: i ? '1px solid var(--light-gray)' : undefined }}>
+                    <div className="px-5 py-3.5 flex flex-wrap items-center gap-x-4 gap-y-2.5">
+                      <ProviderTile color={meta.color} bg={meta.bg} size={36}>
+                        <Icon size={18} style={{ color: meta.color }} />
+                      </ProviderTile>
+                      <div className="flex-1 min-w-[220px]">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-sm font-semibold truncate" style={{ color: 'var(--charcoal)' }}>
+                            {account.pageName || account.accountId}
+                          </p>
+                          <span
+                            className="text-[11px] px-2 py-0.5 rounded-full font-semibold leading-4"
+                            style={{ background: meta.bg, color: meta.color }}
+                          >
+                            {meta.label}
+                          </span>
+                          <StatusPill tone="connected">Connected</StatusPill>
+                          {account.profileUrl && (
+                            <a href={account.profileUrl} target="_blank" rel="noreferrer"
+                              className="inline-flex items-center gap-1 text-[11px] font-semibold hover:underline" style={{ color: 'var(--teal)' }}>
+                              <ExternalLink size={11} /> Profile
+                            </a>
+                          )}
+                        </div>
+                        <p className="text-[11.5px] font-mono mt-1 truncate" style={{ color: 'var(--mid-gray)' }}>
+                          ID: {account.accountId} · Token: {account.accessToken}
+                        </p>
+                        {(account.connectedAt || account.updatedAt) && (
+                          <p className="text-[11px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+                            {account.connectedAt && <>Connected {fmtDate(account.connectedAt)}</>}
+                            {account.updatedAt && <> · Last updated {relTime(account.updatedAt)}</>}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        <button
+                          onClick={() => {
+                            setRefreshTargetId(isRefreshTarget ? null : account.id)
+                            setRefreshToken('')
+                          }}
+                          className={`${BTN_SM} hover:opacity-90`}
+                          style={{ background: AMBER.bg, color: AMBER.fg, border: `1px solid ${AMBER.border}` }}
+                          title="Refresh expired token"
+                          aria-expanded={isRefreshTarget}
+                        >
+                          <KeyRound size={12} />
+                          Refresh Token
+                        </button>
+                        <button
+                          onClick={() => handleDisconnect(account.id, account.pageName)}
+                          className={BTN_DANGER_GHOST}
+                          style={{ color: DANGER }}
+                        >
+                          <Trash2 size={13} />
+                          Disconnect
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-3 mt-0.5">
-                      <p className="text-xs font-mono" style={{ color: 'var(--mid-gray)' }}>
-                        ID: {account.accountId} · Token: {account.accessToken}
+
+                    {/* Inline refresh token form */}
+                    {isRefreshTarget && (
+                      <div className="px-5 pb-4">
+                        <div className="rounded-lg p-3 space-y-2" style={{ background: AMBER.bg, border: `1px solid ${AMBER.border}` }}>
+                          <p className="text-xs font-semibold" style={{ color: AMBER.fg }}>
+                            Paste a new Page Access Token for <strong>{account.pageName}</strong>
+                          </p>
+                          <p className="text-xs leading-relaxed" style={{ color: AMBER.fg }}>
+                            In Graph API Explorer → select your Meta App → at top-right dropdown, switch from &ldquo;User Token&rdquo; to <strong>&ldquo;{account.pageName}&rdquo;</strong> under Page Access Tokens → copy that token.
+                          </p>
+                          <div className="flex flex-wrap gap-2">
+                            <input
+                              type="text"
+                              value={refreshToken}
+                              onChange={(e) => setRefreshToken(e.target.value)}
+                              placeholder="EAAxxxxxxxx... (Page Access Token)"
+                              className="flex-1 min-w-[220px] h-8 px-3 rounded-lg text-xs outline-none font-mono"
+                              style={{ border: `1px solid ${AMBER.border}`, background: '#fff', color: 'var(--charcoal)' }}
+                            />
+                            <button
+                              onClick={() => handleRefreshToken(account)}
+                              disabled={!refreshToken.trim() || refreshingId === account.id}
+                              className={`${BTN_SM} text-white hover:opacity-90`}
+                              style={{ background: 'var(--teal)' }}
+                            >
+                              {refreshingId === account.id ? <RefreshCw size={12} className="animate-spin" /> : <CheckCircle size={12} />}
+                              {refreshingId === account.id ? 'Saving…' : 'Save Token'}
+                            </button>
+                            <button
+                              onClick={() => { setRefreshTargetId(null); setRefreshToken('') }}
+                              className={`${BTN_SM} hover:bg-gray-50`}
+                              style={CONTROL_STYLE}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </ProviderCard>
+      </div>
+
+      {/* ═════ Email + Design ═════ */}
+      <div className="grid lg:grid-cols-2 gap-6 items-start">
+        {/* ── Gmail Accounts ── */}
+        <div className="space-y-3 min-w-0">
+          <GroupLabel hint="Email campaigns">Email</GroupLabel>
+
+          {googleJustConnected && <Banner tone="success">Gmail account connected successfully!</Banner>}
+          {googleError && (
+            <Banner tone="error">
+              {googleError === 'no_refresh_token'
+                ? 'No refresh token returned. Please revoke app access in your Google account and try again.'
+                : `Connection failed: ${googleError}`}
+            </Banner>
+          )}
+          {gmailError && <Banner tone="error">Couldn&rsquo;t load connected Gmail accounts. Reload the page to try again.</Banner>}
+
+          <ProviderCard
+            tile={<ProviderTile color={GMAIL_RED}><Mail size={20} /></ProviderTile>}
+            name="Gmail / Google Workspace"
+            description={gmailAccounts.length > 0
+              ? `${gmailAccounts.length} account${gmailAccounts.length > 1 ? 's' : ''} connected · Add more to send from different addresses`
+              : 'Used to send email campaigns to patients. You can connect multiple accounts.'}
+            status={gmailStatus}
+            actions={
+              <a
+                href="/api/auth/google"
+                className={BTN_PRIMARY}
+                style={{ background: 'var(--teal)' }}
+              >
+                <Plus size={14} />
+                {gmailAccounts.length > 0 ? 'Add Account' : 'Connect Gmail'}
+              </a>
+            }
+            footer={<>You&apos;ll be redirected to Google to sign in. Make sure <code>GOOGLE_CLIENT_ID</code> and <code>GOOGLE_CLIENT_SECRET</code> are set in your <code>.env</code> file.</>}
+          >
+            {loadingGmail ? (
+              <RowsSkeleton rows={2} />
+            ) : gmailAccounts.length > 0 ? (
+              <ul>
+                {gmailAccounts.map((acct, i) => (
+                  <li key={acct.id} className="px-5 py-3 flex flex-wrap items-center gap-x-3 gap-y-2"
+                    style={{ borderTop: i ? '1px solid var(--light-gray)' : undefined }}>
+                    <ProviderTile color={GMAIL_RED} size={32}><Mail size={15} /></ProviderTile>
+                    <div className="flex-1 min-w-[160px]">
+                      <p className="text-sm font-semibold truncate" style={{ color: 'var(--charcoal)' }}>
+                        {acct.displayName && acct.displayName !== acct.email ? acct.displayName : acct.email}
                       </p>
-                      {account.profileUrl && (
-                        <a href={account.profileUrl} target="_blank" rel="noreferrer" style={{ color: 'var(--teal)' }}>
-                          <ExternalLink size={11} />
-                        </a>
-                      )}
+                      <p className="text-[11.5px] truncate" style={{ color: 'var(--mid-gray)' }}>
+                        {acct.email} · Connected {new Date(acct.connectedAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </p>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <StatusPill tone="connected">Active</StatusPill>
                     <button
-                      onClick={() => {
-                        setRefreshTargetId(isRefreshTarget ? null : account.id)
-                        setRefreshToken('')
-                      }}
-                      className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium"
-                      style={{ background: '#FEF3C7', color: '#92400E', border: '1px solid #FCD34D' }}
-                      title="Refresh expired token"
-                    >
-                      <KeyRound size={12} />
-                      Refresh Token
-                    </button>
-                    <button
-                      onClick={() => handleDisconnect(account.id, account.pageName)}
-                      className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors hover:bg-red-50"
-                      style={{ color: '#DC2626' }}
+                      onClick={() => disconnectGmail(acct.id, acct.email)}
+                      className={BTN_DANGER_GHOST}
+                      style={{ color: DANGER }}
                     >
                       <Trash2 size={13} />
                       Disconnect
                     </button>
-                  </div>
-                </div>
-
-                {/* Inline refresh token form */}
-                {isRefreshTarget && (
-                  <div className="px-4 pb-4 pt-0">
-                    <div className="rounded-lg p-3 space-y-2" style={{ background: '#FEF3C7', border: '1px solid #FCD34D' }}>
-                      <p className="text-xs font-semibold" style={{ color: '#92400E' }}>
-                        Paste a new Page Access Token for <strong>{account.pageName}</strong>
-                      </p>
-                      <p className="text-xs" style={{ color: '#92400E' }}>
-                        In Graph API Explorer → select your Meta App → at top-right dropdown, switch from &ldquo;User Token&rdquo; to <strong>&ldquo;{account.pageName}&rdquo;</strong> under Page Access Tokens → copy that token.
-                      </p>
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          value={refreshToken}
-                          onChange={(e) => setRefreshToken(e.target.value)}
-                          placeholder="EAAxxxxxxxx... (Page Access Token)"
-                          className="flex-1 px-3 py-2 rounded-lg text-xs outline-none font-mono"
-                          style={{ border: '1px solid #FCD34D', background: '#fff', color: 'var(--charcoal)' }}
-                        />
-                        <button
-                          onClick={() => handleRefreshToken(account)}
-                          disabled={!refreshToken.trim() || refreshingId === account.id}
-                          className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap"
-                          style={{ background: 'var(--teal)', color: '#fff' }}
-                        >
-                          {refreshingId === account.id ? <RefreshCw size={12} className="animate-spin" /> : <CheckCircle size={12} />}
-                          {refreshingId === account.id ? 'Saving…' : 'Save Token'}
-                        </button>
-                        <button
-                          onClick={() => { setRefreshTargetId(null); setRefreshToken('') }}
-                          className="px-3 py-2 rounded-lg text-xs"
-                          style={{ background: 'var(--light-gray)', color: 'var(--charcoal)' }}
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
-      )}
-
-      {/* ── Gmail Accounts ────────────────────────────────────────────────── */}
-      <div>
-        <h2 className="text-base font-bold mb-3" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
-          Gmail Accounts (Email Campaigns)
-        </h2>
-
-        {googleJustConnected && (
-          <div className="flex items-center gap-2 px-4 py-3 rounded-lg text-sm mb-3" style={{ background: 'var(--pale-teal)', color: 'var(--teal)' }}>
-            <CheckCircle size={16} />
-            Gmail account connected successfully!
-          </div>
-        )}
-        {googleError && (
-          <div className="flex items-center gap-2 px-4 py-3 rounded-lg text-sm mb-3" style={{ background: '#FEE2E2', color: '#DC2626' }}>
-            <AlertCircle size={16} />
-            {googleError === 'no_refresh_token'
-              ? 'No refresh token returned. Please revoke app access in your Google account and try again.'
-              : `Connection failed: ${googleError}`}
-          </div>
-        )}
-
-        {/* Connected Gmail accounts list */}
-        {!loadingGmail && gmailAccounts.length > 0 && (
-          <div className="space-y-2 mb-3">
-            {gmailAccounts.map((acct) => (
-              <div key={acct.id} className="rounded-xl p-4 flex items-center gap-4" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: '#EA433518' }}>
-                  <Mail size={20} style={{ color: '#EA4335' }} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>
-                    {acct.displayName && acct.displayName !== acct.email ? acct.displayName : acct.email}
-                  </p>
-                  <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
-                    {acct.email} · Connected {new Date(acct.connectedAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
-                  </p>
-                </div>
-                <span className="flex items-center gap-1 text-xs mr-2" style={{ color: 'var(--teal)' }}>
-                  <CheckCircle size={11} />
-                  Active
-                </span>
-                <button
-                  onClick={() => disconnectGmail(acct.id, acct.email)}
-                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors hover:bg-red-50"
-                  style={{ color: '#DC2626' }}
-                >
-                  <Trash2 size={13} />
-                  Disconnect
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-
-        <div className="rounded-xl p-5 flex items-center gap-4" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: '#EA433518' }}>
-            <Mail size={20} style={{ color: '#EA4335' }} />
-          </div>
-          <div className="flex-1">
-            <p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>
-              {gmailAccounts.length > 0 ? 'Add Another Gmail Account' : 'Connect Gmail / Google Workspace'}
-            </p>
-            <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
-              {gmailAccounts.length > 0
-                ? `${gmailAccounts.length} account${gmailAccounts.length > 1 ? 's' : ''} connected · Add more to send from different addresses`
-                : 'Used to send email campaigns to patients. You can connect multiple accounts.'}
-            </p>
-          </div>
-          <a
-            href="/api/auth/google"
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap"
-            style={{ background: 'var(--teal)', color: '#fff' }}
-          >
-            <Plus size={14} />
-            {gmailAccounts.length > 0 ? 'Add Account' : 'Connect Gmail'}
-          </a>
-        </div>
-        <p className="text-xs mt-2 px-1" style={{ color: 'var(--mid-gray)' }}>
-          You&apos;ll be redirected to Google to sign in. Make sure <code>GOOGLE_CLIENT_ID</code> and <code>GOOGLE_CLIENT_SECRET</code> are set in your <code>.env</code> file.
-        </p>
-      </div>
-
-      {/* ── Canva ──────────────────────────────────────────────────────────── */}
-      <div>
-        <h2 className="text-base font-bold mb-3" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
-          Canva (Design Import)
-        </h2>
-
-        {canvaJustConnected && (
-          <div className="flex items-center gap-2 px-4 py-3 rounded-lg text-sm mb-3" style={{ background: 'var(--pale-teal)', color: 'var(--teal)' }}>
-            <CheckCircle size={16} />
-            Canva connected! You can now import designs directly into posts and templates.
-          </div>
-        )}
-        {canvaError && (
-          <div className="px-4 py-3 rounded-lg text-sm mb-3" style={{ background: '#FEE2E2', color: '#DC2626', border: '1px solid #FECACA' }}>
-            <div className="flex items-center gap-2 font-semibold mb-1">
-              <AlertCircle size={16} />
-              Canva connection failed: <code className="text-xs">{canvaError}</code>
-            </div>
-            <p className="text-xs ml-6">
-              This usually means the <strong>redirect URL is not set</strong> in your Canva integration.
-              Go to <a href="https://www.canva.com/developers" target="_blank" rel="noreferrer" className="underline font-semibold">developers.canva.com</a> →
-              Your integrations → click your integration → <strong>set the Redirect URL</strong> to{' '}
-              <code className="bg-red-100 px-1 rounded">https://operations.sapphireclinicseast.org/api/canva/callback</code>
-            </p>
-          </div>
-        )}
-
-        <div className="rounded-xl p-5 flex items-center gap-4" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
-          <div
-            className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 text-white font-bold text-lg"
-            style={{ background: '#7B2FBE' }}
-          >
-            C
-          </div>
-          <div className="flex-1">
-            <p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>Canva</p>
-            {loadingCanva ? (
-              <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>Checking connection…</p>
-            ) : canvaAccount ? (
-              <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
-                Connected{canvaAccount.displayName ? ` as ${canvaAccount.displayName}` : ''} · Import designs in Post Composer &amp; Templates
-              </p>
-            ) : (
-              <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
-                Connect to import Canva designs directly into posts and birthday / holiday templates.
+                  </li>
+                ))}
+              </ul>
+            ) : gmailError ? null : (
+              <p className="px-5 py-4 text-xs" style={{ color: 'var(--mid-gray)' }}>
+                No Gmail accounts connected yet.
               </p>
             )}
-          </div>
-          {!loadingCanva && (
-            canvaAccount ? (
-              <button
-                onClick={disconnectCanva}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold"
-                style={{ background: '#FEE2E2', color: '#DC2626' }}
-              >
-                <Trash2 size={14} />
-                Disconnect
-              </button>
-            ) : (
-              <a
-                href="/api/canva/auth"
-                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold"
-                style={{ background: '#7B2FBE', color: '#fff' }}
-              >
-                <ExternalLink size={14} />
-                Connect Canva
-              </a>
-            )
-          )}
+          </ProviderCard>
         </div>
-        <p className="text-xs mt-2 px-1" style={{ color: 'var(--mid-gray)' }}>
-          Make sure <code>CANVA_CLIENT_ID</code> and <code>CANVA_CLIENT_SECRET</code> are set in your <code>.env</code> file.
-          Once connected, use the <strong>&ldquo;Import from Canva&rdquo;</strong> button when composing posts or generating templates.
-        </p>
+
+        {/* ── Canva ── */}
+        <div className="space-y-3 min-w-0">
+          <GroupLabel hint="Design import">Design</GroupLabel>
+
+          {canvaJustConnected && (
+            <Banner tone="success">Canva connected! You can now import designs directly into posts and templates.</Banner>
+          )}
+          {canvaError && (
+            <Banner tone="error">
+              <p className="font-semibold">
+                Canva connection failed: <code className="text-xs">{canvaError}</code>
+              </p>
+              <p className="text-xs mt-1">
+                This usually means the <strong>redirect URL is not set</strong> in your Canva integration.
+                Go to <a href="https://www.canva.com/developers" target="_blank" rel="noreferrer" className="underline font-semibold">developers.canva.com</a> →
+                Your integrations → click your integration → <strong>set the Redirect URL</strong> to{' '}
+                <code className="bg-red-100 px-1 rounded break-all">https://operations.sapphireclinicseast.org/api/canva/callback</code>
+              </p>
+            </Banner>
+          )}
+
+          <ProviderCard
+            tile={
+              <span aria-hidden className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 text-white font-bold text-lg"
+                style={{ background: CANVA_PURPLE }}>
+                C
+              </span>
+            }
+            name="Canva"
+            description={loadingCanva
+              ? 'Checking connection…'
+              : canvaAccount
+                ? <>Connected{canvaAccount.displayName ? ` as ${canvaAccount.displayName}` : ''} · Import designs in Post Composer &amp; Templates</>
+                : 'Connect to import Canva designs directly into posts and birthday / holiday templates.'}
+            status={canvaStatus}
+            actions={!loadingCanva ? (
+              canvaAccount ? (
+                <button
+                  onClick={disconnectCanva}
+                  className={BTN_SECONDARY}
+                  style={{ ...CONTROL_STYLE, color: DANGER, borderColor: '#FECACA' }}
+                >
+                  <Trash2 size={14} />
+                  Disconnect
+                </button>
+              ) : (
+                <a
+                  href="/api/canva/auth"
+                  className={BTN_PRIMARY}
+                  style={{ background: CANVA_PURPLE }}
+                >
+                  <ExternalLink size={14} />
+                  Connect Canva
+                </a>
+              )
+            ) : <Skeleton className="h-9 w-32" />}
+            footer={<>Make sure <code>CANVA_CLIENT_ID</code> and <code>CANVA_CLIENT_SECRET</code> are set in your <code>.env</code> file. Once connected, use the <strong>&ldquo;Import from Canva&rdquo;</strong> button when composing posts or generating templates.</>}
+          >
+            {canvaAccount && (canvaAccount.displayName || canvaAccount.connectedAt) ? (
+              <dl className="px-5 py-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                {canvaAccount.displayName && (
+                  <div className="min-w-0">
+                    <dt className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>Connected as</dt>
+                    <dd className="mt-0.5 font-semibold truncate" style={{ color: 'var(--charcoal)' }}>{canvaAccount.displayName}</dd>
+                  </div>
+                )}
+                {canvaAccount.connectedAt && (
+                  <div className="min-w-0">
+                    <dt className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>Since</dt>
+                    <dd className="mt-0.5 font-semibold" style={{ color: 'var(--charcoal)' }}>{fmtDate(canvaAccount.connectedAt)}</dd>
+                  </div>
+                )}
+              </dl>
+            ) : null}
+          </ProviderCard>
+        </div>
       </div>
 
-      {/* ─── HR Branches Registry sync ───────────────────────────── */}
-      <HrBranchesSection />
+      {/* ═════ Branches & email routing ═════ */}
+      <div className="space-y-3">
+        <GroupLabel hint="Synced from HR Platform and admin-only routing">Branches &amp; email routing</GroupLabel>
 
-      {/* ─── Branch CC Emails (super admin only) ─────────────────── */}
-      <BranchCCEmailsSection />
+        {/* ─── HR Branches Registry sync ───────────────────────────── */}
+        <HrBranchesSection />
+
+        {/* ─── Branch CC Emails (super admin only) ─────────────────── */}
+        <BranchCCEmailsSection />
+      </div>
     </div>
   )
 }
@@ -777,15 +842,20 @@ interface HrBranchRow {
 function HrBranchesSection() {
   const [branches, setBranches] = useState<HrBranchRow[]>([])
   const [loading, setLoading] = useState(true)
+  // Display only: a failed load used to look like "No branches synced yet".
+  const [loadError, setLoadError] = useState('')
   const [syncing, setSyncing] = useState(false)
   const [syncResult, setSyncResult] = useState<{ synced: number; created: number; updated: number; deleted: number; total: number } | null>(null)
 
   async function load() {
     setLoading(true)
+    setLoadError('')
     try {
       const r = await fetch('/api/public/branches?includeInactive=1')
       const d = await r.json()
       setBranches(d.branches || [])
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : 'Could not load branches')
     } finally { setLoading(false) }
   }
   useEffect(() => { load() }, [])
@@ -808,75 +878,86 @@ function HrBranchesSection() {
     setSyncing(false)
   }
 
+  const lastSynced = branches.reduce<string | null>((max, b) => (!max || b.syncedAt > max ? b.syncedAt : max), null)
+  const activeCount = branches.filter(b => b.active).length
+  const initial = loading && branches.length === 0
+
   return (
-    <div className="rounded-xl p-5" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
-      <div className="flex items-center justify-between gap-3 mb-2">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: '#EAF6F4' }}>
-            <Building2 size={18} style={{ color: 'var(--teal)' }} />
-          </div>
-          <div>
-            <h2 className="text-base font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
-              Branches Registry
-            </h2>
-            <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
-              Synced from HR Platform, the single source of truth for branch name/address/emails/hours. Edit branches there, not here.
-            </p>
-          </div>
-        </div>
+    <ProviderCard
+      tile={<ProviderTile color="#1A7B8A" bg="#EAF6F4"><Building2 size={18} /></ProviderTile>}
+      name="Branches Registry"
+      description="Synced from HR Platform, the single source of truth for branch name/address/emails/hours. Edit branches there, not here."
+      status={initial
+        ? <StatusPill tone="checking">Checking…</StatusPill>
+        : loadError
+          ? <StatusPill tone="error">Error</StatusPill>
+          : branches.length
+            ? <StatusPill tone="connected" title={lastSynced ? `Last synced ${new Date(lastSynced).toLocaleString()}` : undefined}>
+                {activeCount} active{lastSynced ? ` · synced ${relTime(lastSynced)}` : ''}
+              </StatusPill>
+            : <StatusPill tone="off">Not synced</StatusPill>}
+      actions={
         <button
           onClick={handleSync}
           disabled={syncing}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold flex-shrink-0"
-          style={{ background: 'var(--teal)', color: '#fff', cursor: syncing ? 'not-allowed' : 'pointer' }}
+          className={BTN_PRIMARY}
+          style={{ background: 'var(--teal)', cursor: syncing ? 'not-allowed' : 'pointer' }}
         >
-          <RefreshCw size={12} className={syncing ? 'animate-spin' : ''} />
+          <RefreshCw size={13} className={syncing ? 'animate-spin' : ''} />
           {syncing ? 'Syncing…' : 'Sync Branches'}
         </button>
-      </div>
-
-      {syncResult && (
-        <p className="text-xs mt-2 px-1" style={{ color: 'var(--mid-gray)' }}>
-          Synced {syncResult.synced} of {syncResult.total} ({syncResult.created} new, {syncResult.updated} updated, {syncResult.deleted} removed).
-        </p>
+      }
+    >
+      {(syncResult || loadError) && (
+        <div className="px-5 pt-3 space-y-2">
+          {syncResult && (
+            <Banner tone="success">
+              Synced {syncResult.synced} of {syncResult.total} ({syncResult.created} new, {syncResult.updated} updated, {syncResult.deleted} removed).
+            </Banner>
+          )}
+          {loadError && (
+            <Banner tone="error" onRetry={load}><strong>Couldn&rsquo;t load the branch registry.</strong> {loadError}</Banner>
+          )}
+        </div>
       )}
 
-      {loading ? (
-        <p className="text-xs mt-3" style={{ color: 'var(--mid-gray)' }}>Loading…</p>
+      {initial ? (
+        <RowsSkeleton rows={2} />
       ) : branches.length === 0 ? (
-        <p className="text-xs mt-3" style={{ color: 'var(--mid-gray)' }}>
-          No branches synced yet — click &ldquo;Sync Branches&rdquo; to pull the current registry from HR Platform.
-        </p>
+        loadError ? <div className="pb-3" /> : (
+          <EmptyState
+            title="No branches synced yet"
+            hint="Click “Sync Branches” to pull the current registry from HR Platform." />
+        )
       ) : (
-        <div className="mt-3 overflow-x-auto">
-          <table className="w-full text-xs">
+        <div className="overflow-x-auto mt-1">
+          <table className="w-full text-sm" style={{ borderCollapse: 'collapse' }}>
             <thead>
-              <tr style={{ color: 'var(--mid-gray)' }} className="text-left">
-                <th className="pb-2 pr-3 font-semibold">Branch</th>
-                <th className="pb-2 pr-3 font-semibold">Code</th>
-                <th className="pb-2 pr-3 font-semibold">Main Email</th>
-                <th className="pb-2 pr-3 font-semibold">Status</th>
-                <th className="pb-2 font-semibold">Last Synced</th>
+              <tr style={{ background: SUBTLE_BG }}>
+                {['Branch', 'Code', 'Main Email', 'Status', 'Last Synced'].map(h => (
+                  <th key={h} className={TH} style={{ color: 'var(--mid-gray)', borderBottom: '1px solid var(--light-gray)' }}>{h}</th>
+                ))}
               </tr>
             </thead>
             <tbody>
               {branches.map(b => (
                 <tr key={b.id} style={{ borderTop: '1px solid var(--light-gray)' }}>
-                  <td className="py-2 pr-3" style={{ color: 'var(--charcoal)' }}>
-                    {b.name}
-                    {b.brandName && <div style={{ color: 'var(--mid-gray)' }}>{b.brandName}</div>}
+                  <td className="px-4 py-2.5 min-w-[160px]">
+                    <p className="text-[13px] font-semibold" style={{ color: 'var(--charcoal)' }}>{b.name}</p>
+                    {b.brandName && <p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>{b.brandName}</p>}
                   </td>
-                  <td className="py-2 pr-3"><code>{b.shortCode}</code></td>
-                  <td className="py-2 pr-3">{b.emailMain || '—'}</td>
-                  <td className="py-2 pr-3">
-                    <span
-                      className="px-1.5 py-0.5 rounded-full font-bold text-[10px]"
-                      style={b.active ? { background: '#D1FAE5', color: '#065F46' } : { background: '#F3F4F6', color: '#6B7280' }}
-                    >
-                      {b.active ? 'ACTIVE' : 'INACTIVE'}
-                    </span>
+                  <td className="px-4 py-2.5">
+                    <code className="text-[11.5px] px-1.5 py-0.5 rounded" style={{ background: SUBTLE_BG, color: 'var(--charcoal)', border: '1px solid var(--light-gray)' }}>
+                      {b.shortCode}
+                    </code>
                   </td>
-                  <td className="py-2" style={{ color: 'var(--mid-gray)' }}>
+                  <td className="px-4 py-2.5 text-[13px] break-all" style={{ color: 'var(--charcoal)' }}>{b.emailMain || '—'}</td>
+                  <td className="px-4 py-2.5">
+                    {b.active
+                      ? <StatusPill tone="connected">Active</StatusPill>
+                      : <StatusPill tone="off">Inactive</StatusPill>}
+                  </td>
+                  <td className="px-4 py-2.5 text-[12px] whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>
                     {new Date(b.syncedAt).toLocaleString()}
                   </td>
                 </tr>
@@ -885,7 +966,7 @@ function HrBranchesSection() {
           </table>
         </div>
       )}
-    </div>
+    </ProviderCard>
   )
 }
 
@@ -907,17 +988,22 @@ function BranchCCEmailsSection() {
   const [knownBranches, setKnownBranches] = useState<string[]>([])
   const [rows, setRows] = useState<BranchCCRow[]>([])
   const [loading, setLoading] = useState(true)
+  // Display only: a failed load used to render an empty card.
+  const [loadError, setLoadError] = useState('')
   const [saving, setSaving] = useState<string | null>(null)
   const [editing, setEditing] = useState<Record<string, { email: string; notes: string }>>({})
 
   async function load() {
     setLoading(true)
+    setLoadError('')
     try {
       const r = await fetch('/api/admin/branch-cc-emails')
       if (r.status === 403 || r.status === 401) { setAllowed(false); return }
       const d = await r.json()
       setKnownBranches(d.knownBranches || [])
       setRows(d.ccEmails || [])
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : 'Could not load CC emails')
     } finally { setLoading(false) }
   }
   useEffect(() => { load() }, [])
@@ -965,70 +1051,69 @@ function BranchCCEmailsSection() {
     finally { setSaving(null) }
   }
 
-  return (
-    <div className="rounded-xl p-5" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
-      <div className="flex items-center gap-3 mb-2">
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: '#FFF3E8' }}>
-          <Mail size={18} style={{ color: '#ED6823' }} />
-        </div>
-        <div>
-          <h2 className="text-base font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
-            Progress Report CC Emails
-          </h2>
-          <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
-            Email addresses CC&apos;d when front desk emails a Progress Report. One config per branch — you can list multiple addresses separated by commas.
-          </p>
-        </div>
-      </div>
+  const configured = knownBranches.filter(b => !!existing(b)).length
+  const initial = loading && knownBranches.length === 0
 
-      {loading ? (
-        <p className="text-xs mt-3" style={{ color: 'var(--mid-gray)' }}>Loading…</p>
+  return (
+    <ProviderCard
+      tile={<ProviderTile color="#ED6823" bg="#FFF3E8"><Mail size={18} /></ProviderTile>}
+      name="Progress Report CC Emails"
+      description={<>Email addresses CC&apos;d when front desk emails a Progress Report. One config per branch — you can list multiple addresses separated by commas.</>}
+      status={initial
+        ? <StatusPill tone="checking">Checking…</StatusPill>
+        : loadError
+          ? <StatusPill tone="error">Error</StatusPill>
+          : knownBranches.length
+            ? <StatusPill tone={configured ? 'connected' : 'off'}>{configured} of {knownBranches.length} set</StatusPill>
+            : undefined}
+    >
+      {loadError && (
+        <div className="px-5 pt-3">
+          <Banner tone="error" onRetry={load}><strong>Couldn&rsquo;t load CC emails.</strong> {loadError}</Banner>
+        </div>
+      )}
+      {initial ? (
+        <RowsSkeleton rows={2} />
       ) : (
-        <div className="mt-3 space-y-3">
+        <div className="p-5 grid md:grid-cols-2 gap-3">
           {knownBranches.map(branch => {
             const v = valueFor(branch)
             const existed = !!existing(branch)
             const dirty = !!editing[branch]
             return (
-              <div key={branch} className="rounded-lg p-3" style={{ background: '#fafafa', border: '1px solid var(--light-gray)' }}>
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-xs font-bold uppercase tracking-widest" style={{ color: '#ED6823' }}>
+              <div key={branch} className="rounded-lg p-3.5 min-w-0" style={{ background: SUBTLE_BG, border: '1px solid var(--light-gray)' }}>
+                <div className="flex items-center gap-2 mb-2.5">
+                  <span className="text-xs font-bold uppercase tracking-widest truncate" style={{ color: '#ED6823' }}>
                     {branchLabel(branch) ?? branch}
                   </span>
-                  {existed && !dirty && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold" style={{ background: '#D1FAE5', color: '#065F46' }}>
-                      SAVED
-                    </span>
-                  )}
-                  {dirty && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold" style={{ background: '#FEF3C7', color: '#92400E' }}>
-                      UNSAVED
-                    </span>
-                  )}
+                  {existed && !dirty && <StatusPill tone="connected">Saved</StatusPill>}
+                  {dirty && <StatusPill tone="expired">Unsaved</StatusPill>}
                 </div>
                 <input
                   type="text"
                   value={v.email}
                   onChange={e => setField(branch, 'email', e.target.value)}
                   placeholder="alice@example.com, bob@example.com"
-                  className="w-full px-3 py-2 rounded-md text-sm outline-none mb-2"
-                  style={{ border: '1.5px solid var(--light-gray)', color: 'var(--charcoal)', background: '#fff' }}
+                  aria-label={`CC emails for ${branchLabel(branch) ?? branch}`}
+                  className={`${CONTROL} mb-2`}
+                  style={CONTROL_STYLE}
                 />
                 <input
                   type="text"
                   value={v.notes}
                   onChange={e => setField(branch, 'notes', e.target.value)}
                   placeholder="Notes (optional)"
-                  className="w-full px-3 py-2 rounded-md text-xs outline-none mb-2"
-                  style={{ border: '1.5px solid var(--light-gray)', color: 'var(--mid-gray)', background: '#fff' }}
+                  aria-label={`Notes for ${branchLabel(branch) ?? branch}`}
+                  className="w-full h-9 px-3 rounded-lg text-xs outline-none mb-2.5 focus:border-[var(--teal)]"
+                  style={{ ...CONTROL_STYLE, color: 'var(--mid-gray)' }}
                 />
                 <div className="flex gap-2 justify-end">
                   {existed && (
                     <button
                       onClick={() => remove(branch)}
                       disabled={saving === branch}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold"
-                      style={{ background: '#FEE2E2', color: '#DC2626' }}
+                      className={BTN_DANGER_GHOST}
+                      style={{ color: DANGER }}
                     >
                       <Trash2 size={12} />
                       Remove
@@ -1037,7 +1122,7 @@ function BranchCCEmailsSection() {
                   <button
                     onClick={() => save(branch)}
                     disabled={saving === branch || (!dirty && existed)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold"
+                    className={BTN_SM}
                     style={{
                       background: dirty || !existed ? 'var(--teal)' : '#E5E7EB',
                       color: dirty || !existed ? '#fff' : 'var(--mid-gray)',
@@ -1052,6 +1137,6 @@ function BranchCCEmailsSection() {
           })}
         </div>
       )}
-    </div>
+    </ProviderCard>
   )
 }
