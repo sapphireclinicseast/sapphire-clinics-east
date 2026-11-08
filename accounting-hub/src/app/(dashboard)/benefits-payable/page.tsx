@@ -5,6 +5,7 @@ import { Shield, Loader2, X, BadgeDollarSign, Plus, Trash2 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import Availments from './Availments'
 import { useRfpOtherFees, RfpOtherFeesSection } from '@/components/RfpOtherFees'
+import { HR_PAGE_CLASS, HR_PAGE_STYLE, HrShimmerStyle, StatCard, hrBtn } from '@/components/ui/hr-look'
 
 const BRANCHES = [
   { value: 'SBEA', label: 'East Branch' },
@@ -168,34 +169,49 @@ export default function BenefitsPayablePage() {
     finally { setCreating(false) }
   }
 
+  // Cards: the shown lines by status (same per-row rules and EE + ER as the table; together = Shown total).
+  const amt = (list: Row[]) => list.reduce((sm, r) => sm + ee(r) + er(r), 0)
+  const remittedRows = shown.filter(r => settledOf(r))
+  const inRfpRows = shown.filter(r => !settledOf(r) && !!rfpOf(r))
+  const pendingRows = shown.filter(r => !settledOf(r) && !rfpOf(r))
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-2xl font-bold flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
-          <Shield size={22} style={{ color: 'var(--teal)' }} /> Benefits Payable
-        </h1>
-        <button onClick={() => setCatchupOpen(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold text-white" style={{ background: 'var(--teal)' }}>
-          <Plus size={14} /> Record Govcon catch-up
-        </button>
-      </div>
-      <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>SSS, PhilHealth and Pag-IBIG contributions from locked payroll (employees & consultants). Tick lines and generate an RFP per agency — it appears under Expenses → RFP.</p>
-
-      {/* Branch */}
-      <div className="flex rounded-xl overflow-hidden border w-fit" style={{ borderColor: 'var(--light-gray)' }}>
-        {BRANCHES.map(b => <button key={b.value} onClick={() => setBranch(b.value)} className="px-4 py-2 text-xs font-semibold" style={branch === b.value ? { background: 'var(--teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' }}>{b.label}</button>)}
+    <div className={HR_PAGE_CLASS} style={HR_PAGE_STYLE}>
+      <HrShimmerStyle />
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold leading-tight flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+            <Shield size={22} style={{ color: 'var(--teal)' }} /> Benefits Payable
+          </h1>
+          <p className="mt-1 text-[13px] max-w-3xl" style={{ color: 'var(--mid-gray)' }}>
+            SSS, PhilHealth and Pag-IBIG contributions from locked payroll (employees &amp; consultants). Tick lines and generate an RFP per agency — it appears under Expenses → RFP.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {BRANCHES.map(b => (
+            <button key={b.value} onClick={() => setBranch(b.value)} aria-pressed={branch === b.value}
+              className="px-3.5 py-1.5 rounded-full border text-[13px] font-semibold whitespace-nowrap transition-colors"
+              style={branch === b.value
+                ? { background: 'var(--teal)', borderColor: 'var(--teal)', color: '#fff', fontFamily: 'var(--font-display)' }
+                : { background: '#fff', borderColor: 'var(--light-gray)', color: 'var(--mid-gray)', fontFamily: 'var(--font-display)' }}>{b.label}</button>
+          ))}
+          <span className="w-px h-6 mx-1" style={{ background: 'var(--light-gray)' }} />
+          <button onClick={() => setCatchupOpen(true)} className={hrBtn.primary} style={{ background: 'var(--teal)' }}>
+            <Plus size={15} /> Record Govcon catch-up
+          </button>
+        </div>
       </div>
 
       {/* Agency subtabs */}
-      <div className="flex items-center gap-1 border-b" style={{ borderColor: 'var(--light-gray)' }}>
+      <div className="flex items-center gap-1 border-b-2 max-w-full overflow-x-auto" style={{ borderColor: 'var(--light-gray)' }}>
         {AGENCIES.map(a => (
-          <button key={a.key} onClick={() => { setAgencyKey(a.key); setCombined(false); setShowAvailments(false) }} className="px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors"
+          <button key={a.key} onClick={() => { setAgencyKey(a.key); setCombined(false); setShowAvailments(false) }} className="px-4 py-2.5 text-[13px] font-semibold border-b-2 -mb-[2px] whitespace-nowrap transition-colors hover:text-[var(--teal)]"
             style={{ borderColor: !showAvailments && !combined && agencyKey === a.key ? 'var(--teal)' : 'transparent', color: !showAvailments && !combined && agencyKey === a.key ? 'var(--teal)' : 'var(--mid-gray)' }}>{a.label}</button>
         ))}
-        <button onClick={() => { setCombined(true); setShowAvailments(false) }} className="px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors"
+        <button onClick={() => { setCombined(true); setShowAvailments(false) }} className="px-4 py-2.5 text-[13px] font-semibold border-b-2 -mb-[2px] whitespace-nowrap transition-colors hover:text-[var(--teal)]"
           style={{ borderColor: !showAvailments && combined ? 'var(--teal)' : 'transparent', color: !showAvailments && combined ? 'var(--teal)' : 'var(--mid-gray)' }}>
           Combined RFP
         </button>
-        <button onClick={() => setShowAvailments(true)} className="px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors"
+        <button onClick={() => setShowAvailments(true)} className="px-4 py-2.5 text-[13px] font-semibold border-b-2 -mb-[2px] whitespace-nowrap transition-colors hover:text-[var(--teal)]"
           style={{ borderColor: showAvailments ? 'var(--teal)' : 'transparent', color: showAvailments ? 'var(--teal)' : 'var(--mid-gray)' }}>
           Benefit Availments
         </button>
@@ -227,8 +243,18 @@ export default function BenefitsPayablePage() {
         </div>
       )}
 
+      {/* Status cards for the lines shown */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <StatCard compact loading={loading} label={`Pending · ${scopeLabel}`} value={formatCurrency(amt(pendingRows))}
+          sub={`${pendingRows.length} line${pendingRows.length === 1 ? '' : 's'} not yet in an RFP`} tone={pendingRows.length ? 'amber' : 'zero'} />
+        <StatCard compact loading={loading} label="In an RFP" value={formatCurrency(amt(inRfpRows))}
+          sub={`${inRfpRows.length} line${inRfpRows.length === 1 ? '' : 's'} awaiting payment`} tone={inRfpRows.length ? 'blue' : 'zero'} />
+        <StatCard compact loading={loading} label="Remitted" value={formatCurrency(amt(remittedRows))}
+          sub={hideRemitted ? 'Hidden by “Hide remitted”' : `${remittedRows.length} line${remittedRows.length === 1 ? '' : 's'} paid to the agency`} tone={remittedRows.length ? 'green' : 'zero'} />
+      </div>
+
       {/* Filters */}
-      <div className="flex items-end gap-2 flex-wrap">
+      <div className="flex items-end gap-2 flex-wrap px-4 py-2.5 rounded-lg border" style={{ background: '#fcfdfa', borderColor: 'var(--light-gray)' }}>
         <div>
           <label className="block text-[11px] font-medium mb-1" style={{ color: 'var(--mid-gray)' }}>Type</label>
           <select value={fType} onChange={e => setFType(e.target.value as '' | 'employee' | 'consultant')} className="px-3 py-1.5 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }}>
@@ -263,25 +289,25 @@ export default function BenefitsPayablePage() {
         )}
       </div>
 
-      {error && <p className="text-xs text-red-600">{error}</p>}
+      {error && <div className="px-4 py-2.5 rounded-lg border text-[13px]" style={{ background: '#fef2f2', borderColor: '#fecaca', color: '#b91c1c' }}>{error}</div>}
 
       {/* Table */}
-      <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--light-gray)' }}>
+      <div className="overflow-x-auto rounded-lg border bg-white" style={{ borderColor: 'var(--light-gray)' }}>
         <table className="w-full text-xs">
           <thead>
-            <tr style={{ background: 'var(--off-white)' }}>
+            <tr style={{ background: 'var(--hr-head)' }}>
               <th className="text-center px-2 py-2.5">
                 <input type="checkbox" checked={selectable.length > 0 && selectable.every(r => selected.has(r.id))} onChange={e => toggleAll(e.target.checked)} />
               </th>
-              <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Name</th>
-              <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Type</th>
-              <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Department</th>
-              <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Branch</th>
-              <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Cutoff</th>
-              <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>{scopeLabel} EE</th>
-              <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>{scopeLabel} ER</th>
-              <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Total</th>
-              <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Status</th>
+              <th className="text-left px-3 py-2.5 text-[11px] font-bold uppercase tracking-[.5px] border-b" style={{ color: 'var(--mid-gray)', borderColor: 'var(--light-gray)' }}>Name</th>
+              <th className="text-left px-3 py-2.5 text-[11px] font-bold uppercase tracking-[.5px] border-b" style={{ color: 'var(--mid-gray)', borderColor: 'var(--light-gray)' }}>Type</th>
+              <th className="text-left px-3 py-2.5 text-[11px] font-bold uppercase tracking-[.5px] border-b" style={{ color: 'var(--mid-gray)', borderColor: 'var(--light-gray)' }}>Department</th>
+              <th className="text-left px-3 py-2.5 text-[11px] font-bold uppercase tracking-[.5px] border-b" style={{ color: 'var(--mid-gray)', borderColor: 'var(--light-gray)' }}>Branch</th>
+              <th className="text-left px-3 py-2.5 text-[11px] font-bold uppercase tracking-[.5px] border-b" style={{ color: 'var(--mid-gray)', borderColor: 'var(--light-gray)' }}>Cutoff</th>
+              <th className="text-right px-3 py-2.5 text-[11px] font-bold uppercase tracking-[.5px] border-b" style={{ color: 'var(--mid-gray)', borderColor: 'var(--light-gray)' }}>{scopeLabel} EE</th>
+              <th className="text-right px-3 py-2.5 text-[11px] font-bold uppercase tracking-[.5px] border-b" style={{ color: 'var(--mid-gray)', borderColor: 'var(--light-gray)' }}>{scopeLabel} ER</th>
+              <th className="text-right px-3 py-2.5 text-[11px] font-bold uppercase tracking-[.5px] border-b" style={{ color: 'var(--mid-gray)', borderColor: 'var(--light-gray)' }}>Total</th>
+              <th className="text-left px-3 py-2.5 text-[11px] font-bold uppercase tracking-[.5px] border-b" style={{ color: 'var(--mid-gray)', borderColor: 'var(--light-gray)' }}>Status</th>
             </tr>
           </thead>
           <tbody>
