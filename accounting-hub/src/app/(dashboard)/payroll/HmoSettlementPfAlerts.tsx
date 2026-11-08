@@ -136,7 +136,8 @@ export default function HmoSettlementPfAlerts({ canWrite, variant = 'full', onOp
       </div>
       <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
         These sessions were decreased to what the HMO paid, or voided (e.g. a confirmed duplicate), after their PF was released at the
-        billed amount — a voided session earns no PF, so all of it is overpaid. The overpaid PF is
+        billed amount — a voided session earns no PF, so all of it is overpaid (unless it was re-entered as a corrected order for the
+        same patient, day and clinician, which keeps the PF). The overpaid PF is
         deducted automatically on the consultant&apos;s next payslip at the same branch (a highlighted <strong>Auto PF recovery</strong>
         line); saving that payslip records the cutoff and the row hides (tick <strong>Show settled</strong> to see it again). If it was
         deducted some other way, pick the cutoff and press <strong>Record</strong>. <strong>Outside hub</strong> = the session&apos;s payroll was run

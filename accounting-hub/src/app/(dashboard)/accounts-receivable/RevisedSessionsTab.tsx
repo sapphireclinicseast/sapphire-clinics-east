@@ -36,6 +36,8 @@ interface RevisedRow {
   revisedAt: string
   // Payroll roles only: PF released on the session — still to deduct / already deducted.
   pf?: { toRecover: number; recovered: number; cutoffs: string[]; consultants: string[]; outsideHub: boolean } | null
+  // Voided and re-entered as these corrected orders (same patient, day, clinician) — the PF stands for them.
+  reenteredAs?: number[]
 }
 
 const KIND_LABEL: Record<RevisedRow['kind'], string> = { REVISED: 'Amount revised', VOIDED: 'Voided' }
@@ -115,7 +117,8 @@ export default function RevisedSessionsTab({ branch }: { branch: string }) {
         <strong> Accounts Receivable &rsaquo; Payment History &rsaquo; Record Payment</strong>), or the HMO order is
         <strong> voided</strong> in POS &mdash; for example a confirmed duplicate flagged in Per HMO. Either way the sale and the
         ledger are corrected, and any PF already paid out on the session shows as overpaid in
-        <strong> Payroll &rsaquo; HMO PF Adjustments</strong> so it is deducted from the next payslip. This list is read-only.
+        <strong> Payroll &rsaquo; HMO PF Adjustments</strong> so it is deducted from the next payslip &mdash; unless the voided session was
+        <strong> re-entered</strong> as a corrected order (same patient, day and clinician), which keeps the PF already paid. This list is read-only.
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -180,6 +183,12 @@ export default function RevisedSessionsTab({ branch }: { branch: string }) {
                     title={r.kind === 'VOIDED' ? (r.note || 'Order voided') : 'Decreased to what the HMO paid'}>
                     {KIND_LABEL[r.kind]}
                   </span>
+                  {(r.reenteredAs?.length || 0) > 0 && (
+                    <span className="block text-[11px] mt-0.5" style={{ color: 'var(--mid-gray)' }}
+                      title="Re-entered as a corrected order for the same patient, day and clinician. The PF paid on the voided order stands for it, so nothing is recovered.">
+                      re-entered as {r.reenteredAs!.map(n => `#${n}`).join(', ')}
+                    </span>
+                  )}
                 </td>
                 <td className="px-4 py-3 text-xs" style={{ maxWidth: 280 }}>{r.service || '—'}</td>
                 <td className="px-4 py-3 font-semibold" style={{ color: 'var(--dark-gray)' }}>{r.patient || '—'}</td>

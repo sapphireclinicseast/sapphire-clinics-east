@@ -17,7 +17,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { enforceBranch } from '@/lib/branch-scope'
 import { HMO_VOID_REF, decreaseRowsOnly } from '@/lib/hmo-session-void'
-import { hmoPfAlerts } from '@/lib/payroll/hmo-pf-alerts'
+import { hmoPfAlerts, voidReentries } from '@/lib/payroll/hmo-pf-alerts'
 
 const READ_ROLES = [
   'ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER',
@@ -52,7 +52,7 @@ export async function GET(req: NextRequest) {
       order: {
         select: {
           id: true, orderNumber: true, transactionDate: true, branch: true,
-          patientName: true, clinicianName: true,
+          patientName: true, clinicianName: true, status: true,
           items: { select: { name: true } },
         },
       },
@@ -81,6 +81,14 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // A voided session re-entered as a corrected order (same patient, day and
+  // clinician, on no payslip) keeps its PF — say so on the row.
+  const voids = settlements.filter(s => s.reference === HMO_VOID_REF)
+  const reentered = voids.length
+    ? await voidReentries(voids.map(s => ({ orderId: s.orderId, patientName: s.order.patientName, clinicianName: s.order.clinicianName, transactionDate: s.order.transactionDate })))
+        .catch(err => { console.error('[AR] session adjustments re-entry lookup failed:', err); return new Map<string, number[]>() })
+    : new Map<string, number[]>()
+
   const rows = settlements.map(s => ({
     id: s.id,
     kind: s.reference === HMO_VOID_REF ? 'VOIDED' as const : 'REVISED' as const,
@@ -100,6 +108,7 @@ export async function GET(req: NextRequest) {
     revisedBy: s.createdByName,
     revisedAt: s.createdAt.toISOString(),
     pf: showPf ? (pfBySettlement.get(s.id) ?? null) : undefined,
+    reenteredAs: reentered.get(s.orderId) ?? [],
   })).sort((a, b) => b.date.localeCompare(a.date) || b.orderNumber - a.orderNumber)
 
   return NextResponse.json({ rows, showPf })

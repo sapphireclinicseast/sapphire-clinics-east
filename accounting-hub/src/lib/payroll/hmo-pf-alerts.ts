@@ -5,7 +5,6 @@
 import { prisma } from '@/lib/prisma'
 import { ORDER_TO_PAYROLL_BRANCH, rateAt } from '@/lib/payroll/pf-price'
 import { HMO_VOID_REF } from '@/lib/hmo-session-void'
-import { hubPayrollStart } from './pf-price-server'
 
 const round2 = (n: number) => Math.round(n * 100) / 100
 // The deduction cutoff rides at the head of pfResolvedNote: "cutoff:2026-11-1 — note".
@@ -50,8 +49,50 @@ export type HmoPfAlert = Awaited<ReturnType<typeof hmoPfAlerts>>[number]
  * A VOIDED HMO session (its HMO_VOID_REF row, see lib/hmo-session-void) owes
  * back all the PF released on it: the rule after the void is zero. When an
  * earlier decrease on the same order was already deducted, only the PF still
- * held after that decrease is due, so nothing is recovered twice.
+ * held after that decrease is due, so nothing is recovered twice. Voids are
+ * HUB-only (a void says nothing about what an outside-hub payroll paid), and a
+ * void that was RE-ENTERED — a standing order for the same patient, day and
+ * clinician that no payslip carries — owes nothing: the session happened, its
+ * PF was paid once on the voided order, and the re-entry sits in the same
+ * already-closed cutoff, so it is never paid again (Hannah 2026-11-09: the five
+ * "wrong" voids of 11/02 were corrected re-entries, not duplicates).
  */
+export async function voidReentries(voided: { orderId: string; patientName: string | null; clinicianName: string | null; transactionDate: Date }[]): Promise<Map<string, number[]>> {
+  const out = new Map<string, number[]>()
+  const keyed = voided.filter(v => (v.patientName || '').trim() && (v.clinicianName || '').trim())
+  if (!keyed.length) return out
+  const dayOf = (d: Date) => new Date(d).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' })
+  const dayStart = (d: Date) => new Date(`${dayOf(d)}T00:00:00+08:00`)
+  const candidates = await prisma.order.findMany({
+    where: {
+      status: { not: 'VOIDED' },
+      id: { notIn: keyed.map(v => v.orderId) },
+      OR: keyed.map(v => ({
+        patientName: { equals: v.patientName!.trim(), mode: 'insensitive' as const },
+        transactionDate: { gte: dayStart(v.transactionDate), lt: new Date(dayStart(v.transactionDate).getTime() + 86_400_000) },
+      })),
+    },
+    select: { id: true, orderNumber: true, patientName: true, clinicianName: true, transactionDate: true },
+  })
+  if (!candidates.length) return out
+  const ids = candidates.map(c => c.id)
+  const carried = new Set((await prisma.$queryRaw<{ order_id: string }[]>`
+    SELECT DISTINCT s->>'orderId' AS order_id
+    FROM "PayrollEntry" pe,
+         jsonb_array_elements(pe.items::jsonb) it,
+         jsonb_array_elements(COALESCE(it->'sessions', '[]'::jsonb)) s
+    WHERE s->>'orderId' = ANY(${ids})`).map(r => r.order_id))
+  const norm = (x: string | null) => (x || '').trim().toUpperCase()
+  for (const v of keyed) {
+    const nums = candidates
+      .filter(c => !carried.has(c.id) && norm(c.patientName) === norm(v.patientName) && norm(c.clinicianName) === norm(v.clinicianName)
+        && dayOf(c.transactionDate) === dayOf(v.transactionDate))
+      .map(c => c.orderNumber).sort((a, b) => a - b)
+    if (nums.length) out.set(v.orderId, nums)
+  }
+  return out
+}
+
 export async function hmoPfAlerts(includeSettled: boolean) {
   const settlements = await prisma.orderHmoSettlement.findMany({
     where: includeSettled ? {} : { pfResolvedAt: null },
@@ -85,17 +126,11 @@ export async function hmoPfAlerts(includeSettled: boolean) {
   const voidOrderIds = [...latestByOrder.values()].filter(isVoid).map(s => s.orderId)
   const priorDecreases = voidOrderIds.length
     ? await prisma.orderHmoSettlement.findMany({
-        where: { orderId: { in: voidOrderIds }, OR: [{ reference: null }, { reference: { not: HMO_VOID_REF } }] },
-        select: { orderId: true, difference: true, pfResolvedAt: true },
+        where: { orderId: { in: voidOrderIds }, pfResolvedAt: { not: null }, OR: [{ reference: null }, { reference: { not: HMO_VOID_REF } }] },
+        select: { orderId: true },
       })
     : []
-  const priorOf = new Map<string, { deducted: boolean; openDifference: number }>()
-  for (const p of priorDecreases) {
-    const cur = priorOf.get(p.orderId) || { deducted: false, openDifference: 0 }
-    if (p.pfResolvedAt) cur.deducted = true
-    else cur.openDifference += Number(p.difference)
-    priorOf.set(p.orderId, cur)
-  }
+  const priorOf = new Map<string, { deducted: boolean }>(priorDecreases.map(p => [p.orderId, { deducted: true }]))
 
   // Every payroll line carrying these sessions, drafts included — a draft
   // still means the session is the hub's to pay, so it is never "outside".
@@ -135,6 +170,11 @@ export async function hmoPfAlerts(includeSettled: boolean) {
 
   /* HUB — finalized/locked payroll lines */
   const hubRows = rows.filter(r => r.status !== 'DRAFT' && r.unit_pay_id)
+  // Voided-and-re-entered sessions keep their PF (see voidReentries).
+  const hubVoids = [...new Set(hubRows.map(r => r.order_id))].map(id => latestByOrder.get(id)).filter((s): s is (typeof settlements)[number] => !!s && isVoid(s))
+  const reentered = hubVoids.length
+    ? await voidReentries(hubVoids.map(s => ({ orderId: s.orderId, patientName: s.order.patientName, clinicianName: s.order.clinicianName, transactionDate: s.order.transactionDate })))
+    : new Map<string, number[]>()
   const hubRates = hubRows.length
     ? await prisma.consultantUnitPay.findMany({
         where: { OR: hubRows.map(r => ({ consultantId: r.consultant_id, unitPayId: r.unit_pay_id as string })) },
@@ -145,6 +185,7 @@ export async function hmoPfAlerts(includeSettled: boolean) {
     const s = latestByOrder.get(r.order_id)
     const rate = hubRateOf.get(`${r.consultant_id}|${r.unit_pay_id}`)
     if (!s || !rate) continue
+    if (isVoid(s) && reentered.has(s.orderId)) continue
     // Void: nothing is earned. If an earlier decrease was already deducted the
     // consultant holds the PF at the decreased amount (the order's net), else
     // the PF actually paid.
@@ -163,14 +204,10 @@ export async function hmoPfAlerts(includeSettled: boolean) {
   }
 
   /* OUTSIDE_HUB — sessions no payroll entry carries */
-  // A voided session is left out of every payroll the hub generates, so "no
-  // payroll entry carries it" only means "paid outside the hub" for sessions
-  // from before hub payroll began (Jan–Mar 2026). A later void was simply
-  // never paid — nothing to recover.
-  const hubStart = voidOrderIds.length ? await hubPayrollStart() : null
-  const hubStartAt = hubStart ? new Date(`${hubStart}T00:00:00+08:00`).getTime() : null
-  const outside = [...latestByOrder.values()].filter(s => !inHub.has(s.orderId) && s.order.clinicianName
-    && (!isVoid(s) || (hubStartAt != null && new Date(s.order.transactionDate).getTime() < hubStartAt)))
+  // Never for a void: payroll run outside the hub (Jan–Mar 2026) was not built
+  // from hub orders, so voiding one (often an import duplicate) says nothing
+  // about PF paid on it; and a later void no payslip carries was never paid.
+  const outside = [...latestByOrder.values()].filter(s => !inHub.has(s.orderId) && s.order.clinicianName && !isVoid(s))
   if (outside.length) {
     const names = [...new Set(outside.map(s => s.order.clinicianName!.trim().toUpperCase()))]
     const consultants = await prisma.consultant.findMany({
@@ -194,14 +231,8 @@ export async function hmoPfAlerts(includeSettled: boolean) {
         const r = c.unitPayRates.find(x => x.unitPayId === it.service!.unitPayId)
         if (r && !r.disabled && !r.thresholdEnabled) deductions += Number(it.lineTotal)
       }
-      const voided = isVoid(s)
-      const after = voided ? 0 : Number(s.order.netAmount) - deductions
-      // A void's PF paid: at the decreased amount if that decrease was already
-      // deducted, else at the amount before any open decrease.
-      const prior = priorOf.get(s.orderId)
-      const before = voided
-        ? Number(s.order.netAmount) - deductions + (prior?.deducted ? 0 : prior?.openDifference || 0)
-        : after + Number(s.difference)
+      const after = Number(s.order.netAmount) - deductions
+      const before = after + Number(s.difference)
       const lines: { rate: (typeof c.unitPayRates)[number]; quantity: number }[] = []
       for (const it of s.order.items) {
         if (!it.service?.unitPayId || it.service.unitPayEnabled === false) continue
@@ -221,7 +252,7 @@ export async function hmoPfAlerts(includeSettled: boolean) {
       }
       for (const { rate, quantity } of lines) {
         const paid = rateAt(rate, branch, before)
-        const policy = voided ? 0 : rateAt(rate, branch, after)
+        const policy = rateAt(rate, branch, after)
         const overpaid = round2((paid - policy) * quantity)
         if (overpaid <= 0.005) continue
         alerts.push({
