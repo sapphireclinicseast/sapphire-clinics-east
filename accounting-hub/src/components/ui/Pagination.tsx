@@ -24,7 +24,7 @@ export default function Pagination({
   const end = Math.min(page * pageSize, totalItems)
 
   return (
-    <div className="flex items-center justify-between py-3 px-1 text-xs" style={{ color: 'var(--mid-gray)' }}>
+    <div className="flex flex-wrap items-center justify-between gap-2 py-3 px-1 text-xs" style={{ color: 'var(--mid-gray)' }}>
       <div className="flex items-center gap-2">
         <span>Show</span>
         <select
@@ -41,7 +41,7 @@ export default function Pagination({
       </div>
 
       <div className="flex items-center gap-3">
-        <span>{start}–{end} of {totalItems}</span>
+        <span className="tabular-nums">{start.toLocaleString()}–{end.toLocaleString()} of {totalItems.toLocaleString()}</span>
         <div className="flex items-center gap-1">
           <button
             disabled={page <= 1}
