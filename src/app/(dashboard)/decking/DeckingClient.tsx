@@ -412,8 +412,10 @@ function CustomSlotModal({ staff, activeBranch, workDays, onClose, onSave }: {
 }
 
 // ─── Therapist Row ─────────────────────────────────────────────────────────────
-function TherapistRow({ staff, activeBranch, sectionMode, config, slots, defaultHours, onSaveConfig, onClearServiceConfig, onSaveSlot, onDeleteSlot, onOpenLoa, density = 'comfortable', collapsed = false, onToggleCollapse, datedSlots = [], onAddDated }: {
+function TherapistRow({ staff, activeBranch, sectionMode, config, slots, defaultHours, onSaveConfig, onClearServiceConfig, onSaveSlot, onDeleteSlot, onOpenLoa, density = 'comfortable', collapsed = false, onToggleCollapse, datedSlots = [], onAddDated, showCapacity = true }: {
   staff: StaffMember
+  /** "x of y booked" meter in the card header — main admin only. Display only. */
+  showCapacity?: boolean
   /** Row height / padding of the grid. Display only. */
   density?: Density
   /** Header-only card: the grid and config panel are hidden. Display only. */
@@ -724,7 +726,7 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
           </p>
         </div>
 
-        {util.total > 0 && (
+        {showCapacity && util.total > 0 && (
           <div className="order-last w-full sm:order-none sm:w-44"
             title={`${util.booked} booked · ${util.open} open${util.blocked > 0 ? ` · ${util.blocked} unavailable (not counted)` : ''}`}>
             <div className="flex items-baseline justify-between gap-2 text-[11px] mb-1" style={{ color: 'var(--mid-gray)' }}>
@@ -1346,6 +1348,16 @@ export default function DeckingClient({ role }: { role: string }) {
   const [nameFilter, setNameFilter] = useState('')
   const [activeSection, setActiveSection] = useState<DeckSection>('onsite')
 
+  // The analysis views and capacity read-outs are for the main admin. Front
+  // desk found the board busy with them, so for everyone else Analysis keeps
+  // only Interdepartment (useful for upselling) and the capacity KPIs, the
+  // Capacity card and each card's "x of y booked" meter are hidden. Display
+  // only — the board itself, booking and the downpayment panel are unchanged.
+  const isMainAdmin = role === 'ADMIN'
+  const FRONTDESK_ANALYSIS: DeckSection[] = ['crosssell']
+  const sectionVisible = (key: DeckSection) =>
+    isMainAdmin || DECK_SECTIONS.find(sec => sec.key === key)?.group !== 'analysis' || FRONTDESK_ANALYSIS.includes(key)
+
   // Viewing another branch's board. Face-to-face sessions there belong to that
   // branch's rooms, so they are read-only here; teletherapy is not tied to a
   // room and stays editable from either side. The server enforces the same rule
@@ -1864,7 +1876,7 @@ export default function DeckingClient({ role }: { role: string }) {
                     label={group.label}
                     value={activeSection}
                     onChange={id => setActiveSection(id as DeckSection)}
-                    tabs={DECK_SECTIONS.filter(sec => sec.group === group.key).map(sec => ({ id: sec.key, label: sec.label, title: sec.blurb }))}
+                    tabs={DECK_SECTIONS.filter(sec => sec.group === group.key && sectionVisible(sec.key)).map(sec => ({ id: sec.key, label: sec.label, title: sec.blurb }))}
                   />
                 </div>
               ))}
@@ -1940,7 +1952,7 @@ export default function DeckingClient({ role }: { role: string }) {
           </div>
 
           {/* ── KPIs — computed from the slots already on the board ── */}
-          {isRosterSection && !staffError && !dataError && (
+          {isMainAdmin && isRosterSection && !staffError && !dataError && (
             boardLoading ? (
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3" aria-hidden>
                 {[0, 1, 2, 3].map(i => <Skeleton key={i} className="h-[78px] rounded-xl" />)}
@@ -1980,7 +1992,7 @@ export default function DeckingClient({ role }: { role: string }) {
                 section is full width — so it runs across the top instead. Same
                 numbers, same derivation; All simply has no arrangement filter,
                 so this totals every mode of delivery at once. */}
-            {activeSection === 'all' && !boardLoading && !staffError && !dataError && (
+            {isMainAdmin && activeSection === 'all' && !boardLoading && !staffError && !dataError && (
               <div style={{ maxWidth: 560 }}>
                 <SlotSummaryCard
                   summary={slotSummary}
@@ -2133,6 +2145,7 @@ export default function DeckingClient({ role }: { role: string }) {
                       onToggleCollapse={() => toggleCollapsed(s.id)}
                       datedSlots={datedByStaff.get(s.id) ?? []}
                       onAddDated={handleSaveSlot}
+                      showCapacity={isMainAdmin}
                     />
                   ))}
                 </div>
@@ -2221,7 +2234,7 @@ export default function DeckingClient({ role }: { role: string }) {
                 {/* Capacity for the current branch / department / section.
                     Open is derived (total - booked - blocked) rather than
                     counted separately, so the three numbers always add up. */}
-                {boardLoading ? (
+                {!isMainAdmin ? null : boardLoading ? (
                   <Skeleton className="h-44 rounded-xl" />
                 ) : !staffError && !dataError ? (
                   <SlotSummaryCard
