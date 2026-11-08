@@ -1216,6 +1216,15 @@ export default function DeckingClient({ role }: { role: string }) {
   // teletherapy consultant would be missing and there would be no way to
   // navigate to the board she is on.
   const presentDepts = DEPARTMENTS.filter(d => staff.some(s => !isIntern(s) && s.department === d && onThisRoster(s, activeBranch, activeSection)))
+  // Per Day is an aggregate of the whole branch, not a roster cut. Asking the
+  // roster question with section='perday' answers false for every consultant —
+  // inSection() says so deliberately, since nobody "belongs" to an aggregate —
+  // so the list came back empty and every figure routed through it read 0: the
+  // day table, the week total, the department count and both capacity tables,
+  // while the payment split beside them (counted straight off the slots) showed
+  // 198 Cash and 33 GL. The same screen contradicted itself.
+  const perDayDepts = DEPARTMENTS.filter(d =>
+    staff.some(s => !isIntern(s) && s.department === d && onThisRoster(s, activeBranch, 'all')))
   const defaultHours = clinicHoursData[activeBranch]
     ? (() => {
         const schedule = clinicHoursData[activeBranch]
@@ -1641,7 +1650,7 @@ export default function DeckingClient({ role }: { role: string }) {
                  department would be the wrong number to set a target against. */
               <DeckingPerDay
                 slots={slots}
-                departments={presentDepts}
+                departments={perDayDepts}
                 branchName={branchLabel(activeBranch) ?? activeBranch}
                 capacity={perDayCapacity}
               />
