@@ -210,12 +210,19 @@ async function pushTab(
   // rather than alarm red. Sheets has no pattern fills, so the diagonal
   // hatching cannot be reproduced — struck-through grey on a grey ground is
   // the nearest thing that still reads as "crossed out, not available".
-  for (const text of [BLOCKED, BREAK]) {
-    post.push({ addConditionalFormatRule: { index: 0, rule: { ranges: nameRanges, booleanRule: {
-      condition: { type: 'TEXT_EQ', values: [{ userEnteredValue: text }] },
-      format: { backgroundColor: rgb('#E8EAED'), textFormat: { bold: true, strikethrough: true, foregroundColor: rgb('#80868B') } },
-    } } } })
-  }
+  // N/A plain, BREAK struck through. They both close the hour, and the grey
+  // ground says so for both — but N/A is the ordinary case, written across
+  // most of a board, and a page of struck-out text reads as damage rather than
+  // as a state. The strike is left on BREAK, where it is rare enough to mean
+  // something by standing out.
+  post.push({ addConditionalFormatRule: { index: 0, rule: { ranges: nameRanges, booleanRule: {
+    condition: { type: 'TEXT_EQ', values: [{ userEnteredValue: BLOCKED }] },
+    format: { backgroundColor: rgb('#E8EAED'), textFormat: { bold: true, foregroundColor: rgb('#80868B') } },
+  } } } })
+  post.push({ addConditionalFormatRule: { index: 0, rule: { ranges: nameRanges, booleanRule: {
+    condition: { type: 'TEXT_EQ', values: [{ userEnteredValue: BREAK }] },
+    format: { backgroundColor: rgb('#E8EAED'), textFormat: { bold: true, strikethrough: true, foregroundColor: rgb('#80868B') } },
+  } } } })
   for (const pr of mine?.protectedRanges ?? []) post.push({ deleteProtectedRange: { protectedRangeId: pr.protectedRangeId! } })
   post.push({ addProtectedRange: { protectedRange: {
     range: { sheetId },
