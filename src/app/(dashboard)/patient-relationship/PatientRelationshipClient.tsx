@@ -1962,8 +1962,15 @@ const TABS: { key: Tab; label: string; icon: any }[] = [
   { key: 'cancellation', label: 'Cancellations', icon: XCircle },
 ]
 
-export default function PatientRelationshipClient({ role }: { role: string }) {
-  const [activeTab, setActiveTab] = useState<Tab>('waitlist')
+export default function PatientRelationshipClient({
+  role,
+  initialTab = 'waitlist',
+}: {
+  role: string
+  /** From ?tab= on the page, so the dashboard cards can link to a given tab. */
+  initialTab?: Tab
+}) {
+  const [activeTab, setActiveTab] = useState<Tab>(initialTab)
   const [filterBranch, setFilterBranch] = useState('')
 
   // Auto-set branch for branch-specific roles
