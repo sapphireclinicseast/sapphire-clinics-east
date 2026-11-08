@@ -67,6 +67,19 @@ services:
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
       GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI}
       GOOGLE_REFRESH_TOKEN: ${GOOGLE_REFRESH_TOKEN}
+      # Decking → Google Sheets. The clinic's front desk fill the decking board
+      # in a spreadsheet; these let the hub read and write the two branch sheets.
+      #
+      # The credential is the whole service account JSON, base64'd into ONE line
+      # (lib/google-sheets-auth.ts decodes it). Not a file path: the deploy
+      # rsyncs the repo with --delete, so a key file inside it would be wiped,
+      # and a PEM private key's newlines do not survive a .env round trip.
+      #
+      # Defaulted to empty so a machine without them still starts — the sync
+      # reports "no credential configured" rather than the container failing.
+      GOOGLE_SHEETS_SA_KEY_B64: ${GOOGLE_SHEETS_SA_KEY_B64:-}
+      GOOGLE_SHEETS_AHEA_ID: ${GOOGLE_SHEETS_AHEA_ID:-}
+      GOOGLE_SHEETS_AHGH_ID: ${GOOGLE_SHEETS_AHGH_ID:-}
       MEET_LINK_SECRET: ${MEET_LINK_SECRET}
       MEET_BASE_URL: ${MEET_BASE_URL}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
