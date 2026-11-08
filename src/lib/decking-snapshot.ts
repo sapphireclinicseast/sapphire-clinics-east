@@ -38,6 +38,10 @@ export interface SnapshotRow {
 export async function computeDeckingSnapshot(): Promise<SnapshotRow[]> {
   const [configs, slots, staff] = await Promise.all([
     prisma.deckingTherapistConfig.findMany({
+      // Clinician capacity only — an intern's hours are supervised teaching
+      // time, not sellable capacity, and counting them would inflate every
+      // utilisation figure built on this snapshot.
+      where: { OR: [{ staff: { employmentType: null } }, { staff: { employmentType: { not: 'intern' } } }] },
       select: { staffId: true, workDays: true, startTime: true, endTime: true, branch: true, department: true },
     }),
     prisma.deckingSlot.findMany({

@@ -55,7 +55,12 @@ export async function GET(req: NextRequest) {
   }
 
   // ── 1. Fetch all therapist configs (decking setup) ─────────────────────────
-  const configWhere: Record<string, unknown> = {}
+  // Utilisation measures CLINICIAN capacity. An intern's decked hours are
+  // supervised teaching time, not hours the clinic can sell, so counting them
+  // would quietly depress every therapist's percentage.
+  const configWhere: Record<string, unknown> = {
+    OR: [{ staff: { employmentType: null } }, { staff: { employmentType: { not: 'intern' } } }],
+  }
   if (branch && branch !== 'all') configWhere.branch = branch
   if (department && department !== 'all') configWhere.department = department
   if (staffId) configWhere.staffId = staffId

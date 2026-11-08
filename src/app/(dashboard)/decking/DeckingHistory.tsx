@@ -1,6 +1,6 @@
 'use client'
 
-// The decking board over time: two panels, filled above open, sharing one date
+// The decking board over time: one stacked area — filled beneath open, so the
 // axis.
 //
 // Two panels rather than one stacked chart because the series move at wildly
@@ -29,7 +29,7 @@
 
 import { useEffect, useState } from 'react'
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
 
 const DEPARTMENTS = ['OT', 'PT', 'SLP', 'SPED', 'MD', 'PSYCHOLOGY', 'ORTHOSIS']
@@ -189,50 +189,47 @@ export default function DeckingHistory({ branch }: { branch: string }) {
               </div>
             )}
 
-            {/* One panel per series, each on its own fitted scale. syncId ties
-                the crosshairs together, so hovering a date reads both panels at
-                once and the split costs nothing when comparing them.
-                Animation off for the same reason as the Slot Utilization line —
-                it stalled on the first frame there and drew nothing. */}
-            {([
-              // showDates marks the LOWER panel — the shared x-axis is printed
-              // once, underneath both.
-              { key: 'booked' as const, name: 'Filled', colour: '#166534', showDates: false },
-              { key: 'open' as const, name: 'Open', colour: '#B8860B', showDates: true },
-            ]).map(series => {
-              const domain = fittedDomain(points.map(p => p[series.key]))
-              return (
-                <div key={series.key} style={{ marginBottom: series.showDates ? 0 : '0.5rem' }}>
-                  {/* The panel heading IS the legend. One series per panel means
-                      a legend box would only repeat what the title already says. */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', paddingLeft: '0.5rem' }}>
-                    <span style={{ width: 9, height: 9, borderRadius: 2, background: series.colour, flexShrink: 0 }} />
-                    <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--charcoal)' }}>{series.name}</span>
-                    <span style={{ fontSize: '0.66rem', color: 'var(--mid-gray)' }}>
-                      scale {domain[0]}–{domain[1]}
-                    </span>
-                  </div>
-                  <ResponsiveContainer width="100%" height={150}>
-                    <LineChart data={points} syncId="decking-history" margin={{ top: 6, right: 18, bottom: 0, left: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                      {/* Dates only under the lower panel — the two share an x-axis,
-                          and printing it twice wastes the height the zoom needs.
-                          minTickGap drops labels rather than overprinting them: a
-                          90-day range is the default, and every date will not fit. */}
-                      <XAxis dataKey="label" tick={series.showDates ? { fontSize: 10 } : false}
-                        height={series.showDates ? 22 : 4}
-                        minTickGap={16} interval="preserveStartEnd" />
-                      <YAxis tick={{ fontSize: 10 }} allowDecimals={false} width={44} domain={domain} />
-                      <Tooltip />
-                      <Line type="monotone" dataKey={series.key} name={series.name}
-                        stroke={series.colour} strokeWidth={2}
-                        dot={{ r: 2.5, strokeWidth: 0, fill: series.colour }}
-                        activeDot={{ r: 4.5 }} isAnimationActive={false} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              )
-            })}
+            {/* One stacked area: filled beneath open, so the band heights are
+                the composition of the day and the top edge is the whole board.
+                A reader gets "how much did we offer" and "how much of it sold"
+                from one shape instead of holding two panels in their head.
+
+                This replaced two separately-scaled line panels. Those were
+                built to make small day-to-day moves visible, and stacking does
+                cost that: on an axis running to ~725, a shift of three or four
+                slots is a line that barely moves. The trade is deliberate —
+                composition is what this chart is read for, and the exact
+                numbers are printed above it for the latest day.
+
+                Animation off: it stalled on the first frame elsewhere in this
+                module and drew nothing at all. */}
+            <ResponsiveContainer width="100%" height={300}>
+              <AreaChart data={points} margin={{ top: 6, right: 18, bottom: 0, left: 0 }}>
+                <defs>
+                  <linearGradient id="deckFilled" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#166534" stopOpacity={0.85} />
+                    <stop offset="100%" stopColor="#166534" stopOpacity={0.55} />
+                  </linearGradient>
+                  <linearGradient id="deckOpen" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#E8B533" stopOpacity={0.75} />
+                    <stop offset="100%" stopColor="#E8B533" stopOpacity={0.45} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="label" tick={{ fontSize: 10 }} height={22}
+                  minTickGap={16} interval="preserveStartEnd" />
+                {/* From zero, because a stacked area read off a cut axis
+                    misstates the proportion — which is the one thing the shape
+                    is supposed to tell you. */}
+                <YAxis tick={{ fontSize: 10 }} allowDecimals={false} width={44} domain={[0, 'auto']} />
+                <Tooltip />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Area type="monotone" dataKey="booked" name="Filled" stackId="deck"
+                  stroke="#166534" strokeWidth={1.5} fill="url(#deckFilled)" isAnimationActive={false} />
+                <Area type="monotone" dataKey="open" name="Open" stackId="deck"
+                  stroke="#B8860B" strokeWidth={1.5} fill="url(#deckOpen)" isAnimationActive={false} />
+              </AreaChart>
+            </ResponsiveContainer>
 
             {firstRecorded && (
               <p style={{ fontSize: '0.72rem', color: 'var(--mid-gray)', marginTop: '0.6rem' }}>

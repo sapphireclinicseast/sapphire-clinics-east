@@ -127,7 +127,16 @@ export async function GET(req: NextRequest) {
 
   // Their Decking Module configs (workDays + hours).
   const configs = await prisma.deckingTherapistConfig.findMany({
-    where: { staffId: { in: staffList.map((s) => s.id) } },
+    // Interns are never offered to the public. A student on placement has
+    // their own hours in Decking now, and without this they would appear on
+    // the booking page as a clinician anyone could choose.
+    //
+    // The null arm is not optional: `not: 'intern'` on a nullable column drops
+    // every untagged consultant too, which is most of the roster.
+    where: {
+      staffId: { in: staffList.map((s) => s.id) },
+      OR: [{ staff: { employmentType: null } }, { staff: { employmentType: { not: 'intern' } } }],
+    },
   })
   const configById = new Map(configs.map((c) => [c.staffId, c]))
 
