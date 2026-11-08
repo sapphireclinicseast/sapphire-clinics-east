@@ -2,10 +2,15 @@
 
 import React from 'react'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import Image from 'next/image'
+import {
+  AlertTriangle, ArrowRight, Banknote, Building2, Cake, CalendarClock, Check, CheckCircle2,
+  FileText, Gift, History, Loader2, Mail, RefreshCw, Search, Send, Smartphone, UserSearch, X,
+} from 'lucide-react'
 import DeskShortcutCard from '@/components/DeskShortcutCard'
 import { branchLabel } from '@/lib/branch-label'
+import { CARD_STYLE, DashCard, Skeleton } from '../patients/dashboard/ui'
 
 type BirthdayPatient = { id: string; firstName: string; lastName: string; birthday: string; hasPhone: boolean }
 /** One patient with cancellation fees owed and not yet collected. */
@@ -376,6 +381,207 @@ function PactCancellationReminder() {
   )
 }
 
+// ── Presentation helpers ─────────────────────────────────────────────────────
+// Same vocabulary as the Queueing / Staff / Scheduling pages: white cards with a
+// --light-gray rule, Montserrat headings, and status colours only where there is
+// a real state behind them (owed, at limit, failed, done).
+
+const SECTION_LABEL = 'text-[10.5px] font-bold uppercase tracking-wider'
+const SUBTLE_BG = '#F6F9F8'
+const BTN_SM = 'inline-flex items-center justify-center gap-1.5 h-8 px-2.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors disabled:cursor-not-allowed'
+
+type Tone = 'danger' | 'warn' | 'info' | 'brand' | 'clear'
+const TONES: Record<Tone, { fg: string; bg: string; bd: string }> = {
+  danger: { fg: '#B91C1C', bg: '#FEF2F2', bd: '#FECACA' },
+  warn:   { fg: '#B45309', bg: '#FFFBEB', bd: '#FDE68A' },
+  info:   { fg: '#1D4ED8', bg: '#EFF6FF', bd: '#BFDBFE' },
+  brand:  { fg: '#244952', bg: '#EEF4F2', bd: '#c8dbd5' },
+  clear:  { fg: '#15803D', bg: '#F0FDF4', bd: '#BBF7D0' },
+}
+
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
+
+function SectionHeading({ id, title, sub }: { id?: string; title: string; sub?: ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 mb-3">
+      <h2 id={id} className={SECTION_LABEL} style={{ color: 'var(--mid-gray)' }}>{title}</h2>
+      {sub && <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>{sub}</p>}
+    </div>
+  )
+}
+
+function CountChip({ n, tone }: { n: number; tone: Tone }) {
+  const t = TONES[tone]
+  return (
+    <span className="inline-flex items-center h-6 min-w-6 justify-center px-2 rounded-full text-xs font-bold tabular-nums"
+      style={{ background: t.bg, color: t.fg, border: `1px solid ${t.bd}` }}>
+      {n}
+    </span>
+  )
+}
+
+function CardLink({ href, children }: { href: string; children: ReactNode }) {
+  return (
+    <a href={href} className="inline-flex items-center gap-1 text-xs font-semibold hover:underline whitespace-nowrap"
+      style={{ color: 'var(--teal)' }}>
+      {children} <ArrowRight size={12} />
+    </a>
+  )
+}
+
+/** Small status pill used on list rows (age, "Not emailed", "Sent"). */
+function Pill({ tone, children, title }: { tone: Tone | 'neutral'; children: ReactNode; title?: string }) {
+  const t = tone === 'neutral' ? { fg: '#475569', bg: '#F1F5F9', bd: '#E2E8F0' } : TONES[tone]
+  return (
+    <span title={title}
+      className="inline-flex items-center px-2 py-0.5 rounded-full text-[10.5px] font-bold uppercase tracking-wide leading-4 whitespace-nowrap tabular-nums"
+      style={{ background: t.bg, color: t.fg, border: `1px solid ${t.bd}` }}>
+      {children}
+    </span>
+  )
+}
+
+function CaughtUp({ title = 'All caught up', hint }: { title?: string; hint?: ReactNode }) {
+  return (
+    <div className="flex items-start gap-2.5 rounded-lg px-3.5 py-3" style={{ background: SUBTLE_BG }}>
+      <CheckCircle2 size={16} className="flex-shrink-0 mt-0.5" style={{ color: TONES.clear.fg }} />
+      <div className="min-w-0">
+        <p className="text-[13px] font-semibold" style={{ color: 'var(--charcoal)' }}>{title}</p>
+        {hint && <p className="text-xs mt-0.5 leading-snug" style={{ color: 'var(--mid-gray)' }}>{hint}</p>}
+      </div>
+    </div>
+  )
+}
+
+function CardError({ message, onRetry, busy }: { message: ReactNode; onRetry?: () => void; busy?: boolean }) {
+  return (
+    <div role="alert" className="rounded-lg px-4 py-4 text-center" style={{ background: TONES.warn.bg, border: `1px solid ${TONES.warn.bd}` }}>
+      <AlertTriangle size={16} className="mx-auto mb-1.5" style={{ color: TONES.warn.fg }} />
+      <p className="text-[13px] font-semibold leading-snug" style={{ color: '#92400E' }}>{message}</p>
+      {onRetry && (
+        <button type="button" onClick={onRetry} disabled={busy}
+          className={`${BTN_SM} mt-3 hover:bg-white/70`}
+          style={{ border: `1px solid ${TONES.warn.bd}`, color: '#92400E', background: '#fff' }}>
+          <RefreshCw size={12} className={busy ? 'animate-spin' : ''} /> Try again
+        </button>
+      )}
+    </div>
+  )
+}
+
+/** Placeholder list rows while a card loads. */
+function RowsSkeleton({ rows = 3 }: { rows?: number }) {
+  return (
+    <div className="space-y-3" aria-hidden>
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} className="flex items-center gap-3">
+          <Skeleton className="h-3.5 flex-1" style={{ maxWidth: `${70 - i * 10}%` }} />
+          <Skeleton className="h-5 ml-auto" style={{ width: 52 }} />
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/** One tile in the "Needs your attention" row: a count, a label, a link. */
+function AttentionTile({ href, icon, label, count, sub, tone, state }: {
+  href: string
+  icon: ReactNode
+  label: string
+  count: number
+  sub?: ReactNode
+  tone: Tone
+  state: 'loading' | 'ready' | 'error'
+}) {
+  const t = state === 'error' ? TONES.warn : TONES[tone]
+  return (
+    <a href={href}
+      className="group relative flex items-start gap-3 rounded-xl pl-4 pr-3.5 py-3.5 min-w-0 overflow-hidden transition-shadow hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+      style={{ ...CARD_STYLE, outlineColor: 'var(--teal)' }}>
+      <span aria-hidden className="absolute left-0 top-0 bottom-0 w-1"
+        style={{ background: state === 'loading' ? 'var(--light-gray)' : t.fg }} />
+      <span className="flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center" style={{ background: t.bg, color: t.fg }}>
+        {icon}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-[12.5px] font-semibold leading-snug" style={{ color: 'var(--charcoal)' }}>{label}</p>
+        {state === 'loading' ? (
+          <>
+            <Skeleton className="h-6 w-10 mt-1.5" />
+            <Skeleton className="h-3 w-28 mt-1.5" />
+          </>
+        ) : (
+          <>
+            <p className="text-2xl font-bold leading-tight mt-0.5"
+              style={{ fontFamily: 'var(--font-display)', color: state === 'error' ? TONES.warn.fg : count > 0 ? t.fg : 'var(--charcoal)', fontVariantNumeric: 'tabular-nums' }}>
+              {state === 'error' ? '—' : count}
+            </p>
+            {sub && (
+              <p className="text-xs mt-0.5 leading-snug" style={{ color: state === 'error' ? '#92400E' : 'var(--mid-gray)' }}>{sub}</p>
+            )}
+          </>
+        )}
+      </div>
+      <ArrowRight size={15} className="flex-shrink-0 mt-1 transition-transform group-hover:translate-x-0.5" style={{ color: 'var(--mid-gray)' }} />
+    </a>
+  )
+}
+
+// ── Today's front-desk checkpoints ───────────────────────────────────────────
+// The same three timed reminders the popup fires, laid out as today's timeline
+// so front desk can see what is coming and what has been acknowledged. Reads
+// the popup's own "done" flag; it never fires or dismisses anything itself.
+function TodayCheckpoints({ branch }: { branch?: string }) {
+  const [now, setNow] = useState<Date | null>(null)
+  useEffect(() => {
+    // First tick deferred a frame so the server render and the first client
+    // render agree (no clock on either), then every 30s like the popup check.
+    const tick = () => setNow(new Date())
+    const first = setTimeout(tick, 0)
+    const t = setInterval(tick, 30_000)
+    return () => { clearTimeout(first); clearInterval(t) }
+  }, [])
+
+  const reminders = getReminders(branch)
+    .slice()
+    .sort((a, b) => (a.triggerHour * 60 + a.triggerMinute) - (b.triggerHour * 60 + b.triggerMinute))
+  const mins = now ? now.getHours() * 60 + now.getMinutes() : null
+
+  return (
+    <DashCard title="Front desk checkpoints" icon={<CalendarClock size={16} />}
+      description="Today's timed reminders — the popup appears at each time." flush>
+      <ul className="px-5 py-1 divide-y" style={{ borderColor: 'var(--light-gray)' }}>
+        {reminders.map(r => {
+          const at = r.triggerHour * 60 + r.triggerMinute
+          let badge: ReactNode = <Skeleton className="h-5" style={{ width: 64 }} />
+          if (mins !== null) {
+            badge = isReminderDone(r.id) ? <Pill tone="clear">Done</Pill>
+              : mins >= at && mins < at + 60 ? <Pill tone="warn">Due now</Pill>
+              : mins < at ? <Pill tone="neutral">Upcoming</Pill>
+              : <Pill tone="neutral">Passed</Pill>
+          }
+          return (
+            <li key={r.id} className="flex items-start gap-3 py-3" style={{ borderColor: 'var(--light-gray)' }}>
+              <span className="flex-shrink-0 w-16 text-[13px] font-bold tabular-nums pt-px" style={{ color: 'var(--teal)' }}>
+                {r.timeLabel}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-[13px] font-semibold leading-snug" style={{ color: 'var(--charcoal)' }}>{r.title}</p>
+                <p className="text-xs mt-0.5 leading-snug line-clamp-2" style={{ color: 'var(--mid-gray)' }}>{r.actions[0]}</p>
+              </div>
+              <span className="flex-shrink-0">{badge}</span>
+            </li>
+          )
+        })}
+      </ul>
+    </DashCard>
+  )
+}
+
+/** What each child card reports up so the attention row can count it. */
+interface ProgressSummary { loading: boolean; error: string | null; count: number; paidUnsent: number; staleUnsent: number }
+interface PlushSummary { loading: boolean; error: string | null; pending: number; unplaceable: number }
+
 // ── Main component ───────────────────────────────────────────────────────────
 export default function FrontDeskWelcome({
   name,
@@ -396,12 +602,24 @@ export default function FrontDeskWelcome({
   // "email:<patientId>" / "sms:<patientId>" → who greeted them and when
   const [greetedBy, setGreetedBy] = useState<Record<string, { by: string | null; at: string }>>({})
   const [slotAlerts, setSlotAlerts] = useState<{ nearingNoShow: any[]; subjectNoShow: any[]; nearingCancel: any[]; subjectCancel: any[] }>({ nearingNoShow: [], subjectNoShow: [], nearingCancel: [], subjectCancel: [] })
+  // Display-only: whether the slot-alert fetch has answered, and which of its
+  // two reads failed. Before this the watchlist said "Nobody is at or near slot
+  // removal" while still loading, and again when the request failed.
+  const [slotLoaded, setSlotLoaded] = useState(false)
+  const [slotFailed, setSlotFailed] = useState<{ noshow: boolean; cancel: boolean }>({ noshow: false, cancel: false })
+  const [slotAttempt, setSlotAttempt] = useState(0)
   // Cancellation fees owed and not yet collected, read out of the same
   // cancellation fetch the watchlist uses. `checked: false` means the
   // Accounting Hub could not be reached — which must read as "not checked",
   // never as "nothing owed", or front desk stops chasing money on an outage.
   const [feesOwed, setFeesOwed] = useState<{ checked: boolean; rows: FeeOwedRow[] } | null>(null)
   const [activeReminder, setActiveReminder] = useState<Reminder | null>(null)
+  // Display-only summaries reported up by the cards that load their own data.
+  const [waitlist, setWaitlist] = useState<WaitlistSummary | null>(null)
+  const [prSummary, setPrSummary] = useState<ProgressSummary>({ loading: true, error: null, count: 0, paidUnsent: 0, staleUnsent: 0 })
+  const [plushSummary, setPlushSummary] = useState<PlushSummary>({ loading: true, error: null, pending: 0, unplaceable: 0 })
+  // Set after mount so the server's clock/time zone never decides the date.
+  const [todayLabel, setTodayLabel] = useState<string | null>(null)
 
   useEffect(() => {
     const reminders = getReminders(branch)
@@ -423,6 +641,7 @@ export default function FrontDeskWelcome({
 
   useEffect(() => {
     setQuote(getDailyQuote())
+    setTodayLabel(new Date().toLocaleDateString('en-PH', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }))
     setSentEmailIds(loadSentEmails())
     setSentSmsIds(loadSent('sms'))
     // Server record wins: union it with the local in-flight marks so a send
@@ -436,12 +655,16 @@ export default function FrontDeskWelcome({
         setGreetedBy(d.detail ?? {})
       })
       .catch(() => {})
+  }, [branch])
 
-    // Fetch slot removal alerts
+  useEffect(() => {
+    // Fetch slot removal alerts. `failed` is a display-only marker so the
+    // cards can say "couldn't load" instead of reporting an all-clear; the
+    // patients array each read yields is exactly what it was before.
     const branchParam = branch === 'SBEA' ? 'SANDBOX_EAST' : branch === 'SBGH' ? 'SANDBOX_GREENHILLS' : ''
     Promise.all([
-      fetch(`/api/patient-relationship?tab=noshow&branch=${branchParam}`).then(r => r.json()).catch(() => ({ patients: [] })),
-      fetch(`/api/patient-relationship?tab=cancellation&branch=${branchParam}`).then(r => r.json()).catch(() => ({ patients: [] })),
+      fetch(`/api/patient-relationship?tab=noshow&branch=${branchParam}`).then(r => r.json().then(d => r.ok ? d : { ...d, failed: true })).catch(() => ({ patients: [], failed: true })),
+      fetch(`/api/patient-relationship?tab=cancellation&branch=${branchParam}`).then(r => r.json().then(d => r.ok ? d : { ...d, failed: true })).catch(() => ({ patients: [], failed: true })),
     ]).then(([ns, ca]) => {
       setSlotAlerts({
         nearingNoShow: (ns.patients || []).filter((p: any) => p.noShowCount === 2),
@@ -449,6 +672,8 @@ export default function FrontDeskWelcome({
         nearingCancel: (ca.patients || []).filter((p: any) => p.cancellationsUsed >= 10 && p.cancellationsUsed < 12),
         subjectCancel: (ca.patients || []).filter((p: any) => p.cancellationsUsed >= 12),
       })
+      setSlotFailed({ noshow: !!ns.failed, cancel: !!ca.failed })
+      setSlotLoaded(true)
 
       // A fee is owed on the 3rd cancellation onward inside the rolling
       // 6-month window; the API marks those logs feeBearing and attaches the
@@ -478,29 +703,50 @@ export default function FrontDeskWelcome({
       rows.sort((a, b) => new Date(a.oldestAt).getTime() - new Date(b.oldestAt).getTime())
       setFeesOwed({ checked: ca.feeLookup?.ok === true, rows })
     })
-  }, [branch])
+  }, [branch, slotAttempt])
+
+  const retrySlotAlerts = () => {
+    setSlotLoaded(false)
+    setFeesOwed(null)
+    setSlotAttempt(n => n + 1)
+  }
 
   const branchLabel =
     branch === 'SBEA' ? 'Aura Health East'
     : branch === 'SBGH' ? 'Aura Health Greenhills'
     : undefined
 
+  // ── Display-only tallies for the header line and the attention row ──
+  const slotRows = [
+    { key: 'sn', label: 'No-shows — at limit',      list: slotAlerts.subjectNoShow, out: 3,  field: 'noShowCount',       tone: 'danger' as const },
+    { key: 'nn', label: 'No-shows — nearing',       list: slotAlerts.nearingNoShow, out: 3,  field: 'noShowCount',       tone: 'warn' as const },
+    { key: 'sc', label: 'Cancellations — at limit', list: slotAlerts.subjectCancel, out: 12, field: 'cancellationsUsed', tone: 'danger' as const },
+    { key: 'nc', label: 'Cancellations — nearing',  list: slotAlerts.nearingCancel, out: 12, field: 'cancellationsUsed', tone: 'warn' as const },
+  ]
+  const slotTotal = slotRows.reduce((n, r) => n + r.list.length, 0)
+  const slotAtLimit = slotAlerts.subjectNoShow.length + slotAlerts.subjectCancel.length
+  const slotAnyFailed = slotFailed.noshow || slotFailed.cancel
+
+  const feeTotal = feesOwed?.rows.reduce((n, r) => n + r.count, 0) ?? 0
+  const feeOldestDays = feesOwed?.rows[0] ? daysSince(feesOwed.rows[0].oldestAt) : null
+
+  const waitUntouched = waitlist?.ok ? (waitlist.untouched ?? 0) : 0
+  const waitStale = waitlist?.ok ? (waitlist.stale ?? 0) : 0
+
+  const bdayGreeted = birthdayPatients.filter(p => sentEmailIds.has(p.id) || sentSmsIds.has(p.id)).length
+
+  const summaryParts: string[] = []
+  if (birthdayPatients.length > 0) summaryParts.push(`${plural(birthdayPatients.length, 'birthday')} today`)
+  if (waitUntouched > 0) summaryParts.push(`${plural(waitUntouched, 'enquiry', 'enquiries')} to chase`)
+  if (feesOwed?.checked && feeTotal > 0) summaryParts.push(`${plural(feeTotal, 'cancellation fee')} to collect`)
+  if (slotLoaded && slotTotal > 0) summaryParts.push(`${slotTotal} on the slot-removal watchlist`)
+  if (!prSummary.loading && prSummary.count > 0) summaryParts.push(`${plural(prSummary.count, 'progress report')} pending`)
+  if (!plushSummary.loading && plushSummary.pending > 0) summaryParts.push(`${plural(plushSummary.pending, 'plush toy')} to hand over`)
+  const stillLoading = !slotLoaded || waitlist === null || prSummary.loading || plushSummary.loading
+
   return (
-    <div
-      style={{
-        position: 'relative',
-        width: '100%',
-        minHeight: 'calc(100vh - 60px)',
-        overflowX: 'hidden',
-        background: 'linear-gradient(155deg, #f4f8f5 0%, #edf3d9 55%, #f4f8f5 100%)',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        paddingTop: '3rem',
-        gap: '1.5rem',
-      }}
-    >
-{/* ── Timed reminder popup ── */}
+    <div className="max-w-[1200px] mx-auto min-w-0 space-y-6">
+      {/* ── Timed reminder popup ── */}
       {activeReminder && (
         <ReminderModal
           reminder={activeReminder}
@@ -508,422 +754,424 @@ export default function FrontDeskWelcome({
         />
       )}
 
-      {/* ── Top row: greeting (center) + reminder cards (right) ── */}
-      <div className="w-full max-w-[1200px] px-6 flex flex-row gap-6 items-start justify-between">
-
-        {/* Left column: greeting + quote + branch badge.
-            This was a centred, full-height landing block — logo, then greeting,
-            then a boxed quote — which pushed the actual work below the fold on a
-            laptop. It reads as a page header now: the logo sits beside the
-            greeting rather than above it, and everything is left-aligned so the
-            eye starts in one place instead of the middle. */}
-        <div style={{ flex: '1 1 380px', minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.85rem' }}>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.9rem' }}>
+      {/* ── Header: a compact greeting, not a hero. Logo beside the greeting,
+          date + branch, and one line saying what is waiting. ── */}
+      <header className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+          <div className="flex items-center gap-4 min-w-0">
             <Image
               src="/aura-health-logo.png"
               alt="Aura Health Rehab Clinic"
-              width={104}
-              height={58}
-              style={{ objectFit: 'contain', flexShrink: 0 }}
+              width={72}
+              height={40}
+              className="hidden sm:block flex-shrink-0"
+              style={{ objectFit: 'contain' }}
               unoptimized
             />
-            <div style={{ textAlign: 'left' }}>
-              <p style={{
-                fontSize: '0.64rem', fontWeight: 700, letterSpacing: '0.18em',
-                textTransform: 'uppercase', color: '#4a8073', marginBottom: '0.15rem',
-              }}>
-                Welcome back
+            <div className="min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: 'var(--teal)' }}>
+                {todayLabel ?? 'Welcome back'}
               </p>
-              <h1 style={{
-                fontSize: 'clamp(1.25rem, 2vw, 1.65rem)', fontWeight: 800, lineHeight: 1.15,
-                color: '#1A1A1A', margin: 0,
-                fontFamily: 'var(--font-display, system-ui)',
-              }}>
-                Good {getGreeting()},{' '}
-                <span style={{ color: '#4a8073' }}>{name ?? 'there'}</span>
+              <h1 className="text-2xl font-bold leading-tight" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+                Good {getGreeting()}, <span style={{ color: 'var(--teal)' }}>{name ?? 'there'}</span>
               </h1>
-            </div>
-          </div>
-
-          {/* The quote stays — it is the one warm thing on the page — but as a
-              quiet line rather than a bordered card competing with the widgets
-              that carry actual work. */}
-          {quote && (
-            <p style={{
-              maxWidth: '52ch', margin: 0,
-              fontSize: '0.85rem', lineHeight: 1.6, color: '#4a6b64', fontStyle: 'italic',
-              borderLeft: '2px solid rgba(74,128,115,0.35)', paddingLeft: '0.75rem',
-            }}>
-              &ldquo;{quote.text}&rdquo;
-              <span style={{ fontStyle: 'normal', fontWeight: 600, color: '#4a8073' }}> &mdash; {quote.author}</span>
-            </p>
-          )}
-
-          {/* Branch badge */}
-          {branchLabel && (
-            <div style={{
-              display: 'inline-flex', alignItems: 'center', gap: '0.45rem',
-              background: '#4a8073', color: '#fff',
-              fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.07em',
-              padding: '0.3rem 1rem', borderRadius: '99px',
-            }}>
-              <span style={{
-                width: 6, height: 6, borderRadius: '50%',
-                background: '#ffffff', display: 'inline-block', flexShrink: 0,
-              }} />
-              {branchLabel}
-            </div>
-          )}
-        </div>
-
-        {/* Just the mascot beside the greeting. The two reference cards used to
-            stack here too, but they are far taller than the greeting, so the
-            row's left half sat empty for most of their height — a bigger hole
-            than the one they were moved up to fill. */}
-        <div style={{ flexShrink: 0, opacity: 0.9, alignSelf: 'flex-start' }}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/Codepaca.svg" alt="Aura alpaca mascot" width={104} height={104} style={{ display: 'block' }} />
-        </div>
-
-      </div>{/* end top row */}
-
-      {/* The two reference cards, side by side across the full width. Still at
-          the top where they were asked for, but as their own row: two columns of
-          equal height beat one tall column beside a short greeting, and on a
-          narrow screen auto-fit drops them to one per row. */}
-      <div
-        className="w-full max-w-[1200px] px-6 grid gap-4 items-start mt-4"
-        style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))' }}
-      >
-        <DeskShortcutCard />
-        <PactCancellationReminder />
-      </div>
-
-      {/* One flowing grid, not three fixed columns.
-          The old layout was two flex rows of mismatched heights: a short greeting
-          beside a ~700px reference card, then three columns that each ran to
-          their own length. That left a screen-sized empty pane in the middle
-          with the mascot floating in it, and made the page read as scattered
-          however good the individual cards were.
-          auto-fit + align-items:start lets every card sit at the top of its own
-          cell and the columns rebalance at any width, so there is no void to
-          leave. Order is by what gets acted on first; the reference cards come
-          after the work. */}
-      <div style={{
-        width: '100%', maxWidth: '1200px', padding: '0 1.5rem',
-        display: 'grid', gap: '1rem', alignItems: 'start',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
-      }}>
-
-      {/* ── Birthday Reminder ── */}
-      <div style={{ minWidth: 0 }}>
-        <div style={{
-          background: '#fff',
-          border: '1px solid #EDE5D8',
-          borderRadius: '0.875rem',
-          overflow: 'hidden',
-          boxShadow: '0 1px 6px rgba(0,0,0,0.05)',
-        }}>
-          {/* Header */}
-          <div style={{
-            background: 'linear-gradient(135deg, #244952, #4a8073)',
-            padding: '0.7rem 1.1rem',
-            display: 'flex', alignItems: 'center', gap: '0.5rem',
-          }}>
-            <span style={{ fontSize: '1rem' }}>🎂</span>
-            <p style={{ color: '#fff', fontWeight: 700, fontSize: '0.78rem', margin: 0, letterSpacing: '0.04em' }}>
-              Birthdays Today
-            </p>
-            <span style={{
-              marginLeft: 'auto',
-              background: 'rgba(255,255,255,0.25)',
-              color: '#fff',
-              borderRadius: '99px',
-              padding: '0.12rem 0.55rem',
-              fontSize: '0.68rem',
-              fontWeight: 700,
-            }}>
-              {birthdayPatients.length} patient{birthdayPatients.length !== 1 ? 's' : ''}
-            </span>
-          </div>
-
-          {/* Body */}
-          <div style={{ padding: '0.65rem 0.875rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            {birthdayPatients.length === 0 ? (
-              <p style={{ textAlign: 'center', fontSize: '0.75rem', color: '#AAA', padding: '0.6rem 0', margin: 0 }}>
-                No patient birthdays today 🌿
+              <p className="text-sm mt-1" style={{ color: 'var(--mid-gray)' }} aria-live="polite">
+                {summaryParts.length > 0
+                  ? summaryParts.join(' · ')
+                  : stillLoading ? 'Checking what needs you today…' : 'Nothing is waiting on you — all caught up.'}
               </p>
-            ) : (
-              birthdayPatients.map(p => {
-                // Every row on this card IS today now, so there is nothing to
-                // compare. The old check read a local-midnight timestamp with
-                // getUTC*, which in a UTC+8 clinic resolved to the previous day
-                // — a birthday happening today was labelled "Thu, Sep 3".
-                const dayLabel = 'Today! 🎉'
-                const clinicName =
-                  branch === 'SBEA' ? 'Aura Health East'
-                  : branch === 'SBGH' ? 'Aura Health Greenhills'
-                  : 'Aura Health Rehab Clinic'
-                const msg = `Happy Birthday, ${p.firstName}! 🎂 Wishing you a wonderful day filled with joy and good health! From all of us at ${clinicName}. 💚`
-                const sms = smsState[p.id] ?? 'idle'
-                const email = emailState[p.id] ?? 'idle'
-                const alreadySent = sentEmailIds.has(p.id)
-                const alreadySentSms = sentSmsIds.has(p.id)
-                // Name the sender on the button, so "already greeted" is a fact
-                // someone can act on rather than a green box of unknown origin.
-                const greetedNote = (ch: 'email' | 'sms') => {
-                  const g = greetedBy[`${ch}:${p.id}`]
-                  if (!g) return undefined
-                  const when = new Date(g.at).toLocaleString()
-                  return g.by ? `Already sent by ${g.by} — ${when}` : `Already sent — ${when}`
-                }
-
-                async function sendSms() {
-                  // Mark in localStorage immediately — prevents duplicate sends if
-                  // the user refreshes while the request is still in-flight
-                  markSent('sms', p.id)
-                  setSentSmsIds(loadSent('sms'))
-                  setSmsState(s => ({ ...s, [p.id]: 'sending' }))
-                  try {
-                    const res = await fetch('/api/birthday/send-sms', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ patientId: p.id, branch, message: msg }),
-                    })
-                    if (res.ok) {
-                      setSmsState(s => ({ ...s, [p.id]: 'sent' }))
-                    } else {
-                      // Definitive server error — SMS was NOT sent; allow retry
-                      const d = await res.json().catch(() => ({}))
-                      setSmsState(s => ({ ...s, [p.id]: 'error' }))
-                      // Remove the optimistic mark so the user can try again
-                      try {
-                        const sent = loadSent('sms')
-                        sent.delete(p.id)
-                        localStorage.setItem(storageKey('sms'), JSON.stringify([...sent]))
-                        setSentSmsIds(new Set(sent))
-                      } catch {}
-                      if (d.error) alert(`SMS failed: ${d.error}`)
-                    }
-                  } catch {
-                    setSmsState(s => ({ ...s, [p.id]: 'error' }))
-                    // Network/timeout error — SMS status unknown; keep the mark
-                    // to prevent accidental duplicates (check httpSMS dashboard)
-                  }
-                }
-
-                async function sendEmail(force = false) {
-                  if (alreadySent && !force) {
-                    if (!confirm(`A birthday email was already sent to ${p.firstName} today. Send again?`)) return
-                    if (!confirm('Are you sure? This will send a second birthday email.')) return
-                  }
-                  setEmailState(s => ({ ...s, [p.id]: 'sending' }))
-                  try {
-                    const res = await fetch('/api/birthday/send-email', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ patientId: p.id, branch }),
-                    })
-                    if (res.ok) {
-                      setEmailState(s => ({ ...s, [p.id]: 'sent' }))
-                      markEmailSent(p.id)
-                      setSentEmailIds(loadSentEmails())
-                    } else {
-                      const d = await res.json().catch(() => ({}))
-                      setEmailState(s => ({ ...s, [p.id]: 'error' }))
-                      alert(d.error || 'Failed to send email.')
-                    }
-                  } catch {
-                    setEmailState(s => ({ ...s, [p.id]: 'error' }))
-                  }
-                }
-
-                return (
-                  <div key={p.id} style={{
-                    display: 'flex', alignItems: 'center', gap: '0.65rem',
-                    // Every row is today's birthday now, so the highlight is
-                    // unconditional rather than branching on a flag that can
-                    // only be true.
-                    background: '#FFF7F0',
-                    border: '1px solid #F5B48A',
-                    borderRadius: '0.6rem',
-                    padding: '0.55rem 0.8rem',
-                  }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <p style={{ fontWeight: 700, fontSize: '0.8rem', color: '#1A1A1A', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {p.firstName} {p.lastName}
-                      </p>
-                      <p style={{ fontSize: '0.67rem', color: '#4a8073', margin: 0, fontWeight: 600 }}>
-                        {dayLabel}
-                      </p>
-                    </div>
-                    {/* Send Email */}
-                    <button
-                      onClick={() => sendEmail(false)}
-                      disabled={email === 'sending'}
-                      title={
-                        alreadySent || email === 'sent'
-                          ? (greetedNote('email') ?? 'Email already sent — click to resend')
-                          : 'Send birthday greeting email'
-                      }
-                      style={{
-                        background: (alreadySent || email === 'sent') ? '#22C55E' : email === 'error' ? '#EF4444' : '#fff',
-                        color: (alreadySent || email === 'sent') ? '#fff' : email === 'error' ? '#fff' : '#4a8073',
-                        border: `1px solid ${(alreadySent || email === 'sent') ? '#22C55E' : email === 'error' ? '#EF4444' : '#4a8073'}`,
-                        borderRadius: '0.4rem',
-                        padding: '0.32rem 0.7rem', fontSize: '0.67rem', fontWeight: 600,
-                        cursor: email === 'sending' ? 'wait' : 'pointer',
-                        whiteSpace: 'nowrap', flexShrink: 0,
-                        opacity: email === 'sending' ? 0.7 : 1,
-                        transition: 'all 0.2s',
-                      }}
-                    >
-                      {email === 'sending' ? 'Sending…'
-                        : (alreadySent || email === 'sent') ? '✓ Email Sent'
-                        : email === 'error' ? '✕ Failed'
-                        : '✉ Send Email'}
-                    </button>
-                    {/* Send SMS */}
-                    {p.hasPhone && (
-                      <button
-                        onClick={sendSms}
-                        disabled={sms === 'sending' || sms === 'sent' || alreadySentSms}
-                        title={sms === 'error' ? 'Failed — tap to retry' : alreadySentSms ? (greetedNote('sms') ?? 'SMS already sent') : 'Send SMS birthday greeting'}
-                        style={{
-                          background:
-                            (alreadySentSms || sms === 'sent') ? '#22C55E'
-                            : sms === 'error' ? '#EF4444'
-                            : '#4a8073',
-                          color: '#fff', border: 'none', borderRadius: '0.4rem',
-                          padding: '0.32rem 0.7rem', fontSize: '0.67rem', fontWeight: 600,
-                          cursor: (sms === 'sending' || sms === 'sent' || alreadySentSms) ? 'default' : 'pointer',
-                          whiteSpace: 'nowrap', flexShrink: 0,
-                          opacity: sms === 'sending' ? 0.7 : 1,
-                          transition: 'all 0.2s',
-                        }}
-                      >
-                        {sms === 'sending' ? 'Sending…'
-                          : (alreadySentSms || sms === 'sent') ? '✓ SMS Sent!'
-                          : sms === 'error'   ? '✕ Failed'
-                          : '📱 Send SMS'}
-                      </button>
-                    )}
-                  </div>
-                )
-              })
-            )}
-          </div>
-
-          {/* Text prompt hint */}
-          {birthdayPatients.length > 0 && (
-            <div style={{
-              borderTop: '1px solid #F0E8DC',
-              padding: '0.5rem 0.875rem',
-              fontSize: '0.65rem', color: '#AAA', fontStyle: 'italic',
-            }}>
-              &ldquo;Send Email&rdquo; sends a birthday greeting to the patient&apos;s email (requires email on file). &ldquo;Send SMS&rdquo; sends it to their phone (requires phone number on file).
             </div>
-          )}
+          </div>
+          <div className="flex items-center gap-3">
+            {branchLabel && (
+              <span className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-xs font-semibold"
+                style={{ background: SUBTLE_BG, border: '1px solid var(--light-gray)', color: 'var(--charcoal)' }}>
+                <Building2 size={13} style={{ color: 'var(--teal)' }} />
+                {branchLabel}
+              </span>
+            )}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/Codepaca.svg" alt="Aura alpaca mascot" width={52} height={52} className="hidden sm:block" style={{ opacity: 0.9 }} />
+          </div>
         </div>
-      </div>
 
-      {/* ── Waitlist enquiries nobody has picked up ──
-          Its own cell, high in the grid: these are the only items on the page
-          with a clock on them that nothing else surfaces — the 11am/4pm popup
-          says "go and check the waitlist" without ever saying whether there is
-          anything in it. */}
-      <div style={{ minWidth: 0 }}>
-        <WaitlistToChase branch={branch} />
-      </div>
+        {/* The quote stays — it is the one warm thing on the page — as a quiet
+            line rather than a card competing with the work. */}
+        {quote && (
+          <p className="text-[13px] leading-relaxed italic pl-3 max-w-[80ch]"
+            style={{ color: '#4a6b64', borderLeft: '2px solid rgba(74,128,115,0.35)' }}>
+            &ldquo;{quote.text}&rdquo;
+            <span className="not-italic font-semibold" style={{ color: '#4a8073' }}> &mdash; {quote.author}</span>
+          </p>
+        )}
+      </header>
 
-      {/* ── Slot Removal watchlist + PR widgets (right column) ── */}
-      <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          {/* One watchlist, not four cards.
-              These were four separate boxes, each with its own header and its own
-              "None" — so on a normal day a quarter of the dashboard was chrome
-              announcing that nothing had happened. Severity is carried by a
-              coloured rail and the count, which is what makes a real entry jump
-              out; when everything is clear it collapses to a single line. */}
-          {(() => {
-            const rows = [
-              { key: 'sn', label: 'No-shows — at limit',      list: slotAlerts.subjectNoShow, out: 3,  field: 'noShowCount',       tone: '#DC2626', bg: '#FEF2F2', bd: '#FECACA', ink: '#991B1B' },
-              { key: 'nn', label: 'No-shows — nearing',       list: slotAlerts.nearingNoShow, out: 3,  field: 'noShowCount',       tone: '#D97706', bg: '#FFFBEB', bd: '#FDE68A', ink: '#92400E' },
-              { key: 'sc', label: 'Cancellations — at limit', list: slotAlerts.subjectCancel, out: 12, field: 'cancellationsUsed', tone: '#DC2626', bg: '#FEF2F2', bd: '#FECACA', ink: '#991B1B' },
-              { key: 'nc', label: 'Cancellations — nearing',  list: slotAlerts.nearingCancel, out: 12, field: 'cancellationsUsed', tone: '#D97706', bg: '#FFFBEB', bd: '#FDE68A', ink: '#92400E' },
-            ]
-            const flagged = rows.filter(r => r.list.length > 0)
-            const total = rows.reduce((n, r) => n + r.list.length, 0)
-            return (
-              <div style={{
-                background: total === 0 ? '#F8FAF9' : '#fff',
-                border: `1px solid ${total === 0 ? '#E3E9E6' : '#FECACA'}`,
-                borderRadius: '0.875rem', padding: '0.9rem 1.1rem',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', marginBottom: total === 0 ? 0 : '0.7rem' }}>
-                  <span style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: total === 0 ? '#6B7C75' : '#DC2626' }}>
-                    Slot removal watchlist
-                  </span>
-                  {total > 0 && (
-                    <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#fff', background: '#DC2626', borderRadius: 99, padding: '1px 7px' }}>
-                      {total}
-                    </span>
-                  )}
-                </div>
+      {/* ── Front desk reference ── kept directly under the greeting, where
+          they were asked for (#717/#725): two equal columns, one per row on a
+          narrow screen. ── */}
+      <section aria-labelledby="reference-heading">
+        <SectionHeading id="reference-heading" title="Front desk reference" />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+          <DeskShortcutCard />
+          <PactCancellationReminder />
+        </div>
+      </section>
 
-                {total === 0 ? (
-                  <p style={{ margin: '0.15rem 0 0', fontSize: '0.82rem', color: '#6B7C75' }}>
-                    Nobody is at or near slot removal.
-                  </p>
+      {/* ── Needs your attention ── one tile per work queue on this page. Six
+          tiles: 3 across from 1280px, 2 on tablet, 1 on a phone — no orphan. */}
+      <section aria-labelledby="attention-heading">
+        <SectionHeading id="attention-heading" title="Needs your attention" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+          <AttentionTile
+            href="/patient-relationship?tab=cancellation"
+            icon={<Banknote size={17} />}
+            label="Cancellation fees to collect"
+            count={feeTotal}
+            state={feesOwed === null ? 'loading' : !feesOwed.checked ? 'error' : 'ready'}
+            tone={feeTotal > 0 ? 'warn' : 'clear'}
+            sub={feesOwed && !feesOwed.checked ? 'Not checked — the Accounting Hub did not answer'
+              : feeTotal > 0 ? `${plural(feesOwed?.rows.length ?? 0, 'patient')}${feeOldestDays !== null && Number.isFinite(feeOldestDays) ? ` · oldest ${feeOldestDays}d` : ''}`
+              : 'All caught up'}
+          />
+          <AttentionTile
+            href="/patient-relationship?tab=waitlist"
+            icon={<UserSearch size={17} />}
+            label="Waitlist to chase"
+            count={waitUntouched}
+            state={waitlist === null ? 'loading' : !waitlist.ok ? 'error' : 'ready'}
+            tone={waitStale > 0 ? 'warn' : waitUntouched > 0 ? 'info' : 'clear'}
+            sub={waitlist && !waitlist.ok ? (waitlist.warning ?? 'The waitlist could not be read.')
+              : waitUntouched > 0
+                ? (waitStale > 0 ? `${waitStale} waiting over ${waitlist?.staleDays ?? 30} days` : 'Not enrolled and not tagged')
+                  + (waitlist?.partial?.length ? ' · incomplete' : '')
+                : 'All caught up'}
+          />
+          <AttentionTile
+            href="#slot-watchlist"
+            icon={<AlertTriangle size={17} />}
+            label="Slot removal watchlist"
+            count={slotTotal}
+            state={!slotLoaded ? 'loading' : slotAnyFailed ? 'error' : 'ready'}
+            tone={slotAtLimit > 0 ? 'danger' : slotTotal > 0 ? 'warn' : 'clear'}
+            sub={slotAnyFailed ? 'Couldn’t load — open to try again'
+              : slotTotal > 0 ? `${slotAtLimit} at limit · ${slotTotal - slotAtLimit} nearing`
+              : 'Nobody at or near the limit'}
+          />
+          <AttentionTile
+            href="#progress-reports"
+            icon={<FileText size={17} />}
+            label="Progress reports awaiting payment + email"
+            count={prSummary.count}
+            state={prSummary.loading ? 'loading' : prSummary.error ? 'error' : 'ready'}
+            tone={prSummary.staleUnsent > 0 ? 'danger' : prSummary.count > 0 ? 'warn' : 'clear'}
+            sub={prSummary.error ? prSummary.error
+              : prSummary.count > 0
+                ? (prSummary.paidUnsent > 0 ? `${prSummary.paidUnsent} paid, not emailed yet` : 'Awaiting payment')
+                : 'All caught up'}
+          />
+          <AttentionTile
+            href="#birthdays"
+            icon={<Cake size={17} />}
+            label="Birthdays today"
+            count={birthdayPatients.length}
+            state="ready"
+            tone={birthdayPatients.length > 0 && bdayGreeted < birthdayPatients.length ? 'brand' : 'clear'}
+            sub={birthdayPatients.length === 0 ? 'No patient birthdays today'
+              : bdayGreeted >= birthdayPatients.length ? 'Everyone has been greeted'
+              : `${bdayGreeted} of ${birthdayPatients.length} greeted`}
+          />
+          <AttentionTile
+            href="#plush-toy"
+            icon={<Gift size={17} />}
+            label="Plush toys to hand over"
+            count={plushSummary.pending}
+            state={plushSummary.loading ? 'loading' : plushSummary.error ? 'error' : 'ready'}
+            tone={plushSummary.unplaceable > 0 ? 'warn' : plushSummary.pending > 0 ? 'brand' : 'clear'}
+            sub={plushSummary.error ? plushSummary.error
+              : plushSummary.unplaceable > 0 ? `${plural(plushSummary.unplaceable, 'VIP wallet')} not matched to a patient`
+              : plushSummary.pending > 0 ? 'VIP card or 100th session'
+              : 'All caught up'}
+          />
+        </div>
+      </section>
+
+      {/* ── Today ── */}
+      <section aria-labelledby="today-heading">
+        <SectionHeading id="today-heading" title="Today" sub={todayLabel ?? undefined} />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+
+          {/* ── Birthday Reminder ── */}
+          <div id="birthdays" className="min-w-0 scroll-mt-4">
+            <DashCard
+              title="Birthdays today"
+              icon={<Cake size={16} />}
+              description={`Patients of ${branchLabel ?? 'this branch'} whose birthday is today.`}
+              action={<CountChip n={birthdayPatients.length} tone={birthdayPatients.length > 0 ? 'brand' : 'clear'} />}
+              flush
+              footer={birthdayPatients.length > 0 ? (
+                <>&ldquo;Send email&rdquo; sends a birthday greeting to the patient&apos;s email (requires email on file). &ldquo;Send SMS&rdquo; sends it to their phone (requires phone number on file).</>
+              ) : undefined}
+            >
+              <div className="px-5 py-3">
+                {birthdayPatients.length === 0 ? (
+                  <CaughtUp title="No patient birthdays today" hint="Check back tomorrow." />
                 ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
-                    {flagged.map(r => (
-                      <div key={r.key} style={{ borderLeft: `3px solid ${r.tone}`, background: r.bg, borderRadius: '0.4rem', padding: '0.45rem 0.6rem' }}>
-                        <div style={{ fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: r.tone, marginBottom: '0.25rem' }}>
-                          {r.label} ({r.list.length})
-                        </div>
-                        {r.list.map((p: any) => (
-                          <div key={p.id} style={{ fontSize: '0.82rem', color: r.ink, fontWeight: 600, padding: '0.1rem 0', display: 'flex', justifyContent: 'space-between', gap: '0.6rem' }}>
-                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.lastName}, {p.firstName}</span>
-                            <span style={{ fontWeight: 700, fontSize: '0.75rem', color: r.tone, fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
-                              {p[r.field]}/{r.out}
-                            </span>
+                  <ul className="divide-y" style={{ borderColor: 'var(--light-gray)' }}>
+                    {birthdayPatients.map(p => {
+                      // Every row on this card IS today now, so there is nothing to
+                      // compare. The old check read a local-midnight timestamp with
+                      // getUTC*, which in a UTC+8 clinic resolved to the previous day
+                      // — a birthday happening today was labelled "Thu, Sep 3".
+                      const dayLabel = 'Today! 🎉'
+                      const clinicName =
+                        branch === 'SBEA' ? 'Aura Health East'
+                        : branch === 'SBGH' ? 'Aura Health Greenhills'
+                        : 'Aura Health Rehab Clinic'
+                      const msg = `Happy Birthday, ${p.firstName}! 🎂 Wishing you a wonderful day filled with joy and good health! From all of us at ${clinicName}. 💚`
+                      const sms = smsState[p.id] ?? 'idle'
+                      const email = emailState[p.id] ?? 'idle'
+                      const alreadySent = sentEmailIds.has(p.id)
+                      const alreadySentSms = sentSmsIds.has(p.id)
+                      // Name the sender on the button, so "already greeted" is a fact
+                      // someone can act on rather than a green box of unknown origin.
+                      const greetedNote = (ch: 'email' | 'sms') => {
+                        const g = greetedBy[`${ch}:${p.id}`]
+                        if (!g) return undefined
+                        const when = new Date(g.at).toLocaleString()
+                        return g.by ? `Already sent by ${g.by} — ${when}` : `Already sent — ${when}`
+                      }
+
+                      async function sendSms() {
+                        // Mark in localStorage immediately — prevents duplicate sends if
+                        // the user refreshes while the request is still in-flight
+                        markSent('sms', p.id)
+                        setSentSmsIds(loadSent('sms'))
+                        setSmsState(s => ({ ...s, [p.id]: 'sending' }))
+                        try {
+                          const res = await fetch('/api/birthday/send-sms', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ patientId: p.id, branch, message: msg }),
+                          })
+                          if (res.ok) {
+                            setSmsState(s => ({ ...s, [p.id]: 'sent' }))
+                          } else {
+                            // Definitive server error — SMS was NOT sent; allow retry
+                            const d = await res.json().catch(() => ({}))
+                            setSmsState(s => ({ ...s, [p.id]: 'error' }))
+                            // Remove the optimistic mark so the user can try again
+                            try {
+                              const sent = loadSent('sms')
+                              sent.delete(p.id)
+                              localStorage.setItem(storageKey('sms'), JSON.stringify([...sent]))
+                              setSentSmsIds(new Set(sent))
+                            } catch {}
+                            if (d.error) alert(`SMS failed: ${d.error}`)
+                          }
+                        } catch {
+                          setSmsState(s => ({ ...s, [p.id]: 'error' }))
+                          // Network/timeout error — SMS status unknown; keep the mark
+                          // to prevent accidental duplicates (check httpSMS dashboard)
+                        }
+                      }
+
+                      async function sendEmail(force = false) {
+                        if (alreadySent && !force) {
+                          if (!confirm(`A birthday email was already sent to ${p.firstName} today. Send again?`)) return
+                          if (!confirm('Are you sure? This will send a second birthday email.')) return
+                        }
+                        setEmailState(s => ({ ...s, [p.id]: 'sending' }))
+                        try {
+                          const res = await fetch('/api/birthday/send-email', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ patientId: p.id, branch }),
+                          })
+                          if (res.ok) {
+                            setEmailState(s => ({ ...s, [p.id]: 'sent' }))
+                            markEmailSent(p.id)
+                            setSentEmailIds(loadSentEmails())
+                          } else {
+                            const d = await res.json().catch(() => ({}))
+                            setEmailState(s => ({ ...s, [p.id]: 'error' }))
+                            alert(d.error || 'Failed to send email.')
+                          }
+                        } catch {
+                          setEmailState(s => ({ ...s, [p.id]: 'error' }))
+                        }
+                      }
+
+                      const emailDone = alreadySent || email === 'sent'
+                      const smsDone = alreadySentSms || sms === 'sent'
+                      const doneStyle: CSSProperties = { background: '#DFF5E4', color: '#166534', border: '1px solid #B6E5C2' }
+                      const failStyle: CSSProperties = { background: '#FDE4E4', color: '#991B1B', border: '1px solid #F5C2C2' }
+
+                      return (
+                        <li key={p.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 py-2.5" style={{ borderColor: 'var(--light-gray)' }}>
+                          <div className="flex-1 min-w-[140px]">
+                            <p className="text-[13px] font-semibold leading-snug" style={{ color: 'var(--charcoal)' }}>
+                              {p.firstName} {p.lastName}
+                            </p>
+                            <p className="text-xs font-medium" style={{ color: 'var(--teal)' }}>{dayLabel}</p>
                           </div>
-                        ))}
-                      </div>
-                    ))}
-                    {/* Cleared categories are named but not given a box each —
-                        knowing cancellations are clear still matters, it just
-                        doesn't warrant the same weight as a real flag. */}
-                    {flagged.length < rows.length && (
-                      <p style={{ margin: 0, fontSize: '0.72rem', color: '#6B7C75' }}>
-                        Clear: {rows.filter(r => r.list.length === 0).map(r => r.label).join(' · ')}
-                      </p>
-                    )}
-                  </div>
+                          <div className="flex items-center gap-2">
+                            {/* Send Email */}
+                            <button
+                              type="button"
+                              onClick={() => sendEmail(false)}
+                              disabled={email === 'sending'}
+                              title={
+                                alreadySent || email === 'sent'
+                                  ? (greetedNote('email') ?? 'Email already sent — click to resend')
+                                  : 'Send birthday greeting email'
+                              }
+                              className={`${BTN_SM} ${emailDone || email === 'error' ? '' : 'hover:bg-gray-50'}`}
+                              style={{
+                                ...(emailDone ? doneStyle : email === 'error' ? failStyle
+                                  : { background: '#fff', color: 'var(--teal)', border: '1px solid var(--light-gray)' }),
+                                cursor: email === 'sending' ? 'wait' : 'pointer',
+                                opacity: email === 'sending' ? 0.7 : 1,
+                              }}
+                            >
+                              {email === 'sending' ? <><Loader2 size={12} className="animate-spin" /> Sending…</>
+                                : emailDone ? <><Check size={12} /> Email sent</>
+                                : email === 'error' ? <><X size={12} /> Failed</>
+                                : <><Mail size={12} /> Send email</>}
+                            </button>
+                            {/* Send SMS */}
+                            {p.hasPhone && (
+                              <button
+                                type="button"
+                                onClick={sendSms}
+                                disabled={sms === 'sending' || sms === 'sent' || alreadySentSms}
+                                title={sms === 'error' ? 'Failed — tap to retry' : alreadySentSms ? (greetedNote('sms') ?? 'SMS already sent') : 'Send SMS birthday greeting'}
+                                className={`${BTN_SM} ${smsDone || sms === 'error' ? '' : 'text-white hover:opacity-90'}`}
+                                style={{
+                                  ...(smsDone ? doneStyle : sms === 'error' ? failStyle
+                                    : { background: 'var(--teal)', border: '1px solid var(--teal)' }),
+                                  cursor: (sms === 'sending' || sms === 'sent' || alreadySentSms) ? 'default' : 'pointer',
+                                  opacity: sms === 'sending' ? 0.7 : 1,
+                                }}
+                              >
+                                {sms === 'sending' ? <><Loader2 size={12} className="animate-spin" /> Sending…</>
+                                  : smsDone ? <><Check size={12} /> SMS sent</>
+                                  : sms === 'error' ? <><X size={12} /> Failed</>
+                                  : <><Smartphone size={12} /> Send SMS</>}
+                              </button>
+                            )}
+                          </div>
+                        </li>
+                      )
+                    })}
+                  </ul>
                 )}
               </div>
-            )
-          })()}
+            </DashCard>
+          </div>
 
-          {/* Cancellation fees owed — sits directly under the watchlist because
-              it reads out of the same cancellation data, and the two answer
-              consecutive questions: who is near losing their slot, and who
-              still owes for the cancellations that got them there. */}
-          <FeesOwedCard data={feesOwed} />
+          <TodayCheckpoints branch={branch} key={activeReminder?.id ?? 'none'} />
+        </div>
+      </section>
+
+      {/* ── Follow-ups: the work queues behind the tiles above. Two columns,
+          each card at the top of its own cell, so nothing is left as a void. ── */}
+      <section aria-labelledby="followups-heading">
+        <SectionHeading id="followups-heading" title="Follow-ups" />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+
+          {/* Cancellation fees owed — reads out of the same cancellation data as
+              the watchlist; the two answer consecutive questions: who is near
+              losing their slot, and who still owes for the cancellations that
+              got them there. */}
+          <div id="fees" className="min-w-0 scroll-mt-4">
+            <FeesOwedCard data={feesOwed} onRetry={retrySlotAlerts} />
+          </div>
+
+          {/* ── Waitlist enquiries nobody has picked up ──
+              These are the only items on the page with a clock on them that
+              nothing else surfaces — the 11am/4pm popup says "go and check the
+              waitlist" without ever saying whether there is anything in it. */}
+          <div id="waitlist" className="min-w-0 scroll-mt-4">
+            <WaitlistToChase branch={branch} onSummary={setWaitlist} />
+          </div>
+
+          {/* One watchlist, not four cards. Severity is carried by a coloured
+              rail and the count, which is what makes a real entry jump out;
+              when everything is clear it collapses to a single line. */}
+          <div id="slot-watchlist" className="min-w-0 scroll-mt-4">
+            <DashCard
+              title="Slot removal watchlist"
+              icon={<AlertTriangle size={16} />}
+              description="No-shows count out of 3, cancellations out of 12."
+              action={slotLoaded && !slotAnyFailed ? <CountChip n={slotTotal} tone={slotAtLimit > 0 ? 'danger' : slotTotal > 0 ? 'warn' : 'clear'} /> : undefined}
+            >
+              {!slotLoaded ? (
+                <RowsSkeleton rows={3} />
+              ) : slotFailed.noshow && slotFailed.cancel ? (
+                <CardError message="Couldn’t load no-show and cancellation counts." onRetry={retrySlotAlerts} />
+              ) : (
+                <div className="space-y-3">
+                  {slotAnyFailed && (
+                    <CardError
+                      message={slotFailed.noshow ? 'No-show counts could not be loaded — this list is incomplete.' : 'Cancellation counts could not be loaded — this list is incomplete.'}
+                      onRetry={retrySlotAlerts}
+                    />
+                  )}
+                  {slotTotal === 0 ? (
+                    !slotAnyFailed && <CaughtUp hint="Nobody is at or near slot removal." />
+                  ) : (
+                    <>
+                      {slotRows.filter(r => r.list.length > 0).map(r => {
+                        const t = TONES[r.tone]
+                        return (
+                          <div key={r.key} className="rounded-lg pl-3 pr-3 py-2" style={{ borderLeft: `3px solid ${t.fg}`, background: t.bg }}>
+                            <p className={`${SECTION_LABEL} mb-1`} style={{ color: t.fg }}>
+                              {r.label} ({r.list.length})
+                            </p>
+                            <ul>
+                              {r.list.map((p: any) => (
+                                <li key={p.id} className="flex items-baseline justify-between gap-3 py-0.5 text-[13px] font-semibold" style={{ color: 'var(--charcoal)' }}>
+                                  <span className="min-w-0 break-words">{p.lastName}, {p.firstName}</span>
+                                  <span className="flex-shrink-0 text-xs font-bold tabular-nums" style={{ color: t.fg }}>
+                                    {p[r.field]}/{r.out}
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )
+                      })}
+                      {/* Cleared categories are named but not given a box each —
+                          knowing cancellations are clear still matters, it just
+                          doesn't warrant the same weight as a real flag. */}
+                      {slotRows.some(r => r.list.length === 0) && (
+                        <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+                          Clear: {slotRows.filter(r => r.list.length === 0).map(r => r.label).join(' · ')}
+                        </p>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+            </DashCard>
+          </div>
 
           {/* Progress Reports — pending PRs awaiting Paid + Email */}
-          <PendingProgressReports />
+          <div id="progress-reports" className="min-w-0 scroll-mt-4">
+            <PendingProgressReports onSummary={setPrSummary} />
+          </div>
+
+          {/* Perk actions — real work, so it sits with the work. */}
+          <div id="plush-toy" className="min-w-0 scroll-mt-4">
+            <PlushToyEligible branch={branch} seesAllBranches={seesAllBranches} onSummary={setPlushSummary} />
+          </div>
 
           {/* Past Progress Reports — searchable history */}
-          <PastProgressReports />
+          <div className="min-w-0">
+            <PastProgressReports />
+          </div>
         </div>
-
-        {/* Perk actions — real work, so it sits with the work. */}
-        <PlushToyEligible branch={branch} seesAllBranches={seesAllBranches} />
-
-      </div>{/* end dashboard grid */}
-
+      </section>
     </div>
   )
 }
@@ -937,96 +1185,62 @@ export default function FrontDeskWelcome({
 //
 // Days, not pesos: the fee amount lives on the POS line, not on the
 // cancellation, so a figure here would be one we made up.
-function FeesOwedCard({ data }: { data: { checked: boolean; rows: FeeOwedRow[] } | null }) {
+function FeesOwedCard({ data, onRetry }: { data: { checked: boolean; rows: FeeOwedRow[] } | null; onRetry?: () => void }) {
   const [showAll, setShowAll] = useState(false)
   const LIMIT = 6
 
-  const header = (count: number | null, tone: string) => (
-    <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', marginBottom: count ? '0.7rem' : 0 }}>
-      <a
-        href="/patient-relationship?tab=cancellation"
-        style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: tone, textDecoration: 'none' }}
-      >
-        Cancellation fees to collect →
-      </a>
-      {!!count && (
-        <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#fff', background: '#B45309', borderRadius: 99, padding: '1px 7px' }}>
-          {count}
-        </span>
-      )}
-    </div>
-  )
-
-  if (data === null) {
-    return (
-      <div style={{ background: '#F8FAF9', border: '1px solid #E3E9E6', borderRadius: '0.875rem', padding: '0.9rem 1.1rem' }}>
-        {header(null, '#6B7C75')}
-        <p style={{ margin: '0.15rem 0 0', fontSize: '0.82rem', color: '#6B7C75', fontStyle: 'italic' }}>Checking…</p>
-      </div>
-    )
-  }
-
-  // Never a reassuring zero on an outage: front desk must know the question
-  // went unanswered, or they stop collecting on the day the hub is down.
-  if (!data.checked) {
-    return (
-      <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: '0.875rem', padding: '0.9rem 1.1rem' }}>
-        {header(null, '#92400E')}
-        <p style={{ margin: '0.15rem 0 0', fontSize: '0.82rem', color: '#92400E' }}>
-          Not checked — the Accounting Hub did not answer, so paid fees could not be read.
-        </p>
-      </div>
-    )
-  }
-
-  if (data.rows.length === 0) {
-    return (
-      <div style={{ background: '#F8FAF9', border: '1px solid #E3E9E6', borderRadius: '0.875rem', padding: '0.9rem 1.1rem' }}>
-        {header(null, '#6B7C75')}
-        <p style={{ margin: '0.15rem 0 0', fontSize: '0.82rem', color: '#6B7C75' }}>
-          Every cancellation fee owed has been paid.
-        </p>
-      </div>
-    )
-  }
-
-  const totalFees = data.rows.reduce((n, r) => n + r.count, 0)
-  const shown = showAll ? data.rows : data.rows.slice(0, LIMIT)
+  const totalFees = data?.rows.reduce((n, r) => n + r.count, 0) ?? 0
+  const shown = data ? (showAll ? data.rows : data.rows.slice(0, LIMIT)) : []
 
   return (
-    <div style={{ background: '#fff', border: '1px solid #FDE68A', borderRadius: '0.875rem', padding: '0.9rem 1.1rem' }}>
-      {header(totalFees, '#B45309')}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
-        {shown.map(r => {
-          const days = Math.floor((Date.now() - new Date(r.oldestAt).getTime()) / 86_400_000)
-          return (
-            <div key={r.id} style={{
-              display: 'flex', justifyContent: 'space-between', gap: '0.6rem',
-              fontSize: '0.82rem', color: '#92400E', fontWeight: 600, padding: '0.12rem 0',
-            }}>
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</span>
-              <span style={{ flexShrink: 0, fontSize: '0.75rem', fontWeight: 700, color: '#B45309', fontVariantNumeric: 'tabular-nums' }}>
-                {r.count > 1 ? `${r.count} fees · ` : ''}{Number.isFinite(days) ? `${days}d` : '—'}
-              </span>
-            </div>
-          )
-        })}
-      </div>
-      {data.rows.length > LIMIT && (
-        <button
-          onClick={() => setShowAll(v => !v)}
-          style={{
-            marginTop: '0.5rem', background: 'none', border: 'none', padding: 0,
-            fontSize: '0.72rem', fontWeight: 700, color: '#B45309', cursor: 'pointer', fontFamily: 'inherit',
-          }}
-        >
-          {showAll ? 'Show fewer' : `Show all ${data.rows.length} patients`}
-        </button>
+    <DashCard
+      title="Cancellation fees to collect"
+      icon={<Banknote size={16} />}
+      description="Fees owed from the 3rd cancellation in 6 months, not yet paid."
+      action={<div className="flex items-center gap-3">
+        {data?.checked && totalFees > 0 && <CountChip n={totalFees} tone="warn" />}
+        <CardLink href="/patient-relationship?tab=cancellation">Open</CardLink>
+      </div>}
+      footer={data?.checked && data.rows.length > 0
+        ? 'Longest outstanding first. Collect at the POS — the till then asks which cancellation it settles.'
+        : undefined}
+    >
+      {data === null ? (
+        <RowsSkeleton rows={3} />
+      ) : !data.checked ? (
+        // Never a reassuring zero on an outage: front desk must know the question
+        // went unanswered, or they stop collecting on the day the hub is down.
+        <CardError message="Not checked — the Accounting Hub did not answer, so paid fees could not be read." onRetry={onRetry} />
+      ) : data.rows.length === 0 ? (
+        <CaughtUp hint="Every cancellation fee owed has been paid." />
+      ) : (
+        <>
+          <ul className="divide-y" style={{ borderColor: 'var(--light-gray)' }}>
+            {shown.map(r => {
+              const days = Math.floor((Date.now() - new Date(r.oldestAt).getTime()) / 86_400_000)
+              return (
+                <li key={r.id} className="flex items-center justify-between gap-3 py-2" style={{ borderColor: 'var(--light-gray)' }}>
+                  <span className="min-w-0 text-[13px] font-semibold break-words" style={{ color: 'var(--charcoal)' }}>{r.name}</span>
+                  <Pill tone="warn">
+                    {r.count > 1 ? `${r.count} fees · ` : ''}{Number.isFinite(days) ? `${days}d` : '—'}
+                  </Pill>
+                </li>
+              )
+            })}
+          </ul>
+          {data.rows.length > LIMIT && (
+            <button
+              type="button"
+              onClick={() => setShowAll(v => !v)}
+              className="mt-2 text-xs font-semibold hover:underline"
+              style={{ color: 'var(--teal)' }}
+            >
+              {showAll ? 'Show fewer' : `Show all ${data.rows.length} patients`}
+            </button>
+          )}
+        </>
       )}
-      <p style={{ margin: '0.55rem 0 0', fontSize: '0.7rem', color: '#A16207' }}>
-        Longest outstanding first. Collect at the POS — the till then asks which cancellation it settles.
-      </p>
-    </div>
+    </DashCard>
   )
 }
 
@@ -1047,8 +1261,10 @@ interface WaitlistSummary {
   partial?: string[]
 }
 
-function WaitlistToChase({ branch }: { branch?: string }) {
+function WaitlistToChase({ branch, onSummary }: { branch?: string; onSummary?: (d: WaitlistSummary | null) => void }) {
   const [data, setData] = useState<WaitlistSummary | null>(null)
+  // Display-only: bumping this re-runs the same fetch from "Try again".
+  const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
     const branchParam = branch === 'SBEA' ? 'SANDBOX_EAST' : branch === 'SBGH' ? 'SANDBOX_GREENHILLS' : ''
@@ -1056,89 +1272,53 @@ function WaitlistToChase({ branch }: { branch?: string }) {
       .then(r => r.json())
       .then((d: WaitlistSummary) => setData(d))
       .catch(() => setData({ ok: false, warning: 'Could not load the waitlist.' }))
-  }, [branch])
+  }, [branch, attempt])
 
-  const header = (count: number | null, tone: string, withGap: boolean) => (
-    <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', marginBottom: withGap ? '0.7rem' : 0 }}>
-      <a
-        href="/patient-relationship?tab=waitlist"
-        style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: tone, textDecoration: 'none' }}
-      >
-        Waitlist to chase →
-      </a>
-      {!!count && (
-        <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#fff', background: '#1D4ED8', borderRadius: 99, padding: '1px 7px' }}>
-          {count}
-        </span>
-      )}
-    </div>
-  )
+  useEffect(() => { onSummary?.(data) }, [data, onSummary])
 
-  if (data === null) {
-    return (
-      <div style={{ background: '#F8FAF9', border: '1px solid #E3E9E6', borderRadius: '0.875rem', padding: '0.9rem 1.1rem' }}>
-        {header(null, '#6B7C75', false)}
-        <p style={{ margin: '0.15rem 0 0', fontSize: '0.82rem', color: '#6B7C75', fontStyle: 'italic' }}>Loading…</p>
-      </div>
-    )
-  }
-
-  if (!data.ok) {
-    return (
-      <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: '0.875rem', padding: '0.9rem 1.1rem' }}>
-        {header(null, '#92400E', false)}
-        <p style={{ margin: '0.15rem 0 0', fontSize: '0.82rem', color: '#92400E' }}>
-          {data.warning ?? 'The waitlist could not be read.'}
-        </p>
-      </div>
-    )
-  }
-
-  const untouched = data.untouched ?? 0
-
-  if (untouched === 0) {
-    return (
-      <div style={{ background: '#F8FAF9', border: '1px solid #E3E9E6', borderRadius: '0.875rem', padding: '0.9rem 1.1rem' }}>
-        {header(null, '#6B7C75', false)}
-        <p style={{ margin: '0.15rem 0 0', fontSize: '0.82rem', color: '#6B7C75' }}>
-          All {data.total ?? 0} enquiries are enrolled or tagged.
-        </p>
-      </div>
-    )
-  }
+  const untouched = data?.ok ? (data.untouched ?? 0) : 0
 
   return (
-    <div style={{ background: '#fff', border: '1px solid #BFDBFE', borderRadius: '0.875rem', padding: '0.9rem 1.1rem' }}>
-      {header(untouched, '#1D4ED8', true)}
-      <p style={{ margin: '0 0 0.55rem', fontSize: '0.75rem', color: '#1E40AF' }}>
-        Not enrolled and not tagged. Newest first:
-      </p>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
-        {(data.newest ?? []).map((e, i) => (
-          <div key={`${e.name}-${i}`} style={{
-            display: 'flex', justifyContent: 'space-between', gap: '0.6rem',
-            fontSize: '0.82rem', color: '#1E3A8A', fontWeight: 600, padding: '0.12rem 0',
-          }}>
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.name}</span>
-            <span style={{ flexShrink: 0, fontSize: '0.75rem', fontWeight: 700, color: '#1D4ED8', fontVariantNumeric: 'tabular-nums' }}>
-              {e.days === null ? '—' : e.days === 0 ? 'today' : `${e.days}d`}
-            </span>
-          </div>
-        ))}
-      </div>
-      {!!data.stale && (
-        <p style={{ margin: '0.55rem 0 0', fontSize: '0.72rem', color: '#1E40AF' }}>
-          {data.stale} of them have been waiting more than {data.staleDays ?? 30} days.
-        </p>
+    <DashCard
+      title="Waitlist to chase"
+      icon={<UserSearch size={16} />}
+      description="Enquiries not enrolled and not tagged, newest first."
+      action={<div className="flex items-center gap-3">
+        {untouched > 0 && <CountChip n={untouched} tone={(data?.stale ?? 0) > 0 ? 'warn' : 'info'} />}
+        <CardLink href="/patient-relationship?tab=waitlist">Open</CardLink>
+      </div>}
+      footer={data?.ok && untouched > 0 && (!!data.stale || !!data.partial?.length) ? (
+        <>
+          {!!data.stale && (
+            <p>{data.stale} of them have been waiting more than {data.staleDays ?? 30} days.</p>
+          )}
+          {/* One intake form HR would not answer for looks exactly like a quiet
+              week, so a partial read says so rather than quietly undercounting. */}
+          {!!data.partial?.length && (
+            <p style={{ color: '#92400E' }}>Incomplete: no response from HR for {data.partial.join(', ')}.</p>
+          )}
+        </>
+      ) : undefined}
+    >
+      {data === null ? (
+        <RowsSkeleton rows={4} />
+      ) : !data.ok ? (
+        <CardError message={data.warning ?? 'The waitlist could not be read.'} onRetry={() => { setData(null); setAttempt(n => n + 1) }} />
+      ) : untouched === 0 ? (
+        <CaughtUp hint={`All ${data.total ?? 0} enquiries are enrolled or tagged.`} />
+      ) : (
+        <ul className="divide-y" style={{ borderColor: 'var(--light-gray)' }}>
+          {(data.newest ?? []).map((e, i) => (
+            <li key={`${e.name}-${i}`} className="flex items-center justify-between gap-3 py-2" style={{ borderColor: 'var(--light-gray)' }}>
+              <span className="min-w-0 text-[13px] font-semibold break-words" style={{ color: 'var(--charcoal)' }}>{e.name}</span>
+              <Pill tone={e.days !== null && e.days > (data.staleDays ?? 30) ? 'warn' : 'info'}>
+                {e.days === null ? '—' : e.days === 0 ? 'today' : `${e.days}d`}
+              </Pill>
+            </li>
+          ))}
+        </ul>
       )}
-      {/* One intake form HR would not answer for looks exactly like a quiet
-          week, so a partial read says so rather than quietly undercounting. */}
-      {!!data.partial?.length && (
-        <p style={{ margin: '0.4rem 0 0', fontSize: '0.7rem', color: '#92400E' }}>
-          Incomplete: no response from HR for {data.partial.join(', ')}.
-        </p>
-      )}
-    </div>
+    </DashCard>
   )
 }
 
@@ -1161,7 +1341,7 @@ interface PlushToyCandidate {
   branch: string | null
 }
 
-function PlushToyEligible({ branch, seesAllBranches }: { branch?: string; seesAllBranches?: boolean }) {
+function PlushToyEligible({ branch, seesAllBranches, onSummary }: { branch?: string; seesAllBranches?: boolean; onSummary?: (s: PlushSummary) => void }) {
   const [list, setList] = useState<PlushToyCandidate[]>([])
   // VIP wallets in Accounting that match no patient record here — usually a
   // patient re-registered under a new id. Shown rather than dropped: front desk
@@ -1169,6 +1349,8 @@ function PlushToyEligible({ branch, seesAllBranches }: { branch?: string; seesAl
   const [unplaceable, setUnplaceable] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [busyId, setBusyId] = useState<string | null>(null)
+  // Display-only: a failed load used to read as "None".
+  const [error, setError] = useState<string | null>(null)
 
   const load = async () => {
     // A main admin isn't scoped to one clinic — ask for both branches rather
@@ -1181,6 +1363,9 @@ function PlushToyEligible({ branch, seesAllBranches }: { branch?: string; seesAl
       const d = await r.json()
       setList(d.eligible || [])
       setUnplaceable(d.unplaceableVip || [])
+      setError(r.ok ? null : (d.error || 'Couldn’t load the plush toy list.'))
+    } catch {
+      setError('Couldn’t load the plush toy list.')
     } finally { setLoading(false) }
   }
   React.useEffect(() => { load() }, [branch, seesAllBranches]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -1206,95 +1391,95 @@ function PlushToyEligible({ branch, seesAllBranches }: { branch?: string; seesAl
   // Header count shows what still needs action, not the total on screen.
   const pendingCount = list.filter(c => !c.givenAt).length
 
+  useEffect(() => {
+    onSummary?.({ loading, error, pending: pendingCount, unplaceable: unplaceable.length })
+  }, [loading, error, pendingCount, unplaceable.length, onSummary])
+
+  const chip = (given: boolean, label: string) => (
+    <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold uppercase leading-none"
+      style={{ background: given ? '#DCFCE7' : '#EDE9FE', color: given ? '#166534' : '#6D28D9' }}>
+      {label}
+    </span>
+  )
+
   return (
-    <div className="w-full" style={{ background: '#F5F0FF', border: '1px solid #DDD0FA', borderRadius: '0.875rem', padding: '0.85rem 1rem' }}>
-      <div style={{ fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#6D28D9', marginBottom: '0.55rem' }}>
-        🧸 Plush Toy Perk ({pendingCount})
-      </div>
-      {!loading && unplaceable.length > 0 && (
-        <div style={{ background: '#FFF7E6', border: '1px solid #F3D9A5', borderRadius: '0.6rem', padding: '0.5rem 0.6rem', marginBottom: '0.5rem' }}>
-          <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#8A5A00' }}>
-            {unplaceable.length} VIP wallet{unplaceable.length === 1 ? '' : 's'} not matched to a patient record
+    <DashCard
+      title="Plush toy perk"
+      icon={<Gift size={16} />}
+      description="VIP card holders and patients at their 100th session."
+      action={!loading && !error ? <CountChip n={pendingCount} tone={pendingCount > 0 ? 'brand' : 'clear'} /> : undefined}
+    >
+      <div className="space-y-3">
+        {!loading && unplaceable.length > 0 && (
+          <div className="rounded-lg px-3 py-2.5" style={{ background: '#FFF7E6', border: '1px solid #F3D9A5' }}>
+            <p className="text-xs font-bold" style={{ color: '#8A5A00' }}>
+              {unplaceable.length} VIP wallet{unplaceable.length === 1 ? '' : 's'} not matched to a patient record
+            </p>
+            <p className="text-xs mt-0.5 leading-snug" style={{ color: '#8A5A00' }}>
+              {unplaceable.join(', ')} — the wallet in Accounting points at a patient record that no longer
+              exists here, usually because they were registered again. Ask Accounting to re-link the wallet.
+            </p>
           </div>
-          <div style={{ fontSize: '0.72rem', color: '#8A5A00', marginTop: '0.15rem', lineHeight: 1.45 }}>
-            {unplaceable.join(', ')} — the wallet in Accounting points at a patient record that no longer
-            exists here, usually because they were registered again. Ask Accounting to re-link the wallet.
-          </div>
-        </div>
-      )}
-      {loading ? (
-        <div style={{ fontSize: '0.75rem', color: '#6D28D9', fontStyle: 'italic' }}>Loading…</div>
-      ) : list.length === 0 ? (
-        <div style={{ fontSize: '0.78rem', color: '#6D28D9', fontStyle: 'italic', padding: '0.2rem 0' }}>None</div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-          {list.map(c => (
-            <div key={c.id} style={{
-              background: c.givenAt ? '#F0FDF4' : '#fff',
-              border: `1px solid ${c.givenAt ? '#86EFAC' : '#DDD0FA'}`,
-              borderRadius: '0.6rem', padding: '0.55rem 0.65rem',
-              display: 'flex', flexDirection: 'column', gap: '0.4rem',
-            }}>
-              <div>
-                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: c.givenAt ? '#166534' : '#4C1D95', lineHeight: 1.25 }}>
-                  {c.lastName}, {c.firstName}
-                </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', marginTop: 3 }}>
-                  {c.isVip && (
-                    <span style={{ background: c.givenAt ? '#DCFCE7' : '#EDE9FE', color: c.givenAt ? '#166534' : '#6D28D9', padding: '1px 6px', borderRadius: 99, fontWeight: 700, fontSize: '0.6rem', textTransform: 'uppercase' }}>
-                      VIP Card
-                    </span>
-                  )}
-                  {c.isMilestone && (
-                    <span style={{ background: c.givenAt ? '#DCFCE7' : '#EDE9FE', color: c.givenAt ? '#166534' : '#6D28D9', padding: '1px 6px', borderRadius: 99, fontWeight: 700, fontSize: '0.6rem', textTransform: 'uppercase' }}>
-                      100th Session
-                    </span>
-                  )}
-                  {seesAllBranches && c.branch && (
-                    <span style={{ background: '#F1F5F9', color: '#475569', padding: '1px 6px', borderRadius: 99, fontWeight: 700, fontSize: '0.6rem', textTransform: 'uppercase' }}>
-                      {branchLabel(c.branch)}
-                    </span>
-                  )}
-                </div>
-              </div>
-              {c.givenAt ? (
-                // Locked record — no onClick, so it cannot be re-triggered.
-                <div
-                  title={`Given${c.givenBy ? ' by ' + c.givenBy : ''} on ${new Date(c.givenAt).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })}`}
-                  style={{
-                    padding: '0.4rem 0.6rem', borderRadius: '0.4rem', width: '100%',
-                    background: '#16A34A', color: '#fff', fontSize: '0.72rem', fontWeight: 700,
-                    textAlign: 'center', cursor: 'default',
-                  }}
-                >
-                  ✓ Plush toy given
-                  <div style={{ fontSize: '0.6rem', fontWeight: 600, opacity: 0.9, marginTop: 1 }}>
-                    {new Date(c.givenAt).toLocaleDateString('en-PH', { day: 'numeric', month: 'short', year: 'numeric' })}
-                    {c.givenBy ? ` · ${c.givenBy}` : ''}
+        )}
+        {loading ? (
+          <RowsSkeleton rows={2} />
+        ) : error ? (
+          <CardError message={error} onRetry={load} busy={loading} />
+        ) : list.length === 0 ? (
+          <CaughtUp hint="Nobody is due a plush toy right now." />
+        ) : (
+          <ul className="divide-y" style={{ borderColor: 'var(--light-gray)' }}>
+            {list.map(c => (
+              <li key={c.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 py-2.5" style={{ borderColor: 'var(--light-gray)' }}>
+                <div className="flex-1 min-w-[140px]">
+                  <p className="text-[13px] font-semibold leading-snug" style={{ color: c.givenAt ? '#166534' : 'var(--charcoal)' }}>
+                    {c.lastName}, {c.firstName}
+                  </p>
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {c.isVip && chip(!!c.givenAt, 'VIP Card')}
+                    {c.isMilestone && chip(!!c.givenAt, '100th Session')}
+                    {seesAllBranches && c.branch && (
+                      <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold uppercase leading-none"
+                        style={{ background: '#F1F5F9', color: '#475569' }}>
+                        {branchLabel(c.branch)}
+                      </span>
+                    )}
                   </div>
                 </div>
-              ) : (
-                <button
-                  onClick={() => markGiven(c)}
-                  disabled={busyId === c.id}
-                  style={{
-                    padding: '0.4rem 0.6rem', borderRadius: '0.4rem', border: 'none', width: '100%',
-                    background: '#7C3AED', color: '#fff', fontSize: '0.72rem', fontWeight: 700,
-                    cursor: busyId === c.id ? 'not-allowed' : 'pointer', opacity: busyId === c.id ? 0.6 : 1,
-                  }}
-                >
-                  🧸 Mark plush toy as given
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
+                {c.givenAt ? (
+                  // Locked record — no onClick, so it cannot be re-triggered.
+                  <div
+                    title={`Given${c.givenBy ? ' by ' + c.givenBy : ''} on ${new Date(c.givenAt).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })}`}
+                    className="rounded-lg px-2.5 py-1.5 text-right cursor-default"
+                    style={{ background: '#DFF5E4', border: '1px solid #B6E5C2', color: '#166534' }}
+                  >
+                    <p className="text-xs font-bold inline-flex items-center gap-1"><Check size={12} /> Plush toy given</p>
+                    <p className="text-[10.5px] font-medium opacity-90">
+                      {new Date(c.givenAt).toLocaleDateString('en-PH', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      {c.givenBy ? ` · ${c.givenBy}` : ''}
+                    </p>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => markGiven(c)}
+                    disabled={busyId === c.id}
+                    className={`${BTN_SM} text-white hover:opacity-90`}
+                    style={{ background: 'var(--teal)', opacity: busyId === c.id ? 0.6 : 1, cursor: busyId === c.id ? 'not-allowed' : 'pointer' }}
+                  >
+                    <Gift size={12} /> Mark plush toy as given
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </DashCard>
   )
 }
 
-// ── Pending Progress Reports (orange — awaiting payment + email) ─────────────
+// ── Pending Progress Reports (awaiting payment + email) ─────────────────────
 interface PRDoc {
   id: string
   fileName: string
@@ -1314,10 +1499,12 @@ function daysSince(iso: string | null): number | null {
   return Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000)
 }
 
-function PendingProgressReports() {
+function PendingProgressReports({ onSummary }: { onSummary?: (s: ProgressSummary) => void }) {
   const [docs, setDocs] = useState<PRDoc[]>([])
   const [loading, setLoading] = useState(true)
   const [busyId, setBusyId] = useState<string | null>(null)
+  // Display-only: a failed load used to read as "None".
+  const [error, setError] = useState<string | null>(null)
 
   const load = async () => {
     setLoading(true)
@@ -1325,6 +1512,9 @@ function PendingProgressReports() {
       const r = await fetch('/api/progress-reports?status=pending')
       const d = await r.json()
       setDocs(d.docs || [])
+      setError(r.ok ? null : (d.error || 'Couldn’t load progress reports.'))
+    } catch {
+      setError('Couldn’t load progress reports.')
     } finally { setLoading(false) }
   }
   React.useEffect(() => { load() }, [])
@@ -1361,32 +1551,45 @@ function PendingProgressReports() {
     finally { setBusyId(null) }
   }
 
+  // Display-only tallies for the attention row.
+  const paidUnsent = docs.filter(d => d.paid && !d.emailedToPatientAt)
+  const staleUnsent = paidUnsent.filter(d => { const w = daysSince(d.paidForAt); return w !== null && w >= 7 }).length
+  useEffect(() => {
+    onSummary?.({ loading, error, count: docs.length, paidUnsent: paidUnsent.length, staleUnsent })
+  }, [loading, error, docs.length, paidUnsent.length, staleUnsent, onSummary])
+
   return (
-    <div style={{ background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: '0.875rem', padding: '1rem 1.25rem' }}>
-      <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#C2410C', marginBottom: '0.6rem' }}>
-        Progress Reports — Awaiting Payment + Email ({docs.length})
-      </div>
-      {loading ? (
-        <div style={{ fontSize: '0.78rem', color: '#9A3412', fontStyle: 'italic' }}>Loading…</div>
+    <DashCard
+      title="Progress reports — awaiting payment + email"
+      icon={<FileText size={16} />}
+      description="Tick “Paid for PR?” once paid, then email the report to the patient."
+      action={!loading && !error ? <CountChip n={docs.length} tone={staleUnsent > 0 ? 'danger' : docs.length > 0 ? 'warn' : 'clear'} /> : undefined}
+    >
+      {loading && docs.length === 0 ? (
+        <RowsSkeleton rows={3} />
+      ) : error ? (
+        <CardError message={error} onRetry={load} busy={loading} />
       ) : docs.length === 0 ? (
-        <div style={{ fontSize: '0.82rem', color: '#9A3412', fontStyle: 'italic', padding: '0.2rem 0' }}>None</div>
+        <CaughtUp hint="No progress reports are waiting on payment or email." />
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+        <ul className="divide-y" style={{ borderColor: 'var(--light-gray)', opacity: loading ? 0.6 : 1 }}>
           {docs.map(d => {
             const informed = d.informedFrontDeskAt ? new Date(d.informedFrontDeskAt).toLocaleDateString() : '—'
             return (
-              <div key={d.id} style={{ background: '#fff', border: '1px solid #FED7AA', borderRadius: '0.6rem', padding: '0.6rem 0.75rem', display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+              <li key={d.id} className="py-3 first:pt-0 last:pb-0 space-y-2" style={{ borderColor: 'var(--light-gray)' }}>
                 {/* Row 1 — name + file info */}
                 <div>
-                  <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#7C2D12' }}>
+                  <p className="text-[13px] font-semibold leading-snug" style={{ color: 'var(--charcoal)' }}>
                     {d.patient.lastName}, {d.patient.firstName}
-                  </div>
-                  <div style={{ fontSize: '0.7rem', color: '#9A3412', marginTop: 1 }}>
-                    <a href={`/api/progress-reports/${d.id}/file`} target="_blank" rel="noreferrer" style={{ color: '#C2410C', textDecoration: 'underline' }}>
+                  </p>
+                  <p className="text-xs mt-0.5 break-words" style={{ color: 'var(--mid-gray)' }}>
+                    <a href={`/api/progress-reports/${d.id}/file`} target="_blank" rel="noreferrer" className="underline font-medium" style={{ color: 'var(--teal)' }}>
                       {d.fileName}
                     </a>
                     {' · '}{d.department}
-                    {' · '}<span style={{ background: '#FFEDD5', color: '#9A3412', padding: '1px 6px', borderRadius: 99, fontWeight: 700, fontSize: '0.62rem', textTransform: 'uppercase' }}>Informed {informed}</span>
+                  </p>
+                  <div className="flex flex-wrap gap-1.5 mt-1.5">
+                    <Pill tone="neutral">Informed {informed}</Pill>
                     {/* Paid but still unsent — the money is in and the report is
                         the outstanding half, so it stays on the panel rather than
                         ageing off it. Past a week the badge turns red so a
@@ -1395,68 +1598,60 @@ function PendingProgressReports() {
                       const waiting = daysSince(d.paidForAt)
                       const stale = waiting !== null && waiting >= 7
                       return (
-                        <>
-                          {' · '}
-                          <span
-                            title={waiting === null
-                              ? 'Paid, but the report has not been emailed yet'
-                              : `Paid ${waiting} day${waiting === 1 ? '' : 's'} ago — not emailed yet`}
-                            style={{
-                              background: stale ? '#FEE2E2' : '#FEF3C7',
-                              color:      stale ? '#991B1B' : '#92400E',
-                              border: `1px solid ${stale ? '#FCA5A5' : '#FDE68A'}`,
-                              padding: '1px 6px', borderRadius: 99, fontWeight: 700,
-                              fontSize: '0.62rem', textTransform: 'uppercase',
-                            }}>
-                            Not emailed{waiting !== null && waiting > 0 ? ` · ${waiting}d` : ''}
-                          </span>
-                        </>
+                        <Pill tone={stale ? 'danger' : 'warn'}
+                          title={waiting === null
+                            ? 'Paid, but the report has not been emailed yet'
+                            : `Paid ${waiting} day${waiting === 1 ? '' : 's'} ago — not emailed yet`}>
+                          Not emailed{waiting !== null && waiting > 0 ? ` · ${waiting}d` : ''}
+                        </Pill>
                       )
                     })()}
                   </div>
                 </div>
                 {/* Row 2 — controls */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', fontWeight: 600, color: '#7C2D12', cursor: 'pointer' }}>
+                <div className="flex flex-wrap items-center gap-3">
+                  <label className="inline-flex items-center gap-1.5 text-xs font-semibold cursor-pointer" style={{ color: 'var(--charcoal)' }}>
                     <input
                       type="checkbox"
                       checked={d.paid}
                       onChange={e => togglePaid(d, e.target.checked)}
                       disabled={busyId === d.id}
-                      style={{ width: 16, height: 16, accentColor: '#0EA5E9' }}
+                      style={{ width: 16, height: 16, accentColor: '#244952' }}
                     />
                     Paid for PR?
                   </label>
                   <button
+                    type="button"
                     onClick={() => sendEmail(d)}
                     disabled={!d.paid || busyId === d.id || !d.patient.email}
                     title={!d.patient.email ? 'No email on file' : !d.paid ? 'Tick "Paid for PR?" first' : 'Send PR via email'}
+                    className={`${BTN_SM} ${d.paid && d.patient.email ? 'text-white hover:opacity-90' : ''}`}
                     style={{
-                      padding: '0.4rem 0.8rem', borderRadius: '0.4rem', border: 'none',
-                      background: d.paid && d.patient.email ? '#059669' : '#E2E8F0',
+                      background: d.paid && d.patient.email ? 'var(--teal)' : '#E2E8F0',
                       color: d.paid && d.patient.email ? '#fff' : '#94A3B8',
-                      fontSize: '0.78rem', fontWeight: 700,
                       cursor: d.paid && d.patient.email && busyId !== d.id ? 'pointer' : 'not-allowed',
                     }}
                   >
-                    📧 Email PR
+                    {busyId === d.id ? <Loader2 size={12} className="animate-spin" /> : <Mail size={12} />} Email PR
                   </button>
                 </div>
-              </div>
+              </li>
             )
           })}
-        </div>
+        </ul>
       )}
-    </div>
+    </DashCard>
   )
 }
 
-// ── Past Progress Reports (green — already sent, searchable history) ─────────
+// ── Past Progress Reports (already sent, searchable history) ────────────────
 function PastProgressReports() {
   const [docs, setDocs] = useState<PRDoc[]>([])
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const [busyId, setBusyId] = useState<string | null>(null)
+  // Display-only: a failed load used to read as "None yet."
+  const [error, setError] = useState<string | null>(null)
 
   const load = async (q = '') => {
     setLoading(true)
@@ -1466,6 +1661,9 @@ function PastProgressReports() {
       const r = await fetch('/api/progress-reports?' + params.toString())
       const d = await r.json()
       setDocs(d.docs || [])
+      setError(r.ok ? null : (d.error || 'Couldn’t load past progress reports.'))
+    } catch {
+      setError('Couldn’t load past progress reports.')
     } finally { setLoading(false) }
   }
 
@@ -1492,62 +1690,66 @@ function PastProgressReports() {
   }
 
   return (
-    <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: '0.875rem', padding: '1rem 1.25rem' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.6rem', flexWrap: 'wrap' }}>
-        <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#15803D' }}>
-          Past Progress Reports ({docs.length})
-        </div>
-        <input
-          type="text"
-          placeholder="Search by patient name…"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          style={{
-            flex: 1, minWidth: 180, maxWidth: 260,
-            padding: '0.3rem 0.6rem', borderRadius: 6,
-            border: '1.5px solid #BBF7D0', background: '#fff',
-            fontSize: '0.78rem', outline: 'none',
-          }}
-        />
+    <DashCard
+      title="Past progress reports"
+      icon={<History size={16} />}
+      description={loading ? 'Reports already emailed to patients.' : `${plural(docs.length, 'report')} already emailed to patients.`}
+      action={
+        <label className="relative block">
+          <span className="sr-only">Search past progress reports by patient name</span>
+          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mid-gray)' }} />
+          <input
+            type="text"
+            placeholder="Search by patient name…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="h-8 w-[200px] max-w-full pl-7 pr-2.5 rounded-lg text-xs outline-none focus:border-[var(--teal)]"
+            style={{ background: '#fff', border: '1px solid var(--light-gray)', color: 'var(--charcoal)' }}
+          />
+        </label>
+      }
+      flush
+    >
+      <div className="px-5 py-3">
+        {loading && docs.length === 0 ? (
+          <RowsSkeleton rows={3} />
+        ) : error ? (
+          <CardError message={error} onRetry={() => load(search.trim())} busy={loading} />
+        ) : docs.length === 0 ? (
+          <p className="text-[13px] py-2" style={{ color: 'var(--mid-gray)' }}>{search ? 'No matches.' : 'None yet.'}</p>
+        ) : (
+          <ul className="divide-y max-h-[320px] overflow-y-auto -mx-1 px-1" style={{ borderColor: 'var(--light-gray)', opacity: loading ? 0.6 : 1 }}>
+            {docs.map(d => {
+              const sent = d.emailedToPatientAt ? new Date(d.emailedToPatientAt).toLocaleDateString() : '—'
+              return (
+                <li key={d.id} className="flex items-center gap-3 py-2.5" style={{ borderColor: 'var(--light-gray)' }}>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13px] font-semibold leading-snug" style={{ color: 'var(--charcoal)' }}>
+                      {d.patient.lastName}, {d.patient.firstName}
+                    </p>
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-0.5">
+                      <a href={`/api/progress-reports/${d.id}/file`} target="_blank" rel="noreferrer"
+                        className="text-xs underline font-medium break-all" style={{ color: 'var(--teal)' }}>
+                        {d.fileName}
+                      </a>
+                      <Pill tone="clear">Sent {sent}</Pill>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => resend(d)}
+                    disabled={busyId === d.id}
+                    className={`${BTN_SM} hover:bg-gray-50`}
+                    style={{ background: '#fff', border: '1px solid var(--light-gray)', color: 'var(--teal)', cursor: busyId === d.id ? 'not-allowed' : 'pointer' }}
+                  >
+                    {busyId === d.id ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />} Resend
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        )}
       </div>
-      {loading ? (
-        <div style={{ fontSize: '0.78rem', color: '#15803D', fontStyle: 'italic' }}>Loading…</div>
-      ) : docs.length === 0 ? (
-        <div style={{ fontSize: '0.82rem', color: '#15803D', fontStyle: 'italic' }}>{search ? 'No matches.' : 'None yet.'}</div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', maxHeight: 320, overflowY: 'auto' }}>
-          {docs.map(d => {
-            const sent = d.emailedToPatientAt ? new Date(d.emailedToPatientAt).toLocaleDateString() : '—'
-            return (
-              <div key={d.id} style={{ background: '#fff', border: '1px solid #BBF7D0', borderRadius: '0.5rem', padding: '0.5rem 0.7rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#14532D' }}>
-                    {d.patient.lastName}, {d.patient.firstName}
-                  </div>
-                  <div style={{ fontSize: '0.68rem', color: '#15803D', marginTop: 1 }}>
-                    <a href={`/api/progress-reports/${d.id}/file`} target="_blank" rel="noreferrer" style={{ color: '#15803D', textDecoration: 'underline' }}>
-                      {d.fileName}
-                    </a>
-                    {' · '}<span style={{ background: '#BBF7D0', color: '#14532D', padding: '1px 6px', borderRadius: 99, fontWeight: 700, fontSize: '0.62rem', textTransform: 'uppercase' }}>Sent {sent}</span>
-                  </div>
-                </div>
-                <button
-                  onClick={() => resend(d)}
-                  disabled={busyId === d.id}
-                  style={{
-                    padding: '0.3rem 0.65rem', borderRadius: '0.4rem', border: '1px solid #BBF7D0',
-                    background: '#fff', color: '#14532D', fontSize: '0.7rem', fontWeight: 700,
-                    cursor: busyId === d.id ? 'not-allowed' : 'pointer',
-                  }}
-                >
-                  Resend
-                </button>
-              </div>
-            )
-          })}
-        </div>
-      )}
-    </div>
+    </DashCard>
   )
 }
-
