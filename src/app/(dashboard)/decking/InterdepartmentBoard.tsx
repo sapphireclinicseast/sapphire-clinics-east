@@ -6,9 +6,17 @@
 // The second list is the point of the screen: it is the cross-sell list, and it
 // leads, because the patients who are already interdepartment need nothing
 // doing.
+//
+// This is the one analysis tab front desk can see, so it is laid out for the
+// desk rather than for an analyst: a one-line purpose, three numbers, and two
+// short patient lists. Search and the department filter are display-only —
+// they narrow the rows already loaded and never refetch.
 
-import { useEffect, useMemo, useState } from 'react'
-import { Users, Search } from 'lucide-react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Users, Search, X, Plus, Lightbulb, Link2, UserPlus } from 'lucide-react'
+import { DashCard, KpiCard, Skeleton, EmptyState, DeptChip } from '../patients/dashboard/ui'
+import { Avatar, initials, displayName, PillTabs, ErrorCard, CONTROL, CONTROL_STYLE, LABEL, BTN_SECONDARY, BTN_SM } from './ui'
+import { deptColor } from '@/lib/dept-colors'
 
 interface Row {
   id: string
@@ -26,27 +34,84 @@ interface Payload {
   pairs: string[]
 }
 
-const DEPT_BG: Record<string, { bg: string; fg: string }> = {
-  OT:         { bg: '#FDEAD6', fg: '#93460B' },
-  PT:         { bg: '#E3EEFB', fg: '#14507F' },
-  SLP:        { bg: '#EFE4FA', fg: '#5B2A86' },
-  SPED:       { bg: '#DFF5E4', fg: '#166534' },
-  MD:         { bg: '#FCE7F3', fg: '#9D174D' },
-  PSYCHOLOGY: { bg: '#E0F2FE', fg: '#075985' },
-  ORTHOSIS:   { bg: '#F3F4F6', fg: '#374151' },
+type Group = 'cross' | 'multi'
+
+/** A suggested department: outlined and dashed, so it never reads as one the patient already has. */
+function AddChip({ code }: { code: string }) {
+  const color = deptColor(code)
+  return (
+    <span title={`Could add ${code}`}
+      className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-px rounded leading-none align-middle"
+      style={{ border: `1px dashed ${color}`, color, background: '#fff' }}>
+      <Plus size={9} strokeWidth={3} aria-hidden />{code}
+      <span className="sr-only"> (suggested)</span>
+    </span>
+  )
 }
 
-function Chip({ dept, faded = false }: { dept: string; faded?: boolean }) {
-  const c = DEPT_BG[dept] ?? { bg: '#F3F4F6', fg: '#374151' }
+function ChipRow({ children }: { children: ReactNode }) {
+  return <span className="inline-flex flex-wrap items-center gap-1">{children}</span>
+}
+
+const NONE = <span className="text-xs" style={{ color: '#9ca3af' }}>—</span>
+
+function PatientRow({ r, group }: { r: Row; group: Group }) {
+  // Names arrive as "Last, First".
+  const [last = '', first = ''] = r.name.split(',').map(s => s.trim())
   return (
-    <span style={{
-      display: 'inline-block', padding: '0.12rem 0.5rem', borderRadius: 999,
-      fontSize: '0.7rem', fontWeight: 700, background: c.bg, color: c.fg,
-      opacity: faded ? 0.55 : 1,
-      border: faded ? '1px dashed rgba(0,0,0,0.18)' : '1px solid transparent',
-    }}>
-      {dept}
-    </span>
+    <li className="grid items-center gap-x-4 gap-y-1.5 px-5 py-3 md:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)]"
+      style={{ borderTop: '1px solid #F1F3F5' }}>
+      <div className="flex items-center gap-3 min-w-0">
+        <Avatar text={initials(first, last)} size={32} />
+        <span className="text-sm font-semibold truncate" style={{ color: 'var(--charcoal)' }} title={displayName(r.name)}>
+          {displayName(r.name)}
+        </span>
+      </div>
+
+      <div className="flex items-baseline gap-2 min-w-0 pl-11 md:pl-0">
+        <span className="md:hidden text-[11px] font-semibold uppercase tracking-wider flex-shrink-0" style={{ color: 'var(--mid-gray)' }}>Sees</span>
+        <ChipRow>
+          {r.departments.map(d => <DeptChip key={d} code={d} color={deptColor(d)} />)}
+          {/* Named explicitly rather than blended in: front desk here cannot
+              see the other branch's board, so an unexplained department would
+              look like an error. */}
+          {r.otherBranchDepartments.length > 0 && (
+            <>
+              <span className="text-[11px]" style={{ color: '#9ca3af' }}>· other branch:</span>
+              {r.otherBranchDepartments.map(d => (
+                <span key={d} style={{ opacity: 0.55 }} title={`${d} at the other branch`}>
+                  <DeptChip code={d} color={deptColor(d)} />
+                </span>
+              ))}
+            </>
+          )}
+        </ChipRow>
+      </div>
+
+      <div className="flex items-baseline gap-2 min-w-0 pl-11 md:pl-0">
+        <span className="md:hidden text-[11px] font-semibold uppercase tracking-wider flex-shrink-0" style={{ color: 'var(--mid-gray)' }}>
+          {group === 'cross' ? 'Could add' : 'Could still add'}
+        </span>
+        {r.suggestions.length === 0 ? NONE : (
+          <ChipRow>{r.suggestions.map(d => <AddChip key={d} code={d} />)}</ChipRow>
+        )}
+      </div>
+    </li>
+  )
+}
+
+function ListSkeleton({ rows = 6 }: { rows?: number }) {
+  return (
+    <ul aria-hidden>
+      {Array.from({ length: rows }).map((_, i) => (
+        <li key={i} className="flex items-center gap-3 px-5 py-3" style={{ borderTop: i ? '1px solid #F1F3F5' : undefined }}>
+          <Skeleton style={{ width: 32, height: 32, borderRadius: 999 }} />
+          <Skeleton className="h-3.5" style={{ width: 170, maxWidth: '40%' }} />
+          <Skeleton className="h-3.5 ml-auto" style={{ width: 70 }} />
+          <Skeleton className="h-3.5 hidden md:block" style={{ width: 70 }} />
+        </li>
+      ))}
+    </ul>
   )
 }
 
@@ -55,6 +120,9 @@ export default function InterdepartmentBoard({ branch }: { branch: string }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [q, setQ] = useState('')
+  // Display-only: which list is showing, and a department to narrow it to.
+  const [group, setGroup] = useState<Group>('cross')
+  const [dept, setDept] = useState('')
 
   useEffect(() => {
     const ctl = new AbortController()
@@ -70,164 +138,201 @@ export default function InterdepartmentBoard({ branch }: { branch: string }) {
     return () => ctl.abort()
   }, [branch])
 
-  const filt = (rows: Row[]) =>
-    q.trim() ? rows.filter(r => r.name.toLowerCase().includes(q.trim().toLowerCase())) : rows
+  // Name search: every typed word must appear, so "Juan Cruz" finds
+  // "Cruz, Juan". Department: the patient sees it (either branch) or it is
+  // suggested for them.
+  const { cross, multi } = useMemo(() => {
+    const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean)
+    const filt = (rows: Row[]) => rows.filter(r => {
+      if (words.length) {
+        const name = r.name.toLowerCase()
+        if (!words.every(w => name.includes(w))) return false
+      }
+      if (dept && !r.departments.includes(dept) && !r.otherBranchDepartments.includes(dept) && !r.suggestions.includes(dept)) return false
+      return true
+    })
+    return { cross: filt(data?.singleDepartment ?? []), multi: filt(data?.interdepartment ?? []) }
+  }, [data, q, dept])
 
-  const cross = useMemo(() => filt(data?.singleDepartment ?? []), [data, q])
-  const multi = useMemo(() => filt(data?.interdepartment ?? []), [data, q])
+  // Every department that appears anywhere in the loaded rows — the filter only
+  // offers what can match.
+  const deptOptions = useMemo(() => {
+    const set = new Set<string>()
+    for (const r of [...(data?.interdepartment ?? []), ...(data?.singleDepartment ?? [])]) {
+      for (const d of [...r.departments, ...r.otherBranchDepartments, ...r.suggestions]) set.add(d)
+    }
+    return [...set].sort()
+  }, [data])
 
-  const card: React.CSSProperties = {
-    background: '#fff', border: '1px solid #E5E9EC', borderRadius: '0.875rem',
-    overflow: 'hidden', boxShadow: '0 1px 6px rgba(0,0,0,0.05)',
+  // The pairing seen most often among patients already in 2+ departments,
+  // counted across both branches (the same basis that makes them
+  // interdepartment).
+  const topPair = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const r of data?.interdepartment ?? []) {
+      const all = [...new Set([...r.departments, ...r.otherBranchDepartments])].sort()
+      for (let i = 0; i < all.length; i++) {
+        for (let j = i + 1; j < all.length; j++) {
+          const key = `${all[i]} + ${all[j]}`
+          counts.set(key, (counts.get(key) ?? 0) + 1)
+        }
+      }
+    }
+    let best: { pair: string; n: number } | null = null
+    for (const [pair, n] of [...counts.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+      if (!best || n > best.n) best = { pair, n }
+    }
+    return best
+  }, [data])
+
+  const filtering = q.trim() !== '' || dept !== ''
+  const clearFilters = () => { setQ(''); setDept('') }
+
+  const intro = (
+    <div className="flex items-start gap-2 rounded-xl px-3.5 py-2.5" style={{ background: '#E6F2F4', border: '1px solid #A9CBEC', color: '#14507F' }}>
+      <Lightbulb size={14} className="mt-0.5 flex-shrink-0" aria-hidden />
+      <span className="text-[13px] leading-relaxed">
+        Patients who could also benefit from another department — a starting point for a conversation at the desk.
+      </span>
+    </div>
+  )
+
+  if (loading) {
+    return (
+      <div className="flex flex-col gap-4" aria-busy="true" aria-label="Loading interdepartment list">
+        {intro}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3" aria-hidden>
+          {[0, 1, 2].map(i => <Skeleton key={i} className="h-[78px] rounded-xl" />)}
+        </div>
+        <Skeleton className="h-14 rounded-xl" />
+        <div className="rounded-xl overflow-hidden" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
+          <ListSkeleton />
+        </div>
+      </div>
+    )
   }
-  const th: React.CSSProperties = {
-    padding: '0.5rem 0.75rem', fontSize: '0.66rem', fontWeight: 700, color: '#6b7280',
-    textTransform: 'uppercase', letterSpacing: '0.04em', textAlign: 'left',
-    borderBottom: '1px solid #E5E9EC', background: '#F7F9FA',
+  if (error) {
+    return (
+      <div className="flex flex-col gap-4">
+        {intro}
+        <ErrorCard title="Couldn't load the interdepartment list" hint={error} />
+      </div>
+    )
   }
-  const td: React.CSSProperties = { padding: '0.5rem 0.75rem', fontSize: '0.82rem', borderBottom: '1px solid #F1F3F5' }
-
-  if (loading) return <p style={{ padding: '2rem', textAlign: 'center', color: '#8A9499' }}>Loading…</p>
-  if (error) return <p style={{ padding: '1rem', color: '#991B1B', background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: 8 }}>{error}</p>
   if (!data) return null
 
   const s = data.summary
+  const rows = group === 'cross' ? cross : multi
+  const groupTotal = group === 'cross' ? data.singleDepartment.length : data.interdepartment.length
+
+  const countBadge = (n: number, active: boolean) => (
+    <span className="tabular-nums text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none"
+      style={{ background: active ? 'var(--pale-teal)' : 'rgba(0,0,0,0.06)', color: active ? 'var(--teal)' : 'var(--mid-gray)' }}>
+      {n}
+    </span>
+  )
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-      {/* Summary */}
-      <div style={{ ...card, padding: '0.9rem 1rem' }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.5rem', alignItems: 'flex-end' }}>
-          {[
-            { label: 'Patients on this board', value: s.total, fg: '#1F2937' },
-            { label: 'Already interdepartment', value: s.interdepartment, fg: '#166534' },
-            { label: 'One department only', value: s.singleDepartment, fg: '#93460B' },
-            { label: 'With a suggestion', value: s.withSuggestion, fg: '#14507F' },
-          ].map(k => (
-            <div key={k.label}>
-              <div style={{ fontSize: '1.4rem', fontWeight: 800, color: k.fg, lineHeight: 1.1, fontVariantNumeric: 'tabular-nums' }}>{k.value}</div>
-              <div style={{ fontSize: '0.66rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{k.label}</div>
-            </div>
-          ))}
-          <div style={{ marginLeft: 'auto', position: 'relative' }}>
-            <Search size={14} style={{ position: 'absolute', left: 9, top: 9, color: '#9ca3af' }} />
+    <div className="flex flex-col gap-4">
+      {intro}
+
+      {/* ── KPIs — from the loaded list only ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <KpiCard label="Could add a department" icon={<UserPlus size={15} />}
+          value={s.withSuggestion}
+          sub={`of ${s.singleDepartment} seeing one department`} />
+        <KpiCard label="Already in 2+ departments" icon={<Users size={15} />}
+          value={s.interdepartment}
+          sub={`of ${s.total} patients on this board`} />
+        <KpiCard label="Most common pairing" icon={<Link2 size={15} />}
+          value={topPair ? topPair.pair : '—'}
+          sub={topPair ? `${topPair.n} ${topPair.n === 1 ? 'patient sees' : 'patients see'} both` : 'No patient in 2+ departments yet'} />
+      </div>
+
+      {/* ── Toolbar ── */}
+      <div className="rounded-xl px-4 py-3 flex flex-wrap items-end gap-3" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
+        <div className="flex-1 min-w-[12rem] sm:flex-none">
+          <label className={LABEL} style={{ color: 'var(--mid-gray)' }} htmlFor="ix-name">Patient</label>
+          <div className="relative">
+            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mid-gray)' }} />
             <input
-              value={q} onChange={e => setQ(e.target.value)} placeholder="Filter by name…"
-              style={{ padding: '0.4rem 0.6rem 0.4rem 1.7rem', border: '1px solid #D6DCE2', borderRadius: 8, fontSize: '0.82rem', minWidth: 200 }}
+              id="ix-name"
+              type="search"
+              className={`${CONTROL} pl-8 w-full sm:w-[15rem]`}
+              style={CONTROL_STYLE}
+              placeholder="Search by name…"
+              value={q}
+              onChange={e => setQ(e.target.value)}
             />
           </div>
         </div>
-        <p style={{ fontSize: '0.72rem', color: '#8A9499', marginTop: '0.7rem', lineHeight: 1.5 }}>
+        <div className="min-w-[9rem]">
+          <label className={LABEL} style={{ color: 'var(--mid-gray)' }} htmlFor="ix-dept" title="Departments a patient sees, or could add">Department</label>
+          <select id="ix-dept" value={dept} onChange={e => setDept(e.target.value)} className={`${CONTROL} w-full`} style={CONTROL_STYLE}>
+            <option value="">All departments</option>
+            {deptOptions.map(d => <option key={d} value={d}>{d}</option>)}
+          </select>
+        </div>
+        <button type="button" onClick={clearFilters} disabled={!filtering} className={BTN_SECONDARY} style={CONTROL_STYLE}>
+          <X size={14} /> Clear
+        </button>
+        <span className="ml-auto h-9 flex items-center text-xs whitespace-nowrap" style={{ color: 'var(--mid-gray)' }} aria-live="polite">
+          <strong className="tabular-nums" style={{ color: 'var(--charcoal)' }}>{rows.length}</strong>
+          {filtering ? <>{' of '}<span className="tabular-nums">{groupTotal}</span></> : null}{' patients'}
+        </span>
+      </div>
+
+      {/* ── The two lists. Cross-sell first: it is the one with work in it. ── */}
+      <DashCard
+        title={group === 'cross' ? 'Could add a department' : 'Already in 2+ departments'}
+        icon={<Users size={15} />}
+        description={group === 'cross'
+          ? 'Seeing one department only. The outlined + chips are what could be offered next.'
+          : 'Already seeing more than one department, here or at the other branch.'}
+        action={
+          <PillTabs label="Patient group" value={group} onChange={id => setGroup(id as Group)} tabs={[
+            { id: 'cross', label: <>Could add a department {countBadge(cross.length, group === 'cross')}</> },
+            { id: 'multi', label: <>Already in 2+ {countBadge(multi.length, group === 'multi')}</> },
+          ]} />
+        }
+        flush
+        footer={<>
           Suggestions come from the combinations this clinic actually sees — {data.pairs.join(', ')} — rather than
           every department a patient does not have. A patient already seeing a department at the other branch counts as
           interdepartment, so nothing is suggested that they are getting elsewhere.
-        </p>
-      </div>
-
-      {/* Cross-sell list first: it is the one with work in it. */}
-      <div style={card}>
-        <div style={{ padding: '0.7rem 1rem', borderBottom: '1px solid #E5E9EC', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <Users size={15} style={{ color: '#93460B' }} />
-          <h3 style={{ fontSize: '0.85rem', fontWeight: 800, color: '#1C2B30' }}>
-            One department only — cross-sell ({cross.length})
-          </h3>
-        </div>
-        {cross.length === 0 ? (
-          <p style={{ padding: '1.5rem', textAlign: 'center', color: '#8A9499', fontSize: '0.85rem' }}>
-            {q ? 'No patients match that name.' : 'Every patient on this board already sees more than one department.'}
-          </p>
+        </>}
+      >
+        {rows.length === 0 ? (
+          filtering ? (
+            <div>
+              <EmptyState title="No patients match" hint="Try a different name or department, or clear the filters." />
+              <div className="-mt-6 pb-8 text-center">
+                <button type="button" onClick={clearFilters} className={BTN_SM} style={{ ...CONTROL_STYLE, color: 'var(--teal)' }}>
+                  <X size={12} /> Clear filters
+                </button>
+              </div>
+            </div>
+          ) : s.total === 0 ? (
+            <EmptyState title="No patients on this board yet" hint="Patients appear here once they have a slot on the decking board." />
+          ) : group === 'cross' ? (
+            <EmptyState title="Every patient on this board already sees more than one department." />
+          ) : (
+            <EmptyState title="No patient on this board sees more than one department yet." />
+          )
         ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr>
-                  <th style={th}>Patient</th>
-                  <th style={th}>Currently seeing</th>
-                  <th style={th}>Could be offered</th>
-                </tr>
-              </thead>
-              <tbody>
-                {cross.map(r => (
-                  <tr key={r.id}>
-                    <td style={{ ...td, fontWeight: 600, color: '#1C2B30' }}>{r.name}</td>
-                    <td style={td}>
-                      <span style={{ display: 'inline-flex', gap: '0.25rem', flexWrap: 'wrap' }}>
-                        {r.departments.map(d => <Chip key={d} dept={d} />)}
-                      </span>
-                    </td>
-                    <td style={td}>
-                      {r.suggestions.length === 0 ? (
-                        <span style={{ color: '#9ca3af', fontSize: '0.78rem' }}>—</span>
-                      ) : (
-                        <span style={{ display: 'inline-flex', gap: '0.25rem', flexWrap: 'wrap' }}>
-                          {r.suggestions.map(d => <Chip key={d} dept={d} faded />)}
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <>
+            <div className="hidden md:grid grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)] gap-x-4 px-5 py-2 text-[11px] font-semibold uppercase tracking-wider"
+              style={{ color: 'var(--mid-gray)', background: '#F7F9FA' }}>
+              <span>Patient</span>
+              <span>{group === 'cross' ? 'Sees now' : 'Departments'}</span>
+              <span>{group === 'cross' ? 'Could add' : 'Could still add'}</span>
+            </div>
+            <ul className="-mt-px">
+              {rows.map(r => <PatientRow key={r.id} r={r} group={group} />)}
+            </ul>
+          </>
         )}
-      </div>
-
-      {/* Already interdepartment */}
-      <div style={card}>
-        <div style={{ padding: '0.7rem 1rem', borderBottom: '1px solid #E5E9EC', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <Users size={15} style={{ color: '#166534' }} />
-          <h3 style={{ fontSize: '0.85rem', fontWeight: 800, color: '#1C2B30' }}>
-            Already interdepartment ({multi.length})
-          </h3>
-        </div>
-        {multi.length === 0 ? (
-          <p style={{ padding: '1.5rem', textAlign: 'center', color: '#8A9499', fontSize: '0.85rem' }}>
-            {q ? 'No patients match that name.' : 'No patient on this board sees more than one department yet.'}
-          </p>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr>
-                  <th style={th}>Patient</th>
-                  <th style={th}>Departments</th>
-                  <th style={th}>Could still be offered</th>
-                </tr>
-              </thead>
-              <tbody>
-                {multi.map(r => (
-                  <tr key={r.id}>
-                    <td style={{ ...td, fontWeight: 600, color: '#1C2B30' }}>{r.name}</td>
-                    <td style={td}>
-                      <span style={{ display: 'inline-flex', gap: '0.25rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                        {r.departments.map(d => <Chip key={d} dept={d} />)}
-                        {/* Named explicitly rather than blended in: front desk
-                            here cannot see the other branch's board, so an
-                            unexplained department would look like an error. */}
-                        {r.otherBranchDepartments.length > 0 && (
-                          <>
-                            <span style={{ fontSize: '0.68rem', color: '#9ca3af' }}>· other branch:</span>
-                            {r.otherBranchDepartments.map(d => <Chip key={d} dept={d} faded />)}
-                          </>
-                        )}
-                      </span>
-                    </td>
-                    <td style={td}>
-                      {r.suggestions.length === 0 ? (
-                        <span style={{ color: '#9ca3af', fontSize: '0.78rem' }}>—</span>
-                      ) : (
-                        <span style={{ display: 'inline-flex', gap: '0.25rem', flexWrap: 'wrap' }}>
-                          {r.suggestions.map(d => <Chip key={d} dept={d} faded />)}
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      </DashCard>
     </div>
   )
 }
