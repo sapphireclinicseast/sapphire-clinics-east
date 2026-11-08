@@ -822,6 +822,19 @@ model DeckingSlot {
   // Defaults to CASH because that is the overwhelming majority and because an
   // existing row has to land somewhere; it is not an assertion about the slot.
   paymentType     String           @default("CASH") // "CASH" | "HMO" | "GL"
+  /// WHICH HMO, when paymentType is HMO. Null otherwise.
+  ///
+  /// Front desk have always written this on their own sheet — "HMO –
+  /// INTELLICARE", not just "HMO" — because an HMO slot needs a letter of
+  /// authorization chased with a named insurer, and "HMO" alone does not tell
+  /// anyone who to ring. The hub stored only the category, so the detail was
+  /// lost the moment a board was read back.
+  ///
+  /// The names come from HmoProvider, which syncHmoProvidersFromAccounting
+  /// mirrors from the Accounting Hub's HMO digital wallets — the list that
+  /// carries the receivable and gets the Statement of Account. Free text here
+  /// would drift from it within a month.
+  hmoProvider     String?
   // A SPED CLASS booking, as opposed to a 1-on-1 SPED therapy session. Both are
   // department "SPED" but they are different bookings for different groups of
   // patients, so department alone cannot tell them apart — filtering on it put
