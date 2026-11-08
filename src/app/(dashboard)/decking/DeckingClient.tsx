@@ -966,26 +966,34 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
                   </td>
                 </tr>
               )}
-              {customSlots.map(slot => (
+              {[...customSlots]
+                .sort((x, y) => (DAY_KEYS.indexOf(x.dayOfWeek) - DAY_KEYS.indexOf(y.dayOfWeek)) || String(x.startTime).localeCompare(String(y.startTime)))
+                .map(slot => (
                 <tr key={slot.id} style={{ background: '#FFFAF6', borderBottom: '1px solid #FDE4CC' }}>
-                  <td style={{ padding: '0.35rem 0.75rem', fontSize: '0.72rem', color: 'var(--mid-gray)', whiteSpace: 'nowrap', borderRight: '1px solid #FDE4CC' }}>
-                    {formatTime(slot.startTime)} – {formatTime(slot.endTime)}
-                  </td>
-                  <td colSpan={configuredDays.length} style={{ padding: '0.25rem 0.4rem' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#ED6823' }}>
-                        {DAY_SHORT[slot.dayOfWeek]}
+                  {/* One row per custom slot: the time column is too narrow for a
+                      range, so the whole slot is laid out across the row. */}
+                  <td colSpan={configuredDays.length + 1} style={{ padding: '0.45rem 0.75rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', minWidth: 0 }}>
+                      <span
+                        title={DAY_LABEL[slot.dayOfWeek] || slot.dayOfWeek}
+                        style={{ flex: '0 0 auto', minWidth: '2.6rem', textAlign: 'center', fontSize: '0.68rem', fontWeight: 700, color: '#C2410C', background: '#FFEDD5', border: '1px solid #FDBA74', borderRadius: '999px', padding: '0.1rem 0.5rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}
+                      >
+                        {DAY_SHORT[slot.dayOfWeek] || slot.dayOfWeek}
                       </span>
-                      <span style={{ fontSize: '0.75rem', color: 'var(--charcoal)' }}>
-                        {slot.patient ? `${slot.patient.lastName}, ${slot.patient.firstName}` : '(no patient)'}
+                      <span style={{ flex: '0 0 auto', fontSize: '0.78rem', fontWeight: 600, color: 'var(--charcoal)', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+                        {formatTime(slot.startTime)} – {formatTime(slot.endTime)}
                       </span>
-                      {slot.notes && <span style={{ fontSize: '0.7rem', color: 'var(--mid-gray)' }}>{slot.notes}</span>}
+                      <span style={{ flex: '1 1 auto', minWidth: 0, fontSize: '0.78rem', color: slot.patient ? 'var(--charcoal)' : 'var(--mid-gray)', fontStyle: slot.patient ? 'normal' : 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {slot.patient ? `${slot.patient.lastName}, ${slot.patient.firstName}` : 'No patient'}
+                        {slot.notes && <span style={{ marginLeft: '0.5rem', fontSize: '0.72rem', color: 'var(--mid-gray)', fontStyle: 'normal' }}>· {slot.notes}</span>}
+                      </span>
                       <button
                         onClick={() => onDeleteSlot(slot.id)}
-                        style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: '#DC2626', padding: '0.1rem' }}
-                        title="Remove"
+                        style={{ flex: '0 0 auto', marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '1.75rem', height: '1.75rem', background: 'none', border: '1px solid transparent', borderRadius: '0.4rem', cursor: 'pointer', color: '#DC2626' }}
+                        title="Remove custom slot"
+                        aria-label="Remove custom slot"
                       >
-                        <X size={12} />
+                        <X size={14} />
                       </button>
                     </div>
                   </td>
