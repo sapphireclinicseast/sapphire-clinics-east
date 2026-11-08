@@ -93,7 +93,18 @@ export async function POST(
     select: { id: true },
   })
   if (existing) {
-    await prisma.patientBooking.update({ where: { id }, data: { addedToDeck: true } })
+    // Record WHICH slot this booking became, not merely that it became one.
+    //
+    // This branch used to set addedToDeck alone and throw away existing.id,
+    // which it already had in hand. The link is what ties the money to the
+    // hour: the downpayment lives on the booking, and without deckingSlotId
+    // nothing can say that the patient in this cell has already paid their
+    // ₱1,000. Front desk were left writing "1k" on a spreadsheet by hand,
+    // beside a record that knew it all along.
+    await prisma.patientBooking.update({
+      where: { id },
+      data: { addedToDeck: true, deckingSlotId: existing.id },
+    })
     return NextResponse.json({
       ok: true,
       slotId: existing.id,
