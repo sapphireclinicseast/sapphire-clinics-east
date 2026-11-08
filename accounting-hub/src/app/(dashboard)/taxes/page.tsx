@@ -217,7 +217,8 @@ function TaxSummarySection() {
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           {loading ? Array.from({ length: 5 }).map((_, i) => <StatCard key={i} loading label="" value="" sub="" />) : cards.map(c => (
             <StatCard key={c.code} compact label={`${c.code} · ${c.name}`} value={`₱${sumPeso(c.amount)}`} sub={`${c.period} · ${c.note}`}
-              tone={c.amount ? 'amber' : 'zero'} title={`${c.code} — ${c.name}`} />
+              // Amber when something is payable; green for a credit (e.g. excess input VAT); grey at zero.
+              tone={c.amount > 0 ? 'amber' : c.amount < 0 ? 'green' : 'zero'} title={`${c.code} — ${c.name}`} />
           ))}
         </div>
       )}
