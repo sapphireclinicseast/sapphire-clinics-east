@@ -89,6 +89,9 @@ export async function POST(
       dayOfWeek: dow,
       startTime: effectiveStart,
       patientId: booking.patientId,
+      // This route materialises a RECURRING slot, so it must not match a
+      // dated one-off and conclude the patient is already decked weekly.
+      date: null,
     },
     select: { id: true },
   })
@@ -120,6 +123,7 @@ export async function POST(
       dayOfWeek: dow,
       startTime: effectiveStart,
       patientId: { not: null },
+      date: null,
     },
   })
   if (occupants >= MAX_PATIENTS_PER_CELL) {

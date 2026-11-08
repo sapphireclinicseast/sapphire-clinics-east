@@ -49,7 +49,7 @@ export async function GET(req: NextRequest) {
   // (staff, day) pairs that have NO confirmed/cancelled/rescheduled schedule.
   const [deckingSlots, configs] = await Promise.all([
     prisma.deckingSlot.findMany({
-      where: { branch, department, disabled: false },
+      where: { branch, department, disabled: false, date: null },
       include: {
         staff:   { select: { id: true, firstName: true, lastName: true, department: true, branch: true } },
         patient: { select: { id: true, firstName: true, lastName: true } },

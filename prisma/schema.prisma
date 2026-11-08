@@ -796,6 +796,21 @@ model DeckingSlot {
   patientId       String?
   patient         Patient?         @relation(fields: [patientId], references: [id], onDelete: SetNull)
   dayOfWeek       String // "MON" | "TUE" | "WED" | "THU" | "FRI" | "SAT" | "SUN"
+  /// A specific calendar date, for sessions that do NOT recur weekly.
+  ///
+  /// NULL means the slot is part of the standing weekly pattern — which is
+  /// everything that existed before this column, and remains how OT, PT, SLP
+  /// and SPED work: the same patient, the same hour, every week.
+  ///
+  /// Psychology and MD do not work that way. Front desk keep those boards as
+  /// dated blocks — the same psychologist appearing twice in one week, on the
+  /// 10th and again on the 12th — because the sessions are episodic. Stored as
+  /// a weekly pattern, a one-off on 12 November claims every Thursday for ever.
+  ///
+  /// dayOfWeek is still set and still has to agree with the date: the grid is
+  /// drawn by weekday, and a dated slot whose day disagreed would render on the
+  /// wrong column.
+  date            DateTime?
   startTime       String // "10:00"
   endTime         String // "11:00"
   branch          String

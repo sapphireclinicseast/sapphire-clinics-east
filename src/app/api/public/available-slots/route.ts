@@ -143,6 +143,10 @@ export async function GET(req: NextRequest) {
     where: {
       staffId: { in: staffList.map((s) => s.id) },
       branch,
+      // Weekly pattern only. A dated slot blocks ONE date, which this
+      // weekday-based availability cannot express — counting it here would
+      // close that hour on every week instead.
+      date: null,
     },
     select: { staffId: true, dayOfWeek: true, startTime: true, disabled: true, patientId: true },
   })

@@ -80,7 +80,8 @@ export async function GET(req: NextRequest) {
   const staffIds = configs.map(c => c.staffId)
 
   const allSlots = await prisma.deckingSlot.findMany({
-    where: { staffId: { in: staffIds } },
+    // Weekly pattern only — utilization is a percentage of a recurring week.
+    where: { staffId: { in: staffIds }, date: null },
     select: { staffId: true, dayOfWeek: true, startTime: true, disabled: true, patientId: true },
   })
 

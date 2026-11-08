@@ -41,7 +41,9 @@ export async function computeDeckingSnapshot(): Promise<SnapshotRow[]> {
       select: { staffId: true, workDays: true, startTime: true, endTime: true, branch: true, department: true },
     }),
     prisma.deckingSlot.findMany({
-      where: { isClass: false },
+      // Recurring slots only: this is a snapshot of the WEEKLY pattern, and a
+      // dated one-off counted here would overstate capacity every week after.
+      where: { isClass: false, date: null },
       select: { staffId: true, branch: true, department: true, dayOfWeek: true, startTime: true, disabled: true, patientId: true },
     }),
     prisma.staff.findMany({ where: { active: true }, select: { id: true, department: true } }),

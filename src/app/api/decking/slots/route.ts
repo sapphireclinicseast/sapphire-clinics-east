@@ -19,6 +19,9 @@ export async function GET(req: NextRequest) {
       ...(staffId   ? { staffId }   : {}),
       ...(branch    ? { branch }    : {}),
       ...(dayOfWeek ? { dayOfWeek } : {}),
+      // The weekly board draws recurring slots only. A dated one-off would
+      // appear in its weekday column every week, for ever.
+      date: null,
     },
     include: {
       patient: { select: { id: true, firstName: true, lastName: true } },
@@ -41,7 +44,7 @@ export async function POST(req: NextRequest) {
   if (isDisabled) {
     // Only one disabled marker per staff/day/time cell
     const alreadyDisabled = await prisma.deckingSlot.findFirst({
-      where: { staffId, dayOfWeek, startTime, disabled: true },
+      where: { staffId, dayOfWeek, startTime, disabled: true, date: null },
     })
     if (alreadyDisabled) {
       return NextResponse.json({ error: 'Slot is already disabled' }, { status: 400 })
