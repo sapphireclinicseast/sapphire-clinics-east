@@ -171,7 +171,7 @@ function ReportTable({
         tfoot td { font-weight: bold; background: #f9fafb; border-top: 2px solid #e5e7eb; }
         .right { text-align: right; }
         .center { text-align: center; }
-        .mono { font-family: monospace; font-size: 11px; }
+        .mono { font-family: Roboto, Arial, sans-serif; font-variant-numeric: tabular-nums; font-size: 11px; }
         .badge { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 600; background: #d1fae5; color: #065f46; }
         @page { size: landscape; margin: 15mm; }
       </style></head><body>

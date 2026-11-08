@@ -1,5 +1,28 @@
 @import "tailwindcss";
 
+/* ── Numbers in Roboto (Hannah, 2026-11-09) ──────────────────────────
+   Every number in the hub renders in Roboto:
+   · 'Hub Digits' holds only numerals and number punctuation (0-9 , . % ₱ −)
+     and sits first in the body and display font stacks, so digits anywhere
+     come from Roboto while letters keep Manrope / Montserrat.
+   · `font-mono` (account numbers, references, amounts) is Roboto as well —
+     the old monospace was hard on the eyes.
+   Files: public/fonts/roboto-latin-*.woff2, a Latin subset of Roboto 2.137
+   (Apache License 2.0). Each face covers a weight range so semibold and
+   extrabold map to a real Roboto weight instead of a synthesised one. */
+@font-face { font-family: 'Hub Digits'; src: url('/fonts/roboto-latin-400.woff2') format('woff2'); font-weight: 100 449; font-style: normal; font-display: swap; unicode-range: U+0030-0039, U+002C, U+002E, U+0025, U+20B1, U+2212; }
+@font-face { font-family: 'Hub Digits'; src: url('/fonts/roboto-latin-500.woff2') format('woff2'); font-weight: 450 599; font-style: normal; font-display: swap; unicode-range: U+0030-0039, U+002C, U+002E, U+0025, U+20B1, U+2212; }
+@font-face { font-family: 'Hub Digits'; src: url('/fonts/roboto-latin-700.woff2') format('woff2'); font-weight: 600 1000; font-style: normal; font-display: swap; unicode-range: U+0030-0039, U+002C, U+002E, U+0025, U+20B1, U+2212; }
+@font-face { font-family: 'Roboto Hub'; src: url('/fonts/roboto-latin-400.woff2') format('woff2'); font-weight: 100 449; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Roboto Hub'; src: url('/fonts/roboto-latin-500.woff2') format('woff2'); font-weight: 450 599; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Roboto Hub'; src: url('/fonts/roboto-latin-700.woff2') format('woff2'); font-weight: 600 1000; font-style: normal; font-display: swap; }
+
+@theme {
+  --font-mono: 'Roboto Hub', Roboto, ui-sans-serif, system-ui, sans-serif;
+}
+/* Figures line up in columns. */
+.font-mono { font-variant-numeric: tabular-nums; }
+
 :root {
   /* ── Brand palette ──────────────────────────────────────────────
      Primary   Narra   #1B3F38   Deep forest green (60 % ground)
@@ -22,9 +45,10 @@
   --light-gray: #E3DDD1;   /* warm Paper border / divider */
   --mid-gray:   #8A8278;   /* warm mid-tone for secondary text */
 
-  --font-display: var(--font-montserrat), 'Trebuchet MS', sans-serif;
-  --font-body:    var(--font-manrope), 'Helvetica Neue', sans-serif;
-  --font-accent:  var(--font-montserrat), 'Trebuchet MS', sans-serif;
+  /* 'Hub Digits' first: numbers in Roboto, letters in Montserrat / Manrope. */
+  --font-display: 'Hub Digits', var(--font-montserrat), 'Trebuchet MS', sans-serif;
+  --font-body:    'Hub Digits', var(--font-manrope), 'Helvetica Neue', sans-serif;
+  --font-accent:  'Hub Digits', var(--font-montserrat), 'Trebuchet MS', sans-serif;
 }
 
 * {

@@ -163,7 +163,7 @@ export default function PayPage() {
           <div>
             <label style={label}>Voucher code (optional)</label>
             <div style={{ display: 'flex', gap: 8 }}>
-              <input style={{ ...input, fontFamily: 'monospace' }} value={code} onChange={e => { setCode(e.target.value.toUpperCase()); setPreview(null) }} placeholder="e.g. SUMMER10" />
+              <input style={{ ...input, fontFamily: 'var(--font-mono)' }} value={code} onChange={e => { setCode(e.target.value.toUpperCase()); setPreview(null) }} placeholder="e.g. SUMMER10" />
               <button onClick={checkCode} disabled={!code.trim()}
                 style={{ padding: '10px 14px', borderRadius: 10, border: '1px solid #e5e7eb', background: '#fff', fontSize: 13, fontWeight: 600, color: '#374151', cursor: code.trim() ? 'pointer' : 'not-allowed', opacity: code.trim() ? 1 : .5 }}>
                 Apply
