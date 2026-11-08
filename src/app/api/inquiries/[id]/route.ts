@@ -9,13 +9,14 @@ import { prisma } from '@/lib/prisma'
 import { branchForRole } from '@/lib/role-branch'
 import { canUseInquiries } from '@/lib/inquiry-access'
 import { emailInquiryLink } from '@/lib/inquiry-email'
+import { markInquiryRead } from '@/lib/inquiry-read'
 
 export const dynamic = 'force-dynamic'
 
 async function authorise(id: string) {
   const session = await auth()
   if (!session) return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
-  const user = session.user as { role?: string; name?: string | null; email?: string | null }
+  const user = session.user as { id?: string; role?: string; name?: string | null; email?: string | null }
   if (!canUseInquiries(user.role)) {
     return { error: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
   }
@@ -74,6 +75,12 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
   // Opening it marks it read — that is what "read" means here, and it keeps
   // the badge honest without a separate click.
+  //
+  // Read FOR THIS ACCOUNT. The thread's own readAt is still stamped the first
+  // time anyone opens it, as a record of when the clinic became aware of the
+  // enquiry, but it no longer decides anyone's badge: a main admin opening an
+  // enquiry used to clear the dot for the front desk who had to answer it.
+  await markInquiryRead(id, a.user.id ?? '')
   if (!a.inquiry.readAt) {
     await prisma.inquiry.update({ where: { id }, data: { readAt: new Date() } })
   }
@@ -127,6 +134,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       data: { status: 'ANSWERED', readAt: new Date(), lastMessageAt: new Date() },
     }),
   ])
+  // Answering is the strongest possible form of having read it. ANSWERED is
+  // already unread for nobody, so this only matters if the thread is later
+  // reopened by hand — then the person who wrote the reply should not be told
+  // there is something they have not seen.
+  await markInquiryRead(id, a.user.id ?? '')
   // Tell them there is a reply waiting. Without this the clinic answers into a
   // page nobody is looking at.
   void emailInquiryLink(id, 'reply')

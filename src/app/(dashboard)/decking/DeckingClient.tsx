@@ -52,6 +52,122 @@ const OFF_CELL_BG = '#EDEFF1'   // disabled / not working
 function payOf(s: DeckingSlot): PayType {
   return (PAY_TYPES as string[]).includes(s.paymentType ?? '') ? (s.paymentType as PayType) : 'CASH'
 }
+// ── Capacity card ────────────────────────────────────────────────────────────
+// Three numbers, a bar that shows them as one hour's worth of clinic, and what
+// the booked hours are being paid for.
+//
+// It was three tiles and a sentence. The tiles told you 76 booked and 76 open
+// out of 240 and left you to work out that the other 88 were blocked, and
+// nothing anywhere said how much of the week was HMO — which is the number
+// that decides whether the branch is waiting on letters of authorization or
+// taking money at the desk. Front desk were counting coloured cells by eye.
+//
+// The bar is the same three buckets as the tiles, to scale: a board that is
+// mostly unavailable looks mostly grey, which no arrangement of numerals can
+// convey as fast.
+interface SlotSummary {
+  total: number
+  booked: number
+  blocked: number
+  open: number
+  pay: Record<PayType | 'MIXED', number>
+}
+
+function SlotSummaryCard({ title, summary }: { title: React.ReactNode; summary: SlotSummary }) {
+  const { total, booked, blocked, open, pay } = summary
+  const pctOf = (n: number) => (total > 0 ? Math.round((n / total) * 100) : 0)
+
+  const tiles = [
+    { label: 'Total',  value: total,  fg: '#1F2937', bg: '#F1F3F5', pct: null as number | null },
+    { label: 'Booked', value: booked, fg: '#14507F', bg: '#E3EEFB', pct: total > 0 ? pctOf(booked) : null },
+    { label: 'Open',   value: open,   fg: '#166534', bg: '#DFF5E4', pct: total > 0 ? pctOf(open) : null },
+  ]
+
+  // Mixed is only shown when it happens — a permanent zero would invite the
+  // question of what it is on every board that never has one.
+  const mix = ([
+    { key: 'CASH'  as const, label: 'Cash', bg: PAY_STYLE.CASH.border, fg: PAY_STYLE.CASH.fg },
+    { key: 'HMO'   as const, label: 'HMO',  bg: PAY_STYLE.HMO.border,  fg: PAY_STYLE.HMO.fg },
+    { key: 'GL'    as const, label: 'GL',   bg: PAY_STYLE.GL.border,   fg: PAY_STYLE.GL.fg },
+    { key: 'MIXED' as const, label: 'Mixed', bg: '#CBD5E1', fg: '#475569' },
+  ]).filter(m => m.key !== 'MIXED' || pay.MIXED > 0)
+
+  return (
+    <div style={{ background: '#fff', border: '1px solid var(--light-gray)', borderRadius: '0.75rem', padding: '0.85rem 1rem' }}>
+      <div style={{ fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--mid-gray)', marginBottom: '0.6rem' }}>
+        {title}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '0.5rem' }}>
+        {tiles.map(k => (
+          <div key={k.label} style={{ background: k.bg, borderRadius: '0.5rem', padding: '0.5rem 0.4rem', textAlign: 'center' }}>
+            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: k.fg, lineHeight: 1.1, fontVariantNumeric: 'tabular-nums' }}>{k.value}</div>
+            <div style={{ fontSize: '0.66rem', fontWeight: 700, color: k.fg, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{k.label}</div>
+            {k.pct !== null && (
+              <div style={{ fontSize: '0.64rem', fontWeight: 600, color: k.fg, opacity: 0.75, fontVariantNumeric: 'tabular-nums' }}>{k.pct}% of total</div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {total > 0 && (
+        <>
+          {/* Booked, open and unavailable to scale, in the tiles' own colours. */}
+          <div style={{ display: 'flex', height: 8, borderRadius: 99, overflow: 'hidden', marginTop: '0.7rem', background: '#F1F3F5' }}>
+            {([
+              { w: booked,  c: '#7FB2E5', t: `${booked} booked` },
+              { w: open,    c: '#86CF9B', t: `${open} open` },
+              { w: blocked, c: '#D2D7DC', t: `${blocked} unavailable` },
+            ]).filter(seg => seg.w > 0).map(seg => (
+              <div key={seg.t} title={seg.t} style={{ width: `${(seg.w / total) * 100}%`, background: seg.c }} />
+            ))}
+          </div>
+          {blocked > 0 && (
+            /* Named rather than folded into "open": a blocked hour is not
+               capacity anyone can book into. */
+            <p style={{ margin: '0.45rem 0 0', fontSize: '0.7rem', color: 'var(--mid-gray)' }}>
+              <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: '#D2D7DC', marginRight: 5 }} />
+              {blocked} marked unavailable, not counted as open.
+            </p>
+          )}
+        </>
+      )}
+
+      {booked > 0 && (
+        <div style={{ marginTop: '0.75rem', paddingTop: '0.7rem', borderTop: '1px solid var(--light-gray)' }}>
+          <div style={{ fontSize: '0.64rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--mid-gray)', marginBottom: '0.45rem' }}>
+            Booked hours by payment
+          </div>
+          <div style={{ display: 'flex', height: 8, borderRadius: 99, overflow: 'hidden', marginBottom: '0.5rem' }}>
+            {mix.filter(m => pay[m.key] > 0).map(m => (
+              <div key={m.key} title={`${m.label}: ${pay[m.key]}`}
+                style={{ width: `${(pay[m.key] / booked) * 100}%`, background: m.bg }} />
+            ))}
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem 0.9rem' }}>
+            {mix.map(m => (
+              <span key={m.key} style={{ display: 'inline-flex', alignItems: 'baseline', gap: '0.35rem', fontSize: '0.72rem', color: 'var(--charcoal)' }}>
+                <span style={{ width: 9, height: 9, borderRadius: 2, background: m.bg, alignSelf: 'center' }} />
+                <span style={{ fontWeight: 700, color: m.fg }}>{m.label}</span>
+                <span style={{ fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>{pay[m.key]}</span>
+                <span style={{ color: 'var(--mid-gray)', fontVariantNumeric: 'tabular-nums' }}>
+                  {Math.round((pay[m.key] / booked) * 100)}%
+                </span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {total === 0 && (
+        <p style={{ margin: '0.5rem 0 0', fontSize: '0.7rem', color: 'var(--mid-gray)' }}>
+          No work days configured for this department yet, so there is no capacity to count.
+        </p>
+      )}
+    </div>
+  )
+}
+
 interface DayHours { open: boolean; openTime: string; closeTime: string }
 type ClinicSchedule = Record<string, DayHours>
 type AllClinicHours = Record<string, ClinicSchedule>
@@ -1138,6 +1254,13 @@ export default function DeckingClient({ role }: { role: string }) {
 
   const slotSummary = (() => {
     let total = 0, booked = 0, blocked = 0
+    // How the booked hours are being paid for. Counted per booked CELL rather
+    // than per patient, so Cash + HMO + GL + Mixed adds up to Booked exactly —
+    // a mix that did not reconcile with the number above it would be read as a
+    // bug in the board. A shared hour whose occupants pay differently is the
+    // only thing that lands in Mixed, and it is rare enough to be worth naming
+    // rather than silently assigning to one of the three.
+    const pay: Record<PayType | 'MIXED', number> = { CASH: 0, HMO: 0, GL: 0, MIXED: 0 }
     for (const st of filteredStaff) {
       const cfg = configMap.get(st.id)
       if (!cfg) continue                       // no work days set — no capacity yet
@@ -1164,13 +1287,18 @@ export default function DeckingClient({ role }: { role: string }) {
           // Same precedence as the cell: disabled wins, then any occupant
           // (a cell holding three children is still one filled slot), else open.
           if (cell.some(r => r.disabled)) blocked++
-          else if (cell.length > 0) booked++
+          else if (cell.length > 0) {
+            booked++
+            const kinds = new Set(cell.map(payOf))
+            if (kinds.size === 1) pay[[...kinds][0]]++
+            else pay.MIXED++
+          }
         }
       }
     }
     // Every counted cell fell into exactly one bucket, so this cannot go
     // negative and needs no clamp to hide an inconsistency.
-    return { total, booked, blocked, open: total - booked - blocked }
+    return { total, booked, blocked, open: total - booked - blocked, pay }
   })()
 
   // Raise (or reopen) the Letter of Authorization for an HMO slot.
@@ -1433,32 +1561,11 @@ export default function DeckingClient({ role }: { role: string }) {
                 same derivation; All simply has no arrangement filter, so this
                 totals every mode of delivery at once. */}
             {activeSection === 'all' && !loadingStaff && !loadingData && (
-              <div style={{ background: '#fff', border: '1px solid var(--light-gray)', borderRadius: '0.75rem', padding: '0.85rem 1rem', marginBottom: '0.75rem' }}>
-                <div style={{ fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--mid-gray)', marginBottom: '0.6rem' }}>
-                  Slots &mdash; {branchLabel(activeBranch) ?? activeBranch} &middot; {activeDept} &middot; all modes of delivery
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '0.5rem', maxWidth: 520 }}>
-                  {([
-                    // Percentages are of TOTAL, named on the tile, so booked and open
-                    // read as shares of the same capacity, not of each other.
-                    { label: 'Total',  value: slotSummary.total,  fg: '#1F2937', bg: '#F1F3F5', pct: null },
-                    { label: 'Booked', value: slotSummary.booked, fg: '#14507F', bg: '#E3EEFB', pct: slotSummary.total > 0 ? Math.round((slotSummary.booked / slotSummary.total) * 100) : null },
-                    { label: 'Open',   value: slotSummary.open,   fg: '#166534', bg: '#DFF5E4', pct: slotSummary.total > 0 ? Math.round((slotSummary.open / slotSummary.total) * 100) : null },
-                  ]).map(k => (
-                    <div key={k.label} style={{ background: k.bg, borderRadius: '0.5rem', padding: '0.5rem 0.4rem', textAlign: 'center' }}>
-                      <div style={{ fontSize: '1.25rem', fontWeight: 800, color: k.fg, lineHeight: 1.1, fontVariantNumeric: 'tabular-nums' }}>{k.value}</div>
-                      <div style={{ fontSize: '0.66rem', fontWeight: 700, color: k.fg, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{k.label}</div>
-                      {k.pct !== null && (
-                        <div style={{ fontSize: '0.64rem', fontWeight: 600, color: k.fg, opacity: 0.75, fontVariantNumeric: 'tabular-nums' }}>{k.pct}% of total</div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-                {slotSummary.blocked > 0 && (
-                  <p style={{ fontSize: '0.7rem', color: 'var(--mid-gray)', marginTop: '0.5rem' }}>
-                    {slotSummary.blocked} marked unavailable, not counted as open.
-                  </p>
-                )}
+              <div style={{ marginBottom: '0.75rem', maxWidth: 560 }}>
+                <SlotSummaryCard
+                  summary={slotSummary}
+                  title={<>Slots &mdash; {branchLabel(activeBranch) ?? activeBranch} &middot; {activeDept} &middot; all modes of delivery</>}
+                />
               </div>
             )}
             {viewingOtherBranch && (
@@ -1570,42 +1677,12 @@ export default function DeckingClient({ role }: { role: string }) {
               <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                 {/* Capacity for the current branch / department / section, in the
                     space this column used to leave empty. Open is derived
-                    (total − booked − blocked) rather than counted separately, so
+                    (total - booked - blocked) rather than counted separately, so
                     the three numbers always add up. */}
-                <div style={{ background: '#fff', border: '1px solid var(--light-gray)', borderRadius: '0.75rem', padding: '0.85rem 1rem' }}>
-                  <div style={{ fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--mid-gray)', marginBottom: '0.6rem' }}>
-                    Slots &mdash; {branchLabel(activeBranch) ?? activeBranch} &middot; {activeDept}
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
-                    {([
-                      // Percentages are of TOTAL, named on the tile, so booked and open
-                      // read as shares of the same capacity, not of each other.
-                      { label: 'Total',  value: slotSummary.total,  fg: '#1F2937', bg: '#F1F3F5', pct: null },
-                      { label: 'Booked', value: slotSummary.booked, fg: '#14507F', bg: '#E3EEFB', pct: slotSummary.total > 0 ? Math.round((slotSummary.booked / slotSummary.total) * 100) : null },
-                      { label: 'Open',   value: slotSummary.open,   fg: '#166534', bg: '#DFF5E4', pct: slotSummary.total > 0 ? Math.round((slotSummary.open / slotSummary.total) * 100) : null },
-                    ]).map(k => (
-                      <div key={k.label} style={{ background: k.bg, borderRadius: '0.5rem', padding: '0.5rem 0.4rem', textAlign: 'center' }}>
-                        <div style={{ fontSize: '1.25rem', fontWeight: 800, color: k.fg, lineHeight: 1.1, fontVariantNumeric: 'tabular-nums' }}>{k.value}</div>
-                        <div style={{ fontSize: '0.66rem', fontWeight: 700, color: k.fg, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{k.label}</div>
-                      {k.pct !== null && (
-                        <div style={{ fontSize: '0.64rem', fontWeight: 600, color: k.fg, opacity: 0.75, fontVariantNumeric: 'tabular-nums' }}>{k.pct}% of total</div>
-                      )}
-                      </div>
-                    ))}
-                  </div>
-                  {slotSummary.blocked > 0 && (
-                    /* Named rather than folded into "open": a blocked hour is not
-                       capacity anyone can book into. */
-                    <p style={{ margin: '0.5rem 0 0', fontSize: '0.7rem', color: 'var(--mid-gray)' }}>
-                      {slotSummary.blocked} marked unavailable, not counted as open.
-                    </p>
-                  )}
-                  {slotSummary.total === 0 && (
-                    <p style={{ margin: '0.5rem 0 0', fontSize: '0.7rem', color: 'var(--mid-gray)' }}>
-                      No work days configured for this department yet, so there is no capacity to count.
-                    </p>
-                  )}
-                </div>
+                <SlotSummaryCard
+                  summary={slotSummary}
+                  title={<>Slots &mdash; {branchLabel(activeBranch) ?? activeBranch} &middot; {activeDept}</>}
+                />
                 {/* Follows the branch toggle above. This used to send 'ALL'
                     whenever the account could see more than one branch, so for
                     any admin the panel ignored the toggle completely: filtering

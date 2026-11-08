@@ -9,6 +9,7 @@ import { prisma } from '@/lib/prisma'
 import { branchForRole } from '@/lib/role-branch'
 import { canUseInquiries } from '@/lib/inquiry-access'
 import { storeInquiryFile, isProblem } from '@/lib/inquiry-upload'
+import { markInquiryRead } from '@/lib/inquiry-read'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,7 +18,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const user = session.user as { role?: string; name?: string | null; email?: string | null }
+  const user = session.user as { id?: string; role?: string; name?: string | null; email?: string | null }
   if (!canUseInquiries(user.role)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const inquiry = await prisma.inquiry.findUnique({ where: { id } })
@@ -48,6 +49,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       data: { status: 'ANSWERED', readAt: new Date(), lastMessageAt: new Date() },
     }),
   ])
+  // Same as replying: posting into a thread is the strongest form of having
+  // read it (see lib/inquiry-read.ts).
+  await markInquiryRead(id, user.id ?? '')
 
   return NextResponse.json({ ok: true })
 }

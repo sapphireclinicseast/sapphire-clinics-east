@@ -6,6 +6,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { readMarksFor, isUnreadFor } from '@/lib/inquiry-read'
 
 function bookingBranchesForRole(role: string): string[] | null {
   if (role.startsWith('SBEA_') || role.startsWith('AHEA_')) return ['SBEA']
@@ -132,21 +133,32 @@ export async function GET() {
     }),
     // Form responses (HR Platform — gracefully skipped if HR is down)
     fetchFormResponseNotifs(since, bookingBranches).catch(() => []),
-    // Public enquiries nobody has opened yet. Unread rather than merely recent:
-    // an enquiry someone has already picked up is not something to chase, and
-    // this feature exists because enquiries were being missed.
+    // Public enquiries THIS ACCOUNT has not opened. Unread rather than merely
+    // recent: an enquiry someone has already picked up is not something to
+    // chase, and this feature exists because enquiries were being missed.
+    //
+    // Candidates are fetched and then filtered by this account's read marks,
+    // because the rule compares two columns of the same row (my mark against
+    // the thread's last message) and Prisma cannot express that in a filter.
+    // Still OPEN, so an answered thread does not sit in everyone's bell.
     prisma.inquiry.findMany({
       where: {
-        readAt: null,
-        status: { not: 'CLOSED' },
+        status: 'OPEN',
         lastMessageAt: { gte: since },
         ...(bookingBranches ? { branch: { in: bookingBranches } } : {}),
       },
-      select: { id: true, ref: true, name: true, branch: true, subject: true, lastMessageAt: true },
+      select: { id: true, ref: true, name: true, branch: true, subject: true, lastMessageAt: true, status: true },
       orderBy: { lastMessageAt: 'desc' },
       take: 50,
     }),
   ])
+
+  // Drop the enquiries this account has already opened. One shared flag used
+  // to do this, which meant a main admin glancing at an enquiry took it out of
+  // the front desk's bell as well — see lib/inquiry-read.ts.
+  const userId = (session.user as { id?: string })?.id ?? ''
+  const inquiryReads = await readMarksFor(userId, inquiries.map(i => i.id))
+  const unreadInquiries = inquiries.filter(i => isUnreadFor(i, inquiryReads))
 
   const items = [
     ...patients.map((p) => ({
@@ -168,7 +180,7 @@ export async function GET() {
       href: `/decking?highlight=${b.id}`,
     })),
     ...formResponses,
-    ...inquiries.map((i) => ({
+    ...unreadInquiries.map((i) => ({
       id: `inq_${i.id}`,
       type: 'INQUIRY' as const,
       name: i.name,
