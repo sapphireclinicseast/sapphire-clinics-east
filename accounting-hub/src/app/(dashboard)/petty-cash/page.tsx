@@ -22,6 +22,7 @@ import { ExistingAssetPicker } from '@/components/ExistingAssetPicker'
 import { NameCombobox } from '@/components/NameCombobox'
 import { snapSupplierName, supplierNameIndex } from '@/lib/supplier-snap'
 import { balanceShares, typeShare } from '@/lib/petty-cash-shares'
+import { HR_VARS, HR_PAGE_CLASS, HrShimmerStyle, StatCard, hrBtn } from '@/components/ui/hr-look'
 
 // ── Constants ──────────────────────────────────────────────────
 const BRANCHES = [
@@ -185,23 +186,7 @@ const fetchDataUrl = async (url: string): Promise<string | null> => {
   } catch { return null }
 }
 
-// ── Look: the HR Hub house style ───────────────────────────────
-// hr.sapphireclinicseast.org: cream-green paper, green-grey borders, Aura
-// green accents, cards with a coloured left edge, uppercase labels, soft pills.
-// The page re-points the hub's colour tokens inside its own tree, so every
-// cell, modal and picker below picks the palette up without a rewrite.
-const HR_VARS = {
-  '--off-white': '#F6F8EE',   // paper
-  '--light-gray': '#DDE6CC',  // border
-  '--mid-gray': '#55616A',    // secondary text
-  '--charcoal': '#233038',    // text
-  '--teal': '#4A8073',        // Aura green (buttons, accents)
-  '--deep-teal': '#3C6A5F',
-  '--pale-teal': '#EDF3D9',
-  '--hr-line': '#E9EFDC',     // row lines
-  '--hr-faint': '#8A9AA0',
-  '--hr-head': '#f8faf6',     // table header / toolbar
-} as React.CSSProperties
+// Look: the HR Hub house style (components/ui/hr-look).
 const BRANCH_NAMES: Record<string, string> = {
   SANDBOX_EAST: 'East', SANDBOX_GREENHILLS: 'Greenhills', VERDANA_STORE: 'Verdana', AURA_INSTITUTE: 'Aura Health Institute', CEO: 'CEO',
 }
@@ -257,32 +242,6 @@ const ACTIONS_W = 120
 // They are computed from other cells; the Columns menu brings them back.
 const DEFAULT_HIDDEN = ['descHub', 'tinNumber2', 'branchCode']
 const UNHIDEABLE = ['refNumber', 'branchAlloc']
-
-function StatCard({ label, value, sub, tone, active, loading, onClick, title }: {
-  label: string; value: string; sub: string
-  tone: 'amber' | 'red' | 'green' | 'blue' | 'zero'
-  active?: boolean; loading?: boolean; onClick?: () => void; title?: string
-}) {
-  const t = {
-    amber: { line: '#d97706', bg: '#fffbeb', fg: '#b45309' },
-    red:   { line: '#dc2626', bg: '#fef2f2', fg: '#b91c1c' },
-    green: { line: '#059669', bg: '#ffffff', fg: '#047857' },
-    blue:  { line: '#2563eb', bg: '#eff6ff', fg: '#1d4ed8' },
-    zero:  { line: '#DDE6CC', bg: '#ffffff', fg: '#8A9AA0' },
-  }[tone]
-  if (loading) {
-    return <div className="h-[92px] rounded-lg border pc-shimmer" style={{ borderColor: 'var(--light-gray)', borderLeft: '4px solid var(--light-gray)' }} />
-  }
-  return (
-    <button type="button" onClick={onClick} disabled={!onClick} title={title}
-      className="text-left min-w-0 rounded-lg border px-3 sm:px-4 py-3 transition-shadow enabled:hover:shadow-[0_4px_12px_rgba(0,0,0,0.06)] focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-default"
-      style={{ background: t.bg, borderColor: 'var(--light-gray)', borderLeft: `4px solid ${t.line}`, boxShadow: active ? '0 0 0 2px #a7d3cd' : undefined, outlineColor: 'var(--teal)' }}>
-      <p className="text-[11.5px] font-semibold uppercase tracking-[.4px] truncate" style={{ color: 'var(--mid-gray)' }}>{label}</p>
-      <p className="text-[19px] sm:text-2xl font-extrabold leading-tight tabular-nums truncate" style={{ fontFamily: 'var(--font-display)', color: t.fg }}>{value}</p>
-      <p className="text-xs truncate" style={{ color: 'var(--mid-gray)' }}>{active ? 'Showing these below · click to clear' : sub}</p>
-    </button>
-  )
-}
 
 export default function PettyCashPage() {
   return <Suspense fallback={null}><PettyCashInner /></Suspense>
@@ -1137,9 +1096,7 @@ function PettyCashInner() {
     try { await fetch('/api/petty-cash/audited', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, audited }) }) } catch { /* ignore */ }
   }
 
-  const ghostBtn = 'inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border bg-white text-xs font-semibold transition-colors hover:border-[var(--teal)] hover:text-[var(--teal)] disabled:opacity-50'
-  const primaryBtn = 'inline-flex items-center gap-1.5 h-9 px-4 rounded-lg text-[13px] font-semibold text-white transition-colors hover:bg-[var(--deep-teal)] disabled:opacity-50'
-  const outlineBtn = 'inline-flex items-center gap-1.5 h-9 px-4 rounded-lg border bg-white text-[13px] font-semibold transition-colors hover:bg-[var(--pale-teal)] disabled:opacity-50'
+  const { ghost: ghostBtn, primary: primaryBtn, outline: outlineBtn } = hrBtn
   const selectedEntries = rfpMode ? entries.filter(e => selected.has(e.id)) : []
   const selectedTotal = isCeo
     ? selectedEntries.reduce((s, e) => s + (Number(allocOf(e, rfpBranch)) || 0), 0)
@@ -1147,9 +1104,9 @@ function PettyCashInner() {
   const dlCount = entries.filter(e => inDateRange(e.date, dlFrom, dlTo)).length
 
   return (
-    <div className={expanded ? 'fixed inset-0 z-50 overflow-auto p-4 lg:p-6 space-y-4' : '-m-4 lg:-m-6 p-4 lg:p-6 space-y-4 min-h-[calc(100%+2rem)] lg:min-h-[calc(100%+3rem)]'}
+    <div className={expanded ? 'fixed inset-0 z-50 overflow-auto p-4 lg:p-6 space-y-4' : HR_PAGE_CLASS}
       style={{ ...HR_VARS, background: 'var(--off-white)', color: 'var(--charcoal)' }}>
-      <style>{`.pc-shimmer{background:linear-gradient(90deg,#f1f4ec 0%,#f8faf4 50%,#f1f4ec 100%);background-size:200% 100%;animation:pc-shimmer 1.2s linear infinite}@keyframes pc-shimmer{from{background-position:200% 0}to{background-position:-200% 0}}@media (prefers-reduced-motion:reduce){.pc-shimmer{animation:none}}`}</style>
+      <HrShimmerStyle />
 
       {/* ── Header: title + branch ── */}
       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
@@ -1378,7 +1335,7 @@ function PettyCashInner() {
             <div className="overflow-auto" style={{ maxHeight: expanded ? 'calc(100vh - 300px)' : '68vh' }}>
             {loading ? (
               <div className="p-4 space-y-2" aria-busy="true">
-                {Array.from({ length: 7 }, (_, i) => <div key={i} className="h-10 rounded-md pc-shimmer" />)}
+                {Array.from({ length: 7 }, (_, i) => <div key={i} className="h-10 rounded-md hr-shimmer" />)}
               </div>
             ) : (
               <>

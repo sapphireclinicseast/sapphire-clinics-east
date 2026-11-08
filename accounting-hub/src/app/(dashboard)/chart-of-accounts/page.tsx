@@ -1,7 +1,7 @@
 'use client'
 
 
-import { Suspense, useState, useEffect, useCallback, useRef } from 'react'
+import { Suspense, useState, useEffect, useCallback, useRef, useSyncExternalStore } from 'react'
 import { useFocusTarget } from '@/lib/use-focus-target'
 import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
@@ -17,10 +17,11 @@ import {
   AlertTriangle,
   CheckCircle2,
   Loader2,
+  ChevronDown,
 } from 'lucide-react'
 import { downloadXlsx, downloadPdf } from '@/lib/export'
 import DownloadMenu from '@/components/ui/DownloadMenu'
-import Pagination from '@/components/ui/Pagination'
+import { HR_PAGE_CLASS, HR_PAGE_STYLE, HrShimmerStyle, StatCard, hrBtn } from '@/components/ui/hr-look'
 
 interface Account {
   id: string
@@ -74,12 +75,22 @@ const ACCOUNT_TYPE_OPTIONS = [
   { value: 'EXPENSE', label: 'Expense' },
 ]
 
-const TYPE_BADGE: Record<string, { bg: string; color: string }> = {
-  ASSET:     { bg: '#dbeafe', color: '#1e40af' },
-  LIABILITY: { bg: '#fce7f3', color: '#9d174d' },
-  EQUITY:    { bg: '#f3e8ff', color: '#6b21a8' },
-  REVENUE:   { bg: '#dcfce7', color: '#166534' },
-  EXPENSE:   { bg: '#fef3c7', color: '#92400e' },
+// (Was keyed `bg`, which is not a CSS property, so the badges showed no background.)
+const TYPE_BADGE: Record<string, { background: string; color: string }> = {
+  ASSET:     { background: '#dbeafe', color: '#1e40af' },
+  LIABILITY: { background: '#fce7f3', color: '#9d174d' },
+  EQUITY:    { background: '#f3e8ff', color: '#6b21a8' },
+  REVENUE:   { background: '#dcfce7', color: '#166534' },
+  EXPENSE:   { background: '#fef3c7', color: '#92400e' },
+}
+
+// Per-type look for the cards and group headers.
+const TYPE_META: Record<string, { plural: string; line: string; pill: { background: string; color: string } }> = {
+  ASSET:     { plural: 'Assets',      line: '#3b82f6', pill: TYPE_BADGE.ASSET },
+  LIABILITY: { plural: 'Liabilities', line: '#db2777', pill: TYPE_BADGE.LIABILITY },
+  EQUITY:    { plural: 'Equity',      line: '#9333ea', pill: TYPE_BADGE.EQUITY },
+  REVENUE:   { plural: 'Revenue',     line: '#059669', pill: TYPE_BADGE.REVENUE },
+  EXPENSE:   { plural: 'Expenses',    line: '#d97706', pill: TYPE_BADGE.EXPENSE },
 }
 
 const DEFAULT_BALANCE: Record<string, string> = {
@@ -229,6 +240,126 @@ function parseCSV(text: string): string[][] {
 }
 
 
+// ── Grouped list ────────────────────────────────────────────
+// Type → sub type, in the order the Add Account form lists them; bank and
+// cash accounts get their own group at the top of the assets. Accounts keep
+// the API's order (by account number) inside each group.
+const BANK_GROUP = 'CURRENT_ASSETS:BANK'
+interface AccountGroup { key: string; type: string; count: number; subs: { key: string; label: string; rows: Account[] }[] }
+function groupAccounts(list: Account[]): AccountGroup[] {
+  return ACCOUNT_TYPE_OPTIONS.map((t) => {
+    const rows = list.filter((a) => a.accountType === t.value)
+    const order = (SUB_TYPES[t.value] || []).map((s) => s.value)
+    const buckets = new Map<string, Account[]>()
+    for (const a of rows) {
+      const k = a.subType === 'CURRENT_ASSETS' && a.isBankAccount ? BANK_GROUP : (a.subType || '')
+      const b = buckets.get(k)
+      if (b) b.push(a); else buckets.set(k, [a])
+    }
+    const rank = (k: string) => k === BANK_GROUP ? -1 : k === '' ? 999 : order.includes(k) ? order.indexOf(k) : 500
+    const subs = [...buckets.entries()]
+      .sort((x, y) => rank(x[0]) - rank(y[0]) || x[0].localeCompare(y[0]))
+      .map(([k, r]) => ({
+        key: `${t.value}:${k}`,
+        label: k === BANK_GROUP ? 'Cash & bank accounts' : k === '' ? 'No sub type' : (SUB_TYPE_LABELS[k] || k),
+        rows: r,
+      }))
+    return { key: t.value, type: t.value, count: rows.length, subs }
+  }).filter((g) => g.count > 0)
+}
+
+// Which optional columns are on screen (md: balance + currency, lg: description).
+// The group header rows span exactly the visible columns: a span wider than
+// what is shown made the fixed-layout table squeeze the title on phones.
+function useMinWidth(px: number) {
+  return useSyncExternalStore(
+    (cb) => { const m = window.matchMedia(`(min-width: ${px}px)`); m.addEventListener('change', cb); return () => m.removeEventListener('change', cb) },
+    () => window.matchMedia(`(min-width: ${px}px)`).matches,
+    () => true,
+  )
+}
+
+const BRANCH_SHORT: Record<string, string> = { SANDBOX_EAST: 'East', SANDBOX_GREENHILLS: 'Greenhills', VERDANA_STORE: 'Verdana', AURA_INSTITUTE: 'AHI' }
+
+function Tag({ children, bg, fg, title }: { children: React.ReactNode; bg: string; fg: string; title?: string }) {
+  return (
+    <span title={title} className="inline-flex items-center px-1.5 py-px rounded text-[10.5px] font-semibold whitespace-nowrap" style={{ background: bg, color: fg }}>
+      {children}
+    </span>
+  )
+}
+
+function SubGroupRows({ label, rows, colCount, canWrite, onEdit, onDelete }: {
+  label: string; rows: Account[]; colCount: number; canWrite: boolean
+  onEdit: (a: Account) => void; onDelete: (a: Account) => void
+}) {
+  return (
+    <>
+      <tr>
+        <td colSpan={colCount} className="px-3 md:pl-10 py-1.5 border-b text-[11px] font-semibold"
+          style={{ background: 'var(--hr-head)', borderColor: 'var(--hr-line)', color: 'var(--mid-gray)' }}>
+          {label} <span style={{ color: 'var(--hr-faint)' }}>· {rows.length}</span>
+        </td>
+      </tr>
+      {rows.map((a) => {
+        const contra = a.normalBalance !== DEFAULT_BALANCE[a.accountType]
+        const bal = a.normalBalance === 'DEBIT' ? 'Debit' : a.normalBalance === 'CREDIT' ? 'Credit' : a.normalBalance
+        const foreign = !!a.currency && a.currency !== 'PHP'
+        return (
+          <tr key={a.id} className="border-b transition-colors hover:bg-[#fafbf7]" style={{ borderColor: 'var(--hr-line)', opacity: a.isActive ? 1 : 0.55 }}>
+            <td className="px-3 md:pl-10 md:pr-4 py-2.5 align-top font-mono font-semibold text-[11.5px] md:text-[12.5px] break-all" style={{ color: 'var(--charcoal)' }}>
+              {a.accountNumber}
+            </td>
+            <td className="px-3 md:px-4 py-2.5 align-top">
+              <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                <span className="font-semibold" style={{ color: 'var(--charcoal)' }}>{a.accountTitle}</span>
+                {a.isBankAccount && <Tag bg="#f1f5f9" fg="#475569">{a.isCheckingAccount ? 'Bank · checking' : 'Bank'}</Tag>}
+                {a.branch && <Tag bg="var(--pale-teal)" fg="var(--teal)">{BRANCH_SHORT[a.branch] || a.branch}</Tag>}
+                {a.subSubType && <Tag bg="#eff6ff" fg="#1d4ed8">{SUB_SUB_TYPE_LABELS[a.subSubType] || a.subSubType}</Tag>}
+                {a.bankRetiredAt && (
+                  <Tag bg="#fee2e2" fg="#991b1b"
+                    title={`Bank account retired ${new Date(a.bankRetiredAt).toLocaleDateString('en-PH')} — hidden from dropdowns and Bank Rec; ledger history unaffected`}>
+                    Retired bank
+                  </Tag>
+                )}
+                {!a.isActive && <Tag bg="#f1f5f2" fg="#55616A">Inactive</Tag>}
+              </div>
+              {/* Phones: the hidden columns, in one line under the title */}
+              <p className="md:hidden mt-0.5 text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+                {bal} balance{contra ? ' · contra' : ''}{foreign ? ` · ${a.currency}` : ''}
+              </p>
+            </td>
+            <td className="hidden md:table-cell px-4 py-2.5 align-top whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>
+              {bal}
+              {contra && (
+                <span className="ml-1.5"><Tag bg="#f3e8ff" fg="#6b21a8" title="The opposite of this type's usual balance, e.g. a discount under revenue">Contra</Tag></span>
+              )}
+            </td>
+            <td className="hidden md:table-cell px-4 py-2.5 align-top">
+              {foreign ? <Tag bg="#fef3c7" fg="#92400e">{a.currency}</Tag> : <span className="text-xs" style={{ color: 'var(--hr-faint)' }}>PHP</span>}
+            </td>
+            <td className="hidden lg:table-cell px-4 py-2.5 align-top">
+              <p className="truncate" style={{ color: 'var(--mid-gray)' }} title={a.description || undefined}>{a.description || '—'}</p>
+            </td>
+            {canWrite && (
+              <td className="px-3 md:px-4 py-1.5 align-top">
+                <div className="flex items-center justify-end gap-0.5">
+                  <button onClick={() => onEdit(a)} className="p-2 rounded-lg hover:bg-[var(--pale-teal)] transition-colors" title="Edit">
+                    <Pencil size={15} style={{ color: 'var(--teal)' }} />
+                  </button>
+                  <button onClick={() => onDelete(a)} className="p-2 rounded-lg hover:bg-red-50 transition-colors" title="Deactivate or delete">
+                    <Trash2 size={15} className="text-red-500" />
+                  </button>
+                </div>
+              </td>
+            )}
+          </tr>
+        )
+      })}
+    </>
+  )
+}
+
 export default function ChartOfAccountsPage() {
   return <Suspense fallback={null}><ChartOfAccountsInner /></Suspense>
 }
@@ -247,8 +378,10 @@ function ChartOfAccountsInner() {
   const [filterType, setFilterType] = useState('')
   const [filterSubType, setFilterSubType] = useState('')
   const [error, setError] = useState('')
-  const [coaPage, setCoaPage] = useState(1)
-  const [coaPageSize, setCoaPageSize] = useState(25)
+  // Type groups the user folded away.
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+  const isMd = useMinWidth(768)
+  const isLg = useMinWidth(1024)
   const [showInactive, setShowInactive] = useState(false)
 
   // Create/Edit modal
@@ -280,9 +413,9 @@ function ChartOfAccountsInner() {
 
   const fetchAccounts = useCallback(async () => {
     try {
-      const params = new URLSearchParams({ pageSize: '500' })
-      if (filterType) params.set('accountType', filterType)
-      if (filterSubType) params.set('subType', filterSubType)
+      // All accounts at once (the API caps a page at 1,000); type and sub type
+      // are filtered in the page so the type cards keep their counts.
+      const params = new URLSearchParams({ pageSize: '1000' })
       if (showInactive) params.set('showInactive', 'true')
       const res = await fetch(`/api/chart-of-accounts?${params}`)
       const data = await res.json()
@@ -292,7 +425,7 @@ function ChartOfAccountsInner() {
     } finally {
       setLoading(false)
     }
-  }, [filterType, filterSubType, showInactive])
+  }, [showInactive])
 
   // Initial load
   useEffect(() => {
@@ -302,13 +435,13 @@ function ChartOfAccountsInner() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionUserId])
 
-  // Refetch on filter changes (debounced, only after initial load)
+  // Refetch when Active / All changes (debounced, only after initial load)
   useEffect(() => {
     if (!initialLoaded.current) return
     const timeout = setTimeout(() => { fetchAccounts() }, 300)
     return () => clearTimeout(timeout)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterType, filterSubType, showInactive])
+  }, [showInactive])
 
   // ── Form handlers ──────────────────────────────────────────
 
@@ -536,21 +669,35 @@ function ChartOfAccountsInner() {
   }
 
   // ── Filtering ──────────────────────────────────────────────
-
-  const filteredAccounts = accounts.filter((a) => {
+  // Type and sub type are filtered here in the page (the API's filter is the
+  // same exact match), so the type cards keep their counts while one type is
+  // shown. Search narrows by number or title, as before.
+  const typeFiltered = accounts.filter((a) =>
+    (!filterType || a.accountType === filterType) && (!filterSubType || a.subType === filterSubType))
+  const filteredAccounts = typeFiltered.filter((a) => {
     if (!search) return true
     const q = search.toLowerCase()
     return a.accountNumber.toLowerCase().includes(q) || a.accountTitle.toLowerCase().includes(q)
   })
-  const paginatedAccounts = filteredAccounts.slice((coaPage - 1) * coaPageSize, coaPage * coaPageSize)
+  const groups = groupAccounts(filteredAccounts)
+  const typeCount = (t: string) => accounts.filter((a) => a.accountType === t).length
+  const contraCount = (t: string) => accounts.filter((a) => a.accountType === t && a.normalBalance !== DEFAULT_BALANCE[t]).length
+  const bankCount = accounts.filter((a) => a.isBankAccount && !a.bankRetiredAt && a.isActive).length
+  const inactiveCount = accounts.filter((a) => !a.isActive).length
+  const anyFilter = !!(filterType || filterSubType || search)
+  const clearFilters = () => { setFilterType(''); setFilterSubType(''); setSearch('') }
+  const toggleGroup = (k: string) => setCollapsed((prev) => { const n = new Set(prev); if (n.has(k)) n.delete(k); else n.add(k); return n })
+  const allCollapsed = groups.length > 0 && groups.every((g) => collapsed.has(g.key))
+  const colCount = 2 + (isMd ? 2 : 0) + (isLg ? 1 : 0) + (canWrite ? 1 : 0)
 
   const selectedCount = importRows.filter((r) => r.selected).length
   const duplicateCount = importRows.filter((r) => r.duplicate).length
 
   /* ── Download Handler ───────────────────────────────────── */
+  // Same file as before: every loaded account in the chosen type / sub type.
   const handleDownloadAccounts = (format: 'xlsx' | 'pdf') => {
     const headers = ['Account #', 'Account Title', 'Type', 'Sub Type', 'Sub-Sub Type', 'Normal Balance', 'Currency', 'Status', 'Description']
-    const rows = accounts.map(a => [
+    const rows = typeFiltered.map(a => [
       a.accountNumber, a.accountTitle, a.accountType, a.subType || '', a.subSubType || '',
       a.normalBalance, a.currency, a.isActive ? 'Active' : 'Inactive', a.description || ''
     ])
@@ -560,191 +707,176 @@ function ChartOfAccountsInner() {
 
   // ── Render ─────────────────────────────────────────────────
 
-  if (loading && !initialLoaded.current) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="text-sm" style={{ color: 'var(--mid-gray)' }}>Loading...</div>
-      </div>
-    )
-  }
-
   return (
-    <div>
+    <div className={HR_PAGE_CLASS} style={HR_PAGE_STYLE}>
+      <HrShimmerStyle />
+
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-2xl font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold leading-tight" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
             Chart of Accounts
           </h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--mid-gray)' }}>
-            Manage your general ledger account structure
+          <p className="mt-1 text-[13px] max-w-2xl" style={{ color: 'var(--mid-gray)' }}>
+            Every general-ledger account, grouped by type and sub type.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <DownloadMenu onDownload={handleDownloadAccounts} label="Download" />
           {canWrite && (<>
-            <button
-              onClick={() => { setImportStep('upload'); setError('') }}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border transition-colors hover:bg-gray-50"
-              style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}
-            >
-              <Upload size={18} />
-              Import
+            <button onClick={() => { setImportStep('upload'); setError('') }} className={hrBtn.outline}
+              style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+              <Upload size={15} /> Import
             </button>
-            <button
-              onClick={openCreateModal}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold transition-opacity hover:opacity-90"
-              style={{ background: 'var(--teal)' }}
-            >
-              <Plus size={18} />
-              Add Account
+            <button onClick={openCreateModal} className={hrBtn.primary} style={{ background: 'var(--teal)' }}>
+              <Plus size={15} /> Add account
             </button>
           </>)}
         </div>
       </div>
 
-      {/* Search + Filter */}
-      <div className="flex flex-col sm:flex-row gap-3 mb-4">
-        <div className="relative flex-1 max-w-sm">
-          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--mid-gray)' }} />
-          <input
-            type="text"
-            placeholder="Search accounts..."
-            value={search}
-            onChange={(e) => { setSearch(e.target.value); setCoaPage(1) }}
-            className="w-full pl-10 pr-4 py-2.5 rounded-xl border text-sm outline-none"
-            style={{ borderColor: 'var(--light-gray)', background: 'white' }}
-          />
-        </div>
-        <select
-          value={filterType}
-          onChange={(e) => { setFilterType(e.target.value); setFilterSubType('') }}
-          className="px-3 py-2.5 rounded-xl border text-sm outline-none"
-          style={{ borderColor: 'var(--light-gray)', background: 'white' }}
-        >
-          <option value="">All Types</option>
-          {ACCOUNT_TYPE_OPTIONS.map((t) => (
-            <option key={t.value} value={t.value}>{t.label}</option>
-          ))}
-        </select>
-        <select
-          value={filterSubType}
-          onChange={(e) => setFilterSubType(e.target.value)}
-          className="px-3 py-2.5 rounded-xl border text-sm outline-none"
-          style={{ borderColor: 'var(--light-gray)', background: 'white' }}
-        >
-          <option value="">All Sub Types</option>
-          {(filterType ? SUB_TYPES[filterType] || [] : ALL_SUB_TYPES).map((s) => (
-            <option key={s.value} value={s.value}>{s.label}</option>
-          ))}
-        </select>
-        <label className="flex items-center gap-2 text-xs cursor-pointer select-none whitespace-nowrap"
-          style={{ color: 'var(--mid-gray)' }}>
-          <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)}
-            className="rounded" />
-          Show inactive
-        </label>
+      {/* Type cards (also quick filters) */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        {ACCOUNT_TYPE_OPTIONS.map((t) => {
+          const meta = TYPE_META[t.value]
+          const n = typeCount(t.value)
+          const contra = contraCount(t.value)
+          const bal = DEFAULT_BALANCE[t.value] === 'DEBIT' ? 'Debit' : 'Credit'
+          return (
+            <StatCard key={t.value} loading={loading} label={meta.plural} value={n.toLocaleString()}
+              sub={t.value === 'ASSET' ? `${bankCount} bank account${bankCount === 1 ? '' : 's'} · ${bal} normal` : `${bal} normal${contra ? ` · ${contra} contra` : ''}`}
+              accent={{ line: meta.line, fg: n ? 'var(--charcoal)' : 'var(--hr-faint)' }}
+              active={filterType === t.value} activeSub="Filtered · click to show all"
+              onClick={() => { setFilterType(filterType === t.value ? '' : t.value); setFilterSubType('') }}
+              title={`Show only the ${meta.plural.toLowerCase()} accounts`} />
+          )
+        })}
       </div>
 
       {/* Error */}
       {error && !modalOpen && !importStep && (
-        <div className="mb-4 p-3 rounded-lg text-sm bg-red-50 text-red-600">{error}</div>
+        <div className="flex items-center gap-2 px-4 py-2.5 rounded-lg border text-[13px]" style={{ background: '#fef2f2', borderColor: '#fecaca', color: '#b91c1c' }}>
+          <AlertTriangle size={15} /> {error}
+        </div>
       )}
 
-      {/* Table */}
-      <div className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr style={{ background: 'var(--off-white)' }}>
-                <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Account No.</th>
-                <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Account Title</th>
-                <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Type</th>
-                <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Sub Type</th>
-                <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Normal Balance</th>
-                <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Currency</th>
-                <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Description</th>
-                {canWrite && <th className="text-right px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Actions</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {filteredAccounts.length === 0 ? (
-                <tr>
-                  <td colSpan={canWrite ? 8 : 7} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>
-                    <BookOpen size={32} className="mx-auto mb-2 opacity-40" />
-                    <p>No accounts found</p>
-                    {canWrite && <p className="text-xs mt-1">Add accounts manually or import from CSV</p>}
-                  </td>
-                </tr>
-              ) : (
-                paginatedAccounts.map((account) => (
-                  <tr
-                    key={account.id}
-                    className={`border-t hover:bg-gray-50/50 transition-colors ${!account.isActive ? 'opacity-50' : ''}`}
-                    style={{ borderColor: 'var(--light-gray)' }}
-                  >
-                    <td className="px-4 py-3 font-mono font-medium" style={{ color: 'var(--charcoal)' }}>
-                      {account.accountNumber}
-                    </td>
-                    <td className="px-4 py-3 font-medium" style={{ color: 'var(--charcoal)' }}>
-                      {account.accountTitle}
-                      {account.bankRetiredAt && (
-                        <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-semibold align-middle"
-                          style={{ background: '#fee2e2', color: '#991b1b' }}
-                          title={`Bank account retired ${new Date(account.bankRetiredAt).toLocaleDateString('en-PH')} — hidden from dropdowns and Bank Rec; ledger history unaffected`}>
-                          RETIRED BANK
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className="px-2 py-1 rounded-md text-xs font-medium"
-                        style={TYPE_BADGE[account.accountType] || { bg: '#f3f4f6', color: '#374151' }}
-                      >
-                        {account.accountType}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
-                      {getSubTypeDisplay(account.subType, account.subSubType)}
-                    </td>
-                    <td className="px-4 py-3" style={{ color: 'var(--mid-gray)' }}>
-                      {account.normalBalance}
-                    </td>
-                    <td className="px-4 py-3" style={{ color: account.currency && account.currency !== 'PHP' ? '#92400e' : 'var(--mid-gray)' }}>
-                      {account.currency && account.currency !== 'PHP' ? (
-                        <span className="px-2 py-0.5 rounded-md text-xs font-semibold" style={{ background: '#fef3c7', color: '#92400e' }}>
-                          {account.currency}
-                        </span>
-                      ) : (
-                        <span className="text-xs">PHP</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 max-w-[200px] truncate" style={{ color: 'var(--mid-gray)' }}>
-                      {account.description || '—'}
-                    </td>
-                    {canWrite && (
-                      <td className="px-4 py-3">
-                        <div className="flex items-center justify-end gap-1">
-                          <button onClick={() => openEditModal(account)} className="p-2 rounded-lg hover:bg-gray-100 transition-colors" title="Edit">
-                            <Pencil size={15} style={{ color: 'var(--teal)' }} />
-                          </button>
-                          <button onClick={() => setDeleteConfirm(account)} className="p-2 rounded-lg hover:bg-red-50 transition-colors" title="Delete">
-                            <Trash2 size={15} className="text-red-500" />
-                          </button>
-                        </div>
-                      </td>
-                    )}
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+      {/* Accounts card */}
+      <section className="rounded-lg border bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+        <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1 px-4 pt-3.5 pb-3">
+          <div className="min-w-0">
+            <h2 className="text-[15px] font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+              Accounts <span className="ml-1 text-xs font-semibold" style={{ color: 'var(--mid-gray)', fontFamily: 'var(--font-body)' }}>
+                {loading ? '' : `${filteredAccounts.length.toLocaleString()}${filteredAccounts.length !== accounts.length ? ` of ${accounts.length.toLocaleString()}` : ''}`}
+              </span>
+            </h2>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+              {showInactive ? `Including ${inactiveCount} inactive account${inactiveCount === 1 ? '' : 's'} (faded).` : 'Active accounts. Inactive ones are hidden from pickers and this list.'}
+            </p>
+          </div>
+          {groups.length > 0 && (
+            <button onClick={() => setCollapsed(allCollapsed ? new Set() : new Set(groups.map((g) => g.key)))}
+              className="text-xs font-semibold mt-1" style={{ color: 'var(--teal)' }}>
+              {allCollapsed ? 'Expand all' : 'Collapse all'}
+            </button>
+          )}
         </div>
-        {filteredAccounts.length > 0 && (
-          <Pagination totalItems={filteredAccounts.length} page={coaPage} pageSize={coaPageSize}
-            onPageChange={setCoaPage} onPageSizeChange={setCoaPageSize} />
-        )}
-      </div>
+
+        {/* Toolbar */}
+        <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-y" style={{ background: '#fcfdfa', borderColor: 'var(--light-gray)' }}>
+          <label className="flex items-center gap-1.5 h-9 px-3 w-full sm:w-72 rounded-lg border bg-white focus-within:border-[var(--teal)] focus-within:shadow-[0_0_0_3px_rgba(74,128,115,0.12)]"
+            style={{ borderColor: 'var(--light-gray)', color: 'var(--hr-faint)' }}>
+            <Search size={15} className="flex-shrink-0" />
+            <input type="text" placeholder="Search by number or title…" value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="flex-1 min-w-0 bg-transparent outline-none text-[13px]" style={{ color: 'var(--charcoal)' }} />
+            {search && <button onClick={() => setSearch('')} title="Clear search"><X size={14} /></button>}
+          </label>
+          <select value={filterSubType} onChange={(e) => setFilterSubType(e.target.value)}
+            className="h-9 px-2.5 rounded-lg border bg-white text-[13px] outline-none focus:border-[var(--teal)]"
+            style={{ borderColor: filterSubType ? 'var(--teal)' : 'var(--light-gray)', color: 'var(--charcoal)' }}>
+            <option value="">{filterType ? `All ${TYPE_META[filterType]?.plural.toLowerCase()} sub types` : 'All sub types'}</option>
+            {(filterType ? SUB_TYPES[filterType] || [] : ALL_SUB_TYPES).map((s) => (
+              <option key={s.value} value={s.value}>{s.label}</option>
+            ))}
+          </select>
+          <div className="flex rounded-lg border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+            {([[false, 'Active'], [true, 'All, incl. inactive']] as const).map(([v, lbl]) => (
+              <button key={lbl} onClick={() => setShowInactive(v)} aria-pressed={showInactive === v}
+                className="h-9 px-3 text-xs font-semibold whitespace-nowrap"
+                style={showInactive === v ? { background: 'var(--teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' }}>
+                {lbl}
+              </button>
+            ))}
+          </div>
+          {anyFilter && (
+            <button onClick={clearFilters} className="text-xs font-semibold hover:underline underline-offset-2" style={{ color: 'var(--teal)' }}>
+              Clear filters
+            </button>
+          )}
+        </div>
+
+        {/* Grouped table */}
+        <div className="overflow-x-auto">
+          {loading ? (
+            <div className="p-4 space-y-2" aria-busy="true">
+              {Array.from({ length: 8 }, (_, i) => <div key={i} className="h-10 rounded-md hr-shimmer" />)}
+            </div>
+          ) : groups.length === 0 ? (
+            <div className="px-6 py-14 flex flex-col items-center text-center">
+              <span className="mb-2.5 flex w-11 h-11 items-center justify-center rounded-full" style={{ background: 'var(--pale-teal)', color: 'var(--teal)' }}>
+                <BookOpen size={20} />
+              </span>
+              <p className="text-sm font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+                {accounts.length === 0 ? 'No accounts yet' : 'No accounts match'}
+              </p>
+              <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>
+                {accounts.length === 0 ? (canWrite ? 'Add accounts one by one, or import them from a CSV file.' : 'Nothing has been set up yet.') : 'Nothing fits the search and filters.'}
+              </p>
+              {accounts.length > 0 && (
+                <button onClick={clearFilters} className={`${hrBtn.outline} mt-4`} style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>Clear filters</button>
+              )}
+            </div>
+          ) : (
+            <table className="w-full table-fixed text-[13px]" style={{ borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: 'var(--hr-head)' }}>
+                  {[
+                    ['Account No.', 'w-[118px] md:w-[172px] md:pl-10'], ['Account title', ''], ['Normal balance', 'hidden md:table-cell w-[160px]'],
+                    ['Currency', 'hidden md:table-cell w-[96px]'], ['Description', 'hidden lg:table-cell'],
+                    ...(canWrite ? [['Actions', 'w-[92px] text-right']] : []),
+                  ].map(([h, cls]) => (
+                    <th key={h} className={`px-3 md:px-4 py-2.5 text-left text-[11px] font-bold uppercase tracking-[.5px] whitespace-nowrap border-b ${cls}`}
+                      style={{ color: 'var(--mid-gray)', borderColor: 'var(--light-gray)' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              {groups.map((g) => {
+                const meta = TYPE_META[g.type]
+                const open = !collapsed.has(g.key)
+                return (
+                  <tbody key={g.key}>
+                    <tr>
+                      <td colSpan={colCount} className="p-0 border-b" style={{ borderColor: 'var(--light-gray)' }}>
+                        <button onClick={() => toggleGroup(g.key)} aria-expanded={open}
+                          className="w-full flex items-center gap-2 px-4 py-2.5 text-left hover:bg-[var(--hr-head)]"
+                          style={{ boxShadow: `inset 4px 0 0 ${meta.line}` }}>
+                          <ChevronDown size={15} className={`transition-transform ${open ? '' : '-rotate-90'}`} style={{ color: 'var(--mid-gray)' }} />
+                          <span className="text-xs font-bold uppercase tracking-[.5px]" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>{meta.plural}</span>
+                          <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold tabular-nums" style={meta.pill}>{g.count}</span>
+                        </button>
+                      </td>
+                    </tr>
+                    {open && g.subs.map((sg) => (
+                      <SubGroupRows key={sg.key} label={sg.label} rows={sg.rows} colCount={colCount} canWrite={!!canWrite}
+                        onEdit={openEditModal} onDelete={setDeleteConfirm} />
+                    ))}
+                  </tbody>
+                )
+              })}
+            </table>
+          )}
+        </div>
+      </section>
 
       {/* ── Delete Confirmation ──────────────────────────────── */}
       {deleteConfirm && (
