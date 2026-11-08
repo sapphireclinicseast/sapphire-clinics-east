@@ -144,10 +144,10 @@ export default function MdSubspecialtySection({
 
   return (
     <div>
-      <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: 'var(--mid-gray)' }}>
+      <h3 className="text-[13px] font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
         MD by Subspecialty → Therapy Services
-      </p>
-      <p className="text-xs mb-3" style={{ color: 'var(--mid-gray)' }}>
+      </h3>
+      <p className="text-xs mt-0.5 mb-3 leading-snug" style={{ color: 'var(--mid-gray)' }}>
         The MD row above pools three practices with different referral patterns. Here each is scored
         separately against every therapy service, with the clinically expected pairing marked —{' '}
         <span className="font-semibold" style={{ color: 'var(--charcoal)' }}>DevPed → OT, PT, SLP, SPED</span> ·{' '}
@@ -194,8 +194,8 @@ export default function MdSubspecialtySection({
         </p>
       )}
 
-      <div className="overflow-x-auto">
-        <table className="text-xs border-collapse" style={{ width: '100%', tableLayout: 'fixed' }}>
+      <div className="overflow-x-auto rounded-lg" style={{ border: '1px solid var(--light-gray)' }}>
+        <table className="text-xs border-collapse" style={{ width: '100%', minWidth: 906, tableLayout: 'fixed' }}>
           <colgroup>
             <col style={{ width: 96 }} />
             <col style={{ width: 112 }} />
@@ -206,8 +206,8 @@ export default function MdSubspecialtySection({
             <col style={{ width: 250 }} />
           </colgroup>
           <thead>
-            <tr style={{ borderBottom: '1px solid var(--light-gray)' }}>
-              <th className="py-2 pr-2 text-left font-semibold" style={{ color: 'var(--mid-gray)' }}>
+            <tr style={{ background: '#f8faf9', borderBottom: '1px solid var(--light-gray)' }}>
+              <th className="py-2 px-2 text-left font-semibold" style={{ color: 'var(--mid-gray)' }}>
                 Doctor seen
               </th>
               {THERAPY_DEPTS.map((d) => (
@@ -215,7 +215,7 @@ export default function MdSubspecialtySection({
                   {d}
                 </th>
               ))}
-              <th className="py-2 pl-3 text-left font-semibold" style={{ color: 'var(--mid-gray)' }}>
+              <th className="py-2 pl-3 pr-2 text-left font-semibold" style={{ color: 'var(--mid-gray)' }}>
                 Plain Reading
               </th>
             </tr>
@@ -223,7 +223,7 @@ export default function MdSubspecialtySection({
           <tbody>
             {rows.map((row) => (
               <tr key={row.sub} style={{ borderTop: '1px solid var(--light-gray)' }}>
-                <td className="py-3 pr-2 font-bold align-top" style={{ color: row.color }}>
+                <td className="py-3 px-2 font-bold align-top" style={{ color: row.color }}>
                   {row.short}
                   <div className="font-normal text-[10px]" style={{ color: 'var(--mid-gray)' }}>
                     n={row.count.toLocaleString()}
@@ -297,7 +297,7 @@ export default function MdSubspecialtySection({
                   )
                 })}
 
-                <td className="py-3 pl-3 align-top text-[11px] leading-relaxed"
+                <td className="py-3 pl-3 pr-2 align-top text-[11px] leading-relaxed"
                   style={{ color: 'var(--charcoal)', borderLeft: '1px solid var(--light-gray)' }}>
                   <div className="font-semibold mb-0.5" style={{ color: row.color }}>{row.label}</div>
                   {mdSubPlainReading(row)}
@@ -307,7 +307,7 @@ export default function MdSubspecialtySection({
           </tbody>
         </table>
       </div>
-      <p className="text-[10px] mt-2" style={{ color: 'var(--mid-gray)' }}>
+      <p className="text-[11px] mt-2" style={{ color: 'var(--mid-gray)' }}>
         Ringed cells are the expected pairings · ⚠ age-confounded means the raw counts and the
         age-adjusted figure disagree — read the adjusted one · Subspecialty comes from the occupation on
         the doctor&apos;s HR Staff Profile (Job Title) for sessions in the Clinic Schedule, and from the
