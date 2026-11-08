@@ -1,27 +1,27 @@
 'use client'
 
-// The decking board over time: two panels, filled above open, sharing one date
-// axis.
+// The decking board over time: one stacked area — filled beneath open, both
+// drawn up from zero, so the band heights are the day's composition and the
+// top edge is every bookable slot on the board.
 //
-// Two panels rather than one stacked chart because the series move at wildly
-// different sizes. Over a fortnight at Greenhills, filled ran 162–166 — a range
-// of FOUR slots — while open ran 229–345. Stacked to a zero baseline, a day when
-// two children were booked moved the line by 0.4% of the height: invisible. One
-// shared axis cannot fix that, since whatever scale makes open legible flattens
-// filled. Separate scales is the only honest way to show both.
+// Why stacked, and what it costs. A reader gets "how much could we sell" and
+// "how much of it sold" from one shape instead of holding two charts in their
+// head. The price is resolution: on an axis running to several hundred slots,
+// a day when three or four more children were booked barely moves the seam.
+// That trade is deliberate — composition is what this chart is read for — and
+// the exact figures are in the tiles above it and in the tooltip for any day.
+// (This replaced two separately-scaled line panels, which were zoomed to make
+// those small moves visible.)
 //
-// Each panel's y-axis is fitted to its own data and does NOT start at zero, so
-// small day-to-day moves are readable. That is why these are LINES, not filled
-// areas: area implies magnitude measured from zero, and filling down to a
-// truncated baseline would exaggerate every wiggle into a cliff. A line carries
-// no such claim, so it is free to be zoomed. The axis labels always show the
-// real numbers, and the tiles above carry the absolute figures.
+// From zero, never a cut axis: a stacked area read off a truncated baseline
+// misstates the proportion, which is the one thing the shape is meant to show.
 //
-// Blocked hours are deliberately not drawn. They used to be stacked in, so the
-// top edge met "Slots offered" exactly; but they were over half the height on
-// some days and buried the two numbers the desk acts on. They are not capacity
-// either: the tiles count bookable slots as filled + open, and report the
-// unavailable hours beside that as their own number rather than inside it.
+// Blocked (unavailable) hours are not drawn and are not capacity. They were
+// over half the height on some days and buried the two numbers the desk acts
+// on; and an hour a consultant never offered is not one that could be sold.
+// So the top edge is filled + open, fill rate is filled ÷ (filled + open), and
+// the tiles name the unavailable hours beside the bookable figure rather than
+// inside it.
 //
 // Green/gold rather than green/yellow-green: green against yellow is the
 // red-green confusion, and a bright yellow cannot hold 3:1 against white. This
@@ -29,11 +29,10 @@
 // the palette validator, not by eye.
 
 import { useEffect, useState } from 'react'
-import type { ReactNode } from 'react'
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts'
-import { ArrowDownRight, ArrowUpRight, Gauge, Loader2, Minus } from 'lucide-react'
+import { ArrowDownRight, ArrowUpRight, Gauge, Layers, Loader2, Minus } from 'lucide-react'
 import { CARD_STYLE, DashCard, KpiCard, Skeleton, EmptyState } from '../patients/dashboard/ui'
 import { CONTROL, CONTROL_STYLE, ErrorCard, LABEL, PillTabs } from './ui'
 
@@ -43,10 +42,11 @@ const DEPT_TABS = [
   ...DEPARTMENTS.map(d => ({ id: d, label: d === 'PSYCHOLOGY' ? 'Psychology' : d === 'ORTHOSIS' ? 'Orthosis' : d })),
 ]
 
-// The validated pair. Filled is the green, open the dark gold — the line tone,
-// not the pale fill the old stacked area used, since a 2px line needs the
-// contrast.
+// The validated pair. Filled is the green band; open is the gold band, with the
+// darker gold for its top edge and for open figures printed as text, where the
+// band tone would not hold contrast on white.
 const FILLED = '#166534'
+const OPEN_FILL = '#E8B533'
 const OPEN = '#B8860B'
 // Recessive chart furniture, same tokens as the Scheduling Dashboard.
 const GRID_STROKE = '#EEF2F1'
@@ -60,34 +60,6 @@ interface Point {
   blocked: number
   open: number
   fillRate: number | null
-}
-
-/**
- * A y-range fitted to one series, padded so the line does not graze the frame.
- *
- * Never starts at zero — that is the whole point of splitting the panels. A flat
- * series still gets a band around it rather than a zero-height axis, so a week of
- * no movement reads as a straight line across the middle instead of a jagged one
- * across a degenerate scale.
- */
-function fittedDomain(values: number[]): [number, number] {
-  const vals = values.filter(Number.isFinite)
-  if (vals.length === 0) return [0, 1]
-  const min = Math.min(...vals)
-  const max = Math.max(...vals)
-  if (min === max) return [Math.max(0, min - 2), max + 2]
-
-  const pad = Math.max(1, Math.round((max - min) * 0.2))
-  const lo = Math.max(0, min - pad)
-  const hi = max + pad
-
-  // Snapped to a round step so the axis reads 200/250/300 rather than
-  // 206/251/296 — recharts divides whatever bounds it is given, and raw fitted
-  // bounds give ticks nobody can hold in their head. Six bands is the most a
-  // panel this short can label without crowding.
-  const steps = [1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000]
-  const step = steps.find(s => (hi - lo) / s <= 6) ?? 1000
-  return [Math.max(0, Math.floor(lo / step) * step), Math.ceil(hi / step) * step]
 }
 
 function isoDaysAgo(n: number) {
@@ -176,12 +148,12 @@ export default function DeckingHistory({ branch }: { branch: string }) {
           {latest && (
             <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3">
               {/* Only the two plotted series wear a series colour; the other
-                  tiles are ink, so a colour on this row always means "that line
+                  tiles are ink, so a colour on this row always means "that band
                   in the chart". */}
               <KpiCard label="Filled" icon={<Swatch colour={FILLED} />}
                 value={<span style={{ color: FILLED }}>{latest.booked.toLocaleString()}</span>}
                 sub={`slots with a patient · ${latest.label}`} />
-              <KpiCard label="Open" icon={<Swatch colour={OPEN} />}
+              <KpiCard label="Open" icon={<Swatch colour={OPEN_FILL} />}
                 value={<span style={{ color: OPEN }}>{latest.open.toLocaleString()}</span>}
                 sub={`bookable, not yet filled · ${latest.label}`} />
               <KpiCard label="Fill rate" icon={<Gauge size={15} />}
@@ -201,18 +173,7 @@ export default function DeckingHistory({ branch }: { branch: string }) {
             </div>
           )}
 
-          {/* ── The two panels ── one series each, each on its own fitted
-              scale. syncId ties the crosshairs together, so hovering a date
-              reads both panels at once and the split costs nothing when
-              comparing them. */}
-          <SeriesPanel points={points} dataKey="booked" colour={FILLED}
-            title="Filled slots" what="slots with a patient booked in" />
-          <SeriesPanel points={points} dataKey="open" colour={OPEN}
-            title="Open slots" what="bookable slots still empty — unavailable hours are not counted"
-            footer={firstRecorded ? (
-              <>History begins {new Date(`${firstRecorded}T00:00:00Z`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' })} —
-                the first day a reading was taken. Nothing before that was recorded.</>
-            ) : undefined} />
+          <StackedChart points={points} firstRecorded={firstRecorded} />
         </>
       )}
     </div>
@@ -244,63 +205,102 @@ function ChangeTile({ first, latest }: { first: Point | undefined; latest: Point
   )
 }
 
-function SeriesPanel({ points, dataKey, colour, title, what, footer }: {
-  points: Point[]
-  dataKey: 'booked' | 'open'
-  colour: string
-  title: string
-  what: string
-  footer?: ReactNode
-}) {
-  const domain = fittedDomain(points.map(p => p[dataKey]))
+// Plot geometry, fixed so the direct labels can be placed against the bands.
+// The y-axis starts at zero, so the baseline is the bottom of the plot area.
+const CHART_H = 300
+const CHART_MARGIN = { top: 10, right: 84, bottom: 0, left: -8 }
+const X_AXIS_H = 22
+const BASELINE_Y = CHART_H - CHART_MARGIN.bottom - X_AXIS_H
+
+function StackedChart({ points, firstRecorded }: { points: Point[]; firstRecorded: string | null }) {
   const lastIndex = points.length - 1
+  const latest = points[lastIndex]
+
   return (
     <DashCard
-      title={title}
-      icon={<Swatch colour={colour} />}
-      description={<>Daily reading of {what}. Axis zoomed to {domain[0].toLocaleString()}–{domain[1].toLocaleString()} for this range, not from zero — read the numbers, not the height.</>}
-      footer={footer}
+      title="Filled and open slots"
+      icon={<Layers size={15} />}
+      description="Stacked from zero — filled beneath open; the top edge is every bookable slot."
+      action={
+        <div className="flex items-center gap-3 text-[11px] font-semibold" style={{ color: 'var(--mid-gray)' }} aria-hidden>
+          <span className="flex items-center gap-1.5"><Swatch colour={FILLED} /> Filled</span>
+          <span className="flex items-center gap-1.5"><Swatch colour={OPEN_FILL} /> Open</span>
+        </div>
+      }
+      footer={firstRecorded ? (
+        <>History begins {new Date(`${firstRecorded}T00:00:00Z`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' })} —
+          the first day a reading was taken. Nothing before that was recorded.</>
+      ) : undefined}
     >
-      {/* Animation off: recharts draws a Line by animating stroke-dasharray
-          from a stub, and it stalled on the first frame elsewhere in this
-          module — a line chart with no visible line. */}
-      <ResponsiveContainer width="100%" height={190}>
-        <LineChart data={points} syncId="decking-history" margin={{ top: 10, right: 44, bottom: 0, left: -8 }}>
+      {/* Animation off: it stalled on the first frame elsewhere in this module
+          and drew nothing at all. */}
+      <ResponsiveContainer width="100%" height={CHART_H}>
+        <AreaChart data={points} margin={CHART_MARGIN}>
           <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} vertical={false} />
           {/* minTickGap drops labels rather than overprinting them: a 90-day
               range is the default, and every date will not fit. */}
           <XAxis dataKey="label" tick={AXIS_TICK} tickLine={false} axisLine={{ stroke: GRID_STROKE }}
-            height={22} minTickGap={16} interval="preserveStartEnd" />
-          <YAxis tick={AXIS_TICK} tickLine={false} axisLine={false} allowDecimals={false} width={44} domain={domain} />
+            height={X_AXIS_H} minTickGap={16} interval="preserveStartEnd" />
+          <YAxis tick={AXIS_TICK} tickLine={false} axisLine={false} allowDecimals={false} width={44}
+            domain={[0, 'auto']} />
           <Tooltip content={p => <HistoryTooltip active={p.active} payload={p.payload} />}
             cursor={{ stroke: '#CBD5E1', strokeWidth: 1 }} />
-          {/* Only the latest reading gets a dot, with its value printed beside
-              it — a direct label, so the panel needs no legend. */}
-          <Line type="monotone" dataKey={dataKey} name={title} stroke={colour} strokeWidth={2}
-            dot={d => d.index === lastIndex && Number.isFinite(d.cx) && Number.isFinite(d.cy) ? (
-              <g key={`end-${dataKey}`}>
-                <circle cx={d.cx} cy={d.cy} r={4} fill={colour} stroke="#fff" strokeWidth={2} />
-                <text x={(d.cx ?? 0) + 8} y={d.cy} dy="0.35em" fontSize={11} fontWeight={700} fill={colour}
-                  style={{ fontVariantNumeric: 'tabular-nums' }}>
-                  {Number(d.value).toLocaleString()}
-                </text>
-              </g>
-            ) : <g key={`dot-${dataKey}-${d.index}`} />}
-            activeDot={{ r: 4.5, strokeWidth: 2, stroke: '#fff', fill: colour }}
+          {/* Filled first so it sits beneath. Its white stroke is the seam
+              between the two bands; the open band carries its own top edge.
+              Only the last point gets a "dot": a direct label in the right
+              margin, level with the middle of its band. */}
+          <Area type="monotone" dataKey="booked" name="Filled" stackId="deck"
+            fill={FILLED} fillOpacity={0.85} stroke="#fff" strokeWidth={2}
+            dot={d => {
+              if (d.index !== lastIndex || !Number.isFinite(d.cy) || !latest) return <g key={`f-${d.index}`} />
+              return (
+                <EndLabel key="end-filled" x={d.cx as number} y={(BASELINE_Y + (d.cy as number)) / 2}
+                  name="Filled" value={latest.booked} colour={FILLED} />
+              )
+            }}
+            activeDot={{ r: 4, strokeWidth: 2, stroke: '#fff', fill: FILLED }}
             isAnimationActive={false} />
-        </LineChart>
+          <Area type="monotone" dataKey="open" name="Open" stackId="deck"
+            fill={OPEN_FILL} fillOpacity={0.75} stroke={OPEN} strokeWidth={1.5}
+            dot={d => {
+              if (d.index !== lastIndex || !Number.isFinite(d.cy) || !latest) return <g key={`o-${d.index}`} />
+              // The axis is linear from zero, so the seam's height follows from
+              // the stack's top and the filled share of it.
+              const top = d.cy as number
+              const stack = latest.booked + latest.open
+              const bottom = stack > 0 ? BASELINE_Y - (BASELINE_Y - top) * (latest.booked / stack) : BASELINE_Y
+              // Kept clear of the filled label when the open band is thin.
+              const y = Math.max(8, Math.min((top + bottom) / 2, (BASELINE_Y + bottom) / 2 - 14))
+              return (
+                <EndLabel key="end-open" x={d.cx as number} y={y}
+                  name="Open" value={latest.open} colour={OPEN} />
+              )
+            }}
+            activeDot={{ r: 4, strokeWidth: 2, stroke: '#fff', fill: OPEN }}
+            isAnimationActive={false} />
+        </AreaChart>
       </ResponsiveContainer>
     </DashCard>
   )
 }
 
-/** One card for both panels: the day, both series and the fill rate. */
+/** "Filled 166", printed just right of the last reading. */
+function EndLabel({ x, y, name, value, colour }: { x: number; y: number; name: string; value: number; colour: string }) {
+  return (
+    <text x={x + 8} y={y} dy="0.35em" fontSize={11} style={{ fontVariantNumeric: 'tabular-nums' }}>
+      <tspan fill="#64748B" fontWeight={600}>{name} </tspan>
+      <tspan fill={colour} fontWeight={800}>{value.toLocaleString()}</tspan>
+    </text>
+  )
+}
+
+/** The day, both bands and the fill rate. */
 function HistoryTooltip({ active, payload }: { active?: boolean; payload?: ReadonlyArray<{ payload?: unknown }> }) {
   const p = payload?.[0]?.payload as Point | undefined
   if (!active || !p) return null
   const rows: { label: string; value: string; colour?: string }[] = [
     { label: 'Filled', value: p.booked.toLocaleString(), colour: FILLED },
-    { label: 'Open', value: p.open.toLocaleString(), colour: OPEN },
+    { label: 'Open', value: p.open.toLocaleString(), colour: OPEN_FILL },
     { label: 'Fill rate', value: p.fillRate === null ? '—' : `${p.fillRate}%` },
   ]
   return (
@@ -311,7 +311,7 @@ function HistoryTooltip({ active, payload }: { active?: boolean; payload?: Reado
       {rows.map(r => (
         <div key={r.label} className="flex items-center justify-between gap-4 leading-relaxed">
           <span className="flex items-center gap-1.5" style={{ color: 'var(--mid-gray)' }}>
-            {r.colour ? <span aria-hidden className="inline-block rounded-full" style={{ width: 8, height: 2.5, background: r.colour }} />
+            {r.colour ? <span aria-hidden className="inline-block rounded-sm" style={{ width: 8, height: 8, background: r.colour }} />
               : <span aria-hidden className="inline-block" style={{ width: 8 }} />}
             {r.label}
           </span>
@@ -339,15 +339,13 @@ function HistorySkeleton() {
           </div>
         ))}
       </div>
-      {[0, 1].map(i => (
-        <div key={i} className="rounded-xl" style={CARD_STYLE}>
-          <div className="px-5 pt-4 pb-3" style={{ borderBottom: '1px solid var(--light-gray)' }}>
-            <Skeleton className="h-4 w-32" />
-            <Skeleton className="h-3 w-2/3 mt-2" />
-          </div>
-          <div className="p-5"><Skeleton className="h-[190px]" /></div>
+      <div className="rounded-xl" style={CARD_STYLE}>
+        <div className="px-5 pt-4 pb-3" style={{ borderBottom: '1px solid var(--light-gray)' }}>
+          <Skeleton className="h-4 w-40" />
+          <Skeleton className="h-3 w-2/3 mt-2" />
         </div>
-      ))}
+        <div className="p-5"><Skeleton className="h-[300px]" /></div>
+      </div>
     </div>
   )
 }
