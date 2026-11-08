@@ -4,7 +4,7 @@
 // measured from their first recorded session to their last. Sits directly below
 // "Patients by Service", which counts the same patients this section measures.
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Hourglass } from 'lucide-react'
 import { DashCard, BarListSkeleton, EmptyState, DeptChip } from './ui'
 
@@ -96,6 +96,64 @@ const COLUMNS: { label: string; unit: string; width: number; help: string }[] = 
   },
 ]
 
+/**
+ * Hover help that actually appears.
+ *
+ * These explanations were on the native `title` attribute, which the browser
+ * shows only after a second or two of dead-still hovering and cancels on the
+ * slightest mouse movement — so in practice nobody ever saw them, and the
+ * dotted underline was advertising something that never arrived.
+ *
+ * Positioned `fixed` from the trigger's own rect rather than absolutely inside
+ * it: the header row sits in a bordered, scrollable card, and an absolutely
+ * positioned bubble is clipped by it. Fixed escapes the card entirely.
+ *
+ * Flipped below the trigger when there is not room above, so a tooltip on the
+ * top row of a panel is not cut off by the window.
+ */
+function HelpTip({ text, children }: { text: string; children: React.ReactNode }) {
+  const [box, setBox] = useState<{ left: number; top: number; below: boolean } | null>(null)
+  const ref = useRef<HTMLSpanElement>(null)
+
+  const show = () => {
+    const r = ref.current?.getBoundingClientRect()
+    if (!r) return
+    const below = r.top < 150
+    setBox({ left: r.left + r.width / 2, top: below ? r.bottom + 8 : r.top - 8, below })
+  }
+
+  return (
+    <span
+      ref={ref}
+      onMouseEnter={show}
+      onMouseLeave={() => setBox(null)}
+      onFocus={show}
+      onBlur={() => setBox(null)}
+      tabIndex={0}
+      style={{ cursor: 'help', borderBottom: '1px dotted var(--mid-gray)', paddingBottom: 1, outline: 'none' }}
+    >
+      {children}
+      {box && (
+        <span
+          role="tooltip"
+          style={{
+            position: 'fixed', left: box.left, top: box.top, zIndex: 200,
+            transform: `translate(-50%, ${box.below ? '0' : '-100%'})`,
+            width: 280, padding: '8px 10px', borderRadius: 8,
+            background: '#0F172A', color: '#F1F5F9',
+            fontSize: 11.5, fontWeight: 400, lineHeight: 1.5,
+            textTransform: 'none', letterSpacing: 0, textAlign: 'left',
+            boxShadow: '0 8px 24px rgba(15,23,42,0.28)', pointerEvents: 'none',
+            whiteSpace: 'normal',
+          }}
+        >
+          {text}
+        </span>
+      )}
+    </span>
+  )
+}
+
 /** Days are the unit the figure is computed in; months are the unit a clinic
  *  manager thinks in. Both are shown rather than picking one. */
 function days(d: number | null): string {
@@ -154,11 +212,11 @@ export default function LifetimeSection({ branches }: { branches: string[] }) {
           {data.window.from ? ` between ${monthYear(data.window.from)} and ${monthYear(data.window.to)}` : ''},
           the average is <strong>{days(data.overall.avgDaysAll)}</strong> (median{' '}
           {days(data.overall.medianDays)}).{' '}
-          <span title="First and last contact on the same day, so the lifetime is genuinely zero — a one-off consult rather than a course of treatment. These are counted in the Average column and excluded from Repeat only.">
+          <HelpTip text="First and last contact on the same day, so the lifetime is genuinely zero — a one-off consult rather than a course of treatment. These are counted in the Average column and excluded from Repeat only.">
             <strong>{data.overall.singleDay.toLocaleString()}</strong> of them
             ({Math.round((data.overall.singleDay / Math.max(1, data.overall.patients)) * 100)}%)
             came just the once, which is what pulls the average below the repeat-patient figure.
-          </span>
+          </HelpTip>
         </p>
       )}
 
@@ -186,16 +244,7 @@ export default function LifetimeSection({ branches }: { branches: string[] }) {
                 className="flex-shrink-0 text-right text-[10px] font-semibold uppercase tracking-wider"
                 style={{ width: c.width, color: 'var(--mid-gray)' }}
               >
-                <span
-                  title={c.help}
-                  style={{
-                    cursor: 'help',
-                    borderBottom: '1px dotted var(--mid-gray)',
-                    paddingBottom: 1,
-                  }}
-                >
-                  {c.label}
-                </span>
+                <HelpTip text={c.help}>{c.label}</HelpTip>
                 <span className="block font-normal tracking-normal" style={{ fontSize: 9, opacity: 0.75 }}>
                   {c.unit}
                 </span>
