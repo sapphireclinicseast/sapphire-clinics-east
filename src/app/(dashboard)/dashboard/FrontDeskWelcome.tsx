@@ -8,6 +8,8 @@ import DeskShortcutCard from '@/components/DeskShortcutCard'
 import { branchLabel } from '@/lib/branch-label'
 
 type BirthdayPatient = { id: string; firstName: string; lastName: string; birthday: string; hasPhone: boolean }
+/** One patient with cancellation fees owed and not yet collected. */
+type FeeOwedRow = { id: string; name: string; count: number; oldestAt: string }
 type SmsState = 'idle' | 'sending' | 'sent' | 'error'
 type EmailState = 'idle' | 'sending' | 'sent' | 'error'
 
@@ -394,6 +396,11 @@ export default function FrontDeskWelcome({
   // "email:<patientId>" / "sms:<patientId>" → who greeted them and when
   const [greetedBy, setGreetedBy] = useState<Record<string, { by: string | null; at: string }>>({})
   const [slotAlerts, setSlotAlerts] = useState<{ nearingNoShow: any[]; subjectNoShow: any[]; nearingCancel: any[]; subjectCancel: any[] }>({ nearingNoShow: [], subjectNoShow: [], nearingCancel: [], subjectCancel: [] })
+  // Cancellation fees owed and not yet collected, read out of the same
+  // cancellation fetch the watchlist uses. `checked: false` means the
+  // Accounting Hub could not be reached — which must read as "not checked",
+  // never as "nothing owed", or front desk stops chasing money on an outage.
+  const [feesOwed, setFeesOwed] = useState<{ checked: boolean; rows: FeeOwedRow[] } | null>(null)
   const [activeReminder, setActiveReminder] = useState<Reminder | null>(null)
 
   useEffect(() => {
@@ -442,6 +449,34 @@ export default function FrontDeskWelcome({
         nearingCancel: (ca.patients || []).filter((p: any) => p.cancellationsUsed >= 10 && p.cancellationsUsed < 12),
         subjectCancel: (ca.patients || []).filter((p: any) => p.cancellationsUsed >= 12),
       })
+
+      // A fee is owed on the 3rd cancellation onward inside the rolling
+      // 6-month window; the API marks those logs feeBearing and attaches the
+      // POS payment that settled each one, where there is one. What is left is
+      // money the clinic is still owed — and it was visible nowhere except by
+      // expanding a patient's log list one patient at a time.
+      //
+      // feeLookup.ok must be true, not merely not-false: a failed fetch gives
+      // us no feeLookup at all, and treating that as a clean check would
+      // report "nothing outstanding" during an Accounting Hub outage.
+      const rows: FeeOwedRow[] = (ca.patients || [])
+        .map((p: any) => {
+          const unpaid = (p.logs || []).filter((l: any) => !l.deletedAt && l.feeBearing && !l.feePaid)
+          if (unpaid.length === 0) return null
+          const oldest = unpaid.reduce((a: any, b: any) =>
+            new Date(a.createdAt) <= new Date(b.createdAt) ? a : b)
+          return {
+            id: p.id,
+            name: `${p.lastName}, ${p.firstName}`,
+            count: unpaid.length,
+            oldestAt: oldest.createdAt,
+          }
+        })
+        .filter(Boolean) as FeeOwedRow[]
+      // Longest outstanding first — that is the one that gets harder to collect
+      // with every week it waits.
+      rows.sort((a, b) => new Date(a.oldestAt).getTime() - new Date(b.oldestAt).getTime())
+      setFeesOwed({ checked: ca.feeLookup?.ok === true, rows })
     })
   }, [branch])
 
@@ -793,6 +828,15 @@ export default function FrontDeskWelcome({
         </div>
       </div>
 
+      {/* ── Waitlist enquiries nobody has picked up ──
+          Its own cell, high in the grid: these are the only items on the page
+          with a clock on them that nothing else surfaces — the 11am/4pm popup
+          says "go and check the waitlist" without ever saying whether there is
+          anything in it. */}
+      <div style={{ minWidth: 0 }}>
+        <WaitlistToChase branch={branch} />
+      </div>
+
       {/* ── Slot Removal watchlist + PR widgets (right column) ── */}
       <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
           {/* One watchlist, not four cards.
@@ -862,6 +906,12 @@ export default function FrontDeskWelcome({
             )
           })()}
 
+          {/* Cancellation fees owed — sits directly under the watchlist because
+              it reads out of the same cancellation data, and the two answer
+              consecutive questions: who is near losing their slot, and who
+              still owes for the cancellations that got them there. */}
+          <FeesOwedCard data={feesOwed} />
+
           {/* Progress Reports — pending PRs awaiting Paid + Email */}
           <PendingProgressReports />
 
@@ -878,6 +928,219 @@ export default function FrontDeskWelcome({
   )
 }
 
+
+// ── Cancellation fees still to collect ──────────────────────────────────────
+// Derived from the cancellation fetch the watchlist already makes, so this card
+// costs nothing extra. It answers a question that previously took opening each
+// patient's log list in turn: who owes a cancellation fee that has not been
+// paid at the till.
+//
+// Days, not pesos: the fee amount lives on the POS line, not on the
+// cancellation, so a figure here would be one we made up.
+function FeesOwedCard({ data }: { data: { checked: boolean; rows: FeeOwedRow[] } | null }) {
+  const [showAll, setShowAll] = useState(false)
+  const LIMIT = 6
+
+  const header = (count: number | null, tone: string) => (
+    <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', marginBottom: count ? '0.7rem' : 0 }}>
+      <a
+        href="/patient-relationship?tab=cancellation"
+        style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: tone, textDecoration: 'none' }}
+      >
+        Cancellation fees to collect →
+      </a>
+      {!!count && (
+        <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#fff', background: '#B45309', borderRadius: 99, padding: '1px 7px' }}>
+          {count}
+        </span>
+      )}
+    </div>
+  )
+
+  if (data === null) {
+    return (
+      <div style={{ background: '#F8FAF9', border: '1px solid #E3E9E6', borderRadius: '0.875rem', padding: '0.9rem 1.1rem' }}>
+        {header(null, '#6B7C75')}
+        <p style={{ margin: '0.15rem 0 0', fontSize: '0.82rem', color: '#6B7C75', fontStyle: 'italic' }}>Checking…</p>
+      </div>
+    )
+  }
+
+  // Never a reassuring zero on an outage: front desk must know the question
+  // went unanswered, or they stop collecting on the day the hub is down.
+  if (!data.checked) {
+    return (
+      <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: '0.875rem', padding: '0.9rem 1.1rem' }}>
+        {header(null, '#92400E')}
+        <p style={{ margin: '0.15rem 0 0', fontSize: '0.82rem', color: '#92400E' }}>
+          Not checked — the Accounting Hub did not answer, so paid fees could not be read.
+        </p>
+      </div>
+    )
+  }
+
+  if (data.rows.length === 0) {
+    return (
+      <div style={{ background: '#F8FAF9', border: '1px solid #E3E9E6', borderRadius: '0.875rem', padding: '0.9rem 1.1rem' }}>
+        {header(null, '#6B7C75')}
+        <p style={{ margin: '0.15rem 0 0', fontSize: '0.82rem', color: '#6B7C75' }}>
+          Every cancellation fee owed has been paid.
+        </p>
+      </div>
+    )
+  }
+
+  const totalFees = data.rows.reduce((n, r) => n + r.count, 0)
+  const shown = showAll ? data.rows : data.rows.slice(0, LIMIT)
+
+  return (
+    <div style={{ background: '#fff', border: '1px solid #FDE68A', borderRadius: '0.875rem', padding: '0.9rem 1.1rem' }}>
+      {header(totalFees, '#B45309')}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+        {shown.map(r => {
+          const days = Math.floor((Date.now() - new Date(r.oldestAt).getTime()) / 86_400_000)
+          return (
+            <div key={r.id} style={{
+              display: 'flex', justifyContent: 'space-between', gap: '0.6rem',
+              fontSize: '0.82rem', color: '#92400E', fontWeight: 600, padding: '0.12rem 0',
+            }}>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</span>
+              <span style={{ flexShrink: 0, fontSize: '0.75rem', fontWeight: 700, color: '#B45309', fontVariantNumeric: 'tabular-nums' }}>
+                {r.count > 1 ? `${r.count} fees · ` : ''}{Number.isFinite(days) ? `${days}d` : '—'}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+      {data.rows.length > LIMIT && (
+        <button
+          onClick={() => setShowAll(v => !v)}
+          style={{
+            marginTop: '0.5rem', background: 'none', border: 'none', padding: 0,
+            fontSize: '0.72rem', fontWeight: 700, color: '#B45309', cursor: 'pointer', fontFamily: 'inherit',
+          }}
+        >
+          {showAll ? 'Show fewer' : `Show all ${data.rows.length} patients`}
+        </button>
+      )}
+      <p style={{ margin: '0.55rem 0 0', fontSize: '0.7rem', color: '#A16207' }}>
+        Longest outstanding first. Collect at the POS — the till then asks which cancellation it settles.
+      </p>
+    </div>
+  )
+}
+
+// ── Waitlist enquiries nobody has dealt with ────────────────────────────────
+// The Waitlist tab colours enrolled enquiries green and "will no longer avail"
+// red; everything else is a plain row among hundreds, which is how a family who
+// filled in the form last week goes uncalled. This is only that remainder.
+interface WaitlistSummary {
+  ok: boolean
+  warning?: string
+  total?: number
+  untouched?: number
+  converted?: number
+  declined?: number
+  stale?: number
+  staleDays?: number
+  newest?: { name: string; form: string; branch: string; days: number | null }[]
+  partial?: string[]
+}
+
+function WaitlistToChase({ branch }: { branch?: string }) {
+  const [data, setData] = useState<WaitlistSummary | null>(null)
+
+  useEffect(() => {
+    const branchParam = branch === 'SBEA' ? 'SANDBOX_EAST' : branch === 'SBGH' ? 'SANDBOX_GREENHILLS' : ''
+    fetch(`/api/dashboard/waitlist-summary?branch=${branchParam}`)
+      .then(r => r.json())
+      .then((d: WaitlistSummary) => setData(d))
+      .catch(() => setData({ ok: false, warning: 'Could not load the waitlist.' }))
+  }, [branch])
+
+  const header = (count: number | null, tone: string, withGap: boolean) => (
+    <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', marginBottom: withGap ? '0.7rem' : 0 }}>
+      <a
+        href="/patient-relationship?tab=waitlist"
+        style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: tone, textDecoration: 'none' }}
+      >
+        Waitlist to chase →
+      </a>
+      {!!count && (
+        <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#fff', background: '#1D4ED8', borderRadius: 99, padding: '1px 7px' }}>
+          {count}
+        </span>
+      )}
+    </div>
+  )
+
+  if (data === null) {
+    return (
+      <div style={{ background: '#F8FAF9', border: '1px solid #E3E9E6', borderRadius: '0.875rem', padding: '0.9rem 1.1rem' }}>
+        {header(null, '#6B7C75', false)}
+        <p style={{ margin: '0.15rem 0 0', fontSize: '0.82rem', color: '#6B7C75', fontStyle: 'italic' }}>Loading…</p>
+      </div>
+    )
+  }
+
+  if (!data.ok) {
+    return (
+      <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: '0.875rem', padding: '0.9rem 1.1rem' }}>
+        {header(null, '#92400E', false)}
+        <p style={{ margin: '0.15rem 0 0', fontSize: '0.82rem', color: '#92400E' }}>
+          {data.warning ?? 'The waitlist could not be read.'}
+        </p>
+      </div>
+    )
+  }
+
+  const untouched = data.untouched ?? 0
+
+  if (untouched === 0) {
+    return (
+      <div style={{ background: '#F8FAF9', border: '1px solid #E3E9E6', borderRadius: '0.875rem', padding: '0.9rem 1.1rem' }}>
+        {header(null, '#6B7C75', false)}
+        <p style={{ margin: '0.15rem 0 0', fontSize: '0.82rem', color: '#6B7C75' }}>
+          All {data.total ?? 0} enquiries are enrolled or tagged.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ background: '#fff', border: '1px solid #BFDBFE', borderRadius: '0.875rem', padding: '0.9rem 1.1rem' }}>
+      {header(untouched, '#1D4ED8', true)}
+      <p style={{ margin: '0 0 0.55rem', fontSize: '0.75rem', color: '#1E40AF' }}>
+        Not enrolled and not tagged. Newest first:
+      </p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+        {(data.newest ?? []).map((e, i) => (
+          <div key={`${e.name}-${i}`} style={{
+            display: 'flex', justifyContent: 'space-between', gap: '0.6rem',
+            fontSize: '0.82rem', color: '#1E3A8A', fontWeight: 600, padding: '0.12rem 0',
+          }}>
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.name}</span>
+            <span style={{ flexShrink: 0, fontSize: '0.75rem', fontWeight: 700, color: '#1D4ED8', fontVariantNumeric: 'tabular-nums' }}>
+              {e.days === null ? '—' : e.days === 0 ? 'today' : `${e.days}d`}
+            </span>
+          </div>
+        ))}
+      </div>
+      {!!data.stale && (
+        <p style={{ margin: '0.55rem 0 0', fontSize: '0.72rem', color: '#1E40AF' }}>
+          {data.stale} of them have been waiting more than {data.staleDays ?? 30} days.
+        </p>
+      )}
+      {/* One intake form HR would not answer for looks exactly like a quiet
+          week, so a partial read says so rather than quietly undercounting. */}
+      {!!data.partial?.length && (
+        <p style={{ margin: '0.4rem 0 0', fontSize: '0.7rem', color: '#92400E' }}>
+          Incomplete: no response from HR for {data.partial.join(', ')}.
+        </p>
+      )}
+    </div>
+  )
+}
 
 // ── Plush Toy Perk (VIP wallet holders + 100-session milestone) ─────────────
 // Milestone counts CONFIRMED Schedule sessions since 2026-04-01 — decking-
