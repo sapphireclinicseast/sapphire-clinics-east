@@ -1,13 +1,16 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { branchLabel } from '@/lib/branch-label'
 import {
-  UsersRound, ClipboardList, BarChart3, Zap, Trash2, CheckCircle2,
-  ChevronDown, ChevronUp, RefreshCw, X, AlertCircle,
+  ClipboardList, BarChart3, Zap, Trash2, CheckCircle2,
+  ChevronDown, ChevronUp, ChevronRight, RefreshCw, X, AlertCircle, AlertTriangle,
   Clock, CheckCircle, Ban, QrCode, Bell, Settings, Save, Users, ExternalLink, Download, Mail,
+  Search, Star, Trophy, Building2, Layers, Target, ThumbsUp, MessageSquare, Info, Loader2, Calendar,
 } from 'lucide-react'
 import { generatePeerEvalResultPDF } from '@/lib/pdf-results'
+import { CARD_STYLE, DashCard, KpiCard, Skeleton, EmptyState } from '../patients/dashboard/ui'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -128,43 +131,76 @@ function getQuestions(formType: PeerEvalType) {
     : HR08_QUESTIONS
 }
 
+const YEAR_OPTIONS = [2024, 2025, 2026, 2027]
+
+// The score-entry form offers the same whole numbers the old 0–5 slider did.
+const RATING_OPTIONS = [0, 1, 2, 3, 4, 5]
+
+// ─── Presentation tokens (display only — no scoring logic lives here) ─────────
+
+const CONTROL = 'h-9 px-3 rounded-lg text-sm outline-none focus:border-[var(--teal)]'
+const CONTROL_STYLE: CSSProperties = { background: '#fff', border: '1px solid var(--light-gray)', color: 'var(--charcoal)', fontFamily: 'var(--font-body)' }
+const controlStyle = (active: boolean): CSSProperties => ({ ...CONTROL_STYLE, borderColor: active ? 'var(--teal)' : 'var(--light-gray)' })
+const BTN_PRIMARY = 'inline-flex items-center justify-center gap-1.5 h-9 px-3.5 rounded-lg text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed'
+const BTN_SECONDARY = 'inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-lg text-sm font-semibold transition-colors hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed'
+const BTN_XS = 'inline-flex items-center gap-1 h-7 px-2.5 rounded-md text-[11px] font-semibold whitespace-nowrap transition-colors disabled:opacity-60'
+const LABEL = 'block text-[11px] font-semibold uppercase tracking-wider mb-1.5'
+const SECTION_LABEL = 'text-[11px] font-semibold uppercase tracking-wider'
+const TH = 'px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider whitespace-nowrap text-left'
+const SUBTLE_BG = '#F6F9F8'
+const ROW_RULE = '#EEF2F1'
+const DISPLAY: CSSProperties = { fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }
+const NUM: CSSProperties = { fontVariantNumeric: 'tabular-nums' }
+const MODAL_BACKDROP: CSSProperties = { background: 'rgba(15,23,42,0.45)', backdropFilter: 'blur(4px)' }
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function fullName(s: StaffMini) {
   return `${s.firstName} ${s.lastName}`
 }
 
+/** Soft colour band for a 0–5 score. Same cut-offs the page always used. */
+function scoreBand(v: number | null | undefined) {
+  if (v == null || Number.isNaN(v)) return { fg: 'var(--mid-gray)', bg: '#F3F4F6', bar: '#CBD5E1', label: 'No scores yet' }
+  if (v >= 4.5) return { fg: '#15803D', bg: '#DCFCE7', bar: '#22C55E', label: 'Excellent' }
+  if (v >= 3.5) return { fg: '#0F766E', bg: '#CCFBF1', bar: '#14B8A6', label: 'Good' }
+  if (v >= 2.5) return { fg: '#B45309', bg: '#FEF3C7', bar: '#F59E0B', label: 'Fair' }
+  return { fg: '#B91C1C', bg: '#FEE2E2', bar: '#F87171', label: 'Needs attention' }
+}
+
+function scoreColor(score: number) {
+  return scoreBand(score).fg
+}
+
+const STATUS_STYLE: Record<PeerEvalStatus, { bg: string; fg: string; Icon: typeof Clock; label: string }> = {
+  PENDING:   { bg: '#FEF3C7', fg: '#B45309', Icon: Clock,       label: 'Pending' },
+  COMPLETED: { bg: '#DCFCE7', fg: '#15803D', Icon: CheckCircle, label: 'Completed' },
+  EXPIRED:   { bg: '#F3F4F6', fg: '#6B7280', Icon: Ban,         label: 'Expired' },
+}
+
 function statusBadge(status: PeerEvalStatus) {
-  const styles: Record<PeerEvalStatus, { bg: string; color: string; icon: React.ReactNode; label: string }> = {
-    PENDING:   { bg: '#fef3c7', color: '#92400e', icon: <Clock size={11} />,         label: 'Pending' },
-    COMPLETED: { bg: '#d1fae5', color: '#065f46', icon: <CheckCircle size={11} />,   label: 'Completed' },
-    EXPIRED:   { bg: '#f3f4f6', color: '#6b7280', icon: <Ban size={11} />,            label: 'Expired' },
-  }
-  const s = styles[status]
+  const s = STATUS_STYLE[status] ?? { bg: '#F3F4F6', fg: '#6B7280', Icon: Clock, label: String(status) }
+  const Icon = s.Icon
   return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px',
-      borderRadius: 99, background: s.bg, color: s.color, fontSize: '0.7rem', fontWeight: 600,
-    }}>
-      {s.icon} {s.label}
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-bold whitespace-nowrap leading-tight"
+      style={{ background: s.bg, color: s.fg }}>
+      <Icon size={11} /> {s.label}
     </span>
   )
 }
 
 function typeBadge(formType: PeerEvalType) {
   const map: Record<PeerEvalType, { bg: string; color: string; label: string }> = {
-    HR08_ADMIN:    { bg: '#ede9fe', color: '#5b21b6', label: 'HR08 Admin' },
-    HR08_PEER:     { bg: '#dbeafe', color: '#1e40af', label: 'HR08 Peer' },
-    HR09:          { bg: '#fce7f3', color: '#9d174d', label: 'HR09' },
-    HR09_CLINICAL: { bg: '#fce7f3', color: '#9d174d', label: 'HR09 Clinical' },
-    HR09_ADMIN:    { bg: '#fdf2f8', color: '#831843', label: 'HR09 Admin' },
+    HR08_ADMIN:    { bg: '#EDE9FE', color: '#5B21B6', label: 'HR08 Admin' },
+    HR08_PEER:     { bg: '#DBEAFE', color: '#1E40AF', label: 'HR08 Peer' },
+    HR09:          { bg: '#FCE7F3', color: '#9D174D', label: 'HR09' },
+    HR09_CLINICAL: { bg: '#FCE7F3', color: '#9D174D', label: 'HR09 Clinical' },
+    HR09_ADMIN:    { bg: '#FDF2F8', color: '#831843', label: 'HR09 Admin' },
   }
-  const t = map[formType] ?? { bg: '#f3f4f6', color: '#6b7280', label: formType }
+  const t = map[formType] ?? { bg: '#F3F4F6', color: '#6B7280', label: formType }
   return (
-    <span style={{
-      display: 'inline-block', padding: '2px 8px', borderRadius: 99,
-      background: t.bg, color: t.color, fontSize: '0.7rem', fontWeight: 600,
-    }}>
+    <span className="inline-block px-2 py-0.5 rounded-full text-[10.5px] font-semibold whitespace-nowrap leading-tight"
+      style={{ background: t.bg, color: t.color }}>
       {t.label}
     </span>
   )
@@ -175,11 +211,232 @@ function periodLabel(_formType: PeerEvalType, year: number, month: number) {
   return `${year}`
 }
 
-function scoreColor(score: number) {
-  if (score >= 4.5) return '#059669'
-  if (score >= 3.5) return '#0284c7'
-  if (score >= 2.5) return '#d97706'
-  return '#dc2626'
+// ─── Small presentational pieces ──────────────────────────────────────────────
+
+function ScorePill({ value, digits = 1, suffix }: { value: number; digits?: number; suffix?: string }) {
+  const b = scoreBand(value)
+  return (
+    <span title={`${b.label} — average out of 5`}
+      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold leading-none whitespace-nowrap"
+      style={{ background: b.bg, color: b.fg, ...NUM }}>
+      <Star size={10} fill="currentColor" strokeWidth={0} />
+      {value.toFixed(digits)}{suffix && <span className="font-semibold opacity-70">{suffix}</span>}
+    </span>
+  )
+}
+
+function ScoreLegend() {
+  const bands = [
+    { v: 4.5, range: '4.5 – 5' }, { v: 3.5, range: '3.5 – 4.49' }, { v: 2.5, range: '2.5 – 3.49' }, { v: 0, range: 'Below 2.5' },
+  ]
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+      <span className="font-semibold uppercase tracking-wider">Score bands</span>
+      {bands.map(({ v, range }) => {
+        const b = scoreBand(v)
+        return (
+          <span key={range} className="inline-flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-sm" style={{ background: b.bar }} />
+            <span style={{ color: 'var(--charcoal)' }}>{b.label}</span> {range}
+          </span>
+        )
+      })}
+    </div>
+  )
+}
+
+function CountPill({ tone, children }: { tone: 'amber' | 'green' | 'gray'; children: ReactNode }) {
+  const s = tone === 'amber' ? { bg: '#FEF3C7', fg: '#92400E' } : tone === 'green' ? { bg: '#DCFCE7', fg: '#166534' } : { bg: '#F3F4F6', fg: '#6B7280' }
+  return (
+    <span className="inline-block px-2 py-0.5 rounded-full text-[10.5px] font-semibold whitespace-nowrap leading-tight" style={{ background: s.bg, color: s.fg }}>
+      {children}
+    </span>
+  )
+}
+
+function Avatar({ first, last, tone = 'teal' }: { first: string; last: string; tone?: 'teal' | 'amber' | 'green' }) {
+  const s = tone === 'amber' ? { bg: '#FEF3C7', fg: '#92400E' } : tone === 'green' ? { bg: '#E7F3EF', fg: '#4A8073' } : { bg: 'var(--pale-teal)', fg: 'var(--teal)' }
+  return (
+    <span className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold" style={{ background: s.bg, color: s.fg }}>
+      {first[0]}{last[0]}
+    </span>
+  )
+}
+
+/** Pill tab bar — used for the page tabs and the Results sub-tabs. */
+function PillTabs<T extends string>({ tabs, value, onChange, size = 'md', label }: {
+  tabs: { id: T; label: string; icon: typeof ClipboardList }[]
+  value: T; onChange: (id: T) => void; size?: 'md' | 'sm'; label: string
+}) {
+  return (
+    <div role="tablist" aria-label={label}
+      className="inline-flex gap-1 p-1 rounded-xl overflow-x-auto max-w-full"
+      style={size === 'md' ? CARD_STYLE : { background: '#F3F6F5' }}>
+      {tabs.map(({ id, label: l, icon: Icon }) => {
+        const active = value === id
+        return (
+          <button key={id} type="button" role="tab" aria-selected={active} onClick={() => onChange(id)}
+            className={`flex items-center gap-1.5 rounded-lg font-semibold whitespace-nowrap transition-colors ${size === 'md' ? 'px-3.5 py-2 text-sm' : 'px-3 py-1.5 text-xs'} ${active ? '' : 'hover:bg-black/[0.04]'}`}
+            style={active
+              ? size === 'md'
+                ? { background: 'var(--teal)', color: '#fff' }
+                : { background: '#fff', color: 'var(--teal)', boxShadow: '0 1px 2px rgba(0,0,0,0.08)' }
+              : { background: 'transparent', color: 'var(--mid-gray)' }}>
+            <Icon size={size === 'md' ? 15 : 13} />
+            {l}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+/** Filter / action strip that sits above a tab's content. */
+function Toolbar({ children }: { children: ReactNode }) {
+  return (
+    <div className="rounded-xl px-3 py-3 flex flex-wrap items-center gap-2" style={CARD_STYLE}>
+      {children}
+    </div>
+  )
+}
+
+function ErrorCard({ title, hint, onRetry }: { title: string; hint?: string; onRetry?: () => void }) {
+  return (
+    <div className="rounded-xl px-6 py-10 text-center" style={{ background: '#fff', border: '1px solid #FECACA' }}>
+      <AlertTriangle size={20} className="mx-auto mb-2" style={{ color: '#DC2626' }} />
+      <p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>{title}</p>
+      {hint && <p className="text-xs mt-1 max-w-sm mx-auto" style={{ color: 'var(--mid-gray)' }}>{hint}</p>}
+      {onRetry && (
+        <button type="button" onClick={onRetry} className={`${BTN_SECONDARY} mt-4 text-xs`} style={{ ...CONTROL_STYLE, color: 'var(--teal)' }}>
+          <RefreshCw size={12} /> Try again
+        </button>
+      )}
+    </div>
+  )
+}
+
+function InlineError({ message, onRetry }: { message: string; onRetry?: () => void }) {
+  return (
+    <div role="alert" className="rounded-xl px-4 py-2.5 text-xs flex items-center gap-2" style={{ background: '#FEF2F2', color: '#B91C1C', border: '1px solid #FECACA' }}>
+      <AlertCircle size={14} className="flex-shrink-0" />
+      <span className="flex-1 min-w-0">{message}</span>
+      {onRetry && <button type="button" onClick={onRetry} className="font-semibold underline flex-shrink-0">Try again</button>}
+    </div>
+  )
+}
+
+function SuccessNote({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="rounded-xl px-4 py-3 text-sm" style={{ background: '#F0FDF4', border: '1px solid #BBF7D0' }}>
+      <p className="flex items-center gap-1.5 font-semibold" style={{ color: '#166534' }}>
+        <CheckCircle2 size={15} /> {title}
+      </p>
+      <div className="mt-1" style={{ color: 'var(--charcoal)' }}>{children}</div>
+    </div>
+  )
+}
+
+function InfoNote({ children }: { children: ReactNode }) {
+  return (
+    <div className="rounded-xl px-4 py-3 flex items-start gap-2.5 text-xs leading-relaxed"
+      style={{ background: 'var(--pale-teal)', color: 'var(--charcoal)', border: '1px solid #CFE6E2' }}>
+      <Info size={15} className="flex-shrink-0 mt-px" style={{ color: 'var(--teal)' }} />
+      <div className="min-w-0">{children}</div>
+    </div>
+  )
+}
+
+function KpiRowSkeleton({ count = 4 }: { count?: number }) {
+  return (
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3" aria-hidden>
+      {Array.from({ length: count }).map((_, i) => (
+        <div key={i} className="rounded-xl px-4 py-3.5" style={CARD_STYLE}>
+          <Skeleton className="h-3 w-20" />
+          <Skeleton className="h-7 w-16 mt-2" />
+          <Skeleton className="h-3 w-24 mt-2" />
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function ListSkeleton({ rows = 5 }: { rows?: number }) {
+  return (
+    <div aria-hidden>
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} className="flex items-center gap-3 px-4 py-3.5" style={{ borderTop: i > 0 ? `1px solid ${ROW_RULE}` : undefined }}>
+          <Skeleton className="w-9 h-9 rounded-full" />
+          <div className="flex-1 space-y-1.5">
+            <Skeleton className="h-3.5" style={{ width: `${55 - i * 5}%` }} />
+            <Skeleton className="h-3 w-28" />
+          </div>
+          <Skeleton className="h-5 w-16 rounded-full" />
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function CompletionKpi({ pct, completed, total }: { pct: number; completed: number; total: number }) {
+  const tone = pct >= 80 ? '#16A34A' : pct >= 50 ? '#F59E0B' : '#EF4444'
+  return (
+    <KpiCard label="Completion" icon={<Target size={16} />} accent={tone}
+      value={total > 0 ? `${pct}%` : '—'}
+      sub={
+        <span className="block">
+          <span className="block h-1.5 rounded-full overflow-hidden mt-1.5 mb-1" style={{ background: ROW_RULE }}>
+            <span className="block h-full rounded-full" style={{ width: `${pct}%`, background: tone, transition: 'width 0.3s' }} />
+          </span>
+          {completed} of {total} assignments completed
+        </span>
+      } />
+  )
+}
+
+function ModalShell({ labelledBy, maxWidth, children }: { labelledBy: string; maxWidth: number; children: ReactNode }) {
+  return (
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4" style={MODAL_BACKDROP}>
+      <div role="dialog" aria-modal="true" aria-labelledby={labelledBy}
+        className="w-full rounded-2xl overflow-hidden flex flex-col"
+        style={{ background: '#fff', maxWidth, maxHeight: '90vh', boxShadow: '0 24px 64px rgba(15,23,42,0.22)' }}>
+        {children}
+      </div>
+    </div>
+  )
+}
+
+function ModalHeader({ id, eyebrow, title, subtitle, onClose }: {
+  id: string; eyebrow?: ReactNode; title: ReactNode; subtitle?: ReactNode; onClose: () => void
+}) {
+  return (
+    <div className="flex items-start justify-between gap-4 px-6 pt-5 pb-4 flex-shrink-0" style={{ borderBottom: '1px solid var(--light-gray)' }}>
+      <div className="min-w-0">
+        {eyebrow && <div className="flex flex-wrap items-center gap-2 mb-1.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{eyebrow}</div>}
+        <h3 id={id} className="text-base font-bold leading-tight" style={DISPLAY}>{title}</h3>
+        {subtitle && <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>{subtitle}</p>}
+      </div>
+      <button type="button" onClick={onClose} aria-label="Close" className="p-1.5 -mr-1.5 rounded-lg hover:bg-gray-100 flex-shrink-0" style={{ color: 'var(--mid-gray)' }}>
+        <X size={18} />
+      </button>
+    </div>
+  )
+}
+
+function FeedbackList({ title, icon, fg, bg, border, items }: {
+  title: string; icon: ReactNode; fg: string; bg: string; border: string; items: string[]
+}) {
+  return (
+    <div className="rounded-lg p-3" style={{ background: bg, border: `1px solid ${border}` }}>
+      <p className="flex items-center gap-1.5 mb-2 text-xs font-semibold" style={{ color: fg }}>
+        {icon} {title} <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>· {items.length}</span>
+      </p>
+      <ul className="space-y-1.5 list-disc pl-4">
+        {items.map((s, i) => (
+          <li key={i} className="text-xs leading-relaxed" style={{ color: 'var(--charcoal)' }}>{s}</li>
+        ))}
+      </ul>
+    </div>
+  )
 }
 
 // ─── QR Code Modal ────────────────────────────────────────────────────────────
@@ -192,57 +449,38 @@ function QrCodeModal({ onClose }: { onClose: () => void }) {
   const origin = typeof window !== 'undefined' ? window.location.origin : ''
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000,
-      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
-    }}>
-      <div style={{
-        background: '#fff', borderRadius: 14, width: '100%', maxWidth: 560,
-        boxShadow: '0 20px 60px rgba(0,0,0,0.25)', overflow: 'hidden',
-      }}>
-        <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <div style={{ fontWeight: 700, fontSize: '1rem', color: '#111827' }}>QR Codes — Peer Evaluation Form</div>
-            <div style={{ fontSize: '0.78rem', color: '#6b7280', marginTop: 2 }}>Scan to open the form — no login required</div>
-          </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', padding: 4 }}>
-            <X size={18} />
-          </button>
-        </div>
-        <div style={{ padding: '24px', display: 'flex', gap: 24, justifyContent: 'center', flexWrap: 'wrap' }}>
-          {forms.map(f => {
-            const fullUrl = `${origin}${f.url}`
-            return (
-              <div key={f.branch} style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
-                <img
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(fullUrl)}`}
-                  alt={`QR code for ${f.label}`}
-                  width={180}
-                  height={180}
-                  style={{ borderRadius: 10, border: '1px solid #e5e7eb', display: 'block' }}
-                />
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#111827' }}>{f.label}</div>
-                  <a
-                    href={f.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    style={{ fontSize: '0.72rem', color: '#0284c7', marginTop: 4, display: 'inline-flex', alignItems: 'center', gap: 4 }}
-                  >
-                    <ExternalLink size={11} /> Open form
-                  </a>
-                </div>
+    <ModalShell labelledBy="pe-qr-title" maxWidth={560}>
+      <ModalHeader id="pe-qr-title" title="QR Codes — Peer Evaluation Form"
+        subtitle="Scan to open the form — no login required" onClose={onClose} />
+      <div className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-4 overflow-y-auto">
+        {forms.map(f => {
+          const fullUrl = `${origin}${f.url}`
+          return (
+            <div key={f.branch} className="rounded-xl p-4 flex flex-col items-center gap-3 text-center"
+              style={{ background: SUBTLE_BG, border: `1px solid ${ROW_RULE}` }}>
+              <img
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(fullUrl)}`}
+                alt={`QR code for ${f.label}`}
+                width={180}
+                height={180}
+                className="rounded-lg block bg-white"
+                style={{ border: '1px solid var(--light-gray)' }}
+              />
+              <div>
+                <div className="text-sm font-bold" style={DISPLAY}>{f.label}</div>
+                <a href={f.url} target="_blank" rel="noreferrer"
+                  className="inline-flex items-center gap-1 text-xs font-semibold mt-1 hover:underline" style={{ color: 'var(--teal)' }}>
+                  <ExternalLink size={11} /> Open form
+                </a>
               </div>
-            )
-          })}
-        </div>
-        <div style={{ padding: '0 24px 20px', textAlign: 'center' }}>
-          <button onClick={onClose} style={{ padding: '8px 20px', borderRadius: 8, border: '1px solid #d1d5db', background: '#f9fafb', color: '#374151', cursor: 'pointer', fontSize: '0.83rem' }}>
-            Close
-          </button>
-        </div>
+            </div>
+          )
+        })}
       </div>
-    </div>
+      <div className="px-6 py-4 flex justify-end flex-shrink-0" style={{ borderTop: '1px solid var(--light-gray)' }}>
+        <button type="button" onClick={onClose} className={BTN_SECONDARY} style={CONTROL_STYLE}>Close</button>
+      </div>
+    </ModalShell>
   )
 }
 
@@ -270,44 +508,36 @@ function NotificationBanner({ branch }: { branch: string }) {
   if (loading || dismissed || items.length === 0) return null
 
   return (
-    <div style={{
-      marginBottom: 16, padding: '12px 16px', borderRadius: 10,
-      background: '#fffbeb', border: '1px solid #fbbf24',
-      display: 'flex', flexDirection: 'column', gap: 8,
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <Bell size={15} style={{ color: '#d97706', flexShrink: 0 }} />
-        <div style={{ flex: 1, fontSize: '0.83rem', color: '#92400e', fontWeight: 600 }}>
+    <div className="rounded-xl px-4 py-3" style={{ background: '#FFFBEB', border: '1px solid #FDE68A' }}>
+      <div className="flex items-center gap-2.5">
+        <span className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: '#FEF3C7' }}>
+          <Bell size={14} style={{ color: '#B45309' }} />
+        </span>
+        <p className="flex-1 min-w-0 text-sm font-semibold" style={{ color: '#92400E' }}>
           {items.length} clinician{items.length !== 1 ? 's' : ''} in clinic today with pending peer evals
-        </div>
-        <button
-          onClick={() => setExpanded(e => !e)}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#d97706', fontSize: '0.75rem', fontWeight: 600, padding: '2px 6px' }}
-        >
+        </p>
+        <button type="button" onClick={() => setExpanded(e => !e)} aria-expanded={expanded}
+          className={`${BTN_XS} hover:bg-black/5`} style={{ color: '#B45309' }}>
           {expanded ? 'Hide' : 'Show'}
         </button>
-        <button onClick={() => setDismissed(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#d97706', padding: 2 }}>
+        <button type="button" onClick={() => setDismissed(true)} aria-label="Dismiss"
+          className="p-1 rounded-md hover:bg-black/5" style={{ color: '#B45309' }}>
           <X size={14} />
         </button>
       </div>
       {expanded && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingLeft: 23 }}>
+        <div className="mt-2.5 pl-[38px] space-y-1.5">
           {items.map(item => (
-            <div key={item.staffId} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8rem', color: '#78350f' }}>
-              <span style={{ fontWeight: 600 }}>{item.name}</span>
-              <span style={{ color: '#92400e' }}>·</span>
+            <div key={item.staffId} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs" style={{ color: '#78350F' }}>
+              <span className="font-semibold">{item.name}</span>
+              <span style={{ color: '#B45309' }}>·</span>
               <span>{item.department}</span>
-              <span style={{
-                padding: '1px 7px', borderRadius: 99, background: '#fef3c7', color: '#92400e',
-                fontSize: '0.68rem', fontWeight: 700, border: '1px solid #fbbf24',
-              }}>
-                {item.pendingCount} pending
-              </span>
+              <CountPill tone="amber">{item.pendingCount} pending</CountPill>
             </div>
           ))}
-          <div style={{ fontSize: '0.74rem', color: '#a16207', marginTop: 4, fontStyle: 'italic' }}>
+          <p className="text-[11px] italic pt-1" style={{ color: '#A16207' }}>
             Remind them to complete their peer evaluation forms today.
-          </div>
+          </p>
         </div>
       )}
     </div>
@@ -333,110 +563,122 @@ function ScoreEntryModal({
   const [strengths, setStrengths] = useState(assignment.response?.strengths ?? '')
   const [improvements, setImprovements] = useState(assignment.response?.improvements ?? '')
   const [submitting, setSubmitting] = useState(false)
+  // Display only: a failed save used to fail silently; now the message shows in the footer.
+  const [saveError, setSaveError] = useState('')
 
   async function handleSubmit() {
     setSubmitting(true)
+    setSaveError('')
     try {
       await onSubmit({ scores, strengths, improvements })
+    } catch (e: unknown) {
+      setSaveError(e instanceof Error ? e.message : 'Failed to save response')
     } finally {
       setSubmitting(false)
     }
   }
 
+  const textareaClass = 'w-full px-3 py-2 rounded-lg text-sm outline-none focus:border-[var(--teal)] resize-y'
+
   return (
-    <div style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000,
-      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
-    }}>
-      <div style={{
-        background: '#fff', borderRadius: 12, width: '100%', maxWidth: 600,
-        maxHeight: '90vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
-      }}>
-        <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+    <ModalShell labelledBy="pe-score-title" maxWidth={640}>
+      <ModalHeader id="pe-score-title"
+        eyebrow={<>{typeBadge(assignment.formType)}<span>{periodLabel(assignment.formType, assignment.periodYear, assignment.periodMonth)}</span></>}
+        title="Score Entry"
+        subtitle={<><strong style={{ color: 'var(--charcoal)' }}>{fullName(assignment.assessor)}</strong> evaluating <strong style={{ color: 'var(--charcoal)' }}>{fullName(assignment.assessee)}</strong></>}
+        onClose={onClose} />
+
+      <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+        <section>
+          <div className="flex items-baseline justify-between gap-3 mb-2.5">
+            <p className={SECTION_LABEL} style={{ color: 'var(--mid-gray)' }}>Scores (0 – 5)</p>
+            <p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>{qKeys.length} criteria</p>
+          </div>
+          <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${ROW_RULE}` }}>
+            {qKeys.map((key, idx) => {
+              const current = scores[key] ?? 3
+              return (
+                <div key={key} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-3.5 py-2.5"
+                  style={{ borderTop: idx > 0 ? `1px solid ${ROW_RULE}` : undefined, background: idx % 2 ? '#FBFCFC' : '#fff' }}>
+                  <div className="flex-1 min-w-[200px] text-sm leading-snug" style={{ color: 'var(--charcoal)' }}>
+                    <span className="inline-block w-8 text-[10.5px] font-bold" style={{ color: 'var(--mid-gray)' }}>{key.toUpperCase()}</span>
+                    {questions[key]}
+                  </div>
+                  <div role="radiogroup" aria-label={`${key.toUpperCase()} score`} className="inline-flex gap-0.5 p-0.5 rounded-lg flex-shrink-0" style={{ background: '#F3F6F5' }}>
+                    {RATING_OPTIONS.map(n => {
+                      const active = current === n
+                      const b = scoreBand(n)
+                      return (
+                        <button key={n} type="button" role="radio" aria-checked={active}
+                          onClick={() => setScores(prev => ({ ...prev, [key]: n }))}
+                          className={`w-8 h-8 rounded-md text-sm font-bold transition-colors ${active ? '' : 'hover:bg-white'}`}
+                          style={active
+                            ? { background: b.bg, color: b.fg, boxShadow: `inset 0 0 0 1.5px ${b.bar}`, ...NUM }
+                            : { color: 'var(--mid-gray)', ...NUM }}>
+                          {n}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </section>
+
+        <section className="space-y-4">
+          <p className={SECTION_LABEL} style={{ color: 'var(--mid-gray)' }}>Comments</p>
           <div>
-            <div style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: 4 }}>
-              {typeBadge(assignment.formType)}
-              {' '}
-              <span style={{ marginLeft: 6 }}>{periodLabel(assignment.formType, assignment.periodYear, assignment.periodMonth)}</span>
-            </div>
-            <div style={{ fontWeight: 700, fontSize: '1rem', color: '#111827' }}>Score Entry</div>
-            <div style={{ fontSize: '0.8rem', color: '#6b7280', marginTop: 2 }}>
-              <strong>{fullName(assignment.assessor)}</strong> evaluating <strong>{fullName(assignment.assessee)}</strong>
-            </div>
+            <label htmlFor="pe-strengths" className={LABEL} style={{ color: 'var(--charcoal)' }}>
+              Strengths / Notable Contributions
+            </label>
+            <textarea
+              id="pe-strengths"
+              value={strengths}
+              onChange={e => setStrengths(e.target.value)}
+              rows={3}
+              placeholder="What does this person do well?"
+              className={textareaClass}
+              style={CONTROL_STYLE}
+            />
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', padding: 4 }}>
-            <X size={18} />
-          </button>
-        </div>
-
-        <div style={{ padding: '16px 24px' }}>
-          <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#6b7280', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            Scores (0 – 5)
+          <div>
+            <label htmlFor="pe-improvements" className={LABEL} style={{ color: 'var(--charcoal)' }}>
+              Areas for Improvement
+            </label>
+            <textarea
+              id="pe-improvements"
+              value={improvements}
+              onChange={e => setImprovements(e.target.value)}
+              rows={3}
+              placeholder="What could be improved?"
+              className={textareaClass}
+              style={CONTROL_STYLE}
+            />
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {qKeys.map((key) => (
-              <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <div style={{ flex: 1, fontSize: '0.82rem', color: '#374151', lineHeight: 1.4 }}>
-                  <span style={{ color: '#9ca3af', fontSize: '0.72rem', fontWeight: 600, marginRight: 6 }}>{key.toUpperCase()}</span>
-                  {questions[key]}
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                  <input
-                    type="range" min={0} max={5} step={1}
-                    value={scores[key] ?? 3}
-                    onChange={e => setScores(prev => ({ ...prev, [key]: parseInt(e.target.value) }))}
-                    style={{ width: 100 }}
-                  />
-                  <span style={{ width: 28, textAlign: 'center', fontWeight: 700, fontSize: '0.95rem', color: scoreColor(scores[key] ?? 3) }}>
-                    {scores[key] ?? 3}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#374151', marginBottom: 4 }}>
-                Strengths / Notable Contributions
-              </label>
-              <textarea
-                value={strengths}
-                onChange={e => setStrengths(e.target.value)}
-                rows={3}
-                placeholder="What does this person do well?"
-                style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: '0.83rem', color: '#111827', resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit' }}
-              />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: '#374151', marginBottom: 4 }}>
-                Areas for Improvement
-              </label>
-              <textarea
-                value={improvements}
-                onChange={e => setImprovements(e.target.value)}
-                rows={3}
-                placeholder="What could be improved?"
-                style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: '0.83rem', color: '#111827', resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit' }}
-              />
-            </div>
-          </div>
-        </div>
-
-        <div style={{ padding: '12px 24px 20px', display: 'flex', justifyContent: 'flex-end', gap: 8, borderTop: '1px solid #e5e7eb' }}>
-          <button onClick={onClose} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #d1d5db', background: '#fff', color: '#374151', cursor: 'pointer', fontSize: '0.83rem' }}>
-            Cancel
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={submitting}
-            style={{ padding: '8px 20px', borderRadius: 8, border: 'none', background: submitting ? '#6b7280' : '#1a7b8a', color: '#fff', cursor: submitting ? 'not-allowed' : 'pointer', fontSize: '0.83rem', fontWeight: 600 }}
-          >
-            {submitting ? 'Saving…' : 'Save Response'}
-          </button>
-        </div>
+        </section>
       </div>
-    </div>
+
+      <div className="px-6 py-4 flex flex-wrap items-center justify-end gap-2 flex-shrink-0" style={{ borderTop: '1px solid var(--light-gray)', background: SUBTLE_BG }}>
+        {saveError && (
+          <span role="alert" className="mr-auto inline-flex items-center gap-1.5 text-xs font-semibold" style={{ color: '#B91C1C' }}>
+            <AlertCircle size={13} /> {saveError}
+          </span>
+        )}
+        <button type="button" onClick={onClose} className={BTN_SECONDARY} style={CONTROL_STYLE}>
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={handleSubmit}
+          disabled={submitting}
+          className={BTN_PRIMARY}
+          style={{ background: 'var(--teal)' }}
+        >
+          {submitting ? <><Loader2 size={14} className="animate-spin" /> Saving…</> : <><Save size={14} /> Save Response</>}
+        </button>
+      </div>
+    </ModalShell>
   )
 }
 
@@ -464,8 +706,15 @@ function FrontDeskPendingView({ role }: { role: string }) {
 
   const origin = typeof window !== 'undefined' ? window.location.origin : ''
 
-  if (loading) return <div style={{ textAlign: 'center', padding: '40px 0', color: '#9ca3af', fontSize: '0.85rem' }}>Loading…</div>
-  if (error) return <div style={{ padding: '10px 14px', background: '#fef2f2', borderRadius: 8, color: '#b91c1c', fontSize: '0.82rem' }}>{error}</div>
+  if (loading) {
+    return (
+      <div className="space-y-4">
+        <KpiRowSkeleton count={3} />
+        <div className="rounded-xl" style={CARD_STYLE}><ListSkeleton rows={4} /></div>
+      </div>
+    )
+  }
+  if (error) return <ErrorCard title="Couldn't load pending evaluations" hint={error} />
 
   // Group pending by assessor
   const byAssessor = new Map<string, { assessor: StaffMini; evals: Assignment[] }>()
@@ -476,150 +725,116 @@ function FrontDeskPendingView({ role }: { role: string }) {
   const assessorGroups = Array.from(byAssessor.values()).sort((a, b) => a.assessor.lastName.localeCompare(b.assessor.lastName))
 
   return (
-    <div>
-      {/* Top bar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-        <div style={{ flex: 1, fontSize: '0.85rem', color: '#6b7280' }}>
-          {assignments.length} pending evaluation{assignments.length !== 1 ? 's' : ''} for {branchLabel(branch)}
-        </div>
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+        <KpiCard label="Pending evaluations" icon={<Clock size={16} />} accent="#D97706"
+          value={assignments.length.toLocaleString()} sub={`${new Date().getFullYear()} · ${branchLabel(branch)}`} />
+        <KpiCard label="Assessors with pending" icon={<Users size={16} />}
+          value={assessorGroups.length.toLocaleString()} sub="Staff who still have forms to fill" />
+        <KpiCard label="Branch" icon={<Building2 size={16} />}
+          value={<span className="text-lg">{branchLabel(branch)}</span>} sub="Your front desk branch" />
       </div>
 
       {/* Info banner */}
-      <div style={{
-        marginBottom: 16, padding: '12px 16px', borderRadius: 10,
-        background: '#f0f9ff', border: '1px solid #bae6fd',
-        display: 'flex', alignItems: 'flex-start', gap: 10,
-      }}>
-        <AlertCircle size={16} style={{ color: '#0284c7', flexShrink: 0, marginTop: 1 }} />
-        <div style={{ fontSize: '0.8rem', color: '#0369a1', lineHeight: 1.5 }}>
-          Each staff member has their own <strong>QR Code</strong> that links directly to their evaluations.
-          Click the QR icon next to their name to show it, or use <strong>Open Survey</strong> to open their form.
-        </div>
-      </div>
+      <InfoNote>
+        Each staff member has their own <strong>QR Code</strong> that links directly to their evaluations.
+        Click the QR icon next to their name to show it, or use <strong>Open Survey</strong> to open their form.
+      </InfoNote>
 
-      {assignments.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '48px 0' }}>
-          <CheckCircle2 size={40} style={{ color: '#10b981', marginBottom: 12, margin: '0 auto 12px' }} />
-          <div style={{ fontWeight: 700, color: '#059669', fontSize: '1rem' }}>All caught up!</div>
-          <div style={{ color: '#6b7280', fontSize: '0.83rem', marginTop: 4 }}>No pending peer evaluations at this time.</div>
-        </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {assessorGroups.map(({ assessor, evals }) => {
-            const staffUrl = `${origin}/peereval?branch=${branch}&staffId=${assessor.id}`
-            return (
-              <div key={assessor.id} style={{
-                border: '1px solid #e5e7eb', borderRadius: 12, overflow: 'hidden', background: '#fff',
-              }}>
-                {/* Assessor header */}
-                <div style={{
-                  padding: '12px 16px', background: '#f8fafc', borderBottom: '1px solid #e5e7eb',
-                  display: 'flex', alignItems: 'center', gap: 10,
-                }}>
-                  <div style={{
-                    width: 36, height: 36, borderRadius: '50%', background: '#fef3c7',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontWeight: 700, fontSize: '0.82rem', color: '#92400e', flexShrink: 0,
-                  }}>
-                    {assessor.firstName[0]}{assessor.lastName[0]}
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#111827' }}>{fullName(assessor)}</div>
-                    <div style={{ fontSize: '0.72rem', color: '#6b7280' }}>{assessor.department} · {evals.length} pending</div>
-                  </div>
-                  <button
-                    onClick={() => setQrStaff(assessor)}
-                    title="Show QR Code"
-                    style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 4, padding: '6px 10px',
-                      borderRadius: 8, border: '1px solid #a7f3d0', background: '#f0fdf4',
-                      color: '#065f46', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600,
-                    }}
-                  >
-                    <QrCode size={14} />
-                  </button>
-                  <a
-                    href={staffUrl}
-                    target="_blank" rel="noreferrer"
-                    style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 14px',
-                      borderRadius: 8, background: '#1a7b8a', color: '#fff',
-                      fontSize: '0.78rem', fontWeight: 600, textDecoration: 'none',
-                    }}
-                  >
-                    <ExternalLink size={13} /> Open Survey
-                  </a>
-                </div>
-
-                {/* Eval items */}
-                <div style={{ padding: '8px 12px' }}>
-                  {evals.map(a => (
-                    <div key={a.id} style={{
-                      display: 'flex', alignItems: 'center', gap: 10, padding: '8px 6px',
-                      borderBottom: '1px solid #f3f4f6',
-                      fontSize: '0.82rem',
-                    }}>
-                      <Clock size={14} style={{ color: '#d97706', flexShrink: 0 }} />
-                      <div style={{ flex: 1 }}>
-                        <span style={{ fontWeight: 500, color: '#111827' }}>Evaluate: {fullName(a.assessee)}</span>
-                        <span style={{ color: '#9ca3af', marginLeft: 8, fontSize: '0.72rem' }}>{a.assessee.department}</span>
-                      </div>
-                      {typeBadge(a.formType)}
+      <DashCard title="Pending by assessor" icon={<ClipboardList size={15} />} flush
+        description={`${assignments.length} pending evaluation${assignments.length !== 1 ? 's' : ''} for ${branchLabel(branch)}`}>
+        {assignments.length === 0 ? (
+          <div className="py-12 px-6 text-center">
+            <CheckCircle2 size={36} className="mx-auto mb-3" style={{ color: '#16A34A' }} />
+            <p className="text-sm font-bold" style={{ color: '#15803D' }}>All caught up!</p>
+            <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>No pending peer evaluations at this time.</p>
+          </div>
+        ) : (
+          <div>
+            {assessorGroups.map(({ assessor, evals }, gi) => {
+              const staffUrl = `${origin}/peereval?branch=${branch}&staffId=${assessor.id}`
+              return (
+                <div key={assessor.id} style={{ borderTop: gi > 0 ? '1px solid var(--light-gray)' : undefined }}>
+                  {/* Assessor header */}
+                  <div className="flex flex-wrap items-center gap-3 px-4 py-3">
+                    <Avatar first={assessor.firstName} last={assessor.lastName} tone="amber" />
+                    <div className="flex-1 min-w-[140px]">
+                      <div className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>{fullName(assessor)}</div>
+                      <div className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>{assessor.department} · {evals.length} pending</div>
                     </div>
-                  ))}
+                    <button
+                      type="button"
+                      onClick={() => setQrStaff(assessor)}
+                      title="Show QR Code"
+                      aria-label={`Show QR code for ${fullName(assessor)}`}
+                      className={`${BTN_SECONDARY} w-9 px-0`}
+                      style={{ ...CONTROL_STYLE, color: 'var(--teal)' }}
+                    >
+                      <QrCode size={15} />
+                    </button>
+                    <a
+                      href={staffUrl}
+                      target="_blank" rel="noreferrer"
+                      className={BTN_PRIMARY}
+                      style={{ background: 'var(--teal)' }}
+                    >
+                      <ExternalLink size={13} /> Open Survey
+                    </a>
+                  </div>
+
+                  {/* Eval items */}
+                  <ul className="px-4 pb-3 pl-[64px] space-y-1">
+                    {evals.map(a => (
+                      <li key={a.id} className="flex flex-wrap items-center gap-x-2.5 gap-y-1 rounded-lg px-3 py-2 text-sm" style={{ background: SUBTLE_BG }}>
+                        <Clock size={13} className="flex-shrink-0" style={{ color: '#D97706' }} />
+                        <div className="flex-1 min-w-0">
+                          <span className="font-medium" style={{ color: 'var(--charcoal)' }}>Evaluate: {fullName(a.assessee)}</span>
+                          <span className="ml-2 text-[11px]" style={{ color: 'var(--mid-gray)' }}>{a.assessee.department}</span>
+                        </div>
+                        {typeBadge(a.formType)}
+                      </li>
+                    ))}
+                  </ul>
                 </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
+              )
+            })}
+          </div>
+        )}
+      </DashCard>
 
       {/* Per-staff QR modal */}
       {qrStaff && (() => {
         const staffUrl = `${origin}/peereval?branch=${branch}&staffId=${qrStaff.id}`
         return (
-          <div style={{
-            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000,
-            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
-          }}>
-            <div style={{
-              background: '#fff', borderRadius: 14, width: '100%', maxWidth: 440,
-              boxShadow: '0 20px 60px rgba(0,0,0,0.25)', overflow: 'hidden',
-            }}>
-              <div style={{ padding: '20px 24px 16px', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: '1rem', color: '#111827' }}>Peer Evaluation — {fullName(qrStaff)}</div>
-                  <div style={{ fontSize: '0.78rem', color: '#6b7280', marginTop: 2 }}>Scan to go directly to their evaluations</div>
-                </div>
-                <button onClick={() => setQrStaff(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', padding: 4 }}>
-                  <X size={18} />
-                </button>
+          <ModalShell labelledBy="pe-staff-qr-title" maxWidth={440}>
+            <ModalHeader id="pe-staff-qr-title" title={`Peer Evaluation — ${fullName(qrStaff)}`}
+              subtitle="Scan to go directly to their evaluations" onClose={() => setQrStaff(null)} />
+            <div className="p-6 flex flex-col items-center gap-4 overflow-y-auto">
+              <img
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(staffUrl)}&color=1A7B8A`}
+                alt={`QR code for ${fullName(qrStaff)}`}
+                width={220} height={220}
+                className="rounded-xl block p-2 bg-white"
+                style={{ border: '1px solid var(--light-gray)' }}
+              />
+              <div className="text-center">
+                <div className="text-sm font-bold" style={DISPLAY}>{fullName(qrStaff)}</div>
+                <div className="text-[11px] mt-0.5 mb-1.5" style={{ color: 'var(--mid-gray)' }}>{qrStaff.department} · {branchLabel(branch)}</div>
+                <a href={staffUrl} target="_blank" rel="noreferrer"
+                  className="inline-flex items-center gap-1 text-xs font-semibold hover:underline" style={{ color: 'var(--teal)' }}>
+                  <ExternalLink size={11} /> Open form
+                </a>
               </div>
-              <div style={{ padding: 24, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
-                <img
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(staffUrl)}&color=1A7B8A`}
-                  alt={`QR code for ${fullName(qrStaff)}`}
-                  width={220} height={220}
-                  style={{ borderRadius: 10, border: '1px solid #e5e7eb', display: 'block' }}
-                />
-                <div style={{ textAlign: 'center' }}>
-                  <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#111827', marginBottom: 2 }}>{fullName(qrStaff)}</div>
-                  <div style={{ fontSize: '0.72rem', color: '#6b7280', marginBottom: 6 }}>{qrStaff.department} · {branchLabel(branch)}</div>
-                  <a href={staffUrl} target="_blank" rel="noreferrer" style={{ fontSize: '0.75rem', color: '#0284c7', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                    <ExternalLink size={11} /> Open form
-                  </a>
-                </div>
-                <div style={{ fontSize: '0.75rem', color: '#9ca3af', textAlign: 'center', lineHeight: 1.5 }}>
-                  This QR code is unique to {qrStaff.firstName} and links directly to their pending evaluations.
-                </div>
-              </div>
-              <div style={{ padding: '0 24px 20px', textAlign: 'center' }}>
-                <button onClick={() => setQrStaff(null)} style={{ padding: '8px 20px', borderRadius: 8, border: '1px solid #d1d5db', background: '#f9fafb', color: '#374151', cursor: 'pointer', fontSize: '0.83rem' }}>
-                  Close
-                </button>
-              </div>
+              <p className="text-xs text-center leading-relaxed" style={{ color: 'var(--mid-gray)' }}>
+                This QR code is unique to {qrStaff.firstName} and links directly to their pending evaluations.
+              </p>
             </div>
-          </div>
+            <div className="px-6 py-4 flex justify-end flex-shrink-0" style={{ borderTop: '1px solid var(--light-gray)' }}>
+              <button type="button" onClick={() => setQrStaff(null)} className={BTN_SECONDARY} style={CONTROL_STYLE}>
+                Close
+              </button>
+            </div>
+          </ModalShell>
         )
       })()}
     </div>
@@ -742,12 +957,22 @@ function AssignmentsTab({ role }: { role: string }) {
   const total     = assignments.length
   const completed = assignments.filter(a => a.status === 'COMPLETED').length
   const pct       = total > 0 ? Math.round((completed / total) * 100) : 0
+  const pendingTotal = assignments.filter(a => a.status === 'PENDING').length
+  const expiredTotal = assignments.filter(a => a.status === 'EXPIRED').length
+
+  // Group by assessor for card-based view
+  const byAssessorMap = new Map<string, { assessor: StaffMini; items: Assignment[] }>()
+  for (const a of assignments) {
+    if (!byAssessorMap.has(a.assessorId)) byAssessorMap.set(a.assessorId, { assessor: a.assessor, items: [] })
+    byAssessorMap.get(a.assessorId)!.items.push(a)
+  }
+  const groups = Array.from(byAssessorMap.values()).sort((a, b) => a.assessor.firstName.localeCompare(b.assessor.firstName))
 
   return (
-    <div>
+    <div className="space-y-4">
       {/* Filter bar */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
-        <select value={filterFormType} onChange={e => setFilterFormType(e.target.value)} style={selectStyle}>
+      <Toolbar>
+        <select aria-label="Evaluation type" value={filterFormType} onChange={e => setFilterFormType(e.target.value)} className={CONTROL} style={controlStyle(!!filterFormType)}>
           <option value="">All Types</option>
           <option value="HR08_ADMIN">HR08 Admin</option>
           <option value="HR08_PEER">HR08 Peer</option>
@@ -755,219 +980,183 @@ function AssignmentsTab({ role }: { role: string }) {
         </select>
 
         {!defaultBranch && (
-          <select value={filterBranch} onChange={e => setFilterBranch(e.target.value)} style={selectStyle}>
+          <select aria-label="Branch" value={filterBranch} onChange={e => setFilterBranch(e.target.value)} className={CONTROL} style={controlStyle(!!filterBranch)}>
             <option value="">All Branches</option>
             <option value="SBEA">East Branch</option>
             <option value="SBGH">Greenhills Branch</option>
           </select>
         )}
 
-        <select value={filterYear} onChange={e => setFilterYear(parseInt(e.target.value))} style={selectStyle}>
-          {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
+        <select aria-label="Year" value={filterYear} onChange={e => setFilterYear(parseInt(e.target.value))} className={CONTROL} style={CONTROL_STYLE}>
+          {YEAR_OPTIONS.map(y => <option key={y} value={y}>{y}</option>)}
         </select>
 
-        {/* Answered between — the response date, not the evaluation period. */}
-        <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase' }}>Answered</span>
-        <input type="date" value={filterFrom} onChange={e => setFilterFrom(e.target.value)}
-          aria-label="Answered from" title="Answered from" style={selectStyle} />
-        <span style={{ fontSize: '0.72rem', color: '#9ca3af' }}>to</span>
-        <input type="date" value={filterTo} onChange={e => setFilterTo(e.target.value)}
-          aria-label="Answered to" title="Answered to" style={selectStyle} />
-        {(filterFrom || filterTo) && (
-          <button onClick={() => { setFilterFrom(''); setFilterTo('') }}
-            style={{ ...selectStyle, cursor: 'pointer', color: '#64748b' }}>
-            Clear dates
-          </button>
-        )}
-
-        <select value={filterMonth} onChange={e => setFilterMonth(parseInt(e.target.value))} style={selectStyle}>
+        <select aria-label="Month" value={filterMonth} onChange={e => setFilterMonth(parseInt(e.target.value))} className={CONTROL} style={controlStyle(!!filterMonth)}>
           <option value={0}>All Months</option>
           {MONTH_NAMES.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
         </select>
 
-        <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={selectStyle}>
+        <select aria-label="Status" value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className={CONTROL} style={controlStyle(!!filterStatus)}>
           <option value="">All Statuses</option>
           <option value="PENDING">Pending</option>
           <option value="COMPLETED">Completed</option>
           <option value="EXPIRED">Expired</option>
         </select>
 
-        <button onClick={() => setShowQr(true)} style={{ ...iconBtnStyle, gap: 6, paddingLeft: 12, paddingRight: 12, color: '#1a7b8a', border: '1px solid #a7f3d0' }} title="QR Codes">
-          <QrCode size={15} /> <span style={{ fontSize: '0.78rem', fontWeight: 600 }}>QR Codes</span>
-        </button>
+        {/* Answered between — the response date, not the evaluation period. */}
+        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Answered between">
+          <span className={SECTION_LABEL} style={{ color: 'var(--mid-gray)' }}>Answered</span>
+          <input type="date" value={filterFrom} onChange={e => setFilterFrom(e.target.value)}
+            aria-label="Answered from" title="Answered from" className={`${CONTROL} w-[9.5rem]`} style={controlStyle(!!filterFrom)} />
+          <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>to</span>
+          <input type="date" value={filterTo} onChange={e => setFilterTo(e.target.value)}
+            aria-label="Answered to" title="Answered to" className={`${CONTROL} w-[9.5rem]`} style={controlStyle(!!filterTo)} />
+          {(filterFrom || filterTo) && (
+            <button type="button" onClick={() => { setFilterFrom(''); setFilterTo('') }}
+              className={`${BTN_XS} hover:bg-gray-100`} style={{ color: 'var(--mid-gray)' }}>
+              <X size={11} /> Clear dates
+            </button>
+          )}
+        </div>
 
-        <button onClick={fetchAssignments} style={{ ...iconBtnStyle, marginLeft: 'auto' }} title="Refresh">
-          <RefreshCw size={15} />
-        </button>
-      </div>
+        <div className="flex items-center gap-2 ml-auto">
+          <button type="button" onClick={() => setShowQr(true)} className={BTN_SECONDARY} style={{ ...CONTROL_STYLE, color: 'var(--teal)' }} title="QR Codes">
+            <QrCode size={15} /> QR Codes
+          </button>
+          <button type="button" onClick={fetchAssignments} className={`${BTN_SECONDARY} w-9 px-0`} style={{ ...CONTROL_STYLE, color: 'var(--mid-gray)' }} title="Refresh" aria-label="Refresh">
+            <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
+          </button>
+        </div>
+      </Toolbar>
 
-      {/* Completion stats bar */}
-      {!loading && total > 0 && (
-        <div style={{ marginBottom: 16, padding: '12px 16px', background: '#f9fafb', borderRadius: 10, border: '1px solid #e5e7eb' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-              {(['PENDING', 'COMPLETED', 'EXPIRED'] as PeerEvalStatus[]).map(s => {
-                const count = assignments.filter(a => a.status === s).length
-                return count > 0 ? (
-                  <div key={s} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', color: '#6b7280' }}>
-                    {statusBadge(s)}
-                    <span style={{ fontWeight: 600, color: '#374151' }}>{count}</span>
-                  </div>
-                ) : null
-              })}
-            </div>
-            <div style={{ fontWeight: 700, fontSize: '0.9rem', color: pct >= 80 ? '#059669' : pct >= 50 ? '#d97706' : '#dc2626' }}>
-              {pct}% complete
-            </div>
-          </div>
-          <div style={{ height: 6, background: '#e5e7eb', borderRadius: 99, overflow: 'hidden' }}>
-            <div style={{ width: `${pct}%`, height: '100%', background: pct >= 80 ? '#10b981' : pct >= 50 ? '#f59e0b' : '#ef4444', borderRadius: 99, transition: 'width 0.3s' }} />
-          </div>
-          <div style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: 4 }}>{completed} of {total} assignments completed</div>
+      {/* Completion stats */}
+      {loading ? <KpiRowSkeleton /> : (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <KpiCard label="Assignments" icon={<ClipboardList size={16} />}
+            value={total.toLocaleString()} sub={`${groups.length} assessor${groups.length !== 1 ? 's' : ''}`} />
+          <CompletionKpi pct={pct} completed={completed} total={total} />
+          <KpiCard label="Pending" icon={<Clock size={16} />} accent="#D97706"
+            value={pendingTotal.toLocaleString()} sub="Waiting on the assessor" />
+          <KpiCard label="Expired" icon={<Ban size={16} />} accent="#9CA3AF"
+            value={expiredTotal.toLocaleString()} sub="Past their window" />
         </div>
       )}
 
-      {error && (
-        <div style={{ padding: '10px 14px', background: '#fef2f2', borderRadius: 8, color: '#b91c1c', fontSize: '0.82rem', marginBottom: 12, display: 'flex', gap: 8 }}>
-          <AlertCircle size={15} style={{ flexShrink: 0 }} /> {error}
-        </div>
-      )}
+      {error && <InlineError message={error} onRetry={fetchAssignments} />}
 
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: '40px 0', color: '#9ca3af', fontSize: '0.85rem' }}>Loading…</div>
-      ) : assignments.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '48px 0', color: '#9ca3af', fontSize: '0.85rem' }}>
-          No assignments found. Use the Generate tab to create assignments.
-        </div>
-      ) : (() => {
-        // Group by assessor for card-based view
-        const byAssessorMap = new Map<string, { assessor: StaffMini; items: Assignment[] }>()
-        for (const a of assignments) {
-          if (!byAssessorMap.has(a.assessorId)) byAssessorMap.set(a.assessorId, { assessor: a.assessor, items: [] })
-          byAssessorMap.get(a.assessorId)!.items.push(a)
-        }
-        const groups = Array.from(byAssessorMap.values()).sort((a, b) => a.assessor.firstName.localeCompare(b.assessor.firstName))
-
-        return (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {groups.map(({ assessor, items }) => {
+      <DashCard title="Assignments by assessor" icon={<ClipboardList size={15} />} flush
+        description="Open an assessor to see who they are assessing, enter scores or send a reminder."
+        action={!loading && groups.length > 0 ? <CountPill tone="gray">{groups.length} assessors</CountPill> : undefined}>
+        {loading ? (
+          <ListSkeleton rows={5} />
+        ) : assignments.length === 0 ? (
+          error
+            ? <EmptyState title="Assignments couldn't be loaded" hint="Use Try again above to reload them." />
+            : <EmptyState title="No assignments found." hint="Use the Generate tab to create assignments." />
+        ) : (
+          <div>
+            {groups.map(({ assessor, items }, gi) => {
               const isExpanded = expandedId === assessor.id
               const pendingCount = items.filter(i => i.status === 'PENDING').length
               const completedCount = items.filter(i => i.status === 'COMPLETED').length
+              const log = emailLogs.get(assessor.id)
+              const sending = emailSending.has(assessor.id)
               return (
-                <div key={assessor.id} style={{ border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden', background: '#fff' }}>
-                  <button
-                    onClick={() => setExpandedId(isExpanded ? null : assessor.id)}
-                    style={{
-                      width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px',
-                      background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left',
-                    }}
-                  >
-                    <div style={{
-                      width: 34, height: 34, borderRadius: '50%', background: '#f0f9ff',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontWeight: 700, fontSize: '0.78rem', color: '#1a7b8a', flexShrink: 0,
-                    }}>
-                      {assessor.firstName[0]}{assessor.lastName[0]}
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#111827' }}>{assessor.firstName}</div>
-                      <div style={{ fontSize: '0.7rem', color: '#9ca3af' }}>{assessor.department}</div>
-                    </div>
-                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
-                      {pendingCount > 0 && (
-                        <span style={{ padding: '2px 8px', borderRadius: 99, background: '#fef3c7', color: '#92400e', fontSize: '0.68rem', fontWeight: 600 }}>
-                          {pendingCount} pending
-                        </span>
-                      )}
-                      {completedCount > 0 && (
-                        <span style={{ padding: '2px 8px', borderRadius: 99, background: '#d1fae5', color: '#065f46', fontSize: '0.68rem', fontWeight: 600 }}>
-                          {completedCount} done
-                        </span>
-                      )}
-                      {canManage && (() => {
-                        const log = emailLogs.get(assessor.id)
-                        const sending = emailSending.has(assessor.id)
-                        return (
-                          <div onClick={e => e.stopPropagation()}>
-                            <button
-                              onClick={() => handleEmailAssessor(assessor.id, `${assessor.firstName} ${assessor.lastName}`)}
-                              disabled={sending}
-                              title={log ? `Sent ${new Date(log.sentAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })} — click to resend` : `Email reminder to ${assessor.firstName}`}
-                              style={{
-                                padding: '3px 10px', borderRadius: 99, border: 'none',
-                                cursor: sending ? 'wait' : 'pointer', opacity: sending ? 0.6 : 1,
-                                fontSize: '0.68rem', fontWeight: 600,
-                                display: 'flex', alignItems: 'center', gap: 4,
-                                background: log ? '#d1fae5' : '#e0f2fe',
-                                color: log ? '#065f46' : '#0369a1',
-                              }}
-                            >
-                              <Mail size={11} />
-                              {sending ? 'Sending…' : log ? 'Email sent!' : 'Email Assessor'}
-                            </button>
-                          </div>
-                        )
-                      })()}
-                    </div>
-                    {isExpanded
-                      ? <ChevronUp size={16} style={{ color: '#9ca3af', flexShrink: 0 }} />
-                      : <ChevronDown size={16} style={{ color: '#9ca3af', flexShrink: 0 }} />
-                    }
-                  </button>
+                <div key={assessor.id} style={{ borderTop: gi > 0 ? `1px solid ${ROW_RULE}` : undefined }}>
+                  <div className={`flex items-center gap-2 px-4 py-2.5 transition-colors ${isExpanded ? '' : 'hover:bg-[#FAFCFB]'}`}
+                    style={isExpanded ? { background: SUBTLE_BG } : undefined}>
+                    <button
+                      type="button"
+                      onClick={() => setExpandedId(isExpanded ? null : assessor.id)}
+                      aria-expanded={isExpanded}
+                      className="flex-1 min-w-0 flex items-center gap-3 text-left py-0.5"
+                    >
+                      <ChevronRight size={15} className={`flex-shrink-0 transition-transform ${isExpanded ? 'rotate-90' : ''}`} style={{ color: 'var(--mid-gray)' }} />
+                      <Avatar first={assessor.firstName} last={assessor.lastName} />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-semibold truncate" style={{ color: 'var(--charcoal)' }}>{assessor.firstName}</div>
+                        <div className="text-[11px] truncate" style={{ color: 'var(--mid-gray)' }}>{assessor.department}</div>
+                      </div>
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        {pendingCount > 0 && <CountPill tone="amber">{pendingCount} pending</CountPill>}
+                        {completedCount > 0 && <CountPill tone="green">{completedCount} done</CountPill>}
+                      </div>
+                    </button>
+                    {canManage && (
+                      <button
+                        type="button"
+                        onClick={() => handleEmailAssessor(assessor.id, `${assessor.firstName} ${assessor.lastName}`)}
+                        disabled={sending}
+                        title={log ? `Sent ${new Date(log.sentAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })} — click to resend` : `Email reminder to ${assessor.firstName}`}
+                        className={`${BTN_XS} flex-shrink-0`}
+                        style={{
+                          cursor: sending ? 'wait' : 'pointer',
+                          background: log ? '#DCFCE7' : '#E0F2FE',
+                          color: log ? '#166534' : '#0369A1',
+                        }}
+                      >
+                        {sending ? <Loader2 size={11} className="animate-spin" /> : <Mail size={11} />}
+                        {sending ? 'Sending…' : log ? 'Email sent!' : 'Email Assessor'}
+                      </button>
+                    )}
+                  </div>
 
                   {isExpanded && (
-                    <div style={{ borderTop: '1px solid #f3f4f6', padding: '8px 12px' }}>
-                      <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '4px 6px 8px' }}>
+                    <div className="px-4 pb-3 pt-1 sm:pl-[60px]" style={{ background: SUBTLE_BG }}>
+                      <p className={`${SECTION_LABEL} px-1 pb-2`} style={{ color: 'var(--mid-gray)' }}>
                         Assessing:
-                      </div>
-                      {items.map(a => (
-                        <div key={a.id} style={{
-                          display: 'flex', alignItems: 'center', gap: 10, padding: '8px 6px',
-                          borderBottom: '1px solid #f3f4f6', fontSize: '0.82rem',
-                        }}>
-                          {typeBadge(a.formType)}
-                          <div style={{ flex: 1 }}>
-                            <span style={{ fontWeight: 500, color: '#111827' }}>{fullName(a.assessee)}</span>
-                            <span style={{ color: '#9ca3af', marginLeft: 6, fontSize: '0.7rem' }}>{a.assessee.department}</span>
-                          </div>
-                          {/* When it was actually answered. The status badge
-                              says "Completed" but not when, which is the whole
-                              question when checking for recent activity. */}
-                          {a.response?.submittedAt && (
-                            <span style={{ fontSize: '0.7rem', color: '#6b7280', whiteSpace: 'nowrap' }}
-                              title={`Answered ${new Date(a.response.submittedAt).toLocaleString('en-PH')}`}>
-                              {new Date(a.response.submittedAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
-                            </span>
-                          )}
-                          {statusBadge(a.status)}
-                          <div style={{ display: 'flex', gap: 4 }} onClick={e => e.stopPropagation()}>
-                            {a.status !== 'COMPLETED' && canManage && (
-                              <button onClick={() => setScoreModal(a)} title="Enter scores" style={{ ...smallBtnStyle, background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe' }}>
-                                <ClipboardList size={13} /> Scores
-                              </button>
+                      </p>
+                      <ul className="rounded-lg overflow-hidden bg-white" style={{ border: `1px solid ${ROW_RULE}` }}>
+                        {items.map((a, ii) => (
+                          <li key={a.id} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2 text-sm"
+                            style={{ borderTop: ii > 0 ? `1px solid ${ROW_RULE}` : undefined }}>
+                            {typeBadge(a.formType)}
+                            <div className="flex-1 min-w-[140px]">
+                              <span className="font-medium" style={{ color: 'var(--charcoal)' }}>{fullName(a.assessee)}</span>
+                              <span className="ml-1.5 text-[11px]" style={{ color: 'var(--mid-gray)' }}>{a.assessee.department}</span>
+                            </div>
+                            {/* When it was actually answered. The status badge
+                                says "Completed" but not when, which is the whole
+                                question when checking for recent activity. */}
+                            {a.response?.submittedAt && (
+                              <span className="inline-flex items-center gap-1 text-[11px] whitespace-nowrap" style={{ color: 'var(--mid-gray)', ...NUM }}
+                                title={`Answered ${new Date(a.response.submittedAt).toLocaleString('en-PH')}`}>
+                                <Calendar size={11} />
+                                {new Date(a.response.submittedAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
+                              </span>
                             )}
-                            {a.status === 'COMPLETED' && a.response && canManage && (
-                              <button onClick={() => setScoreModal(a)} title="View scores" style={{ ...smallBtnStyle, background: '#f0fdf4', color: '#15803d', border: '1px solid #bbf7d0' }}>
-                                <ClipboardList size={13} /> View
-                              </button>
-                            )}
-                            {canManage && (
-                              <button onClick={() => handleDelete(a.id)} disabled={actionLoading === a.id} title="Delete" style={{ ...smallBtnStyle, background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-                                <Trash2 size={13} />
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      ))}
+                            {statusBadge(a.status)}
+                            <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                              {a.status !== 'COMPLETED' && canManage && (
+                                <button type="button" onClick={() => setScoreModal(a)} title="Enter scores"
+                                  className={`${BTN_XS} hover:brightness-95`} style={{ background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE' }}>
+                                  <ClipboardList size={12} /> Scores
+                                </button>
+                              )}
+                              {a.status === 'COMPLETED' && a.response && canManage && (
+                                <button type="button" onClick={() => setScoreModal(a)} title="View scores"
+                                  className={`${BTN_XS} hover:brightness-95`} style={{ background: '#F0FDF4', color: '#15803D', border: '1px solid #BBF7D0' }}>
+                                  <ClipboardList size={12} /> View
+                                </button>
+                              )}
+                              {canManage && (
+                                <button type="button" onClick={() => handleDelete(a.id)} disabled={actionLoading === a.id} title="Delete" aria-label="Delete assignment"
+                                  className={`${BTN_XS} px-2 hover:brightness-95`} style={{ background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }}>
+                                  <Trash2 size={12} />
+                                </button>
+                              )}
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
                     </div>
                   )}
                 </div>
               )
             })}
           </div>
-        )
-      })()}
+        )}
+      </DashCard>
 
       {scoreModalAssignment && canManage && (
         <ScoreEntryModal
@@ -1022,6 +1211,7 @@ function ByAssesseeTab({ role }: { role: string }) {
   const total     = assignments.length
   const completed = assignments.filter(a => a.status === 'COMPLETED').length
   const pct       = total > 0 ? Math.round((completed / total) * 100) : 0
+  const pendingTotal = assignments.filter(a => a.status === 'PENDING').length
 
   // Group by assessee
   const byAssesseeMap = new Map<string, { assessee: StaffMini; items: Assignment[] }>()
@@ -1032,12 +1222,13 @@ function ByAssesseeTab({ role }: { role: string }) {
   const groups = Array.from(byAssesseeMap.values()).sort((a, b) =>
     a.assessee.firstName.localeCompare(b.assessee.firstName)
   )
+  const fullyDone = groups.filter(g => g.items.length > 0 && g.items.every(i => i.status === 'COMPLETED')).length
 
   return (
-    <div>
+    <div className="space-y-4">
       {/* Filter bar */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
-        <select value={filterFormType} onChange={e => setFilterFormType(e.target.value)} style={selectStyle}>
+      <Toolbar>
+        <select aria-label="Evaluation type" value={filterFormType} onChange={e => setFilterFormType(e.target.value)} className={CONTROL} style={controlStyle(!!filterFormType)}>
           <option value="">All Types</option>
           <option value="HR08_ADMIN">HR08 Admin</option>
           <option value="HR08_PEER">HR08 Peer</option>
@@ -1045,141 +1236,111 @@ function ByAssesseeTab({ role }: { role: string }) {
         </select>
 
         {!defaultBranch && (
-          <select value={filterBranch} onChange={e => setFilterBranch(e.target.value)} style={selectStyle}>
+          <select aria-label="Branch" value={filterBranch} onChange={e => setFilterBranch(e.target.value)} className={CONTROL} style={controlStyle(!!filterBranch)}>
             <option value="">All Branches</option>
             <option value="SBEA">East Branch</option>
             <option value="SBGH">Greenhills Branch</option>
           </select>
         )}
 
-        <select value={filterYear} onChange={e => setFilterYear(parseInt(e.target.value))} style={selectStyle}>
-          {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
+        <select aria-label="Year" value={filterYear} onChange={e => setFilterYear(parseInt(e.target.value))} className={CONTROL} style={CONTROL_STYLE}>
+          {YEAR_OPTIONS.map(y => <option key={y} value={y}>{y}</option>)}
         </select>
 
-        <select value={filterMonth} onChange={e => setFilterMonth(parseInt(e.target.value))} style={selectStyle}>
+        <select aria-label="Month" value={filterMonth} onChange={e => setFilterMonth(parseInt(e.target.value))} className={CONTROL} style={controlStyle(!!filterMonth)}>
           <option value={0}>All Months</option>
           {MONTH_NAMES.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
         </select>
 
-        <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={selectStyle}>
+        <select aria-label="Status" value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className={CONTROL} style={controlStyle(!!filterStatus)}>
           <option value="">All Statuses</option>
           <option value="PENDING">Pending</option>
           <option value="COMPLETED">Completed</option>
           <option value="EXPIRED">Expired</option>
         </select>
 
-        <button onClick={fetchAssignments} style={{ ...iconBtnStyle, marginLeft: 'auto' }} title="Refresh">
-          <RefreshCw size={15} />
+        <button type="button" onClick={fetchAssignments} className={`${BTN_SECONDARY} w-9 px-0 ml-auto`} style={{ ...CONTROL_STYLE, color: 'var(--mid-gray)' }} title="Refresh" aria-label="Refresh">
+          <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
         </button>
-      </div>
+      </Toolbar>
 
-      {/* Completion stats bar */}
-      {!loading && total > 0 && (
-        <div style={{ marginBottom: 16, padding: '12px 16px', background: '#f9fafb', borderRadius: 10, border: '1px solid #e5e7eb' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-              {(['PENDING', 'COMPLETED', 'EXPIRED'] as PeerEvalStatus[]).map(s => {
-                const count = assignments.filter(a => a.status === s).length
-                return count > 0 ? (
-                  <div key={s} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', color: '#6b7280' }}>
-                    {statusBadge(s)}
-                    <span style={{ fontWeight: 600, color: '#374151' }}>{count}</span>
-                  </div>
-                ) : null
-              })}
-            </div>
-            <div style={{ fontWeight: 700, fontSize: '0.9rem', color: pct >= 80 ? '#059669' : pct >= 50 ? '#d97706' : '#dc2626' }}>
-              {pct}% complete
-            </div>
-          </div>
-          <div style={{ height: 6, background: '#e5e7eb', borderRadius: 99, overflow: 'hidden' }}>
-            <div style={{ width: `${pct}%`, height: '100%', background: pct >= 80 ? '#10b981' : pct >= 50 ? '#f59e0b' : '#ef4444', borderRadius: 99, transition: 'width 0.3s' }} />
-          </div>
-          <div style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: 4 }}>{completed} of {total} assignments completed</div>
+      {/* Completion stats */}
+      {loading ? <KpiRowSkeleton /> : (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <KpiCard label="Staff assessed" icon={<Users size={16} />}
+            value={groups.length.toLocaleString()} sub={`${total} assignment${total !== 1 ? 's' : ''}`} />
+          <CompletionKpi pct={pct} completed={completed} total={total} />
+          <KpiCard label="Pending" icon={<Clock size={16} />} accent="#D97706"
+            value={pendingTotal.toLocaleString()} sub="Evaluations still open" />
+          <KpiCard label="Fully evaluated" icon={<CheckCircle2 size={16} />} accent="#16A34A"
+            value={fullyDone.toLocaleString()} sub="Every assessor has answered" />
         </div>
       )}
 
-      {error && (
-        <div style={{ padding: '10px 14px', background: '#fef2f2', borderRadius: 8, color: '#b91c1c', fontSize: '0.82rem', marginBottom: 12, display: 'flex', gap: 8 }}>
-          <AlertCircle size={15} style={{ flexShrink: 0 }} /> {error}
-        </div>
-      )}
+      {error && <InlineError message={error} onRetry={fetchAssignments} />}
 
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: '40px 0', color: '#9ca3af', fontSize: '0.85rem' }}>Loading…</div>
-      ) : groups.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '48px 0', color: '#9ca3af', fontSize: '0.85rem' }}>
-          No assignments found. Use the Generate tab to create assignments.
-        </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {groups.map(({ assessee, items }) => {
-            const isExpanded    = expandedId === assessee.id
-            const pendingCount  = items.filter(i => i.status === 'PENDING').length
-            const completedCount = items.filter(i => i.status === 'COMPLETED').length
-            return (
-              <div key={assessee.id} style={{ border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden', background: '#fff' }}>
-                <button
-                  onClick={() => setExpandedId(isExpanded ? null : assessee.id)}
-                  style={{
-                    width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px',
-                    background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left',
-                  }}
-                >
-                  <div style={{
-                    width: 34, height: 34, borderRadius: '50%', background: '#f0fdf4',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontWeight: 700, fontSize: '0.78rem', color: '#4a8073', flexShrink: 0,
-                  }}>
-                    {assessee.firstName[0]}{assessee.lastName[0]}
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#111827' }}>{fullName(assessee)}</div>
-                    <div style={{ fontSize: '0.7rem', color: '#9ca3af' }}>{assessee.department} · {items.length} evaluator{items.length !== 1 ? 's' : ''} assigned</div>
-                  </div>
-                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
-                    {pendingCount > 0 && (
-                      <span style={{ padding: '2px 8px', borderRadius: 99, background: '#fef3c7', color: '#92400e', fontSize: '0.68rem', fontWeight: 600 }}>
-                        {pendingCount} pending
-                      </span>
-                    )}
-                    {completedCount > 0 && (
-                      <span style={{ padding: '2px 8px', borderRadius: 99, background: '#d1fae5', color: '#065f46', fontSize: '0.68rem', fontWeight: 600 }}>
-                        {completedCount} done
-                      </span>
-                    )}
-                  </div>
-                  {isExpanded
-                    ? <ChevronUp size={16} style={{ color: '#9ca3af', flexShrink: 0 }} />
-                    : <ChevronDown size={16} style={{ color: '#9ca3af', flexShrink: 0 }} />
-                  }
-                </button>
-
-                {isExpanded && (
-                  <div style={{ borderTop: '1px solid #f3f4f6', padding: '8px 12px' }}>
-                    <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '4px 6px 8px' }}>
-                      Assessed by:
+      <DashCard title="Assignments by assessee" icon={<Users size={15} />} flush
+        description="Open a staff member to see who is assessing them and where each form stands."
+        action={!loading && groups.length > 0 ? <CountPill tone="gray">{groups.length} staff</CountPill> : undefined}>
+        {loading ? (
+          <ListSkeleton rows={5} />
+        ) : groups.length === 0 ? (
+          error
+            ? <EmptyState title="Assignments couldn't be loaded" hint="Use Try again above to reload them." />
+            : <EmptyState title="No assignments found." hint="Use the Generate tab to create assignments." />
+        ) : (
+          <div>
+            {groups.map(({ assessee, items }, gi) => {
+              const isExpanded    = expandedId === assessee.id
+              const pendingCount  = items.filter(i => i.status === 'PENDING').length
+              const completedCount = items.filter(i => i.status === 'COMPLETED').length
+              return (
+                <div key={assessee.id} style={{ borderTop: gi > 0 ? `1px solid ${ROW_RULE}` : undefined }}>
+                  <button
+                    type="button"
+                    onClick={() => setExpandedId(isExpanded ? null : assessee.id)}
+                    aria-expanded={isExpanded}
+                    className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${isExpanded ? '' : 'hover:bg-[#FAFCFB]'}`}
+                    style={isExpanded ? { background: SUBTLE_BG } : undefined}
+                  >
+                    <ChevronRight size={15} className={`flex-shrink-0 transition-transform ${isExpanded ? 'rotate-90' : ''}`} style={{ color: 'var(--mid-gray)' }} />
+                    <Avatar first={assessee.firstName} last={assessee.lastName} tone="green" />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-semibold truncate" style={{ color: 'var(--charcoal)' }}>{fullName(assessee)}</div>
+                      <div className="text-[11px] truncate" style={{ color: 'var(--mid-gray)' }}>{assessee.department} · {items.length} evaluator{items.length !== 1 ? 's' : ''} assigned</div>
                     </div>
-                    {items.map(a => (
-                      <div key={a.id} style={{
-                        display: 'flex', alignItems: 'center', gap: 10, padding: '8px 6px',
-                        borderBottom: '1px solid #f3f4f6', fontSize: '0.82rem',
-                      }}>
-                        {typeBadge(a.formType)}
-                        <div style={{ flex: 1 }}>
-                          <span style={{ fontWeight: 500, color: '#111827' }}>{fullName(a.assessor)}</span>
-                          <span style={{ color: '#9ca3af', marginLeft: 6, fontSize: '0.7rem' }}>{a.assessor.department}</span>
-                        </div>
-                        {statusBadge(a.status)}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
-      )}
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      {pendingCount > 0 && <CountPill tone="amber">{pendingCount} pending</CountPill>}
+                      {completedCount > 0 && <CountPill tone="green">{completedCount} done</CountPill>}
+                    </div>
+                  </button>
+
+                  {isExpanded && (
+                    <div className="px-4 pb-3 pt-1 sm:pl-[60px]" style={{ background: SUBTLE_BG }}>
+                      <p className={`${SECTION_LABEL} px-1 pb-2`} style={{ color: 'var(--mid-gray)' }}>
+                        Assessed by:
+                      </p>
+                      <ul className="rounded-lg overflow-hidden bg-white" style={{ border: `1px solid ${ROW_RULE}` }}>
+                        {items.map((a, ii) => (
+                          <li key={a.id} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2 text-sm"
+                            style={{ borderTop: ii > 0 ? `1px solid ${ROW_RULE}` : undefined }}>
+                            {typeBadge(a.formType)}
+                            <div className="flex-1 min-w-[140px]">
+                              <span className="font-medium" style={{ color: 'var(--charcoal)' }}>{fullName(a.assessor)}</span>
+                              <span className="ml-1.5 text-[11px]" style={{ color: 'var(--mid-gray)' }}>{a.assessor.department}</span>
+                            </div>
+                            {statusBadge(a.status)}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </DashCard>
     </div>
   )
 }
@@ -1237,6 +1398,9 @@ function ResultsTab({ role }: { role: string }) {
   const [filterFormType, setFilterFormType] = useState('')
   const [responses, setResponses]       = useState<EvalResponse[]>([])
   const [loading, setLoading]           = useState(false)
+  // Display only: a failed load used to leave the tab blank (or crash on a
+  // non-array body); now it shows an error card with Try again.
+  const [error, setError]               = useState('')
   const [expandedAssessee, setExpandedAssessee] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedRank, setExpandedRank] = useState<string | null>(null) // 'overall-1', 'dept-OT-2', etc
@@ -1249,14 +1413,18 @@ function ResultsTab({ role }: { role: string }) {
   }, [])
 
   const fetchResponses = useCallback(async () => {
-    setLoading(true)
+    setLoading(true); setError('')
     try {
       const params = new URLSearchParams()
       if (filterBranch) params.set('branch', filterBranch)
       if (filterYear) params.set('year', String(filterYear))
       if (filterFormType) params.set('formType', filterFormType)
       const res = await fetch(`/api/peer-eval/responses?${params}`)
-      setResponses(await res.json())
+      const data = await res.json()
+      if (!res.ok || !Array.isArray(data)) throw new Error((data && data.error) || 'Failed to load results')
+      setResponses(data)
+    } catch (e: unknown) {
+      setError((e instanceof Error && e.message) || 'Failed to load results')
     } finally { setLoading(false) }
   }, [filterBranch, filterYear, filterFormType])
 
@@ -1298,221 +1466,254 @@ function ResultsTab({ role }: { role: string }) {
   const formTypeForQuestions = (filterFormType || 'HR08_PEER') as PeerEvalType
   const questions = getQuestions(formTypeForQuestions)
 
+  // Headline figures for the KPI row — display only, from the responses already loaded.
+  const allScoreValues = responses.flatMap(r => Object.values(r.scores))
+  const pageAvg = allScoreValues.length > 0 ? allScoreValues.reduce((a, b) => a + b, 0) / allScoreValues.length : null
+  const deptCount = new Set(allAssesseeGroups.map(g => g.assessee.department)).size
+  const pageBand = scoreBand(pageAvg)
+
   return (
-    <div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 20 }}>
-        <select value={filterFormType} onChange={e => setFilterFormType(e.target.value)} style={selectStyle}>
+    <div className="space-y-4">
+      <Toolbar>
+        <select aria-label="Evaluation type" value={filterFormType} onChange={e => setFilterFormType(e.target.value)} className={CONTROL} style={controlStyle(!!filterFormType)}>
           <option value="">All Types</option>
           <option value="HR08_ADMIN">HR08 Admin</option>
           <option value="HR08_PEER">HR08 Peer</option>
           <option value="HR09">HR09</option>
         </select>
         {!defaultBranch && (
-          <select value={filterBranch} onChange={e => setFilterBranch(e.target.value)} style={selectStyle}>
+          <select aria-label="Branch" value={filterBranch} onChange={e => setFilterBranch(e.target.value)} className={CONTROL} style={controlStyle(!!filterBranch)}>
             <option value="">All Branches</option>
             <option value="SBEA">East Branch</option>
             <option value="SBGH">Greenhills Branch</option>
           </select>
         )}
-        <select value={filterYear} onChange={e => setFilterYear(parseInt(e.target.value))} style={selectStyle}>
-          {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
+        <select aria-label="Year" value={filterYear} onChange={e => setFilterYear(parseInt(e.target.value))} className={CONTROL} style={CONTROL_STYLE}>
+          {YEAR_OPTIONS.map(y => <option key={y} value={y}>{y}</option>)}
         </select>
-        <button onClick={fetchResponses} style={{ ...iconBtnStyle, marginLeft: 'auto' }} title="Refresh">
-          <RefreshCw size={15} />
-        </button>
-      </div>
-
-      {/* Sub-tab switcher inside Results */}
-      <div style={{ display: 'flex', gap: 4, marginBottom: 16, borderBottom: '1px solid #e5e7eb' }}>
-        {([
-          { id: 'overview' as const,      label: 'Overview' },
-          { id: 'by-department' as const, label: 'Per Department Rankings' },
-        ]).map(t => (
-          <button
-            key={t.id}
-            onClick={() => setSubTab(t.id)}
-            style={{
-              padding: '8px 16px', background: 'none', border: 'none', cursor: 'pointer',
-              fontSize: '0.82rem', fontWeight: 600,
-              color: subTab === t.id ? '#4a8073' : '#6b7280',
-              borderBottom: subTab === t.id ? '2px solid #4a8073' : '2px solid transparent',
-              marginBottom: -1,
-            }}
-          >
-            {t.label}
+        <div className="flex items-center gap-2 ml-auto">
+          {/* Sub-tab switcher inside Results */}
+          <PillTabs size="sm" label="Results views" value={subTab} onChange={setSubTab} tabs={[
+            { id: 'overview' as const,      label: 'Overview',                 icon: BarChart3 },
+            { id: 'by-department' as const, label: 'Per Department Rankings',  icon: Layers },
+          ]} />
+          <button type="button" onClick={fetchResponses} className={`${BTN_SECONDARY} w-9 px-0`} style={{ ...CONTROL_STYLE, color: 'var(--mid-gray)' }} title="Refresh" aria-label="Refresh">
+            <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
           </button>
-        ))}
-      </div>
-
-      {subTab === 'by-department' && (
-        <PerDepartmentRankings
-          groups={allAssesseeGroups}
-          allStaff={allStaff}
-          filterBranch={filterBranch}
-        />
-      )}
-
-      {subTab === 'overview' && (
-        <>
-      {/* Leaderboards first (hidden when user is searching) */}
-      {!searchQuery && allAssesseeGroups.length > 0 && (
-        <PeerEvalLeaderboards
-          groups={allAssesseeGroups}
-          expandedRank={expandedRank}
-          onExpand={setExpandedRank}
-        />
-      )}
-
-      {/* Search bar BELOW the Top 5 */}
-      <div style={{ marginTop: 20, marginBottom: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
-        <div style={{ position: 'relative', flex: 1, maxWidth: 420 }}>
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            placeholder="Search by name or department..."
-            style={{
-              width: '100%', padding: '8px 12px 8px 36px', borderRadius: 8,
-              border: '1.5px solid #d1d5db', fontSize: '0.85rem', outline: 'none',
-              background: '#fff',
-            }}
-          />
-          <span style={{
-            position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)',
-            color: '#9ca3af', fontSize: '0.9rem', pointerEvents: 'none',
-          }}>🔍</span>
         </div>
-        {searchQuery && (
-          <button
-            onClick={() => setSearchQuery('')}
-            style={{
-              padding: '6px 12px', borderRadius: 6, border: '1px solid #e5e7eb',
-              background: '#fff', fontSize: '0.78rem', fontWeight: 600,
-              color: '#6b7280', cursor: 'pointer',
-            }}
-          >Clear</button>
-        )}
-        <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>
-          {searchQuery ? `${assesseeGroups.length} of ${allAssesseeGroups.length}` : `${allAssesseeGroups.length} assessees`}
-        </span>
-      </div>
+      </Toolbar>
 
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: '40px 0', color: '#9ca3af', fontSize: '0.85rem' }}>Loading…</div>
-      ) : assesseeGroups.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '48px 0', color: '#9ca3af', fontSize: '0.85rem' }}>No results found for this period.</div>
+      {error ? (
+        <ErrorCard title="Couldn't load peer evaluation results" hint={error} onRetry={fetchResponses} />
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {assesseeGroups.map(({ assessee, responses: resps }) => {
-            const avgs = avgScores(resps)
-            const overall = overallAvg(avgs)
-            const isExpanded = expandedAssessee === assessee.id
-            const qSet = resps.length > 0 ? getQuestions(resps[0].formType) : questions
-            const strengths = resps.map(r => r.strengths).filter(Boolean) as string[]
-            const improvements = resps.map(r => r.improvements).filter(Boolean) as string[]
+        <>
+          {loading && responses.length === 0 ? <KpiRowSkeleton /> : (
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <KpiCard label="Staff with results" icon={<Users size={16} />}
+                value={allAssesseeGroups.length.toLocaleString()} sub={`Evaluated in ${filterYear}`} />
+              <KpiCard label="Responses" icon={<ClipboardList size={16} />}
+                value={responses.length.toLocaleString()} sub="Submitted evaluation forms" />
+              <KpiCard label="Avg. score" icon={<Star size={16} />} accent={pageBand.fg}
+                value={pageAvg != null
+                  ? <span>{pageAvg.toFixed(2)}<span className="text-sm font-semibold" style={{ color: 'var(--mid-gray)' }}> / 5</span></span>
+                  : '—'}
+                sub={<span style={{ color: pageAvg != null ? pageBand.fg : undefined, fontWeight: pageAvg != null ? 600 : undefined }}>{pageAvg != null ? `${pageBand.label} · all criteria` : 'No scores yet'}</span>} />
+              <KpiCard label="Departments" icon={<Layers size={16} />}
+                value={deptCount.toLocaleString()} sub="With at least one result" />
+            </div>
+          )}
 
-            return (
-              <div key={assessee.id} style={{ border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden', background: '#fff' }}>
-                <button
-                  onClick={() => setExpandedAssessee(isExpanded ? null : assessee.id)}
-                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}
-                >
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#111827' }}>{fullName(assessee)}</div>
-                    <div style={{ fontSize: '0.72rem', color: '#6b7280', marginTop: 2 }}>{assessee.department} · {resps.length} evaluation{resps.length !== 1 ? 's' : ''}</div>
+          {subTab === 'by-department' && (
+            loading && responses.length === 0 ? (
+              <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))' }}>
+                {Array.from({ length: 2 }).map((_, i) => <div key={i} className="rounded-xl" style={CARD_STYLE}><ListSkeleton rows={4} /></div>)}
+              </div>
+            ) : (
+              <PerDepartmentRankings
+                groups={allAssesseeGroups}
+                allStaff={allStaff}
+                filterBranch={filterBranch}
+              />
+            )
+          )}
+
+          {subTab === 'overview' && (
+            <>
+              {/* Leaderboards first (hidden when user is searching) */}
+              {!searchQuery && allAssesseeGroups.length > 0 && (
+                <PeerEvalLeaderboards
+                  groups={allAssesseeGroups}
+                  expandedRank={expandedRank}
+                  onExpand={setExpandedRank}
+                />
+              )}
+
+              <DashCard title="Individual results" icon={<BarChart3 size={15} />} flush
+                description="Average per criterion for each staff member, out of 5. Open a row for the breakdown and comments."
+                footer={<ScoreLegend />}>
+                {/* Search bar BELOW the Top 5 */}
+                <div className="flex flex-wrap items-center gap-2 px-4 py-3" style={{ borderBottom: '1px solid var(--light-gray)' }}>
+                  <div className="relative flex-1 min-w-[200px] max-w-md">
+                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mid-gray)' }} />
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={e => setSearchQuery(e.target.value)}
+                      placeholder="Search by name or department..."
+                      aria-label="Search by name or department"
+                      className={`${CONTROL} w-full pl-9 pr-8`}
+                      style={controlStyle(!!searchQuery)}
+                    />
+                    {searchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setSearchQuery('')}
+                        title="Clear search"
+                        aria-label="Clear search"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-gray-100"
+                      >
+                        <X size={13} style={{ color: 'var(--mid-gray)' }} />
+                      </button>
+                    )}
                   </div>
-                  <div style={{ padding: '4px 12px', borderRadius: 99, fontWeight: 700, fontSize: '0.9rem', background: '#f0fdf4', color: scoreColor(overall) }}>
-                    {overall.toFixed(1)} / 5
-                  </div>
-                  <span
-                    role="button"
-                    title="Download PDF"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      const formType = resps[0]?.formType ?? 'HR08_PEER'
-                      const qSet = getQuestions(formType)
-                      generatePeerEvalResultPDF({
-                        assesseeName: fullName(assessee),
-                        department: assessee.department,
-                        branch: (assessee as unknown as { branch?: string }).branch,
-                        overallAvg: overall,
-                        questions: qSet,
-                        averages: avgs,
-                        responses: resps.map(r => ({
-                          assessorName: fullName(r.assessor),
-                          submittedAt: r.submittedAt,
-                          overallAvg: overallAvg(r.scores),
-                          scores: r.scores,
-                          strengths: r.strengths,
-                          improvements: r.improvements,
-                        })),
-                      })
-                    }}
-                    style={{ padding: '4px 8px', borderRadius: 6, display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.72rem', fontWeight: 600, color: '#4a8073', border: '1px solid #c8dcd8', background: '#fff', cursor: 'pointer' }}
-                  >
-                    <Download size={12} /> PDF
+                  <span className="text-xs ml-auto" style={{ color: 'var(--mid-gray)', ...NUM }}>
+                    {searchQuery ? `${assesseeGroups.length} of ${allAssesseeGroups.length}` : `${allAssesseeGroups.length} assessees`}
                   </span>
-                  <div style={{ display: 'flex', gap: 3, alignItems: 'flex-end', height: 28 }}>
-                    {Object.keys(qSet).map(k => {
-                      const val = avgs[k] ?? 0
-                      const h = Math.round((val / 5) * 24) + 4
-                      return <div key={k} title={`${k.toUpperCase()}: ${val.toFixed(1)}`} style={{ width: 6, height: h, borderRadius: 2, background: scoreColor(val), opacity: 0.75 }} />
+                </div>
+
+                {loading ? (
+                  <ListSkeleton rows={6} />
+                ) : assesseeGroups.length === 0 ? (
+                  <EmptyState
+                    title={searchQuery ? 'No staff match this search' : 'No results found for this period.'}
+                    hint={searchQuery ? 'Try a different name or department, or clear the search.' : 'Results appear here once evaluators submit their forms.'} />
+                ) : (
+                  <div>
+                    {/* Sticky column header */}
+                    <div className="sticky top-0 z-10 hidden sm:flex items-center gap-3 px-4 py-2" style={{ background: SUBTLE_BG, borderBottom: '1px solid var(--light-gray)' }}>
+                      <span className={`${SECTION_LABEL} w-[15px]`} aria-hidden />
+                      <span className={`${SECTION_LABEL} flex-1`} style={{ color: 'var(--mid-gray)' }}>Staff</span>
+                      <span className={`${SECTION_LABEL} w-[96px] text-right`} style={{ color: 'var(--mid-gray)' }}>Average</span>
+                      <span className={`${SECTION_LABEL} w-[100px]`} style={{ color: 'var(--mid-gray)' }}>Criteria</span>
+                      <span className={`${SECTION_LABEL} w-[64px] text-right`} style={{ color: 'var(--mid-gray)' }}>Report</span>
+                    </div>
+
+                    {assesseeGroups.map(({ assessee, responses: resps }, gi) => {
+                      const avgs = avgScores(resps)
+                      const overall = overallAvg(avgs)
+                      const isExpanded = expandedAssessee === assessee.id
+                      const qSet = resps.length > 0 ? getQuestions(resps[0].formType) : questions
+                      const strengths = resps.map(r => r.strengths).filter(Boolean) as string[]
+                      const improvements = resps.map(r => r.improvements).filter(Boolean) as string[]
+
+                      return (
+                        <div key={assessee.id} style={{ borderTop: gi > 0 ? `1px solid ${ROW_RULE}` : undefined }}>
+                          <div className={`flex items-center gap-3 px-4 py-2.5 transition-colors ${isExpanded ? '' : 'hover:bg-[#FAFCFB]'}`}
+                            style={isExpanded ? { background: SUBTLE_BG } : undefined}>
+                            <button
+                              type="button"
+                              onClick={() => setExpandedAssessee(isExpanded ? null : assessee.id)}
+                              aria-expanded={isExpanded}
+                              className="flex-1 min-w-0 flex items-center gap-3 text-left py-0.5"
+                            >
+                              <ChevronRight size={15} className={`flex-shrink-0 transition-transform ${isExpanded ? 'rotate-90' : ''}`} style={{ color: 'var(--mid-gray)' }} />
+                              <div className="flex-1 min-w-0">
+                                <div className="text-sm font-semibold truncate" style={{ color: 'var(--charcoal)' }}>{fullName(assessee)}</div>
+                                <div className="text-[11px] truncate" style={{ color: 'var(--mid-gray)' }}>{assessee.department} · {resps.length} evaluation{resps.length !== 1 ? 's' : ''}</div>
+                              </div>
+                              <span className="w-[96px] flex justify-end flex-shrink-0">
+                                <ScorePill value={overall} suffix=" / 5" />
+                              </span>
+                              <span className="w-[100px] hidden sm:flex gap-[3px] items-end h-7 flex-shrink-0" aria-hidden>
+                                {Object.keys(qSet).map(k => {
+                                  const val = avgs[k] ?? 0
+                                  const h = Math.round((val / 5) * 24) + 4
+                                  return <span key={k} title={`${k.toUpperCase()}: ${val.toFixed(1)}`} className="block w-[6px] rounded-sm" style={{ height: h, background: scoreBand(val).bar }} />
+                                })}
+                              </span>
+                            </button>
+                            <span className="w-[64px] flex justify-end flex-shrink-0">
+                              <button
+                                type="button"
+                                title="Download PDF"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  const formType = resps[0]?.formType ?? 'HR08_PEER'
+                                  const qSet = getQuestions(formType)
+                                  generatePeerEvalResultPDF({
+                                    assesseeName: fullName(assessee),
+                                    department: assessee.department,
+                                    branch: (assessee as unknown as { branch?: string }).branch,
+                                    overallAvg: overall,
+                                    questions: qSet,
+                                    averages: avgs,
+                                    responses: resps.map(r => ({
+                                      assessorName: fullName(r.assessor),
+                                      submittedAt: r.submittedAt,
+                                      overallAvg: overallAvg(r.scores),
+                                      scores: r.scores,
+                                      strengths: r.strengths,
+                                      improvements: r.improvements,
+                                    })),
+                                  })
+                                }}
+                                className={`${BTN_XS} hover:bg-white`}
+                                style={{ color: 'var(--teal)', border: '1px solid var(--light-gray)', background: '#fff' }}
+                              >
+                                <Download size={12} /> PDF
+                              </button>
+                            </span>
+                          </div>
+
+                          {isExpanded && (
+                            <div className="px-4 pb-4 pt-2 sm:pl-[46px] space-y-4" style={{ background: SUBTLE_BG }}>
+                              <div className="rounded-lg bg-white p-4" style={{ border: `1px solid ${ROW_RULE}` }}>
+                                <p className={`${SECTION_LABEL} mb-3`} style={{ color: 'var(--mid-gray)' }}>Per-criterion average</p>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3">
+                                  {Object.entries(qSet).map(([key, label]) => {
+                                    const avg = avgs[key] ?? 0
+                                    const b = scoreBand(avg)
+                                    return (
+                                      <div key={key} className="grid grid-cols-[2.25rem_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1"
+                                        title={`${b.label} — ${avg.toFixed(2)} / 5`}>
+                                        <span className="text-[10.5px] font-bold" style={{ color: 'var(--mid-gray)' }}>{key.toUpperCase()}</span>
+                                        <span className="text-xs leading-snug" style={{ color: 'var(--charcoal)' }}>{label}</span>
+                                        <span className="text-sm font-bold text-right" style={{ color: b.fg, ...NUM }}>{avg.toFixed(1)}</span>
+                                        <div className="col-start-2 col-span-2 h-2 rounded-full overflow-hidden" style={{ background: ROW_RULE }}>
+                                          <div className="h-full rounded-full" style={{ width: `${(avg / 5) * 100}%`, background: b.bar }} />
+                                        </div>
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              </div>
+
+                              {(strengths.length > 0 || improvements.length > 0) && (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                  {strengths.length > 0 && (
+                                    <FeedbackList title="Strengths" icon={<ThumbsUp size={13} />} items={strengths}
+                                      fg="#166534" bg="#F0FDF4" border="#BBF7D0" />
+                                  )}
+                                  {improvements.length > 0 && (
+                                    <FeedbackList title="Areas for Improvement" icon={<MessageSquare size={13} />} items={improvements}
+                                      fg="#92400E" bg="#FFFBEB" border="#FDE68A" />
+                                  )}
+                                </div>
+                              )}
+
+                              <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+                                Evaluated by: {resps.map(r => fullName(r.assessor)).join(', ')}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      )
                     })}
                   </div>
-                  {isExpanded ? <ChevronUp size={16} style={{ color: '#9ca3af', flexShrink: 0 }} /> : <ChevronDown size={16} style={{ color: '#9ca3af', flexShrink: 0 }} />}
-                </button>
-
-                {isExpanded && (
-                  <div style={{ borderTop: '1px solid #f3f4f6', padding: '16px' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 8, marginBottom: 16 }}>
-                      {Object.entries(qSet).map(([key, label]) => {
-                        const avg = avgs[key] ?? 0
-                        return (
-                          <div key={key} style={{ padding: '10px 12px', background: '#f9fafb', borderRadius: 8, border: '1px solid #e5e7eb' }}>
-                            <div style={{ fontSize: '0.7rem', color: '#9ca3af', fontWeight: 600, marginBottom: 2 }}>{key.toUpperCase()}</div>
-                            <div style={{ fontSize: '0.77rem', color: '#374151', lineHeight: 1.4, marginBottom: 6 }}>{label}</div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <div style={{ flex: 1, height: 6, background: '#e5e7eb', borderRadius: 99, overflow: 'hidden' }}>
-                                <div style={{ width: `${(avg / 5) * 100}%`, height: '100%', background: scoreColor(avg), borderRadius: 99 }} />
-                              </div>
-                              <span style={{ fontWeight: 700, fontSize: '0.9rem', color: scoreColor(avg), minWidth: 28, textAlign: 'right' }}>{avg.toFixed(1)}</span>
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-
-                    {(strengths.length > 0 || improvements.length > 0) && (
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                        {strengths.length > 0 && (
-                          <div>
-                            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#065f46', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Strengths</div>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                              {strengths.map((s, i) => <div key={i} style={{ padding: '6px 10px', background: '#f0fdf4', borderRadius: 6, fontSize: '0.78rem', color: '#166534', borderLeft: '3px solid #4ade80' }}>{s}</div>)}
-                            </div>
-                          </div>
-                        )}
-                        {improvements.length > 0 && (
-                          <div>
-                            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#92400e', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Areas for Improvement</div>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                              {improvements.map((s, i) => <div key={i} style={{ padding: '6px 10px', background: '#fffbeb', borderRadius: 6, fontSize: '0.78rem', color: '#92400e', borderLeft: '3px solid #fbbf24' }}>{s}</div>)}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    <div style={{ marginTop: 12, fontSize: '0.75rem', color: '#9ca3af' }}>
-                      Evaluated by: {resps.map(r => fullName(r.assessor)).join(', ')}
-                    </div>
-                  </div>
                 )}
-              </div>
-            )
-          })}
-        </div>
-      )}
+              </DashCard>
+            </>
+          )}
         </>
       )}
     </div>
@@ -1535,7 +1736,11 @@ function GenerateTab({ role }: { role: string }) {
   const [genError, setGenError] = useState('')
 
   if (!isAdmin) {
-    return <div style={{ padding: '40px 0', textAlign: 'center', color: '#9ca3af', fontSize: '0.85rem' }}>You need Admin access to generate assignments.</div>
+    return (
+      <div className="rounded-xl" style={CARD_STYLE}>
+        <EmptyState title="Admin access required" hint="You need Admin access to generate assignments." />
+      </div>
+    )
   }
 
   async function handleGenerate() {
@@ -1554,96 +1759,97 @@ function GenerateTab({ role }: { role: string }) {
     }
   }
 
-  const descMap: Record<PeerEvalType, string> = {
+  // Partial: only the three generatable types have a description.
+  const descMap: Partial<Record<PeerEvalType, string>> = {
     HR08_ADMIN: 'Administration staff will assess ALL clinical staff in the selected branch. Annual.',
     HR08_PEER:  'Clinical staff are paired with same-department, same-work-day peers. Each assessee receives 2–3 assessors. Annual.',
     HR09:       'Each admin staff member is assessed by at least 10 randomly selected clinical staff. Annual.',
   }
 
   return (
-    <div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16, marginBottom: 20 }}>
-        <div style={cardStyle}>
-          <div style={cardLabelStyle}>Evaluation Type</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {(['HR08_ADMIN', 'HR08_PEER', 'HR09'] as PeerEvalType[]).map(t => (
-              <label key={t} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', padding: '10px 12px', borderRadius: 8, border: `1.5px solid ${formType === t ? '#1a7b8a' : '#e5e7eb'}`, background: formType === t ? '#f0f9ff' : '#fff' }}>
-                <input type="radio" name="formType" value={t} checked={formType === t} onChange={() => setFormType(t)} style={{ marginTop: 2, accentColor: '#1a7b8a' }} />
-                <div>
-                  <div style={{ fontWeight: 600, fontSize: '0.82rem', color: '#111827' }}>{t.replace('_', ' ')}</div>
-                  <div style={{ fontSize: '0.72rem', color: '#6b7280', lineHeight: 1.4, marginTop: 2 }}>{descMap[t]}</div>
-                </div>
-              </label>
-            ))}
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] gap-4 items-start">
+        <DashCard title="Evaluation Type" icon={<ClipboardList size={15} />} description="Which form to create assignments for.">
+          <div className="space-y-2" role="radiogroup" aria-label="Evaluation type">
+            {(['HR08_ADMIN', 'HR08_PEER', 'HR09'] as PeerEvalType[]).map(t => {
+              const active = formType === t
+              return (
+                <label key={t}
+                  className={`flex items-start gap-3 cursor-pointer px-3.5 py-3 rounded-lg transition-colors ${active ? '' : 'hover:bg-[#FAFCFB]'}`}
+                  style={{ border: `1.5px solid ${active ? 'var(--teal)' : 'var(--light-gray)'}`, background: active ? 'var(--pale-teal)' : '#fff' }}>
+                  <input type="radio" name="formType" value={t} checked={active} onChange={() => setFormType(t)} className="mt-0.5" style={{ accentColor: 'var(--teal)' }} />
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>{t.replace('_', ' ')} {typeBadge(t)}</div>
+                    <div className="text-xs leading-snug mt-0.5" style={{ color: 'var(--mid-gray)' }}>{descMap[t]}</div>
+                  </div>
+                </label>
+              )
+            })}
           </div>
-        </div>
+        </DashCard>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div className="space-y-4 min-w-0">
           {!defaultBranch && (
-            <div style={cardStyle}>
-              <div style={cardLabelStyle}>Branch</div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                {['SBEA', 'SBGH'].map(b => (
-                  <button key={b} onClick={() => setBranch(b)} style={{ flex: 1, padding: '10px 12px', borderRadius: 8, border: `1.5px solid ${branch === b ? '#1a7b8a' : '#e5e7eb'}`, background: branch === b ? '#f0f9ff' : '#fff', cursor: 'pointer', fontWeight: 600, fontSize: '0.82rem', color: branch === b ? '#1a7b8a' : '#374151' }}>
-                    {branchLabel(b)}
-                  </button>
-                ))}
+            <DashCard title="Branch" icon={<Building2 size={15} />}>
+              <div className="flex gap-1 p-1 rounded-lg" style={{ background: '#F3F6F5' }} role="group" aria-label="Branch">
+                {['SBEA', 'SBGH'].map(b => {
+                  const active = branch === b
+                  return (
+                    <button key={b} type="button" aria-pressed={active} onClick={() => setBranch(b)}
+                      className="flex-1 px-3 py-2 rounded-md text-sm font-semibold transition-colors"
+                      style={active ? { background: '#fff', color: 'var(--teal)', boxShadow: '0 1px 2px rgba(0,0,0,0.08)' } : { color: 'var(--mid-gray)' }}>
+                      {branchLabel(b)}
+                    </button>
+                  )
+                })}
               </div>
-            </div>
+            </DashCard>
           )}
 
-          <div style={cardStyle}>
-            <div style={cardLabelStyle}>Period</div>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <select value={year} onChange={e => setYear(parseInt(e.target.value))} style={{ ...selectStyle, flex: 1 }}>
-                {[2024, 2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
-              </select>
-            </div>
-            <div style={{ fontSize: '0.72rem', color: '#6b7280', marginTop: 6 }}>All assignments are annual</div>
+          <DashCard title="Period" icon={<Calendar size={15} />} description="All assignments are annual">
+            <select aria-label="Year" value={year} onChange={e => setYear(parseInt(e.target.value))} className={`${CONTROL} w-full`} style={CONTROL_STYLE}>
+              {YEAR_OPTIONS.map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+          </DashCard>
+
+          <div className="rounded-xl p-4 space-y-2" style={CARD_STYLE}>
+            <button
+              type="button"
+              onClick={handleGenerate}
+              disabled={generating}
+              className={`${BTN_PRIMARY} w-full h-10`}
+              style={{ background: 'var(--teal)' }}
+            >
+              {generating ? <Loader2 size={16} className="animate-spin" /> : <Zap size={16} />}
+              {generating ? 'Generating…' : `Generate ${formType} Assignments`}
+            </button>
+            <p className="text-[11px] text-center" style={{ color: 'var(--mid-gray)' }}>
+              Duplicate assignments are skipped automatically.
+            </p>
           </div>
         </div>
-      </div>
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <button
-          onClick={handleGenerate}
-          disabled={generating}
-          style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 24px', borderRadius: 8, border: 'none', background: generating ? '#9ca3af' : '#1a7b8a', color: '#fff', cursor: generating ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: '0.88rem' }}
-        >
-          <Zap size={16} />
-          {generating ? 'Generating…' : `Generate ${formType} Assignments`}
-        </button>
       </div>
 
       {result && (
-        <div style={{ marginTop: 16, padding: '14px 18px', background: '#f0fdf4', borderRadius: 10, border: '1px solid #bbf7d0' }}>
-          <div style={{ fontWeight: 700, color: '#065f46', marginBottom: 6, fontSize: '0.85rem' }}>Generation Complete</div>
-          <div style={{ display: 'flex', gap: 20, fontSize: '0.82rem', color: '#374151' }}>
-            <div><span style={{ fontWeight: 700, color: '#059669', fontSize: '1.1rem' }}>{result.created}</span> created</div>
-            <div><span style={{ fontWeight: 700, color: '#9ca3af', fontSize: '1.1rem' }}>{result.skipped}</span> skipped (duplicates)</div>
+        <SuccessNote title="Generation Complete">
+          <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
+            <div><span className="text-lg font-bold" style={{ color: '#15803D', ...NUM }}>{result.created}</span> created</div>
+            <div><span className="text-lg font-bold" style={{ color: 'var(--mid-gray)', ...NUM }}>{result.skipped}</span> skipped (duplicates)</div>
           </div>
-          {result.errors.length > 0 && <div style={{ marginTop: 8, fontSize: '0.75rem', color: '#b91c1c' }}>Errors: {result.errors.join(', ')}</div>}
-        </div>
+          {result.errors.length > 0 && <div className="mt-2 text-xs" style={{ color: '#B91C1C' }}>Errors: {result.errors.join(', ')}</div>}
+        </SuccessNote>
       )}
 
-      {genError && (
-        <div style={{ marginTop: 16, padding: '12px 16px', background: '#fef2f2', borderRadius: 8, color: '#b91c1c', fontSize: '0.82rem', display: 'flex', gap: 8 }}>
-          <AlertCircle size={15} style={{ flexShrink: 0 }} /> {genError}
-        </div>
-      )}
+      {genError && <InlineError message={genError} />}
 
-      <div style={{ marginTop: 24, padding: '16px', background: '#fafafa', borderRadius: 10, border: '1px solid #e5e7eb' }}>
-        <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#374151', marginBottom: 10 }}>Assignment Logic Reference</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: '0.76rem', color: '#6b7280', lineHeight: 1.6 }}>
-          <div><span style={{ fontWeight: 600, color: '#5b21b6' }}>HR08 Admin:</span> Each Administration staff → assesses all clinical staff in same branch. Annual.</div>
-          <div><span style={{ fontWeight: 600, color: '#1e40af' }}>HR08 Peer:</span> Clinical staff → same-department peers sharing at least 1 work day. 2–3 assessors per assessee. Annual.</div>
-          <div><span style={{ fontWeight: 600, color: '#9d174d' }}>HR09:</span> Each admin staff member is assessed by at least 10 randomly selected clinical staff in the branch. Annual.</div>
-        </div>
-        <div style={{ marginTop: 10, fontSize: '0.75rem', color: '#9ca3af' }}>
-          Staff fill out evaluations via the internal form at <strong>/peereval</strong> (accessible by QR code, no login required).
-          Duplicate assignments are skipped automatically.
-        </div>
-      </div>
+      <DashCard title="Assignment Logic Reference" icon={<Info size={15} />}
+        footer={<>Staff fill out evaluations via the internal form at <strong>/peereval</strong> (accessible by QR code, no login required). Duplicate assignments are skipped automatically.</>}>
+        <ul className="space-y-2.5 text-xs leading-relaxed" style={{ color: 'var(--mid-gray)' }}>
+          <li className="flex items-start gap-2.5">{typeBadge('HR08_ADMIN')}<span>Each Administration staff → assesses all clinical staff in same branch. Annual.</span></li>
+          <li className="flex items-start gap-2.5">{typeBadge('HR08_PEER')}<span>Clinical staff → same-department peers sharing at least 1 work day. 2–3 assessors per assessee. Annual.</span></li>
+          <li className="flex items-start gap-2.5">{typeBadge('HR09')}<span>Each admin staff member is assessed by at least 10 randomly selected clinical staff in the branch. Annual.</span></li>
+        </ul>
+      </DashCard>
     </div>
   )
 }
@@ -1716,144 +1922,122 @@ function SettingsTab({ role }: { role: string }) {
   }
 
   return (
-    <div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 20, alignItems: 'center' }}>
-        <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#111827', display: 'flex', alignItems: 'center', gap: 6 }}>
-          <Users size={16} style={{ color: '#1a7b8a' }} />
+    <div className="space-y-4">
+      <Toolbar>
+        <div className="flex items-center gap-2 text-sm font-bold mr-1" style={DISPLAY}>
+          <Users size={16} style={{ color: 'var(--teal)' }} />
           Admin Staff Work Days
         </div>
         {!defaultBranch && (
-          <select value={filterBranch} onChange={e => setFilterBranch(e.target.value)} style={selectStyle}>
+          <select aria-label="Branch" value={filterBranch} onChange={e => setFilterBranch(e.target.value)} className={CONTROL} style={CONTROL_STYLE}>
             <option value="SBEA">East Branch</option>
             <option value="SBGH">Greenhills Branch</option>
           </select>
         )}
-        <button onClick={fetchConfigs} style={{ ...iconBtnStyle }} title="Refresh"><RefreshCw size={15} /></button>
+        <button type="button" onClick={fetchConfigs} className={`${BTN_SECONDARY} w-9 px-0`} style={{ ...CONTROL_STYLE, color: 'var(--mid-gray)' }} title="Refresh" aria-label="Refresh">
+          <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
+        </button>
         <button
+          type="button"
           onClick={handleSync}
           disabled={syncing}
-          style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 8, border: '1px solid #a7f3d0', background: syncing ? '#f3f4f6' : '#f0fdf4', color: '#065f46', cursor: syncing ? 'not-allowed' : 'pointer', fontSize: '0.8rem', fontWeight: 600 }}
+          className={`${BTN_SECONDARY} ml-auto`}
+          style={{ ...CONTROL_STYLE, color: 'var(--teal)' }}
         >
-          <RefreshCw size={14} />
+          <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
           {syncing ? 'Syncing…' : 'Sync from HR Platform'}
         </button>
-      </div>
+      </Toolbar>
 
-      <div style={{ marginBottom: 16, padding: '10px 14px', background: '#f0f9ff', borderRadius: 8, border: '1px solid #bae6fd', fontSize: '0.78rem', color: '#0369a1' }}>
+      <InfoNote>
         Admin staff (Administration department) are sourced from <strong>HR Platform → Staff Profiles</strong>.
         Use &quot;Sync from HR Platform&quot; to import or update the list.
         Configure which days each admin is in the clinic — used for scheduling context.
-      </div>
+      </InfoNote>
 
-      {error && (
-        <div style={{ marginBottom: 12, padding: '10px 14px', background: '#fef2f2', borderRadius: 8, color: '#b91c1c', fontSize: '0.82rem', display: 'flex', gap: 8 }}>
-          <AlertCircle size={15} style={{ flexShrink: 0 }} /> {error}
-        </div>
-      )}
+      {error && <InlineError message={error} onRetry={fetchConfigs} />}
 
       {syncResult && (
-        <div style={{ marginBottom: 14, padding: '12px 16px', background: '#f0fdf4', borderRadius: 8, border: '1px solid #bbf7d0', fontSize: '0.82rem' }}>
-          <div style={{ fontWeight: 700, color: '#065f46', marginBottom: 4 }}>Sync complete</div>
-          <div style={{ color: '#374151' }}>{syncResult.created} created · {syncResult.updated} already configured</div>
-          {syncResult.errors.length > 0 && <div style={{ marginTop: 6, color: '#b91c1c', fontSize: '0.75rem' }}>{syncResult.errors.map((e, i) => <div key={i}>{e}</div>)}</div>}
-        </div>
+        <SuccessNote title="Sync complete">
+          <div className="text-sm">{syncResult.created} created · {syncResult.updated} already configured</div>
+          {syncResult.errors.length > 0 && <div className="mt-1.5 text-xs" style={{ color: '#B91C1C' }}>{syncResult.errors.map((e, i) => <div key={i}>{e}</div>)}</div>}
+        </SuccessNote>
       )}
 
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: '40px 0', color: '#9ca3af', fontSize: '0.85rem' }}>Loading…</div>
-      ) : configs.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '48px 0', color: '#9ca3af', fontSize: '0.85rem' }}>
-          No admin staff configured. Use &quot;Sync from HR Platform&quot; to import.
-        </div>
-      ) : (
-        <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
-            <thead>
-              <tr style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
-                <th style={thStyle}>Staff Member</th>
-                <th style={thStyle}>Branch</th>
-                <th style={{ ...thStyle, minWidth: 320 }}>Work Days in Clinic</th>
-                <th style={{ ...thStyle, textAlign: 'right' }}>Save</th>
-              </tr>
-            </thead>
-            <tbody>
-              {configs.map((c, idx) => {
-                const days = editDays[c.staffId] ?? c.workDays
-                const saved = JSON.stringify(days.slice().sort()) === JSON.stringify((c.workDays as string[]).slice().sort())
-                return (
-                  <tr key={c.staffId} style={{ borderBottom: '1px solid #f3f4f6', background: idx % 2 === 0 ? '#fff' : '#fafafa' }}>
-                    <td style={tdStyle}>
-                      <div style={{ fontWeight: 600, color: '#111827' }}>{c.staff.firstName} {c.staff.lastName}</div>
-                      {c.staff.jobTitle && <div style={{ fontSize: '0.7rem', color: '#9ca3af' }}>{c.staff.jobTitle}</div>}
-                    </td>
-                    <td style={tdStyle}>{branchLabel(c.branch) ?? c.branch}</td>
-                    <td style={tdStyle}>
-                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                        {DAYS_OF_WEEK.map(day => (
-                          <button
-                            key={day}
-                            onClick={() => toggleDay(c.staffId, day)}
-                            style={{ padding: '3px 8px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer', border: days.includes(day) ? '1.5px solid #1a7b8a' : '1.5px solid #e5e7eb', background: days.includes(day) ? '#f0f9ff' : '#f9fafb', color: days.includes(day) ? '#1a7b8a' : '#9ca3af' }}
-                          >
-                            {day}
-                          </button>
-                        ))}
-                      </div>
-                    </td>
-                    <td style={{ ...tdStyle, textAlign: 'right' }}>
-                      <button
-                        onClick={() => saveConfig(c)}
-                        disabled={saved || savingId === c.staffId}
-                        style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 12px', borderRadius: 7, border: 'none', fontSize: '0.75rem', fontWeight: 600, cursor: saved ? 'default' : 'pointer', background: saved ? '#f3f4f6' : '#1a7b8a', color: saved ? '#9ca3af' : '#fff' }}
-                      >
-                        <Save size={12} />
-                        {savingId === c.staffId ? 'Saving…' : saved ? 'Saved' : 'Save'}
-                      </button>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <DashCard title="Admin staff" icon={<Calendar size={15} />} flush
+        description="Tap a day to toggle it, then Save that row."
+        action={!loading && configs.length > 0 ? <CountPill tone="gray">{configs.length} staff</CountPill> : undefined}>
+        {loading ? (
+          <ListSkeleton rows={4} />
+        ) : configs.length === 0 ? (
+          <EmptyState title="No admin staff configured." hint="Use &quot;Sync from HR Platform&quot; to import." />
+        ) : (
+          <div className="overflow-auto max-h-[65vh]">
+            <table className="w-full text-sm" style={{ borderCollapse: 'separate', borderSpacing: 0, minWidth: 720 }}>
+              <thead>
+                <tr>
+                  <th className={`${TH} sticky top-0 z-10`} style={{ background: SUBTLE_BG, color: 'var(--mid-gray)', borderBottom: '1px solid var(--light-gray)' }}>Staff Member</th>
+                  <th className={`${TH} sticky top-0 z-10`} style={{ background: SUBTLE_BG, color: 'var(--mid-gray)', borderBottom: '1px solid var(--light-gray)' }}>Branch</th>
+                  <th className={`${TH} sticky top-0 z-10`} style={{ background: SUBTLE_BG, color: 'var(--mid-gray)', borderBottom: '1px solid var(--light-gray)', minWidth: 320 }}>Work Days in Clinic</th>
+                  <th className={`${TH} sticky top-0 z-10 text-right`} style={{ background: SUBTLE_BG, color: 'var(--mid-gray)', borderBottom: '1px solid var(--light-gray)', textAlign: 'right' }}>Save</th>
+                </tr>
+              </thead>
+              <tbody>
+                {configs.map((c) => {
+                  const days = editDays[c.staffId] ?? c.workDays
+                  const saved = JSON.stringify(days.slice().sort()) === JSON.stringify((c.workDays as string[]).slice().sort())
+                  return (
+                    <tr key={c.staffId} className="hover:bg-[#FAFCFB]">
+                      <td className="px-4 py-3 align-middle" style={{ borderBottom: `1px solid ${ROW_RULE}` }}>
+                        <div className="font-semibold" style={{ color: 'var(--charcoal)' }}>{c.staff.firstName} {c.staff.lastName}</div>
+                        {c.staff.jobTitle && <div className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>{c.staff.jobTitle}</div>}
+                      </td>
+                      <td className="px-4 py-3 align-middle whitespace-nowrap" style={{ borderBottom: `1px solid ${ROW_RULE}`, color: 'var(--charcoal)' }}>{branchLabel(c.branch) ?? c.branch}</td>
+                      <td className="px-4 py-3 align-middle" style={{ borderBottom: `1px solid ${ROW_RULE}` }}>
+                        <div className="flex gap-1 flex-wrap">
+                          {DAYS_OF_WEEK.map(day => {
+                            const on = days.includes(day)
+                            return (
+                              <button
+                                key={day}
+                                type="button"
+                                aria-pressed={on}
+                                onClick={() => toggleDay(c.staffId, day)}
+                                className="h-7 px-2.5 rounded-full text-[11px] font-semibold transition-colors"
+                                style={on
+                                  ? { background: 'var(--pale-teal)', color: 'var(--teal)', border: '1.5px solid var(--teal)' }
+                                  : { background: '#fff', color: 'var(--mid-gray)', border: '1.5px solid var(--light-gray)' }}
+                              >
+                                {day}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 align-middle text-right" style={{ borderBottom: `1px solid ${ROW_RULE}` }}>
+                        <button
+                          type="button"
+                          onClick={() => saveConfig(c)}
+                          disabled={saved || savingId === c.staffId}
+                          className={`${BTN_XS} h-8 px-3`}
+                          style={saved
+                            ? { background: '#F3F4F6', color: '#9CA3AF', cursor: 'default' }
+                            : { background: 'var(--teal)', color: '#fff', cursor: 'pointer' }}
+                        >
+                          {savingId === c.staffId ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                          {savingId === c.staffId ? 'Saving…' : saved ? 'Saved' : 'Save'}
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </DashCard>
     </div>
   )
-}
-
-// ─── Shared styles ────────────────────────────────────────────────────────────
-
-const selectStyle: React.CSSProperties = {
-  padding: '7px 10px', borderRadius: 8, border: '1px solid #d1d5db',
-  background: '#fff', fontSize: '0.82rem', color: '#374151', cursor: 'pointer',
-}
-
-const iconBtnStyle: React.CSSProperties = {
-  padding: '7px 10px', borderRadius: 8, border: '1px solid #d1d5db',
-  background: '#fff', color: '#6b7280', cursor: 'pointer', display: 'flex', alignItems: 'center',
-}
-
-const smallBtnStyle: React.CSSProperties = {
-  display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 8px',
-  borderRadius: 6, cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600,
-}
-
-const thStyle: React.CSSProperties = {
-  padding: '10px 12px', textAlign: 'left', fontSize: '0.74rem',
-  fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em',
-}
-
-const tdStyle: React.CSSProperties = {
-  padding: '10px 12px', verticalAlign: 'middle',
-}
-
-const cardStyle: React.CSSProperties = {
-  padding: '14px 16px', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10,
-}
-
-const cardLabelStyle: React.CSSProperties = {
-  fontSize: '0.72rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase',
-  letterSpacing: '0.05em', marginBottom: 10,
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
@@ -1870,52 +2054,45 @@ export default function PeerEvalClient({ role }: { role: string }) {
 
   const [activeTab, setActiveTab] = useState<Tab>('assignments')
 
-  const allTabs: { id: Tab; label: string; icon: React.ReactNode; visible: boolean }[] = [
-    { id: 'assignments',  label: 'Assignments',  icon: <ClipboardList size={15} />, visible: true },
-    { id: 'by-assessee',  label: 'By Assessee',  icon: <Users size={15} />,         visible: isMainAdmin },
-    { id: 'results',      label: 'Results',      icon: <BarChart3 size={15} />,     visible: isMainAdmin },
-    { id: 'generate',     label: 'Generate',     icon: <Zap size={15} />,           visible: !isFrontDesk },
-    { id: 'settings',     label: 'Settings',     icon: <Settings size={15} />,      visible: isMainAdmin },
+  const allTabs: { id: Tab; label: string; icon: typeof ClipboardList; visible: boolean }[] = [
+    { id: 'assignments',  label: 'Assignments',  icon: ClipboardList, visible: true },
+    { id: 'by-assessee',  label: 'By Assessee',  icon: Users,         visible: isMainAdmin },
+    { id: 'results',      label: 'Results',      icon: BarChart3,     visible: isMainAdmin },
+    { id: 'generate',     label: 'Generate',     icon: Zap,           visible: !isFrontDesk },
+    { id: 'settings',     label: 'Settings',     icon: Settings,      visible: isMainAdmin },
   ]
   const tabs = allTabs.filter(t => t.visible)
 
   return (
-    <div style={{ padding: '24px', maxWidth: 1100, margin: '0 auto' }}>
-      <div style={{ marginBottom: 20 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-          <UsersRound size={22} style={{ color: '#1a7b8a' }} />
-          <h1 style={{ fontSize: '1.4rem', fontWeight: 800, color: '#111827', margin: 0 }}>Peer Evaluation</h1>
-          <span style={{ padding: '2px 8px', borderRadius: 99, background: '#fef3c7', color: '#92400e', fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.08em' }}>BETA</span>
+    <div className="max-w-6xl space-y-5">
+      {/* ── Header ── */}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: 'var(--teal)' }}>Clinic Tools</p>
+          <h1 className="flex items-center gap-2.5 text-2xl font-bold leading-tight" style={DISPLAY}>
+            Peer Evaluation
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold tracking-widest" style={{ background: '#FEF3C7', color: '#92400E', fontFamily: 'var(--font-body)' }}>BETA</span>
+          </h1>
+          <p className="text-sm mt-1" style={{ color: 'var(--mid-gray)' }}>
+            Manage HR08 and HR09 peer evaluation assignments and responses.
+          </p>
         </div>
-        <p style={{ fontSize: '0.83rem', color: '#6b7280', margin: 0 }}>
-          Manage HR08 and HR09 peer evaluation assignments and responses.
-        </p>
+        {defaultBranch && (
+          <span className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-sm font-semibold" style={{ ...CONTROL_STYLE, background: SUBTLE_BG, color: 'var(--mid-gray)' }}
+            title="Your account is scoped to this branch">
+            <Building2 size={15} style={{ color: 'var(--teal)' }} /> {branchLabel(defaultBranch)}
+          </span>
+        )}
       </div>
 
       {defaultBranch && <NotificationBanner branch={defaultBranch} />}
 
-      <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: '2px solid #e5e7eb', paddingBottom: 0 }}>
-        {tabs.map(t => (
-          <button
-            key={t.id}
-            onClick={() => setActiveTab(t.id)}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px',
-              background: 'none', border: 'none', cursor: 'pointer',
-              fontWeight: activeTab === t.id ? 700 : 500,
-              fontSize: '0.85rem',
-              color: activeTab === t.id ? '#1a7b8a' : '#6b7280',
-              borderBottom: activeTab === t.id ? '2px solid #1a7b8a' : '2px solid transparent',
-              marginBottom: -2,
-              transition: 'color 0.15s, border-color 0.15s',
-            }}
-          >
-            {t.icon} {t.label}
-          </button>
-        ))}
-      </div>
+      {/* ── Page tabs ── */}
+      {tabs.length > 1 && (
+        <PillTabs label="Peer evaluation sections" tabs={tabs} value={activeTab} onChange={setActiveTab} />
+      )}
 
-      <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '20px' }}>
+      <div className="min-w-0">
         {activeTab === 'assignments'  && (isFrontDesk ? <FrontDeskPendingView role={role} /> : <AssignmentsTab role={role} />)}
         {activeTab === 'by-assessee' && isMainAdmin   && <ByAssesseeTab role={role} />}
         {activeTab === 'results'     && isMainAdmin   && <ResultsTab role={role} />}
@@ -1974,18 +2151,18 @@ function PerDepartmentRankings({
 
   // Sort depts alphabetically, sort entries high→low (eval-less staff last)
   const depts = Array.from(deptMap.keys()).sort()
-  const medalColors = ['#f59e0b', '#94a3b8', '#cd7f32']
+  const medalColors = ['#D99A1E', '#94A3B8', '#B87333'] // gold, silver, bronze
 
   if (depts.length === 0) {
     return (
-      <div style={{ textAlign: 'center', padding: '40px 0', color: '#9ca3af', fontSize: '0.85rem' }}>
-        No staff on record{filterBranch ? ' for this branch' : ''}.
+      <div className="rounded-xl" style={CARD_STYLE}>
+        <EmptyState title={`No staff on record${filterBranch ? ' for this branch' : ''}.`} />
       </div>
     )
   }
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))', gap: 16 }}>
+    <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(380px, 100%), 1fr))' }}>
       {depts.map(dept => {
         const ranked = deptMap.get(dept)!.slice().sort((a, b) => {
           if (a.hasData !== b.hasData) return a.hasData ? -1 : 1
@@ -2010,77 +2187,65 @@ function PerDepartmentRankings({
         const withData = ranked.filter(r => r.hasData).length
 
         return (
-          <div key={dept} style={{
-            background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden',
-          }}>
-            <div style={{
-              padding: '12px 16px', background: '#FFF3E8', borderBottom: '1px solid #FDE4CC',
-            }}>
-              <div style={{ fontSize: '0.62rem', fontWeight: 700, color: '#9a3412', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                Department{filterBranch ? ` · ${branchLabel(filterBranch)}` : ''}
+          <section key={dept} className="rounded-xl min-w-0 flex flex-col" style={CARD_STYLE}>
+            <header className="px-4 pt-3 pb-2.5 flex items-end justify-between gap-3" style={{ borderBottom: '1px solid var(--light-gray)' }}>
+              <div className="min-w-0">
+                <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--teal)' }}>
+                  Department{filterBranch ? ` · ${branchLabel(filterBranch)}` : ''}
+                </p>
+                <h3 className="text-[15px] font-bold leading-tight truncate" style={DISPLAY}>{dept}</h3>
               </div>
-              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
-                <div style={{ fontSize: '1rem', fontWeight: 700, color: '#7c2d12' }}>{dept}</div>
-                <div style={{ fontSize: '0.7rem', color: '#9a3412' }}>
-                  {ranked.length} staff · {withData} with evals
-                </div>
-              </div>
-            </div>
+              <span className="text-[11px] whitespace-nowrap flex-shrink-0" style={{ color: 'var(--mid-gray)', ...NUM }}>
+                {ranked.length} staff · {withData} with evals
+              </span>
+            </header>
 
-            <div>
+            <ol className="p-2 space-y-1">
               {ranked.map((r, i) => {
                 const rank = ranks[i]
                 const medal = rank > 0 && rank <= 3 ? medalColors[rank - 1] : undefined
+                const b = scoreBand(r.overall)
                 return (
-                  <div key={r.id} style={{
-                    display: 'flex', alignItems: 'center', gap: 10,
-                    padding: '9px 14px', borderTop: '1px solid #f3f4f6',
-                    background: rank === 1 ? '#FFFBEB' : r.hasData ? '#fff' : '#fafafa',
-                  }}>
-                    <div style={{
-                      width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      background: medal ? medal + '20' : r.hasData ? '#f1f5f9' : '#f3f4f6',
-                      color: medal ?? '#94a3b8',
-                      fontWeight: 800, fontSize: '0.78rem',
+                  <li key={r.id} className="flex items-center gap-3 rounded-lg px-2.5 py-2"
+                    style={{
+                      background: rank === 1 ? '#FFFBEB' : r.hasData ? 'transparent' : '#FAFAFA',
+                      border: `1px solid ${rank === 1 ? '#FDE68A' : 'transparent'}`,
                     }}>
+                    <span className="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold"
+                      style={medal ? { background: medal + '22', color: medal } : { background: r.hasData ? ROW_RULE : '#F3F4F6', color: 'var(--mid-gray)' }}>
                       {r.hasData ? rank : '—'}
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{
-                        fontSize: '0.85rem', fontWeight: 600,
-                        color: r.hasData ? '#111827' : '#9ca3af',
-                        lineHeight: 1.3,
-                      }}>
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-semibold leading-snug truncate" style={{ color: r.hasData ? 'var(--charcoal)' : 'var(--mid-gray)' }}>
                         {r.name}
                       </div>
-                      <div style={{ fontSize: '0.68rem', color: '#6b7280', marginTop: 1 }}>
+                      <div className="text-[11px] mt-px" style={{ color: 'var(--mid-gray)' }}>
                         {r.hasData
                           ? (r.responseCount + ' eval' + (r.responseCount !== 1 ? 's' : ''))
                           : 'No evaluations yet'}
                         {' · '}
-                        <span style={{ color: '#9ca3af' }}>{branchLabel(r.branch) ?? r.branch}</span>
+                        <span>{branchLabel(r.branch) ?? r.branch}</span>
                       </div>
                     </div>
-                    <div style={{ textAlign: 'right' }}>
+                    <div className="text-right flex-shrink-0">
                       {r.hasData ? (
                         <>
-                          <div style={{ fontSize: '1rem', fontWeight: 800, color: rank === 1 ? '#f59e0b' : '#0f766e', lineHeight: 1 }}>
+                          <div className="text-base font-bold leading-none" style={{ fontFamily: 'var(--font-display)', color: b.fg, ...NUM }}>
                             {r.overall.toFixed(2)}
                           </div>
-                          <div style={{ fontSize: '0.55rem', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                          <div className="text-[9.5px] font-semibold uppercase tracking-wider mt-0.5" style={{ color: 'var(--mid-gray)' }}>
                             of 5
                           </div>
                         </>
                       ) : (
-                        <div style={{ fontSize: '0.7rem', color: '#d1d5db', fontStyle: 'italic' }}>no data</div>
+                        <span className="text-[11px] italic" style={{ color: '#C4C9CF' }}>no data</span>
                       )}
                     </div>
-                  </div>
+                  </li>
                 )
               })}
-            </div>
-          </div>
+            </ol>
+          </section>
         )
       })}
     </div>
@@ -2167,15 +2332,15 @@ function PeerEvalLeaderboards({
   }
 
   return (
-    <div style={{ marginBottom: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div className="space-y-5">
       <LeaderboardSection title="Top 5 — Overall" groups={overallTop} keyPrefix="overall" expandedRank={expandedRank} onExpand={onExpand} />
 
       {branches.length > 0 && (
         <div>
-          <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#374151', marginBottom: 8 }}>
-            Top 5 — Per Branch
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 12 }}>
+          <p className={`${SECTION_LABEL} mb-2 flex items-center gap-1.5`} style={{ color: 'var(--mid-gray)' }}>
+            <Building2 size={12} /> Top 5 — Per Branch
+          </p>
+          <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(340px, 100%), 1fr))' }}>
             {branches.map(b => (
               <LeaderboardSection
                 key={b}
@@ -2194,10 +2359,10 @@ function PeerEvalLeaderboards({
 
       {depts.length > 0 && (
         <div>
-          <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#374151', marginBottom: 8 }}>
-            Top 5 — Per Department
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 12 }}>
+          <p className={`${SECTION_LABEL} mb-2 flex items-center gap-1.5`} style={{ color: 'var(--mid-gray)' }}>
+            <Layers size={12} /> Top 5 — Per Department
+          </p>
+          <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(300px, 100%), 1fr))' }}>
             {depts.map(d => (
               <LeaderboardSection
                 key={d}
@@ -2234,100 +2399,98 @@ function LeaderboardSection({
   onExpand: (key: string | null) => void
   compact?: boolean
 }) {
-  const medalColors = ['#f59e0b', '#94a3b8', '#cd7f32']
+  const medalColors = ['#D99A1E', '#94A3B8', '#B87333'] // gold, silver, bronze
 
   return (
-    <div style={{
-      background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, overflow: 'hidden',
-    }}>
-      <div style={{
-        padding: compact ? '10px 12px' : '12px 16px',
-        background: '#FFF3E8', borderBottom: '1px solid #FDE4CC',
-      }}>
+    <section className="rounded-xl min-w-0 flex flex-col" style={CARD_STYLE}>
+      <header className={compact ? 'px-4 pt-3 pb-2.5' : 'px-5 pt-4 pb-3'} style={{ borderBottom: '1px solid var(--light-gray)' }}>
         {subtitle && (
-          <div style={{ fontSize: '0.62rem', fontWeight: 700, color: '#9a3412', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--teal)' }}>
             {subtitle}
-          </div>
+          </p>
         )}
-        <div style={{ fontSize: compact ? '0.88rem' : '1rem', fontWeight: 700, color: '#7c2d12' }}>
+        <h3 className={`flex items-center gap-2 font-bold leading-tight ${compact ? 'text-[14px]' : 'text-[15px]'}`} style={DISPLAY}>
+          {!compact && <Trophy size={15} style={{ color: '#D99A1E' }} />}
           {title}
-        </div>
-      </div>
+        </h3>
+      </header>
       {groups.length === 0 ? (
-        <div style={{ padding: 20, textAlign: 'center', color: '#9ca3af', fontSize: '0.78rem' }}>
+        <p className="py-6 text-center text-xs" style={{ color: 'var(--mid-gray)' }}>
           No data yet
-        </div>
+        </p>
       ) : (
-        <div>
+        <ol className={compact ? 'p-2 space-y-1' : 'p-3 space-y-1.5'}>
           {groups.map(g => {
             const tied = g.members.length > 1
             const key = keyPrefix + '-' + g.rank
             const expanded = expandedRank === key
             const medal = g.rank <= 3 ? medalColors[g.rank - 1] : undefined
             const names = g.members.map(m => m.name).join(', ')
-            return (
-              <div key={key} style={{ borderTop: '1px solid #f3f4f6' }}>
-                <div
-                  onClick={() => tied && onExpand(expanded ? null : key)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 10,
-                    padding: compact ? '8px 12px' : '10px 16px',
-                    background: g.rank === 1 ? '#FFFBEB' : '#fff',
-                    cursor: tied ? 'pointer' : 'default',
-                  }}
-                >
-                  <div style={{
-                    width: compact ? 26 : 30, height: compact ? 26 : 30, borderRadius: '50%',
-                    flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    background: medal ? medal + '20' : '#f1f5f9',
-                    color: medal ?? '#94a3b8',
-                    fontWeight: 800, fontSize: '0.82rem',
-                  }}>
-                    {g.rank}
+            const b = scoreBand(g.score)
+            const content = (
+              <>
+                <span className={`${compact ? 'w-7 h-7 text-xs' : 'w-8 h-8 text-sm'} rounded-full flex-shrink-0 flex items-center justify-center font-bold`}
+                  style={medal ? { background: medal + '22', color: medal } : { background: ROW_RULE, color: 'var(--mid-gray)' }}>
+                  {g.rank}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <div className={`${compact ? 'text-[13px]' : 'text-sm'} font-semibold leading-snug break-words`} style={{ color: 'var(--charcoal)' }}>
+                    {names}
                   </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: compact ? '0.78rem' : '0.85rem', fontWeight: 700, color: '#111827', lineHeight: 1.3, wordBreak: 'break-word' }}>
-                      {names}
+                  {tied ? (
+                    <div className="flex flex-wrap items-center gap-1.5 text-[11px] mt-1" style={{ color: 'var(--mid-gray)' }}>
+                      <span className="px-1.5 py-px rounded-full text-[10px] font-bold" style={{ background: '#FEF3C7', color: '#92400E' }}>
+                        Tied · {g.members.length}
+                      </span>
+                      <span className="inline-flex items-center gap-0.5">
+                        {expanded ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+                        {expanded ? 'Hide' : 'Tap to see each person'}
+                      </span>
                     </div>
-                    {tied ? (
-                      <div style={{ fontSize: '0.68rem', color: '#c69849', fontWeight: 600, marginTop: 2 }}>
-                        {expanded ? '▾ Hide' : '▸ Tap'} · {g.members.length} tied
-                      </div>
-                    ) : (
-                      <div style={{ fontSize: '0.68rem', color: '#6b7280', marginTop: 2 }}>
-                        {g.members[0].department}{g.members[0].branch ? ' · ' + (branchLabel(g.members[0].branch) ?? g.members[0].branch) : ''} · {g.members[0].responseCount} eval{g.members[0].responseCount !== 1 ? 's' : ''}
-                      </div>
-                    )}
+                  ) : (
+                    <div className="text-[11px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+                      {g.members[0].department}{g.members[0].branch ? ' · ' + (branchLabel(g.members[0].branch) ?? g.members[0].branch) : ''} · {g.members[0].responseCount} eval{g.members[0].responseCount !== 1 ? 's' : ''}
+                    </div>
+                  )}
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <div className={`${compact ? 'text-base' : 'text-xl'} font-bold leading-none`} style={{ fontFamily: 'var(--font-display)', color: b.fg, ...NUM }}>
+                    {g.score.toFixed(2)}
                   </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: compact ? '0.95rem' : '1.1rem', fontWeight: 800, color: g.rank === 1 ? '#f59e0b' : '#0f766e', lineHeight: 1 }}>
-                      {g.score.toFixed(2)}
-                    </div>
-                    <div style={{ fontSize: '0.56rem', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                      of 5
-                    </div>
+                  <div className="text-[9.5px] font-semibold uppercase tracking-wider mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+                    of 5
                   </div>
                 </div>
+              </>
+            )
+            return (
+              <li key={key} className="rounded-lg overflow-hidden"
+                style={{ background: g.rank === 1 ? '#FFFBEB' : 'transparent', border: `1px solid ${g.rank === 1 ? '#FDE68A' : 'transparent'}` }}>
+                {tied ? (
+                  <button type="button" aria-expanded={expanded} onClick={() => onExpand(expanded ? null : key)}
+                    className={`w-full text-left flex items-center gap-3 hover:bg-black/[0.02] ${compact ? 'px-2.5 py-2' : 'px-3 py-2.5'}`}>
+                    {content}
+                  </button>
+                ) : (
+                  <div className={`flex items-center gap-3 ${compact ? 'px-2.5 py-2' : 'px-3 py-2.5'}`}>{content}</div>
+                )}
 
                 {tied && expanded && (
-                  <div style={{ background: '#FFFBEB', padding: '4px 12px 10px 44px', borderTop: '1px dashed #FDE4CC' }}>
+                  <div className="px-2.5 pb-2.5 space-y-1">
                     {g.members.map(m => (
-                      <div key={m.id} style={{
-                        padding: '6px 0', borderTop: '1px dashed #FDE4CC', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: 8,
-                      }}>
-                        <span style={{ color: '#1f2937', flex: 1, fontWeight: 600 }}>{m.name}</span>
-                        <span style={{ color: '#6b7280', fontSize: '0.7rem' }}>{m.department}{m.branch ? ' · ' + (branchLabel(m.branch) ?? m.branch) : ''}</span>
-                        <span style={{ color: '#6b7280', fontSize: '0.7rem' }}>{m.responseCount} eval{m.responseCount !== 1 ? 's' : ''}</span>
+                      <div key={m.id} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-md bg-white px-3 py-1.5 text-xs" style={{ border: `1px solid ${ROW_RULE}` }}>
+                        <span className="flex-1 min-w-0 font-semibold" style={{ color: 'var(--charcoal)' }}>{m.name}</span>
+                        <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>{m.department}{m.branch ? ' · ' + (branchLabel(m.branch) ?? m.branch) : ''}</span>
+                        <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>{m.responseCount} eval{m.responseCount !== 1 ? 's' : ''}</span>
                       </div>
                     ))}
                   </div>
                 )}
-              </div>
+              </li>
             )
           })}
-        </div>
+        </ol>
       )}
-    </div>
+    </section>
   )
 }
-
