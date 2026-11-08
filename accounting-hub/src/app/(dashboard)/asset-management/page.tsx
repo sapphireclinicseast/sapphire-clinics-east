@@ -41,6 +41,7 @@ import AssetCalculator from './AssetCalculator'
 import LocationSettings, { type AssetRoom } from './LocationSettings'
 import { useResizableColumns, ResizableColgroup, ColResizeHandle } from '@/components/useResizableColumns'
 import { NameCombobox } from '@/components/NameCombobox'
+import { HR_PAGE_CLASS, HR_PAGE_STYLE, HrShimmerStyle, hrBtn } from '@/components/ui/hr-look'
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -1076,79 +1077,81 @@ function AssetManagementInner() {
 
   // ── Render ────────────────────────────────────────────────────
   return (
-    <div className="p-6 max-w-screen-xl mx-auto space-y-6">
+    <div className={HR_PAGE_CLASS} style={HR_PAGE_STYLE}>
+      <HrShimmerStyle />
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Building2 size={24} className="text-teal-600" />
-          <div>
-            <h1 className="text-2xl font-semibold text-gray-900">Asset Management</h1>
-            <p className="text-xs text-gray-500">For property, plant &amp; equipment — long-term assets the clinics use (2020–2100). Stock for sale (1050 Inventory) belongs in Inventory &amp; Procurement.</p>
-          </div>
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold leading-tight flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+            <Building2 size={22} style={{ color: 'var(--teal)' }} /> Asset Management
+          </h1>
+          <p className="mt-1 text-[13px] max-w-3xl" style={{ color: 'var(--mid-gray)' }}>
+            For property, plant &amp; equipment — long-term assets the clinics use (2020–2100). Stock for sale (1050 Inventory) belongs in Inventory &amp; Procurement.
+          </p>
         </div>
         {(tab === 'assets' || tab === 'auditable') && (
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => exportAssets('xlsx')}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50"
+              className={hrBtn.ghost + ' h-9'} style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}
               title="Download the current list as Excel"
             >
-              <FileDown size={16} /> Excel
+              <FileDown size={15} /> Excel
             </button>
             <button
               onClick={() => exportAssets('pdf')}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50"
+              className={hrBtn.ghost + ' h-9'} style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}
               title="Download the current list as PDF (print as naming guide)"
             >
-              <Printer size={16} /> PDF
+              <Printer size={15} /> PDF
             </button>
             {canManage && (
             <button
               onClick={openDepSettings}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50"
+              className={hrBtn.ghost + ' h-9'} style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}
             >
-              <Settings2 size={16} />
+              <Settings2 size={15} />
               Depreciation Settings
             </button>
             )}
             {canManage && (
             <button
               onClick={() => setShowLocSettings(true)}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50"
+              className={hrBtn.ghost + ' h-9'} style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}
               title="Set the rooms of each branch — the choices of an asset's Location"
             >
-              <MapPin size={16} />
+              <MapPin size={15} />
               Location Settings
             </button>
             )}
             {canWrite && (
             <button
               onClick={openAssetCalc}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50"
+              className={hrBtn.ghost + ' h-9'} style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}
               title="Record a purchase of several assets — freight is allocated to each asset proportionally by CBM"
             >
-              <Calculator size={16} />
+              <Calculator size={15} />
               Freight Calculator
             </button>
             )}
             {canWrite && (
             <button
               onClick={() => setShowCalculator(true)}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border"
+              className={hrBtn.outline}
               style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}
               title="Land freight and foreign-currency costs onto several assets at once"
             >
-              <Calculator size={16} />
+              <Calculator size={15} />
               Asset Calculator
             </button>
             )}
             {canWrite && (
             <button
               onClick={openAdd}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white"
+              className={hrBtn.primary}
               style={{ background: 'var(--teal)' }}
             >
-              <Plus size={16} />
+              <Plus size={15} />
               Add Asset
             </button>
             )}
@@ -1157,11 +1160,15 @@ function AssetManagementInner() {
       </div>
 
       {/* Tabs */}
-      <div className="flex items-center gap-1 border-b" style={{ borderColor: 'var(--light-gray)' }}>
-        {([['assets', 'Assets'], ['auditable', 'Auditable Assets'], ['accountability', 'Accountability'], ['departments', 'By Department'], ['audit', 'Asset Audit'], ['flowchart', 'Recording Flowchart']] as const).map(([v, label]) => (
-          <button key={v} onClick={() => setTab(v)} className="px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors"
-            style={{ borderColor: tab === v ? 'var(--teal)' : 'transparent', color: tab === v ? 'var(--teal)' : 'var(--mid-gray)' }}>{label}</button>
-        ))}
+      <div className="border-b-2" style={{ borderColor: 'var(--light-gray)' }}>
+        {/* One row; swipes sideways on narrow screens */}
+        <div className="flex items-end -mb-[2px] max-w-full overflow-x-auto" role="tablist">
+          {([['assets', 'Assets'], ['auditable', 'Auditable Assets'], ['accountability', 'Accountability'], ['departments', 'By Department'], ['audit', 'Asset Audit'], ['flowchart', 'Recording Flowchart']] as const).map(([v, label]) => (
+            <button key={v} onClick={() => setTab(v)} role="tab" aria-selected={tab === v}
+              className="px-4 py-2.5 border-b-2 text-[13px] font-semibold whitespace-nowrap transition-colors hover:text-[var(--teal)]"
+              style={{ fontFamily: 'var(--font-display)', borderColor: tab === v ? 'var(--teal)' : 'transparent', color: tab === v ? 'var(--teal)' : 'var(--mid-gray)' }}>{label}</button>
+          ))}
+        </div>
       </div>
 
       {tab === 'accountability' && <AccountabilityTab assets={assets} loading={loading} />}
@@ -1174,8 +1181,8 @@ function AssetManagementInner() {
 
       {/* Error banner */}
       {error && (
-        <div className="flex items-center gap-2 bg-red-50 text-red-700 border border-red-200 rounded-lg px-4 py-3 text-sm">
-          <AlertCircle size={16} />
+        <div className="flex items-center gap-2 rounded-lg border px-4 py-2.5 text-[13px]" style={{ background: '#fef2f2', borderColor: '#fecaca', color: '#b91c1c' }}>
+          <AlertCircle size={15} />
           {error}
           <button className="ml-auto" onClick={() => setError('')}><X size={14} /></button>
         </div>
@@ -1184,7 +1191,7 @@ function AssetManagementInner() {
       {(tab === 'assets' || tab === 'auditable') && (
       <div className={expanded ? 'fixed inset-0 z-40 overflow-auto p-6 space-y-4' : 'space-y-6'} style={expanded ? { background: 'var(--off-white)' } : undefined}>
       {/* Filter bar */}
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3 px-4 py-2.5 rounded-lg border" style={{ background: '#fcfdfa', borderColor: 'var(--light-gray)' }}>
         {/* Global search */}
         <div className="relative">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -1193,7 +1200,7 @@ function AssetManagementInner() {
             placeholder="Search assets…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-9 pr-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 w-56"
+            className="pl-9 pr-3 h-9 border rounded-lg text-[13px] bg-white outline-none focus:border-[var(--teal)] w-56" style={{ borderColor: 'var(--light-gray)' }}
           />
           {search && (
             <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
@@ -1339,11 +1346,10 @@ function AssetManagementInner() {
       )}
 
       {/* Table */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+      <div className="bg-white rounded-lg border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
         {loading ? (
-          <div className="flex items-center justify-center py-16 text-gray-400">
-            <Loader2 size={24} className="animate-spin mr-2" />
-            Loading assets…
+          <div className="p-4 space-y-2" aria-busy="true">
+            {Array.from({ length: 8 }, (_, i) => <div key={i} className="h-10 rounded-md hr-shimmer" />)}
           </div>
         ) : assets.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-gray-400 gap-2">
@@ -1355,7 +1361,7 @@ function AssetManagementInner() {
             <table ref={assetTableRef} className="w-full text-sm" style={assetRz.tableStyle}>
               <ResizableColgroup rz={assetRz} />
               <thead>
-                <tr className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
+                <tr className="border-b sticky top-0 z-10" style={{ background: 'var(--hr-head)', borderColor: 'var(--light-gray)' }}>
 
                   {canManage && (
                     <th className="relative px-3 py-3 w-10"><ColResizeHandle rz={assetRz} index={0} />
