@@ -9,8 +9,12 @@
 // Nothing here writes, so there is no role check beyond being signed in — see
 // /api/partner-institutions, which is the thing actually holding the shared key.
 
-import { useEffect, useMemo, useState } from 'react'
-import { Search, Building2, ExternalLink, RefreshCw, Info } from 'lucide-react'
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
+import {
+  Search, Building2, ExternalLink, RefreshCw, Info, Handshake, GraduationCap, Users, X,
+  AlertTriangle, SearchX, Mail, Phone, Star, Tag, User, CalendarRange, FileCheck, Image as ImageIcon,
+} from 'lucide-react'
+import { CARD_STYLE, KpiCard, Skeleton, EmptyState } from '../patients/dashboard/ui'
 
 interface Discount {
   serviceId: string; serviceLabel: string; discountType: string; value: number; note: string
@@ -119,12 +123,154 @@ function withFiguresBold(text: string): React.ReactNode[] {
       : <span key={i}>{part}</span>)
 }
 
+// ── Presentation ─────────────────────────────────────────────────────────────
+// Same control/button vocabulary as Clinic Utilization and Patients, so the page
+// reads as part of the same app.
+
+const CONTROL = 'h-9 px-3 rounded-lg text-sm outline-none focus:border-[var(--teal)]'
+const CONTROL_STYLE: CSSProperties = { background: '#fff', border: '1px solid var(--light-gray)', color: 'var(--charcoal)', fontFamily: 'var(--font-body)' }
+const BTN_PRIMARY = 'inline-flex items-center justify-center gap-1.5 h-9 px-3.5 rounded-lg text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50'
+const BTN_SECONDARY = 'inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-lg text-sm font-semibold transition-colors hover:bg-gray-50 disabled:opacity-60'
+const SECTION_LABEL = 'text-[10.5px] font-bold uppercase tracking-wider'
+const SUBTLE_BG = '#F6F9F8'
+
+/** Soft tones per purpose — Referral green-teal, Internship violet — used on the
+ *  purpose badges and on the chips that belong to each purpose, so the colour
+ *  alone says which list a department came from. */
+const TONE = {
+  referral:   { bg: '#E6F1EE', fg: '#1F5F55', border: '#CBE3DC' },
+  internship: { bg: '#EFE8FB', fg: '#5B2A86', border: '#DDD0F3' },
+  neutral:    { bg: '#F1F5F9', fg: '#475569', border: '#E2E8F0' },
+  expired:    { bg: '#FEF2F2', fg: '#991B1B', border: '#FECACA' },
+} as const
+type Tone = keyof typeof TONE
+
+type PurposeFilter = 'all' | 'referral' | 'internship' | 'both'
+
+/** Older HR records carry no purpose and read as referral-only. */
+function purposesOf(i: Institution) { return i.purposes ?? ['referral'] }
+
+function Pill({ tone, children, title }: { tone: Tone; children: ReactNode; title?: string }) {
+  const t = TONE[tone]
+  return (
+    <span title={title}
+      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold leading-4 whitespace-nowrap"
+      style={{ background: t.bg, color: t.fg, border: `1px solid ${t.border}` }}>
+      {children}
+    </span>
+  )
+}
+
+function PurposeBadge({ purpose }: { purpose: string }) {
+  const internship = purpose === 'internship'
+  return (
+    <Pill tone={internship ? 'internship' : 'referral'}>
+      {internship ? <GraduationCap size={11} /> : <Handshake size={11} />}
+      {internship ? 'Internship' : 'Referral'}
+    </Pill>
+  )
+}
+
+/** A row of compact chips that folds the tail into "+N more". */
+function ChipList({ items, tone, max }: { items: { id: string; label: string }[]; tone: Tone; max?: number }) {
+  const t = TONE[tone]
+  const visible = max ? items.slice(0, max) : items
+  const hidden = items.length - visible.length
+  return (
+    <div className="flex flex-wrap gap-1 min-w-0">
+      {visible.map(s => (
+        <span key={s.id} className="inline-block max-w-full truncate px-1.5 py-0.5 rounded-md text-[11px] font-semibold leading-4"
+          style={{ background: t.bg, color: t.fg }} title={s.label}>
+          {s.label}
+        </span>
+      ))}
+      {hidden > 0 && (
+        <span className="inline-block px-1.5 py-0.5 rounded-md text-[11px] font-semibold leading-4"
+          style={{ background: '#fff', color: 'var(--mid-gray)', border: '1px dashed var(--light-gray)' }}
+          title={items.slice(visible.length).map(s => s.label).join(', ')}>
+          +{hidden} more
+        </span>
+      )}
+    </div>
+  )
+}
+
+function DiscountBadge({ d }: { d: Discount }) {
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-bold leading-4"
+      style={{ background: '#DCFCE7', color: '#166534', border: '1px solid #86EFAC' }}>
+      {/* No icon: the label already reads "5% off", and a percent glyph beside
+          it showed the sign twice. It would also be wrong outright on a peso
+          discount, where the label is "₱500 off". */}
+      {discountLabel(d)}
+      <span className="font-semibold">on {d.serviceLabel}</span>
+      {d.beneficiary && d.beneficiary !== 'ALL' && (
+        <span title={`This rate is for ${d.beneficiaryLabel || d.beneficiary} of the institution`}
+          className="px-1.5 rounded text-[10.5px] font-bold"
+          style={{ background: '#DBEAFE', color: '#1E40AF', border: '1px solid #93C5FD' }}>
+          for {d.beneficiaryLabel || d.beneficiary}
+        </span>
+      )}
+      {d.priority && (
+        <span title="Priority: students from this institution are prioritised for this service"
+          className="inline-flex items-center gap-0.5 px-1.5 rounded text-[10.5px] font-bold"
+          style={{ background: '#FEF3C7', color: '#92400E', border: '1px solid #FCD34D' }}>
+          <Star size={9} fill="currentColor" /> Priority
+        </span>
+      )}
+    </span>
+  )
+}
+
+/** A quiet marker, not a warning panel. Most partners are in this state, and a
+ *  block of amber on each of them competes with the green on the ones that DO
+ *  have a rate — which is the thing worth spotting. */
+function NoDiscount() {
+  return <Pill tone="neutral">No discount set</Pill>
+}
+
+const stop = (e: { stopPropagation: () => void }) => e.stopPropagation()
+
+/** Email / phone lines, clickable: the desk is usually mid-call when they look. */
+function ContactLines({ email, phone, compact = false }: { email: string; phone: string; compact?: boolean }) {
+  return (
+    <>
+      {email && (
+        <a href={`mailto:${email}`} onClick={stop}
+          className={`flex items-center gap-1.5 min-w-0 hover:underline ${compact ? 'text-xs' : 'text-[13px]'}`}
+          style={{ color: 'var(--teal)' }} title={email}>
+          <Mail size={12} className="flex-shrink-0" style={{ color: 'var(--mid-gray)' }} />
+          <span className={compact ? 'truncate' : 'break-all'}>{email}</span>
+        </a>
+      )}
+      {phone && (
+        <a href={`tel:${phone.replace(/\s+/g, '')}`} onClick={stop}
+          className={`flex items-center gap-1.5 min-w-0 hover:underline tabular-nums ${compact ? 'text-xs' : 'text-[13px]'}`}
+          style={{ color: 'var(--teal)' }}>
+          <Phone size={12} className="flex-shrink-0" style={{ color: 'var(--mid-gray)' }} />
+          <span className="truncate">{phone}</span>
+        </a>
+      )}
+    </>
+  )
+}
+
+function agreementLine(i: Institution) {
+  return `${i.effectivityFrom ? `From ${fmtDate(i.effectivityFrom)}` : 'No start date recorded'}${
+    i.effectivityTo ? ` to ${fmtDate(i.effectivityTo)}` : i.effectivityFrom ? ' · open-ended' : ''}`
+}
+
+const GRID_COLS = 'lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1.1fr)_minmax(0,1.45fr)_minmax(0,1fr)]'
+
 export default function PartnerInstitutionsPage() {
   const [list, setList] = useState<Institution[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [q, setQ] = useState('')
   const [type, setType] = useState('all')
+  const [purpose, setPurpose] = useState<PurposeFilter>('all')
+  // Kept as an id rather than the object so a Refresh shows the fresh record.
+  const [openId, setOpenId] = useState<string | null>(null)
 
   async function load() {
     setLoading(true); setError('')
@@ -144,282 +290,449 @@ export default function PartnerInstitutionsPage() {
     [list],
   )
 
+  // Headline counts, from the list already in hand — no extra request.
+  const stats = useMemo(() => {
+    let referral = 0, internship = 0, both = 0, expired = 0
+    for (const i of list) {
+      const p = purposesOf(i)
+      const r = p.includes('referral'), n = p.includes('internship')
+      if (r) referral++
+      if (n) internship++
+      if (r && n) both++
+      if (isExpired(i)) expired++
+    }
+    return { total: list.length, referral, internship, both, expired }
+  }, [list])
+
   const shown = useMemo(() => {
     const needle = q.trim().toLowerCase()
     return list.filter(i => {
       if (type !== 'all' && i.typeLabel !== type) return false
+      if (purpose !== 'all') {
+        const p = purposesOf(i)
+        if (purpose === 'both' ? !(p.includes('referral') && p.includes('internship')) : !p.includes(purpose)) return false
+      }
       if (!needle) return true
       // Contact and service names too: "who do we call at Xavier" and "who do
       // we have an OT discount with" are both questions this page gets asked.
       return [i.name, i.pointOfContact, i.email, i.remarks, ...i.services.map(s => s.label), ...(i.purposeLabels ?? []), ...(i.internshipServices ?? []).map(s => s.label), ...(i.contacts ?? []).flatMap(c => [c.name, c.role, c.email])]
         .join(' ').toLowerCase().includes(needle)
     })
-  }, [list, q, type])
+  }, [list, q, type, purpose])
 
-  const card: React.CSSProperties = {
-    background: '#fff', border: '1px solid var(--light-gray)', borderRadius: '0.75rem',
-  }
-  const chip: React.CSSProperties = {
-    fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px', borderRadius: 99,
-    background: '#EEF2F4', color: '#475569', whiteSpace: 'nowrap',
-  }
+  const opened = openId ? list.find(i => i.id === openId) ?? null : null
+
+  useEffect(() => {
+    if (!openId) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpenId(null) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [openId])
+
+  const initialLoad = loading && list.length === 0
+  const filtered = q.trim() !== '' || type !== 'all' || purpose !== 'all'
+
+  const purposePills: { key: PurposeFilter; label: string; count: number }[] = [
+    { key: 'all', label: 'All', count: stats.total },
+    { key: 'referral', label: 'Referral', count: stats.referral },
+    { key: 'internship', label: 'Internship', count: stats.internship },
+    { key: 'both', label: 'Both', count: stats.both },
+  ]
 
   return (
-    <div style={{ padding: '1.5rem', maxWidth: 1200, margin: '0 auto' }}>
-      {/* The two-column card needs a media query, which inline styles cannot
-          express — below 820px the contact column would squeeze the entitlement
-          text into a ribbon. */}
-      <style>{`
-        @media (max-width: 820px) {
-          .pi-card { grid-template-columns: 1fr !important; }
-          .pi-card > div:first-child {
-            border-right: none !important;
-            border-bottom: 1px solid var(--light-gray);
-          }
-        }
-      `}</style>
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
-        <div>
-          <p style={{ fontSize: '0.68rem', fontWeight: 800, letterSpacing: '0.08em', color: 'var(--teal)', textTransform: 'uppercase' }}>
-            Clinic Tools
-          </p>
-          <h1 style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--charcoal)', margin: '0.15rem 0' }}>
+    <div className="max-w-[1200px] mx-auto space-y-5 min-w-0">
+      {/* ── Header ── */}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: 'var(--teal)' }}>Clinic Tools</p>
+          <h1 className="text-2xl font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
             Partner Institutions
           </h1>
-          <p style={{ color: 'var(--mid-gray)', fontSize: '0.85rem' }}>
+          <p className="text-sm mt-1" style={{ color: 'var(--mid-gray)' }}>
             Schools and companies we hold agreements with, and what each one entitles them to.
           </p>
         </div>
-        <button onClick={load} disabled={loading}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0.45rem 0.85rem', borderRadius: 8,
-                   border: '1px solid var(--light-gray)', background: '#fff', color: 'var(--charcoal)',
-                   fontSize: '0.8rem', fontWeight: 600, cursor: loading ? 'default' : 'pointer' }}>
-          <RefreshCw size={13} /> Refresh
+        <button onClick={load} disabled={loading} className={BTN_SECONDARY} style={CONTROL_STYLE}>
+          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} style={{ color: 'var(--teal)' }} /> Refresh
         </button>
       </div>
 
       {/* Said plainly rather than left for someone to discover by hunting for a
           save button that is not there. */}
-      <div style={{ ...card, display: 'flex', alignItems: 'flex-start', gap: 8, padding: '0.7rem 0.9rem', marginBottom: '1rem', background: '#F1F7F8', borderColor: '#CFE3E6' }}>
-        <Info size={15} style={{ color: 'var(--teal)', flexShrink: 0, marginTop: 1 }} />
-        <p style={{ fontSize: '0.8rem', color: '#12606C', lineHeight: 1.5, margin: 0 }}>
+      <div className="flex items-start gap-2.5 rounded-xl px-4 py-2.5" style={{ background: '#F1F7F8', border: '1px solid #CFE3E6' }}>
+        <Info size={15} className="flex-shrink-0 mt-0.5" style={{ color: 'var(--teal)' }} />
+        <p className="text-[13px] leading-relaxed m-0" style={{ color: '#12606C' }}>
           View only. These records live in HR Hub &mdash; to add a partner or change an agreement,{' '}
-          <a href={HR_URL} target="_blank" rel="noopener noreferrer"
-             style={{ color: '#12606C', fontWeight: 700, textDecoration: 'underline' }}>
-            open Partner Institutions in HR Hub <ExternalLink size={11} style={{ display: 'inline', verticalAlign: -1 }} />
+          <a href={HR_URL} target="_blank" rel="noopener noreferrer" className="font-semibold underline underline-offset-2 whitespace-nowrap"
+             style={{ color: '#12606C' }}>
+            open Partner Institutions in HR Hub <ExternalLink size={11} className="inline -mt-0.5" />
           </a>.
         </p>
       </div>
 
-      <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
-        <div style={{ position: 'relative', flex: 1, minWidth: 220 }}>
-          <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--mid-gray)' }} />
-          <input value={q} onChange={e => setQ(e.target.value)}
-            placeholder="Search institution, contact, or service…"
-            style={{ width: '100%', padding: '0.5rem 0.6rem 0.5rem 2rem', borderRadius: 8, border: '1px solid var(--light-gray)', fontSize: '0.85rem' }} />
+      {/* ── KPIs ── */}
+      {!error && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {initialLoad ? (
+            Array.from({ length: 4 }).map((_, n) => (
+              <div key={n} className="rounded-xl px-4 py-3.5" style={CARD_STYLE}>
+                <Skeleton className="h-3 w-20" />
+                <Skeleton className="h-7 w-14 mt-2" />
+                <Skeleton className="h-3 w-24 mt-2" />
+              </div>
+            ))
+          ) : (
+            <>
+              <KpiCard label="Partners" icon={<Building2 size={16} />} value={stats.total}
+                sub={stats.expired > 0 ? `${stats.expired} agreement${stats.expired === 1 ? '' : 's'} expired` : 'All agreements current'} />
+              <KpiCard label="Referral" icon={<Handshake size={16} />} accent={TONE.referral.fg} value={stats.referral}
+                sub="Refer clients to us" />
+              <KpiCard label="Internship" icon={<GraduationCap size={16} />} accent={TONE.internship.fg} value={stats.internship}
+                sub="Send us interns" />
+              <KpiCard label="Both" icon={<Users size={16} />} accent="var(--gold)" value={stats.both}
+                sub="Referral and internship" />
+            </>
+          )}
         </div>
-        <select value={type} onChange={e => setType(e.target.value)}
-          style={{ padding: '0.5rem 0.6rem', borderRadius: 8, border: '1px solid var(--light-gray)', fontSize: '0.85rem' }}>
+      )}
+
+      {/* ── Toolbar ── */}
+      <div className="rounded-xl px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-3" style={CARD_STYLE}>
+        <div className="relative flex-1 min-w-[220px]">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mid-gray)' }} />
+          <input value={q} onChange={e => setQ(e.target.value)} aria-label="Search partner institutions"
+            placeholder="Search institution, contact, or service…"
+            className={`${CONTROL} w-full pl-8 ${q ? 'pr-8' : ''}`} style={CONTROL_STYLE} />
+          {q && (
+            <button type="button" onClick={() => setQ('')} aria-label="Clear search"
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-gray-100" style={{ color: 'var(--mid-gray)' }}>
+              <X size={13} />
+            </button>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Purpose filter">
+          {purposePills.map(p => {
+            const on = purpose === p.key
+            return (
+              <button key={p.key} type="button" aria-pressed={on} onClick={() => setPurpose(p.key)}
+                className={`h-8 px-3 rounded-full text-xs font-semibold transition-colors whitespace-nowrap ${on ? '' : 'hover:bg-gray-50'}`}
+                style={on
+                  ? { background: 'var(--teal)', color: '#fff', border: '1px solid var(--teal)' }
+                  : { background: '#fff', color: 'var(--charcoal)', border: '1px solid var(--light-gray)' }}>
+                {p.label}
+                {!initialLoad && <span className="ml-1.5 tabular-nums" style={{ opacity: on ? 0.8 : 0.55 }}>{p.count}</span>}
+              </button>
+            )
+          })}
+        </div>
+        <select value={type} onChange={e => setType(e.target.value)} aria-label="Institution type"
+          className={CONTROL} style={CONTROL_STYLE}>
           <option value="all">All types</option>
           {types.map(t => <option key={t} value={t}>{t}</option>)}
         </select>
       </div>
 
+      {/* ── List ── */}
       {error ? (
-        <div style={{ ...card, padding: '1rem', background: '#FEF2F2', borderColor: '#FCA5A5', color: '#991B1B', fontSize: '0.85rem' }}>
-          {error}
-        </div>
-      ) : loading && list.length === 0 ? (
-        <p style={{ textAlign: 'center', color: 'var(--mid-gray)', padding: '3rem 0', fontSize: '0.85rem' }}>Loading…</p>
-      ) : shown.length === 0 ? (
-        <div style={{ ...card, padding: '2.5rem', textAlign: 'center' }}>
-          <Building2 size={28} style={{ color: 'var(--light-gray)' }} />
-          <p style={{ fontWeight: 600, color: 'var(--charcoal)', fontSize: '0.9rem', marginTop: '0.5rem' }}>
-            {list.length === 0 ? 'No partner institutions recorded yet' : 'Nothing matches that search'}
-          </p>
+        <div role="alert" className="rounded-xl text-center px-6 py-10" style={{ background: '#fff', border: '1px solid #FECACA' }}>
+          <AlertTriangle size={20} className="mx-auto mb-2" style={{ color: '#DC2626' }} />
+          <p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>Couldn&rsquo;t load partner institutions</p>
+          <p className="text-xs mt-1 max-w-md mx-auto" style={{ color: '#991B1B' }}>{error}</p>
+          <button onClick={load} disabled={loading} className={`${BTN_SECONDARY} mt-4 text-xs`} style={{ ...CONTROL_STYLE, color: 'var(--teal)' }}>
+            <RefreshCw size={12} className={loading ? 'animate-spin' : ''} /> Try again
+          </button>
         </div>
       ) : (
-        <div style={{ display: 'grid', gap: '0.75rem' }}>
-          {shown.map(i => {
-            const expired = isExpired(i)
-            return (
-              <div key={i.id} style={{ ...card, opacity: expired ? 0.75 : 1, overflow: 'hidden' }}>
-                {/* Two columns: who to contact on the left, what they get on the
-                    right. The entitlement is the thing front desk open this page
-                    for, so it gets the wider half and its own panel instead of
-                    being the tail of a paragraph. Collapses to one column on a
-                    narrow screen. */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 300px) 1fr', gap: 0, alignItems: 'stretch' }}
-                     className="pi-card">
-                  {/* ── Left: who they are, who to call ── */}
-                  <div style={{ padding: '0.9rem 1rem', borderRight: '1px solid var(--light-gray)', background: '#FCFDFD' }}>
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.4rem', flexWrap: 'wrap' }}>
-                      <span style={{ fontWeight: 800, color: 'var(--charcoal)', fontSize: '0.95rem', lineHeight: 1.25 }}>{i.name}</span>
-                    </div>
-                    <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: '0.35rem' }}>
-                      {i.typeLabel && <span style={chip}>{i.typeLabel}</span>}
-                      {(i.purposes ?? ['referral']).map(p => (
-                        <span key={p} style={{ ...chip, background: p === 'internship' ? '#EDE4FA' : '#E6F1EE', color: p === 'internship' ? '#5B2A86' : '#1F5F55' }}>
-                          {p === 'internship' ? 'Internship' : 'Referral'}
-                        </span>
-                      ))}
-                      {expired && (
-                        <span style={{ ...chip, background: '#FEE2E2', color: '#991B1B' }}>
-                          Expired {fmtDate(i.effectivityTo)}
-                        </span>
-                      )}
-                    </div>
+        <section className="rounded-xl overflow-hidden min-w-0" style={CARD_STYLE}>
+          <header className="px-5 py-3 flex flex-wrap items-center justify-between gap-2" style={{ borderBottom: '1px solid var(--light-gray)' }}>
+            <h2 className="text-[14px] font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+              {initialLoad ? 'Partners' : filtered ? `${shown.length} of ${list.length} partners` : `${list.length} partner${list.length === 1 ? '' : 's'}`}
+            </h2>
+            <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>Click a partner for the full agreement</span>
+          </header>
 
-                    {(i.pointOfContact || i.email || i.mobile || i.telephone || (i.contacts ?? []).length > 0) ? (
-                      <div style={{ marginTop: '0.7rem', display: 'flex', flexDirection: 'column', gap: 2 }}>
-                        <p style={{ fontSize: '0.62rem', fontWeight: 800, letterSpacing: '0.06em', color: 'var(--mid-gray)', textTransform: 'uppercase' }}>Contact</p>
-                        {i.pointOfContact && <p style={{ fontSize: '0.82rem', color: 'var(--charcoal)', fontWeight: 600 }}>{i.pointOfContact}</p>}
-                        {/* Clickable: the desk is usually mid-call when they look. */}
-                        {i.email && <a href={`mailto:${i.email}`} style={{ fontSize: '0.78rem', color: 'var(--teal)', wordBreak: 'break-all' }}>{i.email}</a>}
-                        {(i.mobile || i.telephone) && (
-                          <a href={`tel:${(i.mobile || i.telephone).replace(/\s+/g, '')}`} style={{ fontSize: '0.78rem', color: 'var(--teal)' }}>
-                            {i.mobile || i.telephone}
-                          </a>
-                        )}
-                        {/* Further contacts from HR — same clickable email / number treatment. */}
-                        {(i.contacts ?? []).map((c, idx) => (
-                          <div key={idx} style={{ marginTop: 6, paddingTop: 6, borderTop: '1px dashed var(--light-gray)', display: 'flex', flexDirection: 'column', gap: 2 }}>
-                            {(c.name || c.role) && (
-                              <p style={{ fontSize: '0.82rem', color: 'var(--charcoal)', fontWeight: 600 }}>
-                                {c.name}{c.role ? <span style={{ fontWeight: 400, color: 'var(--mid-gray)' }}> · {c.role}</span> : null}
-                              </p>
-                            )}
-                            {c.email && <a href={`mailto:${c.email}`} style={{ fontSize: '0.78rem', color: 'var(--teal)', wordBreak: 'break-all' }}>{c.email}</a>}
-                            {(c.mobile || c.telephone) && (
-                              <a href={`tel:${(c.mobile || c.telephone).replace(/\s+/g, '')}`} style={{ fontSize: '0.78rem', color: 'var(--teal)' }}>
-                                {c.mobile || c.telephone}
-                              </a>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <p style={{ fontSize: '0.76rem', color: 'var(--mid-gray)', marginTop: '0.7rem', fontStyle: 'italic' }}>No contact recorded</p>
-                    )}
+          {/* Column heads only when the row is laid out as columns. */}
+          <div className={`hidden lg:grid ${GRID_COLS} gap-5 px-5 py-2`} style={{ background: SUBTLE_BG, borderBottom: '1px solid var(--light-gray)' }}>
+            {['Institution', 'Services & departments', 'What they get', 'Contact'].map(h => (
+              <span key={h} className={SECTION_LABEL} style={{ color: 'var(--mid-gray)' }}>{h}</span>
+            ))}
+          </div>
 
-                    <div style={{ marginTop: '0.7rem' }}>
-                      <p style={{ fontSize: '0.62rem', fontWeight: 800, letterSpacing: '0.06em', color: 'var(--mid-gray)', textTransform: 'uppercase' }}>Agreement</p>
-                      <p style={{ fontSize: '0.76rem', color: 'var(--mid-gray)', lineHeight: 1.5, marginTop: 2 }}>
-                        {i.agreementType && i.agreementType !== 'NA' ? <>{i.agreementType}<br /></> : null}
-                        {i.effectivityFrom ? `From ${fmtDate(i.effectivityFrom)}` : 'No start date recorded'}
-                        {i.effectivityTo ? ` to ${fmtDate(i.effectivityTo)}` : i.effectivityFrom ? ' · open-ended' : ''}
-                        {i.hasDocument ? <><br />Signed document on file in HR Hub</> : null}
-                        {i.photoCount > 0 ? <><br />{i.photoCount} photo{i.photoCount === 1 ? '' : 's'}</> : null}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* ── Right: what they are entitled to ── */}
-                  <div style={{ padding: '0.9rem 1rem' }}>
-                    {(i.purposes ?? []).includes('internship') && (
-                      <div style={{ marginBottom: '0.6rem' }}>
-                        <p style={{ fontSize: '0.62rem', fontWeight: 800, letterSpacing: '0.06em', color: 'var(--mid-gray)', textTransform: 'uppercase', marginBottom: 4 }}>Interns accepted in</p>
-                        {(i.internshipServices ?? []).length > 0 ? (
-                          <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-                            {(i.internshipServices ?? []).map(s => <span key={s.id} style={{ ...chip, background: '#EDE4FA', color: '#5B2A86' }}>{s.label}</span>)}
-                          </div>
-                        ) : (
-                          <p style={{ fontSize: '0.76rem', color: 'var(--mid-gray)', fontStyle: 'italic' }}>Departments not set in HR Hub yet</p>
-                        )}
-                      </div>
-                    )}
-                    {i.services.length > 0 && (
-                      <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: '0.6rem' }}>
-                        {i.services.map(s => <span key={s.id} style={{ ...chip, background: '#EDE4FA', color: '#5B2A86' }}>{s.label}</span>)}
-                      </div>
-                    )}
-
-                    {/* Structured discounts are the good case — an exact figure
-                        against an exact service. None of the seven records carry
-                        them yet, so this is usually empty and the sentences
-                        below carry the weight. */}
-                    {i.discounts.length > 0 && (
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: '0.6rem' }}>
-                        {i.discounts.map((d, n) => (
-                          <span key={`${d.serviceId}-${n}`}
-                            style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: '#DCFCE7', color: '#166534',
-                                     border: '1px solid #86EFAC', borderRadius: 8, padding: '4px 9px', fontSize: '0.82rem', fontWeight: 800 }}>
-                            {/* No icon: the label already reads "5% off", and a
-                                percent glyph beside it showed the sign twice.
-                                It would also be wrong outright on a peso
-                                discount, where the label is "₱500 off". */}
-                            {discountLabel(d)}
-                            <span style={{ fontWeight: 600 }}>on {d.serviceLabel}</span>
-                            {d.beneficiary && d.beneficiary !== 'ALL' && (
-                              <span title={`This rate is for ${d.beneficiaryLabel || d.beneficiary} of the institution`}
-                                    style={{ marginLeft: 2, background: '#DBEAFE', color: '#1E40AF', border: '1px solid #93C5FD',
-                                             borderRadius: 6, padding: '1px 6px', fontSize: '0.72rem', fontWeight: 800 }}>
-                                for {d.beneficiaryLabel || d.beneficiary}
-                              </span>
-                            )}
-                            {d.priority && (
-                              <span title="Priority: students from this institution are prioritised for this service"
-                                    style={{ marginLeft: 2, background: '#FEF3C7', color: '#92400E', border: '1px solid #FCD34D',
-                                             borderRadius: 6, padding: '1px 6px', fontSize: '0.72rem', fontWeight: 800 }}>
-                                ★ Priority
-                              </span>
-                            )}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-
-                    {(() => {
-                      const money = moneySentences(i.remarks)
-                      const rest = otherSentences(i.remarks)
-                      return (
-                        <>
-                          {money.length > 0 ? (
-                            <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 8, padding: '0.6rem 0.75rem' }}>
-                              <p style={{ fontSize: '0.62rem', fontWeight: 800, letterSpacing: '0.06em', color: '#166534', textTransform: 'uppercase', marginBottom: 4 }}>
-                                What the agreement says on rates
-                              </p>
-                              {money.map((t, n) => (
-                                <p key={n} style={{ fontSize: '0.84rem', color: '#14532D', lineHeight: 1.55, marginTop: n ? 5 : 0 }}>
-                                  {withFiguresBold(t)}
-                                </p>
-                              ))}
-                            </div>
-                          ) : i.discounts.length === 0 && (
-                            // A quiet marker, not a warning panel. Most partners
-                            // are in this state, and a block of amber on each of
-                            // them competes with the green on the ones that DO
-                            // have a rate — which is the thing worth spotting.
-                            <span style={{
-                              display: 'inline-flex', alignItems: 'center', gap: 5,
-                              background: '#F1F5F9', color: '#64748B', border: '1px solid #E2E8F0',
-                              borderRadius: 99, padding: '3px 10px', fontSize: '0.76rem', fontWeight: 600,
-                            }}>
-                              No discount set
-                            </span>
-                          )}
-
-                          {rest.length > 0 && (
-                            <p style={{ fontSize: '0.79rem', color: 'var(--mid-gray)', marginTop: '0.6rem', lineHeight: 1.55 }}>
-                              {rest.join(' ')}
-                            </p>
-                          )}
-                        </>
-                      )
-                    })()}
-
-                    {/* Commission is deliberately NOT shown. This page is open
-                        at the front desk, often with the patient across the
-                        counter, and what the clinic pays a partner per referral
-                        is not part of answering "what discount do they get". It
-                        stays in HR Hub for whoever negotiates the agreement. */}
-                  </div>
+          {initialLoad ? (
+            <div aria-hidden>
+              {Array.from({ length: 5 }).map((_, n) => (
+                <div key={n} className={`grid grid-cols-1 ${GRID_COLS} gap-3 lg:gap-5 px-5 py-4`} style={{ borderTop: n ? '1px solid var(--light-gray)' : undefined }}>
+                  <div><Skeleton className="h-4 w-3/4" /><Skeleton className="h-4 w-32 mt-2" /></div>
+                  <div className="flex gap-1"><Skeleton className="h-5 w-16" /><Skeleton className="h-5 w-20" /><Skeleton className="h-5 w-12" /></div>
+                  <div><Skeleton className="h-3.5 w-full" /><Skeleton className="h-3.5 w-2/3 mt-1.5" /></div>
+                  <div><Skeleton className="h-3.5 w-28" /><Skeleton className="h-3.5 w-36 mt-1.5" /></div>
                 </div>
-              </div>
-            )
-          })}
-        </div>
+              ))}
+            </div>
+          ) : shown.length === 0 ? (
+            <div className="flex flex-col items-center">
+              {list.length === 0
+                ? <Building2 size={26} className="mt-10 -mb-8" style={{ color: 'var(--light-gray)' }} />
+                : <SearchX size={26} className="mt-10 -mb-8" style={{ color: 'var(--light-gray)' }} />}
+              <EmptyState
+                title={list.length === 0 ? 'No partner institutions recorded yet' : 'Nothing matches that search'}
+                hint={list.length === 0 ? 'Partners added in HR Hub will appear here.' : 'Try a different name, contact or service, or clear the filters.'} />
+              {list.length > 0 && filtered && (
+                <button type="button" onClick={() => { setQ(''); setType('all'); setPurpose('all') }}
+                  className={`${BTN_SECONDARY} -mt-6 mb-8 text-xs`} style={{ ...CONTROL_STYLE, color: 'var(--teal)' }}>
+                  Clear filters
+                </button>
+              )}
+            </div>
+          ) : (
+            <ul>
+              {shown.map((i, n) => {
+                const expired = isExpired(i)
+                const p = purposesOf(i)
+                const money = moneySentences(i.remarks)
+                const contactCount = (i.contacts ?? []).length
+                const phone = i.mobile || i.telephone
+                return (
+                  <li key={i.id} style={{ borderTop: n ? '1px solid var(--light-gray)' : undefined }}>
+                    <div role="button" tabIndex={0} aria-label={`View ${i.name}`}
+                      onClick={() => setOpenId(i.id)}
+                      onKeyDown={e => { if (e.target !== e.currentTarget) return; if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpenId(i.id) } }}
+                      className={`grid grid-cols-1 ${GRID_COLS} gap-3 lg:gap-5 px-5 py-4 cursor-pointer transition-colors hover:bg-[#F8FAF9] focus:outline-none focus-visible:bg-[#F3F7F6]`}
+                      style={{ opacity: expired ? 0.72 : 1 }}>
+                      {/* Who they are */}
+                      <div className="min-w-0">
+                        <p className="text-[14px] font-bold leading-snug" style={{ color: 'var(--charcoal)' }}>{i.name}</p>
+                        <div className="flex flex-wrap gap-1 mt-1.5">
+                          {p.map(x => <PurposeBadge key={x} purpose={x} />)}
+                          {i.typeLabel && <Pill tone="neutral">{i.typeLabel}</Pill>}
+                          {expired && <Pill tone="expired">Expired {fmtDate(i.effectivityTo)}</Pill>}
+                        </div>
+                      </div>
+
+                      {/* Services & departments */}
+                      <div className="min-w-0 space-y-1.5">
+                        {i.services.length > 0 && <ChipList items={i.services} tone="referral" max={3} />}
+                        {p.includes('internship') && (
+                          (i.internshipServices ?? []).length > 0 ? (
+                            <div className="flex items-start gap-1.5 min-w-0">
+                              <GraduationCap size={13} className="flex-shrink-0 mt-0.5" style={{ color: TONE.internship.fg }} aria-label="Interns accepted in" />
+                              <ChipList items={i.internshipServices ?? []} tone="internship" max={3} />
+                            </div>
+                          ) : (
+                            <p className="text-xs italic" style={{ color: 'var(--mid-gray)' }}>Intern departments not set in HR Hub yet</p>
+                          )
+                        )}
+                        {i.services.length === 0 && !p.includes('internship') && (
+                          <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>&mdash;</span>
+                        )}
+                      </div>
+
+                      {/* What they get — the thing front desk opens this page for. */}
+                      <div className="min-w-0">
+                        {i.discounts.length > 0 ? (
+                          <div className="flex flex-wrap gap-1.5">
+                            {i.discounts.slice(0, 2).map((d, k) => <DiscountBadge key={`${d.serviceId}-${k}`} d={d} />)}
+                            {i.discounts.length > 2 && (
+                              <span className="self-center text-[11px] font-semibold" style={{ color: 'var(--mid-gray)' }}>+{i.discounts.length - 2} more</span>
+                            )}
+                          </div>
+                        ) : money.length > 0 ? (
+                          <p className="text-[13px] leading-relaxed line-clamp-2" style={{ color: '#14532D' }}>
+                            {withFiguresBold(money[0])}
+                          </p>
+                        ) : <NoDiscount />}
+                        {i.discounts.length === 0 && money.length > 1 && (
+                          <p className="text-[11px] font-semibold mt-1" style={{ color: 'var(--mid-gray)' }}>+{money.length - 1} more on rates</p>
+                        )}
+                      </div>
+
+                      {/* Who to call */}
+                      <div className="min-w-0 space-y-0.5">
+                        {(i.pointOfContact || i.email || phone || contactCount > 0) ? (
+                          <>
+                            {i.pointOfContact && <p className="text-[13px] font-semibold truncate" style={{ color: 'var(--charcoal)' }}>{i.pointOfContact}</p>}
+                            <ContactLines email={i.email} phone={phone} compact />
+                            {contactCount > 0 && (
+                              <p className="text-[11px] font-semibold" style={{ color: 'var(--mid-gray)' }}>
+                                +{contactCount} more contact{contactCount === 1 ? '' : 's'}
+                              </p>
+                            )}
+                          </>
+                        ) : (
+                          <p className="text-xs italic" style={{ color: 'var(--mid-gray)' }}>No contact recorded</p>
+                        )}
+                      </div>
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </section>
       )}
+
+      {opened && <PartnerDetail inst={opened} onClose={() => setOpenId(null)} />}
+    </div>
+  )
+}
+
+// ── Detail panel ─────────────────────────────────────────────────────────────
+
+function DetailSection({ icon, title, children }: { icon: ReactNode; title: string; children: ReactNode }) {
+  return (
+    <section className="px-6 py-4" style={{ borderTop: '1px solid var(--light-gray)' }}>
+      <h4 className={`flex items-center gap-1.5 mb-2.5 ${SECTION_LABEL}`} style={{ color: 'var(--mid-gray)' }}>
+        <span style={{ color: 'var(--teal)' }}>{icon}</span>{title}
+      </h4>
+      {children}
+    </section>
+  )
+}
+
+function PartnerDetail({ inst: i, onClose }: { inst: Institution; onClose: () => void }) {
+  const expired = isExpired(i)
+  const p = purposesOf(i)
+  const money = moneySentences(i.remarks)
+  const rest = otherSentences(i.remarks)
+  const contacts = [
+    ...((i.pointOfContact || i.email || i.mobile || i.telephone)
+      ? [{ name: i.pointOfContact, role: 'Primary contact', email: i.email, phone: i.mobile || i.telephone }]
+      : []),
+    ...(i.contacts ?? []).map(c => ({ name: c.name, role: c.role, email: c.email, phone: c.mobile || c.telephone })),
+  ]
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(15,23,42,0.45)', backdropFilter: 'blur(4px)' }}
+      onClick={onClose}>
+      <div role="dialog" aria-modal="true" aria-labelledby="pi-detail-title"
+        className="bg-white rounded-xl w-full max-w-[720px] max-h-[88vh] flex flex-col shadow-2xl overflow-hidden"
+        onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div className="flex items-start justify-between gap-3 px-6 py-4">
+          <div className="min-w-0">
+            <h3 id="pi-detail-title" className="text-lg font-bold leading-snug" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+              {i.name}
+            </h3>
+            <div className="flex flex-wrap gap-1 mt-1.5">
+              {p.map(x => <PurposeBadge key={x} purpose={x} />)}
+              {i.typeLabel && <Pill tone="neutral">{i.typeLabel}</Pill>}
+              {expired && <Pill tone="expired">Expired {fmtDate(i.effectivityTo)}</Pill>}
+            </div>
+          </div>
+          <button onClick={onClose} aria-label="Close" autoFocus
+            className="w-8 h-8 flex-shrink-0 rounded-lg flex items-center justify-center hover:bg-gray-100" style={{ color: 'var(--mid-gray)' }}>
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="overflow-y-auto min-h-0">
+          {/* What they get */}
+          <DetailSection icon={<Tag size={12} />} title="What they get">
+            {/* Structured discounts are the good case — an exact figure against
+                an exact service. Few records carry them yet, so the sentences
+                below usually carry the weight. */}
+            {i.discounts.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-3">
+                {i.discounts.map((d, k) => <DiscountBadge key={`${d.serviceId}-${k}`} d={d} />)}
+              </div>
+            )}
+            {money.length > 0 ? (
+              <div className="rounded-lg px-3.5 py-2.5" style={{ background: '#F0FDF4', border: '1px solid #BBF7D0' }}>
+                <p className={`${SECTION_LABEL} mb-1`} style={{ color: '#166534' }}>What the agreement says on rates</p>
+                {money.map((t, k) => (
+                  <p key={k} className={`text-[13.5px] leading-relaxed ${k ? 'mt-1.5' : ''}`} style={{ color: '#14532D' }}>
+                    {withFiguresBold(t)}
+                  </p>
+                ))}
+              </div>
+            ) : i.discounts.length === 0 && <NoDiscount />}
+            {rest.length > 0 && (
+              <p className="text-[13px] leading-relaxed mt-3" style={{ color: 'var(--mid-gray)' }}>{rest.join(' ')}</p>
+            )}
+            {/* Commission is deliberately NOT shown. This page is open at the
+                front desk, often with the patient across the counter, and what
+                the clinic pays a partner per referral is not part of answering
+                "what discount do they get". It stays in HR Hub for whoever
+                negotiates the agreement. */}
+          </DetailSection>
+
+          {/* Partnership */}
+          {(i.services.length > 0 || p.includes('internship')) && (
+            <DetailSection icon={<Handshake size={12} />} title="Partnership">
+              <div className="space-y-3">
+                {i.services.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold mb-1.5" style={{ color: 'var(--charcoal)' }}>Services</p>
+                    <ChipList items={i.services} tone="referral" />
+                  </div>
+                )}
+                {p.includes('internship') && (
+                  <div>
+                    <p className="text-xs font-semibold mb-1.5" style={{ color: 'var(--charcoal)' }}>Interns accepted in</p>
+                    {(i.internshipServices ?? []).length > 0
+                      ? <ChipList items={i.internshipServices ?? []} tone="internship" />
+                      : <p className="text-xs italic" style={{ color: 'var(--mid-gray)' }}>Departments not set in HR Hub yet</p>}
+                  </div>
+                )}
+              </div>
+            </DetailSection>
+          )}
+
+          {/* Contacts */}
+          <DetailSection icon={<User size={12} />} title={contacts.length > 1 ? `Contacts (${contacts.length})` : 'Contact'}>
+            {contacts.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {contacts.map((c, k) => (
+                  <div key={k} className="rounded-lg px-3.5 py-2.5 min-w-0 space-y-0.5" style={{ background: SUBTLE_BG, border: '1px solid var(--light-gray)' }}>
+                    {(c.name || c.role) && (
+                      <p className="text-[13px] font-semibold" style={{ color: 'var(--charcoal)' }}>
+                        {c.name || '—'}
+                        {c.role && <span className="block text-[11px] font-normal" style={{ color: 'var(--mid-gray)' }}>{c.role}</span>}
+                      </p>
+                    )}
+                    <ContactLines email={c.email} phone={c.phone} />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs italic" style={{ color: 'var(--mid-gray)' }}>No contact recorded</p>
+            )}
+          </DetailSection>
+
+          {/* Agreement */}
+          <DetailSection icon={<CalendarRange size={12} />} title="Agreement">
+            <dl className="grid grid-cols-[auto_1fr] gap-x-5 gap-y-1.5 text-[13px]">
+              {i.agreementType && i.agreementType !== 'NA' && (
+                <><dt style={{ color: 'var(--mid-gray)' }}>Type</dt><dd style={{ color: 'var(--charcoal)' }}>{i.agreementType}</dd></>
+              )}
+              <dt style={{ color: 'var(--mid-gray)' }}>Effectivity</dt>
+              <dd style={{ color: expired ? '#991B1B' : 'var(--charcoal)' }}>{agreementLine(i)}</dd>
+              <dt style={{ color: 'var(--mid-gray)' }}>Document</dt>
+              <dd className="flex items-center gap-1.5" style={{ color: 'var(--charcoal)' }}>
+                {i.hasDocument
+                  ? <><FileCheck size={13} style={{ color: TONE.referral.fg }} /> Signed document on file in HR Hub</>
+                  : <span style={{ color: 'var(--mid-gray)' }}>None on file</span>}
+              </dd>
+              {i.photoCount > 0 && (
+                <><dt style={{ color: 'var(--mid-gray)' }}>Photos</dt>
+                  <dd className="flex items-center gap-1.5" style={{ color: 'var(--charcoal)' }}>
+                    <ImageIcon size={13} style={{ color: 'var(--mid-gray)' }} /> {i.photoCount} photo{i.photoCount === 1 ? '' : 's'} in HR Hub
+                  </dd></>
+              )}
+            </dl>
+          </DetailSection>
+        </div>
+
+        {/* Footer */}
+        <div className="flex flex-wrap items-center justify-between gap-2 px-6 py-3" style={{ borderTop: '1px solid var(--light-gray)', background: SUBTLE_BG }}>
+          <a href={HR_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-xs font-semibold hover:underline"
+            style={{ color: 'var(--teal)' }}>
+            Edit in HR Hub <ExternalLink size={12} />
+          </a>
+          <button onClick={onClose} className={BTN_PRIMARY} style={{ background: 'var(--teal)' }}>Close</button>
+        </div>
+      </div>
     </div>
   )
 }
