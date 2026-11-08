@@ -24,7 +24,8 @@ const isHrDoctor = (s: Record<string, any>): boolean => {
 // so the sync and payroll agree on who is who.
 
 // POST — create a Referrer (type DOCTOR, in-house) for every HR doctor that
-// doesn't have one yet; tag existing doctor referrers that match by name.
+// doesn't have one yet (active or switched off); tag existing active doctor
+// referrers that match by name.
 // Idempotent, so the Referrers panel fires it on every visit.
 export async function POST() {
   const session = await auth()
@@ -37,9 +38,13 @@ export async function POST() {
     const doctors = staff.filter(isHrDoctor)
     if (!doctors.length) return NextResponse.json({ created: 0, tagged: 0, note: 'HR feed returned no doctors' })
 
+    // Switched-off referrers count too: switching off an in-house doctor has to
+    // stick, not bring back a fresh copy on the next visit (Dr. Tagalog was doubled
+    // that way — Hannah, 2026-11-08). Inactive rows load first so an active row with
+    // the same name wins the map.
     const referrers = await prisma.referrer.findMany({
-      where: { isActive: true },
-      select: { id: true, name: true, type: true, isInhouse: true },
+      select: { id: true, name: true, type: true, isInhouse: true, isActive: true },
+      orderBy: { isActive: 'asc' },
     })
     const byName = new Map(referrers.map(r => [normName(r.name), r]))
 
@@ -50,8 +55,9 @@ export async function POST() {
       if (!fullName) continue
       const existing = byName.get(normName(fullName))
       if (existing) {
-        // Only doctor rows get auto-tagged — a same-named law firm/school is left alone.
-        if (existing.type === 'DOCTOR' && !existing.isInhouse) {
+        // Only doctor rows get auto-tagged — a same-named law firm/school is left alone,
+        // and so is a switched-off row (someone turned it off on purpose).
+        if (existing.isActive && existing.type === 'DOCTOR' && !existing.isInhouse) {
           await prisma.referrer.update({ where: { id: existing.id }, data: { isInhouse: true } })
           tagged.push(existing.name)
         }
@@ -68,7 +74,7 @@ export async function POST() {
           createdById: session.user.id,
         },
       })
-      byName.set(normName(displayName), { id: row.id, name: row.name, type: 'DOCTOR', isInhouse: true })
+      byName.set(normName(displayName), { id: row.id, name: row.name, type: 'DOCTOR', isInhouse: true, isActive: true })
       created.push(displayName)
     }
 
