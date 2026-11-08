@@ -7,7 +7,7 @@ import { AccountPicker, type PickableAccount } from '@/components/AccountPicker'
 import { useFocusTarget } from '@/lib/use-focus-target'
 import { useSession } from 'next-auth/react'
 import { userBranchScope, canViewPettyCashCeoVerdana, PETTY_CASH_VIEW_ONLY_BRANCHES } from '@/lib/branch-scope'
-import { Plus, Settings, Loader2, Trash2, X, Maximize2, Minimize2, Download, Upload, FileDown, FileText, CheckCircle2, Paperclip, Eye, Pencil, RotateCcw } from 'lucide-react'
+import { Plus, Settings, Loader2, Trash2, X, Maximize2, Minimize2, Download, Upload, FileDown, FileText, CheckCircle2, Paperclip, Eye, Pencil, RotateCcw, Search, Columns3, Banknote, ClipboardCheck } from 'lucide-react'
 import { SortFilterHead, applySortFilter } from '@/components/SortFilterHead'
 import { useResizableColumns, ResizableColgroup, ColResizeHandle } from '@/components/useResizableColumns'
 import { assetClassFromAccountTitle, ASSET_CLASSIFICATION_LABELS, isDepreciatingClassification, inventoryClassFromAccountTitle, INVENTORY_CLASSIFICATION_LABELS } from '@/lib/asset-classification'
@@ -183,6 +183,105 @@ const fetchDataUrl = async (url: string): Promise<string | null> => {
       fr.readAsDataURL(blob)
     })
   } catch { return null }
+}
+
+// ── Look: the HR Hub house style ───────────────────────────────
+// hr.sapphireclinicseast.org: cream-green paper, green-grey borders, Aura
+// green accents, cards with a coloured left edge, uppercase labels, soft pills.
+// The page re-points the hub's colour tokens inside its own tree, so every
+// cell, modal and picker below picks the palette up without a rewrite.
+const HR_VARS = {
+  '--off-white': '#F6F8EE',   // paper
+  '--light-gray': '#DDE6CC',  // border
+  '--mid-gray': '#55616A',    // secondary text
+  '--charcoal': '#233038',    // text
+  '--teal': '#4A8073',        // Aura green (buttons, accents)
+  '--deep-teal': '#3C6A5F',
+  '--pale-teal': '#EDF3D9',
+  '--hr-line': '#E9EFDC',     // row lines
+  '--hr-faint': '#8A9AA0',
+  '--hr-head': '#f8faf6',     // table header / toolbar
+} as React.CSSProperties
+const BRANCH_NAMES: Record<string, string> = {
+  SANDBOX_EAST: 'East', SANDBOX_GREENHILLS: 'Greenhills', VERDANA_STORE: 'Verdana', AURA_INSTITUTE: 'Aura Health Institute', CEO: 'CEO',
+}
+// Row colour by workflow state: same rule and order as before, softer shades,
+// plus a coloured edge on the first cell.
+const ROW_TONES = {
+  replenished: { bg: '#f2faf5', line: '#059669', label: 'Replenished' },
+  forRepl:     { bg: '#fffbeb', line: '#d97706', label: 'For replenishment' },   // or in an RFP
+  cancelled:   { bg: '#f5f6f3', line: '#94a3b8', label: 'Cancelled' },
+  missing:     { bg: '#fef2f2', line: '#dc2626', label: 'Missing' },
+  finalized:   { bg: '#f8fbf1', line: '#4A8073', label: 'Finalized' },
+  draft:       { bg: '#ffffff', line: '#DDE6CC', label: 'Draft' },
+} as const
+const rowTone = (e: Entry) =>
+  e.pcfStatus === 'Replenished' ? ROW_TONES.replenished
+  : (e.pcfStatus === 'For Replenishment' || e.reimbursementId || (e.rfpBranchMap && Object.keys(e.rfpBranchMap).length > 0)) ? ROW_TONES.forRepl
+  : e.pcfStatus === 'Cancelled' ? ROW_TONES.cancelled
+  : e.pcfStatus === 'Missing' ? ROW_TONES.missing
+  : e.finalized ? ROW_TONES.finalized
+  : ROW_TONES.draft
+const STATUS_PILL: Record<string, { bg: string; fg: string }> = {
+  'Unliquidated':      { bg: '#eff6ff', fg: '#1d4ed8' },
+  'For Replenishment': { bg: '#fef3c7', fg: '#92400e' },
+  'Replenished':       { bg: '#dcfce7', fg: '#166534' },
+  'Cancelled':         { bg: '#f1f5f9', fg: '#475569' },
+  'Missing':           { bg: '#fee2e2', fg: '#991b1b' },
+}
+const pillOf = (status: string | null) => STATUS_PILL[status || ''] || { bg: '#f1f5f2', fg: '#55616A' }
+
+// Entries grid columns, in the order of the PCF form / import template.
+type GridCol = { key: string; label: string; plain?: boolean }
+const gridColumnsFor = (branch: string): GridCol[] => [
+  { key: 'refNumber', label: 'Reference Number' }, { key: 'requestor', label: 'Requestor' }, { key: 'department', label: 'Department' },
+  { key: 'pcfStatus', label: 'PCF Status' }, { key: 'date', label: 'Date' }, { key: 'description', label: 'Description' }, { key: 'descHub', label: 'Description for Hub' },
+  { key: 'validity', label: 'Valid/Invalid' }, { key: 'vatable', label: 'Vatable' }, { key: 'siNumber', label: 'SI Number' },
+  { key: 'tinNumber', label: 'TIN Number' }, { key: 'tinNumber2', label: 'TIN Number 2' }, { key: 'branchCode', label: 'Branch Code' },
+  { key: 'registeredName', label: 'Registered name' }, { key: 'registeredAddress', label: 'Registered Address' },
+  { key: 'grossAmount', label: 'Gross Amount' }, { key: 'netOfVat', label: 'Net of VAT' }, { key: 'vatAmount', label: 'VAT Amount' }, { key: 'accountTitle', label: 'Account Title' },
+  ...(branch === 'CEO' ? [{ key: 'branchAlloc', label: 'Branch (allocations)', plain: true }] : []),
+  { key: 'proof', label: 'Proof', plain: true }, { key: 'audited', label: 'Audited' },
+]
+// Starting widths, wide enough for each column's content (names, dates and
+// reference numbers were cut off at the old measured-from-the-header widths).
+const COL_W: Record<string, number> = {
+  refNumber: 236, requestor: 172, department: 108, pcfStatus: 164, date: 136, description: 260, descHub: 280,
+  validity: 108, vatable: 140, siNumber: 132, tinNumber: 164, tinNumber2: 116, branchCode: 96,
+  registeredName: 224, registeredAddress: 240, grossAmount: 128, netOfVat: 116, vatAmount: 108,
+  accountTitle: 256, branchAlloc: 228, proof: 184, audited: 100,
+}
+const SELECT_W = 44
+const ACTIONS_W = 120
+// Columns the reference, supplier and amount work does not need day to day.
+// They are computed from other cells; the Columns menu brings them back.
+const DEFAULT_HIDDEN = ['descHub', 'tinNumber2', 'branchCode']
+const UNHIDEABLE = ['refNumber', 'branchAlloc']
+
+function StatCard({ label, value, sub, tone, active, loading, onClick, title }: {
+  label: string; value: string; sub: string
+  tone: 'amber' | 'red' | 'green' | 'blue' | 'zero'
+  active?: boolean; loading?: boolean; onClick?: () => void; title?: string
+}) {
+  const t = {
+    amber: { line: '#d97706', bg: '#fffbeb', fg: '#b45309' },
+    red:   { line: '#dc2626', bg: '#fef2f2', fg: '#b91c1c' },
+    green: { line: '#059669', bg: '#ffffff', fg: '#047857' },
+    blue:  { line: '#2563eb', bg: '#eff6ff', fg: '#1d4ed8' },
+    zero:  { line: '#DDE6CC', bg: '#ffffff', fg: '#8A9AA0' },
+  }[tone]
+  if (loading) {
+    return <div className="h-[92px] rounded-lg border pc-shimmer" style={{ borderColor: 'var(--light-gray)', borderLeft: '4px solid var(--light-gray)' }} />
+  }
+  return (
+    <button type="button" onClick={onClick} disabled={!onClick} title={title}
+      className="text-left min-w-0 rounded-lg border px-3 sm:px-4 py-3 transition-shadow enabled:hover:shadow-[0_4px_12px_rgba(0,0,0,0.06)] focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-default"
+      style={{ background: t.bg, borderColor: 'var(--light-gray)', borderLeft: `4px solid ${t.line}`, boxShadow: active ? '0 0 0 2px #a7d3cd' : undefined, outlineColor: 'var(--teal)' }}>
+      <p className="text-[11.5px] font-semibold uppercase tracking-[.4px] truncate" style={{ color: 'var(--mid-gray)' }}>{label}</p>
+      <p className="text-[19px] sm:text-2xl font-extrabold leading-tight tabular-nums truncate" style={{ fontFamily: 'var(--font-display)', color: t.fg }}>{value}</p>
+      <p className="text-xs truncate" style={{ color: 'var(--mid-gray)' }}>{active ? 'Showing these below · click to clear' : sub}</p>
+    </button>
+  )
 }
 
 export default function PettyCashPage() {
@@ -647,7 +746,19 @@ function PettyCashInner() {
   // v2: widths stored under the old key were seeded before the Department cell
   // grew (dept tags) and could leave the trailing actions column with no room —
   // a fresh key re-measures every column once against the current layout.
-  const gridRz = useResizableColumns(`petty-cash-entries-grid-v2-${branch}`, gridTableRef)
+  // Columns the user chose to hide (Columns menu), remembered per browser.
+  const [hiddenCols, setHiddenCols] = useState<string[]>(DEFAULT_HIDDEN)
+  useEffect(() => {
+    try { const raw = localStorage.getItem('pcf-hidden-cols'); if (raw) { const v = JSON.parse(raw); if (Array.isArray(v)) setHiddenCols(v.filter(k => typeof k === 'string')) } } catch { /* ignore */ }
+  }, [])
+  const visibleCols = gridColumnsFor(branch).filter(c => !hiddenCols.includes(c.key))
+  // v3: starting widths come from COL_W (wide enough for the content); widths
+  // are kept per branch and per set of hidden columns.
+  const gridRz = useResizableColumns(
+    `petty-cash-entries-grid-v3-${branch}-${[...hiddenCols].sort().join('.')}`,
+    gridTableRef,
+    [SELECT_W, ...visibleCols.map(c => COL_W[c.key] ?? 120), ACTIONS_W],
+  )
   const entriesRef = useRef(entries)
   useEffect(() => { entriesRef.current = entries }, [entries])
   const appendProof = (id: string, url: string) => {
@@ -871,7 +982,7 @@ function PettyCashInner() {
     setNewSupplierPrompt(null)
   }
 
-  const cellCls = 'w-full bg-transparent px-2 py-1.5 text-xs outline-none focus:bg-[var(--pale-teal)] rounded'
+  const cellCls = 'w-full bg-transparent px-2 py-1.5 text-xs outline-none rounded enabled:hover:bg-[rgba(35,48,56,0.04)] focus:bg-[var(--pale-teal)]'
   const tdCls = 'border-r border-b align-top'
   const locked = (e: Entry) => !!e.reimbursementId || !!e.finalized || !canWrite
   const vatEditable = (e: Entry) => e.vatable === 'VAT' || e.vatable === 'Non-VAT' || e.vatable === 'NV'
@@ -891,16 +1002,7 @@ function PettyCashInner() {
   const { focus, done } = useFocusTarget()
   useEffect(() => { if (focus) { setGridFilters(f => ({ ...f, refNumber: focus })); setShowReplenished(true); done() } }, [focus, done])
   const gridToggleSort = (k: string) => setGridSort(s => s.key === k ? { key: k, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key: k, dir: 'asc' })
-  const gridCols: { key: string; label: string; plain?: boolean }[] = [
-    { key: 'refNumber', label: 'Reference Number' }, { key: 'requestor', label: 'Requestor' }, { key: 'department', label: 'Department' },
-    { key: 'pcfStatus', label: 'PCF Status' }, { key: 'date', label: 'Date' }, { key: 'description', label: 'Description' }, { key: 'descHub', label: 'Description for Hub' },
-    { key: 'validity', label: 'Valid/Invalid' }, { key: 'vatable', label: 'Vatable' }, { key: 'siNumber', label: 'SI Number' },
-    { key: 'tinNumber', label: 'TIN Number' }, { key: 'tinNumber2', label: 'TIN Number 2' }, { key: 'branchCode', label: 'Branch Code' },
-    { key: 'registeredName', label: 'Registered name' }, { key: 'registeredAddress', label: 'Registered Address' },
-    { key: 'grossAmount', label: 'Gross Amount' }, { key: 'netOfVat', label: 'Net of VAT' }, { key: 'vatAmount', label: 'VAT Amount' }, { key: 'accountTitle', label: 'Account Title' },
-    ...(branch === 'CEO' ? [{ key: 'branchAlloc', label: 'Branch (allocations)', plain: true }] : []),
-    { key: 'proof', label: 'Proof', plain: true }, { key: 'audited', label: 'Audited' },
-  ]
+  const gridCols = gridColumnsFor(branch)
   const gridGet = (e: Entry, k: string): string | number => {
     switch (k) {
       case 'refNumber': return refOf(e)
@@ -931,12 +1033,69 @@ function PettyCashInner() {
   }
   // Hide replenished rows unless the tick box is on. When a filter is typed,
   // count the replenished rows it would also match so the grid can say so.
+  // One search box over the columns people look things up by.
+  const [gridSearch, setGridSearch] = useState('')
+  const searchQ = gridSearch.trim().toLowerCase()
+  const matchesSearch = (e: Entry) => !searchQ || [
+    refOf(e), e.requestor, e.description, e.registeredName, e.siNumber, e.tinNumber, e.accountTitle, e.pcfStatus,
+    peso(num(e.grossAmount)), String(num(e.grossAmount)),
+  ].some(v => (v || '').toLowerCase().includes(searchQ))
   const anyGridFilter = Object.values(gridFilters).some(v => (v || '').trim() !== '')
   const gridRows = showReplenished ? entries : entries.filter(e => e.pcfStatus !== 'Replenished')
-  const displayed = applySortFilter(gridRows, gridGet, gridSort.key, gridSort.dir, gridFilters)
-  const hiddenMatches = showReplenished || !anyGridFilter ? 0
-    : applySortFilter(entries.filter(e => e.pcfStatus === 'Replenished'), gridGet, '', 'asc', gridFilters).length
+  const displayed = applySortFilter(gridRows, gridGet, gridSort.key, gridSort.dir, gridFilters).filter(matchesSearch)
+  const hiddenMatches = showReplenished || !(anyGridFilter || searchQ) ? 0
+    : applySortFilter(entries.filter(e => e.pcfStatus === 'Replenished'), gridGet, '', 'asc', gridFilters).filter(matchesSearch).length
   const totalGross = displayed.reduce((s, e) => s + num(e.grossAmount), 0)
+  const totalNet = displayed.reduce((s, e) => s + netOfVat(e), 0)
+  const totalVat = displayed.reduce((s, e) => s + vatAmount(e), 0)
+  const clearGridFilters = () => { setGridFilters({}); setGridSearch(''); restoreReplPref() }
+  // Remembered "show replenished" choice — quick filters change the view
+  // without overwriting it, and clearing them puts it back.
+  const restoreReplPref = () => { try { setShowReplenished(localStorage.getItem('pcf-show-replenished') === '1') } catch { setShowReplenished(false) } }
+
+  // ── Fund at a glance (same sums as the old three boxes) ──
+  const sumGross = (list: Entry[]) => list.reduce((s, e) => s + num(e.grossAmount), 0)
+  const unliqEntries = entries.filter(e => e.pcfStatus === 'Unliquidated')
+  const forReplEntries = entries.filter(e => e.pcfStatus === 'For Replenishment')
+  const replEntries = entries.filter(e => e.pcfStatus === 'Replenished')
+  const openCount = entries.filter(e => e.pcfStatus !== 'Replenished').length
+  // Work still to do on open entries: not audited / no account title (both
+  // keep an entry out of an RFP), and anything marked Missing.
+  const openWork = entries.filter(e => e.pcfStatus !== 'Replenished' && e.pcfStatus !== 'Cancelled')
+  const toAuditCount = openWork.filter(e => !e.audited).length
+  const noTitleCount = openWork.filter(e => !(e.accountTitle || '').trim()).length
+  const missingCount = entries.filter(e => e.pcfStatus === 'Missing').length
+  type TileKind = 'forRepl' | 'unliq' | 'repl' | 'audit'
+  const activeTile: TileKind | null = gridFilters.pcfStatus === 'For Replenishment' ? 'forRepl'
+    : gridFilters.pcfStatus === 'Unliquidated' ? 'unliq'
+    : gridFilters.pcfStatus === 'Replenished' ? 'repl'
+    : gridFilters.audited === 'No' ? 'audit' : null
+  const tileFilter = (k: TileKind) => {
+    if (activeTile === k) {
+      setGridFilters(f => { const n = { ...f }; delete n.pcfStatus; delete n.audited; return n })
+      if (k === 'repl') restoreReplPref()
+      return
+    }
+    setGridFilters(f => {
+      const n = { ...f }; delete n.pcfStatus; delete n.audited
+      if (k === 'audit') n.audited = 'No'
+      else n.pcfStatus = k === 'forRepl' ? 'For Replenishment' : k === 'unliq' ? 'Unliquidated' : 'Replenished'
+      return n
+    })
+    if (k === 'repl') setShowReplenished(true)
+  }
+  const toggleCol = (k: string) => {
+    setHiddenCols(prev => {
+      const next = prev.includes(k) ? prev.filter(x => x !== k) : [...prev, k]
+      try { localStorage.setItem('pcf-hidden-cols', JSON.stringify(next)) } catch { /* ignore */ }
+      return next
+    })
+    // A hidden column must not keep filtering the grid out of sight.
+    setGridFilters(f => { if (!f[k]) return f; const n = { ...f }; delete n[k]; return n })
+  }
+  const [colsOpen, setColsOpen] = useState(false)
+  const show = (k: string) => !hiddenCols.includes(k)
+  const stickyRefLeft = gridRz.widths[0] || SELECT_W
 
   // Entries are only selectable after an RFP button is clicked, and only those
   // matching the chosen kind's validity (and not already in an RFP).
@@ -978,174 +1137,287 @@ function PettyCashInner() {
     try { await fetch('/api/petty-cash/audited', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, audited }) }) } catch { /* ignore */ }
   }
 
+  const ghostBtn = 'inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border bg-white text-xs font-semibold transition-colors hover:border-[var(--teal)] hover:text-[var(--teal)] disabled:opacity-50'
+  const primaryBtn = 'inline-flex items-center gap-1.5 h-9 px-4 rounded-lg text-[13px] font-semibold text-white transition-colors hover:bg-[var(--deep-teal)] disabled:opacity-50'
+  const outlineBtn = 'inline-flex items-center gap-1.5 h-9 px-4 rounded-lg border bg-white text-[13px] font-semibold transition-colors hover:bg-[var(--pale-teal)] disabled:opacity-50'
+  const selectedEntries = rfpMode ? entries.filter(e => selected.has(e.id)) : []
+  const selectedTotal = isCeo
+    ? selectedEntries.reduce((s, e) => s + (Number(allocOf(e, rfpBranch)) || 0), 0)
+    : sumGross(selectedEntries)
+  const dlCount = entries.filter(e => inDateRange(e.date, dlFrom, dlTo)).length
+
   return (
-    <div className={expanded ? 'fixed inset-0 z-50 overflow-auto p-6 space-y-4' : 'space-y-4'} style={expanded ? { background: 'var(--off-white)' } : undefined}>
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-2xl font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
-          Petty Cash
-        </h1>
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: 'var(--light-gray)' }}>
-            {(scope.enum
-              ? BRANCHES.filter(b => b.value === scope.enum || (canCrossView && PETTY_CASH_VIEW_ONLY_BRANCHES.includes(b.value)))
-              : BRANCHES).map(b => (
-              <button key={b.value} onClick={() => setBranch(b.value)}
-                className="px-4 py-2 text-xs font-semibold transition-colors"
-                style={branch === b.value
-                  ? { background: 'var(--teal)', color: '#fff' }
-                  : { background: '#fff', color: 'var(--mid-gray)' }}
-                title={canCrossView && PETTY_CASH_VIEW_ONLY_BRANCHES.includes(b.value) ? 'View only' : undefined}>
-                {b.label}
-              </button>
-            ))}
-          </div>
+    <div className={expanded ? 'fixed inset-0 z-50 overflow-auto p-4 lg:p-6 space-y-4' : '-m-4 lg:-m-6 p-4 lg:p-6 space-y-4 min-h-[calc(100%+2rem)] lg:min-h-[calc(100%+3rem)]'}
+      style={{ ...HR_VARS, background: 'var(--off-white)', color: 'var(--charcoal)' }}>
+      <style>{`.pc-shimmer{background:linear-gradient(90deg,#f1f4ec 0%,#f8faf4 50%,#f1f4ec 100%);background-size:200% 100%;animation:pc-shimmer 1.2s linear infinite}@keyframes pc-shimmer{from{background-position:200% 0}to{background-position:-200% 0}}@media (prefers-reduced-motion:reduce){.pc-shimmer{animation:none}}`}</style>
+
+      {/* ── Header: title + branch ── */}
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold leading-tight" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>Petty Cash</h1>
+          <p className="mt-1 text-[13px] max-w-2xl" style={{ color: 'var(--mid-gray)' }}>
+            Encode petty cash spending, audit it, file it for an RFP, and count the cash on hand.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Branch">
+          {(scope.enum
+            ? BRANCHES.filter(b => b.value === scope.enum || (canCrossView && PETTY_CASH_VIEW_ONLY_BRANCHES.includes(b.value)))
+            : BRANCHES).map(b => (
+            <button key={b.value} onClick={() => setBranch(b.value)} aria-pressed={branch === b.value}
+              className="px-3.5 py-1.5 rounded-full border text-[13px] font-semibold whitespace-nowrap transition-colors"
+              style={branch === b.value
+                ? { background: 'var(--teal)', borderColor: 'var(--teal)', color: '#fff', fontFamily: 'var(--font-display)' }
+                : { background: '#fff', borderColor: 'var(--light-gray)', color: 'var(--mid-gray)', fontFamily: 'var(--font-display)' }}
+              title={canCrossView && PETTY_CASH_VIEW_ONLY_BRANCHES.includes(b.value) ? 'View only' : BRANCH_NAMES[b.value]}>
+              {b.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Tabs + page actions ── */}
+      <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-2 border-b-2" style={{ borderColor: 'var(--light-gray)' }}>
+        <div className="flex overflow-x-auto -mb-[2px]" role="tablist">
+          {/* PCF Reimbursements tab removed — all RFPs now live under Expenses → RFP as one consecutive list */}
+          {([['entries', 'Entries'], ['cashcount', 'Cash Count'], ['flowchart', 'Flowchart']] as const).map(([k, lbl]) => (
+            <button key={k} onClick={() => setTab(k)} role="tab" aria-selected={tab === k}
+              className="px-4 py-2.5 border-b-2 text-[13px] font-semibold whitespace-nowrap transition-colors hover:text-[var(--teal)]"
+              style={{ fontFamily: 'var(--font-display)', borderColor: tab === k ? 'var(--teal)' : 'transparent', color: tab === k ? 'var(--teal)' : 'var(--mid-gray)' }}>
+              {lbl}
+            </button>
+          ))}
+        </div>
+        <div className="flex flex-wrap items-center gap-2 pb-2">
           {viewOnly && (
-            <span className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold"
-              style={{ background: '#fef3c7', color: '#92400e' }}>
+            <span className="inline-flex items-center gap-1 h-8 px-3 rounded-full border text-xs font-semibold"
+              style={{ background: '#fffbeb', borderColor: '#fde68a', color: '#b45309' }}>
               <Eye size={13} /> View only
             </span>
           )}
-          <button onClick={() => setExpanded(v => !v)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border"
-            style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
-            {expanded ? <><Minimize2 size={14} /> Collapse</> : <><Maximize2 size={14} /> Expand</>}
-          </button>
-          <button onClick={() => setShowSettings(true)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border"
-            style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+          <span className="inline-flex items-center h-8 px-3 rounded-full border bg-white text-xs font-semibold whitespace-nowrap"
+            style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }} title="The next new entry gets this PCV number">
+            {BRANCH_NAMES[branch] || branch} · Next PCV #{nextPcvSeq}
+          </span>
+          <button onClick={() => setShowSettings(true)} className={ghostBtn} style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
             <Settings size={14} /> Settings
           </button>
-          <button onClick={downloadTemplate}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border"
-            style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+          <button onClick={downloadTemplate} className={ghostBtn} style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
             <Download size={14} /> Template
           </button>
           {canWrite && (
-            <button onClick={() => fileInputRef.current?.click()} disabled={importing}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-white disabled:opacity-50"
-              style={{ background: 'var(--teal)' }}>
+            <button onClick={() => fileInputRef.current?.click()} disabled={importing} className={ghostBtn}
+              style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
               {importing ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />} Import CSV/Excel
             </button>
           )}
           <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" className="hidden"
             onChange={e => { const f = e.target.files?.[0]; if (f) handleImportFile(f); e.target.value = '' }} />
+          <button onClick={() => setExpanded(v => !v)} className={ghostBtn} style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}
+            title={expanded ? 'Back to the normal page' : 'Fill the screen with the grid'}>
+            {expanded ? <><Minimize2 size={14} /> Collapse</> : <><Maximize2 size={14} /> Expand</>}
+          </button>
         </div>
-      </div>
-
-      {/* Tabs + RFP actions */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: 'var(--light-gray)' }}>
-          {/* PCF Reimbursements tab removed — all RFPs now live under Expenses → RFP as one consecutive list */}
-          {([['entries', 'Entries'], ['cashcount', 'Cash Count'], ['flowchart', 'Flowchart']] as const).map(([k, lbl]) => (
-            <button key={k} onClick={() => setTab(k)}
-              className="px-4 py-2 text-xs font-semibold transition-colors"
-              style={tab === k ? { background: 'var(--deep-teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' }}>
-              {lbl}
-            </button>
-          ))}
-        </div>
-        {tab === 'entries' && canWrite && (
-          <div className="flex items-center gap-2 flex-wrap">
-            {rfpMode === null ? (
-              <>
-                <button onClick={() => startRfp('VALID')}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}>
-                  <FileText size={15} /> RFP (Valid)
-                </button>
-                <button onClick={() => startRfp('INVALID')}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold border" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
-                  <FileText size={15} /> RFP (Invalid)
-                </button>
-              </>
-            ) : (
-              <>
-                <span className="text-xs font-bold" style={{ color: '#dc2626' }}>
-                  Select {rfpMode === 'VALID' ? 'Valid' : 'Invalid'} Entries
-                </span>
-                {isCeo && (
-                  <select value={rfpBranch} onChange={e => { setRfpBranch(e.target.value); setSelected(new Set()) }}
-                    className="px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: rfpBranch ? 'var(--teal)' : '#dc2626', color: 'var(--charcoal)' }}>
-                    <option value="">Choose branch…</option>
-                    {ALLOC_BRANCHES.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
-                  </select>
-                )}
-                <button onClick={() => setShowReimbModal(true)} disabled={selected.size === 0 || (isCeo && !rfpBranch)}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-40" style={{ background: 'var(--teal)' }}>
-                  <FileText size={15} /> Generate RFP ({rfpMode === 'VALID' ? 'Valid' : 'Invalid'}){isCeo && rfpBranch ? ` · ${ALLOC_BRANCHES.find(b => b.value === rfpBranch)?.label}` : ''}{selected.size > 0 ? ` · ${selected.size}` : ''}
-                </button>
-                <button onClick={cancelRfp}
-                  className="px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
-                  Cancel
-                </button>
-              </>
-            )}
-          </div>
-        )}
       </div>
 
       {tab === 'entries' && (
         <>
-          <DownloadBar from={dlFrom} to={dlTo} onFrom={setDlFrom} onTo={setDlTo} onExport={exportEntries}
-            dateLabel="Entry date" note={`${entries.filter(e => inDateRange(e.date, dlFrom, dlTo)).length} in range`} />
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {([
-              ['Unliquidated Total', entries.filter(e => e.pcfStatus === 'Unliquidated').reduce((s, e) => s + num(e.grossAmount), 0)],
-              ['For Replenishment Total', entries.filter(e => e.pcfStatus === 'For Replenishment').reduce((s, e) => s + num(e.grossAmount), 0)],
-              ['Liquidated Total', entries.filter(e => e.pcfStatus === 'Replenished').reduce((s, e) => s + num(e.grossAmount), 0)],
-            ] as const).map(([lbl, v]) => (
-              <div key={lbl} className="rounded-2xl border p-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
-                <p className="text-[11px] mb-1" style={{ color: 'var(--mid-gray)' }}>{lbl}</p>
-                <p className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>₱{peso(v as number)}</p>
-              </div>
-            ))}
-          </div>
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
-              {displayed.length}{displayed.length !== entries.length ? ` of ${entries.length}` : ''} entries · {selected.size} selected · Total Gross <strong style={{ color: 'var(--charcoal)' }}>₱{peso(totalGross)}</strong>
-              {' · '}Next PCV #{nextPcvSeq}
-              {hiddenMatches > 0 && <span style={{ color: 'var(--mid-gray)' }}>{' · '}{hiddenMatches} replenished {hiddenMatches === 1 ? 'entry matches' : 'entries match'} this filter (hidden)</span>}
-            </p>
-            <label className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold cursor-pointer select-none"
-              title="Replenished rows are hidden by default so the working set stays in view. Tick to show them."
-              style={{ borderColor: showReplenished ? 'var(--teal)' : 'var(--light-gray)', color: showReplenished ? 'var(--teal)' : 'var(--mid-gray)' }}>
-              <input type="checkbox" checked={showReplenished} onChange={toggleShowReplenished} className="accent-[var(--teal)]" />
-              Show replenished
-            </label>
+          {/* ── Fund at a glance (cards double as quick filters) ── */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <StatCard loading={loading} label="For replenishment" value={`₱${peso(sumGross(forReplEntries))}`}
+              sub={`${forReplEntries.length} entr${forReplEntries.length === 1 ? 'y' : 'ies'} · awaiting the RFP payment`}
+              tone={forReplEntries.length ? 'amber' : 'zero'} active={activeTile === 'forRepl'} onClick={() => tileFilter('forRepl')}
+              title="Show only the entries waiting for replenishment" />
+            <StatCard loading={loading} label="Unliquidated" value={`₱${peso(sumGross(unliqEntries))}`}
+              sub={`${unliqEntries.length} entr${unliqEntries.length === 1 ? 'y' : 'ies'} · cash out, receipts pending`}
+              tone={unliqEntries.length ? 'blue' : 'zero'} active={activeTile === 'unliq'} onClick={() => tileFilter('unliq')}
+              title="Show only the unliquidated entries" />
+            <StatCard loading={loading} label="Liquidated" value={`₱${peso(sumGross(replEntries))}`}
+              sub={`${replEntries.length} replenished entr${replEntries.length === 1 ? 'y' : 'ies'}`}
+              tone={replEntries.length ? 'green' : 'zero'} active={activeTile === 'repl'} onClick={() => tileFilter('repl')}
+              title="Show only the replenished entries" />
+            <StatCard loading={loading} label="To audit" value={toAuditCount.toLocaleString()}
+              sub={noTitleCount ? `${noTitleCount} open without an account title`
+                : missingCount ? `${missingCount} marked Missing`
+                : toAuditCount ? 'Open entries not yet audited' : 'Every open entry is audited'}
+              tone={toAuditCount || noTitleCount || missingCount ? 'red' : 'zero'} active={activeTile === 'audit'}
+              onClick={toAuditCount ? () => tileFilter('audit') : activeTile === 'audit' ? () => tileFilter('audit') : undefined}
+              title="An entry must be audited and have an account title before it can go into an RFP" />
           </div>
 
-          <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)', maxHeight: expanded ? 'calc(100vh - 210px)' : '70vh' }}>
-            {loading ? (
-              <div className="flex items-center justify-center py-16"><Loader2 className="animate-spin" size={20} style={{ color: 'var(--teal)' }} /></div>
+          {/* ── Entries card ── */}
+          <section className="rounded-lg border bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+            <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2 px-4 pt-3.5 pb-3">
+              <div className="min-w-0">
+                <h2 className="text-[15px] font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+                  Entries <span className="ml-1 text-xs font-semibold" style={{ color: 'var(--mid-gray)', fontFamily: 'var(--font-body)' }}>
+                    {loading ? '' : `${displayed.length.toLocaleString()}${displayed.length !== entries.length ? ` of ${entries.length.toLocaleString()}` : ''}`}
+                  </span>
+                </h2>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+                  Every cell saves as you leave it. Finalize a row with ✓, then audit it, then file it for an RFP.
+                </p>
+              </div>
+              {canWrite && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <button onClick={() => setShowAddPopup(true)} disabled={adding} className={primaryBtn} style={{ background: 'var(--teal)' }}>
+                    {adding ? <Loader2 size={14} className="animate-spin" /> : <Plus size={15} />} Add entry
+                  </button>
+                  <button onClick={duplicateLast} disabled={adding || entries.length === 0} className={outlineBtn}
+                    style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}
+                    title="Copy the latest For Replenishment entry's details into a new row (change the amount)">
+                    <Plus size={15} /> Duplicate previous entry
+                  </button>
+                  {rfpMode === null && (
+                    <>
+                      <button onClick={() => startRfp('VALID')} className={outlineBtn} style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+                        <FileText size={15} /> RFP (Valid)
+                      </button>
+                      <button onClick={() => startRfp('INVALID')} className={outlineBtn} style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+                        <FileText size={15} /> RFP (Invalid)
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {rfpMode !== null && canWrite ? (
+              // ── RFP picking mode ──
+              <div className="flex flex-wrap items-center gap-3 px-4 py-3 border-y" style={{ background: '#fffbeb', borderColor: '#fde68a' }}>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[13px] font-bold" style={{ color: '#92400e', fontFamily: 'var(--font-display)' }}>
+                    Tick the {rfpMode === 'VALID' ? 'valid' : 'invalid'} entries for this RFP
+                  </p>
+                  <p className="text-xs" style={{ color: '#b45309' }}>
+                    Only audited {rfpMode === 'VALID' ? 'valid' : 'invalid'} entries with an account title can be ticked
+                    {isCeo ? ', and only those with a share for the branch you choose' : ''}. {selectableIds.length.toLocaleString()} of the {displayed.length.toLocaleString()} shown can be ticked.
+                  </p>
+                </div>
+                {isCeo && (
+                  <select value={rfpBranch} onChange={e => { setRfpBranch(e.target.value); setSelected(new Set()) }}
+                    className="h-9 px-3 rounded-lg text-xs font-semibold border bg-white" style={{ borderColor: rfpBranch ? 'var(--teal)' : '#dc2626', color: 'var(--charcoal)' }}>
+                    <option value="">Choose branch…</option>
+                    {ALLOC_BRANCHES.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
+                  </select>
+                )}
+                <span className="text-xs font-semibold whitespace-nowrap tabular-nums" style={{ color: '#92400e' }}>
+                  {selected.size} selected{selected.size ? ` · ₱${peso(selectedTotal)}` : ''}{isCeo && rfpBranch && selected.size ? ` for ${ALLOC_BRANCHES.find(b => b.value === rfpBranch)?.label}` : ''}
+                </span>
+                <button onClick={() => setShowReimbModal(true)} disabled={selected.size === 0 || (isCeo && !rfpBranch)}
+                  className={primaryBtn} style={{ background: 'var(--teal)' }}>
+                  <FileText size={15} /> Generate RFP ({rfpMode === 'VALID' ? 'Valid' : 'Invalid'}){isCeo && rfpBranch ? ` · ${ALLOC_BRANCHES.find(b => b.value === rfpBranch)?.label}` : ''}{selected.size > 0 ? ` · ${selected.size}` : ''}
+                </button>
+                <button onClick={cancelRfp} className={outlineBtn} style={{ borderColor: '#fcd34d', color: '#92400e' }}>Cancel</button>
+              </div>
             ) : (
-              <table ref={gridTableRef} className="text-xs rz-grid" style={{ borderCollapse: 'collapse', minWidth: 2560, ...gridRz.tableStyle }}>
+              // ── Toolbar: search, open/all, columns, legend ──
+              <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-y" style={{ background: '#fcfdfa', borderColor: 'var(--light-gray)' }}>
+                <label className="flex items-center gap-1.5 h-9 px-3 w-full sm:w-60 rounded-lg border bg-white focus-within:border-[var(--teal)] focus-within:shadow-[0_0_0_3px_rgba(74,128,115,0.12)]"
+                  style={{ borderColor: 'var(--light-gray)', color: 'var(--hr-faint)' }}>
+                  <Search size={15} className="flex-shrink-0" />
+                  <input value={gridSearch} onChange={e => setGridSearch(e.target.value)} placeholder="Search reference, description, supplier, SI…"
+                    className="flex-1 min-w-0 bg-transparent outline-none text-[13px]" style={{ color: 'var(--charcoal)' }} />
+                  {gridSearch && <button onClick={() => setGridSearch('')} title="Clear search"><X size={14} /></button>}
+                </label>
+                <div className="flex rounded-lg border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}
+                  title="Replenished rows are hidden by default so the working set stays in view">
+                  {([[false, 'Open', openCount], [true, 'All', entries.length]] as const).map(([v, lbl, n]) => (
+                    <button key={lbl} onClick={() => { if (showReplenished !== v) toggleShowReplenished() }} aria-pressed={showReplenished === v}
+                      className="h-9 px-3 text-xs font-semibold whitespace-nowrap"
+                      style={showReplenished === v ? { background: 'var(--teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' }}>
+                      {lbl} <span className="tabular-nums opacity-80">{loading ? '' : n.toLocaleString()}</span>
+                    </button>
+                  ))}
+                </div>
+                <div className="relative">
+                  <button onClick={() => setColsOpen(o => !o)} className={`${ghostBtn} h-9`} style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                    <Columns3 size={14} /> Columns{hiddenCols.filter(k => gridCols.some(c => c.key === k)).length ? ` · ${hiddenCols.filter(k => gridCols.some(c => c.key === k)).length} hidden` : ''}
+                  </button>
+                  {colsOpen && (
+                    <>
+                      <div className="fixed inset-0 z-30" onClick={() => setColsOpen(false)} />
+                      <div className="absolute left-0 top-full mt-1 z-40 w-60 max-h-80 overflow-y-auto rounded-lg border bg-white p-2 shadow-[0_8px_30px_rgba(0,0,0,0.08)]"
+                        style={{ borderColor: 'var(--light-gray)' }}>
+                        <p className="px-1.5 pb-1 text-[11px] font-bold uppercase tracking-[.5px]" style={{ color: 'var(--mid-gray)' }}>Show columns</p>
+                        {gridCols.filter(c => !UNHIDEABLE.includes(c.key)).map(c => (
+                          <label key={c.key} className="flex items-center gap-2 px-1.5 py-1 rounded text-xs cursor-pointer hover:bg-[var(--off-white)]" style={{ color: 'var(--charcoal)' }}>
+                            <input type="checkbox" checked={show(c.key)} onChange={() => toggleCol(c.key)} className="accent-[var(--teal)]" />
+                            {c.label}
+                          </label>
+                        ))}
+                        <button onClick={() => { setHiddenCols(DEFAULT_HIDDEN); try { localStorage.setItem('pcf-hidden-cols', JSON.stringify(DEFAULT_HIDDEN)) } catch { /* ignore */ } }}
+                          className="mt-1 w-full text-left px-1.5 py-1 text-[11px] font-semibold" style={{ color: 'var(--teal)' }}>
+                          Reset to the usual columns
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+                {(anyGridFilter || searchQ) && (
+                  <button onClick={clearGridFilters} className="text-xs font-semibold underline-offset-2 hover:underline" style={{ color: 'var(--teal)' }}>
+                    Clear filters
+                  </button>
+                )}
+                {hiddenMatches > 0 && (
+                  <button onClick={toggleShowReplenished} className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+                    {hiddenMatches} replenished {hiddenMatches === 1 ? 'entry matches' : 'entries match'} (hidden) · <span className="font-semibold" style={{ color: 'var(--teal)' }}>show</span>
+                  </button>
+                )}
+                <div className="ml-auto hidden xl:flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+                  {Object.values(ROW_TONES).map(t => (
+                    <span key={t.label} className="inline-flex items-center gap-1.5 whitespace-nowrap"
+                      title={t === ROW_TONES.forRepl ? 'For replenishment, or already in an RFP' : undefined}>
+                      <span className="w-3 h-3 rounded-[3px] border" style={{ background: t.bg, borderColor: 'var(--light-gray)', boxShadow: `inset 3px 0 0 ${t.line}` }} />
+                      {t.label}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="overflow-auto" style={{ maxHeight: expanded ? 'calc(100vh - 300px)' : '68vh' }}>
+            {loading ? (
+              <div className="p-4 space-y-2" aria-busy="true">
+                {Array.from({ length: 7 }, (_, i) => <div key={i} className="h-10 rounded-md pc-shimmer" />)}
+              </div>
+            ) : (
+              <table ref={gridTableRef} className="text-xs rz-grid" style={{ borderCollapse: 'collapse', minWidth: '100%', ...gridRz.tableStyle }}>
                 <ResizableColgroup rz={gridRz} />
                 <thead className="sticky top-0 z-10">
-                  <tr style={{ background: 'var(--off-white)' }}>
-                    <th className="border-r border-b px-2 py-2 text-center" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
-                      <input type="checkbox" checked={allSelected} onChange={toggleAll} disabled={!canWrite || selectableIds.length === 0} title="Select all" />
+                  <tr>
+                    <th className="border-b px-2 py-2 text-center"
+                      style={{ borderColor: 'var(--light-gray)', background: 'var(--hr-head)', position: 'sticky', left: 0, zIndex: 25 }}>
+                      <input type="checkbox" checked={allSelected} onChange={toggleAll} disabled={!canWrite || selectableIds.length === 0} title="Select all" className="accent-[var(--teal)]" />
                     </th>
-                    {gridCols.map((col, ci) => (
-                      <th key={col.key} className="border-r border-b px-2 py-2 text-left align-top whitespace-nowrap relative"
-                        style={{ color: 'var(--charcoal)', borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                    {visibleCols.map((col, ci) => (
+                      <th key={col.key} className={`border-b border-r px-2 py-2 text-left align-top whitespace-nowrap relative ${col.key === 'refNumber' ? 'sm:sticky' : ''}`}
+                        style={{
+                          color: 'var(--mid-gray)', borderColor: 'var(--hr-line)', borderBottomColor: 'var(--light-gray)', background: 'var(--hr-head)',
+                          // above the other columns' resize grips (z 20) when scrolled sideways
+                          ...(col.key === 'refNumber' ? { left: stickyRefLeft, zIndex: 25, boxShadow: '4px 0 6px -4px rgba(35,48,56,0.14)' } : {}),
+                        }}>
                         {col.key === 'branchAlloc' ? (
-                          <div className="min-w-[150px]">
-                            <span className="font-semibold block">{col.label}</span>
+                          <div>
+                            <span className="block text-[11px] font-bold uppercase tracking-[.5px]">{col.label}</span>
                             <select value={gridFilters['branchAlloc'] || ''} onChange={ev => setGridFilters(f => ({ ...f, branchAlloc: ev.target.value }))}
-                              className="mt-1 w-full px-1.5 py-0.5 rounded border text-[11px] font-normal" style={{ borderColor: 'var(--light-gray)' }}>
+                              className="mt-1.5 w-full px-1.5 py-1 rounded-md border bg-white text-[11px] font-normal" style={{ borderColor: 'var(--hr-line)', color: 'var(--charcoal)' }}>
                               <option value="">All branches</option>
                               {ALLOC_BRANCHES.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
                             </select>
                           </div>
                         ) : col.plain ? (
-                          <span className="font-semibold">{col.label}</span>
+                          <span className="text-[11px] font-bold uppercase tracking-[.5px]">{col.label}</span>
                         ) : (
                           <>
-                            <button onClick={() => gridToggleSort(col.key)} className="flex items-center gap-1 font-semibold">
+                            <button onClick={() => gridToggleSort(col.key)}
+                              className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-[.5px] hover:text-[var(--teal)]"
+                              style={gridSort.key === col.key ? { color: 'var(--teal)' } : undefined}>
                               {col.label}
-                              <span style={{ color: gridSort.key === col.key ? 'var(--teal)' : 'var(--light-gray)' }}>{gridSort.key === col.key ? (gridSort.dir === 'asc' ? '▲' : '▼') : '↕'}</span>
+                              <span className="text-[10px]" style={{ opacity: gridSort.key === col.key ? 1 : 0.45 }}>{gridSort.key === col.key ? (gridSort.dir === 'asc' ? '▲' : '▼') : '↕'}</span>
                             </button>
-                            <input value={gridFilters[col.key] || ''} onChange={ev => setGridFilters(f => ({ ...f, [col.key]: ev.target.value }))} placeholder="filter…"
-                              className="mt-1 w-full px-1.5 py-0.5 rounded border text-[11px] font-normal" style={{ borderColor: 'var(--light-gray)' }} />
+                            <input value={gridFilters[col.key] || ''} onChange={ev => setGridFilters(f => ({ ...f, [col.key]: ev.target.value }))} placeholder="Filter"
+                              className="mt-1.5 w-full px-2 py-1 rounded-md border bg-white text-[11px] font-normal outline-none focus:border-[var(--teal)]"
+                              style={{ borderColor: gridFilters[col.key] ? 'var(--teal)' : 'var(--hr-line)', color: 'var(--charcoal)' }} />
                           </>
                         )}
                         <ColResizeHandle rz={gridRz} index={ci + 1} />
@@ -1154,34 +1426,32 @@ function PettyCashInner() {
                     {/* Actions column: sticky right (same pattern as the Expenses grid) so the
                         finalize/edit/delete controls and the finalized ✓ stay visible without
                         scrolling the wide grid. */}
-                    <th className="border-b px-2 py-2 text-center text-[11px] font-semibold whitespace-nowrap" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)', position: 'sticky', right: 0, zIndex: 12, minWidth: 84, color: 'var(--mid-gray)' }}>Actions</th>
+                    <th className="border-b px-2 py-2 text-center text-[11px] font-bold uppercase tracking-[.5px] whitespace-nowrap"
+                      style={{ borderColor: 'var(--light-gray)', background: 'var(--hr-head)', position: 'sticky', right: 0, zIndex: 25, color: 'var(--mid-gray)', boxShadow: '-4px 0 6px -4px rgba(35,48,56,0.14)' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {displayed.map(e => {
                     const lk = locked(e)
                     const ve = vatEditable(e)
+                    const tone = rowTone(e)
                     return (
-                      <tr key={e.id} style={{ background:
-                        // Colour by workflow state — identical across all branches (CEO included).
-                        // "In an RFP" and "For Replenishment" are the same state (awaiting the
-                        // replenishment payment) → same colour, whether tracked via reimbursementId
-                        // (branches) or rfpBranchMap (CEO).
-                        e.pcfStatus === 'Replenished' ? '#dcfce7'                                              // green — paid/replenished
-                        : (e.pcfStatus === 'For Replenishment' || e.reimbursementId || (e.rfpBranchMap && Object.keys(e.rfpBranchMap).length > 0)) ? '#ffedd5'  // orange — for replenishment / in an RFP
-                        : e.pcfStatus === 'Cancelled' ? '#f3f4f6'                                               // gray — cancelled
-                        : e.pcfStatus === 'Missing' ? '#fee2e2'                                                 // red — missing
-                        : e.finalized ? '#fef9c3'                                                               // yellow — finalized/ready
-                        : '#fff' }}>
-                        <td className="border-r border-b text-center" style={{ borderColor: 'var(--light-gray)' }}>
-                          <input type="checkbox" checked={selected.has(e.id)} disabled={!canWrite || !isSelectable(e)}
+                      // Colour by workflow state — identical across all branches (CEO included).
+                      // "In an RFP" and "For Replenishment" are the same state (awaiting the
+                      // replenishment payment) → same colour, whether tracked via reimbursementId
+                      // (branches) or rfpBranchMap (CEO). See ROW_TONES / rowTone.
+                      <tr key={e.id} style={{ background: tone.bg }}>
+                        <td className="border-b text-center align-top pt-2"
+                          style={{ borderColor: 'var(--hr-line)', position: 'sticky', left: 0, zIndex: 2, background: 'inherit', boxShadow: `inset 4px 0 0 ${tone.line}` }}
+                          title={tone.label}>
+                          <input type="checkbox" className="accent-[var(--teal)]" checked={selected.has(e.id)} disabled={!canWrite || !isSelectable(e)}
                             onChange={() => toggleOne(e.id)}
                             title={e.reimbursementId ? 'Locked (in an RFP)' : rfpMode === null ? 'Click RFP (Valid) or RFP (Invalid) first' : e.validity !== rfpValidity ? `Only ${rfpMode === 'VALID' ? 'valid' : 'invalid'} entries can be selected` : !e.audited ? 'Entry must be Audited = Yes first' : ''} />
                         </td>
-                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
+                        <td className={`${tdCls} sm:sticky`} style={{ borderColor: 'var(--hr-line)', left: stickyRefLeft, zIndex: 2, background: 'inherit', boxShadow: '4px 0 6px -4px rgba(35,48,56,0.14)' }}>
                           <div className="flex items-center whitespace-nowrap">
                             <input key={e.pcvNumber} defaultValue={e.pcvNumber} disabled={!!e.reimbursementId || !!e.paidAt || !canWrite}
-                              className={`${cellCls} font-mono`} style={{ minWidth: 150 }}
+                              className={`${cellCls} font-mono font-semibold flex-1 min-w-0`}
                               title="Reference number — edit to match your physical hard copy"
                               onBlur={ev => savePcv(e, ev.target.value)}
                               onKeyDown={ev => { if (ev.key === 'Enter') (ev.target as HTMLInputElement).blur() }} />
@@ -1189,190 +1459,228 @@ function PettyCashInner() {
                             {!e.reimbursementId && !e.paidAt && canWrite && pcvBases.length > 0 && (
                               <select value="" title="Assign to a previous PCV number"
                                 onChange={ev => { const s = ev.target.value; if (s) { if (confirm(`Assign this entry under ${pcvBases.find(b => String(b.seq) === s)?.label}?`)) assignPcv(e, Number(s)); ev.target.value = '' } }}
-                                className="text-[10px] rounded border bg-white" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)', maxWidth: 24 }}>
+                                className="text-[10px] rounded border bg-white" style={{ borderColor: 'var(--hr-line)', color: 'var(--mid-gray)', maxWidth: 24 }}>
                                 <option value="">⋯</option>
                                 {pcvBases.filter(b => b.seq !== e.pcvSeq).map(b => <option key={b.seq} value={b.seq}>Assign to {b.label}</option>)}
                               </select>
                             )}
                           </div>
                         </td>
-                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
-                          <select className={cellCls} value={e.requestor || ''} disabled={lk}
-                            onChange={ev => saveField(e.id, { requestor: ev.target.value }, false)} style={{ minWidth: 160 }}>
-                            <option value=""></option>
-                            {requestors.map(r => <option key={r} value={r}>{r}</option>)}
-                            {e.requestor && !requestors.includes(e.requestor) && <option value={e.requestor}>{e.requestor}</option>}
-                          </select>
-                        </td>
-                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
-                          <DeptTagCell value={(e as unknown as { departments?: string[] }).departments || []} disabled={lk}
-                            onSave={next => saveField(e.id, { departments: next } as unknown as Partial<Entry>, false)} />
-                        </td>
-                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
-                          {e.pcfStatus === 'Replenished' ? (
-                            <span className="px-2 py-1.5 block whitespace-nowrap font-semibold" style={{ color: '#166534', minWidth: 140 }}>Replenished</span>
-                          ) : (
-                            <select className={cellCls} value={e.pcfStatus || ''} disabled={lk}
-                              onChange={ev => saveField(e.id, { pcfStatus: ev.target.value }, false)} style={{ minWidth: 140 }}>
+                        {show('requestor') && (
+                          <td className={tdCls} style={{ borderColor: 'var(--hr-line)' }}>
+                            <select className={cellCls} value={e.requestor || ''} disabled={lk}
+                              onChange={ev => saveField(e.id, { requestor: ev.target.value }, false)}>
                               <option value=""></option>
-                              {PCF_STATUS.map(s => <option key={s} value={s}>{s}</option>)}
+                              {requestors.map(r => <option key={r} value={r}>{r}</option>)}
+                              {e.requestor && !requestors.includes(e.requestor) && <option value={e.requestor}>{e.requestor}</option>}
                             </select>
-                          )}
-                        </td>
-                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
-                          <input type="date" className={cellCls} disabled={lk}
-                            value={e.date ? String(e.date).slice(0, 10) : ''}
-                            onChange={ev => saveField(e.id, { date: ev.target.value }, false)} />
-                        </td>
-                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
-                          <input className={cellCls} disabled={lk} value={e.description || ''} style={{ minWidth: 220 }}
-                            onChange={ev => patchLocal(e.id, { description: ev.target.value })}
-                            onBlur={ev => saveField(e.id, { description: ev.target.value }, false)} />
-                        </td>
-                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: lk ? 'transparent' : '#fafafa' }}>
-                          <span className="px-2 py-1.5 block" style={{ color: 'var(--mid-gray)', minWidth: 240 }}>{descForHub(e)}</span>
-                        </td>
-                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
-                          <select className={cellCls} value={e.validity || ''} disabled={lk}
-                            onChange={ev => {
-                              const v = ev.target.value
-                              const patch: Partial<Entry> = { validity: v }
-                              if (v !== 'Valid') { patch.vatable = null; patch.siNumber = null; patch.tinNumber = null }
-                              saveField(e.id, patch, false)
-                            }}>
-                            <option value=""></option>
-                            {VALIDITY.map(v => <option key={v} value={v}>{v}</option>)}
-                          </select>
-                        </td>
-                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: lk ? 'transparent' : (e.validity === 'Valid' ? '#fff' : '#f3f4f6') }}>
-                          <select className={cellCls} value={vatLabel(e)} disabled={lk || e.validity !== 'Valid'}
-                            onChange={ev => {
-                              const v = ev.target.value
-                              // Part VAT starts with the whole gross as the VAT part;
-                              // type the VAT-inclusive amount in the box below.
-                              if (v === PART_VAT) { saveField(e.id, { vatable: 'VAT', vatPortion: num(e.grossAmount) }, false); return }
-                              const patch: Partial<Entry> = { vatable: v, vatPortion: null }
-                              if (v !== 'VAT' && v !== 'Non-VAT') { patch.siNumber = null; patch.tinNumber = null }
-                              saveField(e.id, patch, false)
-                            }}>
-                            <option value=""></option>
-                            {VATABLE.map(v => <option key={v} value={v}>{v}</option>)}
-                            <option value={PART_VAT}>{PART_VAT}</option>
-                          </select>
-                          {isMixedVat(e) && (
-                            // Two aligned rows: labels on the left (one line each),
-                            // the typed VAT part and the computed non-VAT part
-                            // right-aligned in the same column.
-                            <div className="grid grid-cols-[auto_1fr] items-center gap-x-1 px-1 pb-1 text-[10px]" style={{ minWidth: 170, color: 'var(--mid-gray)' }}>
-                              <span className="whitespace-nowrap">VAT part ₱</span>
-                              <input type="number" step="0.01" className={`${cellCls} text-right`} disabled={lk}
-                                title="The VAT-inclusive amount bought from a VAT-registered seller. The rest of the gross is non-VAT."
-                                value={e.vatPortion == null ? '' : String(e.vatPortion)}
-                                onWheel={ev => ev.currentTarget.blur()}
-                                onChange={ev => patchLocal(e.id, { vatPortion: ev.target.value })}
-                                onBlur={ev => saveField(e.id, { vatPortion: Math.min(Math.abs(Number(ev.target.value) || 0), Math.abs(num(e.grossAmount))) }, false)} />
-                              <span className="whitespace-nowrap">Non-VAT part ₱</span>
-                              <span className="px-2 text-xs text-right">{peso(num(e.grossAmount) - vatBase(e))}</span>
-                            </div>
-                          )}
-                        </td>
-                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: lk ? 'transparent' : (ve ? '#fff' : '#f3f4f6') }}>
-                          <input className={cellCls} disabled={lk || !ve} value={e.siNumber || ''} style={{ minWidth: 140 }}
-                            onChange={ev => patchLocal(e.id, { siNumber: ev.target.value })}
-                            onBlur={ev => saveField(e.id, { siNumber: ev.target.value }, false)} />
-                        </td>
-                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: lk ? 'transparent' : (ve ? '#fff' : '#f3f4f6') }}>
-                          <input className={cellCls} disabled={lk || !ve} value={e.tinNumber || ''} placeholder="XXX-XXX-XXX-XXXXX"
-                            style={{ minWidth: 150 }}
-                            onChange={ev => patchLocal(e.id, { tinNumber: formatTin(ev.target.value) })}
-                            onBlur={ev => saveField(e.id, { tinNumber: formatTin(ev.target.value) }, false)} />
-                        </td>
-                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: lk ? 'transparent' : '#fafafa' }}>
-                          <span className="px-2 py-1.5 block whitespace-nowrap font-mono" style={{ color: 'var(--mid-gray)' }}>{tinNumber2(e.tinNumber)}</span>
-                        </td>
-                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: lk ? 'transparent' : '#fafafa' }}>
-                          <span className="px-2 py-1.5 block whitespace-nowrap font-mono" style={{ color: 'var(--mid-gray)' }}>{branchCodeOf(e.tinNumber)}</span>
-                        </td>
-                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
-                          <NameCombobox options={pickNames} hints={pickHints} disabled={lk} value={e.registeredName || ''}
-                            className={cellCls} style={{ minWidth: 180 }} placeholder="Type or pick a supplier…"
-                            onChange={v => patchLocal(e.id, { registeredName: v })}
-                            onCommit={v => saveField(e.id, supplierPatch(v) as Partial<Entry>, false)} />
-                        </td>
-                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
-                          <input className={cellCls} disabled={lk} value={e.registeredAddress || ''} style={{ minWidth: 220 }}
-                            onChange={ev => patchLocal(e.id, { registeredAddress: ev.target.value })}
-                            onBlur={ev => saveField(e.id, { registeredAddress: ev.target.value.trim().toUpperCase() }, false)} />
-                        </td>
-                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
-                          <input type="number" step="0.01" className={`${cellCls} text-right`} disabled={lk}
-                            value={num(e.grossAmount) === 0 ? '' : String(e.grossAmount)} style={{ minWidth: 110 }}
-                            onWheel={ev => ev.currentTarget.blur()}
-                            onChange={ev => patchLocal(e.id, { grossAmount: ev.target.value })}
-                            onBlur={ev => saveField(e.id, { grossAmount: Number(ev.target.value) || 0 }, false)} />
-                        </td>
-                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: lk ? 'transparent' : '#fafafa' }}>
-                          <span className="px-2 py-1.5 block text-right" style={{ color: 'var(--mid-gray)' }}>{peso(netOfVat(e))}</span>
-                        </td>
-                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)', background: lk ? 'transparent' : '#fafafa' }}>
-                          <span className="px-2 py-1.5 block text-right" style={{ color: 'var(--mid-gray)' }}>{peso(vatAmount(e))}</span>
-                        </td>
-                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
-                          <AccountPicker accounts={coaAccounts} value={e.accountTitle || ''} valueKey="numberTitle"
-                            disabled={lk} className={cellCls} placeholder="Type a number or a name…"
-                            clearLabel="— Clear —"
-                            onChange={v => {
-                              if (e.assetAddedAt && v && !assetClassFromAccountTitle(v)
-                                && !confirm(`${refOf(e)} is in Asset Management. Changing it to ${v} removes its asset record from Asset Management (the cost becomes an expense). Continue?`)) return
-                              saveField(e.id, { accountTitle: v }, false)
-                            }} />
-                          {/* Only tangible (depreciating PPE) classifications — not intangibles. */}
-                          {(() => {
-                            const ac = assetClassFromAccountTitle(e.accountTitle)
-                            if (!canWrite || !ac || !isDepreciatingClassification(ac)) return null
-                            return e.assetAddedAt ? (
-                              // Already in the register: plain status, no button — re-adding
-                              // created duplicate assets. Deleting the asset (or re-tagging the
-                              // entry as an expense) releases the stamp and brings the button back.
-                              <span title={`Added to Asset Management on ${String(e.assetAddedAt).slice(0, 10)}`}
-                                className="mt-1 flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold whitespace-nowrap"
-                                style={{ color: '#16a34a', background: '#f0fdf4' }}>
-                                <CheckCircle2 size={11} /> In Asset Management
-                              </span>
+                          </td>
+                        )}
+                        {show('department') && (
+                          <td className={tdCls} style={{ borderColor: 'var(--hr-line)' }}>
+                            <DeptTagCell value={(e as unknown as { departments?: string[] }).departments || []} disabled={lk}
+                              onSave={next => saveField(e.id, { departments: next } as unknown as Partial<Entry>, false)} />
+                          </td>
+                        )}
+                        {show('pcfStatus') && (
+                          <td className={tdCls} style={{ borderColor: 'var(--hr-line)' }}>
+                            {e.pcfStatus === 'Replenished' ? (
+                              <span className="inline-flex m-1 px-2.5 py-0.5 rounded-full whitespace-nowrap text-[11.5px] font-semibold"
+                                style={{ background: pillOf('Replenished').bg, color: pillOf('Replenished').fg }}>Replenished</span>
                             ) : (
-                              <button onClick={() => { setAssetForm({ name: e.description || '', accountableName: '', remarks: '', photoUrls: [], multi: false, quantity: '2', unitNames: [] , addTo: false, existingAssetId: '' }); setAssetPrompt(e) }} title="Add this asset to Asset Management"
-                                className="mt-1 flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold border whitespace-nowrap"
-                                style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
-                                <Plus size={11} /> Add to Asset Management
-                              </button>
-                            )
-                          })()}
-                          {canWrite && inventoryClassFromAccountTitle(e.accountTitle) && (
-                            e.inventoryRecordedAt ? (
-                              <button onClick={() => setInvReAddWarn(e)} title={`Already recorded in Inventory on ${String(e.inventoryRecordedAt).slice(0, 10)}`}
-                                className="mt-1 flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold border whitespace-nowrap"
-                                style={{ borderColor: '#16a34a', color: '#16a34a', background: '#f0fdf4' }}>
-                                <CheckCircle2 size={11} /> Recorded in Inventory
-                              </button>
-                            ) : (
-                              <button onClick={() => setInvPrompt(e)} title="Record this in Inventory & Procurement"
-                                className="mt-1 flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold border whitespace-nowrap"
-                                style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
-                                <Plus size={11} /> Record in Inventory
-                              </button>
-                            )
-                          )}
-                        </td>
+                              <select className="m-1 max-w-[calc(100%-0.5rem)] px-2 py-0.5 rounded-full text-[11.5px] font-semibold outline-none border border-transparent focus:border-[var(--teal)] disabled:opacity-100"
+                                value={e.pcfStatus || ''} disabled={lk}
+                                onChange={ev => saveField(e.id, { pcfStatus: ev.target.value }, false)}
+                                style={{ background: pillOf(e.pcfStatus).bg, color: pillOf(e.pcfStatus).fg }}>
+                                <option value="">—</option>
+                                {PCF_STATUS.map(s => <option key={s} value={s}>{s}</option>)}
+                              </select>
+                            )}
+                          </td>
+                        )}
+                        {show('date') && (
+                          <td className={tdCls} style={{ borderColor: 'var(--hr-line)' }}>
+                            <input type="date" className={cellCls} disabled={lk}
+                              value={e.date ? String(e.date).slice(0, 10) : ''}
+                              onChange={ev => saveField(e.id, { date: ev.target.value }, false)} />
+                          </td>
+                        )}
+                        {show('description') && (
+                          <td className={tdCls} style={{ borderColor: 'var(--hr-line)' }}>
+                            <input className={cellCls} disabled={lk} value={e.description || ''}
+                              onChange={ev => patchLocal(e.id, { description: ev.target.value })}
+                              onBlur={ev => saveField(e.id, { description: ev.target.value }, false)} />
+                          </td>
+                        )}
+                        {show('descHub') && (
+                          <td className={tdCls} style={{ borderColor: 'var(--hr-line)', background: lk ? 'transparent' : 'var(--hr-head)' }}>
+                            <span className="px-2 py-1.5 line-clamp-2" style={{ color: 'var(--mid-gray)' }} title={descForHub(e)}>{descForHub(e)}</span>
+                          </td>
+                        )}
+                        {show('validity') && (
+                          <td className={tdCls} style={{ borderColor: 'var(--hr-line)' }}>
+                            <select className={cellCls} value={e.validity || ''} disabled={lk}
+                              onChange={ev => {
+                                const v = ev.target.value
+                                const patch: Partial<Entry> = { validity: v }
+                                if (v !== 'Valid') { patch.vatable = null; patch.siNumber = null; patch.tinNumber = null }
+                                saveField(e.id, patch, false)
+                              }}>
+                              <option value=""></option>
+                              {VALIDITY.map(v => <option key={v} value={v}>{v}</option>)}
+                            </select>
+                          </td>
+                        )}
+                        {show('vatable') && (
+                          <td className={tdCls} style={{ borderColor: 'var(--hr-line)', background: lk ? 'transparent' : (e.validity === 'Valid' ? '#fff' : '#f2f5ee') }}>
+                            <select className={cellCls} value={vatLabel(e)} disabled={lk || e.validity !== 'Valid'}
+                              onChange={ev => {
+                                const v = ev.target.value
+                                // Part VAT starts with the whole gross as the VAT part;
+                                // type the VAT-inclusive amount in the box below.
+                                if (v === PART_VAT) { saveField(e.id, { vatable: 'VAT', vatPortion: num(e.grossAmount) }, false); return }
+                                const patch: Partial<Entry> = { vatable: v, vatPortion: null }
+                                if (v !== 'VAT' && v !== 'Non-VAT') { patch.siNumber = null; patch.tinNumber = null }
+                                saveField(e.id, patch, false)
+                              }}>
+                              <option value=""></option>
+                              {VATABLE.map(v => <option key={v} value={v}>{v}</option>)}
+                              <option value={PART_VAT}>{PART_VAT}</option>
+                            </select>
+                            {isMixedVat(e) && (
+                              // Two aligned rows: labels on the left (one line each),
+                              // the typed VAT part and the computed non-VAT part
+                              // right-aligned in the same column.
+                              <div className="grid grid-cols-[auto_1fr] items-center gap-x-1 px-1 pb-1 text-[10px]" style={{ color: 'var(--mid-gray)' }}>
+                                <span className="whitespace-nowrap">VAT part ₱</span>
+                                <input type="number" step="0.01" className={`${cellCls} text-right`} disabled={lk}
+                                  title="The VAT-inclusive amount bought from a VAT-registered seller. The rest of the gross is non-VAT."
+                                  value={e.vatPortion == null ? '' : String(e.vatPortion)}
+                                  onWheel={ev => ev.currentTarget.blur()}
+                                  onChange={ev => patchLocal(e.id, { vatPortion: ev.target.value })}
+                                  onBlur={ev => saveField(e.id, { vatPortion: Math.min(Math.abs(Number(ev.target.value) || 0), Math.abs(num(e.grossAmount))) }, false)} />
+                                <span className="whitespace-nowrap">Non-VAT part ₱</span>
+                                <span className="px-2 text-xs text-right">{peso(num(e.grossAmount) - vatBase(e))}</span>
+                              </div>
+                            )}
+                          </td>
+                        )}
+                        {show('siNumber') && (
+                          <td className={tdCls} style={{ borderColor: 'var(--hr-line)', background: lk ? 'transparent' : (ve ? '#fff' : '#f2f5ee') }}>
+                            <input className={cellCls} disabled={lk || !ve} value={e.siNumber || ''}
+                              onChange={ev => patchLocal(e.id, { siNumber: ev.target.value })}
+                              onBlur={ev => saveField(e.id, { siNumber: ev.target.value }, false)} />
+                          </td>
+                        )}
+                        {show('tinNumber') && (
+                          <td className={tdCls} style={{ borderColor: 'var(--hr-line)', background: lk ? 'transparent' : (ve ? '#fff' : '#f2f5ee') }}>
+                            <input className={cellCls} disabled={lk || !ve} value={e.tinNumber || ''} placeholder="XXX-XXX-XXX-XXXXX"
+                              onChange={ev => patchLocal(e.id, { tinNumber: formatTin(ev.target.value) })}
+                              onBlur={ev => saveField(e.id, { tinNumber: formatTin(ev.target.value) }, false)} />
+                          </td>
+                        )}
+                        {show('tinNumber2') && (
+                          <td className={tdCls} style={{ borderColor: 'var(--hr-line)', background: lk ? 'transparent' : 'var(--hr-head)' }}>
+                            <span className="px-2 py-1.5 block whitespace-nowrap font-mono" style={{ color: 'var(--mid-gray)' }}>{tinNumber2(e.tinNumber)}</span>
+                          </td>
+                        )}
+                        {show('branchCode') && (
+                          <td className={tdCls} style={{ borderColor: 'var(--hr-line)', background: lk ? 'transparent' : 'var(--hr-head)' }}>
+                            <span className="px-2 py-1.5 block whitespace-nowrap font-mono" style={{ color: 'var(--mid-gray)' }}>{branchCodeOf(e.tinNumber)}</span>
+                          </td>
+                        )}
+                        {show('registeredName') && (
+                          <td className={tdCls} style={{ borderColor: 'var(--hr-line)' }}>
+                            <NameCombobox options={pickNames} hints={pickHints} disabled={lk} value={e.registeredName || ''}
+                              className={cellCls} placeholder="Type or pick a supplier…"
+                              onChange={v => patchLocal(e.id, { registeredName: v })}
+                              onCommit={v => saveField(e.id, supplierPatch(v) as Partial<Entry>, false)} />
+                          </td>
+                        )}
+                        {show('registeredAddress') && (
+                          <td className={tdCls} style={{ borderColor: 'var(--hr-line)' }}>
+                            <input className={cellCls} disabled={lk} value={e.registeredAddress || ''}
+                              onChange={ev => patchLocal(e.id, { registeredAddress: ev.target.value })}
+                              onBlur={ev => saveField(e.id, { registeredAddress: ev.target.value.trim().toUpperCase() }, false)} />
+                          </td>
+                        )}
+                        {show('grossAmount') && (
+                          <td className={tdCls} style={{ borderColor: 'var(--hr-line)' }}>
+                            <input type="number" step="0.01" className={`${cellCls} text-right`} disabled={lk}
+                              value={num(e.grossAmount) === 0 ? '' : String(e.grossAmount)}
+                              onWheel={ev => ev.currentTarget.blur()}
+                              onChange={ev => patchLocal(e.id, { grossAmount: ev.target.value })}
+                              onBlur={ev => saveField(e.id, { grossAmount: Number(ev.target.value) || 0 }, false)} />
+                          </td>
+                        )}
+                        {show('netOfVat') && (
+                          <td className={tdCls} style={{ borderColor: 'var(--hr-line)', background: lk ? 'transparent' : 'var(--hr-head)' }}>
+                            <span className="px-2 py-1.5 block text-right" style={{ color: 'var(--mid-gray)' }}>{peso(netOfVat(e))}</span>
+                          </td>
+                        )}
+                        {show('vatAmount') && (
+                          <td className={tdCls} style={{ borderColor: 'var(--hr-line)', background: lk ? 'transparent' : 'var(--hr-head)' }}>
+                            <span className="px-2 py-1.5 block text-right" style={{ color: 'var(--mid-gray)' }}>{peso(vatAmount(e))}</span>
+                          </td>
+                        )}
+                        {show('accountTitle') && (
+                          <td className={tdCls} style={{ borderColor: 'var(--hr-line)' }}>
+                            <AccountPicker accounts={coaAccounts} value={e.accountTitle || ''} valueKey="numberTitle"
+                              disabled={lk} className={cellCls} placeholder="Type a number or a name…"
+                              clearLabel="— Clear —"
+                              onChange={v => {
+                                if (e.assetAddedAt && v && !assetClassFromAccountTitle(v)
+                                  && !confirm(`${refOf(e)} is in Asset Management. Changing it to ${v} removes its asset record from Asset Management (the cost becomes an expense). Continue?`)) return
+                                saveField(e.id, { accountTitle: v }, false)
+                              }} />
+                            {/* Only tangible (depreciating PPE) classifications — not intangibles. */}
+                            {(() => {
+                              const ac = assetClassFromAccountTitle(e.accountTitle)
+                              if (!canWrite || !ac || !isDepreciatingClassification(ac)) return null
+                              return e.assetAddedAt ? (
+                                // Already in the register: plain status, no button — re-adding
+                                // created duplicate assets. Deleting the asset (or re-tagging the
+                                // entry as an expense) releases the stamp and brings the button back.
+                                <span title={`Added to Asset Management on ${String(e.assetAddedAt).slice(0, 10)}`}
+                                  className="mt-1 flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold whitespace-nowrap"
+                                  style={{ color: '#16a34a', background: '#f0fdf4' }}>
+                                  <CheckCircle2 size={11} /> In Asset Management
+                                </span>
+                              ) : (
+                                <button onClick={() => { setAssetForm({ name: e.description || '', accountableName: '', remarks: '', photoUrls: [], multi: false, quantity: '2', unitNames: [] , addTo: false, existingAssetId: '' }); setAssetPrompt(e) }} title="Add this asset to Asset Management"
+                                  className="mt-1 flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold border whitespace-nowrap"
+                                  style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+                                  <Plus size={11} /> Add to Asset Management
+                                </button>
+                              )
+                            })()}
+                            {canWrite && inventoryClassFromAccountTitle(e.accountTitle) && (
+                              e.inventoryRecordedAt ? (
+                                <button onClick={() => setInvReAddWarn(e)} title={`Already recorded in Inventory on ${String(e.inventoryRecordedAt).slice(0, 10)}`}
+                                  className="mt-1 flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold border whitespace-nowrap"
+                                  style={{ borderColor: '#16a34a', color: '#16a34a', background: '#f0fdf4' }}>
+                                  <CheckCircle2 size={11} /> Recorded in Inventory
+                                </button>
+                              ) : (
+                                <button onClick={() => setInvPrompt(e)} title="Record this in Inventory & Procurement"
+                                  className="mt-1 flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold border whitespace-nowrap"
+                                  style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+                                  <Plus size={11} /> Record in Inventory
+                                </button>
+                              )
+                            )}
+                          </td>
+                        )}
                         {branch === 'CEO' && (
-                          <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
-                            <div className="px-1 py-1" style={{ minWidth: 210 }}>
+                          <td className={tdCls} style={{ borderColor: 'var(--hr-line)' }}>
+                            <div className="px-1 py-1">
                               {ALLOC_BRANCHES.map(b => {
                                 const checked = allocOf(e, b.value) !== undefined
                                 // The last ticked branch takes whatever the others leave (lib/petty-cash-shares).
                                 const fillsItself = checked && getAllocArr(e).at(-1)?.branch === b.value
                                 return (
                                   <div key={b.value} className="flex items-center gap-1 mb-0.5">
-                                    <label className="flex items-center gap-1 text-[11px]" style={{ minWidth: 56 }}>
+                                    <label className="flex items-center gap-1 text-[11px]">
                                       <input type="checkbox" checked={checked} disabled={lk} onChange={() => toggleAlloc(e, b.value)} /> {b.label}
                                     </label>
                                     <input type="number" step="0.01" disabled={lk || !checked || fillsItself} placeholder="0"
@@ -1380,7 +1688,7 @@ function PettyCashInner() {
                                       value={checked ? String(allocOf(e, b.value) ?? '') : ''}
                                       onWheel={ev => ev.currentTarget.blur()}
                                       onChange={ev => setAllocAmt(e, b.value, ev.target.value)}
-                                      className="w-20 px-1 py-0.5 text-[11px] border rounded text-right" style={{ borderColor: 'var(--light-gray)', ...(fillsItself ? { background: 'var(--off-white)' } : {}) }} />
+                                      className="w-20 px-1 py-0.5 text-[11px] border rounded text-right" style={{ borderColor: 'var(--hr-line)', ...(fillsItself ? { background: 'var(--off-white)' } : {}) }} />
                                   </div>
                                 )
                               })}
@@ -1390,39 +1698,45 @@ function PettyCashInner() {
                             </div>
                           </td>
                         )}
-                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
-                          <div className="flex flex-col gap-1 px-1 py-1" style={{ minWidth: 120 }}>
-                            {proofsOf(e).map((url, i) => (
-                              <div key={url} className="flex items-center gap-1 whitespace-nowrap">
-                                <a href={url} target="_blank" rel="noopener noreferrer" title="View proof"
-                                  className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border text-[11px]"
-                                  style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
-                                  <Eye size={12} /> {i + 1}
-                                </a>
-                                {!lk && (
-                                  <button onClick={() => removeProof(e, url)} title="Remove this proof" className="p-0.5 rounded hover:bg-red-50">
-                                    <X size={12} style={{ color: '#dc2626' }} />
-                                  </button>
-                                )}
-                              </div>
-                            ))}
-                            {!lk && (
-                              <ScanUpload compact section="petty-cash" prefix={e.pcvNumber}
-                                existingCount={proofsOf(e).length}
-                                label={proofsOf(e).length ? 'Add' : 'Upload'}
-                                onUploaded={url => appendProof(e.id, url)} />
-                            )}
-                          </div>
-                        </td>
-                        <td className={tdCls} style={{ borderColor: 'var(--light-gray)' }}>
-                          <select className={cellCls} value={e.audited ? 'Yes' : 'No'} disabled={!canAudit}
-                            title={!canAudit ? 'Only an Accountant or Admin can change the audit status' : ''}
-                            onChange={ev => setAudited(e.id, ev.target.value === 'Yes')} style={{ minWidth: 70 }}>
-                            <option value="No">No</option>
-                            <option value="Yes">Yes</option>
-                          </select>
-                        </td>
-                        <td className="border-b px-1 text-center" style={{ borderColor: 'var(--light-gray)', position: 'sticky', right: 0, zIndex: 4, background: 'inherit', boxShadow: '-5px 0 6px -4px rgba(0,0,0,0.18)', minWidth: 84 }}>
+                        {show('proof') && (
+                          <td className={tdCls} style={{ borderColor: 'var(--hr-line)' }}>
+                            <div className="flex flex-col gap-1 px-1 py-1">
+                              {proofsOf(e).map((url, i) => (
+                                <div key={url} className="flex items-center gap-1 whitespace-nowrap">
+                                  <a href={url} target="_blank" rel="noopener noreferrer" title="View proof"
+                                    className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border text-[11px]"
+                                    style={{ borderColor: 'var(--hr-line)', color: 'var(--charcoal)' }}>
+                                    <Eye size={12} /> {i + 1}
+                                  </a>
+                                  {!lk && (
+                                    <button onClick={() => removeProof(e, url)} title="Remove this proof" className="p-0.5 rounded hover:bg-red-50">
+                                      <X size={12} style={{ color: '#dc2626' }} />
+                                    </button>
+                                  )}
+                                </div>
+                              ))}
+                              {!lk && (
+                                <ScanUpload compact section="petty-cash" prefix={e.pcvNumber}
+                                  existingCount={proofsOf(e).length}
+                                  label={proofsOf(e).length ? 'Add' : 'Upload'}
+                                  onUploaded={url => appendProof(e.id, url)} />
+                              )}
+                            </div>
+                          </td>
+                        )}
+                        {show('audited') && (
+                          <td className={tdCls} style={{ borderColor: 'var(--hr-line)' }}>
+                            <select className="m-1 px-2 py-0.5 rounded-full text-[11.5px] font-semibold outline-none border border-transparent focus:border-[var(--teal)] disabled:opacity-100"
+                              value={e.audited ? 'Yes' : 'No'} disabled={!canAudit}
+                              title={!canAudit ? 'Only an Accountant or Admin can change the audit status' : ''}
+                              onChange={ev => setAudited(e.id, ev.target.value === 'Yes')}
+                              style={e.audited ? { background: '#dcfce7', color: '#166534' } : { background: '#f1f5f2', color: '#55616A' }}>
+                              <option value="No">No</option>
+                              <option value="Yes">Yes</option>
+                            </select>
+                          </td>
+                        )}
+                        <td className="border-b px-1 text-center" style={{ borderColor: 'var(--hr-line)', position: 'sticky', right: 0, zIndex: 4, background: 'inherit', boxShadow: '-5px 0 6px -4px rgba(0,0,0,0.18)' }}>
                           {canWrite && !e.reimbursementId ? (
                             <div className="flex items-center justify-center gap-0.5 whitespace-nowrap">
                               <button onClick={() => finalizeEntry(e)} disabled={!!e.finalized}
@@ -1466,31 +1780,94 @@ function PettyCashInner() {
                     )
                   })}
                   {displayed.length === 0 && (
-                    <tr><td colSpan={branch === 'CEO' ? 24 : 23} className="text-center py-10" style={{ color: 'var(--mid-gray)' }}>
-                      {entries.length === 0 ? 'No entries yet. Click "Add Row" to start.' : 'No entries match the current filters.'}
+                    <tr><td colSpan={visibleCols.length + 2} className="p-0">
+                      {/* sticky so the message sits in view however wide the grid is */}
+                      <div className="sticky left-0 px-6 py-12 text-center" style={{ width: 'min(100%, calc(100vw - 4rem))', maxWidth: 720 }}>
+                        {entries.length === 0 ? (
+                          <>
+                            <p className="text-sm font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>No entries yet</p>
+                            <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>
+                              {canWrite ? 'Add the first petty cash entry, or import the CSV/Excel template.' : `${BRANCH_NAMES[branch] || branch} has no petty cash entries.`}
+                            </p>
+                            {canWrite && (
+                              <button onClick={() => setShowAddPopup(true)} className={`${primaryBtn} mt-4`} style={{ background: 'var(--teal)' }}>
+                                <Plus size={15} /> Add entry
+                              </button>
+                            )}
+                          </>
+                        ) : !showReplenished && !anyGridFilter && !searchQ && openCount === 0 ? (
+                          <>
+                            <span className="mx-auto mb-2.5 flex w-11 h-11 items-center justify-center rounded-full" style={{ background: '#ecfdf5', color: '#059669' }}>
+                              <CheckCircle2 size={22} />
+                            </span>
+                            <p className="text-sm font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>All caught up</p>
+                            <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>
+                              Every one of the {entries.length.toLocaleString()} entries is replenished, so there is nothing open.
+                            </p>
+                            <button onClick={toggleShowReplenished} className={`${outlineBtn} mt-4`} style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+                              Show all {entries.length.toLocaleString()} entries
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-sm font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>No entries match</p>
+                            <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>
+                              Nothing fits the search and column filters{hiddenMatches > 0 ? ` (${hiddenMatches} replenished ${hiddenMatches === 1 ? 'entry matches' : 'entries match'} but ${hiddenMatches === 1 ? 'is' : 'are'} hidden)` : ''}.
+                            </p>
+                            <button onClick={clearGridFilters} className={`${outlineBtn} mt-4`} style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+                              Clear filters
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </td></tr>
                   )}
                 </tbody>
+                {displayed.length > 0 && (
+                  <tfoot className="sticky bottom-0 z-10">
+                    <tr style={{ background: 'var(--hr-head)' }}>
+                      <td className="border-t-2" style={{ borderColor: 'var(--light-gray)', position: 'sticky', left: 0, zIndex: 3, background: 'var(--hr-head)' }} />
+                      {visibleCols.map(c => (
+                        <td key={c.key} className={`border-t-2 px-2 py-2 text-xs font-bold tabular-nums whitespace-nowrap ${c.key === 'refNumber' ? 'sm:sticky' : ''}`}
+                          style={{
+                            borderColor: 'var(--light-gray)', color: 'var(--charcoal)', textAlign: c.key === 'refNumber' ? 'left' : 'right',
+                            ...(c.key === 'refNumber' ? { left: stickyRefLeft, zIndex: 3, background: 'var(--hr-head)', boxShadow: '4px 0 6px -4px rgba(35,48,56,0.14)' } : {}),
+                          }}>
+                          {c.key === 'refNumber' ? <>Total · {displayed.length.toLocaleString()} entr{displayed.length === 1 ? 'y' : 'ies'}</>
+                            : c.key === 'grossAmount' ? `₱${peso(totalGross)}`
+                            : c.key === 'netOfVat' ? peso(totalNet)
+                            : c.key === 'vatAmount' ? peso(totalVat)
+                            : null}
+                        </td>
+                      ))}
+                      <td className="border-t-2" style={{ borderColor: 'var(--light-gray)', position: 'sticky', right: 0, zIndex: 3, background: 'var(--hr-head)' }} />
+                    </tr>
+                  </tfoot>
+                )}
               </table>
             )}
-          </div>
+            </div>
 
-          {isCeo && <CeoPcfHistoryPanel />}
-
-          {canWrite && (
-            <div className="flex items-center gap-2">
-              <button onClick={() => setShowAddPopup(true)} disabled={adding}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
-                style={{ background: 'var(--teal)' }}>
-                {adding ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Add Row
+            {/* ── Export (same files as before) ── */}
+            <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-t text-xs" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+              <span className="font-semibold" style={{ color: 'var(--charcoal)' }}>Export entries dated</span>
+              <input type="date" value={dlFrom} onChange={e => setDlFrom(e.target.value)} aria-label="From"
+                className="h-8 px-2 rounded-lg border bg-white text-xs" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }} />
+              <span>to</span>
+              <input type="date" value={dlTo} onChange={e => setDlTo(e.target.value)} aria-label="To"
+                className="h-8 px-2 rounded-lg border bg-white text-xs" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }} />
+              {(dlFrom || dlTo) && <button onClick={() => { setDlFrom(''); setDlTo('') }} className="underline">clear</button>}
+              <span className="ml-auto tabular-nums">{dlCount.toLocaleString()} in range</span>
+              <button onClick={() => exportEntries('xlsx')} className={ghostBtn} style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+                <FileDown size={14} style={{ color: '#166534' }} /> Excel
               </button>
-              <button onClick={duplicateLast} disabled={adding || entries.length === 0}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold border disabled:opacity-50"
-                style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }} title="Copy the latest For Replenishment entry's details into a new row (change the amount)">
-                <Plus size={14} /> Duplicate previous entry
+              <button onClick={() => exportEntries('pdf')} className={ghostBtn} style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+                <FileDown size={14} style={{ color: '#b91c1c' }} /> PDF
               </button>
             </div>
-          )}
+          </section>
+
+          {isCeo && <CeoPcfHistoryPanel />}
         </>
       )}
 
@@ -1600,31 +1977,55 @@ function PettyCashInner() {
         const trackedUnliquidated = entries.filter(e => e.pcfStatus === 'Unliquidated').reduce((s, e) => s + num(e.grossAmount), 0)
         const shortageOverage = trackedUnliquidated - unliquidated
         const setPcs = (d: number, v: string) => setCashBreakdown(prev => ({ ...prev, [String(d)]: v.replace(/[^0-9]/g, '') }))
+        const ccPeso = (v: number) => (v < 0 ? `(${peso(Math.abs(v))})` : peso(v))
+        const fundSet = fund !== 0
         return (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <StatCard label="Cash on hand" value={`₱${peso(cashCountTotal)}`} sub="Counted by denomination"
+              tone={cashCountTotal ? 'green' : 'zero'} />
+            <StatCard label="For replenishment" value={`₱${peso(forReplTotal)}`} sub="Spent, awaiting the RFP payment"
+              tone={forReplTotal ? 'amber' : 'zero'} />
+            <StatCard label="Unaccounted" value={`₱${ccPeso(unliquidated)}`} sub="Fund − cash count − for replenishment"
+              tone={!fundSet ? 'zero' : unliquidated ? 'blue' : 'zero'} />
+            <StatCard label="Shortage / overage" value={`₱${ccPeso(shortageOverage)}`}
+              sub={!fundSet ? 'Enter the fund amount first' : shortageOverage === 0 ? 'Reconciles' : shortageOverage < 0 ? 'Shortage' : 'Overage'}
+              tone={!fundSet || shortageOverage === 0 ? 'zero' : shortageOverage < 0 ? 'red' : 'green'} />
+          </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
           {/* ── For Checking ── */}
-          <div className="rounded-2xl border bg-white overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
-            <div className="px-5 py-3" style={{ background: '#2f5d4f' }}>
-              <h3 className="text-sm font-bold text-white">For Checking</h3>
+          <section className="rounded-lg border bg-white overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+            <div className="flex items-center gap-2 px-4 py-3 border-b" style={{ borderColor: 'var(--light-gray)' }}>
+              <ClipboardCheck size={16} style={{ color: 'var(--teal)' }} />
+              <h3 className="text-sm font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>For Checking</h3>
             </div>
-            <div className="p-5 text-sm">
+            <div className="px-4 py-3 text-sm">
               {([['Total Cash Count', cashCountTotal], ['For Replenishment', forReplTotal], ['Unliquidated (unaccounted)', unliquidated]] as [string, number][]).map(([label, val]) => (
-                <div key={label} className="flex items-center justify-between py-2 border-b" style={{ borderColor: 'var(--light-gray)' }}>
+                <div key={label} className="flex items-center justify-between py-2 border-b" style={{ borderColor: 'var(--hr-line)' }}>
                   <span style={{ color: 'var(--charcoal)' }}>{label}</span>
                   <span className="font-semibold tabular-nums" style={{ color: 'var(--charcoal)' }}>{peso(val)}</span>
                 </div>
               ))}
-              <div className="flex items-center justify-between py-2.5 mt-1" style={{ borderTop: '2px solid var(--light-gray)' }}>
-                <span className="font-bold" style={{ color: 'var(--charcoal)' }}>Total Petty Cash Fund</span>
+              <div className="flex items-center justify-between py-2.5 mt-1">
+                <span className="font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>Total Petty Cash Fund</span>
                 {canWrite ? (
                   <input value={fundAmount} onChange={e => setFundAmount(e.target.value.replace(/[^0-9.]/g, ''))} placeholder="30000"
-                    className="w-32 px-2 py-1 rounded-lg border text-sm text-right font-semibold tabular-nums" style={{ borderColor: 'var(--light-gray)' }} />
+                    className="w-36 h-9 px-3 rounded-lg border text-sm text-right font-semibold tabular-nums outline-none focus:border-[var(--teal)] focus:shadow-[0_0_0_3px_rgba(74,128,115,0.12)]"
+                    style={{ borderColor: fundSet ? 'var(--light-gray)' : '#fcd34d', background: fundSet ? '#fff' : '#fffbeb' }} />
                 ) : <span className="font-bold tabular-nums">{peso(fund)}</span>}
               </div>
+              {!fundSet && (
+                <p className="text-[11px] -mt-1 mb-1" style={{ color: '#b45309' }}>No fund amount is saved for this branch yet, so the check below is not meaningful.</p>
+              )}
               <p className="text-[11px] mt-1" style={{ color: 'var(--mid-gray)' }}>Unliquidated = Fund − Cash Count − For Replenishment (the unaccounted balance of the fund).</p>
 
-              <div className="flex items-center justify-between py-2.5 mt-1 px-2 rounded-lg" style={{ background: shortageOverage === 0 ? 'transparent' : shortageOverage < 0 ? '#fef2f2' : '#ecfdf5' }}>
-                <span className="font-bold" style={{ color: 'var(--charcoal)' }}>Cash (Shortage)/Overage</span>
+              <div className="flex items-center justify-between py-2.5 mt-3 px-3 rounded-lg border-l-4"
+                style={{
+                  background: shortageOverage === 0 ? 'var(--hr-head)' : shortageOverage < 0 ? '#fef2f2' : '#ecfdf5',
+                  borderLeftColor: shortageOverage === 0 ? 'var(--light-gray)' : shortageOverage < 0 ? '#dc2626' : '#059669',
+                }}>
+                <span className="font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>Cash (Shortage)/Overage</span>
                 <span className="font-bold tabular-nums" style={{ color: shortageOverage < 0 ? '#dc2626' : shortageOverage > 0 ? '#047857' : 'var(--mid-gray)' }}>
                   {shortageOverage < 0 ? `(${peso(Math.abs(shortageOverage))})` : peso(shortageOverage)}
                 </span>
@@ -1633,20 +2034,20 @@ function PettyCashInner() {
 
               <div className="mt-5">
                 <div className="flex items-center justify-between mb-2">
-                  <h4 className="text-xs font-bold uppercase tracking-wide" style={{ color: 'var(--mid-gray)' }}>Money with staff — due to / from employee</h4>
+                  <h4 className="text-[11px] font-bold uppercase tracking-[.5px]" style={{ color: 'var(--mid-gray)', fontFamily: 'var(--font-display)' }}>Money with staff — due to / from employee</h4>
                   {canWrite && <button onClick={() => setDueToFrom(p => [...p, { label: '', direction: 'TO', amount: '' }])} className="text-xs font-semibold" style={{ color: 'var(--teal)' }}>+ Add row</button>}
                 </div>
                 {dueToFrom.length === 0 && <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>No staff balances recorded.</p>}
                 {dueToFrom.map((d, i) => (
                   <div key={i} className="flex items-center gap-2 py-1">
                     {canWrite ? (<>
-                      <input value={d.label} onChange={e => setDueToFrom(p => p.map((x, j) => j === i ? { ...x, label: e.target.value } : x))} placeholder="Name / dept" className="flex-1 px-2 py-1 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} />
-                      <select value={d.direction} onChange={e => setDueToFrom(p => p.map((x, j) => j === i ? { ...x, direction: e.target.value as 'TO' | 'FROM' } : x))} className="px-1.5 py-1 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }}>
+                      <input value={d.label} onChange={e => setDueToFrom(p => p.map((x, j) => j === i ? { ...x, label: e.target.value } : x))} placeholder="Name / dept" className="flex-1 min-w-0 h-8 px-2 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} />
+                      <select value={d.direction} onChange={e => setDueToFrom(p => p.map((x, j) => j === i ? { ...x, direction: e.target.value as 'TO' | 'FROM' } : x))} className="h-8 px-1.5 rounded-lg border text-xs bg-white" style={{ borderColor: 'var(--light-gray)' }}>
                         <option value="TO">Due TO employee</option>
                         <option value="FROM">Due FROM employee</option>
                       </select>
-                      <input value={d.amount} onChange={e => setDueToFrom(p => p.map((x, j) => j === i ? { ...x, amount: e.target.value.replace(/[^0-9.]/g, '') } : x))} placeholder="0.00" className="w-24 px-2 py-1 rounded-lg border text-xs text-right tabular-nums" style={{ borderColor: 'var(--light-gray)' }} />
-                      <button onClick={() => setDueToFrom(p => p.filter((_, j) => j !== i))} className="text-red-500 text-xs px-1" title="Remove">✕</button>
+                      <input value={d.amount} onChange={e => setDueToFrom(p => p.map((x, j) => j === i ? { ...x, amount: e.target.value.replace(/[^0-9.]/g, '') } : x))} placeholder="0.00" className="w-24 h-8 px-2 rounded-lg border text-xs text-right tabular-nums" style={{ borderColor: 'var(--light-gray)' }} />
+                      <button onClick={() => setDueToFrom(p => p.filter((_, j) => j !== i))} className="p-1 rounded hover:bg-red-50" title="Remove"><X size={14} style={{ color: '#dc2626' }} /></button>
                     </>) : (
                       <div className="flex items-center justify-between w-full text-xs">
                         <span style={{ color: 'var(--charcoal)' }}>{d.label} — DUE {d.direction} EMPLOYEE</span>
@@ -1658,60 +2059,70 @@ function PettyCashInner() {
               </div>
 
               {canWrite && (
-                <button onClick={saveCashCount} disabled={ccSaving} className="mt-5 w-full py-2.5 rounded-xl text-white text-sm font-semibold disabled:opacity-50" style={{ background: 'var(--teal)' }}>
-                  {ccSaving ? 'Saving…' : 'Save Cash Count'}
+                <button onClick={saveCashCount} disabled={ccSaving} className={`${primaryBtn} mt-5 w-full justify-center`} style={{ background: 'var(--teal)' }}>
+                  {ccSaving ? <><Loader2 size={15} className="animate-spin" /> Saving…</> : 'Save Cash Count'}
                 </button>
               )}
             </div>
-          </div>
+          </section>
 
           {/* ── Cash Breakdown ── */}
-          <div className="rounded-2xl border bg-white overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
-            <div className="px-5 py-3" style={{ background: '#2f5d4f' }}>
-              <h3 className="text-sm font-bold text-white">Cash Breakdown</h3>
+          <section className="rounded-lg border bg-white overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+            <div className="flex items-center gap-2 px-4 py-3 border-b" style={{ borderColor: 'var(--light-gray)' }}>
+              <Banknote size={16} style={{ color: 'var(--teal)' }} />
+              <h3 className="text-sm font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>Cash Breakdown</h3>
             </div>
             <table className="w-full text-sm">
               <thead>
-                <tr style={{ background: 'var(--off-white)' }}>
-                  <th className="text-left px-5 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Denomination</th>
-                  <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>pcs</th>
-                  <th className="text-right px-5 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Total</th>
+                <tr style={{ background: 'var(--hr-head)' }}>
+                  {(['Denomination', 'pcs', 'Total'] as const).map((h, i) => (
+                    <th key={h} className={`${i === 0 ? 'text-left px-4' : i === 1 ? 'text-right px-3' : 'text-right px-4'} py-2.5 text-[11px] font-bold uppercase tracking-[.5px] border-b`}
+                      style={{ color: 'var(--mid-gray)', borderColor: 'var(--light-gray)' }}>{h}</th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
                 {DENOMS.map(d => {
                   const pcs = pcsOf(d)
                   return (
-                    <tr key={d} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
-                      <td className="px-5 py-1.5 tabular-nums" style={{ color: 'var(--charcoal)' }}>{d >= 1 ? d.toLocaleString('en-PH') : d.toFixed(2)}</td>
+                    <tr key={d} className="border-b" style={{ borderColor: 'var(--hr-line)' }}>
+                      <td className="px-4 py-1.5 tabular-nums font-semibold" style={{ color: 'var(--charcoal)' }}>₱{d >= 1 ? d.toLocaleString('en-PH') : d.toFixed(2)}</td>
                       <td className="px-3 py-1.5 text-right">
                         {canWrite ? (
-                          <input value={cashBreakdown[String(d)] || ''} onChange={e => setPcs(d, e.target.value)} placeholder="0" className="w-20 px-2 py-1 rounded-lg border text-xs text-right tabular-nums" style={{ borderColor: 'var(--light-gray)' }} />
+                          <input value={cashBreakdown[String(d)] || ''} onChange={e => setPcs(d, e.target.value)} placeholder="0" inputMode="numeric"
+                            className="w-20 h-8 px-2 rounded-lg border text-xs text-right tabular-nums outline-none focus:border-[var(--teal)]" style={{ borderColor: 'var(--light-gray)' }} />
                         ) : <span className="tabular-nums">{pcs || '—'}</span>}
                       </td>
-                      <td className="px-5 py-1.5 text-right tabular-nums" style={{ color: 'var(--charcoal)' }}>{pcs ? peso(d * pcs) : '—'}</td>
+                      <td className="px-4 py-1.5 text-right tabular-nums" style={{ color: pcs ? 'var(--charcoal)' : 'var(--hr-faint)' }}>{pcs ? peso(d * pcs) : '—'}</td>
                     </tr>
                   )
                 })}
               </tbody>
               <tfoot>
-                <tr style={{ background: 'var(--off-white)', borderTop: '2px solid var(--light-gray)' }}>
-                  <td className="px-5 py-3 font-bold" style={{ color: 'var(--charcoal)' }} colSpan={2}>Total Cash On Hand</td>
-                  <td className="px-5 py-3 text-right font-bold tabular-nums" style={{ color: 'var(--teal)' }}>{peso(cashCountTotal)}</td>
+                <tr style={{ background: 'var(--hr-head)' }}>
+                  <td className="px-4 py-3 font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }} colSpan={2}>Total Cash On Hand</td>
+                  <td className="px-4 py-3 text-right font-bold tabular-nums" style={{ color: 'var(--teal)' }}>{peso(cashCountTotal)}</td>
                 </tr>
               </tfoot>
             </table>
-          </div>
+          </section>
+        </div>
         </div>
         )
       })()}
 
       {tab === 'flowchart' && (
-        <div className="rounded-2xl border bg-white p-6" style={{ borderColor: 'var(--light-gray)' }}>
-          <h2 className="text-lg font-bold mb-1" style={{ color: 'var(--charcoal)' }}>Petty Cash Workflow</h2>
-          <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>From entry to reimbursement to the Expense Report.</p>
-          <p className="text-xs mb-6 font-semibold" style={{ color: 'var(--teal)' }}>For expenses less than or equal to ₱2,000.</p>
-          <div className="flex flex-col items-center">
+        <section className="rounded-lg border bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+          <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b" style={{ borderColor: 'var(--light-gray)' }}>
+            <div>
+              <h2 className="text-[15px] font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>Petty Cash Workflow</h2>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>From entry to reimbursement to the Expense Report.</p>
+            </div>
+            <span className="inline-flex items-center h-7 px-3 rounded-full text-xs font-semibold" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
+              For expenses less than or equal to ₱2,000.
+            </span>
+          </div>
+          <ol className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 p-4">
             {([
               { n: 1, title: 'Petty cash entry', who: 'Bookkeeper', desc: 'Encode entries in the Entries tab.' },
               { n: 2, title: 'Audited', who: 'Accountant', desc: 'Accountant reviews and sets Audited = Yes.' },
@@ -1719,25 +2130,21 @@ function PettyCashInner() {
               { n: 4, title: 'Print & submit for approval', who: '', desc: 'Print the petty cash / RFP report and submit it for approval.' },
               { n: 5, title: 'Mark as Paid', who: '', desc: 'Once reimbursed & replenished, open the RFP and click “Record as Paid”.' },
               { n: 6, title: 'Expense Report', who: '', desc: 'The paid entries appear in the Expense Report (Expenses section).' },
-            ] as const).map((s, i, arr) => (
-              <div key={s.n} className="w-full max-w-xl flex flex-col items-center">
-                <div className="w-full rounded-2xl border p-4 flex items-start gap-3"
-                  style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
-                  <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold" style={{ background: 'var(--teal)' }}>{s.n}</div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>
-                      {s.title}{s.who && <span className="ml-2 px-2 py-0.5 rounded-full text-[10px] font-semibold align-middle" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>{s.who}</span>}
-                    </p>
-                    <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>{s.desc}</p>
-                  </div>
+            ] as const).map(s => (
+              <li key={s.n} className="relative flex items-start gap-3 rounded-lg border p-4" style={{ borderColor: 'var(--light-gray)', borderLeft: '4px solid var(--teal)', background: '#fff' }}>
+                <span className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold"
+                  style={{ background: 'var(--pale-teal)', color: 'var(--teal)', fontFamily: 'var(--font-display)' }}>{s.n}</span>
+                <div className="min-w-0">
+                  <p className="text-sm font-bold flex flex-wrap items-center gap-x-2 gap-y-1" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>
+                    {s.title}
+                    {s.who && <span className="px-2 py-0.5 rounded text-[11px] font-semibold" style={{ background: 'var(--pale-teal)', color: 'var(--teal)', fontFamily: 'var(--font-body)' }}>{s.who}</span>}
+                  </p>
+                  <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>{s.desc}</p>
                 </div>
-                {i < arr.length - 1 && (
-                  <div className="text-xl leading-none my-1" style={{ color: 'var(--teal)' }}>↓</div>
-                )}
-              </div>
+              </li>
             ))}
-          </div>
-        </div>
+          </ol>
+        </section>
       )}
 
 
@@ -2248,9 +2655,9 @@ function CeoPcfHistoryPanel() {
   }, [open, histBranch])
   const peso = (v: number) => v.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   return (
-    <div className="rounded-2xl border" style={{ borderColor: 'var(--light-gray)', background: '#fff' }}>
+    <div className="rounded-lg border" style={{ borderColor: 'var(--light-gray)', background: '#fff' }}>
       <button onClick={() => setOpen(o => !o)} className="w-full flex items-center justify-between px-4 py-3 text-left">
-        <span className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>
+        <span className="text-sm font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>
           Past PCF (historical fund) {totals ? `— ₱${peso(totals.inn)} received · ₱${peso(totals.out)} spent · ${totals.rows.toLocaleString()} entries` : ''}
         </span>
         <span className="text-xs" style={{ color: 'var(--teal)' }}>{open ? 'Hide' : 'Show'}</span>

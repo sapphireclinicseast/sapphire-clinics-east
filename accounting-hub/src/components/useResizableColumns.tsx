@@ -23,7 +23,15 @@ export interface ResizeApi {
   startResize: (index: number, e: React.MouseEvent) => void
 }
 
-export function useResizableColumns(storageKey: string, tableRef: RefObject<HTMLTableElement | null>): ResizeApi {
+export function useResizableColumns(
+  storageKey: string,
+  tableRef: RefObject<HTMLTableElement | null>,
+  // Optional starting width per column (same order as the header cells). When
+  // given, a column with no stored width starts here instead of at its measured
+  // header width — a grid first seen empty measured only its header labels and
+  // kept those cramped widths for good.
+  defaults?: number[],
+): ResizeApi {
   const [widths, setWidths] = useState<Record<number, number>>({})
   const [ready, setReady] = useState(false)
   const [colCount, setColCount] = useState(0)
@@ -54,10 +62,13 @@ export function useResizableColumns(storageKey: string, tableRef: RefObject<HTML
     let stored: Record<number, number> | null = null
     try { const raw = localStorage.getItem(storageKey); if (raw) stored = JSON.parse(raw) } catch { /* ignore */ }
 
+    const useDefaults = !!defaults && defaults.length === cells.length
     const w: Record<number, number> = {}
     cells.forEach((c, i) => {
       const s = stored?.[i]
-      w[i] = (typeof s === 'number' && s > 0) ? s : Math.max(40, Math.round(c.getBoundingClientRect().width))
+      w[i] = (typeof s === 'number' && s > 0) ? s
+        : (useDefaults && defaults[i] > 0) ? defaults[i]
+        : Math.max(40, Math.round(c.getBoundingClientRect().width))
     })
     setColCount(cells.length)
     setWidths(w)
