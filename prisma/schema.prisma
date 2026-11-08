@@ -226,6 +226,7 @@ model User {
   posts            ScheduledPost[]
   campaigns        EmailCampaign[]
   staff            Staff[]
+  inquiryReads     InquiryRead[]
 }
 
 model SocialAccount {
@@ -2624,17 +2625,46 @@ model Inquiry {
   phone         String?
   subject       String?
   status        InquiryStatus    @default(OPEN)
-  /// Set when a staff account first opens it — drives the unread count.
+  /// When the FIRST staff account opened it, kept as a record of when the
+  /// clinic became aware of the enquiry.
+  ///
+  /// This no longer drives the unread badge. It could not: one timestamp on the
+  /// thread meant a main admin glancing at an enquiry cleared the dot for front
+  /// desk, who then never saw it. Unread is per account now — see InquiryRead.
   readAt        DateTime?
   /// Last message from either side, for sorting the inbox by what needs work.
   lastMessageAt DateTime         @default(now())
   createdAt     DateTime         @default(now())
   updatedAt     DateTime         @updatedAt
   messages      InquiryMessage[]
+  reads         InquiryRead[]
 
   @@index([branch, status])
   @@index([branch, lastMessageAt])
   @@index([patientId, lastMessageAt])
+}
+
+/// One staff account having opened one enquiry.
+///
+/// Read state has to be per account. A single readAt on the thread meant
+/// whoever looked first — usually a main admin skimming the inbox — cleared the
+/// unread dot for everyone, so the front desk who was meant to answer it never
+/// saw that it had arrived.
+///
+/// There is one row per (enquiry, reader), stamped with the moment they opened
+/// it. The timestamp matters rather than a bare flag: it is compared against
+/// lastMessageAt so a thread I read last week goes unread again the moment the
+/// enquirer writes back.
+model InquiryRead {
+  id        String   @id @default(cuid())
+  inquiryId String
+  inquiry   Inquiry  @relation(fields: [inquiryId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  readAt    DateTime @default(now())
+
+  @@unique([inquiryId, userId])
+  @@index([userId])
 }
 
 model InquiryMessage {
