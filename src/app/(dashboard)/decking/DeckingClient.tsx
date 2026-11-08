@@ -1,7 +1,12 @@
 'use client'
 
 import { useEffect, useState, useRef, useCallback } from 'react'
-import { ChevronDown, ChevronUp, Plus, X, Settings2, Layers, Ban } from 'lucide-react'
+import { ChevronDown, Plus, X, Settings2, Ban, Search, Users, CalendarCheck, CalendarPlus, Percent, BarChart3, Info, Lock, Loader2, Clock, Rows3, Rows4, ChevronsDownUp, ChevronsUpDown } from 'lucide-react'
+import { DashCard, KpiCard, Skeleton, EmptyState, DeptChip, CARD_STYLE } from '../patients/dashboard/ui'
+import {
+  CONTROL, CONTROL_SM, CONTROL_STYLE, LABEL, BTN_PRIMARY, BTN_SECONDARY, BTN_SM, SUBTLE_BG, TEAL_HEX, DECK_CSS,
+  displayName, personLabel, initials, Avatar, PillTabs, ErrorCard, CapacityBar,
+} from './ui'
 import PatientRequestsPanel from './PatientRequestsPanel'
 import { DAY_KEYS, DAY_LABEL, DAY_SHORT, sortDays } from '@/lib/decking-days'
 import SlotLoaPanel, { type LoaLite } from './SlotLoaPanel'
@@ -42,29 +47,30 @@ const PAY_STYLE: Record<PayType, { bg: string; fg: string; border: string; label
   HMO:  { bg: '#EFE4FA', fg: '#5B2A86', border: '#C9AEE6', label: 'HMO' },
   GL:   { bg: '#FDEAD6', fg: '#93460B', border: '#F3C69B', label: 'GL' },
 }
-// An open hour is the thing front desk is hunting for, so it is the loudest
-// state on the board rather than the quietest — green, labelled, and readable
-// from across the grid. Green was previously GL's colour; GL moved to orange.
-const OPEN_BG     = '#DFF5E4'
+// An open hour is the thing front desk is hunting for, so it stays green and
+// labelled ("+ Available") — but as a calm outlined cell rather than a solid
+// fill, so a mostly-open week no longer reads as a wall of colour. Green was
+// previously GL's colour; GL moved to orange.
+const OPEN_BG     = '#F5FBF6'
 const OPEN_FG     = '#166534'
-const OPEN_BORDER = '#A9DDB7'
-const OFF_CELL_BG = '#EDEFF1'   // disabled / not working
+const OPEN_BORDER = '#B9DFC4'
+const OFF_CELL_BG = '#EEF1F3'   // disabled / not working
+// Hatched, so an unavailable hour cannot be mistaken for an empty white one.
+const OFF_HATCH   = `repeating-linear-gradient(135deg, ${OFF_CELL_BG} 0 6px, #E5E9EC 6px 12px)`
+const GRID_LINE   = '#E3EAE7'
+
+type Density = 'comfortable' | 'compact'
+const DENSITY_KEY = 'decking.density'
 function payOf(s: DeckingSlot): PayType {
   return (PAY_TYPES as string[]).includes(s.paymentType ?? '') ? (s.paymentType as PayType) : 'CASH'
 }
 // ── Capacity card ────────────────────────────────────────────────────────────
-// Three numbers, a bar that shows them as one hour's worth of clinic, and what
-// the booked hours are being paid for.
-//
-// It was three tiles and a sentence. The tiles told you 76 booked and 76 open
-// out of 240 and left you to work out that the other 88 were blocked, and
-// nothing anywhere said how much of the week was HMO — which is the number
-// that decides whether the branch is waiting on letters of authorization or
-// taking money at the desk. Front desk were counting coloured cells by eye.
-//
-// The bar is the same three buckets as the tiles, to scale: a board that is
-// mostly unavailable looks mostly grey, which no arrangement of numerals can
-// convey as fast.
+// The total / booked / open counts now sit in the KPI row above the board, so
+// this card carries what the KPIs cannot: the three buckets to scale (a board
+// that is mostly unavailable looks mostly grey, which no arrangement of
+// numerals conveys as fast) and what the booked hours are being paid for —
+// the number that decides whether the branch is waiting on letters of
+// authorization or taking money at the desk.
 interface SlotSummary {
   total: number
   booked: number
@@ -77,12 +83,6 @@ function SlotSummaryCard({ title, summary }: { title: React.ReactNode; summary: 
   const { total, booked, blocked, open, pay } = summary
   const pctOf = (n: number) => (total > 0 ? Math.round((n / total) * 100) : 0)
 
-  const tiles = [
-    { label: 'Total',  value: total,  fg: '#1F2937', bg: '#F1F3F5', pct: null as number | null },
-    { label: 'Booked', value: booked, fg: '#14507F', bg: '#E3EEFB', pct: total > 0 ? pctOf(booked) : null },
-    { label: 'Open',   value: open,   fg: '#166534', bg: '#DFF5E4', pct: total > 0 ? pctOf(open) : null },
-  ]
-
   // Mixed is only shown when it happens — a permanent zero would invite the
   // question of what it is on every board that never has one.
   const mix = ([
@@ -93,40 +93,32 @@ function SlotSummaryCard({ title, summary }: { title: React.ReactNode; summary: 
   ]).filter(m => m.key !== 'MIXED' || pay.MIXED > 0)
 
   return (
-    <div style={{ background: '#fff', border: '1px solid var(--light-gray)', borderRadius: '0.75rem', padding: '0.85rem 1rem' }}>
-      <div style={{ fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--mid-gray)', marginBottom: '0.6rem' }}>
-        {title}
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '0.5rem' }}>
-        {tiles.map(k => (
-          <div key={k.label} style={{ background: k.bg, borderRadius: '0.5rem', padding: '0.5rem 0.4rem', textAlign: 'center' }}>
-            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: k.fg, lineHeight: 1.1, fontVariantNumeric: 'tabular-nums' }}>{k.value}</div>
-            <div style={{ fontSize: '0.66rem', fontWeight: 700, color: k.fg, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{k.label}</div>
-            {k.pct !== null && (
-              <div style={{ fontSize: '0.64rem', fontWeight: 600, color: k.fg, opacity: 0.75, fontVariantNumeric: 'tabular-nums' }}>{k.pct}% of total</div>
-            )}
-          </div>
-        ))}
-      </div>
-
-      {total > 0 && (
+    <DashCard title="Capacity" icon={<BarChart3 size={15} />} description={title}>
+      {total === 0 ? (
+        <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+          No work days configured for this department yet, so there is no capacity to count.
+        </p>
+      ) : (
         <>
-          {/* Booked, open and unavailable to scale, in the tiles' own colours. */}
-          <div style={{ display: 'flex', height: 8, borderRadius: 99, overflow: 'hidden', marginTop: '0.7rem', background: '#F1F3F5' }}>
+          <CapacityBar booked={booked} open={open} blocked={blocked} height={8} />
+          <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1 text-xs" style={{ color: 'var(--charcoal)' }}>
             {([
-              { w: booked,  c: '#7FB2E5', t: `${booked} booked` },
-              { w: open,    c: '#86CF9B', t: `${open} open` },
-              { w: blocked, c: '#D2D7DC', t: `${blocked} unavailable` },
-            ]).filter(seg => seg.w > 0).map(seg => (
-              <div key={seg.t} title={seg.t} style={{ width: `${(seg.w / total) * 100}%`, background: seg.c }} />
+              { label: 'Booked', n: booked, c: '#7FB2E5' },
+              { label: 'Open', n: open, c: '#9AD7AB' },
+              { label: 'Unavailable', n: blocked, c: '#D2D7DC' },
+            ]).map(k => (
+              <span key={k.label} className="inline-flex items-center gap-1.5">
+                <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: k.c }} />
+                {k.label}
+                <span className="font-bold tabular-nums">{k.n}</span>
+                <span className="tabular-nums" style={{ color: 'var(--mid-gray)' }}>{pctOf(k.n)}%</span>
+              </span>
             ))}
           </div>
           {blocked > 0 && (
             /* Named rather than folded into "open": a blocked hour is not
                capacity anyone can book into. */
-            <p style={{ margin: '0.45rem 0 0', fontSize: '0.7rem', color: 'var(--mid-gray)' }}>
-              <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: '#D2D7DC', marginRight: 5 }} />
+            <p className="mt-1.5 text-[11px]" style={{ color: 'var(--mid-gray)' }}>
               {blocked} marked unavailable, not counted as open.
             </p>
           )}
@@ -134,23 +126,23 @@ function SlotSummaryCard({ title, summary }: { title: React.ReactNode; summary: 
       )}
 
       {booked > 0 && (
-        <div style={{ marginTop: '0.75rem', paddingTop: '0.7rem', borderTop: '1px solid var(--light-gray)' }}>
-          <div style={{ fontSize: '0.64rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--mid-gray)', marginBottom: '0.45rem' }}>
+        <div className="mt-4 pt-3.5" style={{ borderTop: '1px solid var(--light-gray)' }}>
+          <p className="text-[11px] font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--mid-gray)' }}>
             Booked hours by payment
-          </div>
-          <div style={{ display: 'flex', height: 8, borderRadius: 99, overflow: 'hidden', marginBottom: '0.5rem' }}>
+          </p>
+          <div className="flex overflow-hidden rounded-full mb-2.5" style={{ height: 8 }}>
             {mix.filter(m => pay[m.key] > 0).map(m => (
               <div key={m.key} title={`${m.label}: ${pay[m.key]}`}
                 style={{ width: `${(pay[m.key] / booked) * 100}%`, background: m.bg }} />
             ))}
           </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem 0.9rem' }}>
+          <div className="flex flex-wrap gap-x-4 gap-y-1.5">
             {mix.map(m => (
-              <span key={m.key} style={{ display: 'inline-flex', alignItems: 'baseline', gap: '0.35rem', fontSize: '0.72rem', color: 'var(--charcoal)' }}>
-                <span style={{ width: 9, height: 9, borderRadius: 2, background: m.bg, alignSelf: 'center' }} />
-                <span style={{ fontWeight: 700, color: m.fg }}>{m.label}</span>
-                <span style={{ fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>{pay[m.key]}</span>
-                <span style={{ color: 'var(--mid-gray)', fontVariantNumeric: 'tabular-nums' }}>
+              <span key={m.key} className="inline-flex items-baseline gap-1.5 text-xs" style={{ color: 'var(--charcoal)' }}>
+                <span className="self-center inline-block w-2.5 h-2.5 rounded-sm" style={{ background: m.bg }} />
+                <span className="font-bold" style={{ color: m.fg }}>{m.label}</span>
+                <span className="font-extrabold tabular-nums">{pay[m.key]}</span>
+                <span className="tabular-nums" style={{ color: 'var(--mid-gray)' }}>
                   {Math.round((pay[m.key] / booked) * 100)}%
                 </span>
               </span>
@@ -158,13 +150,7 @@ function SlotSummaryCard({ title, summary }: { title: React.ReactNode; summary: 
           </div>
         </div>
       )}
-
-      {total === 0 && (
-        <p style={{ margin: '0.5rem 0 0', fontSize: '0.7rem', color: 'var(--mid-gray)' }}>
-          No work days configured for this department yet, so there is no capacity to count.
-        </p>
-      )}
-    </div>
+    </DashCard>
   )
 }
 
@@ -267,11 +253,12 @@ function PatientCellSearch({ current, onSelect, onClear, onClose }: {
   }
 
   return (
-    <div style={{ position: 'relative', minWidth: '160px' }}>
+    <div style={{ position: 'relative', minWidth: '120px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
         <input
           ref={inputRef}
-          style={{ border: '1.5px solid #ED6823', borderRadius: '0.375rem', padding: '0.2rem 0.4rem', fontSize: '0.75rem', flex: 1, outline: 'none', minWidth: 0 }}
+          aria-label="Search patient"
+          style={{ border: '1.5px solid var(--teal)', borderRadius: '0.4rem', padding: '0.2rem 0.45rem', fontSize: '0.75rem', flex: 1, outline: 'none', minWidth: 0, background: '#fff', color: 'var(--charcoal)', boxShadow: '0 0 0 3px rgba(26,123,138,0.12)' }}
           placeholder="Search patient…"
           value={query}
           onChange={e => handleInput(e.target.value)}
@@ -279,18 +266,19 @@ function PatientCellSearch({ current, onSelect, onClear, onClose }: {
           autoComplete="off"
         />
         {current && (
-          <button type="button" onClick={onClear} style={{ color: '#DC2626', fontSize: '0.8rem', lineHeight: 1, flexShrink: 0, background: 'none', border: 'none', cursor: 'pointer', padding: '0.1rem' }}>
+          <button type="button" onClick={onClear} aria-label="Clear" style={{ color: '#DC2626', fontSize: '0.8rem', lineHeight: 1, flexShrink: 0, background: 'none', border: 'none', cursor: 'pointer', padding: '0.1rem' }}>
             <X size={12} />
           </button>
         )}
       </div>
       {open && results.length > 0 && (
-        <div style={{ position: 'absolute', zIndex: 50, background: '#fff', border: '1px solid #e5e7eb', borderRadius: '0.5rem', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', top: '100%', left: 0, right: 0, maxHeight: '150px', overflowY: 'auto' }}>
+        <div style={{ position: 'absolute', zIndex: 50, background: '#fff', border: '1px solid var(--light-gray)', borderRadius: '0.5rem', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', top: 'calc(100% + 2px)', left: 0, right: 0, minWidth: 180, maxHeight: '150px', overflowY: 'auto' }}>
           {results.map(p => (
             <button key={p.id} type="button"
-              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '0.3rem 0.6rem', fontSize: '0.75rem', cursor: 'pointer', borderBottom: '1px solid #f3f4f6', background: 'none' }}
+              className="hover:bg-gray-50"
+              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '0.35rem 0.6rem', fontSize: '0.75rem', cursor: 'pointer', borderBottom: '1px solid #f3f4f6', color: 'var(--charcoal)' }}
               onMouseDown={() => { onSelect(p); setOpen(false) }}>
-              {p.lastName}, {p.firstName}
+              {personLabel(p)}
             </button>
           ))}
         </div>
@@ -337,39 +325,47 @@ function CustomSlotModal({ staff, activeBranch, workDays, onClose, onSave }: {
     onClose()
   }
 
-  const inputStyle: React.CSSProperties = { border: '1.5px solid rgba(26,123,138,0.3)', borderRadius: '0.5rem', padding: '0.4rem 0.6rem', fontSize: '0.85rem', width: '100%', color: 'var(--charcoal)', outline: 'none' }
-  const labelStyle: React.CSSProperties = { display: 'block', fontSize: '0.7rem', fontWeight: 600, color: 'var(--mid-gray)', marginBottom: '0.25rem', textTransform: 'uppercase', letterSpacing: '0.05em' }
+  const inputStyle: React.CSSProperties = { ...CONTROL_STYLE, width: '100%' }
+  const fieldClass = `${CONTROL} w-full`
+  const labelStyle: React.CSSProperties = { color: 'var(--mid-gray)' }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.4)' }}>
-      <div style={{ background: '#fff', borderRadius: '0.75rem', padding: '1.5rem', width: '100%', maxWidth: '400px', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-          <h3 style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--charcoal)' }}>
-            Custom Slot — {staff.lastName}, {staff.firstName}
-          </h3>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--mid-gray)' }}><X size={16} /></button>
+    <div role="dialog" aria-modal="true" aria-labelledby={`custom-slot-${staff.id}`}
+      onKeyDown={e => { if (e.key === 'Escape') onClose() }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(15,23,42,0.45)' }}>
+      <div className="w-full max-w-[420px] rounded-xl" style={{ background: '#fff', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+        <div className="flex items-start justify-between gap-3 px-5 pt-4 pb-3" style={{ borderBottom: '1px solid var(--light-gray)' }}>
+          <div className="min-w-0">
+            <h3 id={`custom-slot-${staff.id}`} className="text-[15px] font-bold leading-tight" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+              Add custom slot
+            </h3>
+            <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--mid-gray)' }}>{personLabel(staff)}</p>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close" className="dk-icon-btn rounded-md p-1" style={{ color: 'var(--mid-gray)' }}><X size={16} /></button>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-          <div style={{ gridColumn: 'span 2' }}>
-            <label style={labelStyle}>Day</label>
-            <select style={inputStyle} value={dayOfWeek} onChange={e => setDayOfWeek(e.target.value)}>
+        <div className="grid grid-cols-2 gap-3 px-5 py-4">
+          <div className="col-span-2">
+            <label className={LABEL} style={labelStyle} htmlFor={`cs-day-${staff.id}`}>Day</label>
+            <select id={`cs-day-${staff.id}`} className={fieldClass} style={inputStyle} value={dayOfWeek} onChange={e => setDayOfWeek(e.target.value)}>
               {(workDays.length > 0 ? workDays : DAYS).map(d => (
                 <option key={d} value={d}>{DAY_LABEL[d]}</option>
               ))}
             </select>
           </div>
           <div>
-            <label style={labelStyle}>Start Time</label>
-            <input type="time" step="900" style={inputStyle} value={startTime} onChange={e => setStartTime(e.target.value)} />
+            <label className={LABEL} style={labelStyle} htmlFor={`cs-start-${staff.id}`}>Start time</label>
+            <input id={`cs-start-${staff.id}`} type="time" step="900" className={fieldClass} style={inputStyle} value={startTime} onChange={e => setStartTime(e.target.value)} />
           </div>
           <div>
-            <label style={labelStyle}>End Time</label>
-            <input type="time" step="900" style={inputStyle} value={endTime} onChange={e => setEndTime(e.target.value)} />
+            <label className={LABEL} style={labelStyle} htmlFor={`cs-end-${staff.id}`}>End time</label>
+            <input id={`cs-end-${staff.id}`} type="time" step="900" className={fieldClass} style={inputStyle} value={endTime} onChange={e => setEndTime(e.target.value)} />
           </div>
-          <div style={{ gridColumn: 'span 2', position: 'relative' }}>
-            <label style={labelStyle}>Patient (optional)</label>
+          <div className="col-span-2 relative">
+            <label className={LABEL} style={labelStyle} htmlFor={`cs-patient-${staff.id}`}>Patient (optional)</label>
             <input
+              id={`cs-patient-${staff.id}`}
+              className={fieldClass}
               style={inputStyle}
               placeholder="Search patient name…"
               value={query}
@@ -378,28 +374,29 @@ function CustomSlotModal({ staff, activeBranch, workDays, onClose, onSave }: {
               autoComplete="off"
             />
             {showResults && results.length > 0 && (
-              <div style={{ position: 'absolute', zIndex: 60, background: '#fff', border: '1px solid #e5e7eb', borderRadius: '0.5rem', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', top: '100%', left: 0, right: 0, maxHeight: '150px', overflowY: 'auto' }}>
+              <div style={{ position: 'absolute', zIndex: 60, background: '#fff', border: '1px solid var(--light-gray)', borderRadius: '0.5rem', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', top: 'calc(100% + 2px)', left: 0, right: 0, maxHeight: '150px', overflowY: 'auto' }}>
                 {results.map(p => (
                   <button key={p.id} type="button"
-                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '0.4rem 0.6rem', fontSize: '0.8rem', cursor: 'pointer', borderBottom: '1px solid #f3f4f6', background: 'none' }}
+                    className="hover:bg-gray-50"
+                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '0.4rem 0.6rem', fontSize: '0.8rem', cursor: 'pointer', borderBottom: '1px solid #f3f4f6', color: 'var(--charcoal)' }}
                     onMouseDown={() => { setPatient(p); setQuery(`${p.lastName}, ${p.firstName}`); setShowResults(false) }}>
-                    {p.lastName}, {p.firstName}
+                    {personLabel(p)}
                   </button>
                 ))}
               </div>
             )}
           </div>
-          <div style={{ gridColumn: 'span 2' }}>
-            <label style={labelStyle}>Notes (optional)</label>
-            <input style={inputStyle} placeholder="e.g. Group session, home program…" value={notes} onChange={e => setNotes(e.target.value)} />
+          <div className="col-span-2">
+            <label className={LABEL} style={labelStyle} htmlFor={`cs-notes-${staff.id}`}>Notes (optional)</label>
+            <input id={`cs-notes-${staff.id}`} className={fieldClass} style={inputStyle} placeholder="e.g. Group session, home program…" value={notes} onChange={e => setNotes(e.target.value)} />
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
-          <button onClick={onClose} style={{ padding: '0.4rem 1rem', borderRadius: '0.5rem', fontSize: '0.82rem', fontWeight: 600, background: 'var(--light-gray)', color: 'var(--charcoal)', border: 'none', cursor: 'pointer' }}>Cancel</button>
-          <button onClick={handleSave} disabled={saving || !dayOfWeek || !startTime || !endTime}
-            style={{ padding: '0.4rem 1rem', borderRadius: '0.5rem', fontSize: '0.82rem', fontWeight: 600, background: '#ED6823', color: '#fff', border: 'none', cursor: 'pointer', opacity: (saving || !startTime || !endTime) ? 0.6 : 1 }}>
-            {saving ? 'Saving…' : 'Add Slot'}
+        <div className="flex justify-end gap-2 px-5 py-3" style={{ borderTop: '1px solid var(--light-gray)', background: SUBTLE_BG, borderRadius: '0 0 0.75rem 0.75rem' }}>
+          <button type="button" onClick={onClose} className={BTN_SECONDARY} style={CONTROL_STYLE}>Cancel</button>
+          <button type="button" onClick={handleSave} disabled={saving || !dayOfWeek || !startTime || !endTime}
+            className={BTN_PRIMARY} style={{ background: 'var(--teal)' }}>
+            {saving ? 'Saving…' : 'Add slot'}
           </button>
         </div>
       </div>
@@ -408,8 +405,13 @@ function CustomSlotModal({ staff, activeBranch, workDays, onClose, onSave }: {
 }
 
 // ─── Therapist Row ─────────────────────────────────────────────────────────────
-function TherapistRow({ staff, activeBranch, sectionMode, config, slots, defaultHours, onSaveConfig, onClearServiceConfig, onSaveSlot, onDeleteSlot, onOpenLoa }: {
+function TherapistRow({ staff, activeBranch, sectionMode, config, slots, defaultHours, onSaveConfig, onClearServiceConfig, onSaveSlot, onDeleteSlot, onOpenLoa, density = 'comfortable', collapsed = false, onToggleCollapse }: {
   staff: StaffMember
+  /** Row height / padding of the grid. Display only. */
+  density?: Density
+  /** Header-only card: the grid and config panel are hidden. Display only. */
+  collapsed?: boolean
+  onToggleCollapse?: () => void
   activeBranch: string
   /** The service this board is showing, or null on an aggregate view. */
   sectionMode: string | null
@@ -509,26 +511,22 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
   // section. Rendered inline rather than as a modal so the answer sits next to
   // the grid the booking was just made on.
   const modePrompt = pendingPatient && (
-    <div style={{
-      display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.5rem',
-      padding: '0.6rem 0.85rem', background: '#FFF7E6', borderBottom: '1px solid #F3D9A5',
-    }}>
-      <span style={{ fontSize: '0.8rem', color: '#8A5A00' }}>
-        <strong>{pendingPatient.patient.lastName}, {pendingPatient.patient.firstName}</strong>{' '}
+    <div role="group" aria-label="Choose the kind of session" className="flex flex-wrap items-center gap-2 px-4 py-2.5"
+      style={{ background: '#FFF7E6', borderBottom: '1px solid #F3D9A5' }}>
+      <span className="text-[13px]" style={{ color: '#8A5A00' }}>
+        <strong>{personLabel(pendingPatient.patient)}</strong>{' '}
         at {formatTime(pendingPatient.slotTime)} &mdash; which kind of session?
       </span>
       {DELIVERY_MODES.filter(m => inSection(arrangementFor(staff, activeBranch), m.section)).map(m => (
-        <button key={m.key}
+        <button key={m.key} type="button"
           onClick={() => handlePatientSelect(pendingPatient.dayOfWeek, pendingPatient.slotTime, pendingPatient.patient, m.key)}
-          style={{
-            padding: '0.3rem 0.8rem', borderRadius: '0.4rem', border: '1.5px solid #ED6823',
-            background: '#ED6823', color: '#fff', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
-          }}>
+          className="h-7 px-3 rounded-lg text-xs font-bold text-white transition-opacity hover:opacity-90"
+          style={{ background: 'var(--teal)' }}>
           {m.label}
         </button>
       ))}
-      <button onClick={() => setPendingPatient(null)}
-        style={{ background: 'none', border: 'none', color: '#8A5A00', fontSize: '0.75rem', cursor: 'pointer', textDecoration: 'underline' }}>
+      <button type="button" onClick={() => setPendingPatient(null)}
+        className="text-xs underline" style={{ color: '#8A5A00' }}>
         Cancel
       </button>
     </div>
@@ -612,88 +610,178 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
     await onDeleteSlot(slot.id)
   }
 
-  const inputStyle: React.CSSProperties = { border: '1.5px solid rgba(26,123,138,0.3)', borderRadius: '0.4rem', padding: '0.3rem 0.5rem', fontSize: '0.82rem', outline: 'none', color: 'var(--charcoal)' }
-
   // Custom slots (non-hourly — those not matching hourly start times)
   const hourlyStartSet = new Set(timeSlots)
   const customSlots = slots.filter(s => !hourlyStartSet.has(s.startTime))
 
+  // "x of y booked" for the card header. Walks the same cells the grid draws
+  // and classifies them the way the cell does (disabled wins, then any
+  // occupant, else open) — the same rule as the page's capacity summary, so a
+  // card and the totals above it can never disagree.
+  const util = (() => {
+    let total = 0, booked = 0, blocked = 0
+    if (!config) return { total, booked, blocked, open: 0 }
+    const byCell = new Map<string, DeckingSlot[]>()
+    for (const r of slots.filter(sl => !sl.isClass)) {
+      const key = `${r.dayOfWeek}|${r.startTime}`
+      byCell.set(key, [...(byCell.get(key) ?? []), r])
+    }
+    for (const day of ((config.workDays as string[]) ?? [])) {
+      for (const hour of timeSlots) {
+        total++
+        const cell = byCell.get(`${day}|${hour}`) ?? []
+        if (cell.some(r => r.disabled)) blocked++
+        else if (cell.length > 0) booked++
+      }
+    }
+    return { total, booked, blocked, open: total - booked - blocked }
+  })()
+  const utilPct = util.total > 0 ? Math.round((util.booked / util.total) * 100) : 0
+
+  const compact = density === 'compact'
+  const rowH = compact ? 28 : 36          // every hour row is the same height
+  const innerH = rowH - 6                 // cell content inside its 3px padding
+  const TIME_COL = 72
+  const DAY_COL_MIN = 132                 // below this the grid scrolls sideways
+  const nameText = personLabel(staff)
+  const showBody = !collapsed
+
+  const tdBase: React.CSSProperties = {
+    padding: 3, verticalAlign: 'middle', height: rowH,
+    borderRight: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${GRID_LINE}`,
+  }
+  const thBase: React.CSSProperties = {
+    position: 'sticky', top: 0, background: '#F3F6F5',
+    padding: compact ? '0.3rem 0.5rem' : '0.45rem 0.6rem',
+    borderRight: `1px solid ${GRID_LINE}`, borderBottom: '1px solid var(--light-gray)',
+  }
+  const miniBtn: React.CSSProperties = {
+    background: 'rgba(255,255,255,0.7)', borderRadius: 4,
+    fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.03em',
+    padding: '0 4px', cursor: 'pointer', flexShrink: 0, lineHeight: 1.7,
+  }
+
+  function toggleConfig() {
+    // Opening Configure on a collapsed card expands it, or the panel would
+    // open somewhere the user cannot see.
+    if (collapsed) { onToggleCollapse?.(); setConfigOpen(true); return }
+    setConfigOpen(o => !o)
+  }
+
   return (
-    <div style={{ border: '1px solid var(--light-gray)', borderRadius: '0.75rem', overflow: 'hidden', background: '#fff' }}>
+    <section className="rounded-xl overflow-hidden min-w-0" style={CARD_STYLE} aria-label={nameText}>
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.65rem 1rem', background: 'var(--off-white)', borderBottom: '1px solid var(--light-gray)' }}>
-        <div style={{ width: '2rem', height: '2rem', borderRadius: '0.4rem', background: '#FFF3E8', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <span style={{ color: '#ED6823', fontWeight: 700, fontSize: '0.75rem' }}>{staff.firstName[0]}{staff.lastName[0]}</span>
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <p style={{ fontWeight: 600, fontSize: '0.875rem', color: 'var(--charcoal)', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.4rem' }}>
-            {staff.lastName}, {staff.firstName}
+      <header className={`flex flex-wrap items-center gap-x-3 gap-y-2 ${compact ? 'px-3 py-2' : 'px-4 py-3'}`}
+        style={{ borderBottom: showBody ? '1px solid var(--light-gray)' : 'none' }}>
+        <Avatar text={initials(staff.firstName, staff.lastName)} size={compact ? 28 : 34} />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+            <h3 className="text-sm font-bold leading-tight truncate" style={{ color: 'var(--charcoal)' }}
+              title={`${staff.lastName}, ${staff.firstName}`}>
+              {nameText}
+            </h3>
+            <DeptChip code={staff.department} color={TEAL_HEX} />
             {/* A teletherapy consultant based at the other branch. Says so
                 plainly — front desk are otherwise booking someone they have
                 never seen on this board with nothing explaining why she is
                 here, or which branch to coordinate with. */}
             {!isHomeBranch && (
-              <span style={{ background: '#EFE4FA', color: '#5B2A86', padding: '1px 6px', borderRadius: 99, fontWeight: 700, fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+              <span className="inline-block text-[10px] font-bold px-1.5 py-0.5 rounded leading-none uppercase tracking-wide"
+                style={{ background: '#EFE4FA', color: '#5B2A86' }}>
                 {branchLabel(staff.branch) ?? staff.branch}
               </span>
             )}
+          </div>
+          <p className="text-xs mt-0.5 flex items-center gap-1 min-w-0" style={{ color: 'var(--mid-gray)' }}>
+            {config && configuredDays.length > 0 ? (
+              <>
+                <Clock size={11} className="flex-shrink-0" />
+                <span className="truncate">
+                  {configuredDays.map(d => DAY_SHORT[d]).join(' · ')}
+                  {' · '}{formatTime(config.startTime)} – {formatTime(config.endTime)}
+                </span>
+              </>
+            ) : config ? 'No work days set' : 'Schedule not set up yet'}
           </p>
-          {config && configuredDays.length > 0 && (
-            <p style={{ fontSize: '0.68rem', color: 'var(--mid-gray)', marginTop: '0.05rem' }}>
-              {configuredDays.map(d => DAY_SHORT[d]).join(' · ')}
-              {' · '}{formatTime(config.startTime)} – {formatTime(config.endTime)}
-            </p>
+        </div>
+
+        {util.total > 0 && (
+          <div className="order-last w-full sm:order-none sm:w-44"
+            title={`${util.booked} booked · ${util.open} open · ${util.blocked} unavailable`}>
+            <div className="flex items-baseline justify-between gap-2 text-[11px] mb-1" style={{ color: 'var(--mid-gray)' }}>
+              <span>
+                <strong className="tabular-nums" style={{ color: 'var(--charcoal)' }}>{util.booked}</strong> of{' '}
+                <span className="tabular-nums">{util.total}</span> booked
+              </span>
+              <span className="tabular-nums font-semibold">{utilPct}%</span>
+            </div>
+            <CapacityBar booked={util.booked} open={util.open} blocked={util.blocked} />
+          </div>
+        )}
+
+        <div className="flex items-center gap-1.5 ml-auto">
+          <button type="button" onClick={toggleConfig} aria-expanded={configOpen && showBody}
+            className={BTN_SM}
+            style={configOpen && showBody
+              ? { background: 'var(--pale-teal)', color: 'var(--teal)', border: '1px solid var(--teal)' }
+              : { ...CONTROL_STYLE, color: 'var(--charcoal)' }}>
+            <Settings2 size={13} />
+            <span className="hidden sm:inline">Configure</span>
+            <ChevronDown size={12} className="transition-transform" style={{ transform: configOpen && showBody ? 'rotate(180deg)' : 'none' }} />
+          </button>
+          {onToggleCollapse && (
+            <button type="button" onClick={onToggleCollapse} aria-expanded={showBody}
+              aria-label={showBody ? `Collapse ${nameText}` : `Expand ${nameText}`}
+              title={showBody ? 'Collapse' : 'Expand'}
+              className="dk-icon-btn inline-flex items-center justify-center h-8 w-8 rounded-lg focus-visible:outline-2"
+              style={{ color: 'var(--mid-gray)' }}>
+              <ChevronDown size={16} className="transition-transform" style={{ transform: showBody ? 'rotate(180deg)' : 'none' }} />
+            </button>
           )}
         </div>
-        <button
-          onClick={() => setConfigOpen(o => !o)}
-          style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.73rem', color: configOpen ? '#ED6823' : 'var(--mid-gray)', fontWeight: 600, background: configOpen ? '#FFF3E8' : 'transparent', border: `1px solid ${configOpen ? '#FDE4CC' : 'var(--light-gray)'}`, cursor: 'pointer', padding: '0.25rem 0.6rem', borderRadius: '0.375rem' }}
-        >
-          <Settings2 size={12} />
-          Configure
-          {configOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-        </button>
-      </div>
+      </header>
 
       {/* Config panel */}
-      {configOpen && (
-        <div style={{ padding: '1rem', background: '#FFFAF6', borderBottom: '1px solid #FDE4CC' }}>
+      {showBody && configOpen && (
+        <div className="px-4 py-4 space-y-4" style={{ background: SUBTLE_BG, borderBottom: '1px solid var(--light-gray)' }}>
           {/* Work days */}
-          <div style={{ marginBottom: '0.875rem' }}>
+          <div>
             {/* Which schedule this panel writes. Without it the days look like
                 one setting per consultant, and someone setting teletherapy days
                 would believe they had changed the clinic days too. */}
-            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '0.4rem', marginBottom: '0.4rem' }}>
-              <p style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--mid-gray)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <div className="flex flex-wrap items-baseline gap-2 mb-2">
+              <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>
                 {serviceLabel ? `${serviceLabel} days — ${branchLabel(activeBranch) ?? activeBranch}` : 'Work days — all services'}
               </p>
               {hasServiceRow && (
-                <button onClick={resetToGeneral}
-                  style={{ fontSize: '0.66rem', fontWeight: 600, color: '#8A5A00', background: 'none', border: 'none', textDecoration: 'underline', cursor: 'pointer', padding: 0 }}>
+                <button type="button" onClick={resetToGeneral}
+                  className="text-[11px] font-semibold underline" style={{ color: '#8A5A00' }}>
                   use the general schedule instead
                 </button>
               )}
             </div>
             {serviceLabel && !hasServiceRow && (
-              <p style={{ fontSize: '0.68rem', color: 'var(--mid-gray)', marginBottom: '0.4rem', lineHeight: 1.5 }}>
+              <p className="text-[11px] mb-2 leading-relaxed" style={{ color: 'var(--mid-gray)' }}>
                 Following the general schedule. Saving here sets {serviceLabel.toLowerCase()} days
                 for {branchLabel(activeBranch) ?? activeBranch} only — the other services keep theirs.
               </p>
             )}
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+            <div className="flex flex-wrap gap-1.5" role="group" aria-label="Work days">
               {DAYS.map(day => {
                 const checked = workDays.includes(day)
                 return (
-                  <label key={day} style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', cursor: 'pointer' }}>
+                  <label key={day}
+                    className="inline-flex items-center h-8 px-3 rounded-lg text-xs font-semibold cursor-pointer select-none transition-colors focus-within:ring-2 focus-within:ring-offset-1"
+                    style={checked
+                      ? { background: 'var(--teal)', color: '#fff', border: '1px solid var(--teal)' }
+                      : { background: '#fff', color: 'var(--charcoal)', border: '1px solid var(--light-gray)' }}>
                     <input
                       type="checkbox"
+                      className="sr-only"
                       checked={checked}
                       onChange={e => setWorkDays(e.target.checked ? [...workDays, day] : workDays.filter(d => d !== day))}
-                      style={{ accentColor: '#ED6823', width: '14px', height: '14px' }}
                     />
-                    <span style={{ fontSize: '0.8rem', color: checked ? '#ED6823' : 'var(--charcoal)', fontWeight: checked ? 700 : 400 }}>
-                      {DAY_SHORT[day]}
-                    </span>
+                    {DAY_SHORT[day]}
                   </label>
                 )
               })}
@@ -701,314 +789,313 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
           </div>
 
           {/* Working hours */}
-          <div style={{ marginBottom: '0.875rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.4rem', flexWrap: 'wrap' }}>
-              <p style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--mid-gray)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Working Hours</p>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', cursor: 'pointer' }}>
+          <div>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-2">
+              <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>Working hours</p>
+              <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs font-semibold" style={{ color: 'var(--teal)' }}>
                 <input
                   type="checkbox"
                   checked={useDefault}
                   onChange={e => handleUseDefaultToggle(e.target.checked)}
-                  style={{ accentColor: '#ED6823', width: '14px', height: '14px' }}
+                  style={{ accentColor: 'var(--teal)', width: 14, height: 14 }}
                 />
-                <span style={{ fontSize: '0.75rem', color: '#ED6823', fontWeight: 600 }}>Use clinic default hours</span>
+                Use clinic default hours
               </label>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <div className="flex flex-wrap items-center gap-2">
               <input
                 type="time"
+                aria-label="Start time"
                 value={startTime}
                 onChange={e => setStartTime(e.target.value)}
                 disabled={useDefault}
-                style={{ ...inputStyle, opacity: useDefault ? 0.5 : 1, cursor: useDefault ? 'not-allowed' : 'default' }}
+                className={CONTROL_SM}
+                style={{ ...CONTROL_STYLE, opacity: useDefault ? 0.55 : 1, cursor: useDefault ? 'not-allowed' : 'default' }}
               />
-              <span style={{ color: 'var(--mid-gray)', fontSize: '0.82rem' }}>–</span>
+              <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>to</span>
               <input
                 type="time"
+                aria-label="End time"
                 value={endTime}
                 onChange={e => setEndTime(e.target.value)}
                 disabled={useDefault}
-                style={{ ...inputStyle, opacity: useDefault ? 0.5 : 1, cursor: useDefault ? 'not-allowed' : 'default' }}
+                className={CONTROL_SM}
+                style={{ ...CONTROL_STYLE, opacity: useDefault ? 0.55 : 1, cursor: useDefault ? 'not-allowed' : 'default' }}
               />
               {!useDefault && startTime && endTime && (
-                <span style={{ fontSize: '0.72rem', color: 'var(--mid-gray)' }}>
+                <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>
                   ({generateHourlySlots(startTime, endTime).length} slots)
                 </span>
               )}
             </div>
           </div>
 
-          <button
-            onClick={saveConfig}
-            disabled={saving}
-            style={{ background: '#ED6823', color: '#fff', border: 'none', borderRadius: '0.5rem', padding: '0.4rem 1.1rem', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer', opacity: saving ? 0.7 : 1 }}
-          >
-            {saving ? 'Saving…' : 'Save Configuration'}
+          <button type="button" onClick={saveConfig} disabled={saving}
+            className={BTN_PRIMARY} style={{ background: 'var(--teal)' }}>
+            {saving ? 'Saving…' : 'Save configuration'}
           </button>
         </div>
       )}
 
       {/* No config yet */}
-      {!config && !configOpen && (
-        <div style={{ padding: '1.25rem', textAlign: 'center', color: 'var(--mid-gray)', fontSize: '0.82rem' }}>
-          Click Configure to set up this therapist&apos;s work schedule.
-        </div>
+      {showBody && !config && !configOpen && (
+        <p className="px-4 py-6 text-center text-xs" style={{ color: 'var(--mid-gray)' }}>
+          Use <strong>Configure</strong> to set up this therapist&apos;s work schedule.
+        </p>
       )}
 
       {/* No work days configured */}
-      {config && configuredDays.length === 0 && (
-        <div style={{ padding: '1.25rem', textAlign: 'center', color: 'var(--mid-gray)', fontSize: '0.82rem' }}>
-          No work days set. Click Configure to add work days.
-        </div>
+      {showBody && config && configuredDays.length === 0 && (
+        <p className="px-4 py-6 text-center text-xs" style={{ color: 'var(--mid-gray)' }}>
+          No work days set. Use <strong>Configure</strong> to add work days.
+        </p>
       )}
 
-      {modePrompt}
+      {showBody && modePrompt}
 
       {/* Weekly decking table */}
-      {config && configuredDays.length > 0 && (
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem', tableLayout: 'fixed' }}>
-            <colgroup>
-              <col style={{ width: '90px' }} />
-              {configuredDays.map(d => <col key={d} style={{ minWidth: '150px' }} />)}
-            </colgroup>
-            <thead>
-              <tr style={{ background: '#FFF3E8' }}>
-                <th style={{ padding: '0.35rem 0.6rem', textAlign: 'left', fontWeight: 600, color: '#5A6470', fontSize: '0.66rem', textTransform: 'uppercase', letterSpacing: '0.05em', background: '#F0F2F5', borderBottom: '1px solid #C4CBD3', borderRight: '1px solid #C4CBD3' }}>
-                  Time
-                </th>
-                {configuredDays.map(day => (
-                  <th key={day} style={{ padding: '0.35rem 0.6rem', textAlign: 'center', fontWeight: 700, color: '#2C3540', fontSize: '0.74rem', background: '#F0F2F5', borderBottom: '1px solid #C4CBD3', borderRight: '1px solid #C4CBD3' }}>
-                    {DAY_LABEL[day]}
+      {showBody && config && configuredDays.length > 0 && (
+        <div>
+          {/* Scrolls sideways on narrow screens with the TIME column pinned,
+              and vertically inside the card (header row pinned) only when a
+              very long day would otherwise push the page. */}
+          <div className="overflow-auto" style={{ maxHeight: '70vh' }}>
+            <table style={{
+              width: '100%', minWidth: TIME_COL + configuredDays.length * DAY_COL_MIN,
+              borderCollapse: 'separate', borderSpacing: 0, fontSize: '0.8rem', tableLayout: 'fixed',
+            }}>
+              <colgroup>
+                <col style={{ width: TIME_COL }} />
+                {configuredDays.map(d => <col key={d} />)}
+              </colgroup>
+              <thead>
+                <tr>
+                  <th scope="col" style={{
+                    ...thBase, left: 0, zIndex: 3, textAlign: 'left',
+                    fontSize: '0.64rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--mid-gray)',
+                  }}>
+                    Time
                   </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {timeSlots.map((slot, idx) => (
-                <tr key={slot} style={{ borderBottom: '1px solid #f3f4f6', background: idx % 2 === 0 ? '#fff' : '#fafafa' }}>
-                  <td style={{ padding: '0 0.6rem', color: '#5A6470', fontSize: '0.68rem', fontWeight: 600, whiteSpace: 'nowrap', background: '#F7F8FA', borderRight: '1px solid #C4CBD3', borderBottom: '1px solid #D6DCE2', fontVariantNumeric: 'tabular-nums' }}>
-                    {formatTime(slot)}
-                  </td>
-                  {configuredDays.map(day => {
-                    const disabledSlot = getDisabledSlot(day, slot)
-                    const cellSlots = getSlotsForCell(day, slot)
-                    const isAdding = addingCell?.dayOfWeek === day && addingCell?.startTime === slot
+                  {configuredDays.map(day => (
+                    <th key={day} scope="col" style={{ ...thBase, zIndex: 2, textAlign: 'center', fontSize: '0.74rem', fontWeight: 700, color: 'var(--charcoal)' }}>
+                      <span className="hidden sm:inline">{DAY_LABEL[day]}</span>
+                      <span className="sm:hidden">{DAY_SHORT[day]}</span>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {timeSlots.map(slot => (
+                  <tr key={slot}>
+                    <th scope="row" style={{
+                      position: 'sticky', left: 0, zIndex: 1, background: '#F8FAF9',
+                      padding: '0 0.6rem', textAlign: 'left', whiteSpace: 'nowrap',
+                      color: 'var(--mid-gray)', fontSize: '0.68rem', fontWeight: 600, fontVariantNumeric: 'tabular-nums',
+                      borderRight: '1px solid var(--light-gray)', borderBottom: `1px solid ${GRID_LINE}`, height: rowH,
+                    }}>
+                      {formatTime(slot)}
+                    </th>
+                    {configuredDays.map(day => {
+                      const disabledSlot = getDisabledSlot(day, slot)
+                      const cellSlots = getSlotsForCell(day, slot)
+                      const isAdding = addingCell?.dayOfWeek === day && addingCell?.startTime === slot
+                      const where = `${DAY_LABEL[day] ?? day} ${formatTime(slot)}`
 
-                    // ── Disabled cell ──
-                    if (disabledSlot) {
+                      // ── Disabled cell ──
+                      // Hatched + icon, so it reads as "not bookable" rather
+                      // than as an empty white hour.
+                      if (disabledSlot) {
+                        const why = disabledSlot.notes || 'Unavailable'
+                        return (
+                          <td key={day} className="dk-cell" style={{ ...tdBase, background: OFF_HATCH }}>
+                            <div className="flex items-center gap-1.5 px-1.5 min-w-0" style={{ minHeight: innerH, color: '#6B7785' }}
+                              title={`${why} — ${where}`}>
+                              <Ban size={11} className="flex-shrink-0" aria-hidden />
+                              <span className="truncate text-[11px] font-semibold">{why}</span>
+                              <button type="button"
+                                onClick={() => handleEnableSlot(disabledSlot)}
+                                className="dk-btn dk-reveal dk-icon-btn ml-auto rounded p-0.5 flex-shrink-0"
+                                style={{ color: '#5A6470' }}
+                                title="Re-enable this slot"
+                                aria-label={`Re-enable ${where}`}
+                              >
+                                <X size={11} />
+                              </button>
+                            </div>
+                          </td>
+                        )
+                      }
+
+                      // ── Normal cell ──
+                      // One line per patient, no stacked Add button underneath:
+                      // that button was why every occupied hour was two rows
+                      // tall. Adding a second patient is the exception, so it
+                      // is a small "+" beside the last patient instead.
+                      const empty = cellSlots.length === 0
                       return (
-                        <td key={day} style={{ padding: 0, verticalAlign: 'middle', borderRight: '1px solid #D6DCE2', borderBottom: '1px solid #D6DCE2', background: OFF_CELL_BG, height: 30 }}>
-                          <div
-                            style={{
-                              display: 'flex', alignItems: 'center', gap: '4px',
-                              background: '#e5e7eb', border: '1px solid #d1d5db', borderRadius: '0.3rem',
-                              padding: '0.18rem 0.4rem', justifyContent: 'center',
-                            }}
-                          >
-                            <Ban size={10} style={{ color: '#9ca3af', flexShrink: 0 }} />
-                            <span style={{ fontSize: '0.68rem', fontWeight: 600, color: '#9ca3af' }}>
-                              {disabledSlot.notes || 'Disabled'}
-                            </span>
-                            <button
-                              onClick={() => handleEnableSlot(disabledSlot)}
-                              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', padding: 0, lineHeight: 1, flexShrink: 0, marginLeft: 'auto' }}
-                              title="Re-enable this slot"
-                            >
-                              <X size={10} />
-                            </button>
-                          </div>
-                        </td>
-                      )
-                    }
-
-                    // ── Normal cell ──
-                    // Spreadsheet cell, not a card: the fill IS the cell, one
-                    // row per patient, no rounded pill and no stacked Add button
-                    // underneath. That button was why every occupied hour was
-                    // two rows tall and the grid read half as dense as the sheet
-                    // front desk actually prefers.
-                    const empty = cellSlots.length === 0
-                    return (
-                      <td key={day} style={{
-                        padding: 0, verticalAlign: 'middle',
-                        borderRight: '1px solid #D6DCE2', borderBottom: '1px solid #D6DCE2',
-                        background: empty ? OPEN_BG : 'transparent',
-                        height: 30,
-                      }}>
-                        {isAdding ? (
-                          <div style={{ padding: '2px 3px' }}>
+                        <td key={day} className="dk-cell" style={tdBase}>
+                          {isAdding ? (
                             <PatientCellSearch
                               current={null}
                               onSelect={p => onPatientPicked(day, slot, p)}
                               onClear={() => setAddingCell(null)}
                               onClose={() => setAddingCell(null)}
                             />
-                          </div>
-                        ) : empty ? (
-                          /* An empty cell is one click to fill. The disable
-                             control sits at the edge so it can't be hit by
-                             accident when aiming for the cell. */
-                          <div style={{ display: 'flex', alignItems: 'stretch', height: '100%' }}>
-                            <button
-                              onClick={() => setAddingCell({ dayOfWeek: day, startTime: slot })}
-                              title="Add patient to this open slot"
-                              style={{
-                                flex: 1, background: 'transparent', border: 'none', cursor: 'pointer',
-                                color: OPEN_FG, fontSize: '0.7rem', fontWeight: 700,
-                                letterSpacing: '0.02em', padding: '0 6px', textAlign: 'left',
-                                display: 'flex', alignItems: 'center', gap: 4,
-                              }}>
-                              <Plus size={10} />
-                              Available
-                            </button>
-                            <button
-                              onClick={() => handleDisableSlot(day, slot)}
-                              title="Mark unavailable (break, blocked hour)"
-                              style={{
-                                background: 'transparent', border: 'none', cursor: 'pointer',
-                                color: OPEN_FG, opacity: 0.45, padding: '0 5px', display: 'flex', alignItems: 'center',
-                              }}>
-                              <Ban size={9} />
-                            </button>
-                          </div>
-                        ) : (
-                          <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-                            {cellSlots.map((s2, idx) => {
-                              const pay = payOverride[s2.id] ?? payOf(s2)
-                              const st = PAY_STYLE[pay]
-                              return (
-                                <div key={s2.id} style={{
-                                  display: 'flex', alignItems: 'center', gap: 4,
-                                  background: st.bg, color: st.fg,
-                                  borderTop: idx === 0 ? 'none' : `1px solid ${st.border}`,
-                                  padding: '0 4px 0 6px', flex: 1, minHeight: 28,
-                                }}>
-                                  <span style={{
-                                    fontSize: '0.72rem', fontWeight: 600, flex: 1,
-                                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                                  }}
-                                    title={s2.patient ? `${s2.patient.lastName}, ${s2.patient.firstName}` : '(slot)'}>
-                                    {s2.patient ? `${s2.patient.lastName}, ${s2.patient.firstName[0]}.` : '(slot)'}
-                                  </span>
-                                  {/* Payment type: shown only when it needs chasing.
-                                      A "Cash" badge on most of the grid would be
-                                      noise, so cash reads as the plain cell. */}
-                                  <select
-                                    value={pay}
-                                    onChange={e => handlePayChange(s2, e.target.value as PayType)}
-                                    title="Payment type"
-                                    style={{
-                                      appearance: 'none', WebkitAppearance: 'none',
-                                      background: 'rgba(255,255,255,0.65)',
-                                      border: `1px solid ${st.border}`,
-                                      borderRadius: 3, color: st.fg,
-                                      fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.03em',
-                                      padding: '0 3px', cursor: 'pointer', flexShrink: 0,
-                                      opacity: 1,
-                                    }}>
-                                    {PAY_TYPES.map(t => <option key={t} value={t}>{PAY_STYLE[t].label}</option>)}
-                                  </select>
-                                  {/* An HMO session cannot proceed without an
-                                      approved LOA on file, so the letter is
-                                      raised from the slot that needs it rather
-                                      than re-keyed in another module. Shown only
-                                      for HMO — cash and GL do not use one. */}
-                                  {pay === 'HMO' && (
-                                    <button
-                                      onClick={() => onOpenLoa?.(s2)}
-                                      title="Letter of Authorization for this session"
-                                      style={{
-                                        background: 'rgba(255,255,255,0.65)',
-                                        border: `1px solid ${st.border}`, borderRadius: 3,
-                                        color: st.fg, fontSize: '0.6rem', fontWeight: 800,
-                                        letterSpacing: '0.03em', padding: '0 3px',
-                                        cursor: 'pointer', flexShrink: 0, lineHeight: 1.6,
-                                      }}>
-                                      LOA
-                                    </button>
-                                  )}
-                                  <button onClick={() => handleClearSlot(s2)}
-                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#B0453A', padding: 0, lineHeight: 1, flexShrink: 0 }}
-                                    title="Remove">
-                                    <X size={10} />
-                                  </button>
-                                </div>
-                              )
-                            })}
-                            {/* Second patient is the exception, so it's a thin
-                                edge control rather than a row of its own. */}
-                            {cellSlots.length < 3 && (
-                              <button
+                          ) : empty ? (
+                            /* An empty cell is one click to fill. The block
+                               control sits at the edge, and only appears on
+                               hover/focus, so it can't be hit by accident when
+                               aiming for the cell. */
+                            <div className="dk-open flex items-stretch rounded-md min-w-0"
+                              style={{ minHeight: innerH, background: OPEN_BG, border: `1px dashed ${OPEN_BORDER}` }}>
+                              <button type="button"
                                 onClick={() => setAddingCell({ dayOfWeek: day, startTime: slot })}
-                                title="Add another patient to this hour"
-                                style={{
-                                  background: 'transparent', border: 'none', borderTop: '1px solid #E6E9ED',
-                                  cursor: 'pointer', color: '#9AA2AC', fontSize: '0.6rem', lineHeight: 1,
-                                  padding: '1px 0', flexShrink: 0,
-                                }}>
-                                +
+                                title="Add patient to this open slot"
+                                aria-label={`Add patient — ${where}`}
+                                className="dk-btn flex-1 min-w-0 flex items-center gap-1 px-1.5 text-left text-[11px] font-semibold"
+                                style={{ color: OPEN_FG, cursor: 'pointer' }}>
+                                <Plus size={11} className="flex-shrink-0" aria-hidden />
+                                <span className="truncate">Available</span>
                               </button>
-                            )}
-                          </div>
-                        )}
-                      </td>
-                    )
-                  })}
-                </tr>
-              ))}
+                              <button type="button"
+                                onClick={() => handleDisableSlot(day, slot)}
+                                title="Mark unavailable (break, blocked hour)"
+                                aria-label={`Mark ${where} unavailable`}
+                                className="dk-btn dk-reveal flex items-center px-1.5 flex-shrink-0"
+                                style={{ color: OPEN_FG, cursor: 'pointer' }}>
+                                <Ban size={11} />
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex flex-col gap-0.5">
+                              {cellSlots.map((s2, idx) => {
+                                const pay = payOverride[s2.id] ?? payOf(s2)
+                                const st = PAY_STYLE[pay]
+                                const fullName = s2.patient ? personLabel(s2.patient) : '(slot)'
+                                const initial = (s2.patient?.firstName ?? '').trim().charAt(0).toUpperCase()
+                                const shortName = s2.patient
+                                  ? (initial ? `${displayName(s2.patient.lastName)}, ${initial}.` : displayName(s2.patient.lastName))
+                                  : '(slot)'
+                                const isLast = idx === cellSlots.length - 1
+                                return (
+                                  <div key={s2.id} className="dk-booked flex items-center gap-1 rounded-md pl-1.5 pr-1 min-w-0"
+                                    style={{ background: st.bg, color: st.fg, borderLeft: `3px solid ${st.border}`, minHeight: innerH }}>
+                                    <span className="flex-1 min-w-0 truncate text-[11.5px] font-semibold" title={fullName}>
+                                      {shortName}
+                                    </span>
+                                    {/* Payment type drives who gets chased for
+                                        paperwork, so it stays visible. */}
+                                    <select
+                                      value={pay}
+                                      onChange={e => handlePayChange(s2, e.target.value as PayType)}
+                                      title="Payment type"
+                                      aria-label={`Payment type for ${fullName}`}
+                                      className="dk-btn"
+                                      style={{
+                                        ...miniBtn,
+                                        appearance: 'none', WebkitAppearance: 'none',
+                                        border: `1px solid ${st.border}`, color: st.fg,
+                                      }}>
+                                      {PAY_TYPES.map(t => <option key={t} value={t}>{PAY_STYLE[t].label}</option>)}
+                                    </select>
+                                    {/* An HMO session cannot proceed without an
+                                        approved LOA on file, so the letter is
+                                        raised from the slot that needs it rather
+                                        than re-keyed in another module. Shown only
+                                        for HMO — cash and GL do not use one. */}
+                                    {pay === 'HMO' && (
+                                      <button type="button"
+                                        onClick={() => onOpenLoa?.(s2)}
+                                        title="Letter of Authorization for this session"
+                                        className="dk-btn"
+                                        style={{ ...miniBtn, border: `1px solid ${st.border}`, color: st.fg, fontWeight: 800 }}>
+                                        LOA
+                                      </button>
+                                    )}
+                                    {isLast && cellSlots.length < 3 && (
+                                      <button type="button"
+                                        onClick={() => setAddingCell({ dayOfWeek: day, startTime: slot })}
+                                        title="Add another patient to this hour"
+                                        aria-label={`Add another patient — ${where}`}
+                                        className="dk-btn dk-reveal dk-icon-btn rounded p-0.5 flex-shrink-0"
+                                        style={{ color: st.fg }}>
+                                        <Plus size={11} />
+                                      </button>
+                                    )}
+                                    <button type="button" onClick={() => handleClearSlot(s2)}
+                                      className="dk-btn dk-reveal dk-icon-btn rounded p-0.5 flex-shrink-0"
+                                      style={{ color: '#B0453A' }}
+                                      title="Remove"
+                                      aria-label={`Remove ${fullName} from ${where}`}>
+                                      <X size={11} />
+                                    </button>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          )}
+                        </td>
+                      )
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
-              {/* Custom slots rows */}
-              {customSlots.length > 0 && (
-                <tr style={{ background: '#FFFAF6' }}>
-                  <td colSpan={configuredDays.length + 1} style={{ padding: '0.3rem 0.75rem', fontSize: '0.68rem', fontWeight: 600, color: '#ED6823', textTransform: 'uppercase', letterSpacing: '0.05em', borderTop: '1px solid #FDE4CC' }}>
-                    Custom Slots
-                  </td>
-                </tr>
-              )}
-              {[...customSlots]
-                .sort((x, y) => (DAY_KEYS.indexOf(x.dayOfWeek) - DAY_KEYS.indexOf(y.dayOfWeek)) || String(x.startTime).localeCompare(String(y.startTime)))
-                .map(slot => (
-                <tr key={slot.id} style={{ background: '#FFFAF6', borderBottom: '1px solid #FDE4CC' }}>
-                  {/* One row per custom slot: the time column is too narrow for a
-                      range, so the whole slot is laid out across the row. */}
-                  <td colSpan={configuredDays.length + 1} style={{ padding: '0.45rem 0.75rem' }}>
+          {/* Custom slots — one row per slot. Kept outside the scrolling grid
+              so the row (and its remove button) stays on screen on a phone. */}
+          {customSlots.length > 0 && (
+            <div style={{ borderTop: '1px solid var(--light-gray)' }}>
+              <p className="px-4 pt-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>
+                Custom slots <span className="tabular-nums font-normal">· {customSlots.length}</span>
+              </p>
+              <ul>
+                {[...customSlots]
+                  .sort((x, y) => (DAY_KEYS.indexOf(x.dayOfWeek) - DAY_KEYS.indexOf(y.dayOfWeek)) || String(x.startTime).localeCompare(String(y.startTime)))
+                  .map(slot => (
+                  <li key={slot.id} className="px-4 py-2 transition-colors hover:bg-gray-50/70" style={{ borderTop: '1px solid #EEF2F1' }}>
+                    {/* One row per custom slot: the whole slot is laid out
+                        across the row. */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', minWidth: 0 }}>
                       <span
                         title={DAY_LABEL[slot.dayOfWeek] || slot.dayOfWeek}
-                        style={{ flex: '0 0 auto', minWidth: '2.6rem', textAlign: 'center', fontSize: '0.68rem', fontWeight: 700, color: '#C2410C', background: '#FFEDD5', border: '1px solid #FDBA74', borderRadius: '999px', padding: '0.1rem 0.5rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}
+                        style={{ flex: '0 0 auto', minWidth: '2.6rem', textAlign: 'center', fontSize: '0.68rem', fontWeight: 700, color: 'var(--teal)', background: 'var(--pale-teal)', border: '1px solid var(--light-gray)', borderRadius: '999px', padding: '0.1rem 0.5rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}
                       >
                         {DAY_SHORT[slot.dayOfWeek] || slot.dayOfWeek}
                       </span>
                       <span style={{ flex: '0 0 auto', fontSize: '0.78rem', fontWeight: 600, color: 'var(--charcoal)', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
                         {formatTime(slot.startTime)} – {formatTime(slot.endTime)}
                       </span>
-                      <span style={{ flex: '1 1 auto', minWidth: 0, fontSize: '0.78rem', color: slot.patient ? 'var(--charcoal)' : 'var(--mid-gray)', fontStyle: slot.patient ? 'normal' : 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {slot.patient ? `${slot.patient.lastName}, ${slot.patient.firstName}` : 'No patient'}
+                      <span
+                        title={slot.patient ? personLabel(slot.patient) : undefined}
+                        style={{ flex: '1 1 auto', minWidth: 0, fontSize: '0.78rem', color: slot.patient ? 'var(--charcoal)' : 'var(--mid-gray)', fontStyle: slot.patient ? 'normal' : 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {slot.patient ? personLabel(slot.patient) : 'No patient'}
                         {slot.notes && <span style={{ marginLeft: '0.5rem', fontSize: '0.72rem', color: 'var(--mid-gray)', fontStyle: 'normal' }}>· {slot.notes}</span>}
                       </span>
                       <button
+                        type="button"
                         onClick={() => onDeleteSlot(slot.id)}
-                        style={{ flex: '0 0 auto', marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '1.75rem', height: '1.75rem', background: 'none', border: '1px solid transparent', borderRadius: '0.4rem', cursor: 'pointer', color: '#DC2626' }}
+                        className="dk-icon-btn dk-btn"
+                        style={{ flex: '0 0 auto', marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '1.75rem', height: '1.75rem', borderRadius: '0.4rem', cursor: 'pointer', color: '#DC2626' }}
                         title="Remove custom slot"
                         aria-label="Remove custom slot"
                       >
                         <X size={14} />
                       </button>
                     </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {/* Custom slot button */}
-          <div style={{ padding: '0.5rem 0.75rem', borderTop: '1px solid #f3f4f6', background: '#fafafa' }}>
-            <button
-              onClick={() => setShowCustomModal(true)}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.75rem', fontWeight: 600, color: '#ED6823', background: 'none', border: '1px dashed #ED6823', borderRadius: '0.4rem', padding: '0.3rem 0.75rem', cursor: 'pointer' }}
-            >
-              <Plus size={12} /> Custom Slot
+          <div className="px-4 py-2.5" style={{ borderTop: '1px solid var(--light-gray)', background: SUBTLE_BG }}>
+            <button type="button" onClick={() => setShowCustomModal(true)}
+              className={BTN_SM}
+              style={{ background: '#fff', border: '1px dashed var(--teal)', color: 'var(--teal)' }}>
+              <Plus size={12} /> Custom slot
             </button>
           </div>
         </div>
@@ -1026,7 +1113,7 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
           }}
         />
       )}
-    </div>
+    </section>
   )
 }
 
@@ -1059,50 +1146,56 @@ function SettingsTab({ initialData, onSave }: {
     setTimeout(() => setSaved(null), 2000)
   }
 
-  const inputStyle: React.CSSProperties = { border: '1.5px solid rgba(26,123,138,0.3)', borderRadius: '0.4rem', padding: '0.3rem 0.5rem', fontSize: '0.82rem', outline: 'none', color: 'var(--charcoal)' }
-
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem' }}>
+    <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))' }}>
       {['SBEA', 'SBGH'].map(branch => (
-        <div key={branch} style={{ background: '#fff', border: '1px solid var(--light-gray)', borderRadius: '0.75rem', overflow: 'hidden' }}>
-          <div style={{ padding: '0.875rem 1rem', background: '#FFF3E8', borderBottom: '1px solid #FDE4CC', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 style={{ fontWeight: 700, fontSize: '0.9rem', color: '#ED6823' }}>{branchLabel(branch) ?? branch} — Default Clinic Hours</h3>
+        <DashCard
+          key={branch}
+          title={`${branchLabel(branch) ?? branch}`}
+          icon={<Clock size={15} />}
+          description="Default clinic hours. Therapists set to “use clinic default hours” follow these."
+          action={
             <button
+              type="button"
               onClick={() => handleSave(branch)}
               disabled={saving === branch}
-              style={{ background: saving === branch ? '#e5e7eb' : saved === branch ? '#22C55E' : '#ED6823', color: '#fff', border: 'none', borderRadius: '0.4rem', padding: '0.3rem 0.8rem', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer' }}
+              className={BTN_PRIMARY}
+              style={{ background: saved === branch ? '#16A34A' : 'var(--teal)', height: '2rem', fontSize: '0.78rem' }}
             >
               {saving === branch ? 'Saving…' : saved === branch ? 'Saved ✓' : 'Save'}
             </button>
-          </div>
-          <div style={{ padding: '0.75rem 1rem' }}>
+          }
+        >
+          <div className="-my-1">
             {DAYS.map(day => {
               const dayData = data[branch]?.[day] ?? { open: false, openTime: '10:00', closeTime: '20:00' }
               return (
-                <div key={day} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.3rem 0', borderBottom: '1px solid #f9fafb' }}>
-                  <input
-                    type="checkbox"
-                    checked={dayData.open}
-                    onChange={e => update(branch, day, 'open', e.target.checked)}
-                    style={{ accentColor: '#ED6823', width: '14px', height: '14px', flexShrink: 0 }}
-                  />
-                  <span style={{ width: '3rem', fontSize: '0.8rem', fontWeight: 500, color: dayData.open ? 'var(--charcoal)' : 'var(--mid-gray)', flexShrink: 0 }}>
-                    {DAY_SHORT[day]}
-                  </span>
+                <div key={day} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 py-2" style={{ borderBottom: '1px solid #EEF2F1' }}>
+                  <label className="flex items-center gap-2 cursor-pointer" style={{ width: '5.5rem', flexShrink: 0 }}>
+                    <input
+                      type="checkbox"
+                      checked={dayData.open}
+                      onChange={e => update(branch, day, 'open', e.target.checked)}
+                      style={{ accentColor: 'var(--teal)', width: 14, height: 14, flexShrink: 0 }}
+                    />
+                    <span className="text-sm font-medium" style={{ color: dayData.open ? 'var(--charcoal)' : 'var(--mid-gray)' }}>
+                      {DAY_SHORT[day]}
+                    </span>
+                  </label>
                   {dayData.open ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flex: 1 }}>
-                      <input type="time" value={dayData.openTime} onChange={e => update(branch, day, 'openTime', e.target.value)} style={inputStyle} />
-                      <span style={{ color: 'var(--mid-gray)', fontSize: '0.8rem' }}>–</span>
-                      <input type="time" value={dayData.closeTime} onChange={e => update(branch, day, 'closeTime', e.target.value)} style={inputStyle} />
+                    <div className="flex items-center gap-1.5 flex-1">
+                      <input type="time" aria-label={`${DAY_LABEL[day]} opening time`} value={dayData.openTime} onChange={e => update(branch, day, 'openTime', e.target.value)} className={CONTROL_SM} style={CONTROL_STYLE} />
+                      <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>to</span>
+                      <input type="time" aria-label={`${DAY_LABEL[day]} closing time`} value={dayData.closeTime} onChange={e => update(branch, day, 'closeTime', e.target.value)} className={CONTROL_SM} style={CONTROL_STYLE} />
                     </div>
                   ) : (
-                    <span style={{ fontSize: '0.75rem', color: 'var(--mid-gray)', fontStyle: 'italic' }}>Closed</span>
+                    <span className="text-xs italic" style={{ color: 'var(--mid-gray)' }}>Closed</span>
                   )}
                 </div>
               )
             })}
           </div>
-        </div>
+        </DashCard>
       ))}
     </div>
   )
@@ -1137,31 +1230,88 @@ export default function DeckingClient({ role }: { role: string }) {
 
   const [loadingStaff, setLoadingStaff] = useState(true)
   const [loadingData, setLoadingData] = useState(false)
+  // Which branch the configs/slots in state belong to. The board shows a
+  // skeleton until it matches the branch selected, and otherwise stays on
+  // screen during a refresh (after saving a schedule) instead of being torn
+  // down and rebuilt — which used to flash the page and lose the scroll.
+  const [loadedBranch, setLoadedBranch] = useState<string | null>(null)
+  const [staffError, setStaffError] = useState(false)
+  const [dataError, setDataError] = useState(false)
+  // Only the latest branch request may write state: switching branches
+  // quickly could otherwise let a slow East response land on the Greenhills board.
+  const branchReq = useRef(0)
+
+  // Display preferences — this viewer only, never shared or sent anywhere.
+  const [density, setDensityState] = useState<Density>('comfortable')
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
+  useEffect(() => {
+    try {
+      const v = window.localStorage.getItem(DENSITY_KEY)
+      if (v === 'compact' || v === 'comfortable') setDensityState(v)
+    } catch { /* storage unavailable — keep the default */ }
+  }, [])
+  function setDensity(d: Density) {
+    setDensityState(d)
+    try { window.localStorage.setItem(DENSITY_KEY, d) } catch { /* ignore */ }
+  }
+  function toggleCollapsed(id: string) {
+    setCollapsed(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
 
   // Load staff + clinic hours on mount
-  useEffect(() => {
-    Promise.all([
-      // Not /api/staff — that route is scoped to the caller's own branch, so a
-      // branch account got an empty roster the moment it switched to the other
-      // branch's board. /api/decking/staff returns both branches, limited to
-      // the columns a schedule grid needs.
-      fetch('/api/decking/staff').then(r => r.json()),
-      fetch('/api/decking/settings').then(r => r.json()),
-    ]).then(([staffData, hoursData]) => {
-      setStaff(staffData)
-      setClinicHoursData(hoursData)
-    }).finally(() => setLoadingStaff(false))
+  const loadStaff = useCallback(async () => {
+    setLoadingStaff(true)
+    setStaffError(false)
+    try {
+      const [staffData, hoursData] = await Promise.all([
+        // Not /api/staff — that route is scoped to the caller's own branch, so a
+        // branch account got an empty roster the moment it switched to the other
+        // branch's board. /api/decking/staff returns both branches, limited to
+        // the columns a schedule grid needs.
+        fetch('/api/decking/staff').then(r => { if (!r.ok) throw new Error(String(r.status)); return r.json() }),
+        // Clinic hours only supply the default window; if they fail the board
+        // falls back to DEFAULT_HOURS exactly as it does when none are saved.
+        fetch('/api/decking/settings').then(r => (r.ok ? r.json() : {})).catch(() => ({})),
+      ])
+      setStaff(Array.isArray(staffData) ? staffData : [])
+      setClinicHoursData(hoursData && typeof hoursData === 'object' ? (hoursData as AllClinicHours) : {})
+    } catch {
+      setStaffError(true)
+    } finally {
+      setLoadingStaff(false)
+    }
   }, [])
 
+  useEffect(() => { void loadStaff() }, [loadStaff])
+
   const loadBranchData = useCallback(async (branch: string) => {
+    const req = ++branchReq.current
     setLoadingData(true)
-    const [cfgs, slts] = await Promise.all([
-      fetch(`/api/decking/therapists?branch=${branch}`).then(r => r.json()),
-      fetch(`/api/decking/slots?branch=${branch}`).then(r => r.json()),
-    ])
-    setConfigs(cfgs)
-    setSlots(slts)
-    setLoadingData(false)
+    try {
+      const [cfgs, slts] = await Promise.all([
+        fetch(`/api/decking/therapists?branch=${branch}`).then(r => { if (!r.ok) throw new Error(String(r.status)); return r.json() }),
+        fetch(`/api/decking/slots?branch=${branch}`).then(r => { if (!r.ok) throw new Error(String(r.status)); return r.json() }),
+      ])
+      if (req !== branchReq.current) return
+      setConfigs(Array.isArray(cfgs) ? cfgs : [])
+      setSlots(Array.isArray(slts) ? slts : [])
+      setLoadedBranch(branch)
+      setDataError(false)
+    } catch {
+      if (req !== branchReq.current) return
+      // Never leave one branch's slots on screen under the other's name.
+      setConfigs([])
+      setSlots([])
+      setLoadedBranch(null)
+      setDataError(true)
+    } finally {
+      if (req === branchReq.current) setLoadingData(false)
+    }
   }, [])
 
   useEffect(() => {
@@ -1423,38 +1573,74 @@ export default function DeckingClient({ role }: { role: string }) {
     setClinicHoursData(prev => ({ ...prev, [branch]: schedule }))
   }
 
-  const tabBtn = (active: boolean): React.CSSProperties => ({
-    padding: '0.45rem 1rem',
-    fontSize: '0.82rem',
-    fontWeight: 600,
-    border: 'none',
-    cursor: 'pointer',
-    borderRadius: '0.5rem',
-    background: active ? '#ED6823' : 'transparent',
-    color: active ? '#fff' : 'var(--mid-gray)',
-    transition: 'all 0.15s',
-  })
+  // ── Page-level view state (display only) ──────────────────────────────────
+  // Sections that list consultants and their grids. Everything else (Per Day,
+  // SPED Class, Interdepartment, History, Departed staff) is its own board.
+  const isRosterSection = activeSection === 'onsite' || activeSection === 'teletherapy' || activeSection === 'homecare' || activeSection === 'all'
+  const hasSideColumn = activeSection === 'onsite' || activeSection === 'teletherapy' || activeSection === 'homecare'
+  const branchName = branchLabel(activeBranch) ?? activeBranch
+  const boardLoading = loadingStaff || (!staffError && !dataError && loadedBranch !== activeBranch)
+  const boardRefreshing = !boardLoading && loadingData
+  const staffDecked = filteredStaff.filter(st => ((configMap.get(st.id)?.workDays as string[] | undefined)?.length ?? 0) > 0).length
+  const pctBooked = slotSummary.total > 0 ? Math.round((slotSummary.booked / slotSummary.total) * 100) : 0
+  const deptOptions = presentDepts.includes(activeDept) ? presentDepts : [activeDept, ...presentDepts]
+  const allCollapsed = filteredStaff.length > 0 && filteredStaff.every(st => collapsed.has(st.id))
+  const activeSectionMeta = DECK_SECTIONS.find(sec => sec.key === activeSection)
+
+  function clearFilters() {
+    setNameFilter('')
+  }
+
+  const legend = [
+    { label: 'Available', style: { background: OPEN_BG, border: `1px dashed ${OPEN_BORDER}` } },
+    { label: 'Cash', style: { background: PAY_STYLE.CASH.bg, borderLeft: `3px solid ${PAY_STYLE.CASH.border}` } },
+    { label: 'HMO', style: { background: PAY_STYLE.HMO.bg, borderLeft: `3px solid ${PAY_STYLE.HMO.border}` } },
+    { label: 'Guarantee Letter', style: { background: PAY_STYLE.GL.bg, borderLeft: `3px solid ${PAY_STYLE.GL.border}` } },
+    { label: 'Unavailable', style: { background: OFF_HATCH, border: `1px solid ${GRID_LINE}` } },
+  ] as { label: string; style: React.CSSProperties }[]
+
+  const boardSkeleton = (
+    <div className="space-y-3" aria-busy="true" aria-label="Loading the decking board">
+      {[0, 1].map(i => (
+        <div key={i} className="rounded-xl p-4" style={CARD_STYLE}>
+          <div className="flex items-center gap-3 mb-4">
+            <Skeleton style={{ width: 34, height: 34, borderRadius: 999 }} />
+            <div className="flex-1 space-y-1.5">
+              <Skeleton className="h-3.5" style={{ width: 160 }} />
+              <Skeleton className="h-3" style={{ width: 220, maxWidth: '80%' }} />
+            </div>
+            <Skeleton className="h-8 hidden sm:block" style={{ width: 110 }} />
+          </div>
+          <Skeleton className="h-44" />
+        </div>
+      ))}
+    </div>
+  )
 
   return (
-    <div style={{ maxWidth: '1100px' }}>
-      {/* Page header */}
-      <div style={{ marginBottom: '1.5rem' }}>
-        <p style={{ fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--teal)', marginBottom: '0.25rem' }}>Clinic Tools</p>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
-          <h1 style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '1.6rem', color: 'var(--charcoal)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Layers size={22} style={{ color: '#ED6823' }} /> Decking Module
+    <div className="max-w-[1400px] space-y-5">
+      <style>{DECK_CSS}</style>
+
+      {/* ── Header ── */}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: 'var(--teal)' }}>Clinic Tools</p>
+          <h1 className="text-2xl font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+            Decking
           </h1>
-          {/* Main tab switcher */}
-          <div style={{ display: 'flex', background: 'var(--off-white)', borderRadius: '0.6rem', padding: '0.25rem', border: '1px solid var(--light-gray)', gap: '0.2rem' }}>
-            <button style={tabBtn(activeMainTab === 'decking')} onClick={() => setActiveMainTab('decking')}>
-              Weekly Decking
-            </button>
-            <button style={tabBtn(activeMainTab === 'settings')} onClick={() => setActiveMainTab('settings')}>
-              <Settings2 size={13} style={{ display: 'inline', marginRight: '0.3rem', verticalAlign: 'middle' }} />
-              Clinic Hours
-            </button>
-          </div>
+          <p className="text-sm mt-1" style={{ color: 'var(--mid-gray)' }}>
+            The weekly slot board — set each therapist&apos;s days and hours, then fill their hours with patients.
+          </p>
         </div>
+        <PillTabs
+          label="Decking view"
+          value={activeMainTab}
+          onChange={id => setActiveMainTab(id as 'decking' | 'settings')}
+          tabs={[
+            { id: 'decking', label: 'Weekly Decking' },
+            { id: 'settings', label: <><Settings2 size={13} /> Clinic Hours</> },
+          ]}
+        />
       </div>
 
       {/* Settings Tab */}
@@ -1464,144 +1650,171 @@ export default function DeckingClient({ role }: { role: string }) {
 
       {/* Decking Tab */}
       {activeMainTab === 'decking' && (
-        <div>
-          {/* Two cards, because the board does two different jobs: Decking is
+        <div className="space-y-4">
+          {/* Two groups, because the board does two different jobs: Decking is
               where the week gets filled, Analysis is where the same slots are
-              read back. Eight equal chips in one row gave no clue which was
-              which, so a board and a report sat side by side looking alike.
+              read back.
 
               A consultant tagged "On-site + Teletherapy" still appears under
               BOTH of those — the combined arrangements are genuinely two roles,
               not a third category. */}
-          <div style={{ display: 'flex', gap: '0.6rem', marginBottom: '1rem', flexWrap: 'wrap', alignItems: 'stretch' }}>
-            {DECK_GROUPS.map(group => (
-              <div key={group.key} style={{
-                background: '#fff', border: '1px solid var(--light-gray)', borderRadius: '0.75rem',
-                padding: '0.6rem 0.75rem', minWidth: 0,
-              }}>
-                <div style={{
-                  fontSize: '0.64rem', fontWeight: 800, letterSpacing: '0.07em', textTransform: 'uppercase',
-                  color: 'var(--mid-gray)', marginBottom: '0.45rem',
-                }}>
-                  {group.label}
+          <div className="rounded-xl px-4 py-3" style={CARD_STYLE}>
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+              {DECK_GROUPS.map(group => (
+                <div key={group.key} className="flex items-center gap-2 min-w-0 max-w-full">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider flex-shrink-0" style={{ color: 'var(--mid-gray)' }}>
+                    {group.label}
+                  </span>
+                  <PillTabs
+                    label={group.label}
+                    value={activeSection}
+                    onChange={id => setActiveSection(id as DeckSection)}
+                    tabs={DECK_SECTIONS.filter(sec => sec.group === group.key).map(sec => ({ id: sec.key, label: sec.label, title: sec.blurb }))}
+                  />
                 </div>
-                <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
-                  {DECK_SECTIONS.filter(sec => sec.group === group.key).map(sec => {
-                    const active = activeSection === sec.key
-                    return (
-                      <button key={sec.key} onClick={() => setActiveSection(sec.key)} title={sec.blurb}
-                        style={{
-                          padding: '0.45rem 1.1rem', fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer',
-                          borderRadius: '0.5rem', border: `1.5px solid ${active ? 'var(--teal)' : 'var(--light-gray)'}`,
-                          background: active ? 'var(--teal)' : '#fff',
-                          color: active ? '#fff' : 'var(--mid-gray)',
-                        }}>
-                        {sec.label}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Controls row */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
-            {/* Branch toggle */}
-            {branches.length > 1 && (
-              <div style={{ display: 'flex', borderRadius: '0.5rem', overflow: 'hidden', border: '1px solid var(--light-gray)' }}>
-                {branches.map(b => (
-                  <button key={b} onClick={() => { setActiveBranch(b); setNameFilter('') }}
-                    style={{ padding: '0.4rem 1rem', fontSize: '0.82rem', fontWeight: 600, border: 'none', cursor: 'pointer', background: activeBranch === b ? 'var(--teal)' : '#fff', color: activeBranch === b ? '#fff' : 'var(--mid-gray)' }}>
-                    {branchLabel(b) ?? b}
-                  </button>
-                ))}
-              </div>
-            )}
-            {/* Name search — hidden on Per Day, which totals slots rather than
-                listing people, so filtering by name would change nothing. */}
-            {activeSection !== 'perday' && activeSection !== 'sped' && activeSection !== 'crosssell' && activeSection !== 'history' && activeSection !== 'departed' && (
-            <input
-              style={{ border: '1.5px solid rgba(26,123,138,0.3)', borderRadius: '0.5rem', padding: '0.4rem 0.75rem', fontSize: '0.82rem', outline: 'none', color: 'var(--charcoal)', minWidth: '180px' }}
-              placeholder="Filter by name…"
-              value={nameFilter}
-              onChange={e => setNameFilter(e.target.value)}
-            />
-            )}
-          </div>
-
-          {/* Colour key. The grid is scanned, not read — without a key the fills
-              are decoration, and front desk keeps going back to the sheet they
-              already know how to interpret. */}
-          {activeSection !== 'perday' && activeSection !== 'sped' && activeSection !== 'crosssell' && activeSection !== 'history' && activeSection !== 'departed' && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.9rem', marginBottom: '0.85rem', fontSize: '0.72rem', color: 'var(--mid-gray)' }}>
-              {([
-                { bg: OPEN_BG, border: OPEN_BORDER, label: 'Available' },
-                { bg: PAY_STYLE.CASH.bg, border: PAY_STYLE.CASH.border, label: 'Cash' },
-                { bg: PAY_STYLE.HMO.bg, border: PAY_STYLE.HMO.border, label: 'HMO' },
-                { bg: PAY_STYLE.GL.bg, border: PAY_STYLE.GL.border, label: 'Guarantee Letter' },
-                { bg: OFF_CELL_BG, border: '#D6DCE2', label: 'Unavailable' },
-              ]).map(k => (
-                <span key={k.label} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
-                  <span style={{ width: 13, height: 13, background: k.bg, border: `1px solid ${k.border}`, display: 'inline-block' }} />
-                  {k.label}
-                </span>
               ))}
             </div>
-          )}
+            {activeSectionMeta && (
+              <p className="text-xs mt-2" style={{ color: 'var(--mid-gray)' }}>{activeSectionMeta.blurb}.</p>
+            )}
+          </div>
 
-          {/* Department chips — hidden on Per Day, which is an all-department
-              aggregate: a department filter there would contradict the table. */}
-          {activeSection !== 'perday' && activeSection !== 'sped' && activeSection !== 'crosssell' && activeSection !== 'history' && activeSection !== 'departed' && !loadingStaff && presentDepts.length > 0 && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1.25rem' }}>
-              {presentDepts.map(d => (
-                <button key={d} onClick={() => setActiveDept(d)}
-                  style={{ padding: '0.3rem 0.875rem', borderRadius: '9999px', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer', border: activeDept === d ? 'none' : '1px solid var(--light-gray)', background: activeDept === d ? '#ED6823' : '#fff', color: activeDept === d ? '#fff' : 'var(--mid-gray)', transition: 'all 0.15s' }}>
-                  {d}
+          {/* ── Toolbar ── */}
+          <div className="rounded-xl px-4 py-3" style={CARD_STYLE}>
+            <div className="flex flex-wrap items-end gap-3">
+              {/* Branch toggle */}
+              {branches.length > 1 && (
+                <div>
+                  <span className={LABEL} style={{ color: 'var(--mid-gray)' }}>Branch</span>
+                  <PillTabs
+                    label="Branch"
+                    value={activeBranch}
+                    onChange={b => { setActiveBranch(b); setNameFilter('') }}
+                    tabs={branches.map(b => ({ id: b, label: branchLabel(b) ?? b }))}
+                  />
+                </div>
+              )}
+              {/* Department + name search — hidden on Per Day and the other
+                  analysis boards, which total slots rather than listing people,
+                  so filtering by either would change nothing. */}
+              {isRosterSection && (
+                <div>
+                  <label className={LABEL} style={{ color: 'var(--mid-gray)' }} htmlFor="dk-dept">Department</label>
+                  <select id="dk-dept" value={activeDept} onChange={e => setActiveDept(e.target.value)}
+                    disabled={loadingStaff}
+                    className={CONTROL} style={CONTROL_STYLE}>
+                    {deptOptions.map(d => <option key={d} value={d}>{d}</option>)}
+                  </select>
+                </div>
+              )}
+              {isRosterSection && (
+                <div className="flex-1 min-w-[12rem] sm:flex-none">
+                  <label className={LABEL} style={{ color: 'var(--mid-gray)' }} htmlFor="dk-name">Staff</label>
+                  <div className="relative">
+                    <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mid-gray)' }} />
+                    <input
+                      id="dk-name"
+                      type="search"
+                      className={`${CONTROL} pl-8 w-full sm:w-[14rem]`}
+                      style={CONTROL_STYLE}
+                      placeholder="Filter by name…"
+                      value={nameFilter}
+                      onChange={e => setNameFilter(e.target.value)}
+                    />
+                  </div>
+                </div>
+              )}
+              {isRosterSection && (
+                <button type="button" onClick={clearFilters} disabled={!nameFilter}
+                  className={BTN_SECONDARY} style={CONTROL_STYLE}>
+                  <X size={14} /> Clear filters
                 </button>
-              ))}
+              )}
+              <div className="flex items-center gap-3 ml-auto h-9">
+                <span className="flex items-center gap-1.5 text-[11px]" style={{ color: 'var(--mid-gray)' }} aria-live="polite">
+                  {boardRefreshing && <><Loader2 size={12} className="animate-spin" /> Updating…</>}
+                </span>
+                {isRosterSection && !boardLoading && !staffError && !dataError && (
+                  <span className="text-xs whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>
+                    <strong className="tabular-nums" style={{ color: 'var(--charcoal)' }}>{filteredStaff.length}</strong>
+                    {nameFilter.trim() ? <> of <span className="tabular-nums">{branchStaff.length}</span></> : null} staff
+                  </span>
+                )}
+              </div>
             </div>
+          </div>
+
+          {/* ── KPIs — computed from the slots already on the board ── */}
+          {isRosterSection && !staffError && !dataError && (
+            boardLoading ? (
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3" aria-hidden>
+                {[0, 1, 2, 3].map(i => <Skeleton key={i} className="h-[78px] rounded-xl" />)}
+              </div>
+            ) : (
+              <div className={`grid grid-cols-2 lg:grid-cols-4 gap-3 transition-opacity ${boardRefreshing ? 'opacity-60' : ''}`}>
+                <KpiCard label="Staff decked" icon={<Users size={15} />}
+                  value={<>{staffDecked}<span className="text-sm font-semibold" style={{ color: 'var(--mid-gray)' }}> / {filteredStaff.length}</span></>}
+                  sub="with work days set" />
+                <KpiCard label="Open slots" icon={<CalendarPlus size={15} />} accent={OPEN_FG}
+                  value={slotSummary.open}
+                  sub={slotSummary.blocked > 0 ? `${slotSummary.blocked} more marked unavailable` : 'ready to book'} />
+                <KpiCard label="Booked slots" icon={<CalendarCheck size={15} />} accent={PAY_STYLE.CASH.fg}
+                  value={slotSummary.booked}
+                  sub={`of ${slotSummary.total} hourly slots`} />
+                <KpiCard label="Booked this week" icon={<Percent size={15} />}
+                  value={`${pctBooked}%`}
+                  sub={<>{branchName} &middot; {activeDept}{activeSection === 'all' ? ' · all modes' : ''}</>} />
+              </div>
+            )
           )}
+
           {/* On-site / Teletherapy / Homecare split the width 2:1 — board on the
-              left, the client-portal requests for that service on the right. "All"
-              is the consolidated roster and takes the full width: it is not tied to
-              one service's payments. The board itself renders once either way. */}
-          {/* Single column until lg, so the requests panel drops below the
-              board on laptops and tablets instead of squeezing it. */}
-          <div className={`grid gap-4 items-start ${
-            activeSection === 'all' || activeSection === 'perday' || activeSection === 'sped' || activeSection === 'crosssell' || activeSection === 'history' || activeSection === 'departed'
-              ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]'
-          }`}>
-            <div style={{ minWidth: 0 }}>
-            {/* On All the card cannot sit in the right column — that section is
-                full width — so it runs across the top instead. Same numbers,
-                same derivation; All simply has no arrangement filter, so this
-                totals every mode of delivery at once. */}
-            {activeSection === 'all' && !loadingStaff && !loadingData && (
-              <div style={{ marginBottom: '0.75rem', maxWidth: 560 }}>
+              left, capacity and the client-portal requests for that service on
+              the right. "All" is the consolidated roster and takes the full
+              width: it is not tied to one service's payments. Single column
+              until lg, so the side panel drops below the board on laptops and
+              tablets instead of squeezing it. */}
+          <div className={`grid gap-4 items-start ${hasSideColumn ? 'grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]' : 'grid-cols-1'}`}>
+            {/* While a refresh is in flight (after saving a schedule) the board
+                stays on screen but cannot be clicked: a booking made now could
+                be overwritten by the reload's older copy of the slots. The old
+                board guaranteed the same by hiding itself behind "Loading…". */}
+            <div className={`min-w-0 space-y-3 transition-opacity ${boardRefreshing ? 'opacity-60 pointer-events-none' : ''}`}
+              aria-busy={boardRefreshing || undefined}>
+            {/* On All the capacity card cannot sit in the right column — that
+                section is full width — so it runs across the top instead. Same
+                numbers, same derivation; All simply has no arrangement filter,
+                so this totals every mode of delivery at once. */}
+            {activeSection === 'all' && !boardLoading && !staffError && !dataError && (
+              <div style={{ maxWidth: 560 }}>
                 <SlotSummaryCard
                   summary={slotSummary}
-                  title={<>Slots &mdash; {branchLabel(activeBranch) ?? activeBranch} &middot; {activeDept} &middot; all modes of delivery</>}
+                  title={<>{branchName} &middot; {activeDept} &middot; all modes of delivery</>}
                 />
               </div>
             )}
             {viewingOtherBranch && (
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem',
-                background: readOnlyHere ? '#F7F9FA' : '#E6F2F4',
-                border: `1px solid ${readOnlyHere ? '#D6DCE2' : '#A9CBEC'}`,
-                borderRadius: '0.6rem', padding: '0.55rem 0.85rem',
-              }}>
-                <span style={{ fontSize: '0.8rem', color: readOnlyHere ? '#5A6470' : '#14507F', lineHeight: 1.5 }}>
+              <div className="flex items-start gap-2 rounded-xl px-3.5 py-2.5"
+                style={{
+                  background: readOnlyHere ? SUBTLE_BG : '#E6F2F4',
+                  border: `1px solid ${readOnlyHere ? 'var(--light-gray)' : '#A9CBEC'}`,
+                  color: readOnlyHere ? '#5A6470' : '#14507F',
+                }}>
+                {readOnlyHere ? <Lock size={14} className="mt-0.5 flex-shrink-0" /> : <Info size={14} className="mt-0.5 flex-shrink-0" />}
+                <span className="text-[13px] leading-relaxed">
                   {readOnlyHere
-                    ? <>Viewing <strong>{branchLabel(activeBranch) ?? activeBranch}</strong> — read only. Face-to-face sessions are decked by the branch that runs them; switch to <strong>Teletherapy</strong> to book across branches.</>
-                    : <>Viewing <strong>{branchLabel(activeBranch) ?? activeBranch}</strong> — teletherapy can be booked from either branch, so this board is editable.</>}
+                    ? <>Viewing <strong>{branchName}</strong> — read only. Face-to-face sessions are decked by the branch that runs them; switch to <strong>Teletherapy</strong> to book across branches.</>
+                    : <>Viewing <strong>{branchName}</strong> — teletherapy can be booked from either branch, so this board is editable.</>}
                 </span>
               </div>
             )}
             {/* Staff list */}
-            {loadingStaff || loadingData ? (
-              <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--mid-gray)', fontSize: '0.85rem' }}>Loading…</div>
+            {staffError ? (
+              <ErrorCard title="Couldn't load the decking board" hint="Check your connection, then try again." onRetry={() => { void loadStaff() }} />
+            ) : dataError ? (
+              <ErrorCard title={`Couldn't load the ${branchName} board`} hint="Check your connection, then try again." onRetry={() => { void loadBranchData(activeBranch) }} />
+            ) : boardLoading ? (
+              boardSkeleton
             ) : activeSection === 'history' ? (
               /* The board over time, from the daily snapshots — the board
                  itself keeps no dated record. */
@@ -1614,7 +1827,7 @@ export default function DeckingClient({ role }: { role: string }) {
               <InterdepartmentBoard branch={activeBranch} />
             ) : activeSection === 'sped' ? (
               /* SPED gets the branch's SPED slots and SPED staff, whatever the
-                 department chip says — the chip is hidden here precisely because
+                 department filter says — it is hidden here precisely because
                  the board is SPED by definition. */
               <SpedClassBoard
                 /* Classes only. Filtering on department alone put every 1-on-1
@@ -1626,7 +1839,7 @@ export default function DeckingClient({ role }: { role: string }) {
                     && (st.branch === activeBranch || (st.extraBranches ?? []).includes(activeBranch))
                     && st.department === 'SPED')
                   .map(st => ({ id: st.id, firstName: st.firstName, lastName: st.lastName }))}
-                branchName={branchLabel(activeBranch) ?? activeBranch}
+                branchName={branchName}
                 onAddChild={async (block, patientId) => {
                   await handleSaveSlot({ ...block, patientId, branch: activeBranch, department: 'SPED', notes: null, isClass: true })
                 }}
@@ -1659,47 +1872,89 @@ export default function DeckingClient({ role }: { role: string }) {
               <DeckingPerDay
                 slots={slots}
                 departments={perDayDepts}
-                branchName={branchLabel(activeBranch) ?? activeBranch}
+                branchName={branchName}
                 capacity={perDayCapacity}
               />
             ) : filteredStaff.length === 0 ? (
-              <div style={{ background: '#fff', border: '1px solid var(--light-gray)', borderRadius: '0.75rem', padding: '3rem', textAlign: 'center' }}>
-                <p style={{ color: 'var(--charcoal)', fontWeight: 600, fontSize: '0.875rem' }}>
-                  {nameFilter ? `No ${activeDept} staff match "${nameFilter}" in ${branchLabel(activeBranch) ?? activeBranch}` : `No ${activeDept} staff in ${branchLabel(activeBranch) ?? activeBranch}`}
-                </p>
-                <p style={{ color: 'var(--mid-gray)', fontSize: '0.8rem', marginTop: '0.35rem' }}>Add staff in the Staff Module first.</p>
+              <div className="rounded-xl" style={CARD_STYLE}>
+                <EmptyState
+                  title={nameFilter ? `No ${activeDept} staff match “${nameFilter}” in ${branchName}` : `No ${activeDept} staff in ${branchName}`}
+                  hint={nameFilter ? 'Try a different name, or clear the filter.' : 'Add staff in the Staff Module first, or pick another department.'}
+                />
+                {nameFilter && (
+                  <div className="-mt-6 pb-8 text-center">
+                    <button type="button" onClick={clearFilters} className={BTN_SM} style={{ ...CONTROL_STYLE, color: 'var(--teal)' }}>
+                      <X size={12} /> Clear filters
+                    </button>
+                  </div>
+                )}
               </div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
-                {filteredStaff.map(s => (
-                  <TherapistRow
-                    key={s.id}
-                    staff={s}
-                    activeBranch={activeBranch}
-                    sectionMode={sectionMode}
-                    config={configMap.get(s.id)}
-                    slots={slotsByStaff.get(s.id) ?? []}
-                    defaultHours={resolvedDefaultHours}
-                    onSaveConfig={handleSaveConfig}
-                    onClearServiceConfig={handleClearServiceConfig}
-                    onSaveSlot={handleSaveSlot}
-                    onDeleteSlot={handleDeleteSlot}
-                    onOpenLoa={openLoaForSlot}
-                  />
-                ))}
-              </div>
+              <>
+                {/* Colour key + density. The grid is scanned, not read —
+                    without a key the fills are decoration, and front desk keeps
+                    going back to the sheet they already know how to interpret. */}
+                <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+                  <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1 text-[11px]" style={{ color: 'var(--mid-gray)' }} aria-label="Colour key">
+                    {legend.map(k => (
+                      <span key={k.label} className="inline-flex items-center gap-1.5">
+                        <span className="inline-block rounded-sm" style={{ width: 14, height: 12, ...k.style }} />
+                        {k.label}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <PillTabs size="sm" label="Row density" value={density} onChange={id => setDensity(id as Density)}
+                      tabs={[
+                        { id: 'comfortable', label: <><Rows3 size={12} /> Comfortable</>, title: 'Taller rows' },
+                        { id: 'compact', label: <><Rows4 size={12} /> Compact</>, title: 'Fit more therapists on screen' },
+                      ]} />
+                    <button type="button"
+                      onClick={() => setCollapsed(allCollapsed ? new Set() : new Set(filteredStaff.map(st => st.id)))}
+                      className={BTN_SM} style={CONTROL_STYLE}
+                      title={allCollapsed ? 'Show every grid' : 'Show headers only'}>
+                      {allCollapsed ? <ChevronsUpDown size={13} /> : <ChevronsDownUp size={13} />}
+                      <span className="hidden sm:inline">{allCollapsed ? 'Expand all' : 'Collapse all'}</span>
+                    </button>
+                  </div>
+                </div>
+                <div className={`flex flex-col ${density === 'compact' ? 'gap-2' : 'gap-3'}`}>
+                  {filteredStaff.map(s => (
+                    <TherapistRow
+                      key={s.id}
+                      staff={s}
+                      activeBranch={activeBranch}
+                      sectionMode={sectionMode}
+                      config={configMap.get(s.id)}
+                      slots={slotsByStaff.get(s.id) ?? []}
+                      defaultHours={resolvedDefaultHours}
+                      onSaveConfig={handleSaveConfig}
+                      onClearServiceConfig={handleClearServiceConfig}
+                      onSaveSlot={handleSaveSlot}
+                      onDeleteSlot={handleDeleteSlot}
+                      onOpenLoa={openLoaForSlot}
+                      density={density}
+                      collapsed={collapsed.has(s.id)}
+                      onToggleCollapse={() => toggleCollapsed(s.id)}
+                    />
+                  ))}
+                </div>
+              </>
             )}
             </div>
-            {activeSection !== 'all' && activeSection !== 'perday' && activeSection !== 'sped' && activeSection !== 'crosssell' && activeSection !== 'history' && activeSection !== 'departed' && (
-              <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                {/* Capacity for the current branch / department / section, in the
-                    space this column used to leave empty. Open is derived
-                    (total - booked - blocked) rather than counted separately, so
-                    the three numbers always add up. */}
-                <SlotSummaryCard
-                  summary={slotSummary}
-                  title={<>Slots &mdash; {branchLabel(activeBranch) ?? activeBranch} &middot; {activeDept}</>}
-                />
+            {hasSideColumn && (
+              <div className="min-w-0 flex flex-col gap-3">
+                {/* Capacity for the current branch / department / section.
+                    Open is derived (total - booked - blocked) rather than
+                    counted separately, so the three numbers always add up. */}
+                {boardLoading ? (
+                  <Skeleton className="h-44 rounded-xl" />
+                ) : !staffError && !dataError ? (
+                  <SlotSummaryCard
+                    summary={slotSummary}
+                    title={<>{branchName} &middot; {activeDept}</>}
+                  />
+                ) : null}
                 {/* Follows the branch toggle above. This used to send 'ALL'
                     whenever the account could see more than one branch, so for
                     any admin the panel ignored the toggle completely: filtering
@@ -1719,12 +1974,9 @@ export default function DeckingClient({ role }: { role: string }) {
       {/* Opening an LOA does a round trip (find-or-create), and the board gives
           no other sign the click registered. */}
       {loaBusy && !loaPanel && (
-        <div style={{
-          position: 'fixed', bottom: 18, right: 18, zIndex: 60,
-          background: '#1C2B30', color: '#fff', borderRadius: 8,
-          padding: '0.5rem 0.85rem', fontSize: '0.8rem', fontWeight: 600,
-        }}>
-          Opening LOA…
+        <div role="status" className="fixed bottom-[18px] right-[18px] z-[60] inline-flex items-center gap-2 rounded-lg px-3.5 py-2 text-[13px] font-semibold text-white"
+          style={{ background: '#1C2B30', boxShadow: '0 8px 24px rgba(0,0,0,0.2)' }}>
+          <Loader2 size={13} className="animate-spin" /> Opening LOA…
         </div>
       )}
 
