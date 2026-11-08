@@ -943,13 +943,13 @@ export default function ServicesPage() {
 
       {/* Cards (also the Payment Type filter) */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard label="Services" value={services.length.toLocaleString()} sub={filterStatus === 'active' ? 'Active, in these filters' : filterStatus === 'inactive' ? 'Disabled, in these filters' : 'All, in these filters'}
+        <StatCard loading={loading} label="Services" value={services.length.toLocaleString()} sub={filterStatus === 'active' ? 'Active, in these filters' : filterStatus === 'inactive' ? 'Disabled, in these filters' : 'All, in these filters'}
           accent={{ line: 'var(--teal)' }} onClick={filterPayType ? () => { setFilterPayType(''); setSvcPage(1) } : undefined} title="Show every payment type" />
-        <StatCard label="Cash" value={nByPay('CASH').toLocaleString()} sub="Paid by the patient" accent={{ line: '#059669' }}
+        <StatCard loading={loading} label="Cash" value={nByPay('CASH').toLocaleString()} sub="Paid by the patient" accent={{ line: '#059669' }}
           active={filterPayType === 'CASH'} onClick={payCard('CASH')} title="Show only cash services" />
-        <StatCard label="HMO" value={nByPay('HMO').toLocaleString()} sub="Billed to an HMO" accent={{ line: '#2563eb' }}
+        <StatCard loading={loading} label="HMO" value={nByPay('HMO').toLocaleString()} sub="Billed to an HMO" accent={{ line: '#2563eb' }}
           active={filterPayType === 'HMO'} onClick={payCard('HMO')} title="Show only HMO services" />
-        <StatCard label="Guarantee letter" value={nByPay('GL').toLocaleString()} sub="Billed against a GL" accent={{ line: '#9333ea' }}
+        <StatCard loading={loading} label="Guarantee letter" value={nByPay('GL').toLocaleString()} sub="Billed against a GL" accent={{ line: '#9333ea' }}
           active={filterPayType === 'GL'} onClick={payCard('GL')} title="Show only guarantee-letter services" />
       </div>
 
