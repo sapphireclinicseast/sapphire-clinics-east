@@ -7,6 +7,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { Activity } from 'lucide-react'
+import { DashCard, BarListSkeleton, EmptyState, DeptChip } from './ui'
 
 interface DeptRow {
   dept: string
@@ -77,91 +78,75 @@ export default function DeptBreakdownSection({ branches }: { branches: string[] 
   const max = Math.max(1, ...rows.map((r) => r.count))
 
   return (
-    <div className="rounded-xl" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
-      <div
-        className="px-5 py-3"
-        style={{ borderBottom: '1px solid var(--light-gray)' }}
-      >
-        <div className="flex items-center gap-2">
-          <Activity size={14} style={{ color: 'var(--teal)' }} />
-          <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--mid-gray)' }}>
-            Patients by Service
-          </p>
-        </div>
-        <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
-          Unique patients with confirmed sessions per department. A patient receiving two
-          services is counted in both, so these add up to more than the total.
-        </p>
-        {data && (
-          <p className="text-[11px] mt-1.5" style={{ color: 'var(--mid-gray)' }}>
-            Based on <strong>{data.totalPatients.toLocaleString()}</strong> patients with recorded
-            treatment{data.sessionWindow.from ? ` between ${monthYear(data.sessionWindow.from)} and ${monthYear(data.sessionWindow.to)}` : ''}
-            {' '}— percentages are of that figure, not of the{' '}
-            <strong>{data.totalRoster.toLocaleString()}</strong>-patient roster. Combines Clinic
-            Schedule sessions with POS billing history, so visits from before this hub was in use
-            are included.
-            {data.match && (data.match.unmatched + data.match.ambiguous) > 0 && (
-              <>
-                {' '}
-                <span title="Historical POS records identified only by a free-text name that could not be tied to exactly one patient. They are still counted, under their billing identity.">
-                  {(data.match.unmatched + data.match.ambiguous).toLocaleString()} historical
-                  record(s) could not be matched to a patient profile by name and are counted
-                  separately.
-                </span>
-              </>
-            )}
-          </p>
-        )}
-      </div>
-
+    <DashCard
+      title="Patients by Service"
+      icon={<Activity size={15} />}
+      description="Unique patients with confirmed sessions per department. A patient receiving two services is counted in both, so these add up to more than the total."
+      footer={data ? (
+        <>
+          Based on <strong>{data.totalPatients.toLocaleString()}</strong> patients with recorded
+          treatment{data.sessionWindow.from ? ` between ${monthYear(data.sessionWindow.from)} and ${monthYear(data.sessionWindow.to)}` : ''}
+          {' '}— percentages are of that figure, not of the{' '}
+          <strong>{data.totalRoster.toLocaleString()}</strong>-patient roster. Combines Clinic
+          Schedule sessions with POS billing history, so visits from before this hub was in use
+          are included.
+          {data.match && (data.match.unmatched + data.match.ambiguous) > 0 && (
+            <>
+              {' '}
+              <span title="Historical POS records identified only by a free-text name that could not be tied to exactly one patient. They are still counted, under their billing identity.">
+                {(data.match.unmatched + data.match.ambiguous).toLocaleString()} historical
+                record(s) could not be matched to a patient profile by name and are counted
+                separately.
+              </span>
+            </>
+          )}
+        </>
+      ) : undefined}
+    >
       {loading && !data ? (
-        <div className="py-14 text-center text-sm" style={{ color: 'var(--mid-gray)' }}>
-          Loading service breakdown…
-        </div>
+        <BarListSkeleton rows={6} />
       ) : rows.length === 0 || data?.totalPatients === 0 ? (
-        <div className="py-14 text-center text-sm" style={{ color: 'var(--mid-gray)' }}>
-          No confirmed sessions for the selected branches yet.
-        </div>
+        <EmptyState
+          title="No confirmed sessions yet"
+          hint="Nothing has been recorded for the selected branches. Try All branches."
+        />
       ) : (
-        <div className="p-5 space-y-2.5">
+        <div className="space-y-3">
           {rows.map((r) => {
             const c = DEPT_COLORS[r.dept] ?? '#9CA3AF'
             const barPct = (r.count / max) * 100
+            const name = DEPT_LABELS[r.dept] ?? r.dept
             return (
-              <div key={r.dept} className="flex items-center gap-3">
-                {/* Label */}
-                <div className="flex-shrink-0" style={{ width: 150 }}>
-                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded mr-1.5"
-                    style={{ background: `${c}18`, color: c }}>
-                    {r.dept}
-                  </span>
-                  <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>
-                    {DEPT_LABELS[r.dept] ?? r.dept}
-                  </span>
-                </div>
+              <div
+                key={r.dept}
+                tabIndex={0}
+                title={`${name}: ${r.count.toLocaleString()} patients · ${r.pct}% of patients with recorded treatment`}
+                className="grid grid-cols-[minmax(0,1fr)_auto] sm:grid-cols-[minmax(0,11rem)_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 rounded outline-none"
+              >
+                {/* Label — wraps rather than truncating */}
+                <span className="col-span-2 sm:col-span-1 flex items-start gap-1.5 text-xs leading-snug" style={{ color: 'var(--charcoal)' }}>
+                  <DeptChip code={r.dept} color={c} />
+                  <span className="break-words min-w-0">{name}</span>
+                </span>
 
                 {/* Bar */}
-                <div className="flex-1 rounded-full overflow-hidden" style={{ height: 22, background: '#F3F4F6' }}>
+                <div className="h-4 rounded overflow-hidden" style={{ background: '#F3F4F6' }}>
                   <div
-                    className="h-full rounded-full transition-all"
+                    className="h-full rounded transition-all"
                     style={{ width: `${barPct}%`, background: c, minWidth: r.count > 0 ? 2 : 0 }}
                   />
                 </div>
 
                 {/* Figures */}
-                <div className="flex-shrink-0 text-right" style={{ width: 110 }}>
-                  <span className="text-sm font-bold" style={{ color: 'var(--charcoal)', fontVariantNumeric: 'tabular-nums' }}>
-                    {r.count.toLocaleString()}
-                  </span>
-                  <span className="text-[11px] ml-1.5" style={{ color: 'var(--mid-gray)', fontVariantNumeric: 'tabular-nums' }}>
-                    {r.pct}%
-                  </span>
-                </div>
+                <span className="text-xs whitespace-nowrap text-right" style={{ color: 'var(--charcoal)', fontVariantNumeric: 'tabular-nums' }}>
+                  <strong className="font-semibold">{r.count.toLocaleString()}</strong>
+                  <span style={{ color: 'var(--mid-gray)' }}> · </span>{r.pct}%
+                </span>
               </div>
             )
           })}
         </div>
       )}
-    </div>
+    </DashCard>
   )
 }
