@@ -18,6 +18,7 @@ import { downloadXlsx, downloadPdf } from '@/lib/export'
 import { NameCombobox } from '@/components/NameCombobox'
 import DownloadMenu from '@/components/ui/DownloadMenu'
 import Pagination from '@/components/ui/Pagination'
+import { HR_PAGE_CLASS, HR_PAGE_STYLE, HrShimmerStyle, StatCard, hrBtn } from '@/components/ui/hr-look'
 
 interface Service {
   id: string
@@ -891,135 +892,132 @@ export default function ServicesPage() {
 
   if (loading && !initialLoaded.current) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="text-sm" style={{ color: 'var(--mid-gray)' }}>Loading...</div>
+      <div className={HR_PAGE_CLASS} style={HR_PAGE_STYLE} aria-busy="true">
+        <HrShimmerStyle />
+        <div className="h-9 w-56 rounded-md hr-shimmer" />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">{[0, 1, 2, 3].map(i => <div key={i} className="h-[92px] rounded-lg hr-shimmer" />)}</div>
+        <div className="h-96 rounded-lg hr-shimmer" />
       </div>
     )
   }
 
+  // Cards: services in the current filters, by payment type (same rule as the Payment Type filter).
+  const nByPay = (t: string) => services.filter(s => payTypeOf(s) === t).length
+  const payCard = (t: string) => () => { setFilterPayType(f => (f === t ? '' : t)); setSvcPage(1) }
+  const { primary: primaryBtn, outline: outlineBtn } = hrBtn
+  const fieldCls = 'h-9 px-2.5 rounded-lg border bg-white text-[13px] outline-none focus:border-[var(--teal)]'
+
   return (
-    <div>
+    <div className={HR_PAGE_CLASS} style={HR_PAGE_STYLE}>
+      <HrShimmerStyle />
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-2xl font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
-            Services
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold leading-tight flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+            <Stethoscope size={22} style={{ color: 'var(--teal)' }} /> Services
           </h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--mid-gray)' }}>
-            Manage clinic services, pricing, and PWD discount rules
+          <p className="mt-1 text-[13px] max-w-2xl" style={{ color: 'var(--mid-gray)' }}>
+            Clinic services, pricing and PWD / Senior Citizen discount rules.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <DownloadMenu onDownload={handleDownloadServices} label="Download" />
           {canWrite && (
-            <button onClick={autoTagHmoGl} disabled={taggingHmoGl}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border transition-opacity hover:opacity-90 disabled:opacity-50"
+            <button onClick={autoTagHmoGl} disabled={taggingHmoGl} className={outlineBtn}
               style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }} title="Tag PT/OT/SLP HMO providers + '- OP' GL services as HMO/GL">
               {taggingHmoGl ? '…' : 'Auto-tag HMO/GL'}
             </button>
           )}
           {canWrite && (
-            <button onClick={() => { setNotice(''); setAddingCategory(true) }}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border transition-opacity hover:opacity-90"
-              style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
-              <Plus size={18} /> Add Category
+            <button onClick={() => { setNotice(''); setAddingCategory(true) }} className={outlineBtn} style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+              <Plus size={15} /> Add category
             </button>
           )}
           {canWrite && (
-            <button onClick={openCreate}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold transition-opacity hover:opacity-90"
-              style={{ background: 'var(--teal)' }}>
-              <Plus size={18} /> Add Service
+            <button onClick={openCreate} className={primaryBtn} style={{ background: 'var(--teal)' }}>
+              <Plus size={15} /> Add service
             </button>
           )}
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-3 mb-4">
-        <div className="relative flex-1 max-w-sm">
-          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--mid-gray)' }} />
-          <input type="text" placeholder="Search services..." value={search}
-            onChange={(e) => { setSearch(e.target.value); setSvcPage(1); setToggledGroups(new Set()) }}
-            className="w-full pl-10 pr-4 py-2.5 rounded-xl border text-sm outline-none"
-            style={{ borderColor: 'var(--light-gray)', background: 'white' }} />
-        </div>
-        <select value={filterDept} onChange={(e) => { setFilterDept(e.target.value); setSvcPage(1) }}
-          className="px-3 py-2.5 rounded-xl border text-sm outline-none"
-          style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
-          <option value="">All Departments</option>
-          {DEPARTMENTS.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
-        </select>
-        <select value={filterPayType} onChange={(e) => { setFilterPayType(e.target.value); setSvcPage(1) }}
-          className="px-3 py-2.5 rounded-xl border text-sm outline-none"
-          style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
-          <option value="">All Payment Types</option>
-          <option value="CASH">Cash</option>
-          <option value="HMO">HMO</option>
-          <option value="GL">Guarantee Letter</option>
-        </select>
-        {isFrontDesk ? (
-          <span className="px-3 py-2.5 rounded-xl border text-sm"
-            style={{ borderColor: 'var(--light-gray)', background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
-            {BRANCHES.find(b => b.value === filterBranch)?.label || filterBranch}
-          </span>
-        ) : (
-          <select value={filterBranch} onChange={(e) => { setFilterBranch(e.target.value); setSvcPage(1) }} disabled={!!lockBranch}
-            className="px-3 py-2.5 rounded-xl border text-sm outline-none"
-            style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
-            {!lockBranch && <option value="">All Branches</option>}
-            {(lockBranch ? BRANCHES.filter(b => b.value === lockBranch) : BRANCHES).map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
-          </select>
-        )}
-        <select value={filterStatus} onChange={(e) => { setFilterStatus(e.target.value as 'active' | 'inactive' | 'all'); setSvcPage(1) }}
-          className="px-3 py-2.5 rounded-xl border text-sm outline-none"
-          style={{ borderColor: 'var(--light-gray)', background: 'white' }}
-          title="Show active, disabled, or all services">
-          <option value="active">Active services</option>
-          <option value="inactive">Disabled services</option>
-          <option value="all">All (incl. disabled)</option>
-        </select>
+      {/* Cards (also the Payment Type filter) */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatCard label="Services" value={services.length.toLocaleString()} sub={filterStatus === 'active' ? 'Active, in these filters' : filterStatus === 'inactive' ? 'Disabled, in these filters' : 'All, in these filters'}
+          accent={{ line: 'var(--teal)' }} onClick={filterPayType ? () => { setFilterPayType(''); setSvcPage(1) } : undefined} title="Show every payment type" />
+        <StatCard label="Cash" value={nByPay('CASH').toLocaleString()} sub="Paid by the patient" accent={{ line: '#059669' }}
+          active={filterPayType === 'CASH'} onClick={payCard('CASH')} title="Show only cash services" />
+        <StatCard label="HMO" value={nByPay('HMO').toLocaleString()} sub="Billed to an HMO" accent={{ line: '#2563eb' }}
+          active={filterPayType === 'HMO'} onClick={payCard('HMO')} title="Show only HMO services" />
+        <StatCard label="Guarantee letter" value={nByPay('GL').toLocaleString()} sub="Billed against a GL" accent={{ line: '#9333ea' }}
+          active={filterPayType === 'GL'} onClick={payCard('GL')} title="Show only guarantee-letter services" />
       </div>
 
-      {/* Error */}
+      {/* Error / notice */}
       {error && !modalOpen && (
-        <div className="mb-4 p-3 rounded-lg text-sm bg-red-50 text-red-600">{error}</div>
+        <div className="px-4 py-2.5 rounded-lg border text-[13px]" style={{ background: '#fef2f2', borderColor: '#fecaca', color: '#b91c1c' }}>{error}</div>
       )}
-
       {notice && !modalOpen && (
-        <div className="mb-4 p-3 rounded-lg text-sm bg-green-50 text-green-700">{notice}</div>
+        <div className="px-4 py-2.5 rounded-lg border text-[13px]" style={{ background: '#ecfdf5', borderColor: '#a7f3d0', color: '#047857' }}>{notice}</div>
       )}
 
-      {/* Table */}
-      <div className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+      {/* List card */}
+      <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+        <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-b" style={{ background: '#fcfdfa', borderColor: 'var(--light-gray)' }}>
+          <label className="flex items-center gap-1.5 h-9 px-3 w-full sm:w-72 rounded-lg border bg-white focus-within:border-[var(--teal)] focus-within:shadow-[0_0_0_3px_rgba(74,128,115,0.12)]"
+            style={{ borderColor: 'var(--light-gray)', color: 'var(--hr-faint)' }}>
+            <Search size={15} className="flex-shrink-0" />
+            <input type="text" placeholder="Search services…" value={search}
+              onChange={(e) => { setSearch(e.target.value); setSvcPage(1); setToggledGroups(new Set()) }}
+              className="flex-1 min-w-0 bg-transparent outline-none text-[13px]" style={{ color: 'var(--charcoal)' }} />
+          </label>
+          <select value={filterDept} onChange={(e) => { setFilterDept(e.target.value); setSvcPage(1) }} className={fieldCls}
+            style={{ borderColor: filterDept ? 'var(--teal)' : 'var(--light-gray)', color: 'var(--charcoal)' }}>
+            <option value="">All Departments</option>
+            {DEPARTMENTS.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
+          </select>
+          <select value={filterPayType} onChange={(e) => { setFilterPayType(e.target.value); setSvcPage(1) }} className={fieldCls}
+            style={{ borderColor: filterPayType ? 'var(--teal)' : 'var(--light-gray)', color: 'var(--charcoal)' }}>
+            <option value="">All Payment Types</option>
+            <option value="CASH">Cash</option>
+            <option value="HMO">HMO</option>
+            <option value="GL">Guarantee Letter</option>
+          </select>
+          {isFrontDesk ? (
+            <span className="inline-flex items-center h-9 px-3 rounded-lg border text-[13px]"
+              style={{ borderColor: 'var(--light-gray)', background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
+              {BRANCHES.find(b => b.value === filterBranch)?.label || filterBranch}
+            </span>
+          ) : (
+            <select value={filterBranch} onChange={(e) => { setFilterBranch(e.target.value); setSvcPage(1) }} disabled={!!lockBranch} className={fieldCls}
+              style={{ borderColor: filterBranch ? 'var(--teal)' : 'var(--light-gray)', color: 'var(--charcoal)' }}>
+              {!lockBranch && <option value="">All Branches</option>}
+              {(lockBranch ? BRANCHES.filter(b => b.value === lockBranch) : BRANCHES).map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
+            </select>
+          )}
+          <div className="flex rounded-lg border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }} title="Show active, disabled, or all services">
+            {([['active', 'Active'], ['inactive', 'Disabled'], ['all', 'All']] as const).map(([v, l]) => (
+              <button key={v} onClick={() => { setFilterStatus(v); setSvcPage(1) }} aria-pressed={filterStatus === v}
+                className="h-9 px-3 text-xs font-semibold whitespace-nowrap"
+                style={filterStatus === v ? { background: 'var(--teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' }}>{l}</button>
+            ))}
+          </div>
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr style={{ background: 'var(--off-white)' }}>
-                <th className="text-left px-4 py-3 font-semibold cursor-pointer select-none" style={{ color: 'var(--charcoal)' }}
-                  onClick={() => toggleSort('name')}>
-                  <span className="flex items-center gap-1">Service Name <SortIcon field="name" /></span>
-                </th>
-                <th className="text-left px-4 py-3 font-semibold cursor-pointer select-none" style={{ color: 'var(--charcoal)' }}
-                  onClick={() => toggleSort('department')}>
-                  <span className="flex items-center gap-1">Department <SortIcon field="department" /></span>
-                </th>
-                <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Payment Type</th>
-                <th className="text-left px-4 py-3 font-semibold cursor-pointer select-none" style={{ color: 'var(--charcoal)' }}
-                  onClick={() => toggleSort('branch')}>
-                  <span className="flex items-center gap-1">Branch <SortIcon field="branch" /></span>
-                </th>
-                <th className="text-right px-4 py-3 font-semibold cursor-pointer select-none" style={{ color: 'var(--charcoal)' }}
-                  onClick={() => toggleSort('price')}>
-                  <span className="flex items-center justify-end gap-1">Price <SortIcon field="price" /></span>
-                </th>
-                <th className="text-right px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }} title="Price after the 20% PWD / Senior Citizen discount, for services that allow it">
-                  <span className="flex items-center justify-end gap-1">PWD/SC Price</span>
-                </th>
-                <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Pricing</th>
-                <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Revenue</th>
-                <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>PWD Rule</th>
-                <th className="text-right px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Actions</th>
+              <tr style={{ background: 'var(--hr-head)' }}>
+                {([
+                  ['Service Name', 'name', 'text-left'], ['Department', 'department', 'text-left'], ['Payment Type', '', 'text-left'], ['Branch', 'branch', 'text-left'],
+                  ['Price', 'price', 'text-right'], ['PWD/SC Price', '', 'text-right'], ['Pricing', '', 'text-left'], ['Revenue', '', 'text-left'], ['PWD Rule', '', 'text-left'], ['Actions', '', 'text-right'],
+                ] as const).map(([label, field, align]) => (
+                  <th key={label} className={`${align} px-4 py-2.5 text-[11px] font-bold uppercase tracking-[.5px] whitespace-nowrap border-b ${field ? 'cursor-pointer select-none hover:text-[var(--teal)]' : ''}`}
+                    style={{ color: 'var(--mid-gray)', borderColor: 'var(--light-gray)' }}
+                    onClick={field ? () => toggleSort(field) : undefined}
+                    title={label === 'PWD/SC Price' ? 'Price after the 20% PWD / Senior Citizen discount, for services that allow it' : undefined}>
+                    <span className={`flex items-center gap-1 ${align === 'text-right' ? 'justify-end' : ''}`}>{label}{field && <SortIcon field={field} />}</span>
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
