@@ -60,22 +60,118 @@ async function jsonOrThrow(res: Response) {
   return d
 }
 
-/** Opens a stored PDF for printing. A plain link would 401 — the route is
- *  session authenticated and an <a> sends no credentials the browser will
- *  attach to a cross-tab navigation of an API path. */
-async function openCertificate(id: string) {
-  const win = window.open('', '_blank')   // opened first, or the popup blocker eats it
-  try {
-    const res = await fetch(`${API}/${id}/file`, { cache: 'no-store' })
-    if (!res.ok) throw new Error('Could not retrieve the certificate')
-    const url = URL.createObjectURL(await res.blob())
-    if (win) win.location.href = url
-    else window.open(url, '_blank')
-    setTimeout(() => URL.revokeObjectURL(url), 60_000)
-  } catch (e) {
-    win?.close()
-    alert((e as Error).message)
+// ── Viewing a stored certificate ─────────────────────────────────────────────
+//
+// This used to open a new tab: window.open('', '_blank'), then point it at a
+// blob URL once the PDF had been fetched. It showed nothing. The window.open
+// ran after an await, so it was no longer inside the click that caused it, and
+// the popup blocker dropped it — silently, because a blocked popup returns null
+// rather than throwing, and the fallback was another window.open that was
+// blocked for the same reason. Front desk issued a certificate and got no
+// paper, no viewer and no error.
+//
+// It is shown in the page now. No popup can be blocked, the certificate stays
+// in the CRM where the patient is, and Print and Download are explicit buttons
+// rather than something the operator has to find in a stray tab.
+//
+// A plain <a href> is still not an option: the route is session authenticated
+// and the PDF must not be reachable from the public uploads path, so the bytes
+// are fetched and held as a blob.
+function CertificateViewer({ id, onClose }: { id: string; onClose: () => void }) {
+  const [url, setUrl] = useState<string | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+
+  useEffect(() => {
+    let revoked = false
+    let made: string | null = null
+    fetch(`${API}/${id}/file`, { cache: 'no-store' })
+      .then(async (res) => {
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}))
+          throw new Error(d.error || `Could not retrieve the certificate (${res.status})`)
+        }
+        return res.blob()
+      })
+      .then((blob) => {
+        if (revoked) return
+        made = URL.createObjectURL(blob)
+        setUrl(made)
+      })
+      .catch((e) => setErr((e as Error).message))
+    return () => {
+      revoked = true
+      if (made) URL.revokeObjectURL(made)
+    }
+  }, [id])
+
+  // Printing the iframe rather than the page: window.print() here would print
+  // the CRM behind it.
+  function print() {
+    const frame = document.getElementById(`cert-frame-${id}`) as HTMLIFrameElement | null
+    try {
+      frame?.contentWindow?.focus()
+      frame?.contentWindow?.print()
+    } catch {
+      // Some browsers refuse to print a blob-sourced frame; the download is
+      // always there as the way out, so say that rather than failing mutely.
+      alert('This browser would not print directly — use Download and print the file.')
+    }
   }
+
+  return (
+    <div onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 90, background: 'rgba(15,23,42,0.55)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+      }}>
+      <div onClick={(e) => e.stopPropagation()} className="rounded-2xl"
+        style={{
+          background: '#fff', width: '100%', maxWidth: 940, height: '92vh',
+          display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(15,23,42,0.3)',
+        }}>
+        <div className="px-5 py-3 flex items-center justify-between gap-3"
+          style={{ borderBottom: '1px solid var(--light-gray)' }}>
+          <p className="text-sm font-bold flex items-center gap-2"
+            style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+            <Award size={16} style={{ color: '#B45309' }} /> Discharge Certificate
+          </p>
+          <div className="flex items-center gap-2">
+            <button onClick={print} disabled={!url}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold"
+              style={{ background: 'var(--teal)', color: '#fff', opacity: url ? 1 : 0.5 }}>
+              Print
+            </button>
+            {url && (
+              <a href={url} download="discharge-certificate.pdf"
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold"
+                style={{ background: '#fff', border: '1px solid var(--light-gray)', color: 'var(--charcoal)' }}>
+                Download
+              </a>
+            )}
+            <button onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100">
+              <X size={16} style={{ color: 'var(--mid-gray)' }} />
+            </button>
+          </div>
+        </div>
+
+        <div style={{ flex: 1, minHeight: 0, background: '#F3F4F6' }}>
+          {err ? (
+            <div className="p-6">
+              <ErrorBox>{err}</ErrorBox>
+            </div>
+          ) : !url ? (
+            <div className="h-full flex items-center justify-center gap-2 text-sm"
+              style={{ color: 'var(--mid-gray)' }}>
+              <Loader2 size={16} className="animate-spin" /> Loading the certificate…
+            </div>
+          ) : (
+            <iframe id={`cert-frame-${id}`} src={url} title="Discharge certificate"
+              style={{ width: '100%', height: '100%', border: 'none' }} />
+          )}
+        </div>
+      </div>
+    </div>
+  )
 }
 
 // ── Per-row action in the CRM table ──────────────────────────────────────────
@@ -87,32 +183,86 @@ export function CertificateActionButton({
   count: number
   onIssued: () => void
 }) {
-  const [open, setOpen] = useState(false)
+  // Clicking this used to go straight to the issue form, whatever the badge
+  // said. So a row showing "1 certificate" offered no way to see that
+  // certificate — the only thing you could do with an issued certificate from
+  // the CRM was issue a second one. A patient who HAS certificates opens the
+  // list; a patient who has none goes straight to issuing, since there is
+  // nothing to list.
+  const [mode, setMode] = useState<'closed' | 'list' | 'issue'>('closed')
+  const [viewing, setViewing] = useState<string | null>(null)
+
   return (
     <>
       <button
-        onClick={() => setOpen(true)}
+        onClick={() => setMode(count > 0 ? 'list' : 'issue')}
         className="p-1.5 rounded-lg transition-colors relative hover:bg-amber-50"
         title={count
-          ? `${count} discharge certificate${count > 1 ? 's' : ''} — issue another`
+          ? `${count} discharge certificate${count > 1 ? 's' : ''} — view, print or issue another`
           : 'Issue a discharge certificate'}
         style={{ color: count ? '#B45309' : 'var(--mid-gray)' }}>
-        <Award size={13} />
+        {/* Sized with the other row actions rather than smaller than them: at
+            13px against a pale grey this read as a smudge, and front desk did
+            not know it was there. */}
+        <Award size={17} strokeWidth={count ? 2.4 : 2} />
         {count > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 rounded-full text-[9px] font-bold flex items-center justify-center"
-            style={{ background: '#15803D', color: '#fff', minWidth: 13, height: 13, padding: '0 3px' }}>
+          <span className="absolute -top-1 -right-1 rounded-full text-[10px] font-bold flex items-center justify-center"
+            style={{ background: '#15803D', color: '#fff', minWidth: 15, height: 15, padding: '0 4px', lineHeight: 1 }}>
             {count}
           </span>
         )}
       </button>
-      {open && (
-        <IssueDialog
+
+      {mode === 'list' && (
+        <CertificateListDialog
           patient={patient}
-          onClose={() => setOpen(false)}
-          onIssued={() => { setOpen(false); onIssued() }}
+          onClose={() => setMode('closed')}
+          onView={setViewing}
+          onIssue={() => setMode('issue')}
+          onChanged={onIssued}
         />
       )}
+      {mode === 'issue' && (
+        <IssueDialog
+          patient={patient}
+          onClose={() => setMode('closed')}
+          onIssued={(certId) => { setMode('closed'); onIssued(); setViewing(certId) }}
+        />
+      )}
+      {viewing && <CertificateViewer id={viewing} onClose={() => setViewing(null)} />}
     </>
+  )
+}
+
+/** The patient's certificates, from the CRM row — view, print, delete, issue. */
+function CertificateListDialog({
+  patient, onClose, onView, onIssue, onChanged,
+}: {
+  patient: { id: string; firstName: string; lastName: string }
+  onClose: () => void
+  onView: (id: string) => void
+  onIssue: () => void
+  onChanged: () => void
+}) {
+  const { rows, remove } = useCertificates(patient.id)
+  const name = `${patient.firstName ?? ''} ${patient.lastName ?? ''}`.replace(/\s+/g, ' ').trim()
+
+  return (
+    <Modal title={name ? `Certificates — ${name}` : 'Discharge Certificates'} onClose={onClose} width={620}>
+      <CertificateRows
+        rows={rows}
+        onView={onView}
+        onDelete={async (id) => { await remove(id); onChanged() }}
+      />
+      <button onClick={onIssue}
+        className="mt-3 w-full px-3 py-2 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5"
+        style={{ background: 'var(--teal)', color: '#fff' }}>
+        <Plus size={13} /> Issue another certificate
+      </button>
+      <p className="text-[11px] mt-2" style={{ color: '#9CA3AF' }}>
+        Certificates are also listed on the patient&rsquo;s profile.
+      </p>
+    </Modal>
   )
 }
 
@@ -123,7 +273,8 @@ function IssueDialog({
 }: {
   patient: { id: string; firstName: string; lastName: string }
   onClose: () => void
-  onIssued: () => void
+  /** Called with the new certificate's id, so the caller can show it. */
+  onIssued: (certificateId: string) => void
 }) {
   const [settings, setSettings] = useState<Settings | null>(null)
   const [name, setName] = useState(`${patient.firstName ?? ''} ${patient.lastName ?? ''}`.replace(/\s+/g, ' ').trim())
@@ -159,10 +310,10 @@ function IssueDialog({
           managerSignatoryId: managerId || null,
         }),
       }).then(jsonOrThrow)
-      onIssued()
       // Straight to the printable file — issuing one almost always means
-      // printing it now.
-      openCertificate(d.certificate.id)
+      // printing it now. The caller opens the viewer, because this dialog is
+      // about to unmount and a viewer rendered from here would go with it.
+      onIssued(d.certificate.id)
     } catch (e) {
       setErr((e as Error).message)
     } finally {
@@ -418,21 +569,9 @@ function SettingsDialog({ onClose }: { onClose: () => void }) {
 // ── Profile card ─────────────────────────────────────────────────────────────
 
 export function CertificatesCard({ patientId, patientName }: { patientId: string | null; patientName?: string }) {
-  const [rows, setRows] = useState<CertificateRow[] | null>(null)
+  const { rows, load, remove } = useCertificates(patientId)
   const [issuing, setIssuing] = useState(false)
-
-  const load = useCallback(() => {
-    if (!patientId) return
-    fetch(`${API}?patientId=${encodeURIComponent(patientId)}`, { cache: 'no-store' })
-      .then(jsonOrThrow).then((d) => setRows(d.certificates)).catch(() => setRows([]))
-  }, [patientId])
-  useEffect(() => { load() }, [load])
-
-  async function remove(id: string) {
-    if (!confirm('Delete this certificate? The stored PDF is removed and cannot be recovered — a new one can be issued, but it will carry today’s signatories.')) return
-    await fetch(`${API}/${id}`, { method: 'DELETE' }).catch(() => {})
-    load()
-  }
+  const [viewing, setViewing] = useState<string | null>(null)
 
   if (!patientId) return null
   const [first = '', ...rest] = (patientName ?? '').split(' ')
@@ -452,48 +591,85 @@ export function CertificatesCard({ patientId, patientName }: { patientId: string
         </button>
       </div>
 
-      <div className="p-5 space-y-2">
-        {rows == null ? (
-          <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>Loading…</p>
-        ) : rows.length === 0 ? (
-          <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>No certificate issued yet.</p>
-        ) : rows.map((c) => (
-          <div key={c.id} className="rounded-lg px-4 py-3 flex items-start justify-between gap-3"
-            style={{ border: '1px solid var(--light-gray)', background: '#fafafa' }}>
-            <div className="min-w-0">
-              <p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>{c.service}</p>
-              <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
-                Discharged {c.awardedOn || fmt(c.dischargeDate)}
-              </p>
-              <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
-                {c.therapistName || 'No therapist named'}
-                {c.managerName ? ` · ${c.managerName}` : ''}
-              </p>
-              <p className="text-[11px] mt-0.5" style={{ color: '#9CA3AF' }}>
-                Issued {fmt(c.createdAt)}{c.issuedByName ? ` by ${c.issuedByName}` : ''}
-              </p>
-            </div>
-            <div className="flex gap-2 flex-shrink-0">
-              <button onClick={() => openCertificate(c.id)}
-                className="px-3 py-1.5 rounded-lg text-xs font-semibold"
-                style={{ background: '#fff', border: '1px solid var(--light-gray)', color: 'var(--mid-gray)' }}>
-                Open / print
-              </button>
-              <button onClick={() => remove(c.id)} className="p-1.5 rounded-lg hover:bg-red-50" title="Delete">
-                <Trash2 size={13} style={{ color: '#DC2626' }} />
-              </button>
-            </div>
-          </div>
-        ))}
+      <div className="p-5">
+        <CertificateRows rows={rows} onView={setViewing} onDelete={remove} />
       </div>
 
       {issuing && (
         <IssueDialog
           patient={{ id: patientId, firstName: first, lastName: rest.join(' ') }}
           onClose={() => setIssuing(false)}
-          onIssued={() => { setIssuing(false); load() }}
+          onIssued={(certId) => { setIssuing(false); load(); setViewing(certId) }}
         />
       )}
+      {viewing && <CertificateViewer id={viewing} onClose={() => setViewing(null)} />}
+    </div>
+  )
+}
+
+// ── The list itself, shared by the profile card and the CRM row dialog ───────
+// One fetcher and one renderer: the CRM row needed exactly the list the profile
+// already had, and a second copy would have drifted the moment either changed.
+
+function useCertificates(patientId: string | null) {
+  const [rows, setRows] = useState<CertificateRow[] | null>(null)
+
+  const load = useCallback(() => {
+    if (!patientId) return
+    fetch(`${API}?patientId=${encodeURIComponent(patientId)}`, { cache: 'no-store' })
+      .then(jsonOrThrow).then((d) => setRows(d.certificates)).catch(() => setRows([]))
+  }, [patientId])
+  useEffect(() => { load() }, [load])
+
+  const remove = useCallback(async (id: string) => {
+    if (!confirm('Delete this certificate? The stored PDF is removed and cannot be recovered — a new one can be issued, but it will carry today\u2019s signatories.')) return
+    await fetch(`${API}/${id}`, { method: 'DELETE' }).catch(() => {})
+    load()
+  }, [load])
+
+  return { rows, load, remove }
+}
+
+function CertificateRows({
+  rows, onView, onDelete,
+}: {
+  rows: CertificateRow[] | null
+  onView: (id: string) => void
+  onDelete: (id: string) => void | Promise<void>
+}) {
+  if (rows == null) return <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>Loading\u2026</p>
+  if (rows.length === 0) return <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>No certificate issued yet.</p>
+
+  return (
+    <div className="space-y-2">
+      {rows.map((c) => (
+        <div key={c.id} className="rounded-lg px-4 py-3 flex items-start justify-between gap-3"
+          style={{ border: '1px solid var(--light-gray)', background: '#fafafa' }}>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>{c.service}</p>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+              Discharged {c.awardedOn || fmt(c.dischargeDate)}
+            </p>
+            <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+              {c.therapistName || 'No therapist named'}
+              {c.managerName ? ` \u00b7 ${c.managerName}` : ''}
+            </p>
+            <p className="text-[11px] mt-0.5" style={{ color: '#9CA3AF' }}>
+              Issued {fmt(c.createdAt)}{c.issuedByName ? ` by ${c.issuedByName}` : ''}
+            </p>
+          </div>
+          <div className="flex gap-2 flex-shrink-0">
+            <button onClick={() => onView(c.id)}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold"
+              style={{ background: '#fff', border: '1px solid var(--light-gray)', color: 'var(--charcoal)' }}>
+              View / print
+            </button>
+            <button onClick={() => onDelete(c.id)} className="p-1.5 rounded-lg hover:bg-red-50" title="Delete">
+              <Trash2 size={13} style={{ color: '#DC2626' }} />
+            </button>
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
