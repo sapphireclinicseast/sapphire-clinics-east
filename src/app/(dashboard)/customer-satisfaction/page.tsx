@@ -14,6 +14,7 @@
 
 import { useState } from 'react'
 import SurveySection from './SurveySection'
+import { CARD_STYLE } from '../patients/dashboard/ui'
 
 const ALL_BRANCHES = ['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE'] as const
 type Branch = typeof ALL_BRANCHES[number]
@@ -30,59 +31,72 @@ const BRANCH_COLORS: Record<string, string> = {
   VERDANA_STORE:      '#52B788',
 }
 
+const pill = (active: boolean) =>
+  `flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${active ? '' : 'hover:bg-gray-50'}`
+
 export default function CustomerSatisfactionPage() {
   const [selectedBranches, setSelectedBranches] = useState<Branch[]>([...ALL_BRANCHES])
   const isAllSelected = selectedBranches.length === ALL_BRANCHES.length
+  const scopeLabel = isAllSelected ? 'All branches' : selectedBranches.map(b => BRANCH_LABELS[b]).join(', ')
 
   return (
-    <div className="space-y-5">
+    <div className="max-w-6xl space-y-5 min-w-0">
       {/* ── Header ── */}
       <div>
         <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: 'var(--teal)' }}>
-          Patients &amp; Email
+          Investor View
         </p>
         <h1 className="text-2xl font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
           Customer Satisfaction Survey
         </h1>
         <p className="text-sm mt-1" style={{ color: 'var(--mid-gray)' }}>
-          Therapist leaderboard and patient feedback from satisfaction surveys.
+          How patients rate our therapists, and what they say about them in their own words.
         </p>
+      </div>
 
-        {/* Branch filter — same pills as the Patient Dashboard */}
-        <div className="flex flex-wrap gap-2 mt-4">
+      {/* ── Toolbar: branch filter (same behaviour as before — All, or one branch) ── */}
+      <div className="rounded-xl px-3 py-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-2" style={CARD_STYLE}>
+        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Branch filter">
+          <span className="text-[11px] font-semibold uppercase tracking-wider mr-1.5" style={{ color: 'var(--mid-gray)' }}>
+            Branch
+          </span>
           <button
+            type="button"
             onClick={() => setSelectedBranches([...ALL_BRANCHES])}
-            className="px-3 py-1 rounded-full text-xs font-semibold transition-colors"
+            aria-pressed={isAllSelected}
+            className={pill(isAllSelected)}
             style={{
-              background: isAllSelected ? 'var(--teal)' : 'var(--light-gray)',
-              color: isAllSelected ? '#fff' : 'var(--mid-gray)',
-              border: `1.5px solid ${isAllSelected ? 'var(--teal)' : 'var(--light-gray)'}`,
-              cursor: 'pointer',
+              background: isAllSelected ? 'var(--teal)' : 'transparent',
+              color: isAllSelected ? '#fff' : 'var(--charcoal)',
             }}
           >
             All
           </button>
 
           {ALL_BRANCHES.map((branch) => {
-            const active = selectedBranches.includes(branch)
-            const color = BRANCH_COLORS[branch]
+            const active = !isAllSelected && selectedBranches.includes(branch)
             return (
               <button
                 key={branch}
+                type="button"
                 onClick={() => setSelectedBranches([branch])}
-                className="px-3 py-1 rounded-full text-xs font-semibold transition-colors"
+                aria-pressed={active}
+                className={pill(active)}
                 style={{
-                  background: active ? color : '#F3F4F6',
-                  color: active ? '#fff' : 'var(--mid-gray)',
-                  border: `1.5px solid ${active ? color : '#E5E7EB'}`,
-                  cursor: 'pointer',
+                  background: active ? 'var(--teal)' : 'transparent',
+                  color: active ? '#fff' : 'var(--charcoal)',
                 }}
               >
+                <span className="inline-block w-2 h-2 rounded-full"
+                  style={{ background: BRANCH_COLORS[branch], boxShadow: active ? '0 0 0 1.5px #fff' : undefined }} />
                 {BRANCH_LABELS[branch]}
               </button>
             )
           })}
         </div>
+        <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+          Showing <span className="font-semibold" style={{ color: 'var(--charcoal)' }}>{scopeLabel}</span>
+        </span>
       </div>
 
       <SurveySection branches={selectedBranches} />
