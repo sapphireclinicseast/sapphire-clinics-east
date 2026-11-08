@@ -1,14 +1,6 @@
 import { prisma } from '@/lib/prisma'
-import { getFacebookInsights } from '@/lib/meta'
 import { auth } from '@/lib/auth'
 import { redirect } from 'next/navigation'
-import {
-  Users,
-  Eye,
-  TrendingUp,
-  Activity,
-} from 'lucide-react'
-import { formatDate } from '@/lib/utils'
 import FrontDeskWelcome from './FrontDeskWelcome'
 import { scopeFor } from '@/lib/scoped-roles'
 
@@ -50,19 +42,6 @@ async function getBirthdayPatients(branch: string): Promise<BirthdayPatient[]> {
     .sort((a, b) => `${a.lastName} ${a.firstName}`.localeCompare(`${b.lastName} ${b.firstName}`))
 }
 
-async function getDashboardData() {
-  const now = new Date()
-  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
-
-  // Only the page insights remain: the scheduled-post counts and lists went with
-  // the social posting feature, which had never been used.
-  const insights = await getFacebookInsights(thirtyDaysAgo, now).catch(() => ({
-    reach: 0, impressions: 0, engagement: 0, followers: 0,
-  }))
-
-  return { insights }
-}
-
 export default async function DashboardPage() {
   const session = await auth()
 
@@ -100,98 +79,5 @@ export default async function DashboardPage() {
       birthdayPatients={birthdayPatients}
     />
   )
-
-  const data = await getDashboardData()
-
-  const statCards = [
-    {
-      label: 'Followers (FB)',
-      value: data.insights.followers.toLocaleString(),
-      icon: Users,
-      color: 'var(--teal)',
-    },
-    {
-      label: 'Reach (30 days)',
-      value: data.insights.reach.toLocaleString(),
-      icon: Eye,
-      color: 'var(--bright-teal)',
-    },
-    {
-      label: 'Engagement (30d)',
-      value: data.insights.engagement.toLocaleString(),
-      icon: TrendingUp,
-      color: 'var(--gold)',
-    },
-    {
-      label: 'Impressions (30d)',
-      value: data.insights.impressions.toLocaleString(),
-      icon: Activity,
-      color: 'var(--deep-teal)',
-    },
-  ]
-
-  return (
-    <div className="space-y-6 max-w-6xl">
-      {/* Header */}
-      <div>
-        <p
-          className="text-xs font-semibold uppercase tracking-widest mb-1"
-          style={{ color: 'var(--teal)' }}
-        >
-          Overview
-        </p>
-        <h1
-          className="text-2xl font-bold"
-          style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}
-        >
-          Good {getGreeting()}, {session?.user?.name?.split(' ')[0]}
-        </h1>
-        <p className="text-sm mt-1" style={{ color: 'var(--mid-gray)' }}>
-          {formatDate(new Date())} · Sapphire Clinics East Operations Hub
-        </p>
-      </div>
-
-      {/* Stat Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {statCards.map(({ label, value, icon: Icon, color }) => (
-          <div
-            key={label}
-            className="rounded-xl p-5"
-            style={{ background: '#fff', border: '1px solid var(--light-gray)' }}
-          >
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-xs font-semibold" style={{ color: 'var(--mid-gray)', fontFamily: 'var(--font-display)' }}>
-                {label}
-              </p>
-              <div
-                className="w-8 h-8 rounded-lg flex items-center justify-center"
-                style={{ background: `${color}18` }}
-              >
-                <Icon size={16} style={{ color }} />
-              </div>
-            </div>
-            <p
-              className="text-2xl font-bold"
-              style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}
-            >
-              {value}
-            </p>
-          </div>
-        ))}
-      </div>
-
-      {/* The post-status summary and the scheduled/published lists that used
-          to sit here went with the social posting feature. Nothing had ever
-          been scheduled through it, so the boxes stood empty and linked to
-          pages that no longer exist. The page insights above still come
-          straight from Meta and are unaffected. */}
-    </div>
-  )
 }
 
-function getGreeting() {
-  const h = new Date().getHours()
-  if (h < 12) return 'morning'
-  if (h < 17) return 'afternoon'
-  return 'evening'
-}
