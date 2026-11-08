@@ -135,7 +135,7 @@ export default function UsersPage() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to create user')
-      setForm({ name: '', email: '', password: '', role: 'USER' })
+      setForm({ name: '', email: '', password: '', role: 'MARKETING_ADMIN' })
       setShowForm(false)
       fetchUsers()
     } catch (err) {
