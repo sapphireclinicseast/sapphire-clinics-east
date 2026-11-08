@@ -6,6 +6,7 @@ import { SortFilterHead, applySortFilter, type SortCol } from '@/components/Sort
 import { branchForBankAccount, branchLabel } from '@/lib/branch'
 import { isForMatching, forMatchingText } from '@/lib/bank-rec-flag'
 import { ArrowLeftRight, Upload, Plus, Loader2, X, Search, Check, Link2, Ban, RotateCcw, Trash2, Download, Lock, Unlock, Wallet, Wand2, Save, HandCoins, Scissors, Merge, Flag } from 'lucide-react'
+import { HR_PAGE_CLASS, HR_PAGE_STYLE, HrShimmerStyle, hrBtn } from '@/components/ui/hr-look'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -204,13 +205,19 @@ export default function BankReconciliationPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-2xl font-bold flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
-          <ArrowLeftRight size={22} style={{ color: 'var(--teal)' }} /> Bank transactions
-        </h1>
+    <div className={HR_PAGE_CLASS} style={HR_PAGE_STYLE}>
+      <HrShimmerStyle />
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold leading-tight flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+            <ArrowLeftRight size={22} style={{ color: 'var(--teal)' }} /> Bank transactions
+          </h1>
+          <p className="mt-1 text-[13px] max-w-2xl" style={{ color: 'var(--mid-gray)' }}>
+            Each bank account&apos;s statement lines, matched or categorised against the Hub&apos;s records.
+          </p>
+        </div>
         {canWrite && sel && (
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
 
             <button onClick={async () => {
               if (!confirm('Match pending money-in lines against day settlement batches (per payment mode, net of fees, T+0..5 banking days)?')) return
@@ -219,7 +226,7 @@ export default function BankReconciliationPage() {
               if (!r.ok) { alert(d.error || 'Failed'); return }
               alert(`Matched ${d.matched} settlement line(s). ${d.remainingPending.toLocaleString()} still pending.`)
               await refreshAll()
-            }} title="Bulk-match card/e-wallet day settlements to their order batches" className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><Check size={14} /> Match settlements</button>
+            }} title="Bulk-match card/e-wallet day settlements to their order batches" className={`${hrBtn.ghost} h-9`} style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><Check size={14} /> Match settlements</button>
             <button onClick={async () => {
               if (!confirm('Pair internal transfers across ALL bank accounts? A spent and an equal received (≥₱5,000) on two of our own accounts within 3 banking days, with exactly one possible counterpart each, are recorded as one Fund Transfer and both posted. Ambiguous pairs are left for the Match dialog.')) return
               const r = await fetch('/api/bank-rec/transfer-match', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
@@ -227,18 +234,18 @@ export default function BankReconciliationPage() {
               if (!r.ok) { alert(d.error || 'Failed'); return }
               alert(`Paired ${d.matched} internal transfer(s)${d.matched ? ':\n' + d.pairs.slice(0, 12).map((p: { refNumber: string; amount: number; from: string; to: string; date: string }) => `${p.refNumber} · ${p.date} · ₱${p.amount.toLocaleString('en-PH', { minimumFractionDigits: 2 })} ${p.from} → ${p.to}`).join('\n') + (d.pairs.length > 12 ? `\n…and ${d.pairs.length - 12} more` : '') : ''}`)
               await refreshAll()
-            }} title="Bulk-pair internal transfers between our own accounts (equal amount, both pending, ≤3 banking days, unambiguous)" className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><ArrowLeftRight size={14} /> Match transfers</button>
-            <button onClick={() => setShowRules(true)} title="Auto-categorize recurring lines by description pattern" className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><Wand2 size={14} /> Auto-rules</button>
-            <button onClick={() => setShowForexCfg(true)} title="Choose which bank accounts take part in buying foreign currency" className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><ArrowLeftRight size={14} /> Currency exchange</button>
-            <button onClick={() => setShowFT(true)} title="Record a transfer between two bank accounts, or from a bank account to a petty cash box" className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><ArrowLeftRight size={14} /> Record Fund Transfer</button>
-            <button onClick={() => setShowUpload(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><Upload size={14} /> Upload from file</button>
-            <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}><Plus size={15} /> Add transaction</button>
+            }} title="Bulk-pair internal transfers between our own accounts (equal amount, both pending, ≤3 banking days, unambiguous)" className={`${hrBtn.ghost} h-9`} style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><ArrowLeftRight size={14} /> Match transfers</button>
+            <button onClick={() => setShowRules(true)} title="Auto-categorize recurring lines by description pattern" className={`${hrBtn.ghost} h-9`} style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><Wand2 size={14} /> Auto-rules</button>
+            <button onClick={() => setShowForexCfg(true)} title="Choose which bank accounts take part in buying foreign currency" className={`${hrBtn.ghost} h-9`} style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><ArrowLeftRight size={14} /> Currency exchange</button>
+            <button onClick={() => setShowFT(true)} title="Record a transfer between two bank accounts, or from a bank account to a petty cash box" className={`${hrBtn.ghost} h-9`} style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><ArrowLeftRight size={14} /> Record Fund Transfer</button>
+            <button onClick={() => setShowUpload(true)} className={`${hrBtn.ghost} h-9`} style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><Upload size={14} /> Upload from file</button>
+            <button onClick={() => setShowAdd(true)} className={hrBtn.primary} style={{ background: 'var(--teal)' }}><Plus size={15} /> Add transaction</button>
           </div>
         )}
       </div>
 
       {accounts.length === 0 ? (
-        <div className="rounded-2xl border p-6 text-sm" style={{ borderColor: '#fde68a', background: '#fffbeb', color: '#92400e' }}>
+        <div className="rounded-lg border p-6 text-sm" style={{ borderColor: '#fde68a', background: '#fffbeb', color: '#92400e', borderLeft: '4px solid #d97706' }}>
           No bank accounts yet. In <strong>Chart of Accounts</strong>, tick <strong>&quot;Is this a bank account?&quot;</strong> on your Current-Asset bank accounts, then set their opening balance &amp; start date here.
         </div>
       ) : (
@@ -246,14 +253,16 @@ export default function BankReconciliationPage() {
           {/* Account cards */}
           <div className="flex gap-3 overflow-x-auto pb-1">
             {accounts.map(a => (
-              <button key={a.id} onClick={() => setSel(a.id)} className="text-left rounded-2xl border p-3 min-w-[230px] transition-colors"
-                style={{ borderColor: sel === a.id ? 'var(--teal)' : 'var(--light-gray)', borderWidth: sel === a.id ? 2 : 1, background: '#fff' }}>
+              <button key={a.id} onClick={() => setSel(a.id)} aria-pressed={sel === a.id}
+                className="text-left rounded-lg border p-3 min-w-[230px] transition-shadow hover:shadow-[0_4px_12px_rgba(0,0,0,0.06)]"
+                style={{ borderColor: 'var(--light-gray)', borderLeft: `4px solid ${sel === a.id ? 'var(--teal)' : a.pendingCount > 0 ? '#d97706' : 'var(--light-gray)'}`,
+                  boxShadow: sel === a.id ? '0 0 0 2px #a7d3cd' : undefined, background: '#fff' }}>
                 <div className="flex items-center justify-between">
                   <p className="text-xs font-mono" style={{ color: 'var(--mid-gray)' }}>{a.accountNumber}</p>
-                  {a.pendingCount > 0 && <span className="px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ background: 'var(--charcoal)', color: '#fff' }}>{a.pendingCount}</span>}
+                  {a.pendingCount > 0 && <span className="px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ background: '#fef3c7', color: '#92400e' }} title={`${a.pendingCount} pending line(s)`}>{a.pendingCount} pending</span>}
                 </div>
                 <p className="text-sm font-semibold truncate" style={{ color: 'var(--charcoal)' }}>{a.accountTitle}</p>
-                <p className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>
+                <p className="text-lg font-extrabold tabular-nums" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>
                   {a.currency && a.currency !== 'PHP' ? `${a.currency} ` : '₱'}{peso(a.postedBalance)}
                 </p>
                 {a.currency !== 'PHP' && (
