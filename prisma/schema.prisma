@@ -603,6 +603,7 @@ model Staff {
   // NOT created by the HR sync and MUST be excluded from its prune.
   source                 String?                  @default("HR")
   active                 Boolean                  @default(true) // false = inactive in HR; hidden from Staff Module, Top 5, etc.
+  supervisedDeckingSlots DeckingSlot[]           @relation("DeckingSupervisor")
   isInternshipSupervisor Boolean                  @default(false) // Clinical Internship Supervisor (HR Staff Profile
   // checkbox, synced one-way). Staff Portal reads this off the shared
   // DB to grant an "All Interns" view — every intern's notes, not just
@@ -821,6 +822,14 @@ model DeckingSlot {
   // does not, and that difference is the main thing they scan the grid for.
   // Defaults to CASH because that is the overwhelming majority and because an
   // existing row has to land somewhere; it is not an assertion about the slot.
+  /// The clinician supervising, when staffId is an intern. Null otherwise.
+  ///
+  /// A reference, NOT a booking: a supervisor can be treating their own
+  /// patient while overseeing a student, so their hour stays bookable and an
+  /// intern's slot is capacity of its own. Recording it as a second booking
+  /// would close an hour the clinic can still sell.
+  supervisorId    String?
+  supervisor      Staff?           @relation("DeckingSupervisor", fields: [supervisorId], references: [id], onDelete: SetNull)
   paymentType     String           @default("CASH") // "CASH" | "HMO" | "GL"
   /// WHICH HMO, when paymentType is HMO. Null otherwise.
   ///

@@ -450,7 +450,12 @@ function StaffCard({ staff, allStaff, selectedDate, schedulingBranch, flat = fal
   // Last-week suggestions
   const [lastWeekSuggestions, setLastWeekSuggestions] = useState<Schedule[]>([])
   // Decking suggestions
-  const [deckingSuggestions, setDeckingSuggestions] = useState<{ id: string; patient: Patient | null; startTime: string; endTime: string; dayOfWeek: string }[]>([])
+  // `staff` rides along so an intern's decked hour can be told from the
+  // clinician's own: with includeSupervised the list holds both.
+  const [deckingSuggestions, setDeckingSuggestions] = useState<{
+    id: string; patient: Patient | null; startTime: string; endTime: string; dayOfWeek: string
+    staff?: { id: string; firstName: string; lastName: string; employmentType: string | null } | null
+  }[]>([])
 
   const loadSchedules = useCallback(async () => {
     setLoadingSchedules(true)
@@ -505,7 +510,8 @@ function StaffCard({ staff, allStaff, selectedDate, schedulingBranch, flat = fal
     const DOW_NAMES = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT']
     const dow = DOW_NAMES[new Date(selectedDate + 'T12:00:00').getDay()]
     try {
-      const res = await fetch(`/api/decking/slots?staffId=${staff.id}&dayOfWeek=${dow}`)
+      // includeSupervised: also the intern hours this clinician oversees.
+      const res = await fetch(`/api/decking/slots?staffId=${staff.id}&dayOfWeek=${dow}&includeSupervised=1`)
       if (res.ok) setDeckingSuggestions(await res.json())
     } catch { /* silent */ }
   }
@@ -841,14 +847,24 @@ function StaffCard({ staff, allStaff, selectedDate, schedulingBranch, flat = fal
                           status: 'PENDING',
                           notes: '',
                           isTeletherapy: false,
-                          internStaffId: '',
+                          // An intern's decked hour fills the intern in, since
+                          // that is how the session is recorded: the clinician
+                          // is the staff member, the intern is named alongside.
+                          internStaffId: s.staff && s.staff.id !== staff.id ? s.staff.id : '',
                           withMentor: false,
                         })}
                         className="cs-btn px-2.5 h-7 rounded-full text-xs font-medium transition-colors hover:bg-[#FDE3D2]"
-                        style={{ background: '#FFF1E8', color: '#C2410C', border: '1px solid #FBD5BC' }}
+                        // An intern's hour, in the same visual language as
+                        // main's restyled chips rather than the old solid fill.
+                        style={s.staff && s.staff.id !== staff.id
+                          ? { background: '#EEF0FF', color: '#4338CA', border: '1px solid #C7CCF7' }
+                          : { background: '#FFF1E8', color: '#C2410C', border: '1px solid #FBD5BC' }}
                       >
                         {s.patient ? `${s.patient.lastName}, ${s.patient.firstName[0]}.` : '(slot)'}
                         {' · '}{formatTime(s.startTime)}
+                        {s.staff && s.staff.id !== staff.id
+                          ? ` · intern ${s.staff.lastName}`
+                          : ''}
                       </button>
                     ))}
                   </div>

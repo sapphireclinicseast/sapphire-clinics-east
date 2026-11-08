@@ -82,6 +82,8 @@ export const INK = { CASH: '#15803D', HMO: '#B45309', GL: '#93460B', NA: '#DC262
 const BLOCK_BG = '#1F3A5F'
 const HEAD_BG = '#E8EDF2'
 const OFF_BG = '#EDEFF1'
+/** Drawn hatching: Sheets cannot fill a cell with a pattern, so it is typed. */
+const HATCH = '\u2571\u2571\u2571\u2571\u2571\u2571\u2571\u2571'
 const PAY_BG = '#E4EEF9'
 const REMARK_BG = '#FBF3E2'
 
@@ -98,6 +100,9 @@ const cell = (value: string, fmt: Record<string, unknown> = {}): Cell => ({
   userEnteredFormat: {
     horizontalAlignment: 'CENTER', verticalAlignment: 'MIDDLE', wrapStrategy: 'WRAP',
     borders: BORDER, ...fmt,
+    // Merged rather than spread, so a cell can still choose its own size,
+    // weight and colour without dropping the typeface.
+    textFormat: { fontFamily: 'Roboto', ...((fmt.textFormat as Record<string, unknown>) ?? {}) },
   },
 })
 const blank = (): Cell => ({ userEnteredValue: {}, userEnteredFormat: {} })
@@ -234,10 +239,22 @@ export function buildGrid({ staff, slots }: { staff: SheetStaff[]; slots: SheetS
           put(0, cell(''))
         }
 
-        // Hours outside this therapist's own span are shaded, not blank: a
-        // blank cell reads as "open — book someone here", which is wrong.
+        // Hours outside this therapist's own span are HATCHED, not blank: a
+        // blank cell reads as "open — book someone here", which is wrong, and
+        // flat grey alone was being mistaken for a cell somebody had shaded.
+        //
+        // Sheets has no pattern fill, so the diagonals are drawn as text — a
+        // run of light slashes on the grey. These cells are decorative: they
+        // carry no slot, are never written to the map, and the sync never reads
+        // them, so text here cannot be mistaken for data.
         if (!blk.own.has(h)) {
-          for (let c = 1; c <= k; c++) put(c, cell('', { backgroundColor: rgb(OFF_BG) }))
+          for (let c = 1; c <= k; c++) {
+            put(c, cell(HATCH, {
+              backgroundColor: rgb(OFF_BG),
+              textFormat: { fontSize: 9, foregroundColor: rgb('#D2D7DC') },
+              horizontalAlignment: 'CENTER',
+            }))
+          }
           return
         }
 

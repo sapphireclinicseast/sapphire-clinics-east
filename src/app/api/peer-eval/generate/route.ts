@@ -79,7 +79,14 @@ export async function POST(req: NextRequest) {
     // Clinical staff assess same-dept, same-day peers (including interbranch consultants)
     // Each assessee gets at least 2 assessors
     const configs = await prisma.deckingTherapistConfig.findMany({
-      where: { OR: [{ branch }, { staff: { extraBranches: { has: branch } } }] },
+      // Peer evaluation pairs clinicians with clinicians; a student on
+      // placement is evaluated through supervision, not by this.
+      where: {
+        AND: [
+          { OR: [{ branch }, { staff: { extraBranches: { has: branch } } }] },
+          { OR: [{ staff: { employmentType: null } }, { staff: { employmentType: { not: 'intern' } } }] },
+        ],
+      },
       include: { staff: true },
     })
     const configMap = new Map(configs.map(c => [c.staffId, c.workDays as string[]]))
