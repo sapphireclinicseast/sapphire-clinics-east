@@ -766,8 +766,22 @@ function ExpensesInner() {
         body: JSON.stringify({ branch, bank, cardNumber, bankCode }),
       })
       if (!r.ok) { alert((await r.json()).error || 'Failed to add card'); return null }
-      const c = await r.json(); setCards(prev => [...prev, c]); return c
+      const { reactivated, ...c } = await r.json() as Card & { reactivated?: boolean }
+      if (reactivated) alert('This card was saved before and had been removed. It is switched back on, with its earlier statements still attached.')
+      setCards(prev => [...prev.filter(x => x.id !== c.id), c]); return c
     } catch { alert('Failed to add card'); return null }
+  }
+
+  const editCard = async (id: string, bank: string, cardNumber: string, bankCode: string): Promise<boolean> => {
+    try {
+      const r = await fetch('/api/expenses/credit-cards', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, bank, cardNumber, bankCode }),
+      })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) { alert(j.error || 'Failed to save card'); return false }
+      setCards(prev => prev.map(c => (c.id === id ? j : c))); return true
+    } catch { alert('Failed to save card'); return false }
   }
 
   const deleteCard = async (id: string) => {
@@ -2077,7 +2091,7 @@ function ExpensesInner() {
       {showSettings && (
         <CreditCardSettings branch={branch} cards={cards} canWrite={canWrite}
           bankOptions={bankOptions} prepaidAccount={prepaidAccount}
-          onClose={() => setShowSettings(false)} onAdd={addCard} onDelete={deleteCard}
+          onClose={() => setShowSettings(false)} onAdd={addCard} onEdit={editCard} onDelete={deleteCard}
           onSavePrepaid={async (acct) => {
             setPrepaidAccount(acct)
             try {
@@ -2762,13 +2776,27 @@ function ForPaymentModal({ count, bankOptions, cards, paying, title, confirmLabe
 }
 
 // ── Credit Card settings ───────────────────────────────────────
-function CreditCardSettings({ branch, cards, canWrite, bankOptions, prepaidAccount, onClose, onAdd, onDelete, onSavePrepaid }: {
+function CreditCardSettings({ branch, cards, canWrite, bankOptions, prepaidAccount, onClose, onAdd, onEdit, onDelete, onSavePrepaid }: {
   branch: string; cards: Card[]; canWrite: boolean; bankOptions: string[]; prepaidAccount: string
-  onClose: () => void; onAdd: (bank: string, cardNumber: string, bankCode: string) => Promise<Card | null>; onDelete: (id: string) => void
+  onClose: () => void; onAdd: (bank: string, cardNumber: string, bankCode: string) => Promise<Card | null>
+  onEdit: (id: string, bank: string, cardNumber: string, bankCode: string) => Promise<boolean>; onDelete: (id: string) => void
   onSavePrepaid: (acct: string) => void
 }) {
   const [bank, setBank] = useState(''); const [number, setNumber] = useState(''); const [code, setCode] = useState('')
   const [saving, setSaving] = useState(false)
+  // Edit in place — fixing a name or bank code no longer means removing and re-adding the card.
+  const [editId, setEditId] = useState<string | null>(null)
+  const [eBank, setEBank] = useState(''); const [eNumber, setENumber] = useState(''); const [eCode, setECode] = useState('')
+  const [eSaving, setESaving] = useState(false)
+  const startEdit = (c: Card) => { setEditId(c.id); setEBank(c.bank); setENumber(c.cardNumber); setECode(c.bankCode) }
+  const saveEdit = async () => {
+    if (!editId) return
+    if (!eBank.trim() || !eNumber.trim() || !eCode.trim()) { alert('Enter the bank, credit card number and bank code.'); return }
+    setESaving(true)
+    const ok = await onEdit(editId, eBank.trim(), eNumber.trim(), eCode.trim())
+    setESaving(false)
+    if (ok) setEditId(null)
+  }
   const branchLabel = BRANCHES.find(b => b.value === branch)?.label || branch
 
   const add = async () => {
@@ -2803,15 +2831,40 @@ function CreditCardSettings({ branch, cards, canWrite, bankOptions, prepaidAccou
         <h3 className="text-sm font-bold mb-1" style={{ color: 'var(--charcoal)' }}>Credit Cards</h3>
         <p className="text-xs mb-3" style={{ color: 'var(--mid-gray)' }}>
           Pre-set the bank, credit card number and bank code (e.g. BDO → &quot;BDO&quot;, Chinabank → &quot;CBC&quot;). These appear in the For Payment credit-card dropdown.
+          To fix a card&apos;s name or bank code, use its pencil. Each card number can be saved once per branch.
         </p>
 
         <div className="space-y-1 mb-3 max-h-60 overflow-auto">
-          {cards.map(c => (
+          {cards.map(c => editId === c.id ? (
+            <div key={c.id} className="rounded-lg px-3 py-2 space-y-2" style={{ background: 'var(--off-white)' }}>
+              <div className="grid grid-cols-3 gap-2">
+                <input value={eBank} onChange={e => setEBank(e.target.value)} placeholder="Bank" aria-label="Bank"
+                  className="px-2 py-1.5 rounded-lg border text-xs bg-white" style={{ borderColor: 'var(--light-gray)' }} />
+                <input value={eNumber} onChange={e => setENumber(e.target.value)} placeholder="Card number" aria-label="Card number"
+                  className="px-2 py-1.5 rounded-lg border text-xs font-mono bg-white" style={{ borderColor: 'var(--light-gray)' }} />
+                <input value={eCode} onChange={e => setECode(e.target.value)} placeholder="Code (CBC)" aria-label="Bank code"
+                  className="px-2 py-1.5 rounded-lg border text-xs bg-white" style={{ borderColor: 'var(--light-gray)' }} />
+              </div>
+              <div className="flex justify-end gap-2">
+                <button onClick={() => setEditId(null)} disabled={eSaving}
+                  className="px-3 py-1 rounded-lg text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Cancel</button>
+                <button onClick={saveEdit} disabled={eSaving}
+                  className="px-3 py-1 rounded-lg text-xs font-semibold text-white disabled:opacity-50 inline-flex items-center gap-1" style={{ background: 'var(--teal)' }}>
+                  {eSaving && <Loader2 size={12} className="animate-spin" />} Save
+                </button>
+              </div>
+            </div>
+          ) : (
             <div key={c.id} className="flex items-center justify-between rounded-lg px-3 py-2" style={{ background: 'var(--off-white)' }}>
               <div className="text-xs" style={{ color: 'var(--charcoal)' }}>
                 <span className="font-semibold">{c.bank}</span> · <span className="font-mono">{c.cardNumber}</span> · <span style={{ color: 'var(--mid-gray)' }}>{c.bankCode}</span>
               </div>
-              {canWrite && <button onClick={() => onDelete(c.id)} title="Remove"><X size={14} style={{ color: '#dc2626' }} /></button>}
+              {canWrite && (
+                <div className="flex items-center gap-2">
+                  <button onClick={() => startEdit(c)} title="Edit" aria-label="Edit card"><Pencil size={13} style={{ color: 'var(--teal)' }} /></button>
+                  <button onClick={() => onDelete(c.id)} title="Remove" aria-label="Remove card"><X size={14} style={{ color: '#dc2626' }} /></button>
+                </div>
+              )}
             </div>
           ))}
           {cards.length === 0 && <p className="text-xs text-center py-4" style={{ color: 'var(--mid-gray)' }}>No credit cards yet.</p>}
