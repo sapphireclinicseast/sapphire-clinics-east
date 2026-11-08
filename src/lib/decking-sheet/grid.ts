@@ -198,22 +198,6 @@ export function buildGrid({ staff, slots }: { staff: SheetStaff[]; slots: SheetS
     const bandRows = 2 + AXIS.length * ROWS_PER_HOUR
     const top = rows.length
 
-    band.forEach((blk, i) => {
-      const base = i * stride
-      const ownHours = AXIS.filter(h => blk.own.has(h))
-      if (ownHours.length === 0) return
-      const first = AXIS.indexOf(ownHours[0])
-      const last = AXIS.indexOf(ownHours[ownHours.length - 1])
-      for (let c = 1; c <= blk.days.length; c++) {
-        editable.push({
-          startRowIndex: top + 2 + first * ROWS_PER_HOUR,
-          endRowIndex: top + 2 + last * ROWS_PER_HOUR + ROWS_PER_HOUR,
-          startColumnIndex: base + c,
-          endColumnIndex: base + c + 1,
-        })
-      }
-    })
-
     for (let r = 0; r < bandRows; r++) {
       const values: Cell[] = Array.from({ length: totalCols }, () => blank())
       band.forEach((blk, i) => {
@@ -264,7 +248,6 @@ export function buildGrid({ staff, slots }: { staff: SheetStaff[]; slots: SheetS
           const here = slotAt.get(`${blk.st.id}|${day.key}|${hhmm(h)}`) ?? []
           const occupants = here.filter(x => x.patient)
           const blocked = here.find(x => x.disabled)
-
           const name = nameFor(occupants, blocked)
           const pay = blocked || !occupants[0] ? '' : payLabel(occupants[0].paymentType, occupants[0].hmoProvider)
           const remark = remarkFor(occupants, blocked)
@@ -273,6 +256,22 @@ export function buildGrid({ staff, slots }: { staff: SheetStaff[]; slots: SheetS
           cells.push({ row: top + r, col: base + c, staffId: blk.st.id, dayOfWeek: day.key, startTime: hhmm(h), line, wrote: value })
 
           if (line !== 'remark') validate.push({ row: top + r, col: base + c, kind: line })
+
+          // Editable is decided per SLOT, and a blocked hour is not one.
+          //
+          // This used to be one rectangle covering each therapist's whole span,
+          // which left N/A and BREAK cells inside it — so an hour the clinic had
+          // deliberately closed could be reopened from the spreadsheet, and the
+          // decision to close it lived in two places. Blocking stays available
+          // here; UNblocking is a hub decision.
+          if (line === 'name' && !blocked) {
+            editable.push({
+              startRowIndex: top + r,
+              endRowIndex: top + r + ROWS_PER_HOUR,
+              startColumnIndex: base + c,
+              endColumnIndex: base + c + 1,
+            })
+          }
 
           if (line === 'remark') {
             put(c, remark

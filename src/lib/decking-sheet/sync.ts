@@ -188,8 +188,18 @@ async function pushTab(
   if (nameRanges.length) post.push({ addConditionalFormatRule: { index: 0, rule: { ranges: nameRanges, booleanRule: { condition: { type: 'BLANK' }, format: { backgroundColor: rgb('#DFF5E4') } } } } })
   // STARTS_WITH for HMO, because the value now carries the insurer's name.
   post.push({ addConditionalFormatRule: { index: 0, rule: { ranges, booleanRule: { condition: { type: 'TEXT_STARTS_WITH', values: [{ userEnteredValue: 'HMO' }] }, format: { textFormat: { bold: true, foregroundColor: rgb(INK.HMO) } } } } } })
-  for (const [text, colour] of [[BLOCKED, INK.NA], [BREAK, INK.NA], ['CASH', INK.CASH], ['GL', INK.GL]] as const) {
+  for (const [text, colour] of [['CASH', INK.CASH], ['GL', INK.GL]] as const) {
     post.push({ addConditionalFormatRule: { index: 0, rule: { ranges, booleanRule: { condition: { type: 'TEXT_EQ', values: [{ userEnteredValue: text }] }, format: { textFormat: { bold: true, foregroundColor: rgb(colour) } } } } } })
+  }
+  // A closed hour, shown the way the hub's own board shows one: quiet grey
+  // rather than alarm red. Sheets has no pattern fills, so the diagonal
+  // hatching cannot be reproduced — struck-through grey on a grey ground is
+  // the nearest thing that still reads as "crossed out, not available".
+  for (const text of [BLOCKED, BREAK]) {
+    post.push({ addConditionalFormatRule: { index: 0, rule: { ranges: nameRanges, booleanRule: {
+      condition: { type: 'TEXT_EQ', values: [{ userEnteredValue: text }] },
+      format: { backgroundColor: rgb('#E8EAED'), textFormat: { bold: true, strikethrough: true, foregroundColor: rgb('#80868B') } },
+    } } } })
   }
   for (const pr of mine?.protectedRanges ?? []) post.push({ deleteProtectedRange: { protectedRangeId: pr.protectedRangeId! } })
   post.push({ addProtectedRange: { protectedRange: {
