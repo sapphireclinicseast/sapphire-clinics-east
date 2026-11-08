@@ -3,8 +3,9 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { redirect } from 'next/navigation'
-import { Users, UserPlus, Loader2, X, Trash2, Search, ChevronDown, Download } from 'lucide-react'
+import { Users, UserPlus, Loader2, X, Trash2, Search, ChevronDown, Download, BarChart3, HandCoins, ChevronRight, ArrowUp, ArrowDown, ArrowUpDown, Trophy, Stethoscope, Scale, GraduationCap, Gift, ListOrdered, Receipt } from 'lucide-react'
 import ReferrerSettingsPanel, { REFERRER_TYPE_LABEL } from '@/components/ReferrerSettingsPanel'
+import { AlertBanner, EmptyState, LoadingNote, Tile, card, display, ink, muted, pulse, pulseTone } from '@/components/ReferralUi'
 import { AccountPicker, type PickableAccount } from '@/components/AccountPicker'
 import { branchLabel } from '@/lib/branch'
 import { departmentLabel } from '@/lib/department'
@@ -44,17 +45,25 @@ export default function ReferralPage() {
   }
 
   return (
-    <div className="p-6 max-w-screen-xl mx-auto space-y-5">
-      <div className="flex items-center gap-3">
-        <Users size={24} className="text-teal-600" />
-        <h1 className="text-2xl font-semibold text-gray-900">Referral</h1>
+    <div className="max-w-screen-xl mx-auto space-y-5">
+      {/* ── Title ── */}
+      <div className="flex items-center gap-3 min-w-0">
+        <div className="w-10 h-10 shrink-0 rounded-xl flex items-center justify-center" style={{ background: 'var(--teal)' }}><Users size={20} className="text-white" /></div>
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>Referral</h1>
+          <p className="text-xs mt-0.5 max-w-2xl" style={{ color: 'var(--mid-gray)' }}>
+            The doctors, law firms and partner schools who send us patients — who they referred, the sales that followed, and the commission they earn.
+          </p>
+        </div>
       </div>
 
-      <div className="flex gap-2 border-b" style={{ borderColor: 'var(--light-gray)' }}>
-        {([['referrers', 'Referrers'], ['patients', 'Referred patients'], ['dashboard', 'Referral Dashboard'], ['commission', 'Commission']] as const).map(([k, label]) => (
-          <button key={k} onClick={() => setTab(k)}
-            className="px-4 py-2 text-sm font-semibold -mb-px border-b-2"
+      {/* ── Tabs ── */}
+      <div role="tablist" aria-label="Referral sections" className="flex gap-1 overflow-x-auto" style={{ boxShadow: 'inset 0 -1px 0 var(--light-gray)' }}>
+        {([['referrers', 'Referrers', Users], ['patients', 'Referred patients', UserPlus], ['dashboard', 'Referral Dashboard', BarChart3], ['commission', 'Commission', HandCoins]] as const).map(([k, label, Icon]) => (
+          <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}
+            className="inline-flex items-center gap-2 px-3.5 py-2.5 text-sm font-semibold border-b-2 whitespace-nowrap rounded-t-lg transition-colors hover:bg-white/70"
             style={tab === k ? { borderColor: 'var(--teal)', color: 'var(--deep-teal)' } : { borderColor: 'transparent', color: 'var(--mid-gray)' }}>
+            <Icon size={15} style={{ opacity: tab === k ? 1 : 0.7 }} />
             {label}
           </button>
         ))}
@@ -300,9 +309,14 @@ function ReferralDashboardPanel() {
   }
   const BRANCH_SHORT: Record<string, string> = { SANDBOX_EAST: 'East', SANDBOX_GREENHILLS: 'Greenhills', VERDANA_STORE: 'Verdana', AURA_INSTITUTE: 'Institute' }
 
+  // Display-only: a failed load shows a banner (with Try again, which re-runs
+  // the same request) instead of an empty dashboard that looks like "no data".
+  const [loadError, setLoadError] = useState(false)
+  const [reload, setReload] = useState(0)
+
   useEffect(() => {
-    (async () => { setLoading(true); try { const r = await fetch('/api/referred-patients/dashboard'); const j = r.ok ? await r.json() : { rows: [] }; setRows(j.rows || []) } catch { setRows([]) } finally { setLoading(false) } })()
-  }, [])
+    (async () => { setLoading(true); setLoadError(false); try { const r = await fetch('/api/referred-patients/dashboard'); if (!r.ok) setLoadError(true); const j = r.ok ? await r.json() : { rows: [] }; setRows(j.rows || []) } catch { setRows([]); setLoadError(true) } finally { setLoading(false) } })()
+  }, [reload])
 
   const toggleType = (t: string) => setTypes(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t])
   const toggleSort = (f: typeof sortField) => { if (sortField === f) setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortField(f); setSortDir(f === 'name' || f === 'type' ? 'asc' : 'desc') } }
@@ -319,143 +333,261 @@ function ReferralDashboardPanel() {
   const top5 = [...filtered].sort((a, b) => (b.referrals - a.referrals) || (b.net - a.net)).slice(0, 5).filter(r => r.referrals > 0)
   const totalReferrals = filtered.reduce((s, r) => s + r.referrals, 0)
   const totalNet = filtered.reduce((s, r) => s + r.net, 0)
-  const arrow = (f: typeof sortField) => sortField === f ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''
+  // Display-only roll-ups of the rows already loaded.
+  const activeReferrers = filtered.filter(r => r.referrals > 0).length
+  const medrepTotal = filtered.reduce((s, r) => s + (r.medrepTotal || 0), 0)
+  const medrepPaid = filtered.reduce((s, r) => s + (r.medrepPaid || 0), 0)
+  const topMax = Math.max(1, ...top5.map(r => r.referrals))
+  const byType = TYPES.filter(([val]) => types.includes(val)).map(([val, label]) => {
+    const list = filtered.filter(r => (r.type || 'DOCTOR') === val)
+    return { val, label, count: list.length, referrals: list.reduce((s, r) => s + r.referrals, 0), net: list.reduce((s, r) => s + r.net, 0) }
+  })
+  const sortHead = (f: typeof sortField, label: string, align: 'left' | 'right' = 'left') => (
+    <th className={`px-4 py-2.5 font-semibold whitespace-nowrap ${align === 'right' ? 'text-right' : 'text-left'}`} aria-sort={sortField === f ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+      <button onClick={() => toggleSort(f)} className={`inline-flex items-center gap-1 hover:text-[var(--deep-teal)] ${align === 'right' ? 'flex-row-reverse' : ''}`} style={sortField === f ? { color: 'var(--deep-teal)' } : undefined}>
+        {label}
+        {sortField === f ? (sortDir === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />) : <ArrowUpDown size={12} className="opacity-40" />}
+      </button>
+    </th>
+  )
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-base font-bold" style={{ color: 'var(--charcoal)' }}>Referral Dashboard</h2>
-        <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>Referral counts and net sales per referrer, from their referred patients&apos; POS orders.</p>
+      {/* ── Title + type filter ── */}
+      <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+        <div className="min-w-0">
+          <h2 className="text-lg font-bold" style={{ ...ink, ...display }}>Referral Dashboard</h2>
+          <p className="text-xs mt-0.5 max-w-2xl" style={muted}>Referral counts and net sales per referrer, from their referred patients&apos; POS orders. Click a referrer in the table to see the sessions behind the figures.</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Referrer types shown">
+          <span className="text-xs mr-1" style={muted}>Show</span>
+          {TYPES.map(([val, label]) => {
+            const on = types.includes(val)
+            const n = rows.filter(r => (r.type || 'DOCTOR') === val).length
+            return (
+              <label key={val} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border cursor-pointer text-xs font-semibold select-none transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-[var(--bright-teal)]"
+                style={on ? { borderColor: 'var(--teal)', background: 'var(--teal)', color: '#fff' } : { borderColor: 'var(--light-gray)', background: '#fff', color: 'var(--mid-gray)' }}>
+                <input type="checkbox" checked={on} onChange={() => toggleType(val)} className="sr-only" />
+                <TypeIcon t={val} size={13} />
+                {label}
+                {!loading && <span className="tabular-nums" style={{ opacity: on ? 0.75 : 0.6 }}>{n}</span>}
+              </label>
+            )
+          })}
+        </div>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        {TYPES.map(([val, label]) => (
-          <label key={val} className="flex items-center gap-2 px-3 py-2 rounded-xl border cursor-pointer text-sm"
-            style={types.includes(val) ? { borderColor: 'var(--teal)', background: 'var(--pale-teal)', color: 'var(--deep-teal)' } : { borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
-            <input type="checkbox" checked={types.includes(val)} onChange={() => toggleType(val)} />
-            {label}
-          </label>
-        ))}
-      </div>
+      {loadError && !loading && (
+        <AlertBanner onRetry={() => setReload(n => n + 1)}>Couldn&apos;t load the referral dashboard. The figures below may be missing.</AlertBanner>
+      )}
 
       {loading ? (
-        <div className="py-12 text-center" style={{ color: 'var(--mid-gray)' }}><Loader2 size={16} className="inline animate-spin" /></div>
+        <div className="space-y-3" aria-busy="true">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            {[0, 1, 2, 3].map(i => <div key={i} className={`${pulse} h-[88px]`} style={pulseTone} />)}
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            <div className={`${pulse} h-[230px]`} style={pulseTone} />
+            <div className={`${pulse} h-[230px] hidden sm:block`} style={pulseTone} />
+          </div>
+          <div className={`${pulse} h-[260px]`} style={pulseTone} />
+          <LoadingNote>Loading referral figures…</LoadingNote>
+        </div>
+      ) : rows.length === 0 ? (
+        loadError ? null : (
+          <EmptyState icon={<BarChart3 size={32} />} title="No referral figures yet">
+            Once referred patients are linked to their referrer (Referred patients tab) and have POS orders, their referral counts and net sales show here.
+          </EmptyState>
+        )
       ) : (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="rounded-2xl border p-4 bg-white" style={{ borderColor: 'var(--light-gray)' }}>
-              <div className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Referrers (shown)</div>
-              <div className="text-xl font-bold" style={{ color: 'var(--charcoal)' }}>{filtered.length}</div>
-            </div>
-            <div className="rounded-2xl border p-4 bg-white" style={{ borderColor: 'var(--light-gray)' }}>
-              <div className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Total referrals</div>
-              <div className="text-xl font-bold" style={{ color: 'var(--deep-teal)' }}>{totalReferrals}</div>
-            </div>
-            <div className="rounded-2xl border p-4 bg-white" style={{ borderColor: 'var(--light-gray)' }}>
-              <div className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Total net sales</div>
-              <div className="text-xl font-bold" style={{ color: 'var(--deep-teal)' }}>{peso(totalNet)}</div>
-            </div>
+          {/* ── KPIs ── */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <Tile icon={<Users size={13} />} label="Referrers (shown)" value={filtered.length.toLocaleString()} note={`${activeReferrers.toLocaleString()} with at least one referral`} />
+            <Tile icon={<ListOrdered size={13} />} label="Total referrals" value={totalReferrals.toLocaleString()} note={activeReferrers ? `${(totalReferrals / activeReferrers).toLocaleString('en-PH', { maximumFractionDigits: 1 })} per active referrer` : '—'} />
+            <Tile icon={<Receipt size={13} />} label="Total net sales" value={peso(totalNet)} note="referred patients' POS orders" strong />
+            <Tile icon={<Gift size={13} />} label="Med-rep incentive paid" value={medrepTotal ? <>{medrepPaid.toLocaleString()} <span className="text-sm font-semibold" style={muted}>of {medrepTotal.toLocaleString()}</span></> : '—'}
+              note={medrepTotal ? (medrepPaid >= medrepTotal ? 'all paid' : `${(medrepTotal - medrepPaid).toLocaleString()} still to pay`) : 'external doctors only'} />
           </div>
 
-          <div className="rounded-2xl border p-4 bg-white" style={{ borderColor: 'var(--light-gray)' }}>
-            <p className="text-sm font-semibold mb-2" style={{ color: 'var(--charcoal)' }}>Top 5 referrers</p>
-            {top5.length === 0 ? <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>No referrals yet for the selected type(s).</p> : (
-              <div className="space-y-1.5">
-                {top5.map((r, i) => (
-                  <div key={r.referrerId} className="flex items-center gap-3 text-sm">
-                    <span className="w-5 text-center font-bold" style={{ color: 'var(--teal)' }}>{i + 1}</span>
-                    <span className="flex-1 truncate font-medium">{r.name} <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>· {REFERRER_TYPE_LABEL[r.type || 'DOCTOR']}</span></span>
-                    <span className="text-xs whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{r.referrals} referral{r.referrals === 1 ? '' : 's'}</span>
-                    <span className="font-mono font-semibold w-28 text-right" style={{ color: 'var(--deep-teal)' }}>{peso(r.net)}</span>
-                  </div>
-                ))}
+          {/* ── Top referrers + by type ── */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            <div className="rounded-2xl border p-4 min-w-0" style={card}>
+              <div className="flex items-center justify-between gap-2 mb-3">
+                <h3 className="text-sm font-semibold flex items-center gap-2" style={{ ...ink, ...display }}><Trophy size={15} style={{ color: 'var(--gold-light)' }} /> Top 5 referrers</h3>
+                <span className="text-[11px]" style={muted}>by referrals</span>
               </div>
-            )}
+              {top5.length === 0 ? <p className="text-xs py-6 text-center" style={muted}>No referrals yet for the selected type(s).</p> : (
+                <ol className="space-y-3">
+                  {top5.map((r, i) => (
+                    <li key={r.referrerId} className="min-w-0">
+                      <div className="flex items-center gap-3 text-sm">
+                        <span className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0"
+                          style={i === 0 ? { background: 'var(--teal)', color: '#fff' } : { background: 'var(--off-white)', color: 'var(--teal)' }}>{i + 1}</span>
+                        <span className="flex-1 min-w-0 truncate font-medium" style={ink} title={r.name}>{r.name} <span className="text-xs font-normal" style={muted}>· {REFERRER_TYPE_LABEL[r.type || 'DOCTOR']}</span></span>
+                        <span className="font-mono text-xs font-semibold whitespace-nowrap" style={{ color: 'var(--deep-teal)' }}>{peso(r.net)}</span>
+                      </div>
+                      <div className="flex items-center gap-2 mt-1 pl-9">
+                        <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--off-white)' }}>
+                          <div className="h-full rounded-full" style={{ width: `${(r.referrals / topMax) * 100}%`, background: typeTone(r.type).bar }} />
+                        </div>
+                        <span className="text-[11px] tabular-nums whitespace-nowrap w-20 text-right" style={muted}>{r.referrals} referral{r.referrals === 1 ? '' : 's'}</span>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </div>
+
+            <div className="rounded-2xl border p-4 min-w-0" style={card}>
+              <div className="flex items-center justify-between gap-2 mb-3">
+                <h3 className="text-sm font-semibold flex items-center gap-2" style={{ ...ink, ...display }}><BarChart3 size={15} style={{ color: 'var(--bright-teal)' }} /> By referrer type</h3>
+                <span className="text-[11px]" style={muted}>share of net sales</span>
+              </div>
+              {byType.length === 0 ? <p className="text-xs py-6 text-center" style={muted}>Pick at least one type above.</p> : (
+                <ul className="space-y-3.5">
+                  {byType.map(t => (
+                    <li key={t.val} className="min-w-0">
+                      <div className="flex items-center gap-2 text-sm">
+                        <span className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0" style={{ background: typeTone(t.val).bg, color: typeTone(t.val).fg }}><TypeIcon t={t.val} size={13} /></span>
+                        <span className="flex-1 min-w-0 font-medium truncate" style={ink}>{t.label}</span>
+                        <span className="font-mono text-xs font-semibold whitespace-nowrap" style={{ color: 'var(--deep-teal)' }}>{peso(t.net)}</span>
+                      </div>
+                      <div className="flex items-center gap-2 mt-1 pl-8">
+                        <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--off-white)' }}>
+                          <div className="h-full rounded-full" style={{ width: `${totalNet > 0 ? Math.max(0, (t.net / totalNet) * 100) : 0}%`, background: typeTone(t.val).bar }} />
+                        </div>
+                        <span className="text-[11px] tabular-nums whitespace-nowrap w-20 text-right" style={muted}>{totalNet > 0 ? `${((t.net / totalNet) * 100).toFixed(0)}%` : '—'}</span>
+                      </div>
+                      <p className="text-[11px] mt-0.5 pl-8" style={muted}>{t.count} referrer{t.count === 1 ? '' : 's'} · {t.referrals} referral{t.referrals === 1 ? '' : 's'}</p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </div>
 
-          <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
-            <table className="w-full text-sm">
-              <thead>
-                <tr style={{ background: 'var(--pale-teal)' }}>
-                  {([['name', 'Referrer'], ['type', 'Type'], ['referrals', 'Count of Referrals']] as [typeof sortField, string][]).map(([key, label]) => (
-                    <th key={key} onClick={() => toggleSort(key)} className={`px-4 py-2.5 text-xs font-semibold cursor-pointer select-none ${key === 'referrals' ? 'text-right' : 'text-left'}`} style={{ color: 'var(--deep-teal)' }}>{label}{arrow(key)}</th>
-                  ))}
-                  <th className="px-4 py-2.5 text-xs font-semibold text-center" style={{ color: 'var(--deep-teal)' }} title="One-time ₱ incentive to the med rep per new patient referred by an external doctor — paid vs total. Schools and law firms don't earn it. Mark payouts in Commission → Medical representative incentive.">Med-Rep Paid</th>
-                  {([['net', 'Total Net Sales']] as [typeof sortField, string][]).map(([key, label]) => (
-                    <th key={key} onClick={() => toggleSort(key)} className="px-4 py-2.5 text-xs font-semibold cursor-pointer select-none text-right" style={{ color: 'var(--deep-teal)' }}>{label}{arrow(key)}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {sorted.length === 0 ? <tr><td colSpan={5} className="text-center py-10 text-gray-400">No referrers for the selected type(s).</td></tr>
-                  : sorted.map(r => (
-                    <Fragment key={r.referrerId}>
-                    <tr className="border-t cursor-pointer hover:bg-gray-50/70" style={{ borderColor: 'var(--light-gray)' }}
-                      onClick={() => toggleRow(r.referrerId)} title="Click to see the sessions behind these figures">
-                      <td className="px-4 py-2.5 font-medium" style={{ color: 'var(--charcoal)' }}>
-                        <span className="inline-block w-4 text-xs" style={{ color: 'var(--mid-gray)' }}>{openRows.has(r.referrerId) ? '▾' : '▸'}</span>
-                        {r.name}
-                      </td>
-                      <td className="px-4 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{REFERRER_TYPE_LABEL[r.type || 'DOCTOR']}</td>
-                      <td className="px-4 py-2.5 text-right font-mono">{r.referrals}</td>
-                      <td className="px-4 py-2.5 text-center">
-                        {!r.medrepTotal ? (
-                          <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>—</span>
-                        ) : r.medrepPaid >= r.medrepTotal ? (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: '#ecfdf5', color: '#047857' }}>✓ {r.medrepPaid}/{r.medrepTotal} paid</span>
-                        ) : (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: '#fffbeb', color: '#b45309' }}>{r.medrepPaid}/{r.medrepTotal} paid</span>
+          {/* ── Every referrer ── */}
+          <div className="rounded-2xl border min-w-0" style={card}>
+            <div className="flex flex-wrap items-center justify-between gap-2 px-4 pt-3 pb-2.5 border-b" style={{ borderColor: 'var(--light-gray)' }}>
+              <h3 className="text-sm font-semibold" style={{ ...ink, ...display }}>All referrers</h3>
+              <span className="text-xs tabular-nums" style={muted}><span className="font-semibold" style={ink}>{sorted.length.toLocaleString()}</span> referrer{sorted.length === 1 ? '' : 's'} · click a row for its sessions</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-xs" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
+                    {sortHead('name', 'Referrer')}
+                    {sortHead('type', 'Type')}
+                    {sortHead('referrals', 'Count of Referrals', 'right')}
+                    <th className="px-4 py-2.5 font-semibold text-center whitespace-nowrap" title="One-time ₱ incentive to the med rep per new patient referred by an external doctor — paid vs total. Schools and law firms don't earn it. Mark payouts in Commission → Medical representative incentive.">Med-Rep Paid</th>
+                    {sortHead('net', 'Total Net Sales', 'right')}
+                  </tr>
+                </thead>
+                <tbody>
+                  {sorted.length === 0 ? (
+                    <tr><td colSpan={5} className="text-center py-10 text-sm" style={muted}>
+                      No referrers for the selected type(s).{' '}
+                      {types.length < TYPES.length && <button onClick={() => setTypes(TYPES.map(([v]) => v))} className="underline" style={{ color: 'var(--teal)' }}>Show all types</button>}
+                    </td></tr>
+                  ) : sorted.map(r => {
+                    const open = openRows.has(r.referrerId)
+                    const sess = rowSessions[r.referrerId]
+                    return (
+                      <Fragment key={r.referrerId}>
+                        <tr className="border-t cursor-pointer transition-colors hover:bg-[#fbf9f5]" style={{ borderColor: 'var(--light-gray)', background: open ? '#fbf9f5' : undefined }}
+                          onClick={() => toggleRow(r.referrerId)} title="Click to see the sessions behind these figures" aria-expanded={open}>
+                          <td className="px-4 py-2.5 font-medium" style={ink}>
+                            <span className="inline-flex items-start gap-1.5">
+                              <span className="mt-0.5 shrink-0" style={muted}>{open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</span>
+                              <span className="break-words">{r.name}</span>
+                            </span>
+                          </td>
+                          <td className="px-4 py-2.5 whitespace-nowrap">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: typeTone(r.type).bg, color: typeTone(r.type).fg }}>
+                              <TypeIcon t={r.type} size={11} /> {REFERRER_TYPE_LABEL[r.type || 'DOCTOR']}
+                            </span>
+                          </td>
+                          <td className="px-4 py-2.5 text-right font-mono tabular-nums">{r.referrals}</td>
+                          <td className="px-4 py-2.5 text-center"><MedrepPill r={r} /></td>
+                          <td className="px-4 py-2.5 text-right font-mono font-semibold whitespace-nowrap" style={{ color: 'var(--deep-teal)' }}>{peso(r.net)}</td>
+                        </tr>
+                        {open && (
+                          <tr>
+                            <td colSpan={5} className="px-4 sm:px-6 pt-1 pb-4" style={{ background: '#fbf9f5' }}>
+                              {sess === 'loading' || !sess ? (
+                                <div className="space-y-1.5 pt-2" aria-busy="true">
+                                  {[0, 1, 2].map(i => <div key={i} className="h-7 rounded-lg animate-pulse motion-reduce:animate-none" style={{ background: 'var(--off-white)' }} />)}
+                                  <LoadingNote>Loading sessions…</LoadingNote>
+                                </div>
+                              ) : sess.length === 0 ? (
+                                <p className="text-xs py-3" style={muted}>No earned sessions recorded for this referrer&apos;s patients yet.</p>
+                              ) : (
+                                <div className="rounded-xl border bg-white overflow-x-auto mt-1" style={{ borderColor: 'var(--light-gray)' }}>
+                                  <table className="w-full text-xs tabular-nums">
+                                    <thead>
+                                      <tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
+                                        <th className="px-3 py-2 font-semibold">Date</th>
+                                        <th className="px-3 py-2 font-semibold whitespace-nowrap">Order #</th>
+                                        <th className="px-3 py-2 font-semibold">Patient</th>
+                                        <th className="px-3 py-2 font-semibold">Branch</th>
+                                        <th className="px-3 py-2 font-semibold text-right">Net</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {sess.map(s => (
+                                        <tr key={s.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                                          <td className="px-3 py-1.5 whitespace-nowrap" style={muted}>{new Date(s.date).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })}</td>
+                                          <td className="px-3 py-1.5 font-mono" style={ink}>{s.orderNumber}</td>
+                                          <td className="px-3 py-1.5" style={ink}>{s.patientName || '—'}</td>
+                                          <td className="px-3 py-1.5 whitespace-nowrap" style={muted}>{BRANCH_SHORT[s.branch] || s.branch}</td>
+                                          <td className="px-3 py-1.5 text-right font-mono whitespace-nowrap" style={ink}>{peso(s.net)}</td>
+                                        </tr>
+                                      ))}
+                                      <tr className="border-t-2 font-semibold" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                                        <td className="px-3 py-2" colSpan={4} style={ink}>{sess.length} session{sess.length === 1 ? '' : 's'}</td>
+                                        <td className="px-3 py-2 text-right font-mono whitespace-nowrap" style={{ color: 'var(--deep-teal)' }}>{peso(sess.reduce((t, s) => t + s.net, 0))}</td>
+                                      </tr>
+                                    </tbody>
+                                  </table>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
                         )}
-                      </td>
-                      <td className="px-4 py-2.5 text-right font-mono font-semibold" style={{ color: 'var(--deep-teal)' }}>{peso(r.net)}</td>
+                      </Fragment>
+                    )
+                  })}
+                </tbody>
+                {sorted.length > 0 && (
+                  <tfoot>
+                    <tr className="border-t-2 font-semibold" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                      <td className="px-4 py-2.5" colSpan={2} style={ink}>Total</td>
+                      <td className="px-4 py-2.5 text-right font-mono tabular-nums" style={ink}>{totalReferrals}</td>
+                      <td className="px-4 py-2.5 text-center text-xs" style={muted}>{medrepTotal ? `${medrepPaid}/${medrepTotal} paid` : '—'}</td>
+                      <td className="px-4 py-2.5 text-right font-mono whitespace-nowrap" style={{ color: 'var(--deep-teal)' }}>{peso(totalNet)}</td>
                     </tr>
-                    {openRows.has(r.referrerId) && (
-                      <tr>
-                        <td colSpan={5} className="px-6 pb-3" style={{ background: 'var(--off-white)' }}>
-                          {rowSessions[r.referrerId] === 'loading' || !rowSessions[r.referrerId] ? (
-                            <p className="text-xs py-3" style={{ color: 'var(--mid-gray)' }}>Loading sessions…</p>
-                          ) : (rowSessions[r.referrerId] as Exclude<typeof rowSessions[string], 'loading'>).length === 0 ? (
-                            <p className="text-xs py-3" style={{ color: 'var(--mid-gray)' }}>No earned sessions recorded for this referrer&apos;s patients yet.</p>
-                          ) : (
-                            <table className="w-full text-xs mt-2 bg-white rounded-xl overflow-hidden">
-                              <thead>
-                                <tr style={{ background: 'var(--pale-teal)' }}>
-                                  <th className="px-3 py-1.5 text-left font-semibold" style={{ color: 'var(--deep-teal)' }}>Date</th>
-                                  <th className="px-3 py-1.5 text-left font-semibold" style={{ color: 'var(--deep-teal)' }}>Order #</th>
-                                  <th className="px-3 py-1.5 text-left font-semibold" style={{ color: 'var(--deep-teal)' }}>Patient</th>
-                                  <th className="px-3 py-1.5 text-left font-semibold" style={{ color: 'var(--deep-teal)' }}>Branch</th>
-                                  <th className="px-3 py-1.5 text-right font-semibold" style={{ color: 'var(--deep-teal)' }}>Net</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {(rowSessions[r.referrerId] as Exclude<typeof rowSessions[string], 'loading'>).map(s => (
-                                  <tr key={s.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
-                                    <td className="px-3 py-1.5">{new Date(s.date).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })}</td>
-                                    <td className="px-3 py-1.5 font-mono">{s.orderNumber}</td>
-                                    <td className="px-3 py-1.5">{s.patientName || '—'}</td>
-                                    <td className="px-3 py-1.5">{BRANCH_SHORT[s.branch] || s.branch}</td>
-                                    <td className="px-3 py-1.5 text-right font-mono">{peso(s.net)}</td>
-                                  </tr>
-                                ))}
-                                <tr className="border-t font-semibold" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
-                                  <td className="px-3 py-1.5" colSpan={4}>{(rowSessions[r.referrerId] as Exclude<typeof rowSessions[string], 'loading'>).length} session{(rowSessions[r.referrerId] as Exclude<typeof rowSessions[string], 'loading'>).length === 1 ? '' : 's'}</td>
-                                  <td className="px-3 py-1.5 text-right font-mono" style={{ color: 'var(--deep-teal)' }}>{peso((rowSessions[r.referrerId] as Exclude<typeof rowSessions[string], 'loading'>).reduce((t, s) => t + s.net, 0))}</td>
-                                </tr>
-                              </tbody>
-                            </table>
-                          )}
-                        </td>
-                      </tr>
-                    )}
-                    </Fragment>
-                  ))}
-              </tbody>
-            </table>
+                  </tfoot>
+                )}
+              </table>
+            </div>
           </div>
         </>
       )}
     </div>
   )
+}
+
+// Referral Dashboard view helpers (module level so rows don't remount on every render).
+const typeTone = (t?: string | null) => t === 'LAW_FIRM' ? { bg: '#fef3c7', fg: '#92400e', bar: '#d9a441' } : t === 'PARTNER_SCHOOL' ? { bg: '#ede9fe', fg: '#6d28d9', bar: '#8b78d8' } : { bg: 'var(--pale-teal)', fg: 'var(--deep-teal)', bar: 'var(--bright-teal)' }
+function TypeIcon({ t, size = 14 }: { t?: string | null; size?: number }) {
+  return t === 'LAW_FIRM' ? <Scale size={size} /> : t === 'PARTNER_SCHOOL' ? <GraduationCap size={size} /> : <Stethoscope size={size} />
+}
+function MedrepPill({ r }: { r: DashRow }) {
+  if (!r.medrepTotal) return <span className="text-xs" style={muted}>—</span>
+  return r.medrepPaid >= r.medrepTotal
+    ? <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap" style={{ background: '#ecfdf5', color: '#047857' }}>✓ {r.medrepPaid}/{r.medrepTotal} paid</span>
+    : <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap" style={{ background: '#fffbeb', color: '#b45309' }}>{r.medrepPaid}/{r.medrepTotal} paid</span>
 }
 
 interface ComSession { id: string; orderNumber: number; date: string; branch: string; patientName: string | null; net: number; paymentStatus: string | null; via: 'tag' | 'link' }
