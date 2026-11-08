@@ -859,18 +859,137 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
       {/* No config yet */}
       {showBody && !config && !configOpen && (
         <p className="px-4 py-6 text-center text-xs" style={{ color: 'var(--mid-gray)' }}>
-          Use <strong>Configure</strong> to set up this therapist&apos;s work schedule.
+          No weekly schedule. Use <strong>Configure</strong> to set one up &mdash; or, for a consultant
+          who only comes in now and then, add a <strong>one-off date</strong> below without one.
         </p>
       )}
 
       {/* No work days configured */}
       {showBody && config && configuredDays.length === 0 && (
         <p className="px-4 py-6 text-center text-xs" style={{ color: 'var(--mid-gray)' }}>
-          No work days set. Use <strong>Configure</strong> to add work days.
+          No work days set. Use <strong>Configure</strong> to add them, or add a
+          <strong> one-off date</strong> below.
         </p>
       )}
 
       {showBody && modePrompt}
+
+      {/* ── One-off dates ──────────────────────────────────────────────
+          Some consultants — medical doctors mostly, and psychology — give
+          the clinic named days rather than a standing week. Those hours
+          cannot live in the grid above: a slot drawn in a weekday column
+          means "every Tuesday", and a one-off shown there would claim that
+          hour for ever. They are listed here instead, each with its date. */}
+      {showBody && (datedSlots.length > 0 || onAddDated) && (
+        <div className="px-4 py-2.5" style={{ borderTop: '1px solid var(--light-gray)' }}>
+          <div className="flex flex-wrap items-center gap-2 mb-1.5">
+            <CalendarPlus size={13} style={{ color: '#BE185D' }} />
+            <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#BE185D' }}>
+              One-off dates
+              {datedSlots.length > 0 && <span className="tabular-nums font-normal"> · {datedSlots.length}</span>}
+            </p>
+            <button type="button" onClick={() => setShowDatedModal(true)}
+              className="text-[11px] font-semibold rounded-lg px-2 py-0.5"
+              style={{ border: '1px dashed #F9A8D4', color: '#BE185D', background: '#fff' }}>
+              + Add a date
+            </button>
+          </div>
+          {datedSlots.length === 0 ? (
+            <p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+              None. Hours added here apply to that date only and never repeat.
+            </p>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              {datedSlots.map(sl => (
+                <span key={sl.id}
+                  className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px]"
+                  style={{ background: '#FDF2F8', border: '1px solid #F9A8D4', color: '#9D174D' }}>
+                  <strong>{new Date(String(sl.date)).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', timeZone: 'UTC' })}</strong>
+                  {formatTime(sl.startTime)}
+                  {sl.patient ? ` · ${sl.patient.lastName}, ${sl.patient.firstName[0]}.` : ' · open'}
+                  <button type="button" onClick={() => onDeleteSlot(sl.id)} title="Remove this date">
+                    <X size={11} />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {showDatedModal && (
+        <div onClick={() => setShowDatedModal(false)}
+          style={{ position: 'fixed', inset: 0, zIndex: 110, background: 'rgba(15,23,42,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div onClick={e => e.stopPropagation()} className="rounded-2xl"
+            style={{ background: '#fff', width: '100%', maxWidth: 380, boxShadow: '0 20px 60px rgba(15,23,42,0.25)' }}>
+            <div className="px-5 py-3.5" style={{ borderBottom: '1px solid var(--light-gray)' }}>
+              <p className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>
+                One-off date &mdash; {staff.lastName}, {staff.firstName}
+              </p>
+              <p className="text-[11px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+                This hour applies to the chosen date only. It never repeats, and it does not
+                appear on the weekly grid.
+              </p>
+            </div>
+            <div className="px-5 py-4 flex flex-col gap-3">
+              <label className="text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>
+                Date
+                <input type="date" value={datedForm.date}
+                  onChange={e => setDatedForm(f => ({ ...f, date: e.target.value }))}
+                  className="mt-1 w-full rounded-lg px-2.5 py-1.5 text-sm"
+                  style={{ border: '1px solid var(--light-gray)' }} />
+              </label>
+              <label className="text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>
+                Start time
+                <select value={datedForm.startTime}
+                  onChange={e => setDatedForm(f => ({ ...f, startTime: e.target.value }))}
+                  className="mt-1 w-full rounded-lg px-2.5 py-1.5 text-sm"
+                  style={{ border: '1px solid var(--light-gray)' }}>
+                  {generateHourlySlots('07:00', '21:00').map(t => (
+                    <option key={t} value={t}>{formatTime(t)}</option>
+                  ))}
+                </select>
+              </label>
+              <div className="flex gap-2 pt-1">
+                <button type="button" onClick={() => setShowDatedModal(false)}
+                  className="flex-1 rounded-lg px-3 py-2 text-xs font-semibold"
+                  style={{ border: '1px solid var(--light-gray)', color: 'var(--mid-gray)' }}>
+                  Cancel
+                </button>
+                <button type="button"
+                  disabled={!datedForm.date || datedSaving || !onAddDated}
+                  onClick={async () => {
+                    if (!onAddDated || !datedForm.date) return
+                    setDatedSaving(true)
+                    try {
+                      // Weekday derived from the date, never typed: the two
+                      // have to agree or the slot draws on the wrong column.
+                      const d = new Date(`${datedForm.date}T00:00:00Z`)
+                      // DAY_KEYS is Sunday-first, exactly like getUTCDay(),
+                      // so this maps straight across. A Monday-first shift
+                      // here would file every one-off on the wrong weekday
+                      // and draw it in the wrong column.
+                      const dow = DAYS[d.getUTCDay()]
+                      const endHour = String(parseInt(datedForm.startTime.slice(0, 2), 10) + 1).padStart(2, '0')
+                      await onAddDated({
+                        staffId: staff.id, patientId: null,
+                        dayOfWeek: dow, startTime: datedForm.startTime, endTime: `${endHour}:00`,
+                        branch: activeBranch, department: staff.department, notes: null,
+                        date: datedForm.date,
+                      })
+                      setShowDatedModal(false)
+                      setDatedForm({ date: '', startTime: '09:00' })
+                    } finally { setDatedSaving(false) }
+                  }}
+                  className="flex-1 rounded-lg px-3 py-2 text-xs font-semibold"
+                  style={{ background: '#BE185D', color: '#fff', opacity: !datedForm.date || datedSaving ? 0.55 : 1 }}>
+                  {datedSaving ? 'Adding…' : 'Add this date'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Weekly decking table */}
       {showBody && config && configuredDays.length > 0 && (
@@ -1106,123 +1225,6 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
                   </li>
                 ))}
               </ul>
-            </div>
-          )}
-
-          {/* ── One-off dates ──────────────────────────────────────────────
-              Some consultants — medical doctors mostly, and psychology — give
-              the clinic named days rather than a standing week. Those hours
-              cannot live in the grid above: a slot drawn in a weekday column
-              means "every Tuesday", and a one-off shown there would claim that
-              hour for ever. They are listed here instead, each with its date. */}
-          {(datedSlots.length > 0 || onAddDated) && (
-            <div className="px-4 py-2.5" style={{ borderTop: '1px solid var(--light-gray)' }}>
-              <div className="flex flex-wrap items-center gap-2 mb-1.5">
-                <CalendarPlus size={13} style={{ color: '#BE185D' }} />
-                <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#BE185D' }}>
-                  One-off dates
-                  {datedSlots.length > 0 && <span className="tabular-nums font-normal"> · {datedSlots.length}</span>}
-                </p>
-                <button type="button" onClick={() => setShowDatedModal(true)}
-                  className="text-[11px] font-semibold rounded-lg px-2 py-0.5"
-                  style={{ border: '1px dashed #F9A8D4', color: '#BE185D', background: '#fff' }}>
-                  + Add a date
-                </button>
-              </div>
-              {datedSlots.length === 0 ? (
-                <p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>
-                  None. Hours added here apply to that date only and never repeat.
-                </p>
-              ) : (
-                <div className="flex flex-wrap gap-1.5">
-                  {datedSlots.map(sl => (
-                    <span key={sl.id}
-                      className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px]"
-                      style={{ background: '#FDF2F8', border: '1px solid #F9A8D4', color: '#9D174D' }}>
-                      <strong>{new Date(String(sl.date)).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', timeZone: 'UTC' })}</strong>
-                      {formatTime(sl.startTime)}
-                      {sl.patient ? ` · ${sl.patient.lastName}, ${sl.patient.firstName[0]}.` : ' · open'}
-                      <button type="button" onClick={() => onDeleteSlot(sl.id)} title="Remove this date">
-                        <X size={11} />
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {showDatedModal && (
-            <div onClick={() => setShowDatedModal(false)}
-              style={{ position: 'fixed', inset: 0, zIndex: 110, background: 'rgba(15,23,42,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-              <div onClick={e => e.stopPropagation()} className="rounded-2xl"
-                style={{ background: '#fff', width: '100%', maxWidth: 380, boxShadow: '0 20px 60px rgba(15,23,42,0.25)' }}>
-                <div className="px-5 py-3.5" style={{ borderBottom: '1px solid var(--light-gray)' }}>
-                  <p className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>
-                    One-off date &mdash; {staff.lastName}, {staff.firstName}
-                  </p>
-                  <p className="text-[11px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>
-                    This hour applies to the chosen date only. It never repeats, and it does not
-                    appear on the weekly grid.
-                  </p>
-                </div>
-                <div className="px-5 py-4 flex flex-col gap-3">
-                  <label className="text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>
-                    Date
-                    <input type="date" value={datedForm.date}
-                      onChange={e => setDatedForm(f => ({ ...f, date: e.target.value }))}
-                      className="mt-1 w-full rounded-lg px-2.5 py-1.5 text-sm"
-                      style={{ border: '1px solid var(--light-gray)' }} />
-                  </label>
-                  <label className="text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>
-                    Start time
-                    <select value={datedForm.startTime}
-                      onChange={e => setDatedForm(f => ({ ...f, startTime: e.target.value }))}
-                      className="mt-1 w-full rounded-lg px-2.5 py-1.5 text-sm"
-                      style={{ border: '1px solid var(--light-gray)' }}>
-                      {generateHourlySlots('07:00', '21:00').map(t => (
-                        <option key={t} value={t}>{formatTime(t)}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <div className="flex gap-2 pt-1">
-                    <button type="button" onClick={() => setShowDatedModal(false)}
-                      className="flex-1 rounded-lg px-3 py-2 text-xs font-semibold"
-                      style={{ border: '1px solid var(--light-gray)', color: 'var(--mid-gray)' }}>
-                      Cancel
-                    </button>
-                    <button type="button"
-                      disabled={!datedForm.date || datedSaving || !onAddDated}
-                      onClick={async () => {
-                        if (!onAddDated || !datedForm.date) return
-                        setDatedSaving(true)
-                        try {
-                          // Weekday derived from the date, never typed: the two
-                          // have to agree or the slot draws on the wrong column.
-                          const d = new Date(`${datedForm.date}T00:00:00Z`)
-                          // DAY_KEYS is Sunday-first, exactly like getUTCDay(),
-                          // so this maps straight across. A Monday-first shift
-                          // here would file every one-off on the wrong weekday
-                          // and draw it in the wrong column.
-                          const dow = DAYS[d.getUTCDay()]
-                          const endHour = String(parseInt(datedForm.startTime.slice(0, 2), 10) + 1).padStart(2, '0')
-                          await onAddDated({
-                            staffId: staff.id, patientId: null,
-                            dayOfWeek: dow, startTime: datedForm.startTime, endTime: `${endHour}:00`,
-                            branch: activeBranch, department: staff.department, notes: null,
-                            date: datedForm.date,
-                          })
-                          setShowDatedModal(false)
-                          setDatedForm({ date: '', startTime: '09:00' })
-                        } finally { setDatedSaving(false) }
-                      }}
-                      className="flex-1 rounded-lg px-3 py-2 text-xs font-semibold"
-                      style={{ background: '#BE185D', color: '#fff', opacity: !datedForm.date || datedSaving ? 0.55 : 1 }}>
-                      {datedSaving ? 'Adding…' : 'Add this date'}
-                    </button>
-                  </div>
-                </div>
-              </div>
             </div>
           )}
 
