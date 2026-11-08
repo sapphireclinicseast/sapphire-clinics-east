@@ -75,7 +75,6 @@ function getFullNav(isAdmin: boolean, isMarketingAdmin: boolean) {
           { href: '/settings/users', icon: Users, label: 'Team' },
           { href: '/handbook', icon: BookOpen, label: 'User Handbook' },
         ] : []),
-        { href: '/brand', icon: BookOpen, label: 'Brand Guide' },
       ],
     },
   ]
