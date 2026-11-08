@@ -1,12 +1,15 @@
 'use client'
 
 import { useEffect, useState, useCallback, useMemo, useRef, Fragment } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import {
   HeartHandshake, Phone, Mail, Clock, AlertTriangle, CheckCircle, MessageSquare, Check,
   Calendar, Filter, Users, XCircle, ChevronDown, ChevronRight,
-  Upload, Eye, Trash2, FileText, QrCode, Loader2, X,
+  Upload, Eye, Trash2, FileText, QrCode, Loader2, X, Search, RotateCcw, Plus,
+  UserCheck, UserX, Inbox, Info, Ban, Send, Building2, RefreshCw,
 } from 'lucide-react'
 import { branchLabel as sharedBranchLabel } from '@/lib/branch-label'
+import { CARD_STYLE, KpiCard, Skeleton, EmptyState } from '../patients/dashboard/ui'
 
 type Tab = 'waitlist' | 'followup' | 'noshow' | 'cancellation'
 
@@ -34,9 +37,194 @@ function branchLabel(b?: string | null) {
   return BRANCHES.find(x => x.value === b)?.label ?? b ?? '\u2014'
 }
 
-const selectStyle: React.CSSProperties = {
-  padding: '6px 10px', borderRadius: 8, border: '1px solid #d1d5db',
-  fontSize: '0.8rem', color: '#374151', background: '#fff', cursor: 'pointer',
+// ── Presentation helpers (display only — no data or filter logic lives here) ──
+// Same control vocabulary as the Patient CRM / Customer Survey / Clinic
+// Utilization pages: white field, light-gray rule, teal accent on focus.
+
+const CONTROL = 'h-9 px-3 rounded-lg text-sm outline-none focus:border-[var(--teal)]'
+const CONTROL_STYLE: CSSProperties = { background: '#fff', border: '1px solid var(--light-gray)', color: 'var(--charcoal)' }
+const BTN_PRIMARY = 'inline-flex items-center justify-center gap-1.5 h-9 px-3.5 rounded-lg text-xs font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed'
+const BTN_SECONDARY = 'inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-lg text-xs font-semibold transition-colors hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed'
+const BTN_SM = 'inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold transition-opacity hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed'
+const ICON_BTN = 'inline-flex items-center justify-center w-7 h-7 rounded-lg transition-opacity hover:opacity-80 disabled:opacity-50'
+const LABEL = 'block text-[11px] font-semibold uppercase tracking-wider mb-1.5'
+const SUBTLE_BG = '#F8FAF9'
+const ROW_RULE = '1px solid #EEF2F1'
+const POPOVER_STYLE: CSSProperties = { background: '#fff', border: '1px solid var(--light-gray)', boxShadow: '0 10px 30px rgba(15,23,42,0.12)' }
+const MODAL_BACKDROP: CSSProperties = { background: 'rgba(15,23,42,0.45)', backdropFilter: 'blur(4px)' }
+const fmtDay = (d: string | number | Date) =>
+  new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+
+/** Soft rounded badge — every chip on the page goes through this so they share a height. */
+function Badge({ children, bg, fg, title, strong = false, caps = false }: {
+  children: ReactNode; bg: string; fg: string; title?: string; strong?: boolean
+  /** Small-caps warning style (e.g. SUBJECT TO SLOT REMOVAL). */
+  caps?: boolean
+}) {
+  return (
+    <span title={title}
+      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full leading-[1.35] whitespace-nowrap align-middle ${caps ? 'text-[10px] uppercase tracking-wide' : 'text-[11px]'} ${strong ? 'font-bold' : 'font-semibold'}`}
+      style={{ background: bg, color: fg }}>
+      {children}
+    </span>
+  )
+}
+
+/** Tinted info strip for the per-tab rules and warnings. */
+function Callout({ tone, icon, children }: {
+  tone: 'info' | 'warn' | 'danger' | 'neutral'; icon?: ReactNode; children: ReactNode
+}) {
+  const t = {
+    info:    { bg: '#EFF6FF', border: '#DBEAFE', fg: '#1E40AF', ic: '#2563EB' },
+    warn:    { bg: '#FFFBEB', border: '#FDE68A', fg: '#92400E', ic: '#D97706' },
+    danger:  { bg: '#FEF2F2', border: '#FECACA', fg: '#991B1B', ic: '#DC2626' },
+    neutral: { bg: SUBTLE_BG, border: 'var(--light-gray)', fg: '#475569', ic: '#64748B' },
+  }[tone]
+  return (
+    <div className="rounded-xl px-3.5 py-2.5 flex items-start gap-2.5 text-xs leading-relaxed"
+      style={{ background: t.bg, border: `1px solid ${t.border}`, color: t.fg }}>
+      {icon && <span className="flex-shrink-0 mt-px" style={{ color: t.ic }}>{icon}</span>}
+      <div className="min-w-0 flex-1">{children}</div>
+    </div>
+  )
+}
+
+/** Inline load failure, shown above the table instead of a convincing empty list. */
+function LoadError({ message, onRetry }: { message: string; onRetry?: () => void }) {
+  return (
+    <div className="rounded-xl px-3.5 py-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs"
+      style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#991B1B' }} role="alert">
+      <AlertTriangle size={14} className="flex-shrink-0" style={{ color: '#DC2626' }} />
+      <span className="flex-1 min-w-0">{message}</span>
+      {onRetry ? (
+        <button onClick={onRetry} className="inline-flex items-center gap-1 font-semibold underline">
+          <RefreshCw size={11} /> Try again
+        </button>
+      ) : (
+        <span style={{ color: '#B91C1C' }}>Reload the page to try again.</span>
+      )}
+    </div>
+  )
+}
+
+/** Segmented control used for the page tabs and each tab's sub-tabs. */
+function Segmented<T extends string>({ items, value, onChange, label, size = 'sm', stretch = false, disabled = false }: {
+  items: { key: T; label: string; icon?: any }[]
+  value: T; onChange: (k: T) => void; label: string; size?: 'md' | 'sm'; stretch?: boolean
+  disabled?: boolean
+}) {
+  return (
+    <div role="tablist" aria-label={label}
+      className={`flex gap-1 p-1 rounded-xl overflow-x-auto max-w-full ${stretch ? 'w-full' : 'w-fit'}`}
+      style={size === 'md' ? CARD_STYLE : { background: '#EEF3F1' }}>
+      {items.map(({ key, label: l, icon: Icon }) => {
+        const active = value === key
+        return (
+          <button key={key} role="tab" aria-selected={active} onClick={() => onChange(key)} disabled={disabled && !active}
+            className={`flex items-center justify-center gap-1.5 rounded-lg font-semibold whitespace-nowrap transition-colors disabled:opacity-50 disabled:cursor-wait ${stretch ? 'flex-1' : ''} ${size === 'md' ? 'px-4 py-2 text-sm' : 'px-3 py-1.5 text-xs'} ${active ? '' : 'hover:bg-black/[0.04]'}`}
+            style={active
+              ? size === 'md'
+                ? { background: 'var(--teal)', color: '#fff' }
+                : { background: '#fff', color: 'var(--teal)', boxShadow: '0 1px 2px rgba(0,0,0,0.08)' }
+              : { background: 'transparent', color: 'var(--mid-gray)' }}>
+            {Icon && <Icon size={size === 'md' ? 15 : 13} />}
+            {l}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+/** Name search box with a leading icon. */
+function SearchBox({ value, onChange, placeholder = 'Search by name…' }: {
+  value: string; onChange: (v: string) => void; placeholder?: string
+}) {
+  return (
+    <div className="relative flex-1 min-w-[220px] max-w-[380px]">
+      <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mid-gray)' }} />
+      <input type="text" placeholder={placeholder} value={value} onChange={e => onChange(e.target.value)}
+        aria-label="Search by name"
+        className={`${CONTROL} w-full pl-9`} style={CONTROL_STYLE} />
+    </div>
+  )
+}
+
+/** "12 of 40 patients" read-out at the right of a toolbar. */
+function ResultCount({ shown, total, noun, loading }: { shown: number; total: number; noun: string; loading?: boolean }) {
+  return (
+    <span className="ml-auto text-xs whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>
+      {loading ? 'Loading…' : (
+        <>
+          <span className="font-semibold" style={{ color: 'var(--charcoal)', fontVariantNumeric: 'tabular-nums' }}>{shown.toLocaleString()}</span>
+          {shown !== total && <> of {total.toLocaleString()}</>} {noun}
+        </>
+      )}
+    </span>
+  )
+}
+
+/** Placeholder rows that keep the table's shape while a tab loads. */
+function SkeletonRows({ cols, rows = 7 }: { cols: number; rows?: number }) {
+  return (
+    <>
+      {Array.from({ length: rows }).map((_, i) => (
+        <tr key={`sk-${i}`} style={{ borderBottom: ROW_RULE }} aria-hidden>
+          {Array.from({ length: cols }).map((_, j) => (
+            <td key={j} className="px-4 py-3.5">
+              <Skeleton className="h-3" style={{ width: j === 0 ? 14 : `${Math.max(40, 85 - ((i + j) % 4) * 12)}%` }} />
+            </td>
+          ))}
+        </tr>
+      ))}
+    </>
+  )
+}
+
+/** Card frame around a table: scrolls on its own (both axes) so the page never scrolls sideways. */
+const TABLE_SCROLL: CSSProperties = { maxHeight: 'calc(100vh - 230px)' }
+
+/** Modal frame shared by the remarks, delete and QR dialogs. */
+function ModalShell({ title, subtitle, icon, tone = 'default', onBackdrop, onClose, zIndex, maxWidth = 440, children, footer }: {
+  title: ReactNode; subtitle?: ReactNode; icon?: ReactNode; tone?: 'default' | 'danger'
+  onBackdrop?: () => void; onClose?: () => void; zIndex: number; maxWidth?: number
+  children: ReactNode; footer?: ReactNode
+}) {
+  return (
+    <div onClick={onBackdrop} className="fixed inset-0 flex items-center justify-center p-4"
+      style={{ ...MODAL_BACKDROP, zIndex }}>
+      <div onClick={e => e.stopPropagation()} role="dialog" aria-modal="true"
+        className="w-full rounded-2xl flex flex-col overflow-hidden"
+        style={{ background: '#fff', maxWidth, maxHeight: '90vh', boxShadow: '0 20px 60px rgba(15,23,42,0.25)' }}>
+        <div className="px-5 py-4 flex items-start justify-between gap-3" style={{ borderBottom: '1px solid var(--light-gray)' }}>
+          <div className="flex items-start gap-3 min-w-0">
+            {icon && (
+              <span className="flex-shrink-0 w-8 h-8 rounded-lg inline-flex items-center justify-center"
+                style={tone === 'danger' ? { background: '#FEE2E2', color: '#B91C1C' } : { background: 'var(--pale-teal)', color: 'var(--teal)' }}>
+                {icon}
+              </span>
+            )}
+            <div className="min-w-0">
+              <h3 className="text-[15px] font-bold leading-tight" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>{title}</h3>
+              {subtitle && <p className="text-xs mt-1 leading-snug" style={{ color: 'var(--mid-gray)' }}>{subtitle}</p>}
+            </div>
+          </div>
+          {onClose && (
+            <button onClick={onClose} aria-label="Close" className="p-1 rounded-lg hover:bg-gray-100 flex-shrink-0"
+              style={{ color: 'var(--mid-gray)', lineHeight: 0 }}>
+              <X size={16} />
+            </button>
+          )}
+        </div>
+        <div className="px-5 py-4 overflow-y-auto">{children}</div>
+        {footer && (
+          <div className="px-5 py-3 flex gap-2 justify-end" style={{ borderTop: '1px solid var(--light-gray)', background: SUBTLE_BG }}>
+            {footer}
+          </div>
+        )}
+      </div>
+    </div>
+  )
 }
 
 const PAGE_OPTIONS = [25, 50, 75, 100]
@@ -45,25 +233,31 @@ function Pagination({ total, page, perPage, onPage, onPerPage }: {
   total: number; page: number; perPage: number; onPage: (p: number) => void; onPerPage: (n: number) => void
 }) {
   const pages = Math.ceil(total / perPage)
+  const from = total === 0 ? 0 : (page - 1) * perPage + 1
+  const to = Math.min(total, page * perPage)
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 text-xs" style={{ color: '#6B7280', borderTop: '1px solid #F3F4F6' }}>
+    <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-xs" style={{ color: 'var(--mid-gray)', borderTop: '1px solid var(--light-gray)', background: SUBTLE_BG }}>
       <div className="flex items-center gap-2">
-        <span>Show</span>
-        <select value={perPage} onChange={e => { onPerPage(Number(e.target.value)); onPage(1) }} style={{ ...selectStyle, padding: '3px 6px', fontSize: '0.75rem' }}>
+        <span>Rows</span>
+        <select value={perPage} onChange={e => { onPerPage(Number(e.target.value)); onPage(1) }}
+          aria-label="Rows per page" className="h-7 px-1.5 rounded-md text-xs outline-none" style={CONTROL_STYLE}>
           {PAGE_OPTIONS.map(n => <option key={n} value={n}>{n}</option>)}
         </select>
-        <span>of {total}</span>
+        <span style={{ fontVariantNumeric: 'tabular-nums' }}>
+          {from.toLocaleString()}–{to.toLocaleString()} of {total.toLocaleString()}
+        </span>
       </div>
       {pages > 1 && (
         <div className="flex items-center gap-1">
           {Array.from({ length: Math.min(pages, 10) }, (_, i) => i + 1).map(p => (
-            <button key={p} onClick={() => onPage(p)}
+            <button key={p} onClick={() => onPage(p)} aria-current={page === p ? 'page' : undefined}
+              className={`min-w-[28px] h-7 px-1.5 rounded-md text-xs font-semibold transition-colors ${page === p ? '' : 'hover:bg-white'}`}
               style={{
-                padding: '2px 8px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600,
-                background: page === p ? 'var(--teal)' : '#F3F4F6', color: page === p ? '#fff' : '#6B7280',
+                background: page === p ? 'var(--teal)' : 'transparent', color: page === p ? '#fff' : 'var(--mid-gray)',
+                fontVariantNumeric: 'tabular-nums',
               }}>{p}</button>
           ))}
-          {pages > 10 && <span>...</span>}
+          {pages > 10 && <span className="px-1">…</span>}
         </div>
       )}
     </div>
@@ -181,17 +375,20 @@ function SortHeaders({ cols, sortKey, sortDir, onToggle }: {
   cols: SortCol[]; sortKey: string | null; sortDir: SortDir; onToggle: (key: string) => void
 }) {
   return (
-    <tr style={{ background: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
+    <tr>
       {cols.map(c => {
         const active = sortKey === c.key
         const sortable = !!c.get
         return (
-          <th key={c.key} className="px-4 py-3 font-semibold"
+          // Background and rule sit on the cell, not the row: the header is
+          // sticky, and a collapsed-border row rule scrolls away under it.
+          <th key={c.key} className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider"
             onClick={sortable ? () => onToggle(c.key) : undefined}
             title={sortable ? `Sort by ${c.label}` : undefined}
+            aria-sort={active ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
             style={{
               color: active ? 'var(--teal)' : 'var(--mid-gray)',
-              fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em',
+              background: SUBTLE_BG, boxShadow: 'inset 0 -1px 0 var(--light-gray)',
               cursor: sortable ? 'pointer' : 'default', userSelect: 'none', whiteSpace: 'nowrap',
             }}>
             {c.label}
@@ -278,18 +475,22 @@ function useFilters(cols: SortCol[], rows: any[], onChange?: () => void) {
   return { filtered, filters, setFilter, clearAll, activeCount }
 }
 
-const filterInputStyle: React.CSSProperties = {
-  width: '100%', minWidth: 0, padding: '3px 6px', fontSize: '0.72rem',
-  border: '1px solid #E2E8F0', borderRadius: 6, background: '#fff',
-  color: 'var(--charcoal)', fontFamily: 'inherit',
+const filterInputStyle: CSSProperties = {
+  width: '100%', minWidth: 0, height: 28, padding: '0 8px', fontSize: '0.72rem',
+  border: '1px solid var(--light-gray)', borderRadius: 7, background: '#fff',
+  color: 'var(--charcoal)', fontFamily: 'inherit', outline: 'none',
 }
 
 // Tick/untick list for a 'multi' column. A dropdown rather than a row of
 // checkboxes because the service list runs to a dozen entries and would
 // otherwise set the height of the whole filter row.
-function MultiFilter({ label, options, selected, onChange }: {
+//
+// `size="md"` is the same control at toolbar height, for the Services filter
+// that also sits above the Waitlist table (bound to the same filter state).
+function MultiFilter({ label, options, selected, onChange, size = 'sm', icon }: {
   label: string; options: string[]; selected: string[]
   onChange: (next: string[]) => void
+  size?: 'sm' | 'md'; icon?: ReactNode
 }) {
   const [open, setOpen] = useState(false)
   const box = useRef<HTMLDivElement>(null)
@@ -351,6 +552,7 @@ function MultiFilter({ label, options, selected, onChange }: {
   const summary = selected.length === 0
     ? 'All'
     : selected.length === 1 ? selected[0] : `${selected.length} selected`
+  const md = size === 'md'
 
   return (
     <div ref={box} style={{ position: 'relative' }}>
@@ -358,48 +560,56 @@ function MultiFilter({ label, options, selected, onChange }: {
         aria-haspopup="true" aria-expanded={open}
         aria-label={`Filter by ${label}`}
         title={selected.length ? selected.join(', ') : `Filter by ${label}`}
+        className={md ? 'hover:bg-gray-50 transition-colors' : undefined}
         style={{
           ...filterInputStyle, textAlign: 'left', cursor: 'pointer',
-          display: 'flex', alignItems: 'center', gap: 4,
-          borderColor: selected.length ? 'var(--teal)' : '#E2E8F0',
+          display: 'flex', alignItems: 'center', gap: md ? 6 : 4,
+          ...(md ? { height: 36, padding: '0 10px', fontSize: '0.75rem', borderRadius: 8, minWidth: 170, maxWidth: 260 } : {}),
+          borderColor: selected.length ? 'var(--teal)' : 'var(--light-gray)',
+          background: selected.length ? 'var(--pale-teal)' : '#fff',
           color: selected.length ? 'var(--teal)' : 'var(--charcoal)',
-          fontWeight: selected.length ? 600 : 400,
+          fontWeight: selected.length || md ? 600 : 400,
         }}>
+        {icon && <span className="flex-shrink-0" style={{ color: selected.length ? 'var(--teal)' : 'var(--mid-gray)', lineHeight: 0 }}>{icon}</span>}
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-          {summary}
+          {md ? (selected.length ? `${label}: ${summary}` : `All ${label.toLowerCase()}`) : summary}
         </span>
-        <ChevronDown size={11} style={{ flexShrink: 0, opacity: 0.6 }} />
+        {selected.length > 1 && (
+          <span className="px-1.5 rounded-full text-[10px] font-bold leading-[16px]"
+            style={{ background: 'var(--teal)', color: '#fff' }}>{selected.length}</span>
+        )}
+        <ChevronDown size={md ? 13 : 11} style={{ flexShrink: 0, opacity: 0.6, transform: open ? 'rotate(180deg)' : undefined, transition: 'transform 120ms' }} />
       </button>
 
       {open && at && (
-        <div style={{
+        <div role="listbox" aria-multiselectable="true" aria-label={label} style={{
           position: 'fixed', top: at.top, left: at.left, zIndex: 60,
-          minWidth: at.width, maxWidth: 340, maxHeight: 280, overflowY: 'auto',
-          background: '#fff', border: '1px solid #E2E8F0', borderRadius: 8,
-          boxShadow: '0 8px 24px rgba(15,23,42,0.12)', padding: 6,
+          minWidth: at.width, maxWidth: 340, maxHeight: 300, overflowY: 'auto',
+          ...POPOVER_STYLE, borderRadius: 12, padding: 6,
+          textTransform: 'none', letterSpacing: 'normal', textAlign: 'left',
         }}>
-          <div className="flex items-center justify-between px-1.5 pb-1.5 mb-1"
-            style={{ borderBottom: '1px solid #F1F5F9' }}>
-            <span style={{ fontSize: '0.66rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#94A3B8', fontWeight: 700 }}>
-              {label}
+          <div className="flex items-center justify-between px-2 pt-1 pb-2 mb-1"
+            style={{ borderBottom: ROW_RULE }}>
+            <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>
+              {label}{selected.length > 0 && <span style={{ color: 'var(--teal)' }}> · {selected.length} on</span>}
             </span>
             {selected.length > 0 && (
               <button type="button" onClick={() => onChange([])}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.68rem', color: '#6B7280', textDecoration: 'underline', fontWeight: 600 }}>
+                className="text-[11px] font-semibold underline" style={{ color: 'var(--mid-gray)' }}>
                 Clear
               </button>
             )}
           </div>
           {options.length === 0 ? (
-            <p className="px-1.5 py-2" style={{ fontSize: '0.7rem', color: '#9CA3AF' }}>
+            <p className="px-2 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>
               Nothing to filter by yet.
             </p>
           ) : options.map(o => {
             const on = selected.includes(o)
             return (
-              <label key={o} className="flex items-start gap-2 px-1.5 py-1 rounded"
-                style={{ cursor: 'pointer', fontSize: '0.72rem', lineHeight: 1.35,
-                         background: on ? '#F0FDFA' : 'transparent', fontWeight: on ? 600 : 400 }}>
+              <label key={o} className={`flex items-start gap-2 px-2 py-1.5 rounded-lg transition-colors ${on ? '' : 'hover:bg-gray-50'}`}
+                style={{ cursor: 'pointer', fontSize: '0.75rem', lineHeight: 1.35,
+                         background: on ? 'var(--pale-teal)' : undefined, fontWeight: on ? 600 : 400 }}>
                 <input type="checkbox" checked={on}
                   onChange={() => onChange(on ? selected.filter(s => s !== o) : [...selected, o])}
                   style={{ marginTop: 2, accentColor: 'var(--teal)', cursor: 'pointer', flexShrink: 0 }} />
@@ -417,13 +627,16 @@ function FilterRow({ cols, rows, filters, setFilter }: {
   cols: SortCol[]; rows: any[]
   filters: Record<string, FilterVal>; setFilter: (k: string, p: FilterVal) => void
 }) {
+  // Same reason as SortHeaders: the fill and rule live on the cells so the
+  // sticky header stays opaque over the rows scrolling beneath it.
+  const cell: CSSProperties = { fontWeight: 400, background: '#fff', boxShadow: 'inset 0 -1px 0 var(--light-gray)' }
   return (
-    <tr style={{ background: '#FCFDFE', borderBottom: '1px solid #E2E8F0' }}>
+    <tr>
       {cols.map(c => {
-        if (!c.get || !c.filter) return <th key={c.key} className="px-4 py-2" />
+        if (!c.get || !c.filter) return <th key={c.key} className="px-4 py-2" style={cell} />
         const f = filters[c.key] ?? {}
         return (
-          <th key={c.key} className="px-4 py-2" style={{ fontWeight: 400 }}>
+          <th key={c.key} className="px-4 py-2" style={cell}>
             {c.filter === 'multi' ? (
               <MultiFilter
                 label={c.label}
@@ -441,7 +654,7 @@ function FilterRow({ cols, rows, filters, setFilter }: {
               <div className="flex items-center gap-1">
                 <input type="number" placeholder="min" value={f.min ?? ''} aria-label={`${c.label} minimum`}
                   onChange={e => setFilter(c.key, { min: e.target.value })} style={filterInputStyle} />
-                <span style={{ color: '#CBD5E1', fontSize: '0.7rem' }}>&ndash;</span>
+                <span style={{ color: 'var(--light-gray)', fontSize: '0.7rem' }}>&ndash;</span>
                 <input type="number" placeholder="max" value={f.max ?? ''} aria-label={`${c.label} maximum`}
                   onChange={e => setFilter(c.key, { max: e.target.value })} style={filterInputStyle} />
               </div>
@@ -473,30 +686,54 @@ function FilterToggle({ open, onToggle, activeCount, onClear }: {
 }) {
   return (
     <div className="flex items-center gap-2">
-      <button onClick={onToggle} className="text-xs px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1.5"
-        title={open ? 'Hide column filters' : 'Filter by column'}
+      <button onClick={onToggle} className={BTN_SECONDARY}
+        title={open ? 'Hide column filters' : 'Filter by column'} aria-pressed={open}
         style={{
-          background: activeCount ? 'var(--teal)' : '#fff',
-          color: activeCount ? '#fff' : '#6B7280',
-          border: `1px solid ${activeCount ? 'var(--teal)' : '#d1d5db'}`, cursor: 'pointer',
+          ...CONTROL_STYLE,
+          background: activeCount ? 'var(--teal)' : open ? 'var(--pale-teal)' : '#fff',
+          color: activeCount ? '#fff' : open ? 'var(--teal)' : 'var(--charcoal)',
+          borderColor: activeCount || open ? 'var(--teal)' : 'var(--light-gray)',
         }}>
-        <Filter size={12} />
+        <Filter size={13} />
         Filters
         {activeCount > 0 && (
-          <span className="px-1.5 rounded-full" style={{ background: 'rgba(255,255,255,0.25)', fontSize: '0.68rem' }}>
+          <span className="px-1.5 rounded-full text-[10px] font-bold leading-[16px]" style={{ background: 'rgba(255,255,255,0.25)' }}>
             {activeCount}
           </span>
         )}
+        <ChevronDown size={12} style={{ opacity: 0.7, transform: open ? 'rotate(180deg)' : undefined, transition: 'transform 120ms' }} />
       </button>
       {activeCount > 0 && (
-        <button onClick={onClear} className="text-xs font-semibold"
-          style={{ background: 'none', border: 'none', color: '#6B7280', cursor: 'pointer', textDecoration: 'underline' }}>
-          Clear
+        <button onClick={onClear} className="inline-flex items-center gap-1 text-xs font-semibold hover:underline"
+          title="Clear every column filter" style={{ color: 'var(--mid-gray)' }}>
+          <RotateCcw size={11} /> Reset
         </button>
       )}
     </div>
   )
 }
+
+/** Wrapper for the table itself: card frame, own scroll, sticky header. */
+function TableCard({ children, footer, dim = false }: { children: ReactNode; footer?: ReactNode; dim?: boolean }) {
+  return (
+    <div className="rounded-xl overflow-hidden flex flex-col min-w-0" style={CARD_STYLE}>
+      {/* The inner box scrolls (overflow-auto); the outer one only rounds the
+          corners. These tables are wider than a phone, and an overflow-hidden
+          scroller clipped Branch and Date out of reach instead of letting them
+          be scrolled to. The Services filter panel is positioned fixed so this
+          scroll container cannot clip it either. */}
+      {/* While a reload is in flight the old rows stay (dimmed) but take no
+          clicks — the old full-tab spinner made them unclickable too. */}
+      <div className={`overflow-auto transition-opacity ${dim ? 'opacity-60' : ''}`} style={TABLE_SCROLL} aria-busy={dim || undefined}>
+        <div className={dim ? 'pointer-events-none' : undefined}>{children}</div>
+      </div>
+      {footer}
+    </div>
+  )
+}
+
+/** Sticky table head — both the sort row and the (optional) filter row stay put while rows scroll. */
+const THEAD_STYLE: CSSProperties = { position: 'sticky', top: 0, zIndex: 2 }
 
 function WaitlistTab({ branch }: { branch: string }) {
   const [formKey, setFormKey] = useState('all')
@@ -519,6 +756,10 @@ function WaitlistTab({ branch }: { branch: string }) {
   const [tagRemarks, setTagRemarks] = useState('')
   const [tagSaving, setTagSaving] = useState(false)
   const [tagError, setTagError] = useState('')
+  // Display only: why the list is empty when it came back empty for a reason
+  // (the API's _warning when HR is unreachable, or a failed request), so an
+  // outage doesn't read as a convincing "no responses".
+  const [loadError, setLoadError] = useState('')
 
   // Fetch existing patients to check if already converted
   useEffect(() => {
@@ -533,13 +774,13 @@ function WaitlistTab({ branch }: { branch: string }) {
   }, [])
 
   useEffect(() => {
-    setLoading(true); setExpanded(null); setPage(1)
+    setLoading(true); setExpanded(null); setPage(1); setLoadError('')
     const params = new URLSearchParams({ tab: 'waitlist', formKey })
     if (branch) params.set('branch', branch)
     fetch(`/api/patient-relationship?${params}`)
       .then(r => r.json())
-      .then(d => { setResponses(d.responses || []); setLoading(false) })
-      .catch(() => setLoading(false))
+      .then(d => { setResponses(d.responses || []); setLoadError(d?._warning || d?.error || ''); setLoading(false) })
+      .catch(() => { setLoadError('Could not load the waitlist.'); setLoading(false) })
   }, [branch, formKey])
 
   function isConverted(item: any): boolean {
@@ -756,36 +997,51 @@ function WaitlistTab({ branch }: { branch: string }) {
     }
   }
 
-  if (loading) return <Loading />
+  // KPI strip — counted off the list already loaded for the chosen form and
+  // branch; nothing extra is fetched for it.
+  const declinedCount = responses.filter(r => !!r._followUp).length
+  const convertedCount = responses.filter(r => isConverted(r)).length
+  const openCount = responses.filter(r => !r._followUp && !isConverted(r)).length
+  const servicesOptions = Array.from(new Set(filtered.flatMap(r => getServices(r))))
+    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+  // This list only reloads when the form or branch changes, so a load always
+  // means the rows on screen are for the old selection — skeleton, not dim.
+  const firstLoad = loading
 
   return (
     <div className="space-y-4">
-      {/* Sub-tabs for form types */}
-      <div className="flex gap-1 p-1 rounded-lg" style={{ background: '#F1F5F9' }}>
-        {WAITLIST_FORMS.map(f => (
-          <button key={f.key} onClick={() => setFormKey(f.key)}
-            className="px-3 py-1.5 rounded-md text-xs font-semibold"
-            style={{
-              background: formKey === f.key ? '#fff' : 'transparent',
-              color: formKey === f.key ? 'var(--teal)' : '#64748B',
-              border: 'none', cursor: 'pointer', flex: 1,
-              boxShadow: formKey === f.key ? '0 1px 2px rgba(0,0,0,0.08)' : 'none',
-            }}>{f.label}</button>
-        ))}
+      {/* Sub-tabs for form types. Held while a form is loading — the old
+          full-tab spinner hid them, which is what stopped a second click from
+          racing the first request. */}
+      <Segmented label="Intake form" items={WAITLIST_FORMS} value={formKey} onChange={setFormKey} disabled={loading} />
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <KpiCard label="On the waitlist" value={firstLoad ? '—' : responses.length.toLocaleString()}
+          sub={formKey === 'all' ? 'All intake forms' : WAITLIST_FORMS.find(f => f.key === formKey)?.label} icon={<Inbox size={15} />} />
+        <KpiCard label="Not yet actioned" value={firstLoad ? '—' : openCount.toLocaleString()}
+          sub="Not converted or tagged" accent="#D97706" icon={<Clock size={15} />} />
+        <KpiCard label="Converted" value={firstLoad ? '—' : convertedCount.toLocaleString()}
+          sub="Already in the Patient CRM" accent="#15803D" icon={<UserCheck size={15} />} />
+        <KpiCard label="Will no longer avail" value={firstLoad ? '—' : declinedCount.toLocaleString()}
+          sub="Tagged with a remark" accent="#B91C1C" icon={<UserX size={15} />} />
       </div>
 
-      <div className="flex items-center gap-3 flex-wrap">
-        <input type="text" placeholder="Search by name..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} style={{ ...selectStyle, flex: 1, minWidth: 220, maxWidth: 400 }} />
+      {loadError && <LoadError message={loadError} />}
+
+      <div className="flex items-center gap-2.5 flex-wrap">
+        <SearchBox value={search} onChange={v => { setSearch(v); setPage(1) }} />
+        {/* Same filter as the Services column's — one state, two handles —
+            so it can be set without opening the column filter row. */}
+        <MultiFilter size="md" icon={<Filter size={13} />} label="Services" options={servicesOptions}
+          selected={filters.services?.set ?? []} onChange={next => setFilter('services', { set: next })} />
         <FilterToggle open={showFilters} onToggle={() => setShowFilters(v => !v)} activeCount={activeCount} onClear={clearAll} />
+        <ResultCount shown={sorted.length} total={responses.length} noun={responses.length === 1 ? 'response' : 'responses'} loading={loading} />
       </div>
 
-      {/* overflow-x-auto, not overflow-hidden: this table is wider than a
-          phone, and hidden clipped Branch and Date out of reach instead of
-          letting them be scrolled to. The Services filter panel is positioned
-          fixed so this scroll container cannot clip it either. */}
-      <div className="rounded-xl overflow-x-auto" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
-        <table className="w-full text-left" style={{ fontSize: '0.82rem' }}>
-          <thead>
+      <TableCard
+        footer={<Pagination total={sorted.length} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />}>
+        <table className="w-full text-left min-w-[860px]" style={{ fontSize: '0.82rem' }}>
+          <thead style={THEAD_STYLE}>
             <SortHeaders cols={COLS} sortKey={sortKey} sortDir={sortDir} onToggle={toggle} />
             {showFilters && <FilterRow cols={COLS} rows={filtered} filters={filters} setFilter={setFilter} />}
           </thead>
@@ -793,31 +1049,50 @@ function WaitlistTab({ branch }: { branch: string }) {
             {/* colSpan is COLS.length rather than a literal below — the count has
                 to follow the column list, and a stale one leaves the empty-state
                 cell short and the table visibly ragged. */}
-            {paginated.length === 0 ? (
-              <tr><td colSpan={COLS.length} className="text-center py-10" style={{ color: '#9ca3af' }}>{activeCount > 0 ? 'No responses match these filters.' : 'No responses found.'}</td></tr>
+            {firstLoad ? <SkeletonRows cols={COLS.length} /> : paginated.length === 0 ? (
+              <tr><td colSpan={COLS.length}>
+                {activeCount > 0
+                  ? <EmptyState title="No responses match these filters." hint="Loosen a column filter, or reset them all." />
+                  : <EmptyState title="No responses found." hint={search ? 'Nothing on this list matches that name.' : 'New intake form submissions will appear here.'} />}
+              </td></tr>
             ) : paginated.map((item: any) => {
               const converted = isConverted(item)
               const declined = !!item._followUp
+              const isOpen = expanded === item.landing_id
               return (
               <Fragment key={item.landing_id}>
                 {/* Declined wins the row colour over converted: if both are
                     somehow true the contradiction is the thing worth seeing. */}
-                <tr style={{ borderBottom: '1px solid #F3F4F6', cursor: 'pointer', background: declined ? '#FEF2F2' : converted ? '#F0FDF4' : undefined }}
-                  onClick={() => setExpanded(expanded === item.landing_id ? null : item.landing_id)}>
-                  <td className="px-4 py-3" style={{ width: 30 }}>
-                    {expanded === item.landing_id ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                <tr className={`align-middle transition-colors ${declined || converted ? '' : 'hover:bg-[#F8FAF9]'}`}
+                  style={{ borderBottom: ROW_RULE, cursor: 'pointer', background: declined ? '#FEF6F6' : converted ? '#F3FBF5' : isOpen ? SUBTLE_BG : undefined,
+                           boxShadow: declined ? 'inset 3px 0 0 #F87171' : converted ? 'inset 3px 0 0 #4ADE80' : undefined }}
+                  onClick={() => setExpanded(expanded === item.landing_id ? null : item.landing_id)}
+                  aria-expanded={isOpen}>
+                  <td className="pl-4 pr-1 py-3" style={{ width: 32, color: 'var(--mid-gray)' }}>
+                    {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                   </td>
-                  <td className="px-4 py-3 font-semibold" style={{ color: declined ? '#B91C1C' : converted ? '#15803D' : 'var(--charcoal)' }}>
-                    {getName(item)}
-                    {converted && <span className="ml-2 text-xs px-2 py-0.5 rounded-full" style={{ background: '#DCFCE7', color: '#15803D', fontWeight: 600, fontSize: '0.65rem' }}>Converted</span>}
-                    {/* The remark rides in the tooltip so the list stays
-                        scannable while the reason is still one hover away. */}
-                    {declined && (
-                      <span className="ml-2 text-xs px-2 py-0.5 rounded-full"
-                        title={`${item._followUp.remarks}${item._followUp.setByName ? ` — ${item._followUp.setByName}` : ''}`}
-                        style={{ background: '#FEE2E2', color: '#B91C1C', fontWeight: 600, fontSize: '0.65rem' }}>
-                        Will no longer avail
+                  <td className="px-4 py-3" style={{ minWidth: 200 }}>
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <span className="font-semibold" style={{ color: declined ? '#B91C1C' : converted ? '#15803D' : 'var(--charcoal)' }}>
+                        {getName(item)}
                       </span>
+                      {converted && <Badge bg="#DCFCE7" fg="#15803D"><Check size={10} />Converted</Badge>}
+                      {/* The remark rides in the tooltip so the list stays
+                          scannable while the reason is still one hover away. */}
+                      {declined && (
+                        <Badge bg="#FEE2E2" fg="#B91C1C"
+                          title={`${item._followUp.remarks}${item._followUp.setByName ? ` — ${item._followUp.setByName}` : ''}`}>
+                          <Ban size={10} />Will no longer avail
+                        </Badge>
+                      )}
+                    </div>
+                    {/* …and a one-line preview of it under the name, clipped
+                        so the row height stays put. */}
+                    {declined && item._followUp.remarks && (
+                      <p className="text-[11px] mt-0.5 truncate max-w-[320px]" style={{ color: '#9F1239' }}
+                        title={item._followUp.remarks}>
+                        “{item._followUp.remarks}”
+                      </p>
                     )}
                   </td>
                   {/* Which intake this came in through. A chip rather than
@@ -826,13 +1101,8 @@ function WaitlistTab({ branch }: { branch: string }) {
                   <td className="px-4 py-3">
                     {(() => {
                       const chip = FORM_CHIP[item._formKey as string]
-                      if (!chip) return <span style={{ color: '#6B7280' }}>{item._formTitle}</span>
-                      return (
-                        <span className="text-xs px-2 py-0.5 rounded-full" title={item._formTitle}
-                          style={{ background: chip.bg, color: chip.fg, fontWeight: 600, whiteSpace: 'nowrap' }}>
-                          {chip.label}
-                        </span>
-                      )
+                      if (!chip) return <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>{item._formTitle}</span>
+                      return <Badge bg={chip.bg} fg={chip.fg} title={item._formTitle}>{chip.label}</Badge>
                     })()}
                   </td>
                   {/* What they asked for. Chips rather than a sentence so the
@@ -850,48 +1120,40 @@ function WaitlistTab({ branch }: { branch: string }) {
                         <span className="flex flex-wrap items-center gap-1" title={svcs.join('\n')}>
                           {shown.map(s => {
                             const c = serviceChip(s)
-                            return (
-                              <span key={s} className="text-xs px-2 py-0.5 rounded-full"
-                                style={{ background: c.bg, color: c.fg, fontWeight: 600, fontSize: '0.65rem', whiteSpace: 'nowrap' }}>
-                                {shortService(s)}
-                              </span>
-                            )
+                            return <Badge key={s} bg={c.bg} fg={c.fg}>{shortService(s)}</Badge>
                           })}
-                          {rest > 0 && (
-                            <span className="text-xs px-1.5 py-0.5 rounded-full"
-                              style={{ background: '#F1F5F9', color: '#64748B', fontWeight: 600, fontSize: '0.65rem' }}>
-                              +{rest}
-                            </span>
-                          )}
+                          {rest > 0 && <Badge bg="#F1F5F9" fg="#64748B">+{rest}</Badge>}
                         </span>
                       )
                     })()}
                   </td>
                   <td className="px-4 py-3">
                     {item._branch ? (
-                      <span className="text-xs px-2 py-0.5 rounded-full" style={{
-                        background: item._branch === 'SBEA' ? '#E6F2F4' : '#FEF3E2',
-                        color: item._branch === 'SBEA' ? '#12606C' : '#92400E',
-                        fontWeight: 600, whiteSpace: 'nowrap',
-                      }}>
+                      <Badge bg={item._branch === 'SBEA' ? '#E6F2F4' : '#FEF3E2'} fg={item._branch === 'SBEA' ? '#12606C' : '#92400E'}>
                         {sharedBranchLabel(item._branch) || item._branch}
-                      </span>
+                      </Badge>
                     ) : <span style={{ color: '#9CA3AF' }}>&mdash;</span>}
                   </td>
-                  <td className="px-4 py-3 flex items-center gap-2" style={{ color: '#374151' }}>
-                    {new Date(item.submitted_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                    <button onClick={(e) => { e.stopPropagation(); deleteResponse(item) }} disabled={deleting === item.landing_id}
-                      className="ml-auto p-1.5 rounded-lg hover:opacity-80" title="Remove from waitlist"
-                      style={{ background: '#FEE2E2', color: '#DC2626', border: 'none', cursor: 'pointer', lineHeight: 0 }}>
-                      {deleting === item.landing_id ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
-                    </button>
+                  {/* Flex lives on an inner div: display:flex on the <td>
+                      itself takes it out of the table layout and the cell stops
+                      matching its row's height. */}
+                  <td className="px-4 py-3" style={{ color: 'var(--charcoal)' }}>
+                    <div className="flex items-center gap-2">
+                      <span className="whitespace-nowrap" style={{ fontVariantNumeric: 'tabular-nums' }}>{fmtDay(item.submitted_at)}</span>
+                      <button onClick={(e) => { e.stopPropagation(); deleteResponse(item) }} disabled={deleting === item.landing_id}
+                        className={`ml-auto ${ICON_BTN}`} title="Remove from waitlist" aria-label="Remove from waitlist"
+                        style={{ background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }}>
+                        {deleting === item.landing_id ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                      </button>
+                    </div>
                   </td>
                 </tr>
                 {expanded === item.landing_id && (
                   <tr key={item.landing_id + '-detail'}>
-                    <td colSpan={COLS.length} className="px-6 py-4" style={{ background: '#F8FAFC' }}>
-                      <div className="space-y-2">
-                        <p className="text-xs font-bold uppercase" style={{ color: 'var(--teal)', letterSpacing: '0.05em' }}>Form Responses</p>
+                    <td colSpan={COLS.length} className="px-5 sm:pl-12 py-4" style={{ background: SUBTLE_BG, borderBottom: '1px solid var(--light-gray)' }}>
+                      <div className="space-y-3 max-w-4xl">
+                        <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--teal)' }}>Form Responses</p>
+                        <dl className="rounded-xl divide-y" style={{ ...CARD_STYLE, borderColor: 'var(--light-gray)' }}>
                         {(item.answers || []).map((a: any, i: number) => {
                           const title = getFieldTitle(item, a) || `Question ${i + 1}`
                           let value = a.text || ''
@@ -905,37 +1167,47 @@ function WaitlistTab({ branch }: { branch: string }) {
                           if (a.choices?.labels) value = a.choices.labels.filter(Boolean).join(', ')
                           if (a.choice?.label) value = a.choice.label
                           return (
-                            <div key={i} className="flex gap-2 text-xs">
-                              <span style={{ color: '#6B7280', fontWeight: 600, minWidth: 200 }}>{title}:</span>
-                              <span style={{ color: '#111827' }}>{value || '\u2014'}</span>
+                            <div key={i} className="grid sm:grid-cols-[220px_1fr] gap-x-4 gap-y-0.5 px-3.5 py-2 text-xs" style={{ borderColor: '#EEF2F1' }}>
+                              <dt style={{ color: 'var(--mid-gray)', fontWeight: 600 }}>{title}</dt>
+                              <dd className="break-words" style={{ color: value ? 'var(--charcoal)' : '#9CA3AF' }}>{value || '\u2014'}</dd>
                             </div>
                           )
                         })}
+                        </dl>
                         {/* What front desk actually needs off this panel: has
                             anyone chased this entry, what came of it, and who
                             to ask about it. */}
                         {declined && (
-                          <div className="mt-3 p-3 rounded-lg" style={{ background: '#FEF2F2', border: '1px solid #FECACA' }}>
-                            <p className="text-xs font-bold uppercase" style={{ color: '#B91C1C', letterSpacing: '0.05em' }}>
-                              Will no longer avail
-                            </p>
-                            <p className="text-xs mt-1" style={{ color: '#7F1D1D', whiteSpace: 'pre-wrap' }}>
-                              {item._followUp.remarks}
-                            </p>
-                            <p className="text-[11px] mt-1.5" style={{ color: '#9CA3AF' }}>
-                              {item._followUp.setByName ? `Tagged by ${item._followUp.setByName}` : 'Tagged'}
-                              {item._followUp.updatedAt
-                                ? ` · ${new Date(item._followUp.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
-                                : ''}
-                            </p>
+                          <div className="p-3.5 rounded-xl flex items-start gap-2.5" style={{ background: '#FEF2F2', border: '1px solid #FECACA' }}>
+                            <Ban size={14} className="flex-shrink-0 mt-0.5" style={{ color: '#DC2626' }} />
+                            <div className="min-w-0">
+                              <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color: '#B91C1C' }}>
+                                Will no longer avail
+                              </p>
+                              <p className="text-[13px] mt-1 leading-relaxed" style={{ color: '#7F1D1D', whiteSpace: 'pre-wrap' }}>
+                                {item._followUp.remarks}
+                              </p>
+                              <p className="text-[11px] mt-1.5" style={{ color: '#9F6B6B' }}>
+                                {item._followUp.setByName ? `Tagged by ${item._followUp.setByName}` : 'Tagged'}
+                                {item._followUp.updatedAt
+                                  ? ` · ${new Date(item._followUp.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
+                                  : ''}
+                              </p>
+                            </div>
                           </div>
                         )}
 
-                        <div className="mt-3 flex gap-2 flex-wrap">
+                        <div className="pt-1 flex gap-2 flex-wrap items-center">
+                          {!converted && (
+                            <button onClick={() => convertToPatient(item)} disabled={converting === item.landing_id}
+                              className={BTN_PRIMARY} style={{ background: 'var(--teal)' }}>
+                              {converting === item.landing_id ? <Loader2 size={13} className="animate-spin" /> : <Users size={13} />}
+                              Convert to Patient
+                            </button>
+                          )}
                           {!declined && (
                             <button onClick={() => openTagModal(item)}
-                              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold"
-                              style={{ background: '#FEE2E2', color: '#B91C1C', border: 'none', cursor: 'pointer' }}>
+                              className={BTN_SECONDARY} style={{ ...CONTROL_STYLE, color: '#B91C1C', borderColor: '#FECACA' }}>
                               <XCircle size={13} />
                               Will no longer avail
                             </button>
@@ -943,30 +1215,19 @@ function WaitlistTab({ branch }: { branch: string }) {
                           {declined && (
                             <>
                               <button onClick={() => openTagModal(item)}
-                                className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold"
-                                style={{ background: '#FEE2E2', color: '#B91C1C', border: 'none', cursor: 'pointer' }}>
+                                className={BTN_SECONDARY} style={{ ...CONTROL_STYLE, color: '#B91C1C', borderColor: '#FECACA' }}>
                                 <MessageSquare size={13} />
                                 Edit remarks
                               </button>
                               <button onClick={() => clearTag(item)}
-                                className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold"
-                                style={{ background: '#F3F4F6', color: '#374151', border: 'none', cursor: 'pointer' }}>
+                                className={BTN_SECONDARY} style={CONTROL_STYLE}>
                                 <Check size={13} />
                                 Remove tag
                               </button>
                             </>
                           )}
-                          {!converted && (
-                            <button onClick={() => convertToPatient(item)} disabled={converting === item.landing_id}
-                              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold"
-                              style={{ background: 'var(--teal)', color: '#fff', border: 'none', cursor: 'pointer', opacity: converting === item.landing_id ? 0.6 : 1 }}>
-                              {converting === item.landing_id ? <Loader2 size={13} className="animate-spin" /> : <Users size={13} />}
-                              Convert to Patient
-                            </button>
-                          )}
                           <button onClick={() => deleteResponse(item)} disabled={deleting === item.landing_id}
-                            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold"
-                            style={{ background: '#FEE2E2', color: '#DC2626', border: 'none', cursor: 'pointer' }}>
+                            className={`${BTN_SECONDARY} sm:ml-auto`} style={{ background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }}>
                             {deleting === item.landing_id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
                             Remove from Waitlist
                           </button>
@@ -980,62 +1241,53 @@ function WaitlistTab({ branch }: { branch: string }) {
             })}
           </tbody>
         </table>
-        <Pagination total={sorted.length} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
-      </div>
+      </TableCard>
 
       {/* Remarks prompt. A textarea rather than window.prompt(): these notes
           run to a sentence or two about what the family said, and a native
           prompt gives a single unreadable line with no room to correct it. */}
       {tagging && (
-        <div
-          onClick={() => !tagSaving && setTagging(null)}
-          style={{
-            position: 'fixed', inset: 0, background: 'rgba(17,24,39,0.45)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: 16,
-          }}>
-          <div onClick={e => e.stopPropagation()} className="rounded-xl"
-            style={{ background: '#fff', width: '100%', maxWidth: 440, boxShadow: '0 12px 40px rgba(0,0,0,0.18)' }}>
-            <div className="px-5 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid var(--light-gray)' }}>
-              <p className="text-sm font-bold" style={{ color: '#B91C1C' }}>Will no longer avail</p>
-              <button onClick={() => !tagSaving && setTagging(null)} aria-label="Close"
-                style={{ background: 'none', border: 0, cursor: 'pointer', color: '#9CA3AF', lineHeight: 0 }}>
-                <X size={16} />
-              </button>
-            </div>
-            <div className="px-5 py-4">
-              <p className="text-xs mb-2" style={{ color: '#6B7280' }}>
-                Marking <strong>{getName(tagging)}</strong>. Add what they said, so whoever
-                picks this up next knows it has been followed up.
-              </p>
-              <textarea
-                value={tagRemarks}
-                onChange={e => { setTagRemarks(e.target.value); if (tagError) setTagError('') }}
-                rows={4}
-                autoFocus
-                placeholder="e.g. Called 10/30 — enrolled closer to home, not pushing through."
-                style={{
-                  width: '100%', padding: '10px 12px', borderRadius: 10, fontSize: 13,
-                  border: `1.5px solid ${tagError ? '#DC2626' : '#e5e7eb'}`,
-                  color: '#24505a', outline: 'none', resize: 'vertical', fontFamily: 'inherit',
-                }}
-              />
-              {tagError && <p className="mt-1.5 text-xs" style={{ color: '#B91C1C' }}>{tagError}</p>}
-            </div>
-            <div className="px-5 pb-4 flex gap-2 justify-end">
-              <button onClick={() => setTagging(null)} disabled={tagSaving}
-                className="px-4 py-2 rounded-lg text-xs font-semibold"
-                style={{ background: '#F3F4F6', color: '#374151', border: 'none', cursor: 'pointer' }}>
-                Cancel
-              </button>
-              <button onClick={saveTag} disabled={tagSaving}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold"
-                style={{ background: '#B91C1C', color: '#fff', border: 'none', cursor: 'pointer', opacity: tagSaving ? 0.6 : 1 }}>
-                {tagSaving ? <Loader2 size={13} className="animate-spin" /> : <XCircle size={13} />}
-                Save
-              </button>
-            </div>
-          </div>
-        </div>
+        <ModalShell
+          zIndex={50}
+          tone="danger"
+          icon={<UserX size={16} />}
+          title="Will no longer avail"
+          subtitle={<>Marking <strong style={{ color: 'var(--charcoal)' }}>{getName(tagging)}</strong>. Add what they said, so whoever
+            picks this up next knows it has been followed up.</>}
+          onBackdrop={() => !tagSaving && setTagging(null)}
+          onClose={() => !tagSaving && setTagging(null)}
+          footer={<>
+            <button onClick={() => setTagging(null)} disabled={tagSaving}
+              className={BTN_SECONDARY} style={CONTROL_STYLE}>
+              Cancel
+            </button>
+            <button onClick={saveTag} disabled={tagSaving}
+              className={BTN_PRIMARY} style={{ background: '#B91C1C' }}>
+              {tagSaving ? <Loader2 size={13} className="animate-spin" /> : <XCircle size={13} />}
+              Save
+            </button>
+          </>}>
+          <label className={LABEL} style={{ color: 'var(--mid-gray)' }} htmlFor="wl-tag-remarks">Remarks</label>
+          <textarea
+            id="wl-tag-remarks"
+            value={tagRemarks}
+            onChange={e => { setTagRemarks(e.target.value); if (tagError) setTagError('') }}
+            rows={4}
+            autoFocus
+            placeholder="e.g. Called 10/30 — enrolled closer to home, not pushing through."
+            className="focus:border-[var(--teal)]"
+            style={{
+              width: '100%', padding: '10px 12px', borderRadius: 10, fontSize: 13, lineHeight: 1.5,
+              border: `1px solid ${tagError ? '#DC2626' : 'var(--light-gray)'}`,
+              color: 'var(--charcoal)', outline: 'none', resize: 'vertical', fontFamily: 'inherit',
+            }}
+          />
+          {tagError && (
+            <p className="mt-1.5 text-xs flex items-center gap-1" style={{ color: '#B91C1C' }} role="alert">
+              <AlertTriangle size={12} /> {tagError}
+            </p>
+          )}
+        </ModalShell>
       )}
     </div>
   )
@@ -1081,15 +1333,17 @@ function FollowUpTab({ branch }: { branch: string }) {
   // Filter row starts hidden: most visits to this tab are a quick look, and a
   // row of empty inputs above every table would be permanent clutter.
   const [showFilters, setShowFilters] = useState(false)
+  // Display only — see WaitlistTab.
+  const [loadError, setLoadError] = useState('')
 
   useEffect(() => {
-    setLoading(true); setPage(1)
+    setLoading(true); setPage(1); setLoadError('')
     const params = new URLSearchParams({ tab: 'followup', dept })
     if (branch) params.set('branch', branch)
     fetch(`/api/patient-relationship?${params}`)
       .then(r => r.json())
-      .then(d => { setPatients(d.patients || []); setSummary(d.summary); setLoading(false) })
-      .catch(() => setLoading(false))
+      .then(d => { setPatients(d.patients || []); setSummary(d.summary); setLoadError(d?.error || ''); setLoading(false) })
+      .catch(() => { setLoadError('Could not load follow-ups.'); setLoading(false) })
   }, [branch, dept])
 
   const filtered = search
@@ -1113,88 +1367,81 @@ function FollowUpTab({ branch }: { branch: string }) {
   const { sorted, sortKey, sortDir, toggle } = useSort(COLS, colFiltered)
   const paginated = sorted.slice((page - 1) * perPage, page * perPage)
 
+  // Already counted by the API (summary) and already on the rows (reminderSentAt).
+  const sentCount = patients.filter((p: any) => !!p.reminderSentAt).length
+
   return (
     <div className="space-y-4">
       {/* Dept sub-tabs */}
-      <div className="flex gap-1 p-1 rounded-lg" style={{ background: '#F1F5F9' }}>
-        {DEPT_TABS.map(d => (
-          <button key={d.key} onClick={() => setDept(d.key)}
-            className="px-3 py-1.5 rounded-md text-xs font-semibold"
-            style={{
-              background: dept === d.key ? '#fff' : 'transparent',
-              color: dept === d.key ? 'var(--teal)' : '#64748B',
-              border: 'none', cursor: 'pointer', flex: 1,
-              boxShadow: dept === d.key ? '0 1px 2px rgba(0,0,0,0.08)' : 'none',
-            }}>{d.label}</button>
-        ))}
-      </div>
+      <Segmented label="Department" items={DEPT_TABS} value={dept} onChange={setDept} />
 
       {/* Reminder note */}
-      <div className="rounded-lg p-3 flex items-start gap-2" style={{ background: '#EFF6FF', border: '1px solid #BFDBFE' }}>
-        <Calendar size={16} style={{ color: '#1D4ED8', marginTop: 1, flexShrink: 0 }} />
-        <p className="text-xs" style={{ color: '#1E40AF', fontWeight: 500 }}>{DEPT_NOTES[dept] || ''}</p>
+      <Callout tone="info" icon={<Calendar size={14} />}>
+        <span className="font-medium">{DEPT_NOTES[dept] || ''}</span>
+      </Callout>
+
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        {[
+          { label: 'Due', value: summary?.due, color: '#DC2626', icon: <AlertTriangle size={15} />, sub: 'Due now' },
+          { label: 'Overdue', value: summary?.overdue, color: '#991B1B', icon: <AlertTriangle size={15} />, sub: 'Past the interval' },
+          { label: 'Upcoming', value: summary?.upcoming, color: '#D97706', icon: <Clock size={15} />, sub: 'Coming up' },
+          { label: 'On Track', value: summary?.ok, color: '#15803D', icon: <CheckCircle size={15} />, sub: 'Nothing needed yet' },
+        ].map(c => (
+          <KpiCard key={c.label} label={c.label} accent={c.color} icon={c.icon} sub={c.sub}
+            value={loading || !summary ? '—' : <span style={{ color: c.value ? c.color : 'var(--charcoal)' }}>{Number(c.value ?? 0).toLocaleString()}</span>} />
+        ))}
+        <KpiCard label="SMS sent" accent="var(--teal)" icon={<Send size={15} />} sub={`of ${patients.length.toLocaleString()} in ${DEPT_TABS.find(d => d.key === dept)?.label ?? dept}`}
+          value={loading ? '—' : sentCount.toLocaleString()} />
       </div>
 
-      {summary && (
-        <div className="flex gap-3">
-          {[
-            { label: 'Due', value: summary.due, color: '#DC2626' },
-            { label: 'Overdue', value: summary.overdue, color: '#991B1B' },
-            { label: 'Upcoming', value: summary.upcoming, color: '#D97706' },
-            { label: 'On Track', value: summary.ok, color: '#15803D' },
-          ].map(c => (
-            <div key={c.label} className="flex items-center gap-1.5 text-xs font-semibold" style={{ color: c.color }}>
-              <span className="text-lg font-bold">{c.value}</span> {c.label}
-            </div>
-          ))}
-        </div>
-      )}
+      {loadError && <LoadError message={loadError} />}
 
-      <div className="flex items-center gap-3 flex-wrap">
-        <input type="text" placeholder="Search by name..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} style={{ ...selectStyle, flex: 1, minWidth: 220, maxWidth: 400 }} />
+      <div className="flex items-center gap-2.5 flex-wrap">
+        <SearchBox value={search} onChange={v => { setSearch(v); setPage(1) }} />
         <FilterToggle open={showFilters} onToggle={() => setShowFilters(v => !v)} activeCount={activeCount} onClear={clearAll} />
+        <ResultCount shown={sorted.length} total={patients.length} noun={patients.length === 1 ? 'patient' : 'patients'} loading={loading} />
       </div>
 
-      {loading ? <Loading /> : (
-        <div className="rounded-xl overflow-hidden" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
-          <div style={{ overflowX: 'auto' }}>
-            <table className="w-full text-left" style={{ fontSize: '0.82rem' }}>
-              <thead>
-                <SortHeaders cols={COLS} sortKey={sortKey} sortDir={sortDir} onToggle={toggle} />
-                {showFilters && <FilterRow cols={COLS} rows={filtered} filters={filters} setFilter={setFilter} />}
-              </thead>
-              <tbody>
-                {paginated.length === 0 ? (
-                  <tr><td colSpan={7} className="text-center py-10" style={{ color: '#9ca3af' }}>{activeCount > 0 ? 'No patients match these filters.' : 'No patients in this department.'}</td></tr>
-                ) : paginated.map((p: any) => {
-                  const sc = statusConfig[p.status] || statusConfig.ok
-                  const Icon = sc.icon
-                  return (
-                    <tr key={p.id} style={{ borderBottom: '1px solid #F3F4F6' }}>
-                      <td className="px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>{p.lastName}, {p.firstName}</td>
-                      <td className="px-4 py-3" style={{ color: '#374151' }}>{p.clinicianName}</td>
-                      <td className="px-4 py-3" style={{ color: '#374151' }}>{new Date(p.firstSessionDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
-                      <td className="px-4 py-3">
-                        <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ background: p.referenceSource === 'consult' ? '#EFF6FF' : '#F0FDF4', color: p.referenceSource === 'consult' ? '#1D4ED8' : '#15803D' }}>
-                          {p.referenceSource === 'consult' ? 'Dr. Consult' : '1st Session'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 font-semibold" style={{ color: '#374151' }}>{p.daysSince}d</td>
-                      <td className="px-4 py-3">
-                        <span className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full font-semibold" style={{ background: sc.bg, color: sc.color, border: `1px solid ${sc.border}` }}>
-                          <Icon size={12} />{sc.label}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3"><FollowUpContactBtns patient={p} department={dept} onSent={(sentAt) => setPatients(prev => prev.map(x => x.id === p.id ? { ...x, reminderSentAt: sentAt } : x))} /></td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-          <Pagination total={sorted.length} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
-        </div>
-      )}
+      <TableCard
+        footer={<Pagination total={sorted.length} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />}>
+        <table className="w-full text-left min-w-[820px]" style={{ fontSize: '0.82rem' }}>
+          <thead style={THEAD_STYLE}>
+            <SortHeaders cols={COLS} sortKey={sortKey} sortDir={sortDir} onToggle={toggle} />
+            {showFilters && <FilterRow cols={COLS} rows={filtered} filters={filters} setFilter={setFilter} />}
+          </thead>
+          <tbody>
+            {loading ? <SkeletonRows cols={COLS.length} /> : paginated.length === 0 ? (
+              <tr><td colSpan={COLS.length}>
+                {activeCount > 0
+                  ? <EmptyState title="No patients match these filters." hint="Loosen a column filter, or reset them all." />
+                  : <EmptyState title="No patients in this department." hint={search ? 'Nothing here matches that name.' : 'Patients appear here once they are due a follow-up check.'} />}
+              </td></tr>
+            ) : paginated.map((p: any) => {
+              const sc = statusConfig[p.status] || statusConfig.ok
+              const Icon = sc.icon
+              return (
+                <tr key={p.id} className="align-middle hover:bg-[#F8FAF9] transition-colors" style={{ borderBottom: ROW_RULE }}>
+                  <td className="px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>{p.lastName}, {p.firstName}</td>
+                  <td className="px-4 py-3" style={{ color: 'var(--charcoal)' }}>{p.clinicianName || <span style={{ color: '#9CA3AF' }}>&mdash;</span>}</td>
+                  <td className="px-4 py-3 whitespace-nowrap" style={{ color: 'var(--charcoal)', fontVariantNumeric: 'tabular-nums' }}>{fmtDay(p.firstSessionDate)}</td>
+                  <td className="px-4 py-3">
+                    <Badge bg={p.referenceSource === 'consult' ? '#EFF6FF' : '#F0FDF4'} fg={p.referenceSource === 'consult' ? '#1D4ED8' : '#15803D'}>
+                      {p.referenceSource === 'consult' ? 'Dr. Consult' : '1st Session'}
+                    </Badge>
+                  </td>
+                  <td className="px-4 py-3 font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)', fontVariantNumeric: 'tabular-nums' }}>
+                    {p.daysSince}<span className="text-[11px] font-normal ml-0.5" style={{ color: 'var(--mid-gray)' }}>d</span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <Badge bg={sc.bg} fg={sc.color}><Icon size={11} />{sc.label}</Badge>
+                  </td>
+                  <td className="px-4 py-3"><FollowUpContactBtns patient={p} department={dept} onSent={(sentAt) => setPatients(prev => prev.map(x => x.id === p.id ? { ...x, reminderSentAt: sentAt } : x))} /></td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </TableCard>
     </div>
   )
 }
@@ -1218,15 +1465,17 @@ function NoShowTab({ branch }: { branch: string }) {
   const [logForm, setLogForm] = useState<{ patientId: string; remarks: string } | null>(null)
   const [logSaving, setLogSaving] = useState(false)
   const [deleting, setDeleting] = useState<{ logId: string; reason: string } | null>(null)
+  // Display only — see WaitlistTab.
+  const [loadError, setLoadError] = useState('')
 
   const fetchData = useCallback(() => {
-    setLoading(true)
+    setLoading(true); setLoadError('')
     const params = new URLSearchParams({ tab: 'noshow' })
     if (branch) params.set('branch', branch)
     fetch(`/api/patient-relationship?${params}`)
       .then(r => r.json())
-      .then(d => { setPatients(d.patients || []); setLoading(false) })
-      .catch(() => setLoading(false))
+      .then(d => { setPatients(d.patients || []); setLoadError(d?.error || ''); setLoading(false) })
+      .catch(() => { setLoadError('Could not load no-shows.'); setLoading(false) })
   }, [branch])
 
   useEffect(() => { fetchData() }, [fetchData])
@@ -1269,105 +1518,136 @@ function NoShowTab({ branch }: { branch: string }) {
     else alert('Failed to delete')
   }
 
-  if (loading) return <Loading />
+  // KPI strip — off the rows already loaded.
+  const atLimitCount = patients.filter((p: any) => p.noShowCount >= MAX_NOSHOWS).length
+  const nearingCount = patients.filter((p: any) => p.noShowCount === MAX_NOSHOWS - 1).length
+  const totalNoShows = patients.reduce((n: number, p: any) => n + Number(p.noShowCount ?? 0), 0)
+  // The list reloads after every log/delete; keep the rows (dimmed) rather than
+  // blanking the table, so the open patient stays open in place.
+  const firstLoad = loading && patients.length === 0
 
   return (
     <div className="space-y-4">
-      <div className="rounded-lg p-3 text-xs" style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#991B1B' }}>
+      <Callout tone="danger" icon={<AlertTriangle size={14} />}>
         Patients are allowed a maximum of <strong>{MAX_NOSHOWS} no-shows</strong>. Upon reaching {MAX_NOSHOWS}/{MAX_NOSHOWS}, the patient is <strong>subject to slot removal</strong>.
+      </Callout>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <KpiCard label="Patients with no-shows" value={firstLoad ? '—' : patients.length.toLocaleString()} icon={<Users size={15} />} />
+        <KpiCard label="No-shows logged" value={firstLoad ? '—' : totalNoShows.toLocaleString()} sub="Across these patients" accent="#64748B" icon={<FileText size={15} />} />
+        <KpiCard label={`Nearing (${MAX_NOSHOWS - 1}/${MAX_NOSHOWS})`} value={firstLoad ? '—' : <span style={{ color: nearingCount ? '#D97706' : undefined }}>{nearingCount.toLocaleString()}</span>}
+          sub="One more and the slot is at risk" accent="#D97706" icon={<Clock size={15} />} />
+        <KpiCard label="Subject to slot removal" value={firstLoad ? '—' : <span style={{ color: atLimitCount ? '#DC2626' : undefined }}>{atLimitCount.toLocaleString()}</span>}
+          sub={`At ${MAX_NOSHOWS}/${MAX_NOSHOWS}`} accent="#DC2626" icon={<AlertTriangle size={15} />} />
       </div>
 
-      <div className="flex items-center gap-3 flex-wrap">
-        <input type="text" placeholder="Search by name..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} style={{ ...selectStyle, flex: 1, minWidth: 220, maxWidth: 400 }} />
+      {loadError && <LoadError message={loadError} onRetry={fetchData} />}
+
+      <div className="flex items-center gap-2.5 flex-wrap">
+        <SearchBox value={search} onChange={v => { setSearch(v); setPage(1) }} />
         <FilterToggle open={showFilters} onToggle={() => setShowFilters(v => !v)} activeCount={activeCount} onClear={clearAll} />
+        <ResultCount shown={sorted.length} total={patients.length} noun={patients.length === 1 ? 'patient' : 'patients'} loading={loading} />
       </div>
 
-      <div className="rounded-xl overflow-hidden" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
-        <table className="w-full text-left" style={{ fontSize: '0.82rem' }}>
-          <thead>
+      <TableCard dim={loading && !firstLoad}
+        footer={<Pagination total={sorted.length} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />}>
+        <table className="w-full text-left min-w-[560px]" style={{ fontSize: '0.82rem' }}>
+          <thead style={THEAD_STYLE}>
             <SortHeaders cols={COLS} sortKey={sortKey} sortDir={sortDir} onToggle={toggle} />
             {showFilters && <FilterRow cols={COLS} rows={filtered} filters={filters} setFilter={setFilter} />}
           </thead>
           <tbody>
-            {paginated.length === 0 ? (
-              <tr><td colSpan={4} className="text-center py-10" style={{ color: '#9ca3af' }}>{activeCount > 0 ? 'No patients match these filters.' : 'No patients found.'}</td></tr>
+            {firstLoad ? <SkeletonRows cols={COLS.length} /> : paginated.length === 0 ? (
+              <tr><td colSpan={4}>
+                {activeCount > 0
+                  ? <EmptyState title="No patients match these filters." hint="Loosen a column filter, or reset them all." />
+                  : <EmptyState title="No patients found." hint={search ? 'Nothing here matches that name.' : 'Patients appear here once a no-show is logged.'} />}
+              </td></tr>
             ) : paginated.map((p: any) => {
               const isExpanded = expandedId === p.id
               const atLimit = p.noShowCount >= MAX_NOSHOWS
               const nearing = p.noShowCount === MAX_NOSHOWS - 1
-              const rowColor = atLimit ? '#FEF2F2' : nearing ? '#FFFBEB' : undefined
+              const rowColor = atLimit ? '#FEF6F6' : nearing ? '#FFFCF0' : isExpanded ? SUBTLE_BG : undefined
               const textColor = atLimit ? '#DC2626' : nearing ? '#D97706' : 'var(--charcoal)'
               return (
                 <Fragment key={p.id}>
-                  <tr style={{ borderBottom: '1px solid #F3F4F6', cursor: 'pointer', background: rowColor }}
-                    onClick={() => setExpandedId(isExpanded ? null : p.id)}>
-                    <td className="px-4 py-3" style={{ width: 30 }}>
+                  <tr className={`align-middle transition-colors ${rowColor ? '' : 'hover:bg-[#F8FAF9]'}`}
+                    style={{ borderBottom: ROW_RULE, cursor: 'pointer', background: rowColor,
+                             boxShadow: atLimit ? 'inset 3px 0 0 #F87171' : nearing ? 'inset 3px 0 0 #FBBF24' : undefined }}
+                    onClick={() => setExpandedId(isExpanded ? null : p.id)} aria-expanded={isExpanded}>
+                    <td className="pl-4 pr-1 py-3" style={{ width: 32, color: 'var(--mid-gray)' }}>
                       {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                     </td>
-                    <td className="px-4 py-3 font-semibold" style={{ color: textColor }}>
-                      {p.lastName}, {p.firstName}
-                      {atLimit && <span className="ml-2 text-xs px-2 py-0.5 rounded-full font-bold" style={{ background: '#FEE2E2', color: '#DC2626' }}>SUBJECT TO SLOT REMOVAL</span>}
-                    </td>
-                    <td className="px-4 py-3" style={{ color: '#6B7280' }}>{branchLabel(p.branch)}</td>
                     <td className="px-4 py-3">
-                      <span className="text-sm font-bold" style={{ color: textColor }}>{p.noShowCount}</span>
-                      <span className="text-xs ml-1" style={{ color: '#9ca3af' }}>/ {MAX_NOSHOWS}</span>
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <span className="font-semibold" style={{ color: textColor }}>{p.lastName}, {p.firstName}</span>
+                        {atLimit && <Badge bg="#FEE2E2" fg="#DC2626" strong caps>Subject to slot removal</Badge>}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3"><BranchBadge branch={p.branch} /></td>
+                    <td className="px-4 py-3">
+                      <CountMeter used={Number(p.noShowCount ?? 0)} max={MAX_NOSHOWS} color={textColor} />
                     </td>
                   </tr>
                   {isExpanded && (
                     <tr key={p.id + '-detail'}>
-                      <td colSpan={4} className="px-6 py-4" style={{ background: '#FAFBFC' }}>
-                        <div className="space-y-3">
-                          <div className="flex items-center justify-between">
-                            <p className="text-xs font-bold uppercase" style={{ color: 'var(--teal)', letterSpacing: '0.05em' }}>No-Show Logs</p>
+                      <td colSpan={4} className="px-5 sm:pl-12 py-4" style={{ background: SUBTLE_BG, borderBottom: '1px solid var(--light-gray)' }}>
+                        <div className="space-y-3 max-w-3xl">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--teal)' }}>No-Show Logs</p>
                             <button onClick={() => setLogForm({ patientId: p.id, remarks: '' })}
-                              className="text-xs px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1"
-                              style={{ background: 'var(--teal)', color: '#fff', border: 'none', cursor: 'pointer' }}>
-                              + Log No-Show
+                              className={BTN_SM} style={{ background: 'var(--teal)', color: '#fff' }}>
+                              <Plus size={13} /> Log No-Show
                             </button>
                           </div>
 
                           {logForm?.patientId === p.id && (
-                            <div className="rounded-lg p-3 space-y-2" style={{ background: '#fff', border: '1px solid #E2E8F0' }}>
-                              <input type="text" placeholder="Remarks (optional)" value={logForm.remarks} onChange={e => setLogForm({ ...logForm, remarks: e.target.value })} style={{ ...selectStyle, width: '100%' }} />
-                              <div className="flex gap-2">
-                                <button onClick={saveLog} disabled={logSaving} className="text-xs px-3 py-1.5 rounded-lg font-semibold"
-                                  style={{ background: 'var(--teal)', color: '#fff', border: 'none', cursor: 'pointer' }}>
+                            <div className="rounded-xl p-3.5 space-y-3" style={CARD_STYLE}>
+                              <div>
+                                <label className={LABEL} style={{ color: 'var(--mid-gray)' }} htmlFor={`ns-remarks-${p.id}`}>Remarks</label>
+                                <input id={`ns-remarks-${p.id}`} type="text" placeholder="Remarks (optional)" value={logForm!.remarks}
+                                  onChange={e => setLogForm({ ...logForm!, remarks: e.target.value })}
+                                  className={`${CONTROL} w-full`} style={CONTROL_STYLE} />
+                              </div>
+                              <div className="flex gap-2 justify-end">
+                                <button onClick={() => setLogForm(null)} className={BTN_SM} style={CONTROL_STYLE}>Cancel</button>
+                                <button onClick={saveLog} disabled={logSaving} className={BTN_SM} style={{ background: 'var(--teal)', color: '#fff' }}>
+                                  {logSaving && <Loader2 size={12} className="animate-spin" />}
                                   {logSaving ? 'Saving...' : 'Save'}
                                 </button>
-                                <button onClick={() => setLogForm(null)} className="text-xs px-3 py-1.5 rounded-lg font-semibold"
-                                  style={{ background: '#fff', color: '#6B7280', border: '1px solid #d1d5db', cursor: 'pointer' }}>Cancel</button>
                               </div>
                             </div>
                           )}
 
                           {p.logs.length === 0 ? (
-                            <p className="text-xs" style={{ color: '#9ca3af' }}>No no-show logs yet.</p>
+                            <p className="text-xs rounded-xl px-3.5 py-3" style={{ ...CARD_STYLE, color: 'var(--mid-gray)' }}>No no-show logs yet.</p>
                           ) : (
-                            <div className="space-y-2">
-                              {p.logs.map((log: any) => (
-                                <div key={log.id} className="rounded-lg p-3 flex flex-wrap items-center gap-3 text-xs"
+                            <div className="rounded-xl overflow-hidden" style={CARD_STYLE}>
+                              {p.logs.map((log: any, i: number) => (
+                                <div key={log.id} className="px-3.5 py-2.5 flex items-start gap-3 text-xs"
                                   style={{
+                                    borderTop: i === 0 ? undefined : ROW_RULE,
                                     background: log.deletedAt ? '#F9FAFB' : '#fff',
-                                    border: `1px solid ${log.deletedAt ? '#E5E7EB' : '#E2E8F0'}`,
                                     opacity: log.deletedAt ? 0.6 : 1,
                                   }}>
                                   <div className="flex-1 min-w-0">
-                                    <span className="font-semibold px-2 py-0.5 rounded-full" style={{ background: '#FEF2F2', color: '#DC2626' }}>No-Show</span>
-                                    <span className="ml-2" style={{ color: '#6B7280' }}>
-                                      {new Date(log.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                                    </span>
-                                    {log.remarks && <span className="ml-2" style={{ color: '#9ca3af' }}>- {log.remarks}</span>}
-                                    {log.deletedAt && (
-                                      <span className="ml-2 text-xs" style={{ color: '#DC2626' }}>
-                                        DELETED by {log.deletedBy} ({log.deleteReason || 'no reason'})
-                                      </span>
+                                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                      <Badge bg="#FEF2F2" fg="#DC2626">No-Show</Badge>
+                                      <span style={{ color: 'var(--mid-gray)', fontVariantNumeric: 'tabular-nums' }}>{fmtDay(log.createdAt)}</span>
+                                      {log.deletedAt && (
+                                        <span style={{ color: '#DC2626', fontWeight: 600 }}>
+                                          DELETED by {log.deletedBy} ({log.deleteReason || 'no reason'})
+                                        </span>
+                                      )}
+                                    </div>
+                                    {log.remarks && (
+                                      <p className="mt-1 leading-relaxed break-words" style={{ color: 'var(--charcoal)' }}>{log.remarks}</p>
                                     )}
                                   </div>
                                   {!log.deletedAt && (
                                     <button onClick={(e) => { e.stopPropagation(); setDeleting({ logId: log.id, reason: '' }) }}
-                                      className="inline-flex items-center justify-center w-7 h-7 rounded-lg"
-                                      style={{ background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA', cursor: 'pointer' }}>
+                                      className={ICON_BTN} title="Delete log" aria-label="Delete log"
+                                      style={{ background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }}>
                                       <Trash2 size={13} />
                                     </button>
                                   )}
@@ -1384,26 +1664,13 @@ function NoShowTab({ branch }: { branch: string }) {
             })}
           </tbody>
         </table>
-        <Pagination total={sorted.length} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
-      </div>
+      </TableCard>
 
       {/* Delete confirmation modal */}
       {deleting && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ background: '#fff', borderRadius: 12, padding: 24, maxWidth: 400, width: '90%' }}>
-            <h3 className="text-sm font-bold mb-3" style={{ color: 'var(--charcoal)' }}>Delete No-Show Log</h3>
-            <p className="text-xs mb-3" style={{ color: '#6B7280' }}>Please provide a reason for deletion. This will be tracked.</p>
-            <textarea value={deleting.reason} onChange={e => setDeleting({ ...deleting, reason: e.target.value })}
-              placeholder="Reason for deletion..." rows={3}
-              style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: '0.83rem', boxSizing: 'border-box', fontFamily: 'inherit' }} />
-            <div className="flex gap-2 mt-3 justify-end">
-              <button onClick={() => setDeleting(null)} className="text-xs px-3 py-1.5 rounded-lg font-semibold"
-                style={{ background: '#fff', color: '#6B7280', border: '1px solid #d1d5db', cursor: 'pointer' }}>Cancel</button>
-              <button onClick={deleteLog} disabled={!deleting.reason.trim()} className="text-xs px-3 py-1.5 rounded-lg font-semibold"
-                style={{ background: deleting.reason.trim() ? '#DC2626' : '#ccc', color: '#fff', border: 'none', cursor: deleting.reason.trim() ? 'pointer' : 'not-allowed' }}>Delete</button>
-            </div>
-          </div>
-        </div>
+        <DeleteLogModal title="Delete No-Show Log" reason={deleting.reason}
+          onReason={reason => setDeleting({ ...deleting, reason })}
+          onCancel={() => setDeleting(null)} onDelete={deleteLog} />
       )}
     </div>
   )
@@ -1441,15 +1708,17 @@ function CancellationTab({ branch }: { branch: string }) {
   // Whether the POS fee check ran, and what it matched on. Drives the difference
   // between "fee unpaid" and "we couldn't check".
   const [feeLookup, setFeeLookup] = useState<{ ok: boolean; patterns?: string[]; matched?: number } | null>(null)
+  // Display only — see WaitlistTab.
+  const [loadError, setLoadError] = useState('')
 
   const fetchData = useCallback(() => {
-    setLoading(true)
+    setLoading(true); setLoadError('')
     const params = new URLSearchParams({ tab: 'cancellation' })
     if (branch) params.set('branch', branch)
     fetch(`/api/patient-relationship?${params}`)
       .then(r => r.json())
-      .then(d => { setPatients(d.patients || []); setFeeLookup(d.feeLookup ?? null); setLoading(false) })
-      .catch(() => setLoading(false))
+      .then(d => { setPatients(d.patients || []); setFeeLookup(d.feeLookup ?? null); setLoadError(d?.error || ''); setLoading(false) })
+      .catch(() => { setLoadError('Could not load cancellations.'); setLoading(false) })
   }, [branch])
 
   useEffect(() => { fetchData() }, [fetchData])
@@ -1535,51 +1804,77 @@ function CancellationTab({ branch }: { branch: string }) {
     return () => clearInterval(interval)
   }, [qrModal, qrUploaded, branch, fetchData])
 
-  if (loading) return <Loading />
+  // KPI strip — off the rows already loaded (fee status is already on each log).
+  const feeAppliesCount = patients.filter((p: any) => (p.windowUsed ?? 0) >= 2).length
+  const nearingSlotCount = patients.filter((p: any) => p.cancellationsUsed >= 10 && p.cancellationsUsed < 12).length
+  const atSlotCount = patients.filter((p: any) => p.cancellationsUsed >= 12).length
+  const unpaidFeeCount = patients.reduce((n: number, p: any) =>
+    n + (p.logs || []).filter((l: any) => !l.deletedAt && l.feeBearing && !l.feePaid).length, 0)
+  // Reloads after every log, upload and delete; keep the rows (dimmed) rather
+  // than blanking the table, so the open patient stays open in place.
+  const firstLoad = loading && patients.length === 0
 
   return (
     <div className="space-y-4">
-      <div className="rounded-lg p-3 text-xs" style={{ background: '#FFFBEB', border: '1px solid #FDE68A', color: '#92400E' }}>
-        <strong>Free Allowance:</strong> Each patient gets <strong>2 free cancellations</strong> in any <strong>rolling 6-month period</strong> &mdash; counted over the last 180 days, so older logs age out. After that, a cancellation fee applies.<br />
-        <strong>Not counted:</strong> reschedules, and any cancellation front desk waived when logging it (the reason is shown on the log).<br />
-        <strong>Fees:</strong> owed from the <strong>3rd cancellation onward</strong> in the window; paid/unpaid is read from POS orders in the Accounting Hub.<br />
-        <strong>Slot Removal:</strong> Upon reaching <strong>12 total cancellations</strong>, the patient is subject to slot removal.
-      </div>
+      <Callout tone="warn" icon={<Info size={14} />}>
+        <ul className="grid gap-x-6 gap-y-1.5 md:grid-cols-2">
+          <li><strong>Free Allowance:</strong> Each patient gets <strong>2 free cancellations</strong> in any <strong>rolling 6-month period</strong> &mdash; counted over the last 180 days, so older logs age out. After that, a cancellation fee applies.</li>
+          <li><strong>Not counted:</strong> reschedules, and any cancellation front desk waived when logging it (the reason is shown on the log).</li>
+          <li><strong>Fees:</strong> owed from the <strong>3rd cancellation onward</strong> in the window; paid/unpaid is read from POS orders in the Accounting Hub.</li>
+          <li><strong>Slot Removal:</strong> Upon reaching <strong>12 total cancellations</strong>, the patient is subject to slot removal.</li>
+        </ul>
+      </Callout>
 
       {/* If the lookup ran but matched NOTHING, every fee-bearing row would read
           "unpaid" — which looks like a fact and isn't. Far more likely the POS
           line is named something this doesn't recognise. Say so loudly rather
           than letting front desk chase patients who already paid. */}
       {feeLookup?.ok && feeLookup.matched === 0 && (
-        <div className="rounded-lg px-3 py-2 text-xs" style={{ background: '#FFFBEB', border: '1px solid #FDE68A', color: '#92400E' }}>
+        <Callout tone="warn" icon={<AlertTriangle size={14} />}>
           <strong>No cancellation-fee lines found in POS.</strong> Fee status below may be wrong &mdash;
           treat &quot;unpaid&quot; as unverified until this is sorted. Looked for order lines named{' '}
           {(feeLookup.patterns ?? []).map(x => `"${x}"`).join(', ') || '(none configured)'}. If your POS calls it
           something else, set <code>FEE_NAME_PATTERN</code> on the Accounting Hub to match.
-        </div>
+        </Callout>
       )}
       {feeLookup?.ok === false && (
-        <div className="rounded-lg px-3 py-2 text-xs" style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', color: '#475569' }}>
+        <Callout tone="neutral" icon={<Info size={14} />}>
           Could not reach the Accounting Hub, so fee payments were not checked. Rows show
           &quot;not checked&quot; rather than unpaid.
-        </div>
+        </Callout>
       )}
 
-      <div className="flex items-center gap-3 flex-wrap">
-        <input type="text" placeholder="Search by name..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} style={{ ...selectStyle, flex: 1, minWidth: 220, maxWidth: 400 }} />
-        <FilterToggle open={showFilters} onToggle={() => setShowFilters(v => !v)} activeCount={activeCount} onClear={clearAll} />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <KpiCard label="Patients with logs" value={firstLoad ? '—' : patients.length.toLocaleString()} icon={<Users size={15} />} />
+        <KpiCard label="Fee applies" value={firstLoad ? '—' : <span style={{ color: feeAppliesCount ? '#DC2626' : undefined }}>{feeAppliesCount.toLocaleString()}</span>}
+          sub="Free allowance used up (2/2)" accent="#DC2626" icon={<AlertTriangle size={15} />} />
+        <KpiCard label="Fees unpaid" value={firstLoad ? '—' : feeLookup?.ok === false ? <span style={{ color: 'var(--mid-gray)' }}>—</span> : unpaidFeeCount.toLocaleString()}
+          sub={feeLookup?.ok === false ? 'Not checked — Accounting Hub unreachable' : 'Fee-bearing logs with no POS payment'} accent="#B45309" icon={<FileText size={15} />} />
+        <KpiCard label="Slot removal" value={firstLoad ? '—' : <span style={{ color: atSlotCount ? '#DC2626' : undefined }}>{atSlotCount.toLocaleString()}</span>}
+          sub={`${nearingSlotCount.toLocaleString()} nearing (10–11 of 12)`} accent="#D97706" icon={<XCircle size={15} />} />
       </div>
 
-      <div className="rounded-xl overflow-hidden" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
-        <table className="w-full text-left" style={{ fontSize: '0.82rem' }}>
-          <thead>
+      {loadError && <LoadError message={loadError} onRetry={fetchData} />}
+
+      <div className="flex items-center gap-2.5 flex-wrap">
+        <SearchBox value={search} onChange={v => { setSearch(v); setPage(1) }} />
+        <FilterToggle open={showFilters} onToggle={() => setShowFilters(v => !v)} activeCount={activeCount} onClear={clearAll} />
+        <ResultCount shown={sorted.length} total={patients.length} noun={patients.length === 1 ? 'patient' : 'patients'} loading={loading} />
+      </div>
+
+      <TableCard dim={loading && !firstLoad}
+        footer={<Pagination total={sorted.length} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />}>
+        <table className="w-full text-left min-w-[680px]" style={{ fontSize: '0.82rem' }}>
+          <thead style={THEAD_STYLE}>
             <SortHeaders cols={COLS} sortKey={sortKey} sortDir={sortDir} onToggle={toggle} />
             {showFilters && <FilterRow cols={COLS} rows={filtered} filters={filters} setFilter={setFilter} />}
           </thead>
           <tbody>
-            {paginated.length === 0 ? (
-              <tr><td colSpan={5} className="text-center py-10" style={{ color: '#9ca3af' }}>
-                {activeCount > 0 ? 'No patients match these filters.' : 'No patients found.'}
+            {firstLoad ? <SkeletonRows cols={COLS.length} /> : paginated.length === 0 ? (
+              <tr><td colSpan={5}>
+                {activeCount > 0
+                  ? <EmptyState title="No patients match these filters." hint="Loosen a column filter, or reset them all." />
+                  : <EmptyState title="No patients found." hint={search ? 'Nothing here matches that name.' : 'Patients appear here once a cancellation is logged.'} />}
               </td></tr>
             ) : paginated.map((p: any) => {
               const isExpanded = expandedId === p.id
@@ -1587,41 +1882,44 @@ function CancellationTab({ branch }: { branch: string }) {
               const nearingSlot = p.cancellationsUsed >= 10 && p.cancellationsUsed < 12
               const freeUsed = p.windowUsed ?? 0
               const freeGone = freeUsed >= 2
-              const rowColor = atSlotLimit ? '#FEF2F2' : nearingSlot ? '#FFFBEB' : undefined
+              const rowColor = atSlotLimit ? '#FEF6F6' : nearingSlot ? '#FFFCF0' : isExpanded ? SUBTLE_BG : undefined
               const slotColor = atSlotLimit ? '#DC2626' : nearingSlot ? '#D97706' : 'var(--charcoal)'
               const freeColor = freeGone ? '#DC2626' : freeUsed === 1 ? '#D97706' : '#16a34a'
               return (
                 <Fragment key={p.id}>
-                  <tr style={{ borderBottom: '1px solid #F3F4F6', cursor: 'pointer', background: rowColor }}
-                    onClick={() => setExpandedId(isExpanded ? null : p.id)}>
-                    <td className="px-4 py-3" style={{ width: 30 }}>
+                  <tr className={`align-middle transition-colors ${rowColor ? '' : 'hover:bg-[#F8FAF9]'}`}
+                    style={{ borderBottom: ROW_RULE, cursor: 'pointer', background: rowColor,
+                             boxShadow: atSlotLimit ? 'inset 3px 0 0 #F87171' : nearingSlot ? 'inset 3px 0 0 #FBBF24' : undefined }}
+                    onClick={() => setExpandedId(isExpanded ? null : p.id)} aria-expanded={isExpanded}>
+                    <td className="pl-4 pr-1 py-3" style={{ width: 32, color: 'var(--mid-gray)' }}>
                       {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                     </td>
-                    <td className="px-4 py-3 font-semibold" style={{ color: slotColor }}>
-                      {p.lastName}, {p.firstName}
-                      {atSlotLimit && <span className="ml-2 text-xs px-2 py-0.5 rounded-full font-bold" style={{ background: '#FEE2E2', color: '#DC2626' }}>SUBJECT TO SLOT REMOVAL</span>}
-                    </td>
-                    <td className="px-4 py-3" style={{ color: '#6B7280' }}>{branchLabel(p.branch)}</td>
                     <td className="px-4 py-3">
-                      <span className="text-sm font-bold" style={{ color: freeColor }}>{freeUsed}</span>
-                      <span className="text-xs ml-1" style={{ color: '#9ca3af' }}>/ 2</span>
-                      {freeGone && <span className="ml-1.5 text-xs" style={{ color: '#DC2626', fontWeight: 600 }}>Fee applies</span>}
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <span className="font-semibold" style={{ color: slotColor }}>{p.lastName}, {p.firstName}</span>
+                        {atSlotLimit && <Badge bg="#FEE2E2" fg="#DC2626" strong caps>Subject to slot removal</Badge>}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3"><BranchBadge branch={p.branch} /></td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <CountMeter used={freeUsed} max={2} color={freeColor} />
+                        {freeGone && <Badge bg="#FEF2F2" fg="#DC2626">Fee applies</Badge>}
+                      </div>
                     </td>
                     <td className="px-4 py-3">
-                      <span className="text-sm font-bold" style={{ color: slotColor }}>{p.cancellationsUsed}</span>
-                      <span className="text-xs ml-1" style={{ color: '#9ca3af' }}>/ 12</span>
+                      <CountMeter used={Number(p.cancellationsUsed ?? 0)} max={12} color={slotColor} />
                     </td>
                   </tr>
                   {isExpanded && (
                     <tr key={p.id + '-detail'}>
-                      <td colSpan={5} className="px-6 py-4" style={{ background: '#FAFBFC' }}>
-                        <div className="space-y-3">
-                          <div className="flex items-center justify-between">
-                            <p className="text-xs font-bold uppercase" style={{ color: 'var(--teal)', letterSpacing: '0.05em' }}>Cancellation Logs</p>
+                      <td colSpan={5} className="px-5 sm:pl-12 py-4" style={{ background: SUBTLE_BG, borderBottom: '1px solid var(--light-gray)' }}>
+                        <div className="space-y-3 max-w-4xl">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--teal)' }}>Cancellation Logs</p>
                             <button onClick={() => setLogForm({ patientId: p.id, type: CANCELLATION_TYPES[0], remarks: '' })}
-                              className="text-xs px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1"
-                              style={{ background: 'var(--teal)', color: '#fff', border: 'none', cursor: 'pointer' }}>
-                              + Log Cancellation
+                              className={BTN_SM} style={{ background: 'var(--teal)', color: '#fff' }}>
+                              <Plus size={13} /> Log Cancellation
                             </button>
                           </div>
 
@@ -1629,119 +1927,114 @@ function CancellationTab({ branch }: { branch: string }) {
                               with a long history can sit at 0/2. Say why, or the zero next
                               to a lifetime total reads as a missing or wiped log. */}
                           {p.windowLapsed && (
-                            <div className="rounded-lg px-3 py-2 flex items-start gap-2"
-                              style={{ background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
-                              <Clock size={13} style={{ color: '#64748B', marginTop: 1, flexShrink: 0 }} />
-                              <p className="text-xs" style={{ color: '#475569', lineHeight: 1.5 }}>
-                                <span style={{ fontWeight: 700 }}>6-month window lapsed.</span>{' '}
-                                No cancellations or reschedules in the last 6 months
-                                {typeof p.daysSinceLastLog === 'number' && (
-                                  <> — the most recent was <span style={{ fontWeight: 600 }}>{formatAge(p.daysSinceLastLog)} ago</span></>
-                                )}.
-                                {' '}The {p.cancellationsUsed} log{p.cancellationsUsed === 1 ? '' : 's'} below still count toward slot removal, but no longer toward the free allowance.
-                              </p>
-                            </div>
+                            <Callout tone="neutral" icon={<Clock size={13} />}>
+                              <span style={{ fontWeight: 700 }}>6-month window lapsed.</span>{' '}
+                              No cancellations or reschedules in the last 6 months
+                              {typeof p.daysSinceLastLog === 'number' && (
+                                <> — the most recent was <span style={{ fontWeight: 600 }}>{formatAge(p.daysSinceLastLog)} ago</span></>
+                              )}.
+                              {' '}The {p.cancellationsUsed} log{p.cancellationsUsed === 1 ? '' : 's'} below still count toward slot removal, but no longer toward the free allowance.
+                            </Callout>
                           )}
 
                           {/* New log form */}
                           {logForm?.patientId === p.id && (
-                            <div className="rounded-lg p-3 space-y-2" style={{ background: '#fff', border: '1px solid #E2E8F0' }}>
-                              <select value={logForm.type} onChange={e => setLogForm({ ...logForm, type: e.target.value })} style={{ ...selectStyle, width: '100%' }}>
-                                {CANCELLATION_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                              </select>
-                              <input type="text" placeholder="Remarks (optional)" value={logForm.remarks} onChange={e => setLogForm({ ...logForm, remarks: e.target.value })} style={{ ...selectStyle, width: '100%' }} />
-                              <div className="flex gap-2">
-                                <button onClick={saveLog} disabled={logSaving} className="text-xs px-3 py-1.5 rounded-lg font-semibold"
-                                  style={{ background: 'var(--teal)', color: '#fff', border: 'none', cursor: 'pointer' }}>
+                            <div className="rounded-xl p-3.5 space-y-3" style={CARD_STYLE}>
+                              <div className="grid gap-3 sm:grid-cols-[minmax(0,260px)_1fr]">
+                                <div>
+                                  <label className={LABEL} style={{ color: 'var(--mid-gray)' }} htmlFor={`cx-type-${p.id}`}>Type</label>
+                                  <select id={`cx-type-${p.id}`} value={logForm!.type} onChange={e => setLogForm({ ...logForm!, type: e.target.value })}
+                                    className={`${CONTROL} w-full`} style={CONTROL_STYLE}>
+                                    {CANCELLATION_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                                  </select>
+                                </div>
+                                <div>
+                                  <label className={LABEL} style={{ color: 'var(--mid-gray)' }} htmlFor={`cx-remarks-${p.id}`}>Remarks</label>
+                                  <input id={`cx-remarks-${p.id}`} type="text" placeholder="Remarks (optional)" value={logForm!.remarks}
+                                    onChange={e => setLogForm({ ...logForm!, remarks: e.target.value })}
+                                    className={`${CONTROL} w-full`} style={CONTROL_STYLE} />
+                                </div>
+                              </div>
+                              <div className="flex gap-2 justify-end">
+                                <button onClick={() => setLogForm(null)} className={BTN_SM} style={CONTROL_STYLE}>Cancel</button>
+                                <button onClick={saveLog} disabled={logSaving} className={BTN_SM} style={{ background: 'var(--teal)', color: '#fff' }}>
+                                  {logSaving && <Loader2 size={12} className="animate-spin" />}
                                   {logSaving ? 'Saving...' : 'Save'}
                                 </button>
-                                <button onClick={() => setLogForm(null)} className="text-xs px-3 py-1.5 rounded-lg font-semibold"
-                                  style={{ background: '#fff', color: '#6B7280', border: '1px solid #d1d5db', cursor: 'pointer' }}>Cancel</button>
                               </div>
                             </div>
                           )}
 
                           {/* Existing logs */}
                           {p.logs.length === 0 ? (
-                            <p className="text-xs" style={{ color: '#9ca3af' }}>No cancellation logs yet.</p>
+                            <p className="text-xs rounded-xl px-3.5 py-3" style={{ ...CARD_STYLE, color: 'var(--mid-gray)' }}>No cancellation logs yet.</p>
                           ) : (
-                            <div className="space-y-2">
-                              {p.logs.map((log: any) => (
-                                <div key={log.id} className="rounded-lg p-3 flex flex-wrap items-center gap-3 text-xs"
+                            <div className="rounded-xl overflow-hidden" style={CARD_STYLE}>
+                              {p.logs.map((log: any, i: number) => (
+                                <div key={log.id} className="px-3.5 py-2.5 flex items-start gap-3 text-xs"
                                   style={{
+                                    borderTop: i === 0 ? undefined : ROW_RULE,
                                     background: log.deletedAt ? '#F9FAFB' : '#fff',
-                                    border: `1px solid ${log.deletedAt ? '#E5E7EB' : '#E2E8F0'}`,
                                     opacity: log.deletedAt ? 0.6 : 1,
                                   }}>
                                   <div className="flex-1 min-w-0">
-                                    <span className="font-semibold px-2 py-0.5 rounded-full" style={{
-                                      background: log.isValid ? '#F0FDF4' : '#FEF2F2',
-                                      color: log.isValid ? '#15803D' : '#DC2626',
-                                    }}>{log.type}</span>
-                                    <span className="ml-2" style={{ color: '#6B7280' }}>
-                                      {new Date(log.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                                    </span>
-                                    {/* Why a row isn't in the 0/2. Reschedules and waived
-                                        cancellations never count at all, so they're labelled
-                                        regardless of the window — otherwise the list looks
-                                        like it disagrees with the number above it. */}
-                                    {!log.deletedAt && log.sourceStatus === 'RESCHEDULED' && (
-                                      <span className="ml-2 px-1.5 py-0.5 rounded" style={{ background: '#EFF6FF', color: '#1D4ED8', fontWeight: 600 }}>
-                                        reschedule &middot; not counted
-                                      </span>
-                                    )}
-                                    {!log.deletedAt && log.countsToward === false && (
-                                      <span className="ml-2 px-1.5 py-0.5 rounded" title={log.excludeReason || undefined}
-                                        style={{ background: '#F1F5F9', color: '#475569', fontWeight: 600 }}>
-                                        not counted{log.excludeReason ? ` — ${log.excludeReason}` : ''}
-                                      </span>
-                                    )}
-                                    {/* Only tagged when some other log DOES count — on a fully
-                                        lapsed patient the banner above already says it, and
-                                        tagging every row would just be noise. */}
-                                    {!log.deletedAt && log.sourceStatus !== 'RESCHEDULED' && log.countsToward !== false
-                                      && !log.inWindow && p.windowUsed > 0 && (
-                                      <span className="ml-2 px-1.5 py-0.5 rounded" style={{ background: '#F1F5F9', color: '#64748B', fontWeight: 600 }}>
-                                        outside 6-mo window
-                                      </span>
-                                    )}
-                                    {/* Fee status, only on rows a fee is actually owed on (3rd
-                                        onward in the window). "Not checked" is a distinct state
-                                        from "unpaid": if the Accounting Hub can't be reached,
-                                        showing unpaid would send front desk to collect money the
-                                        patient may already have handed over. */}
-                                    {!log.deletedAt && log.feeBearing && (
-                                      log.feePaid ? (
-                                        <span className="ml-2 px-1.5 py-0.5 rounded"
-                                          title={`${log.feePaid.lineName} — ₱${Number(log.feePaid.amount).toLocaleString('en-PH', { minimumFractionDigits: 2 })}`}
-                                          style={{ background: '#F0FDF4', color: '#15803D', fontWeight: 700 }}>
-                                          fee paid &middot; POS #{log.feePaid.orderNumber} &middot;{' '}
-                                          {new Date(log.feePaid.paidAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                      <Badge bg={log.isValid ? '#F0FDF4' : '#FEF2F2'} fg={log.isValid ? '#15803D' : '#DC2626'}>{log.type}</Badge>
+                                      <span style={{ color: 'var(--mid-gray)', fontVariantNumeric: 'tabular-nums' }}>{fmtDay(log.createdAt)}</span>
+                                      {/* Why a row isn't in the 0/2. Reschedules and waived
+                                          cancellations never count at all, so they're labelled
+                                          regardless of the window — otherwise the list looks
+                                          like it disagrees with the number above it. */}
+                                      {!log.deletedAt && log.sourceStatus === 'RESCHEDULED' && (
+                                        <Badge bg="#EFF6FF" fg="#1D4ED8">reschedule &middot; not counted</Badge>
+                                      )}
+                                      {!log.deletedAt && log.countsToward === false && (
+                                        <Badge bg="#F1F5F9" fg="#475569" title={log.excludeReason || undefined}>
+                                          not counted{log.excludeReason ? ` — ${log.excludeReason}` : ''}
+                                        </Badge>
+                                      )}
+                                      {/* Only tagged when some other log DOES count — on a fully
+                                          lapsed patient the banner above already says it, and
+                                          tagging every row would just be noise. */}
+                                      {!log.deletedAt && log.sourceStatus !== 'RESCHEDULED' && log.countsToward !== false
+                                        && !log.inWindow && p.windowUsed > 0 && (
+                                        <Badge bg="#F1F5F9" fg="#64748B">outside 6-mo window</Badge>
+                                      )}
+                                      {/* Fee status, only on rows a fee is actually owed on (3rd
+                                          onward in the window). "Not checked" is a distinct state
+                                          from "unpaid": if the Accounting Hub can't be reached,
+                                          showing unpaid would send front desk to collect money the
+                                          patient may already have handed over. */}
+                                      {!log.deletedAt && log.feeBearing && (
+                                        log.feePaid ? (
+                                          <Badge bg="#F0FDF4" fg="#15803D" strong
+                                            title={`${log.feePaid.lineName} — ₱${Number(log.feePaid.amount).toLocaleString('en-PH', { minimumFractionDigits: 2 })}`}>
+                                            fee paid &middot; POS #{log.feePaid.orderNumber} &middot;{' '}
+                                            {new Date(log.feePaid.paidAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                          </Badge>
+                                        ) : feeLookup?.ok === false ? (
+                                          <Badge bg="#F1F5F9" fg="#475569" title="Could not reach the Accounting Hub to check.">
+                                            fee owed &middot; not checked
+                                          </Badge>
+                                        ) : (
+                                          <Badge bg="#FEF2F2" fg="#DC2626" strong>fee unpaid</Badge>
+                                        )
+                                      )}
+                                      {log.deletedAt && (
+                                        <span style={{ color: '#DC2626', fontWeight: 600 }}>
+                                          DELETED by {log.deletedBy} ({log.deleteReason || 'no reason'})
                                         </span>
-                                      ) : feeLookup?.ok === false ? (
-                                        <span className="ml-2 px-1.5 py-0.5 rounded" title="Could not reach the Accounting Hub to check."
-                                          style={{ background: '#F1F5F9', color: '#475569', fontWeight: 600 }}>
-                                          fee owed &middot; not checked
-                                        </span>
-                                      ) : (
-                                        <span className="ml-2 px-1.5 py-0.5 rounded"
-                                          style={{ background: '#FEF2F2', color: '#DC2626', fontWeight: 700 }}>
-                                          fee unpaid
-                                        </span>
-                                      )
-                                    )}
-                                    {log.remarks && <span className="ml-2" style={{ color: '#9ca3af' }}>- {log.remarks}</span>}
-                                    {log.deletedAt && (
-                                      <span className="ml-2 text-xs" style={{ color: '#DC2626' }}>
-                                        DELETED by {log.deletedBy} ({log.deleteReason || 'no reason'})
-                                      </span>
+                                      )}
+                                    </div>
+                                    {log.remarks && (
+                                      <p className="mt-1 leading-relaxed break-words" style={{ color: 'var(--charcoal)' }}>{log.remarks}</p>
                                     )}
                                   </div>
-                                  <div className="flex gap-1.5 items-center">
+                                  <div className="flex gap-1.5 items-center flex-shrink-0">
                                     {/* View proof */}
                                     {log.proofUrl && (
-                                      <a href={log.proofUrl} target="_blank" rel="noreferrer" title="View proof"
-                                        className="inline-flex items-center justify-center w-7 h-7 rounded-lg"
+                                      <a href={log.proofUrl} target="_blank" rel="noreferrer" title="View proof" aria-label="View proof"
+                                        className={ICON_BTN}
                                         style={{ background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE' }}>
                                         <Eye size={13} />
                                       </a>
@@ -1749,15 +2042,15 @@ function CancellationTab({ branch }: { branch: string }) {
                                     {/* Upload proof (only for valid, no proof yet, not deleted) */}
                                     {log.isValid && !log.proofUrl && !log.deletedAt && (
                                       <>
-                                        <label className="inline-flex items-center justify-center w-7 h-7 rounded-lg cursor-pointer"
+                                        <label className={`${ICON_BTN} cursor-pointer`} title="Upload proof"
                                           style={{ background: '#F0FDF4', color: '#15803D', border: '1px solid #BBF7D0' }}>
                                           {uploading === log.id ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
                                           <input type="file" accept="image/*,application/pdf" className="hidden"
                                             onChange={e => { const f = e.target.files?.[0]; if (f) uploadProof(log.id, f) }} />
                                         </label>
-                                        <button onClick={() => openQrUpload(log.id)} title="Take photo with camera"
-                                          className="inline-flex items-center justify-center w-7 h-7 rounded-lg"
-                                          style={{ background: '#FFF', color: 'var(--charcoal)', border: '1px solid #CBD5E1', cursor: 'pointer' }}>
+                                        <button onClick={() => openQrUpload(log.id)} title="Take photo with camera" aria-label="Take photo with camera"
+                                          className={ICON_BTN}
+                                          style={{ background: '#FFF', color: 'var(--charcoal)', border: '1px solid var(--light-gray)' }}>
                                           <QrCode size={13} />
                                         </button>
                                       </>
@@ -1765,8 +2058,8 @@ function CancellationTab({ branch }: { branch: string }) {
                                     {/* Delete (soft) */}
                                     {!log.deletedAt && (
                                       <button onClick={(e) => { e.stopPropagation(); setDeleting({ logId: log.id, reason: '' }) }}
-                                        className="inline-flex items-center justify-center w-7 h-7 rounded-lg"
-                                        style={{ background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA', cursor: 'pointer' }}>
+                                        className={ICON_BTN} title="Delete log" aria-label="Delete log"
+                                        style={{ background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA' }}>
                                         <Trash2 size={13} />
                                       </button>
                                     )}
@@ -1784,76 +2077,113 @@ function CancellationTab({ branch }: { branch: string }) {
             })}
           </tbody>
         </table>
-        <Pagination total={sorted.length} page={page} perPage={perPage} onPage={setPage} onPerPage={setPerPage} />
-      </div>
+      </TableCard>
 
       {/* QR code modal */}
       {qrModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          onClick={() => setQrModal(null)}>
-          <div style={{ background: '#fff', borderRadius: 12, padding: 24, maxWidth: 360, width: '90%', textAlign: 'center' }}
-            onClick={e => e.stopPropagation()}>
-            {qrUploaded ? (
-              <>
-                <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#F0FDF4', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
-                  <CheckCircle size={32} style={{ color: '#15803D' }} />
-                </div>
-                <h3 className="text-base font-bold mb-2" style={{ color: '#15803D' }}>Proof Uploaded!</h3>
-                <p className="text-xs mb-4" style={{ color: '#6B7280' }}>The proof document has been successfully received from the scanned device.</p>
-                <button onClick={() => setQrModal(null)}
-                  className="text-sm px-5 py-2 rounded-lg font-semibold"
-                  style={{ background: 'var(--teal)', color: '#fff', border: 'none', cursor: 'pointer' }}>
-                  Done
-                </button>
-              </>
-            ) : (
-              <>
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>Scan to Upload Proof</h3>
-                  <button onClick={() => setQrModal(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af' }}><X size={18} /></button>
-                </div>
-                <div className="flex justify-center mb-3">
-                  <img
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrModal.url)}`}
-                    alt="QR Code"
-                    width={200} height={200}
-                    style={{ borderRadius: 8, border: '1px solid #E2E8F0' }}
-                  />
-                </div>
-                <p className="text-xs mb-1" style={{ color: '#6B7280' }}>Scan this QR code with a tablet or phone to upload proof.</p>
-                <div className="flex items-center justify-center gap-1.5 mt-3">
-                  <div className="animate-spin w-3 h-3 border-2 border-t-transparent rounded-full" style={{ borderColor: 'var(--teal)', borderTopColor: 'transparent' }} />
-                  <p className="text-xs" style={{ color: '#9ca3af' }}>Waiting for upload...</p>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
+        <ModalShell
+          zIndex={1000}
+          maxWidth={380}
+          icon={qrUploaded ? <CheckCircle size={16} /> : <QrCode size={16} />}
+          title={qrUploaded ? 'Proof Uploaded!' : 'Scan to Upload Proof'}
+          subtitle={qrUploaded ? undefined : 'Scan this QR code with a tablet or phone to upload proof.'}
+          onBackdrop={() => setQrModal(null)}
+          onClose={qrUploaded ? undefined : () => setQrModal(null)}
+          footer={qrUploaded ? (
+            <button onClick={() => setQrModal(null)} className={BTN_PRIMARY} style={{ background: 'var(--teal)' }}>
+              Done
+            </button>
+          ) : undefined}>
+          {qrUploaded ? (
+            <div className="text-center py-2">
+              <div className="mx-auto mb-3 w-14 h-14 rounded-full flex items-center justify-center" style={{ background: '#F0FDF4' }}>
+                <CheckCircle size={30} style={{ color: '#15803D' }} />
+              </div>
+              <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>The proof document has been successfully received from the scanned device.</p>
+            </div>
+          ) : (
+            <div className="text-center">
+              <div className="inline-flex p-3 rounded-2xl" style={{ background: SUBTLE_BG, border: '1px solid var(--light-gray)' }}>
+                <img
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrModal.url)}`}
+                  alt="QR Code"
+                  width={200} height={200}
+                  style={{ borderRadius: 8, background: '#fff' }}
+                />
+              </div>
+              <div className="flex items-center justify-center gap-1.5 mt-4">
+                <Loader2 size={13} className="animate-spin" style={{ color: 'var(--teal)' }} />
+                <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Waiting for upload...</p>
+              </div>
+            </div>
+          )}
+        </ModalShell>
       )}
 
       {/* Delete confirmation modal */}
       {deleting && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ background: '#fff', borderRadius: 12, padding: 24, maxWidth: 400, width: '90%' }}>
-            <h3 className="text-sm font-bold mb-3" style={{ color: 'var(--charcoal)' }}>Delete Cancellation Log</h3>
-            <p className="text-xs mb-3" style={{ color: '#6B7280' }}>Please provide a reason for deletion. This will be tracked.</p>
-            <textarea value={deleting.reason} onChange={e => setDeleting({ ...deleting, reason: e.target.value })}
-              placeholder="Reason for deletion..." rows={3}
-              style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: '0.83rem', boxSizing: 'border-box', fontFamily: 'inherit' }} />
-            <div className="flex gap-2 mt-3 justify-end">
-              <button onClick={() => setDeleting(null)} className="text-xs px-3 py-1.5 rounded-lg font-semibold"
-                style={{ background: '#fff', color: '#6B7280', border: '1px solid #d1d5db', cursor: 'pointer' }}>Cancel</button>
-              <button onClick={deleteLog} disabled={!deleting.reason.trim()} className="text-xs px-3 py-1.5 rounded-lg font-semibold"
-                style={{ background: deleting.reason.trim() ? '#DC2626' : '#ccc', color: '#fff', border: 'none', cursor: deleting.reason.trim() ? 'pointer' : 'not-allowed' }}>Delete</button>
-            </div>
-          </div>
-        </div>
+        <DeleteLogModal title="Delete Cancellation Log" reason={deleting.reason}
+          onReason={reason => setDeleting({ ...deleting, reason })}
+          onCancel={() => setDeleting(null)} onDelete={deleteLog} />
       )}
     </div>
   )
 }
 
 // ── Shared Components ────────────────────────────────────────────────────────
+
+/** Branch as a soft chip, same colours as the Waitlist's Branch column. */
+function BranchBadge({ branch }: { branch?: string | null }) {
+  if (!branch) return <span style={{ color: '#9CA3AF' }}>&mdash;</span>
+  const east = branch === 'SANDBOX_EAST'
+  const gh = branch === 'SANDBOX_GREENHILLS'
+  return (
+    <Badge bg={east ? '#E6F2F4' : gh ? '#FEF3E2' : '#F1F5F9'} fg={east ? '#12606C' : gh ? '#92400E' : '#475569'}>
+      {branchLabel(branch)}
+    </Badge>
+  )
+}
+
+/** "2 / 3" with a thin track underneath, for the allowance and limit columns. */
+function CountMeter({ used, max, color }: { used: number; max: number; color: string }) {
+  const pct = Math.max(0, Math.min(100, (used / max) * 100))
+  return (
+    <div className="inline-flex flex-col gap-1 min-w-[56px]" title={`${used} of ${max}`}>
+      <span className="whitespace-nowrap" style={{ fontVariantNumeric: 'tabular-nums' }}>
+        <span className="text-sm font-bold" style={{ color }}>{used}</span>
+        <span className="text-xs ml-1" style={{ color: '#9ca3af' }}>/ {max}</span>
+      </span>
+      <span className="block h-1 rounded-full overflow-hidden" style={{ background: '#E9EFED', width: 56 }} aria-hidden>
+        <span className="block h-full rounded-full" style={{ width: `${pct}%`, background: color === 'var(--charcoal)' ? 'var(--teal)' : color }} />
+      </span>
+    </div>
+  )
+}
+
+/** Reason-required soft delete, shared by the No-Show and Cancellation logs. No
+ *  backdrop dismiss, as before — the reason box shouldn't vanish on a stray click. */
+function DeleteLogModal({ title, reason, onReason, onCancel, onDelete }: {
+  title: string; reason: string; onReason: (r: string) => void; onCancel: () => void; onDelete: () => void
+}) {
+  const ready = !!reason.trim()
+  return (
+    <ModalShell zIndex={1000} maxWidth={420} tone="danger" icon={<Trash2 size={15} />}
+      title={title} subtitle="Please provide a reason for deletion. This will be tracked."
+      footer={<>
+        <button onClick={onCancel} className={BTN_SECONDARY} style={CONTROL_STYLE}>Cancel</button>
+        <button onClick={onDelete} disabled={!ready} className={BTN_PRIMARY}
+          style={{ background: ready ? '#DC2626' : '#CBD5E1' }}>
+          <Trash2 size={13} /> Delete
+        </button>
+      </>}>
+      <label className={LABEL} style={{ color: 'var(--mid-gray)' }} htmlFor="delete-log-reason">Reason</label>
+      <textarea id="delete-log-reason" value={reason} onChange={e => onReason(e.target.value)}
+        placeholder="Reason for deletion..." rows={3}
+        className="focus:border-[var(--teal)]"
+        style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid var(--light-gray)', fontSize: '0.83rem', lineHeight: 1.5, boxSizing: 'border-box', fontFamily: 'inherit', outline: 'none', color: 'var(--charcoal)', resize: 'vertical' }} />
+    </ModalShell>
+  )
+}
 
 function ContactBtns({ phone, email }: { phone?: string | null; email?: string | null }) {
   return (
@@ -1914,8 +2244,8 @@ function FollowUpContactBtns({
       {sent ? (
         <span
           title={'Sent ' + new Date(patient.reminderSentAt!).toLocaleDateString()}
-          className="inline-flex items-center justify-center gap-1 px-2 h-7 rounded-lg text-[10px] font-bold"
-          style={{ background: '#F1F5F9', color: '#64748B', border: '1px solid #CBD5E1' }}
+          className="inline-flex items-center justify-center gap-1 px-2.5 h-7 rounded-full text-[11px] font-semibold"
+          style={{ background: '#F1F5F9', color: '#64748B', border: '1px solid #E2E8F0' }}
         >
           <Check size={11} /> Sent
         </span>
@@ -1940,15 +2270,6 @@ function FollowUpContactBtns({
         <a href={'mailto:' + patient.email} title={patient.email} className="inline-flex items-center justify-center w-7 h-7 rounded-lg"
           style={{ background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE' }}><Mail size={13} /></a>
       )}
-    </div>
-  )
-}
-
-function Loading() {
-  return (
-    <div className="text-center py-12">
-      <div className="animate-spin inline-block w-6 h-6 border-2 border-t-transparent rounded-full" style={{ borderColor: 'var(--teal)', borderTopColor: 'transparent' }} />
-      <p className="text-sm mt-2" style={{ color: '#9ca3af' }}>Loading...</p>
     </div>
   )
 }
@@ -1979,45 +2300,47 @@ export default function PatientRelationshipClient({
   const effectiveBranch = isSBEA ? 'SANDBOX_EAST' : isSBGH ? 'SANDBOX_GREENHILLS' : filterBranch
   const isAdmin = !isSBEA && !isSBGH
 
+  const TAB_HINT: Record<Tab, string> = {
+    waitlist: 'Intake form submissions waiting to be converted into patients.',
+    followup: 'Patients due a reconsult, by department, with an SMS reminder.',
+    noshow: `No-show logs per patient — ${MAX_NOSHOWS} and the slot is subject to removal.`,
+    cancellation: 'Cancellation logs, the 6-month free allowance, fees and slot removal.',
+  }
+
   return (
-    <div className="max-w-7xl space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: 'var(--teal)' }}>Clinic Tools</p>
-          <h1 className="text-2xl font-bold flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+    <div className="max-w-7xl min-w-0 space-y-5">
+      {/* ── Header: title left, branch scope right ── */}
+      <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-widest mb-1" style={{ color: 'var(--teal)' }}>Clinic Tools</p>
+          <h1 className="text-2xl font-bold leading-tight flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
             <HeartHandshake size={24} style={{ color: 'var(--teal)' }} />
             Patient Relationship
           </h1>
+          <p className="text-sm mt-1" style={{ color: 'var(--mid-gray)' }}>
+            Waitlist, follow-ups, no-shows and cancellations for the East and Greenhills clinics.
+          </p>
         </div>
-        {isAdmin && (
+        {isAdmin ? (
           <div className="flex items-center gap-2">
-            <Filter size={14} style={{ color: '#9ca3af' }} />
-            <select value={filterBranch} onChange={e => setFilterBranch(e.target.value)} style={selectStyle}>
-              <option value="">All Branches</option>
-              {BRANCHES.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
-            </select>
+            <span className="text-[11px] font-semibold uppercase tracking-wider hidden sm:inline" style={{ color: 'var(--mid-gray)' }}>Branch</span>
+            <Segmented label="Branch" value={filterBranch} onChange={setFilterBranch}
+              items={[{ key: '', label: 'All Branches' }, ...BRANCHES.map(b => ({ key: b.value, label: b.label }))]} />
           </div>
+        ) : (
+          <span className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-xs font-semibold"
+            title="Your account is scoped to this branch"
+            style={{ ...CONTROL_STYLE, background: SUBTLE_BG, color: 'var(--mid-gray)' }}>
+            <Building2 size={13} style={{ color: 'var(--teal)' }} />
+            {branchLabel(effectiveBranch)}
+          </span>
         )}
       </div>
 
-      <div className="flex gap-1 p-1 rounded-xl" style={{ background: '#F1F5F9' }}>
-        {TABS.map(t => {
-          const Icon = t.icon
-          const active = activeTab === t.key
-          return (
-            <button key={t.key} onClick={() => setActiveTab(t.key)}
-              className="flex items-center gap-1.5 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all"
-              style={{
-                background: active ? '#fff' : 'transparent',
-                color: active ? 'var(--teal)' : '#64748B',
-                border: 'none', cursor: 'pointer',
-                boxShadow: active ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                flex: 1, justifyContent: 'center',
-              }}>
-              <Icon size={15} />{t.label}
-            </button>
-          )
-        })}
+      <div className="space-y-2">
+        <Segmented label="Patient relationship sections" size="md" stretch value={activeTab} onChange={setActiveTab}
+          items={TABS.map(t => ({ key: t.key, label: t.label, icon: t.icon }))} />
+        <p className="text-xs px-1" style={{ color: 'var(--mid-gray)' }}>{TAB_HINT[activeTab]}</p>
       </div>
 
       {activeTab === 'waitlist' && <WaitlistTab branch={effectiveBranch} />}
