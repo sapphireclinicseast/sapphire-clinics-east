@@ -978,12 +978,6 @@ export const HANDBOOK_HTML = `<!DOCTYPE html>
             them to the roster &mdash; that comes from HR Hub. A clinician who never signs in needs no account here.</div>
         </div>
 
-        <div class="mod" id="m-brand">
-          <div class="mod-top"><h3>Brand Guide</h3><span class="loc">/brand</span></div>
-          <div class="mod-roles"><span class="badge b-mgr"><span class="dot">M</span>Manager</span><span class="badge b-hr"><span class="dot">H</span>HR</span><span class="badge b-mktg"><span class="dot">K</span>Marketing</span></div>
-          <p class="desc">The reference for anything public-facing: <b>Colors</b>, <b>Typography</b>, <b>Brand Tone</b>
-            and <b>Design Notes</b>. Check it before publishing artwork made outside the Hub.</p>
-        </div>
       </div>
     </section>
 
