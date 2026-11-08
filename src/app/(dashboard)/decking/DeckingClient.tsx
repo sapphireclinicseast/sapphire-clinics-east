@@ -1256,6 +1256,20 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
 }
 
 // ─── Settings Tab ─────────────────────────────────────────────────────────────
+// Minutes since midnight for an "HH:MM" string; NaN when unparseable.
+function hhmmToMin(t: string | undefined): number {
+  const m = /^(\d{1,2}):(\d{2})/.exec(t ?? '')
+  return m ? Number(m[1]) * 60 + Number(m[2]) : NaN
+}
+function fmtHours(min: number): string {
+  if (!Number.isFinite(min) || min <= 0) return '0 hrs'
+  const h = Math.floor(min / 60), m = min % 60
+  return m ? `${h}h ${m}m` : `${h} hr${h === 1 ? '' : 's'}`
+}
+// The day strip spans 7 AM – 10 PM: wide enough for any clinic day, narrow
+// enough that a 10–8 day reads as most of the bar.
+const STRIP_START = 7 * 60, STRIP_END = 22 * 60
+
 function SettingsTab({ initialData, onSave }: {
   initialData: AllClinicHours
   onSave: (branch: string, schedule: ClinicSchedule) => Promise<void>
@@ -1284,57 +1298,126 @@ function SettingsTab({ initialData, onSave }: {
     setTimeout(() => setSaved(null), 2000)
   }
 
+  const DEFAULT_DAY = { open: false, openTime: '10:00', closeTime: '20:00' }
+
   return (
-    <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))' }}>
-      {['SBEA', 'SBGH'].map(branch => (
-        <DashCard
-          key={branch}
-          title={`${branchLabel(branch) ?? branch}`}
-          icon={<Clock size={15} />}
-          description="Default clinic hours. Therapists set to “use clinic default hours” follow these."
-          action={
-            <button
-              type="button"
-              onClick={() => handleSave(branch)}
-              disabled={saving === branch}
-              className={BTN_PRIMARY}
-              style={{ background: saved === branch ? '#16A34A' : 'var(--teal)', height: '2rem', fontSize: '0.78rem' }}
-            >
-              {saving === branch ? 'Saving…' : saved === branch ? 'Saved ✓' : 'Save'}
-            </button>
-          }
-        >
-          <div className="-my-1">
-            {DAYS.map(day => {
-              const dayData = data[branch]?.[day] ?? { open: false, openTime: '10:00', closeTime: '20:00' }
-              return (
-                <div key={day} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 py-2" style={{ borderBottom: '1px solid #EEF2F1' }}>
-                  <label className="flex items-center gap-2 cursor-pointer" style={{ width: '5.5rem', flexShrink: 0 }}>
-                    <input
-                      type="checkbox"
-                      checked={dayData.open}
-                      onChange={e => update(branch, day, 'open', e.target.checked)}
-                      style={{ accentColor: 'var(--teal)', width: 14, height: 14, flexShrink: 0 }}
-                    />
-                    <span className="text-sm font-medium" style={{ color: dayData.open ? 'var(--charcoal)' : 'var(--mid-gray)' }}>
-                      {DAY_SHORT[day]}
-                    </span>
-                  </label>
-                  {dayData.open ? (
-                    <div className="flex items-center gap-1.5 flex-1">
-                      <input type="time" aria-label={`${DAY_LABEL[day]} opening time`} value={dayData.openTime} onChange={e => update(branch, day, 'openTime', e.target.value)} className={CONTROL_SM} style={CONTROL_STYLE} />
-                      <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>to</span>
-                      <input type="time" aria-label={`${DAY_LABEL[day]} closing time`} value={dayData.closeTime} onChange={e => update(branch, day, 'closeTime', e.target.value)} className={CONTROL_SM} style={CONTROL_STYLE} />
-                    </div>
-                  ) : (
-                    <span className="text-xs italic" style={{ color: 'var(--mid-gray)' }}>Closed</span>
+    <div className="space-y-3">
+      <div className="flex items-start gap-2 rounded-xl px-4 py-3 text-xs" style={{ ...CARD_STYLE, color: 'var(--mid-gray)' }}>
+        <Info size={14} className="flex-shrink-0 mt-0.5" style={{ color: TEAL_HEX }} />
+        <span>
+          Each branch&rsquo;s default opening hours. Therapists set to <b style={{ color: 'var(--charcoal)' }}>use clinic default hours</b> follow
+          these on the decking board; anyone with their own hours keeps them.
+        </span>
+      </div>
+      <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 380px), 1fr))' }}>
+        {['SBEA', 'SBGH'].map(branch => {
+          const days = DAYS.map(day => ({ day, d: data[branch]?.[day] ?? DEFAULT_DAY }))
+          const openDays = days.filter(x => x.d.open)
+          const weekMin = openDays.reduce((sum, x) => {
+            const len = hhmmToMin(x.d.closeTime) - hhmmToMin(x.d.openTime)
+            return sum + (Number.isFinite(len) && len > 0 ? len : 0)
+          }, 0)
+          // Display-only: compares against what was loaded, to flag unsaved edits.
+          const dirty = JSON.stringify(data[branch] ?? {}) !== JSON.stringify(initialData[branch] ?? {})
+          const hasBadDay = openDays.some(x => !(hhmmToMin(x.d.closeTime) > hhmmToMin(x.d.openTime)))
+          return (
+            <DashCard
+              key={branch}
+              title={`${branchLabel(branch) ?? branch}`}
+              icon={<Clock size={15} />}
+              description={
+                <span className="inline-flex flex-wrap items-center gap-1.5">
+                  <span className="tabular-nums">{openDays.length} {openDays.length === 1 ? 'day' : 'days'} open</span>
+                  <span aria-hidden>&middot;</span>
+                  <span className="tabular-nums">{fmtHours(weekMin)} a week</span>
+                  {dirty && saved !== branch && (
+                    <span className="text-[10px] font-semibold uppercase tracking-wider rounded-full px-1.5 py-0.5 ml-1"
+                      style={{ background: '#FEF3C7', color: '#92400E' }}>Unsaved</span>
                   )}
+                </span>
+              }
+              action={
+                <button
+                  type="button"
+                  onClick={() => handleSave(branch)}
+                  disabled={saving === branch}
+                  className={BTN_PRIMARY}
+                  style={{ background: saved === branch ? '#16A34A' : 'var(--teal)', height: '2rem', fontSize: '0.78rem', opacity: !dirty && saved !== branch && saving !== branch ? 0.75 : undefined }}
+                >
+                  {saving === branch
+                    ? <><Loader2 size={13} className="animate-spin" /> Saving…</>
+                    : saved === branch ? <><CalendarCheck size={13} /> Saved</> : 'Save hours'}
+                </button>
+              }
+            >
+              <div className="-my-1">
+                {days.map(({ day, d: dayData }) => {
+                  const o = hhmmToMin(dayData.openTime), c = hhmmToMin(dayData.closeTime)
+                  const valid = c > o
+                  const left = Math.max(0, Math.min(1, (o - STRIP_START) / (STRIP_END - STRIP_START)))
+                  const right = Math.max(0, Math.min(1, (c - STRIP_START) / (STRIP_END - STRIP_START)))
+                  return (
+                    <div key={day} className="grid items-center gap-x-3 gap-y-1.5 py-2.5"
+                      style={{ gridTemplateColumns: '7.5rem minmax(0,1fr)', borderBottom: '1px solid #EEF2F1' }}>
+                      {/* Toggle — still a checkbox underneath, so `open` is set exactly as before. */}
+                      <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          role="switch"
+                          aria-checked={dayData.open}
+                          aria-label={`${DAY_LABEL[day]} open`}
+                          checked={dayData.open}
+                          onChange={e => update(branch, day, 'open', e.target.checked)}
+                          className="sr-only peer"
+                        />
+                        <span aria-hidden className="relative inline-block w-8 h-[18px] rounded-full transition-colors flex-shrink-0 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2"
+                          style={{ background: dayData.open ? 'var(--teal)' : '#D6DBDA' }}>
+                          <span className="absolute top-[2px] w-[14px] h-[14px] rounded-full bg-white shadow-sm transition-all"
+                            style={{ left: dayData.open ? 16 : 2 }} />
+                        </span>
+                        <span className="text-sm font-medium" style={{ color: dayData.open ? 'var(--charcoal)' : 'var(--mid-gray)' }}>
+                          {DAY_LABEL[day]}
+                        </span>
+                      </label>
+                      {dayData.open ? (
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <input type="time" aria-label={`${DAY_LABEL[day]} opening time`} value={dayData.openTime} onChange={e => update(branch, day, 'openTime', e.target.value)} className={CONTROL_SM} style={CONTROL_STYLE} />
+                            <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>to</span>
+                            <input type="time" aria-label={`${DAY_LABEL[day]} closing time`} value={dayData.closeTime} onChange={e => update(branch, day, 'closeTime', e.target.value)} className={CONTROL_SM}
+                              style={{ ...CONTROL_STYLE, ...(valid ? {} : { borderColor: '#F87171' }) }} />
+                            <span className="text-[11px] tabular-nums ml-auto" style={{ color: valid ? 'var(--mid-gray)' : '#B91C1C' }}>
+                              {valid ? fmtHours(c - o) : 'closes before it opens'}
+                            </span>
+                          </div>
+                          <div className="relative h-1.5 rounded-full mt-1.5" style={{ background: '#EEF2F1' }} aria-hidden>
+                            {valid && (
+                              <div className="absolute top-0 h-full rounded-full"
+                                style={{ left: `${left * 100}%`, width: `${Math.max(0, right - left) * 100}%`, background: 'var(--teal)', opacity: 0.55 }} />
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-xs font-medium rounded-full px-2 py-0.5 justify-self-start" style={{ background: SUBTLE_BG, color: 'var(--mid-gray)' }}>
+                          Closed
+                        </span>
+                      )}
+                    </div>
+                  )
+                })}
+                <div className="flex justify-between text-[10px] tabular-nums pt-1.5 pl-[8.25rem]" style={{ color: 'var(--mid-gray)' }} aria-hidden>
+                  <span>7 AM</span><span>12 PM</span><span>5 PM</span><span>10 PM</span>
                 </div>
-              )
-            })}
-          </div>
-        </DashCard>
-      ))}
+                {hasBadDay && (
+                  <p className="text-[11px] mt-2 flex items-center gap-1.5" style={{ color: '#B91C1C' }}>
+                    <AlertTriangle size={12} /> One or more days close before they open &mdash; check the times before saving.
+                  </p>
+                )}
+              </div>
+            </DashCard>
+          )
+        })}
+      </div>
     </div>
   )
 }
