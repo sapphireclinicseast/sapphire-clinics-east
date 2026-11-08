@@ -1,12 +1,13 @@
 'use client'
 
 import DiagnosisTagInput, { splitLegacyDiagnosis, joinDiagnosisTags } from '@/components/DiagnosisTagInput'
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback, Fragment } from 'react'
 import {
   Upload, Plus, Search, X, Cake, Download,
   AlertTriangle, CheckSquare, Square, Pencil, Trash2, Check,
   ChevronUp, ChevronDown, ArrowUpDown, CheckCircle, XCircle, ListFilter,
-  QrCode, FileText, Camera, Loader2, Star,
+  QrCode, FileText, Camera, Loader2, Star, Settings, Users, SearchX,
+  ChevronLeft, ChevronRight,
 } from 'lucide-react'
 import { isLikelyChinoy } from '@/lib/chinoy-surnames'
 import { branchLabel } from '@/lib/branch-label'
@@ -85,6 +86,106 @@ type FilterableCol = 'type' | 'branch' | 'sex' | 'city' | 'barangay' | 'diagnosi
 function patientBranchDisplay(p: Patient) {
   const bs = p.branches?.length ? p.branches : (p.branch ? [p.branch] : [])
   return bs.map(branchLabel).join(', ') || '—'
+}
+
+// ── Display helpers (presentation only — stored values are never changed) ─────
+
+// Short branch tag for the table; the full label stays in the cell's tooltip.
+const BRANCH_SHORT: Record<string, string> = {
+  SANDBOX_EAST: 'East', SANDBOX_GREENHILLS: 'Greenhills', VERDANA_STORE: 'Verdana',
+  SBEA: 'East', SBGH: 'Greenhills',
+}
+function branchShort(code: string): string {
+  return BRANCH_SHORT[code] ?? branchLabel(code)
+}
+
+// Records are typed in ALL CAPS (the form upper-cases as you type), which made
+// the table shout. Re-case for display only, and only when the value has no
+// lower-case letters at all — anything typed in mixed case is left as typed.
+const ROMAN_NUMERALS = new Set(['ii', 'iii', 'iv', 'vi', 'vii', 'viii', 'ix', 'xi', 'xii'])
+const SMALL_WORDS = new Set(['of', 'and', 'with', 'to', 'the', 'in', 'on', 'for', 'or', 'a', 'an', 'at', 'by'])
+// Diagnosis shorthand that must stay upper-case ("ADHD", not "Adhd"). Words
+// with no vowel at all (GDD, CP, PTSD) are kept upper-case by rule as well.
+const DX_ACRONYMS = new Set([
+  'adhd', 'add', 'asd', 'aud', 'id', 'idd', 'ld', 'sld', 'ocd', 'odd', 'cas', 'tbi', 'cva', 'als',
+  'ds', 'pdd', 'nos', 'sli', 'dld', 'capd', 'apd', 'mdd', 'gad', 'bpd', 'hie', 'ot', 'pt', 'slp',
+  'rom', 'acl', 'mcl', 'ckd', 'copd', 'mi', 'gerd', 'sci', 'icu', 'umn', 'lmn', 'cns', 'tmj',
+  'bppv', 'mri', 'eeg', 'pwd', 'nicu', 'fas', 'fasd', 'aba', 'iep', 'sped', 'oa', 'ra', 'avm',
+  'sah', 'ich', 'mca', 'aca', 'pca', 'uti', 'hiv', 'aids', 'sma', 'dmd',
+])
+function displayCase(raw: string | null | undefined, kind: 'name' | 'text' | 'dx' = 'text'): string {
+  const s = (raw ?? '').trim()
+  if (!s || /[a-z]/.test(s)) return s
+  let first = true
+  return s.toLowerCase().replace(/[a-z]+/g, (w: string, offset: number, whole: string) => {
+    const isFirst = first
+    first = false
+    if (offset > 0 && /\d/.test(whole[offset - 1])) return w                       // 2nd, 3rd
+    if ((kind === 'name' || kind === 'dx') && ROMAN_NUMERALS.has(w)) return w.toUpperCase()
+    if (kind === 'dx' && (DX_ACRONYMS.has(w) || (w.length >= 2 && !/[aeiouy]/.test(w)))) return w.toUpperCase()
+    if (kind !== 'name' && !isFirst && SMALL_WORDS.has(w)) return w
+    return w[0].toUpperCase() + w.slice(1)
+  })
+}
+
+// ── Shared control styles (match the rest of the Hub: white, light-gray rule, teal accent) ──
+const GROUP_BTN = 'inline-flex items-center gap-1.5 h-[34px] px-3 text-xs font-semibold whitespace-nowrap transition-colors hover:bg-gray-50'
+const CONTROL = 'h-9 px-3 rounded-lg text-sm outline-none focus:border-[var(--teal)]'
+const CONTROL_STYLE: React.CSSProperties = { background: '#fff', border: '1px solid var(--light-gray)', color: 'var(--charcoal)' }
+const PAGE_BTN = 'w-8 h-8 inline-flex items-center justify-center rounded-lg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50'
+const POPOVER_STYLE: React.CSSProperties = { background: '#fff', border: '1px solid var(--light-gray)', boxShadow: '0 10px 30px rgba(15,23,42,0.12)' }
+const SKELETON = '#E9EFED'
+
+/** Close a popover on an outside click or Escape. */
+function useDismiss(open: boolean, ref: React.RefObject<HTMLElement | null>, onClose: () => void) {
+  const close = useRef(onClose)
+  useEffect(() => { close.current = onClose })
+  useEffect(() => {
+    if (!open) return
+    function onDown(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) close.current()
+    }
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') close.current() }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open, ref])
+}
+
+/** Compact stat tile that doubles as a filter toggle. */
+function StatCard({
+  label, value, sub, accent, active, danger, loading, title, onClick,
+}: {
+  label: string; value: number; sub: string; accent: string
+  active: boolean; danger?: boolean; loading?: boolean; title: string; onClick: () => void
+}) {
+  return (
+    <button type="button" onClick={onClick} title={title} aria-pressed={active}
+      className="text-left rounded-xl px-4 py-3 transition-all hover:shadow-sm"
+      style={{
+        background: active ? (danger ? '#FEF2F2' : 'var(--pale-teal)') : '#fff',
+        border: `1px solid ${active ? accent : 'var(--light-gray)'}`,
+        boxShadow: active ? `inset 0 0 0 1px ${accent}` : undefined,
+      }}>
+      <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider"
+        style={{ color: 'var(--mid-gray)' }}>
+        <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: accent }} />
+        {label}
+      </p>
+      {loading ? (
+        <div className="h-7 w-16 rounded animate-pulse mt-1.5" style={{ background: SKELETON }} />
+      ) : (
+        <p className="text-2xl font-bold mt-1 tabular-nums leading-tight"
+          style={{ fontFamily: 'var(--font-display)', color: danger ? '#B91C1C' : 'var(--charcoal)' }}>
+          {value.toLocaleString()}
+        </p>
+      )}
+      <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--mid-gray)' }}>{sub}</p>
+    </button>
+  )
 }
 
 // ── Display value per column (used for both filter matching and sort) ─────────
@@ -280,6 +381,11 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
     new Set(['SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA_STORE'])
   )
   const [showExportPanel, setShowExportPanel] = useState(false)
+  const [showImportPanel, setShowImportPanel] = useState(false)
+  const exportPanelRef = useRef<HTMLDivElement>(null)
+  const importPanelRef = useRef<HTMLDivElement>(null)
+  useDismiss(showExportPanel, exportPanelRef, () => setShowExportPanel(false))
+  useDismiss(showImportPanel, importPanelRef, () => setShowImportPanel(false))
   const [showRegisterQr, setShowRegisterQr] = useState(false)
 
   const [form, setForm]           = useState({ ...EMPTY_FORM, branches: forcedBranch ? [forcedBranch] : [] })
@@ -766,218 +872,227 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
     { key: '',          label: ''           },
   ]
 
+  // ── Toolbar / empty-state helpers ─────────────────────────────────────────
+  const anyFilter = !!(search || typeFilter || branchFilter || chinoyFilter || onlyMissingDx || hasColFilters)
+  function clearAllFilters() {
+    setSearch(''); setTypeFilter(''); setBranchFilter('')
+    setChinoyFilter(false); setOnlyMissingDx(false); setColFilters({})
+    setOpenFilterCol(null)
+  }
+  const pct = (n: number) => (patients.length ? Math.round((n / patients.length) * 100) : 0)
+  const branchFilterLabel = branchOptions.find((b) => b.value === branchFilter)?.label || branchLabel(branchFilter)
+  const pageCount = Math.max(1, Math.ceil(displayPatients.length / pageSize))
+
   return (
-    <div className="max-w-6xl space-y-6">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: 'var(--teal)' }}>
+    <div className="max-w-6xl space-y-5">
+      {/* ── Header: title on the left, every page-level action in one cluster on the right ── */}
+      <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-widest mb-1" style={{ color: 'var(--teal)' }}>
             Patient Management
           </p>
-          <h1 className="text-2xl font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+          <h1 className="text-2xl font-bold leading-tight" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
             Patient CRM
           </h1>
+          <p className="text-sm mt-1" style={{ color: 'var(--mid-gray)' }}>
+            Every registered patient across the branches. Click a row to view, or use the row icons to edit.
+          </p>
         </div>
-        <CertificateSettingsButton />
-        <button
-          onClick={() => setOnlyMissingDx((v) => !v)}
-          className="relative flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold flex-shrink-0"
-          title="Show only patients with no diagnosis recorded"
-          style={{
-            background: onlyMissingDx ? '#FEE2E2' : '#fff',
-            border: `1.5px solid ${onlyMissingDx ? '#DC2626' : 'var(--light-gray)'}`,
-            color: onlyMissingDx ? '#B91C1C' : 'var(--mid-gray)',
-          }}
-        >
-          <AlertTriangle size={15} />
-          {onlyMissingDx ? 'Showing missing diagnosis' : 'Missing diagnosis'}
-          {missingDxCount > 0 && (
-            <span
-              className="px-1.5 py-0.5 rounded-full text-xs font-bold"
-              style={{ background: '#DC2626', color: '#fff' }}
-            >
-              {missingDxCount.toLocaleString()}
-            </span>
-          )}
-        </button>
-        <button
-          onClick={() => setShowDuplicatesModal(true)}
-          className="relative flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold flex-shrink-0"
-          style={{
-            background: duplicates.length > 0 ? '#FEF3C7' : '#fff',
-            border: duplicates.length > 0 ? '1.5px solid #F59E0B' : '1.5px solid var(--light-gray)',
-            color: duplicates.length > 0 ? '#B45309' : 'var(--mid-gray)',
-          }}
-        >
-          <AlertTriangle size={15} />
-          Check for Duplicates
-          {duplicates.length > 0 && (
-            <span
-              className="absolute -top-2 -right-2 w-5 h-5 rounded-full text-xs font-bold flex items-center justify-center"
-              style={{ background: '#F59E0B', color: '#fff' }}
-            >
-              {duplicates.length}
-            </span>
-          )}
-        </button>
-      </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-3 gap-4">
-        {[
-          { label: 'Total Patients', value: patients.length,    color: 'var(--teal)' },
-          { label: 'Pediatric',      value: pediatricCount,     color: 'var(--bright-teal)' },
-          { label: 'Adult',          value: adultCount,         color: 'var(--gold)' },
-        ].map(({ label, value, color }) => (
-          <div key={label} className="rounded-xl p-4"
-            style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
-            <p className="text-2xl font-bold"
-              style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>{value}</p>
-            <p className="text-xs font-semibold mt-1" style={{ color }}>{label}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* Controls */}
-      <div className="flex flex-wrap gap-3">
-        {/* Search */}
-        <div className="flex items-center gap-2 px-3 py-2 rounded-lg flex-1"
-          style={{ background: '#fff', border: '1px solid var(--light-gray)', minWidth: 160 }}>
-          <Search size={15} style={{ color: 'var(--mid-gray)' }} />
-          <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by name or email…"
-            className="flex-1 text-sm outline-none" style={{ color: 'var(--charcoal)' }} />
-          {search && (
-            <button onClick={() => setSearch('')}>
-              <X size={13} style={{ color: 'var(--mid-gray)' }} />
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Secondary actions, joined into one group. No overflow-hidden on the
+              group: the Import / Export panels hang out of it. */}
+          <div className="inline-flex items-stretch rounded-lg bg-white"
+            style={{ border: '1px solid var(--light-gray)' }}>
+            <button onClick={() => setShowRegisterQr(true)}
+              className={`${GROUP_BTN} rounded-l-lg`}
+              style={{ color: 'var(--charcoal)' }}
+              title="Show QR code for patients to self-register">
+              <QrCode size={14} style={{ color: 'var(--teal)' }} />
+              <span className="hidden sm:inline">Patient QR</span>
             </button>
-          )}
-        </div>
 
-        {/* Type filter */}
-        <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}
-          className="px-3 py-2 rounded-lg text-sm outline-none"
-          style={{ background: '#fff', border: '1px solid var(--light-gray)', color: 'var(--charcoal)' }}>
-          <option value="">All Types</option>
-          <option value="PEDIATRIC">Pediatric</option>
-          <option value="ADULT">Adult</option>
-        </select>
-
-        {/* Branch filter — shown to everyone. Front desk reads across branches so
-            they can find a patient registered at the other one instead of
-            creating a duplicate. */}
-        {(
-          <select value={branchFilter} onChange={(e) => setBranchFilter(e.target.value)}
-            className="px-3 py-2 rounded-lg text-sm outline-none"
-            style={{ background: '#fff', border: '1px solid var(--light-gray)', color: 'var(--charcoal)' }}>
-            <option value="">All Branches</option>
-            {branchOptions.map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}
-          </select>
-        )}
-
-        {/* Filipino-Chinese surname filter */}
-        <button
-          onClick={() => setChinoyFilter((v) => !v)}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-colors"
-          style={{
-            background: chinoyFilter ? '#E8A020' : '#fff',
-            color: chinoyFilter ? '#fff' : '#E8A020',
-            border: `1.5px solid #E8A020`,
-          }}
-        >
-          <Star size={13} />
-          Filipino-Chinese
-        </button>
-
-        {/* Clear column filters badge */}
-        {hasColFilters && (
-          <button
-            onClick={() => setColFilters({})}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold"
-            style={{ background: '#FEF3C7', color: '#B45309', border: '1px solid #FDE68A' }}>
-            <X size={12} />
-            Clear column filters
-          </button>
-        )}
-
-        {/* CSV Import */}
-        <div className="flex items-center gap-2">
-          {!isFrontDesk && (
-            <BranchCheckboxes
-              selected={importBranches}
-              onChange={setImportBranches}
-              lockedTo={forcedBranch || undefined}
-            />
-          )}
-          <label className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer"
-            style={{ background: 'var(--pale-teal)', color: 'var(--teal)' }}>
-            <Upload size={15} />
-            Import CSV
-            <input type="file" accept=".csv" className="hidden"
-              onChange={(e) => setCsvFile(e.target.files?.[0] || null)} />
-          </label>
-        </div>
-        {csvFile && (
-          <button onClick={handleCsvImport} disabled={importing}
-            className="px-4 py-2 rounded-lg text-sm font-semibold"
-            style={{ background: 'var(--teal)', color: '#fff' }}>
-            {importing ? 'Importing…' : `Import "${csvFile.name}"`}
-          </button>
-        )}
-
-        {/* Export — restricted to the main admin account */}
-        {isMainAdmin && (
-        <div className="relative">
-          <button onClick={() => setShowExportPanel(!showExportPanel)}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold"
-            style={{ background: '#fff', border: '1px solid var(--light-gray)', color: 'var(--charcoal)' }}>
-            <Download size={15} />
-            Export CSV
-          </button>
-          {showExportPanel && (
-            <div className="absolute right-0 top-full mt-1 z-10 rounded-xl p-4 space-y-3 w-52"
-              style={{ background: '#fff', border: '1px solid var(--light-gray)', boxShadow: '0 4px 16px rgba(0,0,0,0.1)' }}>
-              <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--mid-gray)' }}>
-                Download Branches
-              </p>
-              {branchOptions.map((b) => (
-                <label key={b.value} className="flex items-center gap-2 cursor-pointer">
-                  <span onClick={() => setExportBranches((prev) => {
-                    const next = new Set(prev)
-                    next.has(b.value) ? next.delete(b.value) : next.add(b.value)
-                    return next
-                  })}>
-                    {exportBranches.has(b.value)
-                      ? <CheckSquare size={16} style={{ color: 'var(--teal)' }} />
-                      : <Square size={16} style={{ color: 'var(--mid-gray)' }} />}
-                  </span>
-                  <span className="text-sm" style={{ color: 'var(--charcoal)' }}>{b.label}</span>
-                </label>
-              ))}
-              <button onClick={handleExport} disabled={exportBranches.size === 0}
-                className="w-full py-2 rounded-lg text-sm font-semibold"
-                style={{ background: 'var(--teal)', color: '#fff' }}>
-                Download
+            <div className="relative" ref={importPanelRef}>
+              <button onClick={() => { setShowImportPanel((v) => !v); setShowExportPanel(false) }}
+                className={GROUP_BTN}
+                style={{
+                  color: 'var(--charcoal)', borderLeft: '1px solid var(--light-gray)',
+                  background: showImportPanel ? 'var(--pale-teal)' : undefined,
+                }}
+                title="Import patients from a CSV file"
+                aria-expanded={showImportPanel}>
+                <Upload size={14} style={{ color: 'var(--teal)' }} />
+                <span className="hidden sm:inline">Import CSV</span>
+                {csvFile && <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--teal)' }} title="A file is ready to import" />}
+                <ChevronDown size={12} style={{ color: 'var(--mid-gray)' }} />
               </button>
+              {showImportPanel && (
+                <div className="absolute left-0 sm:left-auto sm:right-0 top-full mt-2 z-30 rounded-xl p-4 space-y-3"
+                  style={{ ...POPOVER_STYLE, width: 'min(21rem, calc(100vw - 2rem))' }}>
+                  <div>
+                    <p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>Import patients from CSV</p>
+                    <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+                      {isFrontDesk
+                        ? `Rows are added to ${branchLabel(forcedBranch) || 'your branch'}.`
+                        : 'Rows are added to every branch ticked below.'}
+                    </p>
+                  </div>
+                  {!isFrontDesk && (
+                    <BranchCheckboxes
+                      selected={importBranches}
+                      onChange={setImportBranches}
+                      lockedTo={forcedBranch || undefined}
+                    />
+                  )}
+                  <label className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer"
+                    style={{ border: '1.5px dashed var(--light-gray)', color: csvFile ? 'var(--charcoal)' : 'var(--mid-gray)' }}>
+                    <FileText size={14} style={{ color: 'var(--teal)', flexShrink: 0 }} />
+                    <span className="truncate">{csvFile ? csvFile.name : 'Choose a .csv file…'}</span>
+                    <input type="file" accept=".csv" className="hidden"
+                      onChange={(e) => setCsvFile(e.target.files?.[0] || null)} />
+                  </label>
+                  <button onClick={async () => { await handleCsvImport(); setShowImportPanel(false) }}
+                    disabled={!csvFile || importing}
+                    className="w-full h-9 rounded-lg text-sm font-semibold text-white disabled:opacity-50"
+                    style={{ background: 'var(--teal)' }}>
+                    {importing ? 'Importing…' : csvFile ? `Import "${csvFile.name}"` : 'Import'}
+                  </button>
+                </div>
+              )}
             </div>
-          )}
+
+            {/* Export — restricted to the main admin account */}
+            {isMainAdmin && (
+              <div className="relative" ref={exportPanelRef}>
+                <button onClick={() => { setShowExportPanel(!showExportPanel); setShowImportPanel(false) }}
+                  className={GROUP_BTN}
+                  style={{
+                    color: 'var(--charcoal)', borderLeft: '1px solid var(--light-gray)',
+                    background: showExportPanel ? 'var(--pale-teal)' : undefined,
+                  }}
+                  title="Download the patient list as CSV"
+                  aria-expanded={showExportPanel}>
+                  <Download size={14} style={{ color: 'var(--teal)' }} />
+                  <span className="hidden sm:inline">Export CSV</span>
+                  <ChevronDown size={12} style={{ color: 'var(--mid-gray)' }} />
+                </button>
+                {showExportPanel && (
+                  <div className="absolute right-0 top-full mt-2 z-30 rounded-xl p-4 space-y-3 w-60"
+                    style={POPOVER_STYLE}>
+                    <p className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: 'var(--mid-gray)' }}>
+                      Download Branches
+                    </p>
+                    {branchOptions.map((b) => (
+                      <label key={b.value} className="flex items-center gap-2 cursor-pointer">
+                        <span onClick={() => setExportBranches((prev) => {
+                          const next = new Set(prev)
+                          if (next.has(b.value)) next.delete(b.value)
+                          else next.add(b.value)
+                          return next
+                        })}>
+                          {exportBranches.has(b.value)
+                            ? <CheckSquare size={16} style={{ color: 'var(--teal)' }} />
+                            : <Square size={16} style={{ color: 'var(--mid-gray)' }} />}
+                        </span>
+                        <span className="text-sm" style={{ color: 'var(--charcoal)' }}>{b.label}</span>
+                      </label>
+                    ))}
+                    <button onClick={handleExport} disabled={exportBranches.size === 0}
+                      className="w-full h-9 rounded-lg text-sm font-semibold text-white disabled:opacity-50"
+                      style={{ background: 'var(--teal)' }}>
+                      Download
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <button
+              onClick={() => setShowDuplicatesModal(true)}
+              className={GROUP_BTN}
+              title={duplicates.length > 0
+                ? `${duplicates.length} possible duplicate${duplicates.length !== 1 ? 's' : ''} from a CSV import need review`
+                : 'Check for Duplicates'}
+              style={{
+                borderLeft: '1px solid var(--light-gray)',
+                background: duplicates.length > 0 ? '#FEF3C7' : undefined,
+                color: duplicates.length > 0 ? '#B45309' : 'var(--charcoal)',
+              }}>
+              <AlertTriangle size={14} style={{ color: duplicates.length > 0 ? '#B45309' : 'var(--teal)' }} />
+              <span className="hidden sm:inline">Duplicates</span>
+              {duplicates.length > 0 && (
+                <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold leading-none"
+                  style={{ background: '#F59E0B', color: '#fff' }}>
+                  {duplicates.length}
+                </span>
+              )}
+            </button>
+
+            <CertificateSettingsButton
+              className={`${GROUP_BTN} rounded-r-lg`}
+              style={{ color: 'var(--charcoal)', borderLeft: '1px solid var(--light-gray)' }}>
+              <Settings size={14} style={{ color: 'var(--teal)' }} />
+              <span className="hidden sm:inline">Certificate Settings</span>
+            </CertificateSettingsButton>
+          </div>
+
+          <button onClick={() => setShowAddForm(!showAddForm)}
+            className="inline-flex items-center gap-1.5 h-9 px-4 rounded-lg text-sm font-semibold text-white transition-opacity hover:opacity-90"
+            style={{ background: 'var(--teal)', fontFamily: 'var(--font-display)' }}>
+            <Plus size={15} />
+            Add Patient
+          </button>
         </div>
-        )}
+      </div>
 
-        <button onClick={() => setShowRegisterQr(true)}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold"
-          style={{ background: '#fff', color: 'var(--teal)', border: '1.5px solid var(--teal)', fontFamily: 'var(--font-display)' }}
-          title="Show QR code for patients to self-register">
-          <QrCode size={15} />
-          Patient QR
-        </button>
-
-        <button onClick={() => setShowAddForm(!showAddForm)}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold"
-          style={{ background: 'var(--teal)', color: '#fff', fontFamily: 'var(--font-display)' }}>
-          <Plus size={15} />
-          Add Patient
-        </button>
+      {/* ── Stats — each card is also a filter ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatCard
+          label="Total patients"
+          value={patients.length}
+          sub={[
+            typeFilter ? (typeFilter === 'PEDIATRIC' ? 'Pediatric only' : 'Adult only') : 'All types',
+            branchFilter ? branchFilterLabel : 'all branches',
+          ].join(' · ')}
+          accent="var(--teal)"
+          active={!typeFilter && !onlyMissingDx}
+          loading={loading && patients.length === 0}
+          title="Show every patient"
+          onClick={() => { setTypeFilter(''); setOnlyMissingDx(false) }}
+        />
+        <StatCard
+          label="Pediatric"
+          value={pediatricCount}
+          sub={patients.length ? `${pct(pediatricCount)}% of patients` : '—'}
+          accent="var(--bright-teal)"
+          active={typeFilter === 'PEDIATRIC'}
+          loading={loading && patients.length === 0}
+          title="Show pediatric patients only"
+          onClick={() => setTypeFilter((t) => (t === 'PEDIATRIC' ? '' : 'PEDIATRIC'))}
+        />
+        <StatCard
+          label="Adult"
+          value={adultCount}
+          sub={patients.length ? `${pct(adultCount)}% of patients` : '—'}
+          accent="var(--gold)"
+          active={typeFilter === 'ADULT'}
+          loading={loading && patients.length === 0}
+          title="Show adult patients only"
+          onClick={() => setTypeFilter((t) => (t === 'ADULT' ? '' : 'ADULT'))}
+        />
+        <StatCard
+          label="Missing diagnosis"
+          value={missingDxCount}
+          sub={onlyMissingDx
+            ? 'Showing these only — click to undo'
+            : missingDxCount > 0 ? `${pct(missingDxCount)}% of records — click to review` : 'Every record has one'}
+          accent="#DC2626"
+          danger={missingDxCount > 0}
+          active={onlyMissingDx}
+          loading={loading && patients.length === 0}
+          title="Show only patients with no diagnosis recorded"
+          onClick={() => setOnlyMissingDx((v) => !v)}
+        />
       </div>
 
       {showRegisterQr && (
@@ -989,9 +1104,14 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
 
       {/* Import message */}
       {importMsg && (
-        <p className="text-sm px-4 py-2 rounded-lg" style={{ background: 'var(--pale-teal)', color: 'var(--teal)' }}>
-          {importMsg}
-        </p>
+        <div className="flex items-center gap-2 text-sm px-4 py-2.5 rounded-xl"
+          style={{ background: 'var(--pale-teal)', color: 'var(--teal)', border: '1px solid var(--light-gray)' }}>
+          <CheckCircle size={15} style={{ flexShrink: 0 }} />
+          <span className="flex-1">{importMsg}</span>
+          <button onClick={() => setImportMsg('')} className="p-0.5 rounded hover:bg-white/60" title="Dismiss">
+            <X size={14} />
+          </button>
+        </div>
       )}
 
       {/* ── Duplicates modal ──────────────────────────────────────────────── */}
@@ -1294,41 +1414,122 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
       )}
 
       {/* ── Patient table ─────────────────────────────────────────────────── */}
+      <div className="rounded-xl" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
+        {/* Toolbar: every list filter on one row, the count on the right */}
+        <div className="flex flex-wrap items-center gap-2 px-3 py-3"
+          style={{ borderBottom: '1px solid var(--light-gray)' }}>
+          <div className="relative flex-1 min-w-[200px] max-w-md">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+              style={{ color: 'var(--mid-gray)' }} />
+            <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by name or email…"
+              aria-label="Search patients"
+              className={`${CONTROL} w-full pl-9 pr-8`}
+              style={CONTROL_STYLE} />
+            {search && (
+              <button onClick={() => setSearch('')} title="Clear search"
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-gray-100">
+                <X size={13} style={{ color: 'var(--mid-gray)' }} />
+              </button>
+            )}
+          </div>
 
-      {/* Column filter count */}
-      {hasColFilters && (
-        <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
-          Showing <span className="font-semibold" style={{ color: 'var(--teal)' }}>{displayPatients.length}</span> of {patients.length} patients (column filters active)
-        </p>
-      )}
+          {/* Type filter */}
+          <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}
+            aria-label="Patient type" className={CONTROL}
+            style={{ ...CONTROL_STYLE, borderColor: typeFilter ? 'var(--teal)' : 'var(--light-gray)' }}>
+            <option value="">All Types</option>
+            <option value="PEDIATRIC">Pediatric</option>
+            <option value="ADULT">Adult</option>
+          </select>
 
-      <div className="rounded-xl overflow-x-auto"
-        style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
-        <table className="w-full text-sm">
+          {/* Branch filter — shown to everyone. Front desk reads across branches so
+              they can find a patient registered at the other one instead of
+              creating a duplicate. */}
+          <select value={branchFilter} onChange={(e) => setBranchFilter(e.target.value)}
+            aria-label="Branch" className={CONTROL}
+            style={{ ...CONTROL_STYLE, borderColor: branchFilter ? 'var(--teal)' : 'var(--light-gray)' }}>
+            <option value="">All Branches</option>
+            {branchOptions.map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}
+          </select>
+
+          {/* Filipino-Chinese surname filter */}
+          <button
+            onClick={() => setChinoyFilter((v) => !v)}
+            aria-pressed={chinoyFilter}
+            title="Show only likely Filipino-Chinese surnames"
+            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-xs font-semibold transition-colors"
+            style={{
+              background: chinoyFilter ? '#E8A020' : '#fff',
+              color: chinoyFilter ? '#fff' : '#B7791F',
+              border: `1px solid ${chinoyFilter ? '#E8A020' : 'var(--light-gray)'}`,
+            }}
+          >
+            <Star size={13} style={{ color: chinoyFilter ? '#fff' : '#E8A020' }} />
+            Filipino-Chinese
+          </button>
+
+          {onlyMissingDx && (
+            <button onClick={() => setOnlyMissingDx(false)}
+              title="Stop showing only patients with no diagnosis"
+              className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg text-xs font-semibold"
+              style={{ background: '#FEF2F2', color: '#B91C1C', border: '1px solid #FECACA' }}>
+              <AlertTriangle size={12} />
+              No diagnosis only
+              <X size={12} />
+            </button>
+          )}
+
+          {anyFilter && (
+            <button onClick={clearAllFilters}
+              className="inline-flex items-center gap-1 h-9 px-2.5 rounded-lg text-xs font-semibold hover:bg-gray-50"
+              style={{ color: 'var(--teal)' }}>
+              <X size={12} />
+              Clear filters
+            </button>
+          )}
+
+          <span className="ml-auto text-xs whitespace-nowrap pl-2" style={{ color: 'var(--mid-gray)' }}>
+            {loading ? 'Loading…' : (
+              <>
+                <span className="font-semibold" style={{ color: 'var(--charcoal)' }}>
+                  {displayPatients.length.toLocaleString()}
+                </span>
+                {displayPatients.length !== patients.length && <> of {patients.length.toLocaleString()}</>}
+                {' '}{patients.length === 1 ? 'patient' : 'patients'}
+                {hasColFilters && ' · column filters on'}
+              </>
+            )}
+          </span>
+        </div>
+
+        <div className="overflow-x-auto">
+        <table className="w-full text-sm min-w-[980px]">
           <thead>
-            <tr style={{ borderBottom: '1px solid var(--light-gray)', background: 'var(--off-white)' }}>
+            <tr style={{ borderBottom: '1px solid var(--light-gray)', background: '#F8FAF9' }}>
               {COLS.map(({ key, label, filterable }) => {
                 const filterActive = filterable && (colFilters[filterable]?.size ?? 0) > 0
                 return (
                   <th
                     key={key || '_actions'}
-                    className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-widest"
+                    className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider"
                     style={{
                       color:      sortCol === key && key ? 'var(--teal)' : 'var(--mid-gray)',
                       whiteSpace: 'nowrap',
                       position:   'relative',
                     }}>
-                    <span className="flex items-center gap-1">
+                    <span className={`flex items-center gap-1 ${key ? '' : 'justify-end'}`}>
                       {/* Sort clickable label */}
                       {key ? (
                         <button
                           onClick={() => handleSort(key)}
                           className="flex items-center gap-1 cursor-pointer select-none hover:opacity-80"
+                          title={`Sort by ${label.toLowerCase()}`}
                         >
                           {label}
                           <SortIcon active={sortCol === key} dir={sortDir} />
                         </button>
-                      ) : null}
+                      ) : <span className="sr-only">Actions</span>}
 
                       {/* Filter button (only for filterable columns) */}
                       {filterable && (
@@ -1339,8 +1540,8 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
                               e.stopPropagation()
                               setOpenFilterCol(openFilterCol === filterable ? null : filterable)
                             }}
-                            title="Filter column"
-                            className="ml-0.5 p-0.5 rounded transition-colors hover:bg-gray-100"
+                            title={filterActive ? `Filtering ${label.toLowerCase()} — click to change` : `Filter ${label.toLowerCase()}`}
+                            className="ml-0.5 p-1 rounded transition-colors hover:bg-gray-100"
                             style={{
                               color: filterActive ? 'var(--teal)' : 'var(--mid-gray)',
                               background: filterActive ? 'var(--pale-teal)' : 'transparent',
@@ -1368,18 +1569,58 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
           </thead>
           <tbody>
             {loading ? (
-              <tr>
-                <td colSpan={9} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>
-                  Loading…
-                </td>
-              </tr>
+              // Skeleton rows, so the table keeps its shape while the list loads.
+              Array.from({ length: 8 }).map((_, i) => (
+                <tr key={`sk-${i}`} style={{ borderBottom: '1px solid var(--light-gray)' }} aria-hidden>
+                  <td className="px-4 py-3">
+                    <div className="h-3 w-36 rounded animate-pulse" style={{ background: SKELETON }} />
+                    <div className="h-2.5 w-24 rounded animate-pulse mt-2" style={{ background: SKELETON }} />
+                  </td>
+                  {[44, 72, 40, 80, 120, 140, 70].map((w, j) => (
+                    <td key={j} className="px-4 py-3">
+                      <div className="h-3 rounded animate-pulse" style={{ background: SKELETON, width: w }} />
+                    </td>
+                  ))}
+                  <td className="px-4 py-3">
+                    <div className="h-6 w-20 rounded animate-pulse ml-auto" style={{ background: SKELETON }} />
+                  </td>
+                </tr>
+              ))
             ) : displayPatients.length === 0 ? (
               <tr>
-                <td colSpan={9} className="py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>
-                  <p className="text-center">No patients found</p>
+                <td colSpan={9} className="px-6 py-14 text-sm" style={{ color: 'var(--mid-gray)' }}>
+                  <div className="flex flex-col items-center text-center">
+                    <div className="w-12 h-12 rounded-full flex items-center justify-center"
+                      style={{ background: 'var(--pale-teal)' }}>
+                      {anyFilter
+                        ? <SearchX size={22} style={{ color: 'var(--teal)' }} />
+                        : <Users size={22} style={{ color: 'var(--teal)' }} />}
+                    </div>
+                    <p className="mt-3 text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>
+                      {anyFilter ? 'No patients match these filters' : 'No patients yet'}
+                    </p>
+                    <p className="mt-1 text-xs max-w-sm">
+                      {anyFilter
+                        ? 'Try a different spelling or fewer filters — or clear them to see everyone.'
+                        : 'Add a patient, import a CSV, or share the self-registration QR code.'}
+                    </p>
+                    {anyFilter ? (
+                      <button onClick={clearAllFilters}
+                        className="mt-4 inline-flex items-center gap-1.5 h-9 px-4 rounded-lg text-xs font-semibold"
+                        style={{ background: '#fff', border: '1px solid var(--light-gray)', color: 'var(--charcoal)' }}>
+                        <X size={12} /> Clear filters
+                      </button>
+                    ) : (
+                      <button onClick={() => setShowAddForm(true)}
+                        className="mt-4 inline-flex items-center gap-1.5 h-9 px-4 rounded-lg text-xs font-semibold text-white"
+                        style={{ background: 'var(--teal)' }}>
+                        <Plus size={13} /> Add Patient
+                      </button>
+                    )}
+                  </div>
                   {outOfBranch.length > 0 && (
-                    <div className="mx-auto mt-5 max-w-2xl rounded-xl border p-4 text-left"
-                      style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+                    <div className="mx-auto mt-6 max-w-2xl rounded-xl border p-4 text-left"
+                      style={{ borderColor: 'var(--light-gray)', background: '#F8FAF9' }}>
                       <p className="text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>
                         Already registered at another branch
                       </p>
@@ -1394,7 +1635,7 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
                             style={{ borderColor: 'var(--light-gray)' }}>
                             <span>
                               <span className="font-semibold" style={{ color: 'var(--charcoal)' }}>
-                                {p.firstName} {p.lastName}
+                                {displayCase(`${p.firstName} ${p.lastName}`, 'name')}
                               </span>
                               <span className="ml-2 text-[11px]">
                                 registered at {patientBranchDisplay(p)}
@@ -1416,51 +1657,83 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
                   )}
                 </td>
               </tr>
-            ) : displayPatients.slice((page - 1) * pageSize, page * pageSize).map((p) => (
-              <>
-                <tr key={p.id} data-row-id={p.id}
+            ) : displayPatients.slice((page - 1) * pageSize, page * pageSize).map((p) => {
+              const noDx = missingDiagnosis(p)
+              const rowBranches = p.branches?.length ? p.branches : (p.branch ? [p.branch] : [])
+              return (
+              <Fragment key={p.id}>
+                <tr data-row-id={p.id}
                   onClick={() => setViewing(p)}
-                  title={missingDiagnosis(p)
+                  title={noDx
                     ? 'No diagnosis recorded — click the pencil to add one'
                     : 'Click to view this patient'}
+                  className="transition-colors hover:bg-[#F8FAF9]"
                   style={{
                     cursor: 'pointer',
                     borderBottom: editingId === p.id ? 'none' : '1px solid var(--light-gray)',
-                    // Flagged, not shouted: a wash this pale stays readable across
-                    // two thirds of the table, where a saturated red would make the
-                    // list unusable and get ignored within a day.
-                    background: missingDiagnosis(p) ? '#FEF2F2' : undefined,
-                    borderLeft: missingDiagnosis(p) ? '3px solid #DC2626' : '3px solid transparent',
+                    // A thin red edge plus the "No diagnosis" tag carry the flag;
+                    // two thirds of records have none, so a full-row wash made the
+                    // whole table read as an error.
+                    borderLeft: noDx ? '3px solid #F87171' : '3px solid transparent',
+                    background: editingId === p.id ? 'var(--pale-teal)' : undefined,
                   }}>
-                  <td className="px-4 py-3">
-                    <p className="font-semibold" style={{ color: 'var(--charcoal)' }}>
-                      {p.firstName} {p.lastName}
+                  <td className="px-4 py-2.5">
+                    <p className="font-semibold leading-snug" style={{ color: 'var(--charcoal)' }}>
+                      {displayCase(`${p.firstName} ${p.lastName}`, 'name')}
                     </p>
                     {p.phone && (
-                      <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>{p.phone}</p>
+                      <p className="text-xs tabular-nums" style={{ color: 'var(--mid-gray)' }}>{p.phone}</p>
                     )}
                   </td>
-                  <td className="px-4 py-3">
-                    <span className="text-xs px-2 py-1 rounded-full font-semibold" style={{
+                  <td className="px-4 py-2.5">
+                    <span className="text-[11px] px-2 py-0.5 rounded-full font-semibold whitespace-nowrap" style={{
                       background: p.patientType === 'PEDIATRIC' ? 'var(--pale-teal)' : '#FFF9EC',
-                      color:      p.patientType === 'PEDIATRIC' ? 'var(--teal)'      : 'var(--gold)',
+                      color:      p.patientType === 'PEDIATRIC' ? 'var(--teal)'      : '#9A7432',
                     }}>
                       {p.patientType === 'PEDIATRIC' ? 'Pedia' : 'Adult'}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)', maxWidth: 140 }}>
-                    {patientBranchDisplay(p)}
+                  <td className="px-4 py-2.5">
+                    {rowBranches.length ? (
+                      <div className="flex flex-wrap gap-1" title={patientBranchDisplay(p)}>
+                        {rowBranches.map((b) => (
+                          <span key={b} className="text-[11px] font-semibold px-1.5 py-0.5 rounded whitespace-nowrap"
+                            style={{ background: '#EEF2F4', color: '#475569' }}>
+                            {branchShort(b)}
+                          </span>
+                        ))}
+                      </div>
+                    ) : <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>—</span>}
                   </td>
-                  <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{p.sex || '—'}</td>
-                  <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>{p.city || '—'}</td>
-                  <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)', maxWidth: 140 }}
-                    title={p.diagnosis ?? ''}>
-                    <span className="truncate block">{p.diagnosis || '—'}</span>
+                  <td className="px-4 py-2.5 text-xs" style={{ color: 'var(--charcoal)' }}>
+                    {p.sex ? displayCase(p.sex) : <span style={{ color: 'var(--mid-gray)' }}>—</span>}
                   </td>
-                  <td className="px-4 py-3 text-xs" style={{ color: 'var(--charcoal)' }}>{p.email || '—'}</td>
-                  <td className="px-4 py-3 text-xs" style={{ color: 'var(--charcoal)' }}>
+                  <td className="px-4 py-2.5 text-xs" style={{ color: 'var(--charcoal)', maxWidth: 150 }}>
+                    {p.city
+                      ? <span className="truncate block" title={p.city}>{displayCase(p.city)}</span>
+                      : <span style={{ color: 'var(--mid-gray)' }}>—</span>}
+                  </td>
+                  <td className="px-4 py-2.5 text-xs" style={{ color: 'var(--charcoal)', maxWidth: 220 }}>
+                    {noDx ? (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-1.5 py-0.5 rounded whitespace-nowrap"
+                        style={{ background: '#FEF2F2', color: '#B91C1C', border: '1px solid #FECACA' }}>
+                        <AlertTriangle size={10} />
+                        No diagnosis
+                      </span>
+                    ) : (
+                      <span className="truncate block" title={p.diagnosis ?? ''}>
+                        {displayCase(p.diagnosis, 'dx') || <span style={{ color: 'var(--mid-gray)' }}>—</span>}
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-2.5 text-xs" style={{ color: 'var(--charcoal)', maxWidth: 200 }}>
+                    {p.email
+                      ? <span className="truncate block" title={p.email}>{p.email}</span>
+                      : <span style={{ color: 'var(--mid-gray)' }}>—</span>}
+                  </td>
+                  <td className="px-4 py-2.5 text-xs tabular-nums whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>
                     <div className="flex items-center gap-1">
-                      {p.dob ? new Date(p.dob).toLocaleDateString('en-PH') : '—'}
+                      {p.dob ? new Date(p.dob).toLocaleDateString('en-PH') : <span style={{ color: 'var(--mid-gray)' }}>—</span>}
                       {p.dob && new Date(p.dob).getMonth() === new Date().getMonth() && (
                         <span title="Birthday this month!">
                           <Cake size={12} style={{ color: 'var(--gold)' }} />
@@ -1470,17 +1743,18 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
                   </td>
                   {/* Actions swallow the click: pressing Edit or Delete must not
                       also throw the summary open on top of them. */}
-                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center gap-1">
+                  <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center justify-end gap-0.5">
                       <button
                         onClick={() => editingId === p.id ? closeEdit() : openEdit(p)}
-                        className="p-1.5 rounded-lg transition-colors"
+                        className="w-8 h-8 inline-flex items-center justify-center rounded-lg transition-colors hover:bg-gray-100"
                         style={{
-                          background: editingId === p.id ? 'var(--pale-teal)' : 'transparent',
+                          background: editingId === p.id ? 'var(--pale-teal)' : undefined,
                           color:      editingId === p.id ? 'var(--teal)'      : 'var(--mid-gray)',
                         }}
-                        title="Edit patient">
-                        <Pencil size={13} />
+                        title={editingId === p.id ? 'Close the editor' : 'Edit patient'}
+                        aria-label="Edit patient">
+                        <Pencil size={15} />
                       </button>
                       <CertificateActionButton
                         patient={p}
@@ -1489,9 +1763,10 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
                       />
                       <button
                         onClick={() => deletePatient(p.id, `${p.firstName} ${p.lastName}`)}
-                        className="p-1.5 rounded-lg hover:bg-red-50 transition-colors"
-                        title="Remove patient">
-                        <Trash2 size={13} style={{ color: '#DC2626' }} />
+                        className="w-8 h-8 inline-flex items-center justify-center rounded-lg hover:bg-red-50 transition-colors"
+                        title="Remove patient"
+                        aria-label="Remove patient">
+                        <Trash2 size={15} style={{ color: '#DC2626' }} />
                       </button>
                     </div>
                   </td>
@@ -1691,44 +1966,49 @@ export default function PatientsPage({ role = '', userEmail = '' }: { role?: str
                     </td>
                   </tr>
                 )}
-              </>
-            ))}
+              </Fragment>
+              )
+            })}
           </tbody>
         </table>
-      </div>
-      {/* Pagination bar */}
-      {!loading && displayPatients.length > 0 && (
-        <div className="flex items-center justify-between px-4 py-2.5"
-          style={{ borderTop: '1px solid var(--light-gray)', background: '#fff', borderRadius: '0 0 0.75rem 0.75rem' }}>
-          <div className="flex items-center gap-2">
-            <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>Rows per page:</span>
-            <select
-              value={pageSize}
-              onChange={e => { setPageSize(Number(e.target.value)); setPage(1) }}
-              style={{ fontSize: '12px', padding: '2px 6px', borderRadius: '6px', border: '1px solid var(--light-gray)', background: '#fff', color: 'var(--charcoal)' }}
-            >
-              {[25, 50, 75, 100].map(n => <option key={n} value={n}>{n}</option>)}
-            </select>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>
-              {`${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, displayPatients.length)}`} of {displayPatients.length}
-            </span>
-            <div className="flex gap-1">
-              <button onClick={() => setPage(p => p - 1)} disabled={page === 1}
-                className="px-2.5 py-1 rounded-lg text-xs font-medium"
-                style={{ background: page === 1 ? 'var(--off-white)' : 'var(--pale-teal)', color: page === 1 ? 'var(--mid-gray)' : 'var(--teal)', border: '1px solid var(--light-gray)' }}>
-                ‹ Prev
-              </button>
-              <button onClick={() => setPage(p => p + 1)} disabled={page * pageSize >= displayPatients.length}
-                className="px-2.5 py-1 rounded-lg text-xs font-medium"
-                style={{ background: page * pageSize >= displayPatients.length ? 'var(--off-white)' : 'var(--pale-teal)', color: page * pageSize >= displayPatients.length ? 'var(--mid-gray)' : 'var(--teal)', border: '1px solid var(--light-gray)' }}>
-                Next ›
-              </button>
+        </div>
+
+        {/* Pagination bar */}
+        {!loading && displayPatients.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5"
+            style={{ borderTop: '1px solid var(--light-gray)' }}>
+            <label className="flex items-center gap-2 text-xs" style={{ color: 'var(--mid-gray)' }}>
+              Rows per page
+              <select
+                value={pageSize}
+                onChange={e => { setPageSize(Number(e.target.value)); setPage(1) }}
+                className="h-8 px-2 rounded-lg text-xs outline-none"
+                style={CONTROL_STYLE}
+              >
+                {[25, 50, 75, 100].map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </label>
+            <div className="flex items-center gap-3">
+              <span className="text-xs tabular-nums" style={{ color: 'var(--mid-gray)' }}>
+                {`${((page - 1) * pageSize + 1).toLocaleString()}–${Math.min(page * pageSize, displayPatients.length).toLocaleString()}`} of {displayPatients.length.toLocaleString()}
+              </span>
+              <div className="flex items-center gap-1">
+                <button onClick={() => setPage(p => p - 1)} disabled={page === 1}
+                  className={PAGE_BTN} style={CONTROL_STYLE} title="Previous page" aria-label="Previous page">
+                  <ChevronLeft size={15} />
+                </button>
+                <span className="text-xs px-1.5 tabular-nums" style={{ color: 'var(--charcoal)' }}>
+                  Page {page} of {pageCount}
+                </span>
+                <button onClick={() => setPage(p => p + 1)} disabled={page * pageSize >= displayPatients.length}
+                  className={PAGE_BTN} style={CONTROL_STYLE} title="Next page" aria-label="Next page">
+                  <ChevronRight size={15} />
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* ── Hidden file inputs ──────────────────────────────────────────────── */}
       {/* Edit-view referral */}

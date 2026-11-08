@@ -390,15 +390,21 @@ function SignatorySelect({
 
 // ── Settings ─────────────────────────────────────────────────────────────────
 
-export function CertificateSettingsButton() {
+/* className / style / children are optional so a host toolbar can make the
+   trigger match its own buttons; left out, the button looks as it always has. */
+export function CertificateSettingsButton({ className, style, children }: {
+  className?: string
+  style?: React.CSSProperties
+  children?: React.ReactNode
+} = {}) {
   const [open, setOpen] = useState(false)
   return (
     <>
       <button onClick={() => setOpen(true)}
-        className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5"
-        style={{ background: '#fff', border: '1px solid var(--light-gray)', color: 'var(--mid-gray)' }}
+        className={className ?? 'px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5'}
+        style={style ?? { background: '#fff', border: '1px solid var(--light-gray)', color: 'var(--mid-gray)' }}
         title="Signatories and e-signatures used on discharge certificates">
-        <Settings size={12} /> Certificate Settings
+        {children ?? <><Settings size={12} /> Certificate Settings</>}
       </button>
       {open && <SettingsDialog onClose={() => setOpen(false)} />}
     </>
