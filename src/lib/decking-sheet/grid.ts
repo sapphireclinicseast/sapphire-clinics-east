@@ -82,8 +82,11 @@ export const INK = { CASH: '#15803D', HMO: '#B45309', GL: '#93460B', NA: '#DC262
 const BLOCK_BG = '#1F3A5F'
 const HEAD_BG = '#E8EDF2'
 const OFF_BG = '#EDEFF1'
-/** Drawn hatching: Sheets cannot fill a cell with a pattern, so it is typed. */
-const HATCH = '\u2571\u2571\u2571\u2571\u2571\u2571\u2571\u2571'
+// Sheets cannot fill a cell with a pattern, and =IMAGE takes no data URI — so
+// the hatching is a real image the hub serves. Drawn as slash characters
+// before this, which read as hatching from a distance and as typed text up
+// close.
+const HATCH_URL = `${process.env.NEXTAUTH_URL?.replace(/\/$/, '') || 'https://operations.sapphireclinicseast.org'}/api/public/hatch.png`
 const PAY_BG = '#E4EEF9'
 const REMARK_BG = '#FBF3E2'
 
@@ -106,6 +109,14 @@ const cell = (value: string, fmt: Record<string, unknown> = {}): Cell => ({
   },
 })
 const blank = (): Cell => ({ userEnteredValue: {}, userEnteredFormat: {} })
+/** A cell whose value is a formula rather than text. */
+const formulaCell = (formula: string, fmt: Record<string, unknown> = {}): Cell => ({
+  userEnteredValue: { formulaValue: formula },
+  userEnteredFormat: {
+    horizontalAlignment: 'CENTER', verticalAlignment: 'MIDDLE',
+    borders: BORDER, ...fmt,
+  },
+})
 
 function hoursBetween(start: string, end: string): number[] {
   const out: number[] = []
@@ -249,18 +260,23 @@ export function buildGrid({ staff, slots }: { staff: SheetStaff[]; slots: SheetS
         // them, so text here cannot be mistaken for data.
         if (!blk.own.has(h)) {
           for (let c = 1; c <= k; c++) {
-            put(c, cell(HATCH, {
-              backgroundColor: rgb(OFF_BG),
-              textFormat: { fontSize: 9, foregroundColor: rgb('#D2D7DC') },
-              horizontalAlignment: 'CENTER',
-            }))
+            // Mode 2 stretches the tile to the cell. The image is already
+            // close to a cell's proportions, so the diagonals stay at 45°
+            // instead of flattening out.
+            put(c, formulaCell(`=IMAGE("${HATCH_URL}",2)`, { backgroundColor: rgb(OFF_BG) }))
           }
           return
         }
 
         for (let c = 1; c <= k; c++) {
           const day = blk.days[c - 1]
-          if (!day) { put(c, cell('')); continue }
+          // A column this consultant has no day for. Hatched down the whole
+          // block, not left white: the column count comes from the widest
+          // consultant in the department, so a one-day therapist carries spare
+          // columns that are not hours at all. Blank during their shift and
+          // hatched outside it — which is what this did — says two different
+          // things about the same column.
+          if (!day) { put(c, formulaCell(`=IMAGE("${HATCH_URL}",2)`, { backgroundColor: rgb(OFF_BG) })); continue }
 
           const here = slotAt.get(`${blk.st.id}|${day.key}|${hhmm(h)}`) ?? []
           const occupants = here.filter(x => x.patient)

@@ -157,14 +157,21 @@ async function pushTab(
     { updateSheetProperties: { properties: { sheetId, gridProperties: { rowCount: span, columnCount: SAFE_COL + 8 } }, fields: 'gridProperties.rowCount,gridProperties.columnCount' } },
     // Only ever within the grid's own columns: everything from SAFE_COL
     // rightwards is front desk's, and the hub does not touch it.
-    { unmergeCells: { range: { sheetId, startRowIndex: 0, endRowIndex: span, startColumnIndex: 0, endColumnIndex: grid.totalCols } } },
+    // Cleared to SAFE_COL, not to this run's width: a narrower layout would
+    // otherwise strand the previous, wider one to the right of its new edge.
+    { unmergeCells: { range: { sheetId, startRowIndex: 0, endRowIndex: span, startColumnIndex: 0, endColumnIndex: SAFE_COL } } },
   ] } })
 
   const writes: sheets_v4.Schema$Request[] = []
   for (let i = 0; i < grid.rows.length; i += 150) {
     writes.push({ updateCells: { rows: grid.rows.slice(i, i + 150) as sheets_v4.Schema$RowData[], fields: 'userEnteredValue,userEnteredFormat', start: { sheetId, rowIndex: i, columnIndex: 0 } } })
   }
-  writes.push({ updateCells: { range: { sheetId, startRowIndex: grid.rows.length, endRowIndex: span, startColumnIndex: 0, endColumnIndex: grid.totalCols }, fields: 'userEnteredValue,userEnteredFormat' } })
+  // Below the content, and to the right of it. Only the rows were being
+  // cleared, which is what left a stale block header standing.
+  writes.push({ updateCells: { range: { sheetId, startRowIndex: grid.rows.length, endRowIndex: span, startColumnIndex: 0, endColumnIndex: SAFE_COL }, fields: 'userEnteredValue,userEnteredFormat' } })
+  if (grid.totalCols < SAFE_COL) {
+    writes.push({ updateCells: { range: { sheetId, startRowIndex: 0, endRowIndex: span, startColumnIndex: grid.totalCols, endColumnIndex: SAFE_COL }, fields: 'userEnteredValue,userEnteredFormat' } })
+  }
 
   const stride = grid.k + 2
   for (let i = 0; i < grid.perBand; i++) {
@@ -176,7 +183,7 @@ async function pushTab(
 
   // Validation is not touched by updateCells, so stale dropdowns survive a
   // layout change and land on rows that are now something else entirely.
-  writes.push({ setDataValidation: { range: { sheetId, startRowIndex: 0, endRowIndex: span, startColumnIndex: 0, endColumnIndex: grid.totalCols } } })
+  writes.push({ setDataValidation: { range: { sheetId, startRowIndex: 0, endRowIndex: span, startColumnIndex: 0, endColumnIndex: SAFE_COL } } })
   for (const v of grid.validate) {
     writes.push({ setDataValidation: {
       range: { sheetId, startRowIndex: v.row, endRowIndex: v.row + 1, startColumnIndex: v.col, endColumnIndex: v.col + 1 },
@@ -189,6 +196,32 @@ async function pushTab(
   for (let i = 0; i < writes.length; i += 400) {
     await api.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: writes.slice(i, i + 400) } })
   }
+
+  // A heading over front desk's own space, written ONCE.
+  //
+  // The area from SAFE_COL rightwards is theirs and the generator never writes
+  // into it — which left it invisible: empty columns past the edge of the
+  // board, with nothing to say they were deliberate. This labels the first
+  // cell, and only ever when that cell is empty, so anything already written
+  // there is left exactly as it is. A guarantee nobody can find is not much of
+  // a guarantee; one that overwrites their list to advertise itself is worse.
+  try {
+    const colA1 = (() => { let out = ''; for (let x = SAFE_COL; x >= 0; x = Math.floor(x / 26) - 1) out = String.fromCharCode(65 + (x % 26)) + out; return out })()
+    const head = await api.spreadsheets.values.get({ spreadsheetId, range: `'${tab}'!${colA1}1` })
+    if (!(head.data.values?.[0]?.[0] ?? '').toString().trim()) {
+      await api.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: [{ updateCells: {
+        rows: [{ values: [{
+          userEnteredValue: { stringValue: 'YOUR SPACE — the Hub never writes here' },
+          userEnteredFormat: {
+            backgroundColor: rgb('#FFF8E1'),
+            textFormat: { bold: true, fontSize: 9, italic: true, foregroundColor: rgb('#8A6D1F'), fontFamily: 'Roboto' },
+          },
+        }] }],
+        fields: 'userEnteredValue,userEnteredFormat',
+        start: { sheetId, rowIndex: 0, columnIndex: SAFE_COL },
+      } }] } })
+    }
+  } catch { /* a label is not worth failing a sync over */ }
 
   // Colour by value, and lock everything but the slot cells.
   const after = await api.spreadsheets.get({ spreadsheetId, fields: 'sheets.properties.sheetId,sheets.protectedRanges,sheets.conditionalFormats' })
@@ -210,12 +243,19 @@ async function pushTab(
   // rather than alarm red. Sheets has no pattern fills, so the diagonal
   // hatching cannot be reproduced — struck-through grey on a grey ground is
   // the nearest thing that still reads as "crossed out, not available".
-  for (const text of [BLOCKED, BREAK]) {
-    post.push({ addConditionalFormatRule: { index: 0, rule: { ranges: nameRanges, booleanRule: {
-      condition: { type: 'TEXT_EQ', values: [{ userEnteredValue: text }] },
-      format: { backgroundColor: rgb('#E8EAED'), textFormat: { bold: true, strikethrough: true, foregroundColor: rgb('#80868B') } },
-    } } } })
-  }
+  // N/A plain, BREAK struck through. They both close the hour, and the grey
+  // ground says so for both — but N/A is the ordinary case, written across
+  // most of a board, and a page of struck-out text reads as damage rather than
+  // as a state. The strike is left on BREAK, where it is rare enough to mean
+  // something by standing out.
+  post.push({ addConditionalFormatRule: { index: 0, rule: { ranges: nameRanges, booleanRule: {
+    condition: { type: 'TEXT_EQ', values: [{ userEnteredValue: BLOCKED }] },
+    format: { backgroundColor: rgb('#E8EAED'), textFormat: { bold: true, foregroundColor: rgb('#80868B') } },
+  } } } })
+  post.push({ addConditionalFormatRule: { index: 0, rule: { ranges: nameRanges, booleanRule: {
+    condition: { type: 'TEXT_EQ', values: [{ userEnteredValue: BREAK }] },
+    format: { backgroundColor: rgb('#E8EAED'), textFormat: { bold: true, strikethrough: true, foregroundColor: rgb('#80868B') } },
+  } } } })
   for (const pr of mine?.protectedRanges ?? []) post.push({ deleteProtectedRange: { protectedRangeId: pr.protectedRangeId! } })
   post.push({ addProtectedRange: { protectedRange: {
     range: { sheetId },
