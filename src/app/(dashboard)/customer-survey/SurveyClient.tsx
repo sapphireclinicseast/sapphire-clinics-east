@@ -1,16 +1,18 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { branchLabel } from '@/lib/branch-label'
 import Script from 'next/script'
 import {
   ClipboardCheck, BarChart3, ListChecks, Star, Target, Clock,
   QrCode, Users, TrendingUp, Building2, X, ChevronUp, ChevronDown,
   ArrowUpDown, ExternalLink, Search, Baby, User, Trash2, FileText,
-  Trophy, Award, MessageSquare, Calendar, Filter, ThumbsUp, AlertTriangle,
-  Sparkles, Copy, Check, Settings, Save, RefreshCw, Printer, Download,
+  Trophy, Award, MessageSquare, Calendar, ThumbsUp, AlertTriangle,
+  Sparkles, Copy, Check, Settings, RefreshCw, Printer, Download, Loader2,
 } from 'lucide-react'
 import { generateSurveyResultPDF } from '@/lib/pdf-results'
+import { CARD_STYLE, DashCard, KpiCard, Skeleton, BarListSkeleton, EmptyState } from '../patients/dashboard/ui'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -120,12 +122,127 @@ function getAge(dob: string): number {
   return age
 }
 
+// ── Presentation helpers (display only — no scoring logic lives here) ────────
+
+const CONTROL = 'h-9 px-3 rounded-lg text-sm outline-none focus:border-[var(--teal)]'
+const CONTROL_STYLE: CSSProperties = { background: '#fff', border: '1px solid var(--light-gray)', color: 'var(--charcoal)' }
+const controlStyle = (active: boolean): CSSProperties => ({ ...CONTROL_STYLE, borderColor: active ? 'var(--teal)' : 'var(--light-gray)' })
+const TOOLTIP_STYLE: CSSProperties = {
+  background: '#fff', border: '1px solid var(--light-gray)', borderRadius: 8,
+  boxShadow: '0 4px 14px rgba(0,0,0,0.08)', color: 'var(--charcoal)',
+}
+const MODAL_BACKDROP: CSSProperties = { background: 'rgba(15,23,42,0.45)', backdropFilter: 'blur(4px)' }
+const BTN_PRIMARY = 'inline-flex items-center justify-center gap-1.5 h-9 px-3.5 rounded-lg text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50'
+const BTN_SECONDARY = 'inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-lg text-xs font-semibold transition-colors hover:bg-gray-50 disabled:opacity-50'
+const LABEL = 'block text-[11px] font-semibold uppercase tracking-wider mb-1.5'
+
+/** Colour band for a 1–5 rating. Purely visual. */
+function ratingBand(v: number | null | undefined) {
+  if (v == null) return { fg: 'var(--mid-gray)', bg: '#F3F4F6', bar: '#CBD5E1', label: 'No ratings yet' }
+  if (v >= 4.5) return { fg: '#15803D', bg: '#DCFCE7', bar: '#16A34A', label: 'Excellent' }
+  if (v >= 4)   return { fg: '#0F766E', bg: '#CCFBF1', bar: '#14B8A6', label: 'Good' }
+  if (v >= 3)   return { fg: '#B45309', bg: '#FEF3C7', bar: '#F59E0B', label: 'Fair' }
+  return { fg: '#B91C1C', bg: '#FEE2E2', bar: '#EF4444', label: 'Needs attention' }
+}
+
+function RatingPill({ value, digits = 2, title }: { value: number | null | undefined; digits?: number; title?: string }) {
+  const b = ratingBand(value)
+  return (
+    <span title={title ?? (value != null ? `${b.label} — average rating out of 5` : undefined)}
+      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold leading-none whitespace-nowrap"
+      style={{ background: b.bg, color: b.fg, fontVariantNumeric: 'tabular-nums' }}>
+      <Star size={10} fill="currentColor" strokeWidth={0} />
+      {value != null ? value.toFixed(digits) : '—'}
+    </span>
+  )
+}
+
+function Chip({ children, tone = 'teal' }: { children: ReactNode; tone?: 'teal' | 'gray' }) {
+  return (
+    <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold leading-tight whitespace-nowrap"
+      style={tone === 'teal' ? { background: 'var(--pale-teal)', color: 'var(--teal)' } : { background: '#F3F4F6', color: 'var(--mid-gray)' }}>
+      {children}
+    </span>
+  )
+}
+
+function StatusPill({ status }: { status: string }) {
+  const s = status === 'COMPLETED'
+    ? { bg: '#DCFCE7', fg: '#15803D' }
+    : status === 'EXPIRED' ? { bg: '#FEE2E2', fg: '#B91C1C' } : { bg: '#FEF3C7', fg: '#B45309' }
+  return (
+    <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide whitespace-nowrap"
+      style={{ background: s.bg, color: s.fg }}>
+      {status.replace(/_/g, ' ')}
+    </span>
+  )
+}
+
+/** Hover / focus tooltip for an HTML bar row. Parent needs `group relative`. */
+function RowTip({ children }: { children: ReactNode }) {
+  return (
+    <div role="tooltip"
+      className="pointer-events-none absolute left-1/2 bottom-full mb-1.5 -translate-x-1/2 z-20 hidden group-hover:block group-focus-within:block whitespace-nowrap rounded-lg px-3 py-2 text-[11px]"
+      style={TOOLTIP_STYLE}>
+      {children}
+    </div>
+  )
+}
+
+function ErrorCard({ title, hint, onRetry }: { title: string; hint?: string; onRetry?: () => void }) {
+  return (
+    <div className="rounded-xl px-6 py-10 text-center" style={{ background: '#fff', border: '1px solid #FECACA' }}>
+      <AlertTriangle size={20} className="mx-auto mb-2" style={{ color: '#DC2626' }} />
+      <p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>{title}</p>
+      {hint && <p className="text-xs mt-1 max-w-sm mx-auto" style={{ color: 'var(--mid-gray)' }}>{hint}</p>}
+      {onRetry && (
+        <button onClick={onRetry} className={`${BTN_SECONDARY} mt-4`} style={{ ...CONTROL_STYLE, color: 'var(--teal)' }}>
+          <RefreshCw size={12} /> Try again
+        </button>
+      )}
+    </div>
+  )
+}
+
+/** Pill tab bar — used for both the page tabs and the Results sub-tabs. */
+function PillTabs<T extends string>({ tabs, value, onChange, size = 'md', label }: {
+  tabs: { id: T; label: string; icon: typeof ClipboardCheck }[]
+  value: T; onChange: (id: T) => void; size?: 'md' | 'sm'; label: string
+}) {
+  return (
+    <div role="tablist" aria-label={label}
+      className="flex gap-1 p-1 rounded-xl overflow-x-auto max-w-full"
+      style={size === 'md' ? CARD_STYLE : { background: '#F3F6F5' }}>
+      {tabs.map(({ id, label: l, icon: Icon }) => {
+        const active = value === id
+        return (
+          <button key={id} role="tab" aria-selected={active} onClick={() => onChange(id)}
+            className={`flex items-center gap-1.5 rounded-lg font-semibold whitespace-nowrap transition-colors ${size === 'md' ? 'px-3.5 py-2 text-sm' : 'px-3 py-1.5 text-xs'} ${active ? '' : 'hover:bg-black/[0.04]'}`}
+            style={active
+              ? size === 'md'
+                ? { background: 'var(--teal)', color: '#fff' }
+                : { background: '#fff', color: 'var(--teal)', boxShadow: '0 1px 2px rgba(0,0,0,0.08)' }
+              : { background: 'transparent', color: 'var(--mid-gray)' }}>
+            <Icon size={size === 'md' ? 15 : 13} />
+            {l}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+const fmtDate = (d: string) => new Date(d).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
+const monthShort = (mm: string) => new Date(2025, parseInt(mm) - 1).toLocaleString('en', { month: 'short' })
+const monthLong = (mm: string) => new Date(2025, parseInt(mm) - 1).toLocaleString('en', { month: 'long' })
+
 // ── Main Component ───────────────────────────────────────────────────────────
 
 export default function SurveyClient({ role }: { role: string }) {
   const [tab, setTab] = useState<'overview' | 'daily-target' | 'manage' | 'results'>('overview')
   const [dashboard, setDashboard] = useState<DashboardData | null>(null)
   const [staff, setStaff] = useState<StaffRow[]>([])
+  const [staffLoading, setStaffLoading] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -136,6 +253,7 @@ export default function SurveyClient({ role }: { role: string }) {
   // Filters
   const [filterDept, setFilterDept] = useState('')
   const [filterBranch, setFilterBranch] = useState('')
+  const [staffSearch, setStaffSearch] = useState('')
 
   // Manual assignment
   const [assignStaff, setAssignStaff] = useState('')
@@ -157,15 +275,18 @@ export default function SurveyClient({ role }: { role: string }) {
 
   // Pending assignments
   const [pendingList, setPendingList] = useState<PendingAssignment[]>([])
+  const [pendingLoading, setPendingLoading] = useState(false)
   const [showPending, setShowPending] = useState(false)
 
   // Results (admin only)
   const [results, setResults] = useState<ResultRow[]>([])
+  const [resultsListLoading, setResultsListLoading] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
   // Results dashboard
   const [resultsDash, setResultsDash] = useState<ResultsDashboard | null>(null)
   const [resultsLoading, setResultsLoading] = useState(false)
+  const [resultsFailed, setResultsFailed] = useState(false)
   const [rdFilterBranch, setRdFilterBranch] = useState('')
   const [rdFilterStaff, setRdFilterStaff] = useState('')
   const [rdFilterMonth, setRdFilterMonth] = useState(0) // 0 = all
@@ -197,6 +318,7 @@ export default function SurveyClient({ role }: { role: string }) {
   const loadDashboard = useCallback(async () => {
     try {
       setLoading(true)
+      setError('')
       const res = await fetch('/api/customer-survey?view=dashboard')
       if (!res.ok) throw new Error('Failed to load')
       setDashboard(await res.json())
@@ -211,11 +333,14 @@ export default function SurveyClient({ role }: { role: string }) {
 
   // ── Load staff ───────────────────────────────────────────────────────────
   const loadStaff = useCallback(async () => {
+    setStaffLoading(true)
     try {
       const res = await fetch('/api/customer-survey?view=staff')
       if (!res.ok) throw new Error('Failed to load')
       setStaff(await res.json())
-    } catch { /* handled by error state */ }
+    } catch { /* handled by error state */ } finally {
+      setStaffLoading(false)
+    }
   }, [])
 
   useEffect(() => {
@@ -224,15 +349,19 @@ export default function SurveyClient({ role }: { role: string }) {
 
   // ── Load results (admin) ────────────────────────────────────────────────
   const loadResults = useCallback(async () => {
+    setResultsListLoading(true)
     try {
       const res = await fetch('/api/customer-survey?view=results')
       if (!res.ok) return
       setResults(await res.json())
-    } catch { /* silent */ }
+    } catch { /* silent */ } finally {
+      setResultsListLoading(false)
+    }
   }, [])
 
   const loadResultsDashboard = useCallback(async (branch?: string, staffId?: string, month?: number, from?: string, to?: string) => {
     setResultsLoading(true)
+    setResultsFailed(false)
     try {
       const params = new URLSearchParams({ view: 'results-dashboard' })
       if (branch) params.set('branch', branch)
@@ -241,9 +370,9 @@ export default function SurveyClient({ role }: { role: string }) {
       if (from) params.set('from', from)
       if (to) params.set('to', to)
       const res = await fetch(`/api/customer-survey?${params}`)
-      if (!res.ok) return
+      if (!res.ok) { setResultsFailed(true); return }
       setResultsDash(await res.json())
-    } catch { /* silent */ } finally {
+    } catch { setResultsFailed(true) } finally {
       setResultsLoading(false)
     }
   }, [])
@@ -277,6 +406,8 @@ export default function SurveyClient({ role }: { role: string }) {
     }
   }, [])
 
+  // Unused while the weights are read-only (managed from the HR platform);
+  // kept so re-enabling editing is a UI-only change.
   const saveSettings = async () => {
     const total = settingsWeights.weightConfirmed + settingsWeights.weightRescheduled + settingsWeights.weightCancelled + settingsWeights.weightSatisfaction
     if (total !== 100) {
@@ -339,11 +470,14 @@ export default function SurveyClient({ role }: { role: string }) {
 
   // ── Load pending assignments ─────────────────────────────────────────────
   const loadPending = useCallback(async () => {
+    setPendingLoading(true)
     try {
       const res = await fetch('/api/customer-survey?view=pending')
       if (!res.ok) return
       setPendingList(await res.json())
-    } catch { /* silent */ }
+    } catch { /* silent */ } finally {
+      setPendingLoading(false)
+    }
   }, [])
 
   // ── Patient search ─────────────────────────────────────────────────────
@@ -393,6 +527,16 @@ export default function SurveyClient({ role }: { role: string }) {
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [])
+
+  // Escape closes whichever modal is open
+  useEffect(() => {
+    if (!showQr && !showPending) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setShowQr(false); setShowPending(false) }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [showQr, showPending])
 
   // Re-search when patient type changes
   useEffect(() => {
@@ -462,10 +606,10 @@ export default function SurveyClient({ role }: { role: string }) {
   }
 
   const SortIcon = ({ col }: { col: SortKey }) => {
-    if (sortKey !== col) return <ArrowUpDown size={12} style={{ color: '#cbd5e1' }} />
+    if (sortKey !== col) return <ArrowUpDown size={11} style={{ color: '#cbd5e1' }} />
     return sortDir === 'asc'
-      ? <ChevronUp size={12} style={{ color: '#0f766e' }} />
-      : <ChevronDown size={12} style={{ color: '#0f766e' }} />
+      ? <ChevronUp size={12} style={{ color: 'var(--teal)' }} />
+      : <ChevronDown size={12} style={{ color: 'var(--teal)' }} />
   }
 
   // ── Filter + sort staff ──────────────────────────────────────────────────
@@ -482,10 +626,27 @@ export default function SurveyClient({ role }: { role: string }) {
       }
       return sortDir === 'desc' ? -cmp : cmp
     })
+  // Name search narrows the table only — the assignment dropdown below keeps
+  // following the department / branch filters as before.
+  const staffQ = staffSearch.trim().toLowerCase()
+  const tableStaff = staffQ ? filteredStaff.filter(s => s.name.toLowerCase().includes(staffQ)) : filteredStaff
+  const staffFiltersOn = !!(filterDept || filterBranch || staffQ)
 
   // ── Get unique departments for filter ────────────────────────────────────
   const departments = [...new Set(staff.map(s => s.department))].sort()
   const branches = [...new Set(staff.map(s => s.branch))].sort()
+
+  // ── Results filters ──────────────────────────────────────────────────────
+  const rdFiltersOn = !!(rdFilterBranch || rdFilterStaff || rdFilterMonth || rdFilterDept || rdFrom || rdTo)
+  const clearRdFilters = () => {
+    setRdFilterBranch(''); setRdFilterStaff(''); setRdFilterMonth(0)
+    setRdFilterDept(''); setRdFrom(''); setRdTo('')
+  }
+  const detailStaff = (resultsDash?.allStaff ?? [])
+    .filter(s => !rdFilterDept || s.department === rdFilterDept)
+    .sort((a, b) => b.compositeScore - a.compositeScore)
+  const deptBoards = Object.entries(resultsDash?.top5ByDept ?? {})
+    .filter(([dept]) => !rdFilterDept || dept === rdFilterDept)
 
   // ── Tabs ─────────────────────────────────────────────────────────────────
   const tabs = [
@@ -495,150 +656,219 @@ export default function SurveyClient({ role }: { role: string }) {
     ...(isAdmin ? [{ id: 'results' as const, label: 'Results', icon: FileText }] : []),
   ]
 
+  const year = new Date().getFullYear()
+  const avgBand = ratingBand(dashboard?.avgScore)
+  const overviewFailed = !!error && !dashboard && !loading
+  const openPending = () => { setShowPending(true); loadPending() }
+
   return (
-    <div className="max-w-7xl mx-auto">
-      {/* Header */}
-      <div className="flex items-center gap-3 mb-6">
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'var(--teal, #0f766e)', color: '#fff' }}>
-          <ClipboardCheck size={20} />
+    <div className="max-w-6xl space-y-5">
+      {/* ── Header: title left, primary action right ── */}
+      <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-widest mb-1" style={{ color: 'var(--teal)' }}>
+            Patient Experience
+          </p>
+          <h1 className="text-2xl font-bold leading-tight" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+            Customer Survey
+          </h1>
+          <p className="text-sm mt-1" style={{ color: 'var(--mid-gray)' }}>
+            Patient satisfaction surveys — daily targets, QR assignments and staff results.
+          </p>
         </div>
-        <div>
-          <h1 className="text-xl font-bold" style={{ color: 'var(--near-black, #1a1a2e)' }}>Customer Survey</h1>
-          <p className="text-xs" style={{ color: '#94a3b8' }}>Patient satisfaction assessment management</p>
-        </div>
+        <button onClick={() => setTab('manage')} className={BTN_PRIMARY} style={{ background: 'var(--teal)' }}
+          title="Generate a survey QR code for a patient">
+          <QrCode size={15} /> New survey QR
+        </button>
       </div>
 
-      {/* Tab bar */}
-      <div className="flex gap-1 p-1 rounded-lg mb-6" style={{ background: '#f1f5f9' }}>
-        {tabs.map(({ id, label, icon: Icon }) => (
-          <button
-            key={id}
-            onClick={() => setTab(id)}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-md text-sm font-medium transition-all"
-            style={tab === id
-              ? { background: '#fff', color: '#0f766e', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', fontWeight: 600 }
-              : { background: 'transparent', color: '#64748b' }
-            }
-          >
-            <Icon size={15} />
-            {label}
-          </button>
-        ))}
-      </div>
+      {/* ── Page tabs ── */}
+      <PillTabs label="Customer survey sections" tabs={tabs} value={tab} onChange={setTab} />
 
-      {/* Error */}
-      {error && (
-        <div className="mb-4 p-3 rounded-lg text-sm" style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {error}
-        </div>
-      )}
-
-      {/* Overview Tab */}
+      {/* ═══════════════ Overview ═══════════════ */}
       {tab === 'overview' && (
-        <div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-            <KpiCard icon={ClipboardCheck} label="Total Surveys" value={loading ? '—' : dashboard?.totalSurveys ?? 0} />
-            <KpiCard icon={Star} label="Avg. Score /5" value={loading ? '—' : dashboard?.avgScore?.toFixed(2) ?? '—'} />
-            <KpiCard icon={Target} label="Completion Rate" value={loading ? '—' : dashboard ? `${dashboard.completionRate}%` : '—'} />
-            <KpiCard
-              icon={Clock}
-              label="Pending"
-              value={loading ? '—' : dashboard?.pending ?? 0}
-              onClick={() => { setShowPending(true); loadPending() }}
-              clickable
-            />
-          </div>
+        overviewFailed ? (
+          <ErrorCard title="Couldn't load the survey overview" hint={error} onRetry={loadDashboard} />
+        ) : (
+          <div className="space-y-5">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              {loading && !dashboard ? (
+                Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="rounded-xl px-4 py-3.5" style={CARD_STYLE}>
+                    <Skeleton className="h-3 w-20" />
+                    <Skeleton className="h-7 w-16 mt-2" />
+                    <Skeleton className="h-3 w-24 mt-2" />
+                  </div>
+                ))
+              ) : (
+                <>
+                  <KpiCard label="Responses" icon={<ClipboardCheck size={16} />}
+                    value={(dashboard?.totalSurveys ?? 0).toLocaleString()}
+                    sub={`Submitted in ${year}`} />
+                  <KpiCard label="Avg. rating" icon={<Star size={16} />} accent={avgBand.fg}
+                    value={dashboard?.avgScore != null
+                      ? <span>{dashboard.avgScore.toFixed(2)}<span className="text-sm font-semibold" style={{ color: 'var(--mid-gray)' }}> / 5</span></span>
+                      : '—'}
+                    sub={<span style={{ color: dashboard?.avgScore != null ? avgBand.fg : undefined, fontWeight: dashboard?.avgScore != null ? 600 : undefined }}>{avgBand.label}</span>} />
+                  <KpiCard label="Completion" icon={<Target size={16} />} accent="var(--gold)"
+                    value={dashboard ? `${dashboard.completionRate}%` : '—'}
+                    sub="Of this year's assessment targets" />
+                  <button type="button" onClick={openPending} title="View open surveys"
+                    className="text-left rounded-xl px-4 py-3.5 min-w-0 transition-all hover:shadow-sm hover:border-[var(--teal)]"
+                    style={CARD_STYLE}>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-wider truncate" style={{ color: 'var(--mid-gray)' }}>Pending</p>
+                      <Clock size={16} style={{ color: '#D97706' }} />
+                    </div>
+                    <p className="text-2xl font-bold mt-1 leading-tight" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)', fontVariantNumeric: 'tabular-nums' }}>
+                      {(dashboard?.pending ?? 0).toLocaleString()}
+                    </p>
+                    <p className="text-xs mt-0.5" style={{ color: 'var(--teal)' }}>View open surveys →</p>
+                  </button>
+                </>
+              )}
+            </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <ChartCard title="Satisfaction Trend" icon={TrendingUp} data={dashboard?.monthlyTrend} />
-            <ChartCard title="By Branch" icon={Building2} data={dashboard?.byBranch} />
+            {error && dashboard && (
+              <div className="rounded-xl px-4 py-2.5 text-xs flex items-center gap-2" style={{ background: '#FEF2F2', color: '#B91C1C', border: '1px solid #FECACA' }}>
+                <AlertTriangle size={13} /> {error}
+                <button onClick={loadDashboard} className="ml-auto font-semibold underline">Retry</button>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+              <DashCard title="Satisfaction trend" icon={<TrendingUp size={15} />}
+                description={`Average rating per month in ${year}, out of 5. Hover a bar for the response count.`}>
+                {loading && !dashboard ? <BarListSkeleton rows={6} /> : (
+                  <ScoreBars rows={(dashboard?.monthlyTrend ?? []).map(m => ({ key: m.month, label: monthShort(m.month), fullLabel: `${monthLong(m.month)} ${year}`, avg: m.avgScore, count: m.count }))}
+                    empty="No ratings submitted this year yet" />
+                )}
+              </DashCard>
+              <DashCard title="By branch" icon={<Building2 size={15} />}
+                description={`Average rating per branch in ${year}, out of 5.`}>
+                {loading && !dashboard ? <BarListSkeleton rows={2} /> : (
+                  <ScoreBars rows={(dashboard?.byBranch ?? []).map(b => ({ key: b.branch, label: branchLabel(b.branch) || b.branch, fullLabel: branchLabel(b.branch) || b.branch, avg: b.avgScore, count: b.count }))}
+                    empty="No branch ratings yet" />
+                )}
+              </DashCard>
+            </div>
+
+            <ScoreLegend />
           </div>
-        </div>
+        )
       )}
 
-      {/* Manage Tab */}
+      {/* ═══════════════ Daily Target ═══════════════ */}
       {tab === 'daily-target' && (
         <DailyTargetTab isAdmin={isAdmin} isFrontDesk={isFrontDesk} role={role} />
       )}
 
+      {/* ═══════════════ Manage ═══════════════ */}
       {tab === 'manage' && (
-        <div className="space-y-6">
-          {/* Assessment Schedule — sortable/filterable table */}
-          <div className="rounded-xl p-5" style={{ background: '#fff', border: '1px solid #e2e8f0' }}>
-            <div className="flex items-center gap-2 mb-1">
-              <Users size={16} style={{ color: '#0f766e' }} />
-              <h3 className="font-semibold text-sm" style={{ color: '#0f766e' }}>Assessment Schedule</h3>
+        <div className="space-y-5">
+          {/* Assessment Schedule */}
+          <section className="rounded-xl min-w-0" style={CARD_STYLE}>
+            <div className="px-5 pt-4 pb-3" style={{ borderBottom: '1px solid var(--light-gray)' }}>
+              <h2 className="flex items-center gap-2 text-[14px] font-bold leading-tight" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+                <Users size={15} style={{ color: 'var(--teal)' }} /> Assessment schedule
+              </h2>
+              <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>
+                Surveys completed against each staff member&apos;s yearly target. {isFrontDesk ? 'Showing front desk staff at your branch.' : 'Showing all staff.'}
+              </p>
             </div>
-            <p className="text-xs mb-4" style={{ color: '#94a3b8' }}>
-              Track staff assessment progress. {isFrontDesk ? 'Showing front desk staff at your branch.' : 'Showing all staff.'}
-            </p>
 
-            {/* Filters */}
-            <div className="flex flex-wrap gap-3 mb-4">
-              <select value={filterDept} onChange={e => setFilterDept(e.target.value)}
-                className="px-3 py-2 rounded-lg text-sm border" style={{ borderColor: '#e2e8f0' }}>
+            {/* Toolbar */}
+            <div className="flex flex-wrap items-center gap-2 px-3 py-3" style={{ borderBottom: '1px solid var(--light-gray)' }}>
+              <div className="relative flex-1 min-w-[180px] max-w-sm">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mid-gray)' }} />
+                <input type="text" value={staffSearch} onChange={e => setStaffSearch(e.target.value)}
+                  placeholder="Search staff…" aria-label="Search staff"
+                  className={`${CONTROL} w-full pl-9 pr-8`} style={CONTROL_STYLE} />
+                {staffSearch && (
+                  <button onClick={() => setStaffSearch('')} title="Clear search" className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-gray-100">
+                    <X size={13} style={{ color: 'var(--mid-gray)' }} />
+                  </button>
+                )}
+              </div>
+              <select value={filterDept} onChange={e => setFilterDept(e.target.value)} aria-label="Department"
+                className={CONTROL} style={controlStyle(!!filterDept)}>
                 <option value="">All Departments</option>
                 {departments.map(d => <option key={d} value={d}>{d}</option>)}
               </select>
               {!isFrontDesk && (
-                <select value={filterBranch} onChange={e => setFilterBranch(e.target.value)}
-                  className="px-3 py-2 rounded-lg text-sm border" style={{ borderColor: '#e2e8f0' }}>
+                <select value={filterBranch} onChange={e => setFilterBranch(e.target.value)} aria-label="Branch"
+                  className={CONTROL} style={controlStyle(!!filterBranch)}>
                   <option value="">All Branches</option>
-                  {branches.map(b => <option key={b} value={b}>{b}</option>)}
+                  {branches.map(b => <option key={b} value={b}>{branchLabel(b) || b}</option>)}
                 </select>
               )}
+              {staffFiltersOn && (
+                <button onClick={() => { setFilterDept(''); setFilterBranch(''); setStaffSearch('') }}
+                  className="inline-flex items-center gap-1 h-9 px-2.5 rounded-lg text-xs font-semibold hover:bg-gray-50" style={{ color: 'var(--teal)' }}>
+                  <X size={12} /> Clear filters
+                </button>
+              )}
+              <span className="ml-auto text-xs whitespace-nowrap pl-2" style={{ color: 'var(--mid-gray)' }}>
+                {staffLoading && staff.length === 0 ? 'Loading…' : (
+                  <>
+                    <span className="font-semibold" style={{ color: 'var(--charcoal)' }}>{tableStaff.length}</span>
+                    {tableStaff.length !== staff.length && <> of {staff.length}</>} staff
+                  </>
+                )}
+              </span>
             </div>
 
-            {filteredStaff.length > 0 ? (
+            {staffLoading && staff.length === 0 ? (
+              <div className="p-5 space-y-3" aria-hidden>
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="flex items-center gap-4">
+                    <Skeleton className="h-3.5 w-40" />
+                    <Skeleton className="h-3.5 w-14 hidden sm:block" />
+                    <Skeleton className="h-2 flex-1" />
+                    <Skeleton className="h-3.5 w-10" />
+                  </div>
+                ))}
+              </div>
+            ) : tableStaff.length > 0 ? (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="w-full text-sm min-w-[520px]">
                   <thead>
-                    <tr style={{ borderBottom: '2px solid #e2e8f0' }}>
+                    <tr style={{ borderBottom: '1px solid var(--light-gray)', background: '#F8FAF9' }}>
                       {([
                         ['name', 'Staff'],
                         ['department', 'Role'],
                         ['branch', 'Branch'],
                         ['progress', 'Progress'],
                       ] as [SortKey, string][]).map(([key, label]) => (
-                        <th key={key}
-                          onClick={() => toggleSort(key)}
-                          className="text-left py-2 px-3 text-xs font-semibold uppercase tracking-wider cursor-pointer select-none hover:bg-slate-50"
-                          style={{ color: sortKey === key ? '#0f766e' : '#94a3b8' }}
-                        >
-                          <span className="inline-flex items-center gap-1">
+                        <th key={key} className="text-left px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider whitespace-nowrap"
+                          style={{ color: sortKey === key ? 'var(--teal)' : 'var(--mid-gray)' }}
+                          aria-sort={sortKey === key ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}>
+                          <button onClick={() => toggleSort(key)} className="inline-flex items-center gap-1 select-none hover:opacity-80" title={`Sort by ${label.toLowerCase()}`}>
                             {label}
                             <SortIcon col={key} />
-                          </span>
+                          </button>
                         </th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredStaff.map(s => {
+                    {tableStaff.map(s => {
                       const pct = Math.min(100, (s.completed / (s.targetCount || 1)) * 100)
+                      const done = s.completed >= s.targetCount
                       return (
-                        <tr key={s.id} className="hover:bg-teal-50/50" style={{ borderBottom: '1px solid #f1f5f9' }}>
-                          <td className="py-2.5 px-3 font-medium" style={{ color: '#1e293b' }}>{s.name}</td>
-                          <td className="py-2.5 px-3">
-                            <span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={{ background: '#f0fdfa', color: '#0f766e' }}>
-                              {s.department}
-                            </span>
+                        <tr key={s.id} className="hover:bg-[#F8FAF9]" style={{ borderBottom: '1px solid #EEF2F1' }}>
+                          <td className="px-4 py-2.5 font-medium" style={{ color: 'var(--charcoal)' }}>{s.name}</td>
+                          <td className="px-4 py-2.5"><Chip>{s.department}</Chip></td>
+                          <td className="px-4 py-2.5 text-xs whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>
+                            {branchLabel(s.branch) || s.branch}
                           </td>
-                          <td className="py-2.5 px-3" style={{ color: '#64748b' }}>
-                            {s.branch === 'SBEA' ? 'East Branch' : s.branch === 'SBGH' ? 'Greenhills' : s.branch}
-                          </td>
-                          <td className="py-2.5 px-3">
-                            <div className="flex items-center gap-2">
-                              <div className="flex-1 h-1.5 rounded-full" style={{ background: '#f1f5f9', minWidth: 80 }}>
-                                <div className="h-full rounded-full transition-all" style={{
-                                  width: `${pct}%`,
-                                  background: s.completed >= s.targetCount ? '#10b981' : '#0f766e',
-                                }} />
+                          <td className="px-4 py-2.5">
+                            <div className="flex items-center gap-2.5" title={`${s.completed} of ${s.targetCount} surveys completed`}>
+                              <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: '#EEF2F1', minWidth: 80 }}>
+                                <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: done ? '#16A34A' : 'var(--teal)' }} />
                               </div>
-                              <span className="text-xs font-semibold whitespace-nowrap" style={{
-                                color: s.completed >= s.targetCount ? '#10b981' : '#64748b',
-                                minWidth: 40, textAlign: 'right',
-                              }}>
+                              <span className="text-xs font-semibold whitespace-nowrap text-right" style={{ color: done ? '#15803D' : 'var(--charcoal)', minWidth: 40, fontVariantNumeric: 'tabular-nums' }}>
+                                {done && <Check size={11} className="inline -mt-0.5 mr-0.5" />}
                                 {s.completed}/{s.targetCount}
                               </span>
                             </div>
@@ -650,540 +880,427 @@ export default function SurveyClient({ role }: { role: string }) {
                 </table>
               </div>
             ) : (
-              <p className="text-sm text-center py-6" style={{ color: '#94a3b8' }}>
-                {staff.length === 0 ? 'Loading staff data...' : 'No staff match the current filters.'}
-              </p>
+              <EmptyState
+                title={staff.length === 0 ? 'No staff to show' : 'No staff match these filters'}
+                hint={staff.length === 0 ? 'Staff with assessment targets for this year will appear here.' : 'Try a different name, department or branch, or clear the filters.'}
+              />
             )}
-          </div>
+          </section>
 
           {/* Manual Assignment */}
-          <div className="rounded-xl p-5" style={{ background: '#fff', border: '1px solid #e2e8f0' }}>
-            <div className="flex items-center gap-2 mb-1">
-              <QrCode size={16} style={{ color: '#0f766e' }} />
-              <h3 className="font-semibold text-sm" style={{ color: '#0f766e' }}>Manual Survey Assignment</h3>
-            </div>
-            <p className="text-xs mb-4" style={{ color: '#94a3b8' }}>Generate a QR code for a patient to take a survey.</p>
-
-            {/* Patient Type Toggle */}
-            <div className="mb-4">
-              <label className="block text-xs font-semibold mb-2" style={{ color: '#64748b' }}>Patient Type</label>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => { setAssignPatientType('PEDIATRIC'); setSelectedPatient(null); setPatientQuery('') }}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all"
-                  style={assignPatientType === 'PEDIATRIC'
-                    ? { background: '#0f766e', color: '#fff' }
-                    : { background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0' }
-                  }
-                >
-                  <Baby size={15} />
-                  Pedia (Under 18)
-                </button>
-                <button
-                  onClick={() => { setAssignPatientType('ADULT'); setSelectedPatient(null); setPatientQuery('') }}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all"
-                  style={assignPatientType === 'ADULT'
-                    ? { background: '#0f766e', color: '#fff' }
-                    : { background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0' }
-                  }
-                >
-                  <User size={15} />
-                  Adult (18+)
-                </button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+          <DashCard title="Manual survey assignment" icon={<QrCode size={15} />}
+            description="Generate a QR code a patient can scan to take the survey.">
+            <div className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold mb-1" style={{ color: '#64748b' }}>Staff Member</label>
-                <select value={assignStaff} onChange={e => setAssignStaff(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg text-sm border" style={{ borderColor: '#e2e8f0' }}>
-                  <option value="">Select staff...</option>
-                  {filteredStaff.map(s => <option key={s.id} value={s.id}>{s.name} ({s.department})</option>)}
-                </select>
-              </div>
-              <div ref={patientSearchRef} className="relative">
-                <label className="block text-xs font-semibold mb-1" style={{ color: '#64748b' }}>
-                  Patient Name
-                  <span className="font-normal ml-1" style={{ color: '#94a3b8' }}>(search from Patient CRM)</span>
-                </label>
-                <div className="relative">
-                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#94a3b8' }} />
-                  <input
-                    type="text"
-                    value={patientQuery}
-                    onChange={e => handlePatientQueryChange(e.target.value)}
-                    onFocus={() => { if (patientQuery.length >= 2) setShowPatientDropdown(true) }}
-                    placeholder={`Search ${assignPatientType === 'PEDIATRIC' ? 'pedia' : 'adult'} patients...`}
-                    className="w-full pl-9 pr-3 py-2 rounded-lg text-sm border" style={{ borderColor: '#e2e8f0' }}
-                  />
+                <span className={LABEL} style={{ color: 'var(--mid-gray)' }}>Patient type</span>
+                <div className="inline-flex p-1 rounded-lg gap-1" style={{ background: '#F3F6F5' }} role="group" aria-label="Patient type">
+                  {([
+                    { id: 'PEDIATRIC' as const, label: 'Pedia (Under 18)', icon: Baby },
+                    { id: 'ADULT' as const, label: 'Adult (18+)', icon: User },
+                  ]).map(({ id, label, icon: Icon }) => {
+                    const active = assignPatientType === id
+                    return (
+                      <button key={id} aria-pressed={active}
+                        onClick={() => { setAssignPatientType(id); setSelectedPatient(null); setPatientQuery('') }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors"
+                        style={active ? { background: '#fff', color: 'var(--teal)', boxShadow: '0 1px 2px rgba(0,0,0,0.08)' } : { color: 'var(--mid-gray)' }}>
+                        <Icon size={14} /> {label}
+                      </button>
+                    )
+                  })}
                 </div>
-                {/* Selected patient badge */}
-                {selectedPatient && (
-                  <div className="mt-1.5 flex items-center gap-2 px-2.5 py-1.5 rounded-md text-xs" style={{ background: '#f0fdfa', border: '1px solid #99f6e4', color: '#0f766e' }}>
-                    <span className="font-semibold">{selectedPatient.firstName} {selectedPatient.lastName}</span>
-                    {selectedPatient.dob && (
-                      <span style={{ color: '#64748b' }}>
-                        Age: {getAge(selectedPatient.dob)} &middot; DOB: {new Date(selectedPatient.dob).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
-                      </span>
-                    )}
-                    <button onClick={() => { setSelectedPatient(null); setPatientQuery('') }} className="ml-auto">
-                      <X size={12} />
-                    </button>
-                  </div>
-                )}
-                {/* Search results dropdown */}
-                {showPatientDropdown && patientQuery.length >= 2 && (
-                  <div className="absolute z-20 left-0 right-0 mt-1 rounded-lg shadow-lg max-h-48 overflow-y-auto" style={{ background: '#fff', border: '1px solid #e2e8f0' }}>
-                    {patientSearching ? (
-                      <div className="px-3 py-3 text-xs text-center" style={{ color: '#94a3b8' }}>Searching...</div>
-                    ) : patientResults.length > 0 ? (
-                      patientResults.map(p => (
-                        <button
-                          key={p.id}
-                          onClick={() => selectPatient(p)}
-                          className="w-full px-3 py-2 text-left text-sm hover:bg-teal-50 flex items-center justify-between"
-                          style={{ borderBottom: '1px solid #f1f5f9' }}
-                        >
-                          <span className="font-medium" style={{ color: '#1e293b' }}>{p.firstName} {p.lastName}</span>
-                          <span className="text-xs" style={{ color: '#94a3b8' }}>
-                            {p.dob ? `Age ${getAge(p.dob)}` : 'No DOB'}
-                            {p.branches?.length > 0 && ` · ${p.branches.join(', ')}`}
-                          </span>
-                        </button>
-                      ))
-                    ) : (
-                      <div className="px-3 py-3 text-xs text-center" style={{ color: '#94a3b8' }}>
-                        No {assignPatientType === 'PEDIATRIC' ? 'pedia' : 'adult'} patients found for &quot;{patientQuery}&quot;
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-              <div>
-                <label className="block text-xs font-semibold mb-1" style={{ color: '#64748b' }}>Session Type</label>
-                <select value={assignSession} onChange={e => setAssignSession(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg text-sm border" style={{ borderColor: '#e2e8f0' }}>
-                  <option value="individual">Individual Session</option>
-                  <option value="group">Group Session</option>
-                </select>
-              </div>
-              {selectedPatient && selectedPatient.dob && (
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold mb-1" style={{ color: '#64748b' }}>Patient Age (auto-calculated)</label>
-                  <div className="px-3 py-2 rounded-lg text-sm font-medium" style={{ background: '#f0fdfa', color: '#0f766e', border: '1px solid #99f6e4' }}>
-                    {getAge(selectedPatient.dob)} years old
-                    <span className="ml-2 font-normal" style={{ color: '#64748b' }}>
-                      → Survey: {assignSession === 'group' ? 'HR16' : getAge(selectedPatient.dob) < 18 ? 'HR10 (Pedia)' : 'HR11 (Adult)'}
-                    </span>
-                  </div>
+                  <label htmlFor="assign-staff" className={LABEL} style={{ color: 'var(--mid-gray)' }}>Staff member</label>
+                  <select id="assign-staff" value={assignStaff} onChange={e => setAssignStaff(e.target.value)}
+                    className={`${CONTROL} w-full`} style={CONTROL_STYLE}>
+                    <option value="">Select staff...</option>
+                    {filteredStaff.map(s => <option key={s.id} value={s.id}>{s.name} ({s.department})</option>)}
+                  </select>
                 </div>
-              )}
-            </div>
-            <button
-              onClick={() => {
-                if (!assignStaff) return alert('Please select a staff member')
-                if (!selectedPatient) return alert('Please search and select a patient from the CRM')
-                createAssignment(assignStaff)
-              }}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold text-white transition-all hover:opacity-90"
-              style={{ background: '#0f766e' }}
-            >
-              <QrCode size={15} />
-              Generate Survey QR Code
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Results Tab (Admin / Branch Admin Only) */}
-      {tab === 'results' && isAdmin && (
-        <div className="space-y-5">
-          {/* Filters Bar */}
-          <div className="rounded-xl p-4 flex flex-wrap items-center gap-3" style={{ background: '#fff', border: '1px solid #e2e8f0' }}>
-            <Filter size={15} style={{ color: '#0f766e' }} />
-            <span className="text-xs font-semibold uppercase" style={{ color: '#94a3b8' }}>Filters</span>
-
-            {resultsDash?.isMainAdmin && (
-              <select value={rdFilterBranch} onChange={e => setRdFilterBranch(e.target.value)}
-                className="px-3 py-1.5 rounded-lg text-sm border" style={{ borderColor: '#e2e8f0' }}>
-                <option value="">All Branches</option>
-                {resultsDash?.availableBranches.map(b => (
-                  <option key={b} value={b}>{branchLabel(b) || b}</option>
-                ))}
-              </select>
-            )}
-
-            <select value={rdFilterStaff} onChange={e => setRdFilterStaff(e.target.value)}
-              className="px-3 py-1.5 rounded-lg text-sm border" style={{ borderColor: '#e2e8f0' }}>
-              <option value="">All Staff</option>
-              {(resultsDash?.staffOptions ?? []).map(s => (
-                <option key={s.id} value={s.id}>{s.name} ({s.department})</option>
-              ))}
-            </select>
-
-            <select value={rdFilterMonth} onChange={e => setRdFilterMonth(Number(e.target.value))}
-              className="px-3 py-1.5 rounded-lg text-sm border" style={{ borderColor: '#e2e8f0' }}>
-              <option value={0}>All Months</option>
-              {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => (
-                <option key={m} value={m}>{new Date(2025, m - 1).toLocaleString('en', { month: 'long' })}</option>
-              ))}
-            </select>
-
-            {/* Answered between. Overrides the year the rest of this view runs
-                on, so it can answer "anything this week" rather than only
-                "any January". */}
-            <label className="text-xs font-semibold uppercase" style={{ color: '#94a3b8' }}>Answered</label>
-            <input type="date" value={rdFrom} onChange={e => setRdFrom(e.target.value)}
-              title="Answered from" aria-label="Answered from"
-              className="px-2 py-1.5 rounded-lg text-sm border" style={{ borderColor: '#e2e8f0' }} />
-            <span className="text-xs" style={{ color: '#94a3b8' }}>to</span>
-            <input type="date" value={rdTo} onChange={e => setRdTo(e.target.value)}
-              title="Answered to" aria-label="Answered to"
-              className="px-2 py-1.5 rounded-lg text-sm border" style={{ borderColor: '#e2e8f0' }} />
-            {(rdFrom || rdTo) && (
-              <button onClick={() => { setRdFrom(''); setRdTo('') }}
-                className="px-2 py-1 rounded-lg text-xs font-semibold border"
-                style={{ borderColor: '#e2e8f0', color: '#64748b' }}>
-                Clear dates
-              </button>
-            )}
-          </div>
-
-          {/* Sub-tabs */}
-          <div className="flex gap-1 p-1 rounded-lg" style={{ background: '#f1f5f9' }}>
-            {([
-              { id: 'leaderboard' as const, label: 'Leaderboard', icon: Trophy },
-              { id: 'details' as const, label: 'Staff Details', icon: Users },
-              { id: 'manage' as const, label: 'Manage Results', icon: FileText },
-              ...(isMarketingAdmin ? [{ id: 'highlights' as const, label: 'Social Media Highlights', icon: Sparkles }] : []),
-              ...(isAdmin ? [{ id: 'settings' as const, label: 'Results Settings', icon: Settings }] : []),
-            ]).map(({ id, label, icon: Icon }) => (
-              <button key={id} onClick={() => setRdSubTab(id)}
-                className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all"
-                style={rdSubTab === id
-                  ? { background: '#fff', color: '#0f766e', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', fontWeight: 600 }
-                  : { background: 'transparent', color: '#64748b' }
-                }
-              >
-                <Icon size={14} />
-                {label}
-              </button>
-            ))}
-          </div>
-
-          {resultsLoading && (
-            <div className="text-center py-12">
-              <div className="inline-block w-6 h-6 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: '#0f766e', borderTopColor: 'transparent' }} />
-              <p className="text-xs mt-2" style={{ color: '#94a3b8' }}>Loading results...</p>
-            </div>
-          )}
-
-          {/* ── Leaderboard Sub-tab ── */}
-          {rdSubTab === 'leaderboard' && !resultsLoading && resultsDash && (
-            <div className="space-y-5">
-              {/* Top 5 Overall */}
-              <div className="rounded-xl p-5" style={{ background: '#fff', border: '1px solid #e2e8f0' }}>
-                <div className="flex items-center gap-2 mb-4">
-                  <Trophy size={18} style={{ color: '#f59e0b' }} />
-                  <h3 className="font-bold text-sm" style={{ color: '#1e293b' }}>Top 5 Scores — Overall</h3>
-                </div>
-                {resultsDash.top5Overall.length > 0 ? (
-                  <LeaderboardGroupList performers={resultsDash.top5Overall} />
-                ) : (
-                  <p className="text-sm text-center py-6" style={{ color: '#94a3b8' }}>No completed surveys yet</p>
-                )}
-              </div>
-
-              {/* Top 5 Per Department */}
-              {Object.entries(resultsDash.top5ByDept)
-                .filter(([dept]) => !rdFilterDept || dept === rdFilterDept)
-                .map(([dept, list]) => (
-                <div key={dept} className="rounded-xl p-5" style={{ background: '#fff', border: '1px solid #e2e8f0' }}>
-                  <div className="flex items-center gap-2 mb-4">
-                    <Award size={16} style={{ color: '#0f766e' }} />
-                    <h3 className="font-bold text-sm" style={{ color: "#1e293b" }}>Top 5 Scores — {dept}</h3>
+                <div ref={patientSearchRef} className="relative">
+                  <label htmlFor="assign-patient" className={LABEL} style={{ color: 'var(--mid-gray)' }}>
+                    Patient name <span className="normal-case tracking-normal font-normal">(search from Patient CRM)</span>
+                  </label>
+                  <div className="relative">
+                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mid-gray)' }} />
+                    <input id="assign-patient" type="text" value={patientQuery}
+                      onChange={e => handlePatientQueryChange(e.target.value)}
+                      onFocus={() => { if (patientQuery.length >= 2) setShowPatientDropdown(true) }}
+                      placeholder={`Search ${assignPatientType === 'PEDIATRIC' ? 'pedia' : 'adult'} patients...`}
+                      className={`${CONTROL} w-full pl-9`} style={CONTROL_STYLE} />
                   </div>
-                  {list.length > 0 ? (
-                    <LeaderboardGroupList performers={list} />
-                  ) : (
-                    <p className="text-sm text-center py-4" style={{ color: '#94a3b8' }}>No data</p>
+                  {selectedPatient && (
+                    <div className="mt-1.5 flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs" style={{ background: 'var(--pale-teal)', color: 'var(--teal)' }}>
+                      <Check size={12} />
+                      <span className="font-semibold">{selectedPatient.firstName} {selectedPatient.lastName}</span>
+                      {selectedPatient.dob && (
+                        <span style={{ color: 'var(--mid-gray)' }}>
+                          Age: {getAge(selectedPatient.dob)} &middot; DOB: {new Date(selectedPatient.dob).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        </span>
+                      )}
+                      <button onClick={() => { setSelectedPatient(null); setPatientQuery('') }} className="ml-auto p-0.5 rounded hover:bg-white/60" title="Clear patient">
+                        <X size={12} />
+                      </button>
+                    </div>
                   )}
-                </div>
-              ))}
-
-              {/* Department filter for leaderboard */}
-              {(resultsDash.departments.length > 1) && (
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-xs font-semibold" style={{ color: '#94a3b8' }}>Show department:</span>
-                  <button onClick={() => setRdFilterDept('')}
-                    className="px-3 py-1 rounded-full text-xs font-semibold transition-all"
-                    style={!rdFilterDept ? { background: '#0f766e', color: '#fff' } : { background: '#f1f5f9', color: '#64748b' }}>
-                    All
-                  </button>
-                  {resultsDash.departments.map(d => (
-                    <button key={d} onClick={() => setRdFilterDept(d)}
-                      className="px-3 py-1 rounded-full text-xs font-semibold transition-all"
-                      style={rdFilterDept === d ? { background: '#0f766e', color: '#fff' } : { background: '#f1f5f9', color: '#64748b' }}>
-                      {d}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ── Staff Details Sub-tab ── */}
-          {rdSubTab === 'details' && !resultsLoading && resultsDash && (
-            <div className="space-y-3">
-              {resultsDash.allStaff.length > 0 ? resultsDash.allStaff
-                .filter(s => !rdFilterDept || s.department === rdFilterDept)
-                .sort((a, b) => b.compositeScore - a.compositeScore)
-                .map(s => {
-                  const isExpanded = expandedStaff === s.id
-                  return (
-                    <div key={s.id} className="rounded-xl overflow-hidden" style={{ background: '#fff', border: '1px solid #e2e8f0' }}>
-                      {/* Summary row */}
-                      <div
-                        className="p-4 flex items-center gap-4 cursor-pointer hover:bg-slate-50 transition-colors"
-                        onClick={() => setExpandedStaff(isExpanded ? null : s.id)}
-                      >
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="font-bold text-sm" style={{ color: '#1e293b' }}>{s.name}</span>
-                            <span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={{ background: '#f0fdfa', color: '#0f766e' }}>
-                              {s.department}
-                            </span>
-                            <span className="text-xs" style={{ color: '#94a3b8' }}>
-                              {s.branch === 'SBEA' ? 'East' : s.branch === 'SBGH' ? 'GH' : s.branch}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-4 text-xs" style={{ color: '#64748b' }}>
-                            <span className="flex items-center gap-1"><Star size={11} style={{ color: '#f59e0b' }} /> {s.avgRating.toFixed(2)} avg</span>
-                            <span className="flex items-center gap-1"><Calendar size={11} /> {s.sessionsTotal} sessions{rdFilterMonth ? ` (${s.sessionsMonth} this month)` : ''}</span>
-                            <span className="flex items-center gap-1"><ClipboardCheck size={11} /> {s.surveyCount} surveys</span>
-                          </div>
+                  {showPatientDropdown && patientQuery.length >= 2 && (
+                    <div className="absolute z-20 left-0 right-0 mt-1 rounded-xl max-h-56 overflow-y-auto"
+                      style={{ background: '#fff', border: '1px solid var(--light-gray)', boxShadow: '0 10px 30px rgba(15,23,42,0.12)' }}>
+                      {patientSearching ? (
+                        <div className="px-3 py-3 text-xs text-center flex items-center justify-center gap-1.5" style={{ color: 'var(--mid-gray)' }}>
+                          <Loader2 size={12} className="animate-spin" /> Searching...
                         </div>
-                        <div className="text-right">
-                          <div className="text-lg font-bold" style={{ color: '#0f766e' }}>{s.compositeScore}</div>
-                          <div className="text-[10px] uppercase font-semibold" style={{ color: '#94a3b8' }}>Score</div>
-                        </div>
-                        {isExpanded ? <ChevronUp size={16} style={{ color: '#94a3b8' }} /> : <ChevronDown size={16} style={{ color: '#94a3b8' }} />}
-                      </div>
-
-                      {/* Expanded details */}
-                      {isExpanded && (
-                        <div className="px-4 pb-4 space-y-4" style={{ borderTop: '1px solid #f1f5f9' }}>
-                          {/* PDF download */}
-                          <div className="flex justify-end pt-3">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                generateSurveyResultPDF({
-                                  staffName: s.name,
-                                  department: s.department,
-                                  branch: s.branch,
-                                  avgRating: s.avgRating,
-                                  sessionsTotal: s.sessionsTotal,
-                                  sessionsRescheduled: s.sessionsRescheduled,
-                                  sessionsCancelled: s.sessionsCancelled,
-                                  compositeScore: s.compositeScore,
-                                  surveyCount: s.surveyCount,
-                                  monthlyRatings: s.monthlyRatings,
-                                  feedback: s.feedback,
-                                  filterMonthLabel: rdFilterMonth ? 'Month ' + rdFilterMonth : undefined,
-                                })
-                              }}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold border"
-                              style={{ borderColor: '#0f766e', color: '#0f766e', background: '#fff' }}
-                              title="Download results as PDF"
-                            >
-                              <Download size={12} /> Download PDF
-                            </button>
-                          </div>
-                          {/* Stats cards */}
-                          <div className="grid grid-cols-3 gap-3 pt-3">
-                            <div className="rounded-lg p-3 text-center" style={{ background: '#fffbeb' }}>
-                              <Star size={16} className="mx-auto mb-1" style={{ color: '#f59e0b' }} />
-                              <div className="text-lg font-bold" style={{ color: '#92400e' }}>{s.avgRating.toFixed(2)}</div>
-                              <div className="text-[10px] font-semibold" style={{ color: '#b45309' }}>Avg Rating</div>
-                            </div>
-                            <div className="rounded-lg p-3 text-center" style={{ background: '#f0fdfa' }}>
-                              <Calendar size={16} className="mx-auto mb-1" style={{ color: '#0f766e' }} />
-                              <div className="text-lg font-bold" style={{ color: '#0f766e' }}>{rdFilterMonth ? s.sessionsMonth : s.sessionsTotal}</div>
-                              <div className="text-[10px] font-semibold" style={{ color: '#0f766e' }}>{rdFilterMonth ? 'Sessions (Month)' : 'Sessions (Year)'}</div>
-                            </div>
-                            <div className="rounded-lg p-3 text-center" style={{ background: '#eff6ff' }}>
-                              <ClipboardCheck size={16} className="mx-auto mb-1" style={{ color: '#2563eb' }} />
-                              <div className="text-lg font-bold" style={{ color: '#1e40af' }}>{s.surveyCount}</div>
-                              <div className="text-[10px] font-semibold" style={{ color: '#2563eb' }}>Surveys Completed</div>
-                            </div>
-                          </div>
-
-                          {/* Monthly ratings chart (simple bar) */}
-                          {s.monthlyRatings.length > 0 && (
-                            <div>
-                              <div className="flex items-center gap-1.5 mb-2">
-                                <TrendingUp size={13} style={{ color: '#0f766e' }} />
-                                <span className="text-xs font-semibold" style={{ color: '#64748b' }}>Monthly Rating Trend</span>
-                              </div>
-                              <div className="flex items-end gap-1.5 h-16">
-                                {s.monthlyRatings.map(mr => {
-                                  const pct = (mr.avgRating / 5) * 100
-                                  const monthName = new Date(2025, parseInt(mr.month) - 1).toLocaleString('en', { month: 'short' })
-                                  return (
-                                    <div key={mr.month} className="flex-1 flex flex-col items-center gap-0.5">
-                                      <span className="text-[9px] font-semibold" style={{ color: '#64748b' }}>{mr.avgRating.toFixed(1)}</span>
-                                      <div className="w-full rounded-t" style={{ height: `${pct}%`, background: '#0f766e', minHeight: 4 }} />
-                                      <span className="text-[9px]" style={{ color: '#94a3b8' }}>{monthName}</span>
-                                    </div>
-                                  )
-                                })}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Feedback summaries */}
-                          {(s.feedback.strengths.length > 0 || s.feedback.improvements.length > 0 || s.feedback.other.length > 0) && (
-                            <div>
-                              <div className="flex items-center gap-1.5 mb-2">
-                                <MessageSquare size={13} style={{ color: '#0f766e' }} />
-                                <span className="text-xs font-semibold" style={{ color: '#64748b' }}>Patient Feedback Summary</span>
-                              </div>
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                {s.feedback.strengths.length > 0 && (
-                                  <div className="rounded-lg p-3" style={{ background: '#f0fdf4', border: '1px solid #bbf7d0' }}>
-                                    <div className="flex items-center gap-1.5 mb-2">
-                                      <ThumbsUp size={12} style={{ color: '#16a34a' }} />
-                                      <span className="text-xs font-semibold" style={{ color: '#16a34a' }}>Strengths</span>
-                                    </div>
-                                    <ul className="space-y-1">
-                                      {s.feedback.strengths.map((fb, i) => (
-                                        <li key={i} className="text-xs" style={{ color: '#374151' }}>&bull; {fb}</li>
-                                      ))}
-                                    </ul>
-                                  </div>
-                                )}
-                                {s.feedback.improvements.length > 0 && (
-                                  <div className="rounded-lg p-3" style={{ background: '#fffbeb', border: '1px solid #fde68a' }}>
-                                    <div className="flex items-center gap-1.5 mb-2">
-                                      <AlertTriangle size={12} style={{ color: '#d97706' }} />
-                                      <span className="text-xs font-semibold" style={{ color: '#d97706' }}>Areas for Improvement</span>
-                                    </div>
-                                    <ul className="space-y-1">
-                                      {s.feedback.improvements.map((fb, i) => (
-                                        <li key={i} className="text-xs" style={{ color: '#374151' }}>&bull; {fb}</li>
-                                      ))}
-                                    </ul>
-                                  </div>
-                                )}
-                                {s.feedback.other.length > 0 && (
-                                  <div className="rounded-lg p-3 md:col-span-2" style={{ background: '#f8fafc', border: '1px solid #e2e8f0' }}>
-                                    <div className="flex items-center gap-1.5 mb-2">
-                                      <MessageSquare size={12} style={{ color: '#64748b' }} />
-                                      <span className="text-xs font-semibold" style={{ color: '#64748b' }}>Other Comments</span>
-                                    </div>
-                                    <ul className="space-y-1">
-                                      {s.feedback.other.map((fb, i) => (
-                                        <li key={i} className="text-xs" style={{ color: '#374151' }}>&bull; {fb}</li>
-                                      ))}
-                                    </ul>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          )}
+                      ) : patientResults.length > 0 ? (
+                        patientResults.map(p => (
+                          <button key={p.id} onClick={() => selectPatient(p)}
+                            className="w-full px-3 py-2 text-left text-sm hover:bg-[#F8FAF9] flex items-center justify-between gap-3"
+                            style={{ borderBottom: '1px solid #EEF2F1' }}>
+                            <span className="font-medium" style={{ color: 'var(--charcoal)' }}>{p.firstName} {p.lastName}</span>
+                            <span className="text-xs text-right" style={{ color: 'var(--mid-gray)' }}>
+                              {p.dob ? `Age ${getAge(p.dob)}` : 'No DOB'}
+                              {p.branches?.length > 0 && ` · ${p.branches.join(', ')}`}
+                            </span>
+                          </button>
+                        ))
+                      ) : (
+                        <div className="px-3 py-3 text-xs text-center" style={{ color: 'var(--mid-gray)' }}>
+                          No {assignPatientType === 'PEDIATRIC' ? 'pedia' : 'adult'} patients found for &quot;{patientQuery}&quot;
                         </div>
                       )}
                     </div>
-                  )
-                }) : (
-                <p className="text-sm text-center py-12" style={{ color: '#94a3b8' }}>No survey results yet</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="assign-session" className={LABEL} style={{ color: 'var(--mid-gray)' }}>Session type</label>
+                  <select id="assign-session" value={assignSession} onChange={e => setAssignSession(e.target.value)}
+                    className={`${CONTROL} w-full`} style={CONTROL_STYLE}>
+                    <option value="individual">Individual Session</option>
+                    <option value="group">Group Session</option>
+                  </select>
+                </div>
+                {selectedPatient && selectedPatient.dob && (
+                  <div>
+                    <span className={LABEL} style={{ color: 'var(--mid-gray)' }}>Patient age (auto-calculated)</span>
+                    <div className="h-9 px-3 rounded-lg text-sm font-medium flex items-center flex-wrap gap-x-2" style={{ background: 'var(--pale-teal)', color: 'var(--teal)' }}>
+                      {getAge(selectedPatient.dob)} years old
+                      <span className="font-normal text-xs" style={{ color: 'var(--mid-gray)' }}>
+                        → Survey: {assignSession === 'group' ? 'HR16' : getAge(selectedPatient.dob) < 18 ? 'HR10 (Pedia)' : 'HR11 (Adult)'}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="pt-1">
+                <button
+                  onClick={() => {
+                    if (!assignStaff) return alert('Please select a staff member')
+                    if (!selectedPatient) return alert('Please search and select a patient from the CRM')
+                    createAssignment(assignStaff)
+                  }}
+                  className={BTN_PRIMARY} style={{ background: 'var(--teal)' }}>
+                  <QrCode size={15} /> Generate Survey QR Code
+                </button>
+              </div>
+            </div>
+          </DashCard>
+        </div>
+      )}
+
+      {/* ═══════════════ Results (Admin / Branch Admin only) ═══════════════ */}
+      {tab === 'results' && isAdmin && (
+        <div className="space-y-5">
+          <PillTabs label="Results sections" size="sm" value={rdSubTab} onChange={setRdSubTab} tabs={[
+            { id: 'leaderboard' as const, label: 'Leaderboard', icon: Trophy },
+            { id: 'details' as const, label: 'Staff Details', icon: Users },
+            { id: 'manage' as const, label: 'Manage Results', icon: FileText },
+            ...(isMarketingAdmin ? [{ id: 'highlights' as const, label: 'Social Media Highlights', icon: Sparkles }] : []),
+            ...(isAdmin ? [{ id: 'settings' as const, label: 'Results Settings', icon: Settings }] : []),
+          ]} />
+
+          {/* Filters — they drive the Leaderboard and Staff Details views */}
+          {(rdSubTab === 'leaderboard' || rdSubTab === 'details') && (
+            <div className="rounded-xl px-3 py-3 flex flex-wrap items-center gap-2" style={CARD_STYLE}>
+              {resultsDash?.isMainAdmin && (
+                <select value={rdFilterBranch} onChange={e => setRdFilterBranch(e.target.value)} aria-label="Branch"
+                  className={CONTROL} style={controlStyle(!!rdFilterBranch)}>
+                  <option value="">All Branches</option>
+                  {resultsDash?.availableBranches.map(b => (
+                    <option key={b} value={b}>{branchLabel(b) || b}</option>
+                  ))}
+                </select>
+              )}
+              {(resultsDash?.departments.length ?? 0) > 1 && (
+                <select value={rdFilterDept} onChange={e => setRdFilterDept(e.target.value)} aria-label="Department"
+                  className={CONTROL} style={controlStyle(!!rdFilterDept)}>
+                  <option value="">All Departments</option>
+                  {resultsDash?.departments.map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
+              )}
+              <select value={rdFilterStaff} onChange={e => setRdFilterStaff(e.target.value)} aria-label="Staff"
+                className={`${CONTROL} max-w-[14rem]`} style={controlStyle(!!rdFilterStaff)}>
+                <option value="">All Staff</option>
+                {(resultsDash?.staffOptions ?? []).map(s => (
+                  <option key={s.id} value={s.id}>{s.name} ({s.department})</option>
+                ))}
+              </select>
+              <select value={rdFilterMonth} onChange={e => setRdFilterMonth(Number(e.target.value))} aria-label="Month"
+                className={CONTROL} style={controlStyle(!!rdFilterMonth)}>
+                <option value={0}>All Months</option>
+                {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => (
+                  <option key={m} value={m}>{new Date(2025, m - 1).toLocaleString('en', { month: 'long' })}</option>
+                ))}
+              </select>
+
+              {/* Answered between. Overrides the year the rest of this view runs
+                  on, so it can answer "anything this week" rather than only
+                  "any January". */}
+              <div className="inline-flex items-center gap-1.5 flex-wrap">
+                <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>Answered</span>
+                <input type="date" value={rdFrom} onChange={e => setRdFrom(e.target.value)}
+                  title="Answered from" aria-label="Answered from"
+                  className={`${CONTROL} px-2`} style={controlStyle(!!rdFrom)} />
+                <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>to</span>
+                <input type="date" value={rdTo} onChange={e => setRdTo(e.target.value)}
+                  title="Answered to" aria-label="Answered to"
+                  className={`${CONTROL} px-2`} style={controlStyle(!!rdTo)} />
+              </div>
+
+              {rdFiltersOn && (
+                <button onClick={clearRdFilters}
+                  className="inline-flex items-center gap-1 h-9 px-2.5 rounded-lg text-xs font-semibold hover:bg-gray-50" style={{ color: 'var(--teal)' }}>
+                  <X size={12} /> Clear filters
+                </button>
               )}
 
-              {/* Department filter */}
-              {resultsDash.departments.length > 1 && (
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-xs font-semibold" style={{ color: '#94a3b8' }}>Filter department:</span>
-                  <button onClick={() => setRdFilterDept('')}
-                    className="px-3 py-1 rounded-full text-xs font-semibold transition-all"
-                    style={!rdFilterDept ? { background: '#0f766e', color: '#fff' } : { background: '#f1f5f9', color: '#64748b' }}>
-                    All
-                  </button>
-                  {resultsDash.departments.map(d => (
-                    <button key={d} onClick={() => setRdFilterDept(d)}
-                      className="px-3 py-1 rounded-full text-xs font-semibold transition-all"
-                      style={rdFilterDept === d ? { background: '#0f766e', color: '#fff' } : { background: '#f1f5f9', color: '#64748b' }}>
-                      {d}
-                    </button>
+              <span className="ml-auto text-xs whitespace-nowrap pl-2 flex items-center gap-1.5" style={{ color: 'var(--mid-gray)' }} aria-live="polite">
+                {resultsLoading ? <><Loader2 size={12} className="animate-spin" /> Updating…</> : resultsDash ? (
+                  <><span className="font-semibold" style={{ color: 'var(--charcoal)' }}>{detailStaff.length}</span> staff with results</>
+                ) : null}
+              </span>
+            </div>
+          )}
+
+          {resultsLoading && !resultsDash && (rdSubTab === 'leaderboard' || rdSubTab === 'details') && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+              {Array.from({ length: 2 }).map((_, i) => (
+                <div key={i} className="rounded-xl p-5" style={CARD_STYLE}>
+                  <Skeleton className="h-4 w-40 mb-4" />
+                  <BarListSkeleton rows={5} />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {resultsFailed && !resultsLoading && !resultsDash && (rdSubTab === 'leaderboard' || rdSubTab === 'details') && (
+            <ErrorCard title="Couldn't load survey results"
+              hint="Check your connection and try again."
+              onRetry={() => loadResultsDashboard(rdFilterBranch, rdFilterStaff, rdFilterMonth, rdFrom, rdTo)} />
+          )}
+
+          {/* ── Leaderboard ── */}
+          {rdSubTab === 'leaderboard' && resultsDash && (
+            <div className={`space-y-5 transition-opacity ${resultsLoading ? 'opacity-60' : ''}`}>
+              <DashCard title="Top 5 — Overall" icon={<Trophy size={15} />}
+                description="Ranked by composite score (see Results Settings for the weights). Ties share a rank.">
+                {resultsDash.top5Overall.length > 0 ? (
+                  <LeaderboardGroupList performers={resultsDash.top5Overall} />
+                ) : (
+                  <EmptyState title="No completed surveys yet" hint={rdFiltersOn ? 'Nothing matches these filters — try widening them.' : 'Scores appear once patients submit surveys.'} />
+                )}
+              </DashCard>
+
+              {deptBoards.length > 0 && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                  {deptBoards.map(([dept, list]) => (
+                    <DashCard key={dept} title={`Top 5 — ${dept}`} icon={<Award size={15} />}>
+                      {list.length > 0 ? (
+                        <LeaderboardGroupList performers={list} />
+                      ) : (
+                        <EmptyState title="No data" />
+                      )}
+                    </DashCard>
                   ))}
                 </div>
               )}
             </div>
           )}
 
-          {/* ── Manage Results Sub-tab (delete entries) ── */}
-          {rdSubTab === 'manage' && !resultsLoading && (
-            <div className="rounded-xl p-5" style={{ background: '#fff', border: '1px solid #e2e8f0' }}>
-              <div className="flex items-center gap-2 mb-1">
-                <FileText size={16} style={{ color: '#0f766e' }} />
-                <h3 className="font-semibold text-sm" style={{ color: '#0f766e' }}>Manage Survey Entries</h3>
-              </div>
-              <p className="text-xs mb-4" style={{ color: '#94a3b8' }}>
-                All survey assignments and responses. Admin users can delete entries.
-              </p>
+          {/* ── Staff Details ── */}
+          {rdSubTab === 'details' && resultsDash && (
+            <DashCard title="Staff details" icon={<Users size={15} />} flush
+              description="Highest composite score first. Click a row for monthly ratings, patient feedback and a PDF."
+              className={`transition-opacity ${resultsLoading ? 'opacity-60' : ''}`}>
+              {detailStaff.length > 0 ? (
+                <ul>
+                  {detailStaff.map((s, idx) => {
+                    const isExpanded = expandedStaff === s.id
+                    return (
+                      <li key={s.id} style={{ borderTop: idx === 0 ? undefined : '1px solid #EEF2F1' }}>
+                        <button type="button" aria-expanded={isExpanded}
+                          onClick={() => setExpandedStaff(isExpanded ? null : s.id)}
+                          className="w-full text-left px-5 py-3.5 flex items-center gap-4 hover:bg-[#F8FAF9] transition-colors">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-semibold text-sm" style={{ color: 'var(--charcoal)' }}>{s.name}</span>
+                              <Chip>{s.department}</Chip>
+                              <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>{branchLabel(s.branch) || s.branch}</span>
+                            </div>
+                            <div className="flex items-center gap-x-3 gap-y-1 flex-wrap mt-1 text-xs" style={{ color: 'var(--mid-gray)' }}>
+                              <RatingPill value={s.avgRating} />
+                              <span className="flex items-center gap-1"><Calendar size={11} /> {s.sessionsTotal} sessions{rdFilterMonth ? ` (${s.sessionsMonth} this month)` : ''}</span>
+                              <span className="flex items-center gap-1"><ClipboardCheck size={11} /> {s.surveyCount} surveys</span>
+                            </div>
+                          </div>
+                          <div className="text-right flex-shrink-0">
+                            <div className="text-xl font-bold leading-none" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)', fontVariantNumeric: 'tabular-nums' }}>{s.compositeScore}</div>
+                            <div className="text-[10px] uppercase font-semibold tracking-wider mt-1" style={{ color: 'var(--mid-gray)' }}>Score</div>
+                          </div>
+                          {isExpanded ? <ChevronUp size={16} style={{ color: 'var(--mid-gray)' }} /> : <ChevronDown size={16} style={{ color: 'var(--mid-gray)' }} />}
+                        </button>
 
-              {results.length > 0 ? (
+                        {isExpanded && (
+                          <div className="px-5 pb-5 pt-1 space-y-4" style={{ background: '#FBFCFC' }}>
+                            <div className="flex justify-end">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  generateSurveyResultPDF({
+                                    staffName: s.name,
+                                    department: s.department,
+                                    branch: s.branch,
+                                    avgRating: s.avgRating,
+                                    sessionsTotal: s.sessionsTotal,
+                                    sessionsRescheduled: s.sessionsRescheduled,
+                                    sessionsCancelled: s.sessionsCancelled,
+                                    compositeScore: s.compositeScore,
+                                    surveyCount: s.surveyCount,
+                                    monthlyRatings: s.monthlyRatings,
+                                    feedback: s.feedback,
+                                    filterMonthLabel: rdFilterMonth ? 'Month ' + rdFilterMonth : undefined,
+                                  })
+                                }}
+                                className={BTN_SECONDARY} style={{ ...CONTROL_STYLE, color: 'var(--teal)' }}
+                                title="Download results as PDF">
+                                <Download size={12} /> Download PDF
+                              </button>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                              <MiniStat label="Avg rating" value={s.avgRating.toFixed(2)} sub={ratingBand(s.avgRating).label} accent={ratingBand(s.avgRating).fg} />
+                              <MiniStat label={rdFilterMonth ? 'Sessions (month)' : 'Sessions (year)'} value={String(rdFilterMonth ? s.sessionsMonth : s.sessionsTotal)} />
+                              <MiniStat label="Surveys completed" value={String(s.surveyCount)} />
+                            </div>
+
+                            {s.monthlyRatings.length > 0 && (
+                              <div>
+                                <p className="flex items-center gap-1.5 text-xs font-semibold mb-2" style={{ color: 'var(--charcoal)' }}>
+                                  <TrendingUp size={13} style={{ color: 'var(--teal)' }} /> Monthly rating trend
+                                </p>
+                                <div className="flex items-end gap-1.5 h-28 rounded-lg p-3 pt-6" style={{ background: '#fff', border: '1px solid #EEF2F1' }}>
+                                  {s.monthlyRatings.map(mr => {
+                                    const pct = (mr.avgRating / 5) * 100
+                                    const b = ratingBand(mr.avgRating)
+                                    return (
+                                      <div key={mr.month} tabIndex={0} className="group relative flex-1 h-full flex flex-col items-center justify-end gap-1 outline-none min-w-0">
+                                        <span className="text-[10px] font-semibold" style={{ color: 'var(--charcoal)', fontVariantNumeric: 'tabular-nums' }}>{mr.avgRating.toFixed(1)}</span>
+                                        <div className="w-full max-w-[28px] rounded-t" style={{ height: `${pct}%`, background: b.bar, minHeight: 4 }} />
+                                        <span className="text-[10px]" style={{ color: 'var(--mid-gray)' }}>{monthShort(mr.month)}</span>
+                                        <RowTip>
+                                          <div className="font-semibold">{monthLong(mr.month)}</div>
+                                          <div>Average {mr.avgRating.toFixed(2)} / 5 · {b.label}</div>
+                                        </RowTip>
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              </div>
+                            )}
+
+                            {(s.feedback.strengths.length > 0 || s.feedback.improvements.length > 0 || s.feedback.other.length > 0) && (
+                              <div>
+                                <p className="flex items-center gap-1.5 text-xs font-semibold mb-2" style={{ color: 'var(--charcoal)' }}>
+                                  <MessageSquare size={13} style={{ color: 'var(--teal)' }} /> Patient feedback summary
+                                </p>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                  {s.feedback.strengths.length > 0 && (
+                                    <FeedbackList title="Strengths" icon={<ThumbsUp size={12} />} fg="#15803D" bg="#F0FDF4" border="#BBF7D0" items={s.feedback.strengths} />
+                                  )}
+                                  {s.feedback.improvements.length > 0 && (
+                                    <FeedbackList title="Areas for improvement" icon={<AlertTriangle size={12} />} fg="#B45309" bg="#FFFBEB" border="#FDE68A" items={s.feedback.improvements} />
+                                  )}
+                                  {s.feedback.other.length > 0 && (
+                                    <FeedbackList title="Other comments" icon={<MessageSquare size={12} />} fg="var(--mid-gray)" bg="#F8FAF9" border="#E5E7EB" items={s.feedback.other} wide />
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </li>
+                    )
+                  })}
+                </ul>
+              ) : (
+                <EmptyState title="No survey results yet" hint={rdFiltersOn ? 'Nothing matches these filters — try widening them.' : 'Results appear once patients submit surveys.'} />
+              )}
+            </DashCard>
+          )}
+
+          {/* ── Manage Results (delete entries) ── */}
+          {rdSubTab === 'manage' && (
+            <DashCard title="Manage survey entries" icon={<FileText size={15} />} flush
+              description="The 100 most recent survey assignments and responses. Admin users can delete entries."
+              action={!resultsListLoading && results.length > 0
+                ? <span className="text-xs" style={{ color: 'var(--mid-gray)' }}><span className="font-semibold" style={{ color: 'var(--charcoal)' }}>{results.length}</span> entries</span>
+                : undefined}>
+              {resultsListLoading && results.length === 0 ? (
+                <div className="p-5 space-y-3" aria-hidden>
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <div key={i} className="flex items-center gap-4">
+                      <Skeleton className="h-3.5 w-36" />
+                      <Skeleton className="h-3.5 w-28 hidden sm:block" />
+                      <Skeleton className="h-3.5 w-12" />
+                      <Skeleton className="h-3.5 w-16" />
+                      <Skeleton className="h-3.5 flex-1" />
+                    </div>
+                  ))}
+                </div>
+              ) : results.length > 0 ? (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
+                  <table className="w-full text-sm min-w-[680px]">
                     <thead>
-                      <tr style={{ borderBottom: '2px solid #e2e8f0' }}>
-                        <th className="text-left py-2 px-3 text-xs font-semibold uppercase" style={{ color: '#94a3b8' }}>Staff</th>
-                        <th className="text-left py-2 px-3 text-xs font-semibold uppercase" style={{ color: '#94a3b8' }}>Patient</th>
-                        <th className="text-left py-2 px-3 text-xs font-semibold uppercase" style={{ color: '#94a3b8' }}>Type</th>
-                        <th className="text-left py-2 px-3 text-xs font-semibold uppercase" style={{ color: '#94a3b8' }}>Status</th>
-                        <th className="text-left py-2 px-3 text-xs font-semibold uppercase" style={{ color: '#94a3b8' }}>Date</th>
-                        <th className="text-right py-2 px-3 text-xs font-semibold uppercase" style={{ color: '#94a3b8' }}>Action</th>
+                      <tr style={{ borderBottom: '1px solid var(--light-gray)', background: '#F8FAF9' }}>
+                        {['Staff', 'Patient', 'Type', 'Status', 'Date'].map(h => (
+                          <th key={h} className="text-left px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>{h}</th>
+                        ))}
+                        <th className="text-right px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>Action</th>
                       </tr>
                     </thead>
                     <tbody>
                       {results.map(r => (
-                        <tr key={r.id} className="hover:bg-slate-50" style={{ borderBottom: '1px solid #f1f5f9' }}>
-                          <td className="py-2.5 px-3">
-                            <span className="font-medium" style={{ color: '#1e293b' }}>{r.staffName}</span>
-                            <br />
-                            <span className="text-xs" style={{ color: '#94a3b8' }}>{r.staffDept}</span>
+                        <tr key={r.id} className="hover:bg-[#F8FAF9]" style={{ borderBottom: '1px solid #EEF2F1' }}>
+                          <td className="px-4 py-2.5">
+                            <span className="font-medium block" style={{ color: 'var(--charcoal)' }}>{r.staffName}</span>
+                            <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>{r.staffDept}</span>
                           </td>
-                          <td className="py-2.5 px-3" style={{ color: '#64748b' }}>{r.patientName || '—'}</td>
-                          <td className="py-2.5 px-3">
-                            <span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={{ background: '#f0fdfa', color: '#0f766e' }}>
-                              {r.surveyType}
-                            </span>
+                          <td className="px-4 py-2.5" style={{ color: 'var(--charcoal)' }}>{r.patientName || <span style={{ color: 'var(--mid-gray)' }}>—</span>}</td>
+                          <td className="px-4 py-2.5"><Chip>{r.surveyType}</Chip></td>
+                          <td className="px-4 py-2.5"><StatusPill status={r.status} /></td>
+                          <td className="px-4 py-2.5 text-xs whitespace-nowrap" style={{ color: 'var(--mid-gray)', fontVariantNumeric: 'tabular-nums' }}>
+                            {r.submittedAt ? fmtDate(r.submittedAt) : fmtDate(r.createdAt)}
                           </td>
-                          <td className="py-2.5 px-3">
-                            <span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={{
-                              background: r.status === 'COMPLETED' ? '#f0fdf4' : r.status === 'EXPIRED' ? '#fef2f2' : '#fffbeb',
-                              color: r.status === 'COMPLETED' ? '#16a34a' : r.status === 'EXPIRED' ? '#dc2626' : '#d97706',
-                            }}>
-                              {r.status}
-                            </span>
-                          </td>
-                          <td className="py-2.5 px-3 text-xs" style={{ color: '#64748b' }}>
-                            {r.submittedAt
-                              ? new Date(r.submittedAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
-                              : new Date(r.createdAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
-                            }
-                          </td>
-                          <td className="py-2.5 px-3 text-right">
-                            <button
-                              onClick={() => deleteResult(r.id)}
-                              disabled={deletingId === r.id}
-                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-semibold transition-all hover:bg-red-100"
-                              style={{ color: '#dc2626', opacity: deletingId === r.id ? 0.5 : 1 }}
-                            >
-                              <Trash2 size={12} />
+                          <td className="px-4 py-2.5 text-right">
+                            <button onClick={() => deleteResult(r.id)} disabled={deletingId === r.id}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-semibold transition-colors hover:bg-red-50 disabled:opacity-50"
+                              style={{ color: '#DC2626' }}>
+                              {deletingId === r.id ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
                               {deletingId === r.id ? 'Deleting...' : 'Delete'}
                             </button>
                           </td>
@@ -1193,61 +1310,44 @@ export default function SurveyClient({ role }: { role: string }) {
                   </table>
                 </div>
               ) : (
-                <p className="text-sm text-center py-6" style={{ color: '#94a3b8' }}>No survey results yet</p>
+                <EmptyState title="No survey results yet" hint="Survey assignments and responses will be listed here." />
               )}
-            </div>
+            </DashCard>
           )}
 
-          {/* ── Social Media Highlights Sub-tab (Marketing Admin only) ── */}
+          {/* ── Social Media Highlights (Marketing Admin only) ── */}
           {rdSubTab === 'highlights' && isMarketingAdmin && (
-            <div className="space-y-4">
-              <div className="rounded-xl p-5" style={{ background: 'linear-gradient(135deg, #f0fdfa 0%, #fffbeb 100%)', border: '1px solid #99f6e4' }}>
-                <div className="flex items-center gap-2 mb-1">
-                  <Sparkles size={18} style={{ color: '#f59e0b' }} />
-                  <h3 className="font-bold text-sm" style={{ color: '#1e293b' }}>Social Media Highlights</h3>
-                </div>
-                <p className="text-xs" style={{ color: '#64748b' }}>
-                  Positive patient feedback compiled from satisfaction surveys — ready to post on social media. Click to copy.
-                </p>
-              </div>
-
+            <DashCard title="Social media highlights" icon={<Sparkles size={15} />}
+              description="Positive patient feedback compiled from satisfaction surveys — ready to post. Use Copy for post on any quote."
+              action={!highlightsLoading && highlights.length > 0
+                ? <span className="text-xs" style={{ color: 'var(--mid-gray)' }}><span className="font-semibold" style={{ color: 'var(--charcoal)' }}>{highlights.length}</span> quotes</span>
+                : undefined}>
               {highlightsLoading ? (
-                <div className="text-center py-12">
-                  <div className="inline-block w-6 h-6 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: '#f59e0b', borderTopColor: 'transparent' }} />
-                  <p className="text-xs mt-2" style={{ color: '#94a3b8' }}>Loading highlights...</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3" aria-hidden>
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <div key={i} className="rounded-xl p-4" style={{ border: '1px solid #EEF2F1' }}>
+                      <Skeleton className="h-3.5 w-full" />
+                      <Skeleton className="h-3.5 w-4/5 mt-2" />
+                      <Skeleton className="h-3 w-1/2 mt-4" />
+                    </div>
+                  ))}
                 </div>
               ) : highlights.length > 0 ? (
-                <div className="space-y-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {highlights.map((h, i) => (
-                    <div key={i} className="rounded-xl p-5 relative group transition-all hover:shadow-md"
-                      style={{ background: '#fff', border: '1px solid #e2e8f0' }}>
-                      {/* Quote */}
-                      <div className="mb-3">
-                        <span className="text-3xl leading-none font-serif" style={{ color: '#0f766e', opacity: 0.3 }}>&ldquo;</span>
-                        <p className="text-sm leading-relaxed -mt-4 ml-6" style={{ color: '#1e293b' }}>
-                          {h.feedback}
-                        </p>
-                      </div>
-
-                      {/* Attribution */}
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2 text-xs" style={{ color: '#64748b' }}>
-                          <span className="font-semibold" style={{ color: '#0f766e' }}>
-                            Re: {h.staffName}
-                          </span>
-                          <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#f0fdfa', color: '#0f766e' }}>
-                            {h.department}
-                          </span>
-                          <span>{h.branch === 'SBEA' ? 'East' : h.branch === 'SBGH' ? 'GH' : h.branch}</span>
-                          {h.avgRating !== null && (
-                            <span className="flex items-center gap-0.5">
-                              <Star size={10} style={{ color: '#f59e0b' }} /> {h.avgRating.toFixed(1)}/5
-                            </span>
-                          )}
+                    <figure key={i} className="rounded-xl p-4 flex flex-col gap-3 transition-shadow hover:shadow-sm"
+                      style={{ background: '#fff', border: '1px solid #E5ECEA' }}>
+                      <blockquote className="text-sm leading-relaxed pl-3" style={{ color: 'var(--charcoal)', borderLeft: '3px solid var(--gold)' }}>
+                        &ldquo;{h.feedback}&rdquo;
+                      </blockquote>
+                      <figcaption className="flex items-end justify-between gap-3 mt-auto">
+                        <div className="flex items-center gap-x-2 gap-y-1 flex-wrap text-xs" style={{ color: 'var(--mid-gray)' }}>
+                          <span className="font-semibold" style={{ color: 'var(--teal)' }}>Re: {h.staffName}</span>
+                          <Chip>{h.department}</Chip>
+                          <span>{branchLabel(h.branch) || h.branch}</span>
+                          {h.avgRating !== null && <RatingPill value={h.avgRating} digits={1} />}
                           <span>{new Date(h.submittedAt).toLocaleDateString('en-PH', { month: 'short', year: 'numeric' })}</span>
                         </div>
-
-                        {/* Copy button */}
                         <button
                           onClick={() => {
                             const text = `"${h.feedback}"\n\n— Patient feedback for ${h.staffName} (${h.department}), Sapphire Clinics East`
@@ -1255,98 +1355,81 @@ export default function SurveyClient({ role }: { role: string }) {
                             setCopiedIdx(i)
                             setTimeout(() => setCopiedIdx(null), 2000)
                           }}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all opacity-60 group-hover:opacity-100"
+                          className="flex-shrink-0 inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-xs font-semibold transition-colors"
                           style={copiedIdx === i
-                            ? { background: '#f0fdf4', color: '#16a34a' }
-                            : { background: '#f1f5f9', color: '#64748b' }
-                          }
-                        >
+                            ? { background: '#DCFCE7', color: '#15803D' }
+                            : { background: 'var(--pale-teal)', color: 'var(--teal)' }}>
                           {copiedIdx === i ? <><Check size={12} /> Copied!</> : <><Copy size={12} /> Copy for post</>}
                         </button>
-                      </div>
-                    </div>
+                      </figcaption>
+                    </figure>
                   ))}
                 </div>
               ) : (
-                <p className="text-sm text-center py-12" style={{ color: '#94a3b8' }}>
-                  No positive feedback collected yet. Highlights will appear here once patients submit surveys with strengths/accomplishments.
-                </p>
+                <EmptyState title="No positive feedback collected yet"
+                  hint="Highlights will appear here once patients submit surveys with strengths/accomplishments." />
               )}
-            </div>
+            </DashCard>
           )}
 
-          {/* ── Results Settings Sub-tab (Admin only — read-only, managed from HR platform) ── */}
+          {/* ── Results Settings (read-only, managed from HR platform) ── */}
           {rdSubTab === 'settings' && isAdmin && (
-            <div className="space-y-4">
-              <div className="rounded-xl p-5" style={{ background: '#fff', border: '1px solid #e2e8f0' }}>
-                <div className="flex items-center gap-2 mb-1">
-                  <Settings size={18} style={{ color: '#0f766e' }} />
-                  <h3 className="font-bold text-sm" style={{ color: '#1e293b' }}>Leaderboard Scoring Weights</h3>
-                </div>
-                <div className="flex items-center gap-2 mb-5 p-3 rounded-lg text-xs font-medium"
-                  style={{ background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe' }}>
-                  <Building2 size={14} />
-                  These settings are managed by the HR Department at hr.sapphireclinicseast.org
-                </div>
+            <DashCard title="Leaderboard scoring weights" icon={<Settings size={15} />}
+              description="How each staff member's composite score is weighted.">
+              <div className="flex items-center gap-2 mb-5 px-3 py-2.5 rounded-lg text-xs font-medium"
+                style={{ background: '#EFF6FF', color: '#1D4ED8' }}>
+                <Building2 size={14} className="flex-shrink-0" />
+                These settings are managed by the HR Department at hr.sapphireclinicseast.org
+              </div>
 
-                {settingsLoading ? (
-                  <div className="text-center py-8">
-                    <div className="inline-block w-6 h-6 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: '#0f766e', borderTopColor: 'transparent' }} />
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {([
-                      { key: 'weightConfirmed' as const, label: 'Confirmed Sessions', desc: 'Sessions with CONFIRMED status (positive effect)' },
-                      { key: 'weightRescheduled' as const, label: 'Rescheduled Sessions', desc: 'Sessions with RESCHEDULED status (negative effect)' },
-                      { key: 'weightCancelled' as const, label: 'Cancelled Sessions', desc: 'Fewer cancellations = higher score (negative effect)' },
-                      { key: 'weightSatisfaction' as const, label: 'Avg Satisfaction Score', desc: 'Average patient satisfaction rating out of 5 (positive effect)' },
-                    ]).map(({ key, label, desc }) => (
-                      <div key={key} className="flex items-center gap-4">
-                        <div className="flex-1">
-                          <p className="text-sm font-semibold" style={{ color: '#1e293b' }}>{label}</p>
-                          <p className="text-xs" style={{ color: '#94a3b8' }}>{desc}</p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="w-20 px-3 py-2 rounded-lg text-sm text-center font-semibold"
-                            style={{ background: '#f1f5f9', color: '#1e293b', border: '1px solid #e2e8f0' }}>
-                            {settingsWeights[key]}
-                          </span>
-                          <span className="text-sm font-semibold" style={{ color: '#64748b' }}>%</span>
-                        </div>
+              {settingsLoading ? (
+                <BarListSkeleton rows={4} />
+              ) : (
+                <div className="space-y-4">
+                  {([
+                    { key: 'weightConfirmed' as const, label: 'Confirmed Sessions', desc: 'Sessions with CONFIRMED status (positive effect)' },
+                    { key: 'weightRescheduled' as const, label: 'Rescheduled Sessions', desc: 'Sessions with RESCHEDULED status (negative effect)' },
+                    { key: 'weightCancelled' as const, label: 'Cancelled Sessions', desc: 'Fewer cancellations = higher score (negative effect)' },
+                    { key: 'weightSatisfaction' as const, label: 'Avg Satisfaction Score', desc: 'Average patient satisfaction rating out of 5 (positive effect)' },
+                  ]).map(({ key, label, desc }) => (
+                    <div key={key} className="grid grid-cols-[minmax(0,1fr)_auto] sm:grid-cols-[minmax(0,16rem)_minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1.5">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>{label}</p>
+                        <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>{desc}</p>
                       </div>
-                    ))}
-
-                    {/* Total indicator */}
-                    <div className="flex items-center pt-4 mt-2" style={{ borderTop: '2px solid #e2e8f0' }}>
-                      <span className="text-sm font-bold" style={{ color: '#1e293b' }}>Total:</span>
-                      <span className="text-lg font-bold ml-2" style={{ color: '#16a34a' }}>
-                        {settingsWeights.weightConfirmed + settingsWeights.weightRescheduled + settingsWeights.weightCancelled + settingsWeights.weightSatisfaction}%
+                      <div className="hidden sm:block h-2 rounded-full overflow-hidden" style={{ background: '#EEF2F1' }}>
+                        <div className="h-full rounded-full" style={{ width: `${Math.min(100, settingsWeights[key])}%`, background: 'var(--teal)' }} />
+                      </div>
+                      <span className="text-sm font-bold text-right min-w-[3.5rem]" style={{ color: 'var(--charcoal)', fontVariantNumeric: 'tabular-nums' }}>
+                        {settingsWeights[key]}%
                       </span>
                     </div>
+                  ))}
+                  <div className="flex items-center justify-between pt-4" style={{ borderTop: '1px solid var(--light-gray)' }}>
+                    <span className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>Total</span>
+                    <span className="text-lg font-bold" style={{ color: '#15803D', fontVariantNumeric: 'tabular-nums' }}>
+                      {settingsWeights.weightConfirmed + settingsWeights.weightRescheduled + settingsWeights.weightCancelled + settingsWeights.weightSatisfaction}%
+                    </span>
                   </div>
-                )}
-              </div>
-            </div>
+                </div>
+              )}
+            </DashCard>
           )}
         </div>
       )}
 
-      {/* QR Code Modal */}
+      {/* ── QR Code Modal ── */}
       {showQr && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}>
-          <div className="rounded-2xl p-8 max-w-md w-[90%] text-center" style={{ background: '#fff' }}>
-            <h3 className="text-lg font-bold mb-1" style={{ color: '#1e293b' }}>Scan to Take Survey</h3>
-            <p className="text-sm mb-1" style={{ color: '#64748b' }}>Ask the patient to scan this QR code with the clinic tablet.</p>
-            {qrType && <p className="text-sm font-semibold mb-4" style={{ color: '#0f766e' }}>{qrType}</p>}
-            <div ref={qrRef} className="w-[220px] h-[220px] mx-auto mb-4 p-2.5 rounded-lg flex items-center justify-center" style={{ border: '2px solid #e2e8f0' }} />
-            <p className="text-xs mb-4 break-all" style={{ color: '#94a3b8' }}>{qrUrl}</p>
-            <button
-              onClick={() => setShowQr(false)}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold text-white mx-auto"
-              style={{ background: '#0f766e' }}
-            >
-              <X size={15} />
-              Close
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={MODAL_BACKDROP}
+          onClick={e => { if (e.target === e.currentTarget) setShowQr(false) }}>
+          <div role="dialog" aria-modal="true" aria-labelledby="qr-title" className="rounded-2xl p-6 sm:p-8 w-full max-w-md text-center" style={{ background: '#fff' }}>
+            <h3 id="qr-title" className="text-lg font-bold mb-1" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>Scan to Take Survey</h3>
+            <p className="text-sm mb-1" style={{ color: 'var(--mid-gray)' }}>Ask the patient to scan this QR code with the clinic tablet.</p>
+            {qrType && <p className="mb-4"><Chip>{qrType}</Chip></p>}
+            <div ref={qrRef} className="w-[220px] h-[220px] mx-auto mb-4 p-2.5 rounded-xl flex items-center justify-center" style={{ border: '1px solid var(--light-gray)' }} />
+            <p className="text-xs mb-5 break-all" style={{ color: 'var(--mid-gray)' }}>{qrUrl}</p>
+            <button onClick={() => setShowQr(false)} className={`${BTN_PRIMARY} mx-auto`} style={{ background: 'var(--teal)' }}>
+              <X size={15} /> Close
             </button>
           </div>
         </div>
@@ -1355,53 +1438,59 @@ export default function SurveyClient({ role }: { role: string }) {
       {/* QRCode CDN */}
       <Script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js" strategy="lazyOnload" />
 
-      {/* Pending Surveys Modal */}
+      {/* ── Pending Surveys Modal ── */}
       {showPending && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}>
-          <div className="rounded-2xl p-6 max-w-lg w-[90%]" style={{ background: '#fff', maxHeight: '80vh', overflowY: 'auto' }}>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold flex items-center gap-2" style={{ color: '#1e293b' }}>
-                <Clock size={18} style={{ color: '#0f766e' }} />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={MODAL_BACKDROP}
+          onClick={e => { if (e.target === e.currentTarget) setShowPending(false) }}>
+          <div role="dialog" aria-modal="true" aria-labelledby="pending-title" className="rounded-2xl w-full max-w-lg flex flex-col" style={{ background: '#fff', maxHeight: '80vh' }}>
+            <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid var(--light-gray)' }}>
+              <h3 id="pending-title" className="text-base font-bold flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+                <Clock size={16} style={{ color: 'var(--teal)' }} />
                 Pending Surveys
+                {!pendingLoading && pendingList.length > 0 && <Chip tone="gray">{pendingList.length}</Chip>}
               </h3>
-              <button onClick={() => setShowPending(false)} className="p-1 rounded hover:bg-slate-100">
-                <X size={18} style={{ color: '#64748b' }} />
+              <button onClick={() => setShowPending(false)} className="p-1 rounded hover:bg-gray-100" aria-label="Close">
+                <X size={18} style={{ color: 'var(--mid-gray)' }} />
               </button>
             </div>
-            {pendingList.length > 0 ? (
-              <div className="space-y-2">
-                {pendingList.map(p => (
-                  <div key={p.id} className="rounded-lg p-3" style={{ border: '1px solid #e2e8f0' }}>
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="font-semibold text-sm" style={{ color: '#1e293b' }}>{p.staffName}</span>
-                      <span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={{ background: '#f0fdfa', color: '#0f766e' }}>
-                        {p.surveyType}
-                      </span>
+            <div className="p-4 overflow-y-auto">
+              {pendingLoading && pendingList.length === 0 ? (
+                <div className="space-y-2" aria-hidden>
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <div key={i} className="rounded-lg p-3" style={{ border: '1px solid #EEF2F1' }}>
+                      <Skeleton className="h-3.5 w-40" />
+                      <Skeleton className="h-3 w-56 mt-2" />
                     </div>
-                    <div className="text-xs" style={{ color: '#64748b' }}>
-                      {p.staffDept} · {p.branch === 'SBEA' ? 'East Branch' : p.branch === 'SBGH' ? 'Greenhills' : p.branch}
-                      {p.patientName && ` · Patient: ${p.patientName}`}
+                  ))}
+                </div>
+              ) : pendingList.length > 0 ? (
+                <div className="space-y-2">
+                  {pendingList.map(p => (
+                    <div key={p.id} className="rounded-lg p-3" style={{ border: '1px solid #E5ECEA' }}>
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <span className="font-semibold text-sm" style={{ color: 'var(--charcoal)' }}>{p.staffName}</span>
+                        <Chip>{p.surveyType}</Chip>
+                      </div>
+                      <div className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+                        {p.staffDept} · {branchLabel(p.branch) || p.branch}
+                        {p.patientName && ` · Patient: ${p.patientName}`}
+                      </div>
+                      <div className="flex items-center justify-between mt-2">
+                        <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+                          Expires {new Date(p.expiresAt).toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                        </span>
+                        <a href={`https://survey.sapphireclinicseast.org?id=${p.id}`} target="_blank" rel="noopener noreferrer"
+                          className="flex items-center gap-1 text-xs font-semibold hover:underline" style={{ color: 'var(--teal)' }}>
+                          Open Survey <ExternalLink size={11} />
+                        </a>
+                      </div>
                     </div>
-                    <div className="flex items-center justify-between mt-2">
-                      <span className="text-xs" style={{ color: '#94a3b8' }}>
-                        Expires: {new Date(p.expiresAt).toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
-                      </span>
-                      <a
-                        href={`https://survey.sapphireclinicseast.org?id=${p.id}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-1 text-xs font-semibold"
-                        style={{ color: '#0f766e' }}
-                      >
-                        Open Survey <ExternalLink size={11} />
-                      </a>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-center py-8" style={{ color: '#94a3b8' }}>No pending surveys</p>
-            )}
+                  ))}
+                </div>
+              ) : (
+                <EmptyState title="No pending surveys" hint="Every assigned survey has been answered or has expired." />
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -1411,76 +1500,102 @@ export default function SurveyClient({ role }: { role: string }) {
 
 // ── Sub-components ───────────────────────────────────────────────────────────
 
-function KpiCard({ icon: Icon, label, value, onClick, clickable }: {
-  icon: typeof ClipboardCheck; label: string; value: string | number; onClick?: () => void; clickable?: boolean
+/** Horizontal bars for average rating (out of 5), coloured by band. */
+function ScoreBars({ rows, empty }: {
+  rows: { key: string; label: string; fullLabel: string; avg: number; count: number }[]
+  empty: string
+}) {
+  if (rows.length === 0) return <EmptyState title={empty} hint="Bars appear once patients submit ratings." />
+  return (
+    <div className="space-y-2.5">
+      {rows.map(r => {
+        const b = ratingBand(r.avg)
+        return (
+          <div key={r.key} tabIndex={0}
+            className="group relative grid grid-cols-[minmax(0,1fr)_auto] sm:grid-cols-[minmax(0,8rem)_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 rounded outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--light-gray)]">
+            <span className="col-span-2 sm:col-span-1 text-xs leading-snug break-words" style={{ color: 'var(--charcoal)' }}>{r.label}</span>
+            <div className="h-3 rounded-full overflow-hidden" style={{ background: '#EEF2F1' }}>
+              <div className="h-full rounded-full" style={{ width: `${(r.avg / 5) * 100}%`, background: b.bar }} />
+            </div>
+            <span className="text-xs whitespace-nowrap text-right" style={{ color: 'var(--charcoal)', fontVariantNumeric: 'tabular-nums' }}>
+              <strong className="font-semibold">{r.avg.toFixed(1)}</strong>
+              <span style={{ color: 'var(--mid-gray)' }}> · {r.count}</span>
+            </span>
+            <RowTip>
+              <div className="font-semibold mb-0.5">{r.fullLabel}</div>
+              <div>Average <strong>{r.avg.toFixed(2)}</strong> / 5 · <span style={{ color: b.fg }}>{b.label}</span></div>
+              <div style={{ color: 'var(--mid-gray)' }}>{r.count.toLocaleString()} {r.count === 1 ? 'response' : 'responses'}</div>
+            </RowTip>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function ScoreLegend() {
+  const bands = [
+    { v: 4.5, range: '4.5 – 5' }, { v: 4, range: '4 – 4.49' }, { v: 3, range: '3 – 3.99' }, { v: 1, range: 'Below 3' },
+  ]
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+      <span className="font-semibold uppercase tracking-wider">Rating bands</span>
+      {bands.map(({ v, range }) => {
+        const b = ratingBand(v)
+        return (
+          <span key={range} className="inline-flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-sm" style={{ background: b.bar }} />
+            <span style={{ color: 'var(--charcoal)' }}>{b.label}</span> {range}
+          </span>
+        )
+      })}
+      <span>· the number after each average is its response count</span>
+    </div>
+  )
+}
+
+function MiniStat({ label, value, sub, accent }: { label: string; value: string; sub?: string; accent?: string }) {
+  return (
+    <div className="rounded-lg px-3 py-2.5" style={{ background: '#fff', border: '1px solid #EEF2F1' }}>
+      <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>{label}</p>
+      <p className="text-lg font-bold leading-tight mt-0.5" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)', fontVariantNumeric: 'tabular-nums' }}>{value}</p>
+      {sub && <p className="text-[11px] font-semibold" style={{ color: accent ?? 'var(--mid-gray)' }}>{sub}</p>}
+    </div>
+  )
+}
+
+function FeedbackList({ title, icon, fg, bg, border, items, wide }: {
+  title: string; icon: ReactNode; fg: string; bg: string; border: string; items: string[]; wide?: boolean
 }) {
   return (
-    <div
-      className={`rounded-xl p-4 text-center ${clickable ? 'cursor-pointer hover:border-teal-300 transition-colors' : ''}`}
-      style={{ background: '#fff', border: '1px solid #e2e8f0' }}
-      onClick={onClick}
-    >
-      <Icon size={20} className="mx-auto mb-2" style={{ color: '#0f766e' }} />
-      <div className="text-2xl font-bold" style={{ color: '#1e293b' }}>{value}</div>
-      <div className="text-xs font-semibold uppercase tracking-wider mt-1" style={{ color: '#94a3b8' }}>
-        {label}
-        {clickable && <span className="block text-teal-600 normal-case mt-0.5 text-[10px]">Click to view</span>}
-      </div>
+    <div className={`rounded-lg p-3 ${wide ? 'md:col-span-2' : ''}`} style={{ background: bg, border: `1px solid ${border}` }}>
+      <p className="flex items-center gap-1.5 mb-2 text-xs font-semibold" style={{ color: fg }}>
+        {icon} {title} <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>· {items.length}</span>
+      </p>
+      <ul className="space-y-1 list-disc pl-4">
+        {items.map((fb, i) => (
+          <li key={i} className="text-xs leading-relaxed" style={{ color: 'var(--charcoal)' }}>{fb}</li>
+        ))}
+      </ul>
     </div>
   )
 }
 
-function ChartCard({ title, icon: Icon, data }: { title: string; icon: typeof TrendingUp; data?: { month?: string; branch?: string; avgScore: number; count: number }[] }) {
+function LeaderStats({ p }: { p: TopPerformer }) {
   return (
-    <div className="rounded-xl p-5" style={{ background: '#fff', border: '1px solid #e2e8f0' }}>
-      <div className="flex items-center gap-2 mb-4">
-        <Icon size={16} style={{ color: '#0f766e' }} />
-        <h3 className="font-semibold text-sm" style={{ color: '#0f766e' }}>{title}</h3>
-      </div>
-      {data && data.length > 0 ? (
-        <div className="space-y-2">
-          {data.map((item, i) => {
-            const label = item.month || item.branch || `Item ${i + 1}`
-            const displayLabel = label === 'SBEA' ? 'East Branch' : label === 'SBGH' ? 'Greenhills' : label
-            return (
-              <div key={i} className="flex items-center gap-3">
-                <span className="text-xs w-24 truncate" style={{ color: '#64748b' }}>{displayLabel}</span>
-                <div className="flex-1 h-2 rounded-full" style={{ background: '#f1f5f9' }}>
-                  <div className="h-full rounded-full" style={{ width: `${(item.avgScore / 5) * 100}%`, background: '#0f766e' }} />
-                </div>
-                <span className="text-xs font-semibold" style={{ color: '#1e293b' }}>{item.avgScore.toFixed(1)}</span>
-                <span className="text-xs" style={{ color: '#94a3b8' }}>({item.count})</span>
-              </div>
-            )
-          })}
-        </div>
-      ) : (
-        <p className="text-sm text-center py-6" style={{ color: '#94a3b8' }}>No data yet</p>
-      )}
+    <div className="flex items-center gap-x-3 gap-y-1 flex-wrap mt-1 text-xs" style={{ color: 'var(--mid-gray)' }}>
+      <Chip>{p.department}</Chip>
+      <span>{branchLabel(p.branch) || p.branch}</span>
+      <RatingPill value={p.avgRating} />
+      <span className="flex items-center gap-1"><Calendar size={10} /> {p.sessionsTotal} sessions</span>
+      <span className="flex items-center gap-1"><ClipboardCheck size={10} /> {p.surveyCount} surveys</span>
     </div>
   )
 }
-
-
-// Competition ranking: equal compositeScore shares the same rank number,
-// and the next distinct score skips to reflect the tie count.
-// e.g. [95, 95, 95, 90, 85] → [1, 1, 1, 4, 5]
-function computeTiedRanks(arr: { compositeScore: number }[]): number[] {
-  const ranks: number[] = []
-  for (let i = 0; i < arr.length; i++) {
-    if (i > 0 && arr[i].compositeScore === arr[i - 1].compositeScore) {
-      ranks.push(ranks[i - 1])
-    } else {
-      ranks.push(i + 1)
-    }
-  }
-  return ranks
-}
-
 
 // Renders top-5 as distinct-score rank buckets. A bucket with >1 member shows
 // a single collapsed row with comma-joined names; clicking expands it into
-// individual LeaderboardRows for the tied people.
+// individual rows for the tied people.
 function LeaderboardGroupList({ performers }: { performers: TopPerformer[] }) {
   const [expandedRank, setExpandedRank] = useState<number | null>(null)
   // Group by distinct score, keeping the order (already sorted desc on the server)
@@ -1495,141 +1610,73 @@ function LeaderboardGroupList({ performers }: { performers: TopPerformer[] }) {
     }
   }
 
-  const medalColors = ['#f59e0b', '#94a3b8', '#cd7f32']
+  const medalColors = ['#D99A1E', '#94A3B8', '#B87333'] // gold, silver, bronze
 
   return (
-    <div className="space-y-2.5">
+    <ol className="space-y-2">
       {groups.map(g => {
         const tied = g.members.length > 1
         const expanded = expandedRank === g.rank
         const medal = g.rank <= 3 ? medalColors[g.rank - 1] : undefined
         const names = g.members.map(m => m.name).join(', ')
         return (
-          <div key={'g' + g.rank} className="rounded-lg overflow-hidden"
-            style={{ background: g.rank === 1 ? '#fffbeb' : '#f8fafc', border: '1px solid transparent' }}
-          >
-            <div
-              onClick={() => tied && setExpandedRank(expanded ? null : g.rank)}
-              className="flex items-center gap-3 p-3"
-              style={{ cursor: tied ? 'pointer' : 'default' }}
-            >
-              <div
-                className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm"
-                style={medal ? { background: medal + '20', color: medal } : { background: '#f1f5f9', color: '#94a3b8' }}
-              >
+          <li key={'g' + g.rank} className="rounded-lg overflow-hidden"
+            style={{ background: g.rank === 1 ? '#FFFBEB' : '#F8FAF9', border: `1px solid ${g.rank === 1 ? '#FDE68A' : '#EEF2F1'}` }}>
+            {(() => {
+              const content = (
+                <>
+              <div className="w-8 h-8 flex-shrink-0 rounded-full flex items-center justify-center font-bold text-sm"
+                style={medal ? { background: medal + '22', color: medal } : { background: '#EEF2F1', color: 'var(--mid-gray)' }}>
                 {g.rank}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-bold text-sm" style={{ color: '#1e293b' }}>
-                    {names}
-                  </span>
+                  <span className="font-semibold text-sm" style={{ color: 'var(--charcoal)' }}>{names}</span>
                   {tied && (
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold"
-                      style={{ background: '#fbbf24', color: '#78350f' }}
-                    >
-                      TIED · {g.members.length} people
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold" style={{ background: '#FEF3C7', color: '#92400E' }}>
+                      Tied · {g.members.length} people
                     </span>
                   )}
                 </div>
                 {tied ? (
-                  <div className="text-[11px] text-gray-500 mt-0.5">
-                    {expanded ? '▾ Hide details' : '▸ Tap to see individual stats'}
+                  <div className="flex items-center gap-1 text-[11px] mt-1" style={{ color: 'var(--mid-gray)' }}>
+                    {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                    {expanded ? 'Hide details' : 'Tap to see individual stats'}
                   </div>
                 ) : (
-                  <div className="flex items-center gap-3 mt-0.5 text-xs" style={{ color: '#64748b' }}>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
-                      style={{ background: '#f0fdfa', color: '#0f766e' }}>
-                      {g.members[0].department}
-                    </span>
-                    <span className="text-[10px]" style={{ color: '#94a3b8' }}>
-                      {g.members[0].branch === 'SBEA' ? 'East' : g.members[0].branch === 'SBGH' ? 'GH' : g.members[0].branch}
-                    </span>
-                    <span className="flex items-center gap-1"><Star size={10} style={{ color: '#f59e0b' }} /> {g.members[0].avgRating.toFixed(2)}</span>
-                    <span className="flex items-center gap-1"><Calendar size={10} /> {g.members[0].sessionsTotal} sessions</span>
-                    <span className="flex items-center gap-1"><ClipboardCheck size={10} /> {g.members[0].surveyCount} surveys</span>
-                  </div>
+                  <LeaderStats p={g.members[0]} />
                 )}
               </div>
-              <div className="text-right">
-                <div className="text-xl font-bold" style={{ color: g.rank === 1 ? '#f59e0b' : '#0f766e' }}>{g.score}</div>
-                <div className="text-[9px] uppercase font-semibold" style={{ color: '#94a3b8' }}>Score</div>
+              <div className="text-right flex-shrink-0">
+                <div className="text-xl font-bold leading-none" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)', fontVariantNumeric: 'tabular-nums' }}>{g.score}</div>
+                <div className="text-[10px] uppercase font-semibold tracking-wider mt-1" style={{ color: 'var(--mid-gray)' }}>Score</div>
               </div>
-            </div>
+                </>
+              )
+              return tied ? (
+                <button type="button" aria-expanded={expanded} onClick={() => setExpandedRank(expanded ? null : g.rank)}
+                  className="w-full text-left flex items-center gap-3 p-3 hover:bg-black/[0.02]">
+                  {content}
+                </button>
+              ) : (
+                <div className="flex items-center gap-3 p-3">{content}</div>
+              )
+            })()}
 
             {tied && expanded && (
-              <div className="px-3 pb-3 pt-0 space-y-2" style={{ borderTop: '1px dashed #e2e8f0' }}>
+              <div className="px-3 pb-3 space-y-2">
                 {g.members.map(m => (
-                  <div key={m.id} className="flex items-center gap-3 p-2 rounded-md bg-white">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-semibold text-sm" style={{ color: '#1e293b' }}>{m.name}</span>
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
-                          style={{ background: '#f0fdfa', color: '#0f766e' }}>
-                          {m.department}
-                        </span>
-                        <span className="text-[10px]" style={{ color: '#94a3b8' }}>
-                          {m.branch === 'SBEA' ? 'East' : m.branch === 'SBGH' ? 'GH' : m.branch}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-3 mt-0.5 text-xs" style={{ color: '#64748b' }}>
-                        <span className="flex items-center gap-1"><Star size={10} style={{ color: '#f59e0b' }} /> {m.avgRating.toFixed(2)}</span>
-                        <span className="flex items-center gap-1"><Calendar size={10} /> {m.sessionsTotal} sessions</span>
-                        <span className="flex items-center gap-1"><ClipboardCheck size={10} /> {m.surveyCount} surveys</span>
-                      </div>
-                    </div>
+                  <div key={m.id} className="p-2.5 rounded-md bg-white" style={{ border: '1px solid #EEF2F1' }}>
+                    <span className="font-semibold text-sm" style={{ color: 'var(--charcoal)' }}>{m.name}</span>
+                    <LeaderStats p={m} />
                   </div>
                 ))}
               </div>
             )}
-          </div>
+          </li>
         )
       })}
-    </div>
-  )
-}
-
-function LeaderboardRow({ rank, performer: p, tied }: { rank: number; performer: TopPerformer; tied?: boolean }) {
-  const medalColors = ['#f59e0b', '#94a3b8', '#cd7f32'] // gold, silver, bronze
-  const medalColor = rank <= 3 ? medalColors[rank - 1] : undefined
-  return (
-    <div className="flex items-center gap-3 p-3 rounded-lg" style={{ background: rank === 1 ? '#fffbeb' : '#f8fafc' }}>
-      <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm relative"
-        style={medalColor
-          ? { background: medalColor + '20', color: medalColor }
-          : { background: '#f1f5f9', color: '#94a3b8' }
-        }
-        title={tied ? `Tied at rank ${rank}` : undefined}
-      >
-        {rank}
-        {tied && (
-          <span
-            className="absolute -top-1 -right-1 text-[8px] font-bold px-1 rounded-full"
-            style={{ background: '#fbbf24', color: '#78350f', lineHeight: 1.3 }}
-          >T</span>
-        )}
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="font-bold text-sm" style={{ color: '#1e293b' }}>{p.name}</span>
-          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#f0fdfa', color: '#0f766e' }}>
-            {p.department}
-          </span>
-          <span className="text-[10px]" style={{ color: '#94a3b8' }}>
-            {p.branch === 'SBEA' ? 'East' : p.branch === 'SBGH' ? 'GH' : p.branch}
-          </span>
-        </div>
-        <div className="flex items-center gap-3 mt-0.5 text-xs" style={{ color: '#64748b' }}>
-          <span className="flex items-center gap-1"><Star size={10} style={{ color: '#f59e0b' }} /> {p.avgRating.toFixed(2)}</span>
-          <span className="flex items-center gap-1"><Calendar size={10} /> {p.sessionsTotal} sessions</span>
-          <span className="flex items-center gap-1"><ClipboardCheck size={10} /> {p.surveyCount} surveys</span>
-        </div>
-      </div>
-      <div className="text-right">
-        <div className="text-xl font-bold" style={{ color: rank === 1 ? '#f59e0b' : '#0f766e' }}>{p.compositeScore}</div>
-        <div className="text-[9px] uppercase font-semibold" style={{ color: '#94a3b8' }}>Score</div>
-      </div>
-    </div>
+    </ol>
   )
 }
 
@@ -1659,6 +1706,7 @@ function DailyTargetTab({ isAdmin, isFrontDesk, role }: { isAdmin: boolean; isFr
   const [err, setErr] = useState('')
   const [date, setDate] = useState('')
   const [targets, setTargets] = useState<DailyTarget[]>([])
+  const [copiedId, setCopiedId] = useState<string | null>(null)
   const qrRefs = useRef<Record<string, HTMLDivElement | null>>({})
 
   const load = useCallback(async () => {
@@ -1695,132 +1743,140 @@ function DailyTargetTab({ isAdmin, isFrontDesk, role }: { isAdmin: boolean; isFr
     window.print()
   }
 
-  function copyLink(url: string) {
+  function copyLink(id: string, url: string) {
     navigator.clipboard.writeText(url)
+    setCopiedId(id)
+    setTimeout(() => setCopiedId(c => (c === id ? null : c)), 2000)
   }
 
   const byStatus = {
     pending: targets.filter(t => t.status === 'PENDING').length,
     completed: targets.filter(t => t.status === 'COMPLETED').length,
   }
+  const firstLoad = loading && targets.length === 0
 
   return (
-    <div>
+    <div className="space-y-5">
       <Script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js" strategy="afterInteractive" />
 
-      <div className="flex flex-wrap items-center gap-3 mb-4">
-        <div>
-          <h2 className="text-sm font-bold flex items-center gap-2" style={{ color: '#0f172a' }}>
-            <Target size={16} style={{ color: '#ED6823' }} />
-            Daily Targets {date && <span className="text-xs text-gray-400 font-normal">· {date}</span>}
+      {/* Toolbar (a div, not <header>, so it still prints) */}
+      <div className="rounded-xl px-4 py-3 flex flex-wrap items-center gap-3" style={CARD_STYLE}>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-[14px] font-bold flex items-center gap-2 flex-wrap" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+            <Target size={15} style={{ color: 'var(--teal)' }} />
+            Daily targets
+            {date && <span className="text-xs font-normal" style={{ color: 'var(--mid-gray)' }}>· {date}</span>}
           </h2>
-          <p className="text-xs text-gray-500 mt-0.5">
-            Today's randomized patients for customer satisfaction survey. QR codes are ready — hand off to clinic aides or print for the day.
+          <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+            Today&apos;s randomized patients for the satisfaction survey. QR codes are ready — hand off to clinic aides or print for the day.
           </p>
         </div>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {(isAdmin || (!isFrontDesk && !role?.startsWith('SBEA_') && !role?.startsWith('SBGH_'))) && (
-            <select
-              value={branch}
-              onChange={e => setBranch(e.target.value)}
-              className="border border-gray-300 rounded-md px-2 py-1.5 text-xs"
-            >
+            <select value={branch} onChange={e => setBranch(e.target.value)} aria-label="Branch"
+              className={CONTROL} style={CONTROL_STYLE}>
               <option value="SBEA">East Branch</option>
               <option value="SBGH">Greenhills Branch</option>
             </select>
           )}
-          <button
-            onClick={load}
-            disabled={loading}
-            className="flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-semibold border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-50"
-          >
+          <button onClick={load} disabled={loading} className={BTN_SECONDARY} style={CONTROL_STYLE}>
             <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
             Refresh
           </button>
-          <button
-            onClick={print}
-            disabled={targets.length === 0}
-            className="flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-semibold text-white disabled:opacity-50"
-            style={{ background: '#ED6823' }}
-          >
-            <Printer size={12} /> Print All
+          <button onClick={print} disabled={targets.length === 0} className={BTN_PRIMARY} style={{ background: 'var(--teal)' }}>
+            <Printer size={14} /> Print All
           </button>
         </div>
       </div>
 
       {err && (
-        <div className="mb-3 p-2 rounded text-xs" style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
-          {err}
+        <ErrorCard title="Couldn't load today's targets" hint={err} onRetry={load} />
+      )}
+
+      {!err && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {firstLoad ? (
+            Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="rounded-xl px-4 py-3.5" style={CARD_STYLE}>
+                <Skeleton className="h-3 w-20" />
+                <Skeleton className="h-7 w-12 mt-2" />
+              </div>
+            ))
+          ) : (
+            <>
+              <KpiCard label="Total targets" icon={<Target size={16} />} value={targets.length} sub="Scheduled today" />
+              <KpiCard label="Pending" icon={<Clock size={16} />} accent="#D97706" value={byStatus.pending} sub="Not yet answered" />
+              <KpiCard label="Completed" icon={<Check size={16} />} accent="#16A34A" value={byStatus.completed} sub="Survey submitted" />
+              <KpiCard label="Completion rate" icon={<BarChart3 size={16} />}
+                value={targets.length === 0 ? '0%' : `${Math.round((byStatus.completed / targets.length) * 100)}%`}
+                sub="Of today's targets" />
+            </>
+          )}
         </div>
       )}
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-        <div className="rounded-lg p-3 bg-white border border-gray-200">
-          <div className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">Total Targets</div>
-          <div className="text-2xl font-extrabold mt-1" style={{ color: '#ED6823' }}>{loading ? '…' : targets.length}</div>
+      {firstLoad && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" aria-hidden>
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="rounded-xl overflow-hidden" style={CARD_STYLE}>
+              <div className="px-4 py-3"><Skeleton className="h-3 w-28" /><Skeleton className="h-4 w-36 mt-2" /></div>
+              <Skeleton className="h-40 rounded-none" />
+            </div>
+          ))}
         </div>
-        <div className="rounded-lg p-3 bg-white border border-gray-200">
-          <div className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">Pending</div>
-          <div className="text-2xl font-extrabold mt-1" style={{ color: '#f59e0b' }}>{loading ? '…' : byStatus.pending}</div>
-        </div>
-        <div className="rounded-lg p-3 bg-white border border-gray-200">
-          <div className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">Completed</div>
-          <div className="text-2xl font-extrabold mt-1" style={{ color: '#10b981' }}>{loading ? '…' : byStatus.completed}</div>
-        </div>
-        <div className="rounded-lg p-3 bg-white border border-gray-200">
-          <div className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">Completion Rate</div>
-          <div className="text-2xl font-extrabold mt-1" style={{ color: '#0f766e' }}>
-            {targets.length === 0 ? '0%' : `${Math.round((byStatus.completed / targets.length) * 100)}%`}
-          </div>
-        </div>
-      </div>
+      )}
 
       {!loading && targets.length === 0 && !err && (
-        <div className="text-center py-12 text-sm text-gray-400">
-          No confirmed appointments scheduled for today, or all staff have met their assessment targets for the year.
+        <div className="rounded-xl" style={CARD_STYLE}>
+          <EmptyState title="No survey targets today"
+            hint="No confirmed appointments scheduled for today, or all staff have met their assessment targets for the year." />
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 daily-target-grid">
-        {targets.map(t => (
-          <div key={t.assignmentId} className="rounded-xl border bg-white overflow-hidden daily-target-card" style={{ borderColor: t.status === 'COMPLETED' ? '#bbf7d0' : '#FDE4CC' }}>
-            <div className="px-4 py-3 flex items-start justify-between" style={{ background: t.status === 'COMPLETED' ? '#f0fdf4' : '#FFF3E8' }}>
-              <div>
-                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t.department} · {t.startTime}–{t.endTime}</div>
-                <div className="text-sm font-bold mt-0.5" style={{ color: '#0f172a' }}>{t.patientName}</div>
-                <div className="text-xs text-gray-500 mt-0.5">w/ {t.staffName}</div>
+      {targets.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 daily-target-grid">
+          {targets.map(t => {
+            const done = t.status === 'COMPLETED'
+            return (
+              <div key={t.assignmentId} className="rounded-xl bg-white overflow-hidden daily-target-card flex flex-col"
+                style={{ border: `1px solid ${done ? '#BBF7D0' : 'var(--light-gray)'}` }}>
+                <div className="px-4 py-3 flex items-start justify-between gap-2" style={{ background: done ? '#F0FDF4' : '#F8FAF9', borderBottom: '1px solid #EEF2F1' }}>
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>
+                      {t.department} · {t.startTime}–{t.endTime}
+                    </div>
+                    <div className="text-sm font-bold mt-0.5" style={{ color: 'var(--charcoal)' }}>{t.patientName}</div>
+                    <div className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>w/ {t.staffName}</div>
+                  </div>
+                  <span className="flex-shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide" style={{
+                    background: done ? '#DCFCE7' : '#FEF3C7',
+                    color: done ? '#15803D' : '#B45309',
+                  }}>
+                    {done ? '✓ Done' : 'Pending'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-center p-4 flex-1">
+                  <div ref={el => { qrRefs.current[t.assignmentId] = el }} />
+                </div>
+                <div className="px-3 py-2 flex items-center gap-2" style={{ borderTop: '1px solid #EEF2F1' }}>
+                  <button onClick={() => copyLink(t.assignmentId, t.surveyUrl)}
+                    className="flex-1 h-8 text-xs font-semibold rounded-lg hover:bg-gray-50 flex items-center justify-center gap-1"
+                    style={{ border: '1px solid var(--light-gray)', color: copiedId === t.assignmentId ? '#15803D' : 'var(--charcoal)' }}
+                    title="Copy survey link">
+                    {copiedId === t.assignmentId ? <><Check size={11} /> Copied</> : <><Copy size={11} /> Copy link</>}
+                  </button>
+                  <a href={t.surveyUrl} target="_blank" rel="noreferrer"
+                    className="h-8 px-2.5 text-xs rounded-lg hover:bg-gray-50 flex items-center gap-1"
+                    style={{ border: '1px solid var(--light-gray)', color: 'var(--teal)' }}
+                    title="Open survey" aria-label="Open survey">
+                    <ExternalLink size={12} />
+                  </a>
+                </div>
               </div>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{
-                background: t.status === 'COMPLETED' ? '#bbf7d0' : '#fef3c7',
-                color:      t.status === 'COMPLETED' ? '#166534' : '#92400e',
-              }}>
-                {t.status === 'COMPLETED' ? '✓ DONE' : 'PENDING'}
-              </span>
-            </div>
-            <div className="flex items-center justify-center p-4" style={{ background: '#fafafa' }}>
-              <div ref={el => { qrRefs.current[t.assignmentId] = el }} />
-            </div>
-            <div className="px-3 py-2 flex items-center gap-2 border-t border-gray-100">
-              <button
-                onClick={() => copyLink(t.surveyUrl)}
-                className="flex-1 text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-50 flex items-center justify-center gap-1"
-                title="Copy survey link"
-              >
-                <Copy size={11} /> Copy link
-              </button>
-              <a
-                href={t.surveyUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-50 flex items-center gap-1"
-                title="Open survey"
-              >
-                <ExternalLink size={11} />
-              </a>
-            </div>
-          </div>
-        ))}
-      </div>
+            )
+          })}
+        </div>
+      )}
 
       {/* Print-specific styles */}
       <style jsx>{`
