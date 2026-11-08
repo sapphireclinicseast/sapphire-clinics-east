@@ -3,7 +3,12 @@
 import { useEffect, useState } from 'react'
 import { branchLabel } from '@/lib/branch-label'
 import { FOLLOWUP_GROUPS } from '@/lib/followup-groups'
-import { MessageSquare, Send, Trash2, Play, Eye, Clock, Zap, Calendar, CheckCircle2 } from 'lucide-react'
+import { MessageSquare, Send, Trash2, Play, Eye, Clock, Zap, Calendar, CheckCircle2, Plus, FileText, Users, ChevronDown, Loader2 } from 'lucide-react'
+import { DashCard, KpiCard, Skeleton, EmptyState } from '../patients/dashboard/ui'
+import {
+  CONTROL, TEXTAREA, CONTROL_SM, CONTROL_STYLE, BTN_PRIMARY, BTN_SECONDARY, TH, MODAL_BACKDROP, SUBTLE_BG,
+  PageHeader, PillTabs, Field, Segmented, StatusBadge, Notice, ErrorBanner, TableSkeleton, KpiSkeletonRow, RowAction, fmtDateTime,
+} from '../email/campaign-ui'
 
 const MAX_LEN = 160
 
@@ -35,29 +40,27 @@ export default function SmsCampaignsPage() {
   const [branchFilter, setBranchFilter] = useState<'BOTH' | 'SBEA' | 'SBGH'>('BOTH')
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center gap-3">
-        <MessageSquare size={22} style={{ color: 'var(--narra)' }} />
-        <h1 className="text-xl font-bold" style={{ color: 'var(--ink)' }}>SMS Campaigns</h1>
-      </div>
+    <div className="max-w-6xl space-y-5">
+      <PageHeader
+        eyebrow="Patients & SMS"
+        title="SMS Campaigns"
+        subtitle="Text reminders and announcements to patients, sent from each branch's clinic phone."
+        action={
+          <button type="button" onClick={() => setTab('new')} className={BTN_PRIMARY} style={{ background: 'var(--teal)' }}>
+            <Plus size={15} /> New campaign
+          </button>
+        }
+      />
 
-      {/* Tabs */}
-      <div className="flex gap-1 border-b" style={{ borderColor: 'var(--light-gray)' }}>
-        <button onClick={() => setTab('new')}
-          className={`px-4 py-2 text-sm font-semibold transition-colors ${tab === 'new' ? 'border-b-2' : ''}`}
-          style={tab === 'new'
-            ? { color: 'var(--narra)', borderColor: 'var(--narra)' }
-            : { color: 'var(--mid-gray)' }}>
-          New Campaign
-        </button>
-        <button onClick={() => setTab('history')}
-          className={`px-4 py-2 text-sm font-semibold transition-colors ${tab === 'history' ? 'border-b-2' : ''}`}
-          style={tab === 'history'
-            ? { color: 'var(--narra)', borderColor: 'var(--narra)' }
-            : { color: 'var(--mid-gray)' }}>
-          Past Campaigns
-        </button>
-      </div>
+      <PillTabs
+        label="SMS campaign sections"
+        value={tab}
+        onChange={setTab}
+        tabs={[
+          { id: 'new', label: 'New Campaign', icon: Send },
+          { id: 'history', label: 'Past Campaigns', icon: FileText },
+        ]}
+      />
 
       {tab === 'new'
         ? <NewCampaign branch={branchFilter} setBranch={setBranchFilter} />
@@ -75,21 +78,20 @@ const BRANCH_OPTIONS: { value: Branch; label: string }[] = [
   { value: 'SBEA', label: branchLabel('SBEA') },
   { value: 'SBGH', label: branchLabel('SBGH') },
 ]
+// 'BOTH' has no branchLabel entry, so it's spelled out rather than passed through.
+const branchName = (b: string) => (b === 'BOTH' ? 'Both branches' : branchLabel(b))
+const groupName = (v: string) => RECIPIENT_GROUPS.find(g => g.value === v)?.label ?? v
+
 // Prominent segmented branch selector — controls both the recipient filter and
 // which clinic phone the SMS is sent from.
 function BranchSelector({ value, onChange }: { value: Branch; onChange: (b: Branch) => void }) {
   return (
-    <div className="flex gap-2">
-      {BRANCH_OPTIONS.map(o => (
-        <button key={o.value} type="button" onClick={() => onChange(o.value)}
-          className="flex-1 px-3 py-2 rounded border text-sm font-semibold transition-colors"
-          style={value === o.value
-            ? { background: 'var(--narra)', color: '#fff', borderColor: 'var(--narra)' }
-            : { background: '#fff', color: 'var(--mid-gray)', borderColor: 'var(--light-gray)' }}>
-          {o.label}
-        </button>
-      ))}
-    </div>
+    <Segmented
+      label="Branch"
+      value={value}
+      onChange={onChange}
+      options={BRANCH_OPTIONS.map(o => ({ value: o.value, label: o.label }))}
+    />
   )
 }
 
@@ -166,154 +168,238 @@ function NewCampaign({ branch, setBranch }: { branch: Branch; setBranch: (b: Bra
 
   const remaining = MAX_LEN - message.length
   const overLimit = remaining < 0
+  const counterColor = overLimit ? '#DC2626' : remaining <= 20 ? '#B45309' : 'var(--mid-gray)'
+  const followup = FOLLOWUP_GROUPS.find(g => g.key === recipientGroup)
 
   return (
-    <div className="grid gap-5 max-w-2xl">
-      {/* Branch — controls recipient filter AND which clinic phone sends */}
-      <div>
-        <label className="block text-xs font-bold uppercase tracking-wider mb-1.5" style={{ color: 'var(--mid-gray)' }}>
-          Branch
-        </label>
-        <BranchSelector value={branch} onChange={setBranch} />
-        <p className="mt-1.5 text-[11px]" style={{ color: 'var(--mid-gray)' }}>
-          {branch === 'BOTH'
-            ? 'Sends to both branches — each patient gets the SMS from their own branch’s phone (East SIM / Greenhills SIM).'
-            : branch === 'SBEA'
-              ? 'Sends only to East Branch patients, from the East phone (+639171189289).'
-              : 'Sends only to Greenhills Branch patients, from the Greenhills phone (+639177701686).'}
-        </p>
-      </div>
-
-      <div>
-        <label className="block text-xs font-bold uppercase tracking-wider mb-1.5" style={{ color: 'var(--mid-gray)' }}>
-          Subject (internal label, not sent)
-        </label>
-        <input type="text" value={subject} onChange={(e) => setSubject(e.target.value)}
-          placeholder="e.g. Autism Awareness Month — pedia reminder"
-          className="w-full px-3 py-2 rounded border text-sm"
-          style={{ borderColor: 'var(--light-gray)', background: '#fff', color: 'var(--ink)' }} />
-      </div>
-
-      <div>
-        <label className="block text-xs font-bold uppercase tracking-wider mb-1.5" style={{ color: 'var(--mid-gray)' }}>
-          Recipient group
-        </label>
-        <select value={recipientGroup} onChange={(e) => setRecipientGroup(e.target.value)}
-          className="w-full px-3 py-2 rounded border text-sm"
-          style={{ borderColor: 'var(--light-gray)', background: '#fff', color: 'var(--ink)' }}>
-          <optgroup label="Patient type">
-            {RECIPIENT_GROUPS.filter(g => g.group === 'general').map(g => (
-              <option key={g.value} value={g.value}>{g.label}</option>
-            ))}
-          </optgroup>
-          <optgroup label="Actively serviced (currently in Decking + last 30 days of clinic schedule)">
-            {RECIPIENT_GROUPS.filter(g => g.group === 'active').map(g => (
-              <option key={g.value} value={g.value}>{g.label}</option>
-            ))}
-          </optgroup>
-          <optgroup label="Overdue follow-ups (Patient Relationship rules)">
-            {RECIPIENT_GROUPS.filter(g => g.group === 'followup').map(g => (
-              <option key={g.value} value={g.value}>{g.label}</option>
-            ))}
-          </optgroup>
-        </select>
-        <p className="mt-1.5 text-xs" style={{ color: 'var(--mid-gray)' }}>
-          {/* branchLabel, not the raw code — SBEA/SBGH are internal and were
-              never meant to reach the UI. The selector above this line already
-              says "Greenhills Branch"; this said "SBGH". */}
-          {/* Name the rule for follow-up groups. These go to patients who have
-              NOT been back, so whoever presses send should be able to see which
-              cut-off produced the list without opening another screen. */}
-          {(() => {
-            const fg = FOLLOWUP_GROUPS.find(g => g.key === recipientGroup)
-            return fg ? (
-              <span style={{ display: 'block', marginBottom: '0.2rem', color: 'var(--narra)' }}>
-                <strong>{fg.rule}</strong> &mdash; counted from each patient&apos;s first consult.
+    <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px] items-start">
+      {/* ── Left: audience + message ── */}
+      <div className="space-y-5 min-w-0">
+        <DashCard
+          title="Branch & audience"
+          icon={<Users size={16} />}
+          description="The branch picks both the patients and the clinic phone the SMS is sent from."
+          action={
+            count !== null ? (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold"
+                style={count > 0
+                  ? { background: 'var(--pale-teal)', color: 'var(--teal)' }
+                  : { background: '#FEF2F2', color: '#B91C1C' }}>
+                <Users size={12} />
+                {count} patient{count === 1 ? '' : 's'}
               </span>
-            ) : null
-          })()}
-          Branch: <strong>{branch === 'BOTH' ? 'Both branches' : branchLabel(branch)}</strong>.
-          {count !== null && (
-            <> &nbsp;·&nbsp; <strong style={{ color: 'var(--narra)' }}>{count}</strong> patient{count === 1 ? '' : 's'} match this group.</>
-          )}
-        </p>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 text-xs" style={{ color: 'var(--mid-gray)' }}>
+                <Loader2 size={12} className="animate-spin" /> Counting…
+              </span>
+            )
+          }
+        >
+          <div className="space-y-5">
+            {/* Branch — controls recipient filter AND which clinic phone sends */}
+            <Field
+              label="Branch"
+              hint={branch === 'BOTH'
+                ? 'Sends to both branches — each patient gets the SMS from their own branch’s phone (East SIM / Greenhills SIM).'
+                : branch === 'SBEA'
+                  ? 'Sends only to East Branch patients, from the East phone (+639171189289).'
+                  : 'Sends only to Greenhills Branch patients, from the Greenhills phone (+639177701686).'}
+            >
+              <BranchSelector value={branch} onChange={setBranch} />
+            </Field>
+
+            <Field
+              label="Recipient group"
+              htmlFor="sms-recipient-group"
+              hint={
+                <>
+                  {/* branchLabel, not the raw code — SBEA/SBGH are internal and were
+                      never meant to reach the UI. The selector above this line already
+                      says "Greenhills Branch"; this said "SBGH". */}
+                  {/* Name the rule for follow-up groups. These go to patients who have
+                      NOT been back, so whoever presses send should be able to see which
+                      cut-off produced the list without opening another screen. */}
+                  {followup ? (
+                    <span className="block mb-1 px-2.5 py-1.5 rounded-md" style={{ background: SUBTLE_BG, color: 'var(--teal)' }}>
+                      <strong>{followup.rule}</strong> &mdash; counted from each patient&apos;s first consult.
+                    </span>
+                  ) : null}
+                  Branch: <strong style={{ color: 'var(--charcoal)' }}>{branch === 'BOTH' ? 'Both branches' : branchLabel(branch)}</strong>.
+                  {count !== null && (
+                    <> &nbsp;·&nbsp; <strong style={{ color: 'var(--teal)' }}>{count}</strong> patient{count === 1 ? '' : 's'} match this group.</>
+                  )}
+                </>
+              }
+            >
+              <div className="relative">
+                <select id="sms-recipient-group" value={recipientGroup} onChange={(e) => setRecipientGroup(e.target.value)}
+                  className={`${CONTROL} appearance-none pr-8`}
+                  style={CONTROL_STYLE}>
+                  <optgroup label="Patient type">
+                    {RECIPIENT_GROUPS.filter(g => g.group === 'general').map(g => (
+                      <option key={g.value} value={g.value}>{g.label}</option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Actively serviced (currently in Decking + last 30 days of clinic schedule)">
+                    {RECIPIENT_GROUPS.filter(g => g.group === 'active').map(g => (
+                      <option key={g.value} value={g.value}>{g.label}</option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Overdue follow-ups (Patient Relationship rules)">
+                    {RECIPIENT_GROUPS.filter(g => g.group === 'followup').map(g => (
+                      <option key={g.value} value={g.value}>{g.label}</option>
+                    ))}
+                  </optgroup>
+                </select>
+                <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mid-gray)' }} />
+              </div>
+            </Field>
+          </div>
+        </DashCard>
+
+        <DashCard title="Message" icon={<MessageSquare size={16} />} description="One SMS segment, 160 characters max.">
+          <div className="space-y-5">
+            <Field label="Subject (internal label, not sent)" htmlFor="sms-subject">
+              <input id="sms-subject" type="text" value={subject} onChange={(e) => setSubject(e.target.value)}
+                placeholder="e.g. Autism Awareness Month — pedia reminder"
+                className={CONTROL}
+                style={CONTROL_STYLE} />
+            </Field>
+
+            <Field
+              label="Message"
+              htmlFor="sms-message"
+              aside={
+                <span className="font-semibold" style={{ color: counterColor, fontVariantNumeric: 'tabular-nums' }}>
+                  {remaining} characters left
+                </span>
+              }
+              hint={<>SMS is hard-capped at 160 chars to fit a single message segment. Going over splits into multiple billed segments — disabled here on purpose.</>}
+            >
+              <textarea id="sms-message" value={message} onChange={(e) => setMessage(e.target.value)}
+                rows={5} maxLength={MAX_LEN + 50}
+                placeholder={`Hi! This is a quick reminder from Sapphire Clinics East...`}
+                className={`${TEXTAREA} font-mono resize-y`}
+                style={{
+                  ...CONTROL_STYLE,
+                  borderColor: overLimit ? '#dc2626' : 'var(--light-gray)',
+                }} />
+              {/* Character meter — display only; the limit itself is enforced in handleSend */}
+              <div className="mt-2 flex items-center gap-2">
+                <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: '#EEF3F1' }} aria-hidden>
+                  <div className="h-full rounded-full transition-all"
+                    style={{ width: `${Math.min(100, (message.length / MAX_LEN) * 100)}%`, background: overLimit ? '#DC2626' : remaining <= 20 ? '#D97706' : 'var(--teal)' }} />
+                </div>
+                <span className="text-[11px] font-semibold" style={{ color: counterColor, fontVariantNumeric: 'tabular-nums' }}>
+                  {message.length}/{MAX_LEN}
+                </span>
+              </div>
+            </Field>
+          </div>
+        </DashCard>
       </div>
 
-      <div>
-        <label className="block text-xs font-bold uppercase tracking-wider mb-1.5" style={{ color: 'var(--mid-gray)' }}>
-          Message <span className={overLimit ? 'text-red-600' : ''}>({remaining} characters left)</span>
-        </label>
-        <textarea value={message} onChange={(e) => setMessage(e.target.value)}
-          rows={5} maxLength={MAX_LEN + 50}
-          placeholder={`Hi! This is a quick reminder from Sapphire Clinics East...`}
-          className="w-full px-3 py-2 rounded border text-sm font-mono"
-          style={{
-            borderColor: overLimit ? '#dc2626' : 'var(--light-gray)',
-            background: '#fff',
-            color: 'var(--ink)',
-          }} />
-        <p className="mt-1 text-[11px]" style={{ color: 'var(--mid-gray)' }}>
-          SMS is hard-capped at 160 chars to fit a single message segment.
-          Going over splits into multiple billed segments — disabled here on purpose.
-        </p>
-      </div>
+      {/* ── Right: review + send ── */}
+      <aside className="min-w-0 xl:sticky xl:top-0">
+        <DashCard title="Review & send" icon={<Send size={16} />}>
+          <div className="space-y-5">
+            {/* Summary of what's selected — display only */}
+            <div className="rounded-xl p-4" style={{ background: SUBTLE_BG, border: '1px solid var(--light-gray)' }}>
+              <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>Recipients</p>
+              {count !== null ? (
+                <p className="text-3xl font-bold leading-tight mt-0.5" style={{ fontFamily: 'var(--font-display)', color: count > 0 ? 'var(--charcoal)' : '#B91C1C', fontVariantNumeric: 'tabular-nums' }}>
+                  {count.toLocaleString()}
+                </p>
+              ) : (
+                <Skeleton className="h-8 w-20 mt-1" />
+              )}
+              <dl className="mt-3 space-y-1.5 text-xs">
+                {([
+                  ['Group', groupName(recipientGroup)],
+                  ['Branch', branchName(branch)],
+                  ['When', sendMode === 'schedule' && scheduledAt
+                    ? new Date(scheduledAt).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })
+                    : 'Immediately'],
+                ] as [string, string][]).map(([k, v]) => (
+                  <div key={k} className="flex items-baseline justify-between gap-3">
+                    <dt style={{ color: 'var(--mid-gray)' }}>{k}</dt>
+                    <dd className="font-semibold text-right truncate min-w-0" style={{ color: 'var(--charcoal)' }} title={v}>{v}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
 
-      {/* When to send */}
-      <div>
-        <label className="block text-xs font-bold uppercase tracking-wider mb-1.5" style={{ color: 'var(--mid-gray)' }}>
-          When to send
-        </label>
-        <div className="flex gap-2">
-          {(['now', 'schedule'] as const).map((mode) => (
-            <button key={mode} type="button" onClick={() => setSendMode(mode)}
-              className="flex items-center gap-2 px-4 py-2 rounded text-sm font-semibold flex-1 justify-center transition-colors"
-              style={{
-                border: `1.5px solid ${sendMode === mode ? 'var(--narra)' : 'var(--light-gray)'}`,
-                background: sendMode === mode ? 'rgba(155,44,44,0.06)' : 'transparent',
-                color: sendMode === mode ? 'var(--narra)' : 'var(--mid-gray)',
-              }}>
-              {mode === 'now' ? <><Send size={14} /> Send now</> : <><Calendar size={14} /> Schedule</>}
+            {/* Message preview — display only */}
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--mid-gray)' }}>Preview</p>
+              <div className="rounded-2xl p-3" style={{ background: '#F3F4F6' }}>
+                <div className="max-w-[90%] rounded-2xl rounded-bl-md px-3 py-2 text-[13px] leading-snug whitespace-pre-wrap break-words"
+                  style={message
+                    ? { background: '#fff', color: 'var(--charcoal)', boxShadow: '0 1px 2px rgba(0,0,0,0.06)' }
+                    : { background: '#fff', color: 'var(--mid-gray)', fontStyle: 'italic' }}>
+                  {message || 'Your message will appear here.'}
+                </div>
+              </div>
+            </div>
+
+            {/* When to send */}
+            <Field label="When to send">
+              <Segmented
+                label="When to send"
+                value={sendMode}
+                onChange={setSendMode}
+                options={[
+                  { value: 'now', label: 'Send now', icon: Send },
+                  { value: 'schedule', label: 'Schedule', icon: Calendar },
+                ]}
+              />
+            </Field>
+            {sendMode === 'schedule' && (
+              <Field
+                label="Scheduled date & time"
+                htmlFor="sms-scheduled-at"
+                hint={scheduledAt ? (
+                  <span className="flex items-center gap-1" style={{ color: 'var(--teal)' }}>
+                    <CheckCircle2 size={11} className="flex-shrink-0" />
+                    Will send {new Date(scheduledAt).toLocaleString('en-PH', { dateStyle: 'full', timeStyle: 'short' })}
+                  </span>
+                ) : undefined}
+              >
+                <input id="sms-scheduled-at" type="datetime-local" value={scheduledAt}
+                  onChange={(e) => setScheduledAt(e.target.value)}
+                  min={toDatetimeLocal(new Date(Date.now() + 60000))}
+                  className={CONTROL}
+                  style={CONTROL_STYLE} />
+              </Field>
+            )}
+
+            {info && (
+              <Notice tone="success" icon={CheckCircle2}>{info}</Notice>
+            )}
+
+            <button onClick={handleSend} disabled={busy || overLimit || !count}
+              className="w-full inline-flex items-center justify-center gap-2 h-11 text-sm font-bold rounded-lg transition-opacity hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{ background: 'var(--teal)', color: '#fff', fontFamily: 'var(--font-display)' }}>
+              {busy
+                ? <Loader2 size={15} className="animate-spin" />
+                : sendMode === 'schedule' ? <Calendar size={15} /> : <Send size={15} />}
+              {busy
+                ? (sendMode === 'schedule' ? 'Scheduling…' : 'Sending…')
+                : sendMode === 'schedule'
+                  ? `Schedule for ${count ?? '…'} recipient${count === 1 ? '' : 's'}`
+                  : `Send to ${count ?? '…'} recipient${count === 1 ? '' : 's'}`}
             </button>
-          ))}
-        </div>
-        {sendMode === 'schedule' && (
-          <div className="mt-3">
-            <label className="block text-xs font-bold uppercase tracking-wider mb-1.5" style={{ color: 'var(--mid-gray)' }}>
-              Scheduled date &amp; time
-            </label>
-            <input type="datetime-local" value={scheduledAt}
-              onChange={(e) => setScheduledAt(e.target.value)}
-              min={toDatetimeLocal(new Date(Date.now() + 60000))}
-              className="w-full px-3 py-2 rounded border text-sm"
-              style={{ borderColor: 'var(--light-gray)', background: '#fff', color: 'var(--ink)' }} />
-            {scheduledAt && (
-              <p className="mt-1.5 text-xs flex items-center gap-1" style={{ color: 'var(--narra)' }}>
-                <CheckCircle2 size={11} />
-                Will send {new Date(scheduledAt).toLocaleString('en-PH', { dateStyle: 'full', timeStyle: 'short' })}
+            {(overLimit || count === 0) && (
+              <p className="text-[11px] text-center -mt-3" style={{ color: '#B91C1C' }}>
+                {overLimit ? `Shorten the message to ${MAX_LEN} characters to send.` : 'No patients match this group and branch.'}
               </p>
             )}
+            <p className="text-[11px] text-center -mt-2" style={{ color: 'var(--mid-gray)' }}>
+              You&apos;ll be asked to confirm before anything is sent.
+            </p>
           </div>
-        )}
-      </div>
-
-      {info && (
-        <div className="text-xs px-3 py-2 rounded" style={{ background: '#ECFDF5', color: '#065F46' }}>
-          {info}
-        </div>
-      )}
-
-      <div>
-        <button onClick={handleSend} disabled={busy || overLimit || !count}
-          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-bold rounded transition-opacity disabled:opacity-50"
-          style={{ background: 'var(--narra)', color: '#fff' }}>
-          {sendMode === 'schedule' ? <Calendar size={14} /> : <Send size={14} />}
-          {busy
-            ? (sendMode === 'schedule' ? 'Scheduling…' : 'Sending…')
-            : sendMode === 'schedule'
-              ? `Schedule for ${count ?? '…'} recipient${count === 1 ? '' : 's'}`
-              : `Send to ${count ?? '…'} recipient${count === 1 ? '' : 's'}`}
-        </button>
-      </div>
+        </DashCard>
+      </aside>
     </div>
   )
 }
@@ -340,14 +426,20 @@ function CampaignHistory({ branch, setBranch }: { branch: Branch; setBranch: (b:
   const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [preview, setPreview] = useState<SmsRow | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   async function load() {
     setLoading(true)
+    setLoadError(null)
     try {
       const p = new URLSearchParams({ status: statusFilter, branch })
       const r = await fetch('/api/sms/campaigns?' + p.toString())
       const d = await r.json()
       setRows(d.campaigns || [])
+      // Surface a failed list load on the page instead of a silent empty table.
+      if (!r.ok) setLoadError(d.error || `HTTP ${r.status}`)
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : 'Network error')
     } finally { setLoading(false) }
   }
   useEffect(() => { load() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [statusFilter, branch])
@@ -387,167 +479,189 @@ function CampaignHistory({ branch, setBranch }: { branch: Branch; setBranch: (b:
     } catch (e) { alert((e as Error).message) }
   }
 
-  function statusBadge(row: SmsRow) {
-    if (row.status === 'partial') {
-      const nextLabel = row.nextTrancheAt
-        ? new Date(row.nextTrancheAt).toLocaleString('en-PH', {
-            month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
-          })
-        : null
-      return (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase"
-          style={{ background: '#FEF3C7', color: '#92400E' }}>
-          Partial ({row.sentCount}/{row.recipientCount})
-          {nextLabel ? <span style={{ fontWeight: 500, textTransform: 'none' }}>· next {nextLabel}</span> : null}
-        </span>
-      )
-    }
-    if (row.status === 'failed' && row.sentCount > 0 && row.sentCount < row.recipientCount) {
-      return (
-        <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase"
-          style={{ background: '#FFEDD5', color: '#9A3412' }}>
-          Partial ({row.sentCount}/{row.recipientCount})
-        </span>
-      )
-    }
-    if (row.status === 'sent' && row.sentCount > 0 && row.sentCount < row.recipientCount) {
-      return (
-        <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase"
-          style={{ background: '#D1FAE5', color: '#065F46' }}>
-          Sent ({row.sentCount}/{row.recipientCount})
-        </span>
-      )
-    }
-    const cfg: Record<string, { bg: string; color: string }> = {
-      sent:      { bg: '#D1FAE5', color: '#065F46' },
-      sending:   { bg: '#FEF3C7', color: '#92400E' },
-      scheduled: { bg: '#DBEAFE', color: '#1E40AF' },
-      failed:    { bg: '#FEE2E2', color: '#991B1B' },
-      draft:     { bg: '#F1F5F9', color: '#475569' },
-    }
-    const c = cfg[row.status] ?? cfg.draft
-    return (
-      <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase"
-        style={{ background: c.bg, color: c.color }}>{row.status}</span>
-    )
-  }
+  // Display-only roll-ups of the rows already loaded for the table.
+  const totalSent = rows.reduce((s, r) => s + (r.sentCount || 0), 0)
+  const totalRecipients = rows.reduce((s, r) => s + (r.recipientCount || 0), 0)
+  const scheduledCount = rows.filter(r => r.status === 'scheduled').length
+  const inProgressCount = rows.filter(r => r.status === 'sending' || r.status === 'partial').length
+  const failedCount = rows.filter(r => r.status === 'failed').length
 
   return (
-    <div className="rounded-xl" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
-      <div className="px-5 py-4 flex items-center gap-3 border-b" style={{ borderColor: 'var(--light-gray)' }}>
-        <h2 className="text-sm font-bold" style={{ color: 'var(--ink)' }}>Past Campaigns</h2>
-        <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>{rows.length} {rows.length === 1 ? 'record' : 'records'}</span>
-        <div className="ml-auto flex items-center gap-2">
-          <select value={branch} onChange={(e) => setBranch(e.target.value as Branch)}
-            className="text-xs px-2 py-1 rounded border"
-            style={{ borderColor: 'var(--light-gray)', background: '#fff' }}>
-            <option value="BOTH">Both branches</option>
-            <option value="SBEA">{branchLabel('SBEA')}</option>
-            <option value="SBGH">{branchLabel('SBGH')}</option>
-          </select>
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
-            className="text-xs px-2 py-1 rounded border"
-            style={{ borderColor: 'var(--light-gray)', background: '#fff' }}>
-            <option value="all">All statuses</option>
-            <option value="sent">Sent</option>
-            <option value="partial">Partial</option>
-            <option value="sending">Sending</option>
-            <option value="scheduled">Scheduled</option>
-            <option value="failed">Failed</option>
-          </select>
-        </div>
+    <div className="space-y-5">
+      {loadError && (
+        <ErrorBanner title="Couldn't load past campaigns" message={loadError} onRetry={load} />
+      )}
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {loading ? <KpiSkeletonRow count={4} /> : (
+          <>
+            <KpiCard label="Campaigns" icon={<FileText size={16} />}
+              value={rows.length.toLocaleString()}
+              sub={rows.length >= 50 ? 'Most recent 50 shown' : branchName(branch)} />
+            <KpiCard label="Messages sent" icon={<Send size={16} />} accent="var(--bright-teal)"
+              value={totalSent.toLocaleString()}
+              sub={`of ${totalRecipients.toLocaleString()} recipients`} />
+            <KpiCard label="Scheduled" icon={<Calendar size={16} />} accent="#3B82F6"
+              value={scheduledCount.toLocaleString()}
+              sub="Waiting to send" />
+            <KpiCard label="In progress" icon={<Clock size={16} />} accent="#D97706"
+              value={inProgressCount.toLocaleString()}
+              sub={failedCount > 0
+                ? <span style={{ color: '#B91C1C', fontWeight: 600 }}>{failedCount} failed</span>
+                : 'None failed'} />
+          </>
+        )}
       </div>
-      <div className="overflow-x-auto">
-        <table className="min-w-full text-sm">
-          <thead style={{ background: '#FAFAF9' }}>
-            <tr style={{ color: 'var(--mid-gray)', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              <th className="px-4 py-2 text-left font-semibold">Subject</th>
-              <th className="px-4 py-2 text-left font-semibold">Group</th>
-              <th className="px-4 py-2 text-left font-semibold">Branch</th>
-              <th className="px-4 py-2 text-left font-semibold">Recipients</th>
-              <th className="px-4 py-2 text-left font-semibold">Status</th>
-              <th className="px-4 py-2 text-left font-semibold">Sent</th>
-              <th className="px-4 py-2 text-right font-semibold">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-xs" style={{ color: 'var(--mid-gray)' }}>Loading…</td></tr>
-            ) : rows.length === 0 ? (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-xs" style={{ color: 'var(--mid-gray)' }}>No campaigns yet.</td></tr>
-            ) : rows.map(r => (
-              <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
-                <td className="px-4 py-3">
-                  <button onClick={() => setPreview(r)}
-                    className="text-sm font-medium hover:underline text-left"
-                    style={{ color: 'var(--ink)' }}>
-                    {r.subject || <em style={{ color: 'var(--mid-gray)' }}>(no subject)</em>}
-                  </button>
-                  <p className="text-[11px] mt-0.5 line-clamp-1" style={{ color: 'var(--mid-gray)' }}>{r.message}</p>
-                </td>
-                <td className="px-4 py-3 text-xs" style={{ color: 'var(--ink)' }}>{r.recipientGroup}</td>
-                {/* Same internal-code leak as the compose screen: this column
-                    was printing SBEA/SBGH. 'BOTH' has no branchLabel entry, so
-                    it's spelled out rather than passed through. */}
-                <td className="px-4 py-3 text-xs" style={{ color: 'var(--ink)' }}>
-                  {r.branch === 'BOTH' ? 'Both branches' : branchLabel(r.branch)}
-                </td>
-                <td className="px-4 py-3 text-xs" style={{ color: 'var(--ink)' }}>{r.recipientCount}</td>
-                <td className="px-4 py-3">{statusBadge(r)}</td>
-                <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
-                  {r.sentAt ? new Date(r.sentAt).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })
-                    : r.scheduledAt ? <em>scheduled {new Date(r.scheduledAt).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })}</em>
-                    : new Date(r.createdAt).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })}
-                </td>
-                <td className="px-4 py-3 text-right whitespace-nowrap">
-                  <button onClick={() => setPreview(r)} title="View" className="p-1.5 rounded hover:bg-stone-100 inline-block">
-                    <Eye size={14} style={{ color: 'var(--mid-gray)' }} />
-                  </button>
-                  {r.status === 'partial' && (
-                    <button onClick={() => scheduleNow(r.id)} title="Fire next tranche now"
-                      className="p-1.5 rounded hover:bg-amber-50 inline-block">
-                      <Zap size={14} style={{ color: '#92400E' }} />
-                    </button>
-                  )}
-                  {(r.status === 'failed' || r.status === 'partial') && r.sentCount < r.recipientCount && (
-                    <button onClick={() => resumeCampaign(r.id)} title="Resume sending"
-                      className="p-1.5 rounded hover:bg-emerald-50 inline-block">
-                      <Play size={14} style={{ color: '#065F46' }} />
-                    </button>
-                  )}
-                  <button onClick={() => deleteCampaign(r.id)} title="Delete"
-                    className="p-1.5 rounded hover:bg-red-50 inline-block">
-                    <Trash2 size={14} style={{ color: '#991B1B' }} />
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+
+      <DashCard
+        title="Past Campaigns"
+        icon={<FileText size={16} />}
+        description={loading ? 'Loading…' : `${rows.length} ${rows.length === 1 ? 'record' : 'records'}`}
+        flush
+        action={
+          <div className="flex flex-wrap items-center gap-2">
+            <select value={branch} onChange={(e) => setBranch(e.target.value as Branch)}
+              aria-label="Filter by branch"
+              className={CONTROL_SM}
+              style={CONTROL_STYLE}>
+              <option value="BOTH">Both branches</option>
+              <option value="SBEA">{branchLabel('SBEA')}</option>
+              <option value="SBGH">{branchLabel('SBGH')}</option>
+            </select>
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
+              aria-label="Filter by status"
+              className={CONTROL_SM}
+              style={CONTROL_STYLE}>
+              <option value="all">All statuses</option>
+              <option value="sent">Sent</option>
+              <option value="partial">Partial</option>
+              <option value="sending">Sending</option>
+              <option value="scheduled">Scheduled</option>
+              <option value="failed">Failed</option>
+            </select>
+          </div>
+        }
+      >
+        {loading ? (
+          <TableSkeleton rows={5} />
+        ) : rows.length === 0 ? (
+          <EmptyState
+            title={loadError ? 'Nothing to show' : 'No campaigns yet.'}
+            hint={statusFilter === 'all' && branch === 'BOTH'
+              ? 'Campaigns you send or schedule from New Campaign will appear here.'
+              : 'Nothing matches these filters — try “Both branches” and “All statuses”.'}
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[860px] text-sm">
+              <thead>
+                <tr style={{ background: SUBTLE_BG, borderBottom: '1px solid var(--light-gray)', color: 'var(--mid-gray)' }}>
+                  <th className={TH}>Campaign</th>
+                  <th className={TH}>Group</th>
+                  <th className={TH}>Branch</th>
+                  <th className={`${TH} text-right`}>Recipients</th>
+                  <th className={TH}>Status</th>
+                  <th className={TH}>Sent</th>
+                  <th className={`${TH} text-right`}><span className="sr-only">Actions</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map(r => (
+                  <tr key={r.id} className="transition-colors hover:bg-black/[0.015]" style={{ borderBottom: '1px solid #EEF2F1' }}>
+                    <td className="px-4 py-3 align-top">
+                      <button type="button" onClick={() => setPreview(r)}
+                        className="block text-sm font-semibold hover:underline text-left truncate max-w-[260px]"
+                        style={{ color: 'var(--charcoal)' }} title={r.subject}>
+                        {r.subject || <em style={{ color: 'var(--mid-gray)' }}>(no subject)</em>}
+                      </button>
+                      <p className="text-[11px] mt-0.5 truncate max-w-[260px]" style={{ color: 'var(--mid-gray)' }} title={r.message}>{r.message}</p>
+                    </td>
+                    <td className="px-4 py-3 align-top text-xs" style={{ color: 'var(--charcoal)' }}>
+                      <span className="block max-w-[180px] truncate" title={r.recipientGroup}>{groupName(r.recipientGroup)}</span>
+                    </td>
+                    {/* Same internal-code leak as the compose screen: this column
+                        was printing SBEA/SBGH. */}
+                    <td className="px-4 py-3 align-top text-xs whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>
+                      {branchName(r.branch)}
+                    </td>
+                    <td className="px-4 py-3 align-top text-right whitespace-nowrap" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                      <div className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>{r.recipientCount.toLocaleString()}</div>
+                      <div className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>{r.sentCount.toLocaleString()} sent</div>
+                    </td>
+                    <td className="px-4 py-3 align-top"><StatusBadge row={r} /></td>
+                    <td className="px-4 py-3 align-top whitespace-nowrap">
+                      {r.sentAt ? (
+                        <div className="text-xs" style={{ color: 'var(--charcoal)' }}>{fmtDateTime(r.sentAt)}</div>
+                      ) : r.scheduledAt ? (
+                        <>
+                          <div className="text-xs" style={{ color: 'var(--charcoal)' }}>{fmtDateTime(r.scheduledAt)}</div>
+                          <div className="text-[11px]" style={{ color: '#1E40AF' }}>Scheduled</div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="text-xs" style={{ color: 'var(--charcoal)' }}>{fmtDateTime(r.createdAt)}</div>
+                          <div className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>Created</div>
+                        </>
+                      )}
+                    </td>
+                    <td className="px-3 py-2.5 align-top text-right whitespace-nowrap">
+                      <div className="inline-flex items-center gap-0.5">
+                        <RowAction title="View" onClick={() => setPreview(r)} hover="hover:bg-stone-100">
+                          <Eye size={14} style={{ color: 'var(--mid-gray)' }} />
+                        </RowAction>
+                        {r.status === 'partial' && (
+                          <RowAction title="Fire next tranche now" onClick={() => scheduleNow(r.id)} hover="hover:bg-amber-50">
+                            <Zap size={14} style={{ color: '#92400E' }} />
+                          </RowAction>
+                        )}
+                        {(r.status === 'failed' || r.status === 'partial') && r.sentCount < r.recipientCount && (
+                          <RowAction title="Resume sending" onClick={() => resumeCampaign(r.id)} hover="hover:bg-emerald-50">
+                            <Play size={14} style={{ color: '#065F46' }} />
+                          </RowAction>
+                        )}
+                        <RowAction title="Delete" onClick={() => deleteCampaign(r.id)} hover="hover:bg-red-50">
+                          <Trash2 size={14} style={{ color: '#991B1B' }} />
+                        </RowAction>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </DashCard>
 
       {preview && (
         <div onClick={() => setPreview(null)}
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{ background: 'rgba(0,0,0,0.4)' }}>
+          style={MODAL_BACKDROP}>
           <div onClick={(e) => e.stopPropagation()}
-            className="rounded-xl max-w-lg w-full"
+            className="rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden"
             style={{ background: '#fff' }}>
-            <div className="px-5 py-4 border-b" style={{ borderColor: 'var(--light-gray)' }}>
-              <h3 className="text-sm font-bold" style={{ color: 'var(--ink)' }}>{preview.subject}</h3>
-              <p className="text-[11px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>
-                {preview.recipientGroup} · {branchLabel(preview.branch)} · {preview.recipientCount} recipients
-              </p>
+            <div className="px-5 py-4 flex items-start justify-between gap-3" style={{ borderBottom: '1px solid var(--light-gray)' }}>
+              <div className="min-w-0">
+                <h3 className="text-sm font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>{preview.subject}</h3>
+                <p className="text-[11px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+                  {groupName(preview.recipientGroup)} · {branchName(preview.branch)} · {preview.recipientCount} recipients
+                </p>
+              </div>
+              <div className="flex-shrink-0"><StatusBadge row={preview} /></div>
             </div>
             <div className="px-5 py-4">
-              <p className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--mid-gray)' }}>Message</p>
-              <pre className="text-sm whitespace-pre-wrap font-mono p-3 rounded"
-                style={{ background: '#F5F5F4', color: 'var(--ink)' }}>{preview.message}</pre>
+              <p className="text-[11px] font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--mid-gray)' }}>Message</p>
+              <div className="rounded-2xl p-3" style={{ background: '#F3F4F6' }}>
+                <pre className="max-w-[90%] text-[13px] leading-snug whitespace-pre-wrap break-words font-mono px-3 py-2 rounded-2xl rounded-bl-md"
+                  style={{ background: '#fff', color: 'var(--charcoal)', boxShadow: '0 1px 2px rgba(0,0,0,0.06)' }}>{preview.message}</pre>
+              </div>
+              <p className="text-[11px] mt-1.5 text-right" style={{ color: 'var(--mid-gray)', fontVariantNumeric: 'tabular-nums' }}>
+                {preview.message.length}/{MAX_LEN} characters
+              </p>
             </div>
-            <div className="px-5 py-3 border-t flex justify-end" style={{ borderColor: 'var(--light-gray)' }}>
-              <button onClick={() => setPreview(null)}
-                className="px-3 py-1.5 text-xs font-semibold rounded"
-                style={{ background: 'var(--paper)', color: 'var(--ink)' }}>Close</button>
+            <div className="px-5 py-3 flex justify-end" style={{ borderTop: '1px solid var(--light-gray)' }}>
+              <button type="button" onClick={() => setPreview(null)}
+                className={BTN_SECONDARY}
+                style={{ ...CONTROL_STYLE, color: 'var(--charcoal)' }}>Close</button>
             </div>
           </div>
         </div>

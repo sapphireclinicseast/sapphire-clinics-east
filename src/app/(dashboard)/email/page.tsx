@@ -1,8 +1,13 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Mail, Sparkles, Send, Users, ChevronDown, Clock, Calendar, CheckCircle2, CheckSquare, Square, FileText, Trash2, Eye, X, RotateCw, Zap, Code, Monitor, FlaskConical, Check } from 'lucide-react'
+import { Mail, Sparkles, Send, Users, ChevronDown, Clock, Calendar, CheckCircle2, CheckSquare, Square, FileText, Trash2, Eye, X, RotateCw, Zap, Code, Monitor, FlaskConical, Check, Plus, Info, Loader2, ImageIcon } from 'lucide-react'
 import { branchLabel } from '@/lib/branch-label'
+import { CARD_STYLE, DashCard, KpiCard, Skeleton, EmptyState } from '../patients/dashboard/ui'
+import {
+  CONTROL, TEXTAREA, CONTROL_SM, CONTROL_STYLE, BTN_PRIMARY, BTN_SECONDARY, TH, MODAL_BACKDROP, SUBTLE_BG,
+  PageHeader, PillTabs, Field, Segmented, StatusBadge, Notice, ErrorBanner, TableSkeleton, KpiSkeletonRow, RowAction, fmtDateTime,
+} from './campaign-ui'
 
 const BRANCH_FILTERS = [
   { value: 'SANDBOX_EAST',       label: branchLabel('SANDBOX_EAST') },
@@ -325,388 +330,445 @@ export default function EmailPage() {
 
   if (sent || scheduled) {
     return (
-      <div className="max-w-xl flex flex-col items-center text-center py-16">
-        <div className="w-20 h-20 rounded-full flex items-center justify-center mb-4" style={{ background: 'var(--pale-teal)' }}>
-          {scheduled ? <Clock size={36} style={{ color: 'var(--teal)' }} /> : <Mail size={36} style={{ color: 'var(--teal)' }} />}
+      <div className="max-w-xl mx-auto pt-6">
+        <div className="rounded-2xl px-8 py-12 flex flex-col items-center text-center" style={CARD_STYLE}>
+          <div className="w-16 h-16 rounded-full flex items-center justify-center mb-4" style={{ background: 'var(--pale-teal)' }}>
+            {scheduled ? <Clock size={30} style={{ color: 'var(--teal)' }} /> : <Mail size={30} style={{ color: 'var(--teal)' }} />}
+          </div>
+          <h2 className="text-xl font-bold mb-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+            {scheduled ? 'Email Campaign Scheduled!' : 'Email Campaign Queued!'}
+          </h2>
+          <p className="text-sm max-w-sm" style={{ color: 'var(--mid-gray)' }}>
+            {scheduled
+              ? `Your email will be sent to ${recipientCount} recipient${recipientCount !== 1 ? 's' : ''} on ${new Date(scheduledAt).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })}.`
+              : `Your email is being sent to ${recipientCount} recipient${recipientCount !== 1 ? 's' : ''}.`}
+          </p>
+          <p className="text-xs mt-2" style={{ color: 'var(--mid-gray)' }}>
+            Track its progress under Past Campaigns.
+          </p>
+          <div className="flex flex-wrap items-center justify-center gap-2 mt-6">
+            <button type="button" onClick={() => { resetForm(); setView('history') }}
+              className={`${BTN_SECONDARY} h-9 text-sm`} style={{ ...CONTROL_STYLE, color: 'var(--charcoal)' }}>
+              <FileText size={14} /> View past campaigns
+            </button>
+            <button onClick={resetForm} className={BTN_PRIMARY} style={{ background: 'var(--teal)' }}>
+              <Send size={14} /> Send Another
+            </button>
+          </div>
         </div>
-        <h2 className="text-xl font-bold mb-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
-          {scheduled ? 'Email Campaign Scheduled!' : 'Email Campaign Queued!'}
-        </h2>
-        <p className="text-sm mb-2" style={{ color: 'var(--mid-gray)' }}>
-          {scheduled
-            ? `Your email will be sent to ${recipientCount} recipient${recipientCount !== 1 ? 's' : ''} on ${new Date(scheduledAt).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })}.`
-            : `Your email is being sent to ${recipientCount} recipient${recipientCount !== 1 ? 's' : ''}.`}
-        </p>
-        <button
-          onClick={resetForm}
-          className="px-5 py-2.5 rounded-lg text-sm font-semibold mt-4"
-          style={{ background: 'var(--teal)', color: '#fff' }}
-        >
-          Send Another
-        </button>
       </div>
     )
   }
 
-  return (
-    <div className="max-w-3xl space-y-6">
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: 'var(--teal)' }}>
-          Patients & Email
-        </p>
-        <h1 className="text-2xl font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
-          Email Campaigns
-        </h1>
-        <p className="text-sm mt-1" style={{ color: 'var(--mid-gray)' }}>
-          Send newsletters or targeted emails to patients via Google Workspace.
-        </p>
-      </div>
+  const groupLabel = RECIPIENT_GROUPS.find(g => g.value === recipientGroup)?.label ?? recipientGroup
+  const branchSummary = branchFilter.size > 0
+    ? Array.from(branchFilter).map(b => BRANCH_FILTERS.find(f => f.value === b)?.label ?? b).join(', ')
+    : 'All branches'
+  const sender = gmailAccounts.find(a => a.id === selectedGmailId)
+  const canSend = !!subject && !!body
 
-      {/* Tab switcher: Compose / History */}
-      <div className="flex gap-1 p-1 rounded-lg" style={{ background: '#f1f5f9', maxWidth: 340 }}>
-        {([
-          { id: 'compose' as const, label: 'New Campaign', icon: Send },
-          { id: 'history' as const, label: 'Past Campaigns', icon: FileText },
-        ]).map(({ id, label, icon: Icon }) => (
-          <button
-            key={id}
-            onClick={() => setView(id)}
-            className="flex items-center gap-2 px-4 py-2 rounded-md text-xs font-semibold transition-all flex-1 justify-center"
-            style={view === id
-              ? { background: '#fff', color: 'var(--teal)', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }
-              : { background: 'transparent', color: 'var(--mid-gray)' }
-            }
-          >
-            <Icon size={13} /> {label}
+  return (
+    <div className="max-w-6xl space-y-5">
+      <PageHeader
+        eyebrow="Patients & Email"
+        title="Email Campaigns"
+        subtitle="Send newsletters or targeted emails to patients via Google Workspace."
+        action={
+          <button type="button" onClick={() => setView('compose')} className={BTN_PRIMARY} style={{ background: 'var(--teal)' }}>
+            <Plus size={15} /> New campaign
           </button>
-        ))}
-      </div>
+        }
+      />
+
+      <PillTabs
+        label="Email campaign sections"
+        value={view}
+        onChange={setView}
+        tabs={[
+          { id: 'compose', label: 'New Campaign', icon: Send },
+          { id: 'history', label: 'Past Campaigns', icon: FileText },
+        ]}
+      />
 
       {view === 'history' && <CampaignHistory />}
 
       {view === 'compose' && (
-      <div className="rounded-xl p-6 space-y-5" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px] items-start">
+        {/* ── Left: audience + message ── */}
+        <div className="space-y-5 min-w-0">
+          <DashCard
+            title="Audience"
+            icon={<Users size={16} />}
+            description="Choose the sending account and who receives this campaign."
+            action={
+              recipientCount !== null ? (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold"
+                  style={{ background: 'var(--pale-teal)', color: 'var(--teal)' }}>
+                  <Users size={12} />
+                  {recipientCount} recipient{recipientCount !== 1 ? 's' : ''} selected
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 text-xs" style={{ color: 'var(--mid-gray)' }}>
+                  <Loader2 size={12} className="animate-spin" /> Counting…
+                </span>
+              )
+            }
+          >
+            <div className="space-y-5">
+              {/* Sender account selector */}
+              {gmailAccounts.length > 0 && (
+                <Field label="Send From" htmlFor="email-send-from">
+                  <div className="relative">
+                    <select
+                      id="email-send-from"
+                      value={selectedGmailId}
+                      onChange={(e) => setSelectedGmailId(e.target.value)}
+                      className={`${CONTROL} appearance-none pr-8`}
+                      style={CONTROL_STYLE}
+                    >
+                      {gmailAccounts.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.displayName && a.displayName !== a.email ? `${a.displayName} (${a.email})` : a.email}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mid-gray)' }} />
+                  </div>
+                </Field>
+              )}
 
-        {/* Sender account selector */}
-        {gmailAccounts.length > 0 && (
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: 'var(--mid-gray)' }}>
-              Send From
-            </label>
-            <div className="relative">
-              <select
-                value={selectedGmailId}
-                onChange={(e) => setSelectedGmailId(e.target.value)}
-                className="w-full px-4 py-2.5 rounded-lg text-sm outline-none appearance-none pr-8"
-                style={{ border: '1.5px solid var(--light-gray)', color: 'var(--charcoal)' }}
+              {/* Recipient group */}
+              <Field label="Recipients">
+                <div className="grid sm:grid-cols-2 gap-2">
+                  {RECIPIENT_GROUPS.map((g) => {
+                    const active = recipientGroup === g.value
+                    return (
+                      <label
+                        key={g.value}
+                        className="flex gap-3 p-3 rounded-lg cursor-pointer transition-colors hover:bg-black/[0.02]"
+                        style={{
+                          border: `1px solid ${active ? 'var(--teal)' : 'var(--light-gray)'}`,
+                          background: active ? 'var(--pale-teal)' : '#fff',
+                          boxShadow: active ? '0 0 0 1px var(--teal) inset' : undefined,
+                        }}
+                      >
+                        <input
+                          type="radio"
+                          name="recipientGroup"
+                          value={g.value}
+                          checked={active}
+                          onChange={() => setRecipientGroup(g.value)}
+                          className="mt-0.5 accent-[var(--teal)]"
+                        />
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>{g.label}</p>
+                          <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>{g.desc}</p>
+                        </div>
+                      </label>
+                    )
+                  })}
+                </div>
+              </Field>
+
+              {/* Branch filter */}
+              <Field
+                label="Filter by Branch"
+                aside={<span style={{ color: 'var(--mid-gray)' }}>Optional</span>}
+                hint="Leave all unchecked to include every branch."
               >
-                {gmailAccounts.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.displayName && a.displayName !== a.email ? `${a.displayName} (${a.email})` : a.email}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mid-gray)' }} />
+                <div className="flex flex-wrap gap-2">
+                  {BRANCH_FILTERS.map((b) => {
+                    const active = branchFilter.has(b.value)
+                    return (
+                      <button
+                        key={b.value}
+                        type="button"
+                        aria-pressed={active}
+                        onClick={() => setBranchFilter((prev) => {
+                          const next = new Set(prev)
+                          next.has(b.value) ? next.delete(b.value) : next.add(b.value)
+                          return next
+                        })}
+                        className="inline-flex items-center gap-2 h-9 px-3 rounded-lg text-sm font-semibold transition-colors"
+                        style={{
+                          border:     `1px solid ${active ? 'var(--teal)' : 'var(--light-gray)'}`,
+                          background: active ? 'var(--pale-teal)' : '#fff',
+                          color:      active ? 'var(--teal)'     : 'var(--mid-gray)',
+                        }}
+                      >
+                        {active
+                          ? <CheckSquare size={14} style={{ color: 'var(--teal)' }} />
+                          : <Square size={14} />}
+                        {b.label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </Field>
             </div>
-          </div>
-        )}
+          </DashCard>
 
-        {/* Recipient group */}
-        <div>
-          <label className="block text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--mid-gray)' }}>
-            Recipients
-          </label>
-          <div className="grid grid-cols-2 gap-2">
-            {RECIPIENT_GROUPS.map((g) => (
-              <label
-                key={g.value}
-                className="flex gap-3 p-3 rounded-lg cursor-pointer transition-all"
-                style={{
-                  border: `1.5px solid ${recipientGroup === g.value ? 'var(--teal)' : 'var(--light-gray)'}`,
-                  background: recipientGroup === g.value ? 'var(--pale-teal)' : 'transparent',
-                }}
+          <DashCard
+            title="Message"
+            icon={<Mail size={16} />}
+            description="Plain text becomes paragraphs; HTML is embedded as-is inside the branded email template."
+          >
+            <div className="space-y-5">
+              {/* Subject */}
+              <Field label="Subject Line" htmlFor="email-subject">
+                <input
+                  id="email-subject"
+                  type="text"
+                  value={subject}
+                  onChange={(e) => setSubject(e.target.value)}
+                  placeholder="e.g. A message from Sapphire Clinics East"
+                  className={CONTROL}
+                  style={CONTROL_STYLE}
+                />
+              </Field>
+
+              {/* AI generation */}
+              <div className="rounded-xl p-4" style={{ background: SUBTLE_BG, border: '1px solid var(--light-gray)' }}>
+                <p className="flex items-center gap-1.5 text-xs font-semibold mb-2" style={{ color: 'var(--teal)' }}>
+                  <Sparkles size={13} />
+                  Generate with AI
+                </p>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    type="text"
+                    value={aiPrompt}
+                    onChange={(e) => setAiPrompt(e.target.value)}
+                    placeholder="e.g. 'monthly wellness tips' or 'holiday greeting'"
+                    className={`${CONTROL} sm:flex-1`}
+                    style={CONTROL_STYLE}
+                    onKeyDown={(e) => e.key === 'Enter' && generateEmail()}
+                  />
+                  <button
+                    type="button"
+                    onClick={generateEmail}
+                    disabled={generating}
+                    className={`${BTN_PRIMARY} h-10`}
+                    style={{ background: 'var(--teal)' }}
+                  >
+                    {generating ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                    {generating ? 'Generating…' : 'Generate'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Email body */}
+              <Field
+                label="Email Body"
+                htmlFor="email-body"
+                aside={body ? <span style={{ color: 'var(--mid-gray)', fontVariantNumeric: 'tabular-nums' }}>{body.length.toLocaleString()} chars</span> : undefined}
+                hint={
+                  <span className="inline-flex items-center gap-1.5" style={{ color: pasteUploading ? '#1d4ed8' : undefined }}>
+                    {pasteUploading
+                      ? <><Loader2 size={12} className="animate-spin" /> Uploading pasted image…</>
+                      : <><ImageIcon size={12} /> Tip: Paste images directly with Ctrl+V — they&apos;ll be uploaded and embedded as HTML in the email.</>}
+                  </span>
+                }
+              >
+                <textarea
+                  id="email-body"
+                  ref={bodyRef}
+                  value={body}
+                  onChange={(e) => setBody(e.target.value)}
+                  onPaste={handleBodyPaste}
+                  rows={10}
+                  placeholder="Write your email content here, or generate with AI above… You can paste (Ctrl+V) images to embed them."
+                  className={`${TEXTAREA} resize-y`}
+                  style={{ ...CONTROL_STYLE, minHeight: 200 }}
+                />
+              </Field>
+
+              {/* Copy HTML / Send test / Preview toggle */}
+              <div className="flex items-center gap-2 flex-wrap pt-1">
+                <button
+                  type="button"
+                  onClick={copyAsHtml}
+                  disabled={!body}
+                  className={BTN_SECONDARY}
+                  style={htmlCopied
+                    ? { background: '#ECFDF5', border: '1px solid #A7F3D0', color: '#047857' }
+                    : { ...CONTROL_STYLE, color: 'var(--charcoal)' }}
+                >
+                  {htmlCopied ? <Check size={12} /> : <Code size={12} />}
+                  {htmlCopied ? 'HTML Copied!' : 'Copy as HTML Email'}
+                </button>
+                <button
+                  type="button"
+                  onClick={sendTestEmail}
+                  disabled={!body || testSending}
+                  className={BTN_SECONDARY}
+                  style={testSent
+                    ? { background: '#ECFDF5', border: '1px solid #A7F3D0', color: '#047857' }
+                    : { background: '#F5F3FF', border: '1px solid #DDD6FE', color: '#6D28D9' }}
+                >
+                  {testSending ? <Loader2 size={12} className="animate-spin" /> : testSent ? <Check size={12} /> : <FlaskConical size={12} />}
+                  {testSending ? 'Sending…' : testSent ? 'Test sent to marketing@!' : 'Send Test Email'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowPreview(p => !p)}
+                  disabled={!body}
+                  aria-pressed={showPreview}
+                  className={BTN_SECONDARY}
+                  style={showPreview
+                    ? { background: 'var(--pale-teal)', border: '1px solid var(--teal)', color: 'var(--teal)' }
+                    : { ...CONTROL_STYLE, color: 'var(--charcoal)' }}
+                >
+                  <Monitor size={12} />
+                  {showPreview ? 'Hide Preview' : 'Preview Email'}
+                </button>
+                {body && (
+                  <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+                    Copy the HTML, then paste into any email client&apos;s HTML source editor.
+                  </span>
+                )}
+              </div>
+
+              {/* Live email preview iframe */}
+              {showPreview && body && (
+                <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--light-gray)' }}>
+                  <div
+                    className="px-4 py-2.5 flex flex-wrap items-center gap-x-2 gap-y-0.5"
+                    style={{ background: SUBTLE_BG, borderBottom: '1px solid var(--light-gray)' }}
+                  >
+                    <Monitor size={13} style={{ color: 'var(--teal)' }} />
+                    <span className="text-xs font-semibold" style={{ color: 'var(--teal)' }}>Email Preview</span>
+                    <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>— exactly how recipients will see it</span>
+                  </div>
+                  <iframe
+                    key={body + subject}
+                    srcDoc={buildEmailHtml(subject || '(no subject)', body)}
+                    title="Email preview"
+                    sandbox="allow-same-origin"
+                    style={{ width: '100%', height: '560px', border: 'none', display: 'block', background: '#fff' }}
+                  />
+                </div>
+              )}
+            </div>
+          </DashCard>
+        </div>
+
+        {/* ── Right: summary + delivery + send ── */}
+        <aside className="min-w-0 xl:sticky xl:top-0">
+          <DashCard title="Review & send" icon={<Send size={16} />}>
+            <div className="space-y-5">
+              {/* Summary of what's selected above — display only */}
+              <div className="rounded-xl p-4" style={{ background: SUBTLE_BG, border: '1px solid var(--light-gray)' }}>
+                <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>Recipients</p>
+                {recipientCount !== null ? (
+                  <p className="text-3xl font-bold leading-tight mt-0.5" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)', fontVariantNumeric: 'tabular-nums' }}>
+                    {recipientCount.toLocaleString()}
+                  </p>
+                ) : (
+                  <Skeleton className="h-8 w-20 mt-1" />
+                )}
+                <dl className="mt-3 space-y-1.5 text-xs">
+                  {([
+                    ['Group', groupLabel],
+                    ['Branches', branchSummary],
+                    ...(sender ? [['From', sender.email] as [string, string]] : []),
+                    ['When', sendMode === 'schedule' && scheduledAt
+                      ? new Date(scheduledAt).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })
+                      : 'Immediately'],
+                  ] as [string, string][]).map(([k, v]) => (
+                    <div key={k} className="flex items-baseline justify-between gap-3">
+                      <dt style={{ color: 'var(--mid-gray)' }}>{k}</dt>
+                      <dd className="font-semibold text-right truncate min-w-0" style={{ color: 'var(--charcoal)' }} title={v}>{v}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+
+              {/* Send mode toggle */}
+              <Field label="When to Send">
+                <Segmented
+                  label="When to send"
+                  value={sendMode}
+                  onChange={setSendMode}
+                  options={[
+                    { value: 'now', label: 'Send Now', icon: Send },
+                    { value: 'schedule', label: 'Schedule', icon: Calendar },
+                  ]}
+                />
+              </Field>
+
+              {sendMode === 'schedule' && (
+                <Field
+                  label="Scheduled Date & Time"
+                  htmlFor="email-scheduled-at"
+                  hint={scheduledAt ? (
+                    <span className="flex items-center gap-1" style={{ color: 'var(--teal)' }}>
+                      <CheckCircle2 size={11} className="flex-shrink-0" />
+                      Scheduled for {new Date(scheduledAt).toLocaleString('en-PH', { dateStyle: 'full', timeStyle: 'short' })}
+                    </span>
+                  ) : undefined}
+                >
+                  <input
+                    id="email-scheduled-at"
+                    type="datetime-local"
+                    value={scheduledAt}
+                    onChange={(e) => setScheduledAt(e.target.value)}
+                    min={toDatetimeLocal(new Date(Date.now() + 60000))}
+                    className={CONTROL}
+                    style={CONTROL_STYLE}
+                  />
+                </Field>
+              )}
+
+              {/* Copy me — one copy of the campaign, not a per-recipient Cc header */}
+              <Field
+                label="Send me a copy"
+                htmlFor="email-cc"
+                aside={<span style={{ color: 'var(--mid-gray)' }}>Optional</span>}
+                hint={<>Gets <strong>one</strong> copy of this campaign when it starts sending — not one per recipient. Patients never see this address. Separate multiple addresses with commas.</>}
               >
                 <input
-                  type="radio"
-                  name="recipientGroup"
-                  value={g.value}
-                  checked={recipientGroup === g.value}
-                  onChange={() => setRecipientGroup(g.value)}
-                  className="mt-0.5"
+                  id="email-cc"
+                  type="text"
+                  value={ccEmails}
+                  onChange={(e) => setCcEmails(e.target.value)}
+                  placeholder="you@sapphireclinicseast.org"
+                  className={CONTROL}
+                  style={CONTROL_STYLE}
                 />
-                <div>
-                  <p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>{g.label}</p>
-                  <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>{g.desc}</p>
-                </div>
-              </label>
-            ))}
-          </div>
-          {recipientCount !== null && (
-            <div className="flex items-center gap-1.5 mt-2 text-xs" style={{ color: 'var(--teal)' }}>
-              <Users size={12} />
-              {recipientCount} recipient{recipientCount !== 1 ? 's' : ''} selected
-            </div>
-          )}
-        </div>
+              </Field>
 
-        {/* Branch filter */}
-        <div>
-          <label className="block text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: 'var(--mid-gray)' }}>
-            Filter by Branch
-            <span className="ml-1 normal-case font-normal">(optional — leave unchecked to include all branches)</span>
-          </label>
-          <div className="flex flex-wrap gap-3">
-            {BRANCH_FILTERS.map((b) => {
-              const active = branchFilter.has(b.value)
-              return (
-                <button
-                  key={b.value}
-                  type="button"
-                  onClick={() => setBranchFilter((prev) => {
-                    const next = new Set(prev)
-                    next.has(b.value) ? next.delete(b.value) : next.add(b.value)
-                    return next
-                  })}
-                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold transition-all"
-                  style={{
-                    border:     `1.5px solid ${active ? 'var(--teal)' : 'var(--light-gray)'}`,
-                    background: active ? 'var(--pale-teal)' : 'transparent',
-                    color:      active ? 'var(--teal)'     : 'var(--mid-gray)',
-                  }}
-                >
-                  {active
-                    ? <CheckSquare size={14} style={{ color: 'var(--teal)' }} />
-                    : <Square size={14} />}
-                  {b.label}
-                </button>
-              )
-            })}
-          </div>
-        </div>
+              {/* Google Workspace notice */}
+              <Notice tone="warn" icon={Info}>
+                <strong>Note:</strong> Emails are sent via your Google Workspace account. Make sure GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are configured in your environment.
+              </Notice>
 
-        {/* Subject */}
-        <div>
-          <label className="block text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: 'var(--mid-gray)' }}>
-            Subject Line
-          </label>
-          <input
-            type="text"
-            value={subject}
-            onChange={(e) => setSubject(e.target.value)}
-            placeholder="e.g. A message from Sapphire Clinics East"
-            className="w-full px-4 py-2.5 rounded-lg text-sm outline-none"
-            style={{ border: '1.5px solid var(--light-gray)', color: 'var(--charcoal)' }}
-          />
-        </div>
-
-        {/* Copy me — one copy of the campaign, not a per-recipient Cc header */}
-        <div>
-          <label className="block text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: 'var(--mid-gray)' }}>
-            Send me a copy (optional)
-          </label>
-          <input
-            type="text"
-            value={ccEmails}
-            onChange={(e) => setCcEmails(e.target.value)}
-            placeholder="you@sapphireclinicseast.org"
-            className="w-full px-4 py-2.5 rounded-lg text-sm outline-none"
-            style={{ border: '1.5px solid var(--light-gray)', color: 'var(--charcoal)' }}
-          />
-          <p className="text-[11px] mt-1.5" style={{ color: 'var(--mid-gray)' }}>
-            Gets <strong>one</strong> copy of this campaign when it starts sending — not one per recipient.
-            Patients never see this address. Separate multiple addresses with commas.
-          </p>
-        </div>
-
-        {/* AI generation */}
-        <div className="rounded-lg p-4 space-y-2" style={{ background: 'var(--pale-teal)' }}>
-          <p className="text-xs font-semibold" style={{ color: 'var(--teal)' }}>
-            <Sparkles size={12} className="inline mr-1" />
-            Generate with AI
-          </p>
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={aiPrompt}
-              onChange={(e) => setAiPrompt(e.target.value)}
-              placeholder="e.g. 'monthly wellness tips' or 'holiday greeting'"
-              className="flex-1 px-3 py-2 rounded-lg text-sm outline-none"
-              style={{ border: '1px solid rgba(26,123,138,0.3)', background: '#fff' }}
-              onKeyDown={(e) => e.key === 'Enter' && generateEmail()}
-            />
-            <button
-              onClick={generateEmail}
-              disabled={generating}
-              className="px-4 py-2 rounded-lg text-sm font-semibold"
-              style={{ background: 'var(--teal)', color: '#fff' }}
-            >
-              {generating ? '…' : 'Generate'}
-            </button>
-          </div>
-        </div>
-
-        {/* Email body */}
-        <div>
-          <label className="block text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: 'var(--mid-gray)' }}>
-            Email Body
-          </label>
-          <textarea
-            ref={bodyRef}
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            onPaste={handleBodyPaste}
-            rows={10}
-            placeholder="Write your email content here, or generate with AI above… You can paste (Ctrl+V) images to embed them."
-            className="w-full px-4 py-3 rounded-lg text-sm outline-none resize-none"
-            style={{ border: '1.5px solid var(--light-gray)', color: 'var(--charcoal)' }}
-          />
-          <p className="text-[11px] mt-1.5" style={{ color: pasteUploading ? '#1d4ed8' : 'var(--mid-gray)' }}>
-            {pasteUploading
-              ? '⏳ Uploading pasted image…'
-              : '💡 Tip: Paste images directly with Ctrl+V — they\'ll be uploaded and embedded as HTML in the email.'}
-          </p>
-
-          {/* Copy HTML + Preview toggle */}
-          <div className="flex items-center gap-2 mt-3 flex-wrap">
-            <button
-              type="button"
-              onClick={copyAsHtml}
-              disabled={!body}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
-              style={{
-                background: body ? (htmlCopied ? '#059669' : 'var(--charcoal)') : 'var(--light-gray)',
-                color: body ? '#fff' : 'var(--mid-gray)',
-              }}
-            >
-              {htmlCopied ? <Check size={12} /> : <Code size={12} />}
-              {htmlCopied ? 'HTML Copied!' : 'Copy as HTML Email'}
-            </button>
-            <button
-              type="button"
-              onClick={sendTestEmail}
-              disabled={!body || testSending}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
-              style={{
-                background: !body ? 'var(--light-gray)' : testSent ? '#059669' : '#7C3AED',
-                color: !body ? 'var(--mid-gray)' : '#fff',
-              }}
-            >
-              {testSent ? <Check size={12} /> : <FlaskConical size={12} />}
-              {testSending ? 'Sending…' : testSent ? 'Test sent to marketing@!' : 'Send Test Email'}
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowPreview(p => !p)}
-              disabled={!body}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
-              style={{
-                border: `1.5px solid ${showPreview ? 'var(--teal)' : 'var(--light-gray)'}`,
-                background: showPreview ? 'var(--pale-teal)' : 'transparent',
-                color: showPreview ? 'var(--teal)' : 'var(--mid-gray)',
-              }}
-            >
-              <Monitor size={12} />
-              {showPreview ? 'Hide Preview' : 'Preview Email'}
-            </button>
-            {body && (
-              <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>
-                Copy the HTML, then paste into any email client's HTML source editor.
-              </span>
-            )}
-          </div>
-
-          {/* Live email preview iframe */}
-          {showPreview && body && (
-            <div className="mt-3 rounded-xl overflow-hidden" style={{ border: '1.5px solid var(--teal)' }}>
-              <div
-                className="px-4 py-2 flex items-center gap-2"
-                style={{ background: 'var(--pale-teal)', borderBottom: '1px solid rgba(26,123,138,0.2)' }}
-              >
-                <Monitor size={13} style={{ color: 'var(--teal)' }} />
-                <span className="text-xs font-semibold" style={{ color: 'var(--teal)' }}>Email Preview</span>
-                <span className="text-xs ml-1" style={{ color: 'var(--mid-gray)' }}>— exactly how recipients will see it</span>
-              </div>
-              <iframe
-                key={body + subject}
-                srcDoc={buildEmailHtml(subject || '(no subject)', body)}
-                title="Email preview"
-                sandbox="allow-same-origin"
-                style={{ width: '100%', height: '560px', border: 'none', display: 'block', background: '#fff' }}
-              />
-            </div>
-          )}
-        </div>
-
-        {/* Send mode toggle */}
-        <div>
-          <label className="block text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--mid-gray)' }}>
-            When to Send
-          </label>
-          <div className="flex gap-2">
-            {(['now', 'schedule'] as const).map((mode) => (
               <button
-                key={mode}
-                onClick={() => setSendMode(mode)}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold flex-1 justify-center"
+                onClick={sendEmail}
+                disabled={sending || !subject || !body}
+                className="w-full inline-flex items-center justify-center gap-2 h-11 rounded-lg text-sm font-semibold transition-opacity hover:opacity-90 disabled:cursor-not-allowed"
                 style={{
-                  border: `1.5px solid ${sendMode === mode ? 'var(--teal)' : 'var(--light-gray)'}`,
-                  background: sendMode === mode ? 'var(--pale-teal)' : 'transparent',
-                  color: sendMode === mode ? 'var(--teal)' : 'var(--mid-gray)',
+                  background: canSend ? 'var(--teal)' : 'var(--light-gray)',
+                  color: canSend ? '#fff' : 'var(--mid-gray)',
+                  fontFamily: 'var(--font-display)',
                 }}
               >
-                {mode === 'now' ? <><Send size={14} /> Send Now</> : <><Calendar size={14} /> Schedule</>}
+                {sending
+                  ? <Loader2 size={15} className="animate-spin" />
+                  : sendMode === 'schedule' ? <Calendar size={15} /> : <Send size={15} />}
+                {sending
+                  ? (sendMode === 'schedule' ? 'Scheduling…' : 'Sending…')
+                  : sendMode === 'schedule'
+                    ? `Schedule for ${recipientCount ?? '…'} Recipients`
+                    : `Send to ${recipientCount ?? '…'} Recipients`}
               </button>
-            ))}
-          </div>
-
-          {sendMode === 'schedule' && (
-            <div className="mt-3">
-              <label className="block text-xs font-semibold uppercase tracking-widest mb-1.5" style={{ color: 'var(--mid-gray)' }}>
-                Scheduled Date & Time
-              </label>
-              <input
-                type="datetime-local"
-                value={scheduledAt}
-                onChange={(e) => setScheduledAt(e.target.value)}
-                min={toDatetimeLocal(new Date(Date.now() + 60000))}
-                className="w-full px-4 py-2.5 rounded-lg text-sm outline-none"
-                style={{ border: '1.5px solid var(--light-gray)', color: 'var(--charcoal)' }}
-              />
-              {scheduledAt && (
-                <p className="mt-1.5 text-xs flex items-center gap-1" style={{ color: 'var(--teal)' }}>
-                  <CheckCircle2 size={11} />
-                  Scheduled for {new Date(scheduledAt).toLocaleString('en-PH', { dateStyle: 'full', timeStyle: 'short' })}
+              {!canSend && (
+                <p className="text-[11px] text-center -mt-3" style={{ color: 'var(--mid-gray)' }}>
+                  Add a subject and body to enable sending.
                 </p>
               )}
             </div>
-          )}
-        </div>
-
-        {/* Google Workspace notice */}
-        <div
-          className="text-xs px-4 py-3 rounded-lg"
-          style={{ background: '#FFF9EC', border: '1px solid rgba(201,162,39,0.3)', color: 'var(--gold)' }}
-        >
-          <strong>Note:</strong> Emails are sent via your Google Workspace account. Make sure GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are configured in your environment.
-        </div>
-
-        <button
-          onClick={sendEmail}
-          disabled={sending || !subject || !body}
-          className="w-full flex items-center justify-center gap-2 py-3 rounded-lg text-sm font-semibold"
-          style={{
-            background: subject && body ? 'var(--teal)' : 'var(--light-gray)',
-            color: subject && body ? '#fff' : 'var(--mid-gray)',
-            fontFamily: 'var(--font-display)',
-          }}
-        >
-          {sendMode === 'schedule' ? <Calendar size={15} /> : <Send size={15} />}
-          {sending
-            ? (sendMode === 'schedule' ? 'Scheduling…' : 'Sending…')
-            : sendMode === 'schedule'
-              ? `Schedule for ${recipientCount ?? '…'} Recipients`
-              : `Send to ${recipientCount ?? '…'} Recipients`}
-        </button>
+          </DashCard>
+        </aside>
       </div>
     )}
     </div>
@@ -746,6 +808,7 @@ function CampaignHistory() {
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [preview, setPreview] = useState<{ id: string; subject: string; body: string } | null>(null)
   const [historyCopied, setHistoryCopied] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   function copyPreviewHtml() {
     if (!preview) return
@@ -756,11 +819,16 @@ function CampaignHistory() {
 
   async function load() {
     setLoading(true)
+    setLoadError(null)
     try {
       const p = new URLSearchParams({ status: statusFilter })
       const r = await fetch('/api/email/campaigns?' + p.toString())
       const d = await r.json()
       setRows(d.campaigns || [])
+      // Surface a failed list load on the page instead of a silent empty table.
+      if (!r.ok) setLoadError(d.error || `HTTP ${r.status}`)
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : 'Network error')
     } finally { setLoading(false) }
   }
   useEffect(() => { load() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [statusFilter])
@@ -814,66 +882,52 @@ function CampaignHistory() {
     } catch (e) { alert((e as Error).message) }
   }
 
-  function statusBadge(row: HistoryRow) {
-    // New 'partial' status: send-loop hit the daily cap or a transient rate-limit
-    // and auto-scheduled the next tranche. Show progress + next-batch ETA.
-    if (row.status === 'partial') {
-      const nextLabel = row.nextTrancheAt
-        ? new Date(row.nextTrancheAt).toLocaleString('en-PH', {
-            month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
-          })
-        : null
-      return (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase"
-          style={{ background: '#FEF3C7', color: '#92400E' }}
-          title={nextLabel ? 'Next batch fires automatically — no action needed' : ''}>
-          Partial ({row.sentCount}/{row.recipientCount})
-          {nextLabel ? <span style={{ fontWeight: 500, textTransform: 'none', letterSpacing: 0 }}>· next batch {nextLabel}</span> : null}
-        </span>
-      )
-    }
-    // Legacy: 'failed' with sentCount > 0 — older partials before the auto-tranche feature
-    if (row.status === 'failed' && row.sentCount > 0 && row.sentCount < row.recipientCount) {
-      return (
-        <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase"
-          style={{ background: '#FFEDD5', color: '#9A3412' }}>
-          Partial ({row.sentCount}/{row.recipientCount})
-        </span>
-      )
-    }
-    // Sent but with a sentCount < total (edge case — e.g. some had no email)
-    if (row.status === 'sent' && row.sentCount > 0 && row.sentCount < row.recipientCount) {
-      return (
-        <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase"
-          style={{ background: '#D1FAE5', color: '#065F46' }}>
-          Sent ({row.sentCount}/{row.recipientCount})
-        </span>
-      )
-    }
-    const cfg: Record<string, { bg: string; color: string }> = {
-      sent:      { bg: '#D1FAE5', color: '#065F46' },
-      sending:   { bg: '#FEF3C7', color: '#92400E' },
-      scheduled: { bg: '#DBEAFE', color: '#1E40AF' },
-      failed:    { bg: '#FEE2E2', color: '#991B1B' },
-      draft:     { bg: '#F1F5F9', color: '#475569' },
-    }
-    const c = cfg[row.status] ?? cfg.draft
-    return (
-      <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase"
-        style={{ background: c.bg, color: c.color }}>{row.status}</span>
-    )
-  }
+  // Display-only roll-ups of the rows already loaded for the table.
+  const totalSent = rows.reduce((s, r) => s + (r.sentCount || 0), 0)
+  const totalRecipients = rows.reduce((s, r) => s + (r.recipientCount || 0), 0)
+  const scheduledCount = rows.filter(r => r.status === 'scheduled').length
+  const inProgressCount = rows.filter(r => r.status === 'sending' || r.status === 'partial').length
+  const failedCount = rows.filter(r => r.status === 'failed').length
 
   return (
-    <div className="rounded-xl" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
-      <div className="px-5 py-4 flex items-center gap-3 border-b" style={{ borderColor: 'var(--light-gray)' }}>
-        <h2 className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>Past Campaigns</h2>
-        <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>{rows.length} {rows.length === 1 ? 'record' : 'records'}</span>
-        <div className="ml-auto flex items-center gap-2">
+    <div className="space-y-5">
+      {loadError && (
+        <ErrorBanner title="Couldn't load past campaigns" message={loadError} onRetry={load} />
+      )}
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {loading ? <KpiSkeletonRow count={4} /> : (
+          <>
+            <KpiCard label="Campaigns" icon={<FileText size={16} />}
+              value={rows.length.toLocaleString()}
+              sub={rows.length >= 50 ? 'Most recent 50 shown' : statusFilter === 'all' ? 'All statuses' : `Status: ${statusFilter}`} />
+            <KpiCard label="Emails sent" icon={<Send size={16} />} accent="var(--bright-teal)"
+              value={totalSent.toLocaleString()}
+              sub={`of ${totalRecipients.toLocaleString()} recipients`} />
+            <KpiCard label="Scheduled" icon={<Calendar size={16} />} accent="#3B82F6"
+              value={scheduledCount.toLocaleString()}
+              sub="Waiting to send" />
+            <KpiCard label="In progress" icon={<RotateCw size={16} />} accent="#D97706"
+              value={inProgressCount.toLocaleString()}
+              sub={failedCount > 0
+                ? <span style={{ color: '#B91C1C', fontWeight: 600 }}>{failedCount} failed</span>
+                : 'None failed'} />
+          </>
+        )}
+      </div>
+
+      <DashCard
+        title="Past Campaigns"
+        icon={<FileText size={16} />}
+        description={loading ? 'Loading…' : `${rows.length} ${rows.length === 1 ? 'record' : 'records'}`}
+        flush
+        action={
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="border border-gray-300 rounded-md px-2 py-1 text-xs"
+            aria-label="Filter by status"
+            className={CONTROL_SM}
+            style={CONTROL_STYLE}
           >
             <option value="all">All statuses</option>
             <option value="sent">Sent</option>
@@ -882,96 +936,124 @@ function CampaignHistory() {
             <option value="failed">Failed</option>
             <option value="draft">Draft</option>
           </select>
-        </div>
-      </div>
-
-      {loading ? (
-        <div className="py-12 text-center text-sm" style={{ color: 'var(--mid-gray)' }}>Loading…</div>
-      ) : rows.length === 0 ? (
-        <div className="py-12 text-center text-sm" style={{ color: 'var(--mid-gray)' }}>No campaigns yet.</div>
-      ) : (
-        <div style={{ overflowX: 'auto' }}>
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr style={{ background: '#F8FAFC', borderBottom: '1px solid var(--light-gray)' }}>
-                <th className="px-4 py-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>Subject</th>
-                <th className="px-4 py-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>Recipients</th>
-                <th className="px-4 py-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>Status</th>
-                <th className="px-4 py-2 text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>Sent / Scheduled</th>
-                <th className="px-4 py-2" />
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map(r => (
-                <tr key={r.id} style={{ borderBottom: '1px solid #F3F4F6' }}>
-                  <td className="px-4 py-3">
-                    <div className="font-semibold text-xs truncate max-w-[300px]" style={{ color: 'var(--charcoal)' }} title={r.subject}>{r.subject || '(no subject)'}</div>
-                    <div className="text-[10px]" style={{ color: 'var(--mid-gray)' }}>{formatRecipientGroup(r.recipientGroup)}</div>
-                  </td>
-                  <td className="px-4 py-3 text-xs" style={{ color: 'var(--charcoal)' }}>{r.recipientCount}</td>
-                  <td className="px-4 py-3">{statusBadge(r)}</td>
-                  <td className="px-4 py-3 text-xs" style={{ color: 'var(--charcoal)' }}>
-                    {r.sentAt
-                      ? new Date(r.sentAt).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })
-                      : r.scheduledAt
-                        ? 'Scheduled ' + new Date(r.scheduledAt).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })
-                        : new Date(r.createdAt).toLocaleDateString()}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <button onClick={() => openPreview(r.id)} title="Preview" className="p-1.5 rounded hover:bg-gray-100 inline-block">
-                      <Eye size={13} style={{ color: 'var(--mid-gray)' }} />
-                    </button>
-                    {(r.status === 'partial') && (
-                      <>
-                        <button onClick={() => scheduleNow(r.id)} title="Fire next tranche now" className="p-1.5 rounded hover:bg-amber-50 inline-block">
-                          <Zap size={13} style={{ color: '#92400E' }} />
-                        </button>
-                        <button onClick={() => resumeCampaign(r.id)} title="Resume sending" className="p-1.5 rounded hover:bg-emerald-50 inline-block">
-                          <RotateCw size={13} style={{ color: '#059669' }} />
-                        </button>
-                      </>
-                    )}
-                    {(r.status === 'failed' && r.sentCount < r.recipientCount) && (
-                      <button onClick={() => resumeCampaign(r.id)} title="Resume sending" className="p-1.5 rounded hover:bg-emerald-50 inline-block">
-                        <RotateCw size={13} style={{ color: '#059669' }} />
-                      </button>
-                    )}
-                    <button onClick={() => deleteCampaign(r.id)} title="Delete record" className="p-1.5 rounded hover:bg-red-50 inline-block">
-                      <Trash2 size={13} style={{ color: '#DC2626' }} />
-                    </button>
-                  </td>
+        }
+      >
+        {loading ? (
+          <TableSkeleton rows={5} />
+        ) : rows.length === 0 ? (
+          <EmptyState
+            title={loadError ? 'Nothing to show' : 'No campaigns yet.'}
+            hint={statusFilter === 'all'
+              ? 'Campaigns you send or schedule from New Campaign will appear here.'
+              : 'No campaigns with this status — try “All statuses”.'}
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[720px] text-left text-sm">
+              <thead>
+                <tr style={{ background: SUBTLE_BG, borderBottom: '1px solid var(--light-gray)', color: 'var(--mid-gray)' }}>
+                  <th className={TH}>Campaign</th>
+                  <th className={`${TH} text-right`}>Recipients</th>
+                  <th className={TH}>Status</th>
+                  <th className={TH}>Sent / Scheduled</th>
+                  <th className={`${TH} text-right`}><span className="sr-only">Actions</span></th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+              </thead>
+              <tbody>
+                {rows.map(r => (
+                  <tr key={r.id} className="transition-colors hover:bg-black/[0.015]" style={{ borderBottom: '1px solid #EEF2F1' }}>
+                    <td className="px-4 py-3 align-top">
+                      <button type="button" onClick={() => openPreview(r.id)}
+                        className="block font-semibold text-sm truncate max-w-[340px] text-left hover:underline"
+                        style={{ color: 'var(--charcoal)' }} title={r.subject}>
+                        {r.subject || '(no subject)'}
+                      </button>
+                      <div className="text-[11px] mt-0.5 truncate max-w-[340px]" style={{ color: 'var(--mid-gray)' }}>{formatRecipientGroup(r.recipientGroup)}</div>
+                    </td>
+                    <td className="px-4 py-3 align-top text-right whitespace-nowrap" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                      <div className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>{r.recipientCount.toLocaleString()}</div>
+                      <div className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>{r.sentCount.toLocaleString()} sent</div>
+                    </td>
+                    <td className="px-4 py-3 align-top"><StatusBadge row={r} /></td>
+                    <td className="px-4 py-3 align-top whitespace-nowrap">
+                      {r.sentAt ? (
+                        <>
+                          <div className="text-xs" style={{ color: 'var(--charcoal)' }}>{fmtDateTime(r.sentAt)}</div>
+                          <div className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>Sent</div>
+                        </>
+                      ) : r.scheduledAt ? (
+                        <>
+                          <div className="text-xs" style={{ color: 'var(--charcoal)' }}>{fmtDateTime(r.scheduledAt)}</div>
+                          <div className="text-[11px]" style={{ color: '#1E40AF' }}>Scheduled</div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="text-xs" style={{ color: 'var(--charcoal)' }}>{new Date(r.createdAt).toLocaleDateString()}</div>
+                          <div className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>Created</div>
+                        </>
+                      )}
+                    </td>
+                    <td className="px-3 py-2.5 align-top text-right whitespace-nowrap">
+                      <div className="inline-flex items-center gap-0.5">
+                        <RowAction title="Preview" onClick={() => openPreview(r.id)} hover="hover:bg-gray-100">
+                          <Eye size={14} style={{ color: 'var(--mid-gray)' }} />
+                        </RowAction>
+                        {(r.status === 'partial') && (
+                          <>
+                            <RowAction title="Fire next tranche now" onClick={() => scheduleNow(r.id)} hover="hover:bg-amber-50">
+                              <Zap size={14} style={{ color: '#92400E' }} />
+                            </RowAction>
+                            <RowAction title="Resume sending" onClick={() => resumeCampaign(r.id)} hover="hover:bg-emerald-50">
+                              <RotateCw size={14} style={{ color: '#059669' }} />
+                            </RowAction>
+                          </>
+                        )}
+                        {(r.status === 'failed' && r.sentCount < r.recipientCount) && (
+                          <RowAction title="Resume sending" onClick={() => resumeCampaign(r.id)} hover="hover:bg-emerald-50">
+                            <RotateCw size={14} style={{ color: '#059669' }} />
+                          </RowAction>
+                        )}
+                        <RowAction title="Delete record" onClick={() => deleteCampaign(r.id)} hover="hover:bg-red-50">
+                          <Trash2 size={14} style={{ color: '#DC2626' }} />
+                        </RowAction>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </DashCard>
 
       {/* Preview modal */}
       {preview && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{ background: 'rgba(0,0,0,0.5)' }}
+          style={MODAL_BACKDROP}
           onClick={(e) => { if (e.target === e.currentTarget) setPreview(null) }}
         >
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col">
-            <div className="px-5 py-3 border-b flex items-center justify-between gap-3" style={{ borderColor: 'var(--light-gray)' }}>
-              <div className="truncate flex-1">
-                <p className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>Subject</p>
-                <p className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>{preview.subject}</p>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden">
+            <div className="px-5 py-4 flex items-center justify-between gap-3" style={{ borderBottom: '1px solid var(--light-gray)' }}>
+              <div className="min-w-0 flex-1">
+                <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>Subject</p>
+                <p className="text-sm font-bold truncate" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }} title={preview.subject}>{preview.subject}</p>
               </div>
               <button
+                type="button"
                 onClick={copyPreviewHtml}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold flex-shrink-0 transition-all"
-                style={{
-                  background: historyCopied ? '#059669' : 'var(--charcoal)',
-                  color: '#fff',
-                }}
+                className={`${BTN_SECONDARY} flex-shrink-0`}
+                style={historyCopied
+                  ? { background: '#ECFDF5', border: '1px solid #A7F3D0', color: '#047857' }
+                  : { ...CONTROL_STYLE, color: 'var(--charcoal)' }}
               >
                 {historyCopied ? <Check size={12} /> : <Code size={12} />}
                 {historyCopied ? 'Copied!' : 'Copy HTML'}
               </button>
-              <button onClick={() => setPreview(null)} className="text-gray-400 hover:text-gray-600 flex-shrink-0"><X size={18} /></button>
+              <button type="button" onClick={() => setPreview(null)} aria-label="Close preview"
+                className="inline-flex items-center justify-center w-8 h-8 rounded-lg hover:bg-gray-100 flex-shrink-0" style={{ color: 'var(--mid-gray)' }}>
+                <X size={18} />
+              </button>
             </div>
             <div className="p-5 overflow-y-auto flex-1">
               <div
@@ -988,4 +1070,3 @@ function CampaignHistory() {
     </div>
   )
 }
-
