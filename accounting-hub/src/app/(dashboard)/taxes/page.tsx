@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react'
 import { Landmark, ExternalLink, CalendarClock, Loader2 } from 'lucide-react'
 import { useResizableColumns, ResizableColgroup, ColResizeHandle } from '@/components/useResizableColumns'
 import { computeTaxDue, TAX_PORTALS, type TaxDueInfo } from '@/lib/taxes'
+import { HR_PAGE_CLASS, HR_PAGE_STYLE, HrShimmerStyle, StatCard } from '@/components/ui/hr-look'
 import WithholdingCompensation from './WithholdingCompensation'
 import ExpandedWithholding from './ExpandedWithholding'
 import BusinessTax from './BusinessTax'
@@ -58,22 +59,28 @@ export default function TaxesPage() {
   const soon = useMemo(() => (due || []).filter(d => d.daysUntil <= 5), [due])
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-2xl font-bold flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+    <div className={HR_PAGE_CLASS} style={HR_PAGE_STYLE}>
+      <HrShimmerStyle />
+      <div className="min-w-0">
+        <h1 className="text-2xl font-bold leading-tight flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
           <Landmark size={22} style={{ color: 'var(--teal)' }} /> Taxes
         </h1>
+        <p className="mt-1 text-[13px] max-w-2xl" style={{ color: 'var(--mid-gray)' }}>
+          What is due to the BIR and when, each form&apos;s computation, the tax RFPs, and what has been paid.
+        </p>
       </div>
 
-      {/* Sub-tabs */}
-      <div className="flex rounded-xl overflow-hidden border flex-wrap w-fit" style={{ borderColor: 'var(--light-gray)' }}>
-        {TABS.map(t => (
-          <button key={t.key} onClick={() => setTab(t.key)}
-            className="px-4 py-2 text-xs font-semibold transition-colors"
-            style={tab === t.key ? { background: 'var(--deep-teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' }}>
-            {t.label}
-          </button>
-        ))}
+      {/* Tabs: one row, swipes sideways on narrow screens */}
+      <div className="border-b-2" style={{ borderColor: 'var(--light-gray)' }}>
+        <div className="flex items-end -mb-[2px] max-w-full overflow-x-auto" role="tablist">
+          {TABS.map(t => (
+            <button key={t.key} onClick={() => setTab(t.key)} role="tab" aria-selected={tab === t.key}
+              className="px-3.5 py-2.5 border-b-2 text-[13px] font-semibold whitespace-nowrap transition-colors hover:text-[var(--teal)]"
+              style={{ fontFamily: 'var(--font-display)', borderColor: tab === t.key ? 'var(--teal)' : 'transparent', color: tab === t.key ? 'var(--teal)' : 'var(--mid-gray)' }}>
+              {t.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {tab === 'guide' && (
@@ -83,7 +90,7 @@ export default function TaxesPage() {
 
           {/* Deadlines-soon banner */}
           {soon.length > 0 && (
-            <div className="rounded-2xl border p-4 flex items-start gap-3" style={{ borderColor: '#fca5a5', background: '#fef2f2' }}>
+            <div className="rounded-lg border p-4 flex items-start gap-3" style={{ borderColor: '#fecaca', background: '#fef2f2', borderLeft: '4px solid #dc2626' }}>
               <CalendarClock size={18} style={{ color: '#b91c1c', marginTop: 2 }} />
               <div>
                 <p className="text-sm font-bold" style={{ color: '#b91c1c' }}>
@@ -97,13 +104,13 @@ export default function TaxesPage() {
           )}
 
           {/* Tax summary table */}
-          <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+          <div className="rounded-lg border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
             <table ref={dueTableRef} className="w-full text-sm" style={dueRz.tableStyle}>
               <ResizableColgroup rz={dueRz} />
               <thead>
-                <tr style={{ background: 'var(--off-white)' }}>
+                <tr style={{ background: 'var(--hr-head)' }}>
                   {['Tax', 'BIR Forms', 'Frequency', 'Deadline rule', 'Next deadline', 'Links'].map((h, i) => (
-                    <th key={i} className="px-4 py-2.5 text-left text-xs font-semibold whitespace-nowrap align-bottom relative" style={{ color: 'var(--charcoal)' }}>{h}<ColResizeHandle rz={dueRz} index={i} /></th>
+                    <th key={i} className="px-4 py-2.5 text-left text-[11px] font-bold uppercase tracking-[.5px] whitespace-nowrap align-bottom relative border-b" style={{ color: 'var(--mid-gray)', borderColor: 'var(--light-gray)' }}>{h}<ColResizeHandle rz={dueRz} index={i} /></th>
                   ))}
                 </tr>
               </thead>
@@ -141,8 +148,8 @@ export default function TaxesPage() {
           </div>
 
           {/* BIR portals */}
-          <div className="rounded-2xl border bg-white p-4" style={{ borderColor: 'var(--light-gray)' }}>
-            <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: 'var(--mid-gray)' }}>BIR portals</p>
+          <div className="rounded-lg border bg-white p-4" style={{ borderColor: 'var(--light-gray)' }}>
+            <p className="text-[11px] font-bold uppercase tracking-[.5px] mb-2" style={{ color: 'var(--mid-gray)', fontFamily: 'var(--font-display)' }}>BIR portals</p>
             <div className="flex flex-wrap gap-2">
               {TAX_PORTALS.map(p => (
                 <a key={p.url} href={p.url} target="_blank" rel="noopener noreferrer"
@@ -202,21 +209,15 @@ function TaxSummarySection() {
   ] : []
 
   return (
-    <div className="rounded-2xl border bg-white p-4" style={{ borderColor: 'var(--light-gray)' }}>
-      <p className="text-xs font-semibold uppercase tracking-wide mb-3 flex items-center gap-2" style={{ color: 'var(--mid-gray)' }}>Current Tax Positions {loading && <Loader2 size={12} className="animate-spin" />}</p>
+    <div>
+      <p className="text-xs font-bold uppercase tracking-[.5px] mb-2 flex items-center gap-2" style={{ color: 'var(--mid-gray)', fontFamily: 'var(--font-display)' }}>Current tax positions {loading && <Loader2 size={12} className="animate-spin" />}</p>
       {err ? (
         <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Could not load the tax summary right now.</p>
-      ) : loading ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">{Array.from({ length: 5 }).map((_, i) => <div key={i} className="rounded-xl border h-[86px] animate-pulse" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }} />)}</div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-          {cards.map(c => (
-            <div key={c.code} className="rounded-xl border p-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
-              <p className="text-[11px] font-bold" style={{ color: 'var(--deep-teal)' }}>{c.code}</p>
-              <p className="text-[10px] leading-tight mb-1" style={{ color: 'var(--mid-gray)', minHeight: 24 }}>{c.name}</p>
-              <p className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>₱{sumPeso(c.amount)}</p>
-              <p className="text-[10px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>{c.period} · {c.note}</p>
-            </div>
+          {loading ? Array.from({ length: 5 }).map((_, i) => <StatCard key={i} loading label="" value="" sub="" />) : cards.map(c => (
+            <StatCard key={c.code} compact label={`${c.code} · ${c.name}`} value={`₱${sumPeso(c.amount)}`} sub={`${c.period} · ${c.note}`}
+              tone={c.amount ? 'amber' : 'zero'} title={`${c.code} — ${c.name}`} />
           ))}
         </div>
       )}
