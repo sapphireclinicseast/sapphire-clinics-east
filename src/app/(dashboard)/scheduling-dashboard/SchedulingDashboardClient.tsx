@@ -2,14 +2,18 @@
 
 import { branchForRole } from '@/lib/role-branch'
 import { useState, useEffect, useCallback, useMemo, Fragment } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { localTodayStr } from '@/lib/utils'
+import { DAYS } from '@/lib/decking-days'
 import {
-  BarChart2, CalendarDays, Users, Settings, Star,
-  Filter, Lock, Activity, ChevronDown, ChevronUp, User, Columns2,
+  BarChart2, CalendarDays, Users, Settings, Star, Filter, Lock, Activity,
+  ChevronDown, ChevronUp, Columns2, TrendingUp, LineChart as LineChartIcon,
+  Grid3x3, AlertTriangle, RefreshCw, Loader2, X, Search,
 } from 'lucide-react'
 import {
   AreaChart, Area, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
 } from 'recharts'
+import { CARD_STYLE, DashCard, KpiCard, Skeleton, EmptyState } from '../patients/dashboard/ui'
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -27,6 +31,11 @@ const DEPT_LABELS: Record<string, string> = {
 const BRANCHES = ['SBEA', 'SBGH'] as const
 const BRANCH_LABELS: Record<string, string> = { SBEA: 'East Branch', SBGH: 'Greenhills Branch' }
 
+const STATUS_LABELS: Record<string, string> = {
+  all: 'All statuses', CONFIRMED: 'Confirmed', PENDING: 'Pending',
+  CANCELLED: 'Cancelled', RESCHEDULED: 'Rescheduled', NO_SHOW: 'No-Show',
+}
+
 const TIME_SLOTS = [
   '09:00', '10:00', '11:00', '12:00', '13:00', '14:00',
   '15:00', '16:00', '17:00', '18:00', '19:00',
@@ -38,8 +47,30 @@ const TIME_LABELS: Record<string, string> = {
   '18:00': '6:00-7:00', '19:00': '7:00-8:00',
 }
 
-const DAY_SHORT = ['Sn', 'M', 'T', 'W', 'Th', 'F', 'St']
-const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+// Day names are indexed by Date.getDay() (0 = Sunday) everywhere on this page.
+// decking-days.ts DAYS is Sunday-first in the same order, so DAYS[getDay()] is a
+// straight display swap for the old local 'Sn/M/T/…' arrays.
+
+// ── Presentation tokens (display only) ───────────────────────────────────────
+
+const CHART_COLOR = '#1A7B8A'
+const AXIS_TICK = { fontSize: 10, fill: '#7a9e94' }
+const GRID_STROKE = '#EEF2F1'
+const TOOLTIP_STYLE: CSSProperties = {
+  fontSize: 12, borderRadius: 8, border: '1px solid var(--light-gray)',
+  boxShadow: '0 4px 14px rgba(0,0,0,0.08)',
+}
+const CONTROL = 'h-9 px-3 rounded-lg text-sm outline-none focus:border-[var(--teal)]'
+const CONTROL_SM = 'h-8 px-2.5 rounded-lg text-xs outline-none focus:border-[var(--teal)]'
+const CONTROL_STYLE: CSSProperties = { background: '#fff', border: '1px solid var(--light-gray)', color: 'var(--charcoal)', fontFamily: 'var(--font-body)' }
+const LABEL = 'block text-[11px] font-semibold uppercase tracking-wider mb-1'
+const BTN_PRIMARY = 'inline-flex items-center justify-center gap-1.5 h-9 px-3.5 rounded-lg text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50'
+const BTN_SECONDARY = 'inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-lg text-sm font-semibold transition-colors hover:bg-gray-50'
+const TH = 'px-3 py-2 text-[11px] font-semibold uppercase tracking-wider whitespace-nowrap'
+const SUBTLE_BG = '#F6F9F8'
+
+const POS = '#15803D'
+const NEG = '#B91C1C'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -68,11 +99,45 @@ function getSlotForTime(startTime: string): string {
   return ''
 }
 
-function heatBg(count: number, max: number): string {
-  if (count === 0) return ''
-  const intensity = Math.min(count / Math.max(max, 5), 0.7)
-  return `rgba(16, 185, 129, ${intensity})`
+// Heatmap shading. The intensity curve is unchanged (count / max(max, 5),
+// capped at 0.7); only the hue moved from emerald to the page's teal, with the
+// figure flipped to white once the cell is dark enough to need it.
+function heatAlpha(count: number, max: number): number {
+  if (count === 0) return 0
+  return Math.min(count / Math.max(max, 5), 0.7)
 }
+function heatBg(count: number, max: number): string {
+  const a = heatAlpha(count, max)
+  return a === 0 ? '' : `rgba(26, 123, 138, ${a})`
+}
+function heatInk(count: number, max: number): string {
+  return heatAlpha(count, max) >= 0.42 ? '#fff' : 'var(--charcoal)'
+}
+
+/** "Oct 9" / "Oct 9, 2026" from a YYYY-MM-DD string, read as a local date. */
+function fmtDay(iso: string, withYear = false) {
+  if (!iso) return ''
+  const d = new Date(iso + 'T00:00:00')
+  if (isNaN(d.getTime())) return iso
+  return d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', ...(withYear ? { year: 'numeric' } : {}) })
+}
+function fmtRange(start: string, end: string) {
+  return `${fmtDay(start)} – ${fmtDay(end, true)}`
+}
+
+/** Two-letter avatar text from a display name (names may already be initials). */
+function initialsOf(name: string): string {
+  const parts = name.trim().split(/\s+/).map(p => p.replace(/[^A-Za-z]/g, '')).filter(Boolean)
+  if (parts.length === 0) return '?'
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+}
+
+function scrollToSection(id: string) {
+  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
+const signedColor = (v: number | null) => v === null ? 'var(--mid-gray)' : v > 0 ? POS : v < 0 ? NEG : 'var(--mid-gray)'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -105,12 +170,14 @@ export default function SchedulingDashboardClient({ role }: { role: string }) {
   // Access check
   if (!ALLOWED_ROLES.includes(role)) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-8">
-        <Lock size={48} className="text-gray-300 mb-4" />
-        <h2 className="text-xl font-bold text-gray-700 mb-2">Access Restricted</h2>
-        <p className="text-sm text-gray-500 max-w-sm">
-          The Scheduling Dashboard is only available to Admin, AHEA Admin, AHGH Admin, Verdana Admin, and Marketing Admin users.
-        </p>
+      <div className="flex items-center justify-center min-h-[60vh] px-4">
+        <div className="rounded-xl px-8 py-10 text-center max-w-md" style={CARD_STYLE}>
+          <Lock size={36} className="mx-auto mb-3" style={{ color: 'var(--mid-gray)' }} />
+          <h2 className="text-lg font-bold mb-1" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>Access Restricted</h2>
+          <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>
+            The Scheduling Dashboard is only available to Admin, AHEA Admin, AHGH Admin, Verdana Admin, and Marketing Admin users.
+          </p>
+        </div>
       </div>
     )
   }
@@ -153,11 +220,17 @@ function DashboardContent({ role }: { role: string }) {
   const [slotSummary, setSlotSummary] = useState<{ total: number; netChange: number | null; netPctChange: number | null } | null>(null)
   const [slotLoading, setSlotLoading] = useState(false)
   const [slotError, setSlotError] = useState('')
+  // Bumped by "Try again" to re-run the same request; not sent to the API.
+  const [slotReload, setSlotReload] = useState(0)
 
   // ── Data state ──
   const [schedules, setSchedules] = useState<ScheduleRow[]>([])
   const [uniqueStaff, setUniqueStaff] = useState(0)
   const [loading, setLoading] = useState(false)
+  // Display-only: whether any load has succeeded yet (drives skeletons), and
+  // whether the last one failed after its retry (drives the error card).
+  const [hasLoaded, setHasLoaded] = useState(false)
+  const [loadError, setLoadError] = useState(false)
 
   // ── Settings state ──
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -216,6 +289,8 @@ function DashboardContent({ role }: { role: string }) {
       const data = await res.json()
       setSchedules(data.schedules)
       setUniqueStaff(data.uniqueStaffCount)
+      setHasLoaded(true)
+      setLoadError(false)
     } catch (err) {
       console.error('Fetch error:', err)
       if (!isRetry) {
@@ -223,6 +298,7 @@ function DashboardContent({ role }: { role: string }) {
         await fetchData(true)
         return
       }
+      setLoadError(true)
     } finally {
       setLoading(false)
     }
@@ -252,7 +328,7 @@ function DashboardContent({ role }: { role: string }) {
       .catch(err => { if (err.name !== 'AbortError') { setSlotError(err.message); setSlotData([]) } })
       .finally(() => setSlotLoading(false))
     return () => ctl.abort()
-  }, [slotFrom, slotTo, slotBranch, slotDept, slotIncludeCancelled])
+  }, [slotFrom, slotTo, slotBranch, slotDept, slotIncludeCancelled, slotReload])
 
   // ── Dept checkbox handlers ──
   function toggleAllDepts(checked: boolean) {
@@ -371,7 +447,7 @@ function DashboardContent({ role }: { role: string }) {
     const e = new Date(endDate + 'T00:00:00')
     for (let d = new Date(s); d <= e; d.setDate(d.getDate() + 1)) {
       const iso = d.toISOString().split('T')[0]
-      const label = `${DAY_NAMES[d.getDay()]}, ${d.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}`
+      const label = `${DAYS[d.getDay()].label}, ${d.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}`
       options.push({ value: iso, label })
     }
     return options
@@ -439,7 +515,7 @@ function DashboardContent({ role }: { role: string }) {
     return dates.map((d, i) => {
       const dt = new Date(d + 'T12:00:00')
       return {
-        label: DAY_SHORT[dt.getDay()] + dt.getDate(),
+        label: `${DAYS[dt.getDay()].short} ${dt.getDate()}`,
         total: dateMap[d],
         trend: Math.max(0, slope * i + intercept),
         utilization: dailyCap > 0 ? (dateMap[d] / dailyCap) * 100 : 0,
@@ -514,48 +590,56 @@ function DashboardContent({ role }: { role: string }) {
     } catch { /* best-effort; state already updated locally */ }
   }
 
-  // ── Styles ──
-  const cardStyle = 'bg-white border border-gray-200 rounded-xl overflow-hidden'
-  const sectionH = 'text-sm font-bold text-gray-900 flex items-center gap-2'
+  // ── Display-only derived bits ──
+  const initialLoad = loading && !hasLoaded
+  const showMain = !loadError
+  const rangeLabel = fmtRange(startDate, endDate)
+  const noDepts = activeDepts.length === 0
+  const dayTotal = activeDepts.reduce((s, d) => s + (dailyData.totals[d] || 0), 0)
+
+  const deptPill = (active: boolean) =>
+    `h-7 px-2.5 rounded-full text-xs font-semibold transition-colors whitespace-nowrap ${active ? '' : 'hover:bg-gray-50'}`
+  const deptPillStyle = (active: boolean): CSSProperties => active
+    ? { background: 'var(--teal)', color: '#fff', border: '1px solid var(--teal)' }
+    : { background: '#fff', color: 'var(--charcoal)', border: '1px solid var(--light-gray)' }
 
   return (
-    <div className="p-6 max-w-[1400px]">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
+    <div className="max-w-[1400px] space-y-5">
+      {/* ── Header ── */}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: 'var(--teal)' }}>Clinic Tools</p>
-          <h1 className="text-2xl font-extrabold text-gray-900" style={{ fontFamily: 'var(--font-display)' }}>
+          <h1 className="text-2xl font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
             Clinic Utilization
           </h1>
-          <p className="text-sm text-gray-500 mt-1">Clinic utilization analytics from Clinic Schedule data.</p>
+          <p className="text-sm mt-1" style={{ color: 'var(--mid-gray)' }}>
+            Clinic utilization analytics from Clinic Schedule data.
+          </p>
         </div>
         {!isInvestor && (
-          <button
-            onClick={() => setSettingsOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all hover:bg-gray-100 border border-gray-200"
-          >
-            <Settings size={15} /> Settings
+          <button onClick={() => setSettingsOpen(true)} className={BTN_SECONDARY} style={{ ...CONTROL_STYLE }}>
+            <Settings size={15} style={{ color: 'var(--teal)' }} /> Settings
           </button>
         )}
       </div>
 
-      {/* Filter bar */}
-      <div className={`${cardStyle} p-4 mb-5`}>
-        <div className="flex flex-wrap gap-4 items-end">
-          <div className="flex flex-col gap-1">
-            <label className="text-[11px] font-semibold text-gray-500 uppercase">Start Date</label>
-            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
-              className="border border-gray-300 rounded-md px-3 py-1.5 text-sm" style={{ fontFamily: 'var(--font-body)' }} />
+      {/* ── Toolbar ── */}
+      <div className="rounded-xl px-4 py-3 space-y-3" style={CARD_STYLE}>
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <label className={LABEL} style={{ color: 'var(--mid-gray)' }} htmlFor="sd-start">Date range</label>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <input id="sd-start" type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
+                aria-label="Start date" className={`${CONTROL} w-[9.5rem]`} style={CONTROL_STYLE} />
+              <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>to</span>
+              <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)}
+                aria-label="End date" className={`${CONTROL} w-[9.5rem]`} style={CONTROL_STYLE} />
+            </div>
           </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-[11px] font-semibold text-gray-500 uppercase">End Date</label>
-            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)}
-              className="border border-gray-300 rounded-md px-3 py-1.5 text-sm" style={{ fontFamily: 'var(--font-body)' }} />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-[11px] font-semibold text-gray-500 uppercase">Status</label>
-            <select value={status} onChange={e => setStatus(e.target.value)}
-              className="border border-gray-300 rounded-md px-3 py-1.5 text-sm" style={{ fontFamily: 'var(--font-body)' }}>
+          <div>
+            <label className={LABEL} style={{ color: 'var(--mid-gray)' }} htmlFor="sd-status">Status</label>
+            <select id="sd-status" value={status} onChange={e => setStatus(e.target.value)}
+              className={CONTROL} style={CONTROL_STYLE}>
               <option value="all">All Statuses</option>
               <option value="CONFIRMED">Confirmed</option>
               <option value="PENDING">Pending</option>
@@ -567,530 +651,644 @@ function DashboardContent({ role }: { role: string }) {
               <option value="NO_SHOW">No-Show</option>
             </select>
           </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-[11px] font-semibold text-gray-500 uppercase">Branch</label>
+          <div>
+            <label className={LABEL} style={{ color: 'var(--mid-gray)' }} htmlFor="sd-branch">Branch</label>
             {scopedBranch ? (
               /* Branch-scoped account: one branch, not a choice. Rendered as a
                  plain field rather than a disabled select so it reads as "this
                  is your branch" instead of "this control is broken". The server
                  overrides the branch regardless — this only keeps the UI honest
                  about what it can do. */
-              <div className="border border-gray-200 bg-gray-50 rounded-md px-3 py-1.5 text-sm text-gray-600"
+              <div className={`${CONTROL} flex items-center`} style={{ ...CONTROL_STYLE, background: SUBTLE_BG, color: 'var(--mid-gray)' }}
                 title="Your account is scoped to this branch">
                 {BRANCH_LABELS[scopedBranch] ?? scopedBranch}
               </div>
             ) : (
-              <select value={branch} onChange={e => setBranch(e.target.value)}
-                className="border border-gray-300 rounded-md px-3 py-1.5 text-sm" style={{ fontFamily: 'var(--font-body)' }}>
+              <select id="sd-branch" value={branch} onChange={e => setBranch(e.target.value)}
+                className={CONTROL} style={CONTROL_STYLE}>
                 <option value="all">All Branches</option>
                 {BRANCHES.map(b => <option key={b} value={b}>{BRANCH_LABELS[b]}</option>)}
               </select>
             )}
           </div>
-          <div className="flex flex-col gap-1 flex-1 min-w-[200px]">
-            <label className="text-[11px] font-semibold text-gray-500 uppercase">Department</label>
-            <div className="flex flex-wrap gap-x-3 gap-y-1">
-              <label className="flex items-center gap-1 text-xs font-medium text-gray-700 cursor-pointer">
-                <input type="checkbox" checked={allDepts} onChange={e => toggleAllDepts(e.target.checked)} className="accent-blue-600" /> All
-              </label>
-              {DEPARTMENTS.map(d => (
-                <label key={d} className="flex items-center gap-1 text-xs font-medium text-gray-700 cursor-pointer">
-                  <input type="checkbox" checked={selectedDepts.includes(d)} onChange={e => toggleDept(d, e.target.checked)} className="accent-blue-600" />
-                  {DEPT_LABELS[d]}
-                </label>
-              ))}
-            </div>
+          <div className="flex items-center gap-3 ml-auto">
+            <span className="flex items-center gap-1.5 text-[11px]" style={{ color: 'var(--mid-gray)' }} aria-live="polite">
+              {loading && <><Loader2 size={12} className="animate-spin" /> Updating…</>}
+            </span>
+            {/* Wrap, don't pass fetchData directly: onClick would hand it the
+                MouseEvent as its `isRetry` arg (truthy), silently disabling the
+                one-shot retry on 401/403. */}
+            <button onClick={() => fetchData()} className={BTN_PRIMARY} style={{ background: 'var(--teal)' }}>
+              <Filter size={14} /> Apply
+            </button>
           </div>
-          {/* Wrap, don't pass fetchData directly: onClick would hand it the
-              MouseEvent as its `isRetry` arg (truthy), silently disabling the
-              one-shot retry on 401/403. */}
-          <button onClick={() => fetchData()}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white transition-all"
-            style={{ background: 'var(--teal)' }}>
-            <Filter size={14} /> Apply
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5 pt-3" style={{ borderTop: '1px solid var(--light-gray)' }}
+          role="group" aria-label="Department filter">
+          <span className="text-[11px] font-semibold uppercase tracking-wider mr-1.5" style={{ color: 'var(--mid-gray)' }}>Department</span>
+          <button type="button" aria-pressed={allDepts} onClick={() => toggleAllDepts(!allDepts)}
+            className={deptPill(allDepts)} style={deptPillStyle(allDepts)}>
+            All
           </button>
+          {DEPARTMENTS.map(d => {
+            const on = selectedDepts.includes(d)
+            return (
+              <button key={d} type="button" aria-pressed={on} onClick={() => toggleDept(d, !on)}
+                className={deptPill(on)} style={deptPillStyle(on)}>
+                {DEPT_LABELS[d]}
+              </button>
+            )
+          })}
         </div>
       </div>
 
-      {loading && <div className="text-center py-8 text-sm text-gray-400">Loading...</div>}
-
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <KpiCard icon={<BarChart2 size={20} />} value={`${utilization.toFixed(1)}%`} label="Clinic Utilization" color="teal" />
-        <KpiCard icon={<CalendarDays size={20} />} value={totalSessions.toLocaleString()} label="Total Sessions" color="blue" />
-        <KpiCard icon={<Users size={20} />} value={avgPerTherapist.toFixed(1)} label="Avg Sessions per Therapist" color="amber" />
-        <KpiCard icon={<Activity size={20} />} value={avgPerDay.toFixed(1)} label="Avg Sessions per Day" color="purple" />
-      </div>
-
-      {/* ── Branch Comparison ──────────────────────────────────────────────
-          The cards above, once per branch, side by side. Reads the same date
-          range, status and departments as the filter bar — only the branch
-          filter is bypassed, because comparing needs both. */}
-      {canCompare && (
-        <div className={`${cardStyle} p-5 mb-6`}>
-          <div className="flex flex-wrap items-end justify-between gap-4 mb-4">
-            <div>
-              <h3 className={sectionH}><Columns2 size={16} /> Branch Comparison</h3>
-              <p className="text-xs text-gray-500 mt-1">
-                Same range, status and departments as the filters above &mdash; both branches at once,
-                whatever the Branch filter is set to. A session counts to the consultant&apos;s own
-                branch, not to where it was held.
-              </p>
-            </div>
-            {(() => {
-              const [a, b] = branchMetrics
-              if (!a || !b || a.sessions + b.sessions === 0) return null
-              const gap = a.utilization - b.utilization
-              if (Math.abs(gap) < 0.05) {
-                return <span className="text-xs font-semibold text-gray-500">Both branches level on utilization</span>
-              }
-              const lead = gap > 0 ? a : b
-              return (
-                <span className="text-xs font-semibold" style={{ color: 'var(--teal)' }}>
-                  {BRANCH_LABELS[lead.branch]} leads by {Math.abs(gap).toFixed(1)} pp utilization
-                </span>
-              )
-            })()}
-          </div>
-
-          {compareError ? (
-            <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-md px-3 py-2">{compareError}</p>
-          ) : compareLoading && rowsForCompare.length === 0 ? (
-            <p className="text-sm text-gray-400 py-6 text-center">Loading both branches…</p>
-          ) : (
-            <>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {branchMetrics.map(m => {
-                  const other = branchMetrics.find(x => x.branch !== m.branch)
-                  return (
-                    <div key={m.branch} className="border border-gray-200 rounded-xl overflow-hidden">
-                      <div className="px-4 py-2.5 border-b border-gray-200" style={{ background: '#F1F7F8' }}>
-                        <span className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>{BRANCH_LABELS[m.branch]}</span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-px" style={{ background: '#e5e7eb' }}>
-                        {[
-                          { label: 'Clinic Utilization', value: `${m.utilization.toFixed(1)}%`, delta: other ? m.utilization - other.utilization : null, unit: 'pp' },
-                          { label: 'Total Sessions', value: m.sessions.toLocaleString(), delta: other ? m.sessions - other.sessions : null, unit: '' },
-                          { label: 'Avg per Therapist', value: m.perTherapist.toFixed(1), delta: other ? m.perTherapist - other.perTherapist : null, unit: '' },
-                          { label: 'Avg per Day', value: m.perDay.toFixed(1), delta: other ? m.perDay - other.perDay : null, unit: '' },
-                        ].map(k => (
-                          <div key={k.label} className="bg-white px-4 py-3">
-                            <div className="text-lg font-extrabold tabular-nums" style={{ color: 'var(--charcoal)' }}>{k.value}</div>
-                            <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">{k.label}</div>
-                            {/* Signed against the other branch, so each card says
-                                where it stands rather than leaving the reader to
-                                subtract two columns by eye. */}
-                            {k.delta !== null && Math.abs(k.delta) >= 0.05 && (
-                              <div className="text-[10px] font-semibold mt-0.5" style={{ color: k.delta > 0 ? '#166534' : '#9a3412' }}>
-                                {k.delta > 0 ? '▲' : '▼'} {Math.abs(k.delta).toFixed(k.unit === 'pp' ? 1 : 1)}{k.unit} vs {BRANCH_LABELS[other!.branch].replace(' Branch', '')}
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                      <div className="px-4 py-2 border-t border-gray-200 text-[11px] text-gray-500">
-                        {m.staff} {m.staff === 1 ? 'therapist' : 'therapists'} with sessions in range
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-
-              {/* Per department — where a headline gap actually comes from. */}
-              <div className="overflow-x-auto mt-5">
-                <table className="w-full text-sm" style={{ minWidth: 520 }}>
-                  <thead>
-                    <tr className="bg-gray-50">
-                      <th className="text-left px-4 py-2 text-[11px] font-bold text-gray-500 uppercase">Department</th>
-                      {branchMetrics.map(m => (
-                        <th key={m.branch} colSpan={2} className="px-3 py-2 text-center text-[11px] font-bold text-gray-500 uppercase border-l border-gray-200">
-                          {BRANCH_LABELS[m.branch]}
-                        </th>
-                      ))}
-                    </tr>
-                    <tr className="bg-gray-50">
-                      <th />
-                      {branchMetrics.map(m => (
-                        <Fragment key={m.branch}>
-                          <th className="px-3 py-1 text-center text-[10px] font-semibold text-gray-400 uppercase border-l border-gray-200">Sessions</th>
-                          <th className="px-3 py-1 text-center text-[10px] font-semibold text-gray-400 uppercase">Util.</th>
-                        </Fragment>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {activeDepts.map(d => (
-                      <tr key={d} className="border-t border-gray-100">
-                        <td className="px-4 py-2 font-semibold text-gray-700">{DEPT_LABELS[d]}</td>
-                        {branchMetrics.map(m => (
-                          <Fragment key={m.branch}>
-                            <td className="px-3 py-2 text-center tabular-nums border-l border-gray-200">{m.byDept[d]?.sessions ?? 0}</td>
-                            <td className="px-3 py-2 text-center tabular-nums text-gray-500">{(m.byDept[d]?.utilization ?? 0).toFixed(1)}%</td>
-                          </Fragment>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          )}
-        </div>
+      {loadError && (
+        <ErrorCard
+          title="Couldn't load the clinic schedule"
+          hint="The request failed twice. Check your connection, then try again."
+          onRetry={() => fetchData()}
+        />
       )}
 
-      {/* Daily Table */}
-      <div className={`${cardStyle} mb-6`}>
-        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200">
-          <h3 className={sectionH}><CalendarDays size={16} /> Daily Breakdown — Department by Time Slot</h3>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-500 font-semibold">Day:</span>
-            <select value={selectedDay} onChange={e => setSelectedDay(e.target.value)}
-              className="border border-gray-300 rounded-md px-2 py-1 text-xs" style={{ fontFamily: 'var(--font-body)' }}>
-              {dayOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
+      {showMain && (
+        <>
+          {/* ── KPI Cards ── each jumps to the section that breaks it down. */}
+          <div className="grid grid-cols-1 min-[480px]:grid-cols-2 lg:grid-cols-4 gap-3">
+            {initialLoad ? (
+              Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="rounded-xl px-4 py-3.5" style={CARD_STYLE}>
+                  <Skeleton className="h-3 w-20" />
+                  <Skeleton className="h-7 w-24 mt-2" />
+                  <Skeleton className="h-3 w-28 mt-2" />
+                </div>
+              ))
+            ) : (
+              <>
+                <KpiLink target="util-trend" title="Jump to the utilization trend">
+                  <KpiCard label="Clinic Utilization" icon={<BarChart2 size={16} />}
+                    value={`${utilization.toFixed(1)}%`} sub="of daily caps set in Settings" />
+                </KpiLink>
+                <KpiLink target="daily-breakdown" title="Jump to the daily breakdown">
+                  <KpiCard label="Total Sessions" icon={<CalendarDays size={16} />} accent="var(--bright-teal)"
+                    value={totalSessions.toLocaleString()} sub={`${STATUS_LABELS[status] ?? status} · ${rangeLabel}`} />
+                </KpiLink>
+                <KpiLink target="top-therapists" title="Jump to the top therapists">
+                  <KpiCard label="Avg per Therapist" icon={<Users size={16} />} accent="var(--gold)"
+                    value={avgPerTherapist.toFixed(1)} sub="sessions per therapist" />
+                </KpiLink>
+                <KpiLink target="sessions-trend" title="Jump to sessions over time">
+                  <KpiCard label="Avg per Day" icon={<Activity size={16} />} accent="#8B5CF6"
+                    value={avgPerDay.toFixed(1)} sub="per operating day (Sat excluded)" />
+                </KpiLink>
+              </>
+            )}
           </div>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-gray-50">
-                <th className="text-left px-4 py-2 text-[11px] font-bold text-gray-500 uppercase" />
-                {activeDepts.map(d => <th key={d} className="px-3 py-2 text-center text-[11px] font-bold text-gray-500 uppercase">{DEPT_LABELS[d]}</th>)}
-              </tr>
-            </thead>
-            <tbody>
-              {TIME_SLOTS.map(slot => (
-                <tr key={slot} className="border-t border-gray-100">
-                  <td className="px-4 py-1.5 font-semibold text-gray-700 text-xs whitespace-nowrap">{TIME_LABELS[slot]}</td>
-                  {activeDepts.map(d => {
-                    const v = dailyData.grid[slot]?.[d] || 0
-                    return <td key={d} className="px-3 py-1.5 text-center text-xs rounded" style={{ background: heatBg(v, 5) }}>{v}</td>
-                  })}
-                </tr>
-              ))}
-              {/* Totals row */}
-              <tr className="border-t-2 border-yellow-300 bg-yellow-50 font-extrabold">
-                <td className="px-4 py-2 text-xs">Total</td>
-                {activeDepts.map(d => <td key={d} className="px-3 py-2 text-center text-xs">{dailyData.totals[d] || 0}</td>)}
-              </tr>
-              {/* % row */}
-              <tr className="bg-gray-50 text-[11px] text-gray-500">
-                <td className="px-4 py-1.5">%</td>
-                {activeDepts.map(d => {
-                  let cap = 0
-                  activeBranches.forEach(b => { cap += maxSessions[b]?.[d] || 8 })
-                  const pct = cap > 0 ? ((dailyData.totals[d] || 0) / cap * 100).toFixed(1) : '0.0'
-                  return <td key={d} className="px-3 py-1.5 text-center">{pct}%</td>
-                })}
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
 
-      {/* Weekly Table */}
-      <div className={`${cardStyle} mb-6`}>
-        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200">
-          <h3 className={sectionH}><CalendarDays size={16} /> Weekly Breakdown — Sessions by Day of Week</h3>
-          <span className="text-xs text-gray-400">{startDate} to {endDate}</span>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-gray-50">
-                <th className="text-left px-4 py-2 text-[11px] font-bold text-gray-500 uppercase" />
-                {DAY_SHORT.map(d => <th key={d} className="px-3 py-2 text-center text-[11px] font-bold text-gray-500 uppercase">{d}</th>)}
-              </tr>
-            </thead>
-            <tbody>
-              {TIME_SLOTS.map(slot => (
-                <tr key={slot} className="border-t border-gray-100">
-                  <td className="px-4 py-1.5 font-semibold text-gray-700 text-xs whitespace-nowrap">{TIME_LABELS[slot]}</td>
-                  {weeklyData.grid[slot]?.map((v, dow) => (
-                    <td key={dow} className="px-3 py-1.5 text-center text-xs rounded" style={{ background: heatBg(v, 15) }}>{v}</td>
-                  ))}
-                </tr>
-              ))}
-              <tr className="border-t-2 border-yellow-300 bg-yellow-50 font-extrabold">
-                <td className="px-4 py-2 text-xs">Total</td>
-                {weeklyData.dayTotals.map((t, i) => <td key={i} className="px-3 py-2 text-center text-xs">{t}</td>)}
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
+          {/* ── Branch Comparison ──────────────────────────────────────────────
+              The cards above, once per branch, side by side. Reads the same date
+              range, status and departments as the filter bar — only the branch
+              filter is bypassed, because comparing needs both. */}
+          {canCompare && (
+            <DashCard
+              title="Branch Comparison"
+              icon={<Columns2 size={15} />}
+              description={<>Same range, status and departments as the filters above &mdash; both branches at once, whatever the Branch filter is set to. A session counts to the consultant&apos;s own branch, not to where it was held.</>}
+            >
+              {compareError ? (
+                <ErrorCard compact title={compareError} onRetry={() => fetchData()} />
+              ) : (initialLoad || (compareLoading && rowsForCompare.length === 0)) ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {[0, 1].map(i => <Skeleton key={i} className="h-40 rounded-xl" />)}
+                </div>
+              ) : (
+                <>
+                  {(() => {
+                    const [a, b] = branchMetrics
+                    if (!a || !b || a.sessions + b.sessions === 0) return null
+                    const gap = a.utilization - b.utilization
+                    if (Math.abs(gap) < 0.05) {
+                      return <Callout>Both branches level on utilization</Callout>
+                    }
+                    const lead = gap > 0 ? a : b
+                    return (
+                      <Callout>
+                        <TrendingUp size={13} /> {BRANCH_LABELS[lead.branch]} leads by {Math.abs(gap).toFixed(1)} pp utilization
+                      </Callout>
+                    )
+                  })()}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {branchMetrics.map(m => {
+                      const other = branchMetrics.find(x => x.branch !== m.branch)
+                      return (
+                        <div key={m.branch} className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--light-gray)' }}>
+                          <div className="px-4 py-2.5 flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5" style={{ background: SUBTLE_BG, borderBottom: '1px solid var(--light-gray)' }}>
+                            <span className="text-sm font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>{BRANCH_LABELS[m.branch]}</span>
+                            <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+                              {m.staff} {m.staff === 1 ? 'therapist' : 'therapists'} with sessions in range
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-px" style={{ background: 'var(--light-gray)' }}>
+                            {[
+                              { label: 'Clinic Utilization', value: `${m.utilization.toFixed(1)}%`, delta: other ? m.utilization - other.utilization : null, unit: 'pp' },
+                              { label: 'Total Sessions', value: m.sessions.toLocaleString(), delta: other ? m.sessions - other.sessions : null, unit: '' },
+                              { label: 'Avg per Therapist', value: m.perTherapist.toFixed(1), delta: other ? m.perTherapist - other.perTherapist : null, unit: '' },
+                              { label: 'Avg per Day', value: m.perDay.toFixed(1), delta: other ? m.perDay - other.perDay : null, unit: '' },
+                            ].map(k => (
+                              <div key={k.label} className="bg-white px-4 py-3 min-w-0">
+                                <div className="text-[10px] font-semibold uppercase tracking-wider truncate" style={{ color: 'var(--mid-gray)' }}>{k.label}</div>
+                                <div className="text-lg font-bold mt-0.5" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)', fontVariantNumeric: 'tabular-nums' }}>{k.value}</div>
+                                {/* Signed against the other branch, so each card says
+                                    where it stands rather than leaving the reader to
+                                    subtract two columns by eye. */}
+                                {k.delta !== null && Math.abs(k.delta) >= 0.05 && (
+                                  <div className="text-[11px] font-semibold mt-0.5" style={{ color: k.delta > 0 ? POS : NEG }}>
+                                    {k.delta > 0 ? '▲' : '▼'} {Math.abs(k.delta).toFixed(k.unit === 'pp' ? 1 : 1)}{k.unit} vs {BRANCH_LABELS[other!.branch].replace(' Branch', '')}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
 
-      {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-6">
-        <div className={`${cardStyle} p-5`}>
-          <h3 className={`${sectionH} mb-2`}>Total Number of Sessions Over Time</h3>
-          <TrendEquation fit={trendStats?.sessions ?? null} unit="sessions" />
-          <ResponsiveContainer width="100%" height={260}>
-            <AreaChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="label" tick={{ fontSize: 10 }} />
-              <YAxis tick={{ fontSize: 10 }} />
-              <Tooltip />
-              <Area type="monotone" dataKey="total" stroke="#3b82f6" fill="rgba(59,130,246,0.12)" strokeWidth={2} name="Sessions" />
-              <ReferenceLine stroke="#94a3b8" strokeDasharray="6 3" segment={chartData.length > 1 ? [
-                { x: chartData[0]?.label, y: chartData[0]?.trend },
-                { x: chartData[chartData.length - 1]?.label, y: chartData[chartData.length - 1]?.trend },
-              ] : undefined} />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
+                  {/* Per department — where a headline gap actually comes from. */}
+                  {activeDepts.length > 0 && (
+                    <div className="overflow-x-auto mt-5 rounded-lg" style={{ border: '1px solid var(--light-gray)' }}>
+                      <table className="w-full text-sm" style={{ minWidth: 520 }}>
+                        <thead>
+                          <tr style={{ background: SUBTLE_BG, color: 'var(--mid-gray)' }}>
+                            <th className={`${TH} text-left sticky left-0`} style={{ background: SUBTLE_BG }}>Department</th>
+                            {branchMetrics.map(m => (
+                              <th key={m.branch} colSpan={2} className={`${TH} text-center`} style={{ borderLeft: '1px solid var(--light-gray)' }}>
+                                {BRANCH_LABELS[m.branch]}
+                              </th>
+                            ))}
+                          </tr>
+                          <tr style={{ background: SUBTLE_BG, color: 'var(--mid-gray)' }}>
+                            <th className="sticky left-0" style={{ background: SUBTLE_BG }} />
+                            {branchMetrics.map(m => (
+                              <Fragment key={m.branch}>
+                                <th className="px-3 pb-1.5 text-center text-[10px] font-semibold uppercase tracking-wider" style={{ borderLeft: '1px solid var(--light-gray)' }}>Sessions</th>
+                                <th className="px-3 pb-1.5 text-center text-[10px] font-semibold uppercase tracking-wider">Util.</th>
+                              </Fragment>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {activeDepts.map(d => (
+                            <tr key={d} className="hover:bg-gray-50/60" style={{ borderTop: '1px solid #EEF2F1' }}>
+                              <td className="px-3 py-2 font-semibold sticky left-0 bg-white whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{DEPT_LABELS[d]}</td>
+                              {branchMetrics.map(m => (
+                                <Fragment key={m.branch}>
+                                  <td className="px-3 py-2 text-center tabular-nums" style={{ borderLeft: '1px solid var(--light-gray)', color: 'var(--charcoal)' }}>{m.byDept[d]?.sessions ?? 0}</td>
+                                  <td className="px-3 py-2 text-center tabular-nums" style={{ color: 'var(--charcoal)' }}>{(m.byDept[d]?.utilization ?? 0).toFixed(1)}%</td>
+                                </Fragment>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </>
+              )}
+            </DashCard>
+          )}
 
-        <div className={`${cardStyle} p-5`}>
-          <h3 className={`${sectionH} mb-2`}>Clinic Utilization Rate Over Time</h3>
-          <TrendEquation fit={trendStats?.utilization ?? null} unit="pp" />
-          <ResponsiveContainer width="100%" height={260}>
-            <AreaChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="label" tick={{ fontSize: 10 }} />
-              <YAxis tick={{ fontSize: 10 }} tickFormatter={v => `${v.toFixed(0)}%`} />
-              <Tooltip formatter={(v: number) => `${v.toFixed(1)}%`} />
-              <Area type="monotone" dataKey="utilization" stroke="#3b82f6" fill="rgba(59,130,246,0.12)" strokeWidth={2} name="Utilization" />
-              <ReferenceLine stroke="#94a3b8" strokeDasharray="6 3" segment={trendStats ? [
-                { x: chartData[0]?.label, y: Math.max(0, trendStats.utilization.intercept) },
-                { x: chartData[chartData.length - 1]?.label, y: Math.max(0, trendStats.utilization.slope * (trendStats.n - 1) + trendStats.utilization.intercept) },
-              ] : undefined} />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
+          {/* ── Heatmaps ── */}
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+            {/* Daily Table */}
+            <div id="daily-breakdown" className="scroll-mt-4 min-w-0">
+            <DashCard
+              className="h-full"
+              title="Daily Breakdown — Department by Time Slot"
+              icon={<Grid3x3 size={15} />}
+              description={`Sessions per hour for one day${dayTotal > 0 ? ` · ${dayTotal} in total` : ''}. The % row is against the daily cap per department.`}
+              action={
+                <select value={selectedDay} onChange={e => setSelectedDay(e.target.value)} aria-label="Day"
+                  className={`${CONTROL_SM} max-w-[15rem]`} style={CONTROL_STYLE}>
+                  {dayOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              }
+              flush
+              footer={<HeatLegend max={5} />}
+            >
+              {initialLoad ? (
+                <div className="p-5"><Skeleton className="h-72" /></div>
+              ) : noDepts ? (
+                <EmptyState title="No departments selected" hint="Pick at least one department in the toolbar above." />
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs" style={{ minWidth: 120 + activeDepts.length * 64 }}>
+                    <thead>
+                      <tr style={{ background: SUBTLE_BG, color: 'var(--mid-gray)' }}>
+                        <th className={`${TH} text-left sticky left-0`} style={{ background: SUBTLE_BG }}>Time</th>
+                        {activeDepts.map(d => <th key={d} className={`${TH} text-center`}>{DEPT_LABELS[d]}</th>)}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {TIME_SLOTS.map(slot => (
+                        <tr key={slot}>
+                          <td className="px-3 py-1 font-semibold whitespace-nowrap sticky left-0 bg-white" style={{ color: 'var(--charcoal)' }}>{TIME_LABELS[slot]}</td>
+                          {activeDepts.map(d => {
+                            const v = dailyData.grid[slot]?.[d] || 0
+                            return (
+                              <HeatCell key={d} v={v} max={5}
+                                tip={`${DEPT_LABELS[d]} · ${TIME_LABELS[slot]} — ${v} session${v === 1 ? '' : 's'}`} />
+                            )
+                          })}
+                        </tr>
+                      ))}
+                      {/* Totals row */}
+                      <tr style={{ background: SUBTLE_BG, borderTop: '1px solid var(--light-gray)' }}>
+                        <td className="px-3 py-2 font-bold sticky left-0" style={{ background: SUBTLE_BG, color: 'var(--charcoal)' }}>Total</td>
+                        {activeDepts.map(d => (
+                          <td key={d} className="px-2 py-2 text-center font-bold tabular-nums" style={{ color: 'var(--charcoal)' }}>{dailyData.totals[d] || 0}</td>
+                        ))}
+                      </tr>
+                      {/* % row */}
+                      <tr style={{ background: SUBTLE_BG }}>
+                        <td className="px-3 pb-2 sticky left-0" style={{ background: SUBTLE_BG, color: 'var(--mid-gray)' }}>% of cap</td>
+                        {activeDepts.map(d => {
+                          let cap = 0
+                          activeBranches.forEach(b => { cap += maxSessions[b]?.[d] || 8 })
+                          const pct = cap > 0 ? ((dailyData.totals[d] || 0) / cap * 100).toFixed(1) : '0.0'
+                          return <td key={d} className="px-2 pb-2 text-center tabular-nums" style={{ color: 'var(--charcoal)' }}>{pct}%</td>
+                        })}
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </DashCard>
+            </div>
+
+            {/* Weekly Table */}
+            <DashCard
+              title="Weekly Breakdown — Sessions by Day of Week"
+              icon={<CalendarDays size={15} />}
+              description={`Every session in ${rangeLabel}, stacked by weekday and hour.`}
+              flush
+              footer={<HeatLegend max={15} />}
+            >
+              {initialLoad ? (
+                <div className="p-5"><Skeleton className="h-72" /></div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs" style={{ minWidth: 520 }}>
+                    <thead>
+                      <tr style={{ background: SUBTLE_BG, color: 'var(--mid-gray)' }}>
+                        <th className={`${TH} text-left sticky left-0`} style={{ background: SUBTLE_BG }}>Time</th>
+                        {DAYS.map(d => <th key={d.key} className={`${TH} text-center`} title={d.label}>{d.short}</th>)}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {TIME_SLOTS.map(slot => (
+                        <tr key={slot}>
+                          <td className="px-3 py-1 font-semibold whitespace-nowrap sticky left-0 bg-white" style={{ color: 'var(--charcoal)' }}>{TIME_LABELS[slot]}</td>
+                          {weeklyData.grid[slot]?.map((v, dow) => (
+                            <HeatCell key={dow} v={v} max={15}
+                              tip={`${DAYS[dow].label} · ${TIME_LABELS[slot]} — ${v} session${v === 1 ? '' : 's'}`} />
+                          ))}
+                        </tr>
+                      ))}
+                      <tr style={{ background: SUBTLE_BG, borderTop: '1px solid var(--light-gray)' }}>
+                        <td className="px-3 py-2 font-bold sticky left-0" style={{ background: SUBTLE_BG, color: 'var(--charcoal)' }}>Total</td>
+                        {weeklyData.dayTotals.map((t, i) => (
+                          <td key={i} className="px-2 py-2 text-center font-bold tabular-nums" style={{ color: 'var(--charcoal)' }}>{t}</td>
+                        ))}
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </DashCard>
+          </div>
+
+          {/* ── Charts ── */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+            <div id="sessions-trend" className="scroll-mt-4 min-w-0">
+            <DashCard
+              className="h-full"
+              title="Total Number of Sessions Over Time"
+              icon={<LineChartIcon size={15} />}
+              description="Sessions per day; the dashed line is the least-squares trend."
+            >
+              {initialLoad ? <Skeleton className="h-[290px]" /> : totalSessions === 0 ? (
+                <EmptyState title="No sessions in this range" hint="Widen the dates or change the status filter." />
+              ) : (
+                <>
+                  <TrendEquation fit={trendStats?.sessions ?? null} unit="sessions" />
+                  <ResponsiveContainer width="100%" height={260}>
+                    <AreaChart data={chartData} margin={{ top: 4, right: 8, left: -12, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} vertical={false} />
+                      <XAxis dataKey="label" tick={AXIS_TICK} tickLine={false} axisLine={{ stroke: GRID_STROKE }} minTickGap={8} />
+                      <YAxis tick={AXIS_TICK} tickLine={false} axisLine={false} allowDecimals={false} />
+                      <Tooltip contentStyle={TOOLTIP_STYLE} />
+                      <Area type="monotone" dataKey="total" stroke={CHART_COLOR} fill="rgba(26,123,138,0.12)" strokeWidth={2} name="Sessions" />
+                      <ReferenceLine stroke="#94a3b8" strokeDasharray="6 3" segment={chartData.length > 1 ? [
+                        { x: chartData[0]?.label, y: chartData[0]?.trend },
+                        { x: chartData[chartData.length - 1]?.label, y: chartData[chartData.length - 1]?.trend },
+                      ] : undefined} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </>
+              )}
+            </DashCard>
+            </div>
+
+            <div id="util-trend" className="scroll-mt-4 min-w-0">
+            <DashCard
+              className="h-full"
+              title="Clinic Utilization Rate Over Time"
+              icon={<BarChart2 size={15} />}
+              description="Each day's sessions as a share of that day's combined caps."
+            >
+              {initialLoad ? <Skeleton className="h-[290px]" /> : totalSessions === 0 ? (
+                <EmptyState title="No sessions in this range" hint="Widen the dates or change the status filter." />
+              ) : (
+                <>
+                  <TrendEquation fit={trendStats?.utilization ?? null} unit="pp" />
+                  <ResponsiveContainer width="100%" height={260}>
+                    <AreaChart data={chartData} margin={{ top: 4, right: 8, left: -12, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} vertical={false} />
+                      <XAxis dataKey="label" tick={AXIS_TICK} tickLine={false} axisLine={{ stroke: GRID_STROKE }} minTickGap={8} />
+                      <YAxis tick={AXIS_TICK} tickLine={false} axisLine={false} tickFormatter={v => `${v.toFixed(0)}%`} />
+                      {/* `unknown`, not `number`: recharts' Formatter generic
+                          expects `any` here and a narrower type fails tsc. */}
+                      <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v: unknown) => `${Number(v).toFixed(1)}%`} />
+                      <Area type="monotone" dataKey="utilization" stroke={CHART_COLOR} fill="rgba(26,123,138,0.12)" strokeWidth={2} name="Utilization" />
+                      <ReferenceLine stroke="#94a3b8" strokeDasharray="6 3" segment={trendStats ? [
+                        { x: chartData[0]?.label, y: Math.max(0, trendStats.utilization.intercept) },
+                        { x: chartData[chartData.length - 1]?.label, y: Math.max(0, trendStats.utilization.slope * (trendStats.n - 1) + trendStats.utilization.intercept) },
+                      ] : undefined} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </>
+              )}
+            </DashCard>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* ── Slot Utilization ──────────────────────────────────────────────
           Month on month, over a range of the user's choosing. Separate from the
           charts above, which are day-grained over the filter bar's short window
           and so cannot show a trend across a year. */}
-      <div className={`${cardStyle} p-5 mb-6`}>
-        <div className="flex flex-wrap items-end justify-between gap-4 mb-1">
-          <div>
-            <h3 className={sectionH}>Slot Utilization</h3>
-            <p className="text-xs text-gray-500 mt-1">
-              Slots run each month
-              {slotIncludeCancelled ? ' · including cancelled' : ' · cancelled excluded, no-shows counted'}
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-3 items-end">
-            {/* Hidden for a branch-scoped account: the server pins their branch
-                anyway, so offering a choice that cannot take effect would be a
-                lie in the UI. */}
-            {!branchForRole(role) && (
-              <div className="flex flex-col gap-1">
-                <label className="text-[11px] font-semibold text-gray-500 uppercase">Branch</label>
-                <select value={slotBranch} onChange={e => setSlotBranch(e.target.value)}
-                  className="border border-gray-300 rounded-md px-3 py-1.5 text-sm">
-                  <option value="all">All branches</option>
-                  {BRANCHES.map(b => (
-                    <option key={b} value={b}>
-                      {b === 'SBEA' ? 'East Branch' : b === 'SBGH' ? 'Greenhills Branch' : b}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-            <div className="flex flex-col gap-1">
-              <label className="text-[11px] font-semibold text-gray-500 uppercase">Department</label>
-              <select value={slotDept} onChange={e => setSlotDept(e.target.value)}
-                className="border border-gray-300 rounded-md px-3 py-1.5 text-sm">
-                <option value="all">All departments</option>
-                {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+      <DashCard
+        title="Slot Utilization"
+        icon={<TrendingUp size={15} />}
+        description={`Slots run each month${slotIncludeCancelled ? ' · including cancelled' : ' · cancelled excluded, no-shows counted'}. Has its own filters.`}
+      >
+        <div className="flex flex-wrap gap-3 items-end mb-4">
+          {/* Hidden for a branch-scoped account: the server pins their branch
+              anyway, so offering a choice that cannot take effect would be a
+              lie in the UI. */}
+          {!branchForRole(role) && (
+            <div>
+              <label className={LABEL} style={{ color: 'var(--mid-gray)' }} htmlFor="slot-branch">Branch</label>
+              <select id="slot-branch" value={slotBranch} onChange={e => setSlotBranch(e.target.value)}
+                className={CONTROL_SM} style={CONTROL_STYLE}>
+                <option value="all">All branches</option>
+                {BRANCHES.map(b => (
+                  <option key={b} value={b}>
+                    {b === 'SBEA' ? 'East Branch' : b === 'SBGH' ? 'Greenhills Branch' : b}
+                  </option>
+                ))}
               </select>
             </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-[11px] font-semibold text-gray-500 uppercase">From</label>
-              <input type="month" value={slotFrom} onChange={e => setSlotFrom(e.target.value)}
-                className="border border-gray-300 rounded-md px-3 py-1.5 text-sm" />
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-[11px] font-semibold text-gray-500 uppercase">To</label>
-              <input type="month" value={slotTo} onChange={e => setSlotTo(e.target.value)}
-                className="border border-gray-300 rounded-md px-3 py-1.5 text-sm" />
-            </div>
-            <label className="flex items-center gap-1.5 text-xs text-gray-600 pb-2 cursor-pointer">
-              <input type="checkbox" checked={slotIncludeCancelled}
-                onChange={e => setSlotIncludeCancelled(e.target.checked)} />
-              Include cancelled
-            </label>
+          )}
+          <div>
+            <label className={LABEL} style={{ color: 'var(--mid-gray)' }} htmlFor="slot-dept">Department</label>
+            <select id="slot-dept" value={slotDept} onChange={e => setSlotDept(e.target.value)}
+              className={CONTROL_SM} style={CONTROL_STYLE}>
+              <option value="all">All departments</option>
+              {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+            </select>
           </div>
+          <div>
+            <label className={LABEL} style={{ color: 'var(--mid-gray)' }} htmlFor="slot-from">From</label>
+            <input id="slot-from" type="month" value={slotFrom} onChange={e => setSlotFrom(e.target.value)}
+              className={CONTROL_SM} style={CONTROL_STYLE} />
+          </div>
+          <div>
+            <label className={LABEL} style={{ color: 'var(--mid-gray)' }} htmlFor="slot-to">To</label>
+            <input id="slot-to" type="month" value={slotTo} onChange={e => setSlotTo(e.target.value)}
+              className={CONTROL_SM} style={CONTROL_STYLE} />
+          </div>
+          <label className="flex items-center gap-1.5 h-8 text-xs cursor-pointer" style={{ color: 'var(--charcoal)' }}>
+            <input type="checkbox" checked={slotIncludeCancelled}
+              onChange={e => setSlotIncludeCancelled(e.target.checked)} style={{ accentColor: 'var(--teal)' }} />
+            Include cancelled
+          </label>
+          {slotLoading && slotData.length > 0 && (
+            <span className="flex items-center gap-1.5 h-8 text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+              <Loader2 size={12} className="animate-spin" /> Updating…
+            </span>
+          )}
         </div>
 
-
         {slotError ? (
-          <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md px-3 py-2">{slotError}</p>
+          slotFrom > slotTo
+            ? <EmptyState title={slotError} hint="Pick a “From” month on or before the “To” month." />
+            : <ErrorCard compact title="Couldn't load slot utilization" hint={slotError} onRetry={() => setSlotReload(n => n + 1)} />
         ) : slotLoading && slotData.length === 0 ? (
-          <p className="text-sm text-gray-500 py-10 text-center">Loading…</p>
+          <div className="space-y-3">
+            <div className="flex gap-3"><Skeleton className="h-14 w-36" /><Skeleton className="h-14 w-44" /></div>
+            <Skeleton className="h-[280px]" />
+          </div>
         ) : slotData.length === 0 ? (
-          <p className="text-sm text-gray-500 py-10 text-center">No sessions in this range.</p>
+          <EmptyState title="No sessions in this range." hint="Try a wider month range or another department." />
         ) : (
           <>
             {slotSummary && (
-              <div className="flex flex-wrap gap-5 mb-4">
-                <div>
-                  <p className="text-[11px] font-semibold text-gray-500 uppercase">Total slots</p>
-                  <p className="text-xl font-extrabold text-gray-900 tabular-nums">{slotSummary.total.toLocaleString()}</p>
-                </div>
-                <div>
-                  <p className="text-[11px] font-semibold text-gray-500 uppercase">First → last month</p>
-                  <p className="text-xl font-extrabold tabular-nums" style={{
-                    color: slotSummary.netChange === null ? '#6b7280' : slotSummary.netChange > 0 ? '#166534' : slotSummary.netChange < 0 ? '#991B1B' : '#6b7280',
-                  }}>
+              <div className="flex flex-wrap gap-3 mb-4">
+                <MiniStat label="Total slots" value={slotSummary.total.toLocaleString()} />
+                <MiniStat
+                  label="First → last month"
+                  color={signedColor(slotSummary.netChange)}
+                  value={<>
                     {slotSummary.netChange === null ? '—'
                       : `${slotSummary.netChange > 0 ? '+' : ''}${slotSummary.netChange.toLocaleString()}`}
                     {slotSummary.netPctChange !== null && (
-                      <span className="text-sm font-bold ml-1">
+                      <span className="text-sm font-semibold ml-1">
                         ({slotSummary.netPctChange > 0 ? '+' : ''}{slotSummary.netPctChange.toFixed(1)}%)
                       </span>
                     )}
-                  </p>
-                </div>
+                  </>}
+                />
               </div>
             )}
 
-            <ResponsiveContainer width="100%" height={280}>
-              <LineChart data={slotData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="label" tick={{ fontSize: 10 }} />
-                <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
-                {/* Params typed as `unknown`, not `number`/`string`: recharts'
-                    Formatter generic expects `any` there, and a narrower
-                    parameter type does not satisfy it. */}
-                <Tooltip
-                  formatter={(v: unknown) => [Number(v).toLocaleString(), 'Slots'] as [string, string]}
-                  labelFormatter={(label: unknown) => {
-                    const p = slotData.find(x => x.label === label)
-                    if (!p || p.delta === null) return String(label ?? '')
-                    const sign = p.delta > 0 ? '+' : ''
-                    const pct = p.pctChange === null ? '' : ` (${p.pctChange > 0 ? '+' : ''}${p.pctChange.toFixed(1)}%)`
-                    return `${label} — ${sign}${p.delta} vs previous month${pct}`
-                  }}
-                />
-                {/* Animation off: recharts draws a Line by animating
-                    stroke-dasharray from a stub, and here it stalled on the
-                    first frame — a 21px dash of a 1189px path, i.e. a line
-                    chart with no visible line. The page's Area charts do not
-                    hit this. Rendering it statically is worth more than the
-                    draw-in. */}
-                <Line type="monotone" dataKey="slots" stroke="#1A7B8A" strokeWidth={2.5}
-                  dot={{ r: 3 }} activeDot={{ r: 5 }} name="Slots" isAnimationActive={false} />
-              </LineChart>
-            </ResponsiveContainer>
+            <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] gap-5 items-start">
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={slotData} margin={{ top: 4, right: 8, left: -12, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} vertical={false} />
+                  <XAxis dataKey="label" tick={AXIS_TICK} tickLine={false} axisLine={{ stroke: GRID_STROKE }} />
+                  <YAxis tick={AXIS_TICK} tickLine={false} axisLine={false} allowDecimals={false} />
+                  {/* Params typed as `unknown`, not `number`/`string`: recharts'
+                      Formatter generic expects `any` there, and a narrower
+                      parameter type does not satisfy it. */}
+                  <Tooltip
+                    contentStyle={TOOLTIP_STYLE}
+                    formatter={(v: unknown) => [Number(v).toLocaleString(), 'Slots'] as [string, string]}
+                    labelFormatter={(label: unknown) => {
+                      const p = slotData.find(x => x.label === label)
+                      if (!p || p.delta === null) return String(label ?? '')
+                      const sign = p.delta > 0 ? '+' : ''
+                      const pct = p.pctChange === null ? '' : ` (${p.pctChange > 0 ? '+' : ''}${p.pctChange.toFixed(1)}%)`
+                      return `${label} — ${sign}${p.delta} vs previous month${pct}`
+                    }}
+                  />
+                  {/* Animation off: recharts draws a Line by animating
+                      stroke-dasharray from a stub, and here it stalled on the
+                      first frame — a 21px dash of a 1189px path, i.e. a line
+                      chart with no visible line. The page's Area charts do not
+                      hit this. Rendering it statically is worth more than the
+                      draw-in. */}
+                  <Line type="monotone" dataKey="slots" stroke={CHART_COLOR} strokeWidth={2.5}
+                    dot={{ r: 3 }} activeDot={{ r: 5 }} name="Slots" isAnimationActive={false} />
+                </LineChart>
+              </ResponsiveContainer>
 
-            {/* The line shows the shape; the table is where a month-on-month
-                figure can actually be read off and quoted. */}
-            <div className="overflow-x-auto mt-4">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-200 text-left">
-                    <th className="px-3 py-2 text-[11px] font-semibold text-gray-500 uppercase">Month</th>
-                    <th className="px-3 py-2 text-[11px] font-semibold text-gray-500 uppercase text-right">Slots</th>
-                    <th className="px-3 py-2 text-[11px] font-semibold text-gray-500 uppercase text-right">Change</th>
-                    <th className="px-3 py-2 text-[11px] font-semibold text-gray-500 uppercase text-right">%</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {slotData.map(p => (
-                    <tr key={p.month} className="border-b border-gray-100">
-                      <td className="px-3 py-1.5">{p.label}</td>
-                      <td className="px-3 py-1.5 text-right tabular-nums">{p.slots.toLocaleString()}</td>
-                      <td className="px-3 py-1.5 text-right tabular-nums font-semibold" style={{
-                        color: p.delta === null ? '#9ca3af' : p.delta > 0 ? '#166534' : p.delta < 0 ? '#991B1B' : '#6b7280',
-                      }}>
-                        {p.delta === null ? '—' : `${p.delta > 0 ? '+' : ''}${p.delta.toLocaleString()}`}
-                      </td>
-                      <td className="px-3 py-1.5 text-right tabular-nums" style={{
-                        color: p.pctChange === null ? '#9ca3af' : p.pctChange > 0 ? '#166534' : p.pctChange < 0 ? '#991B1B' : '#6b7280',
-                      }}>
-                        {p.pctChange === null ? '—' : `${p.pctChange > 0 ? '+' : ''}${p.pctChange.toFixed(1)}%`}
-                      </td>
+              {/* The line shows the shape; the table is where a month-on-month
+                  figure can actually be read off and quoted. */}
+              <div className="overflow-auto max-h-[300px] rounded-lg" style={{ border: '1px solid var(--light-gray)' }}>
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 z-10" style={{ background: SUBTLE_BG, color: 'var(--mid-gray)' }}>
+                    <tr className="text-left">
+                      <th className={TH}>Month</th>
+                      <th className={`${TH} text-right`}>Slots</th>
+                      <th className={`${TH} text-right`}>Change</th>
+                      <th className={`${TH} text-right`}>%</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {slotData.map(p => (
+                      <tr key={p.month} style={{ borderTop: '1px solid #EEF2F1' }}>
+                        <td className="px-3 py-1.5 whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{p.label}</td>
+                        <td className="px-3 py-1.5 text-right tabular-nums" style={{ color: 'var(--charcoal)' }}>{p.slots.toLocaleString()}</td>
+                        <td className="px-3 py-1.5 text-right tabular-nums font-semibold" style={{ color: signedColor(p.delta) }}>
+                          {p.delta === null ? '—' : `${p.delta > 0 ? '+' : ''}${p.delta.toLocaleString()}`}
+                        </td>
+                        <td className="px-3 py-1.5 text-right tabular-nums" style={{ color: signedColor(p.pctChange) }}>
+                          {p.pctChange === null ? '—' : `${p.pctChange > 0 ? '+' : ''}${p.pctChange.toFixed(1)}%`}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </>
         )}
-      </div>
+      </DashCard>
 
       {/* Top Therapists */}
-      <div className={cardStyle}>
-        <div className="px-5 py-3 border-b border-gray-200">
-          <h3 className={`${sectionH} mb-3`}><Star size={16} /> Top 5 Therapists by Completed Sessions</h3>
-          <div className="flex gap-0 overflow-x-auto">
-            <TabBtn active={therapistTab === 'all'} onClick={() => setTherapistTab('all')}>Overall</TabBtn>
-            {activeDepts.map(d => (
-              <TabBtn key={d} active={therapistTab === d} onClick={() => setTherapistTab(d)}>{DEPT_LABELS[d]}</TabBtn>
-            ))}
+      {showMain && (
+        <div id="top-therapists" className="scroll-mt-4">
+        <DashCard
+          title="Top 5 Therapists by Completed Sessions"
+          icon={<Star size={15} />}
+          description={`Confirmed sessions in ${rangeLabel}.`}
+          flush
+        >
+          <div className="px-5 pt-4">
+            <PillTabs
+              label="Department"
+              value={therapistTab}
+              onChange={setTherapistTab}
+              tabs={[{ id: 'all', label: 'Overall' }, ...activeDepts.map(d => ({ id: d, label: DEPT_LABELS[d] }))]}
+            />
           </div>
-        </div>
-        <div>
-          {topTherapists.length === 0 ? (
-            <div className="py-8 text-center text-sm text-gray-400">No data for current filters</div>
-          ) : topTherapists.map((t, i) => (
-            <div key={t.staffId} className="flex items-center gap-3 px-5 py-3 border-b border-gray-100 last:border-b-0">
-              <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-extrabold flex-shrink-0 ${
-                i === 0 ? 'bg-yellow-100 text-yellow-800' :
-                i === 1 ? 'bg-gray-200 text-gray-700' :
-                i === 2 ? 'bg-orange-100 text-orange-800' :
-                'bg-gray-100 text-gray-500'
-              }`}>{i + 1}</span>
-              <div className="flex-1">
-                {/* Names arrive pre-masked to initials from the API for INVESTOR
-                    sessions — never mask client-side only, or the full name
-                    still ships in the network response. */}
-                <div className="text-sm font-semibold text-gray-900">{t.name}</div>
-                <div className="text-[11px] text-gray-400">{DEPT_LABELS[t.dept] || t.dept}</div>
+          <div className="py-2">
+            {initialLoad ? (
+              <div className="px-5 py-2 space-y-3">
+                {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-10" />)}
               </div>
-              <div className="text-right">
-                <div className="text-lg font-extrabold" style={{ color: 'var(--teal)' }}>{t.count}</div>
-                <div className="text-[10px] text-gray-400">sessions</div>
-              </div>
-            </div>
-          ))}
+            ) : topTherapists.length === 0 ? (
+              <EmptyState title="No data for current filters" hint="Only confirmed sessions count here." />
+            ) : (
+              <ol className="grid grid-cols-1 lg:grid-cols-2 gap-x-6">
+                {topTherapists.map((t, i) => {
+                  const medal = ['#B45309', '#6B7280', '#9A3412'][i]
+                  return (
+                    <li key={t.staffId} className="flex items-center gap-3 px-5 py-2.5" style={{ borderBottom: '1px solid #EEF2F1' }}>
+                      <span className="w-5 text-center text-xs font-bold tabular-nums flex-shrink-0" style={{ color: medal ?? 'var(--mid-gray)' }}>{i + 1}</span>
+                      <Avatar name={t.name} />
+                      <div className="flex-1 min-w-0">
+                        {/* Names arrive pre-masked to initials from the API for INVESTOR
+                            sessions — never mask client-side only, or the full name
+                            still ships in the network response. */}
+                        <div className="text-sm font-semibold break-words" style={{ color: 'var(--charcoal)' }}>{t.name}</div>
+                        <div className="flex items-center gap-2 mt-1">
+                          <DeptTag code={t.dept} />
+                          <div className="flex-1 h-1.5 rounded-full overflow-hidden max-w-[10rem]" style={{ background: '#EEF2F1' }}>
+                            <div className="h-full rounded-full" style={{ width: `${(t.count / topTherapists[0].count) * 100}%`, background: CHART_COLOR }} />
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <div className="text-lg font-bold leading-tight tabular-nums" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>{t.count}</div>
+                        <div className="text-[10px]" style={{ color: 'var(--mid-gray)' }}>sessions</div>
+                      </div>
+                    </li>
+                  )
+                })}
+              </ol>
+            )}
+          </div>
+        </DashCard>
         </div>
-      </div>
+      )}
 
       {/* Therapist Utilization */}
-      <div className="mt-6">
-        <TherapistUtilizationSection startDate={startDate} endDate={endDate} role={role} />
-      </div>
+      <TherapistUtilizationSection startDate={startDate} endDate={endDate} role={role} />
 
       {/* Settings Modal */}
       {settingsOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setSettingsOpen(false)}>
-          <div className="bg-white rounded-xl w-full max-w-[700px] max-h-[85vh] overflow-y-auto shadow-2xl" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(15,23,42,0.45)', backdropFilter: 'blur(4px)' }}
+          onClick={() => setSettingsOpen(false)}>
+          <div role="dialog" aria-modal="true" aria-labelledby="sd-settings-title"
+            className="bg-white rounded-xl w-full max-w-[700px] max-h-[85vh] overflow-y-auto shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start justify-between gap-3 px-6 py-4" style={{ borderBottom: '1px solid var(--light-gray)' }}>
               <div>
-                <h3 className="text-base font-bold text-gray-900">Dashboard Settings</h3>
-                <p className="text-xs text-gray-500 mt-0.5">Set maximum daily sessions per department per branch</p>
+                <h3 id="sd-settings-title" className="text-base font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>Dashboard Settings</h3>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>Set maximum daily sessions per department per branch</p>
               </div>
-              <button onClick={() => setSettingsOpen(false)} className="text-gray-400 hover:text-gray-600">✕</button>
+              <button onClick={() => setSettingsOpen(false)} aria-label="Close"
+                className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-gray-100" style={{ color: 'var(--mid-gray)' }}>
+                <X size={16} />
+              </button>
             </div>
-            <div className="p-6 space-y-5">
+            <div className="p-6 space-y-4">
               {BRANCHES.map(b => (
-                <div key={b} className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                  <h4 className="text-sm font-bold text-gray-900 mb-3">{BRANCH_LABELS[b]}</h4>
-                  <div className="grid grid-cols-4 gap-3">
+                <div key={b} className="rounded-xl p-4" style={{ background: SUBTLE_BG, border: '1px solid var(--light-gray)' }}>
+                  <h4 className="text-sm font-bold mb-3" style={{ color: 'var(--charcoal)' }}>{BRANCH_LABELS[b]}</h4>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     {DEPARTMENTS.map(d => (
-                      <div key={d} className="flex flex-col gap-1">
-                        <label className="text-[10px] font-semibold text-gray-500 uppercase">{DEPT_LABELS[d]}</label>
+                      <div key={d} className="flex flex-col gap-1 min-w-0">
+                        <label className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>{DEPT_LABELS[d]}</label>
                         <input type="number" min={0} max={50}
                           value={maxSessions[b]?.[d] ?? 8}
                           onChange={e => setMaxSessions(prev => ({
                             ...prev, [b]: { ...prev[b], [d]: parseInt(e.target.value) || 0 },
                           }))}
-                          className="border border-gray-300 rounded-md px-2 py-1.5 text-sm text-center"
-                          style={{ fontFamily: 'var(--font-body)' }} />
+                          className={`${CONTROL} text-center w-full`}
+                          style={CONTROL_STYLE} />
                       </div>
                     ))}
                   </div>
                 </div>
               ))}
             </div>
-            <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-200 bg-gray-50">
-              <button onClick={() => setSettingsOpen(false)} className="px-4 py-2 text-sm font-semibold text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-100">Cancel</button>
-              <button onClick={saveSettings} className="px-4 py-2 text-sm font-semibold text-white rounded-lg" style={{ background: 'var(--teal)' }}>Save</button>
+            <div className="flex justify-end gap-2 px-6 py-4" style={{ borderTop: '1px solid var(--light-gray)', background: SUBTLE_BG }}>
+              <button onClick={() => setSettingsOpen(false)} className={BTN_SECONDARY} style={CONTROL_STYLE}>Cancel</button>
+              <button onClick={saveSettings} className={BTN_PRIMARY} style={{ background: 'var(--teal)' }}>Save</button>
             </div>
           </div>
         </div>
@@ -1101,26 +1299,140 @@ function DashboardContent({ role }: { role: string }) {
 
 // ── Sub-components ───────────────────────────────────────────────────────────
 
-function KpiCard({ icon, value, label, color }: { icon: React.ReactNode; value: string; label: string; color: 'teal' | 'blue' | 'amber' | 'purple' }) {
-  const colors = {
-    teal: { border: 'border-t-teal-500', iconBg: 'bg-teal-50', iconColor: 'text-teal-600' },
-    blue: { border: 'border-t-blue-500', iconBg: 'bg-blue-50', iconColor: 'text-blue-600' },
-    amber: { border: 'border-t-amber-500', iconBg: 'bg-amber-50', iconColor: 'text-amber-500' },
-    purple: { border: 'border-t-purple-500', iconBg: 'bg-purple-50', iconColor: 'text-purple-600' },
-  }[color]
+/** Makes a KPI card a jump link to the section that breaks the figure down. */
+function KpiLink({ target, title, children }: { target: string; title: string; children: ReactNode }) {
   return (
-    <div className={`bg-white border border-gray-200 ${colors.border} border-t-[3px] rounded-xl p-5 text-center hover:shadow-md transition-shadow`}>
-      <div className={`w-10 h-10 rounded-lg ${colors.iconBg} ${colors.iconColor} flex items-center justify-center mx-auto mb-2`}>{icon}</div>
-      <div className="text-2xl font-extrabold text-gray-900" style={{ fontFamily: 'var(--font-display)' }}>{value}</div>
-      <div className="text-xs text-gray-500 mt-0.5">{label}</div>
+    <a href={`#${target}`} title={title}
+      onClick={e => { e.preventDefault(); scrollToSection(target) }}
+      className="block rounded-xl transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--teal)]">
+      {children}
+    </a>
+  )
+}
+
+function ErrorCard({ title, hint, onRetry, compact = false }: { title: string; hint?: string; onRetry?: () => void; compact?: boolean }) {
+  return (
+    <div className={`rounded-xl text-center ${compact ? 'px-4 py-6' : 'px-6 py-10'}`} style={{ background: '#fff', border: '1px solid #FECACA' }}>
+      <AlertTriangle size={20} className="mx-auto mb-2" style={{ color: '#DC2626' }} />
+      <p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>{title}</p>
+      {hint && <p className="text-xs mt-1 max-w-sm mx-auto" style={{ color: 'var(--mid-gray)' }}>{hint}</p>}
+      {onRetry && (
+        <button onClick={onRetry} className={`${BTN_SECONDARY} mt-4 text-xs`} style={{ ...CONTROL_STYLE, color: 'var(--teal)' }}>
+          <RefreshCw size={12} /> Try again
+        </button>
+      )}
     </div>
   )
 }
 
-// Prints the fitted line as an equation plus a plain-language reading of it.
-// `unit` is the y-axis unit per day — "sessions", or "pp" (percentage points)
-// for the utilization chart, where "%/week" would be ambiguous between a
-// relative change and a change in the rate itself.
+function Callout({ children }: { children: ReactNode }) {
+  return (
+    <div className="inline-flex items-center gap-1.5 mb-4 px-2.5 py-1 rounded-full text-xs font-semibold"
+      style={{ background: 'var(--pale-teal)', color: 'var(--teal)' }}>
+      {children}
+    </div>
+  )
+}
+
+function MiniStat({ label, value, color = 'var(--charcoal)' }: { label: string; value: ReactNode; color?: string }) {
+  return (
+    <div className="rounded-lg px-3.5 py-2.5 min-w-[9rem]" style={{ background: SUBTLE_BG, border: '1px solid var(--light-gray)' }}>
+      <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>{label}</p>
+      <p className="text-xl font-bold tabular-nums leading-tight mt-0.5" style={{ fontFamily: 'var(--font-display)', color }}>{value}</p>
+    </div>
+  )
+}
+
+function Avatar({ name, size = 32 }: { name: string; size?: number }) {
+  return (
+    <span aria-hidden className="rounded-full flex items-center justify-center font-bold flex-shrink-0"
+      style={{ width: size, height: size, fontSize: size * 0.36, background: 'var(--pale-teal)', color: 'var(--teal)' }}>
+      {initialsOf(name)}
+    </span>
+  )
+}
+
+function DeptTag({ code }: { code: string }) {
+  return (
+    <span className="inline-block text-[10px] font-bold px-1.5 py-0.5 rounded leading-none whitespace-nowrap"
+      style={{ background: '#EEF2F1', color: 'var(--teal)' }}>
+      {DEPT_LABELS[code] || code}
+    </span>
+  )
+}
+
+function PillTabs({ tabs, value, onChange, label }: {
+  tabs: { id: string; label: string }[]; value: string; onChange: (id: string) => void; label: string
+}) {
+  return (
+    <div role="tablist" aria-label={label} className="inline-flex gap-1 p-1 rounded-xl overflow-x-auto max-w-full" style={{ background: '#F3F6F5' }}>
+      {tabs.map(t => {
+        const active = value === t.id
+        return (
+          <button key={t.id} role="tab" aria-selected={active} onClick={() => onChange(t.id)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${active ? '' : 'hover:bg-black/[0.04]'}`}
+            style={active
+              ? { background: '#fff', color: 'var(--teal)', boxShadow: '0 1px 2px rgba(0,0,0,0.08)' }
+              : { background: 'transparent', color: 'var(--mid-gray)' }}>
+            {t.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+function HeatCell({ v, max, tip }: { v: number; max: number; tip: string }) {
+  return (
+    <td className="p-0.5 text-center">
+      <div title={tip} aria-label={tip}
+        className="h-7 min-w-[2.75rem] rounded-md flex items-center justify-center tabular-nums transition-shadow hover:ring-2 hover:ring-[color:var(--teal)]"
+        style={{ background: heatBg(v, max) || '#F7F9F8', color: v === 0 ? '#B8C7C2' : heatInk(v, max), fontWeight: v === 0 ? 400 : 600 }}>
+        {v}
+      </div>
+    </td>
+  )
+}
+
+/** Swatches for the heatmap scale. `top` is the count at which shading maxes out. */
+function HeatLegend({ max }: { max: number }) {
+  const top = Math.ceil(0.7 * Math.max(max, 5))
+  const steps = Array.from(new Set([1, Math.round(top * 0.25), Math.round(top * 0.5), Math.round(top * 0.75), top].filter(n => n >= 1)))
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+      <span>Sessions per cell:</span>
+      <span className="flex items-center gap-1">
+        <span className="inline-block w-4 h-3 rounded-sm" style={{ background: '#F7F9F8', border: '1px solid var(--light-gray)' }} />0
+      </span>
+      <span className="flex items-center gap-0.5">
+        {steps.map(n => <span key={n} className="inline-block w-4 h-3 rounded-sm" style={{ background: heatBg(n, max) }} title={`${n}`} />)}
+      </span>
+      <span>1 → {top}+ (darkest)</span>
+      <span>· hover a cell for details</span>
+    </div>
+  )
+}
+
+const tone = (p: number) => p >= 80 ? '#10b981' : p >= 50 ? '#f59e0b' : '#ef4444'
+
+// Module-level (not declared inside DeckingVsAttendance) so React keeps one
+// component identity across renders.
+function Meter({ label, frame, value, detail }: { label: string; frame: string; value: number; detail: string }) {
+  return (
+    <div className="flex-1 min-w-[200px]">
+      <div className="flex items-baseline justify-between mb-1.5">
+        <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>{label}</span>
+        <span className="text-sm font-bold tabular-nums" style={{ color: tone(value) }}>{value.toFixed(1)}%</span>
+      </div>
+      <div className="h-2 rounded-full overflow-hidden" style={{ background: '#E5ECEA' }}>
+        <div style={{ width: `${Math.min(100, value)}%`, background: tone(value), height: '100%', transition: 'width 0.3s' }} />
+      </div>
+      <div className="text-[11px] mt-1" style={{ color: 'var(--charcoal)' }}>{detail}</div>
+      <div className="text-[10px] italic" style={{ color: 'var(--mid-gray)' }}>{frame}</div>
+    </div>
+  )
+}
+
 // Two measures that answer different questions and are easy to conflate:
 //
 //   Decking fill  = decked / available     — how full the WEEK is. A permanent
@@ -1145,43 +1457,27 @@ function DeckingVsAttendance({ rosteredPerWeek, deckedPerWeek, deckedOffRoster, 
   const fillPct = rosteredPerWeek > 0 ? (deckedPerWeek / rosteredPerWeek) * 100 : 0
   const showPct = booked > 0 ? (confirmed / booked) * 100 : 0
 
-  const tone = (p: number) => p >= 80 ? '#10b981' : p >= 50 ? '#f59e0b' : '#ef4444'
-
-  const Meter = ({ label, frame, pct, detail }: { label: string; frame: string; pct: number; detail: string }) => (
-    <div className="flex-1 min-w-[210px]">
-      <div className="flex items-baseline justify-between mb-1">
-        <span className="text-[11px] font-bold text-gray-600 uppercase tracking-wide">{label}</span>
-        <span className="text-sm font-extrabold" style={{ color: tone(pct) }}>{pct.toFixed(1)}%</span>
-      </div>
-      <div className="h-2 rounded-full overflow-hidden" style={{ background: '#e5e7eb' }}>
-        <div style={{ width: `${Math.min(100, pct)}%`, background: tone(pct), height: '100%', transition: 'width 0.3s' }} />
-      </div>
-      <div className="text-[10px] text-gray-500 mt-1">{detail}</div>
-      <div className="text-[10px] text-gray-400 italic">{frame}</div>
-    </div>
-  )
-
   return (
     <div className="flex flex-wrap gap-5 items-start">
       <Meter
         label="Decking fill"
         frame="current week — decking has no history"
-        pct={fillPct}
+        value={fillPct}
         detail={`${deckedPerWeek} of ${rosteredPerWeek} rostered hours held by a permanent patient`}
       />
       <Meter
         label="Show-up rate"
         frame="selected date range"
-        pct={showPct}
+        value={showPct}
         detail={`${confirmed} confirmed of ${booked} booked`}
       />
       {deckedOffRoster > 0 && (
-        <div className="min-w-[170px]">
-          <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: '#be123c' }}>
+        <div className="min-w-[170px] rounded-lg px-3 py-2" style={{ background: '#FFF1F2', border: '1px solid #FECDD3' }}>
+          <div className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#be123c' }}>
             Off-roster decking
           </div>
-          <div className="text-sm font-extrabold" style={{ color: '#be123c' }}>{deckedOffRoster}h</div>
-          <div className="text-[10px] text-gray-500 mt-1">
+          <div className="text-sm font-bold" style={{ color: '#be123c' }}>{deckedOffRoster}h</div>
+          <div className="text-[10px] mt-0.5" style={{ color: 'var(--charcoal)' }}>
             decked on days no longer in the roster — usually left behind when someone reduces their days
           </div>
         </div>
@@ -1190,11 +1486,15 @@ function DeckingVsAttendance({ rosteredPerWeek, deckedPerWeek, deckedOffRoster, 
   )
 }
 
+// Prints the fitted line as an equation plus a plain-language reading of it.
+// `unit` is the y-axis unit per day — "sessions", or "pp" (percentage points)
+// for the utilization chart, where "%/week" would be ambiguous between a
+// relative change and a change in the rate itself.
 function TrendEquation({ fit, unit }: {
   fit: { slope: number; intercept: number; r2: number; change: number } | null
   unit: string
 }) {
-  if (!fit) return <div className="text-[11px] text-gray-400 mb-3">Not enough days in range to fit a trend</div>
+  if (!fit) return <div className="text-[11px] mb-3" style={{ color: 'var(--mid-gray)' }}>Not enough days in range to fit a trend</div>
 
   const { slope, intercept, r2, change } = fit
   // "Flat" is judged on total movement across the whole range, not on the raw
@@ -1202,33 +1502,24 @@ function TrendEquation({ fit, unit }: {
   // than one unit of net change across the period is noise, not direction.
   const flat = Math.abs(change) < 1
   const dir = flat ? 'Flat' : change > 0 ? 'Rising' : 'Falling'
-  const dirColor = flat ? 'text-gray-500' : change > 0 ? 'text-emerald-600' : 'text-rose-600'
+  const dirStyle = flat
+    ? { background: '#F3F4F6', color: '#4B5563' }
+    : change > 0 ? { background: '#DCFCE7', color: POS } : { background: '#FEE2E2', color: NEG }
   const arrow = flat ? '→' : change > 0 ? '↑' : '↓'
 
   return (
-    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 mb-3">
-      <code className="text-[12px] font-semibold text-gray-800 bg-gray-50 border border-gray-200 rounded px-1.5 py-0.5">
-        y = {slope.toFixed(2)}x {intercept < 0 ? '−' : '+'} {Math.abs(intercept).toFixed(2)}
-      </code>
-      <span className={`text-[11px] font-bold ${dirColor}`}>{arrow} {dir}</span>
+    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 mb-3">
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold" style={dirStyle}>{arrow} {dir}</span>
       {!flat && (
-        <span className="text-[11px] text-gray-500">
+        <span className="text-xs font-semibold tabular-nums" style={{ color: 'var(--charcoal)' }}>
           {slope > 0 ? '+' : '−'}{Math.abs(slope * 7).toFixed(1)} {unit}/week
         </span>
       )}
-      <span className="text-[11px] text-gray-400" title="How closely the points follow the line (1.00 = perfect fit)">R² {r2.toFixed(2)}</span>
+      <code className="text-[11px] font-medium rounded px-1.5 py-0.5" style={{ background: SUBTLE_BG, border: '1px solid var(--light-gray)', color: 'var(--charcoal)' }}>
+        y = {slope.toFixed(2)}x {intercept < 0 ? '−' : '+'} {Math.abs(intercept).toFixed(2)}
+      </code>
+      <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }} title="How closely the points follow the line (1.00 = perfect fit)">R² {r2.toFixed(2)}</span>
     </div>
-  )
-}
-
-function TabBtn({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`px-3 py-1.5 text-xs font-semibold border-b-2 transition-all whitespace-nowrap ${
-        active ? 'text-blue-600 border-blue-600' : 'text-gray-400 border-transparent hover:text-gray-600'
-      }`}
-    >{children}</button>
   )
 }
 
@@ -1270,10 +1561,18 @@ function pct(n: number, total: number): string {
   return ((n / total) * 100).toFixed(2)
 }
 
+const UTIL_LEGEND = [
+  { label: 'Confirmed', color: '#10b981' },
+  { label: 'Rescheduled', color: '#f59e0b' },
+  { label: 'Cancelled', color: '#ef4444' },
+  { label: 'Pending', color: '#6366f1' },
+  { label: 'Blank', color: '#e5e7eb' },
+]
+
 function UtilBar({ confirmed, rescheduled, cancelled, pending, blank, total }: {
   confirmed: number; rescheduled: number; cancelled: number; pending: number; blank: number; total: number
 }) {
-  if (total === 0) return <div className="h-5 bg-gray-100 rounded-full" />
+  if (total === 0) return <div className="h-3 rounded-full" style={{ background: '#F3F4F6' }} />
   const used = confirmed + rescheduled + cancelled + pending
   // Only CONFIRMED + PENDING actually hold the hour — a cancelled session
   // releases its slot and a rescheduled one has moved elsewhere — so this,
@@ -1293,7 +1592,7 @@ function UtilBar({ confirmed, rescheduled, cancelled, pending, blank, total }: {
     { value: blank,       color: '#e5e7eb', label: 'Blank' },
   ]
   return (
-    <div className="relative flex h-5 rounded-full overflow-hidden" style={{ background: '#f3f4f6' }}>
+    <div className="relative flex h-3 rounded-full overflow-hidden" style={{ background: '#f3f4f6' }}>
       {segments.map(seg => {
         const w = (seg.value / scale) * 100
         if (w === 0) return null
@@ -1328,8 +1627,11 @@ function TherapistUtilizationSection({ startDate, endDate, role }: { startDate: 
   const [department, setDepartment] = useState('all')
   const [staffFilter, setStaffFilter] = useState('')
   const [data, setData]           = useState<TherapistUtil[]>([])
-  const [summary, setSummary]     = useState<UtilSummary | null>(null)
+  // The server summary is kept in state as before but not rendered — see
+  // visibleSummary below for why the headline is derived client-side.
+  const [, setSummary]            = useState<UtilSummary | null>(null)
   const [loading, setLoading]     = useState(false)
+  const [loadFailed, setLoadFailed] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [viewMode, setViewMode]   = useState<'therapist' | 'department' | 'branch'>('therapist')
 
@@ -1343,10 +1645,13 @@ function TherapistUtilizationSection({ startDate, endDate, role }: { startDate: 
         const json = await res.json()
         setData(json.therapists ?? [])
         setSummary(json.summary ?? null)
+        setLoadFailed(false)
       } else if (!isRetry && (res.status === 401 || res.status === 403)) {
         await new Promise(r => setTimeout(r, 700))
         await fetchUtil(true)
         return
+      } else {
+        setLoadFailed(true)
       }
     } catch (err) {
       console.error('Fetch error:', err)
@@ -1355,6 +1660,7 @@ function TherapistUtilizationSection({ startDate, endDate, role }: { startDate: 
         await fetchUtil(true)
         return
       }
+      setLoadFailed(true)
     } finally { setLoading(false) }
   }, [startDate, endDate, branch, department])
 
@@ -1432,89 +1738,141 @@ function TherapistUtilizationSection({ startDate, endDate, role }: { startDate: 
   }, [filtered])
 
   const statBox = (label: string, value: number, total: number, color: string) => (
-    <div className="flex flex-col items-center px-3 py-2 rounded-lg" style={{ background: `${color}11`, border: `1px solid ${color}33` }}>
-      <span className="text-lg font-extrabold" style={{ color }}>{pct(value, total)}%</span>
-      <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">{label}</span>
-      <span className="text-[10px] text-gray-400">{value}/{total}</span>
+    <div key={label} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg min-w-0" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
+      <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: color }} />
+      <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>{label}</span>
+      <span className="text-sm font-bold tabular-nums" style={{ color: 'var(--charcoal)' }}>{pct(value, total)}%</span>
+      <span className="text-[10px] tabular-nums" style={{ color: 'var(--mid-gray)' }}>{value}/{total}</span>
+    </div>
+  )
+
+  const groupRow = (key: string, title: string, sub: string, totals: UtilSummary) => (
+    <div key={key} className="px-5 py-3.5" style={{ borderBottom: '1px solid #EEF2F1' }}>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-2">
+        <span className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>{title}</span>
+        <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>{sub}</span>
+        <span className="ml-auto text-base font-bold tabular-nums" style={{ color: '#10b981' }}>
+          {pct(totals.confirmed, totals.totalSlots)}%
+        </span>
+      </div>
+      <UtilBar {...totals} total={totals.totalSlots} />
+      <div className="flex flex-wrap gap-2 mt-2.5">
+        {statBox('Confirmed', totals.confirmed, totals.totalSlots, '#10b981')}
+        {statBox('Rescheduled', totals.rescheduled, totals.totalSlots, '#f59e0b')}
+        {statBox('Cancelled', totals.cancelled, totals.totalSlots, '#ef4444')}
+        {statBox('Pending', totals.pending, totals.totalSlots, '#6366f1')}
+        {statBox('Blank', totals.blank, totals.totalSlots, '#9ca3af')}
+      </div>
     </div>
   )
 
   return (
-    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-      <div className="px-5 py-4 border-b border-gray-200">
-        <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2 mb-3">
-          <Activity size={16} /> Therapist Utilization
-        </h3>
-        <div className="flex flex-wrap gap-3 items-end">
-          <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-semibold text-gray-500 uppercase">Branch</label>
-            {scopedBranch ? (
-              <div className="border border-gray-200 bg-gray-50 rounded-md px-2 py-1 text-xs text-gray-600"
-                title="Your account is scoped to this branch">
-                {BRANCH_LABELS[scopedBranch] ?? scopedBranch}
-              </div>
-            ) : (
-              <select value={branch} onChange={e => setBranch(e.target.value)}
-                className="border border-gray-300 rounded-md px-2 py-1 text-xs">
-                <option value="all">All Branches</option>
-                {BRANCHES.map(b => <option key={b} value={b}>{BRANCH_LABELS[b]}</option>)}
-              </select>
-            )}
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-semibold text-gray-500 uppercase">Department</label>
-            <select value={department} onChange={e => setDepartment(e.target.value)}
-              className="border border-gray-300 rounded-md px-2 py-1 text-xs">
-              <option value="all">All Departments</option>
-              {DEPARTMENTS.map(d => <option key={d} value={d}>{DEPT_LABELS[d]}</option>)}
+    <DashCard
+      title="Therapist Utilization"
+      icon={<Activity size={15} />}
+      description={`Decked slots versus what actually happened, ${fmtRange(startDate, endDate)}. Uses the page's date range; branch and department are set here.`}
+      flush
+      footer={
+        <div className="flex flex-wrap gap-x-4 gap-y-1">
+          {UTIL_LEGEND.map(l => (
+            <span key={l.label} className="flex items-center gap-1.5">
+              <span className="inline-block w-3 h-3 rounded-sm" style={{ background: l.color }} />
+              {l.label}
+            </span>
+          ))}
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block w-0.5 h-3" style={{ background: '#881337' }} /> capacity line (shown when over)
+          </span>
+        </div>
+      }
+    >
+      <div className="px-5 py-3 flex flex-wrap gap-3 items-end" style={{ borderBottom: '1px solid var(--light-gray)' }}>
+        <div>
+          <label className={LABEL} style={{ color: 'var(--mid-gray)' }} htmlFor="tu-branch">Branch</label>
+          {scopedBranch ? (
+            <div className={`${CONTROL_SM} flex items-center`} style={{ ...CONTROL_STYLE, background: SUBTLE_BG, color: 'var(--mid-gray)' }}
+              title="Your account is scoped to this branch">
+              {BRANCH_LABELS[scopedBranch] ?? scopedBranch}
+            </div>
+          ) : (
+            <select id="tu-branch" value={branch} onChange={e => setBranch(e.target.value)}
+              className={CONTROL_SM} style={CONTROL_STYLE}>
+              <option value="all">All Branches</option>
+              {BRANCHES.map(b => <option key={b} value={b}>{BRANCH_LABELS[b]}</option>)}
             </select>
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-semibold text-gray-500 uppercase">Therapist</label>
+          )}
+        </div>
+        <div>
+          <label className={LABEL} style={{ color: 'var(--mid-gray)' }} htmlFor="tu-dept">Department</label>
+          <select id="tu-dept" value={department} onChange={e => setDepartment(e.target.value)}
+            className={CONTROL_SM} style={CONTROL_STYLE}>
+            <option value="all">All Departments</option>
+            {DEPARTMENTS.map(d => <option key={d} value={d}>{DEPT_LABELS[d]}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className={LABEL} style={{ color: 'var(--mid-gray)' }} htmlFor="tu-name">Therapist</label>
+          <div className="relative">
+            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mid-gray)' }} />
             <input
+              id="tu-name"
               placeholder="Filter by name…"
               value={staffFilter}
               onChange={e => setStaffFilter(e.target.value)}
-              className="border border-gray-300 rounded-md px-2 py-1 text-xs min-w-[160px]"
+              className={`${CONTROL_SM} pl-7 w-[12rem]`}
+              style={CONTROL_STYLE}
             />
           </div>
-          <div className="flex gap-0 ml-auto">
-            {(['therapist', 'department', 'branch'] as const).map(mode => (
-              <button key={mode} onClick={() => setViewMode(mode)}
-                className={`px-3 py-1 text-[11px] font-semibold border transition-all first:rounded-l-md last:rounded-r-md ${
-                  viewMode === mode
-                    ? 'bg-gray-900 text-white border-gray-900'
-                    : 'bg-white text-gray-500 border-gray-300 hover:bg-gray-50'
-                }`}
-              >
-                {mode === 'therapist' ? 'Per Therapist' : mode === 'department' ? 'Per Department' : 'Per Branch'}
-              </button>
-            ))}
-          </div>
+        </div>
+        <div className="sm:ml-auto max-w-full">
+          <PillTabs
+            label="Group by"
+            value={viewMode}
+            onChange={id => setViewMode(id as 'therapist' | 'department' | 'branch')}
+            tabs={[
+              { id: 'therapist', label: 'Per Therapist' },
+              { id: 'department', label: 'Per Department' },
+              { id: 'branch', label: 'Per Branch' },
+            ]}
+          />
         </div>
       </div>
 
-      {loading ? (
-        <div className="py-8 text-center text-sm text-gray-400">Loading utilization data…</div>
-      ) : data.length === 0 ? (
-        <div className="py-8 text-center text-sm text-gray-400">
-          No therapist configurations found. Set up therapists in the Decking Module first.
+      {loading && data.length === 0 ? (
+        <div className="p-5 space-y-3" aria-hidden>
+          <Skeleton className="h-24" />
+          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-12" />)}
         </div>
+      ) : loadFailed && data.length === 0 ? (
+        <div className="p-5">
+          <ErrorCard compact title="Couldn't load therapist utilization" hint="Check your connection, then try again." onRetry={() => fetchUtil()} />
+        </div>
+      ) : data.length === 0 ? (
+        <EmptyState title="No therapist configurations found." hint="Set up therapists in the Decking Module first." />
       ) : (
-        <div>
+        <div className={loading ? 'opacity-60 transition-opacity' : 'transition-opacity'}>
+          {loadFailed && (
+            <div className="mx-5 mt-4 flex flex-wrap items-center justify-between gap-2 rounded-lg px-3 py-2 text-xs"
+              style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#991B1B' }}>
+              Couldn&apos;t refresh — showing the last loaded figures.
+              <button onClick={() => fetchUtil()} className="inline-flex items-center gap-1 font-semibold underline">
+                <RefreshCw size={11} /> Try again
+              </button>
+            </div>
+          )}
           {visibleSummary && visibleSummary.totalSlots > 0 && (
-            <div className="px-5 py-4 border-b border-gray-100 bg-gray-50">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wide">
+            <div className="px-5 py-4" style={{ background: SUBTLE_BG, borderBottom: '1px solid var(--light-gray)' }}>
+              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 mb-3">
+                <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>
                   {viewMode === 'therapist' ? 'Overall' : 'Aggregate'} — {visibleSummary.totalSlots} total slots
                 </span>
-                <span className="text-xs text-gray-400">({startDate} to {endDate})</span>
+                <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>({startDate} to {endDate})</span>
               </div>
               <div className="mb-4">
                 <DeckingVsAttendance {...visibleSummary} />
               </div>
               <UtilBar {...visibleSummary} total={visibleSummary.totalSlots} />
-              <div className="flex flex-wrap gap-3 mt-3">
+              <div className="flex flex-wrap gap-2 mt-3">
                 {statBox('Confirmed', visibleSummary.confirmed, visibleSummary.totalSlots, '#10b981')}
                 {statBox('Rescheduled', visibleSummary.rescheduled, visibleSummary.totalSlots, '#f59e0b')}
                 {statBox('Cancelled', visibleSummary.cancelled, visibleSummary.totalSlots, '#ef4444')}
@@ -1527,44 +1885,49 @@ function TherapistUtilizationSection({ startDate, endDate, role }: { startDate: 
           {viewMode === 'therapist' && (
             <div>
               {filtered.length === 0 ? (
-                <div className="py-6 text-center text-sm text-gray-400">No therapists match the filter.</div>
+                <EmptyState title="No therapists match the filter." hint="Clear the name filter to see everyone." />
               ) : filtered.map(t => {
                 const isExpanded = expandedId === t.staffId
                 const utilizationPct = t.totalSlots > 0 ? (t.confirmed / t.totalSlots) * 100 : 0
                 return (
-                  <div key={t.staffId} className="border-b border-gray-100 last:border-b-0">
+                  <div key={t.staffId} style={{ borderBottom: '1px solid #EEF2F1' }}>
                     <button
                       onClick={() => setExpandedId(isExpanded ? null : t.staffId)}
-                      className="w-full flex items-center gap-3 px-5 py-3 text-left hover:bg-gray-50 transition-colors"
+                      aria-expanded={isExpanded}
+                      className="w-full flex items-center gap-3 px-5 py-3 text-left hover:bg-gray-50/70 transition-colors"
                     >
-                      <div className="w-8 h-8 rounded-full bg-teal-50 flex items-center justify-center flex-shrink-0">
-                        <User size={14} className="text-teal-600" />
-                      </div>
+                      <Avatar name={t.staffName} />
                       <div className="flex-1 min-w-0">
-                        <div className="text-sm font-semibold text-gray-900">{t.staffName}</div>
-                        <div className="text-[11px] text-gray-400">{DEPT_LABELS[t.department] || t.department} · {BRANCH_LABELS[t.branch] || t.branch} · {t.totalSlots} slots</div>
+                        <div className="text-sm font-semibold break-words" style={{ color: 'var(--charcoal)' }}>{t.staffName}</div>
+                        <div className="flex flex-wrap items-center gap-1.5 mt-0.5 text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+                          <DeptTag code={t.department} />
+                          <span>{BRANCH_LABELS[t.branch] || t.branch} · {t.totalSlots} slots</span>
+                        </div>
                       </div>
-                      <div className="flex-1 max-w-[200px] hidden sm:block">
+                      <div className="flex-1 max-w-[220px] hidden sm:block">
                         <UtilBar {...t} total={t.totalSlots} />
                       </div>
-                      <div className="text-right min-w-[60px]">
-                        <div className="text-base font-extrabold" style={{ color: utilizationPct > 100 ? '#be123c' : utilizationPct >= 80 ? '#10b981' : utilizationPct >= 50 ? '#f59e0b' : '#ef4444' }}>
+                      <div className="text-right min-w-[64px]">
+                        <div className="text-base font-bold tabular-nums" style={{ color: utilizationPct > 100 ? '#be123c' : utilizationPct >= 80 ? '#10b981' : utilizationPct >= 50 ? '#f59e0b' : '#ef4444' }}>
                           {pct(t.confirmed, t.totalSlots)}%
                         </div>
-                        <div className="text-[10px] text-gray-400">
+                        <div className="text-[10px]" style={{ color: 'var(--mid-gray)' }}>
                           {t.overbooked > 0
-                            ? <span className="text-rose-700 font-bold">over capacity</span>
+                            ? <span className="inline-block px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wide" style={{ background: '#FFE4E6', color: '#BE123C' }}>over capacity</span>
                             : 'confirmed'}
                         </div>
                       </div>
-                      {isExpanded ? <ChevronUp size={14} className="text-gray-400 flex-shrink-0" /> : <ChevronDown size={14} className="text-gray-400 flex-shrink-0" />}
+                      {isExpanded
+                        ? <ChevronUp size={14} className="flex-shrink-0" style={{ color: 'var(--mid-gray)' }} />
+                        : <ChevronDown size={14} className="flex-shrink-0" style={{ color: 'var(--mid-gray)' }} />}
                     </button>
                     {isExpanded && (
-                      <div className="px-5 pb-4 pt-1">
-                        <div className="mb-3 pb-3 border-b border-gray-100">
+                      <div className="px-5 pb-4 pt-1 sm:pl-16">
+                        <div className="sm:hidden mb-3"><UtilBar {...t} total={t.totalSlots} /></div>
+                        <div className="mb-3 pb-3" style={{ borderBottom: '1px solid #EEF2F1' }}>
                           <DeckingVsAttendance {...t} />
                         </div>
-                        <div className="flex flex-wrap gap-3">
+                        <div className="flex flex-wrap gap-2">
                           {statBox('Confirmed', t.confirmed, t.totalSlots, '#10b981')}
                           {statBox('Rescheduled', t.rescheduled, t.totalSlots, '#f59e0b')}
                           {statBox('Cancelled', t.cancelled, t.totalSlots, '#ef4444')}
@@ -1582,72 +1945,22 @@ function TherapistUtilizationSection({ startDate, endDate, role }: { startDate: 
 
           {viewMode === 'department' && (
             <div>
-              {byDept.map(([dept, group]) => (
-                <div key={dept} className="border-b border-gray-100 last:border-b-0">
-                  <div className="px-5 py-3">
-                    <div className="flex items-center gap-3 mb-2">
-                      <span className="text-sm font-bold text-gray-900">{DEPT_LABELS[dept] || dept}</span>
-                      <span className="text-[11px] text-gray-400">{group.therapists.length} therapist{group.therapists.length !== 1 ? 's' : ''} · {group.totals.totalSlots} slots</span>
-                      <span className="ml-auto text-base font-extrabold" style={{ color: '#10b981' }}>
-                        {pct(group.totals.confirmed, group.totals.totalSlots)}%
-                      </span>
-                    </div>
-                    <UtilBar {...group.totals} total={group.totals.totalSlots} />
-                    <div className="flex flex-wrap gap-2 mt-2">
-                      {statBox('Confirmed', group.totals.confirmed, group.totals.totalSlots, '#10b981')}
-                      {statBox('Rescheduled', group.totals.rescheduled, group.totals.totalSlots, '#f59e0b')}
-                      {statBox('Cancelled', group.totals.cancelled, group.totals.totalSlots, '#ef4444')}
-                      {statBox('Pending', group.totals.pending, group.totals.totalSlots, '#6366f1')}
-                      {statBox('Blank', group.totals.blank, group.totals.totalSlots, '#9ca3af')}
-                    </div>
-                  </div>
-                </div>
+              {byDept.map(([dept, group]) => groupRow(
+                dept,
+                DEPT_LABELS[dept] || dept,
+                `${group.therapists.length} therapist${group.therapists.length !== 1 ? 's' : ''} · ${group.totals.totalSlots} slots`,
+                group.totals,
               ))}
             </div>
           )}
 
           {viewMode === 'branch' && (
             <div>
-              {byBranch.map(([br, totals]) => (
-                <div key={br} className="border-b border-gray-100 last:border-b-0">
-                  <div className="px-5 py-3">
-                    <div className="flex items-center gap-3 mb-2">
-                      <span className="text-sm font-bold text-gray-900">{BRANCH_LABELS[br] || br}</span>
-                      <span className="text-[11px] text-gray-400">{totals.totalSlots} slots</span>
-                      <span className="ml-auto text-base font-extrabold" style={{ color: '#10b981' }}>
-                        {pct(totals.confirmed, totals.totalSlots)}%
-                      </span>
-                    </div>
-                    <UtilBar {...totals} total={totals.totalSlots} />
-                    <div className="flex flex-wrap gap-2 mt-2">
-                      {statBox('Confirmed', totals.confirmed, totals.totalSlots, '#10b981')}
-                      {statBox('Rescheduled', totals.rescheduled, totals.totalSlots, '#f59e0b')}
-                      {statBox('Cancelled', totals.cancelled, totals.totalSlots, '#ef4444')}
-                      {statBox('Pending', totals.pending, totals.totalSlots, '#6366f1')}
-                      {statBox('Blank', totals.blank, totals.totalSlots, '#9ca3af')}
-                    </div>
-                  </div>
-                </div>
-              ))}
+              {byBranch.map(([br, totals]) => groupRow(br, BRANCH_LABELS[br] || br, `${totals.totalSlots} slots`, totals))}
             </div>
           )}
-
-          <div className="px-5 py-2 border-t border-gray-100 bg-gray-50 flex flex-wrap gap-4">
-            {[
-              { label: 'Confirmed', color: '#10b981' },
-              { label: 'Rescheduled', color: '#f59e0b' },
-              { label: 'Cancelled', color: '#ef4444' },
-              { label: 'Pending', color: '#6366f1' },
-              { label: 'Blank', color: '#e5e7eb' },
-            ].map(l => (
-              <div key={l.label} className="flex items-center gap-1.5">
-                <div className="w-3 h-3 rounded-sm" style={{ background: l.color }} />
-                <span className="text-[10px] text-gray-500 font-medium">{l.label}</span>
-              </div>
-            ))}
-          </div>
         </div>
       )}
-    </div>
+    </DashCard>
   )
 }
