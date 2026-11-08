@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { fetchExternalStaffForSync, fetchHrStaffForSync } from '@/lib/external-staff'
 import { employeeBranchesOf } from '@/lib/branch-roles'
 import { recordStaffSync } from '@/lib/staff-directory'
+import { findPayrollClash, loadPayrollPeople, type PayrollPerson } from '@/lib/payroll/staff-unique'
 
 const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 const READ_ROLES = [...WRITE_ROLES, 'VIEWER']
@@ -278,6 +279,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   }
 
+  // A government number or email already on another person's record is refused.
+  const clash = findPayrollClash(
+    { name: `${firstName} ${lastName}`, kind: 'employee', email, sssNumber, philhealthNumber, pagibigNumber, tinNumber },
+    await loadPayrollPeople(prisma),
+  )
+  if (clash) return NextResponse.json({ error: clash.message, field: clash.field }, { status: 409 })
+
   const employee = await prisma.employee.create({
     data: {
       firstName,
@@ -335,6 +343,16 @@ function buildUpdateData(data: Record<string, unknown>): Record<string, unknown>
   return updateData
 }
 
+/** The edited employee as it would be saved, checked against everyone else (new/changed values only). */
+function employeeEditClash(people: PayrollPerson[], id: string, updateData: Record<string, unknown>) {
+  const before = people.find(p => p.kind === 'employee' && p.id === id)
+  if (!before) return null
+  const first = String(updateData.firstName ?? before.firstName ?? '')
+  const last = String(updateData.lastName ?? before.lastName ?? '')
+  const after: PayrollPerson = { ...before, ...(updateData as Partial<PayrollPerson>), name: `${first} ${last}`.trim() || before.name }
+  return findPayrollClash(after, people, before)
+}
+
 export async function PUT(req: Request) {
   const session = await auth()
   if (!session?.user || !WRITE_ROLES.includes(session.user.role as string)) {
@@ -345,6 +363,12 @@ export async function PUT(req: Request) {
 
   // Support bulk update: { bulk: [{ id, ...fields }, ...] }
   if (body.bulk && Array.isArray(body.bulk)) {
+    // Check every row before changing any, so a refused number leaves nothing half-saved.
+    const people = await loadPayrollPeople(prisma)
+    for (const item of body.bulk) {
+      const clash = item?.id ? employeeEditClash(people, item.id, buildUpdateData(item)) : null
+      if (clash) return NextResponse.json({ error: clash.message, field: clash.field }, { status: 409 })
+    }
     const results = []
     for (const item of body.bulk) {
       const { id, ...data } = item
@@ -364,6 +388,8 @@ export async function PUT(req: Request) {
   }
 
   const updateData = buildUpdateData(data)
+  const clash = employeeEditClash(await loadPayrollPeople(prisma), id, updateData)
+  if (clash) return NextResponse.json({ error: clash.message, field: clash.field }, { status: 409 })
   const employee = await prisma.employee.update({
     where: { id },
     data: updateData,

@@ -798,15 +798,20 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
   }
 
   const saveEmployee = async () => {
+    setError('')
     try {
       const method = editingId ? 'PUT' : 'POST'
       const payload = editingId ? { id: editingId, ...formData } : formData
       const r = await fetch('/api/payroll/employees', { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-      if (!r.ok) throw new Error('Save failed')
+      if (!r.ok) {
+        // A refused duplicate number/email comes back with the reason — show it as-is.
+        const j = await r.json().catch(() => ({}))
+        throw new Error(j.error || 'Failed to save employee')
+      }
       setShowForm(false)
       setEditingId('')
       fetchEmployees()
-    } catch { setError('Failed to save employee') }
+    } catch (e) { setError(e instanceof Error ? e.message : 'Failed to save employee') }
   }
 
   const openEditForm = (emp: Employee) => {
@@ -822,6 +827,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
       ignoreTimekeeping: emp.ignoreTimekeeping ?? false,
       dateHired: emp.dateHired ? String(emp.dateHired).slice(0, 10) : '',
     })
+    setError('')
     setShowForm(true)
   }
 
@@ -2359,7 +2365,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                   style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
                   {syncing ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} Sync from Hub
                 </button>
-                <button onClick={() => { setEditingId(''); setFormData({ firstName: '', lastName: '', email: '', department: 'ADMINISTRATION', branch: 'SBEA', jobTitle: '', rateType: 'DAILY', dailyRate: 0, monthlyRate: 0, scheduleIn: '08:00', scheduleOut: '17:00', daySchedules: null, restDay: 'SUNDAY' }); setShowForm(true) }}
+                <button onClick={() => { setEditingId(''); setFormData({ firstName: '', lastName: '', email: '', department: 'ADMINISTRATION', branch: 'SBEA', jobTitle: '', rateType: 'DAILY', dailyRate: 0, monthlyRate: 0, scheduleIn: '08:00', scheduleOut: '17:00', daySchedules: null, restDay: 'SUNDAY' }); setError(''); setShowForm(true) }}
                   className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-medium text-white transition-all hover:opacity-90 active:scale-[0.97]"
                   style={{ background: 'var(--teal)' }}>
                   <Plus size={13} /> Add Employee
@@ -2737,6 +2743,11 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                       className="w-full px-3 py-2.5 rounded-xl border transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200 hover:border-gray-400" style={{ borderColor: 'var(--light-gray)' }} />
                   </div>
                 </div>
+                {error && (
+                  <div className="flex items-start gap-2 mt-4 p-3 rounded-lg text-xs" style={{ background: '#fef2f2', color: '#dc2626' }}>
+                    <AlertCircle size={14} className="shrink-0 mt-0.5" /> <span>{error}</span>
+                  </div>
+                )}
                 <div className="flex justify-end gap-2 mt-5">
                   <button onClick={() => { setShowForm(false); setEditingId('') }}
                     className="px-4 py-2 rounded-lg text-xs font-medium border" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>Cancel</button>
