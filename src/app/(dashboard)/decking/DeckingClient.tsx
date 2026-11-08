@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useRef, useCallback } from 'react'
-import { ChevronDown, Plus, X, Settings2, Ban, Search, Users, CalendarCheck, CalendarPlus, Percent, BarChart3, Info, Lock, Loader2, Clock, Rows3, Rows4, ChevronsDownUp, ChevronsUpDown } from 'lucide-react'
+import { ChevronDown, Plus, X, Settings2, Ban, Search, Users, CalendarCheck, CalendarPlus, Percent, BarChart3, Info, Lock, Loader2, Clock, Rows3, Rows4, ChevronsDownUp, ChevronsUpDown, GraduationCap } from 'lucide-react'
 import { DashCard, KpiCard, Skeleton, EmptyState, DeptChip, CARD_STYLE } from '../patients/dashboard/ui'
 import {
   CONTROL, CONTROL_SM, CONTROL_STYLE, LABEL, BTN_PRIMARY, BTN_SECONDARY, BTN_SM, SUBTLE_BG, TEAL_HEX, DECK_CSS,
@@ -31,10 +31,10 @@ const DEFAULT_HOURS: Record<string, { startTime: string; endTime: string }> = {
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-interface StaffMember { id: string; firstName: string; lastName: string; department: string; branch: string; extraBranches?: string[]; employmentType?: string | null; workArrangement?: string | null; branchEmployment?: Record<string, { arrangement?: string | null } | null> }
+interface StaffMember { id: string; firstName: string; lastName: string; department: string; branch: string; extraBranches?: string[]; employmentType?: string | null; isInternshipSupervisor?: boolean | null; workArrangement?: string | null; branchEmployment?: Record<string, { arrangement?: string | null } | null> }
 interface Patient { id: string; firstName: string; lastName: string }
 interface TherapistConfig { id: string; staffId: string; workDays: string[]; startTime: string; endTime: string; useDefault: boolean; branch: string; department: string; deliveryMode?: string | null }
-interface DeckingSlot { id: string; staffId: string; patientId: string | null; patient: Patient | null; dayOfWeek: string; startTime: string; endTime: string; branch: string; department: string; notes: string | null; disabled: boolean; paymentType?: string; isClass?: boolean; deliveryMode?: string | null }
+interface DeckingSlot { id: string; staffId: string; patientId: string | null; patient: Patient | null; dayOfWeek: string; startTime: string; endTime: string; branch: string; department: string; notes: string | null; disabled: boolean; paymentType?: string; isClass?: boolean; deliveryMode?: string | null; supervisorId?: string | null; date?: string | null }
 
 // Cell colouring, the way front desk reads their spreadsheet: what needs
 // paperwork chased before the session stands out from what doesn't.
@@ -169,6 +169,11 @@ type AllClinicHours = Record<string, ClinicSchedule>
 // would reappear there as a standalone clinician.
 function isIntern(s: StaffMember): boolean {
   return s.employmentType === 'intern'
+}
+
+/** Carries the "Clinical Supervisor" badge on their HR staff profile. */
+function isSupervisor(s: StaffMember): boolean {
+  return s.isInternshipSupervisor === true
 }
 
 function formatTime(t: string): string {
@@ -407,7 +412,7 @@ function CustomSlotModal({ staff, activeBranch, workDays, onClose, onSave }: {
 }
 
 // ─── Therapist Row ─────────────────────────────────────────────────────────────
-function TherapistRow({ staff, activeBranch, sectionMode, config, slots, defaultHours, onSaveConfig, onClearServiceConfig, onSaveSlot, onDeleteSlot, onOpenLoa, density = 'comfortable', collapsed = false, onToggleCollapse }: {
+function TherapistRow({ staff, activeBranch, sectionMode, config, slots, defaultHours, onSaveConfig, onClearServiceConfig, onSaveSlot, onDeleteSlot, onOpenLoa, density = 'comfortable', collapsed = false, onToggleCollapse, datedSlots = [], onAddDated }: {
   staff: StaffMember
   /** Row height / padding of the grid. Display only. */
   density?: Density
@@ -427,6 +432,9 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
   onDeleteSlot: (id: string) => Promise<void>
   /** Raise / open the Letter of Authorization for an HMO slot. */
   onOpenLoa?: (slot: DeckingSlot) => void
+  /** This consultant's one-off dates — hours given for a named day only. */
+  datedSlots?: DeckingSlot[]
+  onAddDated?: (data: { staffId: string; patientId: string | null; dayOfWeek: string; startTime: string; endTime: string; branch: string; department: string; notes: string | null; date?: string | null }) => Promise<void>
 }) {
   const [configOpen, setConfigOpen] = useState(!config)
   // Optimistic: the grid is scanned constantly, and a colour that lags a click
@@ -440,6 +448,12 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
   // Which cell currently has the patient-search input open (for adding a new patient)
   const [addingCell, setAddingCell] = useState<{ dayOfWeek: string; startTime: string } | null>(null)
   const [showCustomModal, setShowCustomModal] = useState(false)
+  const [showDatedModal, setShowDatedModal] = useState(false)
+  // A one-off needs a real date and an hour; the weekday is derived from the
+  // date rather than asked for, because the two must agree — the grid is drawn
+  // by weekday and a mismatch would render the slot on the wrong column.
+  const [datedForm, setDatedForm] = useState({ date: '', startTime: '09:00' })
+  const [datedSaving, setDatedSaving] = useState(false)
   // Set when a patient is picked for a dual-tagged consultant: the booking waits
   // here until the kind of session is chosen. Asking after the patient — rather
   // than before — keeps the common path (search, pick, done) unchanged for the
@@ -1095,6 +1109,123 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
             </div>
           )}
 
+          {/* ── One-off dates ──────────────────────────────────────────────
+              Some consultants — medical doctors mostly, and psychology — give
+              the clinic named days rather than a standing week. Those hours
+              cannot live in the grid above: a slot drawn in a weekday column
+              means "every Tuesday", and a one-off shown there would claim that
+              hour for ever. They are listed here instead, each with its date. */}
+          {(datedSlots.length > 0 || onAddDated) && (
+            <div className="px-4 py-2.5" style={{ borderTop: '1px solid var(--light-gray)' }}>
+              <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                <CalendarPlus size={13} style={{ color: '#BE185D' }} />
+                <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#BE185D' }}>
+                  One-off dates
+                  {datedSlots.length > 0 && <span className="tabular-nums font-normal"> · {datedSlots.length}</span>}
+                </p>
+                <button type="button" onClick={() => setShowDatedModal(true)}
+                  className="text-[11px] font-semibold rounded-lg px-2 py-0.5"
+                  style={{ border: '1px dashed #F9A8D4', color: '#BE185D', background: '#fff' }}>
+                  + Add a date
+                </button>
+              </div>
+              {datedSlots.length === 0 ? (
+                <p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+                  None. Hours added here apply to that date only and never repeat.
+                </p>
+              ) : (
+                <div className="flex flex-wrap gap-1.5">
+                  {datedSlots.map(sl => (
+                    <span key={sl.id}
+                      className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px]"
+                      style={{ background: '#FDF2F8', border: '1px solid #F9A8D4', color: '#9D174D' }}>
+                      <strong>{new Date(String(sl.date)).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', timeZone: 'UTC' })}</strong>
+                      {formatTime(sl.startTime)}
+                      {sl.patient ? ` · ${sl.patient.lastName}, ${sl.patient.firstName[0]}.` : ' · open'}
+                      <button type="button" onClick={() => onDeleteSlot(sl.id)} title="Remove this date">
+                        <X size={11} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {showDatedModal && (
+            <div onClick={() => setShowDatedModal(false)}
+              style={{ position: 'fixed', inset: 0, zIndex: 110, background: 'rgba(15,23,42,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+              <div onClick={e => e.stopPropagation()} className="rounded-2xl"
+                style={{ background: '#fff', width: '100%', maxWidth: 380, boxShadow: '0 20px 60px rgba(15,23,42,0.25)' }}>
+                <div className="px-5 py-3.5" style={{ borderBottom: '1px solid var(--light-gray)' }}>
+                  <p className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>
+                    One-off date &mdash; {staff.lastName}, {staff.firstName}
+                  </p>
+                  <p className="text-[11px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+                    This hour applies to the chosen date only. It never repeats, and it does not
+                    appear on the weekly grid.
+                  </p>
+                </div>
+                <div className="px-5 py-4 flex flex-col gap-3">
+                  <label className="text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>
+                    Date
+                    <input type="date" value={datedForm.date}
+                      onChange={e => setDatedForm(f => ({ ...f, date: e.target.value }))}
+                      className="mt-1 w-full rounded-lg px-2.5 py-1.5 text-sm"
+                      style={{ border: '1px solid var(--light-gray)' }} />
+                  </label>
+                  <label className="text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>
+                    Start time
+                    <select value={datedForm.startTime}
+                      onChange={e => setDatedForm(f => ({ ...f, startTime: e.target.value }))}
+                      className="mt-1 w-full rounded-lg px-2.5 py-1.5 text-sm"
+                      style={{ border: '1px solid var(--light-gray)' }}>
+                      {generateHourlySlots('07:00', '21:00').map(t => (
+                        <option key={t} value={t}>{formatTime(t)}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <div className="flex gap-2 pt-1">
+                    <button type="button" onClick={() => setShowDatedModal(false)}
+                      className="flex-1 rounded-lg px-3 py-2 text-xs font-semibold"
+                      style={{ border: '1px solid var(--light-gray)', color: 'var(--mid-gray)' }}>
+                      Cancel
+                    </button>
+                    <button type="button"
+                      disabled={!datedForm.date || datedSaving || !onAddDated}
+                      onClick={async () => {
+                        if (!onAddDated || !datedForm.date) return
+                        setDatedSaving(true)
+                        try {
+                          // Weekday derived from the date, never typed: the two
+                          // have to agree or the slot draws on the wrong column.
+                          const d = new Date(`${datedForm.date}T00:00:00Z`)
+                          // DAY_KEYS is Sunday-first, exactly like getUTCDay(),
+                          // so this maps straight across. A Monday-first shift
+                          // here would file every one-off on the wrong weekday
+                          // and draw it in the wrong column.
+                          const dow = DAYS[d.getUTCDay()]
+                          const endHour = String(parseInt(datedForm.startTime.slice(0, 2), 10) + 1).padStart(2, '0')
+                          await onAddDated({
+                            staffId: staff.id, patientId: null,
+                            dayOfWeek: dow, startTime: datedForm.startTime, endTime: `${endHour}:00`,
+                            branch: activeBranch, department: staff.department, notes: null,
+                            date: datedForm.date,
+                          })
+                          setShowDatedModal(false)
+                          setDatedForm({ date: '', startTime: '09:00' })
+                        } finally { setDatedSaving(false) }
+                      }}
+                      className="flex-1 rounded-lg px-3 py-2 text-xs font-semibold"
+                      style={{ background: '#BE185D', color: '#fff', opacity: !datedForm.date || datedSaving ? 0.55 : 1 }}>
+                      {datedSaving ? 'Adding…' : 'Add this date'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Custom slot button */}
           <div className="px-4 py-2.5" style={{ borderTop: '1px solid var(--light-gray)', background: SUBTLE_BG }}>
             <button type="button" onClick={() => setShowCustomModal(true)}
@@ -1300,7 +1431,7 @@ export default function DeckingClient({ role }: { role: string }) {
     try {
       const [cfgs, slts] = await Promise.all([
         fetch(`/api/decking/therapists?branch=${branch}`).then(r => { if (!r.ok) throw new Error(String(r.status)); return r.json() }),
-        fetch(`/api/decking/slots?branch=${branch}`).then(r => { if (!r.ok) throw new Error(String(r.status)); return r.json() }),
+        fetch(`/api/decking/slots?branch=${branch}&includeDated=1`).then(r => { if (!r.ok) throw new Error(String(r.status)); return r.json() }),
       ])
       if (req !== branchReq.current) return
       setConfigs(Array.isArray(cfgs) ? cfgs : [])
@@ -1368,11 +1499,26 @@ export default function DeckingClient({ role }: { role: string }) {
   for (const slot of slots.filter(s =>
     s.department === activeDept
     && !s.isClass
+    // One-offs are listed under the grid, not drawn in it: a dated slot in a
+    // weekday column reads as "every Tuesday", which is the one thing it is not.
+    && !s.date
     && (!sectionIsService || slotInSection(s.deliveryMode, staffArrangement.get(s.staffId), activeSection))
   )) {
     const arr = slotsByStaff.get(slot.staffId) ?? []
     arr.push(slot)
     slotsByStaff.set(slot.staffId, arr)
+  }
+
+  // The one-offs, kept apart from the weekly pattern.
+  const datedByStaff = new Map<string, DeckingSlot[]>()
+  for (const sl of slots) {
+    if (!sl.date || sl.isClass || sl.department !== activeDept) continue
+    const arr = datedByStaff.get(sl.staffId) ?? []
+    arr.push(sl)
+    datedByStaff.set(sl.staffId, arr)
+  }
+  for (const arr of datedByStaff.values()) {
+    arr.sort((a, b) => String(a.date).localeCompare(String(b.date)) || a.startTime.localeCompare(b.startTime))
   }
 
   // Same roster rule as the board below, or the department chip for a visiting
@@ -1386,6 +1532,19 @@ export default function DeckingClient({ role }: { role: string }) {
   // day table, the week total, the department count and both capacity tables,
   // while the payment split beside them (counted straight off the slots) showed
   // 198 Cash and 33 GL. The same screen contradicted itself.
+  // Students on placement, and the people allowed to sign for them.
+  //
+  // Interns are kept off the main board deliberately — a config there would
+  // make them a standalone clinician in Clinic Schedule and on the public
+  // booking page. They get their own section instead, where the hours are
+  // theirs but every one of them names a supervisor.
+  const internStaff = staff.filter(st =>
+    isIntern(st) && st.department === activeDept
+    && (st.branch === activeBranch || (st.extraBranches ?? []).includes(activeBranch)))
+  const supervisorOptions = staff.filter(st =>
+    isSupervisor(st) && st.department === activeDept
+    && (st.branch === activeBranch || (st.extraBranches ?? []).includes(activeBranch)))
+
   const perDayDepts = DEPARTMENTS.filter(d =>
     staff.some(s => !isIntern(s) && s.department === d && onThisRoster(s, activeBranch, 'all')))
   const defaultHours = clinicHoursData[activeBranch]
@@ -1539,7 +1698,36 @@ export default function DeckingClient({ role }: { role: string }) {
     return false
   }
 
-  async function handleSaveSlot(data: { staffId: string; patientId: string | null; dayOfWeek: string; startTime: string; endTime: string; branch: string; department: string; notes: string | null; disabled?: boolean; isClass?: boolean; deliveryMode?: string | null }) {
+  // Which supervisor each intern's hours are under, while the page is open.
+  // Seeded from the hours themselves on first render, so this only holds what
+  // somebody has just changed.
+  const [internSupervisorState, setInternSupervisorState] = useState<Record<string, string>>({})
+  const internSupervisor = internSupervisorState
+
+  /**
+   * Point an intern's hours at a supervisor.
+   *
+   * Applied to the hours they ALREADY hold, not just to the next one booked.
+   * Changing the picker and finding last week's slots still signed to the
+   * previous supervisor would be the kind of quiet half-change that makes a
+   * board untrustworthy.
+   */
+  async function setInternSupervisor(staffId: string, supervisorId: string) {
+    setInternSupervisorState(prev => ({ ...prev, [staffId]: supervisorId }))
+    const mine = (slotsByStaff.get(staffId) ?? []).filter(sl => (sl.supervisorId ?? '') !== supervisorId)
+    for (const sl of mine) {
+      const r = await fetch('/api/decking/slots', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: sl.id, supervisorId: supervisorId || null }),
+      })
+      if (!r.ok) continue
+      const updated = await r.json().catch(() => null)
+      if (updated?.id) setSlots(prev => prev.map(x => (x.id === updated.id ? { ...x, supervisorId: updated.supervisorId } : x)))
+    }
+  }
+
+  async function handleSaveSlot(data: { staffId: string; patientId: string | null; dayOfWeek: string; startTime: string; endTime: string; branch: string; department: string; notes: string | null; disabled?: boolean; isClass?: boolean; deliveryMode?: string | null; supervisorId?: string | null; date?: string | null }) {
     const res = await fetch('/api/decking/slots', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1943,9 +2131,88 @@ export default function DeckingClient({ role }: { role: string }) {
                       density={density}
                       collapsed={collapsed.has(s.id)}
                       onToggleCollapse={() => toggleCollapsed(s.id)}
+                      datedSlots={datedByStaff.get(s.id) ?? []}
+                      onAddDated={handleSaveSlot}
                     />
                   ))}
                 </div>
+
+                {/* ── Interns ──────────────────────────────────────────────
+                    Their own hours, each under a named supervisor. Separate
+                    from the clinicians above because they are not clinicians:
+                    these hours are supervised teaching time and are excluded
+                    from public availability, utilisation and capacity. */}
+                {internStaff.length > 0 && (
+                  <div className="mt-5">
+                    <div className="flex flex-wrap items-center gap-2 mb-2">
+                      <GraduationCap size={14} style={{ color: '#4338CA' }} />
+                      <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: '#4338CA' }}>
+                        Interns &mdash; {activeDept}
+                      </p>
+                      <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+                        {internStaff.length} on placement
+                      </span>
+                    </div>
+                    {supervisorOptions.length === 0 && (
+                      <p className="text-[11px] mb-2 rounded-lg px-3 py-2"
+                        style={{ background: '#FFFBEB', border: '1px solid #FDE68A', color: '#92400E' }}>
+                        No one in {activeDept} at this branch carries the Clinical Supervisor badge, so there is
+                        nobody to assign. Tick it on their HR staff profile and it appears here.
+                      </p>
+                    )}
+                    <div className={`flex flex-col ${density === 'compact' ? 'gap-2' : 'gap-3'}`}>
+                      {internStaff.map(s => {
+                        // Whatever their existing hours already say, so the
+                        // picker opens on the truth rather than blank.
+                        const mine = slotsByStaff.get(s.id) ?? []
+                        const current = internSupervisor[s.id]
+                          ?? mine.find(sl => sl.supervisorId)?.supervisorId
+                          ?? ''
+                        return (
+                          <div key={s.id} className="rounded-xl" style={{ border: '1px solid #C7CCF7', background: '#F8F9FF' }}>
+                            <div className="flex flex-wrap items-center gap-2 px-3 pt-2.5">
+                              <span className="text-[11px] font-semibold" style={{ color: '#4338CA' }}>Supervised by</span>
+                              <select
+                                value={current}
+                                onChange={e => setInternSupervisor(s.id, e.target.value)}
+                                className="text-xs rounded-lg px-2 py-1"
+                                style={{ border: '1px solid #C7CCF7', background: '#fff', color: 'var(--charcoal)' }}
+                              >
+                                <option value="">Choose a supervisor…</option>
+                                {supervisorOptions.map(sup => (
+                                  <option key={sup.id} value={sup.id}>{sup.lastName}, {sup.firstName}</option>
+                                ))}
+                              </select>
+                              {!current && (
+                                <span className="text-[11px]" style={{ color: '#B45309' }}>
+                                  unassigned &mdash; these hours will not show on anyone&rsquo;s schedule
+                                </span>
+                              )}
+                            </div>
+                            <TherapistRow
+                              staff={s}
+                              activeBranch={activeBranch}
+                              sectionMode={sectionMode}
+                              config={configMap.get(s.id)}
+                              slots={mine}
+                              defaultHours={resolvedDefaultHours}
+                              onSaveConfig={handleSaveConfig}
+                              onClearServiceConfig={handleClearServiceConfig}
+                              // Every hour booked here carries the supervisor,
+                              // which is what puts it on their Clinic Schedule.
+                              onSaveSlot={(data) => handleSaveSlot({ ...data, supervisorId: current || null })}
+                              onDeleteSlot={handleDeleteSlot}
+                              onOpenLoa={openLoaForSlot}
+                              density={density}
+                              collapsed={collapsed.has(s.id)}
+                              onToggleCollapse={() => toggleCollapsed(s.id)}
+                            />
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
               </>
             )}
             </div>

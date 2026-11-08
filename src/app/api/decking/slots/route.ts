@@ -14,6 +14,7 @@ export async function GET(req: NextRequest) {
   const branch    = searchParams.get('branch')
   const dayOfWeek = searchParams.get('dayOfWeek')
   const supervised = searchParams.get('includeSupervised') === '1'
+  const includeDated = searchParams.get('includeDated') === '1'
 
   const slots = await prisma.deckingSlot.findMany({
     where: {
@@ -27,9 +28,11 @@ export async function GET(req: NextRequest) {
         : {}),
       ...(branch    ? { branch }    : {}),
       ...(dayOfWeek ? { dayOfWeek } : {}),
-      // The weekly board draws recurring slots only. A dated one-off would
-      // appear in its weekday column every week, for ever.
-      date: null,
+      // The weekly board draws recurring slots only: a dated one-off would
+      // appear in its weekday column every week, for ever. includeDated lifts
+      // that for the board itself, which lists the one-offs separately — and
+      // has to, or front desk would create a dated slot and watch it vanish.
+      ...(includeDated ? {} : { date: null }),
     },
     include: {
       patient: { select: { id: true, firstName: true, lastName: true } },
@@ -46,16 +49,30 @@ export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { staffId, patientId, dayOfWeek, startTime, endTime, branch, department, notes, disabled, paymentType, isClass , deliveryMode } = await req.json()
+  const { staffId, patientId, dayOfWeek, startTime, endTime, branch, department, notes, disabled, paymentType, isClass , deliveryMode, supervisorId, date } = await req.json()
   if (!staffId || !dayOfWeek || !startTime || !endTime)
     return NextResponse.json({ error: 'staffId, dayOfWeek, startTime, endTime are required' }, { status: 400 })
 
   const isDisabled = disabled === true
 
+  // A one-off on a named date, for the consultants who give the clinic
+  // specific days rather than a standing weekly pattern — medical doctors
+  // mostly, and psychology. Stored as a real date so it cannot be mistaken for
+  // "every Thursday"; every weekly view filters these out.
+  //
+  // Parsed at UTC midnight to match how the column is read everywhere else; an
+  // unparseable value is treated as no date rather than as today, because
+  // silently making a one-off recurring is the worse failure.
+  const parsedDate = (() => {
+    if (!date) return null
+    const d = new Date(`${String(date).slice(0, 10)}T00:00:00Z`)
+    return Number.isNaN(d.getTime()) ? null : d
+  })()
+
   if (isDisabled) {
     // Only one disabled marker per staff/day/time cell
     const alreadyDisabled = await prisma.deckingSlot.findFirst({
-      where: { staffId, dayOfWeek, startTime, disabled: true, date: null },
+      where: { staffId, dayOfWeek, startTime, disabled: true, date: parsedDate },
     })
     if (alreadyDisabled) {
       return NextResponse.json({ error: 'Slot is already disabled' }, { status: 400 })
@@ -70,7 +87,10 @@ export async function POST(req: NextRequest) {
     // cap — exempting the whole department also exempted those.
     if (!isClass) {
       const existing = await prisma.deckingSlot.count({
-        where: { staffId, dayOfWeek, startTime, disabled: false, isClass: false },
+        // Scoped to the same date (or to the weekly pattern when there is
+        // none): a one-off on the 12th must not be blocked by the three
+        // patients who hold that hour every week.
+        where: { staffId, dayOfWeek, startTime, disabled: false, isClass: false, date: parsedDate },
       })
       if (existing >= 3)
         return NextResponse.json({ error: 'Maximum 3 patients per time slot' }, { status: 400 })
@@ -87,6 +107,10 @@ export async function POST(req: NextRequest) {
     data: {
       staffId, dayOfWeek, startTime, endTime, branch, department,
       patientId: isDisabled ? null : (patientId || null),
+      date: parsedDate,
+      // Who supervises, when this hour belongs to an intern. A reference, not
+      // a booking — the supervisor's own hour stays sellable.
+      supervisorId: supervisorId || null,
       notes: notes || null,
       // Whitelisted rather than passed through: this drives the board's colour
       // coding, and an unrecognised value would render as an uncoloured cell
@@ -112,8 +136,19 @@ export async function PATCH(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { id, paymentType, staffId, deliveryMode } = await req.json()
+  const { id, paymentType, staffId, deliveryMode, supervisorId } = await req.json()
   if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
+
+  // Changing who supervises an intern's hour. Sent on its own so the picker in
+  // the intern row can be changed without touching the booking.
+  if (supervisorId !== undefined) {
+    const updated = await prisma.deckingSlot.update({
+      where: { id },
+      data: { supervisorId: supervisorId || null },
+      include: { patient: { select: { id: true, firstName: true, lastName: true } } },
+    })
+    return NextResponse.json(updated)
+  }
 
   // Reassigning the consultant a slot belongs to. Needed because every SPED
   // class child added before the board tracked teachers per group landed on

@@ -30,9 +30,13 @@ export async function GET() {
       department: true,
       branch: true,
       extraBranches: true,
-      // Interns are filtered off the board client-side; the flag has to travel
-      // for that to still work.
+      // Interns are filtered off the main board client-side and listed in
+      // their own section; the flag has to travel for both to work.
       employmentType: true,
+      // The "Clinical Supervisor" badge from the HR staff profile. The intern
+      // section's supervisor picker offers these and nobody else — a student
+      // must not be signed off by whoever happens to share their department.
+      isInternshipSupervisor: true,
       // Drives which service section a consultant appears under. The per-branch
       // value is authoritative and differs from the staff-level one for most of
       // the roster — see arrangementFor().
