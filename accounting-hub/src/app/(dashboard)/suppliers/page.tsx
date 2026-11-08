@@ -7,6 +7,7 @@ import { userBranchScope } from '@/lib/branch-scope'
 import { useFocusTarget } from '@/lib/use-focus-target'
 import { downloadPdf, downloadXlsx, type ExportFormat } from '@/lib/export'
 import type { DirectoryRow } from '@/lib/supplier-directory'
+import { HR_PAGE_CLASS, HR_PAGE_STYLE, HrShimmerStyle, StatCard, hrBtn } from '@/components/ui/hr-look'
 
 // Suppliers — its own section under Expenses (Hannah, 2026-11-02). One list of
 // everyone we buy from: the Expenses suppliers of every branch, the Inventory &
@@ -91,6 +92,8 @@ function SuppliersInner() {
   const [validity, setValidity] = useState<'all' | 'Valid' | 'Invalid'>('all')
   const [origin, setOrigin] = useState<'all' | 'local' | 'foreign'>('all')
   const [showInactive, setShowInactive] = useState(false)
+  // Quick filter from the "No contact details" card.
+  const [noContact, setNoContact] = useState(false)
   const [sortKey, setSortKey] = useState<ColKey>('name')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [colFilter, setColFilter] = useState<Partial<Record<ColKey, string>>>({})
@@ -134,6 +137,7 @@ function SuppliersInner() {
       if (branchLabel && r.branches.length && !r.branches.includes(branchLabel)) return false
       if (validity !== 'all' && r.validity !== validity) return false
       if (origin !== 'all' && r.isForeign !== (origin === 'foreign')) return false
+      if (noContact && (r.contactNumber || r.email || r.contactMethod)) return false
       if (q && !COLS.some(c => cellText(r, c.key).toLowerCase().includes(q)) && !r.names.some(n => n.toLowerCase().includes(q)) && !r.notes.toLowerCase().includes(q)) return false
       for (const [k, f] of Object.entries(colFilter)) {
         if (f?.trim() && !cellText(r, k as ColKey).toLowerCase().includes(f.trim().toLowerCase())) return false
@@ -141,7 +145,14 @@ function SuppliersInner() {
       return true
     })
     return list.sort((a, b) => cellText(a, sortKey).toLowerCase().localeCompare(cellText(b, sortKey).toLowerCase()) * (sortDir === 'asc' ? 1 : -1))
-  }, [rows, showInactive, branchLabel, validity, origin, q, colFilter, sortKey, sortDir])
+  }, [rows, showInactive, branchLabel, validity, origin, noContact, q, colFilter, sortKey, sortDir])
+  // Card counts: this branch's list before the search and the other filters.
+  const inBranch = useMemo(() => rows.filter(r => (showInactive || r.isActive) && (!branchLabel || !r.branches.length || r.branches.includes(branchLabel))), [rows, showInactive, branchLabel])
+  const nInvalid = inBranch.filter(r => r.validity === 'Invalid').length
+  const nForeign = inBranch.filter(r => r.isForeign).length
+  const nNoContact = inBranch.filter(r => !r.contactNumber && !r.email && !r.contactMethod).length
+  const anyFilter = !!(q || validity !== 'all' || origin !== 'all' || noContact || Object.values(colFilter).some(v => v?.trim()))
+  const clearFilters = () => { setSearch(''); setValidity('all'); setOrigin('all'); setNoContact(false); setColFilter({}) }
 
   const toggleSort = (k: ColKey) => {
     if (sortKey === k) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'))
@@ -261,156 +272,230 @@ function SuppliersInner() {
   const lbl = 'block text-xs font-semibold mb-1'
   const branchChoices = scope.enum ? BRANCHES.filter(b => b.value === scope.enum) : [{ value: 'ALL', label: 'All branches' }, ...BRANCHES]
 
+  const { ghost: ghostBtn, primary: primaryBtn, outline: outlineBtn } = hrBtn
+  const seg = (on: boolean) => (on ? { background: 'var(--teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' })
   return (
-    <div className={expanded ? 'fixed inset-0 z-50 overflow-auto p-6 space-y-4' : 'space-y-4'} style={expanded ? { background: 'var(--off-white)' } : undefined}>
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+    <div className={expanded ? 'fixed inset-0 z-50 overflow-auto p-4 lg:p-6 space-y-4' : HR_PAGE_CLASS} style={HR_PAGE_STYLE}>
+      <HrShimmerStyle />
+
+      {/* Header */}
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold leading-tight flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
             <Truck size={22} style={{ color: 'var(--teal)' }} /> Suppliers
           </h1>
-          <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+          <p className="mt-1 text-[13px] max-w-2xl" style={{ color: 'var(--mid-gray)' }}>
             Everyone we buy from — Expenses, Inventory &amp; Procurement and Asset Management use this one list. Click a supplier to see what we bought from them.
           </p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: 'var(--light-gray)' }}>
-            {branchChoices.map(b => (
-              <button key={b.value} onClick={() => setBranch(b.value)} className="px-4 py-2 text-xs font-semibold transition-colors"
-                style={branch === b.value ? { background: 'var(--teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' }}>
-                {b.label}
-              </button>
-            ))}
-          </div>
-          <button onClick={() => setExpanded(v => !v)} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Branch">
+          {branchChoices.map(b => (
+            <button key={b.value} onClick={() => setBranch(b.value)} aria-pressed={branch === b.value}
+              className="px-3.5 py-1.5 rounded-full border text-[13px] font-semibold whitespace-nowrap transition-colors"
+              style={branch === b.value
+                ? { background: 'var(--teal)', borderColor: 'var(--teal)', color: '#fff', fontFamily: 'var(--font-display)' }
+                : { background: '#fff', borderColor: 'var(--light-gray)', color: 'var(--mid-gray)', fontFamily: 'var(--font-display)' }}>
+              {b.label}
+            </button>
+          ))}
+          <span className="w-px h-6 mx-1" style={{ background: 'var(--light-gray)' }} />
+          <button onClick={() => setExpanded(v => !v)} className={ghostBtn} style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
             {expanded ? <><Minimize2 size={14} /> Collapse</> : <><Maximize2 size={14} /> Expand</>}
           </button>
         </div>
       </div>
 
-      <div className="flex items-end justify-between flex-wrap gap-3">
-        <div className="flex items-end gap-3 flex-wrap flex-1">
-          <div className="relative flex-1 min-w-[220px] max-w-md">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--mid-gray)' }} />
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name, contact, TIN, items…"
-              className="w-full pl-9 pr-8 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
-            {search && <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2"><X size={15} style={{ color: 'var(--mid-gray)' }} /></button>}
-          </div>
-          <select value={validity} onChange={e => setValidity(e.target.value as typeof validity)} className="px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }}>
-            <option value="all">Valid &amp; Invalid</option><option value="Valid">Valid only</option><option value="Invalid">Invalid only</option>
-          </select>
-          <select value={origin} onChange={e => setOrigin(e.target.value as typeof origin)} className="px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }}>
-            <option value="all">Local &amp; foreign</option><option value="local">Local only</option><option value="foreign">Foreign only</option>
-          </select>
-          <label className="flex items-center gap-1.5 text-xs font-semibold pb-2" style={{ color: 'var(--mid-gray)' }}>
-            <input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} /> Show inactive
-          </label>
-          <span className="text-xs pb-2" style={{ color: 'var(--mid-gray)' }}>{shown.length} supplier(s)</span>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <button onClick={downloadTemplate} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}><Download size={14} /> Template</button>
-          <button onClick={() => exportList('xlsx')} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-white" style={{ background: '#166534' }}><Download size={14} /> Excel</button>
-          <button onClick={() => exportList('pdf')} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-white" style={{ background: '#b91c1c' }}><Download size={14} /> PDF</button>
-          {canWrite && (
-            <button onClick={() => fileRef.current?.click()} disabled={importing} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}
-              title={branch === 'ALL' ? 'Adds/updates suppliers. Pick a branch first to also put them on that branch’s Expenses list.' : `Adds/updates suppliers and puts them on ${branchLabel}’s Expenses list`}>
-              {importing ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />} Import CSV/Excel
-            </button>
-          )}
-          <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) importFile(f); e.target.value = '' }} />
-          {canWrite && picked.size > 0 && (
-            <>
-              <button onClick={openMerge} disabled={picked.size < 2} title={picked.size < 2 ? 'Tick at least two suppliers' : 'One supplier written several ways — keep one name'}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: '#7c3aed' }}>
-                <Merge size={15} /> Merge {picked.size} into one
-              </button>
-              <button onClick={() => setPicked(new Set())} className="px-2 py-2 text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Clear ticks</button>
-            </>
-          )}
-          {canWrite && (
-            <button onClick={() => openEdit('new')} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}><Plus size={15} /> Add</button>
-          )}
-        </div>
+      {/* Cards (also quick filters) */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatCard loading={loading} label="Suppliers" value={inBranch.length.toLocaleString()}
+          sub={`${(inBranch.length - nInvalid).toLocaleString()} valid · ${branchLabel || 'all branches'}`}
+          accent={{ line: 'var(--teal)' }} active={validity === 'Valid'}
+          onClick={() => setValidity(v => (v === 'Valid' ? 'all' : 'Valid'))} title="Show only the valid suppliers" />
+        <StatCard loading={loading} label="Invalid" value={nInvalid.toLocaleString()} sub="Marked Invalid on expenses"
+          tone={nInvalid ? 'amber' : 'zero'} active={validity === 'Invalid'}
+          onClick={() => setValidity(v => (v === 'Invalid' ? 'all' : 'Invalid'))} title="Show only the invalid suppliers" />
+        <StatCard loading={loading} label="Foreign" value={nForeign.toLocaleString()} sub="Marked as foreign suppliers"
+          tone={nForeign ? 'blue' : 'zero'} active={origin === 'foreign'}
+          onClick={() => setOrigin(o => (o === 'foreign' ? 'all' : 'foreign'))} title="Show only the foreign suppliers" />
+        <StatCard loading={loading} label="No contact details" value={nNoContact.toLocaleString()} sub="No number, email or chat handle"
+          tone={nNoContact ? 'red' : 'zero'} active={noContact}
+          onClick={() => setNoContact(v => !v)} title="Show the suppliers we have no way to reach" />
       </div>
 
-      <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)', maxHeight: expanded ? 'calc(100vh - 170px)' : '68vh' }}>
+      {/* List card */}
+      <section className="rounded-lg border bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+        <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2 px-4 pt-3.5 pb-3">
+          <div className="min-w-0">
+            <h2 className="text-[15px] font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+              Supplier list <span className="ml-1 text-xs font-semibold" style={{ color: 'var(--mid-gray)', fontFamily: 'var(--font-body)' }}>
+                {loading ? '' : `${shown.length.toLocaleString()}${shown.length !== inBranch.length ? ` of ${inBranch.length.toLocaleString()}` : ''}`}
+              </span>
+            </h2>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+              {canWrite ? 'Tick suppliers that are one company written several ways, then merge them.' : 'Click a supplier to see what we bought from them.'}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {canWrite && picked.size > 0 && (
+              <>
+                <button onClick={openMerge} disabled={picked.size < 2} title={picked.size < 2 ? 'Tick at least two suppliers' : 'One supplier written several ways — keep one name'}
+                  className={primaryBtn} style={{ background: '#7c3aed' }}>
+                  <Merge size={15} /> Merge {picked.size} into one
+                </button>
+                <button onClick={() => setPicked(new Set())} className="px-2 h-9 text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Clear ticks</button>
+              </>
+            )}
+            {canWrite && (
+              <button onClick={() => openEdit('new')} className={primaryBtn} style={{ background: 'var(--teal)' }}><Plus size={15} /> Add supplier</button>
+            )}
+            {canWrite && (
+              <button onClick={() => fileRef.current?.click()} disabled={importing} className={outlineBtn} style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}
+                title={branch === 'ALL' ? 'Adds/updates suppliers. Pick a branch first to also put them on that branch’s Expenses list.' : `Adds/updates suppliers and puts them on ${branchLabel}’s Expenses list`}>
+                {importing ? <Loader2 size={14} className="animate-spin" /> : <Upload size={15} />} Import CSV/Excel
+              </button>
+            )}
+            <button onClick={downloadTemplate} className={outlineBtn} style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}><Download size={15} /> Template</button>
+            <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) importFile(f); e.target.value = '' }} />
+          </div>
+        </div>
+
+        {/* Toolbar */}
+        <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-y" style={{ background: '#fcfdfa', borderColor: 'var(--light-gray)' }}>
+          <label className="flex items-center gap-1.5 h-9 px-3 w-full sm:w-72 rounded-lg border bg-white focus-within:border-[var(--teal)] focus-within:shadow-[0_0_0_3px_rgba(74,128,115,0.12)]"
+            style={{ borderColor: 'var(--light-gray)', color: 'var(--hr-faint)' }}>
+            <Search size={15} className="flex-shrink-0" />
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name, contact, TIN, items…"
+              className="flex-1 min-w-0 bg-transparent outline-none text-[13px]" style={{ color: 'var(--charcoal)' }} />
+            {search && <button onClick={() => setSearch('')} title="Clear search"><X size={14} /></button>}
+          </label>
+          <div className="flex rounded-lg border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+            {([['all', 'Valid & invalid'], ['Valid', 'Valid'], ['Invalid', 'Invalid']] as const).map(([v, l]) => (
+              <button key={v} onClick={() => setValidity(v)} aria-pressed={validity === v} className="h-9 px-3 text-xs font-semibold whitespace-nowrap" style={seg(validity === v)}>{l}</button>
+            ))}
+          </div>
+          <div className="flex rounded-lg border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+            {([['all', 'Local & foreign'], ['local', 'Local'], ['foreign', 'Foreign']] as const).map(([v, l]) => (
+              <button key={v} onClick={() => setOrigin(v)} aria-pressed={origin === v} className="h-9 px-3 text-xs font-semibold whitespace-nowrap" style={seg(origin === v)}>{l}</button>
+            ))}
+          </div>
+          <button onClick={() => setShowInactive(v => !v)} aria-pressed={showInactive}
+            className="h-8 px-3 rounded-full border text-xs font-semibold whitespace-nowrap"
+            style={showInactive ? { background: 'var(--teal)', borderColor: 'var(--teal)', color: '#fff' } : { background: '#fff', borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+            Show inactive
+          </button>
+          {anyFilter && (
+            <button onClick={clearFilters} className="text-xs font-semibold hover:underline underline-offset-2" style={{ color: 'var(--teal)' }}>Clear filters</button>
+          )}
+        </div>
+
+        <div className="overflow-auto" style={{ maxHeight: expanded ? 'calc(100vh - 300px)' : '66vh' }}>
         {loading ? (
-          <div className="flex items-center justify-center py-12"><Loader2 className="animate-spin" size={20} style={{ color: 'var(--teal)' }} /></div>
+          <div className="p-4 space-y-2" aria-busy="true">
+            {Array.from({ length: 8 }, (_, i) => <div key={i} className="h-10 rounded-md hr-shimmer" />)}
+          </div>
         ) : (
-          <table className="text-xs" style={{ borderCollapse: 'separate', borderSpacing: 0, minWidth: COLS.reduce((s, c) => s + c.w, 60) }}>
+          <table className="text-xs w-full" style={{ borderCollapse: 'separate', borderSpacing: 0, minWidth: COLS.reduce((s, c) => s + c.w, 60) }}>
             <thead className="sticky top-0 z-20">
               <tr>
                 {COLS.map((c, i) => (
-                  <th key={c.key} className={`border-r border-b px-3 py-2 text-left font-semibold align-top ${i === 0 ? 'sticky left-0 z-30' : ''}`}
-                    style={{ color: 'var(--charcoal)', borderColor: 'var(--light-gray)', background: 'var(--off-white)', minWidth: c.w, maxWidth: c.w + 80 }}>
-                    <button onClick={() => toggleSort(c.key)} className="flex items-center gap-1 whitespace-nowrap">
+                  <th key={c.key} className={`border-r border-b px-3 py-2 text-left align-top ${i === 0 ? 'sticky left-0 z-30' : ''}`}
+                    style={{ color: 'var(--mid-gray)', borderColor: 'var(--hr-line)', borderBottomColor: 'var(--light-gray)', background: 'var(--hr-head)', minWidth: c.w, maxWidth: c.w + 80,
+                      ...(i === 0 ? { boxShadow: '4px 0 6px -4px rgba(35,48,56,0.14)' } : {}) }}>
+                    <button onClick={() => toggleSort(c.key)}
+                      className="flex items-center gap-1 whitespace-nowrap text-[11px] font-bold uppercase tracking-[.5px] hover:text-[var(--teal)]"
+                      style={sortKey === c.key ? { color: 'var(--teal)' } : undefined}>
                       {i === 0 && canWrite && (
-                        <input type="checkbox" title="Tick all shown" className="mr-1" onClick={e => e.stopPropagation()}
+                        <input type="checkbox" title="Tick all shown" className="mr-1 accent-[var(--teal)]" onClick={e => e.stopPropagation()}
                           checked={shown.length > 0 && shown.every(r => picked.has(r.key))}
                           onChange={e => setPicked(p => { const n = new Set(p); for (const r of shown) { if (e.target.checked) n.add(r.key); else n.delete(r.key) } return n })} />
                       )}
                       {c.label}
-                      <span style={{ color: sortKey === c.key ? 'var(--teal)' : 'var(--light-gray)' }}>{sortKey === c.key ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}</span>
+                      <span className="text-[10px]" style={{ opacity: sortKey === c.key ? 1 : 0.45 }}>{sortKey === c.key ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}</span>
                     </button>
-                    <input value={colFilter[c.key] || ''} onChange={e => setColFilter(f => ({ ...f, [c.key]: e.target.value }))} placeholder="filter…"
-                      className="mt-1 w-full px-2 py-1 rounded border text-[11px] font-normal" style={{ borderColor: 'var(--light-gray)' }} />
+                    <input value={colFilter[c.key] || ''} onChange={e => setColFilter(f => ({ ...f, [c.key]: e.target.value }))} placeholder="Filter"
+                      className="mt-1.5 w-full px-2 py-1 rounded-md border bg-white text-[11px] font-normal outline-none focus:border-[var(--teal)]"
+                      style={{ borderColor: colFilter[c.key] ? 'var(--teal)' : 'var(--hr-line)', color: 'var(--charcoal)' }} />
                   </th>
                 ))}
-                <th className="border-b px-3 py-2" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)', minWidth: 60 }}></th>
+                <th className="border-b px-3 py-2" style={{ borderColor: 'var(--light-gray)', background: 'var(--hr-head)', minWidth: 60 }}></th>
               </tr>
             </thead>
             <tbody>
               {shown.map(r => {
                 const auto = providedAuto(r)
-                const td = 'border-r border-b px-3 py-2 align-top'
+                const td = 'border-r border-b px-3 py-2.5 align-top'
+                const line = { borderColor: 'var(--hr-line)' }
                 return (
-                  <tr key={r.key} onClick={() => openHistory(r)} className="cursor-pointer hover:bg-gray-50" style={r.isActive ? undefined : { opacity: 0.5 }} title="See what we bought from this supplier">
-                    <td className={`${td} sticky left-0 z-10 bg-white`} style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)', fontWeight: 600 }}>
-                      {canWrite && <input type="checkbox" className="mr-2 align-middle" checked={picked.has(r.key)} onClick={e => e.stopPropagation()} onChange={() => togglePick(r.key)} title="Tick to merge" />}
-                      {r.name}{!r.isActive && <span className="ml-1 text-[10px] font-normal" style={{ color: 'var(--mid-gray)' }}>(inactive)</span>}
+                  <tr key={r.key} onClick={() => openHistory(r)} className="group cursor-pointer" style={r.isActive ? undefined : { opacity: 0.55 }} title="See what we bought from this supplier">
+                    <td className={`${td} sticky left-0 z-10 bg-white group-hover:bg-[#f3f8ea]`}
+                      style={{ ...line, color: 'var(--charcoal)', fontWeight: 600, boxShadow: `4px 0 6px -4px rgba(35,48,56,0.14), inset 4px 0 0 ${r.validity === 'Invalid' ? '#d97706' : r.isForeign ? '#2563eb' : 'transparent'}` }}>
+                      {canWrite && <input type="checkbox" className="mr-2 align-middle accent-[var(--teal)]" checked={picked.has(r.key)} onClick={e => e.stopPropagation()} onChange={() => togglePick(r.key)} title="Tick to merge" />}
+                      {r.name}{!r.isActive && <span className="ml-1.5 px-1.5 py-px rounded text-[10px] font-semibold" style={{ background: '#f1f5f2', color: '#55616A' }}>Inactive</span>}
                     </td>
-                    <td className={`${td} font-mono whitespace-nowrap`} style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>{r.tin || '—'}</td>
-                    <td className={td} style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>{r.branches.join(', ') || '—'}</td>
-                    <td className={td} style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>{r.address || '—'}</td>
-                    <td className={td} style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>{r.contactPerson || '—'}</td>
-                    <td className={`${td} whitespace-nowrap`} style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>{r.contactNumber || '—'}</td>
-                    <td className={`${td} break-all`} style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>{r.email || '—'}</td>
-                    <td className={td} style={{ borderColor: 'var(--light-gray)' }}>
-                      {r.contactMethod ? <span className="px-2 py-0.5 rounded-md font-medium" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>{reachOf(r)}</span> : <span style={{ color: 'var(--mid-gray)' }}>—</span>}
+                    <td className={`${td} font-mono whitespace-nowrap group-hover:bg-[#fafbf7]`} style={{ ...line, color: 'var(--mid-gray)' }}>{r.tin || '—'}</td>
+                    <td className={`${td} group-hover:bg-[#fafbf7]`} style={line}>
+                      {r.branches.length
+                        ? <span className="flex flex-wrap gap-1">{r.branches.map(b => <span key={b} className="px-1.5 py-px rounded text-[10.5px] font-semibold" style={{ background: 'var(--pale-teal)', color: 'var(--teal)' }}>{b}</span>)}</span>
+                        : <span style={{ color: 'var(--hr-faint)' }}>—</span>}
                     </td>
-                    <td className={td} style={{ borderColor: 'var(--light-gray)' }}>
-                      {r.isForeign ? <span className="px-2 py-0.5 rounded-md font-medium" style={{ background: '#e0e7ff', color: '#3730a3' }}>Foreign</span> : <span style={{ color: 'var(--mid-gray)' }}>Local</span>}
+                    <td className={`${td} group-hover:bg-[#fafbf7]`} style={{ ...line, color: 'var(--mid-gray)' }}>{r.address || '—'}</td>
+                    <td className={`${td} group-hover:bg-[#fafbf7]`} style={{ ...line, color: 'var(--charcoal)' }}>{r.contactPerson || '—'}</td>
+                    <td className={`${td} whitespace-nowrap group-hover:bg-[#fafbf7]`} style={{ ...line, color: 'var(--charcoal)' }}>{r.contactNumber || '—'}</td>
+                    <td className={`${td} break-all group-hover:bg-[#fafbf7]`} style={{ ...line, color: 'var(--charcoal)' }}>{r.email || '—'}</td>
+                    <td className={`${td} group-hover:bg-[#fafbf7]`} style={line}>
+                      {r.contactMethod ? <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: 'var(--pale-teal)', color: 'var(--teal)' }}>{reachOf(r)}</span> : <span style={{ color: 'var(--hr-faint)' }}>—</span>}
                     </td>
-                    <td className={td} style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>{r.currency || 'PHP'}</td>
-                    <td className={td} style={{ borderColor: 'var(--light-gray)' }}>
+                    <td className={`${td} group-hover:bg-[#fafbf7]`} style={line}>
+                      {r.isForeign ? <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: '#eff6ff', color: '#1d4ed8' }}>Foreign</span> : <span style={{ color: 'var(--mid-gray)' }}>Local</span>}
+                    </td>
+                    <td className={`${td} group-hover:bg-[#fafbf7]`} style={{ ...line, color: 'var(--mid-gray)' }}>{r.currency || 'PHP'}</td>
+                    <td className={`${td} group-hover:bg-[#fafbf7]`} style={line}>
                       {r.itemsProvided && <div style={{ color: 'var(--charcoal)' }}>{r.itemsProvided}</div>}
                       {auto && <div className="text-[11px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>{auto}</div>}
-                      {!r.itemsProvided && !auto && <span style={{ color: 'var(--mid-gray)' }}>—</span>}
+                      {!r.itemsProvided && !auto && <span style={{ color: 'var(--hr-faint)' }}>—</span>}
                     </td>
-                    <td className={td} style={{ borderColor: 'var(--light-gray)' }}>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={r.validity === 'Invalid' ? { background: '#fee2e2', color: '#b91c1c' } : { background: '#dcfce7', color: '#166534' }}>{r.validity}</span>
+                    <td className={`${td} group-hover:bg-[#fafbf7]`} style={line}>
+                      <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={r.validity === 'Invalid' ? { background: '#fef3c7', color: '#92400e' } : { background: '#dcfce7', color: '#166534' }}>{r.validity}</span>
                     </td>
-                    <td className="border-b px-2 py-2 text-right whitespace-nowrap align-top" onClick={e => e.stopPropagation()} style={{ borderColor: 'var(--light-gray)' }}>
+                    <td className="border-b px-2 py-2 text-right whitespace-nowrap align-top group-hover:bg-[#fafbf7]" onClick={e => e.stopPropagation()} style={line}>
                       {canWrite && (r.isActive ? (
                         <div className="flex items-center justify-end gap-1">
-                          <button onClick={() => openEdit(r)} title="Edit supplier" className="p-1 rounded hover:bg-gray-100"><Pencil size={13} style={{ color: 'var(--teal)' }} /></button>
+                          <button onClick={() => openEdit(r)} title="Edit supplier" className="p-1.5 rounded-lg hover:bg-[var(--pale-teal)]"><Pencil size={13} style={{ color: 'var(--teal)' }} /></button>
                           {(r.masterId || r.expenseIds.length > 0) && (
-                            <button onClick={() => remove(r)} title="Take off the list" className="p-1 rounded hover:bg-red-50"><Trash2 size={13} style={{ color: '#dc2626' }} /></button>
+                            <button onClick={() => remove(r)} title="Take off the list" className="p-1.5 rounded-lg hover:bg-red-50"><Trash2 size={13} style={{ color: '#dc2626' }} /></button>
                           )}
                         </div>
                       ) : (
-                        <button onClick={() => reactivate(r)} className="px-2 py-1 rounded-lg text-[11px] font-semibold border" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>Restore</button>
+                        <button onClick={() => reactivate(r)} className="px-2 py-1 rounded-lg text-[11px] font-semibold border bg-white" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>Restore</button>
                       ))}
                     </td>
                   </tr>
                 )
               })}
-              {shown.length === 0 && (
-                <tr><td colSpan={COLS.length + 1} className="text-center py-10" style={{ color: 'var(--mid-gray)' }}>No suppliers match.</td></tr>
-              )}
             </tbody>
           </table>
         )}
-      </div>
+        {!loading && shown.length === 0 && (
+          <div className="sticky left-0 px-6 py-14 flex flex-col items-center text-center">
+            <p className="text-sm font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>No suppliers match</p>
+            <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>Nothing fits the search and filters{branchLabel ? ` for ${branchLabel}` : ''}.</p>
+            {anyFilter && <button onClick={clearFilters} className={`${outlineBtn} mt-4`} style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>Clear filters</button>}
+          </div>
+        )}
+        </div>
+
+        {/* Export (the suppliers shown) */}
+        <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-t text-xs" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+          <span>Export the {shown.length.toLocaleString()} supplier{shown.length === 1 ? '' : 's'} shown</span>
+          <span className="ml-auto" />
+          <button onClick={() => exportList('xlsx')} className={ghostBtn} style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+            <Download size={14} style={{ color: '#166534' }} /> Excel
+          </button>
+          <button onClick={() => exportList('pdf')} className={ghostBtn} style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+            <Download size={14} style={{ color: '#b91c1c' }} /> PDF
+          </button>
+        </div>
+      </section>
 
       {mergeOpen && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={() => !mergeBusy && setMergeOpen(false)}>
