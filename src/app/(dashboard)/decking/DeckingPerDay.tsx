@@ -116,10 +116,24 @@ export default function DeckingPerDay({
     m.set(s.dayOfWeek, (m.get(s.dayOfWeek) ?? 0) + 1)
   }
 
+  // Any department the DATA mentions, whether or not the caller listed it.
+  //
+  // This screen used to trust `departments` completely, so a list that did not
+  // mention a department made its sessions vanish from every table while the
+  // payment split beside them still counted them — the screen contradicted
+  // itself rather than showing a gap. The caller's order is kept, because it is
+  // the clinic's reading order; anything extra is appended rather than dropped.
+  const knownDepts = (() => {
+    const extra = [...new Set([...live.map(s => s.department), ...Object.keys(capacity)])]
+      .filter(d => d && !departments.includes(d))
+      .sort()
+    return [...departments, ...extra]
+  })()
+
   // Departments with capacity but nothing decked still belong on the capacity
   // tables — an empty department is exactly what a cross-sell conversation
   // needs to see.
-  const capacityDepts = departments.filter(d => capacity[d] && Object.keys(capacity[d]).length > 0)
+  const capacityDepts = knownDepts.filter(d => capacity[d] && Object.keys(capacity[d]).length > 0)
   const capOf = (dept: string, day: string) => capacity[dept]?.[day] ?? 0
   const deckedOf = (dept: string, day: string) => countsByDept.get(dept)?.get(day) ?? 0
   const blockedOf = (dept: string, day: string) => blockedByDept.get(dept)?.get(day) ?? 0
@@ -136,7 +150,7 @@ export default function DeckingPerDay({
   const overOf = (dept: string, day: string) =>
     Math.max(0, deckedOf(dept, day) + blockedOf(dept, day) - capOf(dept, day))
 
-  const rows = departments.filter(d => countsByDept.has(d))
+  const rows = knownDepts.filter(d => countsByDept.has(d))
   const dayTotal = (day: string) =>
     rows.reduce((n, d) => n + (countsByDept.get(d)?.get(day) ?? 0), 0)
   const dayFilled = (day: string) =>
