@@ -583,21 +583,26 @@ export function CertificatesCard({ patientId, patientName }: { patientId: string
   const [first = '', ...rest] = (patientName ?? '').split(' ')
 
   return (
-    <div className="rounded-xl" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
-      <div className="px-5 py-3 flex items-center justify-between gap-3"
+    <div className="rounded-xl flex flex-col min-w-0" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
+      <div className="px-5 pt-4 pb-3 flex flex-wrap items-start justify-between gap-x-4 gap-y-2"
         style={{ borderBottom: '1px solid var(--light-gray)' }}>
-        <p className="text-xs font-semibold uppercase tracking-widest flex items-center gap-2"
-          style={{ color: 'var(--mid-gray)' }}>
-          <Award size={14} style={{ color: '#B45309' }} /> Discharge Certificates
-        </p>
+        <div className="min-w-0 flex-1">
+          <h2 className="flex items-center gap-2 text-[14px] font-bold leading-tight"
+            style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+            <Award size={15} style={{ color: '#B45309' }} /> Discharge certificates
+          </h2>
+          <p className="text-xs mt-1 leading-snug" style={{ color: 'var(--mid-gray)' }}>
+            Certificates issued when the patient completes a service.
+          </p>
+        </div>
         <button onClick={() => setIssuing(true)}
-          className="px-3 py-1.5 rounded-lg text-xs font-semibold"
+          className="px-3 py-1.5 rounded-lg text-xs font-semibold flex-shrink-0 transition-opacity hover:opacity-90"
           style={{ background: 'var(--teal)', color: '#fff' }}>
           + Issue certificate
         </button>
       </div>
 
-      <div className="p-5">
+      <div className="p-5 flex-1">
         <CertificateRows rows={rows} onView={setViewing} onDelete={remove} />
       </div>
 
