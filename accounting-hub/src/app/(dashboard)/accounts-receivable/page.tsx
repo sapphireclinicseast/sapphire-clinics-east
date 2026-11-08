@@ -30,6 +30,7 @@ import ExpandablePanel from './ExpandablePanel'
 import PaymentsCard from './PaymentsCard'
 import { useResizableColumns, ResizableColgroup, ColResizeHandle } from '@/components/useResizableColumns'
 import DetailedGl, { type GlCaseRow } from './DetailedGl'
+import { HR_PAGE_CLASS, HR_PAGE_STYLE, HrShimmerStyle, hrBtn } from '@/components/ui/hr-look'
 
 interface ARWallet {
   id: string
@@ -1588,42 +1589,44 @@ export default function AccountsReceivablePage() {
   if (!session?.user) return null
 
   return (
-    <div className="space-y-6">
+    <div className={HR_PAGE_CLASS} style={HR_PAGE_STYLE}>
+      <HrShimmerStyle />
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
-            <FileCheck size={28} style={{ color: 'var(--teal)' }} /> Accounts Receivable
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold leading-tight flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+            <FileCheck size={22} style={{ color: 'var(--teal)' }} /> Accounts Receivable
           </h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--mid-gray)' }}>Monitor and record payments from HMO providers and Guarantee Letter agencies</p>
+          <p className="mt-1 text-[13px] max-w-2xl" style={{ color: 'var(--mid-gray)' }}>Monitor and record payments from HMO providers and Guarantee Letter agencies.</p>
         </div>
         {!ownTab && (
-        <div className="flex items-center gap-3">
-          <div className="text-right">
-            <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Total Receivable ({tab})</p>
-            <p className="text-lg font-bold" style={{ color: 'var(--deep-teal)' }}>{dataReady ? formatCurrency(totalReceivable) : '—'}</p>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="rounded-lg border bg-white px-4 py-2" style={{ borderColor: 'var(--light-gray)', borderLeft: '4px solid var(--teal)' }}>
+            <p className="text-[11px] font-semibold uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)' }}>Total receivable · {tab}</p>
+            <p className="text-xl font-extrabold leading-tight tabular-nums" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>{dataReady ? formatCurrency(totalReceivable) : '—'}</p>
           </div>
           {/* For HMO the Record Payment button lives in its Payment History sub-tab. */}
           {canWrite && tab !== 'HMO' && (
-          <button onClick={openPaymentModal} className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium text-white" style={{ background: 'var(--teal)' }}>
-            <DollarSign size={16} /> Record Payment
+          <button onClick={openPaymentModal} className={hrBtn.primary} style={{ background: 'var(--teal)' }}>
+            <DollarSign size={15} /> Record Payment
           </button>
           )}
         </div>
         )}
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-2">
-        {visibleTabs.map(t => (
-          <button key={t} onClick={() => { setTab(t); setWalletFilter(''); setBucketFilterIds(null); setBucketFilterLabel(''); setHmoSubTab(isFrontdesk ? 'per-hmo' : 'overview') }}
-            className="px-4 py-2 rounded-xl text-sm font-medium transition-colors"
-            style={tab === t
-              ? { background: 'var(--teal)', color: 'white' }
-              : { background: 'var(--off-white)', color: 'var(--charcoal)' }}>
-            {t === 'HMO' ? 'HMO Providers' : t === 'GL' ? 'Guarantee Letters (GL)' : t === 'TUITION' ? 'Tuition' : 'Other Customers'}
-          </button>
-        ))}
+      {/* Tabs: one row, swipes sideways on narrow screens */}
+      <div className="border-b-2" style={{ borderColor: 'var(--light-gray)' }}>
+        <div className="flex items-end -mb-[2px] max-w-full overflow-x-auto" role="tablist">
+          {visibleTabs.map(t => (
+            <button key={t} role="tab" aria-selected={tab === t}
+              onClick={() => { setTab(t); setWalletFilter(''); setBucketFilterIds(null); setBucketFilterLabel(''); setHmoSubTab(isFrontdesk ? 'per-hmo' : 'overview') }}
+              className="px-4 py-2.5 border-b-2 text-[13px] font-semibold whitespace-nowrap transition-colors hover:text-[var(--teal)]"
+              style={{ fontFamily: 'var(--font-display)', borderColor: tab === t ? 'var(--teal)' : 'transparent', color: tab === t ? 'var(--teal)' : 'var(--mid-gray)' }}>
+              {t === 'HMO' ? 'HMO Providers' : t === 'GL' ? 'Guarantee Letters (GL)' : t === 'TUITION' ? 'Tuition' : 'Other Customers'}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Branch filter — the directory is per HMO, not per branch */}
@@ -1640,10 +1643,10 @@ export default function AccountsReceivablePage() {
           <button
             key={b.value}
             onClick={() => setBranch(b.value)}
-            className="px-3 py-1 rounded-full text-xs font-medium transition-colors"
+            className="px-3 py-1 rounded-full border text-xs font-semibold transition-colors"
             style={branch === b.value
-              ? { background: 'var(--teal)', color: 'white' }
-              : { background: 'var(--off-white)', color: 'var(--charcoal)', border: '1px solid var(--light-gray)' }}>
+              ? { background: 'var(--teal)', borderColor: 'var(--teal)', color: 'white' }
+              : { background: '#fff', borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
             {b.label}
           </button>
         ))}
