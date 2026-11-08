@@ -46,6 +46,7 @@ import PsychTestsPanel from './PsychTestsPanel'
 import { SKU_HIERARCHY } from '@/lib/sku-taxonomy'
 import DownloadMenu from '@/components/ui/DownloadMenu'
 import Pagination from '@/components/ui/Pagination'
+import { HR_PAGE_CLASS, HR_PAGE_STYLE, HrShimmerStyle, StatCard, hrBtn } from '@/components/ui/hr-look'
 
 /* ── Verdana Sticker Print (A6, 3 per page) ──────────────── */
 function printVerdanaSticker(item: { name: string; sku?: string; barcode?: string | null }) {
@@ -799,6 +800,8 @@ function InventoryInner() {
   // ── Pagination
   const [invPage, setInvPage] = useState(1)
   const [invPageSize, setInvPageSize] = useState(25)
+  // Quick filter from the stock cards (same rule as the red quantity in the list).
+  const [stockFilter, setStockFilter] = useState<'' | 'low' | 'out'>('')
   const [adjPage, setAdjPage] = useState(1)
   const [adjPageSize, setAdjPageSize] = useState(25)
   const [conPage, setConPage] = useState(1)
@@ -1249,7 +1252,9 @@ function InventoryInner() {
   }, [items]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const sortedItems = useMemo(() => {
-    const visible = items.filter(i => !isBranchCopy(i))
+    let visible = items.filter(i => !isBranchCopy(i))
+    if (stockFilter === 'low') visible = visible.filter(i => !!i.reorderLevel && i.quantity <= i.reorderLevel)
+    else if (stockFilter === 'out') visible = visible.filter(i => i.quantity <= 0)
     if (!invSortField) return visible
     const sorted = [...visible].sort((a, b) => {
       let cmp = 0
@@ -1265,7 +1270,7 @@ function InventoryInner() {
       return invSortDir === 'desc' ? -cmp : cmp
     })
     return sorted
-  }, [items, invSortField, invSortDir])
+  }, [items, invSortField, invSortDir, stockFilter]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Freight batch: total freight in PHP (real-time)
   const fbTotalFreightPHP = useMemo(() => {
@@ -2460,37 +2465,42 @@ setTimeout(()=>window.print(),500);
     else downloadPdf({ title: 'Consignment Transfers', subtitle: `${groupedConsignments.length} transfers — ${rows.length} items`, headers, rows, landscape: true })
   }
 
+  const baseItems = items.filter(i => !isBranchCopy(i))
+  const nLow = baseItems.filter(i => !!i.reorderLevel && i.quantity <= i.reorderLevel).length
+  const nOut = baseItems.filter(i => i.quantity <= 0).length
   return (
-    <div>
-      {/* Page Title */}
-      <h1
-        className="text-2xl font-bold mb-6"
-        style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}
-      >
-        Inventory &amp; Procurement
-      </h1>
+    <div className={HR_PAGE_CLASS} style={HR_PAGE_STYLE}>
+      <HrShimmerStyle />
+      {/* Page title */}
+      <div className="min-w-0">
+        <h1 className="text-2xl font-bold leading-tight flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+          <Package size={22} style={{ color: 'var(--teal)' }} /> Inventory &amp; Procurement
+        </h1>
+        <p className="mt-1 text-[13px] max-w-2xl" style={{ color: 'var(--mid-gray)' }}>
+          Stock levels and item details, supplier requests, adjustments, consignments and branch stock.
+        </p>
+      </div>
 
-      {/* Tab Navigation */}
-      <div className="flex gap-6 border-b mb-6" style={{ borderColor: 'var(--light-gray)' }}>
-        {(formsOnly ? (['Forms'] as readonly Tab[]) : TABS).map((tab) => (
-          <button
-            key={tab}
-            onClick={() => { setActiveTab(tab); setError('') }}
-            className="pb-3 text-sm font-semibold transition-colors relative"
-            style={{
-              color: activeTab === tab ? 'var(--teal)' : 'var(--mid-gray)',
-              borderBottom: activeTab === tab ? '2px solid var(--teal)' : '2px solid transparent',
-              marginBottom: '-1px',
-            }}
-          >
-            {tab}
-          </button>
-        ))}
+      {/* Tabs: one row, swipes sideways on narrow screens */}
+      <div className="border-b-2" style={{ borderColor: 'var(--light-gray)' }}>
+        <div className="flex items-end -mb-[2px] max-w-full overflow-x-auto" role="tablist">
+          {(formsOnly ? (['Forms'] as readonly Tab[]) : TABS).map((tab) => (
+            <button
+              key={tab}
+              role="tab" aria-selected={activeTab === tab}
+              onClick={() => { setActiveTab(tab); setError('') }}
+              className="px-4 py-2.5 border-b-2 text-[13px] font-semibold whitespace-nowrap transition-colors hover:text-[var(--teal)]"
+              style={{ fontFamily: 'var(--font-display)', borderColor: activeTab === tab ? 'var(--teal)' : 'transparent', color: activeTab === tab ? 'var(--teal)' : 'var(--mid-gray)' }}
+            >
+              {tab}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Error (outside modals) */}
       {error && !anyModalOpen && (
-        <div className="mb-4 p-3 rounded-lg text-sm bg-red-50 text-red-600">{error}</div>
+        <div className="px-4 py-2.5 rounded-lg border text-[13px]" style={{ background: '#fef2f2', borderColor: '#fecaca', color: '#b91c1c' }}>{error}</div>
       )}
 
       {/* A list failed to load. Say so across every tab, because an empty table
@@ -2513,12 +2523,24 @@ setTimeout(()=>window.print(),500);
 
       {activeTab === 'Inventory' && (
         <>
+          {/* Stock cards (also quick filters) */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+            <StatCard label="Products" value={baseItems.length.toLocaleString()} sub="In this view (branch copies counted once)"
+              accent={{ line: 'var(--teal)' }} onClick={stockFilter ? () => { setStockFilter(''); setInvPage(1) } : undefined} title="Show all products" />
+            <StatCard label="At or below reorder level" value={nLow.toLocaleString()} sub="Quantity at or under the reorder level"
+              tone={nLow ? 'amber' : 'zero'} active={stockFilter === 'low'}
+              onClick={() => { setStockFilter(f => (f === 'low' ? '' : 'low')); setInvPage(1) }} title="Show only the products that need reordering" />
+            <StatCard label="Out of stock" value={nOut.toLocaleString()} sub="Zero or less on hand"
+              tone={nOut ? 'red' : 'zero'} active={stockFilter === 'out'}
+              onClick={() => { setStockFilter(f => (f === 'out' ? '' : 'out')); setInvPage(1) }} title="Show only the products with nothing on hand" />
+          </div>
+
           {/* Header */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
             <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>
-              Manage stock levels and item details
+              {stockFilter ? <>Showing {stockFilter === 'low' ? 'products at or below their reorder level' : 'products out of stock'} · <button onClick={() => setStockFilter('')} className="font-semibold hover:underline" style={{ color: 'var(--teal)' }}>show all</button></> : 'Manage stock levels and item details'}
             </p>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <DownloadMenu onDownload={handleDownloadInventory} label="Download" />
               {canWrite && (<>
                 <button onClick={() => {
@@ -2552,7 +2574,7 @@ setTimeout(()=>window.print(),500);
           </div>
 
           {/* Filters */}
-          <div className="flex flex-col sm:flex-row gap-3 mb-4">
+          <div className="flex flex-col sm:flex-row flex-wrap gap-2 mb-4 px-3 py-2.5 rounded-lg border" style={{ background: '#fcfdfa', borderColor: 'var(--light-gray)' }}>
             <div className="relative flex-1 max-w-sm">
               <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--mid-gray)' }} />
               <input
@@ -2637,13 +2659,13 @@ setTimeout(()=>window.print(),500);
           )}
 
           {/* Table */}
-          <div className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+          <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr style={{ background: 'var(--off-white)' }}>
+                  <tr style={{ background: 'var(--hr-head)' }}>
                     {canWrite && (
-                      <th className="px-3 py-3 w-10">
+                      <th className="px-3 py-2.5 w-10 border-b" style={{ borderColor: 'var(--light-gray)' }}>
                         <input type="checkbox"
                           checked={sortedItems.slice((invPage - 1) * invPageSize, invPage * invPageSize).length > 0 &&
                             sortedItems.slice((invPage - 1) * invPageSize, invPage * invPageSize).every(i => selectedItems.has(i.id))}
@@ -2651,7 +2673,7 @@ setTimeout(()=>window.print(),500);
                           className="rounded" style={{ accentColor: 'var(--teal)' }} />
                       </th>
                     )}
-                    <th className="text-left px-3 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Photo</th>
+                    <th className="text-left px-3 py-2.5 text-[11px] font-bold uppercase tracking-[.5px] border-b" style={{ color: 'var(--mid-gray)', borderColor: 'var(--light-gray)' }}>Photo</th>
                     {([
                       { key: 'sku', label: 'SKU', align: 'left' },
                       { key: 'name', label: 'Name', align: 'left' },
@@ -2662,8 +2684,8 @@ setTimeout(()=>window.print(),500);
                       { key: 'supplier', label: 'Supplier', align: 'left' },
                     ] as const).map(col => (
                       <th key={col.key}
-                        className={`text-${col.align} px-4 py-3 font-semibold cursor-pointer select-none hover:bg-gray-100/50 transition-colors`}
-                        style={{ color: invSortField === col.key ? 'var(--teal)' : 'var(--charcoal)' }}
+                        className={`text-${col.align} px-4 py-2.5 text-[11px] font-bold uppercase tracking-[.5px] border-b cursor-pointer select-none hover:text-[var(--teal)] transition-colors`}
+                        style={{ color: invSortField === col.key ? 'var(--teal)' : 'var(--mid-gray)', borderColor: 'var(--light-gray)' }}
                         onClick={() => toggleSort(col.key)}>
                         <span className="inline-flex items-center gap-1">
                           {col.label}
@@ -2671,7 +2693,7 @@ setTimeout(()=>window.print(),500);
                         </span>
                       </th>
                     ))}
-                    {canWrite && <th className="text-right px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Actions</th>}
+                    {canWrite && <th className="text-right px-4 py-2.5 text-[11px] font-bold uppercase tracking-[.5px] border-b" style={{ color: 'var(--mid-gray)', borderColor: 'var(--light-gray)' }}>Actions</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -2824,7 +2846,7 @@ setTimeout(()=>window.print(),500);
               </table>
             </div>
             {items.length > 0 && (
-              <Pagination totalItems={items.length} page={invPage} pageSize={invPageSize}
+              <Pagination totalItems={stockFilter ? sortedItems.length : items.length} page={invPage} pageSize={invPageSize}
                 onPageChange={setInvPage} onPageSizeChange={setInvPageSize} />
             )}
           </div>
