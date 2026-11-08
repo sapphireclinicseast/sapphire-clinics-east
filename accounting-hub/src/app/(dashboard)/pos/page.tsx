@@ -28,6 +28,7 @@ import TuitionDesk from './TuitionDesk'
 import { buildSoaPdf, MONTH_OPTIONS, periodLabel, type SoaSettings, type SoaOrder } from '@/lib/soa-pdf'
 import { EARLIEST_OBTAINED, latestObtained, obtainedDateError } from '@/lib/wallet-dates'
 import CancellationLinkModal, { type FeeLine } from './CancellationLinkModal'
+import { HR_PAGE_CLASS, HR_PAGE_STYLE, HrShimmerStyle } from '@/components/ui/hr-look'
 
 /* ─────────────────────────── TYPES ─────────────────────────── */
 
@@ -643,9 +644,11 @@ export default function POSPage() {
 
   if (!session?.user || loading) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="animate-spin mr-2" size={20} style={{ color: 'var(--teal)' }} />
-        <span style={{ color: 'var(--mid-gray)' }}>Loading POS...</span>
+      <div className={HR_PAGE_CLASS} style={HR_PAGE_STYLE} aria-busy="true">
+        <HrShimmerStyle />
+        <div className="h-9 w-56 rounded-md hr-shimmer" />
+        <div className="h-10 rounded-md hr-shimmer" />
+        <div className="h-96 rounded-lg hr-shimmer" />
       </div>
     )
   }
@@ -669,30 +672,37 @@ export default function POSPage() {
   ]
 
   return (
-    <div className="space-y-6">
+    <div className={HR_PAGE_CLASS} style={HR_PAGE_STYLE}>
+      <HrShimmerStyle />
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
-          Point of Sale
+      <div className="min-w-0">
+        <h1 className="text-2xl font-bold leading-tight flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+          <ShoppingCart size={22} style={{ color: 'var(--teal)' }} /> Point of Sale
         </h1>
+        <p className="mt-1 text-[13px] max-w-2xl" style={{ color: 'var(--mid-gray)' }}>
+          Ring up services and products, manage orders and wallets, and see the day&apos;s sales.
+        </p>
       </div>
 
-      {/* Main Tabs */}
-      <div className="flex gap-1 border-b" style={{ borderColor: 'var(--light-gray)' }}>
-        {mainTabs.map(t => (
-          <button
-            key={t.key}
-            onClick={() => setMainTab(t.key)}
-            className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors"
-            style={{
-              color: mainTab === t.key ? 'var(--teal)' : 'var(--mid-gray)',
-              borderBottom: mainTab === t.key ? '2px solid var(--teal)' : '2px solid transparent',
-              fontFamily: 'var(--font-display)',
-            }}
-          >
-            {t.icon} {t.label}
-          </button>
-        ))}
+      {/* Main tabs: one row, swipes sideways on narrow screens */}
+      <div className="border-b-2" style={{ borderColor: 'var(--light-gray)' }}>
+        <div className="flex items-end -mb-[2px] max-w-full overflow-x-auto" role="tablist">
+          {mainTabs.map(t => (
+            <button
+              key={t.key}
+              role="tab" aria-selected={mainTab === t.key}
+              onClick={() => setMainTab(t.key)}
+              className="flex items-center gap-1.5 px-4 py-2.5 border-b-2 text-[13px] font-semibold whitespace-nowrap transition-colors hover:text-[var(--teal)]"
+              style={{
+                color: mainTab === t.key ? 'var(--teal)' : 'var(--mid-gray)',
+                borderColor: mainTab === t.key ? 'var(--teal)' : 'transparent',
+                fontFamily: 'var(--font-display)',
+              }}
+            >
+              {t.icon} {t.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Online payments waiting to be loaded onto a patient's advance. Hidden when empty. */}
@@ -746,17 +756,17 @@ function ServicesSection({
 
   return (
     <div className="space-y-4">
-      {/* Sub-tabs */}
-      <div className="flex gap-1">
+      {/* Sub-tabs: HR pill tabs; scroll sideways on narrow screens */}
+      <div className="flex gap-1.5 max-w-full overflow-x-auto pb-0.5">
         {subTabs.map(t => (
           <button
             key={t.key}
             onClick={() => setServiceTab(t.key)}
-            className="px-4 py-2 text-sm rounded-xl font-medium transition-colors"
-            style={{
-              background: serviceTab === t.key ? 'var(--pale-teal)' : 'transparent',
-              color: serviceTab === t.key ? 'var(--deep-teal)' : 'var(--mid-gray)',
-            }}
+            aria-pressed={serviceTab === t.key}
+            className="px-3.5 py-1.5 rounded-full border text-[13px] font-semibold whitespace-nowrap transition-colors"
+            style={serviceTab === t.key
+              ? { background: 'var(--teal)', borderColor: 'var(--teal)', color: '#fff', fontFamily: 'var(--font-display)' }
+              : { background: '#fff', borderColor: 'var(--light-gray)', color: 'var(--mid-gray)', fontFamily: 'var(--font-display)' }}
           >
             {t.label}
           </button>
