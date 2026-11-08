@@ -60,6 +60,8 @@ export async function GET(req: NextRequest) {
       disabled: false,
       patientId: { not: null },
       staff: { active: false },
+      // No date filter on purpose — a patient left behind by a departed
+      // consultant needs rehoming whether their session recurred or not.
       ...(branch ? { branch } : {}),
     },
     select: {

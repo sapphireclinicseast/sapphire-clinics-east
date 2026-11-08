@@ -129,6 +129,8 @@ async function resolveRecipients(
         department: dept,
         ...(branchFilter ? { branch: branchFilter } : {}),
         patientId: { not: null },
+        // No date filter: this is the audience of patients the department
+        // sees, and a one-off appointment still makes someone a patient.
       },
       select: { patientId: true },
     })

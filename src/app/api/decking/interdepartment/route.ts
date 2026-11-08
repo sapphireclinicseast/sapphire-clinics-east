@@ -41,6 +41,9 @@ export async function GET(req: NextRequest) {
   // them as a cross-sell target for something they are, in fact, already
   // getting. Disabled cells carry no patient and are excluded.
   const slots = await prisma.deckingSlot.findMany({
+    // Intentionally NOT filtered by date: this asks which departments a
+    // patient is seen by, and a dated one-off is as real a session as a
+    // recurring one. Only the weekly GRID has to exclude them.
     where: { disabled: false, patientId: { not: null } },
     select: {
       patientId: true,
