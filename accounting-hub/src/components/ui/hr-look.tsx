@@ -47,12 +47,14 @@ const TONES: Record<StatTone, { line: string; bg: string; fg: string }> = {
 }
 
 /** HR-style stat card: label, big value, one-line sub. Clickable when onClick is given. */
-export function StatCard({ label, value, sub, tone = 'zero', accent, active, loading, onClick, title, activeSub = 'Showing these below · click to clear' }: {
+export function StatCard({ label, value, sub, tone = 'zero', accent, active, loading, onClick, title, activeSub = 'Showing these below · click to clear', compact }: {
   label: string; value: string; sub: string
   tone?: StatTone
   /** Custom colours instead of a tone (e.g. one colour per account type). */
   accent?: { line: string; bg?: string; fg?: string }
   active?: boolean; loading?: boolean; onClick?: () => void; title?: string; activeSub?: string
+  /** Smaller value text, for long peso amounts in narrow cards. */
+  compact?: boolean
 }) {
   const t = accent ? { line: accent.line, bg: accent.bg || '#ffffff', fg: accent.fg || 'var(--charcoal)' } : TONES[tone]
   if (loading) {
@@ -63,7 +65,8 @@ export function StatCard({ label, value, sub, tone = 'zero', accent, active, loa
       className="text-left min-w-0 rounded-lg border px-3 sm:px-4 py-3 transition-shadow enabled:hover:shadow-[0_4px_12px_rgba(0,0,0,0.06)] focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-default"
       style={{ background: t.bg, borderColor: 'var(--light-gray)', borderLeft: `4px solid ${t.line}`, boxShadow: active ? '0 0 0 2px #a7d3cd' : undefined, outlineColor: 'var(--teal)' }}>
       <p className="text-[11.5px] font-semibold uppercase tracking-[.4px] truncate" style={{ color: 'var(--mid-gray)' }}>{label}</p>
-      <p className="text-[19px] sm:text-2xl font-extrabold leading-tight tabular-nums truncate" style={{ fontFamily: 'var(--font-display)', color: t.fg }}>{value}</p>
+      <p className={`${compact ? 'text-[17px] sm:text-xl' : 'text-[19px] sm:text-2xl'} font-extrabold leading-tight tabular-nums truncate`}
+        style={{ fontFamily: 'var(--font-display)', color: t.fg }} title={value}>{value}</p>
       <p className="text-xs truncate" style={{ color: 'var(--mid-gray)' }}>{active ? activeSub : sub}</p>
     </button>
   )

@@ -12,13 +12,15 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import {
-  Loader2, ChevronRight, ChevronDown, Search, X, RotateCcw, AlertTriangle, BookOpen,
+  ChevronRight, ChevronDown, Search, X, RotateCcw, AlertTriangle, BookOpen,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { refTypeLabel } from '@/lib/accounting/subsidiary-ledger'
 import { branchLabel, POSTABLE_BRANCHES } from '@/lib/branch'
 import DownloadMenu from '@/components/ui/DownloadMenu'
 import { downloadXlsx, downloadPdf } from '@/lib/export'
+import { AccountPicker, type PickableAccount } from '@/components/AccountPicker'
+import { HR_PAGE_CLASS, HR_PAGE_STYLE, HrShimmerStyle, StatCard, hrBtn } from '@/components/ui/hr-look'
 
 interface SplitLine { account: string; debit: number; credit: number }
 
@@ -79,6 +81,20 @@ const TYPE_LABEL: Record<string, string> = {
   ASSET: 'Assets', LIABILITY: 'Liabilities', EQUITY: 'Equity',
   REVENUE: 'Revenue', EXPENSE: 'Expenses',
 }
+
+// HR Hub look: one colour per account type (same as the Chart of Accounts).
+const TYPE_LINE: Record<string, string> = {
+  ASSET: '#3b82f6', LIABILITY: '#db2777', EQUITY: '#9333ea', REVENUE: '#059669', EXPENSE: '#d97706',
+}
+const TYPE_PILL: Record<string, { background: string; color: string }> = {
+  ASSET: { background: '#dbeafe', color: '#1e40af' }, LIABILITY: { background: '#fce7f3', color: '#9d174d' },
+  EQUITY: { background: '#f3e8ff', color: '#6b21a8' }, REVENUE: { background: '#dcfce7', color: '#166534' },
+  EXPENSE: { background: '#fef3c7', color: '#92400e' },
+}
+const PRESETS = [
+  { key: 'thisMonth', label: 'This month' }, { key: 'lastMonth', label: 'Last month' },
+  { key: 'thisQuarter', label: 'This quarter' }, { key: 'thisYear', label: 'This year' }, { key: 'lastYear', label: 'Last year' },
+]
 
 
 const iso = (d: Date) => d.toISOString().slice(0, 10)
@@ -243,233 +259,272 @@ export default function SubsidiaryLedgerPage() {
     }
   }
 
-  const selectClass = 'text-sm px-3 py-1.5 rounded-lg border bg-white outline-none'
-  const borderStyle = { borderColor: 'var(--light-gray)' }
+  // ── Render ────────────────────────────────────────────────────────────────
+  const inputCls = 'h-9 px-2.5 rounded-lg border bg-white text-[13px] outline-none focus:border-[var(--teal)]'
+  const inputStyle = { borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }
+  const activePreset = PRESETS.find(p => { const r = presetRange(p.key); return r.from === from && r.to === to })?.key
+  const diff = ledger ? ledger.totals.debit - ledger.totals.credit : 0
+  const balanced = Math.abs(diff) < 0.005
+  const rangeLabel = `${fmtDate(from)} – ${fmtDate(to)}`
+  const pickerAccounts: PickableAccount[] = options.accounts
+    .filter(a => accountType === 'ALL' || a.accountType === accountType)
+    .map(a => ({ id: a.id, accountNumber: a.accountNumber, accountTitle: a.isActive ? a.accountTitle : `${a.accountTitle} (inactive)`, accountType: a.accountType }))
+  const pillBtn = (on: boolean) => ({
+    className: 'h-8 px-3 rounded-full border text-xs font-semibold whitespace-nowrap transition-colors',
+    style: on
+      ? { background: 'var(--teal)', borderColor: 'var(--teal)', color: '#fff' }
+      : { background: '#fff', borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' },
+  })
 
   return (
-    <div className="px-6 py-5">
+    <div className={HR_PAGE_CLASS} style={HR_PAGE_STYLE}>
+      <HrShimmerStyle />
+
       {/* Header */}
-      <div className="flex items-start justify-between gap-4 mb-4 flex-wrap">
-        <div>
-          <h1 className="text-xl font-semibold" style={{ fontFamily: 'var(--font-display)' }}>Subsidiary Ledger</h1>
-          <p className="text-sm text-gray-600 mt-0.5">
-            Every transaction posted to each account, with its opening and closing balance. Filter by account type,
-            account, branch or transaction type.
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold leading-tight" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>Subsidiary Ledger</h1>
+          <p className="mt-1 text-[13px] max-w-3xl" style={{ color: 'var(--mid-gray)' }}>
+            Every transaction posted to each account, with its opening and closing balance. Click a line to see the whole journal entry.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={toggleAll} disabled={!ledger?.accounts.length}
-            className="text-xs px-3 py-1.5 rounded-xl font-semibold border disabled:opacity-40"
-            style={borderStyle}>
-            {allCollapsed ? 'Expand all' : 'Collapse all'}
+        <div className="flex flex-wrap items-center gap-2">
+          <button onClick={toggleAll} disabled={!ledger?.accounts.length} className={`${hrBtn.ghost} h-9`}
+            style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+            {allCollapsed ? <><ChevronDown size={14} /> Expand all</> : <><ChevronRight size={14} /> Collapse all</>}
           </button>
           <DownloadMenu onDownload={onDownload} />
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="rounded-xl border bg-white p-3 mb-4" style={borderStyle}>
-        <div className="flex flex-wrap items-center gap-2">
-          <select className={selectClass} style={borderStyle} value="" onChange={e => {
-            if (!e.target.value) return
-            const r = presetRange(e.target.value)
-            setFrom(r.from); setTo(r.to)
-          }}>
-            <option value="">Quick range…</option>
-            <option value="thisMonth">This month</option>
-            <option value="lastMonth">Last month</option>
-            <option value="thisQuarter">This quarter</option>
-            <option value="thisYear">This year</option>
-            <option value="lastYear">Last year</option>
-          </select>
+      {/* Range + filters */}
+      <section className="rounded-lg border bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+        <div className="flex flex-wrap items-center gap-2 px-4 py-3">
+          <span className="text-[11px] font-bold uppercase tracking-[.5px] mr-1" style={{ color: 'var(--mid-gray)', fontFamily: 'var(--font-display)' }}>Range</span>
+          {PRESETS.map(p => {
+            const b = pillBtn(activePreset === p.key)
+            return (
+              <button key={p.key} onClick={() => { const r = presetRange(p.key); setFrom(r.from); setTo(r.to) }} aria-pressed={activePreset === p.key}
+                className={b.className} style={b.style}>{p.label}</button>
+            )
+          })}
+          <div className="flex items-center gap-1.5 sm:ml-auto">
+            <input type="date" value={from} onChange={e => setFrom(e.target.value)} aria-label="From" className={inputCls} style={inputStyle} />
+            <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>to</span>
+            <input type="date" value={to} onChange={e => setTo(e.target.value)} aria-label="To" className={inputCls} style={inputStyle} />
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-t rounded-b-lg" style={{ background: '#fcfdfa', borderColor: 'var(--light-gray)' }}>
+          <label className="flex items-center gap-1.5 h-9 px-3 w-full sm:w-72 rounded-lg border bg-white focus-within:border-[var(--teal)] focus-within:shadow-[0_0_0_3px_rgba(74,128,115,0.12)]"
+            style={{ borderColor: 'var(--light-gray)', color: 'var(--hr-faint)' }}>
+            <Search size={15} className="flex-shrink-0" />
+            <input type="text" placeholder="Search memo, reference or account…" value={searchInput}
+              onChange={e => setSearchInput(e.target.value)}
+              className="flex-1 min-w-0 bg-transparent outline-none text-[13px]" style={{ color: 'var(--charcoal)' }} />
+            {searchInput && <button onClick={() => setSearchInput('')} title="Clear search"><X size={14} /></button>}
+          </label>
 
-          <input type="date" value={from} onChange={e => setFrom(e.target.value)} className={selectClass} style={borderStyle} />
-          <span className="text-xs text-gray-500">to</span>
-          <input type="date" value={to} onChange={e => setTo(e.target.value)} className={selectClass} style={borderStyle} />
-
-          <select value={accountType} onChange={e => { setAccountType(e.target.value); setAccountId('') }} className={selectClass} style={borderStyle}>
+          <select value={accountType} onChange={e => { setAccountType(e.target.value); setAccountId('') }} className={inputCls}
+            style={{ ...inputStyle, borderColor: accountType !== 'ALL' ? 'var(--teal)' : 'var(--light-gray)' }}>
             <option value="ALL">All account types</option>
             {TYPE_ORDER.map(t => <option key={t} value={t}>{TYPE_LABEL[t]}</option>)}
           </select>
 
-          <select value={accountId} onChange={e => setAccountId(e.target.value)} className={selectClass} style={borderStyle}>
-            <option value="">All accounts</option>
-            {options.accounts
-              .filter(a => accountType === 'ALL' || a.accountType === accountType)
-              .map(a => (
-                <option key={a.id} value={a.id}>
-                  {a.accountNumber} — {a.accountTitle}{a.isActive ? '' : ' (inactive)'}
-                </option>
-              ))}
-          </select>
+          <div className="w-full sm:w-72">
+            <AccountPicker accounts={pickerAccounts} value={accountId} valueKey="id"
+              onChange={v => setAccountId(v)} clearLabel="All accounts"
+              placeholder="All accounts — type a number or name…"
+              className="w-full h-9 px-2.5 rounded-lg border text-[13px]" />
+          </div>
 
-          <select value={branch} onChange={e => setBranch(e.target.value)} className={selectClass} style={borderStyle}>
+          <select value={branch} onChange={e => setBranch(e.target.value)} className={inputCls}
+            style={{ ...inputStyle, borderColor: branch !== 'ALL' ? 'var(--teal)' : 'var(--light-gray)' }}>
             {/* 'ALL' first, matching the previous dropdown order. */}
             {['ALL', ...POSTABLE_BRANCHES.filter(v => v !== 'ALL')].map(v => <option key={v} value={v}>{branchLabel(v)}</option>)}
           </select>
 
-          <select value={refType} onChange={e => setRefType(e.target.value)} className={selectClass} style={borderStyle}>
+          <select value={refType} onChange={e => setRefType(e.target.value)} className={inputCls}
+            style={{ ...inputStyle, borderColor: refType ? 'var(--teal)' : 'var(--light-gray)' }}>
             <option value="">All transaction types</option>
             {options.refTypes.map(t => <option key={t} value={t}>{refTypeLabel(t)}</option>)}
           </select>
 
-          <div className="relative">
-            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input type="text" placeholder="Search memo, reference or account…" value={searchInput}
-              onChange={e => setSearchInput(e.target.value)}
-              className={`${selectClass} pl-8 pr-7 w-64`} style={borderStyle} />
-            {searchInput && (
-              <button onClick={() => setSearchInput('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700">
-                <X size={13} />
-              </button>
-            )}
-          </div>
+          {(() => { const b = pillBtn(includeEmpty); return (
+            <button onClick={() => setIncludeEmpty(v => !v)} aria-pressed={includeEmpty} className={b.className} style={b.style}
+              title="Also list accounts with no postings in the range">No-activity accounts</button>
+          ) })()}
+          {(() => { const b = pillBtn(includeInactive); return (
+            <button onClick={() => setIncludeInactive(v => !v)} aria-pressed={includeInactive} className={b.className} style={b.style}
+              title="Also list accounts switched off in the Chart of Accounts">Inactive accounts</button>
+          ) })()}
 
-          <label className="flex items-center gap-1.5 text-xs text-gray-600">
-            <input type="checkbox" checked={includeEmpty} onChange={e => setIncludeEmpty(e.target.checked)} />
-            Show accounts with no activity
-          </label>
-          <label className="flex items-center gap-1.5 text-xs text-gray-600">
-            <input type="checkbox" checked={includeInactive} onChange={e => setIncludeInactive(e.target.checked)} />
-            Include inactive accounts
-          </label>
-
-          <button onClick={resetFilters} className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-800 px-2 py-1.5">
+          <button onClick={resetFilters} className="flex items-center gap-1 text-xs font-semibold px-1.5 h-8 hover:underline underline-offset-2" style={{ color: 'var(--teal)' }}>
             <RotateCcw size={12} /> Reset
           </button>
         </div>
+      </section>
+
+      {/* Summary */}
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-[0.8fr_0.8fr_1.2fr_1.2fr_1.2fr] gap-3">
+        <StatCard loading={loading} label="Accounts" value={String(ledger?.accounts.length ?? 0)}
+          sub={includeEmpty ? 'Including ones with no activity' : 'With activity in the range'} accent={{ line: 'var(--teal)' }} />
+        <StatCard loading={loading} label="Transactions" value={(ledger?.totals.lineCount ?? 0).toLocaleString()}
+          sub={ledger?.truncated ? `First ${ledger.limit.toLocaleString()} listed below` : rangeLabel}
+          tone={ledger?.truncated ? 'amber' : undefined} accent={ledger?.truncated ? undefined : { line: 'var(--teal)' }} />
+        <StatCard loading={loading} compact label="Total debits" value={formatCurrency(ledger?.totals.debit ?? 0)} sub={rangeLabel} accent={{ line: '#3b82f6' }} />
+        <StatCard loading={loading} compact label="Total credits" value={formatCurrency(ledger?.totals.credit ?? 0)} sub={rangeLabel} accent={{ line: '#9333ea' }} />
+        <StatCard loading={loading} compact label="Difference" value={money(diff)}
+          sub={balanced ? 'Debits equal credits' : 'Debits − credits for these filters'}
+          tone={balanced ? 'green' : 'zero'} accent={balanced ? undefined : { line: 'var(--light-gray)' }} />
       </div>
 
-      {/* Summary strip */}
-      {ledger && !loading && (
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-4">
-          {[
-            { label: 'Accounts', value: String(ledger.accounts.length) },
-            { label: 'Transactions', value: String(ledger.totals.lineCount) },
-            { label: 'Total debits', value: formatCurrency(ledger.totals.debit) },
-            { label: 'Total credits', value: formatCurrency(ledger.totals.credit) },
-            { label: 'Difference', value: money(ledger.totals.debit - ledger.totals.credit) },
-          ].map(c => (
-            <div key={c.label} className="rounded-xl border bg-white px-4 py-2.5" style={borderStyle}>
-              <p className="text-[10px] uppercase tracking-widest text-gray-500">{c.label}</p>
-              <p className="text-sm font-semibold font-mono mt-0.5">{c.value}</p>
-            </div>
-          ))}
-        </div>
-      )}
-
       {ledger?.branchLocked && (
-        <div className="mb-3 px-4 py-2 rounded-lg text-xs bg-blue-50 text-blue-900">
+        <div className="px-4 py-2.5 rounded-lg border text-[13px]" style={{ background: '#eff6ff', borderColor: '#bfdbfe', color: '#1e3a8a' }}>
           Your account is scoped to {branchLabel(ledger.branch) || ledger.branch} — the ledger shows that branch only.
         </div>
       )}
 
-      {ledger?.truncated && (
-        <div className="mb-3 px-4 py-2 rounded-lg text-xs bg-amber-50 text-amber-900 flex items-center gap-2">
-          <AlertTriangle size={14} />
-          Showing the first {ledger.limit.toLocaleString()} of {ledger.totals.lineCount.toLocaleString()} transactions.
-          Account totals below are still complete — narrow the date range or pick one account to see every line.
+      {ledger?.truncated && !loading && (
+        <div className="flex items-start gap-2 px-4 py-2.5 rounded-lg border text-[13px]" style={{ background: '#fffbeb', borderColor: '#fde68a', color: '#92400e' }}>
+          <AlertTriangle size={15} className="mt-0.5 flex-shrink-0" />
+          <span>
+            Showing the first {ledger.limit.toLocaleString()} of {ledger.totals.lineCount.toLocaleString()} transactions.
+            Account totals below are still complete — narrow the date range or pick one account to see every line.
+          </span>
         </div>
       )}
 
-      {error && <div className="mb-3 px-4 py-2 rounded-lg text-sm bg-red-50 text-red-800">{error}</div>}
+      {error && (
+        <div className="flex items-center gap-2 px-4 py-2.5 rounded-lg border text-[13px]" style={{ background: '#fef2f2', borderColor: '#fecaca', color: '#b91c1c' }}>
+          <AlertTriangle size={15} /> {error}
+        </div>
+      )}
 
       {/* Ledger */}
       {loading ? (
-        <div className="flex items-center justify-center py-20"><Loader2 className="animate-spin text-teal-600" size={22} /></div>
+        <section className="rounded-lg border bg-white p-4 space-y-2" style={{ borderColor: 'var(--light-gray)' }} aria-busy="true">
+          {Array.from({ length: 8 }, (_, i) => <div key={i} className="h-10 rounded-md hr-shimmer" />)}
+        </section>
       ) : !ledger || ledger.accounts.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-center">
-          <BookOpen size={28} className="text-gray-300 mb-2" />
-          <p className="text-sm text-gray-600">No accounts with activity in this range.</p>
-          <p className="text-xs text-gray-400 mt-1">Widen the dates, or tick &ldquo;Show accounts with no activity&rdquo;.</p>
-        </div>
+        <section className="rounded-lg border bg-white px-6 py-14 flex flex-col items-center text-center" style={{ borderColor: 'var(--light-gray)' }}>
+          <span className="mb-2.5 flex w-11 h-11 items-center justify-center rounded-full" style={{ background: 'var(--pale-teal)', color: 'var(--teal)' }}>
+            <BookOpen size={20} />
+          </span>
+          <p className="text-sm font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>No accounts with activity in this range</p>
+          <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>Widen the dates, or list the accounts with no activity too.</p>
+          <div className="flex flex-wrap justify-center gap-2 mt-4">
+            {!includeEmpty && (
+              <button onClick={() => setIncludeEmpty(true)} className={hrBtn.outline} style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>Show no-activity accounts</button>
+            )}
+            <button onClick={resetFilters} className={hrBtn.outline} style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>Reset filters</button>
+          </div>
+        </section>
       ) : (
-        <div className="space-y-5">
+        <div className="space-y-4">
           {TYPE_ORDER.map(t => {
             const accts = grouped[t]
             if (!accts.length) return null
             const tt = typeTotals(accts)
             return (
-              <div key={t} className="border rounded-xl overflow-hidden bg-white" style={borderStyle}>
-                <div className="px-4 py-2.5 flex items-center justify-between" style={{ background: 'var(--deep-teal)' }}>
-                  <span className="text-sm font-semibold text-white" style={{ fontFamily: 'var(--font-display)' }}>{TYPE_LABEL[t]}</span>
-                  <span className="text-[11px] font-mono text-white/80">
-                    DR {formatCurrency(tt.debit)} · CR {formatCurrency(tt.credit)} · Closing {money(tt.closing)}
+              <section key={t} className="rounded-lg border bg-white overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+                {/* Type header */}
+                <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-4 py-2.5 border-b"
+                  style={{ borderColor: 'var(--light-gray)', background: 'var(--hr-head)', boxShadow: `inset 4px 0 0 ${TYPE_LINE[t]}` }}>
+                  <span className="flex items-center gap-2">
+                    <span className="text-xs font-bold uppercase tracking-[.5px]" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>{TYPE_LABEL[t]}</span>
+                    <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={TYPE_PILL[t]}>
+                      {accts.length} account{accts.length === 1 ? '' : 's'}
+                    </span>
+                  </span>
+                  <span className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs tabular-nums" style={{ color: 'var(--mid-gray)' }}>
+                    <span>Debits <strong className="font-semibold" style={{ color: 'var(--charcoal)' }}>{formatCurrency(tt.debit)}</strong></span>
+                    <span>Credits <strong className="font-semibold" style={{ color: 'var(--charcoal)' }}>{formatCurrency(tt.credit)}</strong></span>
+                    <span>Closing <strong className="font-semibold" style={{ color: 'var(--charcoal)' }}>{money(tt.closing)}</strong></span>
                   </span>
                 </div>
 
                 {accts.map(a => {
                   const isOpen = !collapsed.has(a.accountId)
                   return (
-                    <div key={a.accountId} className="border-t" style={borderStyle}>
+                    <div key={a.accountId} className="border-b last:border-b-0" style={{ borderColor: 'var(--light-gray)' }}>
                       {/* Account header */}
-                      <button onClick={() => toggle(a.accountId)}
-                        className="w-full flex items-center justify-between px-4 py-2 hover:bg-gray-50 text-left">
-                        <span className="flex items-center gap-2 min-w-0">
-                          {isOpen ? <ChevronDown size={14} className="text-gray-400 shrink-0" /> : <ChevronRight size={14} className="text-gray-400 shrink-0" />}
-                          <span className="font-mono text-xs text-gray-500 shrink-0">{a.accountNumber}</span>
-                          <span className="text-sm font-medium truncate">{a.accountTitle}</span>
-                          {!a.isActive && <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-gray-100 text-gray-500">INACTIVE</span>}
-                          <span className="text-[10px] text-gray-400 shrink-0">{a.lineCount} txn{a.lineCount === 1 ? '' : 's'}</span>
+                      <button onClick={() => toggle(a.accountId)} aria-expanded={isOpen}
+                        className="w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-[#fafbf7]">
+                        <ChevronDown size={15} className={`flex-shrink-0 transition-transform ${isOpen ? '' : '-rotate-90'}`} style={{ color: 'var(--mid-gray)' }} />
+                        <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0">
+                          <span className="font-mono text-[12.5px] font-semibold" style={{ color: 'var(--charcoal)' }}>{a.accountNumber}</span>
+                          <span className="text-[13px] font-semibold" style={{ color: 'var(--charcoal)' }}>{a.accountTitle}</span>
+                          {!a.isActive && <span className="px-1.5 py-px rounded text-[10.5px] font-semibold" style={{ background: '#f1f5f2', color: '#55616A' }}>Inactive</span>}
+                          <span className="px-1.5 py-px rounded-full text-[10.5px] font-semibold" style={{ background: 'var(--pale-teal)', color: 'var(--teal)' }}>
+                            {a.lineCount.toLocaleString()} txn{a.lineCount === 1 ? '' : 's'}
+                          </span>
                         </span>
-                        <span className="text-xs font-mono text-gray-600 shrink-0 pl-3">{money(a.closing)}</span>
+                        <span className="ml-auto flex items-center gap-4 pl-3 text-xs tabular-nums whitespace-nowrap">
+                          <span className="hidden md:inline" style={{ color: 'var(--hr-faint)' }}>Opening {money(a.opening)}</span>
+                          <span className="font-semibold" style={{ color: 'var(--charcoal)' }}>{money(a.closing)}</span>
+                        </span>
                       </button>
 
                       {isOpen && (
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-sm">
-                            <thead className="text-[10px] uppercase tracking-wider text-gray-500 bg-gray-50">
-                              <tr>
-                                <th className="text-left px-4 py-1.5 w-28">Date</th>
-                                <th className="text-left px-3 py-1.5 w-44">Transaction Type</th>
-                                <th className="text-left px-3 py-1.5 w-32">Num</th>
-                                <th className="text-left px-3 py-1.5">Memo / Description</th>
-                                <th className="text-left px-3 py-1.5 w-56">Split</th>
-                                <th className="text-right px-3 py-1.5 w-32">Debit</th>
-                                <th className="text-right px-3 py-1.5 w-32">Credit</th>
-                                <th className="text-right px-4 py-1.5 w-36">Balance</th>
+                        <div className="overflow-x-auto border-t" style={{ borderColor: 'var(--hr-line)' }}>
+                          <table className="w-full min-w-[900px] text-[13px]" style={{ borderCollapse: 'collapse' }}>
+                            <thead>
+                              <tr style={{ background: 'var(--hr-head)' }}>
+                                {([
+                                  ['Date', 'text-left pl-11 pr-3 w-32'], ['Transaction type', 'text-left px-3 w-40'], ['Num', 'text-left px-3 w-24'],
+                                  ['Memo / description', 'text-left px-3'], ['Split', 'text-left px-3 w-52'],
+                                  ['Debit', 'text-right px-3 w-28'], ['Credit', 'text-right px-3 w-28'], ['Balance', 'text-right px-4 w-32'],
+                                ] as const).map(([h, cls]) => (
+                                  <th key={h} className={`${cls} py-2 text-[11px] font-bold uppercase tracking-[.5px] whitespace-nowrap border-b`}
+                                    style={{ color: 'var(--mid-gray)', borderColor: 'var(--light-gray)' }}>{h}</th>
+                                ))}
                               </tr>
                             </thead>
                             <tbody>
                               {/* Opening balance */}
-                              <tr className="border-t" style={borderStyle}>
-                                <td className="px-4 py-1.5 text-xs text-gray-500" colSpan={5}>
+                              <tr className="border-b" style={{ borderColor: 'var(--hr-line)' }}>
+                                <td className="pl-11 pr-3 py-2 text-xs italic" style={{ color: 'var(--mid-gray)' }} colSpan={5}>
                                   Opening balance as of {fmtDate(from)}
                                 </td>
                                 <td /><td />
-                                <td className="px-4 py-1.5 text-right font-mono text-xs text-gray-600">{money(a.opening)}</td>
+                                <td className="px-4 py-2 text-right font-mono text-xs" style={{ color: 'var(--mid-gray)' }}>{money(a.opening)}</td>
                               </tr>
 
                               {a.lines.map(l => (
                                 <tr key={l.id}
                                   onClick={() => setDetail({ line: l, account: a })}
-                                  className="border-t cursor-pointer hover:bg-teal-50/40"
-                                  style={borderStyle}>
-                                  <td className="px-4 py-1.5 text-xs whitespace-nowrap">{fmtDate(l.date)}</td>
-                                  <td className="px-3 py-1.5 text-xs">{refTypeLabel(l.refType)}</td>
-                                  <td className="px-3 py-1.5 font-mono text-[11px] text-gray-500 truncate max-w-[8rem]" title={l.refId || ''}>{l.refId || '—'}</td>
-                                  <td className="px-3 py-1.5 text-xs" title={rebrand(l.entryDescription)}>{rebrand(l.description)}</td>
-                                  <td className="px-3 py-1.5 text-xs text-gray-500 truncate max-w-[14rem]" title={l.splitLines.map(s => s.account).join(', ')}>{l.split}</td>
-                                  <td className="px-3 py-1.5 text-right font-mono text-xs">{l.debit ? formatCurrency(l.debit) : ''}</td>
-                                  <td className="px-3 py-1.5 text-right font-mono text-xs">{l.credit ? formatCurrency(l.credit) : ''}</td>
-                                  <td className="px-4 py-1.5 text-right font-mono text-xs">{money(l.balance)}</td>
+                                  className="border-b cursor-pointer transition-colors hover:bg-[#f3f8ea]"
+                                  style={{ borderColor: 'var(--hr-line)' }}
+                                  title="Open the whole journal entry">
+                                  <td className="pl-11 pr-3 py-2 text-xs whitespace-nowrap tabular-nums" style={{ color: 'var(--charcoal)' }}>{fmtDate(l.date)}</td>
+                                  <td className="px-3 py-2">
+                                    <span className="inline-block max-w-full truncate px-2 py-px rounded-full text-[11px] font-semibold align-middle" style={{ background: '#f1f5f2', color: '#475569' }}>
+                                      {refTypeLabel(l.refType)}
+                                    </span>
+                                  </td>
+                                  <td className="px-3 py-2 font-mono text-[11px] truncate max-w-[6rem]" style={{ color: 'var(--hr-faint)' }} title={l.refId || ''}>{l.refId || '—'}</td>
+                                  <td className="px-3 py-2 text-xs" style={{ color: 'var(--charcoal)' }} title={rebrand(l.entryDescription)}>{rebrand(l.description)}</td>
+                                  <td className="px-3 py-2 text-xs truncate max-w-[13rem]" style={{ color: 'var(--mid-gray)' }} title={l.splitLines.map(s => s.account).join(', ')}>{l.split}</td>
+                                  <td className="px-3 py-2 text-right font-mono text-xs" style={{ color: 'var(--charcoal)' }}>{l.debit ? formatCurrency(l.debit) : ''}</td>
+                                  <td className="px-3 py-2 text-right font-mono text-xs" style={{ color: 'var(--charcoal)' }}>{l.credit ? formatCurrency(l.credit) : ''}</td>
+                                  <td className="px-4 py-2 text-right font-mono text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>{money(l.balance)}</td>
                                 </tr>
                               ))}
 
                               {a.truncated && (
-                                <tr className="border-t" style={borderStyle}>
-                                  <td colSpan={8} className="px-4 py-1.5 text-[11px] text-amber-800 bg-amber-50">
+                                <tr className="border-b" style={{ borderColor: 'var(--hr-line)' }}>
+                                  <td colSpan={8} className="pl-11 pr-4 py-2 text-[11px]" style={{ background: '#fffbeb', color: '#92400e' }}>
                                     {a.lineCount - a.lines.length} further transaction{a.lineCount - a.lines.length === 1 ? '' : 's'} not shown — the totals below still include them.
                                   </td>
                                 </tr>
                               )}
 
                               {/* Total for account */}
-                              <tr className="border-t font-semibold bg-gray-50" style={borderStyle}>
-                                <td className="px-4 py-1.5 text-xs" colSpan={5}>Total for {a.accountNumber} {a.accountTitle}</td>
-                                <td className="px-3 py-1.5 text-right font-mono text-xs">{formatCurrency(a.debitTotal)}</td>
-                                <td className="px-3 py-1.5 text-right font-mono text-xs">{formatCurrency(a.creditTotal)}</td>
-                                <td className="px-4 py-1.5 text-right font-mono text-xs">{money(a.closing)}</td>
+                              <tr style={{ background: 'var(--hr-head)' }}>
+                                <td className="pl-11 pr-3 py-2 text-xs font-bold" style={{ color: 'var(--charcoal)' }} colSpan={5}>Total for {a.accountNumber} {a.accountTitle}</td>
+                                <td className="px-3 py-2 text-right font-mono text-xs font-bold" style={{ color: 'var(--charcoal)' }}>{formatCurrency(a.debitTotal)}</td>
+                                <td className="px-3 py-2 text-right font-mono text-xs font-bold" style={{ color: 'var(--charcoal)' }}>{formatCurrency(a.creditTotal)}</td>
+                                <td className="px-4 py-2 text-right font-mono text-xs font-bold" style={{ color: 'var(--charcoal)' }}>{money(a.closing)}</td>
                               </tr>
                             </tbody>
                           </table>
@@ -478,70 +533,74 @@ export default function SubsidiaryLedgerPage() {
                     </div>
                   )
                 })}
-              </div>
+              </section>
             )
           })}
 
           {/* Grand total */}
-          <div className="rounded-xl border bg-white px-4 py-3 flex items-center justify-between" style={borderStyle}>
-            <span className="text-sm font-semibold">Total — all filtered accounts</span>
-            <span className="text-xs font-mono text-gray-700">
-              Debits {formatCurrency(ledger.totals.debit)} · Credits {formatCurrency(ledger.totals.credit)} ·
-              Difference {money(ledger.totals.debit - ledger.totals.credit)}
+          <section className="rounded-lg border bg-white px-4 py-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1"
+            style={{ borderColor: 'var(--light-gray)', boxShadow: `inset 4px 0 0 ${balanced ? '#059669' : 'var(--light-gray)'}` }}>
+            <span className="text-sm font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>Total — all filtered accounts</span>
+            <span className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs tabular-nums" style={{ color: 'var(--mid-gray)' }}>
+              <span>Debits <strong className="font-semibold" style={{ color: 'var(--charcoal)' }}>{formatCurrency(ledger.totals.debit)}</strong></span>
+              <span>Credits <strong className="font-semibold" style={{ color: 'var(--charcoal)' }}>{formatCurrency(ledger.totals.credit)}</strong></span>
+              <span>Difference <strong className="font-semibold" style={{ color: balanced ? '#047857' : 'var(--charcoal)' }}>{money(diff)}</strong></span>
             </span>
-          </div>
+          </section>
         </div>
       )}
 
       {/* Journal-entry drill-down */}
       {detail && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setDetail(null)}>
-          <div className="bg-white rounded-xl w-full max-w-2xl max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-            <div className="px-5 py-3 border-b flex items-center justify-between" style={borderStyle}>
+          <div className="bg-white rounded-xl w-full max-w-2xl max-h-[85vh] overflow-y-auto shadow-[0_20px_60px_rgba(0,0,0,0.15)]" onClick={e => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b flex items-start justify-between gap-3" style={{ borderColor: 'var(--light-gray)' }}>
               <div>
-                <h2 className="text-sm font-semibold" style={{ fontFamily: 'var(--font-display)' }}>
+                <h2 className="text-base font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
                   {refTypeLabel(detail.line.refType)}
                 </h2>
-                <p className="text-xs text-gray-500 mt-0.5">
+                <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
                   {fmtDate(detail.line.date)} · {branchLabel(detail.line.branch) || detail.line.branch}
                   {detail.line.refId ? ` · Ref ${detail.line.refId}` : ''}
                 </p>
               </div>
-              <button onClick={() => setDetail(null)} className="text-gray-400 hover:text-gray-700"><X size={18} /></button>
+              <button onClick={() => setDetail(null)} className="p-1 rounded-lg hover:bg-[var(--off-white)]" title="Close">
+                <X size={18} style={{ color: 'var(--mid-gray)' }} />
+              </button>
             </div>
 
-            <div className="px-5 py-3">
-              <p className="text-sm mb-3">{rebrand(detail.line.entryDescription)}</p>
-              <table className="w-full text-sm">
-                <thead className="text-[10px] uppercase tracking-wider text-gray-500">
-                  <tr>
-                    <th className="text-left py-1.5">Account</th>
-                    <th className="text-right py-1.5 w-32">Debit</th>
-                    <th className="text-right py-1.5 w-32">Credit</th>
+            <div className="px-5 py-4">
+              <p className="text-sm mb-3" style={{ color: 'var(--charcoal)' }}>{rebrand(detail.line.entryDescription)}</p>
+              <table className="w-full text-[13px]" style={{ borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ background: 'var(--hr-head)' }}>
+                    {([['Account', 'text-left px-3'], ['Debit', 'text-right px-3 w-32'], ['Credit', 'text-right px-3 w-32']] as const).map(([h, cls]) => (
+                      <th key={h} className={`${cls} py-2 text-[11px] font-bold uppercase tracking-[.5px] border-b`} style={{ color: 'var(--mid-gray)', borderColor: 'var(--light-gray)' }}>{h}</th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
-                  <tr className="border-t" style={borderStyle}>
-                    <td className="py-1.5 font-medium">
+                  <tr className="border-b" style={{ borderColor: 'var(--hr-line)', background: '#f8fbf1' }}>
+                    <td className="px-3 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>
                       {detail.account.accountNumber} {detail.account.accountTitle}
-                      <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-semibold" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>THIS ACCOUNT</span>
+                      <span className="ml-2 px-1.5 py-px rounded text-[10.5px] font-semibold" style={{ background: 'var(--pale-teal)', color: 'var(--teal)' }}>This account</span>
                     </td>
-                    <td className="py-1.5 text-right font-mono text-xs">{detail.line.debit ? formatCurrency(detail.line.debit) : ''}</td>
-                    <td className="py-1.5 text-right font-mono text-xs">{detail.line.credit ? formatCurrency(detail.line.credit) : ''}</td>
+                    <td className="px-3 py-2 text-right font-mono text-xs">{detail.line.debit ? formatCurrency(detail.line.debit) : ''}</td>
+                    <td className="px-3 py-2 text-right font-mono text-xs">{detail.line.credit ? formatCurrency(detail.line.credit) : ''}</td>
                   </tr>
                   {detail.line.splitLines.map((s, i) => (
-                    <tr key={i} className="border-t" style={borderStyle}>
-                      <td className="py-1.5">{s.account}</td>
-                      <td className="py-1.5 text-right font-mono text-xs">{s.debit ? formatCurrency(s.debit) : ''}</td>
-                      <td className="py-1.5 text-right font-mono text-xs">{s.credit ? formatCurrency(s.credit) : ''}</td>
+                    <tr key={i} className="border-b" style={{ borderColor: 'var(--hr-line)' }}>
+                      <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{s.account}</td>
+                      <td className="px-3 py-2 text-right font-mono text-xs">{s.debit ? formatCurrency(s.debit) : ''}</td>
+                      <td className="px-3 py-2 text-right font-mono text-xs">{s.credit ? formatCurrency(s.credit) : ''}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
               {detail.line.description !== detail.line.entryDescription && (
-                <p className="text-xs text-gray-500 mt-3">Line memo: {rebrand(detail.line.description)}</p>
+                <p className="text-xs mt-3" style={{ color: 'var(--mid-gray)' }}>Line memo: {rebrand(detail.line.description)}</p>
               )}
-              <p className="text-[10px] text-gray-400 mt-3 font-mono">Journal entry {detail.line.journalEntryId}</p>
+              <p className="text-[10px] mt-3 font-mono" style={{ color: 'var(--hr-faint)' }}>Journal entry {detail.line.journalEntryId}</p>
             </div>
           </div>
         </div>
