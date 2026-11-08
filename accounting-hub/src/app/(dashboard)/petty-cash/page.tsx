@@ -1381,6 +1381,7 @@ function PettyCashInner() {
                 {Array.from({ length: 7 }, (_, i) => <div key={i} className="h-10 rounded-md pc-shimmer" />)}
               </div>
             ) : (
+              <>
               <table ref={gridTableRef} className="text-xs rz-grid" style={{ borderCollapse: 'collapse', minWidth: '100%', ...gridRz.tableStyle }}>
                 <ResizableColgroup rz={gridRz} />
                 <thead className="sticky top-0 z-10">
@@ -1779,49 +1780,6 @@ function PettyCashInner() {
                       </tr>
                     )
                   })}
-                  {displayed.length === 0 && (
-                    <tr><td colSpan={visibleCols.length + 2} className="p-0">
-                      {/* sticky so the message sits in view however wide the grid is */}
-                      <div className="sticky left-0 px-6 py-12 text-center" style={{ width: 'min(100%, calc(100vw - 4rem))', maxWidth: 720 }}>
-                        {entries.length === 0 ? (
-                          <>
-                            <p className="text-sm font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>No entries yet</p>
-                            <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>
-                              {canWrite ? 'Add the first petty cash entry, or import the CSV/Excel template.' : `${BRANCH_NAMES[branch] || branch} has no petty cash entries.`}
-                            </p>
-                            {canWrite && (
-                              <button onClick={() => setShowAddPopup(true)} className={`${primaryBtn} mt-4`} style={{ background: 'var(--teal)' }}>
-                                <Plus size={15} /> Add entry
-                              </button>
-                            )}
-                          </>
-                        ) : !showReplenished && !anyGridFilter && !searchQ && openCount === 0 ? (
-                          <>
-                            <span className="mx-auto mb-2.5 flex w-11 h-11 items-center justify-center rounded-full" style={{ background: '#ecfdf5', color: '#059669' }}>
-                              <CheckCircle2 size={22} />
-                            </span>
-                            <p className="text-sm font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>All caught up</p>
-                            <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>
-                              Every one of the {entries.length.toLocaleString()} entries is replenished, so there is nothing open.
-                            </p>
-                            <button onClick={toggleShowReplenished} className={`${outlineBtn} mt-4`} style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
-                              Show all {entries.length.toLocaleString()} entries
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            <p className="text-sm font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>No entries match</p>
-                            <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>
-                              Nothing fits the search and column filters{hiddenMatches > 0 ? ` (${hiddenMatches} replenished ${hiddenMatches === 1 ? 'entry matches' : 'entries match'} but ${hiddenMatches === 1 ? 'is' : 'are'} hidden)` : ''}.
-                            </p>
-                            <button onClick={clearGridFilters} className={`${outlineBtn} mt-4`} style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
-                              Clear filters
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </td></tr>
-                  )}
                 </tbody>
                 {displayed.length > 0 && (
                   <tfoot className="sticky bottom-0 z-10">
@@ -1845,6 +1803,51 @@ function PettyCashInner() {
                   </tfoot>
                 )}
               </table>
+              {/* Empty grid: a plain block under the header row is exactly as wide as the
+                  visible area, so the message sits in the middle of what you can see
+                  (inside the table it centred on the full 3,000px grid). Sticky keeps it
+                  in place if the grid is scrolled sideways. */}
+              {displayed.length === 0 && (
+                <div className="sticky left-0 px-6 py-14 flex flex-col items-center text-center">
+                {entries.length === 0 ? (
+                  <>
+                    <p className="text-sm font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>No entries yet</p>
+                    <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>
+                      {canWrite ? 'Add the first petty cash entry, or import the CSV/Excel template.' : `${BRANCH_NAMES[branch] || branch} has no petty cash entries.`}
+                    </p>
+                    {canWrite && (
+                      <button onClick={() => setShowAddPopup(true)} className={`${primaryBtn} mt-4`} style={{ background: 'var(--teal)' }}>
+                        <Plus size={15} /> Add entry
+                      </button>
+                    )}
+                  </>
+                ) : !showReplenished && !anyGridFilter && !searchQ && openCount === 0 ? (
+                  <>
+                    <span className="mx-auto mb-2.5 flex w-11 h-11 items-center justify-center rounded-full" style={{ background: '#ecfdf5', color: '#059669' }}>
+                      <CheckCircle2 size={22} />
+                    </span>
+                    <p className="text-sm font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>All caught up</p>
+                    <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>
+                      Every one of the {entries.length.toLocaleString()} entries is replenished, so there is nothing open.
+                    </p>
+                    <button onClick={toggleShowReplenished} className={`${outlineBtn} mt-4`} style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+                      Show all {entries.length.toLocaleString()} entries
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>No entries match</p>
+                    <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>
+                      Nothing fits the search and column filters{hiddenMatches > 0 ? ` (${hiddenMatches} replenished ${hiddenMatches === 1 ? 'entry matches' : 'entries match'} but ${hiddenMatches === 1 ? 'is' : 'are'} hidden)` : ''}.
+                    </p>
+                    <button onClick={clearGridFilters} className={`${outlineBtn} mt-4`} style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+                      Clear filters
+                    </button>
+                  </>
+                )}
+                </div>
+              )}
+              </>
             )}
             </div>
 
