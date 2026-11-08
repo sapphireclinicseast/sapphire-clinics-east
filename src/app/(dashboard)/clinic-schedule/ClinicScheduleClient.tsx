@@ -1,12 +1,14 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { CalendarDays, LayoutGrid, Clock, Activity, CalendarClock, ArrowRightLeft, X } from 'lucide-react'
+import { CalendarDays, LayoutGrid, Clock, Activity, CalendarClock, ArrowRightLeft, X, CheckCircle2, AlertTriangle } from 'lucide-react'
 import DepartmentView from './DepartmentView'
 import DailyView from './DailyView'
 import CalendarView from './CalendarView'
 import StatusView from './StatusView'
 import { localTodayStr, localTomorrowStr } from '@/lib/utils'
+import { PillTabs, BTN_PRIMARY, BTN_SECONDARY, CONTROL, CONTROL_STYLE, LABEL, TEAL_HEX } from '../decking/ui'
+import { CS_CSS } from './ui'
 
 const tomorrowStr = localTomorrowStr
 const todayStr = localTodayStr
@@ -52,98 +54,90 @@ function TransferModal({
     }
   }
 
+  const errorLine = error && (
+    <p role="alert" className="flex items-start gap-1.5 text-xs mt-3 px-3 py-2 rounded-lg"
+      style={{ background: '#FEF2F2', color: '#B91C1C', border: '1px solid #FECACA' }}>
+      <AlertTriangle size={13} className="flex-shrink-0 mt-px" />{error}
+    </p>
+  )
+
   return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 50,
-      background: 'rgba(0,0,0,0.45)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      padding: '1rem',
-    }}>
-      <div style={{
-        background: '#fff', borderRadius: '1rem',
-        width: '100%', maxWidth: '420px',
-        boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
-        overflow: 'hidden',
-      }}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(15,23,42,0.45)' }}>
+      <div role="dialog" aria-modal="true" aria-labelledby="cs-transfer-title"
+        className="w-full max-w-[420px] rounded-2xl overflow-hidden"
+        style={{ background: '#fff', boxShadow: '0 24px 64px rgba(15,23,42,0.22)' }}>
         {/* Header */}
-        <div style={{
-          background: 'linear-gradient(135deg, #ED6823, #F5A030)',
-          padding: '1rem 1.25rem',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <ArrowRightLeft size={16} color="#fff" />
-            <p style={{ color: '#fff', fontWeight: 700, fontSize: '0.875rem', margin: 0 }}>
+        <div className="flex items-center justify-between gap-3 px-5 py-4" style={{ borderBottom: '1px solid var(--light-gray)' }}>
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: '#FFF1E8', color: '#ED6823' }}>
+              <ArrowRightLeft size={15} />
+            </span>
+            <p id="cs-transfer-title" className="text-sm font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>
               Transfer All Patients
             </p>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: '0.2rem' }}>
-            <X size={18} />
+          <button type="button" onClick={onClose} aria-label="Close"
+            className="cs-btn w-8 h-8 rounded-lg flex items-center justify-center hover:bg-gray-100 transition-colors"
+            style={{ color: 'var(--mid-gray)' }}>
+            <X size={17} />
           </button>
         </div>
 
         {/* Body */}
-        <div style={{ padding: '1.25rem' }}>
+        <div className="p-5">
           {step === 'done' ? (
-            <div style={{ textAlign: 'center', padding: '0.5rem 0 1rem' }}>
-              <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>✅</div>
-              <p style={{ fontWeight: 700, fontSize: '1rem', color: '#1A1A1A', marginBottom: '0.35rem' }}>
+            <div className="text-center pt-1 pb-2">
+              <span className="mx-auto mb-3 w-12 h-12 rounded-full flex items-center justify-center" style={{ background: 'var(--pale-teal)', color: 'var(--teal)' }}>
+                <CheckCircle2 size={24} />
+              </span>
+              <p className="text-base font-bold mb-1" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>
                 Transfer Complete
               </p>
               {count === 0 ? (
-                <p style={{ fontSize: '0.82rem', color: '#888' }}>
+                <p className="text-[13px]" style={{ color: 'var(--mid-gray)' }}>
                   No schedules were found on {fmtDate(fromDate)} to transfer.
                 </p>
               ) : (
-                <p style={{ fontSize: '0.82rem', color: '#555' }}>
+                <p className="text-[13px] leading-relaxed" style={{ color: '#555' }}>
                   <strong>{count}</strong> schedule{count !== 1 ? 's' : ''} moved from<br />
                   <strong>{fmtDate(fromDate)}</strong> → <strong>{fmtDate(toDate)}</strong>
                 </p>
               )}
               <button
+                type="button"
                 onClick={() => { onTransferred(toDate); onClose() }}
-                style={{
-                  marginTop: '1.25rem', background: '#ED6823', color: '#fff',
-                  border: 'none', borderRadius: '0.5rem', padding: '0.55rem 1.5rem',
-                  fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer',
-                }}
+                className={`${BTN_PRIMARY} mt-5 px-5`}
+                style={{ background: TEAL_HEX }}
               >
                 View {fmtDate(toDate)}
               </button>
             </div>
           ) : step === 'confirm' ? (
             <div>
-              <p style={{ fontSize: '0.85rem', color: '#555', marginBottom: '1rem', lineHeight: 1.6 }}>
+              <div className="rounded-xl px-4 py-3 mb-3 text-[13px] leading-relaxed" style={{ background: '#FFF7F1', border: '1px solid #FBD5BC', color: '#555' }}>
                 This will move <strong>all schedules</strong> on<br />
-                <strong style={{ color: '#ED6823' }}>{fmtDate(fromDate)}</strong><br />
+                <strong style={{ color: '#C2410C' }}>{fmtDate(fromDate)}</strong><br />
                 to<br />
-                <strong style={{ color: '#ED6823' }}>{fmtDate(toDate)}</strong>.<br /><br />
+                <strong style={{ color: '#C2410C' }}>{fmtDate(toDate)}</strong>.<br /><br />
                 This cannot be undone automatically. Continue?
-              </p>
-              {error && (
-                <p style={{ fontSize: '0.78rem', color: '#DC2626', marginBottom: '0.75rem' }}>{error}</p>
-              )}
-              <div style={{ display: 'flex', gap: '0.6rem' }}>
+              </div>
+              {errorLine}
+              <div className="flex gap-2 mt-4">
                 <button
+                  type="button"
                   onClick={() => setStep('form')}
                   disabled={loading}
-                  style={{
-                    flex: 1, background: '#F5F5F5', color: '#555', border: 'none',
-                    borderRadius: '0.5rem', padding: '0.55rem', fontWeight: 600,
-                    fontSize: '0.82rem', cursor: 'pointer',
-                  }}
+                  className={`${BTN_SECONDARY} flex-1`}
+                  style={CONTROL_STYLE}
                 >
                   Back
                 </button>
                 <button
+                  type="button"
                   onClick={handleTransfer}
                   disabled={loading}
-                  style={{
-                    flex: 2, background: '#ED6823', color: '#fff', border: 'none',
-                    borderRadius: '0.5rem', padding: '0.55rem', fontWeight: 600,
-                    fontSize: '0.82rem', cursor: loading ? 'default' : 'pointer',
-                    opacity: loading ? 0.7 : 1,
-                  }}
+                  className={`${BTN_PRIMARY} flex-[2]`}
+                  style={{ background: '#ED6823', cursor: loading ? 'default' : 'pointer' }}
                 >
                   {loading ? 'Transferring…' : 'Yes, Transfer'}
                 </button>
@@ -151,60 +145,51 @@ function TransferModal({
             </div>
           ) : (
             <div>
-              <p style={{ fontSize: '0.78rem', color: '#888', marginBottom: '1.1rem', lineHeight: 1.5 }}>
+              <p className="text-[13px] mb-4 leading-relaxed" style={{ color: 'var(--mid-gray)' }}>
                 Move all scheduled sessions from one date to another.
               </p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: '#555', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              <div className="grid grid-cols-[1fr_auto_1fr] items-end gap-2">
+                <div className="min-w-0">
+                  <label htmlFor="cs-transfer-from" className={LABEL} style={{ color: 'var(--mid-gray)' }}>
                     From Date
                   </label>
                   <input
+                    id="cs-transfer-from"
                     type="date"
                     value={fromDate}
                     onChange={e => setFromDate(e.target.value)}
-                    style={{
-                      width: '100%', padding: '0.5rem 0.75rem', borderRadius: '0.5rem',
-                      border: '1px solid #DDD', fontSize: '0.875rem', color: '#1A1A1A',
-                      boxSizing: 'border-box',
-                    }}
+                    className={`${CONTROL} w-full`}
+                    style={CONTROL_STYLE}
                   />
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'center' }}>
-                  <ArrowRightLeft size={16} color="#ED6823" />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: '#555', marginBottom: '0.35rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                <span className="h-9 flex items-center" style={{ color: '#ED6823' }} aria-hidden>
+                  <ArrowRightLeft size={15} />
+                </span>
+                <div className="min-w-0">
+                  <label htmlFor="cs-transfer-to" className={LABEL} style={{ color: 'var(--mid-gray)' }}>
                     To Date
                   </label>
                   <input
+                    id="cs-transfer-to"
                     type="date"
                     value={toDate}
                     onChange={e => setToDate(e.target.value)}
-                    style={{
-                      width: '100%', padding: '0.5rem 0.75rem', borderRadius: '0.5rem',
-                      border: '1px solid #DDD', fontSize: '0.875rem', color: '#1A1A1A',
-                      boxSizing: 'border-box',
-                    }}
+                    className={`${CONTROL} w-full`}
+                    style={CONTROL_STYLE}
                   />
                 </div>
               </div>
-              {error && (
-                <p style={{ fontSize: '0.78rem', color: '#DC2626', marginTop: '0.75rem' }}>{error}</p>
-              )}
+              {errorLine}
               <button
+                type="button"
                 onClick={() => {
                   if (!fromDate || !toDate) { setError('Please select both dates'); return }
                   if (fromDate === toDate) { setError('From and To dates must be different'); return }
                   setError('')
                   setStep('confirm')
                 }}
-                style={{
-                  marginTop: '1.25rem', width: '100%',
-                  background: '#ED6823', color: '#fff', border: 'none',
-                  borderRadius: '0.5rem', padding: '0.6rem',
-                  fontWeight: 600, fontSize: '0.875rem', cursor: 'pointer',
-                }}
+                className={`${BTN_PRIMARY} mt-5 w-full`}
+                style={{ background: '#ED6823' }}
               >
                 Continue
               </button>
@@ -224,21 +209,6 @@ const TABS = [
 ] as const
 
 type TabId = typeof TABS[number]['id']
-
-function ComingSoonTab({ label }: { label: string }) {
-  return (
-    <div className="rounded-xl flex flex-col items-center justify-center py-24 gap-4"
-      style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
-      <div className="w-12 h-12 rounded-2xl flex items-center justify-center" style={{ background: 'var(--pale-teal)' }}>
-        <CalendarDays size={22} style={{ color: 'var(--teal)' }} />
-      </div>
-      <div className="text-center">
-        <p className="font-semibold text-sm" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>Coming Soon</p>
-        <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>{label} is under development.</p>
-      </div>
-    </div>
-  )
-}
 
 export default function ClinicScheduleClient({ role }: { role: string }) {
   const [activeTab, setActiveTab] = useState<TabId>('department')
@@ -273,7 +243,8 @@ export default function ClinicScheduleClient({ role }: { role: string }) {
   }, [])
 
   return (
-    <div className="space-y-5">
+    <div className="max-w-[1400px] space-y-5 min-w-0">
+      <style>{CS_CSS}</style>
       {showTransfer && (
         <TransferModal
           onClose={() => setShowTransfer(false)}
@@ -281,9 +252,9 @@ export default function ClinicScheduleClient({ role }: { role: string }) {
         />
       )}
 
-      {/* Header */}
+      {/* ── Header ── */}
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
+        <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: 'var(--teal)' }}>
             Clinic Tools
           </p>
@@ -295,44 +266,35 @@ export default function ClinicScheduleClient({ role }: { role: string }) {
           </p>
         </div>
         {/* Action buttons */}
-        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', flexShrink: 0 }}>
+        <div className="flex flex-wrap gap-2 flex-shrink-0">
           <button
+            type="button"
             onClick={() => setShowTransfer(true)}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm shadow-sm"
-            style={{ background: '#fff', color: '#ED6823', border: '1.5px solid #ED6823', cursor: 'pointer', whiteSpace: 'nowrap' }}
+            className={BTN_SECONDARY}
+            style={{ ...CONTROL_STYLE, color: '#C2410C', borderColor: '#F6C3A3' }}
           >
-            <ArrowRightLeft size={16} />
+            <ArrowRightLeft size={15} />
             Transfer Dates
           </button>
           <button
+            type="button"
             onClick={() => setSelectedDate(tomorrowStr())}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-sm shadow-sm"
-            style={{ background: '#ED6823', color: '#fff', border: 'none', cursor: 'pointer', whiteSpace: 'nowrap' }}
+            className={BTN_PRIMARY}
+            style={{ background: '#ED6823' }}
           >
-            <CalendarClock size={16} />
+            <CalendarClock size={15} />
             Schedule for Tomorrow
           </button>
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-1 border-b" style={{ borderColor: 'var(--light-gray)' }}>
-        {TABS.map(({ id, label, icon: Icon }) => (
-          <button
-            key={id}
-            onClick={() => setActiveTab(id)}
-            className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors relative"
-            style={{
-              color: activeTab === id ? 'var(--teal)' : 'var(--mid-gray)',
-              borderBottom: activeTab === id ? '2px solid var(--teal)' : '2px solid transparent',
-              marginBottom: '-1px',
-            }}
-          >
-            <Icon size={15} />
-            {label}
-          </button>
-        ))}
-      </div>
+      {/* ── View switcher ── */}
+      <PillTabs
+        label="Clinic schedule view"
+        value={activeTab}
+        onChange={id => setActiveTab(id as TabId)}
+        tabs={TABS.map(({ id, label, icon: Icon }) => ({ id, label: <><Icon size={14} /> {label}</> }))}
+      />
 
       {/* Tab Content */}
       {activeTab === 'department' && <DepartmentView role={role} selectedDate={selectedDate} onDateChange={setSelectedDate} />}

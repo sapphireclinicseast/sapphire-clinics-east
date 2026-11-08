@@ -1,12 +1,14 @@
 'use client'
 
-import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
-import { statusLabel } from '@/lib/schedule-status'
-import { Plus, Pencil, Trash2, Mail, MailCheck, MessageSquare, ChevronDown, ChevronUp, X, Smartphone, Video } from 'lucide-react'
+import { Fragment, useEffect, useState, useRef, useCallback, useMemo } from 'react'
+import { Plus, Pencil, Trash2, Mail, MailCheck, MessageSquare, ChevronDown, ChevronUp, X, Smartphone, Video, History, LayoutGrid, Users, CalendarClock, UserPlus, AlertTriangle, Search, Info, Layers } from 'lucide-react'
 import DeskShortcutCard from '@/components/DeskShortcutCard'
 import { localTodayStr, localTomorrowStr } from '@/lib/utils'
 import { branchLabel } from '@/lib/branch-label'
 import { isRenter, RENTER_NOTIFY_REASON } from '@/lib/employment'
+import { KpiCard, Skeleton, DeptChip, CARD_STYLE } from '../patients/dashboard/ui'
+import { PillTabs, Avatar, BTN_PRIMARY, BTN_SECONDARY, BTN_SM, CONTROL, CONTROL_STYLE, TEAL_HEX } from '../decking/ui'
+import { Toolbar, Field, ErrorBanner, KpiSkeletonRow, StatusBadge, TodayTag, deptColor, TH, TH_BG } from './ui'
 
 
 // ─── Session types per department ────────────────────────────────────────────
@@ -118,12 +120,11 @@ function isEligibleIntern(s: StaffMember, forDate: string): boolean {
   return true
 }
 
-const STATUS_COLORS: Record<string, { bg: string; color: string }> = {
-  PENDING:     { bg: '#FFF9EC', color: '#92400E' },
-  CONFIRMED:   { bg: 'var(--pale-teal)', color: 'var(--teal)' },
-  CANCELLED:   { bg: '#FEE2E2', color: '#DC2626' },
-  RESCHEDULED: { bg: '#EDE9FE', color: '#5B21B6' },
-  NO_SHOW: { bg: '#FFEDD5', color: '#9A3412' },   // amber: not cancelled, not rescheduled
+// Shared form-field look (matches the Decking / toolbar controls).
+const FIELD_STYLE = {
+  border: '1px solid var(--light-gray)', background: '#fff',
+  color: 'var(--charcoal)', borderRadius: '0.5rem',
+  padding: '0.45rem 0.75rem', fontSize: '0.875rem', width: '100%', minHeight: '2.25rem',
 }
 
 // ─── Patient search typeahead ─────────────────────────────────────────────────
@@ -150,16 +151,14 @@ function PatientSearch({ value, label, onChange, branchEnum }: {
     }, 250)
   }
 
-  const inputStyle = {
-    border: '1.5px solid rgba(26,123,138,0.3)', background: '#fff',
-    color: 'var(--charcoal)', borderRadius: '0.5rem',
-    padding: '0.45rem 0.7rem', fontSize: '0.85rem', width: '100%',
-  }
+  const inputStyle = { ...FIELD_STYLE, paddingLeft: '2rem' }
 
   return (
     <div className="relative">
+      <Search size={14} aria-hidden className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mid-gray)' }} />
       <input
         style={inputStyle}
+        className="outline-none focus:border-[var(--teal)]"
         placeholder="Search patient name…"
         value={query}
         onChange={e => handleInput(e.target.value)}
@@ -167,12 +166,12 @@ function PatientSearch({ value, label, onChange, branchEnum }: {
         autoComplete="off"
       />
       {open && results.length > 0 && (
-        <div className="absolute z-50 w-full mt-1 rounded-lg shadow-lg overflow-hidden"
-          style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
+        <div className="absolute z-50 w-full mt-1 rounded-xl overflow-hidden max-h-72 overflow-y-auto"
+          style={{ background: '#fff', border: '1px solid var(--light-gray)', boxShadow: '0 12px 32px rgba(15,23,42,0.12)' }}>
           {results.map(p => (
             <button key={p.id} type="button"
-              className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 transition-colors"
-              style={{ color: 'var(--charcoal)', borderBottom: '1px solid var(--light-gray)' }}
+              className="w-full text-left px-3 py-2 text-sm hover:bg-[#F5FAFA] transition-colors"
+              style={{ color: 'var(--charcoal)', borderBottom: '1px solid #EEF1F1' }}
               onMouseDown={() => {
                 onChange(p.id, `${p.lastName}, ${p.firstName}`)
                 setQuery(`${p.lastName}, ${p.firstName}`)
@@ -221,13 +220,9 @@ function ScheduleForm({ dept, allStaff, values, onChange, onSubmit, onCancel, er
   // Track whether the user chose "Custom…" from the start-time dropdown
   const [customStart, setCustomStart] = useState(() => !TIME_SLOTS.includes(values.startTime))
 
-  const inputStyle = {
-    border: '1.5px solid rgba(26,123,138,0.3)', background: '#fff',
-    color: 'var(--charcoal)', borderRadius: '0.5rem',
-    padding: '0.45rem 0.7rem', fontSize: '0.85rem', width: '100%',
-  }
+  const inputStyle = FIELD_STYLE
   const labelStyle = {
-    display: 'block', fontSize: '0.72rem', fontWeight: 600,
+    display: 'block', fontSize: '11px', fontWeight: 600,
     color: 'var(--mid-gray)', marginBottom: '0.25rem',
     textTransform: 'uppercase' as const, letterSpacing: '0.05em',
   }
@@ -255,7 +250,12 @@ function ScheduleForm({ dept, allStaff, values, onChange, onSubmit, onCancel, er
 
   return (
     <form onSubmit={onSubmit} className="space-y-3">
-      {error && <div className="rounded-lg px-3 py-2 text-xs" style={{ background: '#FEE2E2', color: '#DC2626' }}>{error}</div>}
+      {error && (
+        <div role="alert" className="flex items-start gap-1.5 rounded-lg px-3 py-2 text-xs"
+          style={{ background: '#FEF2F2', color: '#B91C1C', border: '1px solid #FECACA' }}>
+          <AlertTriangle size={13} className="flex-shrink-0 mt-px" />{error}
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-3">
         <div className="col-span-2">
           <label style={labelStyle}>Patient</label>
@@ -357,11 +357,12 @@ function ScheduleForm({ dept, allStaff, values, onChange, onSubmit, onCancel, er
         <div className="col-span-2">
           <label style={labelStyle}>Mode</label>
           <button type="button" onClick={() => onChange({ ...values, isTeletherapy: !values.isTeletherapy })}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold w-full justify-center"
+            aria-pressed={values.isTeletherapy}
+            className="flex items-center gap-2 px-4 h-9 rounded-lg text-sm font-semibold w-full justify-center transition-colors"
             style={{
-              background: values.isTeletherapy ? '#EFF6FF' : '#F8FAFC',
-              color: values.isTeletherapy ? '#1D4ED8' : '#9ca3af',
-              border: `1.5px solid ${values.isTeletherapy ? '#93C5FD' : '#E2E8F0'}`,
+              background: values.isTeletherapy ? '#EFF6FF' : '#fff',
+              color: values.isTeletherapy ? '#1D4ED8' : 'var(--mid-gray)',
+              border: `1px solid ${values.isTeletherapy ? '#93C5FD' : 'var(--light-gray)'}`,
               cursor: 'pointer',
             }}>
             <Video size={15} />
@@ -371,11 +372,12 @@ function ScheduleForm({ dept, allStaff, values, onChange, onSubmit, onCancel, er
         <div className="col-span-2">
           <label style={labelStyle}>Mentorship</label>
           <button type="button" onClick={() => onChange({ ...values, withMentor: !values.withMentor })}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold w-full justify-center"
+            aria-pressed={!!values.withMentor}
+            className="flex items-center gap-2 px-4 h-9 rounded-lg text-sm font-semibold w-full justify-center transition-colors"
             style={{
-              background: values.withMentor ? '#FEF9C3' : '#F8FAFC',
-              color: values.withMentor ? '#854D0E' : '#9ca3af',
-              border: `1.5px solid ${values.withMentor ? '#FDE047' : '#E2E8F0'}`,
+              background: values.withMentor ? '#FEF9C3' : '#fff',
+              color: values.withMentor ? '#854D0E' : 'var(--mid-gray)',
+              border: `1px solid ${values.withMentor ? '#FDE047' : 'var(--light-gray)'}`,
               cursor: 'pointer',
             }}>
             <input type="checkbox" readOnly checked={!!values.withMentor} style={{ pointerEvents: 'none' }} />
@@ -388,15 +390,15 @@ function ScheduleForm({ dept, allStaff, values, onChange, onSubmit, onCancel, er
         </div>
         <div className="col-span-2">
           <label style={labelStyle}>Notes (optional)</label>
-          <textarea style={{ ...inputStyle, resize: 'vertical', minHeight: '60px' }}
+          <textarea style={{ ...inputStyle, resize: 'vertical', minHeight: '64px' }}
             value={values.notes} onChange={e => onChange({ ...values, notes: e.target.value })} />
         </div>
       </div>
       <div className="flex gap-2 justify-end pt-1">
-        <button type="button" onClick={onCancel} className="px-4 py-1.5 rounded-lg text-sm font-medium"
-          style={{ background: 'var(--light-gray)', color: 'var(--charcoal)' }}>Cancel</button>
-        <button type="submit" disabled={submitting} className="px-4 py-1.5 rounded-lg text-sm font-medium"
-          style={{ background: 'var(--teal)', color: '#fff', opacity: submitting ? 0.7 : 1 }}>
+        <button type="button" onClick={onCancel} className={BTN_SECONDARY}
+          style={CONTROL_STYLE}>Cancel</button>
+        <button type="submit" disabled={submitting} className={`${BTN_PRIMARY} px-4`}
+          style={{ background: TEAL_HEX, opacity: submitting ? 0.7 : 1 }}>
           {submitting ? 'Saving…' : submitLabel}
         </button>
       </div>
@@ -405,7 +407,8 @@ function ScheduleForm({ dept, allStaff, values, onChange, onSubmit, onCancel, er
 }
 
 // ─── Staff card with schedules ─────────────────────────────────────────────────
-function StaffCard({ staff, allStaff, selectedDate, schedulingBranch }: { staff: StaffMember; allStaff: StaffMember[]; selectedDate: string; schedulingBranch: string }) {
+// `flat` drops the card chrome so the row can sit inside a department card.
+function StaffCard({ staff, allStaff, selectedDate, schedulingBranch, flat = false }: { staff: StaffMember; allStaff: StaffMember[]; selectedDate: string; schedulingBranch: string; flat?: boolean }) {
   const [open, setOpen] = useState(false)
   // Renting clinicians can still be BOOKED here — the room is ours to schedule,
   // and the queue shows their sessions like anyone else's. What stops is the
@@ -716,92 +719,97 @@ function StaffCard({ staff, allStaff, selectedDate, schedulingBranch }: { staff:
   const isMultiBranch = (staff.extraBranches ?? []).length > 0
   const isSBEA = staff.branch === 'SBEA'
 
+  // Notification buttons share one shape; the tone says who receives them.
+  const NOTIFY_BTN = `${BTN_SM} cs-btn disabled:cursor-not-allowed`
+  const TONE_PATIENT = { background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE' }
+  const TONE_ABSENT  = { background: '#FEF2F2', color: '#B91C1C', border: '1px solid #FECACA' }
+  const TONE_CLINIC  = { background: '#F0FDF4', color: '#15803D', border: '1px solid #BBF7D0' }
+
   return (
-    <div className="rounded-xl overflow-hidden" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
+    <div className={flat ? '' : 'rounded-xl overflow-hidden'} style={flat ? { background: '#fff' } : CARD_STYLE}>
       {/* Staff header row */}
       <button
+        type="button"
         onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left"
+        aria-expanded={open}
+        className="cs-btn w-full flex items-center gap-3 px-4 py-3 hover:bg-[#F7FAFA] transition-colors text-left"
       >
-        <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
-          style={{ background: 'var(--pale-teal)' }}>
-          <span className="text-xs font-bold" style={{ color: 'var(--teal)' }}>
-            {staff.firstName[0]}{staff.lastName[0]}
-          </span>
-        </div>
+        <Avatar text={`${staff.firstName[0] ?? ''}${staff.lastName[0] ?? ''}`.toUpperCase() || '?'} />
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>
+          <p className="text-sm font-semibold truncate" style={{ color: 'var(--charcoal)' }}>
             {staff.lastName}, {staff.firstName}
           </p>
-          <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>{staff.department}</p>
+          <div className="flex flex-wrap items-center gap-1 mt-1">
+            <DeptChip code={staff.department} color={deptColor(staff.department)} />
+            {staff.isInternshipSupervisor && (
+              <span title="Supervises students on clinical placement — sessions may be run by an intern"
+                className="px-1.5 py-0.5 rounded text-[10px] font-bold whitespace-nowrap leading-none"
+                style={{ background: '#DBEAFE', color: '#1E40AF' }}>Clinical Supervisor</span>
+            )}
+            {staff.isClinicalMentor && (
+              <span title="Mentors junior or newly licensed clinicians"
+                className="px-1.5 py-0.5 rounded text-[10px] font-bold whitespace-nowrap leading-none"
+                style={{ background: '#FEF3C7', color: '#92400E' }}>Mentor</span>
+            )}
+            {mentorName && (
+              <span title={`Mentored by ${mentorName} — tick "With Mentor" on sessions the mentor sits in on`}
+                className="px-1.5 py-0.5 rounded text-[10px] font-bold whitespace-nowrap leading-none"
+                style={{ background: '#FDE68A', color: '#78350F' }}>Mentee</span>
+            )}
+          </div>
         </div>
-        <span className="px-2 py-0.5 rounded-full text-xs font-semibold mr-2"
+        <span className="hidden sm:inline-flex px-2 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap leading-none"
           style={isMultiBranch
-            ? { background: '#EDE9FE', color: '#5B21B6' }
+            ? { background: '#F1EEFD', color: '#5B21B6' }
             : isSBEA
               ? { background: 'var(--pale-teal)', color: 'var(--teal)' }
-              : { background: '#FFF3CD', color: '#92400E' }}>
+              : { background: '#FFF8E6', color: '#92400E' }}>
           {isMultiBranch ? 'Both Branches' : (branchLabel(staff.branch) ?? staff.branch)}
         </span>
-        <span className="inline-flex flex-wrap gap-1 items-center mr-2">
-          {staff.isInternshipSupervisor && (
-            <span title="Supervises students on clinical placement — sessions may be run by an intern"
-              className="px-1.5 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap"
-              style={{ background: '#DBEAFE', color: '#1E40AF' }}>Clinical Supervisor</span>
-          )}
-          {staff.isClinicalMentor && (
-            <span title="Mentors junior or newly licensed clinicians"
-              className="px-1.5 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap"
-              style={{ background: '#FEF3C7', color: '#92400E' }}>Mentor</span>
-          )}
-          {mentorName && (
-            <span title={`Mentored by ${mentorName} — tick "With Mentor" on sessions the mentor sits in on`}
-              className="px-1.5 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap"
-              style={{ background: '#FDE68A', color: '#78350F' }}>Mentee</span>
-          )}
+        <span className="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0" style={{ background: open ? 'var(--pale-teal)' : 'transparent' }}>
+          {open ? <ChevronUp size={16} style={{ color: 'var(--teal)' }} /> : <ChevronDown size={16} style={{ color: 'var(--mid-gray)' }} />}
         </span>
-        {open ? <ChevronUp size={16} style={{ color: 'var(--mid-gray)' }} /> : <ChevronDown size={16} style={{ color: 'var(--mid-gray)' }} />}
       </button>
 
       {open && (
-        <div className="border-t px-4 py-4 space-y-4" style={{ borderColor: 'var(--light-gray)' }}>
+        <div className="px-4 py-4 space-y-4" style={{ borderTop: '1px solid #EEF1F1', background: '#FBFCFC' }}>
           {/* Toast */}
           {toast && (
-            <div className="rounded-lg px-3 py-2 text-xs flex items-center gap-2"
-              style={{ background: 'var(--pale-teal)', color: 'var(--teal)' }}>
+            <div role="status" className="rounded-lg px-3 py-2 text-xs font-medium flex items-center gap-2"
+              style={{ background: 'var(--pale-teal)', color: 'var(--teal)', border: '1px solid #A9D4D9' }}>
               <MailCheck size={14} />{toast}
             </div>
           )}
 
           {/* Add Schedule toggle */}
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>
               Schedules for {new Date(selectedDate + 'T12:00:00').toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric' })}
             </p>
-            <button onClick={() => showAdd ? closeAddForm() : openAddForm()}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
-              style={{ background: showAdd ? 'var(--light-gray)' : 'var(--teal)', color: showAdd ? 'var(--charcoal)' : '#fff' }}>
+            <button type="button" onClick={() => showAdd ? closeAddForm() : openAddForm()}
+              className={showAdd ? BTN_SM : `${BTN_SM} text-white hover:opacity-90`}
+              style={showAdd ? { ...CONTROL_STYLE } : { background: TEAL_HEX }}>
               {showAdd ? <><X size={12} /> Cancel</> : <><Plus size={12} /> Add Schedule</>}
             </button>
           </div>
 
           {/* Add form */}
           {showAdd && (
-            <div className="rounded-xl p-4 space-y-3" style={{ background: 'var(--pale-teal)', border: '1px solid rgba(26,123,138,0.2)' }}>
+            <div className="rounded-xl p-4 space-y-3" style={{ background: '#fff', border: '1px solid #A9D4D9', boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
               {/* ── Last-week suggestions ── */}
               {lastWeekSuggestions.length > 0 && (
                 <div>
-                  <p className="text-xs font-semibold mb-1.5" style={{ color: 'var(--teal)' }}>
-                    📋 Re-use from last week ({new Date(new Date(selectedDate + 'T12:00:00').setDate(new Date(selectedDate + 'T12:00:00').getDate() - 7)).toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric' })})
+                  <p className="flex items-center gap-1.5 text-xs font-semibold mb-1.5" style={{ color: 'var(--teal)' }}>
+                    <History size={13} /> Re-use from last week ({new Date(new Date(selectedDate + 'T12:00:00').setDate(new Date(selectedDate + 'T12:00:00').getDate() - 7)).toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric' })})
                   </p>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap gap-1.5">
                     {lastWeekSuggestions.map(s => (
                       <button
                         key={s.id}
                         type="button"
                         onClick={() => applyLastWeekSuggestion(s)}
-                        className="px-3 py-1 rounded-full text-xs font-medium transition-colors hover:opacity-80"
-                        style={{ background: 'var(--teal)', color: '#fff' }}
+                        className="cs-btn px-2.5 h-7 rounded-full text-xs font-medium transition-colors hover:bg-[#D9EEF0]"
+                        style={{ background: 'var(--pale-teal)', color: 'var(--teal)', border: '1px solid #A9D4D9' }}
                       >
                         {s.patient ? `${s.patient.lastName}, ${s.patient.firstName[0]}.` : '(no patient)'}
                         {' · '}{formatTime(s.startTime)}
@@ -814,10 +822,10 @@ function StaffCard({ staff, allStaff, selectedDate, schedulingBranch }: { staff:
               {/* ── Decking suggestions ── */}
               {deckingSuggestions.length > 0 && (
                 <div>
-                  <p className="text-xs font-semibold mb-1.5" style={{ color: '#ED6823' }}>
-                    📋 From Decking Schedule ({['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][new Date(selectedDate + 'T12:00:00').getDay()]})
+                  <p className="flex items-center gap-1.5 text-xs font-semibold mb-1.5" style={{ color: '#C2410C' }}>
+                    <LayoutGrid size={13} /> From Decking Schedule ({['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][new Date(selectedDate + 'T12:00:00').getDay()]})
                   </p>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap gap-1.5">
                     {deckingSuggestions.map(s => (
                       <button
                         key={s.id}
@@ -836,8 +844,8 @@ function StaffCard({ staff, allStaff, selectedDate, schedulingBranch }: { staff:
                           internStaffId: '',
                           withMentor: false,
                         })}
-                        className="px-3 py-1 rounded-full text-xs font-medium transition-colors hover:opacity-80"
-                        style={{ background: '#ED6823', color: '#fff' }}
+                        className="cs-btn px-2.5 h-7 rounded-full text-xs font-medium transition-colors hover:bg-[#FDE3D2]"
+                        style={{ background: '#FFF1E8', color: '#C2410C', border: '1px solid #FBD5BC' }}
                       >
                         {s.patient ? `${s.patient.lastName}, ${s.patient.firstName[0]}.` : '(slot)'}
                         {' · '}{formatTime(s.startTime)}
@@ -852,89 +860,93 @@ function StaffCard({ staff, allStaff, selectedDate, schedulingBranch }: { staff:
             </div>
           )}
 
-          {/* Schedules table */}
-          {loadingSchedules ? (
-            <p className="text-xs text-center py-4" style={{ color: 'var(--mid-gray)' }}>Loading…</p>
+          {/* Schedules table — the previous rows stay on screen (dimmed) while a reload runs */}
+          {loadingSchedules && schedules.length === 0 ? (
+            <div className="rounded-lg p-3 space-y-2" style={{ background: '#fff', border: '1px solid var(--light-gray)' }} aria-busy="true" aria-label="Loading schedules">
+              {[0, 1, 2].map(i => <Skeleton key={i} className="h-8" style={{ opacity: 1 - i * 0.2 }} />)}
+            </div>
           ) : schedules.length === 0 ? (
-            <p className="text-xs text-center py-4" style={{ color: 'var(--mid-gray)' }}>No schedules for this day.</p>
+            <div className="rounded-lg py-6 px-4 text-center" style={{ background: '#fff', border: '1px dashed var(--light-gray)' }}>
+              <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>No schedules for this day.</p>
+            </div>
           ) : (
-            <div className="rounded-lg overflow-hidden" style={{ border: '1px solid var(--light-gray)' }}>
-              <table className="w-full text-xs">
-                <thead>
-                  <tr style={{ background: 'var(--off-white)', borderBottom: '1px solid var(--light-gray)' }}>
-                    {['Patient', 'Time', 'Session Type', 'Status', ''].map(h => (
-                      <th key={h} className="px-3 py-2 text-left font-semibold uppercase tracking-wider"
-                        style={{ color: 'var(--mid-gray)' }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {schedules.map(s => (
-                    <>
-                      <tr key={s.id} className="hover:bg-gray-50 transition-colors"
-                        style={{ borderBottom: editId === s.id ? 'none' : '1px solid var(--light-gray)' }}>
-                        <td className="px-3 py-2 font-medium" style={{ color: 'var(--charcoal)' }}>
-                          {s.patient ? `${s.patient.lastName}, ${s.patient.firstName}` : <span style={{ color: 'var(--mid-gray)' }}>—</span>}
-                        </td>
-                        <td className="px-3 py-2" style={{ color: 'var(--charcoal)', whiteSpace: 'nowrap' }}>
-                          {formatTime(s.startTime)} – {formatTime(s.endTime)}
-                        </td>
-                        <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>
-                          <span className="flex items-center gap-1.5">
-                            {s.sessionType}
-                            {s.isTeletherapy && (
-                              s.meetLink
-                                ? <a href={s.meetLink} target="_blank" rel="noopener noreferrer" title="Join Meeting" className="hover:opacity-70"><Video size={13} style={{ color: '#1D4ED8' }} /></a>
-                                : <Video size={13} style={{ color: '#93C5FD' }} title="Teletherapy (no link yet)" />
-                            )}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2">
-                          <span className="px-2 py-0.5 rounded-full font-semibold"
-                            style={STATUS_COLORS[s.status] ?? { bg: '#f3f4f6', color: '#374151' }}>
-                            {statusLabel(s.status)}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2">
-                          <div className="flex items-center gap-1.5 justify-end">
-                            <button onClick={() => editId === s.id ? setEditId(null) : startEdit(s)}
-                              className="p-1 rounded hover:bg-gray-100" title="Edit">
-                              <Pencil size={13} style={{ color: 'var(--teal)' }} />
-                            </button>
-                            <button onClick={() => setDeleteTarget(s)}
-                              className="p-1 rounded hover:bg-red-50" title="Delete">
-                              <Trash2 size={13} style={{ color: '#DC2626' }} />
-                            </button>
-                            {s.patient?.email && (
-                              <button onClick={() => sendReminder(s.id)} disabled={renter || sendingId === s.id}
-                                className="p-1 rounded hover:bg-blue-50" title={renter ? RENTER_NOTIFY_REASON : 'Send reminder email'}>
-                                <Mail size={13} style={{ color: (renter || sendingId === s.id) ? 'var(--mid-gray)' : '#2563EB' }} />
+            <div className={`rounded-lg overflow-hidden transition-opacity ${loadingSchedules ? 'opacity-55' : ''}`}
+              style={{ background: '#fff', border: '1px solid var(--light-gray)' }} aria-busy={loadingSchedules || undefined}>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs min-w-[560px]">
+                  <thead>
+                    <tr style={{ background: TH_BG, borderBottom: '1px solid var(--light-gray)' }}>
+                      {['Patient', 'Time', 'Session Type', 'Status', ''].map(h => (
+                        <th key={h} className={`${TH} !px-3 !py-2 !text-[10.5px]`}
+                          style={{ color: 'var(--mid-gray)' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {schedules.map(s => (
+                      <Fragment key={s.id}>
+                        <tr className="hover:bg-[#F7FAFA] transition-colors"
+                          style={{ borderBottom: editId === s.id ? 'none' : '1px solid #EEF1F1' }}>
+                          <td className="px-3 py-2 h-11 font-semibold" style={{ color: 'var(--charcoal)' }}>
+                            {s.patient ? `${s.patient.lastName}, ${s.patient.firstName}` : <span style={{ color: 'var(--mid-gray)' }}>—</span>}
+                          </td>
+                          <td className="px-3 py-2 tabular-nums" style={{ color: 'var(--charcoal)', whiteSpace: 'nowrap' }}>
+                            {formatTime(s.startTime)} – {formatTime(s.endTime)}
+                          </td>
+                          <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>
+                            <span className="flex items-center gap-1.5">
+                              {s.sessionType}
+                              {s.isTeletherapy && (
+                                s.meetLink
+                                  ? <a href={s.meetLink} target="_blank" rel="noopener noreferrer" title="Join Meeting" className="hover:opacity-70"><Video size={13} style={{ color: '#1D4ED8' }} /></a>
+                                  : <span title="Teletherapy (no link yet)" className="inline-flex"><Video size={13} style={{ color: '#93C5FD' }} /></span>
+                              )}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2">
+                            <StatusBadge status={s.status} size="sm" />
+                          </td>
+                          <td className="px-3 py-2">
+                            <div className="flex items-center gap-0.5 justify-end">
+                              <button type="button" onClick={() => editId === s.id ? setEditId(null) : startEdit(s)}
+                                className="cs-btn w-7 h-7 rounded-md flex items-center justify-center hover:bg-[#E8F4F5]" title="Edit" aria-label="Edit">
+                                <Pencil size={13} style={{ color: 'var(--teal)' }} />
                               </button>
-                            )}
-                            {s.patient?.phone && (
-                              <button onClick={() => sendSmsReminder(s.id)} disabled={renter || sendingSmsId === s.id}
-                                className="p-1 rounded hover:bg-green-50" title={renter ? RENTER_NOTIFY_REASON : 'Send mobile text reminder'}>
-                                <MessageSquare size={13} style={{ color: (renter || sendingSmsId === s.id) ? 'var(--mid-gray)' : '#16A34A' }} />
+                              <button type="button" onClick={() => setDeleteTarget(s)}
+                                className="cs-btn w-7 h-7 rounded-md flex items-center justify-center hover:bg-red-50" title="Delete" aria-label="Delete">
+                                <Trash2 size={13} style={{ color: '#DC2626' }} />
                               </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                      {editId === s.id && (
-                        <tr key={`${s.id}-edit`} style={{ borderBottom: '1px solid var(--light-gray)' }}>
-                          <td colSpan={5} className="px-3 py-3" style={{ background: 'var(--pale-teal)' }}>
-                            <ScheduleForm dept={staff.department} branchEnum={BRANCH_ENUM[schedulingBranch] ?? ''} allStaff={allStaff} values={editForm} onChange={setEditForm}
-                              onSubmit={handleEdit} onCancel={() => { setEditId(null); setEditError('') }}
-                              error={editError} submitting={editSaving} submitLabel="Save Changes" />
+                              {s.patient?.email && (
+                                <button type="button" onClick={() => sendReminder(s.id)} disabled={renter || sendingId === s.id}
+                                  className="cs-btn w-7 h-7 rounded-md flex items-center justify-center hover:bg-blue-50 disabled:cursor-not-allowed disabled:hover:bg-transparent" title={renter ? RENTER_NOTIFY_REASON : 'Send reminder email'} aria-label="Send reminder email">
+                                  <Mail size={13} style={{ color: (renter || sendingId === s.id) ? 'var(--mid-gray)' : '#2563EB' }} />
+                                </button>
+                              )}
+                              {s.patient?.phone && (
+                                <button type="button" onClick={() => sendSmsReminder(s.id)} disabled={renter || sendingSmsId === s.id}
+                                  className="cs-btn w-7 h-7 rounded-md flex items-center justify-center hover:bg-green-50 disabled:cursor-not-allowed disabled:hover:bg-transparent" title={renter ? RENTER_NOTIFY_REASON : 'Send mobile text reminder'} aria-label="Send mobile text reminder">
+                                  <MessageSquare size={13} style={{ color: (renter || sendingSmsId === s.id) ? 'var(--mid-gray)' : '#16A34A' }} />
+                                </button>
+                              )}
+                            </div>
                           </td>
                         </tr>
-                      )}
-                    </>
-                  ))}
-                </tbody>
-              </table>
+                        {editId === s.id && (
+                          <tr style={{ borderBottom: '1px solid #EEF1F1' }}>
+                            <td colSpan={5} className="px-3 py-3" style={{ background: '#F3FAFA' }}>
+                              <ScheduleForm dept={staff.department} branchEnum={BRANCH_ENUM[schedulingBranch] ?? ''} allStaff={allStaff} values={editForm} onChange={setEditForm}
+                                onSubmit={handleEdit} onCancel={() => { setEditId(null); setEditError('') }}
+                                error={editError} submitting={editSaving} submitLabel="Save Changes" />
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
               {/* Send all buttons — grouped by recipient */}
-              <div className="px-3 py-3 space-y-2" style={{ borderTop: '1px solid var(--light-gray)', background: 'var(--off-white)' }}>
+              <div className="px-3 py-3 space-y-2.5" style={{ borderTop: '1px solid var(--light-gray)', background: '#FAFBFB' }}>
                 {renter && (
                   // Said once, plainly, above the whole block: a row of greyed
                   // buttons with no explanation reads as a bug, and the desk
@@ -949,58 +961,58 @@ function StaffCard({ staff, allStaff, selectedDate, schedulingBranch }: { staff:
                     </span>
                   </div>
                 )}
-                {/* Patients section */}
-                <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>Patients</p>
-                <div className="flex flex-wrap gap-2">
-                  <button onClick={sendAllReminders} disabled={renter || sendingAll}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
-                    style={{ background: '#2563EB', color: '#fff', opacity: (renter || sendingAll) ? 0.5 : 1 }}>
-                    <MailCheck size={13} />
-                    {sendingAll ? 'Sending…' : 'Email All Patients'}
-                  </button>
-                  <button onClick={sendAllSmsReminders} disabled={renter || sendingSmsAll}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
-                    style={{ background: '#2563EB', color: '#fff', opacity: (renter || sendingSmsAll) ? 0.5 : 1 }}>
-                    <MessageSquare size={13} />
-                    {sendingSmsAll ? 'Sending…' : 'Text All Patients'}
-                  </button>
-                  <button onClick={sendAbsentSms} disabled={renter || sendingAbsentSms}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
-                    title={renter ? RENTER_NOTIFY_REASON : `Notify all of ${staff.firstName}'s patients today via SMS that they are absent`}
-                    style={{ background: '#DC2626', color: '#fff', opacity: (renter || sendingAbsentSms) ? 0.5 : 1 }}>
-                    <Smartphone size={13} />
-                    {sendingAbsentSms ? 'Sending…' : 'Text: Clinician Absent Notice'}
-                  </button>
-                  <button onClick={sendAbsentEmail} disabled={renter || sendingAbsentEmail}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
-                    title={renter ? RENTER_NOTIFY_REASON : `Notify all of ${staff.firstName}'s patients today via email that they are absent`}
-                    style={{ background: '#DC2626', color: '#fff', opacity: (renter || sendingAbsentEmail) ? 0.5 : 1 }}>
-                    <Mail size={13} />
-                    {sendingAbsentEmail ? 'Sending…' : 'Email: Clinician Absent Notice'}
-                  </button>
-                </div>
-                {/* Clinician section */}
-                <p className="text-[10px] font-bold uppercase tracking-wider pt-1" style={{ color: 'var(--mid-gray)' }}>Clinician</p>
-                <div className="flex flex-wrap items-center gap-2">
-                  <button onClick={sendClinicianSms} disabled={renter || sendingClinicianSms || !staff.phone}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
-                    title={renter ? RENTER_NOTIFY_REASON : !staff.phone ? 'No mobile number on file for this clinician' : `Text ${staff.firstName} their confirmed sessions for this day — pending, rescheduled and cancelled rows are left out`}
-                    style={{ background: '#16A34A', color: '#fff', opacity: (renter || sendingClinicianSms || !staff.phone) ? 0.5 : 1 }}>
-                    <Smartphone size={13} />
-                    {sendingClinicianSms ? 'Sending…' : 'Text Clinician'}
-                  </button>
-                  <button onClick={sendClinicianEmail} disabled={renter || sendingClinicianEmail}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
-                    title={renter ? RENTER_NOTIFY_REASON : `Email ${staff.firstName} their confirmed sessions for this day — pending, rescheduled and cancelled rows are left out`}
-                    style={{ background: '#16A34A', color: '#fff', opacity: (renter || sendingClinicianEmail) ? 0.5 : 1 }}>
-                    <Mail size={13} />
-                    {sendingClinicianEmail ? 'Sending…' : 'Email Clinician'}
-                  </button>
-                  <span className="text-[10px] italic" style={{ color: 'var(--mid-gray)' }}>
-                    {renter
-                      ? '*No automatic SMS either — nothing is sent for a renting clinician'
-                      : '*Patient status change will automatically send SMS to clinician'}
-                  </span>
+                <div className="grid gap-2.5 md:grid-cols-[auto_minmax(0,1fr)] md:items-center">
+                  {/* Patients section */}
+                  <p className="text-[10px] font-bold uppercase tracking-wider md:w-16" style={{ color: 'var(--mid-gray)' }}>Patients</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    <button type="button" onClick={sendAllReminders} disabled={renter || sendingAll}
+                      className={NOTIFY_BTN} style={TONE_PATIENT}>
+                      <MailCheck size={13} />
+                      {sendingAll ? 'Sending…' : 'Email All Patients'}
+                    </button>
+                    <button type="button" onClick={sendAllSmsReminders} disabled={renter || sendingSmsAll}
+                      className={NOTIFY_BTN} style={TONE_PATIENT}>
+                      <MessageSquare size={13} />
+                      {sendingSmsAll ? 'Sending…' : 'Text All Patients'}
+                    </button>
+                    <button type="button" onClick={sendAbsentSms} disabled={renter || sendingAbsentSms}
+                      className={NOTIFY_BTN}
+                      title={renter ? RENTER_NOTIFY_REASON : `Notify all of ${staff.firstName}'s patients today via SMS that they are absent`}
+                      style={TONE_ABSENT}>
+                      <Smartphone size={13} />
+                      {sendingAbsentSms ? 'Sending…' : 'Text: Clinician Absent Notice'}
+                    </button>
+                    <button type="button" onClick={sendAbsentEmail} disabled={renter || sendingAbsentEmail}
+                      className={NOTIFY_BTN}
+                      title={renter ? RENTER_NOTIFY_REASON : `Notify all of ${staff.firstName}'s patients today via email that they are absent`}
+                      style={TONE_ABSENT}>
+                      <Mail size={13} />
+                      {sendingAbsentEmail ? 'Sending…' : 'Email: Clinician Absent Notice'}
+                    </button>
+                  </div>
+                  {/* Clinician section */}
+                  <p className="text-[10px] font-bold uppercase tracking-wider md:w-16" style={{ color: 'var(--mid-gray)' }}>Clinician</p>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <button type="button" onClick={sendClinicianSms} disabled={renter || sendingClinicianSms || !staff.phone}
+                      className={NOTIFY_BTN}
+                      title={renter ? RENTER_NOTIFY_REASON : !staff.phone ? 'No mobile number on file for this clinician' : `Text ${staff.firstName} their confirmed sessions for this day — pending, rescheduled and cancelled rows are left out`}
+                      style={TONE_CLINIC}>
+                      <Smartphone size={13} />
+                      {sendingClinicianSms ? 'Sending…' : 'Text Clinician'}
+                    </button>
+                    <button type="button" onClick={sendClinicianEmail} disabled={renter || sendingClinicianEmail}
+                      className={NOTIFY_BTN}
+                      title={renter ? RENTER_NOTIFY_REASON : `Email ${staff.firstName} their confirmed sessions for this day — pending, rescheduled and cancelled rows are left out`}
+                      style={TONE_CLINIC}>
+                      <Mail size={13} />
+                      {sendingClinicianEmail ? 'Sending…' : 'Email Clinician'}
+                    </button>
+                    <span className="text-[10.5px] italic" style={{ color: 'var(--mid-gray)' }}>
+                      {renter
+                        ? '*No automatic SMS either — nothing is sent for a renting clinician'
+                        : '*Patient status change will automatically send SMS to clinician'}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1008,22 +1020,29 @@ function StaffCard({ staff, allStaff, selectedDate, schedulingBranch }: { staff:
 
           {/* Delete confirmation */}
           {deleteTarget && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.4)' }}>
-              <div className="rounded-2xl p-6 w-full max-w-sm shadow-xl" style={{ background: '#fff' }}>
-                <p className="font-semibold text-sm mb-1" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>
-                  Delete Schedule
-                </p>
-                <p className="text-xs mb-4" style={{ color: 'var(--mid-gray)' }}>
-                  {deleteTarget.patient
-                    ? `Remove ${deleteTarget.patient.lastName}, ${deleteTarget.patient.firstName}'s appointment at ${formatTime(deleteTarget.startTime)}?`
-                    : `Remove appointment at ${formatTime(deleteTarget.startTime)}?`}
-                  {' '}This cannot be undone.
-                </p>
-                <div className="flex gap-2 justify-end">
-                  <button onClick={() => setDeleteTarget(null)} className="px-4 py-2 rounded-lg text-sm font-medium"
-                    style={{ background: 'var(--light-gray)', color: 'var(--charcoal)' }}>Cancel</button>
-                  <button onClick={handleDelete} disabled={deleting} className="px-4 py-2 rounded-lg text-sm font-medium"
-                    style={{ background: '#DC2626', color: '#fff', opacity: deleting ? 0.7 : 1 }}>
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(15,23,42,0.45)' }}>
+              <div role="dialog" aria-modal="true" className="rounded-2xl p-5 w-full max-w-sm" style={{ background: '#fff', boxShadow: '0 24px 64px rgba(15,23,42,0.22)' }}>
+                <div className="flex items-start gap-3">
+                  <span className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: '#FEF2F2', color: '#DC2626' }}>
+                    <Trash2 size={16} />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="font-bold text-sm mb-1" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>
+                      Delete Schedule
+                    </p>
+                    <p className="text-xs leading-relaxed" style={{ color: 'var(--mid-gray)' }}>
+                      {deleteTarget.patient
+                        ? `Remove ${deleteTarget.patient.lastName}, ${deleteTarget.patient.firstName}'s appointment at ${formatTime(deleteTarget.startTime)}?`
+                        : `Remove appointment at ${formatTime(deleteTarget.startTime)}?`}
+                      {' '}This cannot be undone.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex gap-2 justify-end mt-5">
+                  <button type="button" onClick={() => setDeleteTarget(null)} className={BTN_SECONDARY}
+                    style={CONTROL_STYLE}>Cancel</button>
+                  <button type="button" onClick={handleDelete} disabled={deleting} className={`${BTN_PRIMARY} px-4`}
+                    style={{ background: '#DC2626', opacity: deleting ? 0.7 : 1 }}>
                     {deleting ? 'Deleting…' : 'Delete'}
                   </button>
                 </div>
@@ -1065,10 +1084,23 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
   // their weekly Decking schedule). Keyed by staffId.
   const [makeupIds, setMakeupIds] = useState<string[]>([])
   const [makeupQuery, setMakeupQuery] = useState('')
+  // Display-only: the roster load's error, and a counter "Try again" bumps to
+  // re-run the same request.
+  const [staffError, setStaffError] = useState('')
+  const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
-    fetch('/api/staff').then(r => r.json()).then(setStaff).finally(() => setLoading(false))
-  }, [])
+    fetch('/api/staff')
+      .then(r => r.json())
+      .then(data => {
+        // A non-array (an { error } body) used to be stored as the roster and
+        // crash the page on .filter; show it as an error instead.
+        if (Array.isArray(data)) { setStaff(data); setStaffError('') }
+        else setStaffError((data && typeof data.error === 'string' && data.error) || "Couldn't load the staff roster.")
+      })
+      .catch(() => setStaffError("Couldn't load the staff roster. Check your connection, then try again."))
+      .finally(() => setLoading(false))
+  }, [reloadKey])
 
   // Decking weekly schedules — drives the "Tomorrow" view.
   useEffect(() => {
@@ -1123,26 +1155,72 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
         .slice(0, 8)
     : []
 
+  // ── Display-only derived values ──
+  const branchName = branchLabel(activeBranch) ?? activeBranch
+  const isTodaySelected = selectedDate === localTodayStr()
+  // The All / single-department list, grouped into one card per department
+  // (ALL_DEPARTMENTS order, then anything else). Order inside a group is the
+  // roster order, as before.
+  const filteredByDept = [
+    ...ALL_DEPARTMENTS.map(dept => ({ dept, list: filtered.filter(s => s.department === dept) })),
+    { dept: 'Other', list: filtered.filter(s => !ALL_DEPARTMENTS.includes(s.department)) },
+  ].filter(g => g.list.length > 0)
+
+  const deptCard = (dept: string, count: number, children: React.ReactNode) => (
+    <section key={dept} className="rounded-xl overflow-hidden min-w-0" style={CARD_STYLE}>
+      <header className="px-4 py-2.5 flex items-center gap-2" style={{ background: TH_BG, borderBottom: '1px solid var(--light-gray)' }}>
+        <span aria-hidden className="w-1 h-4 rounded-full" style={{ background: deptColor(dept) }} />
+        <h4 className="text-[13px] font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>{dept}</h4>
+        <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+          {count} clinician{count !== 1 ? 's' : ''}
+        </span>
+      </header>
+      <div className="divide-y divide-[#EEF1F1]">{children}</div>
+    </section>
+  )
+
+  const listSkeleton = (
+    <div className="space-y-3" aria-busy="true" aria-label="Loading staff">
+      {[0, 1].map(g => (
+        <div key={g} className="rounded-xl overflow-hidden" style={CARD_STYLE}>
+          <div className="px-4 py-3" style={{ background: TH_BG, borderBottom: '1px solid var(--light-gray)' }}>
+            <Skeleton className="h-3.5" style={{ width: 120 }} />
+          </div>
+          {[0, 1, 2].map(i => (
+            <div key={i} className="flex items-center gap-3 px-4 py-3" style={{ borderTop: i ? '1px solid #EEF1F1' : undefined }}>
+              <Skeleton style={{ width: 34, height: 34, borderRadius: 999 }} />
+              <div className="flex-1 space-y-1.5">
+                <Skeleton className="h-3.5" style={{ width: 170 }} />
+                <Skeleton className="h-3" style={{ width: 90 }} />
+              </div>
+              <Skeleton className="h-5 hidden sm:block" style={{ width: 84, borderRadius: 999 }} />
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  )
+
   return (
     <div className="space-y-4">
       {/* Two relationships get decked on this page and are easy to confuse,
           because both put a second clinician in the room. Spelling them out
           here is cheaper than explaining it per card. */}
-      <div className="rounded-lg px-4 py-3 text-xs"
-        style={{ background: 'var(--pale-teal, #E6F4F5)', border: '1px solid var(--light-gray)' }}>
-        <div className="flex flex-wrap gap-x-6 gap-y-2">
+      <div className="rounded-xl px-4 py-3 text-xs flex gap-3" style={{ background: '#F3FAFA', border: '1px solid #D5EAEC' }}>
+        <Info size={15} className="flex-shrink-0 mt-0.5" style={{ color: 'var(--teal)' }} />
+        <div className="grid gap-x-6 gap-y-2 md:grid-cols-2 flex-1 min-w-0">
           <div className="flex items-start gap-2">
-            <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap mt-px"
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold whitespace-nowrap mt-px leading-none"
               style={{ background: '#DBEAFE', color: '#1E40AF' }}>Clinical Supervisor</span>
-            <span style={{ color: 'var(--charcoal)' }}>
+            <span className="leading-relaxed" style={{ color: 'var(--charcoal)' }}>
               Licensed clinicians supervising <strong>students</strong>. Sessions are decked with the
               supervisor; the intern who ran it is recorded on the session.
             </span>
           </div>
           <div className="flex items-start gap-2">
-            <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap mt-px"
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold whitespace-nowrap mt-px leading-none"
               style={{ background: '#FDE68A', color: '#78350F' }}>Mentee</span>
-            <span style={{ color: 'var(--charcoal)' }}>
+            <span className="leading-relaxed" style={{ color: 'var(--charcoal)' }}>
               Junior or newly licensed clinicians mentored by a senior clinician. Sessions are decked
               with the mentee; tick <strong>With Mentor</strong> when the mentor sits in.
             </span>
@@ -1150,106 +1228,97 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
         </div>
       </div>
 
-      {/* Controls row */}
-      <div className="flex flex-wrap items-center gap-3">
+      {/* ── Toolbar ── */}
+      <Toolbar right={!loading && !staffError ? (
+        <span className="text-xs whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>
+          <strong className="tabular-nums" style={{ color: 'var(--charcoal)' }}>
+            {activeDept === 'Tomorrow' ? tomorrowClinicians.length : filtered.length}
+          </strong>{' '}
+          {activeDept === 'Tomorrow' ? 'on tomorrow’s deck' : 'clinicians'}
+        </span>
+      ) : undefined}>
         {/* Branch toggle (only for ADMIN / MARKETING_ADMIN) */}
         {branches.length > 1 && (
-          <div className="flex rounded-lg overflow-hidden" style={{ border: '1px solid var(--light-gray)' }}>
-            {branches.map(b => (
-              <button key={b} onClick={() => setActiveBranch(b)}
-                className="px-4 py-1.5 text-sm font-medium transition-colors"
-                style={activeBranch === b
-                  ? { background: 'var(--teal)', color: '#fff' }
-                  : { background: '#fff', color: 'var(--mid-gray)' }}>
-                {branchLabel(b) ?? b}
-              </button>
-            ))}
-          </div>
+          <Field label="Branch">
+            <PillTabs label="Branch" value={activeBranch} onChange={setActiveBranch}
+              tabs={branches.map(b => ({ id: b, label: branchLabel(b) ?? b }))} />
+          </Field>
         )}
         {/* Date picker */}
-        <div className="flex items-center gap-2">
-          <label className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>Date</label>
-          <input
-            type="date"
-            value={selectedDate}
-            onChange={e => onDateChange(e.target.value)}
-            className="rounded-lg px-3 py-1.5 text-sm"
-            style={{ border: '1.5px solid rgba(26,123,138,0.3)', background: '#fff', color: 'var(--charcoal)' }}
-          />
-        </div>
-      </div>
+        <Field label="Date" htmlFor="dept-date">
+          <div className="flex items-center gap-2">
+            <input
+              id="dept-date"
+              type="date"
+              value={selectedDate}
+              onChange={e => onDateChange(e.target.value)}
+              className={CONTROL}
+              style={CONTROL_STYLE}
+            />
+            {isTodaySelected && <TodayTag />}
+          </div>
+        </Field>
+        {/* Department filter */}
+        {!loading && (
+          <Field label="Show">
+            <PillTabs label="Department" value={activeDept} onChange={setActiveDept}
+              tabs={[
+                { id: 'Tomorrow', label: <><CalendarClock size={13} /> Tomorrow</> },
+                { id: 'All', label: 'All' },
+                ...presentDepts.map(d => ({ id: d, label: d })),
+              ]} />
+          </Field>
+        )}
+      </Toolbar>
 
-      {/* Department filter chips */}
-      {!loading && (
-        <div className="flex flex-wrap gap-2">
-          <button
-            onClick={() => setActiveDept('Tomorrow')}
-            className="px-3 py-1 rounded-full text-xs font-semibold transition-colors"
-            style={activeDept === 'Tomorrow'
-              ? { background: 'var(--teal)', color: '#fff' }
-              : { background: '#fff', color: 'var(--mid-gray)', border: '1px solid var(--light-gray)' }}>
-            Tomorrow
-          </button>
-          <button
-            onClick={() => setActiveDept('All')}
-            className="px-3 py-1 rounded-full text-xs font-semibold transition-colors"
-            style={activeDept === 'All'
-              ? { background: 'var(--teal)', color: '#fff' }
-              : { background: '#fff', color: 'var(--mid-gray)', border: '1px solid var(--light-gray)' }}>
-            All
-          </button>
-          {presentDepts.map(d => (
-            <button key={d}
-              onClick={() => setActiveDept(d)}
-              className="px-3 py-1 rounded-full text-xs font-semibold transition-colors"
-              style={activeDept === d
-                ? { background: 'var(--teal)', color: '#fff' }
-                : { background: '#fff', color: 'var(--mid-gray)', border: '1px solid var(--light-gray)' }}>
-              {d}
-            </button>
-          ))}
+      {staffError && (
+        <ErrorBanner message={staffError} onRetry={() => { setLoading(true); setStaffError(''); setReloadKey(k => k + 1) }} />
+      )}
+
+      {/* ── KPIs — from the roster and Decking schedules already loaded ── */}
+      {loading ? <KpiSkeletonRow /> : !staffError && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <KpiCard label="Clinicians" icon={<Users size={15} />}
+            value={branchStaff.length} sub={`in ${branchName}`} />
+          <KpiCard label="On tomorrow's deck" icon={<CalendarClock size={15} />} accent="#ED6823"
+            value={tomorrowClinicians.length} sub={WEEKDAY_FULL[tomorrowCode]} />
+          <KpiCard label="Departments" icon={<Layers size={15} />} accent="var(--gold)"
+            value={presentDepts.length} sub="with clinicians here" />
+          <KpiCard label="Make-up sessions" icon={<UserPlus size={15} />} accent="#8B5CF6"
+            value={makeupClinicians.length} sub={makeupClinicians.length ? 'added for tomorrow' : 'none added'} />
         </div>
       )}
 
       {/* "Tomorrow" view — clinicians working tomorrow + make-ups + Front Desk card */}
-      {!loading && activeDept === 'Tomorrow' ? (
-        <div className="grid gap-4 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(300px,360px)]">
+      {!loading && activeDept === 'Tomorrow' && !(staffError && staff.length === 0) ? (
+        <div className="grid gap-4 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(300px,360px)] items-start">
           {/* Left — clinicians working tomorrow (+ make-up sessions) */}
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-4 min-w-0">
             <div>
-              <div className="flex items-baseline justify-between mb-2 flex-wrap gap-1">
+              <div className="flex items-baseline justify-between mb-2.5 flex-wrap gap-1">
                 <h3 className="text-sm font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>
                   Clinicians tomorrow · {fmtDateShort(tomorrowDate)}
                 </h3>
                 <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>
-                  {tomorrowClinicians.length} on schedule · {branchLabel(activeBranch) ?? activeBranch}
+                  {tomorrowClinicians.length} on schedule · {branchName}
                 </span>
               </div>
               {tomorrowClinicians.length === 0 ? (
-                <div className="rounded-xl py-12 flex flex-col items-center gap-2"
-                  style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
-                  <p className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>No clinicians scheduled tomorrow</p>
-                  <p className="text-xs text-center px-4" style={{ color: 'var(--mid-gray)' }}>
-                    No {branchLabel(activeBranch) ?? activeBranch} clinician has a {WEEKDAY_FULL[tomorrowCode]} in the Decking Module. Add a make-up session on the right if needed.
+                <div className="rounded-xl py-12 px-6 flex flex-col items-center gap-2 text-center" style={CARD_STYLE}>
+                  <span className="w-11 h-11 rounded-2xl flex items-center justify-center mb-1" style={{ background: 'var(--pale-teal)' }}>
+                    <CalendarClock size={20} style={{ color: 'var(--teal)' }} />
+                  </span>
+                  <p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>No clinicians scheduled tomorrow</p>
+                  <p className="text-xs max-w-sm" style={{ color: 'var(--mid-gray)' }}>
+                    No {branchName} clinician has a {WEEKDAY_FULL[tomorrowCode]} in the Decking Module. Add a make-up session on the right if needed.
                   </p>
                 </div>
               ) : (
-                <div className="space-y-5">
-                  {tomorrowByDept.map(g => (
-                    <div key={g.dept}>
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--teal)' }}>{g.dept}</span>
-                        <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>
-                          {g.list.length} clinician{g.list.length !== 1 ? 's' : ''}
-                        </span>
-                        <div className="flex-1 h-px" style={{ background: 'var(--light-gray)' }} />
-                      </div>
-                      <div className="space-y-2">
-                        {g.list.map(({ staff: s }) => (
-                          <StaffCard key={s.id} staff={s} allStaff={staff} selectedDate={tomorrowDate} schedulingBranch={activeBranch} />
-                        ))}
-                      </div>
-                    </div>
+                <div className="space-y-3">
+                  {tomorrowByDept.map(g => deptCard(g.dept, g.list.length,
+                    g.list.map(({ staff: s }) => (
+                      <StaffCard key={s.id} flat staff={s} allStaff={staff} selectedDate={tomorrowDate} schedulingBranch={activeBranch} />
+                    )),
                   ))}
                 </div>
               )}
@@ -1257,77 +1326,90 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
 
             {/* Make-up sessions — manually added clinicians, with full scheduling */}
             {makeupClinicians.length > 0 && (
-              <div className="rounded-xl p-4" style={{ background: '#fff', border: '1px solid #FED7AA' }}>
-                <h3 className="text-sm font-bold mb-3" style={{ color: '#C2410C', fontFamily: 'var(--font-display)' }}>
-                  Make-up sessions · {fmtDateShort(tomorrowDate)}
-                </h3>
-                <div className="space-y-3">
+              <section className="rounded-xl overflow-hidden" style={{ background: '#fff', border: '1px solid #FBD5BC' }}>
+                <header className="px-4 py-2.5 flex items-center gap-2" style={{ background: '#FFF7F1', borderBottom: '1px solid #FBD5BC' }}>
+                  <UserPlus size={14} style={{ color: '#C2410C' }} />
+                  <h3 className="text-[13px] font-bold" style={{ color: '#C2410C', fontFamily: 'var(--font-display)' }}>
+                    Make-up sessions · {fmtDateShort(tomorrowDate)}
+                  </h3>
+                </header>
+                <div className="divide-y divide-[#F6E3D6]">
                   {makeupClinicians.map(s => (
                     <div key={s.id}>
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: '#FFF7ED', color: '#C2410C', border: '1px solid #FED7AA' }}>
+                      <div className="flex items-center justify-between gap-2 px-4 pt-2.5">
+                        <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ background: '#FFF1E8', color: '#C2410C', border: '1px solid #FBD5BC' }}>
                           Make-up · {s.firstName} {s.lastName}
                         </span>
                         <button
+                          type="button"
                           onClick={() => setMakeupIds(ids => ids.filter(id => id !== s.id))}
-                          className="text-xs font-medium"
-                          style={{ color: 'var(--mid-gray)' }}>
-                          Remove
+                          className={`${BTN_SM} cs-btn h-7`}
+                          style={{ ...CONTROL_STYLE, color: 'var(--mid-gray)' }}>
+                          <X size={12} /> Remove
                         </button>
                       </div>
-                      <StaffCard staff={s} allStaff={staff} selectedDate={tomorrowDate} schedulingBranch={activeBranch} />
+                      <StaffCard flat staff={s} allStaff={staff} selectedDate={tomorrowDate} schedulingBranch={activeBranch} />
                     </div>
                   ))}
                 </div>
-              </div>
+              </section>
             )}
           </div>
 
           {/* Right — Front Desk card, reminder, and make-up search */}
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-3 min-w-0">
             <DeskShortcutCard />
-            <div className="rounded-lg p-3" style={{ background: '#FEF2F2', border: '2px solid #DC2626' }}>
-              <p className="text-sm font-bold m-0" style={{ color: '#DC2626', lineHeight: 1.45 }}>
+            <div role="note" className="rounded-xl px-3.5 py-3 flex gap-2.5"
+              style={{ background: '#FEF2F2', border: '1px solid #FCA5A5', borderLeft: '4px solid #DC2626' }}>
+              <AlertTriangle size={16} className="flex-shrink-0 mt-0.5" style={{ color: '#DC2626' }} />
+              <p className="text-[13px] font-semibold m-0" style={{ color: '#B91C1C', lineHeight: 1.45 }}>
                 Note: Don&apos;t forget to include new patients, especially to medical doctors,
                 psychologists and physical therapists from clinic inquiries.
               </p>
             </div>
 
             {/* Make-up clinician search */}
-            <div className="rounded-xl p-3" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
-              <p className="text-sm font-bold mb-2" style={{ color: 'var(--charcoal)' }}>
+            <div className="rounded-xl p-4" style={CARD_STYLE}>
+              <p className="flex items-center gap-2 text-sm font-bold mb-2.5" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>
+                <UserPlus size={15} style={{ color: 'var(--teal)' }} />
                 Any clinicians who will do make up sessions?
               </p>
               <div style={{ position: 'relative' }}>
+                <Search size={14} aria-hidden className="absolute left-2.5 top-[18px] -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mid-gray)' }} />
                 <input
                   type="text"
                   value={makeupQuery}
                   onChange={e => setMakeupQuery(e.target.value)}
                   placeholder="Search clinician name…"
-                  className="w-full rounded-lg px-3 py-2 text-sm"
-                  style={{ border: '1.5px solid var(--light-gray)', background: '#fff', color: 'var(--charcoal)' }}
+                  aria-label="Search clinician name"
+                  className={`${CONTROL} w-full pl-8`}
+                  style={CONTROL_STYLE}
                 />
                 {makeupMatches.length > 0 && (
-                  <div className="rounded-lg mt-1 overflow-hidden" style={{ border: '1px solid var(--light-gray)', background: '#fff' }}>
+                  <div className="rounded-lg mt-1 overflow-hidden" style={{ border: '1px solid var(--light-gray)', background: '#fff', boxShadow: '0 8px 24px rgba(15,23,42,0.08)' }}>
                     {makeupMatches.map(s => (
                       <button
+                        type="button"
                         key={s.id}
                         onClick={() => { setMakeupIds(ids => [...ids, s.id]); setMakeupQuery('') }}
-                        className="w-full text-left px-3 py-2 text-sm hover:bg-stone-50 flex items-center justify-between gap-2"
-                        style={{ color: 'var(--charcoal)' }}>
-                        <span>{s.firstName} {s.lastName}</span>
-                        <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>{s.department}</span>
+                        className="cs-btn w-full text-left px-3 py-2 text-sm hover:bg-[#F5FAFA] flex items-center justify-between gap-2"
+                        style={{ color: 'var(--charcoal)', borderTop: '1px solid #F1F4F4' }}>
+                        <span className="flex items-center gap-2 min-w-0">
+                          <Plus size={13} className="flex-shrink-0" style={{ color: 'var(--teal)' }} />
+                          <span className="truncate">{s.firstName} {s.lastName}</span>
+                        </span>
+                        <DeptChip code={s.department} color={deptColor(s.department)} />
                       </button>
                     ))}
                   </div>
                 )}
                 {makeupQuery.trim().length > 0 && makeupMatches.length === 0 && (
                   <p className="text-xs mt-1.5" style={{ color: 'var(--mid-gray)' }}>
-                    No matching clinician in {branchLabel(activeBranch) ?? activeBranch} (already-scheduled clinicians are hidden).
+                    No matching clinician in {branchName} (already-scheduled clinicians are hidden).
                   </p>
                 )}
               </div>
-              <p className="text-[11px] mt-2" style={{ color: 'var(--mid-gray)', lineHeight: 1.4 }}>
+              <p className="text-[11px] mt-2.5" style={{ color: 'var(--mid-gray)', lineHeight: 1.45 }}>
                 Add a clinician here to schedule a make-up session on a day that isn&apos;t part of their
                 weekly schedule. They&apos;ll appear under <strong>Make-up sessions</strong> on the left.
               </p>
@@ -1335,21 +1417,27 @@ export default function DepartmentView({ role, selectedDate, onDateChange }: { r
           </div>
         </div>
       ) : loading ? (
-        <p className="text-sm text-center py-10" style={{ color: 'var(--mid-gray)' }}>Loading staff…</p>
+        listSkeleton
+      ) : staffError && staff.length === 0 ? (
+        null
       ) : filtered.length === 0 ? (
-        <div className="rounded-xl py-16 flex flex-col items-center gap-3"
-          style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
-          <p className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>
-            {activeDept === 'All' ? `No ${branchLabel(activeBranch) ?? activeBranch} staff found` : `No ${activeDept} staff in ${branchLabel(activeBranch) ?? activeBranch}`}
+        <div className="rounded-xl py-14 px-6 flex flex-col items-center gap-2 text-center" style={CARD_STYLE}>
+          <span className="w-11 h-11 rounded-2xl flex items-center justify-center mb-1" style={{ background: 'var(--pale-teal)' }}>
+            <Users size={20} style={{ color: 'var(--teal)' }} />
+          </span>
+          <p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>
+            {activeDept === 'All' ? `No ${branchName} staff found` : `No ${activeDept} staff in ${branchName}`}
           </p>
           <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
             {activeDept === 'All' ? 'Add staff in the Staff Module first.' : 'Try a different department filter.'}
           </p>
         </div>
       ) : (
-        <div className="space-y-2">
-          {filtered.map(s => (
-            <StaffCard key={s.id} staff={s} allStaff={staff} selectedDate={selectedDate} schedulingBranch={activeBranch} />
+        <div className="space-y-3">
+          {filteredByDept.map(g => deptCard(g.dept, g.list.length,
+            g.list.map(s => (
+              <StaffCard key={s.id} flat staff={s} allStaff={staff} selectedDate={selectedDate} schedulingBranch={activeBranch} />
+            )),
           ))}
         </div>
       )}

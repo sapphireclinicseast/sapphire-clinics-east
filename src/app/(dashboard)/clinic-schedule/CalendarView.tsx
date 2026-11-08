@@ -1,9 +1,16 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { statusLabel } from '@/lib/schedule-status'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight, CalendarDays, CheckCircle2, Users, TrendingUp, X } from 'lucide-react'
 import { branchLabel } from '@/lib/branch-label'
+import { localTodayStr } from '@/lib/utils'
+import { KpiCard, EmptyState, CARD_STYLE } from '../patients/dashboard/ui'
+import { PillTabs, CONTROL, CONTROL_STYLE, BTN_SM } from '../decking/ui'
+import {
+  Toolbar, Field, UpdatingHint, ErrorBanner, KpiSkeletonRow, StatusBadge, statusStyle, CardBar,
+  STATUS_STYLE, TH, TH_BG, TD, TodayTag,
+} from './ui'
+import { statusLabel } from '@/lib/schedule-status'
 
 const ALL_DEPARTMENTS = ['OT', 'PT', 'SLP', 'SPED', 'MD', 'PSYCHOLOGY', 'ORTHOSIS']
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -11,22 +18,6 @@ const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',
 ]
-
-const STATUS_COLORS: Record<string, { background: string; color: string }> = {
-  PENDING:     { background: '#FFF9EC', color: '#92400E' },
-  CONFIRMED:   { background: 'var(--pale-teal)', color: 'var(--teal)' },
-  CANCELLED:   { background: '#FEE2E2', color: '#DC2626' },
-  RESCHEDULED: { background: '#EDE9FE', color: '#5B21B6' },
-  NO_SHOW: { background: '#FFEDD5', color: '#9A3412' },   // amber: not cancelled, not rescheduled
-}
-
-const STATUS_DOT: Record<string, string> = {
-  PENDING:     '#92400E',
-  CONFIRMED:   '#1a7b8a',
-  CANCELLED:   '#DC2626',
-  RESCHEDULED: '#5B21B6',
-  NO_SHOW: '#9A3412',
-}
 
 function formatTime(t: string): string {
   const [h, m] = t.split(':').map(Number)
@@ -49,6 +40,8 @@ interface CalSchedule {
   date: string // YYYY-MM-DD (normalised after fetch)
 }
 
+const MAX_SHOW = 3
+
 export default function CalendarView({ role }: { role: string }) {
   const branches = visibleBranches(role)
   const isMultiBranch = branches.length > 1
@@ -64,6 +57,11 @@ export default function CalendarView({ role }: { role: string }) {
 
   const [schedules, setSchedules] = useState<CalSchedule[]>([])
   const [loading, setLoading]     = useState(false)
+  // Display-only: whether the first load has finished, the last load's error,
+  // and a counter the "Try again" button bumps to re-run the same request.
+  const [hasLoaded, setHasLoaded] = useState(false)
+  const [loadError, setLoadError] = useState('')
+  const [reloadKey, setReloadKey] = useState(0)
 
   const daysInMonth   = new Date(year, month + 1, 0).getDate()
   const firstDayOfWeek = new Date(year, month, 1).getDay() // 0=Sunday
@@ -78,14 +76,18 @@ export default function CalendarView({ role }: { role: string }) {
       .then(r => r.json())
       .then(data => {
         if (Array.isArray(data)) {
+          setLoadError('')
           setSchedules(data.map((s: CalSchedule & { date: string }) => ({
             ...s,
             date: new Date(s.date).toISOString().split('T')[0],
           })))
+        } else {
+          setLoadError((data && typeof data.error === 'string' && data.error) || "Couldn't load this month's schedule.")
         }
       })
-      .finally(() => setLoading(false))
-  }, [year, month, daysInMonth])
+      .catch(() => setLoadError("Couldn't load this month's schedule. Check your connection, then try again."))
+      .finally(() => { setLoading(false); setHasLoaded(true) })
+  }, [year, month, daysInMonth, reloadKey])
 
   useEffect(() => {
     setSelectedDept('All')
@@ -142,15 +144,26 @@ export default function CalendarView({ role }: { role: string }) {
     else setMonth(m => m + 1)
   }
 
-  const todayStr = today.toISOString().split('T')[0]
+  // Local calendar date, so the "today" marker doesn't slip a day in the
+  // early-morning hours when UTC is still on the previous date.
+  const todayStr = localTodayStr()
   const currentMonthPrefix = `${year}-${String(month + 1).padStart(2, '0')}`
-  const todayDay = todayStr.startsWith(currentMonthPrefix) ? today.getDate() : null
+  const todayDay = todayStr.startsWith(currentMonthPrefix) ? Number(todayStr.slice(8, 10)) : null
 
-  const selectStyle = {
-    border: '1.5px solid rgba(26,123,138,0.3)', background: '#fff',
-    color: 'var(--charcoal)', borderRadius: '0.5rem',
-    padding: '0.4rem 0.7rem', fontSize: '0.85rem',
+  // While a different month loads, the sessions still in memory belong to the
+  // previous month — keep the grid on screen (dimmed) but don't paint last
+  // month's sessions onto this month's days.
+  const staleMonth = loading && schedules.length > 0 && !schedules[0].date.startsWith(currentMonthPrefix)
+  const refreshing = loading && hasLoaded
+
+  // KPIs — all from the month already loaded.
+  const confirmed = filtered.filter(s => s.status === 'CONFIRMED').length
+  const clinicianCount = new Set(filtered.map(s => s.staff.id)).size
+  let busiestDay: number | null = null
+  for (const d of Object.keys(byDay).map(Number)) {
+    if (busiestDay === null || byDay[d].length > byDay[busiestDay].length) busiestDay = d
   }
+  const todayCount = todayDay ? (byDay[todayDay]?.length ?? 0) : null
 
   // Build cell array (nulls for empty lead/trail cells)
   const totalCells = Math.ceil((firstDayOfWeek + daysInMonth) / 7) * 7
@@ -160,245 +173,245 @@ export default function CalendarView({ role }: { role: string }) {
   })
 
   return (
-    <div className="space-y-5">
-      {/* Filter panel */}
-      <div className="rounded-xl p-4 space-y-4" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
-        {/* Row 1: Month nav + Branch */}
-        <div className="flex flex-wrap items-center gap-4">
-          <div className="flex items-center gap-2">
-            <label className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>
-              Month
-            </label>
-            <div className="flex items-center gap-1">
-              <button onClick={prevMonth} className="p-1 rounded hover:bg-gray-100">
-                <ChevronLeft size={16} style={{ color: 'var(--charcoal)' }} />
-              </button>
-              <span className="text-sm font-semibold min-w-[140px] text-center" style={{ color: 'var(--charcoal)' }}>
-                {MONTH_NAMES[month]} {year}
-              </span>
-              <button onClick={nextMonth} className="p-1 rounded hover:bg-gray-100">
-                <ChevronRight size={16} style={{ color: 'var(--charcoal)' }} />
-              </button>
-            </div>
+    <div className="space-y-4">
+      {/* ── Toolbar ── */}
+      <Toolbar right={<>
+        <UpdatingHint show={refreshing} />
+        {hasLoaded && !staleMonth && (
+          <span className="text-xs whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>
+            <strong className="tabular-nums" style={{ color: 'var(--charcoal)' }}>{filtered.length}</strong> session{filtered.length !== 1 ? 's' : ''}
+          </span>
+        )}
+      </>}>
+        <Field label="Month">
+          <div className="flex items-center h-9 rounded-lg" style={CONTROL_STYLE}>
+            <button type="button" onClick={prevMonth} aria-label="Previous month"
+              className="cs-btn h-full px-2 rounded-l-lg hover:bg-gray-50 transition-colors">
+              <ChevronLeft size={16} style={{ color: 'var(--charcoal)' }} />
+            </button>
+            <span className="text-sm font-semibold min-w-[132px] text-center tabular-nums" style={{ color: 'var(--charcoal)' }}>
+              {MONTH_NAMES[month]} {year}
+            </span>
+            <button type="button" onClick={nextMonth} aria-label="Next month"
+              className="cs-btn h-full px-2 rounded-r-lg hover:bg-gray-50 transition-colors">
+              <ChevronRight size={16} style={{ color: 'var(--charcoal)' }} />
+            </button>
           </div>
+        </Field>
 
-          {isMultiBranch && (
-            <div className="flex items-center gap-2">
-              <label className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>
-                Branch
-              </label>
-              <div className="flex rounded-lg overflow-hidden" style={{ border: '1px solid var(--light-gray)' }}>
-                {['All', ...branches].map(b => (
-                  <button key={b} onClick={() => setActiveBranch(b)}
-                    className="px-4 py-1.5 text-sm font-medium transition-colors"
-                    style={activeBranch === b
-                      ? { background: 'var(--teal)', color: '#fff' }
-                      : { background: '#fff', color: 'var(--mid-gray)' }}>
-                    {branchLabel(b) ?? b}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
+        {isMultiBranch && (
+          <Field label="Branch">
+            <PillTabs label="Branch" value={activeBranch} onChange={setActiveBranch}
+              tabs={['All', ...branches].map(b => ({ id: b, label: b === 'All' ? 'All' : (branchLabel(b) ?? b) }))} />
+          </Field>
+        )}
 
-        {/* Row 2: View mode */}
-        <div className="flex items-center gap-4">
-          <label className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>
-            View
-          </label>
-          <label className="flex items-center gap-1.5 cursor-pointer">
-            <input type="radio" name="calViewMode" checked={viewMode === 'all'}
-              onChange={() => setViewMode('all')} style={{ accentColor: 'var(--teal)' }} />
-            <span className="text-sm" style={{ color: 'var(--charcoal)' }}>All</span>
-          </label>
-          <label className="flex items-center gap-1.5 cursor-pointer">
-            <input type="radio" name="calViewMode" checked={viewMode === 'per-department'}
-              onChange={() => setViewMode('per-department')} style={{ accentColor: 'var(--teal)' }} />
-            <span className="text-sm" style={{ color: 'var(--charcoal)' }}>Per Department</span>
-          </label>
-        </div>
+        <Field label="View">
+          <PillTabs label="Calendar view mode" value={viewMode} onChange={id => setViewMode(id as 'all' | 'per-department')}
+            tabs={[{ id: 'all', label: 'All' }, { id: 'per-department', label: 'Per Department' }]} />
+        </Field>
 
-        {/* Row 3: Dept + Staff */}
         {viewMode === 'per-department' && (
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-2">
-              <label className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>
-                Department
-              </label>
-              <select style={selectStyle} value={selectedDept} onChange={e => setSelectedDept(e.target.value)}>
+          <>
+            <Field label="Department" htmlFor="cal-dept">
+              <select id="cal-dept" className={CONTROL} style={CONTROL_STYLE} value={selectedDept} onChange={e => setSelectedDept(e.target.value)}>
                 <option value="All">All Departments</option>
                 {presentDepts.map(d => <option key={d} value={d}>{d}</option>)}
               </select>
-            </div>
-            <div className="flex items-center gap-2">
-              <label className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>
-                Choose Staff
-              </label>
-              <select style={selectStyle} value={selectedStaffId} onChange={e => setSelectedStaffId(e.target.value)}>
+            </Field>
+            <Field label="Choose Staff" htmlFor="cal-staff">
+              <select id="cal-staff" className={`${CONTROL} max-w-[14rem]`} style={CONTROL_STYLE} value={selectedStaffId} onChange={e => setSelectedStaffId(e.target.value)}>
                 <option value="All">All Staff</option>
                 {staffInDept.map(s => (
                   <option key={s.id} value={s.id}>{s.lastName}, {s.firstName}</option>
                 ))}
               </select>
-            </div>
-          </div>
+            </Field>
+          </>
         )}
-      </div>
+      </Toolbar>
 
-      {/* Calendar */}
-      {loading ? (
-        <p className="text-sm text-center py-10" style={{ color: 'var(--mid-gray)' }}>Loading…</p>
-      ) : (
-        <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--light-gray)', background: '#fff' }}>
-          {/* Month header bar */}
-          <div className="px-4 py-2.5 flex items-center justify-between"
-            style={{ background: 'var(--pale-teal)', borderBottom: '1px solid rgba(26,123,138,0.15)' }}>
-            <p className="text-xs font-semibold" style={{ color: 'var(--teal)' }}>
-              {MONTH_NAMES[month]} {year}
-            </p>
-            <span className="text-xs font-semibold px-2 py-0.5 rounded-full"
-              style={{ background: 'var(--teal)', color: '#fff' }}>
-              {filtered.length} session{filtered.length !== 1 ? 's' : ''}
+      {loadError && <ErrorBanner message={loadError} onRetry={() => setReloadKey(k => k + 1)} />}
+
+      {/* ── KPIs — from the month already loaded ── */}
+      {!hasLoaded ? <KpiSkeletonRow /> : (
+        <div className={`grid grid-cols-2 lg:grid-cols-4 gap-3 transition-opacity ${loading ? 'opacity-60' : ''}`}>
+          <KpiCard label="Sessions this month" icon={<CalendarDays size={15} />}
+            value={staleMonth ? '—' : filtered.length}
+            sub={`${MONTH_NAMES[month]} ${year}`} />
+          <KpiCard label="Confirmed" icon={<CheckCircle2 size={15} />} accent={STATUS_STYLE.CONFIRMED.dot}
+            value={staleMonth ? '—' : confirmed}
+            sub={!staleMonth && filtered.length > 0 ? `${Math.round((confirmed / filtered.length) * 100)}% of sessions` : 'of sessions'} />
+          <KpiCard label="Clinicians" icon={<Users size={15} />} accent="var(--gold)"
+            value={staleMonth ? '—' : clinicianCount}
+            sub="with at least one session" />
+          <KpiCard label={todayCount !== null ? 'Today' : 'Busiest day'} icon={<TrendingUp size={15} />} accent="#8B5CF6"
+            value={staleMonth ? '—' : todayCount !== null ? todayCount : (busiestDay ? byDay[busiestDay].length : 0)}
+            sub={staleMonth ? '' : todayCount !== null
+              ? `sessions on ${MONTH_NAMES[month].slice(0, 3)} ${todayDay}`
+              : busiestDay ? `sessions on ${MONTH_NAMES[month].slice(0, 3)} ${busiestDay}` : 'no sessions yet'} />
+        </div>
+      )}
+
+      {/* ── Calendar ── */}
+      <section className="rounded-xl overflow-hidden min-w-0" style={CARD_STYLE}>
+        <CardBar title={`${MONTH_NAMES[month]} ${year}`}
+          count={
+            <span className="hidden sm:flex items-center gap-3">
+              {Object.entries(STATUS_STYLE).map(([k, v]) => (
+                <span key={k} className="inline-flex items-center gap-1">
+                  <span aria-hidden className="w-2 h-2 rounded-full" style={{ background: v.dot }} />
+                  {statusLabel(k)}
+                </span>
+              ))}
             </span>
-          </div>
+          } />
 
-          {/* Weekday headers */}
-          <div className="grid grid-cols-7" style={{ borderBottom: '1px solid var(--light-gray)' }}>
-            {WEEKDAYS.map(d => (
-              <div key={d} className="py-2 text-center text-xs font-semibold uppercase tracking-wider"
-                style={{ color: 'var(--mid-gray)', background: 'var(--off-white)' }}>
-                {d}
-              </div>
-            ))}
-          </div>
+        <div className="overflow-x-auto">
+          <div className={`min-w-[760px] transition-opacity ${loading ? 'opacity-55' : ''}`} aria-busy={loading || undefined}>
+            {/* Weekday headers */}
+            <div className="grid grid-cols-7" style={{ background: TH_BG, borderBottom: '1px solid var(--light-gray)' }}>
+              {WEEKDAYS.map((d, i) => (
+                <div key={d} className="py-2 text-center text-[11px] font-semibold uppercase tracking-wider"
+                  style={{ color: i === 0 || i === 6 ? '#9CA3AF' : 'var(--mid-gray)' }}>
+                  {d}
+                </div>
+              ))}
+            </div>
 
-          {/* Day cells */}
-          <div className="grid grid-cols-7">
-            {cells.map((day, i) => {
-              const isToday    = day === todayDay
-              const isSelected = day === selectedDay
-              const daySessions = day ? (byDay[day] ?? []) : []
-              const MAX_SHOW = 3
-              const extra = daySessions.length - MAX_SHOW
+            {/* Day cells */}
+            <div className="grid grid-cols-7">
+              {cells.map((day, i) => {
+                const isToday    = day !== null && day === todayDay
+                const isSelected = day !== null && day === selectedDay
+                const isWeekend  = i % 7 === 0 || i % 7 === 6
+                const daySessions = day && !staleMonth ? (byDay[day] ?? []) : []
+                const extra = daySessions.length - MAX_SHOW
+                const borders = {
+                  borderRight: (i + 1) % 7 !== 0 ? '1px solid #EEF1F1' : 'none',
+                  borderBottom: i < cells.length - 7 ? '1px solid #EEF1F1' : 'none',
+                }
 
-              return (
-                <div key={i}
-                  onClick={() => { if (day) setSelectedDay(day === selectedDay ? null : day) }}
-                  className={day ? 'cursor-pointer hover:bg-gray-50 transition-colors' : ''}
-                  style={{
-                    minHeight: '90px',
-                    padding: '6px',
-                    borderRight: (i + 1) % 7 !== 0 ? '1px solid var(--light-gray)' : 'none',
-                    borderBottom: i < cells.length - 7 ? '1px solid var(--light-gray)' : 'none',
-                    background: isSelected ? 'rgba(26,123,138,0.05)' : undefined,
-                  }}>
-                  {day && (
-                    <>
-                      <div className="mb-1">
-                        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-semibold"
-                          style={isToday
-                            ? { background: 'var(--teal)', color: '#fff' }
-                            : isSelected
-                            ? { background: 'rgba(26,123,138,0.15)', color: 'var(--teal)' }
-                            : { color: 'var(--charcoal)' }}>
-                          {day}
-                        </span>
-                      </div>
-                      <div className="space-y-0.5">
-                        {daySessions.slice(0, MAX_SHOW).map(s => (
-                          <div key={s.id} className="flex items-center gap-1 rounded px-1 py-0.5"
-                            style={{ background: STATUS_COLORS[s.status]?.background ?? '#f3f4f6' }}>
-                            <div className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                              style={{ background: STATUS_DOT[s.status] ?? '#374151' }} />
-                            <span className="truncate" style={{
-                              color: STATUS_DOT[s.status] ?? '#374151',
-                              fontSize: '0.65rem', lineHeight: 1.4,
-                            }}>
-                              {s.staff.lastName} · {formatTime(s.startTime)}
+                if (!day) {
+                  return <div key={i} aria-hidden className="h-[118px]" style={{ ...borders, background: '#FAFBFB' }} />
+                }
+
+                return (
+                  <button key={i} type="button"
+                    onClick={() => { if (day) setSelectedDay(day === selectedDay ? null : day) }}
+                    aria-pressed={isSelected}
+                    aria-label={`${MONTH_NAMES[month]} ${day}: ${daySessions.length} session${daySessions.length !== 1 ? 's' : ''}`}
+                    className="cs-day h-[118px] p-1.5 text-left flex flex-col gap-1 overflow-hidden transition-colors hover:bg-[#F5FAFA]"
+                    style={{
+                      ...borders,
+                      background: isSelected ? '#EAF5F6' : isToday ? '#F3FAFA' : isWeekend ? '#FCFCFC' : '#fff',
+                      boxShadow: isSelected ? 'inset 0 0 0 2px var(--teal)' : isToday ? 'inset 0 2px 0 var(--teal)' : undefined,
+                    }}>
+                    <div className="flex items-center justify-between gap-1 flex-shrink-0">
+                      <span className="inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-semibold tabular-nums"
+                        style={isToday
+                          ? { background: 'var(--teal)', color: '#fff' }
+                          : { color: isWeekend ? '#9CA3AF' : 'var(--charcoal)' }}>
+                        {day}
+                      </span>
+                      {isToday
+                        ? <TodayTag />
+                        : daySessions.length > 0 && (
+                          <span className="text-[10px] font-semibold tabular-nums pr-0.5" style={{ color: 'var(--mid-gray)' }}>{daySessions.length}</span>
+                        )}
+                    </div>
+                    <div className="space-y-0.5 min-w-0">
+                      {daySessions.slice(0, MAX_SHOW).map(s => {
+                        const st = statusStyle(s.status)
+                        return (
+                          <div key={s.id} className="flex items-center gap-1 rounded px-1.5 h-[18px] min-w-0"
+                            title={`${s.staff.lastName} · ${formatTime(s.startTime)} – ${formatTime(s.endTime)} · ${statusLabel(s.status)}`}
+                            style={{ background: st.bg, borderLeft: `2px solid ${st.dot}` }}>
+                            <span className="truncate text-[10.5px] leading-none" style={{ color: st.fg }}>
+                              <span className="font-semibold tabular-nums">{formatTime(s.startTime)}</span> · {s.staff.lastName}
                             </span>
                           </div>
-                        ))}
-                        {extra > 0 && (
-                          <p style={{ color: 'var(--mid-gray)', fontSize: '0.65rem', paddingLeft: '4px' }}>
-                            +{extra} more
-                          </p>
-                        )}
-                      </div>
-                    </>
-                  )}
-                </div>
-              )
-            })}
+                        )
+                      })}
+                      {extra > 0 && (
+                        <p className="text-[10.5px] font-semibold pl-1.5" style={{ color: 'var(--teal)' }}>
+                          +{extra} more
+                        </p>
+                      )}
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
           </div>
+        </div>
 
-          {/* Day detail panel */}
-          {selectedDay && (
-            <div style={{ borderTop: '2px solid var(--teal)' }}>
-              <div className="px-4 py-2.5 flex items-center justify-between"
-                style={{ background: 'rgba(26,123,138,0.05)', borderBottom: '1px solid var(--light-gray)' }}>
-                <p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>
-                  {MONTH_NAMES[month]} {selectedDay}, {year}
-                  <span className="ml-2 text-xs font-normal" style={{ color: 'var(--mid-gray)' }}>
-                    {selectedDaySessions.length} session{selectedDaySessions.length !== 1 ? 's' : ''}
-                  </span>
-                </p>
-                <button onClick={() => setSelectedDay(null)}
-                  className="text-xs px-2 py-1 rounded hover:bg-gray-100"
-                  style={{ color: 'var(--mid-gray)' }}>
-                  Close
-                </button>
-              </div>
+        {/* Day detail panel */}
+        {selectedDay && (
+          <div style={{ borderTop: '1px solid var(--light-gray)' }}>
+            <div className="px-4 py-3 flex items-center justify-between gap-2" style={{ background: '#F3FAFA', borderBottom: '1px solid var(--light-gray)' }}>
+              <p className="text-sm font-bold flex items-center gap-2" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>
+                {MONTH_NAMES[month]} {selectedDay}, {year}
+                {selectedDay === todayDay && <TodayTag />}
+                <span className="text-xs font-normal" style={{ color: 'var(--mid-gray)', fontFamily: 'var(--font-body)' }}>
+                  {selectedDaySessions.length} session{selectedDaySessions.length !== 1 ? 's' : ''}
+                </span>
+              </p>
+              <button type="button" onClick={() => setSelectedDay(null)}
+                className={BTN_SM} style={{ ...CONTROL_STYLE, color: 'var(--mid-gray)' }}>
+                <X size={12} /> Close
+              </button>
+            </div>
 
-              {selectedDaySessions.length === 0 ? (
-                <p className="px-4 py-6 text-sm text-center" style={{ color: 'var(--mid-gray)' }}>
-                  No sessions on this day.
-                </p>
-              ) : (
+            {selectedDaySessions.length === 0 ? (
+              <EmptyState title="No sessions on this day." />
+            ) : (
+              <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr style={{ background: 'var(--off-white)', borderBottom: '1px solid var(--light-gray)' }}>
+                    <tr style={{ background: TH_BG, borderBottom: '1px solid var(--light-gray)' }}>
                       {['Therapist', 'Patient', 'Time', 'Type of Session', 'Status'].map(h => (
-                        <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider"
-                          style={{ color: 'var(--mid-gray)' }}>{h}</th>
+                        <th key={h} className={TH} style={{ color: 'var(--mid-gray)' }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {selectedDaySessions.map((s, i) => (
-                      <tr key={s.id} className="hover:bg-gray-50 transition-colors"
-                        style={{ borderBottom: i < selectedDaySessions.length - 1 ? '1px solid var(--light-gray)' : 'none' }}>
-                        <td className="px-4 py-2.5">
-                          <p className="font-medium text-sm" style={{ color: 'var(--charcoal)' }}>
+                      <tr key={s.id} className="hover:bg-[#F7FAFA] transition-colors"
+                        style={{ borderBottom: i < selectedDaySessions.length - 1 ? '1px solid #EEF1F1' : 'none' }}>
+                        <td className={TD}>
+                          <p className="font-semibold text-sm" style={{ color: 'var(--charcoal)' }}>
                             {s.staff.lastName}, {s.staff.firstName}
                           </p>
                           <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>{s.staff.department}</p>
                         </td>
-                        <td className="px-4 py-2.5" style={{ color: 'var(--charcoal)' }}>
+                        <td className={TD} style={{ color: 'var(--charcoal)' }}>
                           {s.patient
                             ? <span className="font-medium">{s.patient.lastName}, {s.patient.firstName}</span>
                             : <span style={{ color: 'var(--mid-gray)' }}>—</span>}
                         </td>
-                        <td className="px-4 py-2.5 whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>
+                        <td className={`${TD} whitespace-nowrap tabular-nums`} style={{ color: 'var(--charcoal)' }}>
                           {formatTime(s.startTime)} – {formatTime(s.endTime)}
                         </td>
-                        <td className="px-4 py-2.5" style={{ color: 'var(--charcoal)' }}>
+                        <td className={TD} style={{ color: 'var(--charcoal)' }}>
                           {s.sessionType}
                         </td>
-                        <td className="px-4 py-2.5">
-                          <span className="px-2 py-0.5 rounded-full text-xs font-semibold"
-                            style={STATUS_COLORS[s.status] ?? { background: '#f3f4f6', color: '#374151' }}>
-                            {statusLabel(s.status)}
-                          </span>
+                        <td className={TD}>
+                          <StatusBadge status={s.status} />
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
-              )}
-            </div>
-          )}
-        </div>
+              </div>
+            )}
+          </div>
+        )}
+      </section>
+      {hasLoaded && !loading && !loadError && filtered.length === 0 && (
+        <p className="text-xs text-center" style={{ color: 'var(--mid-gray)' }}>
+          No sessions in {MONTH_NAMES[month]} {year}{viewMode === 'per-department' && (selectedDept !== 'All' || selectedStaffId !== 'All') ? ' for this filter' : ''}.
+        </p>
       )}
     </div>
   )
