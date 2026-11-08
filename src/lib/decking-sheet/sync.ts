@@ -101,14 +101,25 @@ async function loadDepartment(branch: string, department: string) {
   return { staff, slots: sheetSlots, raw: slots }
 }
 
+// Two different spellings of the same branch live in this database: decking,
+// staff and schedules use SBEA/SBGH, while a patient's branch is the Branch
+// enum, SANDBOX_EAST/SANDBOX_GREENHILLS. Querying patients with the decking
+// code matches nothing at all — which is exactly how the patient dropdown came
+// out holding only N/A and BREAK.
+const PATIENT_BRANCH: Record<string, string> = {
+  SBEA: 'SANDBOX_EAST',
+  SBGH: 'SANDBOX_GREENHILLS',
+}
+
 /** Every patient the branch can book, for the dropdown. */
 async function loadPatientNames(branch: string): Promise<string[]> {
+  const patientBranch = PATIENT_BRANCH[branch] ?? branch
   const rows = await prisma.$queryRawUnsafe<{ n: string }[]>(
     `SELECT DISTINCT upper("lastName" || ', ' || "firstName") AS n
        FROM "Patient"
       WHERE $1 = ANY("branches"::text[]) OR branch::text = $1
       ORDER BY 1`,
-    branch,
+    patientBranch,
   )
   return rows.map(r => r.n).filter(Boolean)
 }
