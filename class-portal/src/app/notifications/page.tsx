@@ -60,14 +60,21 @@ export default function NotificationsPage() {
   if (!ready || !me) return null
 
   return (
-    <div className="max-w-4xl mx-auto animate-fade-up space-y-6">
-      <NotificationPanel viewer={{
-        role: 'STUDENT',
-        level: me.level as EnrollmentLevel | undefined,
-        email: me.email,
-        name: [me.firstName, me.lastName].filter(Boolean).join(' ') || me.email,
-        userId: me.id,
-      }} />
+    <div className="max-w-4xl mx-auto space-y-5 min-w-0 animate-fade-up">
+      <NotificationPanel
+        header={{
+          eyebrow: 'Aura Academy · Inbox',
+          title: 'Notifications',
+          description: 'Announcements from the school, plus tuition reminders when a payment is due.',
+        }}
+        viewer={{
+          role: 'STUDENT',
+          level: me.level as EnrollmentLevel | undefined,
+          email: me.email,
+          name: [me.firstName, me.lastName].filter(Boolean).join(' ') || me.email,
+          userId: me.id,
+        }}
+      />
     </div>
   )
 }
