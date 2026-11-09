@@ -553,9 +553,21 @@ async function pushMap(api: sheets_v4.Sheets, spreadsheetId: string, entries: (C
       { userEnteredValue: { stringValue: e.slotId ?? '' } },
     ] })),
   ]
+  // Widened on its own, BEFORE anything writes into the new width.
+  //
+  // The map grew from 9 columns to 10 when one-offs started carrying their row
+  // id. tabId() only sets a width when it CREATES the tab, so every existing
+  // sheet still had a 9-column map, and the clear and the row writes both
+  // addressed column 10 of a 9-wide grid: "Attempting to write column: 9,
+  // beyond the last requested column of: 8". The whole sync died there, after
+  // the department tabs had been written but before the map was updated —
+  // which also leaves the map describing the previous push.
+  const WIDTH = 10
   await api.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: [
-    { updateSheetProperties: { properties: { sheetId, hidden: true, gridProperties: { rowCount: span, columnCount: 9 } }, fields: 'hidden,gridProperties.rowCount,gridProperties.columnCount' } },
-    { updateCells: { range: { sheetId, startRowIndex: 0, endRowIndex: span, startColumnIndex: 0, endColumnIndex: 9 }, fields: 'userEnteredValue' } },
+    { updateSheetProperties: { properties: { sheetId, hidden: true, gridProperties: { rowCount: span, columnCount: WIDTH } }, fields: 'hidden,gridProperties.rowCount,gridProperties.columnCount' } },
+  ] } })
+  await api.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: [
+    { updateCells: { range: { sheetId, startRowIndex: 0, endRowIndex: span, startColumnIndex: 0, endColumnIndex: WIDTH }, fields: 'userEnteredValue' } },
   ] } })
   for (let i = 0; i < rows.length; i += 500) {
     await api.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: [
