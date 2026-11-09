@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, useCallback } from 'react'
+import { roleLabel } from '@/lib/role-labels'
 import { signOut } from 'next-auth/react'
 import { LogOut, Bell, User, Menu } from 'lucide-react'
 import type { Session } from 'next-auth'
@@ -263,7 +264,7 @@ export default function TopBar({ user, onMenuClick }: TopBarProps) {
               {user?.name}
             </p>
             <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
-              {(user as { role?: string })?.role ?? 'Staff'}
+              {roleLabel((user as { role?: string })?.role) || 'Staff'}
             </p>
           </div>
         </div>

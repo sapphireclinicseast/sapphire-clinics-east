@@ -448,7 +448,7 @@ function CustomSlotModal({ staff, activeBranch, workDays, onClose, onSave }: {
 }
 
 // ─── Therapist Row ─────────────────────────────────────────────────────────────
-function TherapistRow({ staff, activeBranch, sectionMode, config, slots, defaultHours, onSaveConfig, onClearServiceConfig, onSaveSlot, onDeleteSlot, onOpenLoa, density = 'comfortable', collapsed = false, onToggleCollapse, datedSlots = [], onAddDated, showCapacity = true }: {
+function TherapistRow({ staff, activeBranch, sectionMode, config, slots, defaultHours, onSaveConfig, onClearServiceConfig, onSaveSlot, onDeleteSlot, onOpenLoa, density = 'comfortable', collapsed = false, onToggleCollapse, datedSlots = [], onAddDated, onDatedChanged, showCapacity = true }: {
   staff: StaffMember
   /** "x of y booked" meter in the card header — main admin only. Display only. */
   showCapacity?: boolean
@@ -470,6 +470,8 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
   onDeleteSlot: (id: string) => Promise<void>
   /** Raise / open the Letter of Authorization for an HMO slot. */
   onOpenLoa?: (slot: DeckingSlot) => void
+  /** Called after a one-off is booked or cleared, so the board reloads. */
+  onDatedChanged?: () => void
   /** This consultant's one-off dates — hours given for a named day only. */
   datedSlots?: DeckingSlot[]
   onAddDated?: (data: { staffId: string; patientId: string | null; dayOfWeek: string; startTime: string; endTime: string; branch: string; department: string; notes: string | null; date?: string | null }) => Promise<void>
@@ -487,6 +489,8 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
   const [addingCell, setAddingCell] = useState<{ dayOfWeek: string; startTime: string } | null>(null)
   const [showCustomModal, setShowCustomModal] = useState(false)
   const [showDatedModal, setShowDatedModal] = useState(false)
+  /** Which one-off is having its patient set, if any. */
+  const [fillingDated, setFillingDated] = useState<string | null>(null)
   // A one-off needs a real date and an hour; the weekday is derived from the
   // date rather than asked for, because the two must agree — the grid is drawn
   // by weekday and a mismatch would render the slot on the wrong column.
@@ -984,6 +988,28 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
             </p>
           ) : (
             <div className="flex flex-wrap gap-1.5">
+              {fillingDated && (
+                <div className="w-full mb-1" style={{ maxWidth: 320 }}>
+                  <PatientCellSearch
+                    current={datedSlots.find(x => x.id === fillingDated)?.patient ?? null}
+                    onClose={() => setFillingDated(null)}
+                    onClear={async () => {
+                      await fetch('/api/decking/slots', {
+                        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ id: fillingDated, patientId: null }),
+                      })
+                      setFillingDated(null); onDatedChanged?.()
+                    }}
+                    onSelect={async (pt) => {
+                      await fetch('/api/decking/slots', {
+                        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ id: fillingDated, patientId: pt.id }),
+                      })
+                      setFillingDated(null); onDatedChanged?.()
+                    }}
+                  />
+                </div>
+              )}
               {datedSlots.map(sl => {
                 const when = new Date(String(sl.date)).toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' })
                 const who = sl.patient ? personLabel(sl.patient) : 'Open'
@@ -994,9 +1020,20 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
                     style={{ background: '#FDF2F8', border: '1px solid #F9C4DE', color: '#9D174D' }}>
                     <strong className="whitespace-nowrap">{new Date(String(sl.date)).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', timeZone: 'UTC' })}</strong>
                     <span className="whitespace-nowrap tabular-nums">{formatTime(sl.startTime)}</span>
-                    <span className="truncate" style={sl.patient ? undefined : { fontStyle: 'italic', opacity: 0.8 }}>
-                      {sl.patient ? `· ${sl.patient.lastName}, ${sl.patient.firstName[0]}.` : '· open'}
-                    </span>
+                    {/* Bookable. A one-off is created empty by definition —
+                        the date is agreed before anybody is in it — and the
+                        chip offered only a delete button, so an hour the
+                        clinic had been given could never be used. */}
+                    <button type="button" onClick={() => setFillingDated(sl.id)}
+                      title={sl.patient ? `Change who is booked on ${when}` : `Book a patient on ${when}`}
+                      className="truncate"
+                      style={{
+                        background: 'none', border: 'none', padding: 0, font: 'inherit', cursor: 'pointer',
+                        color: 'inherit', textDecoration: 'underline', textUnderlineOffset: 2,
+                        ...(sl.patient ? {} : { fontStyle: 'italic', opacity: 0.8 }),
+                      }}>
+                      {sl.patient ? `· ${sl.patient.lastName}, ${sl.patient.firstName[0]}.` : '· book someone'}
+                    </button>
                     <button type="button" onClick={() => onDeleteSlot(sl.id)} title="Remove this date"
                       aria-label={`Remove the one-off on ${when}`}
                       className="dk-btn dk-icon-btn rounded p-0.5 flex-shrink-0">
@@ -2412,6 +2449,7 @@ export default function DeckingClient({ role }: { role: string }) {
                       onToggleCollapse={() => toggleCollapsed(s.id)}
                       datedSlots={datedByStaff.get(s.id) ?? []}
                       onAddDated={handleSaveSlot}
+                      onDatedChanged={() => loadBranchData(activeBranch)}
                       showCapacity={isMainAdmin}
                     />
                   ))}
