@@ -4,16 +4,29 @@
 // page caches the wrong layout across deploys.
 export const dynamic = 'force-dynamic'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { signIn, type AuthRole } from '@/lib/session'
+import {
+  Banner, Icon, type IconName,
+  CONTROL, CONTROL_STYLE, LABEL, LABEL_STYLE, BTN_PRIMARY, PRIMARY_STYLE, FOCUS,
+} from '@/components/hub/ui'
 
-const ROLES: { value: AuthRole; title: string; sub: string }[] = [
-  { value: 'STUDENT',      title: 'Parent / Student', sub: 'Enrolled families' },
-  { value: 'TEACHER',      title: 'Teacher',          sub: 'Classroom staff' },
-  { value: 'FRONTDESK',    title: 'Front desk',       sub: 'Clinic reception' },
-  { value: 'BRANCH_ADMIN', title: 'Branch admin',     sub: 'Per-branch admin' },
-  { value: 'ADMIN',        title: 'Main admin',       sub: 'SCEI HQ' },
+const ROLES: { value: AuthRole; title: string; sub: string; icon: IconName }[] = [
+  { value: 'STUDENT',      title: 'Parent / Student', sub: 'Enrolled families', icon: 'student' },
+  { value: 'TEACHER',      title: 'Teacher',          sub: 'Classroom staff',   icon: 'teacher' },
+  { value: 'FRONTDESK',    title: 'Front desk',       sub: 'Clinic reception',  icon: 'users' },
+  { value: 'BRANCH_ADMIN', title: 'Branch admin',     sub: 'Per-branch admin',  icon: 'building' },
+  { value: 'ADMIN',        title: 'Main admin',       sub: 'SCEI HQ',           icon: 'shield' },
+]
+
+const noopSubscribe = () => () => {}
+
+const POINTS = [
+  'DepEd-accredited curriculum via Light Bearer Christian Academy',
+  'Clinic-integrated SPED support for every learner',
+  'Parents see attendance + grades the moment they\'re posted',
 ]
 
 export default function SignInPage() {
@@ -21,6 +34,21 @@ export default function SignInPage() {
   const [role, setRole] = useState<AuthRole | null>(null)
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [showPw, setShowPw] = useState(false)
+  const emailRef = useRef<HTMLInputElement>(null)
+  // /reset sends people back here with ?reset=ok after a new password is saved.
+  // Read once from the URL on the client; false during server render.
+  const resetOk = useSyncExternalStore(
+    noopSubscribe,
+    () => new URLSearchParams(window.location.search).get('reset') === 'ok',
+    () => false,
+  )
+
+  // Picking a role unlocks the fields; move the cursor straight into Email
+  // so the next keystroke lands where it should.
+  useEffect(() => {
+    if (role) emailRef.current?.focus()
+  }, [role])
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -42,22 +70,18 @@ export default function SignInPage() {
     }
   }
 
+  const chosen = role ? ROLES.find(r => r.value === role)! : null
+
   return (
-    // One centred card in the same column as the header, brand panel and
-    // form side by side at equal height. This replaced a viewport-escape
-    // full-bleed panel: the global <main>'s vertical padding left cream bands
-    // above and below it, its left edge sat flush with the window while the
-    // header was centred, and the form floated off to the right.
+    // One centred card in the same column as the header: brand panel and
+    // form side by side at equal height on desktop, form only on phones.
     <div className="animate-fade-up">
       <div
         className="grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] rounded-2xl overflow-hidden"
-        style={{ background: '#fff', border: '1px solid var(--paper-3)', boxShadow: '0 1px 2px rgba(30,56,50,0.04), 0 12px 32px -18px rgba(30,56,50,0.25)' }}
+        style={{ background: '#fff', border: '1px solid var(--light-gray)', boxShadow: '0 1px 2px rgba(30,56,50,0.04), 0 12px 32px -18px rgba(30,56,50,0.25)' }}
       >
 
-        {/* ── LEFT: brand panel ─────────────────────────────────── */}
-        {/* Hidden on small screens — mobile users go straight to the
-            form. The gradient + decorative orbs evoke the same look as
-            the public /enroll page so the portal feels consistent. */}
+        {/* ── LEFT: brand panel (lg and up) ─────────────────────── */}
         <aside
           className="hidden lg:flex flex-col justify-between gap-10 px-10 py-10 relative overflow-hidden"
           style={{
@@ -65,67 +89,48 @@ export default function SignInPage() {
             color: '#fff',
           }}
         >
-          {/* Decorative blurred orbs in the corners — subtle, doesn't
-              compete with the typography. */}
-          <div
-            aria-hidden
-            className="absolute -top-24 -right-24 w-80 h-80 rounded-full opacity-25"
-            style={{ background: 'radial-gradient(circle, var(--bright-teal) 0%, transparent 70%)', filter: 'blur(40px)' }}
-          />
-          <div
-            aria-hidden
-            className="absolute -bottom-32 -left-16 w-96 h-96 rounded-full opacity-20"
-            style={{ background: 'radial-gradient(circle, #fff 0%, transparent 70%)', filter: 'blur(60px)' }}
-          />
+          <div aria-hidden className="absolute -top-24 -right-24 w-80 h-80 rounded-full opacity-25"
+            style={{ background: 'radial-gradient(circle, var(--bright-teal) 0%, transparent 70%)', filter: 'blur(40px)' }} />
+          <div aria-hidden className="absolute -bottom-32 -left-16 w-96 h-96 rounded-full opacity-20"
+            style={{ background: 'radial-gradient(circle, #fff 0%, transparent 70%)', filter: 'blur(60px)' }} />
 
           <div className="relative z-10">
-            {/* Small kicker badge above the headline. The big "Aura
-                Academy" lockup that used to live here was redundant
-                with the header lockup at the top of the page — we drop
-                it and let the headline carry the brand. */}
-            <div
-              className="inline-block text-[10.5px] uppercase tracking-[0.16em] font-semibold px-3 py-1 rounded-full"
-              style={{ fontFamily: 'var(--font-display)', background: 'rgba(255,255,255,0.14)', color: '#fff' }}
-            >
-              Aura Academy · Class Portal
+            <div className="flex items-center gap-3">
+              <span className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.92)' }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/aura-academy-mark-192.png" alt="" className="w-7 h-7 object-contain" />
+              </span>
+              <div className="leading-tight">
+                <div className="text-[14px] font-semibold" style={{ fontFamily: 'var(--font-display)' }}>Aura Academy</div>
+                <div className="text-[10px] uppercase tracking-[0.16em] text-white/75" style={{ fontFamily: 'var(--font-display)' }}>
+                  Class Portal
+                </div>
+              </div>
             </div>
 
-            <h1
-              className="mt-6 text-[40px] xl:text-[44px] leading-[1.05]"
-              style={{
-                fontFamily: 'var(--font-display)',
-                // Force white explicitly — the global stylesheet sets
-                // h1 to var(--deep-teal), which is exactly the panel's
-                // background colour and would make the headline
-                // invisible against the gradient.
-                color: '#ffffff',
-              }}
+            {/* A tagline, not the page heading: the form title is the h1 so
+                phones (where this panel is hidden) still have one. */}
+            <p
+              className="mt-10 text-[38px] xl:text-[42px] font-bold leading-[1.06] tracking-tight"
+              style={{ fontFamily: 'var(--font-display)', color: '#ffffff' }}
             >
-              A small class<br/>with big care.
-            </h1>
-            <p className="mt-5 text-white/90 text-[15px] leading-relaxed max-w-md">
-              Welcome back. Sign in to manage your child&apos;s enrollment, see today&apos;s lesson, or post the day&apos;s update for your class.
+              A small class<br />with big care.
+            </p>
+            <p className="mt-4 text-white/90 text-[15px] leading-relaxed max-w-md">
+              Sign in to manage your child&apos;s enrollment, see today&apos;s lesson, or post the day&apos;s update for your class.
             </p>
 
-            <ul className="mt-8 space-y-3 text-[13.5px] text-white/85 max-w-md">
-              {[
-                'DepEd-accredited curriculum via Light Bearer Christian Academy',
-                'Clinic-integrated SPED support for every learner',
-                'Parents see attendance + grades the moment they\'re posted',
-              ].map((line, i) => (
-                <li key={i} className="flex items-start gap-2.5">
-                  <span
-                    aria-hidden
-                    className="mt-1 w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0"
-                    style={{ background: 'rgba(255,255,255,0.18)' }}
-                  >✓</span>
+            <ul className="mt-8 space-y-3 text-[13.5px] text-white/90 max-w-md">
+              {POINTS.map(line => (
+                <li key={line} className="flex items-start gap-2.5">
+                  <Icon name="check" size={16} className="mt-0.5 text-white/80" />
                   <span>{line}</span>
                 </li>
               ))}
             </ul>
           </div>
 
-          {/* Bottom: NPC compliance badge + copyright. Trust signal. */}
+          {/* NPC registration + copyright: a quiet trust signal. */}
           <div className="relative z-10 pt-6 border-t border-white/20 flex items-center gap-3">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
@@ -135,7 +140,7 @@ export default function SignInPage() {
               style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.15))' }}
             />
             <p className="text-white/75 text-[11px] leading-snug">
-              Registered with the National Privacy Commission. Compliant with the Data Privacy Act of 2012.<br/>
+              Registered with the National Privacy Commission. Compliant with the Data Privacy Act of 2012.<br />
               © 2026 Sapphire Clinics East, Inc.
             </p>
           </div>
@@ -143,42 +148,39 @@ export default function SignInPage() {
 
         {/* ── RIGHT: form panel ─────────────────────────────────── */}
         {/* A div, not a second <main>: the layout already has one. */}
-        <div className="flex items-center justify-center px-5 py-8 sm:px-10 sm:py-10">
+        <div className="flex items-center justify-center px-5 py-8 sm:px-10 sm:py-12">
           <div className="w-full max-w-[420px]">
 
-            {/* Mobile-only header (the brand panel is hidden on < lg). */}
-            <div className="flex items-center gap-3 mb-8 lg:hidden">
+            {/* Phones: the brand panel is hidden, so show the mark here. */}
+            <div className="flex items-center gap-3 mb-7 lg:hidden">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/aura-academy-mark-192.png" alt="Aura Academy" className="w-10 h-10 object-contain" />
               <div className="leading-tight">
-                <div className="text-[15px] font-semibold text-[color:var(--narra)]" style={{ fontFamily: 'var(--font-display)' }}>
+                <div className="text-[15px] font-semibold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
                   Aura Academy
                 </div>
-                <div className="text-[9.5px] uppercase tracking-[0.14em] text-[color:var(--mid-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
+                <div className="text-[10px] uppercase tracking-[0.14em]" style={{ fontFamily: 'var(--font-display)', color: 'var(--mid-gray)' }}>
                   for Learning · Class Portal
                 </div>
               </div>
             </div>
 
             <div className="mb-6">
-              <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)] mb-1.5" style={{ fontFamily: 'var(--font-display)' }}>
+              <div className="text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ fontFamily: 'var(--font-display)', color: 'var(--teal)' }}>
                 Welcome back
               </div>
-              <h2 className="text-[28px] leading-tight text-[color:var(--deep-teal)]" style={{ fontFamily: 'var(--font-display)' }}>
+              <h1 className="text-[24px] sm:text-[26px] font-bold leading-tight tracking-tight" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
                 Sign in to your account
-              </h2>
-              <p className="text-[13.5px] text-[color:var(--mid-gray)] mt-1.5">
-                Choose your role to continue.
+              </h1>
+              <p className="text-sm mt-1.5" style={{ color: 'var(--mid-gray)' }}>
+                Choose who you are, then enter your email and password.
               </p>
             </div>
 
-            {/* Role selector — compact pill grid. 3-up on sm+, 2-up on
-                xs. Subdued until clicked; active pill switches to teal.
-                Same affordance as the previous version, refined visually. */}
-            {/* Parent / Student first and full width (most sign-ins), then
-                the four staff roles two by two — five tiles on a grid of
-                three used to leave an empty slot. */}
-            <div className="grid grid-cols-2 gap-2 mb-6" role="group" aria-label="Sign in as">
+            {/* Role picker. Parent / Student first and full width (most
+                sign-ins), then the four staff roles two by two. */}
+            <div className={LABEL} style={LABEL_STYLE} id="signin-role-label">Signing in as</div>
+            <div className="grid grid-cols-2 gap-2 mb-6" role="group" aria-labelledby="signin-role-label">
               {ROLES.map((r, i) => {
                 const active = role === r.value
                 return (
@@ -186,88 +188,119 @@ export default function SignInPage() {
                     key={r.value}
                     type="button"
                     onClick={() => { setRole(r.value); setErr(null) }}
-                    className={`text-left rounded-xl border px-3 py-2.5 transition-all focus-visible:outline-2 focus-visible:outline-offset-2 ${i === 0 ? 'col-span-2' : ''}`}
-                    style={{
-                      borderColor: active ? 'var(--moss)' : 'var(--paper-3)',
-                      background: active ? 'var(--paper-2)' : 'var(--paper)',
-                      boxShadow: active ? '0 1px 0 var(--moss) inset, 0 4px 12px -6px rgba(58, 110, 105, 0.35)' : 'none',
-                    }}
                     aria-pressed={active}
+                    className={`relative flex items-center gap-2 sm:gap-2.5 text-left rounded-xl px-2.5 sm:px-3 py-2.5 transition-[border-color,background-color,box-shadow] ${active ? '' : 'hover:bg-[#FBF9F5]'} ${FOCUS} ${i === 0 ? 'col-span-2' : ''}`}
+                    style={{
+                      border: `1px solid ${active ? 'var(--teal)' : 'var(--light-gray)'}`,
+                      background: active ? 'var(--moss-tint)' : '#fff',
+                      boxShadow: active ? '0 0 0 3px rgba(84,125,114,0.14)' : 'none',
+                    }}
                   >
-                    <div
-                      className="text-[12.5px] font-semibold leading-tight"
+                    <span
+                      className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors"
                       style={{
-                        color: active ? 'var(--moss)' : 'var(--narra)',
-                        fontFamily: 'var(--font-display)',
+                        background: active ? 'var(--deep-teal)' : 'var(--pale-teal)',
+                        color: active ? '#fff' : 'var(--deep-teal)',
                       }}
                     >
-                      {r.title}
-                    </div>
-                    <div className="text-[10.5px] text-[color:var(--mid-gray)] mt-0.5 leading-snug">
-                      {r.sub}
-                    </div>
+                      <Icon name={r.icon} size={16} />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-[13px] font-semibold leading-tight"
+                        style={{ fontFamily: 'var(--font-display)', color: active ? 'var(--deep-teal)' : 'var(--charcoal)' }}>
+                        {r.title}
+                      </span>
+                      <span className="block text-[11px] mt-0.5 leading-snug" style={{ color: 'var(--mid-gray)' }}>
+                        {r.sub}
+                      </span>
+                    </span>
+                    {active && <Icon name="check" size={16} style={{ color: 'var(--teal)' }} />}
                   </button>
                 )
               })}
             </div>
 
+            {resetOk && !err && (
+              <div className="mb-4 animate-fade-in">
+                <Banner tone="success">Password updated. Choose your role and sign in with your new password.</Banner>
+              </div>
+            )}
+
             {err && (
-              <div className="mb-4 px-4 py-3 rounded-xl bg-rose-50 border border-rose-100 text-sm text-rose-800 animate-fade-in">
-                {err}
+              <div className="mb-4 animate-fade-in">
+                <Banner tone="error">{err}</Banner>
               </div>
             )}
 
             <form className="space-y-4" onSubmit={handleSubmit}>
-              <label className="block">
-                <span className="label">Email</span>
+              <div>
+                <label htmlFor="signin-email" className={LABEL} style={LABEL_STYLE}>Email</label>
                 <input
+                  ref={emailRef}
+                  id="signin-email"
                   required
                   name="email"
                   type="email"
-                  className="input"
+                  className={`${CONTROL} w-full h-10`}
+                  style={CONTROL_STYLE}
                   placeholder="you@example.com"
                   autoComplete="email"
                   disabled={!role}
                 />
-              </label>
-              <label className="block">
+              </div>
+              <div>
                 <div className="flex items-center justify-between">
-                  <span className="label">Password</span>
-                  <a href="/reset" className="text-[11px] text-[color:var(--teal)] font-semibold hover:underline" style={{ fontFamily: 'var(--font-display)' }}>
-                    Forgot?
-                  </a>
+                  <label htmlFor="signin-password" className={LABEL} style={LABEL_STYLE}>Password</label>
+                  <Link href="/reset" className={`text-[12px] font-semibold mb-1 rounded hover:underline ${FOCUS}`} style={{ color: 'var(--teal)', fontFamily: 'var(--font-display)' }}>
+                    Forgot password?
+                  </Link>
                 </div>
-                <input
-                  required
-                  name="password"
-                  type="password"
-                  className="input"
-                  placeholder="••••••••"
-                  autoComplete="current-password"
-                  disabled={!role}
-                />
-              </label>
+                <div className="relative">
+                  <input
+                    id="signin-password"
+                    required
+                    name="password"
+                    type={showPw ? 'text' : 'password'}
+                    className={`${CONTROL} w-full h-10 pr-11`}
+                    style={CONTROL_STYLE}
+                    placeholder="••••••••"
+                    autoComplete="current-password"
+                    disabled={!role}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPw(v => !v)}
+                    disabled={!role}
+                    aria-label={showPw ? 'Hide password' : 'Show password'}
+                    aria-pressed={showPw}
+                    className={`absolute right-1 top-1 w-8 h-8 rounded-md flex items-center justify-center transition-colors hover:bg-[color:var(--paper)] disabled:opacity-40 disabled:cursor-not-allowed ${FOCUS}`}
+                    style={{ color: showPw ? 'var(--teal)' : 'var(--mid-gray)' }}
+                  >
+                    <Icon name="eye" size={16} />
+                  </button>
+                </div>
+              </div>
+
               <button
                 type="submit"
                 disabled={!role || busy}
-                className="btn-primary w-full mt-2"
+                className={`${BTN_PRIMARY} w-full h-10 mt-1`}
+                style={PRIMARY_STYLE}
               >
                 {busy
                   ? 'Signing in…'
-                  : role
-                  ? `Continue as ${ROLES.find(r => r.value === role)!.title}`
-                  : 'Choose a role above'}
+                  : chosen
+                  ? <>Continue as {chosen.title} <Icon name="chevronRight" size={16} /></>
+                  : 'Choose who you are above'}
               </button>
             </form>
 
-            <div className="mt-7 pt-5 border-t text-center" style={{ borderColor: 'var(--paper-3)' }}>
-              <p className="text-[12px] text-[color:var(--mid-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
-                New to Aura Academy?{' '}
-                <a href="/" className="text-[color:var(--teal)] font-semibold hover:underline">
-                  Enroll a student →
-                </a>
-              </p>
-            </div>
+            <p className="mt-7 pt-5 text-center text-[13px]" style={{ borderTop: '1px solid var(--light-gray)', color: 'var(--mid-gray)' }}>
+              New to Aura Academy?{' '}
+              <Link href="/" className={`font-semibold rounded hover:underline ${FOCUS}`} style={{ color: 'var(--teal)' }}>
+                Enroll a student →
+              </Link>
+            </p>
           </div>
         </div>
       </div>
