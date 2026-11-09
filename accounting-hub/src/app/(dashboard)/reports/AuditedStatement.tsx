@@ -120,10 +120,10 @@ export default function AuditedStatement() {
         <span className="flex items-center gap-1.5 text-sm font-semibold" style={{ color: 'var(--deep-teal)' }}>
           <ShieldCheck size={16} /> Audited Income Statement
         </span>
-        <select value={year} onChange={e => setYear(parseInt(e.target.value))} className="px-3 py-2 rounded-xl border text-sm bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+        <select value={year} onChange={e => setYear(parseInt(e.target.value))} className="h-9 px-3 rounded-lg border text-[13px] font-semibold bg-white" style={{ borderColor: 'var(--light-gray)' }}>
           {[0, 1, 2, 3, 4].map(i => now.getFullYear() - i).map(y => <option key={y} value={y}>{y}</option>)}
         </select>
-        <select value={branch} onChange={e => setBranch(e.target.value)} className="px-3 py-2 rounded-xl border text-sm bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+        <select value={branch} onChange={e => setBranch(e.target.value)} className="h-9 px-3 rounded-lg border text-[13px] font-semibold bg-white" style={{ borderColor: 'var(--light-gray)' }}>
           {BRANCHES.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
         </select>
         <div className="ml-auto flex items-center gap-2">
@@ -139,18 +139,18 @@ export default function AuditedStatement() {
       {loading ? (
         <div className="py-16 text-center"><Loader2 size={20} className="inline animate-spin" style={{ color: 'var(--teal)' }} /></div>
       ) : error ? (
-        <div className="px-4 py-3 rounded-xl text-sm bg-red-50 text-red-700">{error}</div>
+        <div className="px-4 py-2.5 rounded-lg border text-[13px]" style={{ background: '#fef2f2', borderColor: '#fecaca', color: '#b91c1c' }}>{error}</div>
       ) : data && (
         <>
-          <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)', maxHeight: '70vh' }}>
+          <div className="rounded-lg border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)', maxHeight: '70vh' }}>
             <table className="w-full text-sm" style={{ minWidth: 1100 }}>
               <thead>
-                <tr style={{ background: 'var(--off-white)' }}>
-                  <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide sticky left-0" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)', minWidth: 230 }}>
+                <tr style={{ background: 'var(--hr-head)' }}>
+                  <th className="px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-[.4px] sticky left-0" style={{ background: 'var(--hr-head)', color: 'var(--mid-gray)', minWidth: 230 }}>
                     {branchLabel} · {year}
                   </th>
-                  {MONTHS.map(m => <th key={m} className="px-2 py-2.5 text-right text-xs font-semibold uppercase" style={{ color: 'var(--mid-gray)' }}>{m}</th>)}
-                  <th className="px-2 py-2.5 text-right text-xs font-semibold uppercase" style={{ color: 'var(--charcoal)' }}>Total</th>
+                  {MONTHS.map(m => <th key={m} className="px-2 py-2.5 text-right text-[11px] font-bold uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)' }}>{m}</th>)}
+                  <th className="px-2 py-2.5 text-right text-[11px] font-bold uppercase tracking-[.4px]" style={{ color: 'var(--charcoal)' }}>Total</th>
                 </tr>
               </thead>
               <tbody>
@@ -175,7 +175,7 @@ export default function AuditedStatement() {
             </table>
           </div>
 
-          <div className="rounded-xl border px-4 py-3 text-xs space-y-1 print:hidden" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+          <div className="rounded-lg border px-4 py-3 text-xs space-y-1 print:hidden"  style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
             <p><strong style={{ color: 'var(--charcoal)' }}>Left out by the audit rules:</strong></p>
             <p>· Professional fees without a COR: {data.professionalFees.excludedNoCorCount} payroll entr{data.professionalFees.excludedNoCorCount === 1 ? 'y' : 'ies'} totalling ₱{data.professionalFees.excludedNoCorTotal.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</p>
             {rowsNote(data.expenses.leftOut.coveredByPayroll, 'salary or consultant fee entries from April 2026 onward, reported from Payroll above, never twice,')}

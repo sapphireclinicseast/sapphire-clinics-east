@@ -40,17 +40,17 @@ function StatementTable({
     <div className="overflow-x-auto">
       <table className="w-full text-[0.78rem]" style={{ borderCollapse: 'collapse' }}>
         <thead>
-          <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
-            <th className="px-3 py-1.5 text-left font-semibold" style={{ color: '#374151' }}>
+          <tr style={{ background: 'var(--hr-head)', borderBottom: '1px solid var(--light-gray)' }}>
+            <th className="px-3 py-2 text-left font-bold text-[11px] uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)' }}>
               Line Item
             </th>
             {showMonths &&
               MONTHS.map((m) => (
-                <th key={m} className="px-2 py-1.5 text-right font-semibold" style={{ color: '#374151' }}>
+                <th key={m} className="px-2 py-2 text-right font-bold text-[11px] uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)' }}>
                   {m}
                 </th>
               ))}
-            <th className="px-2 py-1.5 text-right font-semibold" style={{ color: '#374151' }}>
+            <th className="px-2 py-2 text-right font-bold text-[11px] uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)' }}>
               {totalHeader}
             </th>
           </tr>

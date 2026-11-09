@@ -413,7 +413,7 @@ export default function YoYComparison({ lockedBranch }: { lockedBranch?: string 
     landscape: true,
   })
 
-  const sel = 'px-3 py-2 rounded-xl border text-sm bg-white'
+  const sel = 'h-9 px-3 rounded-lg border text-[13px] font-semibold bg-white'
   const setDatesA = (from: string, to: string) => {
     setFromA(from); setToA(to)
     if (linked && from && to) { setFromB(sameDateIn(from, +from.slice(0, 4) - 1)); setToB(sameDateIn(to, +to.slice(0, 4) - 1)) }
@@ -442,7 +442,7 @@ export default function YoYComparison({ lockedBranch }: { lockedBranch?: string 
         <span className="flex items-center gap-1.5 text-sm font-semibold mr-1" style={{ color: 'var(--deep-teal)' }}>
           <CalendarRange size={16} /> Year-over-Year
         </span>
-        <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: 'var(--light-gray)' }}>
+        <div className="inline-flex rounded-lg overflow-hidden border bg-white" style={{ borderColor: 'var(--light-gray)' }}>
           {([[false, 'By month'], [true, 'By dates']] as const).map(([v, label]) => (
             <button key={label} onClick={() => setByDates(v)} className="px-3 py-2 text-xs font-semibold"
               style={byDates === v ? { background: 'var(--teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' }}>
@@ -463,7 +463,7 @@ export default function YoYComparison({ lockedBranch }: { lockedBranch?: string 
             <input type="date" aria-label="Comparison to date" value={toB} onChange={e => { setToB(e.target.value); setLinked(false) }} className={sel} style={{ borderColor: 'var(--light-gray)' }} />
             {!linked && (
               <button onClick={() => { setLinked(true); setFromB(sameDateIn(fromA, +fromA.slice(0, 4) - 1)); setToB(sameDateIn(toA, +toA.slice(0, 4) - 1)) }}
-                className="px-3 py-2 rounded-xl border text-xs font-semibold" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                className="h-9 px-3 rounded-lg border text-xs font-semibold bg-white transition-colors hover:border-[var(--teal)] hover:text-[var(--teal)]" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
                 Same dates last year
               </button>
             )}
@@ -489,7 +489,7 @@ export default function YoYComparison({ lockedBranch }: { lockedBranch?: string 
           </>
         )}
         {!lockedBranch && (
-          <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: 'var(--light-gray)' }}>
+          <div className="inline-flex rounded-lg overflow-hidden border bg-white" style={{ borderColor: 'var(--light-gray)' }}>
             {([['single', 'One branch'], ['byBranch', 'By branch']] as const).map(([v, label]) => (
               <button key={v} onClick={() => setView(v)} className="px-3 py-2 text-xs font-semibold"
                 style={view === v ? { background: 'var(--teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' }}>
@@ -506,7 +506,7 @@ export default function YoYComparison({ lockedBranch }: { lockedBranch?: string 
         {auditedApplies && (
           <div className="flex items-center gap-1.5">
             <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>FY2024–2025 basis</span>
-            <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: 'var(--light-gray)' }}>
+            <div className="inline-flex rounded-lg overflow-hidden border bg-white" style={{ borderColor: 'var(--light-gray)' }}>
               {(['ledger', 'audited'] as const).map(b => (
                 <button key={b} onClick={() => setBasis(b)} className="px-3 py-2 text-xs font-semibold"
                   title={b === 'ledger' ? 'Same ledger as the Income Statement tab — account detail available' : 'Audited management accounts — summary lines only'}
@@ -552,21 +552,21 @@ export default function YoYComparison({ lockedBranch }: { lockedBranch?: string 
 
       {byBranch ? (
         error || dateProblem ? (
-          <div className="px-4 py-3 rounded-xl text-sm bg-red-50 text-red-700">{error || dateProblem}</div>
+          <div className="px-4 py-2.5 rounded-lg border text-[13px]" style={{ background: '#fef2f2', borderColor: '#fecaca', color: '#b91c1c' }}>{error || dateProblem}</div>
         ) : loading || !branchView ? (
           <div className="py-16 text-center text-sm" style={{ color: 'var(--mid-gray)' }}>
             <Loader2 size={20} className="inline animate-spin mr-2" style={{ color: 'var(--teal)' }} /> Building every branch for both years… (about 15 seconds the first time)
           </div>
         ) : (
-          <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+          <div className="rounded-lg border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
             <table className="w-full text-sm" style={{ minWidth: 760 }}>
               <thead>
-                <tr style={{ background: 'var(--off-white)' }}>
-                  <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--mid-gray)' }}>Branch</th>
-                  <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase" style={{ color: 'var(--mid-gray)' }}>{colB}</th>
-                  <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase" style={{ color: 'var(--charcoal)' }}>{colA}</th>
-                  <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase" style={{ color: 'var(--mid-gray)' }}>Change (₱)</th>
-                  <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase" style={{ color: 'var(--mid-gray)' }}>Change (%)</th>
+                <tr style={{ background: 'var(--hr-head)' }}>
+                  <th className="px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)' }}>Branch</th>
+                  <th className="px-3 py-2.5 text-right text-[11px] font-bold uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)' }}>{colB}</th>
+                  <th className="px-3 py-2.5 text-right text-[11px] font-bold uppercase tracking-[.4px]" style={{ color: 'var(--charcoal)' }}>{colA}</th>
+                  <th className="px-3 py-2.5 text-right text-[11px] font-bold uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)' }}>Change (₱)</th>
+                  <th className="px-3 py-2.5 text-right text-[11px] font-bold uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)' }}>Change (%)</th>
                 </tr>
               </thead>
               <tbody>
@@ -596,21 +596,21 @@ export default function YoYComparison({ lockedBranch }: { lockedBranch?: string 
           </div>
         )
       ) : shownError ? (
-        <div className="px-4 py-3 rounded-xl text-sm bg-red-50 text-red-700">{shownError}</div>
+        <div className="px-4 py-2.5 rounded-lg border text-[13px]" style={{ background: '#fef2f2', borderColor: '#fecaca', color: '#b91c1c' }}>{shownError}</div>
       ) : loading || !blocks ? (
         <div className="py-16 text-center text-sm" style={{ color: 'var(--mid-gray)' }}>
           <Loader2 size={20} className="inline animate-spin mr-2" style={{ color: 'var(--teal)' }} /> Building both years…
         </div>
       ) : (
-        <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+        <div className="rounded-lg border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
           <table className="w-full text-sm" style={{ minWidth: 760 }}>
             <thead>
               <tr style={{ background: 'var(--off-white)' }}>
                 <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--mid-gray)' }}>{branchLabel}</th>
-                <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase" style={{ color: 'var(--mid-gray)' }}>{colB}</th>
-                <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase" style={{ color: 'var(--charcoal)' }}>{colA}</th>
-                <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase" style={{ color: 'var(--mid-gray)' }}>Change (₱)</th>
-                <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase" style={{ color: 'var(--mid-gray)' }}>Change (%)</th>
+                <th className="px-3 py-2.5 text-right text-[11px] font-bold uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)' }}>{colB}</th>
+                <th className="px-3 py-2.5 text-right text-[11px] font-bold uppercase tracking-[.4px]" style={{ color: 'var(--charcoal)' }}>{colA}</th>
+                <th className="px-3 py-2.5 text-right text-[11px] font-bold uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)' }}>Change (₱)</th>
+                <th className="px-3 py-2.5 text-right text-[11px] font-bold uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)' }}>Change (%)</th>
               </tr>
             </thead>
             <tbody>

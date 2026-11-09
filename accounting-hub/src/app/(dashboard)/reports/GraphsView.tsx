@@ -208,17 +208,17 @@ export default function GraphsView() {
       <div className="flex flex-wrap items-center gap-3 mb-4 print:hidden">
         <div className="flex items-center gap-2 text-sm" style={{ color: 'var(--charcoal)' }}>
           <span style={{ color: 'var(--mid-gray)' }}>From</span>
-          <select value={fromM} onChange={e => setFromM(+e.target.value)} className="px-2 py-2 rounded-lg text-sm" style={selStyle}>
+          <select value={fromM} onChange={e => setFromM(+e.target.value)} className="h-9 px-2 rounded-lg text-[13px] font-semibold" style={selStyle}>
             {MONTHS_S.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
           </select>
-          <select value={fromY} onChange={e => setFromY(+e.target.value)} className="px-2 py-2 rounded-lg text-sm" style={selStyle}>
+          <select value={fromY} onChange={e => setFromY(+e.target.value)} className="h-9 px-2 rounded-lg text-[13px] font-semibold" style={selStyle}>
             {years.map(y => <option key={y} value={y}>{y}</option>)}
           </select>
           <span style={{ color: 'var(--mid-gray)' }}>to</span>
-          <select value={toM} onChange={e => setToM(+e.target.value)} className="px-2 py-2 rounded-lg text-sm" style={selStyle}>
+          <select value={toM} onChange={e => setToM(+e.target.value)} className="h-9 px-2 rounded-lg text-[13px] font-semibold" style={selStyle}>
             {MONTHS_S.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
           </select>
-          <select value={toY} onChange={e => setToY(+e.target.value)} className="px-2 py-2 rounded-lg text-sm" style={selStyle}>
+          <select value={toY} onChange={e => setToY(+e.target.value)} className="h-9 px-2 rounded-lg text-[13px] font-semibold" style={selStyle}>
             {years.map(y => <option key={y} value={y}>{y}</option>)}
           </select>
         </div>
@@ -246,7 +246,7 @@ export default function GraphsView() {
         : <p className="text-xs mb-3" style={{ color: 'var(--mid-gray)' }}>Sum of the ticked branch views. Company-wide entries (branch “ALL”) appear only when every branch is ticked.</p>}
 
       {/* ── Chart card ── */}
-      <div className="rounded-xl p-4" style={{ background: 'white', border: '1px solid var(--light-gray)', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+      <div className="rounded-lg p-4" style={{ background: 'white', border: '1px solid var(--light-gray)' }}>
         <div className="flex items-center gap-2 mb-1">
           <TrendingUp size={16} style={{ color: 'var(--teal)' }} />
           <span className="text-sm font-semibold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>
@@ -350,9 +350,9 @@ export default function GraphsView() {
           <div className="mt-4 overflow-x-auto">
             <table className="text-xs w-full" style={{ borderCollapse: 'collapse' }}>
               <thead>
-                <tr style={{ borderBottom: '2px solid #e5e7eb', color: '#374151' }}>
-                  <th className="text-left py-1.5 pr-3">Month</th>
-                  {METRICS.map(mt => <th key={mt.key} className="text-right py-1.5 px-3">{mt.label}</th>)}
+                <tr style={{ background: 'var(--hr-head)', borderBottom: '1px solid var(--light-gray)', color: 'var(--mid-gray)' }}>
+                  <th className="text-left py-2 px-3 text-[11px] font-bold uppercase tracking-[.4px]">Month</th>
+                  {METRICS.map(mt => <th key={mt.key} className="text-right py-2 px-3 text-[11px] font-bold uppercase tracking-[.4px]">{mt.label}</th>)}
                 </tr>
               </thead>
               <tbody>

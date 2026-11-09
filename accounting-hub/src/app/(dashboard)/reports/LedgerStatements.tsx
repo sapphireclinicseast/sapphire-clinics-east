@@ -269,10 +269,10 @@ function DrillDown({ year, branch, account, title, month, cumulative, onClose }:
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.4)' }} onClick={onClose}>
-      <div className="rounded-xl w-full max-w-3xl max-h-[80vh] flex flex-col" style={{ background: 'white' }} onClick={e => e.stopPropagation()}>
-        <div className="flex items-start justify-between px-5 py-4" style={{ borderBottom: '1px solid #e5e7eb' }}>
+      <div className="bg-white rounded-xl w-full max-w-3xl max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="flex items-start justify-between px-5 py-4" style={{ borderBottom: '1px solid var(--hr-line)' }}>
           <div>
-            <p className="font-semibold" style={{ color: '#111827' }}>{title}</p>
+            <p className="font-bold text-[15px]" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>{title}</p>
             <p className="text-xs" style={{ color: '#6b7280' }}>
               {month ? (cumulative ? `Through ${MONTHS[month - 1]} — the running balance you clicked` : MONTHS[month - 1]) : 'Whole year'} · every underlying entry, from the ledger dataset
               {!month && ' · earlier years are listed first as History, and are not included in the totals — they are already embodied in the opening balance'}
@@ -303,12 +303,12 @@ function DrillDown({ year, branch, account, title, month, cumulative, onClose }:
           {lines && lines.length > 0 && (
             <table className="w-full text-[0.78rem]">
               <thead>
-                <tr style={{ borderBottom: '1px solid #e5e7eb' }}>
-                  <th className="px-3 py-1.5 text-left font-semibold" style={{ color: '#374151' }}>Month</th>
-                  <th className="px-3 py-1.5 text-left font-semibold" style={{ color: '#374151' }}>Source</th>
-                  <th className="px-3 py-1.5 text-left font-semibold" style={{ color: '#374151' }}>Detail</th>
-                  <th className="px-2 py-1.5 text-right font-semibold" style={{ color: '#374151' }}>Debit</th>
-                  <th className="px-2 py-1.5 text-right font-semibold" style={{ color: '#374151' }}>Credit</th>
+                <tr style={{ background: 'var(--hr-head)', borderBottom: '1px solid var(--light-gray)' }}>
+                  <th className="px-3 py-2 text-left font-bold text-[11px] uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)' }}>Month</th>
+                  <th className="px-3 py-2 text-left font-bold text-[11px] uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)' }}>Source</th>
+                  <th className="px-3 py-2 text-left font-bold text-[11px] uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)' }}>Detail</th>
+                  <th className="px-2 py-2 text-right font-bold text-[11px] uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)' }}>Debit</th>
+                  <th className="px-2 py-2 text-right font-bold text-[11px] uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)' }}>Credit</th>
                 </tr>
               </thead>
               <tbody>
@@ -632,9 +632,9 @@ export default function LedgerStatements({ year, branch, tab, view, readOnly }: 
             <table className="w-full text-[0.75rem]" style={{ borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
-                  <th className="px-3 py-1.5 text-left font-semibold" style={{ color: '#374151', position: 'sticky', top: 0, left: 0, zIndex: 3, background: 'white', boxShadow: 'inset 0 -2px 0 #e5e7eb' }}>Line Item</th>
-                  {colLabels.map(m => <th key={m} className="px-2 py-1.5 text-right font-semibold" style={{ color: '#374151', position: 'sticky', top: 0, zIndex: 2, background: 'white', boxShadow: 'inset 0 -2px 0 #e5e7eb' }}>{m}</th>)}
-                  <th className="px-2 py-1.5 text-right font-semibold" style={{ color: '#374151', borderLeft: '1px solid #e5e7eb', position: 'sticky', top: 0, zIndex: 2, background: 'white', boxShadow: 'inset 0 -2px 0 #e5e7eb' }}>Total</th>
+                  <th className="px-3 py-1.5 text-left font-bold text-[11px] uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)', position: 'sticky', top: 0, left: 0, zIndex: 3, background: 'var(--hr-head)', boxShadow: 'inset 0 -1px 0 var(--light-gray)' }}>Line Item</th>
+                  {colLabels.map(m => <th key={m} className="px-2 py-1.5 text-right font-bold text-[11px] uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)', position: 'sticky', top: 0, zIndex: 2, background: 'var(--hr-head)', boxShadow: 'inset 0 -1px 0 var(--light-gray)' }}>{m}</th>)}
+                  <th className="px-2 py-1.5 text-right font-bold text-[11px] uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)', borderLeft: '1px solid #e5e7eb', position: 'sticky', top: 0, zIndex: 2, background: 'var(--hr-head)', boxShadow: 'inset 0 -1px 0 var(--light-gray)' }}>Total</th>
                 </tr>
               </thead>
               <tbody>
@@ -786,8 +786,8 @@ export default function LedgerStatements({ year, branch, tab, view, readOnly }: 
               <thead>
                 <tr>
                   {['Line Item', ...colLabels, 'Year End'].map((m, i) => (
-                    <th key={m} className={`px-2 py-1.5 font-semibold ${i === 0 ? 'text-left px-3' : 'text-right'}`}
-                      style={{ color: '#374151', position: 'sticky', top: 0, zIndex: i === 0 ? 3 : 2, ...(i === 0 ? { left: 0 } : {}), background: 'white', boxShadow: 'inset 0 -2px 0 #e5e7eb', ...(m === 'Year End' ? { borderLeft: '1px solid #e5e7eb' } : {}) }}>{m}</th>
+                    <th key={m} className={`px-2 py-1.5 font-bold text-[11px] uppercase tracking-[.4px] ${i === 0 ? 'text-left px-3' : 'text-right'}`}
+                      style={{ color: 'var(--mid-gray)', position: 'sticky', top: 0, zIndex: i === 0 ? 3 : 2, ...(i === 0 ? { left: 0 } : {}), background: 'var(--hr-head)', boxShadow: 'inset 0 -1px 0 var(--light-gray)', ...(m === 'Year End' ? { borderLeft: '1px solid #e5e7eb' } : {}) }}>{m}</th>
                   ))}
                 </tr>
               </thead>
@@ -939,8 +939,8 @@ export default function LedgerStatements({ year, branch, tab, view, readOnly }: 
               <thead>
                 <tr>
                   {['Line Item', ...colLabels, 'Total'].map((m, i) => (
-                    <th key={m} className={`px-2 py-1.5 font-semibold ${i === 0 ? 'text-left px-3' : 'text-right'}`}
-                      style={{ color: '#374151', position: 'sticky', top: 0, zIndex: i === 0 ? 3 : 2, ...(i === 0 ? { left: 0 } : {}), background: 'white', boxShadow: 'inset 0 -2px 0 #e5e7eb', ...(m === 'Total' ? { borderLeft: '1px solid #e5e7eb' } : {}) }}>{m}</th>
+                    <th key={m} className={`px-2 py-1.5 font-bold text-[11px] uppercase tracking-[.4px] ${i === 0 ? 'text-left px-3' : 'text-right'}`}
+                      style={{ color: 'var(--mid-gray)', position: 'sticky', top: 0, zIndex: i === 0 ? 3 : 2, ...(i === 0 ? { left: 0 } : {}), background: 'var(--hr-head)', boxShadow: 'inset 0 -1px 0 var(--light-gray)', ...(m === 'Total' ? { borderLeft: '1px solid #e5e7eb' } : {}) }}>{m}</th>
                   ))}
                 </tr>
               </thead>

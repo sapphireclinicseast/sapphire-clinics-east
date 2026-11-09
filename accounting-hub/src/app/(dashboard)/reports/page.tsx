@@ -17,6 +17,7 @@ import GraphsView from './GraphsView'
 import ContributionMargin, { type CmPayload } from './ContributionMargin'
 import AuditedStatement from './AuditedStatement'
 import YoYComparison from './YoYComparison'
+import { HR_PAGE_CLASS, HR_PAGE_STYLE, HrShimmerStyle, hrBtn } from '@/components/ui/hr-look'
 import { RETAINED_EARNINGS_BF_2026 } from '@/lib/reports/historical-fs'
 import { mergeLedgerStatements } from '@/lib/reports/v2/merge'
 import type { HistoricalReportPayload } from '@/lib/reports/historical-fs'
@@ -139,6 +140,17 @@ const BRANCHES = [
   { value: 'VERDANA_STORE', label: 'Verdana Store' },
   { value: 'AURA_INSTITUTE', label: 'Aura Health Institute' },
 ]
+
+// HR Hub frame pieces for the filter toolbars (display only).
+const HR_SELECT = 'appearance-none pl-3 pr-8 h-9 rounded-lg border text-[13px] font-semibold cursor-pointer bg-white disabled:opacity-60 disabled:cursor-not-allowed'
+const HR_SELECT_STYLE = { borderColor: 'var(--light-gray)', color: 'var(--charcoal)' } as const
+const HR_TOOLBAR = 'flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5 rounded-lg border print:hidden'
+const HR_TOOLBAR_STYLE = { background: '#fcfdfa', borderColor: 'var(--light-gray)' } as const
+const tickChip = (on: boolean) => ({
+  borderColor: on ? 'var(--teal)' : 'var(--light-gray)',
+  color: on ? 'var(--deep-teal)' : 'var(--mid-gray)',
+  background: on ? 'var(--pale-teal)' : '#fff',
+})
 
 const TABS: { key: ReportTab; label: string; icon: typeof FileText }[] = [
   { key: 'balance-sheet', label: 'Balance Sheet', icon: FileText },
@@ -472,12 +484,13 @@ function MonthlyHeader() {
       style={{
         display: 'grid',
         gridTemplateColumns: GRID_MONTHLY,
-        padding: '6px 12px',
-        background: '#1f2937',
-        color: '#e5e7eb',
-        fontSize: '0.62rem',
-        fontWeight: 600,
-        letterSpacing: '0.04em',
+        padding: '8px 12px',
+        background: 'var(--hr-head)',
+        color: 'var(--mid-gray)',
+        boxShadow: 'inset 0 -1px 0 var(--light-gray)',
+        fontSize: '11px',
+        fontWeight: 700,
+        letterSpacing: '0.4px',
         textTransform: 'uppercase',
         position: 'sticky',
         top: 0,
@@ -2108,46 +2121,47 @@ export default function ReportsPage() {
   const branchLabel = branch === 'ALL' ? 'All Branches' : BRANCHES.find((b) => b.value === branch)?.label || branch
 
   return (
-    <div className="max-w-[1600px] mx-auto">
+    <div className={`${HR_PAGE_CLASS} reports-root`} style={HR_PAGE_STYLE}>
+      <HrShimmerStyle />
       {/* ── Header ─────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between mb-6 print:hidden">
-        <div>
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3 print:hidden">
+        <div className="min-w-0">
           <h1
-            className="text-2xl font-bold"
+            className="text-2xl font-bold leading-tight flex items-center gap-2"
             style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}
           >
-            Financial Reports
+            <BarChart3 size={22} style={{ color: 'var(--teal)' }} /> Financial Reports
           </h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--mid-gray)' }}>
+          <p className="mt-1 text-[13px] max-w-3xl" style={{ color: 'var(--mid-gray)' }}>
             Generate and review financial statements for Sapphire Clinics East Incorporated
           </p>
         </div>
-        <div className="flex gap-2" style={{ display: (isMedrep || isInvestor || effTab === 'graphs' || effTab === 'audited' || effTab === 'yoy') ? 'none' : undefined }}>
+        <div className="flex flex-wrap gap-1.5" style={{ display: (isMedrep || isInvestor || effTab === 'graphs' || effTab === 'audited' || effTab === 'yoy') ? 'none' : undefined }}>
           <button
             onClick={() => handleDownloadCSV('csv')}
             disabled={effTab === 'contribution' ? !cmData : (loading || !data)}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-40"
-            style={{ border: '1px solid var(--light-gray)', color: 'var(--charcoal)' }}
+            className={`${hrBtn.outline} disabled:opacity-40`}
+            style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}
           >
-            <Download size={16} />
+            <Download size={15} />
             CSV
           </button>
           <button
             onClick={() => handleDownloadCSV('xls')}
             disabled={effTab === 'contribution' ? !cmData : (loading || !data)}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-40"
-            style={{ border: '1px solid var(--light-gray)', color: 'var(--charcoal)' }}
+            className={`${hrBtn.outline} disabled:opacity-40`}
+            style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}
           >
-            <Download size={16} />
+            <Download size={15} />
             Excel
           </button>
           <button
             onClick={() => handleDownloadCSV('pdf')}
             disabled={effTab === 'contribution' ? !cmData : (loading || !data)}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-40"
-            style={{ border: '1px solid var(--light-gray)', color: 'var(--charcoal)' }}
+            className={`${hrBtn.outline} disabled:opacity-40`}
+            style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}
           >
-            <Printer size={16} />
+            <Printer size={15} />
             PDF
           </button>
         </div>
@@ -2155,7 +2169,8 @@ export default function ReportsPage() {
 
       {/* ── Tab Navigation ─────────────────────────────────────── */}
       {!isMedrep && (
-      <div className="flex gap-1 mb-4 p-1 rounded-xl print:hidden" style={{ background: 'var(--light-gray)' }}>
+      <div className="border-b-2 print:hidden" style={{ borderColor: 'var(--light-gray)' }}>
+      <div className="flex items-end gap-1 -mb-[2px] max-w-full overflow-x-auto" role="tablist" aria-label="Report">
         {TABS.filter(t => !(isInvestor && (t.key === 'contribution' || t.key === 'audited' || t.key === 'yoy'))).map((tab) => {
           const Icon = tab.icon
           const isActive = activeTab === tab.key
@@ -2163,19 +2178,21 @@ export default function ReportsPage() {
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
-              className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg text-sm font-medium transition-all"
+              role="tab"
+              aria-selected={isActive}
+              className="flex items-center gap-1.5 px-3.5 py-2.5 border-b-2 text-[13px] font-semibold whitespace-nowrap transition-colors hover:text-[var(--teal)]"
               style={{
-                background: isActive ? 'white' : 'transparent',
+                borderColor: isActive ? 'var(--teal)' : 'transparent',
                 color: isActive ? 'var(--teal)' : 'var(--mid-gray)',
-                boxShadow: isActive ? '0 1px 3px rgba(0,0,0,0.1)' : undefined,
                 fontFamily: 'var(--font-display)',
               }}
             >
-              <Icon size={16} />
+              <Icon size={15} />
               {tab.label}
             </button>
           )
         })}
+      </div>
       </div>
       )}
 
@@ -2187,32 +2204,28 @@ export default function ReportsPage() {
         <>
           {/* Year + branch filters — the shared filter row lives in the
               statements branch below, so this tab carries its own. */}
-          <div className="flex flex-wrap items-center gap-3 mb-5 px-4 pt-4 print:hidden">
+          <div className={`${HR_TOOLBAR} mb-4`} style={HR_TOOLBAR_STYLE}>
             <div className="flex items-center gap-2">
-              <Calendar size={16} style={{ color: 'var(--mid-gray)' }} />
+              <Calendar size={15} style={{ color: 'var(--mid-gray)' }} />
               <div className="relative">
                 <select
                   value={year}
                   onChange={(e) => setYear(Number(e.target.value))}
-                  className="appearance-none pl-3 pr-8 py-2 rounded-lg text-sm font-medium cursor-pointer"
-                  style={{ border: '1px solid var(--light-gray)', color: 'var(--charcoal)', background: 'white' }}
+                  className={HR_SELECT}
+                  style={HR_SELECT_STYLE}
                 >
                   {years.map((y) => <option key={y} value={y}>{y}</option>)}
                 </select>
                 <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mid-gray)' }} />
               </div>
             </div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <Building2 size={16} style={{ color: 'var(--mid-gray)' }} />
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <Building2 size={15} style={{ color: 'var(--mid-gray)' }} />
               {TICK_BRANCHES.map(b => (
                 <label
                   key={b.value}
-                  className="flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-sm font-medium cursor-pointer select-none"
-                  style={{
-                    border: `1px solid ${isTicked.includes(b.value) ? 'var(--deep-teal, #14532d)' : 'var(--light-gray)'}`,
-                    color: 'var(--charcoal)',
-                    background: isTicked.includes(b.value) ? '#f0f7f2' : 'white',
-                  }}
+                  className="flex items-center gap-1.5 h-8 px-3 rounded-full border text-[13px] font-semibold cursor-pointer select-none transition-colors"
+                  style={{ ...tickChip(isTicked.includes(b.value)), fontFamily: 'var(--font-display)' }}
                 >
                   <input
                     type="checkbox"
@@ -2233,7 +2246,7 @@ export default function ReportsPage() {
         </>
       ) : effTab === 'graphs' ? <GraphsView /> : <>
       {/* ── Filters ────────────────────────────────────────────── */}
-      <div className="flex flex-wrap items-center gap-3 mb-5 print:hidden">
+      <div className={HR_TOOLBAR} style={HR_TOOLBAR_STYLE}>
         {/* Presentation currency — display only, the ledger stays in pesos */}
         <div className="flex items-center gap-2">
           <div className="relative">
@@ -2241,8 +2254,8 @@ export default function ReportsPage() {
               value={dispCcy}
               onChange={(e) => setDispCcy(e.target.value as DisplayCurrency)}
               title="Show every figure in this currency. The ledger itself stays in pesos."
-              className="appearance-none pl-3 pr-8 py-2 rounded-lg text-sm font-medium cursor-pointer"
-              style={{ border: '1px solid var(--light-gray)', color: 'var(--charcoal)', background: 'white' }}
+              className={HR_SELECT}
+              style={HR_SELECT_STYLE}
             >
               {DISPLAY_CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.code}</option>)}
             </select>
@@ -2255,15 +2268,15 @@ export default function ReportsPage() {
               inputMode="decimal"
               placeholder={`₱ per 1 ${dispCcy}`}
               title={`How many pesos to one ${dispCcy}. Every figure is divided by this.`}
-              className="w-32 px-3 py-2 rounded-lg text-sm font-mono outline-none"
+              className="w-32 h-9 px-3 rounded-lg text-sm font-mono outline-none"
               style={{ border: `1px solid ${dispReady ? 'var(--light-gray)' : '#fca5a5'}`, background: 'white' }}
             />
           )}
           {dispCcy !== 'PHP' && dispRateNum > 0 && (
             <button onClick={saveDispRate} disabled={savingRate}
               title={`Remember ${dispRateNum} as the ${dispCcy} rate for ${year}, so this report opens with it next time`}
-              className="px-2.5 py-2 rounded-lg text-xs font-semibold disabled:opacity-50"
-              style={{ border: '1px solid var(--light-gray)', color: 'var(--teal)', background: 'white' }}>
+              className={hrBtn.ghost}
+              style={{ borderColor: 'var(--light-gray)', color: 'var(--teal)' }}>
               {savingRate ? 'Saving…' : 'Save rate'}
             </button>
           )}
@@ -2271,13 +2284,13 @@ export default function ReportsPage() {
 
         {/* Year */}
         <div className="flex items-center gap-2">
-          <Calendar size={16} style={{ color: 'var(--mid-gray)' }} />
+          <Calendar size={15} style={{ color: 'var(--mid-gray)' }} />
           <div className="relative">
             <select
               value={year}
               onChange={(e) => setYear(parseInt(e.target.value))}
-              className="appearance-none pl-3 pr-8 py-2 rounded-lg text-sm font-medium cursor-pointer"
-              style={{ border: '1px solid var(--light-gray)', color: 'var(--charcoal)', background: 'white' }}
+              className={HR_SELECT}
+              style={HR_SELECT_STYLE}
             >
               {years.map((y) => (
                 <option key={y} value={y}>{y}</option>
@@ -2289,15 +2302,16 @@ export default function ReportsPage() {
 
         {/* View Mode */}
         {!isMedrep && (
-        <div className="flex rounded-lg overflow-hidden" style={{ border: '1px solid var(--light-gray)' }}>
+        <div className="inline-flex rounded-lg border p-0.5 bg-white" style={{ borderColor: 'var(--light-gray)' }} role="group" aria-label="Period">
           {((!isMedrep && year >= 2024 ? ['annual', 'quarterly', 'monthly'] : ['annual', 'monthly']) as ViewMode[]).map((mode) => (
             <button
               key={mode}
               onClick={() => setViewMode(mode)}
-              className="px-4 py-2 text-sm font-medium capitalize transition-colors"
+              aria-pressed={viewMode === mode}
+              className="h-8 px-3.5 rounded-md text-xs font-semibold capitalize transition-colors"
               style={{
-                background: viewMode === mode ? 'var(--teal)' : 'white',
-                color: viewMode === mode ? 'white' : 'var(--charcoal)',
+                background: viewMode === mode ? 'var(--teal)' : 'transparent',
+                color: viewMode === mode ? 'white' : 'var(--mid-gray)',
               }}
             >
               {mode === 'annual' ? 'Whole Year' : mode === 'quarterly' ? 'Quarterly' : 'Monthly'}
@@ -2309,17 +2323,13 @@ export default function ReportsPage() {
         {/* Branch — tickboxes on the income statement (tick a subset to total
             only those branches); dropdown elsewhere. */}
         {isTickboxes ? (
-          <div className="flex items-center gap-2 flex-wrap">
-            <Building2 size={16} style={{ color: 'var(--mid-gray)' }} />
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <Building2 size={15} style={{ color: 'var(--mid-gray)' }} />
             {TICK_BRANCHES.map(b => (
               <label
                 key={b.value}
-                className="flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-sm font-medium cursor-pointer select-none"
-                style={{
-                  border: `1px solid ${isTicked.includes(b.value) ? 'var(--deep-teal, #14532d)' : 'var(--light-gray)'}`,
-                  color: 'var(--charcoal)',
-                  background: isTicked.includes(b.value) ? '#f0f7f2' : 'white',
-                }}
+                className="flex items-center gap-1.5 h-8 px-3 rounded-full border text-[13px] font-semibold cursor-pointer select-none transition-colors"
+                style={{ ...tickChip(isTicked.includes(b.value)), fontFamily: 'var(--font-display)' }}
               >
                 <input
                   type="checkbox"
@@ -2333,15 +2343,15 @@ export default function ReportsPage() {
           </div>
         ) : (
         <div className="flex items-center gap-2">
-          <Building2 size={16} style={{ color: 'var(--mid-gray)' }} />
+          <Building2 size={15} style={{ color: 'var(--mid-gray)' }} />
           <div className="relative">
             <select
               value={effBranch}
               disabled={branchLocked}
               title={branchLocked ? 'Balance sheet and cash flow are whole-company statements' : undefined}
               onChange={(e) => setBranch(e.target.value)}
-              className="appearance-none pl-3 pr-8 py-2 rounded-lg text-sm font-medium cursor-pointer"
-              style={{ border: '1px solid var(--light-gray)', color: 'var(--charcoal)', background: 'white' }}
+              className={HR_SELECT}
+              style={HR_SELECT_STYLE}
             >
               {(branchLocked ? BRANCHES.filter(b => b.value === 'ALL')
                 : scope.short ? BRANCHES.filter(b => b.value === scope.short) : BRANCHES).map((b) => (
@@ -2357,7 +2367,7 @@ export default function ReportsPage() {
 
       {/* A translated statement must never be mistaken for pesos. */}
       {dispCcy !== 'PHP' && (
-        <div className="mb-4 px-3 py-2 rounded-lg text-xs" style={{ background: dispReady ? '#eff6ff' : '#fef2f2', color: dispReady ? '#1e40af' : '#b91c1c', border: `1px solid ${dispReady ? '#bfdbfe' : '#fecaca'}` }}>
+        <div className="px-4 py-2.5 rounded-lg text-xs" style={{ background: dispReady ? '#eff6ff' : '#fef2f2', color: dispReady ? '#1e40af' : '#b91c1c', border: `1px solid ${dispReady ? '#bfdbfe' : '#fecaca'}` }}>
           {dispReady
             ? <>Figures shown in <strong>{dispCcy}</strong> at <strong>₱{dispRateNum.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</strong> = 1 {dispCcy}. Books are maintained in Philippine pesos.{dispRateMeta ? <span style={{ opacity: 0.75 }}> Rate recorded {dispRateMeta.rateDate}{dispRateMeta.onOrBefore ? '' : ' (the earliest on file — none yet for this period)'}.</span> : null}</>
             : <>Enter how many pesos make one {dispCcy} to see the statements in {dispCcy}. Until then the figures below are still pesos.</>}
@@ -2366,15 +2376,14 @@ export default function ReportsPage() {
 
       {/* ── Report Container ───────────────────────────────────── */}
       <div
-        className="rounded-xl overflow-hidden"
+        className="rounded-lg overflow-hidden"
         style={{
           background: 'white',
           border: '1px solid var(--light-gray)',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
         }}
       >
         {/* Report header */}
-        <div className="px-5 py-4" style={{ borderBottom: '2px solid #e5e7eb' }}>
+        <div className="px-5 py-4" style={{ borderBottom: '1px solid var(--light-gray)', background: '#fcfdfa', boxShadow: 'inset 4px 0 0 var(--teal)' }}>
           <p style={{ fontSize: '0.75rem', fontWeight: 700, color: '#111827', letterSpacing: '0.02em', textTransform: 'uppercase' }}>
             Sapphire Clinics East Incorporated
           </p>
@@ -2388,11 +2397,11 @@ export default function ReportsPage() {
 
         {/* Loading state */}
         {loading && (
-          <div className="flex items-center justify-center py-20">
-            <Loader2 className="animate-spin" size={24} style={{ color: 'var(--teal)' }} />
-            <span className="ml-3 text-sm" style={{ color: 'var(--mid-gray)' }}>
-              Generating report...
-            </span>
+          <div className="px-5 py-5 space-y-2.5" aria-busy="true">
+            <p className="flex items-center gap-2 text-[13px]" style={{ color: 'var(--mid-gray)' }}>
+              <Loader2 className="animate-spin" size={15} style={{ color: 'var(--teal)' }} /> Generating report…
+            </p>
+            {[0, 1, 2, 3, 4, 5].map(i => <div key={i} className="h-5 rounded hr-shimmer" style={{ width: `${92 - (i % 3) * 14}%` }} />)}
           </div>
         )}
 
@@ -2427,8 +2436,8 @@ export default function ReportsPage() {
 
         {/* Footer */}
         <div
-          className="text-center py-4 px-4 text-xs"
-          style={{ borderTop: '1px solid var(--light-gray)', color: 'var(--mid-gray)' }}
+          className="text-center py-3 px-4 text-xs"
+          style={{ borderTop: '1px solid var(--hr-line)', color: 'var(--mid-gray)', background: '#fcfdfa' }}
         >
           Generated on {new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' })} &bull; SCEI Accounting Hub
         </div>
@@ -2450,6 +2459,7 @@ export default function ReportsPage() {
       <style jsx global>{`
         @media print {
           body { background: white !important; }
+          .reports-root { background: white !important; margin: 0 !important; padding: 0 !important; }
           .print\\:hidden { display: none !important; }
           @page { margin: 0.75in; size: ${effView !== 'annual' ? 'landscape' : 'portrait'}; }
         }
