@@ -29,7 +29,7 @@ import { sheetsClient } from '@/lib/google-sheets-auth'
 import { recordDeckingSnapshot } from '@/lib/decking-snapshot'
 import {
   payLabel,
-  buildGrid, nameFor, remarkFor, hhmm, parsePay, SAFE_COL, FREE_TEXT_HINT, BLOCKED, BREAK, INK,
+  buildGrid, nameFor, remarkFor, hhmm, parsePay, SAFE_COL, FREE_TEXT_HINT, FREE_TEXT_HINTS, BLOCKED, BREAK, INK,
   type SheetSlot, type SheetStaff, type Grid, type CellRef,
 } from './grid'
 import type { sheets_v4 } from 'googleapis'
@@ -522,7 +522,8 @@ async function pushMap(api: sheets_v4.Sheets, spreadsheetId: string, entries: (C
  * left is really the operator's text.
  */
 export function splitRemark(text: string): { notes: string; extras: string[] } {
-  if (!text || text === FREE_TEXT_HINT) return { notes: '', extras: [] }
+  // Any prompt this line has ever shown counts as empty — see FREE_TEXT_HINTS.
+  if (!text || FREE_TEXT_HINTS.includes(text.trim())) return { notes: '', extras: [] }
   const notes: string[] = []
   const extras: string[] = []
   for (const part of String(text).split('·').map(p => p.trim()).filter(Boolean)) {

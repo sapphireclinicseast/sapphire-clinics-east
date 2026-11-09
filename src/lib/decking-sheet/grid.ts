@@ -11,7 +11,28 @@
 
 export const ROWS_PER_HOUR = 3        // name, payment, remark
 export const SAFE_COL = 26            // column AA — front desk's own space
-export const FREE_TEXT_HINT = 'Free text'
+/**
+ * What an empty notes line says.
+ *
+ * It said "Free text", which told front desk the line was theirs but not what
+ * it could do — and the one thing they most need from it, a second patient in
+ * the same hour, is invisible unless somebody tells them the "+" convention.
+ *
+ * A dropdown here is not an option: a Sheets cell can carry data validation or
+ * free text, not both, and a validated cell flags every typed note as invalid.
+ * So the prompt itself carries the instruction.
+ */
+export const FREE_TEXT_HINT = 'Free text  ·  type "+ name" to add another patient'
+
+/**
+ * Every prompt this line has ever shown.
+ *
+ * splitRemark treats any of them as empty. Without the older wording in here,
+ * changing the prompt would turn thousands of existing placeholder cells into
+ * real notes on the next pull — the sheet would look unchanged and every slot
+ * in the clinic would quietly acquire one.
+ */
+export const FREE_TEXT_HINTS = ['Free text', FREE_TEXT_HINT]
 export const BLOCKED = 'N/A'
 export const BREAK = 'BREAK'
 /** "HMO – INTELLICARE", the way front desk already write it on their own sheet. */
