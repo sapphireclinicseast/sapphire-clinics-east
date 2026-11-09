@@ -41,12 +41,17 @@ export const DECK_CSS = `
 // Records are often typed in ALL CAPS. Re-case for display only, and only when
 // the value has no lower-case letters at all — anything typed in mixed case is
 // left as typed. Same rule as PatientsClient's displayCase(…, 'name').
+//
+// The letter classes are Unicode (\p{Ll}, \p{L}), not [a-z]. With [a-z] the ñ
+// in RIÑOZA matched nothing, so the name split into two "words" — "ri" and
+// "oza" — and came out as "RiñOza". Filipino and Spanish surnames carry ñ
+// routinely, so this is a name the clinic has on file, not an edge case.
 const ROMAN_NUMERALS = new Set(['ii', 'iii', 'iv', 'vi', 'vii', 'viii', 'ix', 'xi', 'xii'])
 
 export function displayName(raw: string | null | undefined): string {
   const s = (raw ?? '').trim()
-  if (!s || /[a-z]/.test(s)) return s
-  return s.toLowerCase().replace(/[a-z]+/g, (w: string, offset: number, whole: string) => {
+  if (!s || /\p{Ll}/u.test(s)) return s
+  return s.toLowerCase().replace(/\p{L}+/gu, (w: string, offset: number, whole: string) => {
     if (offset > 0 && /\d/.test(whole[offset - 1])) return w
     if (ROMAN_NUMERALS.has(w)) return w.toUpperCase()
     return w[0].toUpperCase() + w.slice(1)

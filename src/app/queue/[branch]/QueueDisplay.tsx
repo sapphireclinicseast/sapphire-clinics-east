@@ -98,6 +98,10 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
   // Complaint form QR state
   const [cfEnabled, setCfEnabled] = useState(false)
   const [showComplaintQR, setShowComplaintQR] = useState(false)
+  // Lines front desk typed in the Queueing module. One slide, all of them, in
+  // the same rotation as the ads.
+  const [anns, setAnns] = useState<{ id: string; text: string }[]>([])
+  const [showAnnouncements, setShowAnnouncements] = useState(false)
   // Configurable image slide duration (seconds), set in Ads Manager
   const [adSlideDuration, setAdSlideDuration] = useState(12)
 
@@ -167,6 +171,13 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
     if (fadeTimer.current) clearTimeout(fadeTimer.current)
     setFadingOut(true)
     fadeTimer.current = setTimeout(() => {
+      // The rotation, in order: ads → announcements → leaderboard → complaint
+      // QR → back to the ads. Each slide knows only what follows it, which is
+      // why adding one means touching every branch of this chain.
+      const hasLb = lbEnabled && !!leaderboard
+        && (((leaderboard.overall?.length ?? 0) > 0) || leaderboard.departments.length > 0)
+      const hasAnns = anns.length > 0
+
       if (showComplaintQR) {
         // Was showing complaint QR → back to ads
         setShowComplaintQR(false)
@@ -179,10 +190,22 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
         } else {
           setAdIdx(prev => (prev + 1) % Math.max(1, currentLength))
         }
+      } else if (showAnnouncements) {
+        setShowAnnouncements(false)
+        if (hasLb) {
+          setShowLeaderboard(true)
+          setLbDeptIdx(prev => (prev + 1) % Math.max(((leaderboard?.overall?.length ?? 0) > 0 ? 1 : 0) + (leaderboard?.departments?.length ?? 0), 1))
+        } else if (cfEnabled) {
+          setShowComplaintQR(true)
+        } else {
+          setAdIdx(0)
+        }
       } else {
         const nextIdx = (adIdx + 1) % Math.max(1, currentLength)
         const cycleEnd = nextIdx === 0 || currentLength <= 1
-        if (cycleEnd && lbEnabled && leaderboard && (((leaderboard.overall?.length ?? 0) > 0) || leaderboard.departments.length > 0)) {
+        if (cycleEnd && hasAnns) {
+          setShowAnnouncements(true)
+        } else if (cycleEnd && hasLb) {
           setShowLeaderboard(true)
           setLbDeptIdx(prev => (prev + 1) % Math.max(((leaderboard?.overall?.length ?? 0) > 0 ? 1 : 0) + (leaderboard?.departments?.length ?? 0), 1))
         } else if (cycleEnd && cfEnabled) {
@@ -193,7 +216,7 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
       }
       setFadingOut(false)
     }, 500)
-  }, [showComplaintQR, showLeaderboard, adIdx, leaderboard, lbEnabled, cfEnabled])
+  }, [showComplaintQR, showLeaderboard, showAnnouncements, adIdx, leaderboard, lbEnabled, cfEnabled, anns.length])
 
   // ── Fetch ads (branch-filtered) ──────────────────────────────────────────────
   const fetchAds = useCallback(async () => {
@@ -203,15 +226,28 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
     } catch { /* silent */ }
   }, [branch])
 
+  // ── Fetch announcements (branch-filtered, capped server-side at three) ─────
+  const fetchAnns = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/queue-announcements?branch=${branch}`)
+      if (res.ok) {
+        const rows = await res.json() as { id: string; text: string }[]
+        setAnns(Array.isArray(rows) ? rows.filter(r => r?.text?.trim()) : [])
+      }
+    } catch { /* silent — the TV must never crash over a notice board */ }
+  }, [branch])
+
   useEffect(() => {
     fetchQueue()
     fetchAds()
+    fetchAnns()
     fetchLeaderboard()
     const queueInterval = setInterval(fetchQueue, 30_000)
     const adsInterval   = setInterval(fetchAds,  120_000)
+    const annInterval   = setInterval(fetchAnns, 120_000)
     const lbInterval    = setInterval(fetchLeaderboard, 300_000) // refresh leaderboard every 5 min
-    return () => { clearInterval(queueInterval); clearInterval(adsInterval); clearInterval(lbInterval) }
-  }, [fetchQueue, fetchAds, fetchLeaderboard])
+    return () => { clearInterval(queueInterval); clearInterval(adsInterval); clearInterval(annInterval); clearInterval(lbInterval) }
+  }, [fetchQueue, fetchAds, fetchAnns, fetchLeaderboard])
 
   // ── Reload video src when ad changes ─────────────────────────────────────
   useEffect(() => {
@@ -238,10 +274,26 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
       const id = setTimeout(() => advanceAd(ads.length), 20_000)
       return () => clearTimeout(id)
     }
-    if (!isImage || ads.length === 0) return
+    // Long enough to read three lines out loud, twice. Scaled a little by how
+    // much there is to read, so a single short notice does not hold the screen
+    // for as long as a full board.
+    if (showAnnouncements) {
+      const id = setTimeout(() => advanceAd(ads.length), 12_000 + anns.length * 4_000)
+      return () => clearTimeout(id)
+    }
+    // With no ads uploaded there is no video end and no image timer, so nothing
+    // would ever advance: announcements alone must still start their own turn.
+    if (ads.length === 0) {
+      if (!showAnnouncements && anns.length > 0) {
+        const id = setTimeout(() => advanceAd(0), 1_000)
+        return () => clearTimeout(id)
+      }
+      return
+    }
+    if (!isImage) return
     const id = setTimeout(() => advanceAd(ads.length), adSlideDuration * 1_000)
     return () => clearTimeout(id)
-  }, [adIdx, isImage, ads.length, advanceAd, showLeaderboard, showComplaintQR, adSlideDuration])
+  }, [adIdx, isImage, ads.length, advanceAd, showLeaderboard, showComplaintQR, showAnnouncements, anns.length, adSlideDuration])
 
   // ── Group items by hour ─────────────────────────────────────────────────────
   const byHour: Record<number, QueueItem[]> = {}
@@ -267,7 +319,7 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
   const lbEntries = currentSlide?.entries ?? []
 
   // Total slides count for dots (ads + leaderboard slides + complaint form)
-  const totalSlides = ads.length + (lbEnabled ? lbSlides.length : 0) + (cfEnabled ? 1 : 0)
+  const totalSlides = ads.length + (anns.length > 0 ? 1 : 0) + (lbEnabled ? lbSlides.length : 0) + (cfEnabled ? 1 : 0)
 
   return (
     <div style={{
@@ -465,7 +517,9 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
           position: 'relative', overflow: 'hidden',
           display: 'flex', flexDirection: 'column',
         }}>
-          {ads.length === 0 && (!lbEnabled || !leaderboard) && !cfEnabled ? (
+          {/* Announcements count as something to show: a clinic with no ads
+              uploaded but a notice up should see the notice, not "No ads". */}
+          {ads.length === 0 && anns.length === 0 && (!lbEnabled || !leaderboard) && !cfEnabled ? (
             <div style={{
               flex: 1, display: 'flex', flexDirection: 'column',
               alignItems: 'center', justifyContent: 'center', gap: '1rem',
@@ -483,7 +537,64 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
               transition: 'opacity 0.5s ease',
               opacity: fadingOut ? 0 : 1,
             }}>
-              {showComplaintQR ? (
+              {showAnnouncements ? (
+                /* ── Announcements — paper on moss, so a block of text reads as
+                   a notice board rather than another ad. Sized off the count:
+                   one line gets to be large, three stay legible. ── */
+                <div style={{
+                  width: '100%', height: '100%',
+                  background: `linear-gradient(180deg, ${BRAND.moss} 0%, ${BRAND.narra} 100%)`,
+                  display: 'flex', flexDirection: 'column',
+                  alignItems: 'center', justifyContent: 'center',
+                  padding: '2.5rem 3rem', gap: '1.75rem',
+                }}>
+                  <p style={{
+                    fontFamily: 'var(--font-montserrat), "Helvetica Neue", system-ui, sans-serif',
+                    fontSize: '0.7rem', fontWeight: 700, color: BRAND.sun,
+                    textTransform: 'uppercase', letterSpacing: '0.15em', margin: 0,
+                  }}>
+                    {anns.length === 1 ? 'Announcement' : 'Announcements'}
+                  </p>
+                  <div style={{
+                    display: 'flex', flexDirection: 'column',
+                    gap: anns.length > 2 ? '1.1rem' : '1.5rem',
+                    width: '100%', maxWidth: '46rem',
+                  }}>
+                    {anns.map((a, i) => (
+                      <div key={a.id} style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem' }}>
+                        {anns.length > 1 && (
+                          <span style={{
+                            flexShrink: 0,
+                            width: '2rem', height: '2rem', borderRadius: '99px',
+                            background: 'rgba(237,243,217,0.14)',
+                            border: `1px solid ${BRAND.sun}`,
+                            color: BRAND.sun,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontFamily: 'var(--font-montserrat), "Helvetica Neue", system-ui, sans-serif',
+                            fontSize: '0.8rem', fontWeight: 700,
+                            marginTop: '0.15rem',
+                          }}>
+                            {i + 1}
+                          </span>
+                        )}
+                        <p style={{
+                          margin: 0,
+                          fontFamily: 'var(--font-montserrat), "Helvetica Neue", system-ui, sans-serif',
+                          // One notice can be read from across the room; three
+                          // have to give up some size to stay on the slide.
+                          fontSize: anns.length > 2 ? '1.35rem' : anns.length > 1 ? '1.6rem' : '2.1rem',
+                          lineHeight: 1.35,
+                          fontWeight: 600,
+                          color: BRAND.paper,
+                          textAlign: anns.length > 1 ? 'left' : 'center',
+                        }}>
+                          {a.text}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : showComplaintQR ? (
                 /* ── Patient Complaint Form QR Slide — Narra → deep Narra (Narra+Sun pairing) ── */
                 <div style={{
                   width: '100%', height: '100%',
@@ -722,12 +833,20 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
             }}>
               {ads.map((_, i) => (
                 <div key={`ad-${i}`} style={{
-                  width: (!showLeaderboard && !showComplaintQR && i === adIdx) ? '1.5rem' : '0.4rem', height: '0.4rem',
+                  width: (!showLeaderboard && !showComplaintQR && !showAnnouncements && i === adIdx) ? '1.5rem' : '0.4rem', height: '0.4rem',
                   borderRadius: '99px',
-                  background: (!showLeaderboard && !showComplaintQR && i === adIdx) ? BRAND.sun : 'rgba(244,236,221,0.3)',
+                  background: (!showLeaderboard && !showComplaintQR && !showAnnouncements && i === adIdx) ? BRAND.sun : 'rgba(244,236,221,0.3)',
                   transition: 'width 0.3s',
                 }} />
               ))}
+              {anns.length > 0 && (
+                <div style={{
+                  width: showAnnouncements ? '1.5rem' : '0.4rem', height: '0.4rem',
+                  borderRadius: '99px',
+                  background: showAnnouncements ? BRAND.paper : 'rgba(244,236,221,0.3)',
+                  transition: 'width 0.3s',
+                }} />
+              )}
               {lbEnabled && leaderboard && (((leaderboard.overall?.length ?? 0) > 0) || leaderboard.departments.length > 0) && (
                 <div style={{
                   width: showLeaderboard ? '1.5rem' : '0.4rem', height: '0.4rem',

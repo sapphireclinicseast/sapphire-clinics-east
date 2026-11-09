@@ -523,6 +523,28 @@ model QueueAd {
   updatedAt DateTime @updatedAt
 }
 
+/// One line of waiting-room text on the queue TV, typed by front desk.
+///
+/// Three per scope, addressed by `slot` (0, 1, 2) — the three boxes in the
+/// Queueing module. A fixed set rather than a growing list: the TV shows all of
+/// them on one slide, and a wall of text is a slide nobody reads. The unique
+/// constraint on (branch, slot) is what makes saving "box 2" update the same row
+/// instead of piling up another copy.
+///
+/// `branch` mirrors QueueAd — "ALL" | "SBEA" | "SBGH" — so a branch-restricted
+/// account cannot change what the other branch has on its screen. A TV shows its
+/// own branch's lines first and fills any remaining slots from "ALL".
+model QueueAnnouncement {
+  id        String   @id @default(cuid())
+  branch    String   @default("ALL")
+  slot      Int // 0, 1, 2
+  text      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([branch, slot])
+}
+
 // Minimal read model for the client-portal confidentiality gate. The full
 // SessionNote table is owned by teletherapy; the ops hub only needs
 // scheduleId + sharedWithOthers to hide Psychology/MD session notes from the

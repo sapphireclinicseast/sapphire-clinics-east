@@ -12,7 +12,7 @@ import { checkAdminToken } from '@/lib/aurora-admin'
 import { branchLabel } from '@/lib/branch-label'
 
 function titleCase(s: string): string {
-  return s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase()).trim()
+  return s.toLowerCase().replace(/(^|[^\p{L}\p{N}])(\p{L})/gu, (_m, sep, c) => sep + c.toUpperCase()).trim()
 }
 
 interface UserRow {

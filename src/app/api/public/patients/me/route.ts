@@ -37,7 +37,7 @@ const NON_SERVICE = new Set(['FRONT_DESK', 'ADMINISTRATION'])
 function titleCase(s: string): string {
   return s
     .toLowerCase()
-    .replace(/\b\w/g, (c) => c.toUpperCase())
+    .replace(/(^|[^\p{L}\p{N}])(\p{L})/gu, (_m, sep, c) => sep + c.toUpperCase())
     .trim()
 }
 

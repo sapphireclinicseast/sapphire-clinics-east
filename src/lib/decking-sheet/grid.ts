@@ -36,7 +36,14 @@ export const SAFE_COL = 26            // column AA — front desk's own space
  * free text, not both, and a validated cell flags every typed note as invalid.
  * So the prompt itself carries the instruction.
  */
-export const FREE_TEXT_HINT = 'Free text  ·  type "+ name" to add another patient'
+// Short enough to sit on ONE line in a 120px column at 7pt. The long form wrapped
+// to two lines in every empty slot, which across a full board cost more vertical
+// space than the bookings did. The full wording moved to the cell's note, where
+// it is a hover away instead of permanently on screen.
+export const FREE_TEXT_HINT = 'Free text  ·  "+ name"'
+export const FREE_TEXT_NOTE = 'Type anything here — "CBT only", "BS only", "1k".\n\nTo add another patient to this same hour, type "+ " and their name, e.g. "+ DELA CRUZ, JUAN".'
+/** Every wording this line has ever shown. All of them read as empty. */
+const FREE_TEXT_HINT_LEGACY = 'Free text  ·  type "+ name" to add another patient'
 
 /**
  * Every prompt this line has ever shown.
@@ -46,7 +53,7 @@ export const FREE_TEXT_HINT = 'Free text  ·  type "+ name" to add another patie
  * real notes on the next pull — the sheet would look unchanged and every slot
  * in the clinic would quietly acquire one.
  */
-export const FREE_TEXT_HINTS = ['Free text', FREE_TEXT_HINT]
+export const FREE_TEXT_HINTS = ['Free text', FREE_TEXT_HINT, FREE_TEXT_HINT_LEGACY]
 export const BLOCKED = 'N/A'
 export const BREAK = 'BREAK'
 /** "HMO – INTELLICARE", the way front desk already write it on their own sheet. */
@@ -390,8 +397,8 @@ export function buildGrid(
 
           if (line === 'remark') {
             put(c, remark
-              ? cell(remark, { backgroundColor: rgb(REMARK_BG), textFormat: { fontSize: 8, italic: true, foregroundColor: rgb('#6B7280') } })
-              : cell(FREE_TEXT_HINT, { backgroundColor: rgb(REMARK_BG), textFormat: { fontSize: 8, italic: true, foregroundColor: rgb('#B3AFA4') } }))
+              ? cell(remark, { backgroundColor: rgb(REMARK_BG), textFormat: { fontSize: 7, italic: true, foregroundColor: rgb('#6B7280') } })
+              : { ...cell(FREE_TEXT_HINT, { backgroundColor: rgb(REMARK_BG), textFormat: { fontSize: 7, italic: true, foregroundColor: rgb('#B3AFA4') } }), note: FREE_TEXT_NOTE })
           } else if (line === 'pay' || line === 'pay2') {
             // Coloured by the CATEGORY, so "HMO – INTELLICARE" is amber like
             // any other HMO rather than falling back to the cash green.
@@ -514,8 +521,8 @@ export function buildGrid(
 
           if (line === 'remark') {
             put(1, remark
-              ? cell(remark, { backgroundColor: rgb(REMARK_BG), textFormat: { fontSize: 8, italic: true, foregroundColor: rgb('#6B7280') } })
-              : cell(FREE_TEXT_HINT, { backgroundColor: rgb(REMARK_BG), textFormat: { fontSize: 8, italic: true, foregroundColor: rgb('#B3AFA4') } }))
+              ? cell(remark, { backgroundColor: rgb(REMARK_BG), textFormat: { fontSize: 7, italic: true, foregroundColor: rgb('#6B7280') } })
+              : { ...cell(FREE_TEXT_HINT, { backgroundColor: rgb(REMARK_BG), textFormat: { fontSize: 7, italic: true, foregroundColor: rgb('#B3AFA4') } }), note: FREE_TEXT_NOTE })
           } else if (line === 'pay') {
             put(1, cell(pay, { backgroundColor: rgb(PAY_BG), textFormat: { bold: true, fontSize: 8, foregroundColor: rgb(pay.startsWith('HMO') ? INK.HMO : INK[pay as keyof typeof INK] ?? INK.CASH) } }))
           } else {
