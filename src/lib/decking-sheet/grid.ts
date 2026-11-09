@@ -15,19 +15,19 @@ export const ROWS_PER_HOUR = 3        // name, payment, remark
 /**
  * Departments that run group hours get a second patient line of their own.
  *
- * OT pairs and SLP sessions routinely put two children with one therapist, and
- * the "+ name" convention on the notes line asks front desk to remember a
- * syntax. A real dropdown cannot share a cell with free text, so the second
- * patient gets its own line — and its own PAYMENT line, because inheriting the
- * first child's arrangement would quietly misbill an HMO case as cash.
+ * SLP sessions routinely put two children with one therapist, and the "+ name"
+ * convention on the notes line asks front desk to remember a syntax. A real
+ * dropdown cannot share a cell with free text, so the second patient gets its
+ * own line — and its own PAYMENT line, because inheriting the first child's
+ * arrangement would quietly misbill an HMO case as cash.
  *
- * SPED is deliberately NOT here: one child per hour is how it runs, and SPED
- * group work is a CLASS, which has its own board and its own block shape.
- *
- * Only these two: five lines per hour everywhere would cost every board a
- * third of its height to serve a case that does not arise there.
+ * SLP only. OT and SPED run one child per hour; SPED group work is a CLASS,
+ * which has its own board and its own block shape. Five lines per hour costs a
+ * board a third of its height, which is not worth paying where the second
+ * patient does not arise — and a second row that is always empty reads as a
+ * board that is half unfilled.
  */
-export const PAIRED_DEPARTMENTS = new Set(['OT', 'SLP'])
+export const PAIRED_DEPARTMENTS = new Set(['SLP'])
 export const PAIRED_ROWS_PER_HOUR = 5 // name, payment, name 2, payment 2, remark
 export const SAFE_COL = 26            // column AA — front desk's own space
 /**
