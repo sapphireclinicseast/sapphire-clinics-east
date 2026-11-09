@@ -7,6 +7,7 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { getAuth } from '@/lib/session'
+import { Icon } from '@/components/hub/ui'
 
 /**
  * Class Portal — User Handbook (v5).
@@ -57,6 +58,40 @@ export default function HandbookPage() {
     }
     setReady(true)
   }, [router])
+
+  /** Scroll-spy: mark the Contents link for the block currently at the top
+   *  of the screen (aria-current), so the reader can see where they are.
+   *  Attribute-only DOM writes on static links — React never renders them. */
+  useEffect(() => {
+    if (!ready || !rootRef.current) return
+    const root = rootRef.current
+    const links = Array.from(root.querySelectorAll<HTMLAnchorElement>('.hb-toc a[href^="#"]'))
+    const targets = links
+      .map(a => ({ a, el: document.getElementById(a.getAttribute('href')!.slice(1)) }))
+      .filter((t): t is { a: HTMLAnchorElement; el: HTMLElement } => !!t.el)
+    if (!targets.length) return
+    let raf = 0
+    const update = () => {
+      raf = 0
+      let current = targets[0]
+      for (const t of targets) {
+        if (t.el.getBoundingClientRect().top - 120 <= 0) current = t
+      }
+      for (const t of targets) {
+        if (t === current) t.a.setAttribute('aria-current', 'true')
+        else t.a.removeAttribute('aria-current')
+      }
+    }
+    const onScroll = () => { if (!raf) raf = requestAnimationFrame(update) }
+    update()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    window.addEventListener('resize', onScroll)
+    return () => {
+      window.removeEventListener('scroll', onScroll)
+      window.removeEventListener('resize', onScroll)
+      if (raf) cancelAnimationFrame(raf)
+    }
+  }, [ready])
 
   /** Client-side word search. Walks the searchable blocks inside the
    *  handbook body, finds matches for every query term, highlights them
@@ -210,18 +245,22 @@ export default function HandbookPage() {
     <div ref={rootRef} className="hb-root">
       <style id="handbook-css">{`
         .hb-root {
-          --ink:#16302E; --body:#31403D; --muted:#6A7B78;
-          --teal:#157A72; --teal-deep:#0E4A46; --teal-soft:#E4EFEC;
-          --line:#D6E2DE; --line-soft:#E8F0ED;
-          --paper:#F3F6F4; --card:#FFFFFF;
+          /* Aura Academy palette — the same moss / narra / paper tokens as
+             the rest of the portal, written as hex so the Word export
+             (which can't see the page's CSS variables) keeps the colours. */
+          --ink:#1F2A27; --body:#3A3E3A; --muted:#6B6357;
+          --teal:#547D72; --teal-deep:#3D6B62; --teal-soft:#EAF0EC;
+          --line:#DCD3C0; --line-soft:#ECE6D9;
+          --paper:#F5F0E8; --card:#FFFFFF;
           /* Role accents — five roles for the class portal */
           --ra:#7E4CC4; --ra-bg:#F1EAFB;   /* main Admin */
           --rb:#1F6FB2; --rb-bg:#E7F0F9;   /* Branch admin */
           --rf:#B37B14; --rf-bg:#FBF0DC;   /* Front desk */
           --rt:#0E4A46; --rt-bg:#DCEEEA;   /* Teacher */
           --rs:#2E8B57; --rs-bg:#E6F3EC;   /* Student / parent */
-          --warn:#B7791F; --warn-bg:#FBF4E4;
-          --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+          --warn:#8A5A1F; --warn-bg:#FBF3E8;
+          --sans:var(--font-body, system-ui),system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+          --display:var(--font-display, system-ui),system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
           --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
           --measure:70ch;
           background: var(--paper);
@@ -230,14 +269,20 @@ export default function HandbookPage() {
           font-size: 16px;
           line-height: 1.62;
           -webkit-font-smoothing: antialiased;
-          border-radius: 14px;
-          overflow: hidden;
-          box-shadow: 0 1px 0 rgba(0,0,0,0.02);
+          border-radius: 16px;
+          border: 1px solid var(--line);
+          /* clip, not hidden: hidden makes this box the scroll container,
+             which stopped the sticky Contents from sticking. */
+          overflow: clip;
+          box-shadow: 0 1px 2px rgba(30,56,50,0.04), 0 12px 32px -22px rgba(30,56,50,0.22);
         }
         .hb-root *, .hb-root *::before, .hb-root *::after { box-sizing: border-box; }
         .hb-root a { color: var(--teal); text-underline-offset: 2px; }
         .hb-root h1, .hb-root h2, .hb-root h3, .hb-root h4 {
-          color: var(--ink); line-height: 1.2; margin: 0;
+          color: var(--ink); line-height: 1.2; margin: 0; font-family: var(--display);
+        }
+        .hb-root a:focus-visible, .hb-root button:focus-visible, .hb-root summary:focus-visible {
+          outline: 2px solid var(--teal); outline-offset: 2px; border-radius: 6px;
         }
         .hb-root code {
           font-family: var(--mono); font-size: .86em;
@@ -249,45 +294,46 @@ export default function HandbookPage() {
           background: #fff; border: 1px solid var(--line); border-bottom-width: 2px;
           border-radius: 6px; padding: .05em .45em; white-space: nowrap;
         }
-        .hb-root mark { background: #FFF1A8; color: inherit; padding: 0 .1em; border-radius: 3px; }
+        .hb-root mark { background: #F6E3C4; color: inherit; padding: 0 .1em; border-radius: 3px; }
 
         /* ── Masthead ──────────────────────────────── */
         .hb-mast {
           background:
-            radial-gradient(120% 140% at 100% 0%, rgba(21,122,114,.14), transparent 60%),
-            linear-gradient(180deg, #0E4A46, #12645C);
-          color: #DCEBE8;
-          padding: 44px 40px 38px;
+            radial-gradient(60% 120% at 100% 0%, rgba(138,167,106,.45), transparent 60%),
+            linear-gradient(135deg, #3D6B62 0%, #547D72 70%, #6E9070 100%);
+          color: #E6EEE8;
+          padding: 40px 40px 34px;
         }
         .hb-mast .kicker {
-          font-family: var(--mono); font-size: 12.5px; letter-spacing: .22em;
-          text-transform: uppercase; color: #7FC3B9;
-          display: block; margin-bottom: 14px;
+          font-family: var(--display); font-size: 11px; font-weight: 700; letter-spacing: .16em;
+          text-transform: uppercase; color: #fff;
+          display: inline-block; margin-bottom: 16px;
+          background: rgba(255,255,255,.14); padding: 4px 11px; border-radius: 999px;
         }
         .hb-mast h1 {
           color: #ffffff;
           font-size: clamp(26px, 3.6vw, 38px);
-          font-weight: 800; letter-spacing: -.02em; max-width: 22ch;
+          font-weight: 700; letter-spacing: -.02em; max-width: 24ch;
           margin-bottom: 14px;
         }
-        .hb-mast p.lede { margin: 0 0 14px; max-width: 62ch; color: #CDE3DE; font-size: 15.5px; }
+        .hb-mast p.lede { margin: 0 0 14px; max-width: 64ch; color: rgba(255,255,255,.88); font-size: 15px; }
         .hb-mast .meta {
           display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 4px 0 16px;
-          font-size: 13px; color: #A9D0C9;
+          font-size: 13px; color: rgba(255,255,255,.72);
         }
-        .hb-mast .meta b { color: #EAF5F2; font-weight: 600; }
-        .hb-mast .meta code { background: rgba(255,255,255,.12); color: #EAF5F2; }
+        .hb-mast .meta b { color: #fff; font-weight: 600; }
+        .hb-mast .meta code { background: rgba(255,255,255,.14); color: #fff; }
         .hb-mast-actions { display: flex; flex-wrap: wrap; gap: 10px; }
         .hb-mast-actions .hb-btn {
           font-family: var(--sans); font-size: 13px; font-weight: 600; cursor: pointer;
           display: inline-flex; align-items: center; gap: 7px;
-          padding: 8px 15px; border-radius: 9px;
+          height: 36px; padding: 0 14px; border-radius: 8px;
           border: 1px solid transparent;
-          background: #EAF5F2; color: #0E4A46;
-          transition: transform .12s, background .15s;
+          background: #fff; color: #3D6B62;
+          transition: opacity .15s, background .15s;
         }
-        .hb-mast-actions .hb-btn:hover { background: #FFFFFF; transform: translateY(-1px); }
-        .hb-mast-actions .hb-btn.ghost { background: rgba(255,255,255,.10); color: #EAF5F2; border-color: rgba(255,255,255,.35); }
+        .hb-mast-actions .hb-btn:hover { opacity: .92; }
+        .hb-mast-actions .hb-btn.ghost { background: rgba(255,255,255,.10); color: #fff; border-color: rgba(255,255,255,.35); }
         .hb-mast-actions .hb-btn.ghost:hover { background: rgba(255,255,255,.18); }
         .hb-mast-actions .hb-btn:disabled { opacity: .6; cursor: default; transform: none; }
 
@@ -297,18 +343,20 @@ export default function HandbookPage() {
           grid-template-columns: 220px minmax(0, 1fr);
           gap: 40px;
           align-items: start;
-          padding: 34px 40px 60px;
-          background: var(--paper);
+          padding: 32px 40px 56px;
+          background: #FBF9F5;
         }
         @media (max-width: 900px) {
-          .hb-shell { grid-template-columns: 1fr; gap: 0; padding: 24px 20px 40px; }
+          .hb-shell { grid-template-columns: minmax(0, 1fr); gap: 0; padding: 20px 14px 36px; }
           .hb-mast { padding: 32px 20px 26px; }
         }
 
         /* ── Sticky TOC ───────────────────────────── */
         .hb-toc {
-          position: sticky; top: 12px; font-size: 13px;
-          max-height: calc(100vh - 24px); overflow: auto;
+          position: sticky; top: 16px; font-size: 13px;
+          max-height: calc(100vh - 32px); overflow: auto;
+          background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+          padding: 12px 10px;
         }
         @media (max-width: 900px) {
           .hb-toc {
@@ -318,9 +366,9 @@ export default function HandbookPage() {
           }
         }
         .hb-toc .toc-h {
-          font-family: var(--mono); font-size: 11px; letter-spacing: .18em;
+          font-family: var(--display); font-size: 11px; font-weight: 700; letter-spacing: .12em;
           text-transform: uppercase; color: var(--muted);
-          margin: 0 0 8px;
+          margin: 0 0 8px; padding: 0 10px;
         }
         .hb-toc ol {
           list-style: none; margin: 0; padding: 0;
@@ -334,24 +382,28 @@ export default function HandbookPage() {
         }
         .hb-toc a:hover { background: var(--teal-soft); color: var(--teal-deep); }
         .hb-toc a.sub { padding-left: 20px; font-size: 12.5px; color: var(--muted); }
+        .hb-toc a[aria-current="true"] {
+          background: var(--teal-soft); color: var(--teal-deep); font-weight: 600;
+          border-left-color: var(--teal);
+        }
 
         /* ── Sections ─────────────────────────────── */
         .hb-content > section.hb-section { margin-bottom: 48px; scroll-margin-top: 20px; }
         .hb-content .eyebrow {
-          font-family: var(--mono); font-size: 12px; letter-spacing: .16em;
+          font-family: var(--display); font-size: 11.5px; font-weight: 700; letter-spacing: .14em;
           text-transform: uppercase; color: var(--teal);
           margin: 0 0 6px;
         }
         .hb-content section.hb-section > h2 {
-          font-size: 26px; font-weight: 800; letter-spacing: -.015em;
+          font-size: 25px; font-weight: 700; letter-spacing: -.015em;
           padding-bottom: 12px;
-          border-bottom: 2px solid var(--line);
+          border-bottom: 1px solid var(--line);
           margin-bottom: 20px;
         }
         .hb-content section.hb-section > p { max-width: var(--measure); margin: 0 0 12px; }
         .hb-content h3.blockh { font-size: 18px; font-weight: 700; margin: 24px 0 8px; scroll-margin-top: 20px; }
         .hb-content .grouphead {
-          font-size: 12.5px; font-family: var(--mono); letter-spacing: .12em;
+          font-size: 11.5px; font-family: var(--display); font-weight: 700; letter-spacing: .12em;
           text-transform: uppercase; color: var(--muted);
           margin: 26px 0 12px; display: flex; align-items: center; gap: 12px;
           scroll-margin-top: 20px;
@@ -438,8 +490,8 @@ export default function HandbookPage() {
           display: flex; align-items: center; gap: 8px;
         }
         .hb-content .mod h4 .tag {
-          font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em;
-          text-transform: uppercase; color: var(--muted); font-weight: 600;
+          font-family: var(--display); font-size: 10.5px; letter-spacing: .1em;
+          text-transform: uppercase; color: var(--muted); font-weight: 700;
         }
         .hb-content .mod ol.steps {
           margin: 6px 0 0; padding-left: 0; counter-reset: s; list-style: none;
@@ -478,12 +530,12 @@ export default function HandbookPage() {
           border: 1px solid var(--line-soft);
         }
         .hb-content .call b { color: var(--ink); }
-        .hb-content .call.rule { background: var(--warn-bg); border-color: #EAD9AE; }
+        .hb-content .call.rule { background: var(--warn-bg); border-color: #EBD3B4; }
         .hb-content .call.rule .lbl { color: var(--warn); }
-        .hb-content .call.tip { background: var(--teal-soft); border-color: #BFDBD5; }
+        .hb-content .call.tip { background: var(--teal-soft); border-color: #D3E0D6; }
         .hb-content .call.tip .lbl { color: var(--teal-deep); }
         .hb-content .call .lbl {
-          font-family: var(--mono); font-size: 11px; letter-spacing: .14em;
+          font-family: var(--display); font-size: 11px; letter-spacing: .12em;
           text-transform: uppercase; display: block; margin-bottom: 4px;
           font-weight: 700;
         }
@@ -574,7 +626,7 @@ export default function HandbookPage() {
         .hb-content .flowcol.supplies { background: #EAF4EF; border-color: #CBE5D8; }
         .hb-content .flowcol.receives { background: #EAF0F8; border-color: #CFDDF0; }
         .hb-content .flow-lbl {
-          font-family: var(--mono); font-size: 11px; letter-spacing: .06em;
+          font-family: var(--display); font-size: 11px; letter-spacing: .08em;
           text-transform: uppercase; font-weight: 700; margin-bottom: 8px;
         }
         .hb-content .flowcol.supplies .flow-lbl { color: #1F6340; }
@@ -603,13 +655,13 @@ export default function HandbookPage() {
           padding: 0 18px; scroll-margin-top: 20px;
         }
         .hb-content .faq summary {
-          cursor: pointer; font-weight: 650; color: var(--ink);
+          cursor: pointer; font-weight: 600; color: var(--ink); font-family: var(--display);
           padding: 13px 0; font-size: 14.5px;
           list-style: none; display: flex; align-items: center; gap: 10px;
         }
         .hb-content .faq summary::-webkit-details-marker { display: none; }
         .hb-content .faq summary::before {
-          content: "+"; font-family: var(--mono); color: var(--teal); font-weight: 700;
+          content: "+"; font-family: var(--display); color: var(--teal); font-weight: 700;
           width: 18px; flex: 0 0 auto;
         }
         .hb-content .faq details[open] summary::before { content: "–"; }
@@ -630,7 +682,7 @@ export default function HandbookPage() {
         }
         .hb-content .hb-search input:focus {
           outline: none; border-color: var(--teal);
-          box-shadow: 0 0 0 3px rgba(21,122,114,.15);
+          box-shadow: 0 0 0 3px rgba(84,125,114,.18);
         }
         .hb-content .hb-search .hint {
           font-size: 12.5px; color: var(--muted); margin: 8px 0 0;
@@ -646,7 +698,7 @@ export default function HandbookPage() {
         }
         .hb-content .sr-list li a:hover { border-color: var(--teal); background: var(--teal-soft); }
         .hb-content .sr-list .where {
-          font-family: var(--mono); font-size: 11px; letter-spacing: .06em;
+          font-family: var(--display); font-size: 11px; font-weight: 700; letter-spacing: .08em;
           text-transform: uppercase; color: var(--teal-deep);
           display: block; margin-bottom: 3px;
         }
@@ -656,9 +708,9 @@ export default function HandbookPage() {
         /* ── Print ────────────────────────────────── */
         @media print {
           .hb-root { background: #fff; font-size: 11.5pt; box-shadow: none; border-radius: 0; }
-          .hb-mast { background: #0E4A46 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .hb-mast { background: #3D6B62 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
           .hb-toc, .hb-mast-actions, .hb-search { display: none !important; }
-          .hb-shell { grid-template-columns: 1fr; padding: 20px 0; }
+          .hb-shell { grid-template-columns: minmax(0, 1fr); padding: 20px 0; }
           .hb-content .mod, .hb-content .play, .hb-content .legend .rc,
           .hb-content .conn, .hb-content .hubwrap, .hb-content .call,
           .hb-content .tablewrap, .hb-content .faq details { break-inside: avoid; }
@@ -686,12 +738,12 @@ export default function HandbookPage() {
         </div>
         <div className="hb-mast-actions">
           <button type="button" className="hb-btn" onClick={handleDownloadPDF} title="Uses your browser's print dialog. Pick 'Save as PDF' as the destination.">
-            🖨&nbsp; Save as PDF
+            <Icon name="file" size={14} /> Save as PDF
           </button>
           <button type="button" className="hb-btn ghost" onClick={() => void handleDownloadWord()} disabled={downloadingWord}>
-            {downloadingWord ? 'Generating…' : '⬇  Download as Word'}
+            <Icon name="download" size={14} /> {downloadingWord ? 'Generating…' : 'Download as Word'}
           </button>
-          <a className="hb-btn ghost" href="#help" style={{ textDecoration: 'none' }}>🔎&nbsp; Search this handbook</a>
+          <a className="hb-btn ghost" href="#search" style={{ textDecoration: 'none' }}><Icon name="search" size={14} /> Search this handbook</a>
         </div>
       </header>
 
@@ -1839,7 +1891,7 @@ export default function HandbookPage() {
             </div></details>
 
             <details id="faq-copy"><summary>Can I keep a copy of this handbook?</summary><div className="a">
-              <p>Yes — use <b>🖨 Save as PDF</b> or <b>⬇ Download as Word</b> at the top of this page. Both include every section (the search box is left out).</p>
+              <p>Yes — use <b>Save as PDF</b> or <b>Download as Word</b> at the top of this page. Both include every section (the search box is left out).</p>
             </div></details>
           </div>
 
