@@ -55,9 +55,21 @@ export interface SyncReport {
 async function loadDepartment(branch: string, department: string) {
   const [configs, slots] = await Promise.all([
     prisma.deckingTherapistConfig.findMany({
-      where: { branch, department, deliveryMode: null, staff: { active: true } },
+      // EVERY config, not just the general one.
+      //
+      // A consultant can hold one schedule per service — the board writes a
+      // service-specific row whenever front desk configure hours while a
+      // service section is selected, which is most of the time. Reading only
+      // deliveryMode: null meant the sheet was drawing schedules last touched
+      // in April while the hub showed what had been set that morning.
+      //
+      // Two real consequences, both reported: a therapist cut to two hours
+      // still showed four, and an hour added to another was never drawn at
+      // all — so a real booking inside it could not appear on the sheet, and
+      // clearing the sheet could not reach it.
+      where: { branch, department, staff: { active: true } },
       select: {
-        staffId: true, workDays: true, startTime: true, endTime: true,
+        staffId: true, workDays: true, startTime: true, endTime: true, deliveryMode: true, updatedAt: true,
         staff: { select: { id: true, firstName: true, lastName: true } },
       },
       orderBy: { staff: { lastName: 'asc' } },
@@ -77,14 +89,30 @@ async function loadDepartment(branch: string, department: string) {
     }),
   ])
 
-  const staff: SheetStaff[] = configs.map(c => ({
+  // One schedule per consultant: the one they most recently set.
+  //
+  // A service-specific row beats the general one, because that is what front
+  // desk edit from the board; between two of the same kind, the newer wins.
+  // The sheet has a tab per DEPARTMENT, not per service, so it cannot show
+  // both — and showing the stale one is how this went wrong.
+  const chosen = new Map<string, (typeof configs)[number]>()
+  for (const c of configs) {
+    const prev = chosen.get(c.staffId)
+    if (!prev) { chosen.set(c.staffId, c); continue }
+    const better =
+      (c.deliveryMode !== null && prev.deliveryMode === null) ||
+      (((c.deliveryMode === null) === (prev.deliveryMode === null)) && c.updatedAt > prev.updatedAt)
+    if (better) chosen.set(c.staffId, c)
+  }
+
+  const staff: SheetStaff[] = [...chosen.values()].map(c => ({
     id: c.staffId,
     firstName: c.staff.firstName,
     lastName: c.staff.lastName,
     workDays: (c.workDays as string[]) ?? [],
     startTime: c.startTime,
     endTime: c.endTime,
-  }))
+  })).sort((a, b) => a.lastName.localeCompare(b.lastName))
 
   // Consultants who hold a one-off but NO weekly schedule have to be named too.
   //
