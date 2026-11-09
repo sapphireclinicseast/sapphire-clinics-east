@@ -30,9 +30,9 @@
 
 import { useEffect, useState } from 'react'
 import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  AreaChart, Area, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
 } from 'recharts'
-import { ArrowDownRight, ArrowUpRight, Gauge, Layers, Loader2, Minus } from 'lucide-react'
+import { ArrowDownRight, ArrowUpRight, Gauge, Layers, Loader2, Minus, Percent } from 'lucide-react'
 import { CARD_STYLE, DashCard, KpiCard, Skeleton, EmptyState } from '../patients/dashboard/ui'
 import { CONTROL, CONTROL_STYLE, ErrorCard, LABEL, PillTabs } from './ui'
 
@@ -113,6 +113,22 @@ export default function DeckingHistory({ branch }: { branch: string }) {
         <div>
           <label className={LABEL} style={{ color: 'var(--mid-gray)' }} htmlFor="dh-from">Date range</label>
           <div className="flex flex-wrap items-center gap-1.5">
+            {/* Shortcuts for the ranges people actually pick; they only set
+                the two dates below, which stay editable for anything else. */}
+            {(() => {
+              const today = new Date().toISOString().slice(0, 10)
+              const presets = [
+                { id: '30', label: '30 days', from: isoDaysAgo(30) },
+                { id: '90', label: '90 days', from: isoDaysAgo(90) },
+                ...(firstRecorded ? [{ id: 'all', label: 'Since start', from: firstRecorded }] : []),
+              ]
+              const current = to === today ? presets.find(pr => pr.from === from)?.id ?? 'custom' : 'custom'
+              return (
+                <PillTabs label="Date range shortcut" size="sm" value={current}
+                  onChange={id => { const pr = presets.find(x => x.id === id); if (pr) { setFrom(pr.from); setTo(today) } }}
+                  tabs={presets.map(pr => ({ id: pr.id, label: pr.label }))} />
+              )
+            })()}
             <input id="dh-from" type="date" value={from} onChange={e => setFrom(e.target.value)}
               aria-label="From" className={`${CONTROL} w-[9.5rem]`} style={CONTROL_STYLE} />
             <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>to</span>
@@ -174,6 +190,7 @@ export default function DeckingHistory({ branch }: { branch: string }) {
           )}
 
           <StackedChart points={points} firstRecorded={firstRecorded} />
+          {points.some(pt => pt.fillRate !== null) && <FillRateChart points={points} />}
         </>
       )}
     </div>
@@ -279,6 +296,52 @@ function StackedChart({ points, firstRecorded }: { points: Point[]; firstRecorde
             activeDot={{ r: 4, strokeWidth: 2, stroke: '#fff', fill: OPEN }}
             isAnimationActive={false} />
         </AreaChart>
+      </ResponsiveContainer>
+    </DashCard>
+  )
+}
+
+/**
+ * Fill rate on its own axis (0–100%). The stacked chart above shows how many
+ * slots; this shows the share, which the stack hides — a 14-point drop barely
+ * moves the seam on an axis that runs to several hundred. Its own chart, never
+ * a second axis on the first.
+ */
+function FillRateChart({ points }: { points: Point[] }) {
+  const rated = points.filter(pt => pt.fillRate !== null)
+  const avg = rated.length ? Math.round(rated.reduce((n, pt) => n + (pt.fillRate ?? 0), 0) / rated.length) : null
+  const lastIndex = points.length - 1
+  const latest = points[lastIndex]
+  return (
+    <DashCard
+      title="Fill rate"
+      icon={<Percent size={15} />}
+      description={<>Filled ÷ bookable, each day. The dashed line is the average for this range{avg !== null ? <> ({avg}%)</> : null}.</>}
+    >
+      <ResponsiveContainer width="100%" height={180}>
+        <LineChart data={points} margin={{ top: 10, right: 52, bottom: 0, left: -8 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} vertical={false} />
+          <XAxis dataKey="label" tick={AXIS_TICK} tickLine={false} axisLine={{ stroke: GRID_STROKE }}
+            height={X_AXIS_H} minTickGap={16} interval="preserveStartEnd" />
+          <YAxis tick={AXIS_TICK} tickLine={false} axisLine={false} width={44} domain={[0, 100]}
+            ticks={[0, 25, 50, 75, 100]} tickFormatter={v => `${v}%`} />
+          {avg !== null && <ReferenceLine y={avg} stroke="#94A3B8" strokeDasharray="4 4" />}
+          <Tooltip content={p => <HistoryTooltip active={p.active} payload={p.payload} />}
+            cursor={{ stroke: '#CBD5E1', strokeWidth: 1 }} />
+          <Line type="monotone" dataKey="fillRate" name="Fill rate" stroke="#1A7B8A" strokeWidth={2}
+            connectNulls isAnimationActive={false}
+            dot={d => {
+              if (d.index !== lastIndex || !Number.isFinite(d.cy) || latest?.fillRate == null) return <g key={`r-${d.index}`} />
+              return (
+                <g key="end-rate">
+                  <circle cx={d.cx as number} cy={d.cy as number} r={3.5} fill="#1A7B8A" stroke="#fff" strokeWidth={2} />
+                  <text x={(d.cx as number) + 8} y={d.cy as number} dy="0.35em" fontSize={11} fontWeight={800} fill="#1A7B8A"
+                    style={{ fontVariantNumeric: 'tabular-nums' }}>{latest.fillRate}%</text>
+                </g>
+              )
+            }}
+            activeDot={{ r: 4, strokeWidth: 2, stroke: '#fff', fill: '#1A7B8A' }} />
+        </LineChart>
       </ResponsiveContainer>
     </DashCard>
   )
