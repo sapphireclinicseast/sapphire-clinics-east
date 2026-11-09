@@ -944,100 +944,193 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
       </header>
 
       {/* Config panel */}
-      {showBody && configOpen && (
-        <div className="px-4 py-4 space-y-4" style={{ background: SUBTLE_BG, borderBottom: '1px solid var(--light-gray)' }}>
-          {/* Work days */}
-          <div>
-            {/* Which schedule this panel writes. Without it the days look like
-                one setting per consultant, and someone setting teletherapy days
-                would believe they had changed the clinic days too. */}
-            <div className="flex flex-wrap items-baseline gap-2 mb-2">
-              <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>
-                {serviceLabel ? `${serviceLabel} days — ${branchLabel(activeBranch) ?? activeBranch}` : 'Work days — all services'}
-              </p>
-              {hasServiceRow && (
-                <button type="button" onClick={resetToGeneral}
-                  className="text-[11px] font-semibold underline" style={{ color: '#8A5A00' }}>
-                  use the general schedule instead
-                </button>
-              )}
-            </div>
-            {serviceLabel && !hasServiceRow && (
-              <p className="text-[11px] mb-2 leading-relaxed" style={{ color: 'var(--mid-gray)' }}>
+      {showBody && configOpen && (() => {
+        // Display-only read-outs. The grid draws one row per whole hour from
+        // the start hour up to the end hour (generateHourlySlots), so the
+        // counts here are the same rows the grid will show.
+        const sortedDays = sortDays(workDays)
+        const perDay = generateHourlySlots(startTime, endTime).length
+        const perWeek = perDay * sortedDays.length
+        const badHours = !!startTime && !!endTime && perDay === 0
+        const dirty = !config
+          || JSON.stringify(sortDays((config.workDays as string[]) ?? [])) !== JSON.stringify(sortedDays)
+          || config.startTime !== startTime || config.endTime !== endTime || config.useDefault !== useDefault
+        const setDays = (days: readonly string[]) => setWorkDays(days.filter(d => (DAYS as readonly string[]).includes(d)))
+        const PRESETS: { label: string; days: string[] }[] = [
+          { label: 'Mon–Fri', days: ['MON', 'TUE', 'WED', 'THU', 'FRI'] },
+          { label: 'Mon–Sat', days: ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'] },
+        ]
+        const sameDays = (a: string[]) => a.length === sortedDays.length && a.every(d => sortedDays.includes(d))
+        const section = 'rounded-xl p-3.5'
+        const sectionStyle: React.CSSProperties = { background: '#fff', border: '1px solid var(--light-gray)' }
+        const scope = serviceLabel ? `${serviceLabel} · ${branchLabel(activeBranch) ?? activeBranch}` : 'All services'
+        return (
+        <div className="px-4 py-4" style={{ background: SUBTLE_BG, borderBottom: '1px solid var(--light-gray)' }}>
+          {/* Which schedule this panel writes. Without it the days look like
+              one setting per consultant, and someone setting teletherapy days
+              would believe they had changed the clinic days too. */}
+          <div className="flex flex-wrap items-center gap-2 mb-3">
+            <span aria-hidden className="inline-flex items-center justify-center w-7 h-7 rounded-lg flex-shrink-0" style={{ background: 'var(--pale-teal)', color: 'var(--teal)' }}>
+              <Settings2 size={14} />
+            </span>
+            <p className="text-[13px] font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>Weekly schedule</p>
+            <span className="rounded-full px-2 py-0.5 text-[10.5px] font-semibold" title="The schedule this panel saves"
+              style={{ background: serviceLabel ? '#FEF6E7' : '#fff', color: serviceLabel ? '#8A5A00' : 'var(--mid-gray)', border: `1px solid ${serviceLabel ? '#F5D9A8' : 'var(--light-gray)'}` }}>
+              {scope}
+            </span>
+            {hasServiceRow && (
+              <button type="button" onClick={resetToGeneral}
+                title={`Drop the ${serviceLabel?.toLowerCase()} days and follow the general schedule again`}
+                className="ml-auto inline-flex items-center gap-1 h-7 px-2.5 rounded-lg text-[11px] font-semibold transition-colors hover:bg-amber-50"
+                style={{ color: '#8A5A00', border: '1px solid #F5D9A8', background: '#fff' }}>
+                Use the general schedule instead
+              </button>
+            )}
+          </div>
+          {serviceLabel && !hasServiceRow && (
+            <p className="flex items-start gap-1.5 text-[11.5px] mb-3 leading-relaxed rounded-lg px-3 py-2" style={{ background: '#fff', color: 'var(--mid-gray)', border: '1px solid var(--light-gray)' }}>
+              <Info size={13} className="flex-shrink-0 mt-px" aria-hidden style={{ color: 'var(--teal)' }} />
+              <span>
                 Following the general schedule. Saving here sets {serviceLabel.toLowerCase()} days
                 for {branchLabel(activeBranch) ?? activeBranch} only — the other services keep theirs.
-              </p>
-            )}
-            <div className="flex flex-wrap gap-1.5" role="group" aria-label="Work days">
-              {DAYS.map(day => {
-                const checked = workDays.includes(day)
-                return (
-                  <label key={day}
-                    className="inline-flex items-center h-8 px-3 rounded-lg text-xs font-semibold cursor-pointer select-none transition-colors focus-within:ring-2 focus-within:ring-offset-1"
-                    style={checked
-                      ? { background: 'var(--teal)', color: '#fff', border: '1px solid var(--teal)' }
-                      : { background: '#fff', color: 'var(--charcoal)', border: '1px solid var(--light-gray)' }}>
-                    <input
-                      type="checkbox"
-                      className="sr-only"
-                      checked={checked}
-                      onChange={e => setWorkDays(e.target.checked ? [...workDays, day] : workDays.filter(d => d !== day))}
-                    />
-                    {DAY_SHORT[day]}
-                  </label>
-                )
-              })}
-            </div>
-          </div>
+              </span>
+            </p>
+          )}
 
-          {/* Working hours */}
-          <div>
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-2">
-              <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>Working hours</p>
-              <label className="inline-flex items-center gap-1.5 cursor-pointer text-xs font-semibold" style={{ color: 'var(--teal)' }}>
-                <input
-                  type="checkbox"
-                  checked={useDefault}
-                  onChange={e => handleUseDefaultToggle(e.target.checked)}
-                  style={{ accentColor: 'var(--teal)', width: 14, height: 14 }}
-                />
-                Use clinic default hours
-              </label>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <input
-                type="time"
-                aria-label="Start time"
-                value={startTime}
-                onChange={e => setStartTime(e.target.value)}
-                disabled={useDefault}
-                className={CONTROL_SM}
-                style={{ ...CONTROL_STYLE, opacity: useDefault ? 0.55 : 1, cursor: useDefault ? 'not-allowed' : 'default' }}
-              />
-              <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>to</span>
-              <input
-                type="time"
-                aria-label="End time"
-                value={endTime}
-                onChange={e => setEndTime(e.target.value)}
-                disabled={useDefault}
-                className={CONTROL_SM}
-                style={{ ...CONTROL_STYLE, opacity: useDefault ? 0.55 : 1, cursor: useDefault ? 'not-allowed' : 'default' }}
-              />
-              {!useDefault && startTime && endTime && (
-                <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>
-                  ({generateHourlySlots(startTime, endTime).length} slots)
+          <div className="grid gap-3 md:grid-cols-2">
+            {/* Work days */}
+            <div className={section} style={sectionStyle}>
+              <div className="flex flex-wrap items-center gap-2 mb-2.5">
+                <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>
+                  {serviceLabel ? `${serviceLabel} days` : 'Work days'}
+                </p>
+                <span className="ml-auto flex items-center gap-1">
+                  {PRESETS.map(p => (
+                    <button key={p.label} type="button" onClick={() => setDays(p.days)} aria-pressed={sameDays(p.days)}
+                      className="h-6 px-2 rounded-md text-[10.5px] font-semibold transition-colors hover:bg-gray-50"
+                      style={sameDays(p.days)
+                        ? { color: 'var(--teal)', border: '1px solid var(--teal)', background: 'var(--pale-teal)' }
+                        : { color: 'var(--mid-gray)', border: '1px solid var(--light-gray)', background: '#fff' }}>
+                      {p.label}
+                    </button>
+                  ))}
+                  {workDays.length > 0 && (
+                    <button type="button" onClick={() => setDays([])}
+                      className="h-6 px-2 rounded-md text-[10.5px] font-semibold transition-colors hover:bg-gray-50"
+                      style={{ color: 'var(--mid-gray)', border: '1px solid var(--light-gray)', background: '#fff' }}>
+                      Clear
+                    </button>
+                  )}
                 </span>
+              </div>
+              <div className="grid grid-cols-7 gap-1" role="group" aria-label="Work days">
+                {DAYS.map(day => {
+                  const checked = workDays.includes(day)
+                  return (
+                    <label key={day} title={DAY_LABEL[day]}
+                      className="flex items-center justify-center h-9 rounded-lg text-xs font-semibold cursor-pointer select-none transition-colors focus-within:ring-2 focus-within:ring-offset-1"
+                      style={checked
+                        ? { background: 'var(--teal)', color: '#fff', border: '1px solid var(--teal)' }
+                        : { background: '#fff', color: 'var(--charcoal)', border: '1px solid var(--light-gray)' }}>
+                      <input
+                        type="checkbox"
+                        className="sr-only"
+                        checked={checked}
+                        onChange={e => setWorkDays(e.target.checked ? [...workDays, day] : workDays.filter(d => d !== day))}
+                      />
+                      {DAY_SHORT[day]}
+                    </label>
+                  )
+                })}
+              </div>
+              {workDays.length === 0 && (
+                <p className="mt-2 flex items-center gap-1.5 text-[11px]" style={{ color: '#92400E' }}>
+                  <AlertTriangle size={12} aria-hidden /> Pick at least one day — with none, the weekly grid stays hidden.
+                </p>
               )}
             </div>
+
+            {/* Working hours */}
+            <div className={section} style={sectionStyle}>
+              <div className="flex flex-wrap items-center gap-2 mb-2.5">
+                <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>Working hours</p>
+                {/* Same checkbox as before, drawn as a switch. */}
+                <label className="ml-auto inline-flex items-center gap-2 cursor-pointer text-[11.5px] font-semibold select-none" style={{ color: 'var(--charcoal)' }}>
+                  <input
+                    type="checkbox"
+                    role="switch"
+                    aria-checked={useDefault}
+                    className="sr-only peer"
+                    checked={useDefault}
+                    onChange={e => handleUseDefaultToggle(e.target.checked)}
+                  />
+                  <span aria-hidden className="relative inline-block w-8 h-[18px] rounded-full transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-offset-1"
+                    style={{ background: useDefault ? 'var(--teal)' : '#CBD5E1' }}>
+                    <span className="absolute top-[2px] w-[14px] h-[14px] rounded-full bg-white shadow transition-all" style={{ left: useDefault ? 16 : 2 }} />
+                  </span>
+                  Clinic default
+                </label>
+              </div>
+              {useDefault ? (
+                <div className="flex items-center gap-2 h-9 px-3 rounded-lg text-sm" style={{ background: SUBTLE_BG, border: '1px solid var(--light-gray)', color: 'var(--charcoal)' }}>
+                  <Clock size={14} aria-hidden style={{ color: 'var(--teal)' }} />
+                  <span className="font-semibold tabular-nums">{formatTime(startTime)} – {formatTime(endTime)}</span>
+                  <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>clinic hours</span>
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    type="time"
+                    aria-label="Start time"
+                    value={startTime}
+                    onChange={e => setStartTime(e.target.value)}
+                    className={CONTROL}
+                    style={{ ...CONTROL_STYLE, flex: '1 1 7rem', ...(badHours ? { borderColor: '#DC2626' } : {}) }}
+                  />
+                  <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>to</span>
+                  <input
+                    type="time"
+                    aria-label="End time"
+                    value={endTime}
+                    onChange={e => setEndTime(e.target.value)}
+                    aria-invalid={badHours || undefined}
+                    className={CONTROL}
+                    style={{ ...CONTROL_STYLE, flex: '1 1 7rem', ...(badHours ? { borderColor: '#DC2626' } : {}) }}
+                  />
+                </div>
+              )}
+              <p className="mt-2 text-[11px]" style={{ color: badHours ? '#B91C1C' : 'var(--mid-gray)' }}>
+                {badHours
+                  ? 'End time must be at least an hour after the start — otherwise no rows are drawn.'
+                  : `${perDay} one-hour row${perDay === 1 ? '' : 's'} a day on the grid`}
+              </p>
+            </div>
           </div>
 
-          <button type="button" onClick={saveConfig} disabled={saving}
-            className={BTN_PRIMARY} style={{ background: 'var(--teal)' }}>
-            {saving ? 'Saving…' : 'Save configuration'}
-          </button>
+          {/* Summary + save */}
+          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+            <p className="flex-1 min-w-[12rem] text-xs" style={{ color: 'var(--mid-gray)' }} aria-live="polite">
+              {sortedDays.length > 0 ? (
+                <>
+                  <strong style={{ color: 'var(--charcoal)' }}>{sortedDays.map(d => DAY_SHORT[d]).join(', ')}</strong>
+                  {' · '}{formatTime(startTime)} – {formatTime(endTime)}
+                  {' · '}<span className="tabular-nums">{perWeek} slots a week</span>
+                </>
+              ) : 'No days picked yet.'}
+            </p>
+            {dirty && config && (
+              <span className="rounded-full px-2 py-0.5 text-[10.5px] font-semibold" style={{ background: '#FEF6E7', color: '#8A5A00', border: '1px solid #F5D9A8' }}>
+                Unsaved changes
+              </span>
+            )}
+            <button type="button" onClick={saveConfig} disabled={saving}
+              className={BTN_PRIMARY} style={{ background: 'var(--teal)' }}>
+              {saving ? <><Loader2 size={14} className="animate-spin" aria-hidden /> Saving…</> : 'Save schedule'}
+            </button>
+          </div>
         </div>
-      )}
+        )
+      })()}
 
       {/* No config yet */}
       {showBody && !config && !configOpen && (
