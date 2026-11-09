@@ -10,6 +10,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { getAuth } from '@/lib/session'
 import TemplatesPanel from '@/components/TemplatesPanel'
+import { PageHeader, PAGE } from '@/components/hub/ui'
 
 export default function TemplatesStandalonePage() {
   const router = useRouter()
@@ -29,12 +30,12 @@ export default function TemplatesStandalonePage() {
   if (!ready) return null
 
   return (
-    <div className="max-w-5xl mx-auto animate-fade-up space-y-6">
-      <div className="card-static">
-        <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)] mb-1" style={{ fontFamily: 'var(--font-display)' }}>Lesson / activity templates</div>
-        <h1 className="text-2xl font-bold text-[color:var(--deep-teal)]" style={{ fontFamily: 'var(--font-display)' }}>Templates</h1>
-        <p className="text-sm text-[color:var(--mid-gray)]">Reusable scaffolds teachers can clone when planning new classes.</p>
-      </div>
+    <div className={`${PAGE} animate-fade-up`}>
+      <PageHeader
+        eyebrow="Lesson / activity templates"
+        title="Templates"
+        description="Reusable scaffolds teachers can clone when planning new classes."
+      />
       <TemplatesPanel viewer={{ role: 'ADMIN', email }} />
     </div>
   )
