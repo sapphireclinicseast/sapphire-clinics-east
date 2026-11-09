@@ -815,7 +815,8 @@ function PettyCashInner() {
       setShowReimbModal(false)
       setRfpMode(null)
       setRfpBranch('')
-      await loadEntries(branch)
+      // The RFP list names the "Already on …" chips, so it must know the new one.
+      await Promise.all([loadEntries(branch), loadReimbursements(branch)])
       alert(`RFP ${refNumber} created — find it under Expenses → RFP (all RFPs are now consolidated into one consecutive list).`)
     } catch { alert('Failed to generate reimbursement') }
     setGenerating(false)
@@ -1060,22 +1061,58 @@ function PettyCashInner() {
   // matching the chosen kind's validity (and not already in an RFP).
   const rfpValidity = rfpMode === 'VALID' ? 'Valid' : rfpMode === 'INVALID' ? 'Invalid' : null
   const isCeo = branch === 'CEO'
+  // Why a row cannot be ticked, said on the row and in the banner. A CEO row
+  // already on the chosen branch's pending RFP used to look exactly like a fresh
+  // one — same colour, a disabled box, no reason — so "I can't RFP these" read
+  // as a bug when they were simply filed already.
   // CEO: an entry is selectable for the chosen RFP branch if it has a nonzero
   // allocation to that branch and that branch portion hasn't been RFP'd yet — so
   // a shared entry can be ticked once per branch.
-  const isSelectable = (e: Entry) => {
+  const rfpRefById = new Map(reimbursements.map(r => [r.id, r.refNumber]))
+  const branchLabel = (v: string) => ALLOC_BRANCHES.find(b => b.value === v)?.label || v
+  type TickBlock = { kind: 'mode' | 'onRfp' | 'title' | 'validity' | 'audit' | 'branch' | 'share'; text: string; ref?: string }
+  const onRfp = (rfpId: string, forBranch?: string): TickBlock => {
+    const ref = rfpRefById.get(rfpId)
+    return { kind: 'onRfp', ref, text: `Already on ${ref || 'an RFP'}${forBranch ? ` for ${branchLabel(forBranch)}` : ''}` }
+  }
+  const tickBlock = (e: Entry): TickBlock | null => {
+    if (rfpValidity == null) return e.reimbursementId ? onRfp(e.reimbursementId) : { kind: 'mode', text: 'Click RFP (Valid) or RFP (Invalid) first' }
+    if (!isCeo && e.reimbursementId) return onRfp(e.reimbursementId)
+    if (isCeo && rfpBranch && e.rfpBranchMap?.[rfpBranch]) return onRfp(e.rfpBranchMap[rfpBranch], rfpBranch)
     // A row without an Account Title cannot be tagged into an RFP — the reports
     // drop untitled rows entirely, so tagging one buries the expense.
-    if (!(e.accountTitle || '').trim()) return false
-    if (!e.audited || rfpValidity == null || e.validity !== rfpValidity) return false
+    if (!(e.accountTitle || '').trim()) return { kind: 'title', text: 'Set the Account Title first' }
+    if (e.validity !== rfpValidity) return { kind: 'validity', text: `Only ${rfpValidity.toLowerCase()} entries can be ticked` }
+    if (!e.audited) return { kind: 'audit', text: 'Entry must be Audited = Yes first' }
     if (isCeo) {
-      if (!rfpBranch) return false
+      if (!rfpBranch) return { kind: 'branch', text: 'Choose the branch for this RFP first' }
       const amt = allocOf(e, rfpBranch)
-      return !!amt && amt !== 0 && !(e.rfpBranchMap && e.rfpBranchMap[rfpBranch])
+      if (!amt) return { kind: 'share', text: `No ${branchLabel(rfpBranch)} share on this entry` }
     }
-    return !e.reimbursementId
+    return null
   }
+  const isSelectable = (e: Entry) => rfpValidity != null && tickBlock(e) === null
   const selectableIds = displayed.filter(isSelectable).map(e => e.id)
+  // Banner breakdown of the rows that can't be ticked, by reason.
+  const tickSummary = (() => {
+    if (rfpValidity == null) return ''
+    const n: Record<string, number> = {}
+    const refs = new Set<string>()
+    for (const e of displayed) {
+      const b = tickBlock(e)
+      if (!b) continue
+      n[b.kind] = (n[b.kind] || 0) + 1
+      if (b.kind === 'onRfp') refs.add(b.ref || '')
+    }
+    const bl = isCeo && rfpBranch ? branchLabel(rfpBranch) : ''
+    const parts: string[] = []
+    if (n.onRfp) parts.push(`${n.onRfp} already on ${refs.size === 1 && !refs.has('') ? [...refs][0] : `an RFP${bl ? ` for ${bl}` : ''}`}`)
+    if (n.share) parts.push(`${n.share} with no ${bl} share`)
+    if (n.audit) parts.push(`${n.audit} not audited`)
+    if (n.validity) parts.push(`${n.validity} not ${rfpValidity.toLowerCase()}`)
+    if (n.title) parts.push(`${n.title} without an account title`)
+    return parts.join(', ')
+  })()
   const allSelected = selectableIds.length > 0 && selectableIds.every(id => selected.has(id))
   const toggleAll = () => setSelected(allSelected ? new Set() : new Set(selectableIds))
   const toggleOne = (id: string) => setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
@@ -1247,7 +1284,8 @@ function PettyCashInner() {
                   </p>
                   <p className="text-xs" style={{ color: '#b45309' }}>
                     Only audited {rfpMode === 'VALID' ? 'valid' : 'invalid'} entries with an account title can be ticked
-                    {isCeo ? ', and only those with a share for the branch you choose' : ''}. {selectableIds.length.toLocaleString()} of the {displayed.length.toLocaleString()} shown can be ticked.
+                    {isCeo ? ', and only those with a share for the branch you choose' : ''}. {selectableIds.length.toLocaleString()} of the {displayed.length.toLocaleString()} shown can be ticked{tickSummary ? ` — ${tickSummary}` : ''}.
+                    {isCeo && !rfpBranch ? <strong> Choose a branch to see which can be ticked.</strong> : null}
                   </p>
                 </div>
                 {isCeo && (
@@ -1393,6 +1431,7 @@ function PettyCashInner() {
                     const lk = locked(e)
                     const ve = vatEditable(e)
                     const tone = rowTone(e)
+                    const block = tickBlock(e)
                     return (
                       // Colour by workflow state — identical across all branches (CEO included).
                       // "In an RFP" and "For Replenishment" are the same state (awaiting the
@@ -1401,10 +1440,10 @@ function PettyCashInner() {
                       <tr key={e.id} style={{ background: tone.bg }}>
                         <td className="border-b text-center align-top pt-2"
                           style={{ borderColor: 'var(--hr-line)', position: 'sticky', left: 0, zIndex: 2, background: 'inherit', boxShadow: `inset 4px 0 0 ${tone.line}` }}
-                          title={tone.label}>
+                          title={rfpMode !== null && block ? block.text : tone.label}>
                           <input type="checkbox" className="accent-[var(--teal)]" checked={selected.has(e.id)} disabled={!canWrite || !isSelectable(e)}
                             onChange={() => toggleOne(e.id)}
-                            title={e.reimbursementId ? 'Locked (in an RFP)' : rfpMode === null ? 'Click RFP (Valid) or RFP (Invalid) first' : e.validity !== rfpValidity ? `Only ${rfpMode === 'VALID' ? 'valid' : 'invalid'} entries can be selected` : !e.audited ? 'Entry must be Audited = Yes first' : ''} />
+                            title={block?.text || ''} />
                         </td>
                         <td className={`${tdCls} sm:sticky`} style={{ borderColor: 'var(--hr-line)', left: stickyRefLeft, zIndex: 2, background: 'inherit', boxShadow: '4px 0 6px -4px rgba(35,48,56,0.14)' }}>
                           <div className="flex items-center whitespace-nowrap">
@@ -1423,6 +1462,12 @@ function PettyCashInner() {
                               </select>
                             )}
                           </div>
+                          {rfpMode !== null && block?.kind === 'onRfp' && (
+                            <div className="mt-0.5 inline-flex max-w-full items-center rounded-full px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap overflow-hidden text-ellipsis"
+                              style={{ background: '#fef3c7', color: '#92400e' }} title={block.text}>
+                              On {block.ref || 'an RFP'}
+                            </div>
+                          )}
                         </td>
                         {show('requestor') && (
                           <td className={tdCls} style={{ borderColor: 'var(--hr-line)' }}>
