@@ -7,6 +7,8 @@ import { Landmark, Plus, Loader2, X, Eye, Trash2, Pencil, RotateCcw } from 'luci
 import { ScanUpload } from '@/components/ScanUpload'
 import { useResizableColumns, ResizableColgroup, ColResizeHandle } from '@/components/useResizableColumns'
 import StaffLoansTab from './StaffLoansTab'
+import { HR_PAGE_CLASS, HR_PAGE_STYLE, HrShimmerStyle, StatCard, hrBtn } from '@/components/ui/hr-look'
+import { TH, ShimmerRows } from './hr-bits'
 
 const ALLOWED = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 const peso = (n: number) => '₱' + n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -76,39 +78,70 @@ export default function LoansAndAdvancesPage() {
   const paidAdvCount = rows.filter(isAdvPaid).length
   const visibleAdv = showPaidAdv ? rows : rows.filter(r => !isAdvPaid(r))
 
+  // Cards describe the live book (open advances); fully paid ones are counted separately.
+  const openAdv = rows.filter(r => !isAdvPaid(r))
+  const advBalance = (r: AdvanceRow) => Math.max(0, Math.round((r.principalAmount - (r.paidPrincipal || 0)) * 100) / 100)
+  const openPrincipal = openAdv.reduce((s, r) => s + r.principalAmount, 0)
+  const openRepaid = openAdv.reduce((s, r) => s + (r.paidPrincipal || 0), 0)
+  const openBalance = openAdv.reduce((s, r) => s + advBalance(r), 0)
+
   return (
-    <div className="p-6 max-w-screen-2xl mx-auto space-y-5">
-      <div className="flex items-center gap-3">
-        <Landmark size={24} className="text-teal-600" />
-        <h1 className="text-2xl font-semibold text-gray-900">Loans &amp; Advances</h1>
+    <div className={HR_PAGE_CLASS} style={HR_PAGE_STYLE}>
+      <HrShimmerStyle />
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold leading-tight flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+            <Landmark size={22} style={{ color: 'var(--teal)' }} /> Loans &amp; Advances
+          </h1>
+          <p className="mt-1 text-[13px] max-w-3xl" style={{ color: 'var(--mid-gray)' }}>
+            Money lent to the company (shareholder advances, bank loans, bonds, credit lines), staff loans repaid through payroll, and every scheduled repayment.
+          </p>
+        </div>
       </div>
 
       <NearDuePaymentsPopup onGoToHistory={() => setTab('history')} />
 
-      <div className="flex items-center gap-1 border-b" style={{ borderColor: 'var(--light-gray)' }}>
-        {([['advances', 'Advances'], ['loans', 'Loans'], ['creditline', 'Credit Line'], ['staff', 'Staff Loans & Perks'], ['history', 'Payment History']] as const).map(([v, label]) => (
-          <button key={v} onClick={() => setTab(v)} className="px-4 py-2.5 text-sm font-medium border-b-2 -mb-px"
-            style={{ borderColor: tab === v ? 'var(--teal)' : 'transparent', color: tab === v ? 'var(--teal)' : 'var(--mid-gray)' }}>{label}</button>
-        ))}
+      <div className="border-b-2" style={{ borderColor: 'var(--light-gray)' }}>
+        <div className="flex items-end -mb-[2px] max-w-full overflow-x-auto" role="tablist">
+          {([['advances', 'Advances'], ['loans', 'Loans'], ['creditline', 'Credit Line'], ['staff', 'Staff Loans & Perks'], ['history', 'Payment History']] as const).map(([v, label]) => (
+            <button key={v} onClick={() => setTab(v)} role="tab" aria-selected={tab === v}
+              className="px-4 py-2.5 text-[13px] font-semibold border-b-2 whitespace-nowrap transition-colors hover:text-[var(--teal)]"
+              style={{ fontFamily: 'var(--font-display)', borderColor: tab === v ? 'var(--teal)' : 'transparent', color: tab === v ? 'var(--teal)' : 'var(--mid-gray)' }}>{label}</button>
+          ))}
+        </div>
       </div>
 
       {tab === 'advances' && (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between gap-3">
-            <label className="flex items-center gap-2 px-3 py-2 rounded-xl border text-sm cursor-pointer select-none whitespace-nowrap" style={{ borderColor: 'var(--light-gray)', background: 'white', color: 'var(--mid-gray)' }} title="Fully paid advances are hidden by default">
-              <input type="checkbox" checked={showPaidAdv} onChange={e => setShowPaidAdv(e.target.checked)} className="w-4 h-4 accent-teal-600" />
-              Show fully paid{paidAdvCount > 0 ? ` (${paidAdvCount})` : ''}
-            </label>
-            <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}><Plus size={15} /> Add Advance</button>
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <StatCard compact loading={loading} label="Outstanding balance" value={peso(openBalance)}
+              sub={`${openAdv.length} open advance${openAdv.length === 1 ? '' : 's'}`} tone={openAdv.length ? 'amber' : 'zero'} />
+            <StatCard compact loading={loading} label="Principal (open)" value={peso(openPrincipal)}
+              sub="received on the open advances" tone="zero" accent={openAdv.length ? { line: '#4A8073' } : undefined} />
+            <StatCard compact loading={loading} label="Repaid so far" value={peso(openRepaid)}
+              sub="principal paid back on them" tone={openRepaid > 0 ? 'green' : 'zero'} />
+            <StatCard compact loading={loading} label="Fully paid" value={String(paidAdvCount)}
+              sub={showPaidAdv ? 'shown in the list · click to hide' : 'hidden · click to show'} tone={paidAdvCount ? 'blue' : 'zero'}
+              active={showPaidAdv} activeSub="shown in the list · click to hide" onClick={() => setShowPaidAdv(v => !v)} />
           </div>
-          <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+          <div className="rounded-lg border bg-white overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+            <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-b" style={{ background: '#fcfdfa', borderColor: 'var(--light-gray)' }}>
+              <span className="text-[13px] font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>Advances</span>
+              <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>{visibleAdv.length} of {rows.length}</span>
+              <label className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border bg-white text-xs font-semibold cursor-pointer select-none whitespace-nowrap" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }} title="Fully paid advances are hidden by default">
+                <input type="checkbox" checked={showPaidAdv} onChange={e => setShowPaidAdv(e.target.checked)} className="w-3.5 h-3.5 accent-[#4A8073]" />
+                Show fully paid{paidAdvCount > 0 ? ` (${paidAdvCount})` : ''}
+              </label>
+              <button onClick={() => setShowAdd(true)} className={`${hrBtn.primary} ml-auto`} style={{ background: 'var(--teal)' }}><Plus size={15} /> Add advance</button>
+            </div>
+          <div className="overflow-auto">
             <table ref={advTableRef} className="w-full text-xs" style={advRz.tableStyle}>
               <ResizableColgroup rz={advRz} />
-              <thead><tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
-                {['SH #', 'Name', 'Date', 'Type', 'Principal', 'Paid so far', 'Balance', 'Branch', 'Interest', 'Schedule', 'Bank Debited', 'Proofs', ''].map((h, i) => <th key={h} className="px-3 py-2.5 font-semibold whitespace-nowrap relative">{h}<ColResizeHandle rz={advRz} index={i} /></th>)}
+              <thead><tr className="text-left" style={{ background: 'var(--hr-head)' }}>
+                {['SH #', 'Name', 'Date', 'Type', 'Principal', 'Paid so far', 'Balance', 'Branch', 'Interest', 'Schedule', 'Bank Debited', 'Proofs', ''].map((h, i) => <th key={h} className={`${TH} relative ${['Principal', 'Paid so far', 'Balance', 'Interest'].includes(h) ? '!text-right' : ''}`}>{h}<ColResizeHandle rz={advRz} index={i} /></th>)}
               </tr></thead>
               <tbody>
-                {loading ? <tr><td colSpan={13} className="text-center py-10 text-gray-400"><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
+                {loading ? [0, 1, 2].map(i => <tr key={i} className="border-t" style={{ borderColor: 'var(--hr-line)' }}><td colSpan={13} className="px-4 py-2.5"><div className="h-5 rounded hr-shimmer" /></td></tr>)
                 : visibleAdv.map(r => {
                   const sh = shareholders.find(s => s.id === r.shareholderId)
                   // Running balance: principal repaid so far vs what is still owed. Many of these
@@ -120,45 +153,47 @@ export default function LoansAndAdvancesPage() {
                   const termN = r.termMonths && r.termMonths > 0 ? Math.round(r.termMonths) : null
                   const paidWhen = r.lastPaidDate ? String(r.lastPaidDate).slice(0, 10) : null
                   return (
-                    <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
-                      <td className="px-3 py-2 font-mono">{sh?.shNumber || '—'}</td>
-                      <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{r.name}{isAdvPaid(r) && <span className="ml-1.5 inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold whitespace-nowrap" style={{ background: '#dcfce7', color: '#166534' }}>Fully paid ✓</span>}</td>
-                      <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{String(r.dateAcquired).slice(0, 10)}</td>
+                    <tr key={r.id} className="border-t transition-colors hover:bg-[#fafcf6]" style={{ borderColor: 'var(--hr-line)' }}>
+                      <td className="px-3 py-2 font-mono whitespace-nowrap" style={{ boxShadow: `inset 4px 0 0 ${isAdvPaid(r) ? '#059669' : '#4A8073'}` }}>{sh?.shNumber || '—'}</td>
+                      <td className="px-3 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>{r.name}{isAdvPaid(r) && <span className="ml-1.5 inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap" style={{ background: '#dcfce7', color: '#166534' }}>Fully paid ✓</span>}</td>
+                      <td className="px-3 py-2 font-mono whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{String(r.dateAcquired).slice(0, 10)}</td>
                       <td className="px-3 py-2">{r.advanceType === 'KIND' ? `Kind${r.kindType ? ` · ${r.kindType}` : ''}` : 'Cash'}</td>
-                      <td className="px-3 py-2 text-right font-semibold">{peso(r.principalAmount)}</td>
+                      <td className="px-3 py-2 text-right font-mono font-semibold whitespace-nowrap">{peso(r.principalAmount)}</td>
                       <td className="px-3 py-2 text-right whitespace-nowrap" title={paidWhen ? `Last payment ${paidWhen}${r.paidInterest ? ` · interest paid so far ${peso(r.paidInterest)}` : ''}` : 'No payments recorded yet'}>
                         {paidP > 0 ? <>
-                          <div className="font-semibold" style={{ color: '#166534' }}>{peso(paidP)}</div>
+                          <div className="font-mono font-semibold" style={{ color: '#166534' }}>{peso(paidP)}</div>
                           <div className="text-[10px]" style={{ color: 'var(--mid-gray)' }}>{r.paidCount || 0}{termN ? ` of ${termN}` : ''} payment{(r.paidCount || 0) === 1 ? '' : 's'}{paidWhen ? ` · last ${paidWhen}` : ''}</div>
-                        </> : <span style={{ color: 'var(--mid-gray)' }}>—</span>}
+                        </> : <span style={{ color: 'var(--hr-faint)' }}>—</span>}
                       </td>
                       <td className="px-3 py-2 text-right whitespace-nowrap" title={balance > 0 && balance < PAID_TOLERANCE ? `Settled — ${peso(balance)} is centavo rounding across the schedule, not a balance` : `${pct}% of principal repaid`}>
-                        <div className="font-semibold" style={{ color: balance >= PAID_TOLERANCE ? 'var(--charcoal)' : '#166534' }}>{balance >= PAID_TOLERANCE ? peso(balance) : 'Settled'}</div>
-                        <div className="mt-1 h-1.5 w-24 ml-auto rounded-full overflow-hidden" style={{ background: 'var(--light-gray)' }}>
-                          <div className="h-full rounded-full" style={{ width: `${pct}%`, background: pct >= 100 ? '#16a34a' : 'var(--teal)' }} />
+                        <div className="font-mono font-semibold" style={{ color: balance >= PAID_TOLERANCE ? 'var(--charcoal)' : '#166534' }}>{balance >= PAID_TOLERANCE ? peso(balance) : 'Settled'}</div>
+                        <div className="mt-1 h-1.5 w-24 ml-auto rounded-full overflow-hidden" style={{ background: 'var(--hr-line)' }}>
+                          <div className="h-full rounded-full" style={{ width: `${pct}%`, background: pct >= 100 ? '#059669' : 'var(--teal)' }} />
                         </div>
                       </td>
                       <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{(r.branchAllocations || []).length
                         ? (r.branchAllocations || []).map(a => (r.branchAllocations || []).length === 1 ? allocLabel(a.branch) : `${allocLabel(a.branch)} ${peso(a.amount)}`).join(' · ')
                         : 'Company-wide'}</td>
-                      <td className="px-3 py-2 text-right">{r.hasInterest ? `${(r.computedAnnualPct || 0).toFixed(2)}% · ${peso(r.totalInterest || 0)}` : '—'}</td>
+                      <td className="px-3 py-2 text-right font-mono whitespace-nowrap">{r.hasInterest ? `${(r.computedAnnualPct || 0).toFixed(2)}% · ${peso(r.totalInterest || 0)}` : <span style={{ color: 'var(--hr-faint)' }}>—</span>}</td>
                       <td className="px-3 py-2">{r.payoutSchedule ? `${r.payoutSchedule.toLowerCase()}${r.payoutStartMonth ? ` from ${MONTHS[r.payoutStartMonth - 1]} ${r.payoutStartYear}` : ''}` : '—'}</td>
                       <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{acctLabel(r.bankAccountId)}</td>
                       <td className="px-3 py-2"><span className="inline-flex gap-1.5">{(r.proofOfDepositUrls || []).map((u) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--teal)' }}><Eye size={12} /></a>)}</span></td>
                       <td className="px-3 py-2 text-right whitespace-nowrap">
-                        <button onClick={() => setEdit(r)} className="p-1 rounded hover:bg-blue-50"><Pencil size={13} className="text-blue-500" /></button>
+                        <button onClick={() => setEdit(r)} title="Edit" aria-label={`Edit advance from ${r.name}`} className="p-1.5 rounded hover:bg-[var(--pale-teal)]"><Pencil size={13} style={{ color: 'var(--teal)' }} /></button>
                         {r.bankAccountId && (
                           <button onClick={() => unrelease(r)} title="Undo the release — reverses the disbursement entry only; the advance and its payments stay"
-                            className="p-1 rounded hover:bg-red-50"><RotateCcw size={13} className="text-red-400" /></button>
+                            className="p-1.5 rounded hover:bg-red-50"><RotateCcw size={13} className="text-red-400" /></button>
                         )}
-                        <button onClick={() => del(r)} className="p-1 rounded hover:bg-red-50"><Trash2 size={13} className="text-red-400" /></button>
+                        <button onClick={() => del(r)} title="Delete" aria-label={`Delete advance from ${r.name}`} className="p-1.5 rounded hover:bg-red-50"><Trash2 size={13} className="text-red-400" /></button>
                       </td>
                     </tr>
                   )
                 })}
-                {!loading && rows.length === 0 && <tr><td colSpan={10} className="text-center py-10 text-gray-400">No advances yet.</td></tr>}
+                {!loading && rows.length === 0 && <tr><td colSpan={13} className="text-center py-12 text-[13px]" style={{ color: 'var(--mid-gray)' }}>No advances yet.</td></tr>}
+                {!loading && rows.length > 0 && visibleAdv.length === 0 && <tr><td colSpan={13} className="text-center py-12 text-[13px]" style={{ color: 'var(--mid-gray)' }}>All {rows.length} advances are fully paid — tick &ldquo;Show fully paid&rdquo; to see them.</td></tr>}
               </tbody>
             </table>
+          </div>
           </div>
         </div>
       )}
@@ -273,7 +308,7 @@ function AdvanceModal({ row, shareholders, banks, accts, onClose, onSaved }: { r
   const bc = { borderColor: 'var(--light-gray)' }
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 overflow-y-auto" onClick={onClose}>
-      <div className="bg-white rounded-2xl p-6 w-full max-w-3xl my-8" onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-xl border shadow-xl p-6 w-full max-w-3xl my-8" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4"><h2 className="text-lg font-bold text-gray-900">{row ? 'Edit Advance' : 'Add Advance'}</h2><button onClick={onClose}><X size={18} className="text-gray-500" /></button></div>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           <div><label className={lbl} style={{ color: 'var(--mid-gray)' }}>Shareholder</label>
@@ -478,40 +513,63 @@ function LoansTab({ shareholders, banks, accts }: { shareholders: SH[]; banks: B
   }
   const acctLabel = (id: string | null) => { const a = accts.find(x => x.id === id) || banks.find(x => x.id === id); return a ? `${a.accountNumber} ${a.accountTitle}` : '—' }
   const entityLabel = (r: LoanRow) => r.loanEntity === 'SHAREHOLDER' ? 'Shareholder' : r.loanEntity === 'BANK' ? 'Bank' : r.loanEntity === 'INDIVIDUAL' ? 'Individual' : 'Other'
+  // Cards describe the open loans; fully repaid ones are counted separately.
+  const open = rows.filter(r => !isPaid(r))
+  const openPrincipal = open.reduce((s, r) => s + r.principalAmount, 0)
+  const openRepaid = open.reduce((s, r) => s + (r.paidPrincipal || 0), 0)
+  const openBalance = open.reduce((s, r) => s + Math.max(0, Math.round((r.principalAmount - (r.paidPrincipal || 0)) * 100) / 100), 0)
+  const bonds = open.filter(r => r.loanType === 'CORPORATE_BOND').length
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between gap-3">
-        <label className="flex items-center gap-2 px-3 py-2 rounded-xl border text-sm cursor-pointer select-none whitespace-nowrap" style={{ borderColor: 'var(--light-gray)', background: 'white', color: 'var(--mid-gray)' }} title="Fully repaid loans are hidden by default">
-          <input type="checkbox" checked={showPaid} onChange={e => setShowPaid(e.target.checked)} className="w-4 h-4 accent-teal-600" />
-          Show fully paid{paidCount > 0 ? ` (${paidCount})` : ''}
-        </label>
-        <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}><Plus size={15} /> Add Loan</button>
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatCard compact loading={loading} label="Outstanding balance" value={peso(openBalance)}
+          sub={`${open.length} open loan${open.length === 1 ? '' : 's'}${bonds ? ` · ${bonds} bond${bonds === 1 ? '' : 's'}` : ''}`} tone={open.length ? 'amber' : 'zero'} />
+        <StatCard compact loading={loading} label="Principal (open)" value={peso(openPrincipal)}
+          sub="borrowed on the open loans" tone="zero" accent={open.length ? { line: '#4A8073' } : undefined} />
+        <StatCard compact loading={loading} label="Repaid so far" value={peso(openRepaid)}
+          sub="principal paid back on them" tone={openRepaid > 0 ? 'green' : 'zero'} />
+        <StatCard compact loading={loading} label="Fully paid" value={String(paidCount)}
+          sub={showPaid ? 'shown in the list · click to hide' : 'hidden · click to show'} tone={paidCount ? 'blue' : 'zero'}
+          active={showPaid} activeSub="shown in the list · click to hide" onClick={() => setShowPaid(v => !v)} />
       </div>
-      <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
-        <table className="w-full text-xs"><thead><tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
-          {['Entity', 'Name', 'Date', 'Type', 'Branches', 'Principal', 'Interest / Coupon', 'Net Debit', 'Schedule', 'Bank', 'Agreement', ''].map(h => <th key={h} className="px-3 py-2.5 font-semibold whitespace-nowrap">{h}</th>)}
+      <div className="rounded-lg border bg-white overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+        <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-b" style={{ background: '#fcfdfa', borderColor: 'var(--light-gray)' }}>
+          <span className="text-[13px] font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>Loans</span>
+          <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>{visible.length} of {rows.length}</span>
+          <label className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border bg-white text-xs font-semibold cursor-pointer select-none whitespace-nowrap" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }} title="Fully repaid loans are hidden by default">
+            <input type="checkbox" checked={showPaid} onChange={e => setShowPaid(e.target.checked)} className="w-3.5 h-3.5 accent-[#4A8073]" />
+            Show fully paid{paidCount > 0 ? ` (${paidCount})` : ''}
+          </label>
+          <button onClick={() => setShowAdd(true)} className={`${hrBtn.primary} ml-auto`} style={{ background: 'var(--teal)' }}><Plus size={15} /> Add loan</button>
+        </div>
+      <div className="overflow-auto">
+        <table className="w-full text-xs"><thead><tr className="text-left" style={{ background: 'var(--hr-head)' }}>
+          {['Entity', 'Name', 'Date', 'Type', 'Branches', 'Principal', 'Interest / Coupon', 'Net Debit', 'Schedule', 'Bank', 'Agreement', ''].map(h => <th key={h} className={`${TH} ${['Principal', 'Interest / Coupon', 'Net Debit'].includes(h) ? '!text-right' : ''}`}>{h}</th>)}
         </tr></thead><tbody>
-          {loading ? <tr><td colSpan={12} className="text-center py-10 text-gray-400"><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
+          {loading ? <ShimmerRows cols={12} />
           : visible.map(r => (
-            <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
-              <td className="px-3 py-2">{entityLabel(r)}</td>
-              <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{r.name}{isPaid(r) && <span className="ml-1.5 inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold whitespace-nowrap" style={{ background: '#dcfce7', color: '#166534' }}>Fully paid ✓</span>}</td>
-              <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{String(r.dateAcquired).slice(0, 10)}</td>
+            <tr key={r.id} className="border-t transition-colors hover:bg-[#fafcf6]" style={{ borderColor: 'var(--hr-line)' }}>
+              <td className="px-3 py-2" style={{ boxShadow: `inset 4px 0 0 ${isPaid(r) ? '#059669' : r.loanType === 'CORPORATE_BOND' ? '#2563eb' : '#4A8073'}` }}>
+                <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>{entityLabel(r)}</span>
+              </td>
+              <td className="px-3 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>{r.name}{isPaid(r) && <span className="ml-1.5 inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap" style={{ background: '#dcfce7', color: '#166534' }}>Fully paid ✓</span>}</td>
+              <td className="px-3 py-2 font-mono whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{String(r.dateAcquired).slice(0, 10)}</td>
               <td className="px-3 py-2">{r.loanType === 'CORPORATE_BOND' ? 'Corp. Bond' : r.loanType === 'KIND' ? `Kind${r.kindType ? ` · ${r.kindType}` : ''}` : 'Cash'}</td>
               <td className="px-3 py-2 whitespace-nowrap">{(r.branchAllocations || []).length
                 ? (r.branchAllocations || []).map(a => (r.branchAllocations || []).length === 1 ? allocLabel(a.branch) : `${allocLabel(a.branch)} ${peso(a.amount)}`).join(' · ')
                 : <span style={{ color: 'var(--mid-gray)' }}>Company-wide</span>}</td>
-              <td className="px-3 py-2 text-right font-semibold">{peso(r.principalAmount)}</td>
-              <td className="px-3 py-2 text-right">{r.loanType === 'CORPORATE_BOND' ? (r.annualPct != null ? `${r.annualPct}% coupon` : '—') : r.hasInterest ? `${(r.computedAnnualPct || 0).toFixed(2)}% · ${peso(r.totalInterest || 0)}` : '—'}</td>
-              <td className="px-3 py-2 text-right">{r.netAmountToDebit != null ? peso(r.netAmountToDebit) : peso(r.principalAmount)}</td>
+              <td className="px-3 py-2 text-right font-mono font-semibold whitespace-nowrap">{peso(r.principalAmount)}</td>
+              <td className="px-3 py-2 text-right font-mono whitespace-nowrap">{r.loanType === 'CORPORATE_BOND' ? (r.annualPct != null ? `${r.annualPct}% coupon` : '—') : r.hasInterest ? `${(r.computedAnnualPct || 0).toFixed(2)}% · ${peso(r.totalInterest || 0)}` : '—'}</td>
+              <td className="px-3 py-2 text-right font-mono whitespace-nowrap">{r.netAmountToDebit != null ? peso(r.netAmountToDebit) : peso(r.principalAmount)}</td>
               <td className="px-3 py-2">{r.loanType === 'CORPORATE_BOND' ? (r.maturityDate ? `matures ${String(r.maturityDate).slice(0, 10)}` : '—') : r.payoutSchedule ? `${r.payoutSchedule.toLowerCase()}${r.payoutStartMonth ? ` from ${MONTHS[r.payoutStartMonth - 1]} ${r.payoutStartYear}` : ''}` : '—'}</td>
               <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{acctLabel(r.bankAccountId)}</td>
               <td className="px-3 py-2"><span className="inline-flex gap-1.5">{(r.loanAgreementUrls || []).map((u) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--teal)' }}><Eye size={12} /></a>)}{(!r.loanAgreementUrls || r.loanAgreementUrls.length === 0) && <span style={{ color: 'var(--mid-gray)' }}>—</span>}</span></td>
-              <td className="px-3 py-2 text-right whitespace-nowrap"><button onClick={() => setEdit(r)} className="p-1 rounded hover:bg-blue-50"><Pencil size={13} className="text-blue-500" /></button>{r.bankAccountId && <button onClick={() => unrelease(r)} title="Undo the release — reverses the disbursement entry only; the loan and its payments stay" className="p-1 rounded hover:bg-red-50"><RotateCcw size={13} className="text-red-400" /></button>}<button onClick={() => del(r)} className="p-1 rounded hover:bg-red-50"><Trash2 size={13} className="text-red-400" /></button></td>
+              <td className="px-3 py-2 text-right whitespace-nowrap"><button onClick={() => setEdit(r)} title="Edit" aria-label={`Edit loan from ${r.name}`} className="p-1.5 rounded hover:bg-[var(--pale-teal)]"><Pencil size={13} style={{ color: 'var(--teal)' }} /></button>{r.bankAccountId && <button onClick={() => unrelease(r)} title="Undo the release — reverses the disbursement entry only; the loan and its payments stay" className="p-1.5 rounded hover:bg-red-50"><RotateCcw size={13} className="text-red-400" /></button>}<button onClick={() => del(r)} title="Delete" aria-label={`Delete loan from ${r.name}`} className="p-1.5 rounded hover:bg-red-50"><Trash2 size={13} className="text-red-400" /></button></td>
             </tr>
           ))}
-          {!loading && visible.length === 0 && <tr><td colSpan={12} className="text-center py-10 text-gray-400">{rows.length === 0 ? 'No loans yet.' : `All ${rows.length} loan${rows.length === 1 ? ' is' : 's are'} fully paid — tick "Show fully paid" to see them.`}</td></tr>}
+          {!loading && visible.length === 0 && <tr><td colSpan={12} className="text-center py-12 text-[13px]" style={{ color: 'var(--mid-gray)' }}>{rows.length === 0 ? 'No loans yet.' : `All ${rows.length} loan${rows.length === 1 ? ' is' : 's are'} fully paid — tick "Show fully paid" to see them.`}</td></tr>}
         </tbody></table>
+      </div>
       </div>
       {(showAdd || edit) && <LoanModal row={edit} shareholders={shareholders} banks={banks} accts={accts} onClose={() => { setShowAdd(false); setEdit(null) }} onSaved={() => { setShowAdd(false); setEdit(null); load() }} />}
     </div>
@@ -581,7 +639,7 @@ function LoanModal({ row, shareholders, banks, accts, onClose, onSaved, preset }
   const mg = { color: 'var(--mid-gray)' }
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 overflow-y-auto" onClick={onClose}>
-      <div className="bg-white rounded-2xl p-6 w-full max-w-3xl my-8" onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-xl border shadow-xl p-6 w-full max-w-3xl my-8" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4"><h2 className="text-lg font-bold text-gray-900">{row ? 'Edit Loan' : 'Add Loan'}</h2><button onClick={onClose}><X size={18} className="text-gray-500" /></button></div>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           <div><label className={lbl} style={mg}>Loan Entity</label><select value={f.loanEntity} onChange={e => set('loanEntity', e.target.value)} className={inp} style={bc}><option value="SHAREHOLDER">Shareholder</option><option value="BANK">Bank</option><option value="INDIVIDUAL">Individual (non-shareholder)</option><option value="OTHER">Other Financial Institution</option></select></div>
@@ -759,20 +817,35 @@ function CreditLineTab({ shareholders, banks, accts }: { shareholders: SH[]; ban
     load()
   }
   const markUtilized = async (r: CreditLineRow) => { await fetch('/api/loans/credit-lines', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: r.id, entityName: r.entityName, amount: r.amount, interestPct: r.interestPct, utilized: true, remarks: r.remarks }) }); load() }
+  const available = rows.reduce((s, r) => s + r.amount, 0)
+  const drawn = rows.reduce((s, r) => s + r.drawnTotal, 0)
+  const remaining = rows.reduce((s, r) => s + Math.max(0, r.amount - r.drawnTotal), 0)
+  const settledN = rows.filter(r => r.settledAt).length
   return (
-    <div className="space-y-3">
-      <div className="flex justify-end"><button onClick={() => setAddOpen(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}><Plus size={15} /> Add Credit Line</button></div>
-      <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
-        <table className="w-full text-xs"><thead><tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
-          {['Entity', 'Available', 'Interest', 'Drawn', 'Remaining', 'Status', ''].map(h => <th key={h} className="px-3 py-2.5 font-semibold whitespace-nowrap">{h}</th>)}
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <StatCard compact loading={loading} label="Available" value={peso(available)}
+          sub={`${rows.length} credit line${rows.length === 1 ? '' : 's'}${settledN ? ` · ${settledN} settled` : ''}`} tone="zero" accent={rows.length ? { line: '#4A8073' } : undefined} />
+        <StatCard compact loading={loading} label="Drawn" value={peso(drawn)} sub="taken out as loans" tone={drawn > 0 ? 'amber' : 'zero'} />
+        <StatCard compact loading={loading} label="Remaining" value={peso(remaining)} sub="still available to draw" tone={remaining > 0 ? 'green' : 'zero'} />
+      </div>
+      <div className="rounded-lg border bg-white overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+        <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-b" style={{ background: '#fcfdfa', borderColor: 'var(--light-gray)' }}>
+          <span className="text-[13px] font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>Credit lines</span>
+          <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>{rows.length}</span>
+          <button onClick={() => setAddOpen(true)} className={`${hrBtn.primary} ml-auto`} style={{ background: 'var(--teal)' }}><Plus size={15} /> Add credit line</button>
+        </div>
+      <div className="overflow-auto">
+        <table className="w-full text-xs"><thead><tr className="text-left" style={{ background: 'var(--hr-head)' }}>
+          {['Entity', 'Available', 'Interest', 'Drawn', 'Remaining', 'Status', ''].map(h => <th key={h} className={`${TH} ${['Available', 'Interest', 'Drawn', 'Remaining'].includes(h) ? '!text-right' : ''}`}>{h}</th>)}
         </tr></thead><tbody>
-          {loading ? <tr><td colSpan={7} className="text-center py-10 text-gray-400"><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
+          {loading ? <ShimmerRows cols={7} rows={2} />
           : rows.map(r => (
-            <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
-              <td className="px-3 py-2" style={{ color: 'var(--charcoal)' }}>{r.entityName}</td>
-              <td className="px-3 py-2 text-right font-semibold">{peso(r.amount)}</td>
-              <td className="px-3 py-2 text-right">{r.interestPct != null ? `${r.interestPct}%` : '—'}</td>
-              <td className="px-3 py-2 text-right">
+            <tr key={r.id} className="border-t transition-colors hover:bg-[#fafcf6]" style={{ borderColor: 'var(--hr-line)' }}>
+              <td className="px-3 py-2 font-semibold" style={{ color: 'var(--charcoal)', boxShadow: `inset 4px 0 0 ${r.settledAt ? '#059669' : r.utilized || r.drawnTotal > 0 ? '#d97706' : '#94a3b8'}` }}>{r.entityName}</td>
+              <td className="px-3 py-2 text-right font-mono font-semibold whitespace-nowrap">{peso(r.amount)}</td>
+              <td className="px-3 py-2 text-right font-mono">{r.interestPct != null ? `${r.interestPct}%` : '—'}</td>
+              <td className="px-3 py-2 text-right font-mono whitespace-nowrap">
                 {peso(r.drawnTotal)}
                 {r.drawnLoans.length > 0 && (
                   <div className="mt-1 space-y-0.5">
@@ -788,8 +861,8 @@ function CreditLineTab({ shareholders, banks, accts }: { shareholders: SH[]; ban
                   </div>
                 )}
               </td>
-              <td className="px-3 py-2 text-right">{peso(Math.max(0, r.amount - r.drawnTotal))}</td>
-              <td className="px-3 py-2">{r.settledAt ? <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#dcfce7', color: '#166534' }}>Settled</span> : r.utilized || r.drawnTotal > 0 ? <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#ffedd5', color: '#9a3412' }}>Utilized</span> : <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#f1f5f9', color: '#475569' }}>Open</span>}</td>
+              <td className="px-3 py-2 text-right font-mono whitespace-nowrap">{peso(Math.max(0, r.amount - r.drawnTotal))}</td>
+              <td className="px-3 py-2">{r.settledAt ? <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: '#dcfce7', color: '#166534' }}>Settled</span> : r.utilized || r.drawnTotal > 0 ? <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: '#fef3c7', color: '#92400e' }}>Utilized</span> : <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: '#f1f5f9', color: '#475569' }}>Open</span>}</td>
               <td className="px-3 py-2 text-right whitespace-nowrap">
                 {!r.settledAt && <button onClick={() => setDrawFor(r)} className="text-[11px] px-2 py-1 rounded-lg font-semibold mr-1" style={{ background: 'var(--pale-teal)', color: 'var(--teal)' }}>Utilize</button>}
                 {!r.settledAt && r.drawnTotal > 0 && <button onClick={() => setSettleFor(r)} className="text-[11px] px-2 py-1 rounded-lg font-semibold mr-1" style={{ background: '#fef9c3', color: '#854d0e' }}>Paid full earlier</button>}
@@ -801,8 +874,9 @@ function CreditLineTab({ shareholders, banks, accts }: { shareholders: SH[]; ban
               </td>
             </tr>
           ))}
-          {!loading && rows.length === 0 && <tr><td colSpan={7} className="text-center py-10 text-gray-400">No credit lines yet.</td></tr>}
+          {!loading && rows.length === 0 && <tr><td colSpan={7} className="text-center py-12 text-[13px]" style={{ color: 'var(--mid-gray)' }}>No credit lines yet.</td></tr>}
         </tbody></table>
+      </div>
       </div>
       {addOpen && <CreditLineModal onClose={() => setAddOpen(false)} onSaved={() => { setAddOpen(false); load() }} />}
       {drawFor && <LoanModal row={null} shareholders={shareholders} banks={banks} accts={accts} preset={{ fromCreditLineId: drawFor.id, entityName: drawFor.entityName, annualPct: drawFor.interestPct }} onClose={() => setDrawFor(null)} onSaved={() => { const cl = drawFor; setDrawFor(null); if (cl) markUtilized(cl); else load() }} />}
@@ -828,7 +902,7 @@ function CreditLineModal({ onClose, onSaved }: { onClose: () => void; onSaved: (
   const inp = 'w-full px-3 py-2 rounded-xl border text-sm'; const lbl = 'block text-xs font-semibold mb-1'; const bc = { borderColor: 'var(--light-gray)' }; const mg = { color: 'var(--mid-gray)' }
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 overflow-y-auto" onClick={onClose}>
-      <div className="bg-white rounded-2xl p-6 w-full max-w-lg my-8" onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-xl border shadow-xl p-6 w-full max-w-lg my-8" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4"><h2 className="text-lg font-bold text-gray-900">Add Credit Line</h2><button onClick={onClose}><X size={18} className="text-gray-500" /></button></div>
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2"><label className={lbl} style={mg}>Credit Line Entity</label><input value={f.entityName} onChange={e => set('entityName', e.target.value)} className={inp} style={bc} /></div>
@@ -865,7 +939,7 @@ function SettleCreditLineModal({ line, banks, accts, onClose, onSaved }: { line:
   const inp = 'w-full px-3 py-2 rounded-xl border text-sm'; const lbl = 'block text-xs font-semibold mb-1'; const bc = { borderColor: 'var(--light-gray)' }; const mg = { color: 'var(--mid-gray)' }
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 overflow-y-auto" onClick={onClose}>
-      <div className="bg-white rounded-2xl p-6 w-full max-w-lg my-8" onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-xl border shadow-xl p-6 w-full max-w-lg my-8" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4"><h2 className="text-lg font-bold text-gray-900">Pay Full Earlier — {line.entityName}</h2><button onClick={onClose}><X size={18} className="text-gray-500" /></button></div>
         <div className="grid grid-cols-2 gap-3">
           <div><label className={lbl} style={mg}>Outstanding balance</label><input value={balance} onChange={e => setBalance(e.target.value)} inputMode="decimal" className={inp + ' font-mono'} style={bc} /></div>
@@ -921,14 +995,14 @@ function NearDuePaymentsPopup({ onGoToHistory }: { onGoToHistory: () => void }) 
   const now = Date.now()
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setDismissed(true)}>
-      <div className="bg-white rounded-2xl p-6 w-full max-w-lg" onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-xl border shadow-xl p-6 w-full max-w-lg" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-1">
-          <h2 className="text-lg font-bold flex items-center gap-2" style={{ color: '#9a3412' }}><Landmark size={18} /> Payments due soon</h2>
+          <h2 className="text-lg font-bold flex items-center gap-2" style={{ color: '#9a3412', fontFamily: 'var(--font-display)' }}><Landmark size={18} /> Payments due soon</h2>
           <button onClick={() => setDismissed(true)}><X size={18} className="text-gray-500" /></button>
         </div>
         <p className="text-xs mb-3" style={{ color: 'var(--mid-gray)' }}>{due.length} loan/advance payment{due.length === 1 ? ' is' : 's are'} due within 3 days or overdue. Please settle and record them.</p>
         <div className="rounded-xl border overflow-auto mb-4" style={{ borderColor: 'var(--light-gray)', maxHeight: 280 }}>
-          <table className="w-full text-xs"><thead><tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>{['Name', 'Type', 'Due', 'Amount'].map(h => <th key={h} className="px-3 py-2 font-semibold">{h}</th>)}</tr></thead><tbody>
+          <table className="w-full text-xs"><thead><tr className="text-left" style={{ background: 'var(--hr-head)' }}>{['Name', 'Type', 'Due', 'Amount'].map(h => <th key={h} className={`${TH} ${h === 'Amount' ? '!text-right' : ''}`}>{h}</th>)}</tr></thead><tbody>
             {due.map((r, i) => {
               const overdue = new Date(r.dueDate).getTime() < now
               return (
@@ -998,45 +1072,64 @@ function PaymentHistoryTab({ banks, accts }: { banks: Bank[]; accts: Acct[] }) {
     setSelected(s => { const n = new Set(s); const allOn = keys.every(k => n.has(k)); keys.forEach(k => allOn ? n.delete(k) : n.add(k)); return n })
   }
 
+  // Year totals for the cards: every scheduled payment in the year is either paid or still to pay.
+  const inYear = rows.filter(o => new Date(o.dueDate).getUTCFullYear() === year)
+  const paidY = inYear.filter(o => o.status === 'PAID')
+  const pendingY = inYear.filter(o => o.status !== 'PAID')
+  const overdueY = pendingY.filter(o => new Date(o.dueDate).getTime() < now)
+  const sumAmt = (list: PayRow[]) => list.reduce((s: number, o: PayRow) => s + Number(o.amount), 0)
+
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       <div className="flex items-center gap-2 flex-wrap">
-        <div className="flex gap-1">{(['advances', 'loans'] as const).map(v => <button key={v} onClick={() => setSub(v)} className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={sub === v ? { background: 'var(--teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)', border: '1px solid var(--light-gray)' }}>{v === 'advances' ? 'Advances' : 'Loans'}</button>)}</div>
+        <div className="inline-flex rounded-lg border p-0.5 bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+          {(['advances', 'loans'] as const).map(v => <button key={v} onClick={() => setSub(v)} aria-pressed={sub === v} className="h-7 px-3 rounded-md text-xs font-semibold transition-colors" style={sub === v ? { background: 'var(--teal)', color: '#fff' } : { color: 'var(--mid-gray)' }}>{v === 'advances' ? 'Advances' : 'Loans'}</button>)}
+        </div>
         <div className="flex items-center gap-1 ml-auto">
-          <button onClick={() => setYear(y => y - 1)} className="px-2 py-1 rounded-lg text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>◀</button>
-          <span className="px-2 text-sm font-bold" style={{ color: 'var(--charcoal)' }}>{year}</span>
-          <button onClick={() => setYear(y => y + 1)} className="px-2 py-1 rounded-lg text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>▶</button>
+          <button onClick={() => setYear(y => y - 1)} aria-label="Previous year" className={hrBtn.ghost} style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>◀</button>
+          <span className="px-2 text-sm font-bold font-mono" style={{ color: 'var(--charcoal)' }}>{year}</span>
+          <button onClick={() => setYear(y => y + 1)} aria-label="Next year" className={hrBtn.ghost} style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>▶</button>
         </div>
       </div>
 
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <StatCard compact loading={loading} label={`Scheduled in ${year}`} value={peso(sumAmt(inYear))}
+          sub={`${inYear.length} ${sub === 'advances' ? 'advance' : 'loan'} payment${inYear.length === 1 ? '' : 's'}`} tone="zero" accent={inYear.length ? { line: '#4A8073' } : undefined} />
+        <StatCard compact loading={loading} label="Paid" value={peso(sumAmt(paidY))}
+          sub={`${paidY.length} recorded`} tone={paidY.length ? 'green' : 'zero'} />
+        <StatCard compact loading={loading} label="Still to pay" value={peso(sumAmt(pendingY))}
+          sub={overdueY.length ? `${pendingY.length} pending · ${overdueY.length} overdue (${peso(sumAmt(overdueY))})` : `${pendingY.length} pending · none overdue`}
+          tone={overdueY.length ? 'red' : pendingY.length ? 'amber' : 'zero'} />
+      </div>
+
       {soon.length > 0 && (
-        <div className="rounded-xl border p-3 flex items-center justify-between gap-3" style={{ borderColor: '#fed7aa', background: '#fff7ed' }}>
+        <div className="rounded-lg border px-4 py-2.5 flex flex-wrap items-center justify-between gap-3" style={{ borderColor: '#fed7aa', borderLeft: '4px solid #d97706', background: '#fff7ed' }}>
           <div className="text-sm" style={{ color: '#9a3412' }}><strong>{soon.length} payment{soon.length === 1 ? '' : 's'} due soon.</strong> The nearest is <strong>{soon[0].name}</strong> on {String(soon[0].dueDate).slice(0, 10)} ({peso(soon[0].amount)}).</div>
-          <button onClick={() => setRecordFor(soon[0])} className="whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-semibold text-white" style={{ background: 'var(--teal)' }}>Record Payment</button>
+          <button onClick={() => setRecordFor(soon[0])} className={`${hrBtn.primary} whitespace-nowrap`} style={{ background: 'var(--teal)' }}>Record payment</button>
         </div>
       )}
 
       {selected.size > 0 && (
-        <div className="rounded-xl border p-3 flex items-center justify-between gap-3 sticky top-0 z-10" style={{ borderColor: 'var(--teal)', background: 'var(--pale-teal)' }}>
+        <div className="rounded-lg border px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 sticky top-0 z-10" style={{ borderColor: 'var(--teal)', background: 'var(--pale-teal)' }}>
           <div className="text-sm" style={{ color: 'var(--deep-teal)' }}><strong>{selectedOccs.length} payment{selectedOccs.length === 1 ? '' : 's'} selected</strong> · total <strong>{peso(selectedTotal)}</strong></div>
           <div className="flex gap-2">
-            <button onClick={() => setSelected(new Set())} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Clear</button>
-            <button onClick={() => setBatchOpen(true)} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white" style={{ background: 'var(--teal)' }}>Record {selectedOccs.length} selected payment{selectedOccs.length === 1 ? '' : 's'}</button>
+            <button onClick={() => setSelected(new Set())} className={hrBtn.ghost} style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Clear</button>
+            <button onClick={() => setBatchOpen(true)} className={hrBtn.primary} style={{ background: 'var(--teal)' }}>Record {selectedOccs.length} selected payment{selectedOccs.length === 1 ? '' : 's'}</button>
           </div>
         </div>
       )}
 
       <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Tick the amounts you&apos;ll include in a payment, then <strong>Record selected</strong>. Green = already paid. Amounts come from each {sub === 'advances' ? 'advance' : 'loan'}&apos;s payment schedule.</p>
 
-      <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
-        <table className="w-full text-xs" style={{ minWidth: '900px' }}><thead><tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
-          <th className="px-3 py-2.5 font-semibold whitespace-nowrap sticky left-0" style={{ background: 'var(--off-white)', minWidth: 180 }}>Payee</th>
-          {months.map(m => <th key={m} onClick={() => toggleColumn(m)} className="px-2 py-2.5 font-semibold text-right whitespace-nowrap cursor-pointer hover:underline" title="Select/deselect all pending in this month">{m}/{year}</th>)}
+      <div className="rounded-lg border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+        <table className="w-full text-xs" style={{ minWidth: '900px' }}><thead><tr className="text-left" style={{ background: 'var(--hr-head)' }}>
+          <th className={`${TH} sticky left-0`} style={{ background: 'var(--hr-head)', minWidth: 180 }}>Payee</th>
+          {months.map(m => <th key={m} onClick={() => toggleColumn(m)} className={`${TH} !px-2 !text-right cursor-pointer hover:underline`} title="Select/deselect all pending in this month">{m}/{year}</th>)}
         </tr></thead><tbody>
-          {loading ? <tr><td colSpan={13} className="text-center py-10 text-gray-400"><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
+          {loading ? <ShimmerRows cols={13} />
           : payees.map(p => (
-            <tr key={p.parentId} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
-              <td className="px-3 py-2 sticky left-0 bg-white" style={{ color: 'var(--charcoal)' }}>{p.name}</td>
+            <tr key={p.parentId} className="border-t" style={{ borderColor: 'var(--hr-line)' }}>
+              <td className="px-3 py-2 sticky left-0 bg-white font-semibold" style={{ color: 'var(--charcoal)' }}>{p.name}</td>
               {months.map(m => {
                 const o = p.cells[m]
                 if (!o) return <td key={m} className="px-2 py-2 text-right text-gray-300">·</td>
@@ -1065,10 +1158,10 @@ function PaymentHistoryTab({ banks, accts }: { banks: Bank[]; accts: Acct[] }) {
               })}
             </tr>
           ))}
-          {!loading && payees.length === 0 && <tr><td colSpan={13} className="text-center py-10 text-gray-400">No scheduled payments in {year}. Add a payment schedule on an {sub === 'advances' ? 'advance' : 'a loan'}, or change the year.</td></tr>}
+          {!loading && payees.length === 0 && <tr><td colSpan={13} className="text-center py-12 text-[13px]" style={{ color: 'var(--mid-gray)' }}>No scheduled payments in {year}. Add a payment schedule on an {sub === 'advances' ? 'advance' : 'a loan'}, or change the year.</td></tr>}
         </tbody>
-        {payees.length > 0 && <tfoot><tr className="border-t-2 font-bold" style={{ borderColor: 'var(--teal)', background: 'var(--off-white)' }}>
-          <td className="px-3 py-2 sticky left-0" style={{ background: 'var(--off-white)', color: 'var(--charcoal)' }}>TOTAL <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>({peso(grandTotal)})</span></td>
+        {payees.length > 0 && <tfoot><tr className="border-t-2 font-bold" style={{ borderColor: 'var(--light-gray)', background: 'var(--hr-head)' }}>
+          <td className="px-3 py-2 sticky left-0 text-[11px] uppercase tracking-[.4px]" style={{ background: 'var(--hr-head)', color: 'var(--mid-gray)' }}>TOTAL <span className="font-mono normal-case tracking-normal" style={{ color: 'var(--charcoal)' }}>({peso(grandTotal)})</span></td>
           {months.map(m => { const t = colTotal(m); return <td key={m} className="px-2 py-2 text-right font-mono" style={{ color: t > 0 ? 'var(--deep-teal)' : 'var(--light-gray)' }}>{t > 0 ? t.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '·'}</td> })}
         </tr></tfoot>}
         </table>
@@ -1131,7 +1224,7 @@ function UndoPaymentModal({ occ, onClose, onUndone }: { occ: PayRow; onClose: ()
   }
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-xl border shadow-xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-1">
           <h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>Undo this payment?</h2>
           <button onClick={onClose}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button>
@@ -1195,7 +1288,7 @@ function BatchRecordModal({ occs, banks, accts, onClose, onSaved }: { occs: PayR
   const inp = 'w-full px-3 py-2 rounded-xl border text-sm'; const lbl = 'block text-xs font-semibold mb-1'; const bc = { borderColor: 'var(--light-gray)' }; const mg = { color: 'var(--mid-gray)' }
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 overflow-y-auto" onClick={onClose}>
-      <div className="bg-white rounded-2xl p-6 w-full max-w-lg my-8" onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-xl border shadow-xl p-6 w-full max-w-lg my-8" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4"><h2 className="text-lg font-bold text-gray-900">Record {occs.length} Payment{occs.length === 1 ? '' : 's'}</h2><button onClick={onClose}><X size={18} className="text-gray-500" /></button></div>
         <div className="rounded-xl border overflow-auto mb-3" style={{ borderColor: 'var(--light-gray)', maxHeight: 200 }}>
           <table className="w-full text-xs"><tbody>
@@ -1250,7 +1343,7 @@ function RecordPaymentModal({ occ, banks, accts, onClose, onSaved }: { occ: PayR
   const inp = 'w-full px-3 py-2 rounded-xl border text-sm'; const lbl = 'block text-xs font-semibold mb-1'; const bc = { borderColor: 'var(--light-gray)' }; const mg = { color: 'var(--mid-gray)' }
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 overflow-y-auto" onClick={onClose}>
-      <div className="bg-white rounded-2xl p-6 w-full max-w-md my-8" onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-xl border shadow-xl p-6 w-full max-w-md my-8" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4"><h2 className="text-lg font-bold text-gray-900">Record {occ.kind === 'advance' ? 'Advance' : 'Loan'} Payment</h2><button onClick={onClose}><X size={18} className="text-gray-500" /></button></div>
         <p className="text-xs mb-3" style={mg}>{occ.name} · due {String(occ.dueDate).slice(0, 10)} · {peso(occ.amount)} <span className="font-mono">(principal {peso(occ.principalPortion)} + interest {peso(occ.interestPortion)})</span></p>
         <div className="grid grid-cols-2 gap-3">

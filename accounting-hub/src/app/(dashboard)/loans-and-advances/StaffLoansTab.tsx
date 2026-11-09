@@ -12,8 +12,10 @@
  * the payslips and the financial statements all say the same thing.
  */
 
-import { useCallback, useEffect, useState } from 'react'
+import { Fragment, useCallback, useEffect, useState } from 'react'
 import { Plus, Loader2, X, ChevronDown, ChevronRight, Pencil } from 'lucide-react'
+import { StatCard, hrBtn } from '@/components/ui/hr-look'
+import { TH, ShimmerRows } from './hr-bits'
 
 const peso = (n: number) => '₱' + Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
@@ -89,71 +91,68 @@ export default function StaffLoansTab() {
   const totPrincipal = visible.reduce((s, l) => s + Number(l.principal), 0)
   const totRepaid = visible.reduce((s, l) => s + l.repaid, 0)
 
+  const settledN = loans.filter(l => l.status !== 'ACTIVE').length
+  const statusPill = (st: string) => st === 'ACTIVE' ? { background: '#fef3c7', color: '#92400e' } : st === 'PAID' ? { background: '#dcfce7', color: '#166534' } : { background: '#f1f5f9', color: '#475569' }
+
   return (
-    <div>
-      <div className="flex items-center justify-between mb-3">
-        <div className="text-xs" style={{ color: 'var(--mid-gray)' }}>
-          Releases debit <b>1160 Due from Employees</b>; each cutoff&apos;s deduction credits it back and is suggested automatically when preparing that branch&apos;s payroll adjustments.
-        </div>
-        <div className="flex items-center gap-3">
-          <label className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--mid-gray)' }}>
-            <input type="checkbox" checked={showPaid} onChange={e => setShowPaid(e.target.checked)} /> show settled
+    <div className="space-y-4">
+      {/* Same three totals as before, over the rows shown (active only unless settled are shown) */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatCard compact loading={loading} label="Outstanding" value={peso(totOut)} sub="still to be deducted (active)" tone={totOut > 0.005 ? 'amber' : 'zero'} />
+        <StatCard compact loading={loading} label="Released" value={peso(totPrincipal)} sub={`${visible.length} loan${visible.length === 1 ? '' : 's'} / perk${visible.length === 1 ? '' : 's'} shown`} tone="zero" accent={visible.length ? { line: '#4A8073' } : undefined} />
+        <StatCard compact loading={loading} label="Repaid via payroll" value={peso(totRepaid)} sub="deducted at cutoffs" tone={totRepaid > 0 ? 'green' : 'zero'} />
+        <StatCard compact loading={loading} label="Settled" value={String(settledN)} sub={showPaid ? 'shown in the list · click to hide' : 'hidden · click to show'}
+          tone={settledN ? 'blue' : 'zero'} active={showPaid} activeSub="shown in the list · click to hide" onClick={() => setShowPaid(v => !v)} />
+      </div>
+
+      <div className="rounded-lg border bg-white overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+        <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-b" style={{ background: '#fcfdfa', borderColor: 'var(--light-gray)' }}>
+          <span className="text-xs min-w-0 flex-1 basis-64" style={{ color: 'var(--mid-gray)' }}>
+            Releases debit <b>1160 Due from Employees</b>; each cutoff&apos;s deduction credits it back and is suggested automatically when preparing that branch&apos;s payroll adjustments.
+          </span>
+          <label className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border bg-white text-xs font-semibold cursor-pointer select-none whitespace-nowrap" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+            <input type="checkbox" checked={showPaid} onChange={e => setShowPaid(e.target.checked)} className="w-3.5 h-3.5 accent-[#4A8073]" /> Show settled
           </label>
-          <button onClick={startNew} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium text-white" style={{ background: 'var(--teal)' }}>
-            <Plus size={13} /> New Staff Loan / Perk
+          <button onClick={startNew} className={hrBtn.primary} style={{ background: 'var(--teal)' }}>
+            <Plus size={14} /> New staff loan / perk
           </button>
         </div>
-      </div>
-
-      <div className="flex gap-3 mb-3">
-        {[['Outstanding', totOut], ['Released', totPrincipal], ['Repaid via payroll', totRepaid]].map(([label, v]) => (
-          <div key={label as string} className="rounded-xl border px-4 py-2.5" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
-            <div className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>{label as string}</div>
-            <div className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>{peso(v as number)}</div>
-          </div>
-        ))}
-      </div>
-
-      {loading ? <div className="py-10 text-center"><Loader2 className="animate-spin inline" size={18} /></div> : (
-        <div className="rounded-xl border overflow-x-auto" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+        <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
-              <tr style={{ borderBottom: '1px solid var(--light-gray)', background: 'var(--off-white)' }}>
+              <tr style={{ background: 'var(--hr-head)' }}>
                 {['', 'Staff', 'Branch', 'Category', 'Description', 'Released', 'Cheque', 'Principal', 'Per cutoff', 'Repaid', 'Balance', 'Status', ''].map((h, i) => (
-                  <th key={i} className={`px-3 py-2 font-semibold ${i >= 7 && i <= 10 ? 'text-right' : 'text-left'}`} style={{ color: 'var(--charcoal)' }}>{h}</th>
+                  <th key={i} className={`${TH} ${i >= 7 && i <= 10 ? '!text-right' : ''}`}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {visible.map(l => (
-                <>
-                  <tr key={l.id} style={{ borderBottom: '1px solid #f3f4f6' }} className="hover:bg-gray-50">
-                    <td className="px-2 py-1.5">
-                      <button onClick={() => setOpen(o => { const n = new Set(o); if (n.has(l.id)) n.delete(l.id); else n.add(l.id); return n })}>
+              {loading ? <ShimmerRows cols={13} /> : visible.map(l => (
+                <Fragment key={l.id}>
+                  <tr className="border-t transition-colors hover:bg-[#fafcf6]" style={{ borderColor: 'var(--hr-line)' }}>
+                    <td className="px-2 py-1.5" style={{ boxShadow: `inset 4px 0 0 ${l.status === 'ACTIVE' ? (l.balance > 0.005 ? '#d97706' : '#4A8073') : l.status === 'PAID' ? '#059669' : '#94a3b8'}` }}>
+                      <button onClick={() => setOpen(o => { const n = new Set(o); if (n.has(l.id)) n.delete(l.id); else n.add(l.id); return n })} aria-label={open.has(l.id) ? 'Hide deductions' : 'Show deductions'} className="p-1 rounded hover:bg-[var(--pale-teal)]">
                         {open.has(l.id) ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
                       </button>
                     </td>
-                    <td className="px-3 py-1.5 font-medium" style={{ color: 'var(--charcoal)' }}>{l.staffName}</td>
+                    <td className="px-3 py-1.5 font-semibold" style={{ color: 'var(--charcoal)' }}>{l.staffName}</td>
                     <td className="px-3 py-1.5">{branchLabel(l.branch)}</td>
                     <td className="px-3 py-1.5">{(CATEGORIES.find(c => c[0] === l.category)?.[1]) || l.category}</td>
                     <td className="px-3 py-1.5" style={{ maxWidth: 220 }} title={l.description || ''}>{(l.description || '').slice(0, 60)}</td>
-                    <td className="px-3 py-1.5 whitespace-nowrap">{l.dateReleased ? l.dateReleased.slice(0, 10) : '—'}</td>
+                    <td className="px-3 py-1.5 whitespace-nowrap font-mono" style={{ color: 'var(--mid-gray)' }}>{l.dateReleased ? l.dateReleased.slice(0, 10) : '—'}</td>
                     <td className="px-3 py-1.5">{l.chequeRef || '—'}</td>
-                    <td className="px-3 py-1.5 text-right tabular-nums">{peso(Number(l.principal))}</td>
-                    <td className="px-3 py-1.5 text-right tabular-nums">{Number(l.perCutoff) > 0 ? peso(Number(l.perCutoff)) : '—'}</td>
-                    <td className="px-3 py-1.5 text-right tabular-nums">{peso(l.repaid)}</td>
-                    <td className="px-3 py-1.5 text-right tabular-nums font-semibold" style={{ color: l.balance > 0.005 ? 'var(--charcoal)' : 'var(--teal)' }}>{peso(l.balance)}</td>
+                    <td className="px-3 py-1.5 text-right font-mono whitespace-nowrap">{peso(Number(l.principal))}</td>
+                    <td className="px-3 py-1.5 text-right font-mono whitespace-nowrap">{Number(l.perCutoff) > 0 ? peso(Number(l.perCutoff)) : '—'}</td>
+                    <td className="px-3 py-1.5 text-right font-mono whitespace-nowrap">{peso(l.repaid)}</td>
+                    <td className="px-3 py-1.5 text-right font-mono font-semibold whitespace-nowrap" style={{ color: l.balance > 0.005 ? 'var(--charcoal)' : 'var(--teal)' }}>{peso(l.balance)}</td>
                     <td className="px-3 py-1.5">
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-medium" style={{
-                        background: l.status === 'ACTIVE' ? '#ecfdf5' : l.status === 'PAID' ? '#eff6ff' : '#f9fafb',
-                        color: l.status === 'ACTIVE' ? '#047857' : l.status === 'PAID' ? '#1d4ed8' : '#6b7280',
-                      }}>{l.status}</span>
+                      <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={statusPill(l.status)}>{l.status === 'ACTIVE' ? 'Active' : l.status === 'PAID' ? 'Paid' : l.status === 'WAIVED' ? 'Waived' : l.status}</span>
                     </td>
-                    <td className="px-2 py-1.5"><button onClick={() => startEdit(l)} title="Edit"><Pencil size={12} /></button></td>
+                    <td className="px-2 py-1.5"><button onClick={() => startEdit(l)} title="Edit" aria-label={`Edit ${l.staffName}`} className="p-1.5 rounded hover:bg-[var(--pale-teal)]"><Pencil size={12} style={{ color: 'var(--teal)' }} /></button></td>
                   </tr>
                   {open.has(l.id) && (
-                    <tr key={`${l.id}-d`}>
-                      <td colSpan={13} className="px-8 py-2" style={{ background: 'var(--off-white)' }}>
+                    <tr>
+                      <td colSpan={13} className="px-8 py-2" style={{ background: '#fcfdfa' }}>
                         {l.deductions.length === 0 ? (
                           <div className="text-[11px] italic" style={{ color: 'var(--mid-gray)' }}>No deductions recorded yet.</div>
                         ) : (
@@ -175,17 +174,17 @@ export default function StaffLoansTab() {
                       </td>
                     </tr>
                   )}
-                </>
+                </Fragment>
               ))}
-              {visible.length === 0 && <tr><td colSpan={13} className="px-3 py-6 text-center text-xs" style={{ color: 'var(--mid-gray)' }}>No staff loans recorded.</td></tr>}
+              {!loading && visible.length === 0 && <tr><td colSpan={13} className="px-3 py-12 text-center text-[13px]" style={{ color: 'var(--mid-gray)' }}>{loans.length === 0 ? 'No staff loans recorded.' : 'No active staff loans — tick “Show settled” to see the rest.'}</td></tr>}
             </tbody>
           </table>
         </div>
-      )}
+      </div>
 
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.4)' }}>
-          <div className="rounded-2xl bg-white p-5 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+          <div className="rounded-xl border shadow-xl bg-white p-5 w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>{editing ? 'Edit' : 'New'} Staff Loan / Perk</h3>
               <button onClick={() => setShowForm(false)}><X size={16} /></button>
