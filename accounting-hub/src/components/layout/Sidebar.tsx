@@ -178,10 +178,11 @@ export default function Sidebar({ userRole, open, onClose, collapsed = false }: 
           ${open ? 'translate-x-0' : '-translate-x-full'}
           ${collapsed ? 'lg:-ml-64' : 'lg:ml-0'}
         `}
-        style={{ background: 'var(--charcoal)' }}
+        // Shared SCEI sidebar: the Class Portal's dark teal with mint accents.
+        style={{ background: '#17323A' }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-5 border-b border-white/10">
+        <div className="flex items-center justify-between px-5 py-5 border-b border-white/[0.08]">
           <div className="flex items-center gap-3">
             {/* Aura Health Rehab arch logomark */}
             <svg width="46" height="25" viewBox="0 0 220 116" role="img" aria-label="Aura Health Rehab" className="shrink-0">
@@ -194,12 +195,12 @@ export default function Sidebar({ userRole, open, onClose, collapsed = false }: 
             </svg>
             <div>
               <h1
-                className="text-sm text-white tracking-wider"
-                style={{ fontFamily: 'var(--font-display)', fontWeight: 300, letterSpacing: '0.12em' }}
+                className="text-white"
+                style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '0.9rem', letterSpacing: '0.05em' }}
               >
-                SAPPHIRE
+                SCEI
               </h1>
-              <p className="text-[10px] text-white/50 uppercase tracking-widest" style={{ fontFamily: 'var(--font-display)', fontWeight: 300 }}>
+              <p className="uppercase" style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: '0.6rem', letterSpacing: '0.2em', color: '#CBDAB5' }}>
                 Accounting Hub
               </p>
             </div>
@@ -222,7 +223,7 @@ export default function Sidebar({ userRole, open, onClose, collapsed = false }: 
 
             return (
               <div key={section.label}>
-                <p className="px-3 mb-2 text-[10px] font-semibold uppercase tracking-widest text-white/40">
+                <p className="px-3 mb-1.5 text-xs font-semibold uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.55)', fontFamily: 'var(--font-body)' }}>
                   {section.label}
                 </p>
                 <div className="space-y-0.5">
@@ -235,17 +236,20 @@ export default function Sidebar({ userRole, open, onClose, collapsed = false }: 
                         href={item.href}
                         onClick={onClose}
                         className={`
-                          flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm
+                          flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium
                           transition-colors duration-150
                           ${active
-                            ? 'text-white font-medium'
-                            : 'text-white/60 hover:text-white hover:bg-white/5'
+                            ? 'text-white'
+                            : 'text-white/75 hover:text-white hover:bg-white/[0.06]'
                           }
                         `}
-                        style={active ? { background: 'var(--teal)' } : undefined}
+                        style={active ? { background: 'rgba(125,162,146,0.22)', fontFamily: 'var(--font-body)' } : { fontFamily: 'var(--font-body)' }}
                       >
-                        <Icon size={18} />
+                        <Icon size={16} style={active ? { color: '#CBDAB5' } : undefined} />
                         <span>{item.label}</span>
+                        {active && (
+                          <svg className="ml-auto shrink-0" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#CBDAB5" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="m9 18 6-6-6-6" /></svg>
+                        )}
                       </Link>
                     )
                   })}
@@ -256,9 +260,9 @@ export default function Sidebar({ userRole, open, onClose, collapsed = false }: 
         </nav>
 
         {/* Footer */}
-        <div className="px-5 py-4 border-t border-white/10">
-          <p className="text-[10px] text-white/30 text-center">
-            Sapphire Clinics East Inc.
+        <div className="px-5 py-4 border-t border-white/[0.08]">
+          <p className="text-xs text-center" style={{ color: 'rgba(255,255,255,0.45)', fontFamily: 'var(--font-body)' }}>
+            <span style={{ color: '#CBDAB5', fontWeight: 600 }}>SCEI</span> · Accounting Hub
           </p>
         </div>
       </aside>
