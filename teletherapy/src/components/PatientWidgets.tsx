@@ -14,18 +14,45 @@ import {
   Upload,
   Loader2,
   AlertCircle,
-  Calendar,
   RefreshCw,
   ChevronDown,
   ChevronUp,
   AlertTriangle,
-  X,
   Mail,
   Bell,
   CheckCircle2,
   Send,
   Lock,
 } from 'lucide-react'
+import {
+  BTN_PRIMARY, BTN_SECONDARY, CARD_STYLE, DANGER, Dialog, FILE_FOCUS, FOCUS, PRIMARY_STYLE, SECONDARY_STYLE,
+  Skeleton, SUBTLE_BG, Tag,
+} from '@/components/hub/ui'
+
+const ICON_BTN = `w-7 h-7 rounded-md inline-flex items-center justify-center transition-colors ${FOCUS}`
+const FACT_LABEL = 'text-[10.5px] font-semibold uppercase tracking-wider'
+const FACT_LABEL_STYLE = { color: 'var(--mid-gray)', fontFamily: 'var(--font-display)' } as const
+
+/** Sidebar card shell — white card, icon + title header. */
+function SideCard({ icon, title, action, children, footer }: {
+  icon: React.ReactNode; title: React.ReactNode; action?: React.ReactNode; children?: React.ReactNode; footer?: React.ReactNode
+}) {
+  return (
+    <section className="rounded-xl min-w-0" style={CARD_STYLE}>
+      <header className="px-4 pt-3.5 pb-3 flex items-center gap-2" style={children ? { borderBottom: '1px solid var(--light-gray)' } : undefined}>
+        <span className="shrink-0" style={{ color: 'var(--teal)' }}>{icon}</span>
+        <h3 className="flex-1 min-w-0 text-[13.5px] font-bold leading-tight" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>{title}</h3>
+        {action}
+      </header>
+      {children && <div className="p-4">{children}</div>}
+      {footer && (
+        <div className="px-4 py-2.5 text-[11px] leading-snug rounded-b-xl flex items-start gap-1.5" style={{ borderTop: '1px solid var(--light-gray)', background: SUBTLE_BG, color: 'var(--mid-gray)' }}>
+          {footer}
+        </div>
+      )}
+    </section>
+  )
+}
 
 export interface PatientProfile {
   id: string
@@ -116,51 +143,26 @@ function DeleteConfirmModal({
   onCancel: () => void
 }) {
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-fade-in p-4"
-      onClick={onCancel}
+    <Dialog
+      labelId="doc-delete-title"
+      title="Delete this document?"
+      onClose={onCancel}
+      footer={<>
+        <button onClick={onCancel} className={BTN_SECONDARY} style={SECONDARY_STYLE}>Cancel</button>
+        <button onClick={onConfirm} className={`${BTN_PRIMARY}`} style={{ background: DANGER }}>
+          <Trash2 size={14} /> Yes, delete
+        </button>
+      </>}
     >
-      <div
-        className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 animate-gate"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-start gap-3 mb-4">
-          <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center shrink-0">
-            <AlertTriangle size={20} className="text-red-500" />
-          </div>
-          <div className="flex-1">
-            <h3 className="font-bold text-[var(--charcoal)] text-[15px]" style={{ fontFamily: 'var(--font-display)' }}>
-              Delete this document?
-            </h3>
-            <p className="text-[13px] text-[var(--mid-gray)] mt-1">
-              This will permanently remove <strong className="text-[var(--charcoal)] break-all">{fileName}</strong>. This action cannot be undone.
-            </p>
-          </div>
-          <button
-            onClick={onCancel}
-            className="p-1 text-[var(--mid-gray)] hover:text-[var(--charcoal)] transition-colors shrink-0"
-          >
-            <X size={18} />
-          </button>
-        </div>
-
-        <div className="flex gap-3 pt-2 border-t border-[var(--light-gray)]">
-          <button
-            onClick={onCancel}
-            className="btn-secondary flex-1 py-2.5 rounded-xl text-[13px]"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={onConfirm}
-            className="btn-danger flex-1 py-2.5 rounded-xl text-[13px]"
-          >
-            <Trash2 size={14} />
-            Yes, Delete
-          </button>
-        </div>
+      <div className="flex items-start gap-3">
+        <span className="w-9 h-9 rounded-full flex items-center justify-center shrink-0" style={{ background: '#FEF2F2', color: DANGER }}>
+          <AlertTriangle size={18} />
+        </span>
+        <p className="text-[13px] leading-relaxed" style={{ color: 'var(--mid-gray)' }}>
+          This will permanently remove <strong className="break-all" style={{ color: 'var(--charcoal)' }}>{fileName}</strong>. This action cannot be undone.
+        </p>
       </div>
-    </div>
+    </Dialog>
   )
 }
 
@@ -275,7 +277,7 @@ function DocumentSection({
   }
 
   return (
-    <div className="card-static p-4">
+    <section className="rounded-xl min-w-0" style={CARD_STYLE}>
       {pendingDelete && (
         <DeleteConfirmModal
           fileName={pendingDelete.fileName}
@@ -284,117 +286,101 @@ function DocumentSection({
         />
       )}
 
+      {/* Resend confirmation */}
+      {pendingResend && (
+        <Dialog
+          labelId="doc-resend-title"
+          title={`Already ${pendingResend.kind === 'IE' ? 'sent' : 'informed'}`}
+          onClose={() => setPendingResend(null)}
+          footer={<>
+            <button onClick={() => setPendingResend(null)} className={BTN_SECONDARY} style={SECONDARY_STYLE}>Cancel</button>
+            <button
+              onClick={() => {
+                if (pendingResend.kind === 'IE') sendIE(pendingResend.doc)
+                else informFD(pendingResend.doc)
+              }}
+              className={BTN_PRIMARY}
+              style={PRIMARY_STYLE}
+            >
+              {pendingResend.kind === 'IE' ? <Send size={14} /> : <Bell size={14} />}
+              Yes, {pendingResend.kind === 'IE' ? 'send again' : 'inform again'}
+            </button>
+          </>}
+        >
+          <div className="flex items-start gap-3">
+            <span className="w-9 h-9 rounded-full flex items-center justify-center shrink-0" style={{ background: '#FBF3E8', color: '#7A4E21' }}>
+              <AlertTriangle size={18} />
+            </span>
+            <p className="text-[13px] leading-relaxed" style={{ color: 'var(--mid-gray)' }}>
+              This was already {pendingResend.kind === 'IE' ? 'emailed to the patient' : 'flagged for front desk'} on{' '}
+              <strong style={{ color: 'var(--charcoal)' }}>
+                {formatDate(
+                  pendingResend.kind === 'IE'
+                    ? pendingResend.doc.sentToPatientAt
+                    : pendingResend.doc.informedFrontDeskAt
+                )}
+              </strong>
+              . Do you want to {pendingResend.kind === 'IE' ? 'send' : 'inform'} again?
+            </p>
+          </div>
+        </Dialog>
+      )}
+
       {/* Header — clickable to expand/collapse */}
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="w-full flex items-start gap-2 mb-0 text-left group"
+        aria-expanded={open}
+        className={`w-full flex items-center gap-2 px-4 py-3.5 text-left rounded-xl transition-colors hover:bg-[#F8FAF2] ${FOCUS}`}
       >
-        <Icon size={16} className="text-[var(--teal)] mt-0.5 shrink-0" />
-        <div className="flex-1 min-w-0">
-          <h4 className="text-[13px] font-bold text-[var(--charcoal)] flex items-center gap-2" style={{ fontFamily: 'var(--font-display)' }}>
-            {title}
-            {items.length > 0 && (
-              <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-[var(--teal)] text-white text-[10px] font-bold">
-                {items.length}
-              </span>
-            )}
-          </h4>
-          {open && (
-            <p className="text-[11px] text-[var(--mid-gray)] leading-snug mt-0.5">{description}</p>
-          )}
-        </div>
-        <div className="text-[var(--mid-gray)] group-hover:text-[var(--teal)] transition-colors shrink-0">
+        <Icon size={16} className="shrink-0" style={{ color: 'var(--teal)' }} />
+        <span className="flex-1 min-w-0 text-[13.5px] font-bold leading-tight" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+          {title}
+        </span>
+        {items.length > 0 && <Tag tone="brand">{items.length}</Tag>}
+        <span className="shrink-0" style={{ color: 'var(--mid-gray)' }}>
           {open ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-        </div>
+        </span>
       </button>
 
       {/* Body — only when expanded */}
       {open && (
-      <div className="mt-3">
-      {/* Resend confirmation modal */}
-      {pendingResend && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-fade-in p-4"
-          onClick={() => setPendingResend(null)}
-        >
-          <div
-            className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 animate-gate"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-start gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full bg-amber-50 flex items-center justify-center shrink-0">
-                <AlertTriangle size={20} className="text-amber-500" />
-              </div>
-              <div className="flex-1">
-                <h3 className="font-bold text-[var(--charcoal)] text-[15px]" style={{ fontFamily: 'var(--font-display)' }}>
-                  Already {pendingResend.kind === 'IE' ? 'sent' : 'informed'}
-                </h3>
-                <p className="text-[13px] text-[var(--mid-gray)] mt-1">
-                  This was already {pendingResend.kind === 'IE' ? 'emailed to the patient' : 'flagged for front desk'} on{' '}
-                  <strong className="text-[var(--charcoal)]">
-                    {formatDate(
-                      pendingResend.kind === 'IE'
-                        ? pendingResend.doc.sentToPatientAt
-                        : pendingResend.doc.informedFrontDeskAt
-                    )}
-                  </strong>
-                  . Do you want to {pendingResend.kind === 'IE' ? 'send' : 'inform'} again?
-                </p>
-              </div>
-              <button onClick={() => setPendingResend(null)} className="p-1 text-[var(--mid-gray)] hover:text-[var(--charcoal)] shrink-0">
-                <X size={18} />
-              </button>
-            </div>
-            <div className="flex gap-3 pt-2 border-t border-[var(--light-gray)]">
-              <button onClick={() => setPendingResend(null)} className="btn-secondary flex-1 py-2.5 rounded-xl text-[13px]">
-                Cancel
-              </button>
-              <button
-                onClick={() => {
-                  if (pendingResend.kind === 'IE') sendIE(pendingResend.doc)
-                  else informFD(pendingResend.doc)
-                }}
-                className="btn-primary flex-1 py-2.5 rounded-xl text-[13px]"
-              >
-                {pendingResend.kind === 'IE' ? <Send size={14} /> : <Bell size={14} />}
-                Yes, {pendingResend.kind === 'IE' ? 'send again' : 'inform again'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <div className="px-4 pb-4 pt-3" style={{ borderTop: '1px solid var(--light-gray)' }}>
+      <p className="text-[11.5px] leading-snug mb-3" style={{ color: 'var(--mid-gray)' }}>{description}</p>
 
       {/* Document list */}
       {items.length > 0 ? (
-        <div className="space-y-1.5 mb-2">
+        <ul className="space-y-2 mb-3">
           {items.map((doc) => {
             const isIE = documentType === 'INITIAL_EVALUATION'
             const isPR = documentType === 'PROGRESS_REPORT'
             const sentAt = doc.sentToPatientAt
             const informedAt = doc.informedFrontDeskAt
             return (
-            <div
+            <li
               key={doc.id}
-              className="p-2 rounded-lg bg-[var(--off-white)] border border-[var(--light-gray)]"
+              className="p-2.5 rounded-lg"
+              style={{ background: SUBTLE_BG, border: '1px solid var(--light-gray)' }}
             >
               <div className="flex items-center gap-2">
-                <FileText size={14} className="text-[var(--mid-gray)] shrink-0" />
+                <FileText size={14} className="shrink-0" style={{ color: 'var(--mid-gray)' }} />
                 <div className="flex-1 min-w-0">
-                  <p className="text-[12px] font-medium text-[var(--charcoal)] truncate" title={doc.fileName}>
+                  <p className="text-[12.5px] font-semibold truncate" style={{ color: 'var(--charcoal)' }} title={doc.fileName}>
                     {doc.fileName}
                   </p>
-                  <p className="text-[10px] text-[var(--mid-gray)]">{formatDate(doc.createdAt)}</p>
+                  <p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>{formatDate(doc.createdAt)}</p>
                 </div>
                 <div className="flex items-center gap-0.5 shrink-0">
                   <a
                     href={`/api/upload/${doc.filePath}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="p-1.5 rounded-md text-[var(--teal)] hover:bg-[var(--pale-teal)] transition-colors"
+                    className={`${ICON_BTN} hover:bg-white`}
+                    style={{ color: 'var(--teal)' }}
                     title="View"
+                    aria-label={`View ${doc.fileName}`}
                   >
-                    <Eye size={13} />
+                    <Eye size={14} />
                   </a>
                   {/* Re-upload + delete are scoped per-document, not
                       blanket per-section. Only the original uploader
@@ -407,14 +393,16 @@ function DocumentSection({
                   {doc.canEdit ? (
                     <>
                       <label
-                        className="p-1.5 rounded-md text-amber-600 hover:bg-amber-50 transition-colors cursor-pointer"
+                        className={`${ICON_BTN} ${FILE_FOCUS} hover:bg-white`}
+                        style={{ color: '#8C6A2D' }}
                         title="Re-upload"
                       >
-                        <RefreshCw size={13} />
+                        <RefreshCw size={14} />
                         <input
                           type="file"
                           accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.webp"
-                          className="hidden"
+                          className="sr-only"
+                          aria-label={`Re-upload ${doc.fileName}`}
                           onChange={(e) => {
                             const f = e.target.files?.[0]
                             if (f) {
@@ -426,18 +414,21 @@ function DocumentSection({
                       </label>
                       <button
                         onClick={() => setPendingDelete({ id: doc.id, fileName: doc.fileName })}
-                        className="p-1.5 rounded-md text-red-500 hover:bg-red-50 transition-colors"
+                        className={`${ICON_BTN} hover:bg-red-50`}
+                        style={{ color: DANGER }}
                         title="Delete"
+                        aria-label={`Delete ${doc.fileName}`}
                       >
-                        <Trash2 size={13} />
+                        <Trash2 size={14} />
                       </button>
                     </>
                   ) : doc.lockedAt ? (
                     <span
-                      className="p-1.5 rounded-md text-[var(--mid-gray)]"
+                      className={ICON_BTN}
+                      style={{ color: 'var(--mid-gray)' }}
                       title="Locked — frozen at endorsement; only admins can modify"
                     >
-                      <Lock size={13} />
+                      <Lock size={14} />
                     </span>
                   ) : null}
                 </div>
@@ -451,7 +442,7 @@ function DocumentSection({
                   document itself remains immutable to non-uploaders
                   (see canEdit on re-upload / delete above). */}
               {isIE && doc.canSend && isIntern && (
-                <p className="mt-2 text-[11px] text-[var(--mid-gray)] italic flex items-center gap-1"><Mail size={11} /> Only your supervisor can send this to the patient.</p>
+                <p className="mt-2 text-[11px] italic flex items-center gap-1" style={{ color: 'var(--mid-gray)' }}><Mail size={11} /> Only your supervisor can send this to the patient.</p>
               )}
               {isIE && doc.canSend && !isIntern && (
                 <button
@@ -460,18 +451,17 @@ function DocumentSection({
                     else sendIE(doc)
                   }}
                   disabled={actioningId === doc.id}
-                  className={`mt-2 w-full flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md text-[11px] font-semibold transition-all ${
-                    sentAt
-                      ? 'bg-green-50 text-green-700 border border-green-200 hover:bg-green-100'
-                      : 'bg-[var(--teal)] text-white hover:bg-[var(--deep-teal)]'
-                  } disabled:opacity-50`}
+                  className={`mt-2 w-full h-8 inline-flex items-center justify-center gap-1.5 px-2 rounded-lg text-[11.5px] font-semibold transition-opacity hover:opacity-90 disabled:opacity-50 ${FOCUS}`}
+                  style={sentAt
+                    ? { background: '#EEF5E8', color: '#2F5A28', border: '1px solid #CFE0BF' }
+                    : { background: 'var(--deep-teal)', color: '#fff' }}
                 >
                   {actioningId === doc.id ? (
-                    <><Loader2 size={11} className="animate-spin" /> Sending...</>
+                    <><Loader2 size={12} className="animate-spin" /> Sending...</>
                   ) : sentAt ? (
-                    <><CheckCircle2 size={11} /> Sent · {formatDate(sentAt)}</>
+                    <><CheckCircle2 size={12} /> Sent · {formatDate(sentAt)}</>
                   ) : (
-                    <><Send size={11} /> Send Email to Patient</>
+                    <><Send size={12} /> Send Email to Patient</>
                   )}
                 </button>
               )}
@@ -486,59 +476,59 @@ function DocumentSection({
                     else informFD(doc)
                   }}
                   disabled={actioningId === doc.id}
-                  className={`mt-2 w-full flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md text-[11px] font-semibold transition-all ${
-                    informedAt
-                      ? 'bg-green-50 text-green-700 border border-green-200 hover:bg-green-100'
-                      : 'bg-[#cf9d88] text-white hover:bg-[#c69849]'
-                  } disabled:opacity-50`}
+                  className={`mt-2 w-full min-h-8 py-1.5 inline-flex items-center justify-center gap-1.5 px-2 rounded-lg text-[11.5px] font-semibold transition-opacity hover:opacity-90 disabled:opacity-50 ${FOCUS}`}
+                  style={informedAt
+                    ? { background: '#EEF5E8', color: '#2F5A28', border: '1px solid #CFE0BF' }
+                    : { background: '#FBF3E8', color: '#7A4E21', border: '1px solid #EBD3B4' }}
                 >
                   {actioningId === doc.id ? (
-                    <><Loader2 size={11} className="animate-spin" /> Notifying...</>
+                    <><Loader2 size={12} className="animate-spin" /> Notifying...</>
                   ) : informedAt ? (
-                    <><CheckCircle2 size={11} /> Informed · {formatDate(informedAt)}</>
+                    <><CheckCircle2 size={12} /> Informed · {formatDate(informedAt)}</>
                   ) : (
-                    <><Bell size={11} /> Inform Front Desk that PR is available</>
+                    <><Bell size={12} /> Inform Front Desk that PR is available</>
                   )}
                 </button>
               )}
-            </div>
+            </li>
             )
           })}
-        </div>
+        </ul>
       ) : (
-        <p className="text-[11px] text-[var(--mid-gray)] italic mb-2">No documents uploaded yet.</p>
+        <p className="text-xs italic mb-3" style={{ color: 'var(--mid-gray)' }}>No documents uploaded yet.</p>
       )}
 
       {/* Upload button */}
       {canManage && (
         <>
-        <label className="flex items-center justify-center gap-1.5 w-full py-2 px-3 rounded-lg border border-dashed border-[var(--light-gray)] text-[11px] font-medium text-[var(--teal)] hover:border-[var(--teal)] hover:bg-[var(--pale-teal)] transition-all cursor-pointer">
+        <label className={`flex items-center justify-center gap-1.5 w-full h-9 px-3 rounded-lg text-xs font-semibold transition-colors cursor-pointer hover:bg-[#F8FAF2] ${FILE_FOCUS}`}
+          style={{ border: '1px dashed var(--light-gray)', color: 'var(--teal)' }}>
           {uploading && !reuploadingId ? (
             <>
-              <Loader2 size={12} className="animate-spin" /> Uploading...
+              <Loader2 size={13} className="animate-spin" /> Uploading...
             </>
           ) : (
             <>
-              <Upload size={12} /> Upload {items.length > 0 ? 'another' : 'document'}
+              <Upload size={13} /> Upload {items.length > 0 ? 'another' : 'document'}
             </>
           )}
           <input
             type="file"
             accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.webp"
             disabled={uploading}
-            className="hidden"
+            className="sr-only"
             onChange={(e) => {
               const f = e.target.files?.[0]
               if (f) handleUpload(f)
             }}
           />
         </label>
-        <p className="text-[10px] text-[var(--mid-gray)] mt-1 text-center">PDF, Word, or image · max {MAX_UPLOAD_MB}MB per file</p>
+        <p className="text-[10.5px] mt-1.5 text-center" style={{ color: 'var(--mid-gray)' }}>PDF, Word, or image · max {MAX_UPLOAD_MB}MB per file</p>
         </>
       )}
       </div>
       )}
-    </div>
+    </section>
   )
 }
 
@@ -564,69 +554,37 @@ export default function PatientWidgets({ patient, canManage = true }: Props) {
     setLoading(false)
   }
 
+  const facts: { label: string; value: string; wide?: boolean; pre?: boolean }[] = [
+    { label: 'Full name', value: `${patient.firstName} ${patient.lastName}`, wide: true },
+    { label: 'Date of birth', value: formatDate(patient.dob) },
+    { label: 'Age', value: calculateAge(patient.dob) },
+    { label: 'Sex', value: patient.sex ?? '—' },
+    { label: 'Patient type', value: patient.patientType ?? '—' },
+    { label: 'Diagnosis', value: patient.diagnosis ?? '—', wide: true, pre: true },
+    { label: 'City', value: patient.city ?? '—', wide: true },
+  ]
+
   return (
     <div className="space-y-3">
       {/* ── Patient Profile ──────────────────────────────────── */}
-      <div className="card-static p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <User size={16} className="text-[var(--teal)]" />
-          <h4 className="text-[13px] font-bold text-[var(--charcoal)]" style={{ fontFamily: 'var(--font-display)' }}>
-            Patient Profile
-          </h4>
-        </div>
-
-        <div className="space-y-2 text-[12px]">
-          <div>
-            <p className="text-[10px] text-[var(--mid-gray)] uppercase tracking-wider font-semibold">Full Name</p>
-            <p className="font-medium text-[var(--charcoal)]">
-              {patient.firstName} {patient.lastName}
-            </p>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <p className="text-[10px] text-[var(--mid-gray)] uppercase tracking-wider font-semibold">Date of Birth</p>
-              <p className="font-medium text-[var(--charcoal)]">{formatDate(patient.dob)}</p>
+      <SideCard
+        icon={<User size={16} />}
+        title="Patient Profile"
+        footer={<><AlertCircle size={12} className="mt-px shrink-0" /><span>To update Patient Profile, inform front desk to fill in the data in their Operations Hub.</span></>}
+      >
+        <dl className="grid grid-cols-2 gap-x-3 gap-y-3">
+          {facts.map((f) => (
+            <div key={f.label} className={f.wide ? 'col-span-2 min-w-0' : 'min-w-0'}>
+              <dt className={FACT_LABEL} style={FACT_LABEL_STYLE}>{f.label}</dt>
+              <dd className={`text-[13px] font-medium mt-0.5 [overflow-wrap:anywhere] ${f.pre ? 'whitespace-pre-wrap' : ''}`} style={{ color: f.value === '—' ? 'var(--mid-gray)' : 'var(--charcoal)' }}>{f.value}</dd>
             </div>
-            <div>
-              <p className="text-[10px] text-[var(--mid-gray)] uppercase tracking-wider font-semibold">Age</p>
-              <p className="font-medium text-[var(--charcoal)]">{calculateAge(patient.dob)}</p>
-            </div>
-            <div>
-              <p className="text-[10px] text-[var(--mid-gray)] uppercase tracking-wider font-semibold">Sex</p>
-              <p className="font-medium text-[var(--charcoal)]">{patient.sex ?? '—'}</p>
-            </div>
-            <div>
-              <p className="text-[10px] text-[var(--mid-gray)] uppercase tracking-wider font-semibold">Patient Type</p>
-              <p className="font-medium text-[var(--charcoal)]">{patient.patientType ?? '—'}</p>
-            </div>
-          </div>
-          <div>
-            <p className="text-[10px] text-[var(--mid-gray)] uppercase tracking-wider font-semibold">Diagnosis</p>
-            <p className="font-medium text-[var(--charcoal)] whitespace-pre-wrap">{patient.diagnosis ?? '—'}</p>
-          </div>
-          <div>
-            <p className="text-[10px] text-[var(--mid-gray)] uppercase tracking-wider font-semibold">City</p>
-            <p className="font-medium text-[var(--charcoal)]">{patient.city ?? '—'}</p>
-          </div>
-        </div>
-
-        <div className="mt-3 pt-3 border-t border-[var(--light-gray)] flex items-start gap-1.5">
-          <AlertCircle size={11} className="text-[var(--mid-gray)] mt-0.5 shrink-0" />
-          <p className="text-[10px] text-[var(--mid-gray)] italic leading-snug">
-            To update Patient Profile, inform front desk to fill in the data in their Operations Hub.
-          </p>
-        </div>
-      </div>
+          ))}
+        </dl>
+      </SideCard>
 
       {/* ── Doctor's Referral ────────────────────────────────── */}
-      <div className="card-static p-4">
-        <div className="flex items-center gap-2 mb-2">
-          <ClipboardList size={16} className="text-[var(--teal)]" />
-          <h4 className="text-[13px] font-bold text-[var(--charcoal)]" style={{ fontFamily: 'var(--font-display)' }}>
-            Doctor&apos;s Referral
-          </h4>
-        </div>
-        <p className="text-[11px] text-[var(--mid-gray)] leading-snug mb-2">
+      <SideCard icon={<ClipboardList size={16} />} title="Doctor&apos;s Referral">
+        <p className="text-[11.5px] leading-snug mb-2.5" style={{ color: 'var(--mid-gray)' }}>
           Uploaded by front desk in Patient CRM.
         </p>
         {patient.referralUrl ? (
@@ -634,21 +592,26 @@ export default function PatientWidgets({ patient, canManage = true }: Props) {
             href={patient.referralUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-2 p-2 rounded-lg bg-[var(--pale-teal)] border border-[var(--light-gray)] hover:border-[var(--teal)] transition-colors"
+            className={`${BTN_SECONDARY} w-full !justify-start`}
+            style={SECONDARY_STYLE}
           >
-            <FileText size={14} className="text-[var(--teal)]" />
-            <span className="text-[12px] font-medium text-[var(--deep-teal)] flex-1">View Referral</span>
-            <Eye size={13} className="text-[var(--teal)]" />
+            <FileText size={14} style={{ color: 'var(--teal)' }} />
+            <span className="flex-1 text-left">View Referral</span>
+            <Eye size={14} style={{ color: 'var(--teal)' }} />
           </a>
         ) : (
-          <p className="text-[11px] text-[var(--mid-gray)] italic">No referral uploaded.</p>
+          <p className="text-xs italic" style={{ color: 'var(--mid-gray)' }}>No referral uploaded.</p>
         )}
-      </div>
+      </SideCard>
 
       {/* ── Loading state for document sections ──────────── */}
       {loading ? (
-        <div className="card-static p-6 flex items-center justify-center">
-          <Loader2 size={18} className="animate-spin text-[var(--teal)]" />
+        <div className="space-y-3" aria-busy="true" aria-label="Loading documents">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="rounded-xl px-4 py-4 flex items-center gap-2" style={CARD_STYLE}>
+              <Skeleton className="h-4 w-4" /><Skeleton className="h-3.5 flex-1" />
+            </div>
+          ))}
         </div>
       ) : (
         <>
