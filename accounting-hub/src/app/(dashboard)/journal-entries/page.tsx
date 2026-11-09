@@ -4,11 +4,12 @@
 // module of its own (or you are not yet sure how to classify it), enter it
 // here as balanced debits and credits; it posts to the same ledger every
 // report, drill-down and statement reads, so it flows everywhere at once.
-import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useFocusTarget, revealRow } from '@/lib/use-focus-target'
 import { useSession } from 'next-auth/react'
-import { BookOpen, Plus, Loader2, Trash2, X, ChevronDown, ChevronRight } from 'lucide-react'
+import { BookOpen, Plus, Loader2, Trash2, X, ChevronDown, ChevronRight, Search } from 'lucide-react'
+import { HR_PAGE_CLASS, HR_PAGE_STYLE, HrShimmerStyle, StatCard, hrBtn } from '@/components/ui/hr-look'
 
 interface JLine { account: string; debit: number; credit: number; description: string | null }
 interface JE { id: string; entryDate: string; description: string; refType: string; refId: string | null; branch: string; total: number; lines: JLine[] }
@@ -18,6 +19,8 @@ interface DraftLine { accountId: string; accountLabel: string; q: string; debit:
 const peso = (v: number) => v.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 const BRANCHES = ['ALL', 'SANDBOX_EAST', 'SANDBOX_GREENHILLS', 'VERDANA', 'VERDANA_STORE']
+const BRANCH_LABEL: Record<string, string> = { ALL: 'All branches', SANDBOX_EAST: 'East', SANDBOX_GREENHILLS: 'Greenhills', VERDANA: 'Verdana', VERDANA_STORE: 'Verdana Store', AURA_INSTITUTE: 'Aura Health Institute' }
+const TH = 'text-left px-3 py-2.5 text-[11px] font-bold uppercase tracking-[.4px] whitespace-nowrap text-[var(--mid-gray)]'
 const blankLine = (): DraftLine => ({ accountId: '', accountLabel: '', q: '', debit: '', credit: '', description: '' })
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -38,6 +41,8 @@ function JournalEntriesInner() {
   const [loading, setLoading] = useState(true)
   const [onlyManual, setOnlyManual] = useState(true)
   const [q, setQ] = useState('')
+  // Display-only split of the loaded list by source (the cards double as the switch).
+  const [srcFilter, setSrcFilter] = useState<'' | 'manual' | 'module'>('')
   const [coa, setCoa] = useState<Coa[]>([])
   const [showNew, setShowNew] = useState(false)
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
@@ -94,91 +99,165 @@ function JournalEntriesInner() {
     await load()
   }
 
+  const isManual = (e: JE) => e.refType === 'MANUAL'
+  const manualRows = entries.filter(isManual)
+  const moduleRows = entries.filter(e => !isManual(e))
+  const listed = srcFilter === 'manual' ? manualRows : srcFilter === 'module' ? moduleRows : entries
+  const unbalanced = entries.filter(e => Math.abs(e.lines.reduce((s, l) => s + l.debit - l.credit, 0)) > 0.005).length
+  const dates = entries.map(e => e.entryDate).sort()
+  const range = dates.length ? (dates[0] === dates[dates.length - 1] ? dates[0] : `${dates[0]} to ${dates[dates.length - 1]}`) : ''
+  const topSources = Object.entries(moduleRows.reduce<Record<string, number>>((m, e) => {
+    const k = SOURCE_LABEL[e.refType] || e.refType
+    m[k] = (m[k] || 0) + 1
+    return m
+  }, {})).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([k, n]) => `${k} ${n}`).join(' · ')
+  const colCount = canWrite ? 8 : 7
+
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-2xl font-bold flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
-          <BookOpen size={22} style={{ color: 'var(--teal)' }} /> General Journal
-        </h1>
+    <div className={HR_PAGE_CLASS} style={HR_PAGE_STYLE}>
+      <HrShimmerStyle />
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold leading-tight flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+            <BookOpen size={22} style={{ color: 'var(--teal)' }} /> General Journal
+          </h1>
+          <p className="mt-1 text-[13px] max-w-3xl" style={{ color: 'var(--mid-gray)' }}>
+            Entries here post straight to the ledger every report reads (subsidiary ledgers, both Reports engines, the drill-downs). Use it for anything without a module of its own; if unsure of the classification, post to the account of best judgment and re-enter it later.
+          </p>
+        </div>
         {canWrite && (
-          <button onClick={() => setShowNew(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}>
+          <button onClick={() => setShowNew(true)} className={hrBtn.primary} style={{ background: 'var(--teal)' }}>
             <Plus size={15} /> New journal entry
           </button>
         )}
       </div>
 
-      <p className="text-xs max-w-3xl" style={{ color: 'var(--mid-gray)' }}>
-        Entries here post straight to the ledger that every report reads — the subsidiary ledgers, both Reports engines,
-        and the drill-downs pick them up immediately. Use it for anything without a module of its own; if you are unsure
-        of the classification, post it to the account of best judgment and re-edit later by deleting and re-entering.
-      </p>
-
-      <div className="flex items-center gap-3 flex-wrap">
-        <label className="flex items-center gap-1.5 text-sm" style={{ color: 'var(--charcoal)' }}>
-          <input type="checkbox" checked={onlyManual} onChange={e => setOnlyManual(e.target.checked)} />
-          Manual entries only
-        </label>
-        <input value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => e.key === 'Enter' && load()}
-          placeholder="Search description or journal no. — Enter to search"
-          className="px-3 py-2 rounded-xl border text-sm outline-none min-w-[280px]" style={{ borderColor: 'var(--light-gray)' }} />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatCard loading={loading} label="Entries shown" value={String(entries.length)}
+          sub={entries.length ? `Newest first · ${range}` : 'Nothing matches'} accent={entries.length ? { line: '#4A8073' } : undefined} />
+        <StatCard compact loading={loading} label="Total posted" value={`₱${peso(entries.reduce((s, e) => s + e.total, 0))}`}
+          sub={unbalanced ? `${unbalanced} entr${unbalanced === 1 ? 'y' : 'ies'} out of balance` : 'Debits equal credits on every entry'}
+          tone={unbalanced ? 'red' : entries.length ? 'green' : 'zero'} />
+        <StatCard loading={loading} label="Manual" value={String(manualRows.length)}
+          sub="Entered on this page" accent={manualRows.length ? { line: '#4A8073' } : undefined}
+          active={srcFilter === 'manual'} onClick={() => setSrcFilter(f => f === 'manual' ? '' : 'manual')} />
+        <StatCard loading={loading} label="From modules" value={String(moduleRows.length)}
+          sub={moduleRows.length ? topSources : onlyManual ? 'Hidden by “Manual only”' : 'None in this list'} tone={moduleRows.length ? 'blue' : 'zero'}
+          active={srcFilter === 'module'} onClick={() => setSrcFilter(f => f === 'module' ? '' : 'module')} />
       </div>
 
-      {loading ? <div className="py-10 text-center"><Loader2 className="animate-spin inline" size={22} /></div> : entries.length === 0 ? (
-        <p className="text-sm py-8 text-center" style={{ color: 'var(--mid-gray)' }}>No entries found.</p>
-      ) : (
-        <div className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+      <div className="rounded-lg border bg-white overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+        <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-b" style={{ background: '#fcfdfa', borderColor: 'var(--light-gray)' }}>
+          <div className="inline-flex rounded-lg border p-0.5 bg-white" style={{ borderColor: 'var(--light-gray)' }} role="group" aria-label="Sources">
+            {([[true, 'Manual only'], [false, 'All sources']] as const).map(([v, label]) => (
+              <button key={label} onClick={() => { setOnlyManual(v); setSrcFilter('') }} aria-pressed={onlyManual === v}
+                className="h-7 px-3 rounded-md text-xs font-semibold transition-colors"
+                style={onlyManual === v ? { background: 'var(--teal)', color: '#fff' } : { color: 'var(--mid-gray)' }}>{label}</button>
+            ))}
+          </div>
+          <form className="relative flex-1 min-w-[200px] max-w-md" onSubmit={e => { e.preventDefault(); load() }}>
+            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--hr-faint)' }} />
+            <input value={q} onChange={e => setQ(e.target.value)}
+              placeholder="Search memo or journal no. — Enter to search"
+              className="w-full h-8 pl-8 pr-3 rounded-lg border text-xs bg-white" style={{ borderColor: 'var(--light-gray)' }} />
+          </form>
+          {srcFilter && (
+            <button onClick={() => setSrcFilter('')} className="inline-flex items-center gap-1 h-7 px-2.5 rounded-full text-[11px] font-semibold"
+              style={srcFilter === 'manual' ? { background: 'var(--pale-teal)', color: 'var(--deep-teal)' } : { background: '#eff6ff', color: '#1d4ed8' }}>
+              {srcFilter === 'manual' ? 'Manual' : 'From modules'} <X size={12} />
+            </button>
+          )}
+          <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>{listed.length} of {entries.length} · click a row for its lines</span>
+          <div className="ml-auto hidden md:flex items-center gap-3 text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#4A8073' }} />Manual</span>
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#93c5fd' }} />From a module</span>
+          </div>
+        </div>
+        <div className="overflow-x-auto relative">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-xs" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
-                <th className="px-3 py-2 w-6"></th><th className="px-3 py-2">Date</th><th className="px-3 py-2">Journal no.</th>
-                <th className="px-3 py-2">Source</th><th className="px-3 py-2">Memo</th><th className="px-3 py-2">Branch</th>
-                <th className="px-3 py-2 text-right">Amount</th>{canWrite && <th className="px-3 py-2"></th>}
+              <tr style={{ background: 'var(--hr-head)' }}>
+                <th className={`${TH} w-8`}><span className="sr-only">Expand</span></th><th className={TH}>Date</th><th className={TH}>Journal no.</th>
+                <th className={TH}>Source</th><th className={TH}>Memo</th><th className={TH}>Branch</th>
+                <th className={`${TH} text-right`}>Amount</th>{canWrite && <th className={TH}><span className="sr-only">Actions</span></th>}
               </tr>
             </thead>
             <tbody>
-              {entries.map(e => (
-                <>
-                  <tr key={e.id} ref={el => { rowRefs.current[e.id] = el }}
-                    className="border-t cursor-pointer hover:bg-gray-50" style={{ borderColor: 'var(--light-gray)' }}
-                    onClick={() => setExpanded(x => ({ ...x, [e.id]: !x[e.id] }))}>
-                    <td className="px-3 py-2">{expanded[e.id] ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</td>
-                    <td className="px-3 py-2 tabular-nums">{e.entryDate}</td>
-                    <td className="px-3 py-2 font-mono text-xs">{e.refId || '—'}</td>
-                    <td className="px-3 py-2 text-xs">{SOURCE_LABEL[e.refType] || e.refType}</td>
-                    <td className="px-3 py-2 max-w-md truncate" style={{ color: 'var(--charcoal)' }}>{e.description}</td>
-                    <td className="px-3 py-2 text-xs">{e.branch}</td>
-                    <td className="px-3 py-2 text-right tabular-nums font-semibold">₱{peso(e.total)}</td>
-                    {canWrite && (
-                      <td className="px-3 py-2 text-right">
-                        {e.refType === 'MANUAL' && <button onClick={ev => { ev.stopPropagation(); del(e) }} title="Delete this manual entry"><Trash2 size={14} style={{ color: 'var(--mid-gray)' }} /></button>}
+              {loading ? (
+                [0, 1, 2, 3, 4].map(k => <tr key={k} className="border-t" style={{ borderColor: 'var(--hr-line)' }}><td colSpan={colCount} className="px-4 py-2.5"><div className="h-5 rounded hr-shimmer" /></td></tr>)
+              ) : listed.length === 0 ? (
+                <tr><td colSpan={colCount} className="text-center py-12 text-[13px]" style={{ color: 'var(--mid-gray)' }}>
+                  {entries.length ? 'No entries match this filter.' : 'No entries found.'}
+                </td></tr>
+              ) : listed.map(e => {
+                const manual = isManual(e)
+                const open = !!expanded[e.id]
+                const dr = e.lines.reduce((s, l) => s + l.debit, 0)
+                const cr = e.lines.reduce((s, l) => s + l.credit, 0)
+                return (
+                  <Fragment key={e.id}>
+                    <tr ref={el => { rowRefs.current[e.id] = el }}
+                      className="border-t cursor-pointer transition-colors hover:bg-[#fafcf6]" style={{ borderColor: 'var(--hr-line)', background: open ? '#fafcf6' : undefined }}
+                      onClick={() => setExpanded(x => ({ ...x, [e.id]: !x[e.id] }))} aria-expanded={open}>
+                      <td className="px-3 py-2.5" style={{ boxShadow: `inset 4px 0 0 ${manual ? '#4A8073' : '#93c5fd'}`, color: 'var(--mid-gray)' }}>{open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</td>
+                      <td className="px-3 py-2.5 text-xs font-mono whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{e.entryDate}</td>
+                      <td className="px-3 py-2.5 font-mono text-xs font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{e.refId || '—'}</td>
+                      <td className="px-3 py-2.5 whitespace-nowrap">
+                        <span className="inline-flex px-2 py-0.5 rounded-full text-[11px] font-semibold" style={manual ? { background: 'var(--pale-teal)', color: 'var(--deep-teal)' } : { background: '#eff6ff', color: '#1d4ed8' }}>{SOURCE_LABEL[e.refType] || e.refType}</span>
                       </td>
-                    )}
-                  </tr>
-                  {expanded[e.id] && (
-                    <tr key={`${e.id}x`} className="border-t" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
-                      <td></td>
-                      <td colSpan={canWrite ? 7 : 6} className="px-3 py-2">
-                        <table className="text-xs w-full max-w-3xl">
-                          <tbody>
-                            {e.lines.map((l, i) => (
-                              <tr key={i}>
-                                <td className="pr-4 py-0.5">{l.account}</td>
-                                <td className="pr-4 py-0.5 text-right tabular-nums" style={{ minWidth: 100 }}>{l.debit > 0 ? `₱${peso(l.debit)}` : ''}</td>
-                                <td className="pr-4 py-0.5 text-right tabular-nums" style={{ minWidth: 100 }}>{l.credit > 0 ? `₱${peso(l.credit)}` : ''}</td>
-                                <td className="py-0.5" style={{ color: 'var(--mid-gray)' }}>{l.description}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </td>
+                      <td className="px-3 py-2.5 max-w-md truncate text-[13px]" style={{ color: 'var(--charcoal)' }} title={e.description}>{e.description}</td>
+                      <td className="px-3 py-2.5 text-xs whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{BRANCH_LABEL[e.branch] || e.branch}</td>
+                      <td className="px-3 py-2.5 text-right font-mono font-bold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>₱{peso(e.total)}</td>
+                      {canWrite && (
+                        <td className="px-3 py-2.5 text-right">
+                          {manual && <button onClick={ev => { ev.stopPropagation(); del(e) }} title="Delete this manual entry" aria-label={`Delete ${e.refId || 'this entry'}`} className="p-1.5 rounded hover:bg-red-50"><Trash2 size={14} className="text-red-500" /></button>}
+                        </td>
+                      )}
                     </tr>
-                  )}
-                </>
-              ))}
+                    {open && (
+                      <tr className="border-t" style={{ borderColor: 'var(--hr-line)', background: '#fcfdfa' }}>
+                        <td style={{ boxShadow: `inset 4px 0 0 ${manual ? '#4A8073' : '#93c5fd'}` }} />
+                        <td colSpan={colCount - 1} className="px-3 py-3">
+                          <div className="rounded-lg border bg-white overflow-x-auto max-w-4xl" style={{ borderColor: 'var(--light-gray)' }}>
+                            <table className="text-xs w-full">
+                              <thead>
+                                <tr style={{ background: 'var(--hr-head)' }}>
+                                  <th className="text-left px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)' }}>Account</th>
+                                  <th className="text-right px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)' }}>Debit</th>
+                                  <th className="text-right px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)' }}>Credit</th>
+                                  <th className="text-left px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)' }}>Description</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {e.lines.map((l, i) => (
+                                  <tr key={i} className="border-t" style={{ borderColor: 'var(--hr-line)' }}>
+                                    <td className={`py-1.5 pr-3 ${l.credit > 0 && !l.debit ? 'pl-7' : 'pl-3'}`} style={{ color: 'var(--charcoal)' }}>{l.account}</td>
+                                    <td className="px-3 py-1.5 text-right font-mono whitespace-nowrap" style={{ minWidth: 110, color: 'var(--charcoal)' }}>{l.debit > 0 ? `₱${peso(l.debit)}` : ''}</td>
+                                    <td className="px-3 py-1.5 text-right font-mono whitespace-nowrap" style={{ minWidth: 110, color: 'var(--charcoal)' }}>{l.credit > 0 ? `₱${peso(l.credit)}` : ''}</td>
+                                    <td className="px-3 py-1.5" style={{ color: 'var(--mid-gray)' }}>{l.description}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                              <tfoot>
+                                <tr className="border-t" style={{ borderColor: 'var(--light-gray)', background: 'var(--hr-head)' }}>
+                                  <td className="px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)' }}>Total</td>
+                                  <td className="px-3 py-1.5 text-right font-mono font-bold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>₱{peso(dr)}</td>
+                                  <td className="px-3 py-1.5 text-right font-mono font-bold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>₱{peso(cr)}</td>
+                                  <td className="px-3 py-1.5 text-[11px] font-semibold" style={{ color: Math.abs(dr - cr) < 0.005 ? '#047857' : '#b91c1c' }}>{Math.abs(dr - cr) < 0.005 ? 'Balanced' : `Out of balance by ₱${peso(Math.abs(dr - cr))}`}</td>
+                                </tr>
+                              </tfoot>
+                            </table>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                )
+              })}
             </tbody>
           </table>
         </div>
-      )}
+      </div>
 
       {showNew && <NewEntryModal coa={coa} onClose={() => setShowNew(false)} onDone={async () => { setShowNew(false); await load() }} />}
     </div>
@@ -214,22 +293,22 @@ function NewEntryModal({ coa, onClose, onDone }: { coa: Coa[]; onClose: () => vo
   }
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.4)' }} onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl p-5 max-h-[92vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-xl border shadow-xl w-full max-w-4xl p-5 max-h-[92vh] overflow-y-auto" style={{ borderColor: 'var(--light-gray)' }} onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3">
-          <h3 className="font-bold" style={{ color: 'var(--charcoal)' }}>New journal entry</h3>
-          <button onClick={onClose}><X size={18} /></button>
+          <h3 className="text-base font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>New journal entry</h3>
+          <button onClick={onClose} aria-label="Close" className="p-1 rounded hover:bg-[var(--pale-teal)]"><X size={18} style={{ color: 'var(--mid-gray)' }} /></button>
         </div>
         <div className="flex gap-2 mb-3 flex-wrap">
           <label className="text-xs" style={{ color: 'var(--mid-gray)' }}>Journal date<br />
-            <input type="date" value={entryDate} onChange={e => setEntryDate(e.target.value)} className="px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+            <input type="date" value={entryDate} onChange={e => setEntryDate(e.target.value)} className="px-3 py-2 rounded-lg border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
           </label>
           <label className="text-xs" style={{ color: 'var(--mid-gray)' }}>Branch<br />
-            <select value={branch} onChange={e => setBranch(e.target.value)} className="px-2 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }}>
+            <select value={branch} onChange={e => setBranch(e.target.value)} className="px-2 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--light-gray)' }}>
               {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
             </select>
           </label>
           <label className="flex-1 min-w-[240px] text-xs" style={{ color: 'var(--mid-gray)' }}>Memo<br />
-            <input value={memo} onChange={e => setMemo(e.target.value)} placeholder="What this entry records" className="w-full px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
+            <input value={memo} onChange={e => setMemo(e.target.value)} placeholder="What this entry records" className="w-full px-3 py-2 rounded-lg border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
           </label>
         </div>
 
@@ -271,7 +350,7 @@ function NewEntryModal({ coa, onClose, onDone }: { coa: Coa[]; onClose: () => vo
                       onChange={e => upd(i, { q: e.target.value, accountId: '', accountLabel: '' })}
                       placeholder="Search account…" className="w-full px-2 py-1.5 rounded-lg border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
                     {filtered.length > 0 && (
-                      <div className="absolute z-20 left-0 right-2 mt-1 rounded-xl border bg-white shadow-lg max-h-40 overflow-y-auto" style={{ borderColor: 'var(--light-gray)' }}>
+                      <div className="absolute z-20 left-0 right-2 mt-1 rounded-lg border bg-white shadow-lg max-h-40 overflow-y-auto" style={{ borderColor: 'var(--light-gray)' }}>
                         {filtered.map(c => (
                           <button key={c.id} type="button" onClick={() => upd(i, { accountId: c.id, accountLabel: `${c.accountNumber} ${c.accountTitle}`, q: '' })}
                             className="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50">{c.accountNumber} {c.accountTitle}</button>
@@ -298,10 +377,10 @@ function NewEntryModal({ coa, onClose, onDone }: { coa: Coa[]; onClose: () => vo
         </table>
 
         <div className="flex items-center justify-between">
-          <button onClick={() => setLines(ls => [...ls, blankLine()])} className="px-3 py-1.5 rounded-xl text-xs border" style={{ borderColor: 'var(--light-gray)' }}>Add lines</button>
+          <button onClick={() => setLines(ls => [...ls, blankLine()])} className="px-3 py-1.5 rounded-lg text-xs border" style={{ borderColor: 'var(--light-gray)' }}>Add lines</button>
           <div className="flex gap-2">
-            <button onClick={onClose} className="px-4 py-2 rounded-xl text-sm border" style={{ borderColor: 'var(--light-gray)' }}>Cancel</button>
-            <button onClick={save} disabled={busy || !balanced} className="px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: balanced ? 'var(--teal)' : 'var(--light-gray)' }}>
+            <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm border" style={{ borderColor: 'var(--light-gray)' }}>Cancel</button>
+            <button onClick={save} disabled={busy || !balanced} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: balanced ? 'var(--teal)' : 'var(--light-gray)' }}>
               {busy ? <Loader2 className="animate-spin inline" size={14} /> : 'Save & post'}
             </button>
           </div>
