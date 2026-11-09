@@ -16,6 +16,11 @@ import {
 } from '@/lib/session'
 import { generateEnrollmentPdf } from '@/lib/enrollment-pdf'
 import { exportToXlsx, type ExportCol } from '@/lib/admission-export'
+import {
+  Banner, EmptyState, Icon, KpiCard, PageHeader, PillTabs, RowsSkeleton, StatusPill,
+  BTN_PRIMARY, BTN_SECONDARY, BTN_SM, CARD_STYLE, CONTROL, CONTROL_STYLE, FOCUS, LABEL, LABEL_STYLE,
+  PRIMARY_STYLE, SECONDARY_STYLE, SUBTLE_BG, TH, TH_STYLE,
+} from '@/components/hub/ui'
 
 const ACCESS_CODE_KEY = 'scei_admission_code_v1'
 
@@ -202,11 +207,6 @@ export default function AdmissionPage() {
     if (sortDir === 'asc') { setSortDir('desc'); return }
     setSortKey(null); setSortDir('asc')
   }
-  /** Tiny "▲ / ▼ / —" hint next to a header. */
-  function sortIndicator(key: string): string {
-    if (sortKey !== key) return ''
-    return sortDir === 'asc' ? ' ▲' : ' ▼'
-  }
 
   // Map an AdmissionStudent to the export columns. Reuses the same display
   // formatting the table uses so XLSX + PDF read identically to the screen.
@@ -342,31 +342,52 @@ export default function AdmissionPage() {
     }
   }
 
+  const branchPool = students.filter(s => s.branch === tab)
+  const kNoLrn = branchPool.filter(s => s.lrnStatus === 'NO_LRN').length
+  const kEnrolled = branchPool.filter(s => s.lisStatus === 'ENROLLED').length
+  const kPaid = branchPool.filter(s => s.remittanceStatus === 'PAID').length
+  const filtersOn = !!(search.trim() || levelFilter || sortKey)
+
   if (!code) {
     return (
       <div className="max-w-md mx-auto animate-fade-up">
-        <div className="card-static">
-          <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)] mb-1" style={{ fontFamily: 'var(--font-display)' }}>Aura Academy</div>
-          <h1 className="text-[24px] leading-tight text-[color:var(--deep-teal)] mb-1">Admission tracker</h1>
-          <p className="text-sm text-[color:var(--mid-gray)] mb-5">
+        <div className="rounded-2xl px-6 py-7 sm:px-8 sm:py-8"
+          style={{ ...CARD_STYLE, boxShadow: '0 1px 2px rgba(30,56,50,0.04), 0 12px 32px -18px rgba(30,56,50,0.25)' }}>
+          <span className="w-11 h-11 rounded-xl flex items-center justify-center mb-4" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
+            <Icon name="table" size={20} />
+          </span>
+          <div className="text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ fontFamily: 'var(--font-display)', color: 'var(--teal)' }}>
+            Aura Academy · Partner school
+          </div>
+          <h1 className="text-[22px] sm:text-2xl font-bold leading-tight tracking-tight" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+            Admission tracker
+          </h1>
+          <p className="text-sm mt-2 mb-5 leading-relaxed" style={{ color: 'var(--mid-gray)' }}>
             Enter the access code to view the consolidated enrollment list for both branches.
           </p>
-          <form onSubmit={e => { e.preventDefault(); void tryCode(codeInput) }} className="space-y-3">
-            <label className="block">
-              <span className="label">Access code</span>
+          <form onSubmit={e => { e.preventDefault(); void tryCode(codeInput) }} className="space-y-4">
+            <div>
+              <label htmlFor="admission-code" className={LABEL} style={LABEL_STYLE}>Access code</label>
               <input
+                id="admission-code"
                 autoFocus
-                className="input"
+                className={`${CONTROL} w-full h-10`}
+                style={CONTROL_STYLE}
                 value={codeInput}
                 onChange={e => setCodeInput(e.target.value)}
                 placeholder="Enter code"
                 type="password"
                 autoComplete="off"
               />
-            </label>
-            {codeErr && <div className="px-4 py-3 rounded-xl bg-rose-50 border border-rose-100 text-sm text-rose-800">{codeErr}</div>}
-            <button type="submit" disabled={loading} className="btn-primary w-full">{loading ? 'Checking…' : 'View admission list'}</button>
+            </div>
+            {codeErr && <Banner tone="error">{codeErr}</Banner>}
+            <button type="submit" disabled={loading} className={`${BTN_PRIMARY} w-full h-10`} style={PRIMARY_STYLE}>
+              {loading ? 'Checking…' : <>View admission list <Icon name="chevronRight" size={16} /></>}
+            </button>
           </form>
+          <p className="text-[12px] mt-5 pt-4 leading-relaxed" style={{ borderTop: '1px solid var(--light-gray)', color: 'var(--mid-gray)' }}>
+            For DepEd / LBCA staff. The code is remembered on this device until you sign out.
+          </p>
         </div>
       </div>
     )
@@ -382,141 +403,145 @@ export default function AdmissionPage() {
         marginRight: 'calc(50% - 50vw)',
       }}
     >
-      <div className="px-3 sm:px-5 max-w-7xl mx-auto">
-        <div className="card-static mb-4">
-          <div className="flex items-start justify-between gap-3 flex-wrap">
-            <div>
-              <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)] mb-1" style={{ fontFamily: 'var(--font-display)' }}>Aura Academy</div>
-              <h1 className="text-[24px] leading-tight text-[color:var(--deep-teal)]">Admission tracker</h1>
-              <p className="text-sm text-[color:var(--mid-gray)] mt-1">
-                {students.length} students total · partner school may edit <span className="font-semibold">LIS status</span> + <span className="font-semibold">remittance</span>. Edits sync back to the front desk in real time.
-              </p>
-            </div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <input className="input" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name, email, LRN" style={{ width: 220 }} />
-              <select
-                className="select"
-                value={levelFilter}
-                onChange={e => setLevelFilter(e.target.value as EnrollmentLevel | '')}
-                style={{ width: 'auto' }}
-                title="Filter by grade level"
-              >
-                <option value="">All grade levels</option>
-                {(['NURSERY','KINDER','GRADE_1','GRADE_2','GRADE_3','GRADE_4','GRADE_5','GRADE_6','GRADE_7','GRADE_8','GRADE_9','GRADE_10','GRADE_11','GRADE_12'] as EnrollmentLevel[]).map(l => (
-                  <option key={l} value={l}>{levelLabel(l)}</option>
-                ))}
-              </select>
-              {(sortKey || levelFilter) && (
-                <button
-                  type="button"
-                  onClick={() => { setSortKey(null); setSortDir('asc'); setLevelFilter('') }}
-                  className="text-xs text-[color:var(--mid-gray)] hover:text-[color:var(--narra)] px-2 py-1"
-                  title="Clear sort + level filter"
-                >Clear</button>
-              )}
-              <button onClick={() => void refresh()} className="btn-secondary text-xs" disabled={loading}>{loading ? '…' : 'Refresh'}</button>
-              <button onClick={() => exportToXlsx(filtered, exportCols, `admission-${tab.toLowerCase()}`)} className="btn-secondary text-xs">Excel</button>
-              <button onClick={signOut} className="text-xs text-[color:var(--mid-gray)] hover:text-[color:var(--clay)] px-2 py-1">Sign out</button>
-            </div>
-          </div>
+      <div className="px-3 sm:px-5 max-w-7xl mx-auto space-y-5 min-w-0">
+        <PageHeader
+          eyebrow="Aura Academy · Partner school"
+          title="Admission tracker"
+          description={<>{students.length} students across both branches. You can edit <span className="font-semibold" style={{ color: 'var(--charcoal)' }}>LRN</span>, <span className="font-semibold" style={{ color: 'var(--charcoal)' }}>LSEN classification</span>, <span className="font-semibold" style={{ color: 'var(--charcoal)' }}>LIS status</span>, <span className="font-semibold" style={{ color: 'var(--charcoal)' }}>remittance</span> and <span className="font-semibold" style={{ color: 'var(--charcoal)' }}>comments</span>; edits save as you go and reach the front desk right away.</>}
+          actions={<>
+            <button type="button" onClick={() => void refresh()} className={BTN_SECONDARY} style={SECONDARY_STYLE} disabled={loading}>
+              <Icon name="refresh" size={14} className={loading ? 'animate-spin' : ''} /> {loading ? 'Refreshing…' : 'Refresh'}
+            </button>
+            <button type="button" onClick={() => exportToXlsx(filtered, exportCols, `admission-${tab.toLowerCase()}`)} className={BTN_SECONDARY} style={SECONDARY_STYLE}>
+              <Icon name="download" size={14} /> Excel
+            </button>
+            <button type="button" onClick={signOut} className={BTN_SECONDARY} style={{ ...SECONDARY_STYLE, color: 'var(--mid-gray)' }}>
+              Sign out
+            </button>
+          </>}
+        />
 
-          {loadErr && <div className="mt-3 px-4 py-3 rounded-xl bg-rose-50 border border-rose-100 text-sm text-rose-800">{loadErr}</div>}
+        {loadErr && <Banner tone="error" onRetry={() => void refresh()}>{loadErr}</Banner>}
 
-          <div className="flex gap-2 mt-5 p-1 bg-[color:var(--pale-teal)] rounded-xl w-fit" style={{ fontFamily: 'var(--font-display)' }}>
-            {(['EAST', 'GREENHILLS'] as const).map(b => {
-              const count = students.filter(s => s.branch === b).length
-              return (
-                <button key={b} onClick={() => setTab(b)} className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${tab === b ? 'bg-white text-[color:var(--deep-teal)] shadow-sm' : 'text-[color:var(--mid-gray)]'}`}>
-                  {b === 'EAST' ? 'East Branch' : 'Greenhills Branch'} <span className="text-[11px] text-[color:var(--mid-gray)] ml-1">({count})</span>
-                </button>
-              )
-            })}
-          </div>
+        <PillTabs
+          label="Branch"
+          value={tab}
+          onChange={id => setTab(id as 'EAST' | 'GREENHILLS')}
+          tabs={(['EAST', 'GREENHILLS'] as const).map(b => ({
+            id: b,
+            label: b === 'EAST' ? 'East Branch' : 'Greenhills Branch',
+            count: students.filter(s => s.branch === b).length,
+          }))}
+        />
+
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <KpiCard label="Students" value={branchPool.length} sub={tab === 'EAST' ? 'East Branch' : 'Greenhills Branch'} icon={<Icon name="student" size={16} />} />
+          <KpiCard label="Enrolled in LIS" value={<>{kEnrolled}<span className="text-sm font-semibold" style={{ color: 'var(--mid-gray)' }}> / {branchPool.length}</span></>} sub={`${branchPool.length - kEnrolled} not yet`} icon={<Icon name="check" size={16} />} />
+          <KpiCard label="Remitted" value={<>{kPaid}<span className="text-sm font-semibold" style={{ color: 'var(--mid-gray)' }}> / {branchPool.length}</span></>} sub={`${branchPool.length - kPaid} pending or unset`} icon={<Icon name="wallet" size={16} />} />
+          <KpiCard label="No LRN yet" value={kNoLrn} sub="LRN still to be issued" accent={kNoLrn ? 'var(--sun)' : 'var(--teal)'} icon={<Icon name="clock" size={16} />} />
         </div>
 
-        <div className="card-static p-0 overflow-hidden">
-          <div className="overflow-auto" style={{ maxHeight: '75vh' }}>
-            <table className="text-[11px] w-full" style={{ borderCollapse: 'collapse' }}>
-              <thead className="sticky top-0 z-10" style={{ background: 'var(--paper-2)' }}>
-                <tr className="text-left uppercase tracking-[0.06em] text-[10px] text-[color:var(--mid-gray)] border-b" style={{ borderColor: 'var(--paper-3)', fontFamily: 'var(--font-display)' }}>
+        <section className="rounded-xl min-w-0" style={CARD_STYLE}>
+          {/* Toolbar */}
+          <div className="px-4 py-3 flex flex-wrap items-center gap-2" style={{ borderBottom: '1px solid var(--light-gray)' }}>
+            <div className="relative flex-1 min-w-[200px] max-w-sm">
+              <Icon name="search" size={14} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mid-gray)' }} />
+              <input
+                className={`${CONTROL} w-full pl-8`}
+                style={CONTROL_STYLE}
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search name, email, LRN"
+                aria-label="Search students"
+              />
+            </div>
+            <select
+              className={CONTROL}
+              style={{ ...CONTROL_STYLE, width: 'auto' }}
+              value={levelFilter}
+              onChange={e => setLevelFilter(e.target.value as EnrollmentLevel | '')}
+              title="Filter by grade level"
+              aria-label="Filter by grade level"
+            >
+              <option value="">All grade levels</option>
+              {(['NURSERY','KINDER','GRADE_1','GRADE_2','GRADE_3','GRADE_4','GRADE_5','GRADE_6','GRADE_7','GRADE_8','GRADE_9','GRADE_10','GRADE_11','GRADE_12'] as EnrollmentLevel[]).map(l => (
+                <option key={l} value={l}>{levelLabel(l)}</option>
+              ))}
+            </select>
+            {(sortKey || levelFilter) && (
+              <button
+                type="button"
+                onClick={() => { setSortKey(null); setSortDir('asc'); setLevelFilter('') }}
+                className={BTN_SM}
+                style={{ color: 'var(--mid-gray)' }}
+                title="Clear sort + level filter"
+              ><Icon name="x" size={12} /> Clear</button>
+            )}
+            <span className="ml-auto text-[12px] tabular-nums" style={{ color: 'var(--mid-gray)' }}>
+              {filtered.length === branchPool.length ? `${branchPool.length} students` : `${filtered.length} of ${branchPool.length} shown`}
+              <span className="hidden md:inline"> · click a column header to sort</span>
+            </span>
+          </div>
+
+          {loading && students.length === 0 ? (
+            <RowsSkeleton rows={6} label="Loading admission list" />
+          ) : (
+          <div className="overflow-auto rounded-b-xl" style={{ maxHeight: '75vh' }}>
+            <table className="text-[12px] w-full" style={{ borderCollapse: 'separate', borderSpacing: 0 }}>
+              <thead className="sticky top-0 z-20">
+                <tr>
                   {/* Sortable data columns. Click any header to cycle
-                      asc → desc → off. Document download columns at the
-                      end aren't sortable. */}
-                  {([
-                    { key: 'lastName',                label: 'Full name',            minWidth: 160, sticky: true },
-                    { key: 'level',                   label: 'Grade level',          minWidth: 100 },
-                    { key: 'schoolYear',              label: 'School Year',          minWidth: 90 },
-                    { key: 'lrnStatus',               label: 'LRN status',           minWidth: 80 },
-                    { key: 'lrn',                     label: 'LRN',                  minWidth: 110 },
-                    { key: 'psaBirthCertNo',          label: 'PSA Birth Cert No.',   minWidth: 130 },
-                    { key: 'middleName',              label: 'Middle name',          minWidth: 90 },
-                    { key: 'extensionName',           label: 'Extension',            minWidth: 80 },
-                    { key: 'dob',                     label: 'Date of birth',        minWidth: 90 },
-                    { key: 'sex',                     label: 'Sex',                  minWidth: 60 },
-                    { key: 'ipMember',                label: 'IP',                   minWidth: 60 },
-                    { key: 'ipCommunity',             label: 'IP community',         minWidth: 110 },
-                    { key: 'motherTongue',            label: 'Mother tongue',        minWidth: 100 },
-                    { key: 'religion',                label: 'Religion',             minWidth: 90 },
-                    { key: 'nationality',             label: 'Nationality',          minWidth: 90 },
-                    { key: 'diagnosis',               label: 'Diagnosis',            minWidth: 140 },
-                    { key: 'lsenClassification',      label: 'LSEN classification',  minWidth: 220 },
-                    { key: 'pwdIdNumber',             label: 'PWD ID No.',           minWidth: 100 },
-                    { key: 'houseStreet',             label: 'House / Street',       minWidth: 150 },
-                    { key: 'barangay',                label: 'Barangay',             minWidth: 100 },
-                    { key: 'cityProvinceCountry',     label: 'City / Province',      minWidth: 160 },
-                    { key: 'zipCode',                 label: 'Zip',                  minWidth: 60 },
-                    { key: 'fatherName',              label: "Father's Name",        minWidth: 160 },
-                    { key: 'fatherOccupation',        label: "Father's occupation",  minWidth: 130 },
-                    { key: 'motherName',              label: "Mother's Maiden Name", minWidth: 160 },
-                    { key: 'motherOccupation',        label: "Mother's occupation",  minWidth: 130 },
-                    { key: 'guardianName',            label: "Guardian's Name",      minWidth: 160 },
-                    { key: 'telephone',               label: 'Telephone',            minWidth: 100 },
-                    { key: 'cellphone',               label: 'Cellphone',            minWidth: 110 },
-                    { key: 'email',                   label: 'Email',                minWidth: 180 },
-                    { key: 'isReturningOrTransferee', label: 'Returning/Transferee', minWidth: 100 },
-                    { key: 'lastGradeCompleted',      label: 'Last Grade',           minWidth: 100 },
-                    { key: 'lastSchoolYearCompleted', label: 'Last SY',              minWidth: 100 },
-                    { key: 'previousSchoolName',      label: 'Previous School',      minWidth: 150 },
-                    { key: 'previousSchoolId',        label: 'Prev School ID',       minWidth: 100 },
-                    { key: 'previousSchoolAddress',   label: 'Prev School Address',  minWidth: 170 },
-                    { key: 'lisStatus',               label: 'LIS status',           minWidth: 160 },
-                    { key: 'remittanceStatus',        label: 'Remittance',           minWidth: 90 },
-                    { key: 'admissionComments',       label: 'Comments / Remarks',   minWidth: 200 },
-                  ] as Array<{ key: string; label: string; minWidth: number; sticky?: boolean }>).map(col => {
+                      asc → desc → off. Document columns at the end
+                      aren't sortable — they're actions, not data. */}
+                  {COLUMNS.map(col => {
                     const active = sortKey === col.key
                     return (
                       <th
                         key={col.key}
-                        onClick={() => cycleSort(col.key)}
-                        title={`Sort by ${col.label}`}
-                        className={`py-1 px-1.5 font-semibold whitespace-nowrap cursor-pointer select-none hover:text-[color:var(--narra)] ${col.sticky ? 'sticky left-0 z-20' : ''} ${active ? 'text-[color:var(--narra)]' : ''}`}
-                        style={{ minWidth: col.minWidth, ...(col.sticky ? { background: 'var(--paper-2)' } : null) }}
+                        scope="col"
+                        aria-sort={active ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}
+                        className={`${TH} !px-2.5 ${col.sticky ? 'sticky left-0 z-30' : ''}`}
+                        style={{ ...TH_STYLE, minWidth: col.minWidth, ...(col.sticky ? { boxShadow: 'inset -1px 0 0 var(--light-gray)' } : null), ...(active ? { color: 'var(--deep-teal)' } : null) }}
                       >
-                        {col.label}{sortIndicator(col.key)}
+                        <button
+                          type="button"
+                          onClick={() => cycleSort(col.key)}
+                          title={`Sort by ${col.label}`}
+                          className={`inline-flex items-center gap-1 uppercase tracking-wider rounded hover:text-[color:var(--deep-teal)] ${FOCUS}`}
+                        >
+                          {col.label}
+                          <span aria-hidden className="text-[9px] w-2">{active ? (sortDir === 'asc' ? '▲' : '▼') : ''}</span>
+                        </button>
                       </th>
                     )
                   })}
-                  {/* Document download columns — server-side blobs.
-                      Not sortable: they're action buttons, not data. */}
-                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap text-center" style={{ minWidth: 130, background: '#fef3c7' }}>Enrollment Form</th>
-                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap text-center" style={{ minWidth: 110, background: '#fef3c7' }}>Parent Waiver</th>
-                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap text-center" style={{ minWidth: 110, background: '#fef3c7' }}>DepEd Affidavit</th>
-                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap text-center" style={{ minWidth: 110, background: '#fef3c7' }}>Report Card / SF9</th>
-                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap text-center" style={{ minWidth: 110, background: '#fef3c7' }}>PSA Birth Cert</th>
-                  <th className="py-1 px-1.5 font-semibold whitespace-nowrap text-center" style={{ minWidth: 110, background: '#fef3c7' }}>Form 137 / SF10</th>
+                  {DOC_COLUMNS.map(label => (
+                    <th key={label} scope="col" className={`${TH} !px-2.5 text-center`}
+                      style={{ ...TH_STYLE, minWidth: label === 'Enrollment Form' ? 130 : 120, background: DOC_HEAD_BG }}>
+                      {label}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
                 {filtered.length === 0 && (
-                  <tr><td colSpan={46} className="py-10 text-center text-[color:var(--mid-gray)]">No students in this branch yet.</td></tr>
+                  <tr><td colSpan={COLUMNS.length + DOC_COLUMNS.length} className="p-0">
+                    <div className="sticky left-0 max-w-[min(100%,calc(100vw-48px))]">
+                      <EmptyState
+                        icon={filtersOn ? 'search' : 'users'}
+                        title={filtersOn ? 'No students match these filters' : 'No students in this branch yet'}
+                        hint={filtersOn ? 'Try a different name or grade level, or clear the filters.' : 'Enrollments appear here as soon as a parent finishes the online form.'}
+                      />
+                    </div>
+                  </td></tr>
                 )}
                 {filtered.map(s => (
-                  <tr key={s.id} className="border-b hover:bg-[color:var(--paper-2)]" style={{ borderColor: 'var(--paper-3)' }}>
-                    <td className="py-1 px-1.5 whitespace-nowrap font-medium sticky left-0 bg-white z-10 group-hover:bg-[color:var(--paper-2)]" style={{ background: '#fff' }}>{[s.firstName, s.lastName].filter(Boolean).join(' ') || s.email}</td>
-                    <td className="py-1 px-1.5 whitespace-nowrap">{s.level ? levelLabel(s.level) : <span className="text-[color:var(--mid-gray)]">—</span>}</td>
-                    <td className="py-1 px-1.5 whitespace-nowrap">{s.schoolYear || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
-                    <td className="py-1 px-1.5 whitespace-nowrap">{s.lrnStatus === 'NO_LRN' ? 'NO LRN' : s.lrnStatus === 'WITH_LRN' ? 'WITH LRN' : s.lrnStatus === 'RETURNING' ? 'RETURNING' : <span className="text-[color:var(--mid-gray)]">—</span>}</td>
-                    <td className="py-1 px-1.5 whitespace-nowrap">
+                  <tr key={s.id} className="group transition-colors hover:bg-[#FBF9F5]" style={{ borderTop: '1px solid var(--light-gray)' }}>
+                    <td className={`${CELL} whitespace-nowrap font-semibold sticky left-0 z-10 bg-white group-hover:bg-[#FBF9F5] transition-colors`} style={{ color: 'var(--charcoal)', boxShadow: 'inset -1px 0 0 var(--light-gray)' }}>{[s.firstName, s.lastName].filter(Boolean).join(' ') || s.email}</td>
+                    <td className={`${CELL} whitespace-nowrap`}>{s.level ? levelLabel(s.level) : <Dash />}</td>
+                    <td className={`${CELL} whitespace-nowrap`}>{s.schoolYear || <Dash />}</td>
+                    <td className={`${CELL} whitespace-nowrap`}>{s.lrnStatus === 'NO_LRN' ? 'NO LRN' : s.lrnStatus === 'WITH_LRN' ? 'WITH LRN' : s.lrnStatus === 'RETURNING' ? 'RETURNING' : <Dash />}</td>
+                    <td className={`${CELL} whitespace-nowrap`}>
                       {s.lrnStatus === 'NO_LRN' ? (
                         // NO_LRN row: inline 12-digit input. Save fires
                         // on blur when the digits resolve to a valid
@@ -529,7 +554,7 @@ export default function AdmissionPage() {
                           inputMode="numeric"
                           maxLength={12}
                           placeholder="12 digits"
-                          className="w-full bg-transparent text-[11px] outline-none border-b border-transparent focus:border-[color:var(--narra)] py-0"
+                          className={INLINE}
                           onBlur={e => {
                             const v = e.currentTarget.value.replace(/\D/g, '').slice(0, 12)
                             const prev = (s.lrn ?? '')
@@ -545,25 +570,25 @@ export default function AdmissionPage() {
                           title="DepEd-issued LRN. Type the 12 digits then click outside to save. The cell locks once an LRN is on file."
                         />
                       ) : (
-                        s.lrn || <span className="text-[color:var(--mid-gray)]">—</span>
+                        s.lrn || <Dash />
                       )}
                     </td>
-                    <td className="py-1 px-1.5 whitespace-nowrap">{s.psaBirthCertNo || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
-                    <td className="py-1 px-1.5 whitespace-nowrap">{s.middleName || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
-                    <td className="py-1 px-1.5 whitespace-nowrap">{s.extensionName || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
-                    <td className="py-1 px-1.5 whitespace-nowrap">{s.dob || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
-                    <td className="py-1 px-1.5 whitespace-nowrap">{s.sex || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
-                    <td className="py-1 px-1.5 whitespace-nowrap">{s.ipMember || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
-                    <td className="py-1 px-1.5">{s.ipCommunity || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
-                    <td className="py-1 px-1.5 whitespace-nowrap">{s.motherTongue || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
-                    <td className="py-1 px-1.5 whitespace-nowrap">{s.religion || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
-                    <td className="py-1 px-1.5 whitespace-nowrap">{s.nationality || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
-                    <td className="py-1 px-1.5">{s.diagnosis || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
-                    <td className="py-1 px-1.5">
+                    <td className={`${CELL} whitespace-nowrap`}>{s.psaBirthCertNo || <Dash />}</td>
+                    <td className={`${CELL} whitespace-nowrap`}>{s.middleName || <Dash />}</td>
+                    <td className={`${CELL} whitespace-nowrap`}>{s.extensionName || <Dash />}</td>
+                    <td className={`${CELL} whitespace-nowrap`}>{s.dob || <Dash />}</td>
+                    <td className={`${CELL} whitespace-nowrap`}>{s.sex || <Dash />}</td>
+                    <td className={`${CELL} whitespace-nowrap`}>{s.ipMember || <Dash />}</td>
+                    <td className={CELL}>{s.ipCommunity || <Dash />}</td>
+                    <td className={`${CELL} whitespace-nowrap`}>{s.motherTongue || <Dash />}</td>
+                    <td className={`${CELL} whitespace-nowrap`}>{s.religion || <Dash />}</td>
+                    <td className={`${CELL} whitespace-nowrap`}>{s.nationality || <Dash />}</td>
+                    <td className={CELL}>{s.diagnosis || <Dash />}</td>
+                    <td className={CELL}>
                       <select
                         value={s.lsenClassification ?? ''}
                         onChange={e => patchField(s.id, { lsenClassification: (e.target.value || null) as LsenClassification | null })}
-                        className="w-full bg-transparent text-[11px] outline-none border-b border-transparent focus:border-[color:var(--narra)] py-0"
+                        className={INLINE}
                         title="Set by the teacher, front desk, or admin once the school has assessed the learner."
                       >
                         <option value="">—</option>
@@ -576,50 +601,50 @@ export default function AdmissionPage() {
                         ))}
                       </select>
                     </td>
-                    <td className="py-1 px-1.5 whitespace-nowrap">{s.pwdIdNumber || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
-                    <td className="py-1 px-1.5">{s.houseStreet || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
-                    <td className="py-1 px-1.5">{s.barangay || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
-                    <td className="py-1 px-1.5">{s.cityProvinceCountry || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
-                    <td className="py-1 px-1.5 whitespace-nowrap">{s.zipCode || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
-                    <td className="py-1 px-1.5">{s.fatherName || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
-                    <td className="py-1 px-1.5">{s.fatherOccupation || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
-                    <td className="py-1 px-1.5">{s.motherName || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
-                    <td className="py-1 px-1.5">{s.motherOccupation || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
-                    <td className="py-1 px-1.5">{s.guardianName || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
-                    <td className="py-1 px-1.5 whitespace-nowrap">{s.telephone || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
-                    <td className="py-1 px-1.5 whitespace-nowrap">{s.cellphone || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
-                    <td className="py-1 px-1.5">{s.email || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
-                    <td className="py-1 px-1.5 whitespace-nowrap">{s.isReturningOrTransferee || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
-                    <td className="py-1 px-1.5 whitespace-nowrap">{s.lastGradeCompleted || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
-                    <td className="py-1 px-1.5 whitespace-nowrap">{s.lastSchoolYearCompleted || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
-                    <td className="py-1 px-1.5">{s.previousSchoolName || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
-                    <td className="py-1 px-1.5">{s.previousSchoolId || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
-                    <td className="py-1 px-1.5">{s.previousSchoolAddress || <span className="text-[color:var(--mid-gray)]">—</span>}</td>
-                    <td className="py-1 px-1.5">
+                    <td className={`${CELL} whitespace-nowrap`}>{s.pwdIdNumber || <Dash />}</td>
+                    <td className={CELL}>{s.houseStreet || <Dash />}</td>
+                    <td className={CELL}>{s.barangay || <Dash />}</td>
+                    <td className={CELL}>{s.cityProvinceCountry || <Dash />}</td>
+                    <td className={`${CELL} whitespace-nowrap`}>{s.zipCode || <Dash />}</td>
+                    <td className={CELL}>{s.fatherName || <Dash />}</td>
+                    <td className={CELL}>{s.fatherOccupation || <Dash />}</td>
+                    <td className={CELL}>{s.motherName || <Dash />}</td>
+                    <td className={CELL}>{s.motherOccupation || <Dash />}</td>
+                    <td className={CELL}>{s.guardianName || <Dash />}</td>
+                    <td className={`${CELL} whitespace-nowrap`}>{s.telephone || <Dash />}</td>
+                    <td className={`${CELL} whitespace-nowrap`}>{s.cellphone || <Dash />}</td>
+                    <td className={CELL}>{s.email || <Dash />}</td>
+                    <td className={`${CELL} whitespace-nowrap`}>{s.isReturningOrTransferee || <Dash />}</td>
+                    <td className={`${CELL} whitespace-nowrap`}>{s.lastGradeCompleted || <Dash />}</td>
+                    <td className={`${CELL} whitespace-nowrap`}>{s.lastSchoolYearCompleted || <Dash />}</td>
+                    <td className={CELL}>{s.previousSchoolName || <Dash />}</td>
+                    <td className={CELL}>{s.previousSchoolId || <Dash />}</td>
+                    <td className={CELL}>{s.previousSchoolAddress || <Dash />}</td>
+                    <td className={CELL}>
                       <select
                         value={s.lisStatus ?? ''}
                         onChange={e => patchField(s.id, { lisStatus: (e.target.value || null) as LisStatus | null })}
-                        className="w-full bg-transparent text-[11px] outline-none border-b border-transparent focus:border-[color:var(--narra)] py-0"
+                        className={INLINE}
                       >
                         <option value="">—</option>
                         {LIS_STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                       </select>
                     </td>
-                    <td className="py-1 px-1.5">
+                    <td className={CELL}>
                       <select
                         value={s.remittanceStatus ?? ''}
                         onChange={e => patchField(s.id, { remittanceStatus: (e.target.value || null) as RemittanceStatus | null })}
-                        className="w-full bg-transparent text-[11px] outline-none border-b border-transparent focus:border-[color:var(--narra)] py-0"
+                        className={INLINE}
                       >
                         <option value="">—</option>
                         {REMITTANCE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                       </select>
                     </td>
-                    <td className="py-1 px-1.5">
+                    <td className={CELL}>
                       <input
                         defaultValue={s.admissionComments ?? ''}
                         placeholder="Add comment…"
-                        className="w-full bg-transparent text-[11px] outline-none border-b border-transparent focus:border-[color:var(--narra)] py-0"
+                        className={INLINE}
                         onBlur={e => {
                           const nv = e.target.value
                           if (nv !== (s.admissionComments ?? '')) patchField(s.id, { admissionComments: nv || null })
@@ -628,45 +653,32 @@ export default function AdmissionPage() {
                     </td>
 
                     {/* Enrollment Form — always available, rebuilt client-side from API data */}
-                    <td className="py-1 px-1.5 whitespace-nowrap text-center" style={{ background: '#fffbe6' }}>
-                      <button
-                        type="button"
-                        onClick={() => openEnrollmentForm(s)}
-                        className="text-[10.5px] px-1.5 py-0.5 rounded text-[color:var(--narra)] hover:bg-[color:var(--paper-2)] border"
-                        style={{ borderColor: 'var(--paper-3)' }}
-                        title="Open Enrollment Form in a new tab"
-                      >View</button>
-                      <button
-                        type="button"
-                        onClick={() => downloadEnrollmentForm(s)}
-                        className="ml-1 text-[10.5px] px-1.5 py-0.5 rounded text-white"
-                        style={{ background: 'var(--narra)' }}
-                        title="Download Enrollment Form PDF"
-                      >↓</button>
+                    <td className={`${CELL} whitespace-nowrap text-center`} style={{ background: DOC_BG }}>
+                      <DocButtons onView={() => openEnrollmentForm(s)} onDownload={() => downloadEnrollmentForm(s)} viewTitle="Open Enrollment Form in a new tab" downloadTitle="Download Enrollment Form PDF" />
                     </td>
 
                     {/* Parent Waiver — server blob (if uploaded by parent) */}
-                    <td className="py-1 px-1.5 whitespace-nowrap text-center" style={{ background: '#fffbe6' }}>
+                    <td className={`${CELL} whitespace-nowrap text-center`} style={{ background: DOC_BG }}>
                       <DocCell present={hasBlob(s, 'parent_waiver')} localOnly={hasLocalOnly(s, 'parent_waiver')} onView={() => openDocBlob(s, 'parent_waiver', true)} onDownload={() => openDocBlob(s, 'parent_waiver', false)} hint={s.waiverSignedAt ? `Signed ${new Date(s.waiverSignedAt).toLocaleDateString()}` : undefined} />
                     </td>
 
                     {/* DepEd Affidavit of Undertaking — only if filled */}
-                    <td className="py-1 px-1.5 whitespace-nowrap text-center" style={{ background: '#fffbe6' }}>
+                    <td className={`${CELL} whitespace-nowrap text-center`} style={{ background: DOC_BG }}>
                       <DocCell present={hasBlob(s, 'affidavit_undertaking')} localOnly={hasLocalOnly(s, 'affidavit_undertaking')} onView={() => openDocBlob(s, 'affidavit_undertaking', true)} onDownload={() => openDocBlob(s, 'affidavit_undertaking', false)} />
                     </td>
 
                     {/* Latest Report Card / SF9 */}
-                    <td className="py-1 px-1.5 whitespace-nowrap text-center" style={{ background: '#fffbe6' }}>
+                    <td className={`${CELL} whitespace-nowrap text-center`} style={{ background: DOC_BG }}>
                       <DocCell present={hasBlob(s, 'report_card_sf9')} localOnly={hasLocalOnly(s, 'report_card_sf9')} onView={() => openDocBlob(s, 'report_card_sf9', true)} onDownload={() => openDocBlob(s, 'report_card_sf9', false)} />
                     </td>
 
                     {/* PSA Birth Certificate */}
-                    <td className="py-1 px-1.5 whitespace-nowrap text-center" style={{ background: '#fffbe6' }}>
+                    <td className={`${CELL} whitespace-nowrap text-center`} style={{ background: DOC_BG }}>
                       <DocCell present={hasBlob(s, 'psa_birth_cert')} localOnly={hasLocalOnly(s, 'psa_birth_cert')} onView={() => openDocBlob(s, 'psa_birth_cert', true)} onDownload={() => openDocBlob(s, 'psa_birth_cert', false)} />
                     </td>
 
                     {/* Form 137 / SF10 — uploaded by staff (teacher / admin / branch admin) */}
-                    <td className="py-1 px-1.5 whitespace-nowrap text-center" style={{ background: '#fffbe6' }}>
+                    <td className={`${CELL} whitespace-nowrap text-center`} style={{ background: DOC_BG }}>
                       <DocCell present={hasBlob(s, 'form_137_sf10')} localOnly={hasLocalOnly(s, 'form_137_sf10')} onView={() => openDocBlob(s, 'form_137_sf10', true)} onDownload={() => openDocBlob(s, 'form_137_sf10', false)} />
                     </td>
                   </tr>
@@ -674,23 +686,101 @@ export default function AdmissionPage() {
               </tbody>
             </table>
           </div>
-        </div>
+          )}
 
-        <p className="text-[11.5px] text-[color:var(--mid-gray)] mt-3 text-center" style={{ fontFamily: 'var(--font-display)' }}>
-          Edits save automatically · Refresh to pull the latest from the front desk · Documents with a — were not uploaded by the parent
-        </p>
+          <div className="px-4 py-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[11.5px] rounded-b-xl" style={{ borderTop: '1px solid var(--light-gray)', background: SUBTLE_BG, color: 'var(--mid-gray)' }}>
+            <span className="inline-flex items-center gap-1.5"><Icon name="check" size={13} /> Edits save automatically</span>
+            <span className="inline-flex items-center gap-1.5"><Icon name="refresh" size={13} /> Refresh to pull the latest from the front desk</span>
+            <span className="inline-flex items-center gap-1.5"><Dash /> Not uploaded by the parent</span>
+            <span className="inline-flex items-center gap-1.5"><StatusPill tone="warn">On parent&apos;s device</StatusPill> Uploaded but not synced yet</span>
+          </div>
+        </section>
       </div>
     </div>
   )
 }
 
+// ── Table pieces ─────────────────────────────────────────────────────────────
+
+const CELL = 'py-2 px-2.5 align-middle'
+/** Inline editors inside the table: borderless until hovered or focused. */
+const INLINE = 'w-full bg-transparent text-[12px] rounded-md px-1.5 py-1 -mx-1.5 outline-none border border-transparent hover:border-[color:var(--light-gray)] focus:border-[color:var(--teal)] focus:bg-white focus:shadow-[0_0_0_3px_rgba(84,125,114,0.14)] transition-[border-color,box-shadow]'
+const DOC_BG = '#FBF9F5'
+const DOC_HEAD_BG = '#F3EEE4'
+
+const COLUMNS: Array<{ key: string; label: string; minWidth: number; sticky?: boolean }> = [
+  { key: 'lastName',                label: 'Full name',            minWidth: 170, sticky: true },
+  { key: 'level',                   label: 'Grade level',          minWidth: 100 },
+  { key: 'schoolYear',              label: 'School Year',          minWidth: 90 },
+  { key: 'lrnStatus',               label: 'LRN status',           minWidth: 90 },
+  { key: 'lrn',                     label: 'LRN',                  minWidth: 120 },
+  { key: 'psaBirthCertNo',          label: 'PSA Birth Cert No.',   minWidth: 130 },
+  { key: 'middleName',              label: 'Middle name',          minWidth: 90 },
+  { key: 'extensionName',           label: 'Extension',            minWidth: 80 },
+  { key: 'dob',                     label: 'Date of birth',        minWidth: 100 },
+  { key: 'sex',                     label: 'Sex',                  minWidth: 60 },
+  { key: 'ipMember',                label: 'IP',                   minWidth: 60 },
+  { key: 'ipCommunity',             label: 'IP community',         minWidth: 110 },
+  { key: 'motherTongue',            label: 'Mother tongue',        minWidth: 100 },
+  { key: 'religion',                label: 'Religion',             minWidth: 90 },
+  { key: 'nationality',             label: 'Nationality',          minWidth: 90 },
+  { key: 'diagnosis',               label: 'Diagnosis',            minWidth: 140 },
+  { key: 'lsenClassification',      label: 'LSEN classification',  minWidth: 220 },
+  { key: 'pwdIdNumber',             label: 'PWD ID No.',           minWidth: 100 },
+  { key: 'houseStreet',             label: 'House / Street',       minWidth: 150 },
+  { key: 'barangay',                label: 'Barangay',             minWidth: 100 },
+  { key: 'cityProvinceCountry',     label: 'City / Province',      minWidth: 160 },
+  { key: 'zipCode',                 label: 'Zip',                  minWidth: 60 },
+  { key: 'fatherName',              label: "Father's Name",        minWidth: 160 },
+  { key: 'fatherOccupation',        label: "Father's occupation",  minWidth: 130 },
+  { key: 'motherName',              label: "Mother's Maiden Name", minWidth: 160 },
+  { key: 'motherOccupation',        label: "Mother's occupation",  minWidth: 130 },
+  { key: 'guardianName',            label: "Guardian's Name",      minWidth: 160 },
+  { key: 'telephone',               label: 'Telephone',            minWidth: 100 },
+  { key: 'cellphone',               label: 'Cellphone',            minWidth: 110 },
+  { key: 'email',                   label: 'Email',                minWidth: 180 },
+  { key: 'isReturningOrTransferee', label: 'Returning/Transferee', minWidth: 100 },
+  { key: 'lastGradeCompleted',      label: 'Last Grade',           minWidth: 100 },
+  { key: 'lastSchoolYearCompleted', label: 'Last SY',              minWidth: 100 },
+  { key: 'previousSchoolName',      label: 'Previous School',      minWidth: 150 },
+  { key: 'previousSchoolId',        label: 'Prev School ID',       minWidth: 100 },
+  { key: 'previousSchoolAddress',   label: 'Prev School Address',  minWidth: 170 },
+  { key: 'lisStatus',               label: 'LIS status',           minWidth: 180 },
+  { key: 'remittanceStatus',        label: 'Remittance',           minWidth: 110 },
+  { key: 'admissionComments',       label: 'Comments / Remarks',   minWidth: 200 },
+]
+
+const DOC_COLUMNS = ['Enrollment Form', 'Parent Waiver', 'DepEd Affidavit', 'Report Card / SF9', 'PSA Birth Cert', 'Form 137 / SF10']
+
+function Dash() {
+  return <span aria-label="None" style={{ color: 'var(--light-gray)' }}>—</span>
+}
+
+function DocButtons({ onView, onDownload, viewTitle = 'View in a new tab', downloadTitle = 'Download' }: {
+  onView: () => void; onDownload: () => void; viewTitle?: string; downloadTitle?: string
+}) {
+  return (
+    <span className="inline-flex items-center gap-1">
+      <button type="button" onClick={onView} title={viewTitle}
+        className={`inline-flex items-center gap-1 h-7 px-2 rounded-md text-[11px] font-semibold transition-colors hover:bg-white ${FOCUS}`}
+        style={{ border: '1px solid var(--light-gray)', color: 'var(--deep-teal)', background: '#fff' }}>
+        <Icon name="eye" size={12} /> View
+      </button>
+      <button type="button" onClick={onDownload} title={downloadTitle} aria-label={downloadTitle}
+        className={`inline-flex items-center justify-center w-7 h-7 rounded-md text-white transition-opacity hover:opacity-90 ${FOCUS}`}
+        style={{ background: 'var(--deep-teal)' }}>
+        <Icon name="download" size={12} />
+      </button>
+    </span>
+  )
+}
+
 /** Inline document-cell renderer for the /admission table. Shows View +
- *  Download mini-buttons when the server has the blob; otherwise shows a
- *  faint dash. `localOnly` flags the case where the parent uploaded the file
- *  but it lives only in their browser's IndexedDB (legacy enrollments from
- *  before the server-blob sync shipped) — staff sees a phone glyph so they
- *  know to ask the parent to re-submit. The `hint` slot lets callers expose
- *  meta like "Signed YYYY-MM-DD". */
+ *  Download buttons when the server has the blob; otherwise a faint dash.
+ *  `localOnly` flags the case where the parent uploaded the file but it
+ *  lives only in their browser's IndexedDB (legacy enrollments from before
+ *  the server-blob sync shipped) so staff know to ask the parent to
+ *  re-submit. `hint` exposes meta like "Signed 11/9/2026". */
 function DocCell({ present, localOnly, onView, onDownload, hint }: {
   present: boolean
   localOnly?: boolean
@@ -701,33 +791,19 @@ function DocCell({ present, localOnly, onView, onDownload, hint }: {
   if (!present) {
     if (localOnly) {
       return (
-        <span className="text-[10.5px] text-amber-700" title="Parent uploaded this on their device, but it hasn't synced to the server yet. Ask the parent to re-submit on /documents, or upload on their behalf from the admin profile.">
-          📱 Local
+        <span title="Parent uploaded this on their device, but it hasn't synced to the server yet. Ask the parent to re-submit on /documents, or upload on their behalf from the admin profile.">
+          <StatusPill tone="warn">On parent&apos;s device</StatusPill>
         </span>
       )
     }
-    return (
-      <span className="text-[color:var(--mid-gray)] text-[10.5px]" title={hint ?? 'Not uploaded'}>
-        {hint ? '⌛' : '—'}
-      </span>
-    )
+    if (hint) {
+      return (
+        <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: 'var(--mid-gray)' }} title={`${hint} — file not uploaded yet`}>
+          <Icon name="clock" size={12} /> {hint}
+        </span>
+      )
+    }
+    return <span title="Not uploaded"><Dash /></span>
   }
-  return (
-    <span className="inline-flex gap-1">
-      <button
-        type="button"
-        onClick={onView}
-        className="text-[10.5px] px-1.5 py-0.5 rounded text-[color:var(--narra)] hover:bg-[color:var(--paper-2)] border"
-        style={{ borderColor: 'var(--paper-3)' }}
-        title="View in a new tab"
-      >View</button>
-      <button
-        type="button"
-        onClick={onDownload}
-        className="text-[10.5px] px-1.5 py-0.5 rounded text-white"
-        style={{ background: 'var(--narra)' }}
-        title="Download"
-      >↓</button>
-    </span>
-  )
+  return <DocButtons onView={onView} onDownload={onDownload} />
 }
