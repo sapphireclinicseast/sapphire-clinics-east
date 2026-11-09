@@ -97,6 +97,10 @@ async function loadDepartment(branch: string, department: string) {
     patient: s.patient ? `${s.patient.lastName}, ${s.patient.firstName}` : null,
     patientId: s.patientId,
     dp: s.patientBookings[0]?.downpayment ? Number(s.patientBookings[0].downpayment) : null,
+    // Carried, not dropped. Without this every slot looks weekly, `dated` is
+    // always empty, and a one-off can never reach the sheet however carefully
+    // the blocks below are drawn.
+    date: s.date ? s.date.toISOString().slice(0, 10) : null,
   }))
 
   return {
