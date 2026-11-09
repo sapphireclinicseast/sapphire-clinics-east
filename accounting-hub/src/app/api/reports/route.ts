@@ -17,6 +17,10 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const year = parseInt(searchParams.get('year') || String(new Date().getFullYear()))
   const branch = searchParams.get('branch') || 'ALL'
+  // view=budget (the Budget page): the same figures, but only the income-statement
+  // accounts and the monthly actuals come back (~30 KB instead of ~10 MB), and the
+  // per-account journal line lists that only Reports reads are not built.
+  const slim = searchParams.get('view') === 'budget'
 
   // FY2024–FY2025 live as manual statements from the audited management
   // accounts, not as tagged transactions — serve them directly.
@@ -843,66 +847,68 @@ export async function GET(req: Request) {
     /* ── Journal entry balances by account ────────────────────── */
 
     const journalBalances: Record<string, { accountNumber: string; accountTitle: string; accountType: string; balance: number; entries: { date: string; description: string; referenceType: string; amount: number }[] }> = {}
-    for (const line of journalLines) {
-      if (!line.account) continue
-      const key = `${line.account.accountNumber} ${line.account.accountTitle}`
-      if (!journalBalances[key]) {
-        journalBalances[key] = {
-          accountNumber: line.account.accountNumber,
-          accountTitle: line.account.accountTitle,
-          accountType: line.account.accountType,
-          balance: 0,
-          entries: [],
+    if (!slim) {
+      for (const line of journalLines) {
+        if (!line.account) continue
+        const key = `${line.account.accountNumber} ${line.account.accountTitle}`
+        if (!journalBalances[key]) {
+          journalBalances[key] = {
+            accountNumber: line.account.accountNumber,
+            accountTitle: line.account.accountTitle,
+            accountType: line.account.accountType,
+            balance: 0,
+            entries: [],
+          }
         }
+        // For liability accounts: credit increases balance, debit decreases
+        // For expense accounts: debit increases balance, credit decreases
+        const credit = Number(line.credit) || 0
+        const debit = Number(line.debit) || 0
+        if (line.account.accountType === 'LIABILITY' || line.account.accountType === 'REVENUE' || line.account.accountType === 'EQUITY') {
+          journalBalances[key].balance += credit - debit
+        } else {
+          journalBalances[key].balance += debit - credit
+        }
+        journalBalances[key].entries.push({
+          date: line.journalEntry.entryDate.toISOString().split('T')[0],
+          description: line.journalEntry.description,
+          referenceType: line.journalEntry.referenceType || '',
+          amount: credit > 0 ? credit : -debit,
+        })
       }
-      // For liability accounts: credit increases balance, debit decreases
-      // For expense accounts: debit increases balance, credit decreases
-      const credit = Number(line.credit) || 0
-      const debit = Number(line.debit) || 0
-      if (line.account.accountType === 'LIABILITY' || line.account.accountType === 'REVENUE' || line.account.accountType === 'EQUITY') {
-        journalBalances[key].balance += credit - debit
-      } else {
-        journalBalances[key].balance += debit - credit
-      }
-      journalBalances[key].entries.push({
-        date: line.journalEntry.entryDate.toISOString().split('T')[0],
-        description: line.journalEntry.description,
-        referenceType: line.journalEntry.referenceType || '',
-        amount: credit > 0 ? credit : -debit,
-      })
-    }
 
-    // Equity is CUMULATIVE (a Balance-Sheet account), so it must reflect
-    // inception-to-date movements — not just the current year. Share capital
-    // issued in a prior year (e.g. via the Equity module) is still equity today,
-    // but the year-scoped journalLines above would drop it. Recompute EQUITY
-    // balances from ALL journal entries up to the report year-end and replace the
-    // year-scoped equity balances with them. (Equity is company-wide, so it is not
-    // branch-filtered.)
-    const equityLinesAllTime = await prisma.journalEntryLine.findMany({
-      where: { account: { accountType: 'EQUITY' }, journalEntry: { entryDate: { lt: endDate } } },
-      select: {
-        debit: true, credit: true,
-        account: { select: { accountNumber: true, accountTitle: true, accountType: true } },
-        journalEntry: { select: { entryDate: true, description: true, referenceType: true } },
-      },
-    })
-    for (const key of Object.keys(journalBalances)) {
-      if (journalBalances[key].accountType === 'EQUITY') delete journalBalances[key]
-    }
-    for (const line of equityLinesAllTime) {
-      if (!line.account) continue
-      const key = `${line.account.accountNumber} ${line.account.accountTitle}`
-      if (!journalBalances[key]) {
-        journalBalances[key] = { accountNumber: line.account.accountNumber, accountTitle: line.account.accountTitle, accountType: 'EQUITY', balance: 0, entries: [] }
-      }
-      journalBalances[key].balance += (Number(line.credit) || 0) - (Number(line.debit) || 0)
-      journalBalances[key].entries.push({
-        date: line.journalEntry.entryDate.toISOString().split('T')[0],
-        description: line.journalEntry.description,
-        referenceType: line.journalEntry.referenceType || '',
-        amount: (Number(line.credit) || 0) > 0 ? Number(line.credit) : -Number(line.debit),
+      // Equity is CUMULATIVE (a Balance-Sheet account), so it must reflect
+      // inception-to-date movements — not just the current year. Share capital
+      // issued in a prior year (e.g. via the Equity module) is still equity today,
+      // but the year-scoped journalLines above would drop it. Recompute EQUITY
+      // balances from ALL journal entries up to the report year-end and replace the
+      // year-scoped equity balances with them. (Equity is company-wide, so it is not
+      // branch-filtered.)
+      const equityLinesAllTime = await prisma.journalEntryLine.findMany({
+        where: { account: { accountType: 'EQUITY' }, journalEntry: { entryDate: { lt: endDate } } },
+        select: {
+          debit: true, credit: true,
+          account: { select: { accountNumber: true, accountTitle: true, accountType: true } },
+          journalEntry: { select: { entryDate: true, description: true, referenceType: true } },
+        },
       })
+      for (const key of Object.keys(journalBalances)) {
+        if (journalBalances[key].accountType === 'EQUITY') delete journalBalances[key]
+      }
+      for (const line of equityLinesAllTime) {
+        if (!line.account) continue
+        const key = `${line.account.accountNumber} ${line.account.accountTitle}`
+        if (!journalBalances[key]) {
+          journalBalances[key] = { accountNumber: line.account.accountNumber, accountTitle: line.account.accountTitle, accountType: 'EQUITY', balance: 0, entries: [] }
+        }
+        journalBalances[key].balance += (Number(line.credit) || 0) - (Number(line.debit) || 0)
+        journalBalances[key].entries.push({
+          date: line.journalEntry.entryDate.toISOString().split('T')[0],
+          description: line.journalEntry.description,
+          referenceType: line.journalEntry.referenceType || '',
+          amount: (Number(line.credit) || 0) > 0 ? Number(line.credit) : -Number(line.debit),
+        })
+      }
     }
 
     /* ── Feed journal-entry REVENUE into monthly revenueByAccount ── */
@@ -1246,6 +1252,12 @@ export async function GET(req: Request) {
         normalBalance: acct.normalBalance,
         currency: acct.currency,
       })
+    }
+
+    if (slim) {
+      const slimMonthly: Record<string, { cogs: number; revenueByAccount: Record<string, number>; expenseByAccount: Record<string, number> }> = {}
+      for (const [m, v] of Object.entries(monthly)) slimMonthly[m] = { cogs: v.cogs, revenueByAccount: v.revenueByAccount, expenseByAccount: v.expenseByAccount }
+      return NextResponse.json({ year, branch, accounts: { REVENUE: groupedAccounts.REVENUE || {}, EXPENSE: groupedAccounts.EXPENSE || {} }, monthly: slimMonthly })
     }
 
     return NextResponse.json({

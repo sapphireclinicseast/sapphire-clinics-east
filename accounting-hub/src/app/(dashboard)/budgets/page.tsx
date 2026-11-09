@@ -71,7 +71,8 @@ export default function BudgetsPage() {
   const hideEmpty = hideEmptyPref ?? (view === 'vs' || !canEdit)
 
   const loadReport = useCallback(async () => {
-    const params = new URLSearchParams({ year: String(year) })
+    // view=budget: only the income-statement accounts and monthly actuals (~30 KB, not the full ~10 MB report).
+    const params = new URLSearchParams({ year: String(year), view: 'budget' })
     if (branch !== 'ALL') params.set('branch', branch)
     try {
       const r = await fetch(`/api/reports?${params}`)
