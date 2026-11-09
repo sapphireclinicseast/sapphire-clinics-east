@@ -1,12 +1,13 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSession } from 'next-auth/react'
-import { Undo2, Plus, Loader2, X, Trash2, CheckCircle2, Circle, FileText, BadgeDollarSign, Receipt, Paperclip } from 'lucide-react'
+import { Undo2, Plus, Loader2, X, Trash2, CheckCircle2, Circle, FileText, BadgeDollarSign, Receipt, Paperclip, Search, Info } from 'lucide-react'
 import { ScanUpload } from '@/components/ScanUpload'
 import { BillingVoucherModal } from '@/components/BillingVoucherModal'
 import type { RfpMemoParts } from '@/lib/billing-voucher'
 import { formatCurrency } from '@/lib/utils'
+import { HR_PAGE_CLASS, HR_PAGE_STYLE, HrShimmerStyle, StatCard, hrBtn, type StatTone } from '@/components/ui/hr-look'
 
 // Verdana Store is intentionally excluded: it sells merchandise, and its returns are already
 // captured by the POS/bulk-upload flow as sales returns (contra-revenue, 7160 Sales Returns).
@@ -30,6 +31,20 @@ interface Patient { id: string; name: string; email?: string; phone?: string }
 
 const todayStr = () => new Date().toISOString().slice(0, 10)
 
+// Where a refund is in its life. Every refund is in exactly one state, checked in
+// this order (same as the old Status column: paid, then in an RFP, else pending).
+type RefundState = 'toAudit' | 'ready' | 'inRfp' | 'paid'
+const STATE_KEYS: RefundState[] = ['toAudit', 'ready', 'inRfp', 'paid']
+const REFUND_STATES: Record<RefundState, { label: string; hint: string; line: string; pill: { bg: string; fg: string }; tone: StatTone; accent?: { line: string } }> = {
+  toAudit: { label: 'To audit', hint: 'tick Audited first', line: '#d97706', pill: { bg: '#fef3c7', fg: '#92400e' }, tone: 'amber' },
+  ready:   { label: 'Ready for RFP', hint: 'audited, not in an RFP', line: '#4A8073', pill: { bg: '#EDF3D9', fg: '#3C6A5F' }, tone: 'zero', accent: { line: '#4A8073' } },
+  inRfp:   { label: 'In an RFP', hint: 'awaiting payment', line: '#2563eb', pill: { bg: '#eff6ff', fg: '#1d4ed8' }, tone: 'blue' },
+  paid:    { label: 'Paid', hint: 'paid to the patient', line: '#059669', pill: { bg: '#dcfce7', fg: '#166534' }, tone: 'green' },
+}
+const refundState = (r: Refund): RefundState => r.paidAt ? 'paid' : r.refundRfpId ? 'inRfp' : r.audited ? 'ready' : 'toAudit'
+const sumNet = (rows: Refund[]) => rows.reduce((s, r) => s + r.netAmount, 0)
+const TH = 'text-left px-3 py-2.5 text-[11px] font-bold uppercase tracking-[.4px] whitespace-nowrap text-[var(--mid-gray)]'
+
 export default function RefundsPage() {
   const { data: session } = useSession()
   const [branch, setBranch] = useState('SANDBOX_EAST')
@@ -40,6 +55,8 @@ export default function RefundsPage() {
   const [error, setError] = useState('')
   const [banks, setBanks] = useState<Bank[]>([])
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [stateFilter, setStateFilter] = useState<RefundState | ''>('')
+  const [search, setSearch] = useState('')
 
   // New / edit refund modal
   const [formOpen, setFormOpen] = useState(false)
@@ -143,7 +160,18 @@ export default function RefundsPage() {
     if (res.ok) load(); else { const e = await res.json().catch(() => ({})); alert(e.error || 'Failed to delete') }
   }
 
-  const eligible = refunds.filter(r => r.audited && !r.refundRfpId)
+  const byState = useMemo(() => {
+    const m: Record<RefundState, Refund[]> = { toAudit: [], ready: [], inRfp: [], paid: [] }
+    for (const r of refunds) m[refundState(r)].push(r)
+    return m
+  }, [refunds])
+  const shown = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return refunds.filter(r => (!stateFilter || refundState(r) === stateFilter)
+      && (!q || r.patientName.toLowerCase().includes(q) || (r.reason || '').toLowerCase().includes(q)))
+  }, [refunds, stateFilter, search])
+  // Only audited refunds that are not in an RFP and not already paid can go into a new RFP.
+  const shownEligible = shown.filter(r => r.audited && !r.refundRfpId && !r.paidAt)
   const selRows = refunds.filter(r => selected.has(r.id))
   const selTotal = selRows.reduce((s, r) => s + r.netAmount, 0)
   const toggle = (id: string) => setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
@@ -199,80 +227,220 @@ export default function RefundsPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-2xl font-bold flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
-          <Undo2 size={22} style={{ color: 'var(--teal)' }} /> Refunds
-        </h1>
-        {tab === 'refunds' && <button onClick={openNew} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}><Plus size={15} /> New Refund</button>}
+    <div className={HR_PAGE_CLASS} style={HR_PAGE_STYLE}>
+      <HrShimmerStyle />
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold leading-tight flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+            <Undo2 size={22} style={{ color: 'var(--teal)' }} /> Refunds
+          </h1>
+          <p className="mt-1 text-[13px] max-w-3xl" style={{ color: 'var(--mid-gray)' }}>
+            Patient refunds of prepaid therapy balances. Audit each refund, group them into an RFP, then record the payment.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {BRANCHES.map(b => (
+            <button key={b.value} onClick={() => setBranch(b.value)} aria-pressed={branch === b.value}
+              className="px-3.5 py-1.5 rounded-full border text-[13px] font-semibold whitespace-nowrap transition-colors"
+              style={branch === b.value
+                ? { background: 'var(--teal)', borderColor: 'var(--teal)', color: '#fff', fontFamily: 'var(--font-display)' }
+                : { background: '#fff', borderColor: 'var(--light-gray)', color: 'var(--mid-gray)', fontFamily: 'var(--font-display)' }}>{b.label}</button>
+          ))}
+          <span className="w-px h-6 mx-1" style={{ background: 'var(--light-gray)' }} />
+          <button onClick={() => { setTab('refunds'); openNew() }} className={hrBtn.primary} style={{ background: 'var(--teal)' }}>
+            <Plus size={15} /> New refund
+          </button>
+        </div>
       </div>
-      <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Patient refunds of prepaid balances. On RFP payment we post <strong>DR 4055 Refunds of Unearned Revenue / CR Cash</strong> — 4055 is a contra account to 4050 Unearned Revenue, so refunds reduce the liability on the balance sheet and never hit the income statement or the Expense Report.</p>
-      <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>East, Greenhills and Aura Health Institute only. <strong>Verdana Store is not handled here</strong> — its merchandise returns already come through POS / bulk upload and appear in the Income Statement under <strong>7160 Sales Returns</strong>.</p>
 
-      {/* Branch */}
-      <div className="flex rounded-xl overflow-hidden border w-fit" style={{ borderColor: 'var(--light-gray)' }}>
-        {BRANCHES.map(b => <button key={b.value} onClick={() => setBranch(b.value)} className="px-4 py-2 text-xs font-semibold" style={branch === b.value ? { background: 'var(--teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' }}>{b.label}</button>)}
+      <details className="rounded-lg border px-4 py-2.5 text-xs group" style={{ borderColor: 'var(--light-gray)', background: '#fcfdfa', color: 'var(--mid-gray)' }}>
+        <summary className="cursor-pointer select-none font-semibold flex items-center gap-1.5" style={{ color: 'var(--charcoal)' }}>
+          <Info size={13} style={{ color: 'var(--teal)' }} /> How refunds post
+        </summary>
+        <p className="mt-2">On RFP payment we post <strong>DR 4055 Refunds of Unearned Revenue / CR Cash</strong>. 4055 is a contra account to 4050 Unearned Revenue, so refunds reduce the liability on the balance sheet and never hit the income statement or the Expense Report.</p>
+        <p className="mt-1.5">East, Greenhills and Aura Health Institute only. <strong>Verdana Store is not handled here</strong>: its merchandise returns already come through POS / bulk upload and appear in the Income Statement under <strong>7160 Sales Returns</strong>.</p>
+      </details>
+
+      {/* Status cards: every refund falls in exactly one */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {STATE_KEYS.map(k => {
+          const s = REFUND_STATES[k]
+          const rows = byState[k]
+          return (
+            <StatCard key={k} compact loading={loading} label={s.label} value={formatCurrency(sumNet(rows))}
+              sub={`${rows.length} refund${rows.length === 1 ? '' : 's'} · ${s.hint}`}
+              tone={rows.length ? s.tone : 'zero'} accent={rows.length && s.accent ? s.accent : undefined}
+              active={tab === 'refunds' && stateFilter === k}
+              onClick={() => { setTab('refunds'); setStateFilter(f => f === k ? '' : k) }} />
+          )
+        })}
       </div>
 
-      {/* Sub-tabs */}
-      <div className="flex items-center gap-1 border-b" style={{ borderColor: 'var(--light-gray)' }}>
-        {([['refunds', 'Refunds'], ['rfp', 'RFP']] as const).map(([v, label]) => (
-          <button key={v} onClick={() => setTab(v)} className="px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors" style={{ borderColor: tab === v ? 'var(--teal)' : 'transparent', color: tab === v ? 'var(--teal)' : 'var(--mid-gray)' }}>{label}</button>
+      {error && <div className="px-4 py-2.5 rounded-lg border text-[13px]" style={{ background: '#fef2f2', borderColor: '#fecaca', color: '#b91c1c' }}>{error}</div>}
+
+      {/* Tabs */}
+      <div className="border-b-2" style={{ borderColor: 'var(--light-gray)' }}>
+      <div className="flex items-end gap-1 -mb-[2px] max-w-full overflow-x-auto" role="tablist">
+        {([['refunds', 'Refunds', refunds.length], ['rfp', 'RFP', rfps.length]] as const).map(([v, label, n]) => (
+          <button key={v} onClick={() => setTab(v)} className="px-4 py-2.5 text-[13px] font-semibold border-b-2 whitespace-nowrap transition-colors hover:text-[var(--teal)] flex items-center gap-1.5"
+            style={{ borderColor: tab === v ? 'var(--teal)' : 'transparent', color: tab === v ? 'var(--teal)' : 'var(--mid-gray)' }}>
+            {label}
+            {!loading && <span className="px-1.5 rounded-full text-[11px] font-bold" style={{ background: tab === v ? 'var(--pale-teal)' : '#f1f5f2', color: tab === v ? 'var(--deep-teal)' : 'var(--mid-gray)' }}>{n}</span>}
+          </button>
         ))}
       </div>
+      </div>
 
-      {error && <p className="text-xs text-red-600">{error}</p>}
-
-      {/* ── REFUNDS TABLE ── */}
+      {/* ── REFUNDS ── */}
       {tab === 'refunds' && (
-        <>
-          <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--light-gray)' }}>
+        <div className="rounded-lg border bg-white overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+          <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-b" style={{ background: '#fcfdfa', borderColor: 'var(--light-gray)' }}>
+            <div className="relative flex-1 min-w-[180px] max-w-sm">
+              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--hr-faint)' }} />
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search patient or reason…"
+                className="w-full h-8 pl-8 pr-3 rounded-lg border text-xs bg-white" style={{ borderColor: 'var(--light-gray)' }} />
+            </div>
+            {stateFilter && (
+              <button onClick={() => setStateFilter('')} className="inline-flex items-center gap-1 h-7 px-2.5 rounded-full text-[11px] font-semibold"
+                style={{ background: REFUND_STATES[stateFilter].pill.bg, color: REFUND_STATES[stateFilter].pill.fg }}>
+                {REFUND_STATES[stateFilter].label} <X size={12} />
+              </button>
+            )}
+            <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>{shown.length} of {refunds.length}</span>
+            <div className="ml-auto hidden md:flex items-center gap-3 text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+              {STATE_KEYS.map(k => <span key={k} className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: REFUND_STATES[k].line }} />{REFUND_STATES[k].label}</span>)}
+            </div>
+          </div>
+
+          {selected.size > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 border-b" style={{ borderColor: 'var(--light-gray)', background: 'var(--pale-teal)' }}>
+              <span className="text-xs" style={{ color: 'var(--charcoal)' }}>Selected <strong className="font-mono" style={{ color: 'var(--deep-teal)' }}>{formatCurrency(selTotal)}</strong> · {selected.size} refund{selected.size === 1 ? '' : 's'}</span>
+              <div className="flex items-center gap-2">
+                <button onClick={() => setSelected(new Set())} className={hrBtn.ghost} style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Clear</button>
+                <button onClick={() => setRfpOpen(true)} className={hrBtn.primary} style={{ background: 'var(--teal)' }}><BadgeDollarSign size={14} /> Generate RFP</button>
+              </div>
+            </div>
+          )}
+
+          <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr style={{ background: 'var(--off-white)' }}>
-                  <th className="text-center px-2 py-2.5"><input type="checkbox" checked={eligible.length > 0 && eligible.every(r => selected.has(r.id))} onChange={e => setSelected(e.target.checked ? new Set(eligible.map(r => r.id)) : new Set())} /></th>
-                  <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Date</th>
-                  <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Patient</th>
-                  <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Refund Amount</th>
-                  <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Charges Deducted</th>
-                  <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Net to Patient</th>
-                  <th className="text-center px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Proof</th>
-                  <th className="text-center px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>OK</th>
-                  <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Status</th>
-                  <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Actions</th>
+                <tr style={{ background: 'var(--hr-head)' }}>
+                  <th className="text-center px-2 py-2.5 w-10"><input type="checkbox" aria-label="Select all refunds ready for an RFP" disabled={shownEligible.length === 0} checked={shownEligible.length > 0 && shownEligible.every(r => selected.has(r.id))} onChange={e => setSelected(e.target.checked ? new Set(shownEligible.map(r => r.id)) : new Set())} /></th>
+                  <th className={TH}>Date</th>
+                  <th className={TH}>Patient</th>
+                  <th className={`${TH} text-right`}>Refund amount</th>
+                  <th className={`${TH} text-right`}>Charges deducted</th>
+                  <th className={`${TH} text-right`}>Net to patient</th>
+                  <th className={`${TH} text-center`}>Proof</th>
+                  <th className={`${TH} text-center`}>Audited</th>
+                  <th className={TH}>Status</th>
+                  <th className={`${TH} text-right`}>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={10} className="text-center py-10" style={{ color: 'var(--mid-gray)' }}><Loader2 size={18} className="inline animate-spin" /></td></tr>
-                ) : refunds.length === 0 ? (
-                  <tr><td colSpan={10} className="text-center py-10" style={{ color: 'var(--mid-gray)' }}>No refunds yet. Click “New Refund”.</td></tr>
-                ) : refunds.map(r => {
+                  [0, 1, 2, 3].map(i => <tr key={i} className="border-t" style={{ borderColor: 'var(--hr-line)' }}><td colSpan={10} className="px-4 py-2.5"><div className="h-5 rounded hr-shimmer" /></td></tr>)
+                ) : shown.length === 0 ? (
+                  <tr><td colSpan={10} className="text-center py-12 text-[13px]" style={{ color: 'var(--mid-gray)' }}>
+                    {refunds.length === 0 ? <>No refunds for this branch yet. Click <strong>New refund</strong> to add one.</> : 'No refunds match this filter.'}
+                  </td></tr>
+                ) : shown.map(r => {
                   const locked = !!r.refundRfpId
+                  const st = REFUND_STATES[refundState(r)]
+                  const canTick = r.audited && !locked && !r.paidAt
                   return (
-                    <tr key={r.id} className="border-t hover:bg-gray-50/50" style={{ borderColor: 'var(--light-gray)' }}>
-                      <td className="text-center px-2 py-2.5"><input type="checkbox" disabled={!r.audited || locked} checked={selected.has(r.id)} onChange={() => toggle(r.id)} /></td>
-                      <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{r.date.slice(0, 10)}</td>
-                      <td className="px-3 py-2.5 font-medium" style={{ color: 'var(--charcoal)' }}>{r.patientName}{r.reason ? <span className="block text-[10px]" style={{ color: 'var(--mid-gray)' }}>{r.reason}</span> : null}</td>
-                      <td className="px-3 py-2.5 text-right font-mono" style={{ color: 'var(--charcoal)' }}>{formatCurrency(r.refundAmount)}</td>
-                      <td className="px-3 py-2.5 text-right font-mono" style={{ color: 'var(--mid-gray)' }}>{formatCurrency(r.chargesDeducted)}</td>
-                      <td className="px-3 py-2.5 text-right font-mono font-semibold" style={{ color: 'var(--deep-teal)' }}>{formatCurrency(r.netAmount)}</td>
-                      <td className="px-3 py-2.5 text-center">
-                        {(r.proofUrls || []).length ? (r.proofUrls || []).map((u, i) => <a key={i} href={u} target="_blank" rel="noreferrer" className="inline-block mx-0.5" title="View proof"><Paperclip size={13} style={{ color: 'var(--teal)' }} /></a>) : <span style={{ color: 'var(--light-gray)' }}>—</span>}
+                    <tr key={r.id} className="border-t transition-colors hover:bg-[#fafcf6]" style={{ borderColor: 'var(--hr-line)' }}>
+                      <td className="text-center px-2 py-2.5" style={{ boxShadow: `inset 4px 0 0 ${st.line}` }}>
+                        <input type="checkbox" aria-label={`Select refund for ${r.patientName}`} disabled={!canTick} checked={selected.has(r.id)} onChange={() => toggle(r.id)} />
+                      </td>
+                      <td className="px-3 py-2.5 whitespace-nowrap font-mono" style={{ color: 'var(--mid-gray)' }}>{r.date.slice(0, 10)}</td>
+                      <td className="px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>{r.patientName}{r.reason ? <span className="block text-[11px] font-normal" style={{ color: 'var(--mid-gray)' }}>{r.reason}</span> : null}</td>
+                      <td className="px-3 py-2.5 text-right font-mono whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{formatCurrency(r.refundAmount)}</td>
+                      <td className="px-3 py-2.5 text-right font-mono whitespace-nowrap" style={{ color: r.chargesDeducted ? 'var(--charcoal)' : 'var(--hr-faint)' }}>{formatCurrency(r.chargesDeducted)}</td>
+                      <td className="px-3 py-2.5 text-right font-mono font-bold whitespace-nowrap" style={{ color: 'var(--deep-teal)' }}>{formatCurrency(r.netAmount)}</td>
+                      <td className="px-3 py-2.5 text-center whitespace-nowrap">
+                        {(r.proofUrls || []).length ? (r.proofUrls || []).map((u, i) => <a key={i} href={u} target="_blank" rel="noreferrer" className="inline-flex mx-0.5 p-1 rounded hover:bg-[var(--pale-teal)]" title={`View proof ${i + 1}`}><Paperclip size={13} style={{ color: 'var(--teal)' }} /></a>) : <span style={{ color: 'var(--hr-faint)' }}>—</span>}
                       </td>
                       <td className="px-3 py-2.5 text-center">
-                        <button onClick={() => !locked && toggleAudit(r)} disabled={locked} title={r.audited ? 'Audited' : 'Mark OK'}>
-                          {r.audited ? <CheckCircle2 size={16} className="inline" style={{ color: '#16a34a' }} /> : <Circle size={16} className="inline" style={{ color: 'var(--mid-gray)' }} />}
+                        <button onClick={() => !locked && toggleAudit(r)} disabled={locked} title={locked ? 'Locked while in an RFP' : r.audited ? 'Audited · click to undo' : 'Mark as audited'} className="disabled:cursor-default">
+                          {r.audited ? <CheckCircle2 size={17} className="inline" style={{ color: '#059669' }} /> : <Circle size={17} className="inline" style={{ color: 'var(--hr-faint)' }} />}
                         </button>
                       </td>
-                      <td className="px-3 py-2.5">
-                        {r.paidAt ? <span className="text-[11px] font-medium" style={{ color: '#166534' }}>Paid</span>
-                          : locked ? <span className="text-[11px] font-medium" style={{ color: '#c44b00' }}>In RFP {r.rfpRefNumber ? `(${r.rfpRefNumber})` : ''}</span>
-                          : <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>Pending</span>}
+                      <td className="px-3 py-2.5 whitespace-nowrap">
+                        <span className="inline-flex px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: st.pill.bg, color: st.pill.fg }}>
+                          {refundState(r) === 'inRfp' && r.rfpRefNumber ? `In RFP ${r.rfpRefNumber}` : st.label}
+                        </span>
                       </td>
                       <td className="px-3 py-2.5 text-right whitespace-nowrap">
-                        {!locked && <button onClick={() => openEdit(r)} className="text-[11px] font-medium mr-2" style={{ color: 'var(--teal)' }}>Edit</button>}
-                        {!locked && <button onClick={() => deleteRefund(r)} title="Delete"><Trash2 size={14} className="text-red-500 inline" /></button>}
+                        {!locked && <button onClick={() => openEdit(r)} className="text-[11px] font-semibold mr-2 hover:underline" style={{ color: 'var(--teal)' }}>Edit</button>}
+                        {!locked && <button onClick={() => deleteRefund(r)} title="Delete" aria-label={`Delete refund for ${r.patientName}`} className="p-1 rounded hover:bg-red-50"><Trash2 size={14} className="text-red-500 inline" /></button>}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+              {!loading && shown.length > 0 && (
+                <tfoot>
+                  <tr className="border-t-2" style={{ borderColor: 'var(--light-gray)', background: 'var(--hr-head)' }}>
+                    <td />
+                    <td colSpan={2} className="px-3 py-2.5 text-[11px] font-bold uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)' }}>Total · {shown.length} refund{shown.length === 1 ? '' : 's'}</td>
+                    <td className="px-3 py-2.5 text-right font-mono font-bold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{formatCurrency(shown.reduce((s, r) => s + r.refundAmount, 0))}</td>
+                    <td className="px-3 py-2.5 text-right font-mono font-bold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{formatCurrency(shown.reduce((s, r) => s + r.chargesDeducted, 0))}</td>
+                    <td className="px-3 py-2.5 text-right font-mono font-bold whitespace-nowrap" style={{ color: 'var(--deep-teal)' }}>{formatCurrency(sumNet(shown))}</td>
+                    <td colSpan={4} />
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ── RFP LIST ── */}
+      {tab === 'rfp' && (
+        <div className="rounded-lg border bg-white overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5 border-b text-xs" style={{ background: '#fcfdfa', borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+            <span><strong style={{ color: 'var(--charcoal)' }}>{rfps.length}</strong> refund RFP{rfps.length === 1 ? '' : 's'}</span>
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#d97706' }} />{rfps.filter(r => r.status !== 'PAID').length} awaiting payment</span>
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#059669' }} />{rfps.filter(r => r.status === 'PAID').length} paid</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr style={{ background: 'var(--hr-head)' }}>
+                  <th className={TH}>RFP number</th>
+                  <th className={TH}>Date</th>
+                  <th className={TH}>Payable to</th>
+                  <th className={`${TH} text-right`}>Total</th>
+                  <th className={TH}>Status</th>
+                  <th className={`${TH} text-right`}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  [0, 1, 2].map(i => <tr key={i} className="border-t" style={{ borderColor: 'var(--hr-line)' }}><td colSpan={6} className="px-4 py-2.5"><div className="h-5 rounded hr-shimmer" /></td></tr>)
+                ) : rfps.length === 0 ? (
+                  <tr><td colSpan={6} className="text-center py-12 text-[13px]" style={{ color: 'var(--mid-gray)' }}>No refund RFPs yet. Tick audited refunds on the Refunds tab and click <strong>Generate RFP</strong>.</td></tr>
+                ) : rfps.map(r => {
+                  const paid = r.status === 'PAID'
+                  return (
+                    <tr key={r.id} className="border-t transition-colors hover:bg-[#fafcf6]" style={{ borderColor: 'var(--hr-line)' }}>
+                      <td className="px-3 py-2.5 font-mono font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)', boxShadow: `inset 4px 0 0 ${paid ? '#059669' : '#d97706'}` }}>{r.refNumber}</td>
+                      <td className="px-3 py-2.5 whitespace-nowrap font-mono" style={{ color: 'var(--mid-gray)' }}>{new Date(r.createdAt).toLocaleDateString('en-PH')}</td>
+                      <td className="px-3 py-2.5" style={{ color: 'var(--charcoal)' }}>{r.payableTo || '—'}</td>
+                      <td className="px-3 py-2.5 text-right font-mono font-bold whitespace-nowrap" style={{ color: 'var(--deep-teal)' }}>{formatCurrency(r.payableTotal)}</td>
+                      <td className="px-3 py-2.5 whitespace-nowrap">
+                        <span className="inline-flex px-2 py-0.5 rounded-full text-[11px] font-semibold" style={paid ? { background: '#dcfce7', color: '#166534' } : { background: '#fef3c7', color: '#92400e' }}>{paid ? 'Paid' : 'Awaiting payment'}</span>
+                      </td>
+                      <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                        <div className="inline-flex items-center gap-1.5">
+                          <button onClick={() => openBillingVoucher(r)} className={hrBtn.ghost} style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }} title="Billing Voucher"><FileText size={13} /> BV</button>
+                          {!paid
+                            ? <button onClick={() => openPay(r)} className={hrBtn.ghost} style={{ borderColor: 'var(--teal)', color: 'var(--deep-teal)' }}><Receipt size={13} /> Record as paid</button>
+                            : <button onClick={() => unpayRfp(r)} className={hrBtn.ghost} style={{ borderColor: '#fcd34d', color: '#b45309' }}>Unpay</button>}
+                          <button onClick={() => deleteRfp(r)} title="Delete" aria-label={`Delete ${r.refNumber}`} className="p-1.5 rounded hover:bg-red-50"><Trash2 size={14} className="text-red-500" /></button>
+                        </div>
                       </td>
                     </tr>
                   )
@@ -280,60 +448,13 @@ export default function RefundsPage() {
               </tbody>
             </table>
           </div>
-
-          {selected.size > 0 && (
-            <div className="flex items-center justify-between rounded-xl border px-4 py-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
-              <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>Selected: <strong style={{ color: 'var(--deep-teal)' }}>{formatCurrency(selTotal)}</strong> · {selected.size} refund{selected.size === 1 ? '' : 's'}</span>
-              <button onClick={() => setRfpOpen(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold text-white" style={{ background: 'var(--teal)' }}><BadgeDollarSign size={14} /> Generate RFP</button>
-            </div>
-          )}
-        </>
-      )}
-
-      {/* ── RFP LIST ── */}
-      {tab === 'rfp' && (
-        <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--light-gray)' }}>
-          <table className="w-full text-xs">
-            <thead>
-              <tr style={{ background: 'var(--off-white)' }}>
-                <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>RFP Number</th>
-                <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Date</th>
-                <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Payable To</th>
-                <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Total</th>
-                <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Status</th>
-                <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr><td colSpan={6} className="text-center py-10" style={{ color: 'var(--mid-gray)' }}><Loader2 size={18} className="inline animate-spin" /></td></tr>
-              ) : rfps.length === 0 ? (
-                <tr><td colSpan={6} className="text-center py-10" style={{ color: 'var(--mid-gray)' }}>No refund RFPs yet.</td></tr>
-              ) : rfps.map(r => (
-                <tr key={r.id} className="border-t hover:bg-gray-50/50" style={{ borderColor: 'var(--light-gray)' }}>
-                  <td className="px-3 py-2.5 font-mono" style={{ color: 'var(--charcoal)' }}>{r.refNumber}</td>
-                  <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{new Date(r.createdAt).toLocaleDateString('en-PH')}</td>
-                  <td className="px-3 py-2.5" style={{ color: 'var(--charcoal)' }}>{r.payableTo || '—'}</td>
-                  <td className="px-3 py-2.5 text-right font-mono font-semibold" style={{ color: 'var(--deep-teal)' }}>{formatCurrency(r.payableTotal)}</td>
-                  <td className="px-3 py-2.5">{r.status === 'PAID' ? <span className="text-[11px] font-medium" style={{ color: '#166534' }}>Paid</span> : <span className="text-[11px] font-medium" style={{ color: '#c44b00' }}>Pending</span>}</td>
-                  <td className="px-3 py-2.5 text-right whitespace-nowrap">
-                    <button onClick={() => openBillingVoucher(r)} className="text-[11px] font-medium mr-2" style={{ color: 'var(--teal)' }} title="Billing Voucher"><FileText size={13} className="inline" /> BV</button>
-                    {r.status !== 'PAID'
-                      ? <button onClick={() => openPay(r)} className="text-[11px] font-medium mr-2" style={{ color: 'var(--deep-teal)' }}>Record as Paid</button>
-                      : <button onClick={() => unpayRfp(r)} className="text-[11px] font-medium mr-2" style={{ color: '#c44b00' }}>Unpay</button>}
-                    <button onClick={() => deleteRfp(r)} title="Delete"><Trash2 size={14} className="text-red-500 inline" /></button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         </div>
       )}
 
       {/* New/Edit Refund modal */}
       {formOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-5 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-xl border shadow-xl w-full max-w-lg p-5 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-3"><h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>{editId ? 'Edit Refund' : 'New Refund'}</h2><button onClick={() => setFormOpen(false)}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button></div>
             <div className="space-y-3 text-xs">
               <div className="relative">
@@ -380,7 +501,7 @@ export default function RefundsPage() {
       {/* Generate RFP modal */}
       {rfpOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5">
+          <div className="bg-white rounded-xl border shadow-xl w-full max-w-md p-5">
             <div className="flex items-center justify-between mb-3"><h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>Generate Refund RFP</h2><button onClick={() => setRfpOpen(false)}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button></div>
             <p className="text-sm mb-3" style={{ color: 'var(--mid-gray)' }}>{selRows.length} refund{selRows.length === 1 ? '' : 's'} · total <strong>{formatCurrency(selTotal)}</strong>. Creates an RFP under Refunds → RFP and locks these rows until paid (or the RFP is deleted).</p>
             <label className="block text-sm font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>RFP Number (optional)</label>
@@ -393,7 +514,7 @@ export default function RefundsPage() {
       {/* Record as Paid modal */}
       {payTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5">
+          <div className="bg-white rounded-xl border shadow-xl w-full max-w-md p-5">
             <div className="flex items-center justify-between mb-3"><h2 className="text-base font-bold" style={{ color: 'var(--charcoal)' }}>Record RFP as Paid — {payTarget.refNumber}</h2><button onClick={() => setPayTarget(null)}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button></div>
             {(() => {
               const rows = refunds.filter(r => r.refundRfpId === payTarget.id)
