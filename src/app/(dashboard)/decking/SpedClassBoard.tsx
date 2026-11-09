@@ -289,6 +289,14 @@ export default function SpedClassBoard({
   const [adding, setAdding] = useState<string | null>(null)   // "day|start|end"
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<SpedPatient[]>([])
+  // Where to draw the results list.
+  //
+  // Absolutely positioned inside the cell, it sat inside a card with
+  // overflow:hidden AND a horizontally scrolling table, so it rendered below
+  // the fold of both and was clipped out of existence. The search found the
+  // child every time; nobody could see the answer. Fixed positioning, measured
+  // from the input, is the only way out of two nested scroll containers.
+  const [menuAt, setMenuAt] = useState<{ left: number; top: number; width: number } | null>(null)
   const [showBlockForm, setShowBlockForm] = useState(false)
   const [form, setForm] = useState({ staffId: '', dayOfWeek: 'MON', startTime: '09:00', endTime: '11:00' })
   const [busy, setBusy] = useState(false)
@@ -380,8 +388,12 @@ export default function SpedClassBoard({
     } finally { setBusy(false) }
   }
 
-  async function search(v: string) {
+  async function search(v: string, el?: HTMLInputElement | null) {
     setQuery(v)
+    if (el) {
+      const r = el.getBoundingClientRect()
+      setMenuAt({ left: r.left, top: r.bottom + 2, width: Math.max(r.width, 190) })
+    }
     if (v.trim().length < 2) { setResults([]); return }
     try {
       const r = await fetch(`/api/patients/search?q=${encodeURIComponent(v)}`)
@@ -427,9 +439,18 @@ export default function SpedClassBoard({
   }
   const searchInput = `${CONTROL_SM} w-full`
   const searchInputStyle: CSSProperties = { ...CONTROL_STYLE, height: 28, fontSize: 12, borderColor: 'var(--teal)' }
+  // FIXED, not absolute, and measured from the input.
+  //
+  // Absolutely positioned inside the cell it sat inside a card with
+  // overflow:hidden AND a horizontally scrolling table, so it rendered below
+  // the fold of both and was clipped out of existence. The search found the
+  // child every time — front desk just saw nothing, which looks exactly like
+  // "that patient is not in the system".
   const resultsBox: CSSProperties = {
-    position: 'absolute', zIndex: 40, top: 'calc(100% + 2px)', left: 0, right: 0, maxHeight: 180, overflowY: 'auto',
-    background: '#fff', border: '1px solid var(--light-gray)', borderRadius: 8, boxShadow: '0 6px 18px rgba(16,24,40,0.12)',
+    position: 'fixed', zIndex: 200,
+    left: menuAt?.left ?? 0, top: menuAt?.top ?? 0, width: menuAt?.width ?? 200,
+    maxHeight: 190, overflowY: 'auto',
+    background: '#fff', border: '1px solid var(--light-gray)', borderRadius: 8, boxShadow: '0 8px 22px rgba(16,24,40,0.18)',
     padding: 3,
   }
   const resultBtn = 'flex items-center gap-1.5 w-full text-left px-1.5 py-1 rounded-md text-xs hover:bg-gray-50 focus-visible:outline-2'
@@ -703,7 +724,7 @@ export default function SpedClassBoard({
 
                                   {isAdding ? (
                                     <div style={{ position: 'relative', marginTop: 6 }}>
-                                      <input autoFocus value={query} onChange={e => search(e.target.value)}
+                                      <input autoFocus value={query} onChange={e => search(e.target.value, e.currentTarget)}
                                         placeholder="Search child…"
                                         aria-label={`Search for a child to add to ${teacherLabel(g.staffId)}'s class`}
                                         onBlur={() => setTimeout(() => setAdding(null), 200)}
@@ -761,7 +782,7 @@ export default function SpedClassBoard({
                                   </select>
                                   {newGroupStaff && (
                                     <>
-                                      <input autoFocus value={query} onChange={e => search(e.target.value)}
+                                      <input autoFocus value={query} onChange={e => search(e.target.value, e.currentTarget)}
                                         placeholder="Search child…"
                                         aria-label="Search for a child to add"
                                         className={searchInput} style={searchInputStyle} />
