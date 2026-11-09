@@ -7,6 +7,11 @@ import {
   branchLabel, levelLabel,
   type PromissoryNoteRecord, type StoredUser, type Branch,
 } from '@/lib/session'
+import {
+  DashCard, RowsSkeleton, EmptyState, Banner, StatusPill, Icon,
+  CONTROL, CONTROL_STYLE, LABEL, LABEL_STYLE, BTN_SECONDARY, BTN_SM, BTN_DANGER_GHOST, SECONDARY_STYLE,
+  SUBTLE_BG, DANGER,
+} from '@/components/hub/ui'
 
 const MAX_PER_STUDENT = 5
 const MAX_BYTES = 100 * 1024 * 1024 // 100 MB
@@ -174,50 +179,58 @@ export default function PromissoryNotesPanel({ viewerBranch }: Props) {
     inputRefs.current[studentId]?.click()
   }
 
+  const studentsWithNotes = scopedStudents.filter(s => notesByStudent.has(s.id)).length
+
   return (
-    <section className="card-static" style={{ padding: '1.1rem 1.3rem' }}>
-      <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
-        <div>
-          <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--sage)] mb-1">Payments</div>
-          <h2 className="text-lg font-semibold" style={{ color: 'var(--deep-teal)' }}>Promissory notes</h2>
-          <p className="text-xs text-[color:var(--mid-gray)] mt-1" style={{ maxWidth: 640 }}>
-            Signed PDF or photo notes a parent files when they can&rsquo;t settle a payment on time
-            but commit to a specific catch-up schedule. Up to <strong>{MAX_PER_STUDENT} notes per student</strong>,
-            max <strong>100 MB</strong> each. Teachers and students never see this section.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
+    <DashCard
+      title="Promissory notes"
+      icon={<Icon name="file" size={15} />}
+      description={<>Signed PDF or photo notes a parent files when they can&rsquo;t settle a payment on time but commit to a specific catch-up schedule. Up to <strong>{MAX_PER_STUDENT} notes per student</strong>, max <strong>100 MB</strong> each. Teachers and students never see this section.</>}
+      action={ready && notes.length > 0 ? <StatusPill tone="info">{notes.length} note{notes.length === 1 ? '' : 's'} · {studentsWithNotes} student{studentsWithNotes === 1 ? '' : 's'}</StatusPill> : undefined}
+    >
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        <label className="relative flex-1 min-w-0 sm:max-w-[320px]">
+          <span className="sr-only">Search promissory notes by student</span>
+          <Icon name="search" size={14} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mid-gray)' }} />
           <input
             type="search"
             placeholder="Search student by name or email"
             value={search}
             onChange={e => setSearch(e.target.value)}
-            className="text-sm px-3 py-1.5 rounded-md border"
-            style={{ borderColor: 'var(--paper-3)', minWidth: 240 }}
+            className={`${CONTROL} w-full pl-8`}
+            style={CONTROL_STYLE}
           />
-          <button
-            type="button"
-            className="btn-secondary text-xs"
-            onClick={() => setAddPickerOpen(v => !v)}
-          >
-            {addPickerOpen ? 'Hide picker' : '+ Add note for a student'}
-          </button>
-        </div>
+        </label>
+        <button
+          type="button"
+          className={BTN_SECONDARY}
+          style={SECONDARY_STYLE}
+          aria-expanded={addPickerOpen}
+          aria-controls="promissory-add-picker"
+          onClick={() => setAddPickerOpen(v => !v)}
+        >
+          {addPickerOpen ? <><Icon name="x" size={14} /> Hide picker</> : <><Icon name="plus" size={14} /> Add note for a student</>}
+        </button>
       </div>
 
-      {err && <div className="mb-3 text-xs rounded-md px-3 py-2" style={{ background: '#fee2e2', color: '#9f1239' }}>{err}</div>}
-      {info && <div className="mb-3 text-xs rounded-md px-3 py-2" style={{ background: '#dcfce7', color: '#166534' }}>{info}</div>}
+      {(err || info) && (
+        <div className="space-y-2 mb-4">
+          {err && <Banner tone="error">{err}</Banner>}
+          {info && <Banner tone="success">{info}</Banner>}
+        </div>
+      )}
 
       {addPickerOpen && (
-        <div className="mb-4 p-3 rounded-md border" style={{ borderColor: 'var(--paper-3)', background: 'var(--paper-2)' }}>
-          <label className="block text-[11px] font-semibold uppercase tracking-wider text-[color:var(--mid-gray)] mb-1">
+        <div id="promissory-add-picker" className="mb-4 p-3.5 rounded-xl" style={{ border: '1px solid var(--light-gray)', background: SUBTLE_BG }}>
+          <label htmlFor="promissory-add-for" className={LABEL} style={LABEL_STYLE}>
             Pick a student to attach a note to
           </label>
           <select
+            id="promissory-add-for"
             value={addFor}
             onChange={e => setAddFor(e.target.value)}
-            className="w-full text-sm px-3 py-2 rounded-md border bg-white"
-            style={{ borderColor: 'var(--paper-3)' }}
+            className={`${CONTROL} w-full`}
+            style={CONTROL_STYLE}
           >
             <option value="">— choose a student —</option>
             {scopedStudents.map(s => {
@@ -226,39 +239,40 @@ export default function PromissoryNotesPanel({ viewerBranch }: Props) {
               return <option key={s.id} value={s.id}>{label}</option>
             })}
           </select>
-          <p className="text-[11px] text-[color:var(--mid-gray)] mt-2">
+          <p className="text-[11px] mt-2" style={{ color: 'var(--mid-gray)' }}>
             Picking a student makes their card appear below with an Upload button, even when they have no notes yet.
           </p>
         </div>
       )}
 
       {!ready ? (
-        <div className="text-sm text-[color:var(--mid-gray)]">Loading…</div>
+        <div className="-mx-4 sm:-mx-5"><RowsSkeleton rows={3} label="Loading promissory notes" /></div>
       ) : visibleStudents.length === 0 ? (
-        <div className="text-sm text-[color:var(--mid-gray)]">
-          No promissory notes on file for {viewerBranch ? branchLabel(viewerBranch) : 'any student'} yet.
-          Click <strong>+ Add note for a student</strong> to attach the first one.
-        </div>
+        <EmptyState
+          icon="file"
+          title={`No promissory notes on file for ${viewerBranch ? branchLabel(viewerBranch) : 'any student'} yet.`}
+          hint={<>Click <strong>Add note for a student</strong> to attach the first one.</>}
+        />
       ) : (
         <div className="flex flex-col gap-3">
           {visibleStudents.map(s => {
             const forStudent = notesByStudent.get(s.id) ?? []
             const atCap = forStudent.length >= MAX_PER_STUDENT
             return (
-              <div key={s.id} className="rounded-lg border bg-white p-3" style={{ borderColor: 'var(--paper-3)' }}>
-                <div className="flex items-start justify-between gap-3 flex-wrap mb-2">
-                  <div>
-                    <div className="font-semibold" style={{ color: 'var(--deep-teal)' }}>
+              <div key={s.id} className="rounded-xl bg-white" style={{ border: '1px solid var(--light-gray)' }}>
+                <div className="flex items-start justify-between gap-3 flex-wrap px-3.5 py-3">
+                  <div className="min-w-0">
+                    <div className="font-semibold break-words" style={{ color: 'var(--charcoal)' }}>
                       {studentDisplay(s)}
                     </div>
-                    <div className="text-[11px] text-[color:var(--mid-gray)]">
+                    <div className="text-[11px] break-all" style={{ color: 'var(--mid-gray)' }}>
                       {s.email}{s.level ? ` · ${levelLabel(s.level)}` : ''}{s.branch ? ` · ${branchLabel(s.branch)}` : ''}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-[color:var(--mid-gray)]">
+                    <StatusPill tone={atCap ? 'warn' : 'neutral'}>
                       {forStudent.length}/{MAX_PER_STUDENT} notes
-                    </span>
+                    </StatusPill>
                     <input
                       type="file"
                       accept={ACCEPT}
@@ -271,61 +285,69 @@ export default function PromissoryNotesPanel({ viewerBranch }: Props) {
                     />
                     <button
                       type="button"
-                      className="btn-secondary text-xs"
+                      className={BTN_SM}
+                      style={SECONDARY_STYLE}
                       disabled={atCap || busyUpload === s.id}
                       onClick={() => triggerUpload(s.id)}
                       title={atCap ? `Max ${MAX_PER_STUDENT} notes reached — delete one first.` : 'Upload a PDF or photo (max 100 MB).'}
+                      aria-label={atCap || busyUpload === s.id ? undefined : `Upload a promissory note for ${studentDisplay(s)}`}
                     >
-                      {busyUpload === s.id ? 'Uploading…' : atCap ? 'Max reached' : '+ Upload note'}
+                      {busyUpload === s.id ? 'Uploading…' : atCap ? 'Max reached' : <><Icon name="upload" size={12} /> Upload note</>}
                     </button>
                   </div>
                 </div>
 
                 {forStudent.length === 0 ? (
-                  <div className="text-xs text-[color:var(--mid-gray)] italic">No notes yet. Upload one above.</div>
+                  <div className="text-xs italic px-3.5 pb-3" style={{ color: 'var(--mid-gray)' }}>No notes yet. Upload one above.</div>
                 ) : (
-                  <ul className="flex flex-col gap-1.5">
-                    {forStudent.map(n => (
+                  <ul style={{ borderTop: '1px solid var(--light-gray)' }}>
+                    {forStudent.map((n, i) => (
                       <li
                         key={n.id}
-                        className="flex items-center justify-between gap-3 text-sm rounded-md px-2.5 py-2"
-                        style={{ background: 'var(--paper-2)' }}
+                        className="flex items-center justify-between gap-x-3 gap-y-2 flex-wrap text-sm px-3.5 py-2.5"
+                        style={{ background: SUBTLE_BG, borderTop: i ? '1px solid var(--light-gray)' : undefined }}
                       >
-                        <div className="min-w-0 flex-1">
-                          <div className="truncate font-medium" style={{ color: 'var(--deep-teal)' }}>
-                            {n.fileName}
+                        <div className="min-w-0 flex-1 basis-56">
+                          <div className="truncate font-medium flex items-center gap-1.5" style={{ color: 'var(--charcoal)' }} title={n.fileName}>
+                            <Icon name="file" size={14} style={{ color: 'var(--teal)' }} />
+                            <span className="truncate">{n.fileName}</span>
                           </div>
-                          <div className="text-[11px] text-[color:var(--mid-gray)]">
+                          <div className="text-[11px] break-words" style={{ color: 'var(--mid-gray)' }}>
                             {(n.fileSize / 1024).toFixed(0)} KB · {new Date(n.createdAt).toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
                             {n.uploadedBy ? ` · uploaded by ${n.uploadedBy}` : ''}
                             {n.notes ? ` · ${n.notes}` : ''}
                           </div>
                         </div>
-                        <div className="flex items-center gap-2 flex-shrink-0">
+                        <div className="flex items-center gap-1.5 flex-shrink-0">
                           <button
                             type="button"
-                            className="btn-secondary text-xs"
+                            className={BTN_SM}
+                            style={SECONDARY_STYLE}
                             disabled={busyNoteId === n.id}
                             onClick={() => void handleView(n, false)}
+                            aria-label={`View ${n.fileName}`}
                           >
-                            {busyNoteId === n.id ? '…' : 'View'}
+                            {busyNoteId === n.id ? '…' : <><Icon name="eye" size={12} /> View</>}
                           </button>
                           <button
                             type="button"
-                            className="btn-secondary text-xs"
+                            className={BTN_SM}
+                            style={SECONDARY_STYLE}
                             disabled={busyNoteId === n.id}
                             onClick={() => void handleView(n, true)}
+                            aria-label={`Download ${n.fileName}`}
                           >
-                            Download
+                            <Icon name="download" size={12} /> Download
                           </button>
                           <button
                             type="button"
-                            className="text-xs font-semibold"
-                            style={{ color: 'var(--clay)' }}
+                            className={BTN_DANGER_GHOST}
+                            style={{ color: DANGER }}
                             disabled={busyNoteId === n.id}
                             onClick={() => void handleDelete(n)}
+                            aria-label={`Delete ${n.fileName}`}
                           >
-                            Delete
+                            <Icon name="trash" size={12} /> Delete
                           </button>
                         </div>
                       </li>
@@ -337,6 +359,6 @@ export default function PromissoryNotesPanel({ viewerBranch }: Props) {
           })}
         </div>
       )}
-    </section>
+    </DashCard>
   )
 }
