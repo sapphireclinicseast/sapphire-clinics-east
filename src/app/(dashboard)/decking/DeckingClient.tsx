@@ -245,6 +245,43 @@ function addHour(time: string): string {
   return `${String(h + 1).padStart(2, '0')}:${String(m).padStart(2, '0')}`
 }
 
+/** "09:30" → 570. The board's times are strings; arithmetic needs minutes. */
+function toMinutes(t: string): number {
+  const [h, m] = t.split(':').map(Number)
+  return h * 60 + (m || 0)
+}
+/** 570 → "09:30". */
+function fromMinutes(total: number): string {
+  const h = Math.floor(total / 60)
+  const m = total % 60
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+}
+
+/**
+ * Split a span into n equal slots.
+ *
+ * Medical consults are not all an hour — a doctor giving the clinic 9 to 12
+ * might see six patients, not three. So the span and the COUNT are what front
+ * desk set, and the length of each slot follows from them. Asking for a
+ * duration instead would mean doing that division by hand and discovering the
+ * remainder at the end of the morning.
+ *
+ * Any remainder lands on the last slot rather than being spread: a clean
+ * "25 min each, last one 30" is easier to run a clinic on than six slots that
+ * each drift by a few minutes.
+ */
+function splitSpan(startTime: string, endTime: string, count: number): { startTime: string; endTime: string }[] {
+  const from = toMinutes(startTime)
+  const to = toMinutes(endTime)
+  if (to <= from || count < 1) return []
+  const each = Math.floor((to - from) / count)
+  if (each < 1) return []
+  return Array.from({ length: count }, (_, i) => ({
+    startTime: fromMinutes(from + i * each),
+    endTime: i === count - 1 ? endTime : fromMinutes(from + (i + 1) * each),
+  }))
+}
+
 function generateHourlySlots(startTime: string, endTime: string): string[] {
   const slots: string[] = []
   if (!startTime || !endTime) return slots
@@ -623,7 +660,9 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
   // A one-off needs a real date and an hour; the weekday is derived from the
   // date rather than asked for, because the two must agree — the grid is drawn
   // by weekday and a mismatch would render the slot on the wrong column.
-  const [datedForm, setDatedForm] = useState({ date: '', startTime: '09:00' })
+  // A span, not one hour. A doctor who comes in 9 to 5 was eight separate
+  // entries, each needing the date typed again.
+  const [datedForm, setDatedForm] = useState({ date: '', startTime: '09:00', endTime: '10:00', count: 1 })
   const [datedSaving, setDatedSaving] = useState(false)
   // Set when a patient is picked for a dual-tagged consultant: the booking waits
   // here until the kind of session is chosen. Asking after the patient — rather
@@ -1411,15 +1450,47 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
                   onChange={e => setDatedForm(f => ({ ...f, date: e.target.value }))}
                   className={`${CONTROL} w-full`} style={{ ...CONTROL_STYLE, width: '100%' }} />
               </div>
-              <div>
-                <label className={LABEL} style={{ color: 'var(--mid-gray)' }} htmlFor={`ds-start-${staff.id}`}>Start time</label>
-                <select id={`ds-start-${staff.id}`} value={datedForm.startTime}
-                  onChange={e => setDatedForm(f => ({ ...f, startTime: e.target.value }))}
-                  className={`${CONTROL} w-full`} style={{ ...CONTROL_STYLE, width: '100%' }}>
-                  {generateHourlySlots('07:00', '21:00').map(t => (
-                    <option key={t} value={t}>{formatTime(t)}</option>
-                  ))}
-                </select>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className={LABEL} style={{ color: 'var(--mid-gray)' }} htmlFor={`ds-start-${staff.id}`}>From</label>
+                  <select id={`ds-start-${staff.id}`} value={datedForm.startTime}
+                    onChange={e => setDatedForm(f => ({
+                      ...f,
+                      startTime: e.target.value,
+                      // Keep the span valid as the start moves, rather than
+                      // letting it go backwards and disabling the button with
+                      // no explanation.
+                      endTime: f.endTime <= e.target.value ? addHour(e.target.value) : f.endTime,
+                    }))}
+                    className={`${CONTROL} w-full`} style={{ ...CONTROL_STYLE, width: '100%' }}>
+                    {generateHourlySlots('07:00', '21:00').map(t => (
+                      <option key={t} value={t}>{formatTime(t)}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className={LABEL} style={{ color: 'var(--mid-gray)' }} htmlFor={`ds-end-${staff.id}`}>To</label>
+                  <select id={`ds-end-${staff.id}`} value={datedForm.endTime}
+                    onChange={e => setDatedForm(f => ({ ...f, endTime: e.target.value }))}
+                    className={`${CONTROL} w-full`} style={{ ...CONTROL_STYLE, width: '100%' }}>
+                    {generateHourlySlots('08:00', '22:00')
+                      .filter(t => t > datedForm.startTime)
+                      .map(t => (<option key={t} value={t}>{formatTime(t)}</option>))}
+                  </select>
+                </div>
+              </div>
+              <div className="col-span-2">
+                <label className={LABEL} style={{ color: 'var(--mid-gray)' }} htmlFor={`ds-count-${staff.id}`}>
+                  How many patients in that time?
+                </label>
+                <input id={`ds-count-${staff.id}`} type="number" min={1} max={40}
+                  value={datedForm.count}
+                  onChange={e => setDatedForm(f => ({ ...f, count: Math.max(1, Math.min(40, Number(e.target.value) || 1)) }))}
+                  className={`${CONTROL} w-full`} style={{ ...CONTROL_STYLE, width: '100%' }} />
+                <p className="mt-1 text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+                  The clinic sets the span and the number of patients; the length of each
+                  consult follows. Not every consult is an hour.
+                </p>
               </div>
               {/* Read back what will be saved — the weekday is derived from
                   the date the same way the save below derives it. */}
@@ -1429,7 +1500,15 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
                 const rel = relativeDayLabel(datedForm.date, todayKey)
                 const isPast = datedForm.date < todayKey
                 // Display only: flags a date+hour this consultant already has.
-                const clash = datedSlots.some(sl => String(sl.date).slice(0, 10) === datedForm.date && sl.startTime === datedForm.startTime)
+                // Every hour in the span, so a clash anywhere in it is caught
+                // rather than only one at the start.
+                const pieces = splitSpan(datedForm.startTime, datedForm.endTime, datedForm.count)
+                const each = pieces.length
+                  ? toMinutes(pieces[0].endTime) - toMinutes(pieces[0].startTime)
+                  : 0
+                const clash = datedSlots.some(sl =>
+                  String(sl.date).slice(0, 10) === datedForm.date
+                  && pieces.some(x => x.startTime === sl.startTime))
                 return (
                   <div className="col-span-2 flex flex-col gap-1.5" aria-live="polite">
                     <div className="rounded-lg px-3 py-2 text-xs tabular-nums" style={{ background: SUBTLE_BG, border: '1px solid var(--light-gray)', color: 'var(--charcoal)' }}>
@@ -1443,7 +1522,8 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
                         )}
                       </p>
                       <p className="mt-0.5" style={{ color: 'var(--mid-gray)' }}>
-                        {formatTime(datedForm.startTime)} – {formatTime(addHour(datedForm.startTime))} &middot; 1 hour, open for booking
+                        {formatTime(datedForm.startTime)} – {formatTime(datedForm.endTime)} &middot;{' '}
+                        {each} min each &middot; {pieces.length} slot{pieces.length === 1 ? '' : 's'}, open for booking
                       </p>
                     </div>
                     {isPast && (
@@ -1470,7 +1550,7 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
                   Cancel
                 </button>
                 <button type="button"
-                  disabled={!datedForm.date || datedSaving || !onAddDated}
+                  disabled={!datedForm.date || datedSaving || !onAddDated || datedForm.endTime <= datedForm.startTime}
                   onClick={async () => {
                     if (!onAddDated || !datedForm.date) return
                     setDatedSaving(true)
@@ -1483,15 +1563,23 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
                       // here would file every one-off on the wrong weekday
                       // and draw it in the wrong column.
                       const dow = DAYS[d.getUTCDay()]
-                      const endHour = String(parseInt(datedForm.startTime.slice(0, 2), 10) + 1).padStart(2, '0')
-                      await onAddDated({
-                        staffId: staff.id, patientId: null,
-                        dayOfWeek: dow, startTime: datedForm.startTime, endTime: `${endHour}:00`,
-                        branch: activeBranch, department: staff.department, notes: null,
-                        date: datedForm.date,
-                      })
+                      // One slot per hour across the span. The board, the
+                      // sheet and every capacity figure count hours, so a
+                      // four-hour visit has to be four bookable slots rather
+                      // than one long one nobody can half-fill.
+                      //
+                      // Sequential, not Promise.all: each POST re-checks the
+                      // cell, and firing them together would race that check.
+                      for (const piece of splitSpan(datedForm.startTime, datedForm.endTime, datedForm.count)) {
+                        await onAddDated({
+                          staffId: staff.id, patientId: null,
+                          dayOfWeek: dow, startTime: piece.startTime, endTime: piece.endTime,
+                          branch: activeBranch, department: staff.department, notes: null,
+                          date: datedForm.date,
+                        })
+                      }
                       setShowDatedModal(false)
-                      setDatedForm({ date: '', startTime: '09:00' })
+                      setDatedForm({ date: '', startTime: '09:00', endTime: '10:00', count: 1 })
                     } finally { setDatedSaving(false) }
                   }}
                   className={BTN_PRIMARY}

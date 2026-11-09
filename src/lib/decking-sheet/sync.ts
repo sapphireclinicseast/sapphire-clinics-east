@@ -70,7 +70,7 @@ async function loadDepartment(branch: string, department: string) {
       where: { branch, department, isClass: false },
       select: {
         id: true, staffId: true, dayOfWeek: true, startTime: true, disabled: true,
-        paymentType: true, hmoProvider: true, notes: true, patientId: true, date: true,
+        paymentType: true, hmoProvider: true, notes: true, patientId: true, date: true, endTime: true,
         patient: { select: { firstName: true, lastName: true } },
         patientBookings: { where: { paidAt: { not: null } }, select: { downpayment: true }, take: 1 },
       },
@@ -90,6 +90,7 @@ async function loadDepartment(branch: string, department: string) {
     staffId: s.staffId,
     dayOfWeek: s.dayOfWeek,
     startTime: s.startTime,
+    endTime: s.endTime,
     disabled: s.disabled,
     paymentType: s.paymentType,
     hmoProvider: s.hmoProvider,
@@ -440,12 +441,12 @@ async function pullTabs(
         branch, department: dept, isClass: false,
         date: slot.date ? new Date(`${slot.date}T00:00:00Z`) : null,
       },
-      select: { id: true, patientId: true, disabled: true, paymentType: true, hmoProvider: true, notes: true, patient: { select: { firstName: true, lastName: true } } },
+      select: { id: true, patientId: true, disabled: true, paymentType: true, hmoProvider: true, notes: true, endTime: true, patient: { select: { firstName: true, lastName: true } } },
     })
     const occupants = existing.filter(e => e.patientId)
     const blockedRow = existing.find(e => e.disabled)
     const asSlots: SheetSlot[] = existing.map(e => ({
-      staffId: slot.staffId, dayOfWeek: slot.day, startTime: slot.time, disabled: e.disabled,
+      staffId: slot.staffId, dayOfWeek: slot.day, startTime: slot.time, endTime: e.endTime, disabled: e.disabled,
       paymentType: e.paymentType, hmoProvider: e.hmoProvider, notes: e.notes,
       patient: e.patient ? `${e.patient.lastName}, ${e.patient.firstName}` : null,
       patientId: e.patientId, dp: null,
