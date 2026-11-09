@@ -3,20 +3,13 @@
 import { useSession } from 'next-auth/react'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import {
-  Calendar,
-  Clock,
-  Video,
-  User,
-  ChevronLeft,
-  ChevronRight,
-  CheckCircle2,
-  XCircle,
-  Activity,
-  Stethoscope,
-} from 'lucide-react'
-import { cn, formatTime, formatDate, toDateString } from '@/lib/utils'
+import { ChevronLeft, ChevronRight, Video, Stethoscope, CalendarDays } from 'lucide-react'
+import { formatTime, formatDate, toDateString } from '@/lib/utils'
 import { useBranchSwitcher } from '@/components/BranchSwitcher'
+import {
+  Avatar, DashCard, EmptyState, Icon, KpiCard, PageHeader, RowsSkeleton, StatusPill, Tag, type Tone,
+  CONTROL, CONTROL_STYLE, BTN_SECONDARY, SECONDARY_STYLE, FOCUS, PAGE, SUBTLE_BG,
+} from '@/components/hub/ui'
 
 interface SessionItem {
   id: string
@@ -44,12 +37,14 @@ interface SessionItem {
   } | null
 }
 
-const statusBadge: Record<string, string> = {
-  PENDING: 'badge-pending',
-  CONFIRMED: 'badge-confirmed',
-  CANCELLED: 'badge-cancelled',
-  RESCHEDULED: 'badge-rescheduled',
+// Booking status → pill tone (icon + text, never colour alone).
+const STATUS_TONE: Record<string, Tone> = {
+  PENDING: 'warn',
+  CONFIRMED: 'success',
+  CANCELLED: 'error',
+  RESCHEDULED: 'info',
 }
+const titleCase = (s: string) => s.charAt(0) + s.slice(1).toLowerCase()
 
 export default function DashboardPage() {
   const { data: session } = useSession()
@@ -99,176 +94,134 @@ export default function DashboardPage() {
   const discontinued = sessions.filter((s) => s.sessionNote?.status === 'DISCONTINUED').length
 
   return (
-    <div className="max-w-7xl mx-auto lg:grid lg:grid-cols-[minmax(0,1fr)_360px] lg:gap-6 lg:items-start">
-      <div className="min-w-0">
-
-      {/* Hero header — templates pattern */}
-      <div className="hero-gradient rounded-2xl px-8 py-8 mb-8 animate-fade-up">
-        <div className="relative z-10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-xl font-bold text-white tracking-tight animate-slide-down" style={{ fontFamily: 'var(--font-display)' }}>
-              {isToday ? "Today's Sessions" : 'Sessions'}
-            </h1>
-            <p className="text-white/70 text-sm mt-1 animate-slide-down stagger-1">
-              {formatDate(date)}
-            </p>
-          </div>
-
-          {/* Date Navigator */}
-          <div className="flex items-center gap-2 animate-slide-down stagger-2">
-            <button
-              onClick={() => changeDate(-1)}
-              className="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-all active:scale-95"
-            >
-              <ChevronLeft size={18} />
+    <div className={`${PAGE} !max-w-[1240px] animate-fade-up`}>
+      <PageHeader
+        eyebrow={isToday ? 'Today' : 'Sessions'}
+        title={isToday ? "Today's sessions" : 'Sessions'}
+        description={formatDate(date)}
+        actions={
+          <div className="flex items-center gap-1.5">
+            <button type="button" onClick={() => changeDate(-1)} aria-label="Previous day"
+              className={`${BTN_SECONDARY} !px-2`} style={SECONDARY_STYLE}>
+              <ChevronLeft size={16} />
             </button>
             <input
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
-              className="px-4 py-2.5 rounded-xl bg-white/10 border border-white/20 text-white text-sm focus:border-white/50 outline-none [color-scheme:dark]"
+              aria-label="Pick a date"
+              className={CONTROL}
+              style={CONTROL_STYLE}
             />
-            <button
-              onClick={() => changeDate(1)}
-              className="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-all active:scale-95"
-            >
-              <ChevronRight size={18} />
+            <button type="button" onClick={() => changeDate(1)} aria-label="Next day"
+              className={`${BTN_SECONDARY} !px-2`} style={SECONDARY_STYLE}>
+              <ChevronRight size={16} />
             </button>
             {!isToday && (
-              <button
-                onClick={() => setDate(toDateString(new Date()))}
-                className="px-4 py-2.5 rounded-xl bg-white text-[var(--deep-teal)] text-sm font-semibold hover:bg-white/90 transition-all active:scale-97"
-              >
+              <button type="button" onClick={() => setDate(toDateString(new Date()))}
+                className={BTN_SECONDARY} style={{ ...SECONDARY_STYLE, color: 'var(--deep-teal)' }}>
                 Today
               </button>
             )}
           </div>
+        }
+      />
+
+      <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-5 lg:items-start space-y-5 lg:space-y-0">
+        <div className="min-w-0 space-y-5">
+          {/* Stats */}
+          {!loading && sessions.length > 0 && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <KpiCard label="Sessions" value={sessions.length} sub={isToday ? 'Booked today' : 'Booked this day'} icon={<Icon name="calendar" size={16} />} />
+              <KpiCard label="Notes done" value={completed} sub={`${sessions.length ? Math.round((completed / sessions.length) * 100) : 0}% of sessions`} accent="var(--moss)" icon={<Icon name="check" size={16} />} />
+              <KpiCard label="Notes pending" value={pending} sub={pending ? 'Still to write' : 'All caught up'} accent={pending ? 'var(--sun)' : 'var(--moss)'} icon={<Icon name="clock" size={16} />} />
+              <KpiCard label="Discontinued" value={discontinued} sub="Marked discontinued" accent="var(--clay)" icon={<Icon name="x" size={16} />} />
+            </div>
+          )}
+
+          <DashCard
+            title="Sessions"
+            icon={<CalendarDays size={16} />}
+            description={loading ? 'Loading…' : sessions.length ? 'Open a session to write or review its note.' : undefined}
+            flush
+          >
+            {loading ? (
+              <RowsSkeleton rows={4} label="Loading sessions" />
+            ) : sessions.length === 0 ? (
+              <EmptyState
+                icon="calendar"
+                title="No sessions scheduled"
+                hint={isToday ? 'You have no sessions for today.' : 'No sessions on this date.'}
+              />
+            ) : (
+              <ul>
+                {sessions.map((s, i) => {
+                  const noteTone: Tone | null = s.sessionNote
+                    ? (s.sessionNote.status === 'COMPLETED' ? 'success' : 'error')
+                    : null
+                  return (
+                    <li key={s.id} style={{ borderTop: i ? '1px solid var(--light-gray)' : undefined }}>
+                      <button
+                        type="button"
+                        onClick={() => router.push(`/session/${s.id}`)}
+                        className={`group w-full text-left px-4 sm:px-5 py-3.5 flex items-center gap-3.5 transition-colors hover:bg-[#F8FAF2] ${FOCUS}`}
+                      >
+                        <Avatar text={s.patient ? `${s.patient.firstName[0]}${s.patient.lastName[0]}` : 'W'} size={38} />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-[14.5px] font-semibold truncate" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>
+                              {s.patient ? `${s.patient.lastName}, ${s.patient.firstName}` : 'Walk-in Patient'}
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 mt-1 text-[12.5px]" style={{ color: 'var(--mid-gray)' }}>
+                            <span className="inline-flex items-center gap-1 tabular-nums">
+                              <Icon name="clock" size={12} />
+                              {formatTime(s.startTime)} – {formatTime(s.endTime)}
+                            </span>
+                            <Tag tone="brand">{s.sessionType}</Tag>
+                            {session?.user?.role === 'ADMIN' && (
+                              <span className="inline-flex items-center gap-1">
+                                <Stethoscope size={12} />
+                                {s.staff.lastName}
+                              </span>
+                            )}
+                            {s.meetLink && (
+                              <span className="inline-flex items-center gap-1 font-semibold" style={{ color: 'var(--teal)' }}>
+                                <Video size={12} /> Meet
+                              </span>
+                            )}
+                          </div>
+                          {/* Phones: status pills under the details so the name keeps its width. */}
+                          <div className="flex flex-wrap gap-1.5 mt-1.5 sm:hidden">
+                            <StatusPill tone={STATUS_TONE[s.status] ?? 'warn'}>{titleCase(s.status)}</StatusPill>
+                            {noteTone
+                              ? <StatusPill tone={noteTone}>{s.sessionNote!.status === 'COMPLETED' ? 'Note done' : 'Discontinued'}</StatusPill>
+                              : <StatusPill tone="neutral">No note yet</StatusPill>}
+                          </div>
+                        </div>
+                        <div className="hidden sm:flex flex-col items-end gap-1.5 flex-shrink-0">
+                          <StatusPill tone={STATUS_TONE[s.status] ?? 'warn'}>{titleCase(s.status)}</StatusPill>
+                          {noteTone
+                            ? <StatusPill tone={noteTone}>{s.sessionNote!.status === 'COMPLETED' ? 'Note done' : 'Discontinued'}</StatusPill>
+                            : <StatusPill tone="neutral">No note yet</StatusPill>}
+                        </div>
+                        <ChevronRight size={16} className="flex-shrink-0 transition-transform group-hover:translate-x-0.5" style={{ color: 'var(--mid-gray)' }} />
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </DashCard>
         </div>
+
+        {/* Scheduling reminder — pinned to the right so clinicians always see it */}
+        <aside className="lg:sticky lg:top-0 min-w-0">
+          <ScheduleReminder />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/Codepaca.svg" alt="Aura alpaca mascot" width={140} height={140} style={{ display: 'block', margin: '12px auto 0' }} />
+        </aside>
       </div>
-
-      {/* Stats row */}
-      {!loading && sessions.length > 0 && (
-        <div className="grid grid-cols-3 gap-4 mb-6">
-          <div className="card-static flex items-center gap-3 animate-fade-up stagger-1">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #cf9d8820, #c6984920)' }}>
-              <Activity size={18} style={{ color: '#cf9d88' }} />
-            </div>
-            <div>
-              <p className="text-2xl font-bold" style={{ color: '#cf9d88' }}>{sessions.length}</p>
-              <p className="text-[11px] text-[var(--mid-gray)] uppercase font-semibold tracking-wider">Total</p>
-            </div>
-          </div>
-          <div className="card-static flex items-center gap-3 animate-fade-up stagger-2">
-            <div className="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center">
-              <CheckCircle2 size={18} className="text-green-500" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-green-600">{completed}</p>
-              <p className="text-[11px] text-[var(--mid-gray)] uppercase font-semibold tracking-wider">Done</p>
-            </div>
-          </div>
-          <div className="card-static flex items-center gap-3 animate-fade-up stagger-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center">
-              <Clock size={18} className="text-amber-500" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-amber-600">{pending}</p>
-              <p className="text-[11px] text-[var(--mid-gray)] uppercase font-semibold tracking-wider">Pending</p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Sessions List */}
-      {loading ? (
-        <div className="flex flex-col items-center justify-center py-20 gap-3">
-          <div className="w-10 h-10 border-3 border-[var(--pale-teal)] border-t-[var(--teal)] rounded-full animate-spin" />
-          <p className="text-sm text-[var(--mid-gray)]">Loading sessions...</p>
-        </div>
-      ) : sessions.length === 0 ? (
-        <div className="card-static text-center py-16 animate-fade-up">
-          <div className="w-16 h-16 rounded-2xl bg-[var(--pale-teal)] flex items-center justify-center mx-auto mb-4">
-            <Calendar className="w-7 h-7 text-[var(--teal)]" />
-          </div>
-          <p className="text-[var(--charcoal)] font-semibold text-[15px]">No sessions scheduled</p>
-          <p className="text-sm text-[var(--mid-gray)] mt-1">
-            {isToday ? 'You have no sessions for today.' : 'No sessions on this date.'}
-          </p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {sessions.map((s, i) => (
-            <button
-              key={s.id}
-              onClick={() => router.push(`/session/${s.id}`)}
-              className={`card w-full text-left group cursor-pointer animate-fade-up stagger-${Math.min(i + 1, 10)}`}
-            >
-              <div className="flex items-center gap-4">
-                {/* Avatar circle */}
-                <div className="w-11 h-11 rounded-full flex items-center justify-center text-white font-bold text-[13px] shrink-0" style={{ background: 'linear-gradient(135deg, #cf9d88, #c69849)' }}>
-                  {s.patient ? `${s.patient.firstName[0]}${s.patient.lastName[0]}` : 'W'}
-                </div>
-
-                {/* Info */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-0.5">
-                    <h3 className="font-semibold text-[var(--charcoal)] text-[15px] truncate">
-                      {s.patient
-                        ? `${s.patient.lastName}, ${s.patient.firstName}`
-                        : 'Walk-in Patient'}
-                    </h3>
-                    {s.sessionNote && (
-                      <span className="flex items-center gap-1">
-                        {s.sessionNote.status === 'COMPLETED' ? (
-                          <CheckCircle2 size={15} className="text-green-500" />
-                        ) : (
-                          <XCircle size={15} className="text-red-500" />
-                        )}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-[var(--mid-gray)]">
-                    <span className="flex items-center gap-1">
-                      <Clock size={13} />
-                      {formatTime(s.startTime)} – {formatTime(s.endTime)}
-                    </span>
-                    <span className="badge badge-teal !text-[10px] !py-0.5 !px-2">
-                      {s.sessionType}
-                    </span>
-                    {session?.user?.role === 'ADMIN' && (
-                      <span className="text-[12px]">
-                        <Stethoscope size={12} className="inline mr-0.5" />
-                        {s.staff.lastName}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Right side */}
-                <div className="flex flex-col items-end gap-2 shrink-0">
-                  <span className={`badge ${statusBadge[s.status] ?? 'badge-pending'}`}>
-                    {s.status}
-                  </span>
-                  {s.meetLink && (
-                    <span className="flex items-center gap-1 text-[12px] text-[var(--teal)] font-medium">
-                      <Video size={14} />
-                      Meet
-                    </span>
-                  )}
-                </div>
-              </div>
-            </button>
-          ))}
-        </div>
-      )}
-      </div>{/* end left column */}
-
-      {/* Scheduling reminder — pinned to the right so clinicians always see it */}
-      <aside className="mt-6 lg:mt-0 lg:sticky lg:top-4 animate-fade-up">
-        <ScheduleReminder />
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/Codepaca.svg" alt="Aura alpaca mascot" width={160} height={160} style={{ display: 'block', margin: '12px auto 0' }} />
-      </aside>
     </div>
   )
 }
@@ -281,36 +234,38 @@ function ScheduleReminder() {
     { r: 'REPORT', when: 'by 8:00 AM', desc: 'You report a same-day absence (illness or emergency) and confirm it is acknowledged.' },
   ]
   return (
-    <div className="rounded-2xl overflow-hidden shadow-lg border border-[var(--light-gray)] bg-white">
-      {/* Header */}
-      <div className="px-5 py-4 text-center" style={{ background: 'linear-gradient(135deg, var(--narra), var(--moss))' }}>
-        <p className="text-[10px] uppercase tracking-[0.2em] text-white/70 font-semibold">Quick Reference</p>
-        <h3 className="text-white font-bold text-[16px] leading-tight mt-1" style={{ fontFamily: 'var(--font-display)' }}>
+    <section className="rounded-xl overflow-hidden bg-white" style={{ border: '1px solid var(--light-gray)' }}>
+      <header className="px-4 sm:px-5 pt-4 pb-3" style={{ borderBottom: '1px solid var(--light-gray)' }}>
+        <p className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: 'var(--deep-teal)', fontFamily: 'var(--font-display)' }}>Quick reference</p>
+        <h2 className="text-[15px] font-bold leading-tight mt-0.5" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
           The 3 R&rsquo;s of Daily Scheduling
-        </h3>
-      </div>
+        </h2>
+      </header>
       {/* Rule banner */}
-      <div className="px-4 py-2.5 text-center text-[13px] font-extrabold text-[var(--deep-teal)]" style={{ background: 'var(--sun-tint)' }}>
+      <div className="px-4 sm:px-5 py-2.5 text-[12.5px] font-bold" style={{ background: 'var(--sun-tint)', color: 'var(--deep-teal)', fontFamily: 'var(--font-display)' }}>
         Release by 1 · Reply by 5 · Report by 8
       </div>
-      {/* Rows */}
-      <div className="divide-y divide-[var(--light-gray)]">
-        {rows.map((row) => (
-          <div key={row.r} className="px-5 py-3.5">
-            <div className="flex items-center justify-between gap-2 mb-1">
-              <span className="font-extrabold text-[13px] tracking-wide text-[var(--deep-teal)]">{row.r}</span>
-              <span className="text-[12px] font-bold text-[var(--charcoal)] bg-[var(--pale-teal)] px-2 py-0.5 rounded-md whitespace-nowrap">{row.when}</span>
+      <ol>
+        {rows.map((row, i) => (
+          <li key={row.r} className="px-4 sm:px-5 py-3 flex gap-3" style={{ borderTop: i ? '1px solid var(--light-gray)' : undefined }}>
+            <span className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold flex-shrink-0 mt-0.5"
+              style={{ background: 'var(--deep-teal)', color: '#fff', fontFamily: 'var(--font-display)' }}>{i + 1}</span>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+                <span className="font-bold text-[13px] tracking-wide" style={{ color: 'var(--deep-teal)', fontFamily: 'var(--font-display)' }}>{row.r}</span>
+                <span className="text-[11.5px] font-semibold px-2 py-0.5 rounded-md whitespace-nowrap" style={{ background: 'var(--pale-teal)', color: 'var(--charcoal)' }}>{row.when}</span>
+              </div>
+              <p className="text-[12.5px] leading-snug mt-1" style={{ color: 'var(--mid-gray)' }}>{row.desc}</p>
             </div>
-            <p className="text-[12.5px] text-[var(--mid-gray)] leading-snug">{row.desc}</p>
-          </div>
+          </li>
         ))}
-      </div>
+      </ol>
       {/* Footer note */}
-      <div className="px-5 py-3 bg-[var(--off-white)] border-t border-[var(--light-gray)]">
-        <p className="text-[11px] italic text-[var(--mid-gray)] leading-snug">
+      <div className="px-4 sm:px-5 py-3" style={{ borderTop: '1px solid var(--light-gray)', background: SUBTLE_BG }}>
+        <p className="text-[11.5px] italic leading-snug" style={{ color: 'var(--mid-gray)' }}>
           Confirm explicitly through the official clinic channel — silence is not treated as confirmation.
         </p>
       </div>
-    </div>
+    </section>
   )
 }
