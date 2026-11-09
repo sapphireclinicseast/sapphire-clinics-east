@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { useSearchParams } from 'next/navigation'
 import {
   getDraft, setDraft, getSession, saveWaiver, uploadDocumentBlob,
@@ -9,6 +9,11 @@ import {
 } from '@/lib/session'
 import { downloadWaiverPdf, generateWaiverPdf } from '@/lib/waiver-pdf'
 import SignaturePad from '@/components/SignaturePad'
+import {
+  Banner, Icon, PageHeader, StatusPill,
+  BTN_PRIMARY, BTN_SECONDARY, CARD_STYLE, CONTROL, CONTROL_STYLE, LABEL, LABEL_STYLE,
+  PRIMARY_STYLE, SECONDARY_STYLE, SUBTLE_BG,
+} from '@/components/hub/ui'
 
 const CLAUSES: Array<{ key: string; title: string; body: string }> = [
   { key: '5.1', title: 'Location of Classes', body: 'All academic classes, SPED instruction, therapy-integrated learning sessions, and intervention activities under the Program shall be conducted at the SCEI premises — and NOT at the LBCA campus.' },
@@ -27,6 +32,8 @@ const CLAUSES: Array<{ key: string; title: string; body: string }> = [
   { key: '5.14', title: 'Parent-Provided Shadow Teacher', body: "If I wish to assign a personal shadow teacher to accompany my child in class, I may do so but must (a) coordinate the engagement in advance with SCEI's front desk and the assigned SPED teacher, and (b) endorse and submit a copy of the shadow teacher's current PRC license before the shadow teacher attends any class session. The shadow teacher is engaged solely by me and is not an employee of SCEI or LBCA. SCEI and LBCA are NOT liable for the acts, omissions, qualifications, supervision, compensation, or conduct of the parent-provided shadow teacher." },
   { key: '5.15', title: 'Tuition Obligation on Withdrawal', body: "Tuition fees are payable in full for the entire school year regardless of when, or for what reason, my child stops attending. If I have chosen an installment plan (bi-annual or monthly), I remain obligated to pay the outstanding balance of tuition in full. The school will NOT issue clearance, Form 137 / SF10, transfer credentials, Report Card / SF9, or any other academic records until the full tuition balance has been settled." },
 ]
+
+const noopSubscribe = () => () => {}
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 
@@ -52,6 +59,9 @@ function WaiverInner() {
   const [signing, setSigning] = useState(false)
   const [signed, setSigned] = useState<WaiverRecord | null>(null)
   const [err, setErr] = useState<string | null>(null)
+  // Mirror of the printed-name field for the "Before you sign" checklist;
+  // handleSign still reads the value from the form.
+  const [parentPrintedLive, setParentPrintedLive] = useState('')
 
   // keep age in sync with dob
   useEffect(() => {
@@ -161,45 +171,68 @@ function WaiverInner() {
     }
   }
 
+  // The form is seeded from the browser-only enrollment draft, so the server
+  // render has empty fields. Tick the checklist only once hydrated, or the
+  // server and client draw different icons.
+  const hydrated = useSyncExternalStore(noopSubscribe, () => true, () => false)
+  const initialedCount = CLAUSES.filter(cl => (content.initials[cl.key] ?? '').trim()).length
+  const rawChecks: Array<{ ok: boolean; label: string }> = [
+    { ok: !!content.studentFullName.trim(), label: "Student's full name (section 1)" },
+    { ok: !!content.primary.fullName.trim(), label: "Primary parent / guardian's full name (section 2)" },
+    { ok: initialedCount === CLAUSES.length, label: `Initials on every clause — ${initialedCount} of ${CLAUSES.length} (section 5)` },
+    { ok: !!content.photoRelease, label: 'Photo release: grant or deny (section 6)' },
+    { ok: !!parentPrintedLive.trim(), label: 'Parent / guardian printed name (section 8)' },
+    { ok: !!parentSig, label: 'Parent / guardian signature (section 8)' },
+  ]
+  const checks = rawChecks.map(c => ({ ...c, ok: hydrated && c.ok }))
+  const readyToSign = checks.every(c => c.ok)
+
   if (signed) {
     return (
-      <div className="max-w-xl mx-auto py-12 px-5 text-center animate-fade-up">
-        <div className="inline-flex w-14 h-14 rounded-full bg-[color:var(--sage-tint)] items-center justify-center mb-4 text-[color:var(--moss)] text-2xl">✓</div>
-        <h1 className="text-[26px] leading-tight mb-2">Waiver signed</h1>
-        <p className="text-sm text-[color:var(--mid-gray)] mb-2">
-          A PDF copy was downloaded to your device. The assigned SCEI SPED teacher will counter-sign as witness when she next logs in.
-        </p>
-        <p className="text-[12px] text-[color:var(--mid-gray)] mb-7">Filed for {signed.studentFirstName} {signed.studentLastName} · {levelLabel(signed.level)}.</p>
-        <div className="flex justify-center gap-2">
-          <button className="btn-secondary" onClick={() => downloadWaiverPdf(signed)}>Download again</button>
-          <button className="btn-primary" onClick={() => window.close()}>Close window</button>
-        </div>
+      <div className="max-w-xl mx-auto animate-fade-up">
+        <section className="rounded-2xl px-6 py-8 sm:px-8 text-center" style={{ ...CARD_STYLE, boxShadow: CARD_SHADOW }}>
+          <span className="inline-flex w-14 h-14 rounded-2xl items-center justify-center mb-4" style={{ background: '#EEF5E8', color: '#2F5A28' }}>
+            <Icon name="check" size={28} />
+          </span>
+          <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: 'var(--deep-teal)', fontFamily: 'var(--font-display)' }}>
+            SCEI × LBCA
+          </p>
+          <h1 className="text-[22px] sm:text-2xl font-bold leading-tight" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+            Waiver signed
+          </h1>
+          <p className="text-sm mt-2 leading-relaxed max-w-md mx-auto" style={{ color: 'var(--mid-gray)' }}>
+            A PDF copy was downloaded to your device. The assigned SCEI SPED teacher will counter-sign as witness when she next logs in.
+          </p>
+          <div className="inline-flex items-center gap-2 mt-4 px-3 py-2 rounded-lg text-[12.5px]" style={{ background: SUBTLE_BG, border: '1px solid var(--light-gray)', color: 'var(--charcoal)' }}>
+            <Icon name="file" size={14} style={{ color: 'var(--teal)' }} />
+            Filed for <span className="font-semibold">{signed.studentFirstName} {signed.studentLastName}</span> · {levelLabel(signed.level)}
+          </div>
+          <div className="flex flex-wrap justify-center gap-2 mt-6">
+            <button type="button" className={BTN_SECONDARY} style={SECONDARY_STYLE} onClick={() => downloadWaiverPdf(signed)}>
+              <Icon name="download" size={14} /> Download again
+            </button>
+            <button type="button" className={BTN_PRIMARY} style={PRIMARY_STYLE} onClick={() => window.close()}>
+              Close window
+            </button>
+          </div>
+        </section>
       </div>
     )
   }
 
   return (
-    <div className="max-w-3xl mx-auto py-6 px-5 animate-fade-up">
-      <div className="card-static space-y-7">
-        <header>
-          <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)] mb-1" style={{ fontFamily: 'var(--font-display)' }}>
-            SCEI × LBCA · {levelLabel(levelParam)}
-          </div>
-          <h1 className="text-[24px] leading-tight">Parent / Guardian Waiver, Acknowledgment, and Consent</h1>
-          <p className="text-[13.5px] text-[color:var(--mid-gray)] leading-relaxed mt-2">
-            This form is executed by the undersigned parent or legal guardian in favour of <b>Sapphire Clinics East, Inc.</b> and <b>Light Bearer Christian Academy</b> for participation in the SCEI × LBCA SPED School Program. Please review every clause and initial each one before signing. A PDF copy is generated automatically once signed.
-          </p>
-        </header>
+    <div className="max-w-3xl mx-auto animate-fade-up space-y-5 min-w-0">
+      <PageHeader
+        eyebrow={<>SCEI × LBCA · {levelLabel(levelParam)}</>}
+        title="Parent / Guardian Waiver, Acknowledgment, and Consent"
+        description={<>Executed in favour of <span className="font-semibold" style={{ color: 'var(--charcoal)' }}>Sapphire Clinics East, Inc.</span> and <span className="font-semibold" style={{ color: 'var(--charcoal)' }}>Light Bearer Christian Academy</span> for the SCEI × LBCA SPED School Program. Review every clause and initial each one before signing. A PDF copy is generated automatically once signed.</>}
+      />
 
-        {err && (
-          <div className="px-4 py-3 rounded-xl bg-rose-50 border border-rose-100 text-sm text-rose-800">
-            {err}
-          </div>
-        )}
+      {err && <Banner tone="error">{err}</Banner>}
 
-        <form onSubmit={handleSign} className="space-y-7">
-          {/* 1. Student */}
-          <SectionHead n={1}>Student Information</SectionHead>
+      <form onSubmit={handleSign} className="space-y-5">
+        {/* 1. Student */}
+        <Section n={1} title="Student Information" hint="Carried over from the enrollment form where we have it. Check and complete.">
           <Grid2>
             <Field label="Full Name *"><Input value={content.studentFullName} onChange={v => update('studentFullName', v)} /></Field>
             <Field label="Date of Birth"><Input type="date" value={content.studentDob} onChange={v => update('studentDob', v)} /></Field>
@@ -220,9 +253,10 @@ function WaiverInner() {
             <Field label="Diagnosis / Conditions (if any)"><Input value={content.diagnosis ?? ''} onChange={v => update('diagnosis', v)} /></Field>
             <Field label="Date of Diagnosis"><Input type="date" value={content.dateOfDiagnosis ?? ''} onChange={v => update('dateOfDiagnosis', v)} /></Field>
           </Grid2>
+        </Section>
 
-          {/* 2. Parent / Guardian */}
-          <SectionHead n={2}>Parent / Guardian Information</SectionHead>
+        {/* 2. Parent / Guardian */}
+        <Section n={2} title="Parent / Guardian Information">
           <SubHead>Primary Parent / Guardian</SubHead>
           <Grid2>
             <Field label="Full Name *"><Input value={content.primary.fullName} onChange={v => setContent(c => ({ ...c, primary: { ...c.primary, fullName: v } }))} /></Field>
@@ -239,6 +273,7 @@ function WaiverInner() {
             <Field label="ID Number"><Input value={content.primary.idNumber ?? ''} onChange={v => setContent(c => ({ ...c, primary: { ...c.primary, idNumber: v } }))} /></Field>
           </Grid2>
 
+          <div className="pt-2" style={{ borderTop: '1px solid var(--light-gray)' }} />
           <SubHead>Secondary Parent / Guardian (if applicable)</SubHead>
           <Grid2>
             <Field label="Full Name"><Input value={content.secondary?.fullName ?? ''} onChange={v => setContent(c => ({ ...c, secondary: { ...(c.secondary ?? { fullName: '', relationship: '', mobile: '', email: '' }), fullName: v } }))} /></Field>
@@ -246,15 +281,19 @@ function WaiverInner() {
             <Field label="Mobile Number"><Input value={content.secondary?.mobile ?? ''} onChange={v => setContent(c => ({ ...c, secondary: { ...(c.secondary ?? { fullName: '', relationship: '', mobile: '', email: '' }), mobile: v } }))} /></Field>
             <Field label="Email Address"><Input type="email" value={content.secondary?.email ?? ''} onChange={v => setContent(c => ({ ...c, secondary: { ...(c.secondary ?? { fullName: '', relationship: '', mobile: '', email: '' }), email: v } }))} /></Field>
           </Grid2>
+        </Section>
 
-          {/* 3. Fetchers */}
-          <SectionHead n={3}>Authorized Fetchers / Pick-Up Persons</SectionHead>
-          <p className="text-[12.5px] text-[color:var(--mid-gray)] -mt-2 italic">
-            Only persons listed below may drop off or pick up the child from the SCEI premises. SCEI staff may require valid ID before releasing the student.
-          </p>
+        {/* 3. Fetchers */}
+        <Section n={3} title="Authorized Fetchers / Pick-Up Persons"
+          hint="Only persons listed below may drop off or pick up the child from the SCEI premises. SCEI staff may require valid ID before releasing the student.">
           {[0, 1, 2].map(i => (
-            <div key={i} className="rounded-2xl p-4 border" style={{ borderColor: 'var(--paper-3)', background: 'var(--paper-2)' }}>
-              <div className="text-[11px] uppercase tracking-[0.12em] text-[color:var(--mid-gray)] font-semibold mb-2" style={{ fontFamily: 'var(--font-display)' }}>Fetcher {i + 1}</div>
+            <div key={i} className="rounded-xl p-4" style={{ border: '1px solid var(--light-gray)', background: SUBTLE_BG }}>
+              <div className="flex items-center gap-2 mb-3">
+                <span className="w-6 h-6 rounded-md flex items-center justify-center" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
+                  <Icon name="users" size={13} />
+                </span>
+                <span className="text-[12px] font-semibold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>Fetcher {i + 1}</span>
+              </div>
               <Grid2>
                 <Field label="Name"><Input value={content.fetchers[i]?.name ?? ''} onChange={v => updateFetcher(i, 'name', v)} /></Field>
                 <Field label="Relationship"><Input value={content.fetchers[i]?.relationship ?? ''} onChange={v => updateFetcher(i, 'relationship', v)} /></Field>
@@ -263,9 +302,10 @@ function WaiverInner() {
               </Grid2>
             </div>
           ))}
+        </Section>
 
-          {/* 4. Emergency + medical */}
-          <SectionHead n={4}>Emergency Contact &amp; Medical Disclosures</SectionHead>
+        {/* 4. Emergency + medical */}
+        <Section n={4} title="Emergency Contact & Medical Disclosures">
           <SubHead>Emergency Contact (other than the Parent/Guardian above)</SubHead>
           <Grid2>
             <Field label="Full Name"><Input value={content.emergencyName} onChange={v => update('emergencyName', v)} /></Field>
@@ -274,6 +314,7 @@ function WaiverInner() {
             <Field label="Alternate Number"><Input value={content.emergencyAlt ?? ''} onChange={v => update('emergencyAlt', v)} /></Field>
           </Grid2>
 
+          <div className="pt-2" style={{ borderTop: '1px solid var(--light-gray)' }} />
           <SubHead>Preferred Hospital / Medical Facility</SubHead>
           <Grid2>
             <Field label="Hospital Name"><Input value={content.hospital} onChange={v => update('hospital', v)} /></Field>
@@ -282,6 +323,7 @@ function WaiverInner() {
             <Field label="Physician's Contact"><Input value={content.physicianContact ?? ''} onChange={v => update('physicianContact', v)} /></Field>
           </Grid2>
 
+          <div className="pt-2" style={{ borderTop: '1px solid var(--light-gray)' }} />
           <SubHead>Medical &amp; Developmental Disclosures</SubHead>
           <Grid2>
             <Field label="Allergies (food, drug, other)"><Input value={content.allergies ?? ''} onChange={v => update('allergies', v)} /></Field>
@@ -295,93 +337,122 @@ function WaiverInner() {
             <Field label="Dietary Restrictions"><Input value={content.dietaryRestrictions ?? ''} onChange={v => update('dietaryRestrictions', v)} /></Field>
             <Field label="Mobility Needs"><Input value={content.mobilityNeeds ?? ''} onChange={v => update('mobilityNeeds', v)} /></Field>
           </Grid2>
+        </Section>
 
-          {/* 5. Initials */}
-          <SectionHead n={5}>Acknowledgments &amp; Consents — Please initial each clause</SectionHead>
+        {/* 5. Initials */}
+        <Section n={5} title="Acknowledgments & Consents" hint="Read each clause and type your initials beside it."
+          action={<StatusPill tone={initialedCount === CLAUSES.length ? 'success' : 'neutral'}>{initialedCount} of {CLAUSES.length} initialed</StatusPill>}>
           <div className="space-y-2.5">
-            {CLAUSES.map(cl => (
-              <div key={cl.key} className="flex items-start gap-3 p-3.5 rounded-xl border" style={{ borderColor: 'var(--paper-3)', background: '#fff' }}>
-                <div className="min-w-0 flex-1">
-                  <div className="text-[13px] font-semibold text-[color:var(--narra)]" style={{ fontFamily: 'var(--font-display)' }}>
-                    {cl.key} {cl.title}
+            {CLAUSES.map(cl => {
+              const done = !!(content.initials[cl.key] ?? '').trim()
+              return (
+                <div key={cl.key} className="flex items-start gap-3 p-3.5 rounded-xl transition-colors"
+                  style={{ border: `1px solid ${done ? '#CFE0BF' : 'var(--light-gray)'}`, background: done ? '#F6FAF2' : '#fff' }}>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline gap-2 text-[13px] font-semibold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+                      <span className="tabular-nums text-[11px] font-bold px-1.5 py-0.5 rounded" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>{cl.key}</span>
+                      <span>{cl.title}</span>
+                    </div>
+                    <p className="text-[12.5px] leading-relaxed mt-1.5" style={{ color: 'var(--charcoal)' }}>{cl.body}</p>
                   </div>
-                  <p className="text-[12.5px] text-[color:var(--ink)] leading-relaxed mt-1">{cl.body}</p>
+                  <div className="shrink-0 flex flex-col items-center">
+                    <div className="relative">
+                      <input
+                        aria-label={`Initials for ${cl.key}`}
+                        className={`${CONTROL} h-10 text-center font-bold uppercase tracking-wider`}
+                        style={{ ...CONTROL_STYLE, width: 72, ...(done ? { borderColor: '#9FC08A' } : null) }}
+                        maxLength={5}
+                        value={content.initials[cl.key] ?? ''}
+                        onChange={e => updateInitial(cl.key, e.target.value.toUpperCase())}
+                      />
+                      {done && (
+                        <span aria-hidden className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full flex items-center justify-center" style={{ background: '#fff', color: '#2F5A28' }}>
+                          <Icon name="check" size={14} />
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-[10px] mt-1 uppercase tracking-wider" style={{ fontFamily: 'var(--font-display)', color: 'var(--mid-gray)' }}>Initials</span>
+                  </div>
                 </div>
-                <div className="shrink-0 flex flex-col items-center">
-                  <input
-                    aria-label={`Initials for ${cl.key}`}
-                    className="input"
-                    style={{ width: 72, padding: '8px 8px', textAlign: 'center', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}
-                    maxLength={5}
-                    value={content.initials[cl.key] ?? ''}
-                    onChange={e => updateInitial(cl.key, e.target.value.toUpperCase())}
-                  />
-                  <span className="text-[10px] text-[color:var(--mid-gray)] mt-1 uppercase tracking-[0.1em]" style={{ fontFamily: 'var(--font-display)' }}>Initials</span>
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
+        </Section>
 
-          {/* 6. Photo release */}
-          <SectionHead n={6}>Photo, Media, and Likeness Release (Optional)</SectionHead>
-          <p className="text-[12.5px] text-[color:var(--mid-gray)] -mt-2 italic">Choose one. Leaving both unchecked is treated as a denial of consent.</p>
-          <div className="space-y-2.5">
-            <label className="block p-3.5 rounded-xl border cursor-pointer" style={{ borderColor: content.photoRelease === 'GRANT' ? 'var(--sage)' : 'var(--paper-3)', background: content.photoRelease === 'GRANT' ? 'var(--sage-tint)' : '#fff' }}>
-              <div className="flex items-start gap-3">
-                <input type="radio" checked={content.photoRelease === 'GRANT'} onChange={() => update('photoRelease', 'GRANT')} className="mt-1" />
-                <span className="text-[12.5px] text-[color:var(--ink)] leading-relaxed">
-                  <b>I GRANT consent.</b> I authorise SCEI to capture, store, and use photographs, videos, recordings, artwork, and quotations involving my child for internal documentation, parent communications, social-media posts, marketing materials, and partnership announcements with LBCA. I may withdraw consent at any time by written request.
-                </span>
-              </div>
-            </label>
-            <label className="block p-3.5 rounded-xl border cursor-pointer" style={{ borderColor: content.photoRelease === 'DENY' ? 'var(--clay)' : 'var(--paper-3)', background: content.photoRelease === 'DENY' ? 'var(--clay-tint)' : '#fff' }}>
-              <div className="flex items-start gap-3">
-                <input type="radio" checked={content.photoRelease === 'DENY'} onChange={() => update('photoRelease', 'DENY')} className="mt-1" />
-                <span className="text-[12.5px] text-[color:var(--ink)] leading-relaxed">
-                  <b>I DO NOT grant consent.</b> SCEI shall not use my child&apos;s photo, video, voice, artwork, or quotations in any public-facing materials. Internal recordkeeping for clinical and academic purposes remains permitted.
-                </span>
-              </div>
-            </label>
+        {/* 6. Photo release */}
+        <Section n={6} title="Photo, Media, and Likeness Release" hint="Choose one. Leaving both unchecked is treated as a denial of consent.">
+          <div className="space-y-2.5" role="radiogroup" aria-label="Photo release">
+            {([
+              { v: 'GRANT' as const, title: 'I GRANT consent.', body: 'I authorise SCEI to capture, store, and use photographs, videos, recordings, artwork, and quotations involving my child for internal documentation, parent communications, social-media posts, marketing materials, and partnership announcements with LBCA. I may withdraw consent at any time by written request.', on: { border: '#9FC08A', bg: '#F6FAF2' } },
+              { v: 'DENY' as const, title: 'I DO NOT grant consent.', body: "SCEI shall not use my child's photo, video, voice, artwork, or quotations in any public-facing materials. Internal recordkeeping for clinical and academic purposes remains permitted.", on: { border: 'var(--clay)', bg: 'var(--clay-tint)' } },
+            ]).map(opt => {
+              const active = content.photoRelease === opt.v
+              return (
+                <label key={opt.v} className="flex items-start gap-3 p-3.5 rounded-xl cursor-pointer transition-colors focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[color:var(--teal)]"
+                  style={{ border: `1px solid ${active ? opt.on.border : 'var(--light-gray)'}`, background: active ? opt.on.bg : '#fff' }}>
+                  <input type="radio" name="photoRelease" checked={active} onChange={() => update('photoRelease', opt.v)} className="mt-1 accent-[color:var(--deep-teal)]" />
+                  <span className="text-[12.5px] leading-relaxed" style={{ color: 'var(--charcoal)' }}>
+                    <b>{opt.title}</b> {opt.body}
+                  </span>
+                </label>
+              )
+            })}
           </div>
+        </Section>
 
-          {/* 8. Signatures */}
-          <SectionHead n={8}>Signatures</SectionHead>
-          <p className="text-[12.5px] text-[color:var(--mid-gray)] -mt-2 italic">
-            Executed at Pasig City, Philippines. The witness section is signed by the assigned SCEI SPED teacher when she next logs in.
-          </p>
-
+        {/* 8. Signatures — numbered as on the printed waiver */}
+        <Section n={8} title="Signatures" hint="Executed at Pasig City, Philippines. The witness section is signed by the assigned SCEI SPED teacher when she next logs in.">
+          <SubHead>Parent / Guardian *</SubHead>
+          <Field label="Printed name *">
+            <input required name="parentPrinted" className={`${CONTROL} w-full h-10`} style={CONTROL_STYLE}
+              placeholder="As it appears on the signature line" onChange={e => setParentPrintedLive(e.target.value)} />
+          </Field>
           <div>
-            <SubHead>Parent / Guardian *</SubHead>
-            <label className="block">
-              <span className="label">Printed name *</span>
-              <input required name="parentPrinted" className="input" placeholder="As it appears on the signature line" />
-            </label>
-            <div className="mt-3">
-              <span className="label">Signature *</span>
-              <SignaturePad onChange={setParentSig} height={170} />
-            </div>
+            <span className={LABEL} style={LABEL_STYLE}>Signature *</span>
+            <SignaturePad onChange={setParentSig} height={170} />
           </div>
 
+          <div className="pt-2" style={{ borderTop: '1px solid var(--light-gray)' }} />
+          <SubHead>Secondary Parent / Guardian (optional)</SubHead>
+          <Field label="Printed name">
+            <input name="secondaryPrinted" className={`${CONTROL} w-full h-10`} style={CONTROL_STYLE} />
+          </Field>
           <div>
-            <SubHead>Secondary Parent / Guardian (optional)</SubHead>
-            <label className="block">
-              <span className="label">Printed name</span>
-              <input name="secondaryPrinted" className="input" />
-            </label>
-            <div className="mt-3">
-              <span className="label">Signature</span>
-              <SignaturePad onChange={setSecondarySig} height={140} />
-            </div>
+            <span className={LABEL} style={LABEL_STYLE}>Signature</span>
+            <SignaturePad onChange={setSecondarySig} height={140} />
           </div>
+        </Section>
 
-          <button type="submit" disabled={signing} className="btn-cta w-full">
-            {signing ? 'Generating PDF…' : 'Sign & generate waiver PDF'}
+        {/* Ready-to-sign checklist + submit. The error repeats here because
+            on a form this long the top banner is far off-screen. */}
+        <section className="rounded-xl p-4 sm:p-5 space-y-4" style={CARD_STYLE}>
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wider mb-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--mid-gray)' }}>
+              Before you sign
+            </p>
+            <ul className="grid sm:grid-cols-2 gap-x-6 gap-y-1.5" aria-label="Required items">
+              {checks.map(c => (
+                <li key={c.label} className="flex items-start gap-1.5 text-[12.5px]" style={{ color: c.ok ? '#2F5A28' : 'var(--mid-gray)' }}>
+                  {c.ok
+                    ? <Icon name="check" size={14} className="mt-0.5" />
+                    : <span aria-hidden className="w-3.5 h-3.5 mt-0.5 rounded-full flex-shrink-0" style={{ border: '1.5px solid var(--light-gray)' }} />}
+                  <span>{c.label}</span>
+                  <span className="sr-only">{c.ok ? '(done)' : '(missing)'}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          {err && <Banner tone="error">{err}</Banner>}
+          <button type="submit" disabled={signing} className={`${BTN_PRIMARY} w-full h-11 text-[15px]`} style={PRIMARY_STYLE}>
+            <Icon name="edit" size={16} /> {signing ? 'Generating PDF…' : 'Sign & generate waiver PDF'}
           </button>
-          <p className="text-[11px] text-[color:var(--mid-gray)] text-center" style={{ fontFamily: 'var(--font-display)' }}>
-            The signed waiver downloads automatically. The assigned SPED teacher will counter-sign as witness from her dashboard.
+          <p className="text-[12px] text-center" style={{ color: 'var(--mid-gray)' }}>
+            {readyToSign
+              ? 'The signed waiver downloads automatically. The assigned SPED teacher will counter-sign as witness from her dashboard.'
+              : 'Complete the items above, then sign. The signed waiver downloads automatically.'}
           </p>
-        </form>
-      </div>
+        </section>
+      </form>
     </div>
   )
 }
@@ -454,34 +525,52 @@ function seedFromDraft(d: Partial<import('@/lib/session').EnrollmentDraft>, leve
 
 /* ───────── Small inline UI helpers ───────── */
 
-function SectionHead({ n, children }: { n: number; children: React.ReactNode }) {
+const CARD_SHADOW = '0 1px 2px rgba(30,56,50,0.04), 0 12px 32px -18px rgba(30,56,50,0.25)'
+
+/** One numbered waiver section as a card: number badge + title in the
+ *  header, fields in the body. Numbers follow the printed waiver. */
+function Section({ n, title, hint, action, children }: { n: number; title: string; hint?: string; action?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <h2 className="text-[15px] font-bold tracking-tight text-[color:var(--narra)] flex items-center gap-2 mt-1" style={{ fontFamily: 'var(--font-display)' }}>
-      <span className="inline-flex items-center justify-center rounded-full bg-[color:var(--narra)] text-white" style={{ width: 24, height: 24, fontSize: 12 }}>{n}</span>
-      {children}
-    </h2>
+    <section className="rounded-xl min-w-0" style={CARD_STYLE} aria-labelledby={`waiver-s${n}`}>
+      <header className="px-4 sm:px-5 pt-4 pb-3 flex flex-wrap items-start justify-between gap-x-4 gap-y-2" style={{ borderBottom: '1px solid var(--light-gray)' }}>
+        <div className="flex items-start gap-2.5 min-w-0 flex-1">
+          <span className="inline-flex items-center justify-center rounded-lg flex-shrink-0 text-[12px] font-bold tabular-nums"
+            style={{ width: 26, height: 26, background: 'var(--deep-teal)', color: '#fff', fontFamily: 'var(--font-display)' }}>{n}</span>
+          <div className="min-w-0">
+            <h2 id={`waiver-s${n}`} className="text-[15px] font-bold leading-tight mt-0.5" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>{title}</h2>
+            {hint && <p className="text-[12px] mt-1 leading-snug" style={{ color: 'var(--mid-gray)' }}>{hint}</p>}
+          </div>
+        </div>
+        {action && <div className="flex-shrink-0">{action}</div>}
+      </header>
+      <div className="p-4 sm:p-5 space-y-3">{children}</div>
+    </section>
   )
 }
 function SubHead({ children }: { children: React.ReactNode }) {
-  return <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)] mb-1" style={{ fontFamily: 'var(--font-display)' }}>{children}</div>
+  return <div className="text-[11px] font-bold uppercase tracking-widest pt-1" style={{ fontFamily: 'var(--font-display)', color: 'var(--teal)' }}>{children}</div>
 }
 function Grid2({ children }: { children: React.ReactNode }) {
   return <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">{children}</div>
 }
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <label className="block">
-      <span className="label">{label}</span>
+    <label className="block min-w-0">
+      <span className={LABEL} style={LABEL_STYLE}>{label}</span>
       {children}
     </label>
   )
 }
 function Input({ value, onChange, type, placeholder, readOnly }: { value: string; onChange?: (v: string) => void; type?: string; placeholder?: string; readOnly?: boolean }) {
-  return <input className="input" type={type ?? 'text'} value={value} onChange={onChange ? e => onChange(e.target.value) : undefined} placeholder={placeholder} readOnly={readOnly} />
+  return (
+    <input className={`${CONTROL} w-full h-10 ${readOnly ? 'cursor-default' : ''}`}
+      style={readOnly ? { ...CONTROL_STYLE, background: SUBTLE_BG, color: 'var(--mid-gray)' } : CONTROL_STYLE}
+      type={type ?? 'text'} value={value} onChange={onChange ? e => onChange(e.target.value) : undefined} placeholder={placeholder} readOnly={readOnly} />
+  )
 }
 function Select({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: string[] }) {
   return (
-    <select className="select" value={value} onChange={e => onChange(e.target.value)}>
+    <select className={`${CONTROL} w-full h-10`} style={CONTROL_STYLE} value={value} onChange={e => onChange(e.target.value)}>
       {options.map(o => <option key={o} value={o}>{o || '—'}</option>)}
     </select>
   )
