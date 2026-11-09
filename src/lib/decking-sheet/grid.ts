@@ -41,6 +41,8 @@ export interface SheetStaff {
   id: string
   firstName: string
   lastName: string
+  /** Overrides the block header. Interns carry their supervisor here. */
+  label?: string
   workDays: string[]
   startTime: string
   endTime: string
@@ -247,7 +249,7 @@ export function buildGrid(
         const put = (off: number, c: Cell) => { values[base + off] = c }
 
         if (r === 0) {
-          put(0, cell(`${blk.st.lastName}, ${blk.st.firstName}`.toUpperCase(), {
+          put(0, cell((blk.st.label ?? `${blk.st.lastName}, ${blk.st.firstName}`).toUpperCase(), {
             backgroundColor: rgb(BLOCK_BG),
             textFormat: { bold: true, fontSize: 10, foregroundColor: rgb('#FFFFFF') },
           }))

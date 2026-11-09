@@ -67,7 +67,20 @@ async function loadDepartment(branch: string, department: string) {
       // still showed four, and an hour added to another was never drawn at
       // all — so a real booking inside it could not appear on the sheet, and
       // clearing the sheet could not reach it.
-      where: { branch, department, staff: { active: true } },
+      // Licensed staff only. Interns get their own tab: a student on
+      // placement is supervised teaching time, not a clinician front desk can
+      // book a patient with, and mixing the two on one board invites exactly
+      // that mistake.
+      //
+      // The null arm is needed because `not: 'intern'` on a nullable column
+      // drops every untagged consultant too — most of the roster.
+      where: {
+        branch, department,
+        staff: {
+          active: true,
+          OR: [{ employmentType: null }, { employmentType: { not: 'intern' } }],
+        },
+      },
       select: {
         staffId: true, workDays: true, startTime: true, endTime: true, deliveryMode: true, updatedAt: true,
         staff: { select: { id: true, firstName: true, lastName: true } },
@@ -171,6 +184,83 @@ async function loadDepartment(branch: string, department: string) {
 const PATIENT_BRANCH: Record<string, string> = {
   SBEA: 'SANDBOX_EAST',
   SBGH: 'SANDBOX_GREENHILLS',
+}
+
+/**
+ * The interns of one department, and the hours they hold.
+ *
+ * Kept apart from the clinicians on purpose. Their block header names the
+ * supervising clinician, because an intern's hour is only meaningful with one
+ * — the whole board is supervised teaching time, and a reader who cannot see
+ * who is signing for it has to go and ask.
+ */
+async function loadInterns(branch: string, department: string) {
+  const configs = await prisma.deckingTherapistConfig.findMany({
+    where: { branch, department, staff: { active: true, employmentType: 'intern' } },
+    select: {
+      staffId: true, workDays: true, startTime: true, endTime: true, deliveryMode: true, updatedAt: true,
+      staff: { select: { id: true, firstName: true, lastName: true } },
+    },
+  })
+  if (configs.length === 0) return null
+
+  const chosen = new Map<string, (typeof configs)[number]>()
+  for (const c of configs) {
+    const prev = chosen.get(c.staffId)
+    if (!prev) { chosen.set(c.staffId, c); continue }
+    const better = (c.deliveryMode !== null && prev.deliveryMode === null)
+      || (((c.deliveryMode === null) === (prev.deliveryMode === null)) && c.updatedAt > prev.updatedAt)
+    if (better) chosen.set(c.staffId, c)
+  }
+
+  const ids = [...chosen.keys()]
+  const slots = await prisma.deckingSlot.findMany({
+    where: { branch, department, isClass: false, staffId: { in: ids } },
+    select: {
+      id: true, staffId: true, dayOfWeek: true, startTime: true, endTime: true, disabled: true,
+      paymentType: true, hmoProvider: true, notes: true, patientId: true, date: true, supervisorId: true,
+      patient: { select: { firstName: true, lastName: true } },
+      patientBookings: { where: { paidAt: { not: null } }, select: { downpayment: true }, take: 1 },
+    },
+  })
+
+  // Whoever is named on their hours. One supervisor per intern in practice;
+  // if several, the board shows the one most of their hours point at.
+  const supervisorIds = [...new Set(slots.map(x => x.supervisorId).filter((x): x is string => !!x))]
+  const sups = supervisorIds.length
+    ? await prisma.staff.findMany({ where: { id: { in: supervisorIds } }, select: { id: true, firstName: true, lastName: true } })
+    : []
+  const supName = new Map(sups.map(x => [x.id, `${x.lastName}, ${x.firstName}`]))
+  const byIntern = new Map<string, string>()
+  for (const sl of slots) {
+    if (sl.supervisorId && !byIntern.has(sl.staffId)) byIntern.set(sl.staffId, supName.get(sl.supervisorId) ?? '')
+  }
+
+  const staff: SheetStaff[] = [...chosen.values()].map(c => {
+    const sup = byIntern.get(c.staffId)
+    return {
+      id: c.staffId,
+      firstName: c.staff.firstName,
+      lastName: c.staff.lastName,
+      label: sup
+        ? `${c.staff.lastName}, ${c.staff.firstName}  ·  supervised by ${sup}`
+        : `${c.staff.lastName}, ${c.staff.firstName}  ·  NO SUPERVISOR SET`,
+      workDays: (c.workDays as string[]) ?? [],
+      startTime: c.startTime,
+      endTime: c.endTime,
+    }
+  }).sort((a, b) => a.lastName.localeCompare(b.lastName))
+
+  const mapped: SheetSlot[] = slots.map(s => ({
+    staffId: s.staffId, dayOfWeek: s.dayOfWeek, startTime: s.startTime, endTime: s.endTime,
+    disabled: s.disabled, paymentType: s.paymentType, hmoProvider: s.hmoProvider, notes: s.notes,
+    patient: s.patient ? `${s.patient.lastName}, ${s.patient.firstName}` : null,
+    patientId: s.patientId,
+    dp: s.patientBookings[0]?.downpayment ? Number(s.patientBookings[0].downpayment) : null,
+    date: s.date ? s.date.toISOString().slice(0, 10) : null,
+  }))
+
+  return { staff, slots: mapped.filter(x => !x.date), dated: mapped.filter(x => !!x.date) }
 }
 
 /** Every patient the branch can book, for the dropdown. */
@@ -678,6 +768,18 @@ export async function syncBranch(branch: string, spreadsheetId: string): Promise
       const res = await pushTab(api, spreadsheetId, dept, grid, patientRows, payOptions, client.identity)
       for (const c of grid.cells) mapEntries.push({ ...c, tab: dept })
       report.pushed.push({ tab: dept, staff: grid.staffCount, rows: res.rows })
+
+      // The interns of this department, on a tab of their own.
+      const interns = await loadInterns(branch, dept)
+      if (interns) {
+        const iGrid = buildGrid(interns)
+        if (iGrid) {
+          const iTab = `${dept} INTERNS`
+          const iRes = await pushTab(api, spreadsheetId, iTab, iGrid, patientRows, payOptions, client.identity)
+          for (const c of iGrid.cells) mapEntries.push({ ...c, tab: iTab })
+          report.pushed.push({ tab: iTab, staff: iGrid.staffCount, rows: iRes.rows })
+        }
+      }
     } catch (e) {
       report.errors.push(`${dept}: ${(e as Error).message}`)
     }
