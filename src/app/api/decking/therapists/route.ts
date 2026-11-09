@@ -20,7 +20,13 @@ export async function POST(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { staffId, workDays: rawWorkDays, startTime, endTime, useDefault, branch, department, deliveryMode: rawMode } = await req.json()
+  const { staffId, workDays: rawWorkDays, startTime, endTime, useDefault, branch, department, deliveryMode: rawMode, slotsPerDay: rawCount } = await req.json()
+  // How many patients a day, when that is not one an hour. Null restores the
+  // hourly board, so clearing the field is a real action and not a no-op.
+  // Capped: a window divided more than 24 ways gives slots too short to be a
+  // consult and a grid too tall to read.
+  const n = Number(rawCount)
+  const slotsPerDay = Number.isFinite(n) && n >= 1 ? Math.min(24, Math.round(n)) : null
   // Null = the consultant's general schedule (what every row was before this).
   // A named service overrides it, so on-site days and teletherapy days can
   // differ. Anything unrecognised falls back to the general row rather than
@@ -36,9 +42,26 @@ export async function POST(req: NextRequest) {
   // Interbranch staff get one config PER branch (staffId+branch is the unique
   // key, not staffId alone) — otherwise saving a secondary-branch schedule
   // would silently overwrite their primary-branch config.
-  const config = await prisma.deckingTherapistConfig.upsert({
-    where: { staffId_branch_deliveryMode: { staffId, branch, deliveryMode } },
-    create: {
+  //
+  // Looked up and then written, rather than upserted on the compound unique
+  // key. `deliveryMode` is nullable and null is exactly what the GENERAL
+  // schedule stores — the one the "All" view saves — but SQL unique indexes do
+  // not treat two NULLs as equal, so Prisma rejects a null inside a compound
+  // unique `where` outright ("Argument `deliveryMode` must not be null"). Every
+  // save of a general schedule therefore threw a 500, and because the caller
+  // never read the response it looked exactly like success: the board reloaded
+  // and the schedule simply had not changed.
+  const existing = await prisma.deckingTherapistConfig.findFirst({
+    where: { staffId, branch, deliveryMode },
+    select: { id: true },
+  })
+  const config = existing
+    ? await prisma.deckingTherapistConfig.update({
+        where: { id: existing.id },
+        data: { workDays, startTime, endTime, useDefault, branch, department, slotsPerDay },
+      })
+    : await prisma.deckingTherapistConfig.create({
+    data: {
       staffId,
       workDays: workDays ?? [],
       startTime: startTime ?? '10:00',
@@ -47,9 +70,8 @@ export async function POST(req: NextRequest) {
       branch: branch ?? '',
       department: department ?? '',
       deliveryMode,
-    },
-    update: { workDays, startTime, endTime, useDefault, branch, department },
-  })
+      slotsPerDay,
+    } })
   return NextResponse.json(config)
 }
 

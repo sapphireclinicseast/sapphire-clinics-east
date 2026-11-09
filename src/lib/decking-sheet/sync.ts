@@ -85,6 +85,7 @@ async function loadDepartment(branch: string, department: string) {
       },
       select: {
         staffId: true, workDays: true, startTime: true, endTime: true, deliveryMode: true, updatedAt: true,
+      slotsPerDay: true,
         staff: { select: { id: true, firstName: true, lastName: true } },
       },
       orderBy: { staff: { lastName: 'asc' } },
@@ -127,6 +128,7 @@ async function loadDepartment(branch: string, department: string) {
     workDays: (c.workDays as string[]) ?? [],
     startTime: c.startTime,
     endTime: c.endTime,
+    slotsPerDay: c.slotsPerDay,
   })).sort((a, b) => a.lastName.localeCompare(b.lastName))
 
   // Consultants who hold a one-off but NO weekly schedule have to be named too.
@@ -201,6 +203,7 @@ async function loadInterns(branch: string, department: string) {
     where: { branch, department, staff: { active: true, employmentType: 'intern' } },
     select: {
       staffId: true, workDays: true, startTime: true, endTime: true, deliveryMode: true, updatedAt: true,
+      slotsPerDay: true,
       staff: { select: { id: true, firstName: true, lastName: true, dateHired: true, contractExpiry: true } },
     },
   })
@@ -254,6 +257,7 @@ async function loadInterns(branch: string, department: string) {
       workDays: (c.workDays as string[]) ?? [],
       startTime: c.startTime,
       endTime: c.endTime,
+      slotsPerDay: c.slotsPerDay,
     }
   }).sort((a, b) => a.lastName.localeCompare(b.lastName))
 
