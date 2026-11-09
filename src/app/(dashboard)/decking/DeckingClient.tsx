@@ -58,6 +58,30 @@ const OFF_CELL_BG = '#EEF1F3'   // disabled / not working
 // Hatched, so an unavailable hour cannot be mistaken for an empty white one.
 const OFF_HATCH   = `repeating-linear-gradient(135deg, ${OFF_CELL_BG} 0 6px, #E5E9EC 6px 12px)`
 const GRID_LINE   = '#E3EAE7'
+const GRID_LINE_SOFT = '#EDF1EF' // between day columns — rows carry the rhythm
+const CELL_RADIUS = 6            // one radius for open, booked and unavailable cells
+const OFF_BORDER  = '#DDE3E7'
+const OFF_FG      = '#66717D'
+const ONEOFF_FG   = '#BE185D'
+
+// Board-only display rules (DECK_CSS in ./ui is shared with the SPED board).
+// The hour label darkens on row hover so the eye can follow a row across a
+// wide week, and an open cell says what a click will do.
+const BOARD_CSS = `
+.dk-row:hover > th { color: var(--charcoal) !important; background: #EFF4F2 !important; }
+.dk-open .dk-open-hover { display: none; }
+@media (hover: hover) {
+  .dk-open:hover .dk-open-idle, .dk-open:focus-within .dk-open-idle { display: none; }
+  .dk-open:hover .dk-open-hover, .dk-open:focus-within .dk-open-hover { display: inline; }
+}
+`
+
+/** "13:00" → { h: '1', ap: 'PM' } for the time column. Display only. */
+function hourParts(t: string): { h: string; ap: string } {
+  const [h, m] = t.split(':').map(Number)
+  const hh = h % 12 || 12
+  return { h: m ? `${hh}:${String(m).padStart(2, '0')}` : String(hh), ap: h >= 12 ? 'PM' : 'AM' }
+}
 
 type Density = 'comfortable' | 'compact'
 const DENSITY_KEY = 'decking.density'
@@ -265,7 +289,7 @@ function PatientCellSearch({ current, onSelect, onClear, onClose }: {
         <input
           ref={inputRef}
           aria-label="Search patient"
-          style={{ border: '1.5px solid var(--teal)', borderRadius: '0.4rem', padding: '0.2rem 0.45rem', fontSize: '0.75rem', flex: 1, outline: 'none', minWidth: 0, background: '#fff', color: 'var(--charcoal)', boxShadow: '0 0 0 3px rgba(26,123,138,0.12)' }}
+          style={{ border: '1.5px solid var(--teal)', borderRadius: CELL_RADIUS, padding: '0.2rem 0.45rem', fontSize: '0.75rem', flex: 1, outline: 'none', minWidth: 0, background: '#fff', color: 'var(--charcoal)', boxShadow: '0 0 0 3px rgba(26,123,138,0.12)' }}
           placeholder="Search patient…"
           value={query}
           onChange={e => handleInput(e.target.value)}
@@ -278,12 +302,16 @@ function PatientCellSearch({ current, onSelect, onClear, onClose }: {
           </button>
         )}
       </div>
-      {open && results.length > 0 && (
-        <div style={{ position: 'absolute', zIndex: 50, background: '#fff', border: '1px solid var(--light-gray)', borderRadius: '0.5rem', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', top: 'calc(100% + 2px)', left: 0, right: 0, minWidth: 180, maxHeight: '150px', overflowY: 'auto' }}>
-          {results.map(p => (
+      {open && (
+        <div style={{ position: 'absolute', zIndex: 50, background: '#fff', border: '1px solid var(--light-gray)', borderRadius: '0.5rem', boxShadow: '0 8px 24px rgba(15,23,42,0.14)', top: 'calc(100% + 4px)', left: 0, right: 0, minWidth: 200, maxHeight: '200px', overflowY: 'auto', padding: 3 }}>
+          {results.length === 0 ? (
+            /* Display only: the search already ran and found nobody. */
+            <p style={{ padding: '0.45rem 0.6rem', fontSize: '0.72rem', color: 'var(--mid-gray)' }}>No patients match.</p>
+          ) : results.map(p => (
             <button key={p.id} type="button"
               className="hover:bg-gray-50"
-              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '0.35rem 0.6rem', fontSize: '0.75rem', cursor: 'pointer', borderBottom: '1px solid #f3f4f6', color: 'var(--charcoal)' }}
+              title={personLabel(p)}
+              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '0.4rem 0.6rem', fontSize: '0.75rem', cursor: 'pointer', borderRadius: 5, color: 'var(--charcoal)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
               onMouseDown={() => { onSelect(p); setOpen(false) }}>
               {personLabel(p)}
             </button>
@@ -340,13 +368,20 @@ function CustomSlotModal({ staff, activeBranch, workDays, onClose, onSave }: {
     <div role="dialog" aria-modal="true" aria-labelledby={`custom-slot-${staff.id}`}
       onKeyDown={e => { if (e.key === 'Escape') onClose() }}
       className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(15,23,42,0.45)' }}>
-      <div className="w-full max-w-[420px] rounded-xl" style={{ background: '#fff', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+      <div className="w-full max-w-[420px] rounded-xl" style={{ background: '#fff', boxShadow: '0 20px 60px rgba(15,23,42,0.25)' }}>
         <div className="flex items-start justify-between gap-3 px-5 pt-4 pb-3" style={{ borderBottom: '1px solid var(--light-gray)' }}>
-          <div className="min-w-0">
-            <h3 id={`custom-slot-${staff.id}`} className="text-[15px] font-bold leading-tight" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
-              Add custom slot
-            </h3>
-            <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--mid-gray)' }}>{personLabel(staff)}</p>
+          <div className="flex items-start gap-3 min-w-0">
+            <span aria-hidden className="inline-flex items-center justify-center w-8 h-8 rounded-lg flex-shrink-0" style={{ background: 'var(--pale-teal)', color: 'var(--teal)' }}>
+              <Clock size={15} />
+            </span>
+            <div className="min-w-0">
+              <h3 id={`custom-slot-${staff.id}`} className="text-[15px] font-bold leading-tight" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+                Add custom slot
+              </h3>
+              <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--mid-gray)' }} title={personLabel(staff)}>
+                {personLabel(staff)} &middot; any start and end time, every week
+              </p>
+            </div>
           </div>
           <button type="button" onClick={onClose} aria-label="Close" className="dk-icon-btn rounded-md p-1" style={{ color: 'var(--mid-gray)' }}><X size={16} /></button>
         </div>
@@ -381,11 +416,12 @@ function CustomSlotModal({ staff, activeBranch, workDays, onClose, onSave }: {
               autoComplete="off"
             />
             {showResults && results.length > 0 && (
-              <div style={{ position: 'absolute', zIndex: 60, background: '#fff', border: '1px solid var(--light-gray)', borderRadius: '0.5rem', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', top: 'calc(100% + 2px)', left: 0, right: 0, maxHeight: '150px', overflowY: 'auto' }}>
+              <div style={{ position: 'absolute', zIndex: 60, background: '#fff', border: '1px solid var(--light-gray)', borderRadius: '0.5rem', boxShadow: '0 8px 24px rgba(15,23,42,0.14)', top: 'calc(100% + 4px)', left: 0, right: 0, maxHeight: '200px', overflowY: 'auto', padding: 3 }}>
                 {results.map(p => (
                   <button key={p.id} type="button"
                     className="hover:bg-gray-50"
-                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '0.4rem 0.6rem', fontSize: '0.8rem', cursor: 'pointer', borderBottom: '1px solid #f3f4f6', color: 'var(--charcoal)' }}
+                    title={personLabel(p)}
+                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '0.45rem 0.6rem', fontSize: '0.8rem', cursor: 'pointer', borderRadius: 5, color: 'var(--charcoal)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
                     onMouseDown={() => { setPatient(p); setQuery(`${p.lastName}, ${p.firstName}`); setShowResults(false) }}>
                     {personLabel(p)}
                   </button>
@@ -510,6 +546,8 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
   // Calendar order, not the order the checkboxes were saved in — that is what
   // put Friday before Thursday on a consultant's board.
   const configuredDays = config ? sortDays(config.workDays as string[]) : []
+  /** The weekly grid is drawn (same test the grid itself uses). Display only. */
+  const hasGrid = !!config && configuredDays.length > 0
 
   // The service this panel writes, and whether this consultant already has a
   // row for it. `config` is the resolved schedule — a service row if one
@@ -662,24 +700,34 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
   const compact = density === 'compact'
   const rowH = compact ? 28 : 36          // every hour row is the same height
   const innerH = rowH - 6                 // cell content inside its 3px padding
-  const TIME_COL = 72
+  const TIME_COL = 64
   const DAY_COL_MIN = 132                 // below this the grid scrolls sideways
   const nameText = personLabel(staff)
   const showBody = !collapsed
+  // Today's column gets a teal header so the desk can find "now" at a glance.
+  // TherapistRow only renders after the board's data loads, never on the
+  // server, so the browser's clock is the only one this ever reads.
+  const todayKey = DAYS[new Date().getDay()]
+  const lastDay = configuredDays[configuredDays.length - 1]
+  const lastHour = timeSlots[timeSlots.length - 1]
 
-  const tdBase: React.CSSProperties = {
+  // Rows are ruled firmly and columns softly: the eye reads across an hour,
+  // so the hour lines carry the rhythm. The last column and last row drop
+  // their rule so it does not double up with the card's own border.
+  const tdStyle = (day: string, slot: string): React.CSSProperties => ({
     padding: 3, verticalAlign: 'middle', height: rowH,
-    borderRight: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${GRID_LINE}`,
-  }
+    borderRight: day === lastDay ? 'none' : `1px solid ${GRID_LINE_SOFT}`,
+    borderBottom: slot === lastHour ? 'none' : `1px solid ${GRID_LINE}`,
+  })
   const thBase: React.CSSProperties = {
-    position: 'sticky', top: 0, background: '#F3F6F5',
+    position: 'sticky', top: 0, background: '#F6F8F7',
     padding: compact ? '0.3rem 0.5rem' : '0.45rem 0.6rem',
-    borderRight: `1px solid ${GRID_LINE}`, borderBottom: '1px solid var(--light-gray)',
+    borderBottom: '1px solid var(--light-gray)',
   }
   const miniBtn: React.CSSProperties = {
-    background: 'rgba(255,255,255,0.7)', borderRadius: 4,
+    background: 'rgba(255,255,255,0.75)', borderRadius: 4,
     fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.03em',
-    padding: '0 4px', cursor: 'pointer', flexShrink: 0, lineHeight: 1.7,
+    padding: '0 4px', cursor: 'pointer', flexShrink: 0, lineHeight: 1.6,
   }
 
   function toggleConfig() {
@@ -697,7 +745,8 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
         <Avatar text={initials(staff.firstName, staff.lastName)} size={compact ? 28 : 34} />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5 min-w-0">
-            <h3 className="text-sm font-bold leading-tight truncate" style={{ color: 'var(--charcoal)' }}
+            <h3 className={`${compact ? 'text-sm' : 'text-[15px]'} font-bold leading-tight truncate max-w-full`}
+              style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}
               title={`${staff.lastName}, ${staff.firstName}`}>
               {nameText}
             </h3>
@@ -713,17 +762,39 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
               </span>
             )}
           </div>
-          <p className="text-xs mt-0.5 flex items-center gap-1 min-w-0" style={{ color: 'var(--mid-gray)' }}>
-            {config && configuredDays.length > 0 ? (
-              <>
-                <Clock size={11} className="flex-shrink-0" />
-                <span className="truncate">
-                  {configuredDays.map(d => DAY_SHORT[d]).join(' · ')}
-                  {' · '}{formatTime(config.startTime)} – {formatTime(config.endTime)}
-                </span>
-              </>
-            ) : config ? 'No work days set' : 'Schedule not set up yet'}
-          </p>
+          {config && configuredDays.length > 0 ? (
+            /* The week as seven letters, worked days filled: which days a
+               consultant is in reads at a glance, without parsing a list. */
+            <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 min-w-0 text-xs" style={{ color: 'var(--mid-gray)' }}
+              title={`${configuredDays.map(d => DAY_LABEL[d]).join(', ')} · ${formatTime(config.startTime)} – ${formatTime(config.endTime)}`}>
+              <span className="inline-flex items-center gap-[3px]" role="img"
+                aria-label={`Works ${configuredDays.map(d => DAY_LABEL[d]).join(', ')}`}>
+                {DAYS.map(d => {
+                  const on = configuredDays.includes(d)
+                  return (
+                    <span key={d} aria-hidden
+                      className="inline-flex items-center justify-center rounded text-[9.5px] font-bold leading-none"
+                      style={{
+                        width: 16, height: 16,
+                        background: on ? 'var(--pale-teal)' : 'transparent',
+                        color: on ? 'var(--teal)' : '#B8C2C0',
+                        boxShadow: d === todayKey ? `inset 0 -2px 0 ${on ? 'var(--teal)' : '#C9D2D0'}` : undefined,
+                      }}>
+                      {(DAY_SHORT[d] ?? d).charAt(0)}
+                    </span>
+                  )
+                })}
+              </span>
+              <span className="inline-flex items-center gap-1 whitespace-nowrap tabular-nums">
+                <Clock size={11} className="flex-shrink-0" aria-hidden />
+                {formatTime(config.startTime)} – {formatTime(config.endTime)}
+              </span>
+            </div>
+          ) : (
+            <p className="text-xs mt-0.5 flex items-center gap-1 min-w-0" style={{ color: 'var(--mid-gray)' }}>
+              {config ? 'No work days set' : 'Schedule not set up yet'}
+            </p>
+          )}
         </div>
 
         {showCapacity && util.total > 0 && (
@@ -860,18 +931,24 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
 
       {/* No config yet */}
       {showBody && !config && !configOpen && (
-        <p className="px-4 py-6 text-center text-xs" style={{ color: 'var(--mid-gray)' }}>
-          No weekly schedule. Use <strong>Configure</strong> to set one up &mdash; or, for a consultant
-          who only comes in now and then, add a <strong>one-off date</strong> below without one.
-        </p>
+        <div className="flex items-start justify-center gap-2 px-4 py-5 text-xs" style={{ color: 'var(--mid-gray)' }}>
+          <CalendarPlus size={14} className="flex-shrink-0 mt-px" aria-hidden />
+          <p className="max-w-md leading-relaxed">
+            No weekly schedule. Use <strong style={{ color: 'var(--charcoal)' }}>Configure</strong> to set one up &mdash; or, for a consultant
+            who only comes in now and then, add a <strong style={{ color: ONEOFF_FG }}>one-off date</strong> below without one.
+          </p>
+        </div>
       )}
 
       {/* No work days configured */}
       {showBody && config && configuredDays.length === 0 && (
-        <p className="px-4 py-6 text-center text-xs" style={{ color: 'var(--mid-gray)' }}>
-          No work days set. Use <strong>Configure</strong> to add them, or add a
-          <strong> one-off date</strong> below.
-        </p>
+        <div className="flex items-start justify-center gap-2 px-4 py-5 text-xs" style={{ color: 'var(--mid-gray)' }}>
+          <CalendarPlus size={14} className="flex-shrink-0 mt-px" aria-hidden />
+          <p className="max-w-md leading-relaxed">
+            No work days set. Use <strong style={{ color: 'var(--charcoal)' }}>Configure</strong> to add them, or add a
+            <strong style={{ color: ONEOFF_FG }}> one-off date</strong> below.
+          </p>
+        </div>
       )}
 
       {showBody && modePrompt}
@@ -882,19 +959,24 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
           cannot live in the grid above: a slot drawn in a weekday column
           means "every Tuesday", and a one-off shown there would claim that
           hour for ever. They are listed here instead, each with its date. */}
-      {showBody && (datedSlots.length > 0 || onAddDated) && (
-        <div className="px-4 py-2.5" style={{ borderTop: '1px solid var(--light-gray)' }}>
+      {/* With a weekly grid and no one-offs yet, the strip is just its add
+          button, which then lives in the card footer beside "Custom slot"
+          rather than putting an empty band above every grid. */}
+      {showBody && (datedSlots.length > 0 || (onAddDated && !hasGrid)) && (
+        <div className="px-4 py-2.5" style={{ borderTop: '1px solid var(--light-gray)', background: '#FFFBFD' }}>
           <div className="flex flex-wrap items-center gap-2 mb-1.5">
-            <CalendarPlus size={13} style={{ color: '#BE185D' }} />
-            <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#BE185D' }}>
+            <CalendarPlus size={13} style={{ color: ONEOFF_FG }} aria-hidden />
+            <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: ONEOFF_FG }}>
               One-off dates
               {datedSlots.length > 0 && <span className="tabular-nums font-normal"> · {datedSlots.length}</span>}
             </p>
-            <button type="button" onClick={() => setShowDatedModal(true)}
-              className="text-[11px] font-semibold rounded-lg px-2 py-0.5"
-              style={{ border: '1px dashed #F9A8D4', color: '#BE185D', background: '#fff' }}>
-              + Add a date
-            </button>
+            {onAddDated && (
+              <button type="button" onClick={() => setShowDatedModal(true)}
+                className="inline-flex items-center gap-1 h-6 text-[11px] font-semibold rounded-md px-2 transition-colors hover:bg-pink-50"
+                style={{ border: '1px dashed #F9A8D4', color: ONEOFF_FG, background: '#fff' }}>
+                <Plus size={11} aria-hidden /> Add a date
+              </button>
+            )}
           </div>
           {datedSlots.length === 0 ? (
             <p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>
@@ -902,18 +984,27 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
             </p>
           ) : (
             <div className="flex flex-wrap gap-1.5">
-              {datedSlots.map(sl => (
-                <span key={sl.id}
-                  className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px]"
-                  style={{ background: '#FDF2F8', border: '1px solid #F9A8D4', color: '#9D174D' }}>
-                  <strong>{new Date(String(sl.date)).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', timeZone: 'UTC' })}</strong>
-                  {formatTime(sl.startTime)}
-                  {sl.patient ? ` · ${sl.patient.lastName}, ${sl.patient.firstName[0]}.` : ' · open'}
-                  <button type="button" onClick={() => onDeleteSlot(sl.id)} title="Remove this date">
-                    <X size={11} />
-                  </button>
-                </span>
-              ))}
+              {datedSlots.map(sl => {
+                const when = new Date(String(sl.date)).toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' })
+                const who = sl.patient ? personLabel(sl.patient) : 'Open'
+                return (
+                  <span key={sl.id}
+                    title={`${when} · ${formatTime(sl.startTime)} – ${formatTime(sl.endTime)} · ${who}`}
+                    className="inline-flex items-center gap-1.5 rounded-md pl-2 pr-1 h-7 text-[11px] max-w-full"
+                    style={{ background: '#FDF2F8', border: '1px solid #F9C4DE', color: '#9D174D' }}>
+                    <strong className="whitespace-nowrap">{new Date(String(sl.date)).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', timeZone: 'UTC' })}</strong>
+                    <span className="whitespace-nowrap tabular-nums">{formatTime(sl.startTime)}</span>
+                    <span className="truncate" style={sl.patient ? undefined : { fontStyle: 'italic', opacity: 0.8 }}>
+                      {sl.patient ? `· ${sl.patient.lastName}, ${sl.patient.firstName[0]}.` : '· open'}
+                    </span>
+                    <button type="button" onClick={() => onDeleteSlot(sl.id)} title="Remove this date"
+                      aria-label={`Remove the one-off on ${when}`}
+                      className="dk-btn dk-icon-btn rounded p-0.5 flex-shrink-0">
+                      <X size={11} />
+                    </button>
+                  </span>
+                )
+              })}
             </div>
           )}
         </div>
@@ -922,40 +1013,60 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
       {showDatedModal && (
         <div onClick={() => setShowDatedModal(false)}
           style={{ position: 'fixed', inset: 0, zIndex: 110, background: 'rgba(15,23,42,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-          <div onClick={e => e.stopPropagation()} className="rounded-2xl"
-            style={{ background: '#fff', width: '100%', maxWidth: 380, boxShadow: '0 20px 60px rgba(15,23,42,0.25)' }}>
-            <div className="px-5 py-3.5" style={{ borderBottom: '1px solid var(--light-gray)' }}>
-              <p className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>
-                One-off date &mdash; {staff.lastName}, {staff.firstName}
-              </p>
-              <p className="text-[11px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+          <div onClick={e => e.stopPropagation()} className="rounded-xl"
+            role="dialog" aria-modal="true" aria-labelledby={`dated-slot-${staff.id}`}
+            style={{ background: '#fff', width: '100%', maxWidth: 400, boxShadow: '0 20px 60px rgba(15,23,42,0.25)' }}>
+            <div className="flex items-start justify-between gap-3 px-5 pt-4 pb-3" style={{ borderBottom: '1px solid var(--light-gray)' }}>
+              <div className="flex items-start gap-3 min-w-0">
+                <span aria-hidden className="inline-flex items-center justify-center w-8 h-8 rounded-lg flex-shrink-0" style={{ background: '#FDF2F8', color: ONEOFF_FG }}>
+                  <CalendarPlus size={15} />
+                </span>
+                <div className="min-w-0">
+                  <h3 id={`dated-slot-${staff.id}`} className="text-[15px] font-bold leading-tight" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+                    Add a one-off date
+                  </h3>
+                  <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--mid-gray)' }} title={`${staff.lastName}, ${staff.firstName}`}>
+                    {staff.lastName}, {staff.firstName}
+                  </p>
+                </div>
+              </div>
+              <button type="button" onClick={() => setShowDatedModal(false)} aria-label="Close" className="dk-icon-btn rounded-md p-1" style={{ color: 'var(--mid-gray)' }}><X size={16} /></button>
+            </div>
+            <div className="px-5 py-4 grid grid-cols-2 gap-3">
+              <p className="col-span-2 text-xs leading-relaxed rounded-lg px-3 py-2" style={{ background: '#FDF2F8', color: '#9D174D' }}>
                 This hour applies to the chosen date only. It never repeats, and it does not
                 appear on the weekly grid.
               </p>
-            </div>
-            <div className="px-5 py-4 flex flex-col gap-3">
-              <label className="text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>
-                Date
-                <input type="date" value={datedForm.date}
+              <div>
+                <label className={LABEL} style={{ color: 'var(--mid-gray)' }} htmlFor={`ds-date-${staff.id}`}>Date</label>
+                <input id={`ds-date-${staff.id}`} type="date" value={datedForm.date}
                   onChange={e => setDatedForm(f => ({ ...f, date: e.target.value }))}
-                  className="mt-1 w-full rounded-lg px-2.5 py-1.5 text-sm"
-                  style={{ border: '1px solid var(--light-gray)' }} />
-              </label>
-              <label className="text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>
-                Start time
-                <select value={datedForm.startTime}
+                  className={`${CONTROL} w-full`} style={{ ...CONTROL_STYLE, width: '100%' }} />
+              </div>
+              <div>
+                <label className={LABEL} style={{ color: 'var(--mid-gray)' }} htmlFor={`ds-start-${staff.id}`}>Start time</label>
+                <select id={`ds-start-${staff.id}`} value={datedForm.startTime}
                   onChange={e => setDatedForm(f => ({ ...f, startTime: e.target.value }))}
-                  className="mt-1 w-full rounded-lg px-2.5 py-1.5 text-sm"
-                  style={{ border: '1px solid var(--light-gray)' }}>
+                  className={`${CONTROL} w-full`} style={{ ...CONTROL_STYLE, width: '100%' }}>
                   {generateHourlySlots('07:00', '21:00').map(t => (
                     <option key={t} value={t}>{formatTime(t)}</option>
                   ))}
                 </select>
-              </label>
-              <div className="flex gap-2 pt-1">
+              </div>
+              {/* Read back what will be saved — the weekday is derived from
+                  the date the same way the save below derives it. */}
+              {datedForm.date && (
+                <p className="col-span-2 text-xs tabular-nums" style={{ color: 'var(--mid-gray)' }}>
+                  <strong style={{ color: 'var(--charcoal)' }}>
+                    {DAY_LABEL[DAYS[new Date(`${datedForm.date}T00:00:00Z`).getUTCDay()]] ?? ''}
+                  </strong>
+                  {' · '}{formatTime(datedForm.startTime)} – {formatTime(addHour(datedForm.startTime))}
+                </p>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 px-5 py-3" style={{ borderTop: '1px solid var(--light-gray)', background: SUBTLE_BG, borderRadius: '0 0 0.75rem 0.75rem' }}>
                 <button type="button" onClick={() => setShowDatedModal(false)}
-                  className="flex-1 rounded-lg px-3 py-2 text-xs font-semibold"
-                  style={{ border: '1px solid var(--light-gray)', color: 'var(--mid-gray)' }}>
+                  className={BTN_SECONDARY} style={CONTROL_STYLE}>
                   Cancel
                 </button>
                 <button type="button"
@@ -983,11 +1094,10 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
                       setDatedForm({ date: '', startTime: '09:00' })
                     } finally { setDatedSaving(false) }
                   }}
-                  className="flex-1 rounded-lg px-3 py-2 text-xs font-semibold"
-                  style={{ background: '#BE185D', color: '#fff', opacity: !datedForm.date || datedSaving ? 0.55 : 1 }}>
+                  className={BTN_PRIMARY}
+                  style={{ background: ONEOFF_FG }}>
                   {datedSaving ? 'Adding…' : 'Add this date'}
                 </button>
-              </div>
             </div>
           </div>
         </div>
@@ -1011,44 +1121,72 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
               <thead>
                 <tr>
                   <th scope="col" style={{
-                    ...thBase, left: 0, zIndex: 3, textAlign: 'left',
-                    fontSize: '0.64rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--mid-gray)',
+                    ...thBase, left: 0, zIndex: 3, textAlign: 'right',
+                    borderRight: '1px solid var(--light-gray)',
+                    fontSize: '0.62rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--mid-gray)',
                   }}>
                     Time
                   </th>
-                  {configuredDays.map(day => (
-                    <th key={day} scope="col" style={{ ...thBase, zIndex: 2, textAlign: 'center', fontSize: '0.74rem', fontWeight: 700, color: 'var(--charcoal)' }}>
-                      <span className="hidden sm:inline">{DAY_LABEL[day]}</span>
-                      <span className="sm:hidden">{DAY_SHORT[day]}</span>
-                    </th>
-                  ))}
+                  {configuredDays.map(day => {
+                    const isToday = day === todayKey
+                    return (
+                      <th key={day} scope="col" style={{
+                        ...thBase, zIndex: 2, textAlign: 'center',
+                        borderRight: day === lastDay ? 'none' : `1px solid ${GRID_LINE_SOFT}`,
+                        // A 2px underline marks today's column without
+                        // colouring a single cell below it.
+                        boxShadow: isToday ? `inset 0 -2px 0 ${TEAL_HEX}` : undefined,
+                        fontSize: '0.74rem', fontWeight: 700,
+                        color: isToday ? 'var(--teal)' : 'var(--charcoal)',
+                      }}>
+                        <span className="hidden sm:inline">{DAY_LABEL[day]}</span>
+                        <span className="sm:hidden">{DAY_SHORT[day]}</span>
+                        {isToday && (
+                          <span className="ml-1.5 align-middle inline-block rounded-full px-1.5 text-[9px] font-bold uppercase tracking-wider leading-[15px]"
+                            style={{ background: 'var(--pale-teal)', color: 'var(--teal)' }}>
+                            Today
+                          </span>
+                        )}
+                      </th>
+                    )
+                  })}
                 </tr>
               </thead>
               <tbody>
-                {timeSlots.map(slot => (
-                  <tr key={slot}>
+                {timeSlots.map(slot => {
+                  const hp = hourParts(slot)
+                  return (
+                  <tr key={slot} className="dk-row">
                     <th scope="row" style={{
-                      position: 'sticky', left: 0, zIndex: 1, background: '#F8FAF9',
-                      padding: '0 0.6rem', textAlign: 'left', whiteSpace: 'nowrap',
-                      color: 'var(--mid-gray)', fontSize: '0.68rem', fontWeight: 600, fontVariantNumeric: 'tabular-nums',
-                      borderRight: '1px solid var(--light-gray)', borderBottom: `1px solid ${GRID_LINE}`, height: rowH,
+                      position: 'sticky', left: 0, zIndex: 1, background: '#FAFBFB',
+                      padding: '0 0.55rem', textAlign: 'right', whiteSpace: 'nowrap',
+                      color: 'var(--mid-gray)', fontVariantNumeric: 'tabular-nums',
+                      borderRight: '1px solid var(--light-gray)', borderBottom: slot === lastHour ? 'none' : `1px solid ${GRID_LINE}`, height: rowH,
+                      transition: 'background-color .12s ease, color .12s ease',
                     }}>
-                      {formatTime(slot)}
+                      {/* Every row is on the hour, so ":00" is noise — the
+                          hour and a small AM/PM read faster down the column. */}
+                      <span className="text-[12px] font-semibold">{hp.h}</span>
+                      <span className="ml-0.5 text-[9.5px] font-semibold uppercase" style={{ opacity: 0.75 }}>{hp.ap}</span>
                     </th>
                     {configuredDays.map(day => {
                       const disabledSlot = getDisabledSlot(day, slot)
                       const cellSlots = getSlotsForCell(day, slot)
                       const isAdding = addingCell?.dayOfWeek === day && addingCell?.startTime === slot
                       const where = `${DAY_LABEL[day] ?? day} ${formatTime(slot)}`
+                      const tdBase = tdStyle(day, slot)
 
                       // ── Disabled cell ──
                       // Hatched + icon, so it reads as "not bookable" rather
-                      // than as an empty white hour.
+                      // than as an empty white hour. Inset with the same
+                      // radius as every other cell, so the grid reads as one
+                      // set of shapes.
                       if (disabledSlot) {
                         const why = disabledSlot.notes || 'Unavailable'
                         return (
-                          <td key={day} className="dk-cell" style={{ ...tdBase, background: OFF_HATCH }}>
-                            <div className="flex items-center gap-1.5 px-1.5 min-w-0" style={{ minHeight: innerH, color: '#6B7785' }}
+                          <td key={day} className="dk-cell" style={tdBase}>
+                            <div className="flex items-center gap-1.5 px-1.5 min-w-0"
+                              style={{ minHeight: innerH, color: OFF_FG, background: OFF_HATCH, border: `1px solid ${OFF_BORDER}`, borderRadius: CELL_RADIUS }}
                               title={`${why} — ${where}`}>
                               <Ban size={11} className="flex-shrink-0" aria-hidden />
                               <span className="truncate text-[11px] font-semibold">{why}</span>
@@ -1086,16 +1224,17 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
                                control sits at the edge, and only appears on
                                hover/focus, so it can't be hit by accident when
                                aiming for the cell. */
-                            <div className="dk-open flex items-stretch rounded-md min-w-0"
-                              style={{ minHeight: innerH, background: OPEN_BG, border: `1px dashed ${OPEN_BORDER}` }}>
+                            <div className="dk-open flex items-stretch min-w-0"
+                              style={{ minHeight: innerH, background: OPEN_BG, border: `1px dashed ${OPEN_BORDER}`, borderRadius: CELL_RADIUS }}>
                               <button type="button"
                                 onClick={() => setAddingCell({ dayOfWeek: day, startTime: slot })}
-                                title="Add patient to this open slot"
+                                title={`Add a patient — ${where}`}
                                 aria-label={`Add patient — ${where}`}
                                 className="dk-btn flex-1 min-w-0 flex items-center gap-1 px-1.5 text-left text-[11px] font-semibold"
                                 style={{ color: OPEN_FG, cursor: 'pointer' }}>
                                 <Plus size={11} className="flex-shrink-0" aria-hidden />
-                                <span className="truncate">Available</span>
+                                {/* Says what a click does once the pointer is on it. */}
+                                <span className="truncate"><span className="dk-open-idle">Available</span><span className="dk-open-hover">Add patient</span></span>
                               </button>
                               <button type="button"
                                 onClick={() => handleDisableSlot(day, slot)}
@@ -1117,10 +1256,13 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
                                   ? (initial ? `${displayName(s2.patient.lastName)}, ${initial}.` : displayName(s2.patient.lastName))
                                   : '(slot)'
                                 const isLast = idx === cellSlots.length - 1
+                                // A shared hour stacks slimmer lines, so two
+                                // or three patients stretch the row less.
+                                const lineH = cellSlots.length > 1 ? Math.min(innerH, 20) : innerH
                                 return (
-                                  <div key={s2.id} className="dk-booked flex items-center gap-1 rounded-md pl-1.5 pr-1 min-w-0"
-                                    style={{ background: st.bg, color: st.fg, borderLeft: `3px solid ${st.border}`, minHeight: innerH }}>
-                                    <span className="flex-1 min-w-0 truncate text-[11.5px] font-semibold" title={fullName}>
+                                  <div key={s2.id} className="dk-booked flex items-center gap-1 pl-1.5 pr-1 min-w-0"
+                                    style={{ background: st.bg, color: st.fg, borderLeft: `3px solid ${st.border}`, borderRadius: CELL_RADIUS, minHeight: lineH }}>
+                                    <span className="flex-1 min-w-0 truncate text-[11.5px] font-semibold leading-tight" title={`${fullName} · ${st.label} · ${where}`}>
                                       {shortName}
                                     </span>
                                     {/* Payment type drives who gets chased for
@@ -1128,7 +1270,7 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
                                     <select
                                       value={pay}
                                       onChange={e => handlePayChange(s2, e.target.value as PayType)}
-                                      title="Payment type"
+                                      title={`Payment type: ${st.label} — click to change`}
                                       aria-label={`Payment type for ${fullName}`}
                                       className="dk-btn"
                                       style={{
@@ -1178,7 +1320,8 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
                       )
                     })}
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           </div>
@@ -1230,13 +1373,22 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
             </div>
           )}
 
-          {/* Custom slot button */}
-          <div className="px-4 py-2.5" style={{ borderTop: '1px solid var(--light-gray)', background: SUBTLE_BG }}>
+          {/* Card footer: the less common ways to add hours. */}
+          <div className="flex flex-wrap items-center gap-2 px-4 py-2" style={{ borderTop: '1px solid var(--light-gray)', background: SUBTLE_BG }}>
             <button type="button" onClick={() => setShowCustomModal(true)}
               className={BTN_SM}
+              title="A weekly slot that does not start on the hour"
               style={{ background: '#fff', border: '1px dashed var(--teal)', color: 'var(--teal)' }}>
               <Plus size={12} /> Custom slot
             </button>
+            {onAddDated && datedSlots.length === 0 && (
+              <button type="button" onClick={() => setShowDatedModal(true)}
+                className={BTN_SM}
+                title="Hours for one named date only — never repeats, not drawn on the weekly grid"
+                style={{ background: '#fff', border: '1px dashed #F9A8D4', color: ONEOFF_FG }}>
+                <CalendarPlus size={12} /> One-off date
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -1883,13 +2035,16 @@ export default function DeckingClient({ role }: { role: string }) {
     setNameFilter('')
   }
 
+  // Each swatch is a miniature of the cell it stands for — same fill, edge and
+  // radius — and pay types carry the same text tag the cell does, so the key
+  // never relies on colour alone.
   const legend = [
-    { label: 'Available', style: { background: OPEN_BG, border: `1px dashed ${OPEN_BORDER}` } },
+    { label: 'Available', style: { background: OPEN_BG, border: `1px dashed ${OPEN_BORDER}` }, icon: <Plus size={9} style={{ color: OPEN_FG }} /> },
     { label: 'Cash', style: { background: PAY_STYLE.CASH.bg, borderLeft: `3px solid ${PAY_STYLE.CASH.border}` } },
     { label: 'HMO', style: { background: PAY_STYLE.HMO.bg, borderLeft: `3px solid ${PAY_STYLE.HMO.border}` } },
-    { label: 'Guarantee Letter', style: { background: PAY_STYLE.GL.bg, borderLeft: `3px solid ${PAY_STYLE.GL.border}` } },
-    { label: 'Unavailable', style: { background: OFF_HATCH, border: `1px solid ${GRID_LINE}` } },
-  ] as { label: string; style: React.CSSProperties }[]
+    { label: 'GL', hint: 'Guarantee letter', style: { background: PAY_STYLE.GL.bg, borderLeft: `3px solid ${PAY_STYLE.GL.border}` } },
+    { label: 'Unavailable', style: { background: OFF_HATCH, border: `1px solid ${OFF_BORDER}` }, icon: <Ban size={9} style={{ color: OFF_FG }} /> },
+  ] as { label: string; hint?: string; style: React.CSSProperties; icon?: React.ReactNode }[]
 
   const boardSkeleton = (
     <div className="space-y-3" aria-busy="true" aria-label="Loading the decking board">
@@ -1911,7 +2066,7 @@ export default function DeckingClient({ role }: { role: string }) {
 
   return (
     <div className="max-w-[1400px] space-y-5">
-      <style>{DECK_CSS}</style>
+      <style>{DECK_CSS}{BOARD_CSS}</style>
 
       {/* ── Header ── */}
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1967,7 +2122,12 @@ export default function DeckingClient({ role }: { role: string }) {
               ))}
             </div>
             {activeSectionMeta && (
-              <p className="text-xs mt-2" style={{ color: 'var(--mid-gray)' }}>{activeSectionMeta.blurb}.</p>
+              <p className="flex items-center gap-1.5 text-xs mt-2.5 pt-2.5 min-w-0" style={{ color: 'var(--mid-gray)', borderTop: '1px solid #EEF2F1' }}>
+                <Info size={12} className="flex-shrink-0" style={{ color: TEAL_HEX }} aria-hidden />
+                <strong className="font-semibold flex-shrink-0" style={{ color: 'var(--charcoal)' }}>{activeSectionMeta.label}</strong>
+                <span aria-hidden>&middot;</span>
+                <span className="truncate" title={`${activeSectionMeta.blurb}.`}>{activeSectionMeta.blurb}.</span>
+              </p>
             )}
           </div>
 
@@ -2018,7 +2178,8 @@ export default function DeckingClient({ role }: { role: string }) {
               )}
               {isRosterSection && (
                 <button type="button" onClick={clearFilters} disabled={!nameFilter}
-                  className={BTN_SECONDARY} style={CONTROL_STYLE}>
+                  className={`${BTN_SECONDARY} disabled:cursor-default`}
+                  style={{ ...CONTROL_STYLE, color: nameFilter ? 'var(--teal)' : 'var(--mid-gray)' }}>
                   <X size={14} /> Clear filters
                 </button>
               )}
@@ -2027,9 +2188,12 @@ export default function DeckingClient({ role }: { role: string }) {
                   {boardRefreshing && <><Loader2 size={12} className="animate-spin" /> Updating…</>}
                 </span>
                 {isRosterSection && !boardLoading && !staffError && !dataError && (
-                  <span className="text-xs whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>
-                    <strong className="tabular-nums" style={{ color: 'var(--charcoal)' }}>{filteredStaff.length}</strong>
-                    {nameFilter.trim() ? <> of <span className="tabular-nums">{branchStaff.length}</span></> : null} staff
+                  <span className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full text-xs whitespace-nowrap" style={{ color: 'var(--mid-gray)', background: SUBTLE_BG, border: '1px solid #E8EEEC' }}>
+                    <Users size={12} aria-hidden />
+                    <span>
+                      <strong className="tabular-nums" style={{ color: 'var(--charcoal)' }}>{filteredStaff.length}</strong>
+                      {nameFilter.trim() ? <> of <span className="tabular-nums">{branchStaff.length}</span></> : null} staff
+                    </span>
                   </span>
                 )}
               </div>
@@ -2168,13 +2332,19 @@ export default function DeckingClient({ role }: { role: string }) {
                 capacity={perDayCapacity}
               />
             ) : filteredStaff.length === 0 ? (
-              <div className="rounded-xl" style={CARD_STYLE}>
+              <div className="rounded-xl pb-2" style={CARD_STYLE}>
+                <div className="pt-10 flex justify-center" aria-hidden>
+                  <span className="rounded-full flex items-center justify-center"
+                    style={{ width: 44, height: 44, background: 'var(--pale-teal)', color: 'var(--teal)' }}>
+                    {nameFilter ? <Search size={19} /> : <Users size={19} />}
+                  </span>
+                </div>
                 <EmptyState
                   title={nameFilter ? `No ${activeDept} staff match “${nameFilter}” in ${branchName}` : `No ${activeDept} staff in ${branchName}`}
                   hint={nameFilter ? 'Try a different name, or clear the filter.' : 'Add staff in the Staff Module first, or pick another department.'}
                 />
                 {nameFilter && (
-                  <div className="-mt-6 pb-8 text-center">
+                  <div className="-mt-8 pb-8 text-center">
                     <button type="button" onClick={clearFilters} className={BTN_SM} style={{ ...CONTROL_STYLE, color: 'var(--teal)' }}>
                       <X size={12} /> Clear filters
                     </button>
@@ -2186,14 +2356,26 @@ export default function DeckingClient({ role }: { role: string }) {
                 {/* Colour key + density. The grid is scanned, not read —
                     without a key the fills are decoration, and front desk keeps
                     going back to the sheet they already know how to interpret. */}
-                <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-                  <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1 text-[11px]" style={{ color: 'var(--mid-gray)' }} aria-label="Colour key">
-                    {legend.map(k => (
-                      <span key={k.label} className="inline-flex items-center gap-1.5">
-                        <span className="inline-block rounded-sm" style={{ width: 14, height: 12, ...k.style }} />
-                        {k.label}
-                      </span>
-                    ))}
+                <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-xl pl-3.5 pr-1.5 py-1.5" style={{ background: SUBTLE_BG, border: '1px solid #E8EEEC' }}>
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] py-1" style={{ color: 'var(--charcoal)' }} role="list" aria-label="Colour key">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }} aria-hidden>Key</span>
+                    {legend.map(k => {
+                      const pay = PAY_TYPES.find(t => PAY_STYLE[t].label === k.label)
+                      return (
+                        <span key={k.label} role="listitem" className="inline-flex items-center gap-1.5" title={k.hint}>
+                          <span aria-hidden className="inline-flex items-center justify-center" style={{ width: 22, height: 14, borderRadius: 4, ...k.style }}>
+                            {k.icon}
+                          </span>
+                          {pay ? (
+                            /* The same tag the cell shows. */
+                            <span className="font-bold" style={{ color: PAY_STYLE[pay].fg }}>{k.label}</span>
+                          ) : (
+                            <span className="font-medium">{k.label}</span>
+                          )}
+                          {k.hint && <span className="hidden md:inline" style={{ color: 'var(--mid-gray)' }}>({k.hint})</span>}
+                        </span>
+                      )
+                    })}
                   </div>
                   <div className="flex items-center gap-1.5">
                     <PillTabs size="sm" label="Row density" value={density} onChange={id => setDensity(id as Density)}
