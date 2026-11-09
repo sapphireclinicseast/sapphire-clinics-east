@@ -144,10 +144,10 @@ export default function StaffPortalHandbookPage() {
           --sans:var(--font-body, system-ui),system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
           --display:var(--font-display, system-ui),system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
           --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace; --measure:68ch;
-          background:var(--paper); color:var(--body); font-family:var(--sans);
-          font-size:15.5px; line-height:1.62; border-radius:16px; overflow:clip;
-          border:1px solid var(--line);
-          box-shadow:0 1px 2px rgba(36,73,82,.05), 0 12px 32px -22px rgba(36,73,82,.25);
+          /* Ops Hub page look: no framed document — the page header and
+             white section cards sit straight on the portal's paper. */
+          max-width:1100px; margin:0 auto; color:var(--body); font-family:var(--sans);
+          font-size:15px; line-height:1.62;
           -webkit-font-smoothing:antialiased;
         }
         .sph-hb *{box-sizing:border-box;}
@@ -160,33 +160,34 @@ export default function StaffPortalHandbookPage() {
           background:#fff; border:1px solid var(--line); border-bottom-width:2px; border-radius:6px;
           padding:.05em .45em; white-space:nowrap;}
         .sph-hb mark{background:#F2E2BF; color:inherit; padding:0 .1em; border-radius:3px;}
-        .sph-hb .wrap{max-width:920px; margin:0 auto; padding:0 22px;}
+        .sph-hb .wrap{max-width:none; margin:0; padding:0;}
 
-        /* Masthead */
-        .sph-hb header.mast{background:
-          radial-gradient(60% 120% at 100% 0%, rgba(138,169,157,.45), transparent 60%),
-          linear-gradient(135deg,#244952 0%,#4A8073 75%,#6A9688 100%); color:#E6EEEA; padding:38px 0 34px;}
-        .sph-hb .mast .wrap{display:flex; flex-direction:column; gap:15px;}
-        .sph-hb .kicker{font-family:var(--display); font-size:11px; font-weight:700; letter-spacing:.16em;
-          text-transform:uppercase; color:#fff; align-self:flex-start;
-          background:rgba(255,255,255,.14); padding:4px 11px; border-radius:999px;}
-        .sph-hb .mast h1{color:#fff; font-size:clamp(26px,4vw,38px); font-weight:700; letter-spacing:-.02em; max-width:22ch;}
-        .sph-hb .mast p.lede{margin:0; max-width:64ch; color:rgba(255,255,255,.88); font-size:15.5px;}
-        .sph-hb .mast .meta{display:flex; flex-wrap:wrap; gap:8px 20px; margin-top:4px; font-size:13px; color:rgba(255,255,255,.72);}
-        .sph-hb .mast .meta b{color:#fff; font-weight:600;}
-        .sph-hb .mast .meta code{background:rgba(255,255,255,.14); color:#fff;}
-        .sph-hb .mast-actions{display:flex; flex-wrap:wrap; gap:10px; margin-top:4px;}
+        /* Page header — same as every other Staff Portal page (eyebrow,
+           title, one-line description, actions on the right). */
+        .sph-hb header.mast{padding:0 0 22px;}
+        .sph-hb .mast .wrap{display:flex; flex-wrap:wrap; align-items:flex-end; justify-content:space-between; gap:14px 24px;}
+        .sph-hb .mast .mast-text{display:flex; flex-direction:column; gap:6px; min-width:0; flex:1 1 520px;}
+        .sph-hb .kicker{font-family:var(--display); font-size:12px; font-weight:600; letter-spacing:.14em;
+          text-transform:uppercase; color:var(--teal-deep);}
+        .sph-hb .mast h1{color:#1A1A1A; font-size:clamp(22px,2.4vw,24px); font-weight:700; letter-spacing:-.01em;}
+        .sph-hb .mast p.lede{margin:0; max-width:72ch; color:var(--muted); font-size:14px; line-height:1.55;}
+        .sph-hb .mast .meta{display:flex; flex-wrap:wrap; gap:6px 18px; margin-top:4px; font-size:12.5px; color:var(--muted);}
+        .sph-hb .mast .meta b{color:var(--ink); font-weight:600;}
+        .sph-hb .mast-actions{display:flex; flex-wrap:wrap; gap:8px;}
         .sph-hb .hb-btn{font-family:var(--sans); font-size:13px; font-weight:600; cursor:pointer;
           display:inline-flex; align-items:center; gap:7px; height:36px; padding:0 14px; border-radius:8px;
-          border:1px solid transparent; background:#fff; color:#244952; transition:opacity .15s,background .15s; text-decoration:none;}
-        .sph-hb .hb-btn:hover{opacity:.92;}
-        .sph-hb .hb-btn.ghost{background:rgba(255,255,255,.10); color:#fff; border-color:rgba(255,255,255,.35);}
-        .sph-hb .hb-btn.ghost:hover{background:rgba(255,255,255,.18);}
+          border:1px solid var(--line); background:#fff; color:#1A1A1A; transition:opacity .15s,background .15s; text-decoration:none;}
+        .sph-hb .hb-btn:hover{background:#F8FAF2;}
+        .sph-hb .hb-btn.primary{background:#244952; border-color:#244952; color:#fff;}
+        .sph-hb .hb-btn.primary:hover{opacity:.9; background:#244952;}
 
         /* main.wrap, not main: .wrap's padding (higher specificity) used to wipe
            this out, so Contents sat flush against the masthead. */
-        .sph-hb main.wrap{padding-top:28px; padding-bottom:56px;}
-        .sph-hb section{margin-bottom:46px; scroll-margin-top:16px;}
+        .sph-hb main.wrap{padding-top:0; padding-bottom:40px;}
+        /* Each section is a white card, like the cards on the other pages. */
+        .sph-hb section{margin-bottom:20px; scroll-margin-top:16px; background:#fff;
+          border:1px solid var(--line); border-radius:12px; padding:22px 26px 26px;}
+        @media(max-width:640px){.sph-hb section{padding:18px 16px 20px;}}
         .sph-hb .eyebrow{font-family:var(--display); font-weight:700; font-size:11.5px; letter-spacing:.14em;
           text-transform:uppercase; color:var(--teal); margin-bottom:8px;}
         .sph-hb section>h2{font-size:24px; font-weight:700; letter-spacing:-.015em;
@@ -195,7 +196,7 @@ export default function StaffPortalHandbookPage() {
         .sph-hb h3.blockh{font-size:17px; font-weight:700; margin:24px 0 8px;}
 
         /* TOC card */
-        .sph-hb .toc{border:1px solid var(--line); border-radius:12px; background:var(--card); padding:14px 18px; margin:0 0 30px;}
+        .sph-hb .toc{border:1px solid var(--line); border-radius:12px; background:var(--card); padding:16px 20px; margin:0 0 20px;}
         .sph-hb .toc .toc-h{font-family:var(--display); font-weight:700; font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--muted); margin:0 0 8px;}
         .sph-hb .toc ol{list-style:none; margin:0; padding:0; display:grid; grid-template-columns:1fr 1fr; gap:2px 18px;}
         @media(max-width:620px){.sph-hb .toc ol{grid-template-columns:1fr;}}
@@ -325,7 +326,7 @@ export default function StaffPortalHandbookPage() {
         @media(prefers-reduced-motion:reduce){.sph-hb *{transition:none!important;}}
         @media print{
           .sph-hb{background:#fff;}
-          .sph-hb header.mast{background:#244952!important; -webkit-print-color-adjust:exact; print-color-adjust:exact;}
+          .sph-hb section{border:none; padding:0;}
           .sph-hb .mast-actions,.sph-hb .hb-search,.sph-hb [data-noexport]{display:none!important;}
           .sph-hb .mod,.sph-hb .play,.sph-hb .legend .rc,.sph-hb .conn,.sph-hb .hubwrap,.sph-hb .call,.sph-hb .tablewrap,.sph-hb .faq details{break-inside:avoid;}
           .sph-hb .faq details:not([open]) .a{display:block;}
@@ -336,7 +337,8 @@ export default function StaffPortalHandbookPage() {
       {/* ── Masthead ── */}
       <header className="mast">
         <div className="wrap">
-          <span className="kicker">Aura Health Rehab · Staff Portal</span>
+          <div className="mast-text">
+          <span className="kicker">Resources · Handbook</span>
           <h1>Staff Portal — User Handbook</h1>
           <p className="lede">One login for clinicians and office staff: your schedule, patients, session notes,
             payslips, trainings, meetings and more. This handbook is a step-by-step guide — it assumes you have never
@@ -346,10 +348,11 @@ export default function StaffPortalHandbookPage() {
             <span>Sign in with your <b>work email &amp; password</b></span>
             <span>Audience: <b>Clinicians · Office staff · Interns · Manager</b></span>
           </div>
+          </div>
           <div className="mast-actions" data-noexport="">
-            <button type="button" className="hb-btn" onClick={() => window.print()}><FileText size={14} aria-hidden /> Save as PDF</button>
-            <button type="button" className="hb-btn ghost" onClick={downloadWord}><Download size={14} aria-hidden /> Download as Word</button>
-            <a className="hb-btn ghost" href="#hb-search"><Search size={14} aria-hidden /> Search this handbook</a>
+            <button type="button" className="hb-btn primary" onClick={() => window.print()}><FileText size={14} aria-hidden /> Save as PDF</button>
+            <button type="button" className="hb-btn" onClick={downloadWord}><Download size={14} aria-hidden /> Download as Word</button>
+            <a className="hb-btn" href="#hb-search"><Search size={14} aria-hidden /> Search this handbook</a>
           </div>
         </div>
       </header>
