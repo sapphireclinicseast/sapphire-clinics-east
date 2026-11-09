@@ -136,8 +136,23 @@ export async function PATCH(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { id, paymentType, staffId, deliveryMode, supervisorId } = await req.json()
+  const { id, paymentType, staffId, deliveryMode, supervisorId, patientId } = await req.json()
   if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
+
+  // Putting a patient into an existing slot, or taking them out.
+  //
+  // One-off dates are created EMPTY — a doctor gives the clinic a date before
+  // anyone is booked into it — so without this there is no way to fill one
+  // afterwards. The weekly grid has cells that create a slot and a patient
+  // together; a dated slot already exists and only needs the patient.
+  if (patientId !== undefined) {
+    const updated = await prisma.deckingSlot.update({
+      where: { id },
+      data: { patientId: patientId || null },
+      include: { patient: { select: { id: true, firstName: true, lastName: true } } },
+    })
+    return NextResponse.json(updated)
+  }
 
   // Changing who supervises an intern's hour. Sent on its own so the picker in
   // the intern row can be changed without touching the booking.

@@ -1405,9 +1405,74 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
           ) : (
             <>
               {upcoming.length > 0 ? (
-                <ul className="grid gap-1.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))' }}>
-                  {upcoming.map(sl => renderRow(sl, false))}
-                </ul>
+                /* Grouped by DATE, not one card per slot.
+                   A doctor giving the clinic 10 to 6 in half-hours is sixteen
+                   slots, and sixteen identical "DEC 3" tiles said the date
+                   sixteen times and the useful part — the hours — in the
+                   margins. One tile per day, the hours beneath it. */
+                <div className="flex flex-col gap-2">
+                  {[...new Map(upcoming.map(sl => [String(sl.date).slice(0, 10), true])).keys()]
+                    .sort()
+                    .map(dateKey => {
+                      const mine = upcoming.filter(sl => String(sl.date).slice(0, 10) === dateKey)
+                      const d = new Date(`${dateKey}T00:00:00Z`)
+                      const rel = relativeDayLabel(dateKey, todayKey)
+                      return (
+                        <div key={dateKey} className="flex gap-2.5 items-start rounded-lg p-2"
+                          style={{ background: '#fff', border: '1px solid #F6D5E5' }}>
+                          <span aria-hidden className="flex-shrink-0 flex flex-col items-center justify-center rounded-md overflow-hidden"
+                            style={{ width: 44, border: '1px solid #F9C4DE', background: '#fff' }}>
+                            <span className="w-full text-center text-[9px] font-bold uppercase leading-[14px] text-white"
+                              style={{ background: ONEOFF_FG, letterSpacing: '0.06em' }}>
+                              {d.toLocaleDateString('en-PH', { month: 'short', timeZone: 'UTC' })}
+                            </span>
+                            <span className="text-[16px] font-bold leading-[24px] tabular-nums" style={{ color: 'var(--charcoal)' }}>
+                              {d.getUTCDate()}
+                            </span>
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-baseline gap-x-2 mb-1">
+                              <span className="text-[13px] font-semibold" style={{ color: 'var(--charcoal)' }}>
+                                {d.toLocaleDateString('en-PH', { weekday: 'long', timeZone: 'UTC' })}
+                              </span>
+                              {rel && (
+                                <span className="rounded-full px-1.5 py-px text-[10px] font-semibold"
+                                  style={rel === 'Today' ? { background: ONEOFF_FG, color: '#fff' } : { background: '#FDF2F8', color: '#9D174D' }}>
+                                  {rel}
+                                </span>
+                              )}
+                              <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+                                {mine.length} slot{mine.length === 1 ? '' : 's'} &middot;{' '}
+                                {mine.filter(x => x.patient).length} booked
+                              </span>
+                            </div>
+                            <ul className="grid gap-1" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))' }}>
+                              {mine.map(sl => (
+                                <li key={sl.id} className="flex items-center gap-1.5 rounded-md px-1.5 py-1 min-w-0"
+                                  style={{ background: '#FFFBFD', border: '1px solid #F9DCE9' }}>
+                                  <span className="text-[11.5px] tabular-nums whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>
+                                    {formatTime(sl.startTime)}–{formatTime(sl.endTime)}
+                                  </span>
+                                  <button type="button" onClick={() => setFillingDated(sl.id)}
+                                    title={sl.patient ? 'Change who is booked' : 'Book a patient into this slot'}
+                                    className="dk-btn truncate flex-1 text-left rounded px-1"
+                                    style={{ background: 'none', border: 'none', cursor: 'pointer', font: 'inherit', fontSize: '11.5px',
+                                      color: sl.patient ? 'var(--charcoal)' : OPEN_FG }}>
+                                    {sl.patient ? personLabel(sl.patient) : 'book someone'}
+                                  </button>
+                                  <button type="button" onClick={() => onDeleteSlot(sl.id)}
+                                    title="Remove this slot" aria-label="Remove this slot"
+                                    className="dk-btn dk-icon-btn rounded p-0.5 flex-shrink-0" style={{ color: '#DC2626' }}>
+                                    <X size={11} />
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        </div>
+                      )
+                    })}
+                </div>
               ) : (
                 <p className="text-[11.5px]" style={{ color: 'var(--mid-gray)' }}>No dates coming up.</p>
               )}

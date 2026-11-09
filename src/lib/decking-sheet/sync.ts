@@ -86,6 +86,29 @@ async function loadDepartment(branch: string, department: string) {
     endTime: c.endTime,
   }))
 
+  // Consultants who hold a one-off but NO weekly schedule have to be named too.
+  //
+  // This list is built from therapist configs, and a doctor who comes in once
+  // a quarter has none — that is the whole point of her being a one-off. Her
+  // dated block was therefore rendering with a blank header: present on the
+  // sheet, and unreadable, which from the desk looks exactly like missing.
+  //
+  // Safe to append: the weekly grid filters on workDays, so somebody with none
+  // is still left out of it. Only the name reaches the dated block.
+  const named = new Set(staff.map(x => x.id))
+  const extraIds = [...new Set(
+    slots.filter(sl => sl.date && !named.has(sl.staffId)).map(sl => sl.staffId),
+  )]
+  if (extraIds.length) {
+    const extras = await prisma.staff.findMany({
+      where: { id: { in: extraIds } },
+      select: { id: true, firstName: true, lastName: true },
+    })
+    for (const e of extras) {
+      staff.push({ id: e.id, firstName: e.firstName, lastName: e.lastName, workDays: [], startTime: '00:00', endTime: '00:00' })
+    }
+  }
+
   const sheetSlots: SheetSlot[] = slots.map(s => ({
     staffId: s.staffId,
     dayOfWeek: s.dayOfWeek,
