@@ -910,7 +910,7 @@ function AdsManager({ role }: { role: string }) {
             <div className="flex items-start gap-2 rounded-lg px-3 py-2" style={{ background: 'var(--pale-teal)' }}>
               <Info size={13} className="flex-shrink-0 mt-0.5" style={{ color: 'var(--teal)' }} />
               <p className="text-xs leading-relaxed" style={{ color: 'var(--teal)' }}>
-                Optimal for TV display: <strong>1152 × 960 px</strong> (matches 60% panel on 1080p TV) — or <strong>1080 × 900 px</strong> minimum. Avoid portrait 9:16 (heavy cropping).
+                Best size: <strong>square 1:1, 1080 × 1080 px</strong>. The TV shows every ad as a square (about 960 × 960 on a 1080p TV); other shapes are cropped from the centre, so keep text and logos away from the edges. Avoid portrait 9:16 and wide 16:9 — most of them gets cut off.
               </p>
             </div>
 

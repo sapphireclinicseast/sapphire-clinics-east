@@ -28,7 +28,18 @@ const BRAND = {
   sun:        '#C69849', // light accent — warm gold
   paper:      '#EDF3D9', // dominant neutral surface (pale green-cream)
   ink:        '#1A1A1A', // type / fine rules on light
+  // Client-site neutrals (client.sapphireclinicseast.org): cards on paper.
+  paper2:     '#E2EAC6',
+  paper3:     '#CFDAAF', // card borders / dividers
+  mid:        '#5E6655', // secondary text on paper
 }
+
+// The Client Portal's hero panel (Hero3D) — dark narra with gold + clay glows.
+const HERO_BG = [
+  'radial-gradient(800px 360px at 110% -10%, rgba(198,152,73,0.30), transparent 60%)',
+  'radial-gradient(700px 320px at -10% 120%, rgba(207,157,136,0.24), transparent 60%)',
+  'linear-gradient(135deg, #13262B 0%, #244952 55%, #4A8073 110%)',
+].join(', ')
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface QueueItem {
@@ -86,6 +97,12 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
   const [currentHour, setCurrentHour] = useState(0)
   const videoRef   = useRef<HTMLVideoElement>(null)
   const fadeTimer  = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Cross-fade: after the old slide fades out we swap the content, then only
+  // fade back in once the NEW slide is ready. For a photo that means "loaded
+  // and decoded" — fading in straight away used to show the old bitmap for a
+  // beat and then snap to the new one.
+  const [awaitingFadeIn, setAwaitingFadeIn] = useState(false)
+  const adImgRef = useRef<HTMLImageElement | null>(null)
   const queuePanelRef = useRef<HTMLDivElement>(null)
   const hourRefs = useRef<Record<number, HTMLDivElement | null>>({})
 
@@ -214,7 +231,7 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
           setAdIdx(nextIdx)
         }
       }
-      setFadingOut(false)
+      setAwaitingFadeIn(true)
     }, 500)
   }, [showComplaintQR, showLeaderboard, showAnnouncements, adIdx, leaderboard, lbEnabled, cfEnabled, anns.length])
 
@@ -295,6 +312,36 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
     return () => clearTimeout(id)
   }, [adIdx, isImage, ads.length, advanceAd, showLeaderboard, showComplaintQR, showAnnouncements, anns.length, adSlideDuration])
 
+  // ── Fade back in once the incoming slide is ready ─────────────────────────
+  const finishFadeIn = useCallback(() => {
+    setAwaitingFadeIn(false)
+    setFadingOut(false)
+  }, [])
+  const showingImageAd = !showAnnouncements && !showLeaderboard && !showComplaintQR && !!isImage
+  useEffect(() => {
+    if (!awaitingFadeIn) return
+    const img = showingImageAd ? adImgRef.current : null
+    // A photo that isn't decoded yet finishes the fade from its onLoad.
+    // Everything else (announcements, leaderboard, QR, video, a cached photo)
+    // can come back on the next frame. A safety timeout covers a photo that
+    // never loads, so the panel can't stay blank.
+    if (img && !(img.complete && img.naturalWidth > 0)) {
+      const safety = setTimeout(finishFadeIn, 4000)
+      return () => clearTimeout(safety)
+    }
+    const raf = requestAnimationFrame(finishFadeIn)
+    return () => cancelAnimationFrame(raf)
+  }, [awaitingFadeIn, showingImageAd, adIdx, finishFadeIn])
+
+  // Warm the cache with the next photo so it's usually ready before its turn.
+  useEffect(() => {
+    if (ads.length < 2) return
+    const next = ads[(adIdx + 1) % ads.length]
+    if (!next?.mimeType.startsWith('image/')) return
+    const pre = new window.Image()
+    pre.src = `/api/queue-ads/stream/${next.id}`
+  }, [adIdx, ads])
+
   // ── Group items by hour ─────────────────────────────────────────────────────
   const byHour: Record<number, QueueItem[]> = {}
   for (const item of items) {
@@ -324,29 +371,20 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
   return (
     <div style={{
       width: '100vw', height: '100vh', overflow: 'hidden',
-      // Aura backdrop — deep teal grounded but with soft coral / sand glows
-      // in opposite corners so the TV display has the same warm tints as the
-      // rest of the brand surfaces (seminars, teletherapy, client portal).
-      background: [
-        'radial-gradient(900px 540px at 92% 92%, rgba(198,128,119,0.22), transparent 60%)',
-        'radial-gradient(1100px 620px at 8% 6%, rgba(237,216,168,0.14), transparent 60%)',
-        `linear-gradient(135deg, ${BRAND.narraDeep} 0%, ${BRAND.narra} 60%, ${BRAND.moss} 100%)`,
-      ].join(', '),
+      // Client-site look: pale-green paper with white cards for the queue,
+      // the Client Portal's dark hero gradient for the masthead and ads.
+      background: BRAND.paper,
       display: 'flex', flexDirection: 'column',
       // Manrope is the body/data face; Montserrat takes over for headings via inline fontFamily.
       fontFamily: 'var(--font-manrope), "Helvetica Neue", system-ui, -apple-system, sans-serif',
-      color: BRAND.paper,
+      color: BRAND.ink,
     }}>
-      {/* ── Header — Aura masthead (deep teal with coral lift + sand glow) ── */}
+      {/* ── Header — the Client Portal hero gradient ── */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '0.75rem 2rem',
-        background: [
-          'radial-gradient(700px 240px at 50% 50%, rgba(237,216,168,0.16), transparent 65%)',
-          'radial-gradient(500px 200px at 100% 100%, rgba(198,128,119,0.32), transparent 65%)',
-          `linear-gradient(90deg, ${BRAND.narraDeep} 0%, ${BRAND.narra} 55%, ${BRAND.moss} 100%)`,
-        ].join(', '),
-        borderBottom: `2px solid ${BRAND.sun}`,
+        background: HERO_BG,
+        color: '#fff',
         flexShrink: 0,
         position: 'relative',
       }}>
@@ -358,13 +396,13 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
           <div>
             <p style={{
               fontFamily: 'var(--font-montserrat), "Helvetica Neue", system-ui, sans-serif',
-              fontSize: '1.5rem', fontWeight: 800, color: BRAND.paper,
+              fontSize: '1.5rem', fontWeight: 700, color: '#fff',
               lineHeight: 1.1, letterSpacing: '-0.02em',
             }}>
               {clinicName}
             </p>
             <p style={{
-              fontSize: '0.85rem', color: 'rgba(244,236,221,0.78)',
+              fontSize: '0.85rem', color: 'rgba(255,255,255,0.8)',
               letterSpacing: '0.02em',
             }}>Patient Queue — Today</p>
           </div>
@@ -372,10 +410,10 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
         <div style={{ textAlign: 'right' }}>
           <p style={{
             fontFamily: 'var(--font-manrope), "Helvetica Neue", system-ui, sans-serif',
-            fontSize: '2rem', fontWeight: 700, color: BRAND.paper,
+            fontSize: '2rem', fontWeight: 700, color: '#fff',
             lineHeight: 1, fontVariantNumeric: 'tabular-nums',
           }}>{clock}</p>
-          <p style={{ fontSize: '0.8rem', color: 'rgba(244,236,221,0.78)', marginTop: '0.15rem' }}>{dateLabel}</p>
+          <p style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.8)', marginTop: '0.15rem' }}>{dateLabel}</p>
         </div>
       </div>
 
@@ -388,7 +426,7 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
           scrollBehavior: 'smooth',
         }}>
           {items.length === 0 ? (
-            <div style={{ textAlign: 'center', marginTop: '4rem', color: 'rgba(244,236,221,0.55)' }}>
+            <div style={{ textAlign: 'center', marginTop: '4rem', color: BRAND.mid }}>
               <p style={{ fontSize: '1rem', fontWeight: 600 }}>No scheduled appointments today</p>
             </div>
           ) : (
@@ -409,7 +447,7 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
                     <span style={{
                       fontFamily: 'var(--font-montserrat), "Helvetica Neue", system-ui, sans-serif',
                       fontSize: '0.75rem', fontWeight: 700,
-                      color: isNow ? BRAND.sun : isPast ? 'rgba(244,236,221,0.32)' : 'rgba(244,236,221,0.6)',
+                      color: isNow ? BRAND.moss : isPast ? 'rgba(94,102,85,0.55)' : BRAND.mid,
                       textTransform: 'uppercase', letterSpacing: '0.1em',
                     }}>
                       {formatHour(h)}
@@ -417,13 +455,13 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
                     {isNow && (
                       <span style={{
                         fontFamily: 'var(--font-montserrat), "Helvetica Neue", system-ui, sans-serif',
-                        fontSize: '0.6rem', fontWeight: 700, background: BRAND.sun, color: BRAND.narraDeep,
+                        fontSize: '0.6rem', fontWeight: 700, background: BRAND.moss, color: '#fff',
                         padding: '0.1rem 0.4rem', borderRadius: '99px', letterSpacing: '0.08em',
                       }}>
                         NOW
                       </span>
                     )}
-                    <div style={{ flex: 1, height: '1px', background: isNow ? BRAND.sun : isPast ? BRAND.narraDeep : 'rgba(123,152,138,0.35)' }} />
+                    <div style={{ flex: 1, height: '1px', background: isNow ? BRAND.moss : BRAND.paper3 }} />
                   </div>
 
                   {/* Rows */}
@@ -432,17 +470,18 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
                     return (
                       <div key={item.id} style={{
                         display: 'flex', alignItems: 'center', gap: '0.5rem',
-                        padding: '0.4rem 0.75rem', borderRadius: '0.4rem', marginBottom: '0.3rem',
-                        background: isNow ? 'rgba(237,216,168,0.12)' : isPast ? 'rgba(244,236,221,0.03)' : BRAND.moss,
-                        border: isNow ? `1px solid ${BRAND.sun}55` : '1px solid rgba(244,236,221,0.06)',
-                        opacity: isPast ? 0.4 : 1,
+                        padding: '0.45rem 0.75rem', borderRadius: '0.6rem', marginBottom: '0.35rem',
+                        background: isNow ? '#F3F8EC' : '#fff',
+                        border: `1px solid ${isNow ? BRAND.moss : BRAND.paper3}`,
+                        boxShadow: isNow ? '0 0 0 2px rgba(74,128,115,0.15)' : '0 1px 2px rgba(25,72,80,0.05)',
+                        opacity: isPast ? 0.45 : 1,
                         transition: 'opacity 0.5s',
                       }}>
                         {/* Time */}
                         <span style={{
                           fontFamily: 'var(--font-manrope), "Helvetica Neue", system-ui, sans-serif',
                           fontSize: '0.75rem', fontWeight: 600,
-                          color: isNow ? BRAND.sun : 'rgba(244,236,221,0.85)',
+                          color: BRAND.narra, fontWeight: isNow ? 700 : 600,
                           whiteSpace: 'nowrap', minWidth: '8.5rem',
                           fontVariantNumeric: 'tabular-nums',
                         }}>
@@ -471,7 +510,7 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
                         {/* Session type */}
                         <span style={{
                           fontSize: '0.72rem',
-                          color: isNow ? BRAND.paper : 'rgba(244,236,221,0.7)',
+                          color: BRAND.mid,
                           flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                         }}>
                           {item.sessionType}
@@ -481,8 +520,8 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
                             light moss rows (future) as well as now/past rows. */}
                         {item.status === 'CONFIRMED' && (
                           <span style={{
-                            fontSize: '0.6rem', fontWeight: 700, color: BRAND.paper,
-                            background: BRAND.narraDeep, border: `1px solid ${BRAND.sun}`,
+                            fontSize: '0.6rem', fontWeight: 700, color: '#2F5A28',
+                            background: '#EEF5E8', border: '1px solid #CFE0BF',
                             padding: '0.15rem 0.55rem', borderRadius: '99px', whiteSpace: 'nowrap',
                           }}>
                             Confirmed
@@ -490,8 +529,8 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
                         )}
                         {item.status === 'CANCELLED' && (
                           <span style={{
-                            fontSize: '0.6rem', fontWeight: 700, color: BRAND.paper,
-                            background: BRAND.narraDeep, border: `1px solid ${BRAND.clay}`,
+                            fontSize: '0.6rem', fontWeight: 700, color: '#991B1B',
+                            background: '#FEF2F2', border: '1px solid #FECACA',
                             padding: '0.15rem 0.55rem', borderRadius: '99px', whiteSpace: 'nowrap',
                           }}>
                             Cancelled
@@ -506,14 +545,11 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
           )}
         </div>
 
-        {/* ── Ads Panel (60%) — narraDeep with warm coral lift bottom-right ── */}
+        {/* ── Ads Panel (60%) — Client Portal hero gradient ── */}
         <div style={{
-          flex: '0 0 60%', borderLeft: `1px solid ${BRAND.narraDeep}`,
-          background: [
-            'radial-gradient(700px 460px at 90% 92%, rgba(198,128,119,0.18), transparent 65%)',
-            'radial-gradient(620px 420px at 12% 8%, rgba(237,216,168,0.10), transparent 65%)',
-            BRAND.narraDeep,
-          ].join(', '),
+          flex: '0 0 60%', borderLeft: `1px solid ${BRAND.paper3}`,
+          background: HERO_BG,
+          color: BRAND.paper,
           position: 'relative', overflow: 'hidden',
           display: 'flex', flexDirection: 'column',
         }}>
@@ -534,7 +570,7 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
             <div style={{
               flex: 1, position: 'relative',
               display: 'flex', flexDirection: 'column',
-              transition: 'opacity 0.5s ease',
+              transition: 'opacity 0.6s ease',
               opacity: fadingOut ? 0 : 1,
             }}>
               {showAnnouncements ? (
@@ -813,7 +849,11 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
                     ) : (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
+                        key={currentAd.id}
+                        ref={adImgRef}
                         src={`/api/queue-ads/stream/${currentAd.id}`}
+                        onLoad={() => { if (awaitingFadeIn) finishFadeIn() }}
+                        onError={() => { if (awaitingFadeIn) finishFadeIn() }}
                         alt="Clinic ad"
                         style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                       />
@@ -868,22 +908,19 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
         </div>
       </div>
 
-      {/* ── Footer — narraDeep with a quiet coral wash on the left edge ──── */}
+      {/* ── Footer — quiet paper bar ──── */}
       <div style={{
         padding: '0.4rem 2rem', flexShrink: 0,
-        background: [
-          'radial-gradient(360px 80px at 0% 50%, rgba(198,128,119,0.18), transparent 70%)',
-          BRAND.narraDeep,
-        ].join(', '),
-        borderTop: `1px solid rgba(123,152,138,0.25)`,
+        background: BRAND.paper2,
+        borderTop: `1px solid ${BRAND.paper3}`,
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
-        <p style={{ fontSize: '0.7rem', color: 'rgba(244,236,221,0.45)', letterSpacing: '0.02em' }}>
+        <p style={{ fontSize: '0.7rem', color: BRAND.mid, letterSpacing: '0.02em' }}>
           Aura Health Rehab — Patient Queue Display · For internal use only
         </p>
         <p style={{
           fontFamily: 'var(--font-manrope), "Helvetica Neue", system-ui, sans-serif',
-          fontSize: '0.7rem', color: 'rgba(244,236,221,0.45)',
+          fontSize: '0.7rem', color: BRAND.mid,
           fontVariantNumeric: 'tabular-nums',
         }}>
           Last updated: {lastRefresh || '—'} · Auto-refreshes every 30 seconds
