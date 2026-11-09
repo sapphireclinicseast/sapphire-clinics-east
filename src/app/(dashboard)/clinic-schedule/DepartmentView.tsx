@@ -1,6 +1,7 @@
 'use client'
 
 import { Fragment, useEffect, useState, useRef, useCallback, useMemo } from 'react'
+import { internWindowCovers } from '@/lib/intern-window'
 import { Plus, Pencil, Trash2, Mail, MailCheck, MessageSquare, ChevronDown, ChevronUp, X, Smartphone, Video, History, LayoutGrid, Users, CalendarClock, UserPlus, AlertTriangle, Search, Info, Layers } from 'lucide-react'
 import DeskShortcutCard from '@/components/DeskShortcutCard'
 import { localTodayStr, localTomorrowStr } from '@/lib/utils'
@@ -106,18 +107,7 @@ function isIntern(s: StaffMember): boolean {
 // (YYYY-MM-DD)? Falls back to today if no date is picked yet.
 function isEligibleIntern(s: StaffMember, forDate: string): boolean {
   if (s.employmentType !== 'intern' || s.active === false) return false
-  const d = forDate || localTodayStr()
-  if (s.dateHired) {
-    const startMonth = s.dateHired.split('T')[0].slice(0, 7)
-    if (d < `${startMonth}-01`) return false
-  }
-  if (s.contractExpiry) {
-    const endMonth = s.contractExpiry.split('T')[0].slice(0, 7)
-    const [y, m] = endMonth.split('-').map(Number)
-    const lastDay = new Date(y, m, 0).getDate() // last calendar day of the End Month
-    if (d > `${endMonth}-${String(lastDay).padStart(2, '0')}`) return false
-  }
-  return true
+  return internWindowCovers(s.dateHired, s.contractExpiry, forDate || localTodayStr())
 }
 
 // Shared form-field look (matches the Decking / toolbar controls).

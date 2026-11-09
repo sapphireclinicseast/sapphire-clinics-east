@@ -1,7 +1,8 @@
 'use client'
 
 import { Fragment, useEffect, useState, useRef, useCallback } from 'react'
-import { ChevronDown, Plus, X, Settings2, Ban, Search, Users, CalendarCheck, CalendarPlus, Percent, BarChart3, Info, Lock, Loader2, Clock, Rows3, Rows4, ChevronsDownUp, ChevronsUpDown, GraduationCap, UserCheck, AlertTriangle, MapPin, Video, Home, Building2 } from 'lucide-react'
+import { internWindowCovers, internWindowLabel } from '@/lib/intern-window'
+import { ChevronDown, Plus, X, Settings2, Ban, Search, Users, CalendarCheck, CalendarPlus, CalendarDays, Percent, BarChart3, Info, Lock, Loader2, Clock, Rows3, Rows4, ChevronsDownUp, ChevronsUpDown, GraduationCap, UserCheck, AlertTriangle, MapPin, Video, Home, Building2 } from 'lucide-react'
 import { DashCard, KpiCard, Skeleton, EmptyState, DeptChip, CARD_STYLE } from '../patients/dashboard/ui'
 import {
   CONTROL, CONTROL_SM, CONTROL_STYLE, LABEL, BTN_PRIMARY, BTN_SECONDARY, BTN_SM, SUBTLE_BG, TEAL_HEX, DECK_CSS,
@@ -31,7 +32,7 @@ const DEFAULT_HOURS: Record<string, { startTime: string; endTime: string }> = {
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-interface StaffMember { id: string; firstName: string; lastName: string; department: string; branch: string; extraBranches?: string[]; employmentType?: string | null; isInternshipSupervisor?: boolean | null; workArrangement?: string | null; branchEmployment?: Record<string, { arrangement?: string | null } | null> }
+interface StaffMember { id: string; firstName: string; lastName: string; department: string; branch: string; extraBranches?: string[]; employmentType?: string | null; isInternshipSupervisor?: boolean | null; dateHired?: string | null; contractExpiry?: string | null; workArrangement?: string | null; branchEmployment?: Record<string, { arrangement?: string | null } | null> }
 interface Patient { id: string; firstName: string; lastName: string }
 interface TherapistConfig { id: string; staffId: string; workDays: string[]; startTime: string; endTime: string; useDefault: boolean; branch: string; department: string; deliveryMode?: string | null }
 interface DeckingSlot { id: string; staffId: string; patientId: string | null; patient: Patient | null; dayOfWeek: string; startTime: string; endTime: string; branch: string; department: string; notes: string | null; disabled: boolean; paymentType?: string; isClass?: boolean; deliveryMode?: string | null; supervisorId?: string | null; date?: string | null }
@@ -2510,9 +2511,15 @@ export default function DeckingClient({ role }: { role: string }) {
   // make them a standalone clinician in Clinic Schedule and on the public
   // booking page. They get their own section instead, where the hours are
   // theirs but every one of them names a supervisor.
-  const internStaff = staff.filter(st =>
+  const internOfDept = staff.filter(st =>
     isIntern(st) && st.department === activeDept
     && (st.branch === activeBranch || (st.extraBranches ?? []).includes(activeBranch)))
+  // An intern rotates with us for their placement months and no longer. Once
+  // the End Month on their HR profile has passed they come off the board, so
+  // the next batch starts on a clean department instead of inheriting hours
+  // that belong to somebody who has gone back to school.
+  const internStaff = internOfDept.filter(st => internWindowCovers(st.dateHired, st.contractExpiry))
+  const internsEnded = internOfDept.length - internStaff.length
   const supervisorOptions = staff.filter(st =>
     isSupervisor(st) && st.department === activeDept
     && (st.branch === activeBranch || (st.extraBranches ?? []).includes(activeBranch)))
@@ -3379,9 +3386,16 @@ export default function DeckingClient({ role }: { role: string }) {
                           <span className="text-[11px] tabular-nums rounded-full px-2 py-0.5" style={{ background: SUBTLE_BG, color: 'var(--mid-gray)' }}>
                             {internStaff.length} on placement
                           </span>
+                          {internsEnded > 0 && (
+                            <span className="text-[11px] tabular-nums rounded-full px-2 py-0.5" style={{ background: '#FEF3C7', color: '#92400E' }}
+                              title="Their End Month on the HR staff profile has passed, so they are off the board and off the Google Sheet. Extend the End Month in HR to bring one back.">
+                              {internsEnded} rotation{internsEnded === 1 ? '' : 's'} ended
+                            </span>
+                          )}
                         </div>
                         <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
                           Supervised teaching hours, each under a named supervisor &mdash; not counted in availability or capacity.
+                          {' '}Placement months come from the HR staff profile; an intern drops off here when their End Month is past.
                         </p>
                       </div>
                     </div>
@@ -3453,6 +3467,23 @@ export default function DeckingClient({ role }: { role: string }) {
                                   Unassigned &mdash; hours won&rsquo;t reach a Clinic Schedule
                                 </span>
                               )}
+                              {/* How long this one is with us. Front desk fill a
+                                  month of hours at a time, so the rotation has to
+                                  be on the row they are filling, not two systems
+                                  away in HR. */}
+                              {(() => {
+                                const window = internWindowLabel(s.dateHired, s.contractExpiry)
+                                return (
+                                  <span className="ml-auto inline-flex items-center gap-1 text-[11px] tabular-nums rounded-full px-2 py-0.5"
+                                    style={{ background: window ? SUBTLE_BG : '#FEF3C7', color: window ? 'var(--mid-gray)' : '#92400E' }}
+                                    title={window
+                                      ? 'Placement months from the HR staff profile. They drop off this board once the End Month is past.'
+                                      : 'No Start/End Month on their HR staff profile, so nothing says when this placement ends — they will stay on the board until it is filled in.'}>
+                                    <CalendarDays size={11} aria-hidden />
+                                    {window || 'Rotation not set'}
+                                  </span>
+                                )
+                              })()}
                             </div>
                             <TherapistRow
                               staff={s}

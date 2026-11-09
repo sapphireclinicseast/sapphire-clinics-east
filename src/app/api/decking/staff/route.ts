@@ -37,6 +37,11 @@ export async function GET() {
       // section's supervisor picker offers these and nobody else — a student
       // must not be signed off by whoever happens to share their department.
       isInternshipSupervisor: true,
+      // An intern's rotation window — HR's "Start Month" / "End Month". The
+      // board drops an intern once their rotation is over, so both months have
+      // to travel; see internWindowCovers().
+      dateHired: true,
+      contractExpiry: true,
       // Drives which service section a consultant appears under. The per-branch
       // value is authoritative and differs from the staff-level one for most of
       // the roster — see arrangementFor().
