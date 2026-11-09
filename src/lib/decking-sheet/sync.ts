@@ -155,6 +155,9 @@ async function loadDepartment(branch: string, department: string) {
   }
 
   const sheetSlots: SheetSlot[] = slots.map(s => ({
+    // A one-off sheet row IS this row, and its id is the only thing that tells
+    // two one-offs apart when they share a date, a start and an end.
+    id: s.id,
     staffId: s.staffId,
     dayOfWeek: s.dayOfWeek,
     startTime: s.startTime,
