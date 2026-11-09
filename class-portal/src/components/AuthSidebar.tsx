@@ -325,7 +325,7 @@ export default function AuthSidebar() {
       <nav aria-label="Class Portal" className="flex-1 overflow-y-auto px-3 py-4 space-y-5" style={{ fontFamily: 'var(--font-body)' }}>
         {groups.map(g => (
           <div key={g.label}>
-            <p className="px-3 mb-1.5 text-[10.5px] font-semibold uppercase tracking-[0.16em] text-white/45" style={{ fontFamily: 'var(--font-display)' }}>
+            <p className="px-3 mb-1.5 text-[10.5px] font-semibold uppercase tracking-[0.16em] text-white/60" style={{ fontFamily: 'var(--font-display)' }}>
               {g.label}
             </p>
             <ul className="space-y-0.5">
@@ -377,7 +377,7 @@ export default function AuthSidebar() {
           </span>
           <div className="min-w-0">
             <div className="text-[13px] font-semibold text-white truncate" title={auth.email ?? ''}>{displayName}</div>
-            <div className="text-[11px] text-white/55 truncate">{roleLabel}</div>
+            <div className="text-[11px] text-white/60 truncate">{roleLabel}</div>
           </div>
         </div>
         <button
@@ -418,7 +418,7 @@ export default function AuthSidebar() {
           <img src="/aura-academy-mark-192.png" alt="" className="h-7 w-7 object-contain shrink-0" />
           <span className="flex flex-col leading-tight min-w-0">
             <span className="text-[13px] font-bold truncate" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>Aura Academy</span>
-            <span className="text-[9.5px] font-semibold uppercase tracking-[0.16em]" style={{ fontFamily: 'var(--font-display)', color: 'var(--teal)' }}>Class Portal</span>
+            <span className="text-[9.5px] font-semibold uppercase tracking-[0.16em]" style={{ fontFamily: 'var(--font-display)', color: 'var(--deep-teal)' }}>Class Portal</span>
           </span>
         </span>
       </div>

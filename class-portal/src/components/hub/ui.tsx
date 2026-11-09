@@ -94,7 +94,7 @@ export function PageHeader({ eyebrow, title, description, actions }: {
     <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
       <div className="min-w-0">
         {eyebrow && (
-          <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: 'var(--teal)', fontFamily: 'var(--font-display)' }}>{eyebrow}</p>
+          <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: 'var(--deep-teal)', fontFamily: 'var(--font-display)' }}>{eyebrow}</p>
         )}
         <h1 className="text-[22px] sm:text-2xl font-bold leading-tight" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
           {title}
@@ -176,7 +176,7 @@ export function KpiCard({
         </p>
         {icon && <span className="flex-shrink-0" style={{ color: accent }}>{icon}</span>}
       </div>
-      <p className="text-2xl font-bold mt-1 leading-tight" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)', fontVariantNumeric: 'tabular-nums' }}>
+      <p className="text-xl sm:text-2xl font-bold mt-1 leading-tight [overflow-wrap:anywhere]" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)', fontVariantNumeric: 'tabular-nums' }}>
         {value}
       </p>
       {sub && <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--mid-gray)' }}>{sub}</p>}
