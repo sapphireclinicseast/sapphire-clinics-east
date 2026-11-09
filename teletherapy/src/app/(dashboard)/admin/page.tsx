@@ -10,7 +10,6 @@ import {
   Eye,
   EyeOff,
   KeyRound,
-  Shield,
   ToggleLeft,
   ToggleRight,
   Clock,
@@ -21,7 +20,11 @@ import {
   RefreshCw,
   Building2,
 } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import {
+  Avatar, DashCard, EmptyState, PageHeader, RowsSkeleton, Skeleton, StatusPill, Tag,
+  BTN_DANGER_GHOST, BTN_PRIMARY, BTN_SECONDARY, BTN_SM, CARD_STYLE, CONTROL, CONTROL_STYLE, DANGER, FOCUS,
+  LABEL, LABEL_STYLE, PAGE, PRIMARY_STYLE, SECONDARY_STYLE, SUBTLE_BG, TR, TR_STYLE,
+} from '@/components/hub/ui'
 
 // Public-facing branch codes: SBEA/SANDBOX_EAST = Aura Health East (AHEA),
 // SBGH/SANDBOX_GREENHILLS = Aura Health Greenhills (AHGH).
@@ -300,55 +303,46 @@ export default function AdminPage() {
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 gap-3">
-        <Loader2 className="w-8 h-8 text-[var(--teal)] animate-spin" />
-        <p className="text-sm text-[var(--mid-gray)]">Loading admin panel...</p>
+      <div className={PAGE}>
+        <PageHeader eyebrow="Admin" title="Admin Panel" description="Manage therapist accounts and access" />
+        <div className="rounded-xl overflow-hidden" style={CARD_STYLE}>
+          <RowsSkeleton rows={5} label="Loading admin panel" />
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="max-w-4xl mx-auto">
-      {toast && <div className="toast">{toast}</div>}
+    <div className={PAGE}>
+      {toast && <div className="toast" role="status">{toast}</div>}
 
-      {/* Hero */}
-      <div className="hero-gradient rounded-2xl px-8 py-8 mb-8 animate-fade-up">
-        <div className="relative z-10">
-          <h1 className="text-xl font-bold text-white tracking-tight animate-slide-down" style={{ fontFamily: 'var(--font-display)' }}>
-            Admin Panel
-          </h1>
-          <p className="text-white/60 text-sm mt-1 animate-slide-down stagger-1">
-            Manage therapist accounts and access
-          </p>
-        </div>
-      </div>
+      <PageHeader eyebrow="Admin" title="Admin Panel" description="Manage therapist accounts and access" />
 
       {/* Create Account Form */}
-      <div className="card-static mb-8 animate-fade-up stagger-1">
-        <div className="flex items-center justify-between gap-3 mb-5 pb-4 border-b border-[var(--light-gray)]">
-          <h2 className="font-bold text-[var(--charcoal)] flex items-center gap-2" style={{ fontFamily: 'var(--font-display)' }}>
-            <UserPlus size={18} className="text-[var(--teal)]" />
-            Create Account
-          </h2>
+      <DashCard
+        title="Create Account"
+        icon={<UserPlus size={16} />}
+        action={
           <button
             type="button"
             onClick={handleSyncFromHr}
             disabled={syncing}
             title="Pull the latest staff & interns from the HR Platform so new people appear in the list below"
-            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-[13px] font-semibold text-[var(--teal)] border border-[var(--teal)]/30 hover:bg-[var(--teal)]/5 disabled:opacity-50 transition-colors whitespace-nowrap"
+            className={BTN_SECONDARY}
+            style={{ ...SECONDARY_STYLE, color: 'var(--deep-teal)' }}
           >
-            <RefreshCw size={15} className={syncing ? 'animate-spin' : ''} />
+            <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
             {syncing ? 'Syncing…' : 'Sync from HR'}
           </button>
-        </div>
-
+        }
+      >
         <form onSubmit={handleCreate} className="space-y-5">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-[13px] font-semibold text-[var(--charcoal)] mb-2" style={{ fontFamily: 'var(--font-display)' }}>
-                Staff Member <span className="text-red-500">*</span>
+            <div className="min-w-0">
+              <label htmlFor="admin-staff" className={LABEL} style={LABEL_STYLE}>
+                Staff Member <span style={{ color: DANGER }}>*</span>
               </label>
-              <select value={selectedStaffId} onChange={(e) => onStaffSelect(e.target.value)} required className="input bg-white">
+              <select id="admin-staff" value={selectedStaffId} onChange={(e) => onStaffSelect(e.target.value)} required className={`${CONTROL} w-full`} style={CONTROL_STYLE}>
                 <option value="">Select staff member...</option>
                 {availableStaff.map((s) => (
                   <option key={s.id} value={s.id}>{s.lastName}, {s.firstName} ({s.department} – {BRANCH_LABEL[s.branch] ?? s.branch}){isInternStaff(s) ? ' · INTERN' : ''}</option>
@@ -356,37 +350,39 @@ export default function AdminPage() {
               </select>
             </div>
 
-            <div>
-              <label className="block text-[13px] font-semibold text-[var(--charcoal)] mb-2" style={{ fontFamily: 'var(--font-display)' }}>
-                Login Email <span className="text-red-500">*</span>
+            <div className="min-w-0">
+              <label htmlFor="admin-email" className={LABEL} style={LABEL_STYLE}>
+                Login Email <span style={{ color: DANGER }}>*</span>
               </label>
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required className="input" placeholder="therapist@email.com" />
+              <input id="admin-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required className={`${CONTROL} w-full`} style={CONTROL_STYLE} placeholder="therapist@email.com" />
             </div>
 
-            <div>
-              <label className="block text-[13px] font-semibold text-[var(--charcoal)] mb-2" style={{ fontFamily: 'var(--font-display)' }}>
-                Password <span className="text-red-500">*</span>
+            <div className="min-w-0">
+              <label htmlFor="admin-password" className={LABEL} style={LABEL_STYLE}>
+                Password <span style={{ color: DANGER }}>*</span>
               </label>
               <div className="relative">
-                <input type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)}
-                  required minLength={6} className="input pr-10" placeholder="Min 6 characters" />
+                <input id="admin-password" type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)}
+                  required minLength={6} className={`${CONTROL} w-full pr-10`} style={CONTROL_STYLE} placeholder="Min 6 characters" />
                 <button type="button" onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--mid-gray)] hover:text-[var(--charcoal)] transition-colors">
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  className={`absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 inline-flex items-center justify-center rounded-md hover:bg-[color:var(--paper)] ${FOCUS}`}
+                  style={{ color: 'var(--mid-gray)' }}>
                   {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
             </div>
 
-            <div>
-              <label className="block text-[13px] font-semibold text-[var(--charcoal)] mb-2" style={{ fontFamily: 'var(--font-display)' }}>Account Type</label>
-              <select value={accountType} onChange={(e) => setAccountType(e.target.value as typeof accountType)} className="input bg-white">
+            <div className="min-w-0">
+              <label htmlFor="admin-account-type" className={LABEL} style={LABEL_STYLE}>Account Type</label>
+              <select id="admin-account-type" value={accountType} onChange={(e) => setAccountType(e.target.value as typeof accountType)} className={`${CONTROL} w-full`} style={CONTROL_STYLE}>
                 <option value="CLINICIAN">Clinician — full clinical access</option>
                 <option value="INTERN">Intern — clinical access, cannot send notes/reports</option>
                 <option value="FRONT_DESK">Front Desk (Administration) — no patient pages, incl. Patients Love</option>
                 <option value="ADMIN_STAFF">Administration staff — no patient pages, no Patients Love</option>
                 <option value="ADMIN">Admin — full access + Admin Panel</option>
               </select>
-              <p className="text-[11px] text-[var(--mid-gray)] mt-1">
+              <p className="text-[11px] leading-snug mt-1.5" style={{ color: 'var(--mid-gray)' }}>
                 {accountType === 'CLINICIAN' && 'Sees all clinical pages plus Peers Love.'}
                 {accountType === 'INTERN' && 'Same clinical pages as a clinician (writes session notes, uploads IE reports). Cannot send notes or IE reports to patients — only their supervisor sends, and the supervisor’s license appears on what is sent.'}
                 {accountType === 'FRONT_DESK' && 'For front-desk staff. No Dashboard / Clinic Schedule / Patients / Settings. Sees: Patients Love (HR12 feedback), Peers Love, Seminars, Templates (all depts), Manuals, Directory, Wellness Check, Payroll.'}
@@ -396,28 +392,21 @@ export default function AdminPage() {
             </div>
           </div>
 
-          <button type="submit" disabled={creating || !selectedStaffId || !email || !password} className="btn-primary rounded-xl">
-            {creating ? <Loader2 size={16} className="animate-spin" /> : <UserPlus size={16} />}
+          <button type="submit" disabled={creating || !selectedStaffId || !email || !password} className={BTN_PRIMARY} style={PRIMARY_STYLE}>
+            {creating ? <Loader2 size={15} className="animate-spin" /> : <UserPlus size={15} />}
             Create Account
           </button>
         </form>
-      </div>
+      </DashCard>
 
       {/* Accounts list */}
-      <div className="card-static animate-fade-up stagger-2 mb-8">
-        <h2 className="font-bold text-[var(--charcoal)] mb-5 flex items-center gap-2 pb-4 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
-          <Users size={18} className="text-[var(--teal)]" />
-          Staff Accounts
-          <span className="badge badge-teal ml-1">{accounts.length}</span>
-        </h2>
-
+      <DashCard
+        title={<>Staff Accounts <span style={{ fontVariantNumeric: 'tabular-nums' }}><Tag tone="brand">{accounts.length}</Tag></span></>}
+        icon={<Users size={16} />}
+        flush
+      >
         {accounts.length === 0 ? (
-          <div className="text-center py-12">
-            <div className="w-14 h-14 rounded-2xl bg-[var(--pale-teal)] flex items-center justify-center mx-auto mb-3">
-              <Users size={24} className="text-[var(--teal)]" />
-            </div>
-            <p className="text-[var(--mid-gray)] text-sm font-medium">No clinician accounts created yet.</p>
-          </div>
+          <EmptyState icon="users" title="No clinician accounts created yet." />
         ) : (() => {
           const q = accountSearch.trim().toLowerCase()
           const filtered = q
@@ -428,69 +417,65 @@ export default function AdminPage() {
             : accounts
           return (
           <>
-            <div className="relative mb-4">
-              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--mid-gray)]" />
-              <input
-                type="text"
-                value={accountSearch}
-                onChange={(e) => setAccountSearch(e.target.value)}
-                placeholder="Search by name, email, department, branch..."
-                className="input !pl-9 text-[13px]"
-              />
-              {accountSearch && (
-                <button
-                  type="button"
-                  onClick={() => setAccountSearch('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--mid-gray)] hover:text-[var(--charcoal)]"
-                  title="Clear search"
-                >
-                  <X size={14} />
-                </button>
-              )}
+            <div className="px-4 sm:px-5 py-3" style={{ borderBottom: '1px solid var(--light-gray)' }}>
+              <div className="relative sm:max-w-sm">
+                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mid-gray)' }} />
+                <input
+                  type="text"
+                  value={accountSearch}
+                  onChange={(e) => setAccountSearch(e.target.value)}
+                  placeholder="Search by name, email, department, branch..."
+                  aria-label="Search accounts"
+                  className={`${CONTROL} w-full pl-9 pr-9`}
+                  style={CONTROL_STYLE}
+                />
+                {accountSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setAccountSearch('')}
+                    className={`absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 inline-flex items-center justify-center rounded-md hover:bg-[color:var(--paper)] ${FOCUS}`}
+                    style={{ color: 'var(--mid-gray)' }}
+                    title="Clear search"
+                    aria-label="Clear search"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
             </div>
             {filtered.length === 0 ? (
-              <p className="text-[12px] text-[var(--mid-gray)] italic text-center py-6">
-                No clinicians match "{accountSearch}".
-              </p>
+              <EmptyState icon="search" title={`No clinicians match "${accountSearch}".`} />
             ) : (
-              <div className="space-y-3 max-h-[520px] overflow-y-auto pr-1">
+              <div className="max-h-[520px] overflow-y-auto">
                 {filtered.map((acct, i) => (
               <div key={acct.id}
-                className={cn(
-                  'p-4 rounded-xl border transition-all animate-fade-up',
-                  `stagger-${Math.min(i + 3, 10)}`,
-                  acct.isActive ? 'border-[var(--light-gray)] bg-white hover:border-[var(--teal)]/20 hover:shadow-sm' : 'border-red-100 bg-red-50/30'
-                )}>
-                <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className={cn(
-                    'w-10 h-10 rounded-full flex items-center justify-center text-[12px] font-bold shrink-0',
-                    acct.isActive
-                      ? 'bg-gradient-to-br from-[#cf9d88] to-[#c69849] text-white'
-                      : 'bg-gray-200 text-gray-500'
-                  )}>
-                    {acct.staff.firstName[0]}{acct.staff.lastName[0]}
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <p className="font-semibold text-[14px] text-[var(--charcoal)]">{acct.staff.lastName}, {acct.staff.firstName}</p>
-                      <span className="badge badge-teal !text-[9px] !py-0 !px-1.5">{acct.staff.department}</span>
+                className="px-4 sm:px-5 py-3.5"
+                style={{ borderTop: i ? '1px solid var(--light-gray)' : undefined, background: acct.isActive ? '#fff' : SUBTLE_BG }}>
+                <div className="flex flex-wrap items-start sm:items-center justify-between gap-x-4 gap-y-2.5">
+                <div className="flex items-start gap-3 min-w-0 w-full sm:w-auto sm:flex-1">
+                  <span className={acct.isActive ? '' : 'opacity-50'}>
+                    <Avatar text={`${acct.staff.firstName[0]}${acct.staff.lastName[0]}`} size={36} />
+                  </span>
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <p className="font-semibold text-[14px]" style={{ color: 'var(--charcoal)' }}>{acct.staff.lastName}, {acct.staff.firstName}</p>
+                      <Tag tone="brand">{acct.staff.department}</Tag>
                       {(() => {
                         const t = acct.accountType ?? (acct.role === 'ADMIN' ? 'ADMIN' : 'CLINICIAN')
                         const label: Record<string, string> = { CLINICIAN: 'Clinician', FRONT_DESK: 'Front Desk', ADMIN_STAFF: 'Admin Staff', ADMIN: 'Admin' }
-                        const cls = t === 'ADMIN'
-                          ? 'bg-amber-50 text-amber-700 border-amber-200'
+                        const tone = t === 'ADMIN'
+                          ? 'warn'
                           : t === 'CLINICIAN'
-                            ? 'bg-[var(--pale-teal)] text-[var(--deep-teal)] border-[var(--light-gray)]'
-                            : 'bg-sky-50 text-sky-700 border-sky-200'
-                        return <span className={`badge !text-[9px] !py-0 !px-1.5 border ${cls}`}>{label[t] ?? t}</span>
+                            ? 'success'
+                            : 'info'
+                        return <Tag tone={tone}>{label[t] ?? t}</Tag>
                       })()}
                     </div>
-                    <p className="text-[12px] text-[var(--mid-gray)]">{acct.email}</p>
+                    <p className="text-[12px] break-all" style={{ color: 'var(--mid-gray)' }}>{acct.email}</p>
                     {acct.lastPlainPassword ? (
-                      <p className="text-[11px] text-[var(--mid-gray)] flex items-center gap-1 mt-0.5">
+                      <p className="text-[11px] flex flex-wrap items-center gap-1 mt-0.5" style={{ color: 'var(--mid-gray)' }}>
                         <KeyRound size={10} />
-                        Password: <span className="font-mono bg-gray-100 px-1.5 py-0.5 rounded text-[10px] select-all">{acct.lastPlainPassword}</span>
+                        Password: <span className="font-mono px-1.5 py-0.5 rounded text-[10px] select-all break-all" style={{ background: SUBTLE_BG, border: '1px solid var(--light-gray)', color: 'var(--charcoal)' }}>{acct.lastPlainPassword}</span>
                       </p>
                     ) : (
                       // Legacy accounts created before lastPlainPassword
@@ -499,94 +484,106 @@ export default function AdminPage() {
                       // so the admin understands they need to issue a
                       // new password (the Change-password button on the
                       // right of this row) to make the value visible.
-                      <p className="text-[11px] text-amber-700 flex items-center gap-1 mt-0.5 italic">
-                        <KeyRound size={10} />
+                      <p className="text-[11px] flex items-center gap-1 mt-0.5 italic" style={{ color: '#7A4E21' }}>
+                        <KeyRound size={10} className="shrink-0" />
                         Password not recorded — click the key icon to set a new one.
                       </p>
                     )}
-                    <p className="text-[11px] text-[var(--mid-gray)] flex items-center gap-1 mt-0.5">
+                    <p className="text-[11px] flex items-center gap-1 mt-0.5" style={{ color: 'var(--mid-gray)' }}>
                       <Clock size={10} />
                       {acct.lastLoginAt ? `Last login: ${new Date(acct.lastLoginAt).toLocaleDateString()}` : 'Never logged in'}
                     </p>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 shrink-0">
-                  <button onClick={() => { setEditingEmailId(editingEmailId === acct.id ? null : acct.id); setNewEmail(acct.email); setChangingPasswordId(null) }}
-                    className="flex items-center gap-1 text-[12px] font-semibold px-2.5 py-2 rounded-xl text-[var(--sand-dark)] hover:bg-[var(--sand-light)] transition-all active:scale-95"
+                <div className="flex items-center gap-1.5 shrink-0 pl-12 sm:pl-0">
+                  <button type="button" onClick={() => { setEditingEmailId(editingEmailId === acct.id ? null : acct.id); setNewEmail(acct.email); setChangingPasswordId(null) }}
+                    className={`${BTN_SM} w-8 !px-0`}
+                    style={editingEmailId === acct.id ? { ...SECONDARY_STYLE, background: 'var(--pale-teal)', color: 'var(--deep-teal)' } : { ...SECONDARY_STYLE, color: 'var(--mid-gray)' }}
+                    aria-pressed={editingEmailId === acct.id}
+                    aria-label="Edit email"
                     title="Edit email">
-                    <Mail size={15} />
+                    <Mail size={14} />
                   </button>
-                  <button onClick={() => { setChangingPasswordId(changingPasswordId === acct.id ? null : acct.id); setNewPassword(''); setEditingEmailId(null) }}
-                    className="flex items-center gap-1 text-[12px] font-semibold px-2.5 py-2 rounded-xl text-[var(--teal)] hover:bg-[var(--pale-teal)] transition-all active:scale-95"
+                  <button type="button" onClick={() => { setChangingPasswordId(changingPasswordId === acct.id ? null : acct.id); setNewPassword(''); setEditingEmailId(null) }}
+                    className={`${BTN_SM} w-8 !px-0`}
+                    style={changingPasswordId === acct.id ? { ...SECONDARY_STYLE, background: 'var(--pale-teal)', color: 'var(--deep-teal)' } : { ...SECONDARY_STYLE, color: 'var(--mid-gray)' }}
+                    aria-pressed={changingPasswordId === acct.id}
+                    aria-label="Change password"
                     title="Change password">
-                    <KeyRound size={15} />
+                    <KeyRound size={14} />
                   </button>
-                  <button onClick={() => toggleActive(acct.id, acct.isActive)}
-                    className={cn('flex items-center gap-1.5 text-[12px] font-semibold px-3 py-2 rounded-xl transition-all active:scale-95',
-                      acct.isActive ? 'text-green-700 hover:bg-green-50' : 'text-red-600 hover:bg-red-50')}>
+                  <button type="button" onClick={() => toggleActive(acct.id, acct.isActive)}
+                    className={BTN_SM}
+                    style={{ ...SECONDARY_STYLE, color: acct.isActive ? '#2F5A28' : DANGER }}
+                    title={acct.isActive ? 'Click to deactivate' : 'Click to activate'}>
                     {acct.isActive ? (
-                      <><ToggleRight size={20} className="text-green-500" /> Active</>
+                      <><ToggleRight size={18} style={{ color: 'var(--teal)' }} /> Active</>
                     ) : (
-                      <><ToggleLeft size={20} className="text-red-400" /> Inactive</>
+                      <><ToggleLeft size={18} style={{ color: DANGER }} /> Inactive</>
                     )}
                   </button>
                 </div>
               </div> {/* end flex row */}
 
-              {/* Change password inline form */}
               {/* Edit email inline form */}
               {editingEmailId === acct.id && (
-                <div className="mt-3 p-3 bg-[var(--off-white)] rounded-xl border border-[var(--light-gray)]">
-                  <div className="flex items-center gap-3">
-                    <Mail size={16} className="text-[var(--sand-dark)] shrink-0" />
+                <div className="mt-3 p-3 rounded-lg" style={{ background: SUBTLE_BG, border: '1px solid var(--light-gray)' }}>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Mail size={15} className="shrink-0 hidden sm:block" style={{ color: 'var(--deep-teal)' }} />
                     <input
                       type="email"
                       value={newEmail}
                       onChange={(e) => setNewEmail(e.target.value)}
                       placeholder="New email address"
-                      className="input !rounded-lg !py-2 text-[13px] flex-1"
+                      aria-label="New email address"
+                      className={`${CONTROL} flex-1 min-w-[180px]`}
+                      style={CONTROL_STYLE}
                       autoFocus
                     />
-                    <button onClick={() => handleChangeEmail(acct.id)} disabled={savingEmail || !newEmail.includes('@')}
-                      className="btn-primary !py-2 !px-4 !text-[12px] !rounded-lg">
+                    <button type="button" onClick={() => handleChangeEmail(acct.id)} disabled={savingEmail || !newEmail.includes('@')}
+                      className={BTN_PRIMARY} style={PRIMARY_STYLE}>
                       {savingEmail ? <Loader2 size={14} className="animate-spin" /> : 'Save'}
                     </button>
-                    <button onClick={() => { setEditingEmailId(null); setNewEmail('') }}
-                      className="text-[var(--mid-gray)] hover:text-[var(--charcoal)] text-[12px] font-medium">
+                    <button type="button" onClick={() => { setEditingEmailId(null); setNewEmail('') }}
+                      className={BTN_SECONDARY} style={SECONDARY_STYLE}>
                       Cancel
                     </button>
                   </div>
-                  <p className="text-[11px] text-[var(--mid-gray)] mt-2 ml-7">
-                    Updates the login email <strong>and</strong> the staff record&rsquo;s email (across all branches), so payroll and survey matching stay in sync.
+                  <p className="text-[11px] leading-snug mt-2 sm:ml-[23px]" style={{ color: 'var(--mid-gray)' }}>
+                    Updates the login email <strong>and</strong>{' '}the staff record&rsquo;s email (across all branches), so payroll and survey matching stay in sync.
                   </p>
                 </div>
               )}
 
               {/* Change password inline form */}
               {changingPasswordId === acct.id && (
-                <div className="mt-3 p-3 bg-[var(--off-white)] rounded-xl border border-[var(--light-gray)] flex items-center gap-3">
-                  <KeyRound size={16} className="text-[var(--teal)] shrink-0" />
-                  <div className="relative flex-1">
+                <div className="mt-3 p-3 rounded-lg flex flex-wrap items-center gap-2" style={{ background: SUBTLE_BG, border: '1px solid var(--light-gray)' }}>
+                  <KeyRound size={15} className="shrink-0 hidden sm:block" style={{ color: 'var(--deep-teal)' }} />
+                  <div className="relative flex-1 min-w-[180px]">
                     <input
                       type={showNewPassword ? 'text' : 'password'}
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
                       placeholder="New password (min 8 chars)"
-                      className="input !rounded-lg !py-2 !pr-10 text-[13px]"
+                      aria-label="New password"
+                      className={`${CONTROL} w-full pr-10`}
+                      style={CONTROL_STYLE}
                       autoFocus
                     />
                     <button type="button" onClick={() => setShowNewPassword(!showNewPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--mid-gray)] hover:text-[var(--charcoal)]">
+                      aria-label={showNewPassword ? 'Hide password' : 'Show password'}
+                      className={`absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 inline-flex items-center justify-center rounded-md hover:bg-[color:var(--paper)] ${FOCUS}`}
+                      style={{ color: 'var(--mid-gray)' }}>
                       {showNewPassword ? <EyeOff size={15} /> : <Eye size={15} />}
                     </button>
                   </div>
-                  <button onClick={() => handleChangePassword(acct.id)} disabled={savingPassword || newPassword.length < 8}
-                    className="btn-primary !py-2 !px-4 !text-[12px] !rounded-lg">
+                  <button type="button" onClick={() => handleChangePassword(acct.id)} disabled={savingPassword || newPassword.length < 8}
+                    className={BTN_PRIMARY} style={PRIMARY_STYLE}>
                     {savingPassword ? <Loader2 size={14} className="animate-spin" /> : 'Save'}
                   </button>
-                  <button onClick={() => { setChangingPasswordId(null); setNewPassword('') }}
-                    className="text-[var(--mid-gray)] hover:text-[var(--charcoal)] text-[12px] font-medium">
+                  <button type="button" onClick={() => { setChangingPasswordId(null); setNewPassword('') }}
+                    className={BTN_SECONDARY} style={SECONDARY_STYLE}>
                     Cancel
                   </button>
                 </div>
@@ -598,76 +595,64 @@ export default function AdminPage() {
           </>
           )
         })()}
-      </div>
+      </DashCard>
 
       {/* ─── HR Branches Registry sync ─────────────────────────────────────────── */}
-      <div className="mb-8"><HrBranchesCard /></div>
+      <HrBranchesCard />
 
       {/* ─── Branch CC Emails for IE tracking ─────────────────────────────────── */}
-      <div className="card-static">
-        <div className="flex items-start gap-3 mb-4 pb-4 border-b border-[var(--light-gray)]">
-          <Mail size={20} className="text-[var(--teal)] mt-0.5" />
-          <div className="flex-1">
-            <h2 className="font-bold text-[var(--charcoal)] text-[16px]" style={{ fontFamily: 'var(--font-display)' }}>
-              Branch CC Emails (Initial Evaluation tracking)
-            </h2>
-            <p className="text-[12px] text-[var(--mid-gray)] mt-1 leading-relaxed">
-              When a clinician sends an Initial Evaluation report to a patient, the email is also CC'd
-              to the address you set here for that patient's branch. Use this to track which IE reports
-              have been sent.
-            </p>
-          </div>
-        </div>
-
+      <DashCard
+        title="Branch CC Emails (Initial Evaluation tracking)"
+        icon={<Mail size={16} />}
+        description={<>When a clinician sends an Initial Evaluation report to a patient, the email is also CC&rsquo;d to the address you set here for that patient&rsquo;s branch. Use this to track which IE reports have been sent.</>}
+      >
         {/* Add / update form */}
-        <div className="grid grid-cols-1 md:grid-cols-[140px_1fr_1fr_auto] gap-2 mb-5 items-end">
-          <div>
-            <label className="block text-[11px] font-semibold text-[var(--charcoal)] uppercase tracking-wider mb-1">Branch</label>
-            <select value={ccBranch} onChange={(e) => setCcBranch(e.target.value)} className="input text-[13px]">
+        <div className="grid grid-cols-1 md:grid-cols-[140px_1fr_1fr_auto] gap-3 mb-5 items-end">
+          <div className="min-w-0">
+            <label htmlFor="cc-branch" className={LABEL} style={LABEL_STYLE}>Branch</label>
+            <select id="cc-branch" value={ccBranch} onChange={(e) => setCcBranch(e.target.value)} className={`${CONTROL} w-full`} style={CONTROL_STYLE}>
               {knownBranches.map((b) => <option key={b} value={b}>{BRANCH_LABEL[b] ?? b}</option>)}
             </select>
           </div>
-          <div>
-            <label className="block text-[11px] font-semibold text-[var(--charcoal)] uppercase tracking-wider mb-1">CC Email</label>
-            <input type="email" value={ccEmail} onChange={(e) => setCcEmail(e.target.value)}
-              placeholder="frontdesk-east@sapphireclinicseast.org" className="input text-[13px]" />
+          <div className="min-w-0">
+            <label htmlFor="cc-email" className={LABEL} style={LABEL_STYLE}>CC Email</label>
+            <input id="cc-email" type="email" value={ccEmail} onChange={(e) => setCcEmail(e.target.value)}
+              placeholder="frontdesk-east@sapphireclinicseast.org" className={`${CONTROL} w-full`} style={CONTROL_STYLE} />
           </div>
-          <div>
-            <label className="block text-[11px] font-semibold text-[var(--charcoal)] uppercase tracking-wider mb-1">Notes (optional)</label>
-            <input value={ccNotes} onChange={(e) => setCcNotes(e.target.value)}
-              placeholder="e.g. Front desk team" className="input text-[13px]" />
+          <div className="min-w-0">
+            <label htmlFor="cc-notes" className={LABEL} style={LABEL_STYLE}>Notes (optional)</label>
+            <input id="cc-notes" value={ccNotes} onChange={(e) => setCcNotes(e.target.value)}
+              placeholder="e.g. Front desk team" className={`${CONTROL} w-full`} style={CONTROL_STYLE} />
           </div>
-          <button onClick={saveCcEmail} disabled={savingCc || !ccEmail}
-            className="btn-primary !py-2 !px-4 !text-[12px] !rounded-lg shrink-0">
+          <button type="button" onClick={saveCcEmail} disabled={savingCc || !ccEmail}
+            className={`${BTN_PRIMARY} shrink-0`} style={PRIMARY_STYLE}>
             {savingCc ? <Loader2 size={14} className="animate-spin" /> : 'Save'}
           </button>
         </div>
 
         {/* Existing entries */}
         {ccEmails.length === 0 ? (
-          <p className="text-[12px] text-[var(--mid-gray)] italic text-center py-4">
-            No branch CC emails configured yet. Add one above.
-          </p>
+          <div className="rounded-lg" style={{ border: '1px dashed var(--light-gray)' }}>
+            <EmptyState icon="info" title="No branch CC emails configured yet." hint="Add one above." />
+          </div>
         ) : (
-          <div className="space-y-1.5">
-            {ccEmails.map((cc) => (
-              <div key={cc.branch} className="flex items-center gap-3 p-3 rounded-lg bg-[var(--off-white)] border border-[var(--light-gray)]">
-                <span className="px-2 py-0.5 rounded-md bg-[var(--pale-teal)] text-[var(--deep-teal)] text-[11px] font-bold uppercase tracking-wider shrink-0">
-                  {BRANCH_LABEL[cc.branch] ?? cc.branch}
-                </span>
+          <div className="rounded-lg overflow-hidden" style={{ border: '1px solid var(--light-gray)' }}>
+            {ccEmails.map((cc, i) => (
+              <div key={cc.branch} className={`flex items-center gap-3 px-3 py-2.5 ${TR}`} style={i ? TR_STYLE : undefined}>
+                <Tag tone="brand">{BRANCH_LABEL[cc.branch] ?? cc.branch}</Tag>
                 <div className="flex-1 min-w-0">
-                  <p className="text-[13px] font-medium text-[var(--charcoal)] truncate">{cc.email}</p>
-                  {cc.notes && <p className="text-[11px] text-[var(--mid-gray)] truncate">{cc.notes}</p>}
+                  <p className="text-[13px] font-medium truncate" style={{ color: 'var(--charcoal)' }}>{cc.email}</p>
+                  {cc.notes && <p className="text-[11px] truncate" style={{ color: 'var(--mid-gray)' }}>{cc.notes}</p>}
                 </div>
-                <button onClick={() => removeCcEmail(cc.branch)}
-                  className="p-1.5 text-red-500 hover:bg-red-50 rounded-md transition-colors shrink-0" title="Remove">
+                <button type="button" onClick={() => removeCcEmail(cc.branch)}
+                  className={`${BTN_DANGER_GHOST} shrink-0`} style={{ color: DANGER }} title="Remove" aria-label={`Remove CC email for ${BRANCH_LABEL[cc.branch] ?? cc.branch}`}>
                   <Trash2 size={14} />
                 </button>
               </div>
             ))}
           </div>
         )}
-      </div>
+      </DashCard>
     </div>
   )
 }
@@ -726,52 +711,49 @@ function HrBranchesCard() {
     }
   }
 
+
   return (
-    <div className="card-static">
-      <div className="flex items-start justify-between gap-3 mb-4 pb-4 border-b border-[var(--light-gray)]">
-        <div className="flex items-start gap-3">
-          <Building2 size={20} className="text-[var(--teal)] mt-0.5" />
-          <div>
-            <h2 className="font-bold text-[var(--charcoal)] text-[16px]" style={{ fontFamily: 'var(--font-display)' }}>
-              Branches Registry
-            </h2>
-            <p className="text-[12px] text-[var(--mid-gray)] mt-1 leading-relaxed">
-              Synced from HR Platform — edit branch details there, not here.
-            </p>
-          </div>
-        </div>
+    <DashCard
+      title="Branches Registry"
+      icon={<Building2 size={16} />}
+      description="Synced from HR Platform — edit branch details there, not here."
+      action={
         <button
           type="button"
           onClick={handleSync}
           disabled={syncing}
-          className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-[13px] font-semibold text-[var(--teal)] border border-[var(--teal)]/30 hover:bg-[var(--teal)]/5 disabled:opacity-50 transition-colors whitespace-nowrap"
+          className={BTN_SECONDARY}
+          style={{ ...SECONDARY_STYLE, color: 'var(--deep-teal)' }}
         >
-          <RefreshCw size={15} className={syncing ? 'animate-spin' : ''} />
+          <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
           {syncing ? 'Syncing…' : 'Sync Branches'}
         </button>
-      </div>
-
-      {msg && <p className="text-[12px] text-[var(--mid-gray)] mb-3">{msg}</p>}
+      }
+    >
+      {msg && <p role="status" className="text-[12px] mb-3 px-3 py-2 rounded-lg" style={{ color: 'var(--charcoal)', background: SUBTLE_BG, border: '1px solid var(--light-gray)' }}>{msg}</p>}
 
       {loading ? (
-        <p className="text-[12px] text-[var(--mid-gray)] italic text-center py-4">Loading…</p>
+        <div className="flex flex-wrap gap-2" role="status" aria-label="Loading branches">
+          {[0, 1, 2, 3].map((n) => <Skeleton key={n} className="h-8 w-40 rounded-lg" />)}
+        </div>
       ) : branches.length === 0 ? (
-        <p className="text-[12px] text-[var(--mid-gray)] italic text-center py-4">
-          No branches synced yet — click &ldquo;Sync Branches&rdquo;.
-        </p>
+        <div className="rounded-lg" style={{ border: '1px dashed var(--light-gray)' }}>
+          <EmptyState icon="building" title="No branches synced yet." hint={<>Click &ldquo;Sync Branches&rdquo;.</>} />
+        </div>
       ) : (
         <div className="flex flex-wrap gap-2">
           {branches.map((b) => (
             <span
               key={b.id}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[12px]"
-              style={{ background: b.active ? '#EAF6F4' : '#F3F4F6', color: b.active ? 'var(--charcoal)' : 'var(--mid-gray)' }}
+              className="inline-flex flex-wrap items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[12px] max-w-full"
+              style={{ background: b.active ? '#fff' : SUBTLE_BG, border: '1px solid var(--light-gray)', color: b.active ? 'var(--charcoal)' : 'var(--mid-gray)' }}
             >
-              <strong>{b.shortCode}</strong> {b.name}
+              <strong style={{ color: b.active ? 'var(--deep-teal)' : 'var(--mid-gray)', fontFamily: 'var(--font-display)' }}>{b.shortCode}</strong> {b.name}
+              {!b.active && <StatusPill tone="neutral">Inactive</StatusPill>}
             </span>
           ))}
         </div>
       )}
-    </div>
+    </DashCard>
   )
 }
