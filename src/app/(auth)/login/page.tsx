@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { signIn } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
@@ -9,21 +9,41 @@ import { scopeFor } from '@/lib/scoped-roles'
 
 type Mode = 'login' | 'forgot-email' | 'forgot-code' | 'reset-success'
 
-// ── Shared input style ────────────────────────────────────────────────────────
+// ── SCEI staff sign-in look ──────────────────────────────────────────────────
+// Shared by every staff-facing hub (Operations, HR, Accounting, Staff Portal):
+// Aura gradient backdrop, white card with the three colour brand marks, hub
+// name, uppercase labels, narra primary button. Hex values on purpose — each
+// app's CSS variables differ, the sign-in screens must not.
+const C = {
+  narra: '#244952', moss: '#4A8073', ink: '#1A1A1A', muted: '#667085',
+  line: '#D9E1CC', focusRing: 'rgba(74,128,115,0.18)',
+  errBg: '#FEF2F2', errLine: '#FECACA', errText: '#B42318',
+}
 const inputStyle: React.CSSProperties = {
-  background: 'rgba(255,255,255,0.06)',
-  border: '1px solid rgba(26,123,138,0.3)',
-  color: '#fff',
+  background: '#fff',
+  border: `1px solid ${C.line}`,
+  color: C.ink,
   fontFamily: 'var(--font-body)',
 }
-const inputClass = 'w-full px-4 py-3 rounded-lg text-sm outline-none transition-all'
+const inputClass = 'w-full h-11 px-3.5 rounded-lg text-sm outline-none transition-[border-color,box-shadow]'
 
 function onFocus(e: React.FocusEvent<HTMLInputElement>) {
-  e.currentTarget.style.borderColor = 'var(--teal)'
+  e.currentTarget.style.borderColor = C.moss
+  e.currentTarget.style.boxShadow = `0 0 0 3px ${C.focusRing}`
 }
 function onBlur(e: React.FocusEvent<HTMLInputElement>) {
-  e.currentTarget.style.borderColor = 'rgba(26,123,138,0.3)'
+  e.currentTarget.style.borderColor = C.line
+  e.currentTarget.style.boxShadow = 'none'
 }
+const errorStyle: React.CSSProperties = { background: C.errBg, border: `1px solid ${C.errLine}`, color: C.errText }
+const primaryBtn = (disabled: boolean): React.CSSProperties => ({
+  background: C.narra,
+  opacity: disabled ? 0.55 : 1,
+  color: '#fff',
+  fontFamily: 'var(--font-display)',
+  cursor: disabled ? 'not-allowed' : 'pointer',
+})
+const h2Style: React.CSSProperties = { fontFamily: 'var(--font-display)', fontSize: '1.125rem', fontWeight: 700, color: C.ink }
 
 export default function LoginPage() {
   const router = useRouter()
@@ -34,7 +54,6 @@ export default function LoginPage() {
   const [showPw, setShowPw]     = useState(false)
   const [error, setError]       = useState('')
   const [loading, setLoading]   = useState(false)
-  const [introComplete, setIntroComplete] = useState(false)
 
   // ── Forgot password state ───────────────────────────────────────────────────
   const [mode, setMode]                 = useState<Mode>('login')
@@ -46,11 +65,6 @@ export default function LoginPage() {
   const [fpLoading, setFpLoading]       = useState(false)
   const [fpError, setFpError]           = useState('')
   const [fpSuccess, setFpSuccess]       = useState('')
-
-  useEffect(() => {
-    const timer = setTimeout(() => setIntroComplete(true), 2500)
-    return () => clearTimeout(timer)
-  }, [])
 
   // ── Login submit ─────────────────────────────────────────────────────────────
   async function handleSubmit(e: React.FormEvent) {
@@ -146,11 +160,12 @@ export default function LoginPage() {
 
   // ── Shared card label ──────────────────────────────────────────────────────
   const labelStyle: React.CSSProperties = {
-    color: 'rgba(255,255,255,0.5)',
+    color: C.muted,
     display: 'block',
-    fontSize: '0.7rem',
+    fontFamily: 'var(--font-display)',
+    fontSize: '0.6875rem',
     fontWeight: 600,
-    letterSpacing: '0.1em',
+    letterSpacing: '0.08em',
     textTransform: 'uppercase',
     marginBottom: 6,
   }
@@ -186,86 +201,30 @@ export default function LoginPage() {
         }}
       />
 
-      {/* Logo Intro Overlay */}
-      <div
-        className="absolute inset-0 flex flex-col items-center justify-center z-20 transition-opacity duration-700"
-        style={{
-          opacity: introComplete ? 0 : 1,
-          pointerEvents: introComplete ? 'none' : 'auto',
-          background: 'var(--narra)',
-        }}
-      >
-        <div className="flex flex-col items-center gap-6">
-          <Image src="/brand/logo-white-transparent.png" alt="Sapphire Clinics East" width={180} height={180} style={{ objectFit: 'contain' }} priority />
-          <div
-            style={{
-              fontFamily: 'var(--font-display)',
-              color: '#ffffff',
-              fontSize: '1.4rem',
-              fontWeight: 700,
-              letterSpacing: '0.25em',
-              textTransform: 'uppercase',
-            }}
-          >
-            Operations Hub
-          </div>
-        </div>
-      </div>
-
       {/* Main card */}
-      <div
-        className="relative z-10 w-full max-w-md mx-4 transition-all duration-700"
-        style={{
-          opacity: introComplete ? 1 : 0,
-          transform: introComplete ? 'translateY(0)' : 'translateY(20px)',
-        }}
-      >
-        {/* Three-brand logo row */}
-        <div className="flex flex-col items-center mb-10">
-          <div className="flex items-center gap-5">
-            <Image src="/brand/logo-white-transparent.png" alt="Sapphire Clinics East" width={76} height={76} style={{ objectFit: 'contain' }} priority />
-            <div style={{ width: 1, height: 44, background: 'rgba(255,255,255,0.22)' }} />
-            <Image src="/brand/aura-logo-cream.png" alt="Aura Health Rehab" width={76} height={76} style={{ objectFit: 'contain' }} priority />
-            <div style={{ width: 1, height: 44, background: 'rgba(255,255,255,0.22)' }} />
-            <div className="flex flex-col items-center gap-1">
-              <Image src="/brand/verdana-logo-white.png" alt="Verdana Rehab Solutions" width={52} height={52} style={{ objectFit: 'contain' }} priority />
-              <span style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.55rem', letterSpacing: '0.14em', textTransform: 'uppercase', fontFamily: 'var(--font-display)' }}>Verdana</span>
-            </div>
-          </div>
-          <p
-            style={{
-              fontFamily: 'var(--font-display)',
-              fontSize: '1.2rem',
-              fontWeight: 700,
-              letterSpacing: '0.2em',
-              textTransform: 'uppercase',
-              color: '#ffffff',
-              marginTop: 16,
-            }}
-          >
-            Operations Hub
-          </p>
-        </div>
-
+      <div className="relative z-10 w-full max-w-[420px] mx-4 my-10">
         <div
-          className="rounded-2xl p-8"
-          style={{
-            background: 'rgba(255,255,255,0.04)',
-            border: '1px solid rgba(26,123,138,0.2)',
-            backdropFilter: 'blur(12px)',
-          }}
+          className="rounded-2xl px-6 py-8 sm:px-9 sm:py-9 bg-white"
+          style={{ boxShadow: '0 30px 70px -24px rgba(36,73,82,0.45), 0 2px 6px rgba(36,73,82,0.08)' }}
         >
+          {/* Brand header — identical on every staff hub */}
+          <div className="flex flex-col items-center text-center mb-7">
+            <div className="flex items-center justify-center gap-4">
+              <Image src="/brand/login-scei.png" alt="Sapphire Clinics East" width={58} height={50} style={{ objectFit: 'contain', height: 50, width: 'auto' }} priority />
+              <span aria-hidden style={{ width: 1, height: 36, background: C.line }} />
+              <Image src="/brand/login-aura.png" alt="Aura Health Rehab" width={41} height={50} style={{ objectFit: 'contain', height: 50, width: 'auto' }} priority />
+              <span aria-hidden style={{ width: 1, height: 36, background: C.line }} />
+              <Image src="/brand/login-verdana.png" alt="Verdana Rehab Solutions" width={48} height={50} style={{ objectFit: 'contain', height: 50, width: 'auto' }} priority />
+            </div>
+            <h1 className="mt-5" style={{ fontFamily: 'var(--font-display)', fontSize: '1.375rem', fontWeight: 700, color: C.narra, letterSpacing: '-0.01em' }}>
+              Operations Hub
+            </h1>
+            <p className="mt-0.5 text-[13px]" style={{ color: C.muted }}>Sapphire Clinics East, Inc.</p>
+          </div>
 
           {/* ── Sign in ────────────────────────────────────────────────── */}
           {mode === 'login' && (
             <>
-              <h2 className="mb-1" style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', fontWeight: 700, color: '#fff' }}>
-                Sign in
-              </h2>
-              <p className="mb-6 text-sm" style={{ color: 'rgba(255,255,255,0.45)' }}>
-                Internal access only — Sapphire Clinics East staff
-              </p>
-
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
                   <label style={labelStyle}>Email</label>
@@ -300,7 +259,7 @@ export default function LoginPage() {
                       type="button"
                       onClick={() => setShowPw(!showPw)}
                       className="absolute right-3 top-1/2 -translate-y-1/2 p-1"
-                      style={{ color: 'rgba(255,255,255,0.4)' }}
+                      style={{ color: C.muted }}
                       tabIndex={-1}
                     >
                       {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
@@ -310,8 +269,8 @@ export default function LoginPage() {
                     <button
                       type="button"
                       onClick={() => { setMode('forgot-email'); setFpEmail(email); setFpError('') }}
-                      className="text-xs transition-opacity hover:opacity-80"
-                      style={{ color: 'var(--teal)' }}
+                      className="text-[12.5px] font-medium transition-opacity hover:opacity-80"
+                      style={{ color: C.moss }}
                     >
                       Forgot password?
                     </button>
@@ -319,7 +278,7 @@ export default function LoginPage() {
                 </div>
 
                 {error && (
-                  <p className="text-sm rounded-lg px-4 py-2.5" style={{ background: 'rgba(220,38,38,0.15)', color: '#f87171' }}>
+                  <p role="alert" className="text-sm rounded-lg px-4 py-2.5" style={errorStyle}>
                     {error}
                   </p>
                 )}
@@ -327,14 +286,8 @@ export default function LoginPage() {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full py-3.5 rounded-lg font-semibold text-sm transition-all mt-2"
-                  style={{
-                    background: loading ? 'rgba(26,123,138,0.5)' : 'var(--teal)',
-                    color: '#fff',
-                    fontFamily: 'var(--font-display)',
-                    letterSpacing: '0.05em',
-                    cursor: loading ? 'not-allowed' : 'pointer',
-                  }}
+                  className="w-full h-11 rounded-lg font-semibold text-sm transition-opacity hover:opacity-90 mt-2"
+                  style={primaryBtn(loading)}
                 >
                   {loading ? 'Signing in…' : 'Sign In'}
                 </button>
@@ -345,10 +298,10 @@ export default function LoginPage() {
           {/* ── Forgot password — step 1: enter email ──────────────────── */}
           {mode === 'forgot-email' && (
             <>
-              <h2 className="mb-1" style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', fontWeight: 700, color: '#fff' }}>
+              <h2 className="mb-1" style={h2Style}>
                 Reset Password
               </h2>
-              <p className="mb-6 text-sm" style={{ color: 'rgba(255,255,255,0.45)' }}>
+              <p className="mb-6 text-sm leading-relaxed" style={{ color: C.muted }}>
                 Enter your registered email address. We'll send you a 6-digit code.
               </p>
 
@@ -369,7 +322,7 @@ export default function LoginPage() {
                 </div>
 
                 {fpError && (
-                  <p className="text-sm rounded-lg px-4 py-2.5" style={{ background: 'rgba(220,38,38,0.15)', color: '#f87171' }}>
+                  <p role="alert" className="text-sm rounded-lg px-4 py-2.5" style={errorStyle}>
                     {fpError}
                   </p>
                 )}
@@ -377,14 +330,8 @@ export default function LoginPage() {
                 <button
                   type="submit"
                   disabled={fpLoading}
-                  className="w-full py-3.5 rounded-lg font-semibold text-sm transition-all"
-                  style={{
-                    background: fpLoading ? 'rgba(26,123,138,0.5)' : 'var(--teal)',
-                    color: '#fff',
-                    fontFamily: 'var(--font-display)',
-                    letterSpacing: '0.05em',
-                    cursor: fpLoading ? 'not-allowed' : 'pointer',
-                  }}
+                  className="w-full h-11 rounded-lg font-semibold text-sm transition-opacity hover:opacity-90"
+                  style={primaryBtn(fpLoading)}
                 >
                   {fpLoading ? 'Sending…' : 'Send Reset Code'}
                 </button>
@@ -393,7 +340,7 @@ export default function LoginPage() {
                   type="button"
                   onClick={goToLogin}
                   className="w-full text-sm text-center transition-opacity hover:opacity-80"
-                  style={{ color: 'rgba(255,255,255,0.4)' }}
+                  style={{ color: C.moss }}
                 >
                   Back to Sign In
                 </button>
@@ -404,11 +351,11 @@ export default function LoginPage() {
           {/* ── Forgot password — step 2: enter code + new password ────── */}
           {mode === 'forgot-code' && (
             <>
-              <h2 className="mb-1" style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', fontWeight: 700, color: '#fff' }}>
+              <h2 className="mb-1" style={h2Style}>
                 Enter Reset Code
               </h2>
-              <p className="mb-6 text-sm" style={{ color: 'rgba(255,255,255,0.45)' }}>
-                A 6-digit code was sent to <span style={{ color: 'var(--teal)' }}>{fpEmail}</span>. Enter it below along with your new password.
+              <p className="mb-6 text-sm leading-relaxed" style={{ color: C.muted }}>
+                A 6-digit code was sent to <span style={{ color: C.narra, fontWeight: 600 }}>{fpEmail}</span>. Enter it below along with your new password.
               </p>
 
               <form onSubmit={handleResetPassword} className="space-y-4">
@@ -446,7 +393,7 @@ export default function LoginPage() {
                       type="button"
                       onClick={() => setShowNewPw(!showNewPw)}
                       className="absolute right-3 top-1/2 -translate-y-1/2 p-1"
-                      style={{ color: 'rgba(255,255,255,0.4)' }}
+                      style={{ color: C.muted }}
                       tabIndex={-1}
                     >
                       {showNewPw ? <EyeOff size={15} /> : <Eye size={15} />}
@@ -470,7 +417,7 @@ export default function LoginPage() {
                 </div>
 
                 {fpError && (
-                  <p className="text-sm rounded-lg px-4 py-2.5" style={{ background: 'rgba(220,38,38,0.15)', color: '#f87171' }}>
+                  <p role="alert" className="text-sm rounded-lg px-4 py-2.5" style={errorStyle}>
                     {fpError}
                   </p>
                 )}
@@ -478,14 +425,8 @@ export default function LoginPage() {
                 <button
                   type="submit"
                   disabled={fpLoading || fpCode.length !== 6}
-                  className="w-full py-3.5 rounded-lg font-semibold text-sm transition-all"
-                  style={{
-                    background: fpLoading || fpCode.length !== 6 ? 'rgba(26,123,138,0.5)' : 'var(--teal)',
-                    color: '#fff',
-                    fontFamily: 'var(--font-display)',
-                    letterSpacing: '0.05em',
-                    cursor: fpLoading || fpCode.length !== 6 ? 'not-allowed' : 'pointer',
-                  }}
+                  className="w-full h-11 rounded-lg font-semibold text-sm transition-opacity hover:opacity-90"
+                  style={primaryBtn(fpLoading || fpCode.length !== 6)}
                 >
                   {fpLoading ? 'Resetting…' : 'Reset Password'}
                 </button>
@@ -495,7 +436,7 @@ export default function LoginPage() {
                     type="button"
                     onClick={() => { setMode('forgot-email'); setFpError('') }}
                     className="text-sm transition-opacity hover:opacity-80"
-                    style={{ color: 'rgba(255,255,255,0.4)' }}
+                    style={{ color: C.moss }}
                   >
                     Resend code
                   </button>
@@ -503,7 +444,7 @@ export default function LoginPage() {
                     type="button"
                     onClick={goToLogin}
                     className="text-sm transition-opacity hover:opacity-80"
-                    style={{ color: 'rgba(255,255,255,0.4)' }}
+                    style={{ color: C.moss }}
                   >
                     Back to Sign In
                   </button>
@@ -517,29 +458,24 @@ export default function LoginPage() {
             <div className="flex flex-col items-center text-center gap-5 py-4">
               <div
                 className="w-14 h-14 rounded-full flex items-center justify-center"
-                style={{ background: 'rgba(26,123,138,0.15)', border: '1.5px solid rgba(26,123,138,0.4)' }}
+                style={{ background: '#EEF5E8', border: '1.5px solid #CFE0BF' }}
               >
-                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--teal)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#2F5A28" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <polyline points="20 6 9 17 4 12" />
                 </svg>
               </div>
               <div>
-                <h2 className="mb-1" style={{ fontFamily: 'var(--font-display)', fontSize: '1.2rem', fontWeight: 700, color: '#fff' }}>
+                <h2 className="mb-1" style={h2Style}>
                   Password Reset
                 </h2>
-                <p className="text-sm" style={{ color: 'rgba(255,255,255,0.45)' }}>
+                <p className="text-sm leading-relaxed" style={{ color: C.muted }}>
                   Your password has been updated successfully. You can now sign in with your new password.
                 </p>
               </div>
               <button
                 onClick={goToLogin}
-                className="w-full py-3.5 rounded-lg font-semibold text-sm transition-all"
-                style={{
-                  background: 'var(--teal)',
-                  color: '#fff',
-                  fontFamily: 'var(--font-display)',
-                  letterSpacing: '0.05em',
-                }}
+                className="w-full h-11 rounded-lg font-semibold text-sm transition-opacity hover:opacity-90"
+                style={primaryBtn(false)}
               >
                 Back to Sign In
               </button>
@@ -548,8 +484,8 @@ export default function LoginPage() {
 
         </div>
 
-        <p className="text-center mt-6 text-xs" style={{ color: 'rgba(255,255,255,0.2)' }}>
-          Sapphire Clinics East, Inc. · Internal Use Only
+        <p className="text-center mt-6 text-xs" style={{ color: 'rgba(255,255,255,0.85)' }}>
+          Internal access only · Sapphire Clinics East staff
         </p>
       </div>
     </div>
