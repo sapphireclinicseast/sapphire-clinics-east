@@ -9,7 +9,7 @@ const WRITE_ROLES = ['ADMIN', 'PAYROLL_OFFICER', 'ACCOUNTANT', 'BOOKKEEPER', 'AH
 // services whose name contains "- OP" are GL (outpatient guarantee letter). Both
 // bill to a payor → their sales are receivables (isHmoGl = true).
 const HMO_PREFIXES = [
-  'AMAPHIL', 'AVEGA', 'ASIANCARE', 'HPPI', 'INLIFE', 'INSULAR', 'INTELLICARE',
+  'AMAPHIL', 'AVEGA', 'ASIANCARE', 'HPPI', 'ICARE', 'INLIFE', 'INSULAR', 'INTELLICARE',
   'LACSON & LACSON', 'LIFE AND HEALTH HMP', 'MEDASIA', 'MEDOCARE', 'PACIFIC CROSS',
   'PHILBRITISH', 'PHILCARE', 'SUNLIFE', 'VALUCARE',
 ]
