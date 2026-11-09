@@ -5,6 +5,8 @@ import { HandCoins, Plus, Loader2, X, Trash2, Eye } from 'lucide-react'
 import { SortFilterHead, applySortFilter } from '@/components/SortFilterHead'
 import { ScanUpload } from '@/components/ScanUpload'
 import { DownloadBar } from '@/components/DownloadBar'
+import { NameCombobox } from '@/components/NameCombobox'
+import { HR_PAGE_CLASS, HR_PAGE_STYLE, HrShimmerStyle, StatCard, hrBtn } from '@/components/ui/hr-look'
 import { downloadXlsx, downloadPdf, inDateRange, type ExportFormat } from '@/lib/export'
 
 const BRANCHES = [
@@ -112,59 +114,132 @@ export default function CashAdvancesPage() {
     else downloadPdf({ title: 'Cash Advances', subtitle: `${BRANCHES.find(b => b.value === branch)?.label} · ${dlFrom || 'start'} → ${dlTo || 'end'}`, headers, rows: body, landscape: true })
   }
 
+  const sum = (k: 'amount' | 'liquidated' | 'returned' | 'reimbursed' | 'outstanding', list: Advance[] = rows) => list.reduce((s, a) => s + a[k], 0)
+  const openRows = rows.filter(a => a.status !== 'CLOSED')
+  const closedRows = rows.filter(a => a.status === 'CLOSED')
+  const reimbursedAll = sum('reimbursed')
+  const setStatusFilter = (v: '' | 'OPEN' | 'CLOSED') => setFilters(f => ({ ...f, status: v }))
+  const statusFilter = (filters.status || '').toUpperCase()
+
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-2xl font-bold flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
-          <HandCoins size={22} style={{ color: 'var(--teal)' }} /> Cash Advances
-        </h1>
-        {tab === 'advances' && <button onClick={() => setShowRelease(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}><Plus size={15} /> Release Advance</button>}
-      </div>
-      <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Cash released to staff up front (event floats). Liquidate receipts and return the unspent balance. Releases/returns hit Bank Reconciliation; liquidations hit the Income Statement.</p>
-
-      {/* Sub-tabs */}
-      <div className="flex items-center gap-1 border-b" style={{ borderColor: 'var(--light-gray)' }}>
-        {([['advances', 'Advances'], ['flowchart', 'Flowchart']] as const).map(([v, label]) => (
-          <button key={v} onClick={() => setTab(v)} className="px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors"
-            style={{ borderColor: tab === v ? 'var(--teal)' : 'transparent', color: tab === v ? 'var(--teal)' : 'var(--mid-gray)' }}>{label}</button>
-        ))}
-      </div>
-
-      {tab === 'flowchart' ? <CashAdvanceFlowchart /> : (<>
-      <div className="flex items-center gap-2 flex-wrap">
-        <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: 'var(--light-gray)' }}>
-          {BRANCHES.map(b => <button key={b.value} onClick={() => setBranch(b.value)} className="px-4 py-2 text-xs font-semibold" style={branch === b.value ? { background: 'var(--teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' }}>{b.label}</button>)}
+    <div className={HR_PAGE_CLASS} style={HR_PAGE_STYLE}>
+      <HrShimmerStyle />
+      {/* SortFilterHead is shared; give its header the HR look on this page only. */}
+      <style>{`.ca-grid thead th{background:var(--hr-head)!important;border-color:var(--hr-line)!important}.ca-grid thead th>button{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--mid-gray)}.ca-grid thead th input{background:#fff;border-color:var(--light-gray)}`}</style>
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold leading-tight flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+            <HandCoins size={22} style={{ color: 'var(--teal)' }} /> Cash Advances
+          </h1>
+          <p className="mt-1 text-[13px] max-w-3xl" style={{ color: 'var(--mid-gray)' }}>
+            Cash released to staff up front (event floats). Liquidate the receipts and return the unspent balance. Releases and returns go to Bank Reconciliation; liquidations go to the Income Statement.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {BRANCHES.map(b => (
+            <button key={b.value} onClick={() => setBranch(b.value)} aria-pressed={branch === b.value}
+              className="px-3.5 py-1.5 rounded-full border text-[13px] font-semibold whitespace-nowrap transition-colors"
+              style={branch === b.value
+                ? { background: 'var(--teal)', borderColor: 'var(--teal)', color: '#fff', fontFamily: 'var(--font-display)' }
+                : { background: '#fff', borderColor: 'var(--light-gray)', color: 'var(--mid-gray)', fontFamily: 'var(--font-display)' }}>{b.label}</button>
+          ))}
+          <span className="w-px h-6 mx-1" style={{ background: 'var(--light-gray)' }} />
+          <button onClick={() => { setTab('advances'); setShowRelease(true) }} className={hrBtn.primary} style={{ background: 'var(--teal)' }}>
+            <Plus size={15} /> Release advance
+          </button>
         </div>
       </div>
 
-      <DownloadBar from={dlFrom} to={dlTo} onFrom={setDlFrom} onTo={setDlTo} onExport={exportRows} dateLabel="Release date" note={`${shown.filter(a => inDateRange(a.dateReleased, dlFrom, dlTo)).length} in range`} />
+      {/* Tabs */}
+      <div className="border-b-2" style={{ borderColor: 'var(--light-gray)' }}>
+      <div className="flex items-end gap-1 -mb-[2px] max-w-full overflow-x-auto" role="tablist">
+        {([['advances', 'Advances'], ['flowchart', 'How it works']] as const).map(([v, label]) => (
+          <button key={v} onClick={() => setTab(v)} className="px-4 py-2.5 text-[13px] font-semibold border-b-2 whitespace-nowrap transition-colors hover:text-[var(--teal)]"
+            style={{ borderColor: tab === v ? 'var(--teal)' : 'transparent', color: tab === v ? 'var(--teal)' : 'var(--mid-gray)' }}>{label}</button>
+        ))}
+      </div>
+      </div>
 
-      <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
-        <table className="w-full text-sm">
-          <SortFilterHead cols={cols} sortKey={sort.key} sortDir={sort.dir} filters={filters} onToggleSort={toggleSort} onFilter={(k, v) => setFilters(f => ({ ...f, [k]: v }))} trailing />
-          <tbody>
-            {loading ? (
-              <tr><td colSpan={10} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
-            ) : shown.map(a => (
-              <tr key={a.id} className="border-t hover:bg-gray-50 cursor-pointer" style={{ borderColor: 'var(--light-gray)', background: a.status === 'CLOSED' ? '#f0fdf4' : undefined }} onClick={() => setDetailId(a.id)}>
-                <td className="px-3 py-2.5 font-mono font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{a.refNumber}</td>
-                <td className="px-3 py-2.5 text-xs whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{String(a.dateReleased).slice(0, 10)}</td>
-                <td className="px-3 py-2.5 text-xs" style={{ color: 'var(--charcoal)' }}>{a.accountableName}</td>
-                <td className="px-3 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{a.purpose}</td>
-                <td className="px-3 py-2.5 text-right font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>₱{peso(a.amount)}</td>
-                <td className="px-3 py-2.5 text-right whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>₱{peso(a.liquidated)}</td>
-                <td className="px-3 py-2.5 text-right whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>₱{peso(a.returned)}</td>
-                <td className="px-3 py-2.5 text-right font-semibold whitespace-nowrap" style={{ color: a.outstanding > 0.005 ? '#b45309' : a.outstanding < -0.005 ? '#dc2626' : '#166534' }}>₱{peso(a.outstanding)}</td>
-                <td className="px-3 py-2.5"><span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={a.status === 'CLOSED' ? { background: '#dcfce7', color: '#166534' } : { background: '#fef3c7', color: '#92400e' }}>{a.status === 'CLOSED' ? 'Closed' : 'Open'}</span></td>
-                <td className="px-3 py-2.5 text-right whitespace-nowrap">
-                  <button onClick={e => { e.stopPropagation(); setDetailId(a.id) }} className="text-xs font-semibold" style={{ color: 'var(--teal)' }}>Manage</button>
-                  <button onClick={e => { e.stopPropagation(); deleteAdvance(a) }} title="Delete advance" className="ml-2 p-1 rounded hover:bg-red-50 align-middle"><Trash2 size={13} style={{ color: '#dc2626' }} /></button>
-                </td>
-              </tr>
+      {tab === 'flowchart' ? <CashAdvanceFlowchart /> : (<>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatCard compact loading={loading} label="Outstanding" value={`₱${peso(sum('outstanding', openRows))}`}
+          sub={`${openRows.length} open advance${openRows.length === 1 ? '' : 's'} · click to show`}
+          tone={openRows.length ? 'amber' : 'zero'} active={statusFilter === 'OPEN'}
+          onClick={() => setStatusFilter(statusFilter === 'OPEN' ? '' : 'OPEN')} />
+        <StatCard compact loading={loading} label="Released" value={`₱${peso(sum('amount'))}`}
+          sub={`${rows.length} advance${rows.length === 1 ? '' : 's'}${reimbursedAll > 0.005 ? ` · ₱${peso(reimbursedAll)} reimbursed` : ''}`}
+          tone="zero" accent={rows.length ? { line: '#4A8073' } : undefined} />
+        <StatCard compact loading={loading} label="Liquidated" value={`₱${peso(sum('liquidated'))}`}
+          sub="Receipts booked as expenses" tone={sum('liquidated') > 0.005 ? 'blue' : 'zero'} />
+        <StatCard compact loading={loading} label="Closed" value={String(closedRows.length)}
+          sub={`₱${peso(sum('returned'))} unspent cash returned`} tone={closedRows.length ? 'green' : 'zero'}
+          active={statusFilter === 'CLOSED'} onClick={() => setStatusFilter(statusFilter === 'CLOSED' ? '' : 'CLOSED')} />
+      </div>
+
+      <div className="rounded-lg border bg-white overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+        <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-b" style={{ background: '#fcfdfa', borderColor: 'var(--light-gray)' }}>
+          <div className="inline-flex rounded-lg border p-0.5 bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+            {([['', 'All'], ['OPEN', 'Open'], ['CLOSED', 'Closed']] as const).map(([v, label]) => (
+              <button key={label} onClick={() => setStatusFilter(v)} aria-pressed={statusFilter === v}
+                className="h-7 px-3 rounded-md text-xs font-semibold transition-colors"
+                style={statusFilter === v ? { background: 'var(--teal)', color: '#fff' } : { color: 'var(--mid-gray)' }}>{label}</button>
             ))}
-            {!loading && shown.length === 0 && <tr><td colSpan={10} className="text-center py-10 text-sm" style={{ color: 'var(--mid-gray)' }}>No cash advances yet.</td></tr>}
-          </tbody>
-        </table>
+          </div>
+          <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>{shown.length} of {rows.length} · click a row to liquidate, return or reimburse</span>
+          <div className="ml-auto hidden md:flex items-center gap-3 text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#d97706' }} />Open</span>
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#059669' }} />Closed</span>
+          </div>
+        </div>
+        <div className="overflow-auto ca-grid">
+          <table className="w-full text-sm">
+            <SortFilterHead cols={cols} sortKey={sort.key} sortDir={sort.dir} filters={filters} onToggleSort={toggleSort} onFilter={(k, v) => setFilters(f => ({ ...f, [k]: v }))} trailing />
+            <tbody>
+              {loading ? (
+                [0, 1, 2].map(i => <tr key={i} className="border-t" style={{ borderColor: 'var(--hr-line)' }}><td colSpan={10} className="px-4 py-2.5"><div className="h-5 rounded hr-shimmer" /></td></tr>)
+              ) : shown.map(a => {
+                const closed = a.status === 'CLOSED'
+                return (
+                  <tr key={a.id} className="border-t cursor-pointer transition-colors hover:bg-[#fafcf6]" style={{ borderColor: 'var(--hr-line)' }} onClick={() => setDetailId(a.id)}>
+                    <td className="px-3 py-2.5 font-mono font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)', boxShadow: `inset 4px 0 0 ${closed ? '#059669' : '#d97706'}` }}>{a.refNumber}</td>
+                    <td className="px-3 py-2.5 text-xs whitespace-nowrap font-mono" style={{ color: 'var(--mid-gray)' }}>{String(a.dateReleased).slice(0, 10)}</td>
+                    <td className="px-3 py-2.5 text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>{a.accountableName}</td>
+                    <td className="px-3 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{a.purpose}</td>
+                    <td className="px-3 py-2.5 text-right font-mono font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>₱{peso(a.amount)}</td>
+                    <td className="px-3 py-2.5 text-right font-mono whitespace-nowrap" style={{ color: a.liquidated ? 'var(--charcoal)' : 'var(--hr-faint)' }}>₱{peso(a.liquidated)}</td>
+                    <td className="px-3 py-2.5 text-right font-mono whitespace-nowrap" style={{ color: a.returned ? 'var(--charcoal)' : 'var(--hr-faint)' }}>₱{peso(a.returned)}</td>
+                    <td className="px-3 py-2.5 text-right font-mono font-bold whitespace-nowrap" style={{ color: a.outstanding > 0.005 ? '#b45309' : a.outstanding < -0.005 ? '#dc2626' : '#047857' }}>₱{peso(a.outstanding)}</td>
+                    <td className="px-3 py-2.5"><span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={closed ? { background: '#dcfce7', color: '#166534' } : { background: '#fef3c7', color: '#92400e' }}>{closed ? 'Closed' : 'Open'}</span></td>
+                    <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                      <button onClick={e => { e.stopPropagation(); setDetailId(a.id) }} className={hrBtn.ghost} style={{ borderColor: 'var(--light-gray)', color: 'var(--deep-teal)' }}>Manage</button>
+                      <button onClick={e => { e.stopPropagation(); deleteAdvance(a) }} title="Delete advance" aria-label={`Delete ${a.refNumber}`} className="ml-1.5 p-1.5 rounded hover:bg-red-50 align-middle"><Trash2 size={13} style={{ color: '#dc2626' }} /></button>
+                    </td>
+                  </tr>
+                )
+              })}
+              {!loading && shown.length === 0 && (
+                <tr><td colSpan={10} className="text-center py-12 text-[13px]" style={{ color: 'var(--mid-gray)' }}>
+                  {rows.length === 0 ? <>No cash advances for this branch yet. Click <strong>Release advance</strong> to record one.</> : 'No advances match these filters.'}
+                </td></tr>
+              )}
+            </tbody>
+            {!loading && shown.length > 0 && (
+              <tfoot>
+                <tr className="border-t-2" style={{ borderColor: 'var(--light-gray)', background: 'var(--hr-head)' }}>
+                  <td colSpan={4} className="px-3 py-2.5 text-[11px] font-bold uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)' }}>Total · {shown.length} advance{shown.length === 1 ? '' : 's'}</td>
+                  <td className="px-3 py-2.5 text-right font-mono font-bold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>₱{peso(sum('amount', shown))}</td>
+                  <td className="px-3 py-2.5 text-right font-mono font-bold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>₱{peso(sum('liquidated', shown))}</td>
+                  <td className="px-3 py-2.5 text-right font-mono font-bold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>₱{peso(sum('returned', shown))}</td>
+                  <td className="px-3 py-2.5 text-right font-mono font-bold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>₱{peso(sum('outstanding', shown))}</td>
+                  <td colSpan={2} />
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+        <div className="border-t px-4 py-2.5" style={{ borderColor: 'var(--light-gray)', background: '#fcfdfa' }}>
+          <DownloadBar from={dlFrom} to={dlTo} onFrom={setDlFrom} onTo={setDlTo} onExport={exportRows} dateLabel="Release date" note={`${shown.filter(a => inDateRange(a.dateReleased, dlFrom, dlTo)).length} in range`} />
+        </div>
       </div>
       </>)}
 
@@ -202,11 +277,10 @@ function ReleaseModal({ branch, banks, onClose, onSaved }: { branch: string; ban
   }
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl p-6 w-full max-w-md max-h-[88vh] overflow-auto" onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-xl border shadow-xl p-6 w-full max-w-md max-h-[88vh] overflow-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4"><h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>Release Cash Advance</h2><button onClick={onClose}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button></div>
         <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Accountable staff</label>
-        <input list="ca-staff" value={accountableName} onChange={e => setName(e.target.value)} placeholder="Type or pick a staff name…" className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }} />
-        <datalist id="ca-staff">{staff.map(n => <option key={n} value={n} />)}</datalist>
+        <div className="mb-3"><NameCombobox value={accountableName} onChange={setName} options={staff} placeholder="Type or pick a staff name…" className="w-full px-3 py-2 rounded-lg border text-sm" style={{ borderColor: 'var(--light-gray)' }} /></div>
         <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Purpose / Event</label>
         <input value={purpose} onChange={e => setPurpose(e.target.value)} placeholder="e.g. Team building — emergency fund" className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }} />
         <div className="grid grid-cols-2 gap-3 mb-3">
@@ -284,7 +358,7 @@ function DetailModal({ id, banks, branch, onClose, onChanged }: { id: string; ba
   const isLiq = form.kind === 'LIQUIDATION'
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 overflow-y-auto" onClick={onClose}>
-      <div className="bg-white rounded-2xl p-6 w-full max-w-3xl my-8" onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-xl border shadow-xl p-6 w-full max-w-3xl my-8" onClick={e => e.stopPropagation()}>
         {!d ? <div className="py-10 text-center"><Loader2 size={18} className="inline animate-spin" /></div> : (<>
           <div className="flex items-center justify-between mb-1">
             <h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>{d.refNumber} · {d.accountableName}</h2>
@@ -362,7 +436,7 @@ function DetailModal({ id, banks, branch, onClose, onChanged }: { id: string; ba
                 <div><label className="block text-[11px] font-semibold mb-0.5" style={{ color: 'var(--mid-gray)' }}>VAT</label><select value={form.vatable} onChange={e => setForm(f => ({ ...f, vatable: e.target.value }))} className="w-full px-2 py-1.5 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }}>{VATABLE.map(v => <option key={v} value={v}>{v}</option>)}</select></div>
                 <div><label className="block text-[11px] font-semibold mb-0.5" style={{ color: 'var(--mid-gray)' }}>SI / OR #</label><input value={form.siNumber} onChange={e => setForm(f => ({ ...f, siNumber: e.target.value }))} className="w-full px-2 py-1.5 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} /></div>
                 <div><label className="block text-[11px] font-semibold mb-0.5" style={{ color: 'var(--mid-gray)' }}>Gross amount</label><input value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} inputMode="decimal" placeholder="0.00" className="w-full px-2 py-1.5 rounded-lg border text-xs font-mono" style={{ borderColor: 'var(--light-gray)' }} /></div>
-                <div className="col-span-2 sm:col-span-1"><label className="block text-[11px] font-semibold mb-0.5" style={{ color: 'var(--mid-gray)' }}>Expense account</label><input list="ca-exp" value={form.accountTitle} onChange={e => setForm(f => ({ ...f, accountTitle: e.target.value }))} placeholder="Account title…" className="w-full px-2 py-1.5 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} /><datalist id="ca-exp">{expAccts.map(a => <option key={a} value={a} />)}</datalist></div>
+                <div className="col-span-2 sm:col-span-1"><label className="block text-[11px] font-semibold mb-0.5" style={{ color: 'var(--mid-gray)' }}>Expense account</label><NameCombobox value={form.accountTitle} onChange={v => setForm(f => ({ ...f, accountTitle: v }))} options={expAccts} placeholder="Account title…" className="w-full px-2 py-1.5 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} /></div>
                 <div><label className="block text-[11px] font-semibold mb-0.5" style={{ color: 'var(--mid-gray)' }}>EWT</label><select value={form.hasEwt ? 'Yes' : 'No'} onChange={e => { const yes = e.target.value === 'Yes'; setForm(f => ({ ...f, hasEwt: yes, ewtRate: yes ? (f.ewtRate || '5') : '' })) }} className="w-full px-2 py-1.5 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }}><option value="No">No</option><option value="Yes">Yes</option></select></div>
                 <div><label className="block text-[11px] font-semibold mb-0.5" style={{ color: 'var(--mid-gray)' }}>EWT rate</label><select value={form.ewtRate} disabled={!form.hasEwt} onChange={e => setForm(f => ({ ...f, ewtRate: e.target.value }))} className="w-full px-2 py-1.5 rounded-lg border text-xs disabled:opacity-50" style={{ borderColor: 'var(--light-gray)' }}><option value=""></option><option value="5">5%</option><option value="10">10%</option></select></div>
                 <div className="col-span-2 sm:col-span-3"><label className="block text-[11px] font-semibold mb-0.5" style={{ color: 'var(--mid-gray)' }}>Description</label><input value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="w-full px-2 py-1.5 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} /></div>
@@ -386,7 +460,7 @@ function DetailModal({ id, banks, branch, onClose, onChanged }: { id: string; ba
 
       {newSupplierPrompt && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={() => setNewSupplierPrompt(null)}>
-          <div className="bg-white rounded-2xl p-6 w-full max-w-sm" onClick={e => e.stopPropagation()}>
+          <div className="bg-white rounded-xl border shadow-xl p-6 w-full max-w-sm" onClick={e => e.stopPropagation()}>
             <h2 className="text-lg font-bold mb-2" style={{ color: 'var(--charcoal)' }}>Add to Suppliers?</h2>
             <p className="text-sm mb-1" style={{ color: 'var(--mid-gray)' }}>This supplier isn&apos;t in your Suppliers list yet:</p>
             <div className="rounded-xl border p-3 mb-4" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
@@ -416,13 +490,13 @@ function CashAdvanceFlowchart() {
     { n: 6, title: 'Advance closes', who: '', desc: 'When Outstanding = Released + Reimbursed − Liquidated − Returned reaches ₱0, the advance is marked Closed. The Due from Employees balance nets to zero.', je: null, tag: null },
   ]
   return (
-    <div className="rounded-2xl border bg-white p-6" style={{ borderColor: 'var(--light-gray)' }}>
+    <div className="rounded-lg border bg-white p-6" style={{ borderColor: 'var(--light-gray)' }}>
       <h2 className="text-lg font-bold mb-1" style={{ color: 'var(--charcoal)' }}>Cash Advance Workflow</h2>
       <p className="text-xs mb-6" style={{ color: 'var(--mid-gray)' }}>For event floats — cash given up front, liquidated later, unspent balance returned. Every step posts a balanced journal entry so it flows to Bank Reconciliation and the Income Statement automatically.</p>
       <div className="flex flex-col items-center">
         {steps.map((s, i, arr) => (
           <div key={s.n} className="w-full max-w-2xl flex flex-col items-center">
-            <div className="w-full rounded-2xl border p-4 flex items-start gap-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
+            <div className="w-full rounded-lg border p-4 flex items-start gap-3" style={{ borderColor: 'var(--light-gray)', background: '#fcfdfa', borderLeft: '4px solid var(--teal)' }}>
               <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold" style={{ background: 'var(--teal)' }}>{s.n}</div>
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>{s.title}{s.who && <span className="ml-2 px-2 py-0.5 rounded-full text-[10px] font-semibold align-middle" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>{s.who}</span>}</p>
