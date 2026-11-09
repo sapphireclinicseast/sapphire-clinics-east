@@ -4,15 +4,17 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   Wallet,
   FileText,
-  Loader2,
   Download,
   Eye,
   Lock,
   Building2,
   Calendar as CalendarIcon,
-  X as XIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import {
+  BTN_SM, CARD_STYLE, EmptyState, ErrorCard, KpiCard, KpiSkeleton, PAGE, PageHeader, PRIMARY_STYLE, RowsSkeleton,
+  SECONDARY_STYLE, StatusPill, Tag,
+} from '@/components/hub/ui'
 import { branchLabel, toPatientBranchCode } from '@/lib/branch-label'
 import BranchSwitcher, { useBranchSwitcher } from '@/components/BranchSwitcher'
 
@@ -133,93 +135,46 @@ export default function PayrollPage() {
   )
 
   return (
-    <div className="max-w-5xl mx-auto">
+    <div className={PAGE}>
       {/* Branch switcher for interbranch clinicians */}
-      {isMultiBranch && (
-        <div className="mb-4 animate-fade-up">
-          <BranchSwitcher />
-        </div>
-      )}
+      {isMultiBranch && <BranchSwitcher />}
 
-      {/* Hero */}
-      <div className="hero-gradient rounded-2xl px-8 py-8 mb-6 animate-fade-up">
-        <div className="relative z-10 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-white/15 flex items-center justify-center backdrop-blur-sm border border-white/20">
-              <Wallet className="w-6 h-6 text-white" />
-            </div>
-            <div className="min-w-0">
-              <h1 className="text-xl font-bold text-white tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
-                Payroll
-              </h1>
-              <p className="text-white/70 text-sm mt-1">
-                Locked payslips from the accounting hub. Drafts and unfinalized
-                cutoffs aren&rsquo;t shown here.
-              </p>
-            </div>
-          </div>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/Codepaca.svg" alt="Aura alpaca mascot" width={200} height={200} style={{ display: 'block', flexShrink: 0 }} />
-        </div>
-      </div>
+      <PageHeader
+        eyebrow="My account"
+        title="Payroll"
+        description="Locked payslips from the accounting hub. Drafts and unfinalized cutoffs aren’t shown here."
+      />
 
-      {/* Summary card */}
+      {/* Summary */}
       {data && visiblePayslips.length > 0 && (
-        <div className="card-static !p-4 mb-6 animate-fade-up stagger-1 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-[var(--sage-tint)] text-[var(--moss)] flex items-center justify-center">
-              <Lock size={18} />
-            </div>
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--mid-gray)]">Locked Payslips</p>
-              <p className="text-[20px] font-bold text-[var(--narra)] leading-tight" style={{ fontFamily: 'var(--font-display)' }}>
-                {visiblePayslips.length}
-              </p>
-            </div>
-          </div>
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--mid-gray)] text-right">Lifetime Net Pay</p>
-            <p className="text-[20px] font-bold text-[var(--narra)] leading-tight text-right" style={{ fontFamily: 'var(--font-display)' }}>
-              {PHP.format(total)}
-            </p>
-          </div>
+        <div className="grid grid-cols-2 gap-3">
+          <KpiCard label="Payslips" value={visiblePayslips.length} sub="Locked by accounting" icon={<Lock size={16} />} />
+          <KpiCard label="Total net pay" value={PHP.format(total)} sub="All payslips shown" icon={<Wallet size={16} />} />
         </div>
       )}
 
       {/* Body */}
       {loading ? (
-        <div className="flex flex-col items-center justify-center py-20 gap-3">
-          <Loader2 className="w-7 h-7 text-[var(--moss)] animate-spin" />
-          <p className="text-sm text-[var(--mid-gray)]">Loading payslips...</p>
-        </div>
+        <>
+          <div className="grid grid-cols-2 gap-3"><KpiSkeleton count={2} /></div>
+          <div className="rounded-xl" style={CARD_STYLE}><RowsSkeleton rows={4} label="Loading payslips" /></div>
+        </>
       ) : error ? (
-        <div className="card-static text-center py-12 animate-fade-up">
-          <p className="text-[13px] text-[var(--clay)] font-semibold">{error}</p>
-          <button
-            onClick={fetchPayslips}
-            className="mt-3 text-[12px] font-semibold text-[var(--moss)] hover:underline"
-          >
-            Try again
-          </button>
-        </div>
+        <ErrorCard title="Couldn't load your payslips" hint={error} onRetry={fetchPayslips} />
       ) : !data || visiblePayslips.length === 0 ? (
-        <div className="card-static text-center py-14 animate-fade-up">
-          <div className="w-14 h-14 rounded-2xl bg-[var(--paper-2)] flex items-center justify-center mx-auto mb-3">
-            <Lock size={22} className="text-[var(--mid-gray)]" />
-          </div>
-          <p className="text-[13px] text-[var(--narra)] font-semibold mb-1">No locked payslips yet.</p>
-          <p className="text-[12px] text-[var(--mid-gray)] max-w-sm mx-auto">
-            Payslips appear here once accounting locks them in. Cutoffs still in
-            <span className="font-semibold"> Draft</span> or
-            <span className="font-semibold"> Final</span> review remain hidden.
-          </p>
-        </div>
+        <section className="rounded-xl" style={CARD_STYLE}>
+          <EmptyState
+            icon="file"
+            title="No locked payslips yet"
+            hint={<>Payslips appear here once accounting locks them in. Cutoffs still in <strong>Draft</strong> or <strong>Final</strong> review remain hidden.</>}
+          />
+        </section>
       ) : (
-        <div className="space-y-2 animate-fade-up">
+        <ul className="rounded-xl overflow-hidden" style={CARD_STYLE} aria-label="Payslips">
           {visiblePayslips.map((p, i) => (
             <PayslipRow key={`${p.kind}-${p.id}`} payslip={p} index={i} />
           ))}
-        </div>
+        </ul>
       )}
     </div>
   )
@@ -230,73 +185,61 @@ function PayslipRow({ payslip, index }: {
 }) {
   const pdfHref = `/api/payroll/pdf?kind=${payslip.kind}&id=${encodeURIComponent(payslip.id)}`
   return (
-    <div
-      className={cn(
-        'card-static !p-4 flex flex-col sm:flex-row sm:items-center gap-3 animate-fade-up',
-        `stagger-${Math.min(index + 1, 10)}`
-      )}
+    <li
+      className="px-4 py-3.5 flex flex-col sm:flex-row sm:items-center gap-3 transition-colors hover:bg-[#F8FAF2]"
+      style={index ? { borderTop: '1px solid var(--light-gray)' } : undefined}
     >
       <div className="flex items-center gap-3 flex-1 min-w-0">
-        <div className="w-11 h-11 rounded-xl bg-[var(--sage-tint)] text-[var(--moss)] flex items-center justify-center shrink-0">
-          <FileText size={20} />
+        <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ background: 'var(--pale-teal)', color: 'var(--teal)' }}>
+          <FileText size={18} aria-hidden />
         </div>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-            <p className="font-bold text-[14px] text-[var(--narra)]" style={{ fontFamily: 'var(--font-display)' }}>
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
+            <p className="font-semibold text-[14px]" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
               {fmtCutoff(payslip.cutoffPeriod)}
             </p>
-            <span className="text-[9.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-[var(--sage)] text-white">
-              <Lock size={9} className="inline -mt-0.5 mr-0.5" />
-              Locked
-            </span>
-            <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-[var(--paper-2)] text-[var(--mid-gray)] border border-[var(--paper-3)]">
-              {payslip.kind === 'employee' ? 'Employee' : 'Consultant'}
-            </span>
+            <StatusPill tone="success">Locked</StatusPill>
+            <Tag>{payslip.kind === 'employee' ? 'Employee' : 'Consultant'}</Tag>
           </div>
-          <div className="flex items-center gap-3 text-[11px] text-[var(--mid-gray)] flex-wrap">
-            <span className="flex items-center gap-1"><Building2 size={11} /> {branchLabel(payslip.branch)}</span>
-            <span>·</span>
-            <span className="flex items-center gap-1"><CalendarIcon size={11} /> Issued {fmtIssued(payslip.issuedAt)}</span>
+          <div className="flex items-center gap-x-3 gap-y-0.5 text-xs flex-wrap" style={{ color: 'var(--mid-gray)' }}>
+            <span className="flex items-center gap-1"><Building2 size={12} aria-hidden /> {branchLabel(payslip.branch)}</span>
+            <span className="flex items-center gap-1"><CalendarIcon size={12} aria-hidden /> Issued {fmtIssued(payslip.issuedAt)}</span>
           </div>
         </div>
       </div>
 
-      <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-5 sm:shrink-0">
-        <div className="text-right">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--mid-gray)]">Net Pay</p>
-          <p className="text-[15px] font-bold text-[var(--narra)] leading-tight" style={{ fontFamily: 'var(--font-display)' }}>
+      <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-5 sm:shrink-0 pl-[52px] sm:pl-0">
+        <div className="sm:text-right">
+          <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)', fontFamily: 'var(--font-display)' }}>Net pay</p>
+          <p className="text-[15px] font-bold leading-tight" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)', fontVariantNumeric: 'tabular-nums' }}>
             {PHP.format(payslip.netPay)}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           <a
             href={pdfHref}
             target="_blank"
             rel="noopener noreferrer"
-            className={cn(
-              'inline-flex items-center gap-1.5 text-[12px] font-semibold px-3 py-1.5 rounded-lg border border-[var(--paper-3)] text-[var(--narra)] hover:bg-[var(--paper-2)] transition-colors',
-              !payslip.hasPdf && 'opacity-40 pointer-events-none'
-            )}
+            className={cn(BTN_SM, !payslip.hasPdf && 'opacity-40 pointer-events-none')}
+            style={SECONDARY_STYLE}
             title={payslip.hasPdf ? 'Open PDF in new tab' : 'No PDF on file'}
           >
-            <Eye size={14} />
+            <Eye size={14} aria-hidden />
             View
           </a>
           <a
             href={pdfHref}
             download={`payslip-${payslip.cutoffPeriod}.pdf`}
-            className={cn(
-              'inline-flex items-center gap-1.5 text-[12px] font-semibold px-3 py-1.5 rounded-lg bg-[var(--moss)] text-white hover:bg-[var(--narra)] transition-colors',
-              !payslip.hasPdf && 'opacity-40 pointer-events-none'
-            )}
+            className={cn(BTN_SM, 'text-white hover:!bg-[var(--deep-teal)] hover:opacity-90', !payslip.hasPdf && 'opacity-40 pointer-events-none')}
+            style={PRIMARY_STYLE}
             title={payslip.hasPdf ? 'Download PDF' : 'No PDF on file'}
           >
-            <Download size={14} />
+            <Download size={14} aria-hidden />
             PDF
           </a>
         </div>
       </div>
-    </div>
+    </li>
   )
 }
 
