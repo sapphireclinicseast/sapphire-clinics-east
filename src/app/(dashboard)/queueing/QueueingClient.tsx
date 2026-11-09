@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, useRef, useCallback, type CSSProperties, 
 import { localTodayStr } from '@/lib/utils'
 import { branchForRole } from '@/lib/role-branch'
 import {
-  UserPlus, Trash2, ChevronUp, ChevronDown, Upload, Tv2,
+  UserPlus, Trash2, ChevronUp, ChevronDown, GripVertical, Upload, Tv2,
   X, Plus, ExternalLink, ImageIcon, Film, RefreshCw,
   ListOrdered, Megaphone, CalendarDays, CalendarCheck, CheckCircle2, AlertTriangle,
   Loader2, Building2, Info, Clock, Users, Trophy, MessageSquareWarning, Timer, XCircle,
@@ -841,6 +841,46 @@ function AdsManager({ role }: { role: string }) {
     loadAds()
   }
 
+  // ── Drag-and-drop reorder ────────────────────────────────────────────────
+  // Drag a row by its handle and drop it above/below another row. The new
+  // order shows immediately and is saved in one request; if the save fails
+  // (e.g. the list changed in another tab) we reload the real order.
+  const [dragId, setDragId] = useState<string | null>(null)
+  const [dropTarget, setDropTarget] = useState<{ id: string; after: boolean } | null>(null)
+  const [reorderErr, setReorderErr] = useState('')
+
+  async function commitOrder(next: Ad[]) {
+    setAds(next)
+    setReorderErr('')
+    try {
+      const res = await fetch('/api/queue-ads/reorder', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: next.map(a => a.id) }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        setReorderErr(d.error ?? 'Could not save the new order.')
+        loadAds()
+      }
+    } catch {
+      setReorderErr('Could not save the new order.')
+      loadAds()
+    }
+  }
+
+  function handleDrop() {
+    if (!dragId || !dropTarget || dragId === dropTarget.id) { setDragId(null); setDropTarget(null); return }
+    const moving = ads.find(a => a.id === dragId)
+    if (!moving) return
+    const rest = ads.filter(a => a.id !== dragId)
+    const at = rest.findIndex(a => a.id === dropTarget.id)
+    const insertAt = at === -1 ? rest.length : at + (dropTarget.after ? 1 : 0)
+    const next = [...rest.slice(0, insertAt), moving, ...rest.slice(insertAt)]
+    setDragId(null); setDropTarget(null)
+    if (next.every((a, i) => a.id === ads[i].id)) return // dropped in place
+    void commitOrder(next)
+  }
+
   async function handleReorder(id: string, direction: 'up' | 'down') {
     await fetch(`/api/queue-ads/${id}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
@@ -925,13 +965,19 @@ function AdsManager({ role }: { role: string }) {
 
         {/* Ads list */}
         <DashCard title="Ad playlist" icon={<ListOrdered size={15} />} flush
-          description="Plays top to bottom. Use the arrows to change the order."
+          description="Plays top to bottom. Drag a row by its handle to move it, or use the arrows."
           action={adsLoaded && ads.length > 0 ? (
             <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full tabular-nums"
               style={{ background: SUBTLE_BG, color: 'var(--mid-gray)', border: '1px solid var(--light-gray)' }}>
               {ads.length} ad{ads.length === 1 ? '' : 's'} · {videoCount} video{videoCount === 1 ? '' : 's'}
             </span>
           ) : undefined}>
+          {reorderErr && (
+            <div role="alert" className="flex items-center gap-2 px-5 py-2.5 text-xs font-medium"
+              style={{ background: '#FDE4E4', color: '#991B1B', borderBottom: '1px solid #F5C2C2' }}>
+              <AlertTriangle size={13} /> {reorderErr}
+            </div>
+          )}
           {adsError && (
             <div role="alert" className="flex flex-wrap items-center gap-2 px-5 py-2.5 text-xs font-medium"
               style={{ background: '#FDE4E4', color: '#991B1B', borderBottom: '1px solid #F5C2C2' }}>
@@ -977,11 +1023,36 @@ function AdsManager({ role }: { role: string }) {
                     const deleting = deletingId === ad.id
                     return (
                       <tr key={ad.id} className="transition-colors hover:bg-[#F8FAF9]"
-                        style={{ borderTop: idx ? '1px solid var(--light-gray)' : undefined, opacity: deleting ? 0.5 : 1 }}>
-                        <td className="pl-4 pr-2 py-2.5 w-10">
-                          <span className="inline-flex items-center justify-center w-6 h-6 rounded-md text-[11px] font-bold tabular-nums"
-                            style={{ background: SUBTLE_BG, color: 'var(--charcoal)', border: '1px solid var(--light-gray)' }}>
-                            {idx + 1}
+                        draggable
+                        onDragStart={e => { setDragId(ad.id); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', ad.id) }}
+                        onDragEnd={() => { setDragId(null); setDropTarget(null) }}
+                        onDragOver={e => {
+                          if (!dragId) return
+                          e.preventDefault()
+                          e.dataTransfer.dropEffect = 'move'
+                          const r = e.currentTarget.getBoundingClientRect()
+                          const after = e.clientY > r.top + r.height / 2
+                          if (dropTarget?.id !== ad.id || dropTarget.after !== after) setDropTarget({ id: ad.id, after })
+                        }}
+                        onDrop={e => { e.preventDefault(); handleDrop() }}
+                        style={{
+                          borderTop: idx ? '1px solid var(--light-gray)' : undefined,
+                          opacity: deleting ? 0.5 : dragId === ad.id ? 0.4 : 1,
+                          // Drop indicator: a moss line above or below the hovered row.
+                          boxShadow: dropTarget?.id === ad.id && dragId !== ad.id
+                            ? (dropTarget.after ? 'inset 0 -3px 0 var(--teal)' : 'inset 0 3px 0 var(--teal)')
+                            : undefined,
+                        }}>
+                        <td className="pl-2 pr-2 py-2.5 w-14">
+                          <span className="inline-flex items-center gap-0.5">
+                            <span className="cursor-grab active:cursor-grabbing p-0.5 rounded" title="Drag to reorder" aria-hidden
+                              style={{ color: 'var(--mid-gray)' }}>
+                              <GripVertical size={15} />
+                            </span>
+                            <span className="inline-flex items-center justify-center min-w-6 h-6 px-1 rounded-md text-[11px] font-bold tabular-nums"
+                              style={{ background: SUBTLE_BG, color: 'var(--charcoal)', border: '1px solid var(--light-gray)' }}>
+                              {idx + 1}
+                            </span>
                           </span>
                         </td>
                         <td className="px-4 py-2.5 max-w-0 w-full">
