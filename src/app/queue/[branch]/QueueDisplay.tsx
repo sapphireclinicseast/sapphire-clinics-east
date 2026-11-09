@@ -822,19 +822,14 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
                   </div>
                 </div>
               ) : currentAd ? (
-                /* Centered square — preserves 1:1 uploads without stretching or bars */
+                /* Full-bleed — the ad fills the whole panel edge to edge (no
+                   side bands). Anything not ~6:5 is cropped from the centre;
+                   Ads Manager tells uploaders the ideal size (1152 × 960). */
                 <div style={{
-                  flex: 1,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  width: '100%', height: '100%',
                   position: 'absolute', inset: 0,
                 }}>
                   <div style={{
-                    width: 'min(100%, 100vh)',
-                    height: 'min(100%, 100vh)',
-                    aspectRatio: '1 / 1',
-                    maxWidth: '100%',
-                    maxHeight: '100%',
+                    width: '100%', height: '100%',
                     overflow: 'hidden',
                   }}>
                     {currentAd.mimeType.startsWith('video/') ? (
