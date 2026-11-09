@@ -15,7 +15,7 @@ const GROUPS: { label: string; hrefs: string[] }[] = [
   { label: 'Stock & assets', hrefs: ['/inventory', '/asset-management'] },
   { label: 'People & tax', hrefs: ['/payroll', '/benefits-payable', '/taxes'] },
   { label: 'Equity & financing', hrefs: ['/equity', '/loans-and-advances', '/scholars'] },
-  { label: 'Reports & analysis', hrefs: ['/reports', '/budgets', '/sales-summary', '/sales-analysis', '/products-analysis', '/investor-subsidiary-ledger', '/mentorship-audit'] },
+  { label: 'Reports & analysis', hrefs: ['/reports', '/budgets', '/sales-summary', '/sales-analysis', '/products-analysis', '/mentorship-audit'] },
   { label: 'Records & admin', hrefs: ['/official-documents', '/users', '/handbook'] },
 ]
 
@@ -51,7 +51,6 @@ const DESCRIPTIONS: Record<string, string> = {
   '/sales-summary': 'Sales reports by branch',
   '/sales-analysis': 'Sales by branch, department and method',
   '/products-analysis': 'Physical product sales and movement',
-  '/investor-subsidiary-ledger': 'Ledger view for investors',
   '/mentorship-audit': 'Mentorship billing audit',
   '/official-documents': 'Company records and expiry dates',
   '/users': 'User accounts and role access',

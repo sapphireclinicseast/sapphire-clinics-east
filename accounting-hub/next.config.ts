@@ -3,6 +3,10 @@ import type { NextConfig } from 'next'
 const nextConfig: NextConfig = {
   output: 'standalone',
   serverExternalPackages: ['bcryptjs', 'jspdf', 'jspdf-autotable', 'fflate', 'googleapis'],
+  // Investor · Subsidiary Ledger was removed (Hannah, 2026-11-09); old links land on Reports.
+  async redirects() {
+    return [{ source: '/investor-subsidiary-ledger', destination: '/reports', permanent: false }]
+  },
   async headers() {
     return [
       {
