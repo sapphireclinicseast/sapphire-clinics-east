@@ -25,6 +25,7 @@
 // carries its own sync state and nothing has to be migrated to add a branch.
 
 import { prisma } from '@/lib/prisma'
+import { internWindowCovers } from '@/lib/intern-window'
 import { sheetsClient } from '@/lib/google-sheets-auth'
 import { recordDeckingSnapshot } from '@/lib/decking-snapshot'
 import {
@@ -196,13 +197,17 @@ const PATIENT_BRANCH: Record<string, string> = {
  * who is signing for it has to go and ask.
  */
 async function loadInterns(branch: string, department: string) {
-  const configs = await prisma.deckingTherapistConfig.findMany({
+  const all = await prisma.deckingTherapistConfig.findMany({
     where: { branch, department, staff: { active: true, employmentType: 'intern' } },
     select: {
       staffId: true, workDays: true, startTime: true, endTime: true, deliveryMode: true, updatedAt: true,
-      staff: { select: { id: true, firstName: true, lastName: true } },
+      staff: { select: { id: true, firstName: true, lastName: true, dateHired: true, contractExpiry: true } },
     },
   })
+  // An intern is only here for their rotation — a month, as HR records it. Once
+  // the End Month is past they come off the board and their tab stops being
+  // written, rather than sitting there for the next batch to work around.
+  const configs = all.filter(c => internWindowCovers(c.staff.dateHired, c.staff.contractExpiry))
   if (configs.length === 0) return null
 
   const chosen = new Map<string, (typeof configs)[number]>()
@@ -296,6 +301,47 @@ async function tabId(api: sheets_v4.Sheets, spreadsheetId: string, title: string
     requestBody: { requests: [{ addSheet: { properties: { title, hidden, gridProperties: { rowCount: rows, columnCount: cols } } } }] },
   })
   return { id: added.data.replies![0].addSheet!.properties!.sheetId!, rowCount: rows }
+}
+
+/**
+ * Empty a tab that has nothing to show, leaving a line that says why.
+ *
+ * An intern tab is only written while that department has someone on
+ * placement. Without this, the tab from last month's rotation would stay
+ * exactly as it was: still laid out, still unprotected in the slot cells, and
+ * no longer in the map — so anything typed into it would go nowhere and never
+ * reach the hub. A board that silently swallows entries is worse than no board,
+ * so the tab is cleared and labelled instead of being left to look live.
+ */
+async function blankTab(api: sheets_v4.Sheets, spreadsheetId: string, tab: string, notice: string) {
+  const meta = await api.spreadsheets.get({ spreadsheetId, fields: 'sheets.properties' })
+  const found = meta.data.sheets?.find(x => x.properties?.title === tab)
+  const sheetId = found?.properties?.sheetId
+  if (sheetId == null) return false                    // never existed; nothing to clear
+  const rows = found?.properties?.gridProperties?.rowCount ?? 200
+
+  await api.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: [
+    // Drop the old protections first: they name ranges of a layout that is
+    // about to stop existing, and a stale protected range blocks the rewrite.
+    ...(await api.spreadsheets.get({ spreadsheetId, fields: 'sheets(properties.sheetId,protectedRanges.protectedRangeId)' })
+      .then(r => (r.data.sheets ?? [])
+        .filter(x => x.properties?.sheetId === sheetId)
+        .flatMap(x => x.protectedRanges ?? [])
+        .map(pr => ({ deleteProtectedRange: { protectedRangeId: pr.protectedRangeId! } })))
+      .catch(() => [])),
+    { updateCells: { range: { sheetId, startRowIndex: 0, endRowIndex: rows, startColumnIndex: 0, endColumnIndex: SAFE_COL + 8 }, fields: 'userEnteredValue,userEnteredFormat,dataValidation' } },
+    { unmergeCells: { range: { sheetId, startRowIndex: 0, endRowIndex: rows, startColumnIndex: 0, endColumnIndex: SAFE_COL + 8 } } },
+    { updateCells: {
+      rows: [{ values: [{
+        userEnteredValue: { stringValue: notice },
+        userEnteredFormat: { textFormat: { bold: true, fontSize: 11, foregroundColor: { red: 0.57, green: 0.25, blue: 0.05 } }, backgroundColor: { red: 1, green: 0.98, blue: 0.92 } },
+      }] }],
+      fields: 'userEnteredValue,userEnteredFormat', start: { sheetId, rowIndex: 1, columnIndex: 1 },
+    } },
+    // Read-only until somebody is on placement again.
+    { addProtectedRange: { protectedRange: { range: { sheetId }, description: 'No one on placement', warningOnly: false, editors: { users: [] } } } },
+  ] } }).catch(() => null)
+  return true
 }
 
 async function pushTab(
@@ -799,6 +845,13 @@ export async function syncBranch(branch: string, spreadsheetId: string): Promise
 
       // The interns of this department, on a tab of their own.
       const interns = await loadInterns(branch, dept)
+      if (!interns) {
+        // Nobody on placement this month. If a previous rotation left a tab
+        // behind, clear it rather than leaving last month's board sitting there
+        // looking fillable.
+        await blankTab(api, spreadsheetId, `${dept} INTERNS`,
+          `No ${dept} interns on placement this month. Their placement months live on the HR staff profile — once a new rotation starts, this tab fills itself in.`)
+      }
       if (interns) {
         const iGrid = buildGrid({ ...interns, paired: PAIRED_DEPARTMENTS.has(dept) })
         if (iGrid) {
