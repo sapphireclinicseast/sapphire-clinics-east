@@ -3,6 +3,9 @@
 // Reward-points card lookup + "where to spend" — shared by the standalone
 // /rewards page and the signed-in portal "Reward Points" section.
 import { useState } from 'react'
+import {
+  DashCard, KpiCard, Banner, Icon, CONTROL, CONTROL_STYLE, BTN_PRIMARY, PRIMARY_STYLE, TR_STYLE, SUBTLE_BG, FOCUS,
+} from '@/components/hub/ui'
 
 interface WalletInfo {
   card: string
@@ -54,131 +57,106 @@ export default function RewardsPanel() {
 
   return (
     <div className="space-y-5">
-      <div className="card-static">
-        <h2 className="text-[22px] leading-tight">Look up your card</h2>
-        <p className="text-sm text-[color:var(--mid-gray)] mt-1 mb-5">
-          Enter the number on your <strong>VIP Card</strong> (e.g. <code className="font-mono text-[12px]">SCEI-V-148592</code>) or <strong>Prepaid Card</strong>.
-        </p>
-
+      <DashCard
+        title="Look up your card"
+        description={<>Enter the number on your <strong>VIP Card</strong> (e.g. <code className="font-mono text-[11px]">SCEI-V-148592</code>) or <strong>Prepaid Card</strong>.</>}
+        icon={<Icon name="search" size={16} />}
+      >
         <form onSubmit={lookup} className="flex gap-2 flex-wrap">
           <input
             required
             value={card}
             onChange={(e) => setCard(e.target.value)}
             placeholder="SCEI-V-XXXXXX"
-            className="input flex-1 min-w-[200px] font-mono"
-            style={{ textTransform: 'uppercase', letterSpacing: '0.04em' }}
+            aria-label="Card number"
+            className={`${CONTROL} flex-1 min-w-[180px] font-mono`}
+            style={{ ...CONTROL_STYLE, textTransform: 'uppercase', letterSpacing: '0.04em' }}
           />
-          <button type="submit" disabled={busy || !card.trim()} className="btn-primary">
+          <button type="submit" disabled={busy || !card.trim()} className={BTN_PRIMARY} style={PRIMARY_STYLE}>
             {busy ? 'Checking…' : 'Check'}
           </button>
         </form>
 
-        {err && (
-          <div className="mt-4 px-4 py-3 rounded-xl bg-rose-50 border border-rose-100 text-sm text-rose-800 animate-fade-in">
-            {err}
-          </div>
-        )}
+        {err && <div className="mt-4"><Banner tone="error">{err}</Banner></div>}
 
         {wallet && (
-          <div className="mt-5 animate-fade-up">
-            <div className="rounded-2xl overflow-hidden border border-[color:var(--paper-3)]">
-              <div
-                className="px-5 py-4 text-white relative"
-                style={{
-                  background:
-                    wallet.cardType === 'VIP'
-                      ? 'linear-gradient(135deg, var(--narra), var(--moss))'
-                      : 'linear-gradient(135deg, var(--moss), var(--sage))',
-                }}
-              >
-                <div className="text-[10.5px] uppercase tracking-[0.16em] opacity-80" style={{ fontFamily: 'var(--font-display)' }}>
+          <div className="mt-5 animate-fade-up rounded-xl overflow-hidden" style={{ border: '1px solid var(--light-gray)' }}>
+            <div className="px-4 sm:px-5 py-4 text-white" style={{ background: 'var(--deep-teal)' }}>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[10.5px] font-bold uppercase tracking-widest" style={{ fontFamily: 'var(--font-display)', color: '#CBDAB5' }}>
                   {wallet.cardType === 'VIP' ? `VIP Card${wallet.vipTier ? ` · ${wallet.vipTier}` : ''}` : 'Prepaid Card'}
-                </div>
-                <div className="font-mono text-[18px] tracking-[0.08em] mt-0.5">{wallet.card}</div>
-                <div className="text-[11.5px] opacity-80 mt-1" style={{ fontFamily: 'var(--font-display)' }}>
-                  Holder: {wallet.holderInitials || '—'} · Branch: {prettifyBranch(wallet.branch)}
-                </div>
+                </span>
               </div>
-
-              <div className="grid grid-cols-2 divide-x divide-[color:var(--paper-3)] bg-white">
-                <div className="p-5 text-center">
-                  <div className="text-[10.5px] uppercase tracking-[0.14em] text-[color:var(--mid-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
-                    Reward Points
-                  </div>
-                  <div className="text-[34px] font-semibold text-[color:var(--clay)] leading-tight mt-1">
-                    {wallet.rewardPoints.toLocaleString()}
-                  </div>
-                </div>
-                <div className="p-5 text-center">
-                  <div className="text-[10.5px] uppercase tracking-[0.14em] text-[color:var(--mid-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
-                    Balance
-                  </div>
-                  <div className="text-[34px] font-semibold text-[color:var(--narra)] leading-tight mt-1">
-                    ₱{wallet.balance.toLocaleString()}
-                  </div>
-                </div>
+              <div className="font-mono text-[17px] tracking-[0.08em] mt-1 [overflow-wrap:anywhere]">{wallet.card}</div>
+              <div className="text-[11.5px] text-white/75 mt-1">
+                Holder: {wallet.holderInitials || '—'} · Branch: {prettifyBranch(wallet.branch)}
               </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3 p-3" style={{ background: SUBTLE_BG }}>
+              <KpiCard label="Reward Points" value={wallet.rewardPoints.toLocaleString()} accent="var(--clay)" icon={<Icon name="award" size={16} />} />
+              <KpiCard label="Balance" value={`₱${wallet.balance.toLocaleString()}`} icon={<Icon name="wallet" size={16} />} />
             </div>
           </div>
         )}
-      </div>
+      </DashCard>
 
-      <div className="card-static">
-        <h2 className="text-[22px] leading-tight">Where to use your points</h2>
-        <p className="text-sm text-[color:var(--mid-gray)] mt-1 mb-5">
-          Your reward points are redeemable at three places:
-        </p>
-
-        <div className="space-y-3">
+      <DashCard
+        title="Where to use your points"
+        description="Your reward points are redeemable at three places:"
+        icon={<Icon name="tag" size={16} />}
+        flush
+        footer="Point redemption is processed at the clinic counter / partner checkout — please present your card."
+      >
+        <ul>
           <UseCard
+            first
             title="Clinic seminars"
             body="Attend Aura Health Rehab seminars that accept reward points as payment. Browse upcoming events on our seminars site."
             href="https://institute.sapphireclinicseast.org"
-            cta="Visit institute.sapphireclinicseast.org →"
+            cta="Visit institute.sapphireclinicseast.org"
             icon={<IconTicket />}
           />
           <UseCard
             title="Verdana Store — therapy toys"
             body="Our partner brand inside the clinic. Shop occupational-therapy toys, sensory tools, and learning aids."
             href="https://verdanarehab.com/"
-            cta="Visit verdanarehab.com →"
+            cta="Visit verdanarehab.com"
             icon={<IconBag />}
           />
           <UseCard
             title="Clinic merchandise"
             body="Aura Health Rehab–branded merchandise — apparel, mugs, and seasonal items — handpicked by the clinic."
             href="https://verdanarehab.com/collections/merch-resources"
-            cta="Shop merchandise →"
+            cta="Shop merchandise"
             icon={<IconShirt />}
           />
-        </div>
-
-        <p className="text-[11.5px] text-[color:var(--mid-gray)] mt-5" style={{ fontFamily: 'var(--font-display)' }}>
-          Point redemption is processed at the clinic counter / partner checkout — please present your card.
-        </p>
-      </div>
+        </ul>
+      </DashCard>
     </div>
   )
 }
 
-function UseCard({ title, body, href, cta, icon }: { title: string; body: string; href: string; cta: string; icon: React.ReactNode }) {
+function UseCard({ title, body, href, cta, icon, first = false }: { title: string; body: string; href: string; cta: string; icon: React.ReactNode; first?: boolean }) {
   return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noreferrer"
-      className="flex items-start gap-4 p-4 rounded-2xl border border-[color:var(--paper-3)] bg-white hover:border-[color:var(--sage)] hover:shadow-[0_6px_20px_rgba(27,63,56,0.08)] transition-all group"
-    >
-      <div className="w-10 h-10 rounded-xl bg-[color:var(--paper-2)] text-[color:var(--narra)] flex items-center justify-center shrink-0 group-hover:bg-[color:var(--sage-tint)]">
-        {icon}
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="font-semibold text-[15px] text-[color:var(--narra)]">{title}</div>
-        <p className="text-[13px] text-[color:var(--mid-gray)] mt-0.5">{body}</p>
-        <div className="text-[12px] font-semibold text-[color:var(--clay)] mt-2" style={{ fontFamily: 'var(--font-display)' }}>{cta}</div>
-      </div>
-    </a>
+    <li style={first ? undefined : TR_STYLE}>
+      <a
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        className={`flex items-start gap-3.5 px-4 sm:px-5 py-4 transition-colors hover:bg-[#F8FAF2] ${FOCUS}`}
+      >
+        <span className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
+          {icon}
+        </span>
+        <span className="flex-1 min-w-0">
+          <span className="block text-sm font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>{title}</span>
+          <span className="block text-[13px] mt-0.5 leading-snug" style={{ color: 'var(--mid-gray)' }}>{body}</span>
+          <span className="mt-2 inline-flex items-center gap-1 text-xs font-semibold [overflow-wrap:anywhere]" style={{ color: 'var(--teal)' }}>
+            {cta} <Icon name="external" size={12} />
+          </span>
+        </span>
+      </a>
+    </li>
   )
 }
 

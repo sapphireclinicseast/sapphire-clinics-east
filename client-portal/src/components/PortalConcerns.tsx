@@ -7,6 +7,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { submitTicket, listMyTickets, type PortalTicket } from '@/lib/api'
+import {
+  PillTabs, StatusPill, Banner, Icon, CONTROL, CONTROL_STYLE, TEXTAREA, LABEL, LABEL_STYLE,
+  BTN_PRIMARY, BTN_SECONDARY, PRIMARY_STYLE, SECONDARY_STYLE, FILE_FOCUS, SUBTLE_BG, FOCUS, DANGER,
+} from '@/components/hub/ui'
+
+// Round launcher; PortalMessages uses the same look one slot above.
+const LAUNCHER = `fixed right-5 z-40 w-14 h-14 rounded-full text-white flex items-center justify-center shadow-[0_8px_24px_rgba(23,50,58,0.28)] hover:shadow-[0_12px_32px_rgba(23,50,58,0.38)] hover:-translate-y-0.5 transition-all ${FOCUS}`
 
 type Tab = 'report' | 'mine'
 
@@ -30,8 +37,8 @@ export default function PortalConcerns({ token }: { token: string }) {
       {!open && (
         <button
           onClick={() => setOpen(true)}
-          className="fixed bottom-5 right-5 z-40 w-14 h-14 rounded-full text-white flex items-center justify-center shadow-[0_8px_32px_rgba(27,63,56,0.3)] hover:shadow-[0_12px_40px_rgba(27,63,56,0.45)] hover:scale-105 transition-all"
-          style={{ background: 'linear-gradient(135deg, var(--teal), var(--deep-teal))' }}
+          className={`${LAUNCHER} bottom-5`}
+          style={{ background: 'var(--deep-teal)' }}
           aria-label="Report a portal concern"
           title="Concerns"
         >
@@ -40,31 +47,33 @@ export default function PortalConcerns({ token }: { token: string }) {
       )}
 
       {open && (
-        <div className="fixed bottom-5 left-5 right-5 sm:left-auto z-40 w-auto sm:w-[420px] max-w-[calc(100vw-2.5rem)] rounded-2xl bg-white shadow-[0_24px_60px_rgba(27,63,56,0.28)] border border-[color:var(--paper-3)] overflow-hidden animate-fade-up">
+        <div
+          role="dialog" aria-label="Portal Concerns"
+          className="fixed bottom-5 left-5 right-5 sm:left-auto z-40 w-auto sm:w-[420px] max-w-[calc(100vw-2.5rem)] rounded-xl bg-white shadow-2xl overflow-hidden animate-fade-up"
+          style={{ border: '1px solid var(--light-gray)' }}
+        >
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3.5 text-white" style={{ background: 'linear-gradient(135deg, var(--teal), var(--deep-teal))' }}>
-            <div className="flex items-center gap-2 font-semibold" style={{ fontFamily: 'var(--font-display)' }}>
-              <LifebuoyIcon />
-              Portal Concerns
+          <div className="flex items-start justify-between gap-3 px-4 pt-3.5 pb-3" style={{ borderBottom: '1px solid var(--light-gray)' }}>
+            <div className="min-w-0">
+              <p className="text-[10.5px] font-bold uppercase tracking-widest" style={{ color: 'var(--deep-teal)', fontFamily: 'var(--font-display)' }}>Client Portal</p>
+              <h2 className="flex items-center gap-2 text-[15px] font-bold leading-tight tracking-normal mt-0.5" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+                <span style={{ color: 'var(--teal)' }}><LifebuoyIcon size={16} /></span>
+                Portal Concerns
+              </h2>
             </div>
-            <button onClick={() => setOpen(false)} aria-label="Close" className="opacity-80 hover:opacity-100 text-xl leading-none">×</button>
+            <button onClick={() => setOpen(false)} aria-label="Close" className={`w-8 h-8 -mr-1.5 inline-flex items-center justify-center rounded-lg hover:bg-[color:var(--paper)] ${FOCUS}`} style={{ color: 'var(--mid-gray)' }}>
+              <Icon name="x" size={16} />
+            </button>
           </div>
 
           {/* Tabs */}
-          <div className="flex" style={{ fontFamily: 'var(--font-display)' }}>
-            {([['report', 'Report a concern'], ['mine', 'My tickets']] as const).map(([k, label]) => (
-              <button
-                key={k}
-                onClick={() => setTab(k)}
-                className={`flex-1 py-3 text-sm font-semibold border-b-2 transition-colors ${
-                  tab === k
-                    ? 'border-[color:var(--deep-teal)] text-[color:var(--deep-teal)]'
-                    : 'border-transparent text-[color:var(--mid-gray)] hover:text-[color:var(--teal)]'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
+          <div className="px-4 pt-3">
+            <PillTabs
+              label="Portal Concerns"
+              value={tab}
+              onChange={(k) => setTab(k as Tab)}
+              tabs={[{ id: 'report', label: 'Report a concern' }, { id: 'mine', label: 'My tickets' }]}
+            />
           </div>
 
           <div className="max-h-[60vh] overflow-y-auto p-4">
@@ -116,52 +125,54 @@ function ReportForm({ token, onDone }: { token: string; onDone: () => void }) {
 
   if (ok) {
     return (
-      <div className="text-center py-8">
-        <div className="text-3xl mb-2">✓</div>
-        <p className="text-sm text-[color:var(--deep-teal)] font-semibold">Concern submitted</p>
-        <p className="text-[12px] text-[color:var(--mid-gray)] mt-1">The clinic admin will review it. Track it under “My tickets”.</p>
+      <div className="text-center py-8" role="status">
+        <Icon name="check" size={28} className="mx-auto mb-2" style={{ color: 'var(--sage)' }} />
+        <p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>Concern submitted</p>
+        <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>The clinic admin will review it. Track it under “My tickets”.</p>
       </div>
     )
   }
 
   return (
     <form onSubmit={submit} className="space-y-3.5">
-      <p className="text-[13px] text-[color:var(--mid-gray)]">Something not working, or a suggestion for the portal? Let the admin know.</p>
+      <p className="text-[13px]" style={{ color: 'var(--mid-gray)' }}>Something not working, or a suggestion for the portal? Let the admin know.</p>
 
       <label className="block">
-        <span className="label">Subject</span>
-        <input value={subject} onChange={(e) => setSubject(e.target.value)} className="input" placeholder="e.g. Can’t upload session photo" maxLength={200} />
+        <span className={LABEL} style={LABEL_STYLE}>Subject</span>
+        <input value={subject} onChange={(e) => setSubject(e.target.value)} className={`${CONTROL} w-full`} style={CONTROL_STYLE} placeholder="e.g. Can’t upload session photo" maxLength={200} />
       </label>
 
       <label className="block">
-        <span className="label">Description</span>
-        <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={4} className="input !py-2.5 resize-y" placeholder="Describe what happened and where…" maxLength={5000} />
+        <span className={LABEL} style={LABEL_STYLE}>Description</span>
+        <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={4} className={`${TEXTAREA} resize-y`} style={CONTROL_STYLE} placeholder="Describe what happened and where…" maxLength={5000} />
       </label>
 
       <div>
-        <span className="label">Screenshot (optional)</span>
+        <span className={LABEL} style={LABEL_STYLE}>Screenshot (optional)</span>
         {screenshot ? (
           <div className="relative inline-block">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={screenshot} alt="Attached screenshot" className="max-h-32 rounded-lg border border-[color:var(--paper-3)]" />
-            <button type="button" onClick={() => setScreenshot(null)} className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-[color:var(--clay)] text-white text-sm leading-none shadow" aria-label="Remove screenshot">×</button>
+            <img src={screenshot} alt="Attached screenshot" className="max-h-32 rounded-lg" style={{ border: '1px solid var(--light-gray)' }} />
+            <button type="button" onClick={() => setScreenshot(null)} className={`absolute -top-2 -right-2 w-6 h-6 rounded-full text-white inline-flex items-center justify-center shadow ${FOCUS}`} style={{ background: DANGER }} aria-label="Remove screenshot">
+              <Icon name="x" size={12} />
+            </button>
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-2.5">
-            <button type="button" onClick={onCapture} className="btn-secondary !py-2.5 text-sm inline-flex items-center justify-center gap-1.5">
-              <CameraIcon /> Capture screen
+            <button type="button" onClick={onCapture} className={BTN_SECONDARY} style={SECONDARY_STYLE}>
+              <CameraIcon /> <span className="truncate">Capture screen</span>
             </button>
-            <label className="btn-secondary !py-2.5 text-sm inline-flex items-center justify-center gap-1.5 cursor-pointer">
-              <ImageIcon /> Upload photo
-              <input type="file" accept="image/*" className="hidden" onChange={onUpload} />
+            <label className={`${BTN_SECONDARY} ${FILE_FOCUS}`} style={SECONDARY_STYLE}>
+              <ImageIcon /> <span className="truncate">Upload photo</span>
+              <input type="file" accept="image/*" className="sr-only" onChange={onUpload} />
             </label>
           </div>
         )}
       </div>
 
-      {err && <div className="text-[12.5px] text-rose-700 bg-rose-50 border border-rose-100 rounded-lg px-3 py-2">{err}</div>}
+      {err && <Banner tone="error">{err}</Banner>}
 
-      <button type="submit" disabled={busy} className="btn-primary w-full inline-flex items-center justify-center gap-2">
+      <button type="submit" disabled={busy} className={`${BTN_PRIMARY} w-full`} style={PRIMARY_STYLE}>
         <SendIcon /> {busy ? 'Submitting…' : 'Submit concern'}
       </button>
     </form>
@@ -179,30 +190,30 @@ function MyTickets({ token }: { token: string }) {
 
   useEffect(() => { load() }, [load])
 
-  if (err) return <div className="text-[13px] text-rose-700">{err}</div>
-  if (!tickets) return <div className="text-sm text-[color:var(--mid-gray)] py-6 text-center">Loading…</div>
-  if (tickets.length === 0) return <div className="text-sm text-[color:var(--mid-gray)] py-6 text-center">You haven’t submitted any concerns yet.</div>
+  if (err) return <Banner tone="error">{err}</Banner>
+  if (!tickets) return <div className="text-sm py-6 text-center" role="status" style={{ color: 'var(--mid-gray)' }}>Loading…</div>
+  if (tickets.length === 0) return <div className="text-sm py-6 text-center" style={{ color: 'var(--mid-gray)' }}>You haven’t submitted any concerns yet.</div>
 
   return (
     <div className="space-y-3">
       {tickets.map((t) => {
         const resolved = t.status === 'RESOLVED'
         return (
-          <div key={t.id} className="rounded-xl border border-[color:var(--paper-3)] p-3">
+          <div key={t.id} className="rounded-lg p-3" style={{ border: '1px solid var(--light-gray)' }}>
             <div className="flex items-start justify-between gap-2">
-              <div className="text-sm font-semibold text-[color:var(--deep-teal)]">{t.subject}</div>
-              <span className={`shrink-0 text-[10px] font-bold uppercase tracking-[0.08em] px-2 py-0.5 rounded ${resolved ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
-                {resolved ? 'Resolved' : 'Open'}
+              <div className="text-sm font-semibold min-w-0 [overflow-wrap:anywhere]" style={{ color: 'var(--charcoal)' }}>{t.subject}</div>
+              <span className="shrink-0">
+                <StatusPill tone={resolved ? 'success' : 'warn'}>{resolved ? 'Resolved' : 'Open'}</StatusPill>
               </span>
             </div>
-            <p className="text-[12.5px] text-[color:var(--mid-gray)] mt-1 whitespace-pre-wrap">{t.description}</p>
+            <p className="text-[12.5px] mt-1 whitespace-pre-wrap [overflow-wrap:anywhere]" style={{ color: 'var(--mid-gray)' }}>{t.description}</p>
             {resolved && t.adminResponse && (
-              <div className="mt-2 rounded-lg bg-[color:var(--pale-teal)]/60 px-3 py-2">
-                <div className="text-[10px] font-bold uppercase tracking-[0.08em] text-[color:var(--teal)]">Clinic response</div>
-                <div className="text-[13px] text-[color:var(--deep-teal)] mt-0.5 whitespace-pre-wrap">{t.adminResponse}</div>
+              <div className="mt-2 rounded-lg px-3 py-2" style={{ background: SUBTLE_BG, border: '1px solid var(--light-gray)' }}>
+                <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--teal)', fontFamily: 'var(--font-display)' }}>Clinic response</div>
+                <div className="text-[13px] mt-0.5 whitespace-pre-wrap [overflow-wrap:anywhere]" style={{ color: 'var(--charcoal)' }}>{t.adminResponse}</div>
               </div>
             )}
-            <div className="text-[11px] text-[color:var(--mid-gray)] mt-1.5" style={{ fontFamily: 'var(--font-display)' }}>
+            <div className="text-[11px] mt-1.5" style={{ color: 'var(--mid-gray)' }}>
               {fmt(t.createdAt)}{resolved && t.resolvedAt ? ` · resolved ${fmt(t.resolvedAt)}` : ''}
             </div>
           </div>

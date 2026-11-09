@@ -9,6 +9,9 @@
 
 import { useEffect, useState } from 'react'
 import { listCertificates, certificateFileUrl, type DischargeCertificateRow } from '@/lib/api'
+import {
+  DashCard, StatusPill, Banner, EmptyState, RowsSkeleton, Icon, BTN_PRIMARY, PRIMARY_STYLE, TR_STYLE,
+} from '@/components/hub/ui'
 
 export default function CertificatesSection({ token }: { token: string }) {
   const [rows, setRows] = useState<DischargeCertificateRow[] | null>(null)
@@ -23,54 +26,62 @@ export default function CertificatesSection({ token }: { token: string }) {
   }, [token])
 
   return (
-    <div className="card-static">
-      <h3 className="text-[20px] leading-tight text-[color:var(--deep-teal)]">Certificates</h3>
-      <p className="text-sm text-[color:var(--mid-gray)] mt-1">
-        Certificates of discharge from your completed programmes. Open one to view or print it.
-      </p>
+    <DashCard
+      title="Certificates"
+      description="Certificates of discharge from your completed programmes. Open one to view or print it."
+      icon={<Icon name="award" size={16} />}
+      flush
+    >
+      {err && <div className="px-4 sm:px-5 pt-4"><Banner tone="error">{err}</Banner></div>}
 
-      {err && (
-        <div className="mt-4 text-sm text-rose-700 bg-rose-50 border border-rose-100 rounded-lg px-3 py-2">
-          {err}
-        </div>
+      {rows == null ? (
+        <RowsSkeleton rows={2} label="Loading certificates" />
+      ) : rows.length === 0 ? (
+        /* Not an error state: most patients are still in therapy, and this
+           should read as "not yet", not as "something is missing". */
+        <EmptyState
+          icon="award"
+          title="No certificates yet"
+          hint="One appears here when you complete a programme and your therapist discharges you."
+        />
+      ) : (
+        <ul>
+          {rows.map((c, i) => <CertificateCard key={c.id} cert={c} token={token} first={i === 0} />)}
+        </ul>
       )}
-
-      <div className="mt-5 space-y-3">
-        {rows == null ? (
-          <p className="text-sm text-[color:var(--mid-gray)]">Loading…</p>
-        ) : rows.length === 0 ? (
-          /* Not an error state: most patients are still in therapy, and this
-             should read as "not yet", not as "something is missing". */
-          <div className="rounded-xl border border-dashed border-[color:var(--light-gray)] px-4 py-8 text-center">
-            <p className="text-sm text-[color:var(--mid-gray)]">
-              No certificates yet. One appears here when you complete a programme and your
-              therapist discharges you.
-            </p>
-          </div>
-        ) : (
-          rows.map((c) => <CertificateCard key={c.id} cert={c} token={token} />)
-        )}
-      </div>
-    </div>
+    </DashCard>
   )
 }
 
-function CertificateCard({ cert, token }: { cert: DischargeCertificateRow; token: string }) {
+function CertificateCard({ cert, token, first }: { cert: DischargeCertificateRow; token: string; first: boolean }) {
   const href = certificateFileUrl(cert.id, token)
   const signedBy = [cert.therapistName, cert.managerName].filter(Boolean).join(' · ')
 
   return (
-    <div className="rounded-xl border border-[color:var(--light-gray)] bg-white px-4 py-3.5 flex items-center justify-between gap-4 flex-wrap">
-      <div className="min-w-0">
-        <p className="font-semibold text-[color:var(--deep-teal)] text-[15px] leading-snug">
-          {cert.service}
-        </p>
-        <p className="text-sm text-[color:var(--mid-gray)] mt-0.5">
-          Discharged {cert.awardedOn || cert.dischargeDate}
-        </p>
-        {signedBy && (
-          <p className="text-xs text-[color:var(--mid-gray)] mt-0.5 opacity-80">{signedBy}</p>
-        )}
+    <li
+      className="px-4 sm:px-5 py-3.5 flex items-center justify-between gap-x-4 gap-y-3 flex-wrap"
+      style={first ? undefined : TR_STYLE}
+    >
+      <div className="flex items-start gap-3 min-w-0">
+        <span
+          aria-hidden
+          className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
+          style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}
+        >
+          <Icon name="award" size={18} />
+        </span>
+        <div className="min-w-0">
+          <p className="text-sm font-bold leading-snug [overflow-wrap:anywhere]" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>
+            {cert.service}
+          </p>
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <StatusPill tone="success">Discharged</StatusPill>
+            <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>{cert.awardedOn || cert.dischargeDate}</span>
+          </div>
+          {signedBy && (
+            <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>{signedBy}</p>
+          )}
+        </div>
       </div>
       {/* A plain link, not a fetch: the token rides in the query string the way
           every other portal file URL does, so the PDF opens in the browser's
@@ -79,10 +90,11 @@ function CertificateCard({ cert, token }: { cert: DischargeCertificateRow; token
         href={href}
         target="_blank"
         rel="noopener noreferrer"
-        className="btn-primary shrink-0 no-underline"
+        className={`${BTN_PRIMARY} shrink-0 no-underline`}
+        style={PRIMARY_STYLE}
       >
-        View / print
+        <Icon name="eye" size={14} /> View / print
       </a>
-    </div>
+    </li>
   )
 }

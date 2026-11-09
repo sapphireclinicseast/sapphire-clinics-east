@@ -1,0 +1,33 @@
+/* Signed-in app shell (components/PortalShell.tsx).
+ *
+ * PortalShell adds .with-portal-shell to <body> while a patient is signed in
+ * on the dashboard, the same switch the Class Portal makes with
+ * .with-auth-sidebar. That:
+ *   - hides the public top <header>; the sidebar carries the brand and nav
+ *   - on phones, pads <main> below the fixed 56px top bar
+ *   - on md+, shifts <main> and the footer right of the fixed 240px sidebar
+ * Signed-out pages never mount the shell, so they keep the original layout.
+ *
+ * Kept out of globals.css on purpose (separate ownership). Plain, unlayered
+ * CSS, so it wins over the Tailwind utilities on <main> (max-w-5xl, px-5,
+ * py-8) without !important.
+ */
+body.with-portal-shell > header { display: none; }
+
+body.with-portal-shell > main {
+  max-width: none;
+  padding: 72px 16px 20px;
+}
+body.with-portal-shell > footer { max-width: none; padding-left: 16px; padding-right: 16px; }
+
+@media (min-width: 768px) {
+  body.with-portal-shell > main {
+    margin-left: 240px;
+    padding: 24px 32px;
+  }
+  body.with-portal-shell > footer {
+    margin-left: 240px;
+    padding-left: 32px;
+    padding-right: 32px;
+  }
+}
