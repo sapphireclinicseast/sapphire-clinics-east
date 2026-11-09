@@ -609,8 +609,10 @@ function CustomSlotModal({ staff, activeBranch, workDays, hourlyStarts = [], onC
 }
 
 // ─── Therapist Row ─────────────────────────────────────────────────────────────
-function TherapistRow({ staff, activeBranch, sectionMode, config, slots, defaultHours, onSaveConfig, onClearServiceConfig, onSaveSlot, onDeleteSlot, onOpenLoa, density = 'comfortable', collapsed = false, onToggleCollapse, datedSlots = [], onAddDated, onDatedChanged, showCapacity = true }: {
+function TherapistRow({ staff, activeBranch, sectionMode, config, slots, defaultHours, onSaveConfig, onClearServiceConfig, onSaveSlot, onDeleteSlot, onOpenLoa, density = 'comfortable', collapsed = false, onToggleCollapse, datedSlots = [], onAddDated, onDatedChanged, showCapacity = true, startClosed = false }: {
   staff: StaffMember
+  /** Keep the schedule form closed when nothing is set (interns). Display only. */
+  startClosed?: boolean
   /** "x of y booked" meter in the card header — main admin only. Display only. */
   showCapacity?: boolean
   /** Row height / padding of the grid. Display only. */
@@ -640,7 +642,7 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
   // Homecare starts with the form closed: most consultants on that board
   // have no home-visit days, and an open form on every card buried the few
   // who do. Everywhere else it opens as before when nothing is set.
-  const [configOpen, setConfigOpen] = useState(!config && sectionMode !== 'HOMECARE')
+  const [configOpen, setConfigOpen] = useState(!config && sectionMode !== 'HOMECARE' && !startClosed)
   // Optimistic: the grid is scanned constantly, and a colour that lags a click
   // by a round-trip reads as the click not registering. Reverted on failure.
   const [payOverride, setPayOverride] = useState<Record<string, PayType>>({})
@@ -1208,7 +1210,20 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
 
       {/* No config yet */}
       {showBody && !config && !configOpen && (
-        sectionMode === 'HOMECARE' ? (
+        startClosed && sectionMode !== 'HOMECARE' ? (
+          /* Interns: a list of ten open schedule forms buried the ones that
+             are set up, so an unscheduled intern is one line until opened. */
+          <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>
+            <p className="flex items-center gap-2 min-w-0">
+              <CalendarPlus size={14} className="flex-shrink-0" aria-hidden />
+              <span>No schedule yet.</span>
+            </p>
+            <button type="button" onClick={toggleConfig} className={BTN_SM}
+              style={{ background: '#fff', border: '1px solid var(--light-gray)', color: 'var(--teal)' }}>
+              <Settings2 size={12} aria-hidden /> Set schedule
+            </button>
+          </div>
+        ) : sectionMode === 'HOMECARE' ? (
           /* Homecare: most consultants have no home-visit days, so the
              schedule form starts closed (see configOpen) and this one line
              stands in for it, with the button that opens it. */
@@ -2491,6 +2506,8 @@ export default function DeckingClient({ role }: { role: string }) {
   // Seeded from the hours themselves on first render, so this only holds what
   // somebody has just changed.
   const [internSupervisorState, setInternSupervisorState] = useState<Record<string, string>>({})
+  // Interns list filter. Display only.
+  const [internFilter, setInternFilter] = useState<'all' | 'nosup' | 'nosched'>('all')
   const internSupervisor = internSupervisorState
 
   /**
@@ -3132,6 +3149,25 @@ export default function DeckingClient({ role }: { role: string }) {
                         </p>
                       </div>
                     </div>
+                    {/* Where the gaps are, as filters. Display only. */}
+                    {(() => {
+                      const supOf = (st: StaffMember) => internSupervisor[st.id] ?? (slotsByStaff.get(st.id) ?? []).find(sl => sl.supervisorId)?.supervisorId ?? ''
+                      const noSup = internStaff.filter(st => !supOf(st)).length
+                      const noSched = internStaff.filter(st => ((configMap.get(st.id)?.workDays as string[] | undefined)?.length ?? 0) === 0).length
+                      return (
+                        <div className="flex flex-wrap items-center gap-2 px-4 pt-3">
+                          <PillTabs size="sm" label="Show interns" value={internFilter} onChange={id => setInternFilter(id as 'all' | 'nosup' | 'nosched')}
+                            tabs={[
+                              { id: 'all', label: <>All <span className="tabular-nums opacity-70">{internStaff.length}</span></> },
+                              { id: 'nosup', label: <>No supervisor <span className="tabular-nums opacity-70">{noSup}</span></>, title: 'Their hours will not show on any Clinic Schedule' },
+                              { id: 'nosched', label: <>No schedule <span className="tabular-nums opacity-70">{noSched}</span></> },
+                            ]} />
+                          <span className="text-[11px] tabular-nums" style={{ color: 'var(--mid-gray)' }}>
+                            {internStaff.length - noSched} scheduled &middot; {internStaff.length - noSup} supervised
+                          </span>
+                        </div>
+                      )
+                    })()}
                     {supervisorOptions.length === 0 && (
                       <div className="flex items-start gap-2 mx-4 mt-3 rounded-lg px-3 py-2 text-xs"
                         style={{ background: '#FFFBEB', border: '1px solid #FDE68A', color: '#92400E' }}>
@@ -3151,20 +3187,23 @@ export default function DeckingClient({ role }: { role: string }) {
                         const current = internSupervisor[s.id]
                           ?? mine.find(sl => sl.supervisorId)?.supervisorId
                           ?? ''
+                        const scheduled = ((configMap.get(s.id)?.workDays as string[] | undefined)?.length ?? 0) > 0
+                        if (internFilter === 'nosup' && current) return null
+                        if (internFilter === 'nosched' && scheduled) return null
                         return (
                           <div key={s.id} className="rounded-xl overflow-hidden"
                             style={{ border: `1px solid ${current ? '#DADDF7' : '#FCD9A8'}`, borderLeft: `3px solid ${current ? '#6366F1' : '#F59E0B'}`, background: '#fff' }}>
-                            <div className="flex flex-wrap items-center gap-2 px-3 py-2" style={{ background: current ? '#FAFAFF' : '#FFFBEB', borderBottom: '1px solid var(--light-gray)' }}>
-                              <UserCheck size={14} style={{ color: current ? '#4338CA' : '#B45309' }} aria-hidden />
-                              <label htmlFor={`intern-sup-${s.id}`} className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: current ? '#4338CA' : '#B45309' }}>
-                                Supervised by
+                            <div className="flex flex-wrap items-center gap-2 px-3 py-1.5" style={{ background: current ? '#FAFAFF' : '#FFFBEB', borderBottom: '1px solid var(--light-gray)' }}>
+                              <UserCheck size={13} style={{ color: current ? '#4338CA' : '#B45309' }} aria-hidden />
+                              <label htmlFor={`intern-sup-${s.id}`} className="text-[11px] font-semibold" style={{ color: current ? '#4338CA' : '#B45309' }}>
+                                Supervisor
                               </label>
                               <select
                                 id={`intern-sup-${s.id}`}
                                 value={current}
                                 onChange={e => setInternSupervisor(s.id, e.target.value)}
                                 className={CONTROL_SM}
-                                style={{ ...CONTROL_STYLE, minWidth: 200 }}
+                                style={{ ...CONTROL_STYLE, minWidth: 180, height: 28 }}
                               >
                                 <option value="">Choose a supervisor…</option>
                                 {supervisorOptions.map(sup => (
@@ -3175,7 +3214,7 @@ export default function DeckingClient({ role }: { role: string }) {
                                 <span className="inline-flex items-center gap-1 text-[11px] font-semibold rounded-full px-2 py-0.5"
                                   style={{ background: '#FEF3C7', color: '#92400E' }}>
                                   <AlertTriangle size={11} aria-hidden />
-                                  Unassigned &mdash; these hours won&rsquo;t show on anyone&rsquo;s schedule
+                                  Unassigned &mdash; hours won&rsquo;t reach a Clinic Schedule
                                 </span>
                               )}
                             </div>
@@ -3197,10 +3236,20 @@ export default function DeckingClient({ role }: { role: string }) {
                               collapsed={collapsed.has(s.id)}
                               onToggleCollapse={() => toggleCollapsed(s.id)}
                               showCapacity={false}
+                              startClosed
                             />
                           </div>
                         )
                       })}
+                      {internFilter !== 'all' && internStaff.every(st => {
+                        const sup = internSupervisor[st.id] ?? (slotsByStaff.get(st.id) ?? []).find(sl => sl.supervisorId)?.supervisorId ?? ''
+                        const sched = ((configMap.get(st.id)?.workDays as string[] | undefined)?.length ?? 0) > 0
+                        return internFilter === 'nosup' ? !!sup : sched
+                      }) && (
+                        <p className="text-xs text-center py-4" style={{ color: 'var(--mid-gray)' }}>
+                          {internFilter === 'nosup' ? 'Every intern has a supervisor.' : 'Every intern has a schedule.'}
+                        </p>
+                      )}
                     </div>
                     </div>
                   </section>
