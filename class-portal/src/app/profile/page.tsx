@@ -20,6 +20,9 @@ import TemplatesPanel from '@/components/TemplatesPanel'
 import GradesPanel from '@/components/GradesPanel'
 import StudentListPanel from '@/components/StudentListPanel'
 import { getImpersonationMeta } from '@/lib/backend'
+import {
+  PAGE, PageHeader, PillTabs, Avatar, Skeleton, CARD_STYLE, displayName, initials,
+} from '@/components/hub/ui'
 
 type StudentTab = 'PROFILE' | 'PAYMENT' | 'GRADES' | 'NOTIFICATIONS'
 type TeacherTab = 'STUDENTS' | 'CURRICULUM' | 'TEMPLATES' | 'GRADES' | 'NOTIFICATIONS'
@@ -91,7 +94,7 @@ export default function ProfilePage() {
     return () => { cancelled = true }
   }, [router])
 
-  if (!ready || !user) return null
+  if (!ready || !user) return <ProfileSkeleton />
   return user.role === 'STUDENT' ? <StudentView user={user} /> : <TeacherView user={user} />
 }
 
@@ -102,8 +105,13 @@ function StudentView({ user }: { user: StoredUser }) {
   // live as sidebar entries pointing at /pay, /grades, /notifications so
   // the student profile stays focused on the Profile card itself.
   return (
-    <div className="max-w-4xl mx-auto animate-fade-up space-y-6">
-      <StudentDetail student={user} viewerRole="STUDENT" />
+    // hub-frame gives StudentDetail's cards the Ops Hub framing (flat
+    // border, 12px radius, tighter padding on phones; see globals.css)
+    // without touching the shared component itself.
+    <div className="max-w-4xl mx-auto animate-fade-up space-y-5 min-w-0">
+      <div className="hub-frame min-w-0">
+        <StudentDetail student={user} viewerRole="STUDENT" />
+      </div>
     </div>
   )
 }
@@ -123,21 +131,42 @@ function TeacherView({ user }: { user: StoredUser }) {
     : user.role === 'FRONTDESK'   ? 'SCEI front desk account'
     : 'SCEI teacher account'
 
+  const TABS: Array<{ id: TeacherTab; label: string }> = [
+    { id: 'STUDENTS',      label: 'Students' },
+    { id: 'CURRICULUM',    label: 'Curriculum' },
+    { id: 'TEMPLATES',     label: 'Templates' },
+    { id: 'GRADES',        label: 'Grades' },
+    { id: 'NOTIFICATIONS', label: 'Notifications' },
+  ]
+  // Initials from the name; the email's first letter when no name is on file.
+  const avatarText = (user.firstName || user.lastName)
+    ? initials(user.firstName, user.lastName)
+    : (user.email.trim()[0] ?? '?').toUpperCase()
+
   return (
-    <div className="max-w-5xl mx-auto animate-fade-up space-y-6">
-      <div className="card-static">
-        <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)] mb-1" style={{ fontFamily: 'var(--font-display)' }}>{roleLabel}</div>
-        <h1 className="text-[24px] leading-tight text-[color:var(--deep-teal)]">{viewerName}</h1>
-        <p className="text-sm text-[color:var(--mid-gray)]">{user.email}</p>
+    <div className={`${PAGE} animate-fade-up`}>
+      {/* Profile header card: avatar + who is signed in. */}
+      <div className="rounded-xl px-4 sm:px-5 py-4 flex items-center gap-4 min-w-0" style={CARD_STYLE}>
+        <Avatar text={avatarText} size={52} />
+        <div className="flex-1 min-w-0 [overflow-wrap:anywhere]">
+          <PageHeader
+            eyebrow={roleLabel}
+            title={displayName(viewerName)}
+            description={user.email}
+          />
+        </div>
       </div>
 
-      <TabBar tabs={[
-        { value: 'STUDENTS',      label: 'Students' },
-        { value: 'CURRICULUM',    label: 'Curriculum' },
-        { value: 'TEMPLATES',     label: 'Templates' },
-        { value: 'GRADES',        label: 'Grades' },
-        { value: 'NOTIFICATIONS', label: 'Notifications' },
-      ]} active={tab} onChange={v => setTab(v as TeacherTab)} />
+      <PillTabs
+        label="Teacher sections"
+        tabs={TABS}
+        value={tab}
+        onChange={id => setTab(id as TeacherTab)}
+      />
+
+      {/* hub-frame gives the shared panels Ops-Hub card framing (see
+          globals.css), the same as on the Admin and Front desk pages. */}
+      <div role="tabpanel" aria-label={TABS.find(t => t.id === tab)?.label} className="hub-frame space-y-5 min-w-0">
 
       {tab === 'STUDENTS' && (
         <StudentListPanel viewer={{ role: 'TEACHER', userId: user.id, email: user.email, name: viewerName }} />
@@ -158,21 +187,33 @@ function TeacherView({ user }: { user: StoredUser }) {
       {tab === 'NOTIFICATIONS' && (
         <NotificationPanel viewer={{ role: 'TEACHER', email: user.email, name: viewerName, userId: user.id }} />
       )}
+      </div>
     </div>
   )
 }
 
-/* ─────────── tab bar ─────────── */
+/* ─────────── loading ─────────── */
 
-function TabBar({ tabs, active, onChange }: { tabs: Array<{ value: string; label: string }>; active: string; onChange: (v: string) => void }) {
+/** Placeholder while the user list hydrates. The role isn't known yet, so
+ *  it's the shape both views share: a header card, then content cards. */
+function ProfileSkeleton() {
   return (
-    <div className="flex gap-2 p-1 bg-[color:var(--pale-teal)] rounded-xl overflow-x-auto" style={{ fontFamily: 'var(--font-display)' }}>
-      {tabs.map(t => (
-        <button
-          key={t.value}
-          onClick={() => onChange(t.value)}
-          className={`px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition-all ${active === t.value ? 'bg-white text-[color:var(--deep-teal)] shadow-sm' : 'text-[color:var(--mid-gray)] hover:text-[color:var(--teal)]'}`}
-        >{t.label}</button>
+    <div className="max-w-4xl mx-auto space-y-5 min-w-0" role="status" aria-label="Loading your profile">
+      <div className="rounded-xl px-4 sm:px-5 py-4 flex items-center gap-4" style={CARD_STYLE} aria-hidden>
+        <Skeleton className="w-[72px] h-[72px] rounded-full flex-shrink-0" />
+        <div className="flex-1 min-w-0 space-y-2">
+          <Skeleton className="h-3 w-28" />
+          <Skeleton className="h-6 w-56 max-w-full" />
+          <Skeleton className="h-3 w-44 max-w-full" />
+        </div>
+      </div>
+      {[0, 1].map(n => (
+        <div key={n} className="rounded-xl p-4 sm:p-5 space-y-3" style={CARD_STYLE} aria-hidden>
+          <Skeleton className="h-4 w-36" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {[0, 1, 2, 3].map(i => <Skeleton key={i} className="h-10 w-full" />)}
+          </div>
+        </div>
       ))}
     </div>
   )

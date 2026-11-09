@@ -123,9 +123,11 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
       {/* Identity card with headshot */}
       <div className="card-static">
         <div className="flex items-start justify-between gap-5 flex-wrap">
-          <div className="flex items-start gap-5">
+          {/* Wraps on phones so the headshot, name and long emails never
+              push the card wider than the screen. */}
+          <div className="flex flex-wrap items-start gap-5 min-w-0">
             <HeadshotEditor studentId={student.id} editable={viewerRole === 'STUDENT'} />
-            <div>
+            <div className="min-w-0 [overflow-wrap:anywhere]">
               <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)] mb-1" style={{ fontFamily: 'var(--font-display)' }}>Student profile</div>
               <h1 className="text-[24px] leading-tight text-[color:var(--deep-teal)]">
                 {[student.firstName, student.lastName].filter(Boolean).join(' ') || student.email}
