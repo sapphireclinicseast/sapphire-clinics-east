@@ -11,6 +11,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { getAuth } from '@/lib/session'
 import NotificationPanel from '@/components/NotificationPanel'
+import { PAGE } from '@/components/hub/ui'
 
 export default function NotificationsStandalonePage() {
   const router = useRouter()
@@ -32,13 +33,15 @@ export default function NotificationsStandalonePage() {
   if (!ready) return null
 
   return (
-    <div className="max-w-5xl mx-auto animate-fade-up space-y-6">
-      <div className="card-static">
-        <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)] mb-1" style={{ fontFamily: 'var(--font-display)' }}>Announcements composer</div>
-        <h1 className="text-2xl font-bold text-[color:var(--deep-teal)]" style={{ fontFamily: 'var(--font-display)' }}>Notifications</h1>
-        <p className="text-sm text-[color:var(--mid-gray)]">Post an announcement to students and/or teachers. They&apos;ll see it in their bell icon and (optionally) by email.</p>
-      </div>
-      <NotificationPanel viewer={{ role: 'ADMIN', email, name: isMainAdmin ? 'Main admin' : 'Branch admin' }} />
+    <div className={`${PAGE} animate-fade-up`}>
+      <NotificationPanel
+        header={{
+          eyebrow: 'Aura Academy · Announcements composer',
+          title: 'Notifications',
+          description: 'Post an announcement to students and/or teachers. They\u2019ll see it in their bell icon and (optionally) by email.',
+        }}
+        viewer={{ role: 'ADMIN', email, name: isMainAdmin ? 'Main admin' : 'Branch admin' }}
+      />
     </div>
   )
 }

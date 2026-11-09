@@ -43,26 +43,23 @@ export default function SignInPage() {
   }
 
   return (
-    // Viewport-escape so the brand panel can extend to the page edges
-    // even though the global <main> caps everything at max-w-5xl. Same
-    // pattern used by /admission and /classes for full-bleed layouts.
-    <div
-      className="animate-fade-up"
-      style={{
-        width: '100vw',
-        maxWidth: '100vw',
-        marginLeft: 'calc(50% - 50vw)',
-        marginRight: 'calc(50% - 50vw)',
-      }}
-    >
-      <div className="grid lg:grid-cols-[1.05fr_1fr] min-h-[calc(100vh-160px)]">
+    // One centred card in the same column as the header, brand panel and
+    // form side by side at equal height. This replaced a viewport-escape
+    // full-bleed panel: the global <main>'s vertical padding left cream bands
+    // above and below it, its left edge sat flush with the window while the
+    // header was centred, and the form floated off to the right.
+    <div className="animate-fade-up">
+      <div
+        className="grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] rounded-2xl overflow-hidden"
+        style={{ background: '#fff', border: '1px solid var(--paper-3)', boxShadow: '0 1px 2px rgba(30,56,50,0.04), 0 12px 32px -18px rgba(30,56,50,0.25)' }}
+      >
 
         {/* ── LEFT: brand panel ─────────────────────────────────── */}
         {/* Hidden on small screens — mobile users go straight to the
             form. The gradient + decorative orbs evoke the same look as
             the public /enroll page so the portal feels consistent. */}
         <aside
-          className="hidden lg:flex flex-col justify-between px-12 py-14 relative overflow-hidden"
+          className="hidden lg:flex flex-col justify-between gap-10 px-10 py-10 relative overflow-hidden"
           style={{
             background: 'linear-gradient(135deg, var(--deep-teal) 0%, var(--moss) 65%, var(--bright-teal) 100%)',
             color: '#fff',
@@ -94,7 +91,7 @@ export default function SignInPage() {
             </div>
 
             <h1
-              className="mt-8 text-[44px] xl:text-[52px] leading-[1.05]"
+              className="mt-6 text-[40px] xl:text-[44px] leading-[1.05]"
               style={{
                 fontFamily: 'var(--font-display)',
                 // Force white explicitly — the global stylesheet sets
@@ -110,7 +107,7 @@ export default function SignInPage() {
               Welcome back. Sign in to manage your child&apos;s enrollment, see today&apos;s lesson, or post the day&apos;s update for your class.
             </p>
 
-            <ul className="mt-10 space-y-3 text-[13.5px] text-white/85 max-w-md">
+            <ul className="mt-8 space-y-3 text-[13.5px] text-white/85 max-w-md">
               {[
                 'DepEd-accredited curriculum via Light Bearer Christian Academy',
                 'Clinic-integrated SPED support for every learner',
@@ -129,12 +126,12 @@ export default function SignInPage() {
           </div>
 
           {/* Bottom: NPC compliance badge + copyright. Trust signal. */}
-          <div className="relative z-10 mt-12 pt-8 border-t border-white/20 flex items-center gap-3">
+          <div className="relative z-10 pt-6 border-t border-white/20 flex items-center gap-3">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src="/npc-seal.png"
               alt="National Privacy Commission — Registered DPO / DPS"
-              className="w-14 h-auto shrink-0"
+              className="w-11 h-auto shrink-0"
               style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.15))' }}
             />
             <p className="text-white/75 text-[11px] leading-snug">
@@ -145,8 +142,9 @@ export default function SignInPage() {
         </aside>
 
         {/* ── RIGHT: form panel ─────────────────────────────────── */}
-        <main className="flex items-center justify-center px-5 py-10 sm:px-8 sm:py-14 bg-[color:var(--paper)]">
-          <div className="w-full max-w-md">
+        {/* A div, not a second <main>: the layout already has one. */}
+        <div className="flex items-center justify-center px-5 py-8 sm:px-10 sm:py-10">
+          <div className="w-full max-w-[420px]">
 
             {/* Mobile-only header (the brand panel is hidden on < lg). */}
             <div className="flex items-center gap-3 mb-8 lg:hidden">
@@ -177,15 +175,18 @@ export default function SignInPage() {
             {/* Role selector — compact pill grid. 3-up on sm+, 2-up on
                 xs. Subdued until clicked; active pill switches to teal.
                 Same affordance as the previous version, refined visually. */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-6">
-              {ROLES.map(r => {
+            {/* Parent / Student first and full width (most sign-ins), then
+                the four staff roles two by two — five tiles on a grid of
+                three used to leave an empty slot. */}
+            <div className="grid grid-cols-2 gap-2 mb-6" role="group" aria-label="Sign in as">
+              {ROLES.map((r, i) => {
                 const active = role === r.value
                 return (
                   <button
                     key={r.value}
                     type="button"
                     onClick={() => { setRole(r.value); setErr(null) }}
-                    className="text-left rounded-xl border px-3 py-2.5 transition-all"
+                    className={`text-left rounded-xl border px-3 py-2.5 transition-all focus-visible:outline-2 focus-visible:outline-offset-2 ${i === 0 ? 'col-span-2' : ''}`}
                     style={{
                       borderColor: active ? 'var(--moss)' : 'var(--paper-3)',
                       background: active ? 'var(--paper-2)' : 'var(--paper)',
@@ -268,7 +269,7 @@ export default function SignInPage() {
               </p>
             </div>
           </div>
-        </main>
+        </div>
       </div>
     </div>
   )

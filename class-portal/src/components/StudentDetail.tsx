@@ -1,13 +1,13 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import {
   getFile, putFile, deleteFile, uploadDocumentBlob,
   getPaymentsForStudent, getWaivers, hydrateWaiverForStudent,
   hasServerWaiverPdf, fetchServerWaiverPdfBlob,
   getGradeForStudent,
   updateUserEnrollment, updateUser, saveHeadshot,
-  levelLabel, lrnStatusLabel, lsenClassificationLabel,
+  levelLabel, lrnStatusLabel, lsenClassificationLabel, branchShortLabel,
   LSEN_CLASSIFICATION_GROUPS,
   hydrateFrontDeskPayments,
   type StoredUser, type PaymentRecord, type WaiverRecord, type GradeRecord,
@@ -34,6 +34,11 @@ import HeadshotEditor from './HeadshotEditor'
 import EnrollmentEditor from './EnrollmentEditor'
 import PlanSwitchCalculator from './PlanSwitchCalculator'
 import { PeriodPicker } from './PeriodPicker'
+import {
+  Banner, BTN_PRIMARY, BTN_SM, CARD_STYLE, CONTROL, CONTROL_SM, CONTROL_STYLE, DashCard, FILE_FOCUS, FOCUS,
+  GroupLabel, Icon, LABEL, LABEL_STYLE, PRIMARY_STYLE, SECONDARY_STYLE, Skeleton, StatusPill, SUBTLE_BG,
+  Tag, displayName, type Tone,
+} from '@/components/hub/ui'
 
 interface Props {
   student: StoredUser
@@ -114,34 +119,48 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
   // Re-run when paymentsRev bumps (i.e., after we hydrate from server).
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const badgeInfo = useMemo(() => paymentBadgeInfoFor(student.id), [student.id, paymentsRev, payments])
-  const primaryBadgeClass = badgeInfo.status === 'PAID' ? 'badge-paid'
-    : badgeInfo.status === 'DUE' ? 'badge-due'
-    : 'badge-pending'
+  const primaryBadgeTone: Tone = badgeInfo.status === 'PAID' ? 'success'
+    : badgeInfo.status === 'DUE' ? 'warn'
+    : 'neutral'
+  // Header facts: the same values the Learner profile card lists below,
+  // pulled up so staff can identify the learner at a glance.
+  const guardianName = e.guardianOfRecord === 'FATHER' ? nameOf(e.father)
+    : e.guardianOfRecord === 'MOTHER' ? nameOf(e.mother)
+    : e.guardianOfRecord === 'OTHER' ? nameOf(e.guardian)
+    : null
+  const canEditProfile = viewerRole === 'ADMIN' || viewerRole === 'STUDENT'
+  const isStaff = viewerRole === 'ADMIN' || viewerRole === 'TEACHER'
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5 min-w-0">
       {/* Identity card with headshot */}
-      <div className="card-static">
+      <section className="rounded-xl p-4 sm:p-5 min-w-0" style={CARD_STYLE}>
         <div className="flex items-start justify-between gap-5 flex-wrap">
-          <div className="flex items-start gap-5">
+          {/* Wraps on phones so the headshot, name and long emails never
+              push the card wider than the screen. */}
+          <div className="flex flex-wrap items-start gap-5 min-w-0">
             <HeadshotEditor studentId={student.id} editable={viewerRole === 'STUDENT'} />
-            <div>
-              <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)] mb-1" style={{ fontFamily: 'var(--font-display)' }}>Student profile</div>
-              <h1 className="text-[24px] leading-tight text-[color:var(--deep-teal)]">
-                {[student.firstName, student.lastName].filter(Boolean).join(' ') || student.email}
+            <div className="min-w-0 [overflow-wrap:anywhere]">
+              <p className="text-[10.5px] font-bold uppercase tracking-widest mb-1" style={{ color: 'var(--deep-teal)', fontFamily: 'var(--font-display)' }}>Student profile</p>
+              <h1 className="text-[22px] sm:text-2xl font-bold leading-tight tracking-normal" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>
+                {displayName([student.firstName, student.lastName].filter(Boolean).join(' ')) || student.email}
               </h1>
-              <p className="text-sm text-[color:var(--mid-gray)] mt-1">{student.email}</p>
-              {student.level && (
-                <LevelEditor
-                  student={student}
-                  viewerRole={viewerRole}
-                  onUpdated={u => { setStudent(u); onChange?.() }}
-                />
-              )}
+              <p className="text-sm mt-1" style={{ color: 'var(--mid-gray)' }}>{student.email}</p>
+              <div className="flex flex-wrap items-center gap-2 mt-2.5">
+                {student.level && (
+                  <LevelEditor
+                    student={student}
+                    viewerRole={viewerRole}
+                    onUpdated={u => { setStudent(u); onChange?.() }}
+                  />
+                )}
+                {student.branch && <Tag tone="info">{branchShortLabel(student.branch)}</Tag>}
+              </div>
             </div>
           </div>
-          <div className="flex flex-col items-end gap-2">
-            <div className="flex flex-col items-end gap-1.5">
+          <div className="flex flex-col items-start sm:items-end gap-2.5 min-w-0 max-w-full">
+            <p className={LABEL} style={LABEL_STYLE}>Tuition</p>
+            <ul className="flex flex-wrap sm:justify-end gap-1.5 max-w-full sm:max-w-[26rem]" aria-label="Tuition payment status">
               {/* Every paid SY month except the current one, oldest→newest,
                   so the front desk sees a full month-by-month history
                   above the current-period badge — e.g.
@@ -152,7 +171,7 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
                   history yet). Falls back to lastPaidLabel for the DUE
                   case when the fuller list didn't compute anything. */}
               {badgeInfo.paidPastMonthLabels?.map(label => (
-                <span key={label} className="badge badge-paid">{label}</span>
+                <li key={label}><StatusPill tone="success">{label}</StatusPill></li>
               ))}
               {/* Late-enrollee back-balance: one amber "Owes for <month>"
                   badge per missing SY month. Rendered between the paid
@@ -160,32 +179,50 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
                   student shows chronological "…Paid for X, Owes for Y,
                   Paid/Due for now". */}
               {badgeInfo.owedMonthLabels?.map(label => (
-                <span key={label} className="badge badge-due">{label}</span>
+                <li key={label}><StatusPill tone="warn">{label}</StatusPill></li>
               ))}
               {/* Fallback last-paid for DUE-only students whose
                   paidPastMonthLabels didn't populate (e.g. legacy
                   free-text period the walk-back couldn't parse). */}
               {!badgeInfo.paidPastMonthLabels && badgeInfo.lastPaidLabel && (
-                <span className="badge badge-paid">{badgeInfo.lastPaidLabel}</span>
+                <li><StatusPill tone="success">{badgeInfo.lastPaidLabel}</StatusPill></li>
               )}
-              <span className={`badge ${primaryBadgeClass}`}>
-                {badgeInfo.currentLabel}
-              </span>
-            </div>
+              <li>
+                <StatusPill tone={primaryBadgeTone}>
+                  {badgeInfo.currentLabel}
+                </StatusPill>
+              </li>
+            </ul>
             {viewerRole === 'STUDENT' && (
-              <a href="/pay" className="btn-cta text-xs whitespace-nowrap">Pay tuition fee →</a>
+              <a href="/pay" className={`${BTN_PRIMARY} w-full sm:w-auto`} style={PRIMARY_STYLE}>
+                <Icon name="wallet" size={15} /> Pay tuition fee
+              </a>
             )}
             {/* Payments are recorded at the Accounting Hub POS only (Hannah,
                 2026-10-31); a PayMongo payment is recorded there too. */}
           </div>
         </div>
-      </div>
+
+        <dl className="grid grid-cols-2 sm:grid-cols-4 gap-x-5 gap-y-3 mt-4 pt-4" style={{ borderTop: '1px solid var(--light-gray)' }}>
+          <Row label="LRN" value={e.lrn || lrnStatusLabel(e.lrnStatus)} />
+          <Row label="Date of birth" value={e.dob ?? '—'} />
+          {guardianName !== null && <Row label="Guardian" value={guardianName} />}
+          <Row label="Contact" value={e.cellphone || e.telephone || '—'} />
+        </dl>
+      </section>
 
       {/* Learner profile */}
-      <div className="card-static">
-        <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
-          <h2 className="text-[18px] leading-tight">Learner profile</h2>
-          <div className="flex gap-2">
+      <DashCard
+        title="Learner profile"
+        icon={<Icon name="student" size={15} />}
+        action={canEditProfile ? (
+          <button type="button" className={BTN_SM} style={SECONDARY_STYLE} onClick={() => setEditorOpen(true)}>
+            <Icon name="edit" size={13} /> {viewerRole === 'STUDENT' ? 'Edit profile' : 'Edit enrollment'}
+          </button>
+        ) : undefined}
+      >
+        {isStaff && (
+          <div className="flex flex-wrap gap-2 mb-4">
             {(viewerRole === 'ADMIN' || viewerRole === 'TEACHER') && (
               <LrnUpdater
                 student={student}
@@ -198,14 +235,9 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
                 onSaved={updated => { setStudent(updated); onChange?.() }}
               />
             )}
-            {(viewerRole === 'ADMIN' || viewerRole === 'STUDENT') && (
-              <button type="button" className="btn-secondary text-xs" onClick={() => setEditorOpen(true)}>
-                {viewerRole === 'STUDENT' ? 'Edit profile' : 'Edit enrollment'}
-              </button>
-            )}
           </div>
-        </div>
-        <dl className="grid sm:grid-cols-2 gap-x-6 gap-y-2.5 text-sm">
+        )}
+        <dl className={FACT_GRID}>
           <Row label="School year" value={e.schoolYearFrom && e.schoolYearTo ? `${e.schoolYearFrom} to ${e.schoolYearTo}` : '—'} />
           <Row label="LRN status" value={lrnStatusLabel(e.lrnStatus)} />
           {e.lrn && <Row label="LRN" value={e.lrn} />}
@@ -227,43 +259,42 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
         </dl>
 
         {e.isReturningOrTransferee === 'YES' && (
-          <>
-            <h3 className="text-[13.5px] font-bold uppercase tracking-[0.12em] text-[color:var(--bright-teal)] mt-6 mb-3" style={{ fontFamily: 'var(--font-display)' }}>Previous school</h3>
-            <dl className="grid sm:grid-cols-2 gap-x-6 gap-y-2.5 text-sm">
+          <div className="mt-5 pt-4 space-y-3" style={{ borderTop: '1px solid var(--light-gray)' }}>
+            <GroupLabel>Previous school</GroupLabel>
+            <dl className={FACT_GRID}>
               <Row label="Last grade completed" value={e.lastGradeCompleted ?? '—'} />
               <Row label="Last school year" value={e.lastSchoolYearCompleted ?? '—'} />
               <Row label="School name" value={e.previousSchoolName ?? '—'} />
               {e.previousSchoolId && <Row label="School ID" value={e.previousSchoolId} />}
               <Row label="School address" value={e.previousSchoolAddress ?? '—'} />
             </dl>
-          </>
+          </div>
         )}
-      </div>
+      </DashCard>
 
       {/* Submitted documents — viewable + downloadable; the student can also
           re-upload any row (e.g. the original was blurry or the wrong file)
           and upload any missing required document from the picker below.
           Admin + teacher can do the same on behalf of the student. */}
       {(
-        <div className="card-static">
-          <h2 className="text-[18px] leading-tight mb-1">Submitted documents</h2>
-          {viewerRole === 'STUDENT' && (
-            <p className="text-[12.5px] text-[color:var(--mid-gray)] mb-3">
+        <DashCard
+          title="Submitted documents"
+          icon={<Icon name="file" size={15} />}
+          description={viewerRole === 'STUDENT' ? (
+            <>
               Need to replace a file? Click <span className="font-semibold">Re-upload</span> on the row.
               Missing a required document? Use the picker at the bottom of this card to upload it.
-            </p>
-          )}
-          {(viewerRole === 'ADMIN' || viewerRole === 'TEACHER') && (
-            <p className="text-[12.5px] text-[color:var(--mid-gray)] mb-3">
-              Re-upload any row, or upload school-endorsed records like Form 137 / SF10 from the picker below.
-            </p>
-          )}
+            </>
+          ) : (viewerRole === 'ADMIN' || viewerRole === 'TEACHER') ? (
+            <>Re-upload any row, or upload school-endorsed records like Form 137 / SF10 from the picker below.</>
+          ) : undefined}
+        >
           {viewerRole === 'STUDENT' && (!e.documents || Object.keys(e.documents).length === 0) && (
-            <p className="text-[12.5px] italic text-[color:var(--mid-gray)] mb-3">
+            <p className="text-xs mb-3" style={{ color: 'var(--mid-gray)' }}>
               No documents on file yet. Upload your required documents from the picker below.
             </p>
           )}
-          <div className="space-y-2.5">
+          <div className="space-y-2">
             {Object.entries(e.documents ?? {}).map(([k, v]) => (
               <DocumentRow
                 key={k}
@@ -322,15 +353,15 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
               }}
             />
           )}
-        </div>
+        </DashCard>
       )}
 
       {/* Other Documents — auto-generated PDFs + school-issued docs */}
-      <div className="card-static">
-        <h2 className="text-[18px] leading-tight mb-3">Other Documents</h2>
-        <p className="text-[12px] text-[color:var(--mid-gray)] mb-3" style={{ fontFamily: 'var(--font-display)' }}>
-          Each <span className="font-semibold">View</span> opens a freshly rebuilt PDF using the latest template — no stale cached copies.
-        </p>
+      <DashCard
+        title="Other documents"
+        icon={<Icon name="book" size={15} />}
+        description={<>Each <span className="font-semibold">View</span> opens a freshly rebuilt PDF using the latest template — no stale cached copies.</>}
+      >
         <div className="grid sm:grid-cols-2 gap-3">
           <GeneratedFormCard
             title="Enrollment Form (Annex 2)"
@@ -362,9 +393,11 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
             />
           )}
           {!waiver && !waiverPdfOnServer && (
-            <div className="rounded-2xl p-4 border text-sm" style={{ borderColor: 'var(--paper-3)', background: 'var(--paper-2)' }}>
-              <div className="font-semibold text-[color:var(--narra)] mb-1" style={{ fontFamily: 'var(--font-display)' }}>Parent / Guardian Waiver</div>
-              <div className="text-[12.5px] text-[color:var(--mid-gray)]">Not yet signed.</div>
+            <div className={TILE} style={PANEL_STYLE}>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <TileTitle>Parent / Guardian Waiver</TileTitle>
+                <StatusPill tone="warn">Not yet signed</StatusPill>
+              </div>
               {/* Direct path to /waiver for the parent themselves. This
                   is the only way they can get there once enrollment is
                   done — the standalone /waiver page is reachable by
@@ -374,15 +407,15 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
               {viewerRole === 'STUDENT' && student.level ? (
                 <a
                   href={`/waiver?level=${encodeURIComponent(student.level)}`}
-                  className="btn-primary text-xs inline-block mt-3"
-                  style={{ width: 'auto' }}
+                  className={`${BTN_SM_PRIMARY} mt-3`}
+                  style={PRIMARY_STYLE}
                 >
-                  Sign waiver →
+                  <Icon name="edit" size={13} /> Sign waiver
                 </a>
               ) : (
-                <div className="text-[11.5px] text-[color:var(--mid-gray)] mt-2 italic">
+                <p className="text-xs mt-2 leading-relaxed" style={{ color: 'var(--mid-gray)' }}>
                   Ask the parent to sign in and click <span className="font-semibold">Sign waiver</span> on this card. The system regenerates the PDF from their signatures and stores it on the server.
-                </div>
+                </p>
               )}
             </div>
           )}
@@ -417,7 +450,7 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
               bi-annual (or any other plan change), net of an active
               personal voucher discount and cash already collected. */}
           {viewerRole === 'ADMIN' && (
-            <div className="sm:col-span-2">
+            <div className="sm:col-span-2 min-w-0">
               <PlanSwitchCalculator student={student} />
             </div>
           )}
@@ -430,13 +463,12 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
             onUpdated={(updated) => { setStudent(updated); onChange?.() }}
           />
         </div>
-      </div>
+      </DashCard>
 
       {/* Grades preview when teacher has filled */}
       {grade && (
-        <div className="card-static">
-          <h2 className="text-[18px] leading-tight mb-3">Grades</h2>
-          <div className="grid grid-cols-5 gap-2 text-center">
+        <DashCard title="Grades" icon={<Icon name="award" size={15} />}>
+          <div className="grid grid-cols-4 sm:grid-cols-5 gap-2 text-center">
             <Quarter label="Q1" value={grade.q1} />
             <Quarter label="Q2" value={grade.q2} />
             <Quarter label="Q3" value={grade.q3} />
@@ -448,7 +480,7 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
               <DownloadButton fileId={grade.proofFileId} label={`Proof document — ${grade.proofFileName ?? 'document'}`} />
             </div>
           )}
-        </div>
+        </DashCard>
       )}
 
       {editorOpen && (viewerRole === 'ADMIN' || viewerRole === 'STUDENT') && (
@@ -461,6 +493,29 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
       )}
     </div>
   )
+}
+
+/* ─────────── layout pieces ─────────── */
+
+/** Label / value grid used by the identity facts and Learner profile. */
+const FACT_GRID = 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-3.5'
+/** One document tile inside "Other documents". */
+const TILE = 'rounded-xl p-4 min-w-0'
+const TILE_STYLE: CSSProperties = { background: '#fff', border: '1px solid var(--light-gray)' }
+/** Quiet panel for inline forms (LRN / LSEN updaters, upload picker). */
+const PANEL_STYLE: CSSProperties = { background: SUBTLE_BG, border: '1px solid var(--light-gray)' }
+const BTN_SM_PRIMARY = `${BTN_SM} text-white hover:opacity-90`
+const CHECKBOX = `w-4 h-4 mt-0.5 flex-shrink-0 accent-[color:var(--deep-teal)] ${FOCUS}`
+
+function TileTitle({ children }: { children: ReactNode }) {
+  return (
+    <h3 className="text-[13.5px] font-bold leading-snug tracking-normal [overflow-wrap:anywhere]" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>
+      {children}
+    </h3>
+  )
+}
+function TileText({ children }: { children: ReactNode }) {
+  return <p className="text-xs mt-1 leading-relaxed [overflow-wrap:anywhere]" style={{ color: 'var(--mid-gray)' }}>{children}</p>
 }
 
 /* ─────────── helpers ─────────── */
@@ -505,46 +560,46 @@ function LrnUpdater({ student, onSaved }: { student: StoredUser; onSaved: (u: St
 
   if (!open) {
     return (
-      <button type="button" className="btn-secondary text-xs" onClick={() => setOpen(true)}>
+      <button type="button" className={BTN_SM} style={SECONDARY_STYLE} onClick={() => setOpen(true)}>
         Update LRN
       </button>
     )
   }
   return (
-    <div className="w-full rounded-xl p-3 border" style={{ borderColor: 'var(--paper-3)', background: 'var(--paper-2)' }}>
-      <div className="text-[11px] uppercase tracking-[0.12em] text-[color:var(--mid-gray)] font-semibold mb-2" style={{ fontFamily: 'var(--font-display)' }}>
+    <div className="w-full rounded-xl p-3 sm:p-4 min-w-0" style={PANEL_STYLE}>
+      <p className="text-[12px] font-bold mb-3" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>
         Update LRN (after DepEd issuance)
-      </div>
-      {err && <div className="mb-2 px-3 py-2 rounded-lg bg-rose-50 border border-rose-100 text-xs text-rose-800">{err}</div>}
-      <div className="flex flex-wrap items-end gap-2">
-        <label className="block">
-          <span className="label text-[11px]">LRN status</span>
+      </p>
+      {err && <div className="mb-3"><Banner tone="error">{err}</Banner></div>}
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="block w-full sm:w-auto">
+          <span className={LABEL} style={LABEL_STYLE}>LRN status</span>
           <select
-            className="select"
+            className={`${CONTROL} w-full sm:min-w-[150px]`}
             value={status}
             onChange={ev => setStatus(ev.target.value as NonNullable<EnrollmentDraft['lrnStatus']>)}
-            style={{ minWidth: 150 }}
+            style={CONTROL_STYLE}
           >
             <option value="NO_LRN">No LRN</option>
             <option value="WITH_LRN">With LRN</option>
             <option value="RETURNING">Returning (Balik-Aral)</option>
           </select>
         </label>
-        <label className="block">
-          <span className="label text-[11px]">LRN number (12 digits)</span>
+        <label className="block w-full sm:w-auto">
+          <span className={LABEL} style={LABEL_STYLE}>LRN number (12 digits)</span>
           <input
-            className="input"
+            className={`${CONTROL} w-full sm:min-w-[180px] tabular-nums`}
             value={lrn}
             onChange={ev => setLrn(ev.target.value.replace(/[^\d]/g, '').slice(0, 12))}
             placeholder="123456789012"
             disabled={status === 'NO_LRN'}
             inputMode="numeric"
-            style={{ minWidth: 180 }}
+            style={CONTROL_STYLE}
           />
         </label>
-        <div className="flex gap-1.5 ml-auto">
-          <button type="button" className="btn-secondary text-xs" onClick={() => setOpen(false)} disabled={busy}>Cancel</button>
-          <button type="button" className="btn-primary text-xs" onClick={handleSave} disabled={busy}>
+        <div className="flex gap-2 ml-auto">
+          <button type="button" className={BTN_SM} style={SECONDARY_STYLE} onClick={() => setOpen(false)} disabled={busy}>Cancel</button>
+          <button type="button" className={BTN_SM_PRIMARY} style={PRIMARY_STYLE} onClick={handleSave} disabled={busy}>
             {busy ? 'Saving…' : 'Save'}
           </button>
         </div>
@@ -585,22 +640,23 @@ function LsenUpdater({ student, onSaved }: { student: StoredUser; onSaved: (u: S
 
   if (!open) {
     return (
-      <button type="button" className="btn-secondary text-xs" onClick={() => setOpen(true)}>
+      <button type="button" className={BTN_SM} style={SECONDARY_STYLE} onClick={() => setOpen(true)}>
         {e.lsenClassification ? 'Update LSEN classification' : 'Set LSEN classification'}
       </button>
     )
   }
   return (
-    <div className="w-full rounded-xl p-3 border" style={{ borderColor: 'var(--paper-3)', background: 'var(--paper-2)' }}>
-      <div className="text-[11px] uppercase tracking-[0.12em] text-[color:var(--mid-gray)] font-semibold mb-2" style={{ fontFamily: 'var(--font-display)' }}>
+    <div className="w-full rounded-xl p-3 sm:p-4 min-w-0" style={PANEL_STYLE}>
+      <p className="text-[12px] font-bold mb-3" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>
         LSEN classification (Learners Information System)
-      </div>
-      {err && <div className="mb-2 px-3 py-2 rounded-lg bg-rose-50 border border-rose-100 text-xs text-rose-800">{err}</div>}
-      <div className="flex flex-wrap items-end gap-2">
-        <label className="block flex-1" style={{ minWidth: 260 }}>
-          <span className="label text-[11px]">Classification</span>
+      </p>
+      {err && <div className="mb-3"><Banner tone="error">{err}</Banner></div>}
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="block flex-1 min-w-0 basis-full sm:basis-[260px]">
+          <span className={LABEL} style={LABEL_STYLE}>Classification</span>
           <select
-            className="select"
+            className={`${CONTROL} w-full`}
+            style={CONTROL_STYLE}
             value={value}
             onChange={ev => setValue((ev.target.value || '') as LsenClassification | '')}
           >
@@ -614,9 +670,9 @@ function LsenUpdater({ student, onSaved }: { student: StoredUser; onSaved: (u: S
             ))}
           </select>
         </label>
-        <div className="flex gap-1.5 ml-auto">
-          <button type="button" className="btn-secondary text-xs" onClick={() => setOpen(false)} disabled={busy}>Cancel</button>
-          <button type="button" className="btn-primary text-xs" onClick={handleSave} disabled={busy}>
+        <div className="flex gap-2 ml-auto">
+          <button type="button" className={BTN_SM} style={SECONDARY_STYLE} onClick={() => setOpen(false)} disabled={busy}>Cancel</button>
+          <button type="button" className={BTN_SM_PRIMARY} style={PRIMARY_STYLE} onClick={handleSave} disabled={busy}>
             {busy ? 'Saving…' : 'Save'}
           </button>
         </div>
@@ -627,17 +683,17 @@ function LsenUpdater({ student, onSaved }: { student: StoredUser; onSaved: (u: S
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
-    <>
-      <dt className="text-[color:var(--mid-gray)] uppercase tracking-[0.06em] text-[11.5px] font-semibold" style={{ fontFamily: 'var(--font-display)' }}>{label}</dt>
-      <dd className="text-[color:var(--ink)] mb-1">{value || '—'}</dd>
-    </>
+    <div className="min-w-0">
+      <dt className={LABEL} style={LABEL_STYLE}>{label}</dt>
+      <dd className="text-sm leading-snug [overflow-wrap:anywhere]" style={{ color: 'var(--charcoal)' }}>{value || '—'}</dd>
+    </div>
   )
 }
 function Quarter({ label, value, highlight }: { label: string; value?: string; highlight?: boolean }) {
   return (
-    <div className="rounded-xl p-3 border" style={{ borderColor: 'var(--paper-3)', background: highlight ? 'var(--sage-tint)' : 'var(--paper-2)' }}>
-      <div className="text-[10.5px] uppercase tracking-[0.12em] text-[color:var(--mid-gray)] font-semibold" style={{ fontFamily: 'var(--font-display)' }}>{label}</div>
-      <div className={`text-[22px] font-bold mt-1 ${highlight ? 'text-[color:var(--narra)]' : 'text-[color:var(--ink)]'}`} style={{ fontFamily: 'var(--font-display)' }}>{value ?? '—'}</div>
+    <div className={`rounded-xl px-2 py-3 min-w-0 ${highlight ? 'col-span-4 sm:col-span-1' : ''}`} style={{ border: '1px solid var(--light-gray)', background: highlight ? 'var(--pale-teal)' : SUBTLE_BG }}>
+      <div className="text-[10.5px] uppercase tracking-wider font-semibold" style={{ color: 'var(--mid-gray)', fontFamily: 'var(--font-display)' }}>{label}</div>
+      <div className="text-xl sm:text-[22px] font-bold mt-1 tabular-nums" style={{ color: highlight ? 'var(--deep-teal)' : 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>{value ?? '—'}</div>
     </div>
   )
 }
@@ -732,19 +788,17 @@ function StaffDocUploader({
   }
 
   return (
-    <div
-      className="mt-3 rounded-xl p-3 border"
-      style={{ borderColor: 'var(--paper-3)', background: 'var(--paper-2)' }}
-    >
-      <div className="text-[11px] uppercase tracking-[0.12em] text-[color:var(--mid-gray)] font-semibold mb-2" style={{ fontFamily: 'var(--font-display)' }}>
+    <div className="mt-4 rounded-xl p-3 sm:p-4 min-w-0" style={PANEL_STYLE}>
+      <label htmlFor={`doc-upload-${viewerRole}`} className="block text-[12px] font-bold mb-2" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>
         {heading}
-      </div>
+      </label>
       <div className="flex items-center gap-2 flex-wrap">
         <select
-          className="select"
+          id={`doc-upload-${viewerRole}`}
+          className={`${CONTROL} w-full sm:w-auto sm:min-w-[240px] max-w-full`}
           value={selectedKey}
           onChange={ev => setSelectedKey(ev.target.value)}
-          style={{ minWidth: 240 }}
+          style={CONTROL_STYLE}
         >
           {STAFF_DOC_OPTIONS.map(o => (
             <option key={o.key} value={o.key}>
@@ -752,13 +806,14 @@ function StaffDocUploader({
             </option>
           ))}
         </select>
-        <label className={`btn-primary text-xs cursor-pointer ${busy ? 'opacity-60' : ''}`} style={{ width: 'auto' }}>
+        <label className={`${BTN_PRIMARY} ${FILE_FOCUS} ${busy ? 'opacity-60' : ''}`} style={PRIMARY_STYLE}>
+          <Icon name="upload" size={14} />
           {busy ? 'Uploading…' : alreadyOnFile ? 'Replace file' : 'Upload file'}
           <input type="file" className="sr-only" accept=".pdf,image/*,.doc,.docx" onChange={handlePick} disabled={busy} />
         </label>
       </div>
-      <p className="text-[11.5px] text-[color:var(--mid-gray)] mt-2">{hint}</p>
-      {err && <div className="mt-2 text-[12px] text-rose-700">{err}</div>}
+      <p className="text-[11.5px] mt-2 leading-relaxed" style={{ color: 'var(--mid-gray)' }}>{hint}</p>
+      {err && <div className="mt-2"><Banner tone="error">{err}</Banner></div>}
     </div>
   )
 }
@@ -815,33 +870,35 @@ function SchoolIdCard({ student, viewerRole, onUpdated }: {
   }
 
   return (
-    <div className="rounded-2xl p-4 border" style={{ borderColor: 'var(--paper-3)', background: '#fff' }}>
-      <div className="font-semibold text-[color:var(--narra)]" style={{ fontFamily: 'var(--font-display)' }}>School ID</div>
-      <div className="text-[12px] text-[color:var(--mid-gray)] mt-1">
+    <div className={TILE} style={TILE_STYLE}>
+      <TileTitle>School ID</TileTitle>
+      <TileText>
         {idDoc?.fileId
           ? `${idDoc.name} · ${(idDoc.size / 1024).toFixed(0)} KB`
           : (canEdit ? 'Upload the student’s printed school ID (image or PDF).' : 'Not yet issued by the school.')}
-      </div>
-      {err && <div className="text-[11.5px] text-rose-700 mt-1">{err}</div>}
+      </TileText>
+      {err && <div className="mt-2"><Banner tone="error">{err}</Banner></div>}
       <div className="flex gap-2 mt-3 flex-wrap">
         {idDoc?.fileId ? (
           <>
-            <button type="button" className="btn-secondary text-xs" onClick={() => openFile(idDoc.fileId!, idDoc.name, idDoc.type, student.id, 'school_id')}>View</button>
-            <button type="button" className="btn-primary text-xs" onClick={() => downloadFile(idDoc.fileId!, idDoc.name, idDoc.type, student.id, 'school_id')}>Download</button>
+            <button type="button" className={BTN_SM} style={SECONDARY_STYLE} aria-label="View School ID" onClick={() => openFile(idDoc.fileId!, idDoc.name, idDoc.type, student.id, 'school_id')}><Icon name="eye" size={13} /> View</button>
+            <button type="button" className={BTN_SM_PRIMARY} style={PRIMARY_STYLE} aria-label="Download School ID" onClick={() => downloadFile(idDoc.fileId!, idDoc.name, idDoc.type, student.id, 'school_id')}><Icon name="download" size={13} /> Download</button>
             {canEdit && (
-              <label className="btn-secondary text-xs cursor-pointer inline-flex items-center" style={{ width: 'auto' }}>
+              <label className={`${BTN_SM} ${FILE_FOCUS}`} style={SECONDARY_STYLE}>
+                <Icon name="upload" size={13} />
                 {busy ? 'Uploading…' : 'Replace'}
                 <input type="file" className="sr-only" accept=".pdf,image/*" onChange={handleUpload} disabled={busy} />
               </label>
             )}
           </>
         ) : canEdit ? (
-          <label className="btn-primary text-xs cursor-pointer inline-flex items-center" style={{ width: 'auto' }}>
+          <label className={`${BTN_SM_PRIMARY} ${FILE_FOCUS}`} style={PRIMARY_STYLE}>
+            <Icon name="upload" size={13} />
             {busy ? 'Uploading…' : 'Upload School ID'}
             <input type="file" className="sr-only" accept=".pdf,image/*" onChange={handleUpload} disabled={busy} />
           </label>
         ) : (
-          <span className="badge badge-pending">Pending</span>
+          <StatusPill tone="neutral">Pending</StatusPill>
         )}
       </div>
     </div>
@@ -888,33 +945,35 @@ function StaffUploadedDocCard({ docKey, title, description, student, viewerRole,
   }
 
   return (
-    <div className="rounded-2xl p-4 border" style={{ borderColor: 'var(--paper-3)', background: '#fff' }}>
-      <div className="font-semibold text-[color:var(--narra)]" style={{ fontFamily: 'var(--font-display)' }}>{title}</div>
-      <div className="text-[12px] text-[color:var(--mid-gray)] mt-1">
+    <div className={TILE} style={TILE_STYLE}>
+      <TileTitle>{title}</TileTitle>
+      <TileText>
         {doc?.fileId
           ? `${doc.name} · ${(doc.size / 1024).toFixed(0)} KB`
           : (canEdit ? description : 'Not yet uploaded by the school.')}
-      </div>
-      {err && <div className="text-[11.5px] text-rose-700 mt-1">{err}</div>}
+      </TileText>
+      {err && <div className="mt-2"><Banner tone="error">{err}</Banner></div>}
       <div className="flex gap-2 mt-3 flex-wrap">
         {doc?.fileId ? (
           <>
-            <button type="button" className="btn-secondary text-xs" onClick={() => openFile(doc.fileId!, doc.name, doc.type, student.id, docKey)}>View</button>
-            <button type="button" className="btn-primary text-xs" onClick={() => downloadFile(doc.fileId!, doc.name, doc.type, student.id, docKey)}>Download</button>
+            <button type="button" className={BTN_SM} style={SECONDARY_STYLE} aria-label={`View ${title}`} onClick={() => openFile(doc.fileId!, doc.name, doc.type, student.id, docKey)}><Icon name="eye" size={13} /> View</button>
+            <button type="button" className={BTN_SM_PRIMARY} style={PRIMARY_STYLE} aria-label={`Download ${title}`} onClick={() => downloadFile(doc.fileId!, doc.name, doc.type, student.id, docKey)}><Icon name="download" size={13} /> Download</button>
             {canEdit && (
-              <label className="btn-secondary text-xs cursor-pointer inline-flex items-center" style={{ width: 'auto' }}>
+              <label className={`${BTN_SM} ${FILE_FOCUS}`} style={SECONDARY_STYLE}>
+                <Icon name="upload" size={13} />
                 {busy ? 'Uploading…' : 'Replace'}
                 <input type="file" className="sr-only" accept=".pdf,image/*,.doc,.docx" onChange={handleUpload} disabled={busy} />
               </label>
             )}
           </>
         ) : canEdit ? (
-          <label className="btn-primary text-xs cursor-pointer inline-flex items-center" style={{ width: 'auto' }}>
+          <label className={`${BTN_SM_PRIMARY} ${FILE_FOCUS}`} style={PRIMARY_STYLE}>
+            <Icon name="upload" size={13} />
             {busy ? 'Uploading…' : `Upload ${title}`}
             <input type="file" className="sr-only" accept=".pdf,image/*,.doc,.docx" onChange={handleUpload} disabled={busy} />
           </label>
         ) : (
-          <span className="badge badge-pending">Pending</span>
+          <StatusPill tone="neutral">Pending</StatusPill>
         )}
       </div>
     </div>
@@ -923,12 +982,12 @@ function StaffUploadedDocCard({ docKey, title, description, student, viewerRole,
 
 function GeneratedFormCard({ title, description, onDownload, onPreview }: { title: string; description: string; onDownload: () => void; onPreview: () => void }) {
   return (
-    <div className="rounded-2xl p-4 border" style={{ borderColor: 'var(--paper-3)', background: '#fff' }}>
-      <div className="font-semibold text-[color:var(--narra)]" style={{ fontFamily: 'var(--font-display)' }}>{title}</div>
-      <div className="text-[12px] text-[color:var(--mid-gray)] mt-1">{description}</div>
+    <div className={TILE} style={TILE_STYLE}>
+      <TileTitle>{title}</TileTitle>
+      <TileText>{description}</TileText>
       <div className="flex gap-2 mt-3 flex-wrap">
-        <button type="button" className="btn-secondary text-xs" onClick={onPreview} title="Open a freshly rebuilt PDF in a new tab">View</button>
-        <button type="button" className="btn-primary text-xs" onClick={onDownload}>Download PDF</button>
+        <button type="button" className={BTN_SM} style={SECONDARY_STYLE} onClick={onPreview} title="Open a freshly rebuilt PDF in a new tab" aria-label={`View ${title}`}><Icon name="eye" size={13} /> View</button>
+        <button type="button" className={BTN_SM_PRIMARY} style={PRIMARY_STYLE} onClick={onDownload} aria-label={`Download ${title} PDF`}><Icon name="download" size={13} /> Download PDF</button>
       </div>
     </div>
   )
@@ -1031,58 +1090,57 @@ function RegistrationLetterCard({ student }: { student: StoredUser }) {
   }
 
   return (
-    <div className="rounded-2xl p-4 border" style={{ borderColor: 'var(--paper-3)', background: '#fff' }}>
-      <div className="font-semibold text-[color:var(--narra)]" style={{ fontFamily: 'var(--font-display)' }}>
-        School Registration Letter
-      </div>
-      <div className="text-[12px] text-[color:var(--mid-gray)] mt-1">
+    <div className={TILE} style={TILE_STYLE}>
+      <TileTitle>School Registration Letter</TileTitle>
+      <TileText>
         Official enrollment certification signed by HANNAH JARA (CEO and President). Auto-pulls the student&apos;s current annual tuition + ₱5,000 misc, mints a fresh AURA-REG reference number, and generates a one-page PDF.
-      </div>
+      </TileText>
       <label className="block mt-3">
-        <span className="label">Purpose (appears in the certification line)</span>
+        <span className={LABEL} style={LABEL_STYLE}>Purpose (appears in the certification line)</span>
         <input
           type="text"
-          className="input"
+          className={`${CONTROL} w-full`}
+          style={CONTROL_STYLE}
           value={purpose}
           onChange={e => setPurpose(e.target.value)}
           placeholder="e.g. reimbursement purposes / scholarship application / visa requirement"
           disabled={busy}
         />
-        <span className="text-[11px] text-[color:var(--mid-gray)] block mt-1">
+        <span className="text-[11px] block mt-1.5 leading-relaxed [overflow-wrap:anywhere]" style={{ color: 'var(--mid-gray)' }}>
           The letter will read: &quot;…issued upon the request of the parent / guardian for{' '}
-          <span className="font-semibold text-[color:var(--narra)]">{purpose.trim() || '[purpose]'}</span> only and not for any other intent.&quot;
+          <span className="font-semibold" style={{ color: 'var(--deep-teal)' }}>{purpose.trim() || '[purpose]'}</span> only and not for any other intent.&quot;
         </span>
       </label>
 
-      <label className="flex items-start gap-2 mt-3 cursor-pointer">
+      <label className="flex items-start gap-2.5 mt-3 cursor-pointer">
         <input
           type="checkbox"
           checked={appliedEarlyBird}
           onChange={e => setAppliedEarlyBird(e.target.checked)}
           disabled={busy}
-          className="mt-0.5"
+          className={CHECKBOX}
         />
-        <span className="text-[12.5px] text-[color:var(--ink)]">
+        <span className="text-[12.5px]" style={{ color: 'var(--charcoal)' }}>
           <span className="font-semibold">Student availed of the 30% Early Bird Discount.</span>
-          <span className="block text-[11px] text-[color:var(--mid-gray)] mt-0.5">
+          <span className="block text-[11px] mt-0.5 leading-relaxed" style={{ color: 'var(--mid-gray)' }}>
             When ticked, the breakdown shows the base tuition, the 30% deduction, and the net tuition — so the parent&apos;s employer can see how the discount was applied. Untick for the simple 1-line tuition presentation.
           </span>
         </span>
       </label>
       {lastIssued && (
-        <div className="text-[11.5px] text-[color:var(--mid-gray)] mt-2">
-          Last issued: <span className="font-semibold text-[color:var(--narra)]">{lastIssued.referenceNumber}</span> on {new Date(lastIssued.issuedAt).toLocaleString()}
-        </div>
+        <div className="mt-3"><Banner tone="success">
+          Last issued: <span className="font-semibold">{lastIssued.referenceNumber}</span> on {new Date(lastIssued.issuedAt).toLocaleString()}
+        </Banner></div>
       )}
       {err && (
-        <div className="mt-2 px-3 py-2 rounded-lg bg-rose-50 border border-rose-100 text-[12px] text-rose-800">{err}</div>
+        <div className="mt-3"><Banner tone="error">{err}</Banner></div>
       )}
       <div className="flex gap-2 mt-3 flex-wrap">
-        <button type="button" className="btn-secondary text-xs" onClick={() => void handlePreview()} disabled={busy}>
-          {busy ? 'Issuing…' : 'View'}
+        <button type="button" className={BTN_SM} style={SECONDARY_STYLE} onClick={() => void handlePreview()} disabled={busy} aria-label={busy ? undefined : 'View registration letter'}>
+          <Icon name="eye" size={13} /> {busy ? 'Issuing…' : 'View'}
         </button>
-        <button type="button" className="btn-primary text-xs" onClick={() => void handleDownload()} disabled={busy}>
-          {busy ? 'Issuing…' : 'Download PDF'}
+        <button type="button" className={BTN_SM_PRIMARY} style={PRIMARY_STYLE} onClick={() => void handleDownload()} disabled={busy} aria-label={busy ? undefined : 'Download registration letter PDF'}>
+          <Icon name="download" size={13} /> {busy ? 'Issuing…' : 'Download PDF'}
         </button>
       </div>
     </div>
@@ -1147,22 +1205,20 @@ function FeeScheduleCard({ student }: { student: StoredUser }) {
   }
 
   return (
-    <div className="rounded-2xl p-4 border" style={{ borderColor: 'var(--paper-3)', background: '#fff' }}>
-      <div className="font-semibold text-[color:var(--narra)]" style={{ fontFamily: 'var(--font-display)' }}>
-        Schedule of Fees
-      </div>
-      <div className="text-[12px] text-[color:var(--mid-gray)] mt-1">
+    <div className={TILE} style={TILE_STYLE}>
+      <TileTitle>Schedule of Fees</TileTitle>
+      <TileText>
         Annual breakdown (Tuition + ₱5,000 Miscellaneous) plus the three payment plan options — Annual, Bi-annual, Monthly — with each tranche pre-computed. Pull this for the parent when they ask &quot;how much do I owe in total this year?&quot;.
-      </div>
+      </TileText>
       {err && (
-        <div className="mt-2 px-3 py-2 rounded-lg bg-rose-50 border border-rose-100 text-[12px] text-rose-800">{err}</div>
+        <div className="mt-3"><Banner tone="error">{err}</Banner></div>
       )}
       <div className="flex gap-2 mt-3 flex-wrap">
-        <button type="button" className="btn-secondary text-xs" onClick={() => void handlePreview()} disabled={busy}>
-          {busy ? 'Loading…' : 'View'}
+        <button type="button" className={BTN_SM} style={SECONDARY_STYLE} onClick={() => void handlePreview()} disabled={busy} aria-label={busy ? undefined : 'View schedule of fees'}>
+          <Icon name="eye" size={13} /> {busy ? 'Loading…' : 'View'}
         </button>
-        <button type="button" className="btn-primary text-xs" onClick={() => void handleDownload()} disabled={busy}>
-          {busy ? 'Loading…' : 'Download PDF'}
+        <button type="button" className={BTN_SM_PRIMARY} style={PRIMARY_STYLE} onClick={() => void handleDownload()} disabled={busy} aria-label={busy ? undefined : 'Download schedule of fees PDF'}>
+          <Icon name="download" size={13} /> {busy ? 'Loading…' : 'Download PDF'}
         </button>
       </div>
     </div>
@@ -1223,41 +1279,40 @@ function PersonalVouchersCard({ student, viewerRole }: { student: StoredUser; vi
   if (viewerRole === 'STUDENT' && !isLoading && active.length === 0 && expired.length === 0) return null
 
   return (
-    <div className="rounded-2xl p-4 border sm:col-span-2" style={{ borderColor: 'var(--paper-3)', background: '#fff' }}>
+    <div className={`${TILE} sm:col-span-2`} style={TILE_STYLE}>
       <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <div className="font-semibold text-[color:var(--narra)]" style={{ fontFamily: 'var(--font-display)' }}>
-            Personal Vouchers
-          </div>
-          <div className="text-[12px] text-[color:var(--mid-gray)] mt-1">
+        <div className="min-w-0 flex-1 basis-[240px]">
+          <TileTitle>Personal Vouchers</TileTitle>
+          <TileText>
             {viewerRole === 'STUDENT'
               ? 'These codes are tied to this account. Paste them on the Pay tuition page (voucher / promo code field) to get the discount on your next installment.'
               : 'Personalized voucher codes tied to this student only. Issue one for a monthly / bi-annual early-bird enrollee whose AURA30 public code has since expired.'}
-          </div>
+          </TileText>
         </div>
         {viewerRole === 'ADMIN' && (
           <button
             type="button"
-            className="btn-secondary text-xs whitespace-nowrap"
+            className={BTN_SM}
+            style={SECONDARY_STYLE}
             onClick={() => void handleIssue()}
             disabled={busy}
             title="Mints a fresh 30% code tied to this student, valid through May 31."
           >
-            {busy ? 'Issuing…' : '+ Issue AURA30 early-bird voucher'}
+            <Icon name="plus" size={13} /> {busy ? 'Issuing…' : 'Issue AURA30 early-bird voucher'}
           </button>
         )}
       </div>
 
       {err && (
-        <div className="mt-3 px-3 py-2 rounded-lg bg-rose-50 border border-rose-100 text-[12px] text-rose-800">{err}</div>
+        <div className="mt-3"><Banner tone="error">{err}</Banner></div>
       )}
 
       {isLoading ? (
-        <div className="text-[12px] text-[color:var(--mid-gray)] mt-3 italic">Loading vouchers…</div>
+        <div className="mt-3" role="status" aria-label="Loading vouchers…"><Skeleton className="h-14 w-full rounded-xl" /></div>
       ) : (active.length === 0 && expired.length === 0) ? (
-        <div className="text-[12px] text-[color:var(--mid-gray)] mt-3 italic">
+        <p className="text-xs mt-3" style={{ color: 'var(--mid-gray)' }}>
           {viewerRole === 'ADMIN' ? 'No personal vouchers issued yet.' : 'You have no personal vouchers.'}
-        </div>
+        </p>
       ) : (
         <div className="mt-3 space-y-2">
           {active.map(v => {
@@ -1265,36 +1320,41 @@ function PersonalVouchersCard({ student, viewerRole }: { student: StoredUser; vi
             return (
               <div
                 key={v.id}
-                className="rounded-xl px-3 py-3 border flex items-center gap-3 flex-wrap"
-                style={{ borderColor: 'var(--sage)', background: 'var(--sage-tint)' }}
+                className="rounded-xl px-3 py-3 flex items-center gap-3 flex-wrap"
+                style={{ border: '1px solid #CFE0BF', background: '#EEF5E8' }}
               >
                 <div className="flex-1 min-w-0">
-                  <div className="font-mono text-[14px] font-bold text-[color:var(--deep-teal)] tracking-wide select-all break-all">
-                    {v.code}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-mono text-[14px] font-bold tracking-wide select-all break-all" style={{ color: 'var(--deep-teal)' }}>
+                      {v.code}
+                    </span>
+                    <StatusPill tone="success">Active</StatusPill>
                   </div>
-                  <div className="text-[11.5px] text-[color:var(--ink)] mt-0.5">
+                  <div className="text-[11.5px] mt-1" style={{ color: 'var(--charcoal)' }}>
                     {v.discountPercent}% off tuition · valid until {expiresLabel}
                     {v.issuedBy && viewerRole === 'ADMIN' && <> · issued by <span className="font-semibold">{v.issuedBy}</span></>}
                   </div>
                 </div>
                 <button
                   type="button"
-                  className="btn-secondary text-xs whitespace-nowrap"
+                  className={BTN_SM}
+                  style={SECONDARY_STYLE}
                   onClick={() => void copyCode(v.code)}
+                  aria-label={copiedCode === v.code ? `Copied ${v.code}` : `Copy code ${v.code}`}
                 >
-                  {copiedCode === v.code ? '✓ Copied' : 'Copy code'}
+                  {copiedCode === v.code ? <><Icon name="check" size={13} /> Copied</> : 'Copy code'}
                 </button>
               </div>
             )
           })}
           {expired.length > 0 && (
             <details className="mt-2">
-              <summary className="text-[12px] text-[color:var(--mid-gray)] cursor-pointer">
+              <summary className={`text-[12px] cursor-pointer rounded ${FOCUS}`} style={{ color: 'var(--mid-gray)' }}>
                 {expired.length} expired / disabled voucher{expired.length === 1 ? '' : 's'}
               </summary>
               <div className="mt-2 space-y-2">
                 {expired.map(v => (
-                  <div key={v.id} className="rounded-xl px-3 py-2 border text-[11.5px] text-[color:var(--mid-gray)]" style={{ borderColor: 'var(--paper-3)' }}>
+                  <div key={v.id} className="rounded-xl px-3 py-2 text-[11.5px] [overflow-wrap:anywhere]" style={{ border: '1px solid var(--light-gray)', background: SUBTLE_BG, color: 'var(--mid-gray)' }}>
                     <span className="font-mono line-through">{v.code}</span>
                     {' · '}{v.discountPercent}% off · expired {new Date(v.validUntil).toLocaleDateString()}
                   </div>
@@ -1368,23 +1428,27 @@ function DocumentRow({
     finally { setBusy(false) }
   }
   return (
-    <div className="flex items-center justify-between gap-3 p-3 rounded-xl border" style={{ borderColor: 'var(--paper-3)', background: '#fff' }}>
-      <div className="min-w-0">
-        <div className="font-semibold text-[color:var(--narra)] text-sm" style={{ fontFamily: 'var(--font-display)' }}>{title}</div>
-        <div className="text-[12px] text-[color:var(--mid-gray)] truncate">{fileName} · {(size / 1024).toFixed(0)} KB</div>
-        {err && <div className="text-[11.5px] text-rose-700 mt-1">{err}</div>}
+    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 p-3 rounded-xl min-w-0" style={TILE_STYLE}>
+      <div className="flex items-start gap-2.5 min-w-0 flex-1 basis-[200px]">
+        <Icon name={isPhoto ? 'image' : 'file'} size={16} className="mt-0.5" style={{ color: 'var(--teal)' }} />
+        <div className="min-w-0">
+          <div className="font-semibold text-sm leading-snug [overflow-wrap:anywhere]" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>{title}</div>
+          <div className="text-xs [overflow-wrap:anywhere]" style={{ color: 'var(--mid-gray)' }}>{fileName} · {(size / 1024).toFixed(0)} KB</div>
+          {err && <div className="mt-2"><Banner tone="error">{err}</Banner></div>}
+        </div>
       </div>
-      <div className="flex gap-2 shrink-0">
+      <div className="flex flex-wrap gap-2">
         {fileId ? (
           <>
-            <button type="button" className="btn-secondary text-xs" onClick={() => openFile(fileId, fileName, mime, studentId, docKey)}>View</button>
-            <button type="button" className="btn-primary text-xs" onClick={() => downloadFile(fileId, fileName, mime, studentId, docKey)}>Download</button>
+            <button type="button" className={BTN_SM} style={SECONDARY_STYLE} aria-label={`View ${title}`} onClick={() => openFile(fileId, fileName, mime, studentId, docKey)}><Icon name="eye" size={13} /> View</button>
+            <button type="button" className={BTN_SM_PRIMARY} style={PRIMARY_STYLE} aria-label={`Download ${title}`} onClick={() => downloadFile(fileId, fileName, mime, studentId, docKey)}><Icon name="download" size={13} /> Download</button>
           </>
         ) : (
-          <span className="badge badge-pending" title="File content not stored in this browser">Metadata only</span>
+          <StatusPill tone="neutral" title="File content not stored in this browser">Metadata only</StatusPill>
         )}
         {canReplace && (
-          <label className="btn-secondary text-xs cursor-pointer inline-flex items-center" style={{ width: 'auto' }}>
+          <label className={`${BTN_SM} ${FILE_FOCUS}`} style={SECONDARY_STYLE} aria-label={busy ? undefined : `Re-upload ${title}`}>
+            <Icon name="upload" size={13} />
             {busy ? 'Uploading…' : 'Re-upload'}
             <input type="file" className="sr-only" accept={accept} onChange={handlePick} disabled={busy} />
           </label>
@@ -1460,31 +1524,34 @@ function LevelEditor({ student, viewerRole, onUpdated }: {
 
   if (!editing) {
     return (
-      <p className="text-sm text-[color:var(--mid-gray)] mt-0.5 flex items-center gap-2 flex-wrap">
-        <span>Enrolled in <span className="font-semibold text-[color:var(--narra)]">{student.level ? levelLabel(student.level) : '—'}</span></span>
+      <span className="inline-flex items-center gap-2 flex-wrap text-xs" style={{ color: 'var(--mid-gray)' }}>
+        <span>Enrolled in</span>
+        <Tag tone="brand">{student.level ? levelLabel(student.level) : '—'}</Tag>
         {canEdit && (
           <button
             type="button"
-            className="text-[11px] px-2 py-0.5 rounded border text-[color:var(--moss)] hover:bg-[color:var(--paper-2)]"
-            style={{ borderColor: 'var(--paper-3)', fontFamily: 'var(--font-display)' }}
+            className={BTN_SM}
+            style={SECONDARY_STYLE}
             onClick={() => setEditing(true)}
+            aria-label="Change grade level"
           >
-            Change
+            <Icon name="edit" size={12} /> Change
           </button>
         )}
-      </p>
+      </span>
     )
   }
 
   return (
-    <div className="mt-1 flex items-center gap-2 flex-wrap">
-      <span className="text-sm text-[color:var(--mid-gray)]">Enrolled in</span>
+    <span className="inline-flex items-center gap-2 flex-wrap">
+      <label htmlFor={`level-editor-${student.id}`} className="text-xs" style={{ color: 'var(--mid-gray)' }}>Enrolled in</label>
       <select
-        className="select"
+        id={`level-editor-${student.id}`}
+        className={`${CONTROL_SM} min-w-[160px]`}
         value={student.level ?? ''}
         disabled={busy}
         onChange={e => void commit(e.target.value as EnrollmentLevel)}
-        style={{ minWidth: 160 }}
+        style={CONTROL_STYLE}
       >
         {LEVEL_OPTIONS.map(l => (
           <option key={l} value={l}>{levelLabel(l)}</option>
@@ -1492,22 +1559,23 @@ function LevelEditor({ student, viewerRole, onUpdated }: {
       </select>
       <button
         type="button"
-        className="text-[11px] px-2 py-0.5 rounded text-[color:var(--mid-gray)] hover:bg-[color:var(--paper-2)]"
+        className={BTN_SM}
+        style={SECONDARY_STYLE}
         onClick={() => setEditing(false)}
         disabled={busy}
       >
         Cancel
       </button>
-      {busy && <span className="text-[11px] text-[color:var(--mid-gray)]">Saving…</span>}
-      {err && <span className="text-[11px] text-rose-700">{err}</span>}
-    </div>
+      {busy && <span className="text-[11px]" role="status" style={{ color: 'var(--mid-gray)' }}>Saving…</span>}
+      {err && <span className="basis-full"><Banner tone="error">{err}</Banner></span>}
+    </span>
   )
 }
 
 function DownloadButton({ fileId, label }: { fileId: string; label: string }) {
   return (
-    <button type="button" className="btn-secondary text-xs" onClick={() => downloadFile(fileId, label.replace(/[^a-z0-9.\-]+/gi, '-'))}>
-      {label}
+    <button type="button" className={`${BTN_SM} max-w-full`} style={SECONDARY_STYLE} onClick={() => downloadFile(fileId, label.replace(/[^a-z0-9.\-]+/gi, '-'))}>
+      <Icon name="download" size={13} /> <span className="truncate">{label}</span>
     </button>
   )
 }

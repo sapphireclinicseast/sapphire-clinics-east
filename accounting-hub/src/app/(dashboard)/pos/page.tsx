@@ -1267,7 +1267,7 @@ function OrderFormModal({
     return () => clearTimeout(t)
   }, [patientId, patientName, branch])
 
-  // A service's HMO is its name prefix ("INSULAR - Tecar Therapy"). Warn when it
+  // A service's HMO is its name prefix ("ICARE - Tecar Therapy"). Warn when it
   // differs from the HMO picked as payer, or when the payer differs from the
   // patient's last HMO visit — May 2026's mis-billed claims were all one of these.
   const hmoWarnings = useMemo(() => {

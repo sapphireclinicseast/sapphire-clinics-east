@@ -26,6 +26,8 @@ type NavItem = {
    *  the sidebar doesn't carry a redundant link next to the Profile
    *  entry that mirrors the student view. */
   isDashboard?: boolean
+  /** Sidebar section heading. Display only; items keep their order. */
+  group?: 'Overview' | 'School' | 'Student' | 'Admin tools'
 }
 
 // Monochrome 20×20 line icons rendered inline as SVG so they inherit
@@ -191,31 +193,31 @@ export default function AuthSidebar() {
         : role === 'FRONTDESK' ? 'Front desk'
         : role === 'TEACHER' ? 'Teacher hub'
         : 'My profile',
-      icon: 'home', isDashboard: true },
+      icon: 'home', isDashboard: true, group: 'Overview' },
     // During impersonation we drop the main dashboard entry (admins
     // exit via "Return to admin"). Surface the student's profile as a
     // dedicated entry so the admin can click into the view-as user's
     // profile + documents, which is what they're usually here for.
     ...(impersonating && (role === 'STUDENT' || role === 'TEACHER')
-      ? [{ href: '/profile', label: 'Profile', icon: 'home' as const }]
+      ? [{ href: '/profile', label: 'Profile', icon: 'home' as const, group: 'Overview' as const }]
       : []),
-    { href: '/classes',        label: 'Classes',      icon: 'classes',   roles: ['ADMIN', 'BRANCH_ADMIN', 'TEACHER', 'STUDENT'] },
-    { href: '/calendar',       label: 'Calendar',     icon: 'calendar' },
-    { href: '/meetings',       label: 'Meetings',     icon: 'meetings',  roles: ['ADMIN', 'BRANCH_ADMIN', 'TEACHER', 'STUDENT'] },
-    { href: '/pay',            label: 'Pay tuition',  icon: 'pay',       roles: ['STUDENT'] },
+    { href: '/classes',        label: 'Classes',      icon: 'classes',   roles: ['ADMIN', 'BRANCH_ADMIN', 'TEACHER', 'STUDENT'], group: 'School' },
+    { href: '/calendar',       label: 'Calendar',     icon: 'calendar', group: 'School' },
+    { href: '/meetings',       label: 'Meetings',     icon: 'meetings',  roles: ['ADMIN', 'BRANCH_ADMIN', 'TEACHER', 'STUDENT'], group: 'School' },
+    { href: '/pay',            label: 'Pay tuition',  icon: 'pay',       roles: ['STUDENT'], group: 'Student' },
     // Student-side Grades + Notifications were top tabs on /profile. They
     // now live as sidebar entries so the student can jump straight to
     // them, matching what parents actually want to click. Admin + branch
     // admin also get these so they can navigate the same way while
     // impersonating a student.
-    { href: '/grades',         label: 'Grades',         icon: 'grades',    roles: ['STUDENT'] },
-    { href: '/notifications',  label: 'Notifications',  icon: 'bell',      roles: ['STUDENT'] },
+    { href: '/grades',         label: 'Grades',         icon: 'grades',    roles: ['STUDENT'], group: 'Student' },
+    { href: '/notifications',  label: 'Notifications',  icon: 'bell',      roles: ['STUDENT'], group: 'Student' },
     // Templates + Notifications are admin-only tools (lesson/activity
     // templates and the staff announcement composer). Hoisted out of
     // the Admin Dashboard tabs so admins reach them in one click.
-    { href: '/admin/templates',     label: 'Templates',     icon: 'templates', roles: ['ADMIN', 'BRANCH_ADMIN'] },
-    { href: '/admin/notifications', label: 'Notifications', icon: 'megaphone', roles: ['ADMIN', 'BRANCH_ADMIN'] },
-    { href: '/admin/handbook',               label: 'Class Portal Handbook', icon: 'handbook', mainAdminOnly: true },
+    { href: '/admin/templates',     label: 'Templates',     icon: 'templates', roles: ['ADMIN', 'BRANCH_ADMIN'], group: 'Admin tools' },
+    { href: '/admin/notifications', label: 'Notifications', icon: 'megaphone', roles: ['ADMIN', 'BRANCH_ADMIN'], group: 'Admin tools' },
+    { href: '/admin/handbook',               label: 'Class Portal Handbook', icon: 'handbook', mainAdminOnly: true, group: 'Admin tools' },
     // Staff Portal Handbook (docs for staff.sapphireclinicseast.org) was
     // shown here but belongs on the staff portal itself, not the class
     // portal. Link removed 2026-08-22; the /admin/staff-portal-handbook
@@ -264,41 +266,95 @@ export default function AuthSidebar() {
     return pathname === href || pathname.startsWith(href + '/')
   }
 
+  // Only the most specific match lights up, so /admin/templates highlights
+  // Templates without also highlighting the Admin dashboard entry.
+  const activeHref = visible
+    .map(i => i.href)
+    .filter(isActive)
+    .sort((a, b) => b.length - a.length)[0] ?? ''
+
+  // Consecutive items that share a group render under one heading. Items
+  // keep the order (and the role filtering) defined above.
+  const groups: Array<{ label: string; items: NavItem[] }> = []
+  for (const item of visible) {
+    const label = item.group ?? 'Overview'
+    const last = groups[groups.length - 1]
+    if (last && last.label === label) last.items.push(item)
+    else groups.push({ label, items: [item] })
+  }
+
+  const focusRing = 'focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[color:var(--scei-mint)]'
   const linkCls = (active: boolean) =>
-    `flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13.5px] transition-colors ${
+    `flex items-center gap-3 px-3 py-2 rounded-lg text-[13.5px] font-medium transition-colors ${focusRing} ${
       active
-        ? 'bg-[color:var(--sage-tint)] text-[color:var(--deep-teal)] font-semibold'
-        : 'text-[color:var(--narra)] hover:bg-[color:var(--paper-2)]'
+        ? 'bg-[rgba(138,167,106,0.22)] text-white'
+        : 'text-white/70 hover:text-white hover:bg-white/[0.06]'
     }`
+
+  const brandBlock = (
+    <span className="flex items-center gap-2.5 min-w-0">
+      <span className="h-9 w-9 rounded-lg bg-white flex items-center justify-center shrink-0">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/aura-academy-mark-192.png" alt="" className="h-8 w-8 object-contain" />
+      </span>
+      <span className="flex flex-col leading-tight min-w-0">
+        <span className="text-white font-bold text-[13px] tracking-wide truncate" style={{ fontFamily: 'var(--font-display)' }}>Aura Academy</span>
+        <span className="text-[9.5px] font-semibold uppercase tracking-[0.2em]" style={{ fontFamily: 'var(--font-display)', color: 'var(--scei-mint)' }}>Class Portal</span>
+      </span>
+    </span>
+  )
 
   const sidebarInner = (
     <div className="flex flex-col h-full">
       {/* Brand */}
-      <a href="/" className="flex items-center gap-2 px-3 py-3 mb-2 group">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/aura-academy-mark.png" alt="Aura Academy" className="h-9 w-auto object-contain shrink-0" />
-        <div className="flex flex-col leading-tight min-w-0">
-          <span className="text-[color:var(--deep-teal)] font-semibold text-[13px] tracking-tight truncate" style={{ fontFamily: 'var(--font-display)' }}>Aura Academy</span>
-          <span className="text-[9.5px] text-[color:var(--mid-gray)] uppercase tracking-[0.14em]" style={{ fontFamily: 'var(--font-display)' }}>Class Portal</span>
-        </div>
-      </a>
+      <div className="flex items-center gap-2 px-4 py-3.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+        <a href="/" aria-label="Aura Academy for Learning — home" className={`flex-1 min-w-0 rounded-lg ${focusRing}`}>
+          {brandBlock}
+        </a>
+        <button
+          type="button"
+          onClick={() => setMobileOpen(false)}
+          className={`md:hidden h-8 w-8 rounded-lg flex items-center justify-center text-white/60 hover:text-white hover:bg-white/[0.06] ${focusRing}`}
+          aria-label="Close navigation"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden><path d="M18 6 6 18M6 6l12 12" /></svg>
+        </button>
+      </div>
 
       {/* Primary nav */}
-      <nav className="flex-1 overflow-y-auto px-2 space-y-0.5" style={{ fontFamily: 'var(--font-display)' }}>
-        {visible.map(item => (
-          <a
-            key={item.href}
-            href={item.href}
-            className={linkCls(isActive(item.href))}
-            onClick={() => setMobileOpen(false)}
-          >
-            {/* Icon inherits currentColor from the parent link — mid-gray
-                when inactive, deep-teal when active, keeps it monochrome. */}
-            <span className="flex items-center justify-center w-5 h-5 shrink-0 opacity-80">
-              <NavIcon name={item.icon} />
-            </span>
-            <span>{item.label}</span>
-          </a>
+      <nav aria-label="Class Portal" className="flex-1 overflow-y-auto px-3 py-4 space-y-5" style={{ fontFamily: 'var(--font-body)' }}>
+        {groups.map(g => (
+          <div key={g.label}>
+            <p className="px-3 mb-1.5 text-[10.5px] font-semibold uppercase tracking-[0.16em] text-white/60" style={{ fontFamily: 'var(--font-display)' }}>
+              {g.label}
+            </p>
+            <ul className="space-y-0.5">
+              {g.items.map(item => {
+                const active = item.href === activeHref
+                return (
+                  <li key={item.href}>
+                    <a
+                      href={item.href}
+                      className={linkCls(active)}
+                      aria-current={active ? 'page' : undefined}
+                      onClick={() => setMobileOpen(false)}
+                    >
+                      {/* Icon inherits currentColor from the link. */}
+                      <span className="flex items-center justify-center w-5 h-5 shrink-0" style={active ? { color: 'var(--scei-mint)' } : undefined}>
+                        <NavIcon name={item.icon} />
+                      </span>
+                      <span className="min-w-0 truncate">{item.label}</span>
+                      {active && (
+                        <svg className="ml-auto shrink-0" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden style={{ color: 'var(--scei-mint)' }}>
+                          <path d="m9 18 6-6-6-6" />
+                        </svg>
+                      )}
+                    </a>
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
         ))}
       </nav>
 
@@ -309,19 +365,29 @@ export default function AuthSidebar() {
           visible. The hardcoded-password frontdesk account has no
           userId; the API returns an empty inbox for it, so the bell
           stays quiet rather than erroring. */}
-      <div className="px-2 pt-1 pb-1" style={{ fontFamily: 'var(--font-display)' }}>
+      <div className="px-3 pt-2 pb-1" style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
         <BellIcon />
       </div>
 
       {/* User chip + sign out */}
-      <div className="mt-2 mx-2 mb-2 rounded-xl border p-3" style={{ borderColor: 'var(--paper-3)', background: 'var(--paper-2)' }}>
-        <div className="text-[11.5px] text-[color:var(--mid-gray)] uppercase tracking-[0.1em]" style={{ fontFamily: 'var(--font-display)' }}>Signed in</div>
-        <div className="text-[13px] font-semibold text-[color:var(--narra)] truncate" title={auth.email ?? ''}>{displayName}</div>
-        <div className="text-[11px] text-[color:var(--mid-gray)] mb-2 truncate">{roleLabel}</div>
+      <div className="mx-3 mt-1 mb-3 rounded-xl p-3" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}>
+        <div className="flex items-center gap-2.5 min-w-0">
+          <span aria-hidden className="w-8 h-8 rounded-full flex items-center justify-center text-[13px] font-bold shrink-0" style={{ background: 'var(--teal)', color: '#fff', fontFamily: 'var(--font-display)' }}>
+            {displayName[0]?.toUpperCase() ?? '?'}
+          </span>
+          <div className="min-w-0">
+            <div className="text-[13px] font-semibold text-white truncate" title={auth.email ?? ''}>{displayName}</div>
+            <div className="text-[11px] text-white/60 truncate">{roleLabel}</div>
+          </div>
+        </div>
         <button
           onClick={handleSignOut}
-          className="w-full text-[12.5px] px-2 py-1.5 rounded-md text-[color:var(--clay)] hover:bg-[color:var(--clay-tint)] font-semibold transition-colors"
+          className={`mt-2.5 w-full inline-flex items-center justify-center gap-1.5 text-[12.5px] px-2 py-1.5 rounded-lg font-semibold text-white/75 hover:text-white hover:bg-white/[0.08] transition-colors ${focusRing}`}
+          style={{ border: '1px solid rgba(255,255,255,0.12)' }}
         >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />
+          </svg>
           Sign out
         </button>
       </div>
@@ -330,22 +396,38 @@ export default function AuthSidebar() {
 
   return (
     <>
-      {/* Mobile hamburger — floats in the top-left when the drawer is closed */}
-      <button
-        type="button"
-        onClick={() => setMobileOpen(true)}
-        className="md:hidden fixed top-3 left-3 z-40 h-9 w-9 rounded-lg bg-white border shadow-sm flex items-center justify-center"
-        style={{ borderColor: 'var(--paper-3)' }}
-        aria-label="Open navigation"
+      {/* Mobile top bar — hamburger + brand. Below md the sidebar is a
+          drawer, so this bar is the signed-in header. It stays in the
+          page flow while the impersonation banner is showing so the two
+          sticky bars don't stack on top of each other. */}
+      <div
+        className={`md:hidden ${impersonating ? '' : 'sticky top-0'} z-40 h-14 px-3 flex items-center gap-3 bg-white`}
+        style={{ borderBottom: '1px solid var(--light-gray)' }}
       >
-        <span aria-hidden className="text-[18px]">☰</span>
-      </button>
+        <button
+          type="button"
+          onClick={() => setMobileOpen(true)}
+          className="h-9 w-9 rounded-lg flex items-center justify-center hover:bg-[color:var(--paper)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--teal)]"
+          style={{ border: '1px solid var(--light-gray)', color: 'var(--charcoal)' }}
+          aria-label="Open navigation"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden><path d="M3 6h18M3 12h18M3 18h18" /></svg>
+        </button>
+        <span className="flex items-center gap-2 min-w-0">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/aura-academy-mark-192.png" alt="" className="h-7 w-7 object-contain shrink-0" />
+          <span className="flex flex-col leading-tight min-w-0">
+            <span className="text-[13px] font-bold truncate" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>Aura Academy</span>
+            <span className="text-[9.5px] font-semibold uppercase tracking-[0.16em]" style={{ fontFamily: 'var(--font-display)', color: 'var(--deep-teal)' }}>Class Portal</span>
+          </span>
+        </span>
+      </div>
 
-      {/* Desktop: persistent sidebar. Height fills viewport, sticky so
+      {/* Desktop: persistent sidebar. Height fills viewport, fixed so
           long content on the right scrolls independently. */}
       <aside
-        className="hidden md:flex flex-col fixed top-0 left-0 h-screen w-[240px] border-r"
-        style={{ borderColor: 'var(--paper-3)', background: '#fff' }}
+        className="hidden md:flex flex-col fixed top-0 left-0 h-screen w-[240px] z-30"
+        style={{ background: 'var(--near-black)' }}
       >
         {sidebarInner}
       </aside>
@@ -354,12 +436,12 @@ export default function AuthSidebar() {
       {mobileOpen && (
         <div className="md:hidden fixed inset-0 z-50">
           <div
-            className="absolute inset-0 bg-black/30"
+            className="absolute inset-0 bg-black/50"
             onClick={() => setMobileOpen(false)}
           />
           <aside
-            className="absolute top-0 left-0 h-full w-[260px] border-r shadow-xl"
-            style={{ borderColor: 'var(--paper-3)', background: '#fff' }}
+            className="absolute top-0 left-0 h-full w-[264px] max-w-[85vw] shadow-xl"
+            style={{ background: 'var(--near-black)' }}
           >
             {sidebarInner}
           </aside>

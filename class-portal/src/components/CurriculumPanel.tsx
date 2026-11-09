@@ -7,6 +7,11 @@ import {
   migrateLocalCurriculumToServer,
   levelLabel, type CurriculumRecord, type CurriculumFile, type EnrollmentLevel,
 } from '@/lib/session'
+import {
+  DashCard, Banner, EmptyState, Tag, Icon,
+  CONTROL, CONTROL_STYLE, LABEL, LABEL_STYLE, FILE_FOCUS, FOCUS, DANGER, SUBTLE_BG,
+  BTN_PRIMARY, BTN_SECONDARY, BTN_SM, BTN_DANGER_GHOST, PRIMARY_STYLE, SECONDARY_STYLE,
+} from '@/components/hub/ui'
 
 const ALL_LEVELS: EnrollmentLevel[] = ['NURSERY', 'KINDER', 'GRADE_1', 'GRADE_2', 'GRADE_3', 'GRADE_4', 'GRADE_5', 'GRADE_6', 'GRADE_7', 'GRADE_8', 'GRADE_9', 'GRADE_10', 'GRADE_11', 'GRADE_12']
 
@@ -126,28 +131,28 @@ export default function CurriculumPanel({ viewer }: Props) {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       {canUpload && (
-        <div className="card-static">
-          <h2 className="text-[18px] leading-tight mb-1">Upload curriculum template</h2>
-          <p className="text-[12.5px] text-[color:var(--mid-gray)] mb-4">
-            Attach a PDF, Word (.doc / .docx), and/or Excel (.xls / .xlsx / .csv) version. They&apos;ll be linked together under one curriculum entry — pick whichever formats apply.
-          </p>
-          {err && <div className="mb-3 px-4 py-3 rounded-xl bg-rose-50 border border-rose-100 text-sm text-rose-800">{err}</div>}
+        <DashCard
+          title="Upload curriculum template"
+          icon={<Icon name="upload" size={15} />}
+          description={<>Attach a PDF, Word (.doc / .docx), and/or Excel (.xls / .xlsx / .csv) version. They&apos;ll be linked together under one curriculum entry — pick whichever formats apply.</>}
+        >
+          {err && <div className="mb-4"><Banner tone="error">{err}</Banner></div>}
           <div className="grid sm:grid-cols-2 gap-3">
             <label className="block">
-              <span className="label">Title</span>
-              <input className="input" value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Term 1 Math sequence" />
+              <span className={LABEL} style={LABEL_STYLE}>Title</span>
+              <input className={`${CONTROL} w-full`} style={CONTROL_STYLE} value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Term 1 Math sequence" />
             </label>
             <label className="block">
-              <span className="label">Grade level</span>
-              <select className="select" value={pickedLevel} onChange={e => setPickedLevel(e.target.value as EnrollmentLevel)}>
+              <span className={LABEL} style={LABEL_STYLE}>Grade level</span>
+              <select className={`${CONTROL} w-full`} style={CONTROL_STYLE} value={pickedLevel} onChange={e => setPickedLevel(e.target.value as EnrollmentLevel)}>
                 {ALL_LEVELS.map(l => <option key={l} value={l}>{levelLabel(l)}</option>)}
               </select>
             </label>
           </div>
 
-          <div className="grid sm:grid-cols-3 gap-3 mt-3">
+          <div className="grid md:grid-cols-3 gap-3 mt-3">
             <FileSlot
               label="PDF version"
               accept={PDF_ACCEPT}
@@ -168,54 +173,64 @@ export default function CurriculumPanel({ viewer }: Props) {
             />
           </div>
 
-          <button type="button" className="btn-primary text-xs mt-4" onClick={handleSave} disabled={uploading || (!pdfFile && !docFile && !xlsFile) || !title.trim()}>
+          <button type="button" className={`${BTN_PRIMARY} mt-4`} style={PRIMARY_STYLE} onClick={handleSave} disabled={uploading || (!pdfFile && !docFile && !xlsFile) || !title.trim()}>
             {uploading ? 'Uploading…' : 'Save curriculum'}
           </button>
-        </div>
+        </DashCard>
       )}
 
-      <div className="card-static">
-        <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
-          <h2 className="text-[18px] leading-tight">{viewer.role === 'STUDENT' ? 'Your curriculum' : 'All curriculum templates'}</h2>
-          {viewer.role !== 'STUDENT' && (
-            <div className="flex items-center gap-2 flex-wrap">
+      <DashCard
+        flush
+        title={viewer.role === 'STUDENT' ? 'Your curriculum' : 'All curriculum templates'}
+        icon={<Icon name="book" size={15} />}
+        description={viewer.role !== 'STUDENT' && items.length > 0 ? `${filtered.length} of ${items.length} document${items.length === 1 ? '' : 's'}${search.trim() ? ' match this search' : ''}` : undefined}
+        action={viewer.role !== 'STUDENT' && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <label className="relative block w-full sm:w-72">
+              <span className="sr-only">Search curriculum</span>
+              <Icon name="search" size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mid-gray)' }} />
               <input
-                className="input"
+                className={`${CONTROL} w-full pl-8`}
+                style={CONTROL_STYLE}
+                type="search"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 placeholder="Search by title, file name, uploader, or grade"
-                style={{ width: 280 }}
               />
-              <button
-                type="button"
-                className="btn-secondary text-xs"
-                title="Wipe this browser's cached curriculum list and pull a fresh copy from the server. Use after deleting a stale local-only entry."
-                onClick={() => {
-                  if (typeof window === 'undefined') return
-                  localStorage.removeItem('scei_class_curriculum_v1')
-                  void refresh()
-                }}
-              >
-                Reset & resync
-              </button>
-            </div>
-          )}
-        </div>
-        {items.length === 0 ? (
-          <p className="text-sm text-[color:var(--mid-gray)] text-center py-8">No curriculum templates yet.</p>
-        ) : filtered.length === 0 ? (
-          <p className="text-sm text-[color:var(--mid-gray)] text-center py-8">No curriculum templates match this search.</p>
-        ) : (
-          <CurriculumGrouped
-            items={filtered}
-            viewer={viewer}
-            onOpen={openFileBlob}
-            onDownload={downloadFileBlob}
-            onDelete={handleDelete}
-            singleLevel={viewer.role === 'STUDENT'}
-          />
+            </label>
+            <button
+              type="button"
+              className={BTN_SECONDARY}
+              style={SECONDARY_STYLE}
+              title="Wipe this browser's cached curriculum list and pull a fresh copy from the server. Use after deleting a stale local-only entry."
+              onClick={() => {
+                if (typeof window === 'undefined') return
+                localStorage.removeItem('scei_class_curriculum_v1')
+                void refresh()
+              }}
+            >
+              <Icon name="refresh" size={14} /> Reset &amp; resync
+            </button>
+          </div>
         )}
-      </div>
+      >
+        {items.length === 0 ? (
+          <EmptyState icon="book" title="No curriculum templates yet." />
+        ) : filtered.length === 0 ? (
+          <EmptyState icon="search" title="No curriculum templates match this search." hint="Try a shorter word, a file name, or a grade such as “Kinder”." />
+        ) : (
+          <div className="p-3 sm:p-4">
+            <CurriculumGrouped
+              items={filtered}
+              viewer={viewer}
+              onOpen={openFileBlob}
+              onDownload={downloadFileBlob}
+              onDelete={handleDelete}
+              singleLevel={viewer.role === 'STUDENT'}
+            />
+          </div>
+        )}
+      </DashCard>
     </div>
   )
 }
@@ -228,25 +243,27 @@ function FileSlot({ label, accept, file, onPick }: { label: string; accept: stri
   }
   return (
     <div
-      className="rounded-xl p-3 border flex items-start justify-between gap-3"
+      className="rounded-xl p-3 flex flex-col gap-2.5 min-w-0"
       style={{
-        borderColor: file ? 'var(--sage)' : 'var(--paper-3)',
-        background: file ? 'var(--sage-tint)' : 'var(--paper-2)',
+        border: `1px ${file ? 'solid' : 'dashed'} ${file ? 'var(--sage)' : 'var(--light-gray)'}`,
+        background: file ? 'var(--sage-tint)' : SUBTLE_BG,
       }}
     >
       <div className="min-w-0">
-        <div className="text-[11.5px] uppercase tracking-[0.08em] text-[color:var(--mid-gray)] font-semibold mb-1" style={{ fontFamily: 'var(--font-display)' }}>{label}</div>
-        <div className="text-[13px] text-[color:var(--ink)] truncate">
-          {file ? `${file.name} · ${(file.size / 1024).toFixed(0)} KB` : 'No file selected.'}
+        <div className={`${LABEL} mb-1`} style={LABEL_STYLE}>{label}</div>
+        <div className="flex items-center gap-1.5 text-[13px] min-w-0" style={{ color: file ? 'var(--charcoal)' : 'var(--mid-gray)' }}>
+          {file && <Icon name="check" size={14} style={{ color: '#2F5A28' }} />}
+          <span className="truncate">{file ? `${file.name} · ${(file.size / 1024).toFixed(0)} KB` : 'No file selected.'}</span>
         </div>
       </div>
-      <div className="flex gap-1.5 shrink-0">
-        <label className="btn-secondary text-xs cursor-pointer" style={{ width: 'auto' }}>
+      <div className="flex gap-1.5">
+        <label className={`${BTN_SM} ${FILE_FOCUS}`} style={SECONDARY_STYLE}>
+          <Icon name="upload" size={12} />
           {file ? 'Change' : 'Choose'}
           <input type="file" className="sr-only" accept={accept} onChange={pick} />
         </label>
         {file && (
-          <button type="button" className="text-xs px-2 py-1 rounded-md text-[color:var(--mid-gray)] hover:text-[color:var(--clay)]" onClick={() => onPick(null)}>Remove</button>
+          <button type="button" className={BTN_SM} style={{ color: 'var(--mid-gray)' }} onClick={() => onPick(null)}>Remove</button>
         )}
       </div>
     </div>
@@ -295,23 +312,24 @@ function CurriculumGrouped({ items, viewer, onOpen, onDownload, onDelete, single
         const list = byLevel[lvl]
         if (list.length === 0) return null
         return (
-          <details key={lvl} open className="rounded-xl border" style={{ borderColor: 'var(--paper-3)' }}>
-            <summary className="flex items-center justify-between gap-3 px-4 py-2.5 cursor-pointer select-none rounded-xl" style={{ background: 'var(--paper-2)' }}>
-              <span className="font-semibold text-[color:var(--narra)] text-sm" style={{ fontFamily: 'var(--font-display)' }}>
+          <details key={lvl} open className="group rounded-xl overflow-hidden" style={{ border: '1px solid var(--light-gray)' }}>
+            <summary className={`flex items-center justify-between gap-3 px-4 py-2.5 cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden ${FOCUS}`} style={{ background: SUBTLE_BG }}>
+              <span className="flex items-center gap-2 text-sm font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+                <Icon name="chevronRight" size={14} className="transition-transform group-open:rotate-90" style={{ color: 'var(--mid-gray)' }} />
                 {levelLabel(lvl)}
               </span>
-              <span className="text-[11.5px] text-[color:var(--mid-gray)]">{list.length} document{list.length === 1 ? '' : 's'}</span>
+              <span className="text-xs tabular-nums" style={{ color: 'var(--mid-gray)' }}>{list.length} document{list.length === 1 ? '' : 's'}</span>
             </summary>
-            <ul className="divide-y" style={{ borderColor: 'var(--paper-3)' }}>
+            <ul>
               {list.map(c => {
                 const legacyFile = legacy(c)
                 return (
-                  <li key={c.id} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
+                  <li key={c.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3 px-4 py-3 text-sm" style={{ borderTop: '1px solid var(--light-gray)' }}>
                     <div className="min-w-0 flex-1">
-                      <div className="font-semibold text-[color:var(--narra)] truncate" style={{ fontFamily: 'var(--font-display)' }}>{c.title}</div>
-                      <div className="text-[11.5px] text-[color:var(--mid-gray)] truncate">{metaLine(c)}</div>
+                      <div className="font-semibold break-words" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>{c.title}</div>
+                      <div className="text-xs mt-0.5 break-words" style={{ color: 'var(--mid-gray)' }}>{metaLine(c)}</div>
                     </div>
-                    <div className="flex flex-wrap gap-1.5 shrink-0 justify-end">
+                    <div className="flex flex-wrap gap-1.5 shrink-0 sm:justify-end">
                       {c.pdf && (
                         <FileButtons label="PDF" file={c.pdf} onOpen={onOpen} onDownload={onDownload} />
                       )}
@@ -325,7 +343,7 @@ function CurriculumGrouped({ items, viewer, onOpen, onDownload, onDelete, single
                         <FileButtons label="File" file={legacyFile} onOpen={onOpen} onDownload={onDownload} />
                       )}
                       {(viewer.role === 'ADMIN' || c.uploadedBy === viewer.email) && (
-                        <button className="text-xs px-2 py-1 rounded-md text-[color:var(--clay)] hover:bg-[color:var(--clay-tint)]" onClick={() => onDelete(c)}>Delete</button>
+                        <button type="button" className={BTN_DANGER_GHOST} style={{ color: DANGER }} onClick={() => onDelete(c)} aria-label={`Delete ${c.title}`}><Icon name="trash" size={12} /> Delete</button>
                       )}
                     </div>
                   </li>
@@ -336,7 +354,7 @@ function CurriculumGrouped({ items, viewer, onOpen, onDownload, onDelete, single
         )
       })}
       {singleLevel && Object.values(byLevel).flat().length === 0 && (
-        <p className="text-sm text-[color:var(--mid-gray)] text-center py-8">No curriculum for your level yet.</p>
+        <EmptyState icon="book" title="No curriculum for your level yet." />
       )}
     </div>
   )
@@ -348,29 +366,26 @@ function FileButtons({ label, file, onOpen, onDownload }: { label: string; file:
   // for accessibility.
   return (
     <div
-      className="inline-flex items-stretch overflow-hidden rounded-md border text-[11px]"
-      style={{ borderColor: 'var(--paper-3)', background: '#fff' }}
+      className="inline-flex items-stretch overflow-hidden rounded-lg h-8"
+      style={{ border: '1px solid var(--light-gray)', background: '#fff' }}
     >
-      <span
-        className="px-1.5 flex items-center font-bold text-[10px] uppercase tracking-[0.06em] text-[color:var(--mid-gray)]"
-        style={{ fontFamily: 'var(--font-display)' }}
-      >{label}</span>
+      <span className="px-2 flex items-center"><Tag>{label}</Tag></span>
       <button
         type="button"
         title="View in a new tab"
         aria-label={`View ${label}`}
-        className="px-1.5 border-l hover:bg-[color:var(--paper-2)] text-[color:var(--narra)]"
-        style={{ borderColor: 'var(--paper-3)' }}
+        className={`px-2 inline-flex items-center hover:bg-[color:var(--paper)] ${FOCUS}`}
+        style={{ borderLeft: '1px solid var(--light-gray)', color: 'var(--deep-teal)' }}
         onClick={() => onOpen(file.fileId, file.fileName)}
-      >↗</button>
+      ><Icon name="external" size={14} /></button>
       <button
         type="button"
         title="Download"
         aria-label={`Download ${label}`}
-        className="px-1.5 border-l text-white font-semibold"
-        style={{ borderColor: 'var(--paper-3)', background: 'var(--narra)' }}
+        className={`px-2 inline-flex items-center text-white hover:opacity-90 ${FOCUS}`}
+        style={{ background: 'var(--deep-teal)' }}
         onClick={() => onDownload(file.fileId, file.fileName)}
-      >↓</button>
+      ><Icon name="download" size={14} /></button>
     </div>
   )
 }

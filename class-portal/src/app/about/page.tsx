@@ -1,3 +1,6 @@
+import type { CSSProperties, ReactNode } from 'react'
+import { DashCard, Icon, PageHeader, Tag, type IconName } from '@/components/hub/ui'
+
 export const metadata = {
   title: 'About',
   description:
@@ -11,224 +14,232 @@ export const metadata = {
   },
 }
 
+// This page is a server component (it exports `metadata`), and the hub kit is
+// a 'use client' module. Its components (PageHeader, DashCard, Tag, Icon) can
+// be rendered from here, but its plain string/object exports (BTN_PRIMARY,
+// CARD_STYLE, SUBTLE_BG…) arrive as client references, not values. These are
+// local copies of the few the page needs; keep them in step with
+// components/hub/ui.tsx.
+const FOCUS = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--teal)]'
+const BTN_PRIMARY = `inline-flex items-center justify-center gap-1.5 h-9 px-3.5 rounded-lg text-sm font-semibold text-white whitespace-nowrap transition-opacity hover:opacity-90 ${FOCUS}`
+const PRIMARY_STYLE: CSSProperties = { background: 'var(--deep-teal)' }
+const CARD_STYLE: CSSProperties = { background: '#fff', border: '1px solid var(--light-gray)' }
+const SUBTLE_BG = '#FAF7F1'
+const SUBTLE_STYLE: CSSProperties = { background: SUBTLE_BG, border: '1px solid var(--light-gray)' }
+const DISPLAY: CSSProperties = { fontFamily: 'var(--font-display)' }
+/** Warm highlight for key phrases, from the kit's "warn" tone (AA contrast). */
+const HIGHLIGHT_STYLE: CSSProperties = { background: '#FBF3E8', color: '#7A4E21' }
+
 export default function AboutPage() {
   return (
-    <div className="grid md:grid-cols-5 gap-8 md:gap-10 items-start">
-      <section className="md:col-span-2 animate-fade-up md:sticky md:top-24">
-        <div className="hero-gradient rounded-3xl p-8 md:p-9 relative">
-          <div className="relative z-10">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/15 backdrop-blur-sm text-[11px] uppercase tracking-[0.12em] mb-5" style={{ fontFamily: 'var(--font-display)' }}>
-              About Aura Academy
-            </div>
-            <h1 className="text-[40px] md:text-[44px] leading-[1.05] mb-4">
-              A small class<br/>with big care.
-            </h1>
-            <p className="text-white/85 text-[15px] leading-relaxed">
-              We&apos;re an in-clinic school program designed around the way young learners thrive — close attention, predictable routines, and a graded class that meets the standards of the Department of Education.
-            </p>
+    <div className="max-w-[1100px] mx-auto space-y-5 min-w-0 animate-fade-up">
+      <PageHeader size="lg"
+        eyebrow="About Aura Academy"
+        title={<>A small class<br/>with big care.</>}
+        description={<>We&apos;re an in-clinic school program designed around the way young learners thrive — close attention, predictable routines, and a graded class that meets the standards of the Department of Education.</>}
+      />
 
-            <div className="mt-6 pt-5 border-t border-white/15 flex items-start gap-4">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src="/npc-seal.png"
-                alt="National Privacy Commission — Registered DPO / DPS"
-                className="w-[88px] h-auto shrink-0"
-                style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.15))' }}
-              />
-              <p className="text-white/80 text-[12.5px] leading-relaxed">
-                Registered with the <span className="font-semibold text-white">National Privacy Commission</span> and compliant with the <span className="font-semibold text-white">Data Privacy Act of 2012</span>.
-              </p>
-            </div>
+      {/* Key facts, each phrase quoted from the copy further down the page
+          (What we offer, the FAQs and the branch cards). No new claims. */}
+      <ul aria-label="Key facts" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <FactTile icon="student">Nursery, Kindergarten, and Grades 1–12</FactTile>
+        <FactTile icon="award" sub="Light Bearer Christian Academy">DepEd-accredited</FactTile>
+        <FactTile icon="tag">Learner Reference Number (LRN)</FactTile>
+        <FactTile icon="building" sub="Greenhills Branch">East Branch</FactTile>
+      </ul>
 
-            <div className="mt-5 pt-5 border-t border-white/15">
-              <div className="text-[11px] uppercase tracking-[0.12em] text-white/70 mb-2" style={{ fontFamily: 'var(--font-display)' }}>
-                Is this different from Sapphire Clinics East?
-              </div>
-              <p className="text-white/80 text-[12.5px] leading-relaxed">
-                <span className="font-semibold text-white">Aura Academy for Learning</span> is still under <span className="font-semibold text-white">Sapphire Clinics East</span>, but is not under the <span className="font-semibold text-white">Sapphire Clinics East</span> brand. Classes are hosted in the clinic premises of <span className="font-semibold text-white">East Branch</span> and <span className="font-semibold text-white">Greenhills Branch</span>.
-              </p>
-            </div>
+      <div className="grid md:grid-cols-2 gap-3">
+        <div className="rounded-xl p-4 sm:p-5 flex items-start gap-4 min-w-0" style={CARD_STYLE}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/npc-seal.png"
+            alt="National Privacy Commission — Registered DPO / DPS"
+            className="w-[72px] h-auto shrink-0"
+            style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.15))' }}
+          />
+          <p className="text-[13px] leading-relaxed min-w-0" style={{ color: 'var(--mid-gray)' }}>
+            Registered with the <span className="font-semibold" style={{ color: 'var(--charcoal)' }}>National Privacy Commission</span> and compliant with the <span className="font-semibold" style={{ color: 'var(--charcoal)' }}>Data Privacy Act of 2012</span>.
+          </p>
+        </div>
+
+        <div className="rounded-xl p-4 sm:p-5 min-w-0" style={SUBTLE_STYLE}>
+          <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ ...DISPLAY, color: 'var(--deep-teal)' }}>
+            <Icon name="info" size={13} />
+            Is this different from Sapphire Clinics East?
           </div>
+          <p className="text-[13px] leading-relaxed" style={{ color: 'var(--mid-gray)' }}>
+            <Em>Aura Academy for Learning</Em> is still under <Em>Sapphire Clinics East</Em>, but is not under the <Em>Sapphire Clinics East</Em> brand. Classes are hosted in the clinic premises of <Em>East Branch</Em> and <Em>Greenhills Branch</Em>.
+          </p>
         </div>
-      </section>
+      </div>
 
-      <section className="md:col-span-3 animate-fade-up stagger-2 space-y-6">
-        <div className="card-static">
-          <h2 className="text-[22px] leading-tight mb-3">What we offer</h2>
-          <ul className="space-y-2.5 text-[14.5px] text-[color:var(--ink)]">
-            <li className="flex gap-3"><Dot/><span>Nursery, Kindergarten, and Grades 1–12 in graded classes.</span></li>
-            <li className="flex gap-3"><Dot/><span>DepEd-accredited curriculum — your child stays on track with the national program.</span></li>
-            <li className="flex gap-3"><Dot/><span>Every enrolled student is issued a Learner Reference Number (LRN).</span></li>
-            <li className="flex gap-3"><Dot/><span>Students are issued an official <span className="font-semibold">report card</span> each grading period.</span></li>
-            <li className="flex gap-3"><Dot/><span>Our graded classes are <span className="font-semibold">recognised</span> when your child transfers to another school — completed levels carry over.</span></li>
-            <li className="flex gap-3"><Dot/><span>Small class sizes for individualised attention.</span></li>
-            <li className="flex gap-3"><Dot/><span>Integrated with Sapphire Clinics East&apos;s allied health services when extra support is needed.</span></li>
-          </ul>
+      <DashCard title="What we offer" icon={<Icon name="student" size={16} />}>
+        <ul className="grid md:grid-cols-2 gap-x-6 gap-y-3 text-sm leading-relaxed" style={{ color: 'var(--charcoal)' }}>
+          <li className="flex gap-2.5"><Check/><span>Nursery, Kindergarten, and Grades 1–12 in graded classes.</span></li>
+          <li className="flex gap-2.5"><Check/><span>DepEd-accredited curriculum — your child stays on track with the national program.</span></li>
+          <li className="flex gap-2.5"><Check/><span>Every enrolled student is issued a Learner Reference Number (LRN).</span></li>
+          <li className="flex gap-2.5"><Check/><span>Students are issued an official <span className="font-semibold">report card</span> each grading period.</span></li>
+          <li className="flex gap-2.5"><Check/><span>Our graded classes are <span className="font-semibold">recognised</span> when your child transfers to another school — completed levels carry over.</span></li>
+          <li className="flex gap-2.5"><Check/><span>Small class sizes for individualised attention.</span></li>
+          <li className="flex gap-2.5"><Check/><span>Integrated with Sapphire Clinics East&apos;s allied health services when extra support is needed.</span></li>
+        </ul>
+      </DashCard>
+
+      <DashCard
+        title="How enrollment works"
+        icon={<Icon name="userPlus" size={16} />}
+        description={<>A 7-step process from initial evaluation to your child&apos;s first day in class.</>}
+      >
+        <ol className="relative space-y-4">
+          {ENROLLMENT_STEPS.map((step, i) => (
+            <li key={i} className="relative pl-11">
+              {i < ENROLLMENT_STEPS.length - 1 && (
+                <span aria-hidden className="absolute left-[13px] top-8 bottom-[-1rem] w-[2px]" style={{ background: 'var(--light-gray)' }} />
+              )}
+              <span
+                aria-hidden
+                className="absolute left-0 top-0.5 w-7 h-7 rounded-full flex items-center justify-center font-bold text-[12px] shrink-0"
+                style={{ ...DISPLAY, background: 'var(--deep-teal)', color: '#fff' }}
+              >
+                {i + 1}
+              </span>
+              <div className="font-semibold text-sm leading-snug" style={{ ...DISPLAY, color: 'var(--charcoal)' }}>
+                {step.titleHighlight ? renderHighlighted(step.title, step.titleHighlight) : step.title}
+              </div>
+              <div className="text-[13px] mt-1 leading-relaxed" style={{ color: 'var(--mid-gray)' }}>
+                {step.highlight ? renderHighlighted(step.body, step.highlight) : step.body}
+              </div>
+            </li>
+          ))}
+        </ol>
+
+        <div className="mt-6 pt-4" style={{ borderTop: '1px solid var(--light-gray)' }}>
+          <a href="/" className={BTN_PRIMARY} style={PRIMARY_STYLE}>Start enrollment →</a>
+        </div>
+      </DashCard>
+
+      <DashCard title="Documents to prepare" icon={<Icon name="file" size={16} />}>
+        <div className="flex items-start gap-2.5 rounded-lg px-3.5 py-3 mb-4 text-[13px] leading-relaxed" style={{ ...SUBTLE_STYLE, color: 'var(--mid-gray)' }}>
+          <Icon name="info" size={15} className="mt-0.5" style={{ color: 'var(--teal)' }} />
+          <p className="min-w-0">
+            For <Em>Kindergarten</Em>, only the PSA Birth Certificate is required. For <Em>Grades 1&ndash;10</Em>, the full list below applies. Please have <Em>scanned copies</Em> of these available for upload here in the website. Please also bring the <Em>hard copies</Em> when going to the clinic.
+          </p>
         </div>
 
-        <div className="card-static">
-          <h2 className="text-[22px] leading-tight mb-1">How enrollment works</h2>
-          <p className="text-[12.5px] text-[color:var(--mid-gray)] mb-5">A 7-step process from initial evaluation to your child&apos;s first day in class.</p>
-
-          <ol className="relative space-y-4">
-            {ENROLLMENT_STEPS.map((step, i) => (
-              <li key={i} className="relative pl-12">
-                {i < ENROLLMENT_STEPS.length - 1 && (
-                  <span aria-hidden className="absolute left-[15px] top-9 bottom-[-1rem] w-[2px]" style={{ background: 'var(--paper-3)' }} />
-                )}
+        {/* Column-first on desktop so the numbers read top to bottom. */}
+        <ol className="grid gap-x-6 gap-y-2.5 md:grid-flow-col md:grid-rows-5">
+          {ENROLLMENT_DOCS.map((doc, i) => {
+            const num = i + 1
+            const isMandatory = !!doc.mandatory
+            return (
+              <li key={i} className="flex items-start gap-3 min-w-0">
                 <span
                   aria-hidden
-                  className="absolute left-0 top-1 w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shrink-0"
-                  style={{ background: 'var(--narra)', color: '#fff', fontFamily: 'var(--font-display)' }}
+                  className="w-6 h-6 rounded-full flex items-center justify-center font-bold text-[11px] shrink-0"
+                  style={{
+                    ...DISPLAY,
+                    background: isMandatory ? HIGHLIGHT_STYLE.background : 'var(--pale-teal)',
+                    color: isMandatory ? HIGHLIGHT_STYLE.color : 'var(--deep-teal)',
+                    border: `1px solid ${isMandatory ? '#EBD3B4' : 'var(--light-gray)'}`,
+                  }}
                 >
-                  {i + 1}
+                  {num}
                 </span>
-                <div className="font-semibold text-[color:var(--narra)] text-[15px] leading-snug" style={{ fontFamily: 'var(--font-display)' }}>
-                  {step.titleHighlight ? renderHighlighted(step.title, step.titleHighlight) : step.title}
-                </div>
-                <div className="text-[13.5px] text-[color:var(--ink)] mt-1 leading-relaxed">
-                  {step.highlight ? renderHighlighted(step.body, step.highlight) : step.body}
-                </div>
+                <span className={`text-[13px] leading-snug min-w-0 pt-0.5 ${isMandatory ? 'font-semibold' : ''}`} style={{ color: 'var(--charcoal)' }}>
+                  {doc.title}
+                  {isMandatory && <> <Tag tone="warn">&larr; Mandatory</Tag></>}
+                  {doc.note && (
+                    <span className="block text-xs font-normal mt-0.5" style={{ color: 'var(--mid-gray)' }}>{doc.note}</span>
+                  )}
+                </span>
               </li>
-            ))}
-          </ol>
+            )
+          })}
+        </ol>
+      </DashCard>
 
-          <div className="mt-7">
-            <a href="/" className="btn-primary">Start enrollment →</a>
-          </div>
+      <DashCard
+        title="Other FAQs"
+        icon={<Icon name="info" size={16} />}
+        description="Quick answers to the questions parents ask most often. Tap any question to expand the answer."
+      >
+        {/* Native <details>/<summary> for accordion behaviour — no JS, no
+            hydration mismatch, fully keyboard-accessible, and works
+            identically on every device. Rows follow the hub kit: light-gray
+            borders, a subtle fill when open, a chevron that turns. */}
+        <ul className="flex flex-col gap-2">
+          {FAQS.map((item, i) => (
+            <li key={i}>
+              <details className="group rounded-lg border border-[color:var(--light-gray)] bg-white overflow-hidden transition-colors hover:border-[color:var(--teal)]/40 open:bg-[#FAF7F1]">
+                <summary
+                  className={`cursor-pointer list-none [&::-webkit-details-marker]:hidden px-3.5 py-3 sm:px-4 flex items-center justify-between gap-3 text-sm leading-snug font-semibold rounded-lg ${FOCUS}`}
+                  style={{ ...DISPLAY, color: 'var(--charcoal)' }}
+                >
+                  <span className="min-w-0">{item.q}</span>
+                  <Icon name="chevronRight" size={16} className="transition-transform group-open:rotate-90" style={{ color: 'var(--teal)' }} />
+                </summary>
+                <div className="px-3.5 pb-3.5 sm:px-4 sm:pb-4 -mt-0.5 text-[13px] leading-relaxed" style={{ color: 'var(--mid-gray)' }}>
+                  {item.a}
+                </div>
+              </details>
+            </li>
+          ))}
+        </ul>
+      </DashCard>
+
+      <DashCard
+        title="Questions?"
+        icon={<Icon name="users" size={16} />}
+        description={<>If you have any questions about admissions, programs, or your child&apos;s enrollment, please reach out to us.</>}
+      >
+        <div className="grid sm:grid-cols-2 gap-3">
+          <BranchCard
+            name="East Branch"
+            address="Level 4, Robinsons Metro East, Marcos Highway, Brgy. Dela Paz, Santolan, Pasig"
+            email="east@sapphireclinicseast.org"
+            phones={['+63 917 118 9289', '(02) 5310-4991']}
+          />
+          <BranchCard
+            name="Greenhills Branch"
+            address="Level 8, GH Tower Offices, South Drive, Ortigas Avenue, Greenhills, San Juan City"
+            email="greenhills@sapphireclinicseast.org"
+            phones={['+63 917 770 1686', '(02) 8529-1590']}
+          />
         </div>
-
-        <div className="card-static">
-          <h2 className="text-[22px] leading-tight mb-1">Documents to prepare</h2>
-          <p className="text-[12.5px] text-[color:var(--mid-gray)] mb-5">
-            For <span className="font-semibold text-[color:var(--narra)]">Kindergarten</span>, only the PSA Birth Certificate is required. For <span className="font-semibold text-[color:var(--narra)]">Grades 1&ndash;10</span>, the full list below applies. Please have <span className="font-semibold text-[color:var(--narra)]">scanned copies</span> of these available for upload here in the website. Please also bring the <span className="font-semibold text-[color:var(--narra)]">hard copies</span> when going to the clinic.
-          </p>
-
-          <ul className="flex flex-col gap-2.5 max-w-2xl">
-            {ENROLLMENT_DOCS.map((doc, i) => {
-              const num = i + 1
-              const isMandatory = !!doc.mandatory
-              return (
-                <li key={i} className="flex items-start gap-3">
-                  <span
-                    aria-hidden
-                    className="w-7 h-7 rounded-full flex items-center justify-center font-bold text-[12px] shrink-0"
-                    style={{
-                      background: isMandatory ? 'var(--clay)' : 'var(--sage)',
-                      color: '#fff',
-                      fontFamily: 'var(--font-display)',
-                    }}
-                  >
-                    {num}
-                  </span>
-                  <span className={`text-[13.5px] leading-snug ${isMandatory ? 'font-semibold text-[color:var(--clay)]' : 'text-[color:var(--ink)]'}`}>
-                    {doc.title}
-                    {isMandatory && <span className="ml-1 text-[11px] uppercase tracking-[0.08em]">&larr; Mandatory</span>}
-                    {doc.note && (
-                      <span className="block text-[11.5px] text-[color:var(--mid-gray)] font-normal mt-0.5">{doc.note}</span>
-                    )}
-                  </span>
-                </li>
-              )
-            })}
-          </ul>
-        </div>
-
-        <div className="card-static">
-          <h2 className="text-[22px] leading-tight mb-1">Other FAQs</h2>
-          <p className="text-sm text-[color:var(--mid-gray)] mb-5">
-            Quick answers to the questions parents ask most often. Tap any question to expand the answer.
-          </p>
-
-          {/* Native <details>/<summary> for accordion behaviour — no JS, no
-              hydration mismatch, fully keyboard-accessible, and works
-              identically on every device. Styling matches the rest of the
-              cards (rounded corners, paper-3 borders, narra/moss accents). */}
-          <ul className="flex flex-col gap-2.5">
-            {[
-              {
-                q: 'Is this a real school?',
-                a: 'Yes. We’re in partnership with Light Bearer Christian Academy, so each student gets an LRN (Learner Reference Number) and an actual DepEd-compliant report card.',
-              },
-              {
-                q: 'What grade levels do you offer?',
-                a: 'We now offer all grade levels — Nursery and Kindergarten through Grade 12. All levels are graded except Nursery.',
-              },
-              {
-                q: 'What subjects are taught?',
-                a: 'The full DepEd-aligned curriculum — English, Math, Science, Filipino, Araling Panlipunan, MAPEH, and Edukasyon sa Pagpapakatao — plus the practical-life and SPED supports our clinic team adds on top.',
-              },
-              {
-                q: 'Is the IE (Initial Evaluation) fee the same as the clinic’s normal IE?',
-                a: 'Yes. The IE assessment uses the prevailing clinic rate and is separate from the school tuition. It also includes an entrance exam so we can place your child in the right grade level and tailor support from day one.',
-              },
-              {
-                q: 'How much are the books, and what’s the class schedule?',
-                a: 'Classes meet every Tuesday and Thursday. Books are roughly ₱7,500 per set — final price to be announced once we lock in the supplier.',
-              },
-              {
-                q: 'Is Aura Academy DepEd-accredited?',
-                a: 'Yes. Through our partnership with Light Bearer Christian Academy, the program is DepEd-accredited end to end.',
-              },
-            ].map((item, i) => (
-              <li key={i}>
-                <details className="group rounded-2xl border border-[color:var(--paper-3)] bg-white/60 overflow-hidden transition-colors hover:border-[color:var(--moss)]/40 open:border-[color:var(--moss)]/60 open:bg-[color:var(--paper-2)]">
-                  <summary
-                    className="cursor-pointer list-none px-4 py-3 sm:px-5 sm:py-3.5 flex items-center justify-between gap-3 text-[14px] leading-snug font-semibold text-[color:var(--narra)] group-open:text-[color:var(--moss)]"
-                    style={{ fontFamily: 'var(--font-display)' }}
-                  >
-                    <span>{item.q}</span>
-                    <span
-                      aria-hidden
-                      className="shrink-0 w-6 h-6 rounded-full bg-[color:var(--paper-3)] text-[color:var(--narra)] flex items-center justify-center text-[14px] font-bold leading-none transition-transform group-open:rotate-45 group-open:bg-[color:var(--moss)] group-open:text-white"
-                    >
-                      +
-                    </span>
-                  </summary>
-                  <div className="px-4 pb-4 sm:px-5 sm:pb-5 -mt-1 text-[13.5px] leading-relaxed text-[color:var(--ink)]">
-                    {item.a}
-                  </div>
-                </details>
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <div className="card-static">
-          <h2 className="text-[22px] leading-tight mb-1">Questions?</h2>
-          <p className="text-sm text-[color:var(--mid-gray)] mb-5">
-            If you have any questions about admissions, programs, or your child&apos;s enrollment, please reach out to us.
-          </p>
-
-          <div className="grid sm:grid-cols-2 gap-5">
-            <BranchCard
-              name="East Branch"
-              address="Level 4, Robinsons Metro East, Marcos Highway, Brgy. Dela Paz, Santolan, Pasig"
-              email="east@sapphireclinicseast.org"
-              phones={['+63 917 118 9289', '(02) 5310-4991']}
-            />
-            <BranchCard
-              name="Greenhills Branch"
-              address="Level 8, GH Tower Offices, South Drive, Ortigas Avenue, Greenhills, San Juan City"
-              email="greenhills@sapphireclinicseast.org"
-              phones={['+63 917 770 1686', '(02) 8529-1590']}
-            />
-          </div>
-        </div>
-      </section>
+      </DashCard>
     </div>
   )
 }
 
+/** One key-fact tile: an icon, a short phrase and an optional second line. */
+function FactTile({ icon, sub, children }: { icon: IconName; sub?: ReactNode; children: ReactNode }) {
+  return (
+    <li className="rounded-xl px-4 py-3.5 flex items-start gap-3 min-w-0" style={CARD_STYLE}>
+      <span aria-hidden className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
+        <Icon name={icon} size={16} />
+      </span>
+      <span className="min-w-0">
+        <span className="block text-sm font-bold leading-snug" style={{ ...DISPLAY, color: 'var(--charcoal)' }}>{children}</span>
+        {sub && <span className="block text-xs mt-0.5 leading-snug" style={{ color: 'var(--mid-gray)' }}>{sub}</span>}
+      </span>
+    </li>
+  )
+}
+
+function Em({ children }: { children: ReactNode }) {
+  return <span className="font-semibold" style={{ color: 'var(--charcoal)' }}>{children}</span>
+}
+
 function BranchCard({ name, address, email, phones }: { name: string; address: string; email: string; phones: string[] }) {
   return (
-    <div className="rounded-2xl p-5 border" style={{ borderColor: 'var(--paper-3)', background: 'var(--paper-2)' }}>
-      <h3 className="text-[16px] font-semibold text-[color:var(--narra)] mb-3" style={{ fontFamily: 'var(--font-display)' }}>
+    <div className="rounded-xl p-4 sm:p-5 min-w-0" style={SUBTLE_STYLE}>
+      <h3 className="flex items-center gap-2 text-[14px] font-bold mb-3 tracking-normal" style={{ ...DISPLAY, color: 'var(--charcoal)' }}>
+        <span aria-hidden style={{ color: 'var(--teal)' }}><Icon name="building" size={15} /></span>
         {name}
       </h3>
-      <ul className="space-y-2.5 text-[13.5px] text-[color:var(--ink)]">
-        <li className="flex gap-2.5"><span aria-hidden>📍</span><span>{address}</span></li>
-        <li className="flex gap-2.5"><span aria-hidden>✉️</span>
+      <ul className="space-y-2.5 text-[13px] leading-relaxed" style={{ color: 'var(--charcoal)' }}>
+        <li className="flex gap-2.5"><Glyph name="pin" /><span className="min-w-0">{address}</span></li>
+        <li className="flex gap-2.5"><Glyph name="mail" />
           {/* Wrap on the @ if the card is too narrow for one line —
               `<wbr>` gives the browser a preferred break point so we
               get "east@" / "sapphireclinicseast.org" instead of the
@@ -236,7 +247,8 @@ function BranchCard({ name, address, email, phones }: { name: string; address: s
               break-words is the fallback for very narrow containers. */}
           <a
             href={`mailto:${email}`}
-            className="text-[color:var(--narra)] hover:underline break-words min-w-0"
+            className={`font-semibold hover:underline break-words min-w-0 rounded-sm ${FOCUS}`}
+            style={{ color: 'var(--deep-teal)' }}
           >
             {(() => {
               const at = email.indexOf('@')
@@ -245,12 +257,12 @@ function BranchCard({ name, address, email, phones }: { name: string; address: s
             })()}
           </a>
         </li>
-        <li className="flex gap-2.5"><span aria-hidden>📞</span>
-          <span className="flex flex-wrap gap-x-2 gap-y-1">
+        <li className="flex gap-2.5"><Glyph name="phone" />
+          <span className="flex flex-wrap gap-x-2 gap-y-1 min-w-0">
             {phones.map((p, i) => (
               <span key={p} className="whitespace-nowrap">
-                <a href={`tel:${p.replace(/[^+\d]/g, '')}`} className="text-[color:var(--narra)] hover:underline">{p}</a>
-                {i < phones.length - 1 && <span className="text-[color:var(--mid-gray)] ml-2">|</span>}
+                <a href={`tel:${p.replace(/[^+\d]/g, '')}`} className={`font-semibold hover:underline rounded-sm ${FOCUS}`} style={{ color: 'var(--deep-teal)' }}>{p}</a>
+                {i < phones.length - 1 && <span className="ml-2" style={{ color: 'var(--light-gray)' }}>|</span>}
               </span>
             ))}
           </span>
@@ -260,9 +272,53 @@ function BranchCard({ name, address, email, phones }: { name: string; address: s
   )
 }
 
-function Dot() {
-  return <span className="mt-2 inline-block w-1.5 h-1.5 rounded-full bg-[color:var(--clay)] shrink-0" />
+function Check() {
+  return <Icon name="check" size={16} className="mt-[3px]" style={{ color: 'var(--sage)' }} />
 }
+
+// Contact glyphs the kit's icon set doesn't carry (map pin, mail, phone).
+// Same Feather/Lucide stroke style as <Icon>; decorative only.
+const GLYPHS = {
+  pin: <><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z" /><circle cx="12" cy="10" r="3" /></>,
+  mail: <><rect x="2" y="4" width="20" height="16" rx="2" /><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" /></>,
+  phone: <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />,
+} as const
+
+function Glyph({ name }: { name: keyof typeof GLYPHS }) {
+  return (
+    <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9}
+      strokeLinecap="round" strokeLinejoin="round" aria-hidden className="flex-shrink-0 mt-[3px]" style={{ color: 'var(--teal)' }}>
+      {GLYPHS[name]}
+    </svg>
+  )
+}
+
+const FAQS: Array<{ q: string; a: string }> = [
+  {
+    q: 'Is this a real school?',
+    a: 'Yes. We’re in partnership with Light Bearer Christian Academy, so each student gets an LRN (Learner Reference Number) and an actual DepEd-compliant report card.',
+  },
+  {
+    q: 'What grade levels do you offer?',
+    a: 'We now offer all grade levels — Nursery and Kindergarten through Grade 12. All levels are graded except Nursery.',
+  },
+  {
+    q: 'What subjects are taught?',
+    a: 'The full DepEd-aligned curriculum — English, Math, Science, Filipino, Araling Panlipunan, MAPEH, and Edukasyon sa Pagpapakatao — plus the practical-life and SPED supports our clinic team adds on top.',
+  },
+  {
+    q: 'Is the IE (Initial Evaluation) fee the same as the clinic’s normal IE?',
+    a: 'Yes. The IE assessment uses the prevailing clinic rate and is separate from the school tuition. It also includes an entrance exam so we can place your child in the right grade level and tailor support from day one.',
+  },
+  {
+    q: 'How much are the books, and what’s the class schedule?',
+    a: 'Classes meet every Tuesday and Thursday. Books are roughly ₱7,500 per set — final price to be announced once we lock in the supplier.',
+  },
+  {
+    q: 'Is Aura Academy DepEd-accredited?',
+    a: 'Yes. Through our partnership with Light Bearer Christian Academy, the program is DepEd-accredited end to end.',
+  },
+]
 
 const ENROLLMENT_STEPS: Array<{ title: string; titleHighlight?: string; body: string; highlight?: string }> = [
   {
@@ -302,7 +358,7 @@ const ENROLLMENT_STEPS: Array<{ title: string; titleHighlight?: string; body: st
   },
 ]
 
-/** Wrap the first occurrence of `phrase` in `text` with a brand-clay
+/** Wrap the first occurrence of `phrase` in `text` with a warm
  *  highlight span. Case-insensitive match. */
 function renderHighlighted(text: string, phrase: string): React.ReactNode {
   const i = text.toLowerCase().indexOf(phrase.toLowerCase())
@@ -313,10 +369,7 @@ function renderHighlighted(text: string, phrase: string): React.ReactNode {
   return (
     <>
       {before}
-      <span
-        className="font-bold px-1 rounded"
-        style={{ background: 'var(--gold-tint, #fef3c7)', color: 'var(--clay, #a85c3d)' }}
-      >
+      <span className="font-bold px-1 rounded" style={HIGHLIGHT_STYLE}>
         {match}
       </span>
       {after}

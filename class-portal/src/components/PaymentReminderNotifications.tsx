@@ -2,6 +2,10 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { listPaymentReminderLog, type PaymentReminderLogRow } from '@/lib/session'
+import {
+  DashCard, RowsSkeleton, EmptyState, StatusPill, Tag, Icon,
+  CONTROL, CONTROL_STYLE, TH, TH_STYLE, TD, TR, TR_STYLE, SUBTLE_BG, FOCUS, type Tone,
+} from '@/components/hub/ui'
 
 /** "Notifications" card for the class-portal Payments tab. Reads the
  *  automated payment-reminder log (populated by the daily cron) and
@@ -61,97 +65,95 @@ export default function PaymentReminderNotifications() {
       : reason === 'PAST_DUE'     ? 'Past due'
       : 'Manual reminder'
   }
-  function reasonBadgeClass(r: PaymentReminderLogRow['reason']): string {
-    return r === 'PAST_DUE' ? 'badge-due'
-      : r === 'DUE_SOON' ? 'badge-pending'
-      : r === 'MANUAL'   ? 'badge-rejected'
-      : 'badge-approved'
+  // Tone for the reason pill. The words carry the meaning; the colour
+  // only ranks urgency (past due > due tomorrow > heads-up / manual).
+  function reasonTone(r: PaymentReminderLogRow['reason']): Tone {
+    return r === 'PAST_DUE' ? 'error'
+      : r === 'DUE_SOON' ? 'warn'
+      : r === 'MANUAL'   ? 'neutral'
+      : 'info'
   }
 
   return (
-    <div className="card-static">
-      <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
-        <div>
-          <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)]" style={{ fontFamily: 'var(--font-display)' }}>Notifications</div>
-          <h2 className="text-[18px] leading-tight">Automated payment reminders</h2>
-          <p className="text-[12.5px] text-[color:var(--mid-gray)] mt-1">
-            Students who&rsquo;ve been emailed by the daily reminder cron — 5&nbsp;days before the due date, the day before, and the day after if still unpaid. No manual action required.
-          </p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <label className="text-[11.5px] text-[color:var(--mid-gray)]" style={{ fontFamily: 'var(--font-display)' }}>Window</label>
-          <select className="input text-[13px]" value={sinceDays} onChange={e => setSinceDays(Number(e.target.value))} style={{ maxWidth: 140 }}>
+    <DashCard
+      flush
+      title="Automated payment reminders"
+      icon={<Icon name="clock" size={15} />}
+      description={<>Students who&rsquo;ve been emailed by the daily reminder cron — 5&nbsp;days before the due date, the day before, and the day after if still unpaid. No manual action required.</>}
+      action={!loading && rows.length > 0 ? <StatusPill tone="info">{filtered.length} email{filtered.length === 1 ? '' : 's'}</StatusPill> : undefined}
+    >
+      <div className="px-4 sm:px-5 py-3 flex flex-wrap items-center gap-2" style={{ borderBottom: '1px solid var(--light-gray)' }}>
+        <label className="flex items-center gap-2">
+          <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)', fontFamily: 'var(--font-display)' }}>Window</span>
+          <select className={CONTROL} style={{ ...CONTROL_STYLE, maxWidth: 160 }} value={sinceDays} onChange={e => setSinceDays(Number(e.target.value))}>
             <option value={7}>Last 7 days</option>
             <option value={30}>Last 30 days</option>
             <option value={90}>Last 90 days</option>
             <option value={365}>Last 12 months</option>
           </select>
+        </label>
+        <label className="relative flex-1 min-w-0 sm:max-w-[320px]">
+          <span className="sr-only">Search reminders</span>
+          <Icon name="search" size={14} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mid-gray)' }} />
           <input
-            className="input text-[13px]"
+            className={`${CONTROL} w-full pl-8`}
+            style={CONTROL_STYLE}
             placeholder="Search name / email / period"
             value={search}
             onChange={e => setSearch(e.target.value)}
-            style={{ width: 260 }}
           />
-        </div>
+        </label>
       </div>
 
       {loading ? (
-        <p className="text-sm text-[color:var(--mid-gray)] text-center py-6">Loading…</p>
+        <RowsSkeleton rows={4} label="Loading reminders" />
       ) : rows.length === 0 ? (
-        <p className="text-sm text-[color:var(--mid-gray)] text-center py-6">
-          No reminders sent yet. The cron fires daily around 9 AM Manila — reminders will appear here once it emails eligible students.
-        </p>
+        <EmptyState icon="clock" title="No reminders sent yet." hint="The cron fires daily around 9 AM Manila — reminders will appear here once it emails eligible students." />
       ) : filtered.length === 0 ? (
-        <p className="text-sm text-[color:var(--mid-gray)] text-center py-6">No reminders match &ldquo;{search}&rdquo;.</p>
+        <EmptyState icon="search" title={`No reminders match “${search}”.`} hint="Try a name, email or period." />
       ) : (
-        <div className="space-y-4">
+        <div className="p-4 sm:p-5 space-y-3">
           {groups.map(([period, list]) => (
-            <details key={period} open className="rounded-xl border" style={{ borderColor: 'var(--paper-3)' }}>
-              <summary className="flex items-center justify-between gap-3 px-4 py-2.5 cursor-pointer select-none rounded-xl" style={{ background: 'var(--paper-2)' }}>
-                <span className="font-semibold text-[color:var(--narra)] text-sm" style={{ fontFamily: 'var(--font-display)' }}>{period}</span>
-                <span className="text-[11.5px] text-[color:var(--mid-gray)]">
+            <details key={period} open className="group rounded-xl overflow-hidden" style={{ border: '1px solid var(--light-gray)' }}>
+              <summary className={`flex items-center justify-between gap-3 px-4 py-2.5 cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden ${FOCUS}`} style={{ background: SUBTLE_BG }}>
+                <span className="flex items-center gap-2 min-w-0">
+                  <Icon name="chevronRight" size={14} className="transition-transform group-open:rotate-90" style={{ color: 'var(--mid-gray)' }} />
+                  <span className="font-semibold text-sm truncate" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>{period}</span>
+                </span>
+                <span className="text-[11.5px] whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>
                   {list.length} email{list.length === 1 ? '' : 's'} sent
                 </span>
               </summary>
-              <div className="overflow-x-auto rounded-b-xl">
-                <table className="w-full text-sm">
-                  <thead style={{ background: '#fff' }}>
-                    <tr className="text-left text-[11.5px] uppercase tracking-[0.08em] text-[color:var(--mid-gray)] border-b" style={{ borderColor: 'var(--paper-3)', fontFamily: 'var(--font-display)' }}>
-                      <th className="py-2 px-3">Student</th>
-                      <th className="py-2 px-3">Branch</th>
-                      <th className="py-2 px-3">Plan</th>
-                      <th className="py-2 px-3">Reminder</th>
-                      <th className="py-2 px-3">Sent at</th>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm" style={{ borderCollapse: 'collapse', minWidth: 680 }}>
+                  <thead>
+                    <tr>
+                      <th className={TH} style={{ ...TH_STYLE, background: '#fff' }}>Student</th>
+                      <th className={TH} style={{ ...TH_STYLE, background: '#fff' }}>Branch</th>
+                      <th className={TH} style={{ ...TH_STYLE, background: '#fff' }}>Plan</th>
+                      <th className={TH} style={{ ...TH_STYLE, background: '#fff' }}>Reminder</th>
+                      <th className={TH} style={{ ...TH_STYLE, background: '#fff' }}>Sent at</th>
                     </tr>
                   </thead>
                   <tbody>
                     {list.map(r => (
-                      <tr key={r.id} className="border-b" style={{ borderColor: 'var(--paper-3)' }}>
-                        <td className="py-2 px-3">
-                          <div className="font-semibold text-[color:var(--narra)]">{r.studentName}</div>
-                          <div className="text-[11px] text-[color:var(--mid-gray)]">{r.studentEmail}</div>
+                      <tr key={r.id} className={TR} style={TR_STYLE}>
+                        <td className={TD}>
+                          <div className="font-semibold" style={{ color: 'var(--charcoal)' }}>{r.studentName}</div>
+                          <div className="text-[11px] break-all" style={{ color: 'var(--mid-gray)' }}>{r.studentEmail}</div>
                         </td>
-                        <td className="py-2 px-3 text-[12.5px]">
+                        <td className={TD}>
                           {r.branch ? (
-                            <span
-                              className="badge"
-                              style={{
-                                background: r.branch === 'EAST' ? '#dbeafe' : '#fef3c7',
-                                color:      r.branch === 'EAST' ? '#1e40af' : '#92400e',
-                              }}
-                            >
-                              {r.branch === 'EAST' ? 'East' : 'Greenhills'}
-                            </span>
-                          ) : <span className="text-[color:var(--mid-gray)]">—</span>}
+                            <Tag tone={r.branch === 'EAST' ? 'brand' : 'info'}>{r.branch === 'EAST' ? 'East' : 'Greenhills'}</Tag>
+                          ) : <span style={{ color: 'var(--mid-gray)' }}>—</span>}
                         </td>
-                        <td className="py-2 px-3 text-[12.5px]">
+                        <td className={`${TD} text-[12.5px]`}>
                           {r.plan === 'MONTHLY' ? 'Monthly' : r.plan === 'BIANNUAL' ? 'Bi-annual' : 'Annual'}
                         </td>
-                        <td className="py-2 px-3 text-[12.5px]">
-                          <span className={`badge ${reasonBadgeClass(r.reason)}`}>{reasonLabel(r.reason)}</span>
+                        <td className={TD}>
+                          <StatusPill tone={reasonTone(r.reason)}>{reasonLabel(r.reason)}</StatusPill>
                         </td>
-                        <td className="py-2 px-3 text-[12.5px] text-[color:var(--mid-gray)]">
+                        <td className={`${TD} text-[12.5px] whitespace-nowrap`} style={{ color: 'var(--mid-gray)' }}>
                           {new Date(r.sentAt).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })}
                         </td>
                       </tr>
@@ -163,6 +165,6 @@ export default function PaymentReminderNotifications() {
           ))}
         </div>
       )}
-    </div>
+    </DashCard>
   )
 }

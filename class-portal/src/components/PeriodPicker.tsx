@@ -26,6 +26,7 @@
 
 import { useMemo } from 'react'
 import type { PaymentPlan } from '@/lib/session'
+import { CONTROL, CONTROL_STYLE } from '@/components/hub/ui'
 
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -89,11 +90,13 @@ function annualOptions(today: Date): Array<{ value: string; label: string; group
  *  legacy label or keep it as-is. */
 const OTHER = '__OTHER__'
 
-export function PeriodPicker({ plan, value, onChange, disabled }: {
+export function PeriodPicker({ plan, value, onChange, disabled, id }: {
   plan: PaymentPlan
   value: string
   onChange: (next: string) => void
   disabled?: boolean
+  /** Optional id so a caller's <label htmlFor> can name the dropdown. */
+  id?: string
 }) {
   const today = useMemo(() => new Date(), [])
   const options = useMemo(() => {
@@ -129,7 +132,9 @@ export function PeriodPicker({ plan, value, onChange, disabled }: {
   return (
     <div className="space-y-1.5">
       <select
-        className="select"
+        id={id}
+        className={`${CONTROL} w-full`}
+        style={CONTROL_STYLE}
         value={selectValue}
         onChange={e => handleSelect(e.target.value)}
         disabled={disabled}
@@ -147,7 +152,9 @@ export function PeriodPicker({ plan, value, onChange, disabled }: {
       {selectValue === OTHER && (
         <input
           type="text"
-          className="input"
+          className={`${CONTROL} w-full`}
+          style={CONTROL_STYLE}
+          aria-label="Period covered (free text)"
           value={value}
           onChange={e => onChange(e.target.value)}
           placeholder="Free-text period (won't match the badge — use only for one-offs)"
@@ -155,8 +162,8 @@ export function PeriodPicker({ plan, value, onChange, disabled }: {
         />
       )}
       {selectValue !== OTHER && plan === 'MONTHLY' && (
-        <p className="text-[10.5px] text-[color:var(--mid-gray)]">
-          Tip: pick the exact month this payment covers — the student's portal badge (Paid for …) matches the label above.
+        <p className="text-[11px] leading-snug" style={{ color: 'var(--mid-gray)' }}>
+          Tip: pick the exact month this payment covers — the student&apos;s portal badge (Paid for …) matches the label above.
         </p>
       )}
     </div>

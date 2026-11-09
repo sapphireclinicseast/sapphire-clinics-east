@@ -14,6 +14,8 @@ interface Props {
   disabled?: boolean
   /** Minimum editor body height in pixels. */
   minHeight?: number
+  /** Accessible name for the editable area (display only). */
+  ariaLabel?: string
 }
 
 type CmdName = 'bold' | 'italic' | 'underline' | 'strikeThrough'
@@ -54,7 +56,7 @@ const LIST_BUTTONS: Btn[] = [
  * send it back as `value` only when the external state resets (e.g.
  * after a successful publish).
  */
-export default function RichTextEditor({ value, onChange, placeholder, disabled, minHeight = 160 }: Props) {
+export default function RichTextEditor({ value, onChange, placeholder, disabled, minHeight = 160, ariaLabel }: Props) {
   const editorRef = useRef<HTMLDivElement | null>(null)
   // Last value we emitted via onChange. Any value prop that doesn't
   // match this is treated as an external reset (e.g. parent clearing
@@ -150,9 +152,9 @@ export default function RichTextEditor({ value, onChange, placeholder, disabled,
 
   return (
     <div
-      className="rte"
+      className="rte overflow-hidden transition-[border-color,box-shadow] focus-within:border-[color:var(--teal)] focus-within:shadow-[0_0_0_3px_rgba(84,125,114,0.18)]"
       style={{
-        border: '1px solid var(--paper-3)',
+        border: '1px solid var(--light-gray)',
         borderRadius: 10,
         background: '#fff',
         opacity: disabled ? 0.6 : 1,
@@ -161,15 +163,10 @@ export default function RichTextEditor({ value, onChange, placeholder, disabled,
       <div
         role="toolbar"
         aria-label="Formatting"
+        className="flex flex-wrap items-center gap-1 px-2 py-1.5"
         style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: 2,
-          padding: '6px 8px',
-          borderBottom: '1px solid var(--paper-3)',
-          background: 'var(--paper-2)',
-          borderTopLeftRadius: 10,
-          borderTopRightRadius: 10,
+          borderBottom: '1px solid var(--light-gray)',
+          background: '#FAF7F1',
         }}
       >
         {BUTTONS.map(b => (
@@ -177,15 +174,15 @@ export default function RichTextEditor({ value, onChange, placeholder, disabled,
             {b.label}
           </ToolbarBtn>
         ))}
-        <span style={{ width: 1, background: 'var(--paper-3)', margin: '0 4px' }} aria-hidden />
+        <span className="self-stretch my-1 mx-1" style={{ width: 1, background: 'var(--light-gray)' }} aria-hidden />
         {LIST_BUTTONS.map(b => (
           <ToolbarBtn key={b.cmd} title={b.title} onClick={() => exec(b.cmd)} disabled={disabled}>
             {b.label}
           </ToolbarBtn>
         ))}
-        <span style={{ width: 1, background: 'var(--paper-3)', margin: '0 4px' }} aria-hidden />
-        <ToolbarBtn title="Insert link" onClick={() => setLinkPromptOpen(true)} disabled={disabled}>🔗 Link</ToolbarBtn>
-        <ToolbarBtn title="Remove link" onClick={execUnlink} disabled={disabled}>⌧</ToolbarBtn>
+        <span className="self-stretch my-1 mx-1" style={{ width: 1, background: 'var(--light-gray)' }} aria-hidden />
+        <ToolbarBtn title="Insert link" onClick={() => setLinkPromptOpen(true)} disabled={disabled}>Link</ToolbarBtn>
+        <ToolbarBtn title="Remove link" onClick={execUnlink} disabled={disabled}>Unlink</ToolbarBtn>
         <ToolbarBtn title="Clear formatting" onClick={() => exec('removeFormat')} disabled={disabled}>Clear</ToolbarBtn>
       </div>
 
@@ -200,6 +197,10 @@ export default function RichTextEditor({ value, onChange, placeholder, disabled,
         <div
           ref={editorRef}
           className="rte-body"
+          role="textbox"
+          aria-multiline="true"
+          aria-label={ariaLabel}
+          aria-disabled={disabled || undefined}
           contentEditable={!disabled}
           suppressContentEditableWarning
           onInput={fireChange}
@@ -210,7 +211,7 @@ export default function RichTextEditor({ value, onChange, placeholder, disabled,
             padding: '10px 12px',
             fontSize: 14.5,
             lineHeight: 1.55,
-            color: 'var(--ink, #0f172a)',
+            color: 'var(--charcoal, #1a1a1a)',
             outline: 'none',
           }}
           data-empty={isEmpty ? 'true' : 'false'}
@@ -233,6 +234,8 @@ export default function RichTextEditor({ value, onChange, placeholder, disabled,
       </div>
       <style>{`
         .rte-body ul, .rte-body ol { margin: 0.3em 0 0.3em 1.4em; }
+        .rte-body ul { list-style: disc outside; }
+        .rte-body ol { list-style: decimal outside; }
         .rte-body li { margin: 0.1em 0; }
         .rte-body p { margin: 0 0 0.5em; }
         .rte-body p:last-child { margin-bottom: 0; }
@@ -241,6 +244,8 @@ export default function RichTextEditor({ value, onChange, placeholder, disabled,
     </div>
   )
 }
+
+const TOOLBAR_BTN = 'inline-flex items-center justify-center min-w-[30px] h-7 px-2 rounded-md text-[13px] transition-colors hover:bg-[color:var(--paper)] disabled:opacity-50 disabled:cursor-default focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[color:var(--teal)]'
 
 function ToolbarBtn({
   children, title, onClick, style, disabled,
@@ -259,19 +264,12 @@ function ToolbarBtn({
       onMouseDown={e => { e.preventDefault(); /* keep selection */ }}
       onClick={onClick}
       disabled={disabled}
+      className={TOOLBAR_BTN}
       style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        minWidth: 30,
-        height: 28,
-        padding: '0 7px',
-        fontSize: 13,
         fontFamily: 'inherit',
         background: '#fff',
-        color: 'var(--ink, #0f172a)',
-        border: '1px solid var(--paper-3)',
-        borderRadius: 6,
+        color: 'var(--charcoal, #1a1a1a)',
+        border: '1px solid var(--light-gray)',
         cursor: disabled ? 'default' : 'pointer',
         ...style,
       }}
@@ -287,17 +285,16 @@ function LinkPrompt({ onConfirm, onCancel }: { onConfirm: (url: string) => void;
   const [url, setUrl] = useState('')
   return (
     <div
+      className="flex flex-wrap items-center gap-1.5 px-2.5 py-2"
       style={{
-        display: 'flex',
-        gap: 6,
-        padding: '8px 10px',
-        borderBottom: '1px solid var(--paper-3)',
-        background: '#fffbe6',
+        borderBottom: '1px solid var(--light-gray)',
+        background: 'var(--pale-teal)',
       }}
     >
       <input
         autoFocus
         type="url"
+        aria-label="Link address"
         value={url}
         onChange={e => setUrl(e.target.value)}
         onKeyDown={e => {
@@ -305,42 +302,29 @@ function LinkPrompt({ onConfirm, onCancel }: { onConfirm: (url: string) => void;
           if (e.key === 'Escape') { e.preventDefault(); onCancel() }
         }}
         placeholder="https://example.com or email@example.com"
+        className="flex-1 min-w-0 basis-48 h-8 px-2.5 rounded-md text-[13px] outline-none transition-[border-color,box-shadow] focus:border-[color:var(--teal)] focus:shadow-[0_0_0_3px_rgba(84,125,114,0.18)]"
         style={{
-          flex: 1,
-          fontSize: 13,
-          padding: '5px 8px',
-          borderRadius: 6,
-          border: '1px solid var(--paper-3)',
+          border: '1px solid var(--light-gray)',
           background: '#fff',
+          color: 'var(--charcoal, #1a1a1a)',
         }}
       />
       <button
         type="button"
         onClick={() => onConfirm(url)}
-        style={{
-          fontSize: 12,
-          padding: '5px 10px',
-          borderRadius: 6,
-          background: 'var(--sage, #16a34a)',
-          color: '#fff',
-          border: 'none',
-          cursor: 'pointer',
-          fontWeight: 600,
-        }}
+        className="h-8 px-3 rounded-md text-xs font-semibold text-white transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--teal)]"
+        style={{ background: 'var(--deep-teal)' }}
       >
         Insert
       </button>
       <button
         type="button"
         onClick={onCancel}
+        className="h-8 px-3 rounded-md text-xs font-semibold transition-colors hover:bg-[color:var(--paper)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--teal)]"
         style={{
-          fontSize: 12,
-          padding: '5px 10px',
-          borderRadius: 6,
           background: '#fff',
-          color: 'var(--ink, #0f172a)',
-          border: '1px solid var(--paper-3)',
-          cursor: 'pointer',
+          color: 'var(--charcoal, #1a1a1a)',
+          border: '1px solid var(--light-gray)',
         }}
       >
         Cancel
@@ -348,4 +332,3 @@ function LinkPrompt({ onConfirm, onCancel }: { onConfirm: (url: string) => void;
     </div>
   )
 }
-

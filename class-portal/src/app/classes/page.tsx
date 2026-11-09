@@ -19,6 +19,12 @@ import {
 } from '@/lib/session'
 import { getToken } from '@/lib/backend'
 import { Portal } from '@/components/Modal'
+import {
+  PAGE, PageHeader, GroupLabel, Banner, Skeleton, EmptyState, Tag, Icon, Dialog,
+  CARD_STYLE, FOCUS, DANGER, CONTROL, CONTROL_STYLE, LABEL, LABEL_STYLE, FILE_FOCUS, TR_STYLE,
+  BTN_PRIMARY, BTN_SECONDARY, BTN_SM, BTN_DANGER_GHOST, PRIMARY_STYLE, SECONDARY_STYLE,
+  type IconName,
+} from '@/components/hub/ui'
 
 const ALL_LEVELS: EnrollmentLevel[] = ['NURSERY', 'KINDER', 'GRADE_1', 'GRADE_2', 'GRADE_3', 'GRADE_4', 'GRADE_5', 'GRADE_6', 'GRADE_7', 'GRADE_8', 'GRADE_9', 'GRADE_10', 'GRADE_11', 'GRADE_12']
 
@@ -128,64 +134,71 @@ export default function ClassesPage() {
 
   if (!ready) return null
 
-  return (
-    <div
-      className="animate-fade-up"
-      style={{
-        width: '100vw',
-        maxWidth: '100vw',
-        marginLeft: 'calc(50% - 50vw)',
-        marginRight: 'calc(50% - 50vw)',
-      }}
-    >
-      <div className="px-3 sm:px-5 max-w-7xl mx-auto space-y-6">
-      <div className="card-static">
-        <div className="flex items-start justify-between gap-3 flex-wrap">
-          <div>
-            <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)] mb-1" style={{ fontFamily: 'var(--font-display)' }}>
-              Aura Academy · Classes
-            </div>
-            <h1 className="text-[24px] leading-tight text-[color:var(--deep-teal)]">Classes</h1>
-            <p className="text-sm text-[color:var(--mid-gray)] mt-1">
-              {isTeacher && 'Your assigned classes. Click any card to open the dashboard, set the schedule, and manage the roster.'}
-              {isAdmin && 'Every class across your scope. Branch admins see only their own branch; main admin sees everything.'}
-              {!isTeacher && !isAdmin && 'Classes you’re enrolled in. Lessons, projects, exams, and activities appear here as your teacher publishes them.'}
-            </p>
-          </div>
-          {canCreate && (
-            <button
-              type="button"
-              className="btn-primary text-xs whitespace-nowrap"
-              onClick={() => { setEditing(null); setShowForm(true) }}
-            >+ Add Class</button>
-          )}
-        </div>
+  const description = isTeacher
+    ? 'Your assigned classes. Click any card to open the dashboard, set the schedule, and manage the roster.'
+    : isAdmin
+      ? 'Every class across your scope. Branch admins see only their own branch; main admin sees everything.'
+      : 'Classes you’re enrolled in. Lessons, projects, exams, and activities appear here as your teacher publishes them.'
 
-        {err && <div className="mt-4 px-4 py-3 rounded-xl bg-rose-50 border border-rose-100 text-sm text-rose-800">{err}</div>}
-        {info && <div className="mt-4 px-4 py-3 rounded-xl bg-emerald-50 border border-emerald-100 text-sm text-emerald-800">{info}</div>}
-      </div>
+  return (
+    <div className={`${PAGE} animate-fade-up`}>
+      <PageHeader
+        eyebrow="Aura Academy · Classes"
+        title="Classes"
+        description={description}
+        actions={canCreate && (
+          <button
+            type="button"
+            className={BTN_PRIMARY}
+            style={PRIMARY_STYLE}
+            onClick={() => { setEditing(null); setShowForm(true) }}
+          ><Icon name="plus" size={15} /> Add class</button>
+        )}
+      />
+
+      {err && <Banner tone="error">{err}</Banner>}
+      {info && <Banner tone="success">{info}</Banner>}
 
       {busy && classes.length === 0 ? (
-        <div className="card-static"><p className="text-sm text-[color:var(--mid-gray)] text-center py-6">Loading…</p></div>
-      ) : classes.length === 0 ? (
-        <div className="card-static">
-          <p className="text-sm text-[color:var(--mid-gray)] text-center py-8">
-            {canCreate ? 'No classes yet. Click + Add Class to create your first one.' : 'No classes available to you yet.'}
-          </p>
-        </div>
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2">
-          {classes.map(c => (
-            <ClassCard
-              key={c.id}
-              c={c}
-              teacherName={teacherNameForClass(c)}
-              canEdit={isAdmin || (isTeacher && c.teacherId === auth?.userId)}
-              onEdit={() => { setEditing(c); setShowForm(true) }}
-              onDelete={() => void handleDelete(c)}
-            />
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" role="status" aria-label="Loading classes">
+          {Array.from({ length: 3 }).map((_, n) => (
+            <div key={n} className="rounded-xl overflow-hidden" style={CARD_STYLE} aria-hidden>
+              <Skeleton className="aspect-[16/7] rounded-none" />
+              <div className="p-4 space-y-2.5">
+                <Skeleton className="h-4 w-2/3" />
+                <Skeleton className="h-3 w-1/2" />
+                <Skeleton className="h-3 w-3/4" />
+                <div className="flex gap-2 pt-2"><Skeleton className="h-9 w-20" /><Skeleton className="h-9 w-16" /></div>
+              </div>
+            </div>
           ))}
         </div>
+      ) : classes.length === 0 ? (
+        <div className="rounded-xl" style={CARD_STYLE}>
+          <EmptyState
+            icon="book"
+            title={canCreate ? 'No classes yet.' : 'No classes available to you yet.'}
+            hint={canCreate ? 'Click Add class to create your first one.' : 'Classes appear here once your teacher adds you to a roster.'}
+          />
+        </div>
+      ) : (
+        <>
+          <GroupLabel hint={busy ? 'Refreshing…' : undefined}>
+            {classes.length} class{classes.length === 1 ? '' : 'es'}
+          </GroupLabel>
+          <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {classes.map(c => (
+              <ClassCard
+                key={c.id}
+                c={c}
+                teacherName={teacherNameForClass(c)}
+                canEdit={isAdmin || (isTeacher && c.teacherId === auth?.userId)}
+                onEdit={() => { setEditing(c); setShowForm(true) }}
+                onDelete={() => void handleDelete(c)}
+              />
+            ))}
+          </ul>
+        </>
       )}
 
       {showForm && (
@@ -197,8 +210,18 @@ export default function ClassesPage() {
           onSaved={async () => { setShowForm(false); setEditing(null); await load() }}
         />
       )}
-      </div>
     </div>
+  )
+}
+
+/** One icon + text line on a class card (teacher, schedule, roster size). */
+function MetaLine({ icon, label, children }: { icon: IconName; label: string; children: React.ReactNode }) {
+  return (
+    <p className="flex items-start gap-2 text-[13px] leading-snug min-w-0" style={{ color: 'var(--charcoal)' }}>
+      <Icon name={icon} size={14} className="mt-[2px]" style={{ color: 'var(--teal)' }} />
+      <span className="sr-only">{label}: </span>
+      <span className="min-w-0 break-words">{children}</span>
+    </p>
   )
 }
 
@@ -232,47 +255,58 @@ function ClassCard({ c, teacherName, canEdit, onEdit, onDelete }: {
   const time = c.scheduleStartTime && c.scheduleEndTime ? `${c.scheduleStartTime}–${c.scheduleEndTime}` : null
 
   return (
-    <div className="card-static overflow-hidden p-0">
+    <li className="rounded-xl overflow-hidden flex flex-col min-w-0" style={CARD_STYLE}>
       <button
         type="button"
         onClick={() => router.push(`/classes/${c.id}`)}
-        className="block w-full text-left aspect-[16/9] bg-[color:var(--paper-2)] relative hover:opacity-90 transition-opacity"
+        className={`block w-full text-left aspect-[16/7] relative hover:opacity-90 transition-opacity ${FOCUS}`}
+        style={{ background: 'var(--paper-2)' }}
         aria-label={`Open ${c.name}`}
       >
         {photoUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={photoUrl} alt={c.name} className="w-full h-full object-cover" />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-[color:var(--mid-gray)] text-[12.5px]" style={{ fontFamily: 'var(--font-display)' }}>
+          <div className="w-full h-full flex flex-col items-center justify-center gap-1 text-[12px]" style={{ color: 'var(--mid-gray)', fontFamily: 'var(--font-display)' }}>
+            <Icon name="image" size={20} style={{ color: 'var(--light-gray)' }} />
             No cover photo
           </div>
         )}
       </button>
-      <div className="p-4 space-y-1.5">
-        <div className="flex items-start justify-between gap-2">
-          <button type="button" className="min-w-0 text-left" onClick={() => router.push(`/classes/${c.id}`)}>
-            <h3 className="text-[18px] leading-tight text-[color:var(--narra)] font-semibold truncate hover:underline" style={{ fontFamily: 'var(--font-display)' }}>
-              {c.name}{c.section ? <span className="text-[color:var(--mid-gray)] font-normal"> · {c.section}</span> : null}
+      <div className="p-4 flex-1 flex flex-col gap-3 min-w-0">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
+            <Tag tone="brand">{levelLabel(c.level)}</Tag>
+            <Tag>{branchLabel(c.branch)}</Tag>
+          </div>
+          <button type="button" className={`min-w-0 max-w-full text-left rounded ${FOCUS}`} onClick={() => router.push(`/classes/${c.id}`)}>
+            <h3 className="text-[16px] leading-tight font-bold hover:underline break-words" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)', letterSpacing: 0 }}>
+              {c.name}{c.section ? <span className="font-normal" style={{ color: 'var(--mid-gray)' }}> · {c.section}</span> : null}
             </h3>
-            <p className="text-[12px] text-[color:var(--mid-gray)] mt-0.5">
-              {levelLabel(c.level)} · {branchLabel(c.branch)} · {teacherName}
-            </p>
           </button>
         </div>
-        <p className="text-[12px] text-[color:var(--mid-gray)]">
-          {dayShorts || 'No schedule set'}{time ? ` · ${time}` : ''} · {c.studentIds.length} student{c.studentIds.length === 1 ? '' : 's'}
-        </p>
-        <div className="flex gap-2 mt-3 flex-wrap">
-          <button type="button" className="btn-primary text-xs" onClick={() => router.push(`/classes/${c.id}`)}>Open</button>
+        <div className="space-y-1.5">
+          <MetaLine icon="teacher" label="Teacher">{teacherName}</MetaLine>
+          <MetaLine icon="calendar" label="Schedule">
+            {dayShorts || <span style={{ color: 'var(--mid-gray)' }}>No schedule set</span>}{time ? ` · ${time}` : ''}
+          </MetaLine>
+          <MetaLine icon="users" label="Roster">
+            <span className="tabular-nums font-semibold">{c.studentIds.length}</span> student{c.studentIds.length === 1 ? '' : 's'}
+          </MetaLine>
+        </div>
+        <div className="flex gap-2 mt-auto pt-1 flex-wrap">
+          <button type="button" className={BTN_PRIMARY} style={PRIMARY_STYLE} onClick={() => router.push(`/classes/${c.id}`)}>
+            Open <Icon name="chevronRight" size={14} />
+          </button>
           {canEdit && (
             <>
-              <button type="button" className="btn-secondary text-xs" onClick={onEdit}>Edit</button>
-              <button type="button" className="text-xs px-2 py-1 rounded-md text-[color:var(--clay)] hover:bg-[color:var(--clay-tint)]" onClick={onDelete}>Delete</button>
+              <button type="button" className={BTN_SECONDARY} style={SECONDARY_STYLE} onClick={onEdit}><Icon name="edit" size={14} /> Edit</button>
+              <button type="button" className={`${BTN_DANGER_GHOST} h-9 ml-auto`} style={{ color: DANGER }} onClick={onDelete}><Icon name="trash" size={14} /> Delete</button>
             </>
           )}
         </div>
       </div>
-    </div>
+    </li>
   )
 }
 
@@ -350,79 +384,68 @@ function ClassEditor({ existing, students, defaultBranch, onClose, onSaved }: {
 
   return (
     <Portal>
-    <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm overflow-y-auto p-2 sm:p-4 animate-fade-in" onClick={onClose}>
-      <div className="max-w-6xl mx-auto my-2 sm:my-4 card-static min-h-[calc(100vh-1rem)] sm:min-h-[calc(100vh-2rem)]" onClick={e => e.stopPropagation()}>
-        <div className="flex items-start justify-between gap-3 flex-wrap mb-4">
-          <div>
-            <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)]" style={{ fontFamily: 'var(--font-display)' }}>
-              {existing ? 'Edit class' : 'Add class'}
-            </div>
-            <h2 className="text-[22px] leading-tight text-[color:var(--deep-teal)]">{name || 'New class'}</h2>
-          </div>
-          <button className="btn-secondary text-xs" onClick={onClose}>Cancel</button>
-        </div>
+    <Dialog
+      labelId="class-editor-title"
+      size="xl"
+      eyebrow={existing ? 'Edit class' : 'Add class'}
+      title={name || 'New class'}
+      onClose={onClose}
+      footer={<>
+        <button type="button" className={BTN_SECONDARY} style={SECONDARY_STYLE} onClick={onClose} disabled={busy}>Cancel</button>
+        <button type="button" className={BTN_PRIMARY} style={PRIMARY_STYLE} onClick={save} disabled={busy}>
+          {busy ? 'Saving…' : (existing ? 'Save changes' : 'Create class')}
+        </button>
+      </>}
+    >
+        {err && <div className="mb-4"><Banner tone="error">{err}</Banner></div>}
 
-        {err && <div className="mb-3 px-4 py-3 rounded-xl bg-rose-50 border border-rose-100 text-sm text-rose-800">{err}</div>}
-
-        <div className="space-y-4">
+        <div className="space-y-5">
           <div className="grid sm:grid-cols-2 gap-3">
             <label className="block">
-              <span className="label">Class name</span>
-              <input className="input" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Math A" />
+              <span className={LABEL} style={LABEL_STYLE}>Class name</span>
+              <input className={`${CONTROL} w-full`} style={CONTROL_STYLE} value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Math A" />
             </label>
             <label className="block">
-              <span className="label">Section (optional)</span>
-              <input className="input" value={section} onChange={e => setSection(e.target.value)} placeholder="e.g. Falcons" />
+              <span className={LABEL} style={LABEL_STYLE}>Section (optional)</span>
+              <input className={`${CONTROL} w-full`} style={CONTROL_STYLE} value={section} onChange={e => setSection(e.target.value)} placeholder="e.g. Falcons" />
             </label>
           </div>
 
           <div className="grid sm:grid-cols-2 gap-3">
             <label className="block">
-              <span className="label">Branch</span>
-              <select className="select" value={branch} onChange={e => setBranch(e.target.value as Branch)} disabled={!!existing}>
+              <span className={LABEL} style={LABEL_STYLE}>Branch</span>
+              <select className={`${CONTROL} w-full`} style={CONTROL_STYLE} value={branch} onChange={e => setBranch(e.target.value as Branch)} disabled={!!existing}>
                 {ALL_BRANCHES.map(b => <option key={b} value={b}>{branchLabel(b)}</option>)}
               </select>
             </label>
             <label className="block">
-              <span className="label">Grade level</span>
-              <select className="select" value={level} onChange={e => setLevel(e.target.value as EnrollmentLevel)}>
+              <span className={LABEL} style={LABEL_STYLE}>Grade level</span>
+              <select className={`${CONTROL} w-full`} style={CONTROL_STYLE} value={level} onChange={e => setLevel(e.target.value as EnrollmentLevel)}>
                 {ALL_LEVELS.map(l => <option key={l} value={l}>{levelLabel(l)}</option>)}
               </select>
             </label>
           </div>
 
-          <div>
-            <span className="label">Schedule</span>
-            <div className="flex flex-wrap gap-2 mt-1">
-              {CLASS_DAY_OPTIONS.map(o => {
-                const active = days.includes(o.value)
-                return (
-                  <button
-                    key={o.value}
-                    type="button"
-                    onClick={() => toggleDay(o.value)}
-                    className={`px-3 py-1.5 rounded-full text-xs border ${active ? 'bg-[color:var(--narra)] text-white border-transparent' : 'bg-white text-[color:var(--narra)]'}`}
-                    style={{ borderColor: active ? 'transparent' : 'var(--paper-3)' }}
-                  >{o.short}</button>
-                )
-              })}
-            </div>
-            <div className="grid sm:grid-cols-2 gap-3 mt-3">
+          <fieldset>
+            <legend className={LABEL} style={LABEL_STYLE}>Schedule</legend>
+            <DayPicker days={days} onToggle={toggleDay} />
+            <div className="grid grid-cols-2 gap-3 mt-3">
               <label className="block">
-                <span className="label">Start time</span>
-                <input type="time" className="input" value={startTime ?? ''} onChange={e => setStartTime(e.target.value)} />
+                <span className={LABEL} style={LABEL_STYLE}>Start time</span>
+                <input type="time" className={`${CONTROL} w-full`} style={CONTROL_STYLE} value={startTime ?? ''} onChange={e => setStartTime(e.target.value)} />
               </label>
               <label className="block">
-                <span className="label">End time</span>
-                <input type="time" className="input" value={endTime ?? ''} onChange={e => setEndTime(e.target.value)} />
+                <span className={LABEL} style={LABEL_STYLE}>End time</span>
+                <input type="time" className={`${CONTROL} w-full`} style={CONTROL_STYLE} value={endTime ?? ''} onChange={e => setEndTime(e.target.value)} />
               </label>
             </div>
-          </div>
+          </fieldset>
 
           <div>
-            <span className="label">Cover photo (optional)</span>
-            <div className="mt-1 flex items-center gap-3 flex-wrap">
-              <label className="btn-secondary text-xs cursor-pointer inline-flex items-center" style={{ width: 'auto' }}>
+            <span className={LABEL} style={LABEL_STYLE}>Cover photo (optional)</span>
+            <div className="flex items-center gap-2 flex-wrap">
+              <label className={`${BTN_SECONDARY} ${FILE_FOCUS}`} style={SECONDARY_STYLE}>
+                <Icon name="upload" size={14} />
                 {photoFile || existing?.hasPhoto ? 'Replace photo' : 'Choose photo'}
                 <input
                   type="file"
@@ -434,55 +457,82 @@ function ClassEditor({ existing, students, defaultBranch, onClose, onSaved }: {
               {photoFile && (
                 <button
                   type="button"
-                  className="text-xs px-2 py-1 rounded-md text-[color:var(--mid-gray)] hover:text-[color:var(--clay)]"
+                  className={BTN_SM}
+                  style={{ color: 'var(--mid-gray)' }}
                   onClick={() => setPhotoFile(null)}
                 >Clear</button>
               )}
             </div>
             {photoFile && (
-              <p className="text-[11.5px] text-[color:var(--mid-gray)] mt-2">
+              <p className="text-xs mt-2 break-all" style={{ color: 'var(--mid-gray)' }}>
                 {photoFile.name} · {(photoFile.size / 1024).toFixed(0)} KB
               </p>
             )}
             {existing?.hasPhoto && !photoFile && (
-              <p className="text-[11.5px] text-[color:var(--mid-gray)] mt-1">
+              <p className="text-xs mt-2 break-all" style={{ color: 'var(--mid-gray)' }}>
                 Current: {existing.photoFileName}. Picking a new file replaces it.
               </p>
             )}
           </div>
 
-          <div>
-            <span className="label">Roster — {roster.length} selected</span>
-            <p className="text-[11.5px] text-[color:var(--mid-gray)] mb-2">
+          <fieldset>
+            <legend className={LABEL} style={LABEL_STYLE}>Roster — {roster.length} selected</legend>
+            <p className="text-xs mb-2" style={{ color: 'var(--mid-gray)' }}>
               Showing students enrolled at {branchLabel(branch)} · {levelLabel(level)}. Change branch or level above to see other learners.
             </p>
             {eligible.length === 0 ? (
-              <p className="text-sm text-[color:var(--mid-gray)] py-3">No students match this branch + level yet.</p>
+              <div className="rounded-xl" style={{ border: '1px dashed var(--light-gray)' }}>
+                <EmptyState icon="student" title="No students match this branch + level yet." />
+              </div>
             ) : (
-              <div className="max-h-56 overflow-y-auto rounded-xl border p-2" style={{ borderColor: 'var(--paper-3)' }}>
-                {eligible.map(s => {
+              <ul className="max-h-64 overflow-y-auto rounded-xl" style={{ border: '1px solid var(--light-gray)' }}>
+                {eligible.map((s, i) => {
                   const checked = roster.includes(s.id)
                   return (
-                    <label key={s.id} className="flex items-center gap-2 text-sm py-1 px-1 hover:bg-[color:var(--paper-2)] rounded">
-                      <input type="checkbox" checked={checked} onChange={() => toggleStudent(s.id)} />
-                      <span className="font-semibold text-[color:var(--narra)]">{[s.firstName, s.lastName].filter(Boolean).join(' ') || '—'}</span>
-                      <span className="text-[11.5px] text-[color:var(--mid-gray)] ml-auto">{s.email}</span>
-                    </label>
+                    <li key={s.id} style={i ? TR_STYLE : undefined}>
+                      <label className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-[#FBF9F5]">
+                        <input type="checkbox" className="w-4 h-4 flex-shrink-0 accent-[color:var(--deep-teal)]" checked={checked} onChange={() => toggleStudent(s.id)} />
+                        <span className="min-w-0 flex-1 sm:flex sm:items-baseline sm:gap-3">
+                          <span className="block text-sm font-semibold truncate" style={{ color: 'var(--charcoal)' }}>{[s.firstName, s.lastName].filter(Boolean).join(' ') || '—'}</span>
+                          <span className="block text-xs truncate sm:ml-auto" style={{ color: 'var(--mid-gray)' }}>{s.email}</span>
+                        </span>
+                      </label>
+                    </li>
                   )
                 })}
-              </div>
+              </ul>
             )}
-          </div>
-
-          <div className="flex gap-2 justify-end pt-2">
-            <button type="button" className="btn-secondary text-xs" onClick={onClose} disabled={busy}>Cancel</button>
-            <button type="button" className="btn-primary text-xs" onClick={save} disabled={busy}>
-              {busy ? 'Saving…' : (existing ? 'Save changes' : 'Create class')}
-            </button>
-          </div>
+          </fieldset>
         </div>
-      </div>
-    </div>
+    </Dialog>
     </Portal>
+  )
+}
+
+/** Mon–Sun toggles. Selected days carry a check mark and aria-pressed, not just a fill. */
+function DayPicker({ days, onToggle, disabled }: { days: ClassDay[]; onToggle: (d: ClassDay) => void; disabled?: boolean }) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {CLASS_DAY_OPTIONS.map(o => {
+        const active = days.includes(o.value)
+        return (
+          <button
+            key={o.value}
+            type="button"
+            aria-pressed={active}
+            aria-label={o.label}
+            disabled={disabled}
+            onClick={() => onToggle(o.value)}
+            className={`inline-flex items-center gap-1 h-8 px-3 rounded-full text-xs font-semibold transition-colors disabled:opacity-60 ${FOCUS}`}
+            style={active
+              ? { background: 'var(--deep-teal)', color: '#fff', border: '1px solid var(--deep-teal)' }
+              : { background: '#fff', color: 'var(--charcoal)', border: '1px solid var(--light-gray)' }}
+          >
+            {active && <Icon name="check" size={12} />}
+            {o.short}
+          </button>
+        )
+      })}
+    </div>
   )
 }

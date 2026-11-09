@@ -16,6 +16,12 @@ import { backendOrigin, backendJson } from '@/lib/backend'
 import { generateAffidavitPdf, type AffidavitInput } from '@/lib/affidavit-pdf'
 import { generateWaiverPdf } from '@/lib/waiver-pdf'
 import SignaturePad from '@/components/SignaturePad'
+import { Portal } from '@/components/Modal'
+import {
+  Banner, BTN_PRIMARY, BTN_SECONDARY, BTN_SM, CARD_STYLE, CONTROL, CONTROL_STYLE, DashCard, Dialog,
+  FILE_FOCUS, FOCUS, Icon, LABEL, LABEL_STYLE, PageHeader, PRIMARY_STYLE, SECONDARY_STYLE, Skeleton,
+  StatusPill, SUBTLE_BG, Tag, TEXTAREA, type Tone,
+} from '@/components/hub/ui'
 
 interface DocRequirement {
   key: string
@@ -284,80 +290,143 @@ export default function DocumentsPage() {
     window.open(url, 'scei_waiver', 'width=720,height=860,resizable=yes,scrollbars=yes')
   }
 
-  if (!ready || !level) return null
+  if (!ready || !level) return <DocumentsSkeleton />
+
+  // Progress summary — display only. Mirrors handleSubmit's "missing" rule:
+  // a required doc counts once a file is picked or it's ticked Not Available;
+  // the signed waiver is the last required item.
+  const requiredDocs = docs.filter(d => !d.optional)
+  const requiredTotal = requiredDocs.length + 1
+  const readyCount = requiredDocs.filter(d => !!files[d.key] || (!!d.notAvailableOption && !!naMarks[d.key])).length
+    + (waiverSignedAt ? 1 : 0)
+  const optionalDocs = docs.filter(d => d.optional)
+  const optionalAdded = optionalDocs.filter(d => !!files[d.key]).length
+  const allReady = readyCount === requiredTotal
+  const pct = Math.round((readyCount / requiredTotal) * 100)
 
   return (
-    <div className="max-w-2xl mx-auto animate-fade-up">
+    <div className="max-w-2xl mx-auto animate-fade-up space-y-5 min-w-0">
       <StepBar step={3} />
 
-      <div className="card-static">
-        <h1 className="text-[26px] leading-tight text-[color:var(--deep-teal)] mb-1">Upload required documents</h1>
-        <p className="text-sm text-[color:var(--mid-gray)] mb-3">
-          For <span className="font-semibold text-[color:var(--narra)]">{levelLabel(level)}</span>. Accepted: PDF, JPG, PNG (max 30 MB each).
-        </p>
+      <PageHeader
+        eyebrow="Enrollment · Step 3 of 4"
+        title="Upload required documents"
+        description={<>For <span className="font-semibold" style={{ color: 'var(--deep-teal)' }}>{levelLabel(level)}</span>. Accepted: PDF, JPG, PNG (max 30 MB each).</>}
+      />
 
-        {/* Hard-copies notice */}
-        <div
-          className="mb-5 rounded-xl p-3 border flex items-start gap-2"
-          style={{ borderColor: '#fcd34d', background: '#fffbeb' }}
-        >
-          <span aria-hidden className="text-[16px] leading-none mt-0.5">📎</span>
-          <p className="text-[13px] text-[color:var(--ink)] leading-relaxed">
-            Please bring <span className="font-semibold">hard copies (or photocopies) of the same documents</span> when you visit the clinic to complete enrollment. The online upload speeds up our review — the physical copies are kept on file with the school.
+      {/* Progress summary */}
+      <div className="rounded-xl px-4 py-3.5 min-w-0" style={CARD_STYLE}>
+        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)', fontFamily: 'var(--font-display)' }}>
+            Required items
+          </p>
+          <p className="text-sm" style={{ color: 'var(--charcoal)' }}>
+            <span className="font-bold tabular-nums" style={{ fontFamily: 'var(--font-display)' }}>{readyCount} of {requiredTotal}</span> ready
+            {optionalDocs.length > 0 && (
+              <span style={{ color: 'var(--mid-gray)' }}> · {optionalAdded} of {optionalDocs.length} optional added</span>
+            )}
           </p>
         </div>
+        <div
+          role="progressbar"
+          aria-label="Required items ready"
+          aria-valuemin={0}
+          aria-valuemax={requiredTotal}
+          aria-valuenow={readyCount}
+          aria-valuetext={`${readyCount} of ${requiredTotal} required items ready`}
+          className="h-2 rounded-full mt-2.5 overflow-hidden"
+          style={{ background: 'var(--paper-2)' }}
+        >
+          <div className="h-full rounded-full transition-[width] duration-300" style={{ width: `${pct}%`, background: allReady ? 'var(--sage)' : 'var(--teal)' }} />
+        </div>
+        <p className="text-xs mt-2" style={{ color: 'var(--mid-gray)' }}>
+          {allReady
+            ? affidavitNeeded
+              ? 'All required items are in. Complete the Affidavit of Undertaking below, then submit.'
+              : 'All required items are in. You can submit your enrollment.'
+            : `${requiredTotal - readyCount} still needed — every required document plus the signed waiver.`}
+        </p>
+      </div>
 
-        {err && (
-          <div className="mb-4 px-4 py-3 rounded-xl bg-rose-50 border border-rose-100 text-sm text-rose-800 animate-fade-in">
-            {err}
-          </div>
+      {/* Hard-copies notice */}
+      <Banner tone="warn">
+        Please bring <span className="font-semibold">hard copies (or photocopies) of the same documents</span> when you visit the clinic to complete enrollment. The online upload speeds up our review — the physical copies are kept on file with the school.
+      </Banner>
+
+      {err && <Banner tone="error">{err}</Banner>}
+
+      <form className="space-y-5" onSubmit={handleSubmit}>
+        <DashCard
+          title="Documents"
+          icon={<Icon name="file" size={16} />}
+          description="Upload from this device, or use QR upload to take a photo with your phone."
+          flush
+        >
+          <ul>
+            {docs.map((d, i) => (
+              <DocRow
+                key={d.key}
+                first={i === 0}
+                doc={d}
+                file={files[d.key] ?? null}
+                naMarked={!!naMarks[d.key]}
+                onFile={f => onFile(d.key, f)}
+                onToggleNa={on => toggleNa(d.key, on)}
+                onQrUpload={(docKey, title) => setQrTarget({ docKey, title })}
+              />
+            ))}
+
+            {/* Parent/Guardian Waiver — special row that opens the digital sign window */}
+            <li className="px-4 sm:px-5 py-3.5 flex flex-col sm:flex-row sm:items-center gap-3" style={{ borderTop: '1px solid var(--light-gray)' }}>
+              <div className="flex items-start gap-3 min-w-0 flex-1">
+                <FileBadge icon="edit" done={!!waiverSignedAt} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <p className="text-sm font-semibold leading-snug" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>Signed Parent/Guardian Waiver</p>
+                    <StatusPill tone={waiverSignedAt ? 'success' : 'warn'}>{waiverSignedAt ? 'Signed' : 'Not signed'}</StatusPill>
+                  </div>
+                  <p className="text-xs mt-1 leading-snug break-words flex items-start gap-1.5" style={{ color: 'var(--mid-gray)' }}>
+                    {waiverSignedAt
+                      ? <><Icon name="calendar" size={12} className="mt-px" /><span>Signed at {new Date(waiverSignedAt).toLocaleString()}.</span></>
+                      : <>Opens a new window — sign on screen or upload an e-signature image.</>}
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2 pl-12 sm:pl-0 sm:shrink-0">
+                <button
+                  type="button"
+                  className={waiverSignedAt ? BTN_SM : `${BTN_SM} text-white hover:opacity-90`}
+                  style={waiverSignedAt ? SECONDARY_STYLE : PRIMARY_STYLE}
+                  onClick={openWaiver}
+                  aria-label={waiverSignedAt ? 'Re-sign the Parent/Guardian Waiver (opens a new window)' : 'Open the Parent/Guardian Waiver (opens a new window)'}
+                >
+                  <Icon name={waiverSignedAt ? 'edit' : 'external'} size={13} />
+                  {waiverSignedAt ? 'Re-sign' : 'Open waiver'}
+                </button>
+              </div>
+            </li>
+          </ul>
+        </DashCard>
+
+        {/* Affidavit of Undertaking — only when an N/A is ticked */}
+        {affidavitNeeded && (
+          <AffidavitComposer
+            value={affidavit}
+            onChange={setAffidavit}
+            branch={branch}
+          />
         )}
 
-        <form className="space-y-3" onSubmit={handleSubmit}>
-          {docs.map(d => (
-            <DocRow
-              key={d.key}
-              doc={d}
-              file={files[d.key] ?? null}
-              naMarked={!!naMarks[d.key]}
-              onFile={f => onFile(d.key, f)}
-              onToggleNa={on => toggleNa(d.key, on)}
-              onQrUpload={(docKey, title) => setQrTarget({ docKey, title })}
-            />
-          ))}
-
-          {/* Parent/Guardian Waiver — special row that opens the digital sign window */}
-          <div className="doc-row" style={waiverSignedAt ? { borderStyle: 'solid', borderColor: 'var(--sage)', background: 'var(--sage-tint)' } : undefined}>
-            <div className="min-w-0">
-              <div className="doc-row-title">Signed Parent/Guardian Waiver</div>
-              <div className="doc-row-sub">
-                {waiverSignedAt
-                  ? <>Signed at {new Date(waiverSignedAt).toLocaleString()}.</>
-                  : <>Opens a new window — sign on screen or upload an e-signature image.</>}
-              </div>
-            </div>
-            <button type="button" className={waiverSignedAt ? 'btn-secondary' : 'btn-cta'} onClick={openWaiver}>
-              {waiverSignedAt ? 'Re-sign' : 'Open waiver →'}
-            </button>
-          </div>
-
-          {/* Affidavit of Undertaking — only when an N/A is ticked */}
-          {affidavitNeeded && (
-            <AffidavitComposer
-              value={affidavit}
-              onChange={setAffidavit}
-              branch={branch}
-            />
-          )}
-
-          <div className="flex items-center gap-2 pt-3">
-            <button type="button" className="btn-secondary" onClick={() => router.push('/enroll')}>← Back</button>
-            <button type="submit" disabled={busy} className="btn-primary flex-1">
-              {busy ? 'Submitting…' : affidavitNeeded ? 'Generate affidavit + submit' : 'Submit enrollment'}
-            </button>
-          </div>
-        </form>
-      </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" className={BTN_SECONDARY} style={SECONDARY_STYLE} onClick={() => router.push('/enroll')}>
+            <Icon name="arrowLeft" size={14} /> Back
+          </button>
+          <button type="submit" disabled={busy} aria-busy={busy} className={`${BTN_PRIMARY} flex-1 min-w-[180px]`} style={PRIMARY_STYLE}>
+            {busy && <Spinner />}
+            {busy ? 'Submitting…' : affidavitNeeded ? 'Generate affidavit + submit' : 'Submit enrollment'}
+          </button>
+        </div>
+      </form>
 
       {qrTarget && (
         <QRUploadModal
@@ -371,51 +440,126 @@ export default function DocumentsPage() {
   )
 }
 
-function DocRow({ doc, file, naMarked, onFile, onToggleNa, onQrUpload }: {
+/** Placeholder while the session + draft are read on mount. */
+function DocumentsSkeleton() {
+  return (
+    <div className="max-w-2xl mx-auto space-y-5" role="status" aria-label="Loading documents">
+      <div className="space-y-2" aria-hidden>
+        <Skeleton className="h-3 w-40" />
+        <Skeleton className="h-6 w-64 max-w-full" />
+        <Skeleton className="h-3 w-72 max-w-full" />
+      </div>
+      <div className="rounded-xl px-4 py-3.5" style={CARD_STYLE} aria-hidden>
+        <Skeleton className="h-3 w-28" />
+        <Skeleton className="h-2 w-full mt-3 rounded-full" />
+      </div>
+      <div className="rounded-xl" style={CARD_STYLE} aria-hidden>
+        {Array.from({ length: 4 }).map((_, n) => (
+          <div key={n} className="flex items-center gap-3 px-4 sm:px-5 py-3.5" style={{ borderTop: n ? '1px solid var(--light-gray)' : undefined }}>
+            <Skeleton className="w-9 h-9 rounded-lg" />
+            <div className="flex-1 min-w-0 space-y-1.5">
+              <Skeleton className="h-3.5" style={{ width: `${60 - n * 6}%` }} />
+              <Skeleton className="h-2.5" style={{ width: `${45 - n * 5}%` }} />
+            </div>
+            <Skeleton className="h-8 w-20" />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function Spinner() {
+  return <span aria-hidden className="w-3.5 h-3.5 rounded-full border-2 border-current border-r-transparent animate-spin" />
+}
+
+/** QR glyph for the "QR upload" button — local so the shared kit stays untouched. */
+function QrIcon({ size = 13 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.9}
+      strokeLinecap="round" strokeLinejoin="round" aria-hidden className="flex-shrink-0">
+      <rect x="3" y="3" width="7" height="7" rx="1" />
+      <rect x="14" y="3" width="7" height="7" rx="1" />
+      <rect x="3" y="14" width="7" height="7" rx="1" />
+      <path d="M14 14h3v3h-3zM21 14v.01M14 21h.01M17 21h4v-4" />
+    </svg>
+  )
+}
+
+/** File-type tile at the start of each row. Turns sage once the item is in. */
+function FileBadge({ icon, done }: { icon: 'file' | 'image' | 'edit'; done: boolean }) {
+  return (
+    <span aria-hidden className="w-9 h-9 rounded-lg inline-flex items-center justify-center flex-shrink-0"
+      style={done
+        ? { background: 'var(--sage-tint)', color: 'var(--deep-teal)', border: '1px solid #CFE0BF' }
+        : { background: SUBTLE_BG, color: 'var(--mid-gray)', border: '1px solid var(--light-gray)' }}>
+      <Icon name={icon} size={18} />
+    </span>
+  )
+}
+
+function DocRow({ doc, file, naMarked, onFile, onToggleNa, onQrUpload, first }: {
   doc: DocRequirement
   file: File | null
   naMarked: boolean
   onFile: (f: File | null) => void
   onToggleNa: (on: boolean) => void
   onQrUpload: (docKey: string, title: string) => void
+  first?: boolean
 }) {
   const fileSelected = !!file
-  const greenBorder = fileSelected || naMarked
+  const status: { tone: Tone; label: string } = fileSelected
+    ? { tone: 'success', label: 'Selected' }
+    : naMarked
+      ? { tone: 'info', label: 'Not available' }
+      : doc.optional
+        ? { tone: 'neutral', label: 'Not added' }
+        : { tone: 'warn', label: 'Missing' }
+  const titleId = `doc-${doc.key}-title`
   return (
-    <div
-      className="doc-row"
-      style={greenBorder ? { borderStyle: 'solid', borderColor: 'var(--sage)', background: 'var(--sage-tint)' } : undefined}
-    >
-      <div className="min-w-0">
-        <div className="doc-row-title">
-          {doc.title}
-          {doc.optional && <span className="ml-2 text-[10.5px] uppercase tracking-[0.12em] text-[color:var(--mid-gray)] font-semibold">optional</span>}
-          {naMarked && <span className="ml-2 text-[10.5px] uppercase tracking-[0.12em] text-[color:var(--clay)] font-semibold">not available</span>}
+    <li className="px-4 sm:px-5 py-3.5 flex flex-col sm:flex-row sm:items-center gap-3" style={first ? undefined : { borderTop: '1px solid var(--light-gray)' }}>
+      <div className="flex items-start gap-3 min-w-0 flex-1">
+        <FileBadge icon={doc.imageOnly ? 'image' : 'file'} done={fileSelected || naMarked} />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <p id={titleId} className="text-sm font-semibold leading-snug" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>
+              {doc.title}
+            </p>
+            {doc.optional && <Tag>Optional</Tag>}
+            <StatusPill tone={status.tone}>{status.label}</StatusPill>
+          </div>
+          <p className="text-xs mt-1 leading-snug break-words" style={{ color: 'var(--mid-gray)' }}>
+            {file
+              ? <>Selected: <span className="font-semibold [overflow-wrap:anywhere]" style={{ color: 'var(--charcoal)' }}>{file.name}</span> ({(file.size / 1024).toFixed(0)} KB)</>
+              : naMarked
+                ? 'You will sign the DepEd Affidavit of Undertaking below.'
+                : doc.sub}
+          </p>
+          {doc.notAvailableOption && (
+            <label className="flex items-start gap-2 mt-2 text-xs cursor-pointer" style={{ color: 'var(--charcoal)' }}>
+              <input
+                type="checkbox"
+                className={`w-4 h-4 mt-px flex-shrink-0 rounded ${FOCUS}`}
+                style={{ accentColor: 'var(--deep-teal)' }}
+                checked={naMarked}
+                onChange={e => onToggleNa(e.target.checked)}
+              />
+              <span>Not available — I will sign the DepEd Affidavit of Undertaking</span>
+            </label>
+          )}
         </div>
-        <div className="doc-row-sub">
-          {file
-            ? `Selected: ${file.name} (${(file.size / 1024).toFixed(0)} KB)`
-            : naMarked
-              ? 'You will sign the DepEd Affidavit of Undertaking below.'
-              : doc.sub}
-        </div>
-        {doc.notAvailableOption && (
-          <label className="inline-flex items-center gap-1.5 mt-2 text-[12px] text-[color:var(--ink)] cursor-pointer">
-            <input
-              type="checkbox"
-              checked={naMarked}
-              onChange={e => onToggleNa(e.target.checked)}
-            />
-            <span>Not available — I will sign the DepEd Affidavit of Undertaking</span>
-          </label>
-        )}
       </div>
-      <div className="flex flex-col gap-1.5 shrink-0">
-        <label className={`btn-secondary cursor-pointer inline-flex items-center justify-center text-xs ${naMarked ? 'opacity-50' : ''}`} style={{ minWidth: 84 }}>
-          {file ? 'Change' : 'Upload'}
+      <div className="flex flex-wrap gap-2 pl-12 sm:pl-0 sm:flex-col sm:shrink-0">
+        <label
+          className={`${BTN_SM} ${FILE_FOCUS} relative min-w-[104px] ${naMarked ? 'opacity-50' : ''}`}
+          style={{ ...SECONDARY_STYLE, cursor: naMarked ? 'not-allowed' : 'pointer' }}
+        >
+          <Icon name="upload" size={13} />
+          {file ? 'Replace' : 'Upload'}
           <input
             type="file"
-            className="hidden"
+            className="sr-only"
+            aria-describedby={titleId}
             accept={doc.imageOnly ? 'image/*' : '.pdf,image/*'}
             disabled={naMarked}
             onChange={e => onFile(e.target.files?.[0] ?? null)}
@@ -423,16 +567,18 @@ function DocRow({ doc, file, naMarked, onFile, onToggleNa, onQrUpload }: {
         </label>
         <button
           type="button"
-          className="btn-secondary text-xs"
-          style={{ minWidth: 84 }}
+          className={`${BTN_SM} min-w-[104px]`}
+          style={SECONDARY_STYLE}
           disabled={naMarked}
           onClick={() => onQrUpload(doc.key, doc.title)}
           title="Scan a QR with your phone to capture the file there"
+          aria-describedby={titleId}
         >
+          <QrIcon />
           QR upload
         </button>
       </div>
-    </div>
+    </li>
   )
 }
 
@@ -452,95 +598,98 @@ function AffidavitComposer({
   function patch<K extends keyof typeof value>(k: K, v: typeof value[K]) {
     onChange({ ...value, [k]: v })
   }
+  const input = `${CONTROL} w-full min-w-0`
+  const locked = `${CONTROL} w-full min-w-0 flex items-center`
+  const lockedStyle = { ...CONTROL_STYLE, background: SUBTLE_BG, color: 'var(--mid-gray)' }
+  const hint = 'text-[11px] mt-1'
   return (
-    <div className="rounded-2xl p-4 border-2" style={{ borderColor: '#fcd34d', background: '#fffbeb' }}>
-      <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--clay)] mb-1" style={{ fontFamily: 'var(--font-display)' }}>DepEd Annex 3 · DO 3 s.2018</div>
-      <h3 className="text-[16px] leading-tight text-[color:var(--narra)] mb-1" style={{ fontFamily: 'var(--font-display)' }}>Affidavit of Undertaking</h3>
-      <p className="text-[12.5px] text-[color:var(--mid-gray)] mb-4">
-        Because you ticked &quot;Not Available&quot; on a previous-school document, please complete the fields below so we can generate and attach the DepEd Affidavit of Undertaking to your enrollment.
-      </p>
-
-      <div className="space-y-3">
+    <DashCard
+      title="Affidavit of Undertaking"
+      icon={<Icon name="file" size={16} />}
+      action={<Tag tone="warn">DepEd Annex 3 · DO 3 s.2018</Tag>}
+      description={<>Because you ticked &quot;Not Available&quot; on a previous-school document, please complete the fields below so we can generate and attach the DepEd Affidavit of Undertaking to your enrollment.</>}
+    >
+      <div className="space-y-4">
         <label className="block">
-          <span className="label">Parent / Guardian full name</span>
-          <input className="input" value={value.parentName} onChange={e => patch('parentName', e.target.value)} placeholder="Juan Dela Cruz" />
+          <span className={LABEL} style={LABEL_STYLE}>Parent / Guardian full name</span>
+          <input className={input} style={CONTROL_STYLE} value={value.parentName} onChange={e => patch('parentName', e.target.value)} placeholder="Juan Dela Cruz" />
         </label>
         <label className="block">
-          <span className="label">Address</span>
-          <input className="input" value={value.parentAddress} onChange={e => patch('parentAddress', e.target.value)} placeholder="123 Acacia St, Pasig City" />
+          <span className={LABEL} style={LABEL_STYLE}>Address</span>
+          <input className={input} style={CONTROL_STYLE} value={value.parentAddress} onChange={e => patch('parentAddress', e.target.value)} placeholder="123 Acacia St, Pasig City" />
         </label>
         <label className="block">
-          <span className="label">Learner full name (your child)</span>
-          <input className="input" value={value.learnerName} onChange={e => patch('learnerName', e.target.value)} placeholder="Maria Dela Cruz" />
+          <span className={LABEL} style={LABEL_STYLE}>Learner full name (your child)</span>
+          <input className={input} style={CONTROL_STYLE} value={value.learnerName} onChange={e => patch('learnerName', e.target.value)} placeholder="Maria Dela Cruz" />
         </label>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <div className="label">Name of School</div>
-            <div className="input flex items-center" style={{ background: 'var(--paper-2)' }} aria-disabled="true">
-              Light Bearer Christian Academy
+          <div className="min-w-0">
+            <div className={LABEL} style={LABEL_STYLE}>Name of School</div>
+            <div className={locked} style={lockedStyle} aria-disabled="true">
+              <span className="truncate">Light Bearer Christian Academy</span>
             </div>
-            <p className="text-[11px] text-[color:var(--mid-gray)] mt-1">Locked.</p>
+            <p className={hint} style={{ color: 'var(--mid-gray)' }}>Locked.</p>
           </div>
-          <label className="block">
-            <span className="label">Name of Previous School</span>
-            <input className="input" value={value.previousSchoolName} onChange={e => patch('previousSchoolName', e.target.value)} placeholder="St. Bernadette Learning Center" />
+          <label className="block min-w-0">
+            <span className={LABEL} style={LABEL_STYLE}>Name of Previous School</span>
+            <input className={input} style={CONTROL_STYLE} value={value.previousSchoolName} onChange={e => patch('previousSchoolName', e.target.value)} placeholder="St. Bernadette Learning Center" />
           </label>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <label className="block">
-            <span className="label">Previous grade level passed</span>
-            <input className="input" value={value.previousGradeLevel} onChange={e => patch('previousGradeLevel', e.target.value)} placeholder="e.g. Grade 1" />
+          <label className="block min-w-0">
+            <span className={LABEL} style={LABEL_STYLE}>Previous grade level passed</span>
+            <input className={input} style={CONTROL_STYLE} value={value.previousGradeLevel} onChange={e => patch('previousGradeLevel', e.target.value)} placeholder="e.g. Grade 1" />
           </label>
-          <div>
-            <div className="label">Submit credentials on or before</div>
-            <div className="input flex items-center" style={{ background: 'var(--paper-2)' }} aria-disabled="true">
+          <div className="min-w-0">
+            <div className={LABEL} style={LABEL_STYLE}>Submit credentials on or before</div>
+            <div className={locked} style={lockedStyle} aria-disabled="true">
               August 15, 2026
             </div>
-            <p className="text-[11px] text-[color:var(--mid-gray)] mt-1">Locked.</p>
+            <p className={hint} style={{ color: 'var(--mid-gray)' }}>Locked.</p>
           </div>
         </div>
 
         <label className="block">
-          <span className="label">Reason credentials cannot be submitted yet</span>
-          <textarea className="input" rows={2} value={value.reason} onChange={e => patch('reason', e.target.value)} placeholder="e.g. previous school is still processing records" />
+          <span className={LABEL} style={LABEL_STYLE}>Reason credentials cannot be submitted yet</span>
+          <textarea className={TEXTAREA} style={CONTROL_STYLE} rows={2} value={value.reason} onChange={e => patch('reason', e.target.value)} placeholder="e.g. previous school is still processing records" />
         </label>
 
         <div>
-          <div className="label">Attested at</div>
-          <div className="input flex items-center" style={{ background: 'var(--paper-2)' }} aria-disabled="true">
-            {city} · {new Date().toLocaleDateString(undefined, { day: '2-digit', month: 'long', year: 'numeric' })}
+          <div className={LABEL} style={LABEL_STYLE}>Attested at</div>
+          <div className={locked} style={lockedStyle} aria-disabled="true">
+            <span className="truncate">{city} · {new Date().toLocaleDateString(undefined, { day: '2-digit', month: 'long', year: 'numeric' })}</span>
           </div>
-          <p className="text-[11px] text-[color:var(--mid-gray)] mt-1">City auto-detected from your enrollment branch; date is today.</p>
+          <p className={hint} style={{ color: 'var(--mid-gray)' }}>City auto-detected from your enrollment branch; date is today.</p>
         </div>
 
-        <details className="rounded-xl border" style={{ borderColor: 'var(--paper-3)' }}>
-          <summary className="px-3 py-2 cursor-pointer select-none text-[12.5px] font-semibold text-[color:var(--narra)]" style={{ fontFamily: 'var(--font-display)' }}>
+        <details className="rounded-lg" style={{ border: '1px solid var(--light-gray)' }}>
+          <summary className={`px-3 py-2 cursor-pointer select-none text-[13px] font-semibold rounded-lg ${FOCUS}`} style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)', background: SUBTLE_BG }}>
             Government ID details (optional)
           </summary>
           <div className="p-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <label className="block">
-              <span className="label">ID type</span>
-              <input className="input" value={value.govtIdType} onChange={e => patch('govtIdType', e.target.value)} placeholder="e.g. Driver's License" />
+            <label className="block min-w-0">
+              <span className={LABEL} style={LABEL_STYLE}>ID type</span>
+              <input className={input} style={CONTROL_STYLE} value={value.govtIdType} onChange={e => patch('govtIdType', e.target.value)} placeholder="e.g. Driver's License" />
             </label>
-            <label className="block">
-              <span className="label">ID number</span>
-              <input className="input" value={value.govtIdNumber} onChange={e => patch('govtIdNumber', e.target.value)} placeholder="N01-23-456789" />
+            <label className="block min-w-0">
+              <span className={LABEL} style={LABEL_STYLE}>ID number</span>
+              <input className={input} style={CONTROL_STYLE} value={value.govtIdNumber} onChange={e => patch('govtIdNumber', e.target.value)} placeholder="N01-23-456789" />
             </label>
-            <label className="block">
-              <span className="label">Date issued</span>
-              <input className="input" value={value.govtIdDateIssued} onChange={e => patch('govtIdDateIssued', e.target.value)} placeholder="2024-05-10" />
+            <label className="block min-w-0">
+              <span className={LABEL} style={LABEL_STYLE}>Date issued</span>
+              <input className={input} style={CONTROL_STYLE} value={value.govtIdDateIssued} onChange={e => patch('govtIdDateIssued', e.target.value)} placeholder="2024-05-10" />
             </label>
           </div>
         </details>
 
         <div>
-          <span className="label">Signature</span>
+          <span className={LABEL} style={LABEL_STYLE}>Signature</span>
           <SignaturePad onChange={s => patch('signatureDataUrl', s)} height={140} />
         </div>
       </div>
-    </div>
+    </DashCard>
   )
 }
 
@@ -551,7 +700,7 @@ function StepBar({ step }: { step: 1 | 2 | 3 | 4 }) {
     return 'step-dot'
   }
   return (
-    <div className="flex items-center justify-center gap-2 mb-6" aria-hidden>
+    <div className="flex items-center justify-center gap-2" aria-hidden>
       <span className={dot(1)} />
       <span className={dot(2)} />
       <span className={dot(3)} />
@@ -720,66 +869,68 @@ function QRUploadModal({ docKey, title, onClose, onFile }: {
   }, [token, docKey])
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={onClose}>
-      <div className="card-static w-full max-w-md" onClick={e => e.stopPropagation()}>
-        <div className="flex items-start justify-between gap-3 mb-2">
-          <div>
-            <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)]" style={{ fontFamily: 'var(--font-display)' }}>QR upload</div>
-            <h2 className="text-[20px] leading-tight text-[color:var(--deep-teal)]">{title}</h2>
-          </div>
-          <button type="button" onClick={onClose} className="text-[color:var(--mid-gray)] hover:text-[color:var(--clay)] text-lg leading-none">×</button>
-        </div>
-
-        {err && (
-          <div className="px-4 py-3 rounded-xl bg-rose-50 border border-rose-100 text-sm text-rose-800 mb-3">{err}</div>
-        )}
+    <Portal>
+    <Dialog
+      labelId="qr-upload-title"
+      eyebrow="QR upload"
+      title={title}
+      onClose={onClose}
+    >
+      <div className="space-y-3">
+        {err && <Banner tone="error">{err}</Banner>}
 
         {status === 'CREATING' && (
-          <p className="text-sm text-[color:var(--mid-gray)] py-6 text-center">Generating QR code…</p>
+          <div role="status" className="flex flex-col items-center gap-3 py-4">
+            <Skeleton className="w-[200px] h-[200px] rounded-xl" />
+            <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>Generating QR code…</p>
+          </div>
         )}
 
         {status === 'WAITING' && qrDataUrl && (
           <>
-            <p className="text-sm text-[color:var(--mid-gray)] mb-3">
+            <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>
               On your phone, open the camera and point it at this QR code. Take a photo or pick a file — it&apos;ll appear here automatically.
             </p>
-            <div className="flex justify-center my-3">
+            <div className="flex justify-center">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={qrDataUrl} alt="QR code" width={256} height={256} className="rounded-xl border" style={{ borderColor: 'var(--paper-3)' }} />
+              <img src={qrDataUrl} alt={`QR code to upload ${title} from your phone`} width={256} height={256} className="rounded-xl max-w-full h-auto" style={{ border: '1px solid var(--light-gray)' }} />
             </div>
             {uploadUrl && (
-              <p className="text-[11.5px] text-[color:var(--mid-gray)] text-center break-all" style={{ fontFamily: 'var(--font-display)' }}>
-                Or open this on your phone:<br />
-                <span className="text-[color:var(--narra)] font-semibold">{uploadUrl}</span>
-              </p>
+              <div className="rounded-lg px-3 py-2 text-center" style={{ background: SUBTLE_BG, border: '1px solid var(--light-gray)' }}>
+                <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)', fontFamily: 'var(--font-display)' }}>Or open this on your phone</p>
+                <p className="text-xs font-semibold mt-0.5 break-all" style={{ color: 'var(--deep-teal)' }}>{uploadUrl}</p>
+              </div>
             )}
-            <p className="text-[11.5px] text-[color:var(--mid-gray)] mt-3 text-center" style={{ fontFamily: 'var(--font-display)' }}>
+            <p role="status" className="text-xs flex items-center justify-center gap-2" style={{ color: 'var(--mid-gray)' }}>
+              <span aria-hidden className="w-2 h-2 rounded-full animate-pulse" style={{ background: 'var(--sun)' }} />
               Waiting for upload… The link expires in 30 minutes.
             </p>
           </>
         )}
 
         {status === 'INGESTING' && !err && (
-          <div className="py-6 text-center">
-            <p className="text-sm text-[color:var(--mid-gray)]">Receiving file from your phone…</p>
+          <div role="status" className="py-6 flex flex-col items-center gap-2 text-center" style={{ color: 'var(--deep-teal)' }}>
+            <Spinner />
+            <p className="text-sm" style={{ color: 'var(--charcoal)' }}>Receiving file from your phone…</p>
             {ingestStep && (
-              <p className="text-[11.5px] text-[color:var(--mid-gray)] mt-2 italic" style={{ fontFamily: 'var(--font-display)' }}>
+              <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
                 {ingestStep}
               </p>
             )}
           </div>
         )}
         {status === 'INGESTING' && err && (
-          <div className="py-6 text-center space-y-3">
-            <p className="text-sm text-[color:var(--clay)]">
+          <div className="py-4 text-center space-y-3">
+            <p className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>
               Couldn&apos;t pull the file from the server.
             </p>
-            <p className="text-[11.5px] text-[color:var(--mid-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
+            <p className="text-xs break-words" style={{ color: 'var(--mid-gray)' }}>
               {err}
             </p>
             <button
               type="button"
-              className="btn-secondary text-xs"
+              className={BTN_SECONDARY}
+              style={SECONDARY_STYLE}
               onClick={() => {
                 // Reset the modal to its initial state — the parent will
                 // remount us with a fresh token next time the user clicks
@@ -787,17 +938,16 @@ function QRUploadModal({ docKey, title, onClose, onFile }: {
                 onClose()
               }}
             >
-              Close & try again
+              <Icon name="refresh" size={13} /> Close &amp; try again
             </button>
           </div>
         )}
 
         {status === 'DONE' && (
-          <p className="text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 mb-3">
-            ✓ Got it. Closing…
-          </p>
+          <Banner tone="success">Got it. Closing…</Banner>
         )}
       </div>
-    </div>
+    </Dialog>
+    </Portal>
   )
 }

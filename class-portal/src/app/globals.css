@@ -43,6 +43,10 @@
   --charcoal:    var(--ink);
   --off-white:   var(--paper);
   --light-gray:  var(--paper-3);
+  /* Ops Hub sidebar colour, in Aura terms: narra taken down to a deep
+     forest green so the signed-in sidebar reads like the Ops Hub's dark
+     rail without leaving the Aura palette. */
+  --near-black:  #1E3832;
 }
 
 * { box-sizing: border-box; }
@@ -132,7 +136,31 @@ body {
    so shave main's own vertical padding + inter-section gap to keep
    more content above the fold. Public marketing pages keep the roomier
    spacing that the design was originally tuned for. */
-body.with-auth-sidebar > main { padding-top: 12px; padding-bottom: 16px; }
+body.with-auth-sidebar > main { padding-top: 16px; padding-bottom: 20px; }
+@media (min-width: 768px) {
+  body.with-auth-sidebar > main { padding-top: 24px; padding-bottom: 24px; }
+}
+
+/* Ops-Hub framing for the shared panels embedded in the restyled
+   dashboards (Admin, Front desk). Only inside a .hub-frame wrapper, so
+   every other page that uses .card-static keeps its current look until
+   its own phase. */
+.hub-frame .card-static {
+  border-radius: 12px;
+  border: 1px solid var(--light-gray);
+  box-shadow: none;
+  padding: 20px;
+}
+@media (max-width: 639px) {
+  .hub-frame .card-static { padding: 16px; }
+}
+.hub-frame .card-static h2 {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0;
+  color: var(--charcoal);
+}
 body.with-auth-sidebar > main > .space-y-6 > * + * { margin-top: 12px; }
 
 .btn-primary {

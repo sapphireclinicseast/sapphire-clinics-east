@@ -6,6 +6,11 @@ import {
   teacherAssignedPairs,
   levelLabel, type GradeRecord, type StoredUser, type EnrollmentLevel, type Branch,
 } from '@/lib/session'
+import {
+  DashCard, EmptyState, StatusPill, Tag, Icon,
+  TH, TH_STYLE, TD, TR, TR_STYLE, SUBTLE_BG, CONTROL_SM, CONTROL_STYLE, FILE_FOCUS,
+  BTN_SM, PRIMARY_STYLE, SECONDARY_STYLE,
+} from '@/components/hub/ui'
 
 interface Props {
   viewer: { role: 'TEACHER' | 'ADMIN'; userId?: string }
@@ -108,71 +113,77 @@ export default function GradesPanel({ viewer }: Props) {
   }
 
   return (
-    <div className="card-static">
-      <h2 className="text-[18px] leading-tight mb-1">Quarterly grades</h2>
-      <p className="text-[12.5px] text-[color:var(--mid-gray)] mb-4">
-        Click <span className="font-semibold">Edit</span> on a student row to type quarterly averages, then <span className="font-semibold">Save</span> to finalize. Proof documents (Excel / Word / PDF) can be uploaded any time.
-      </p>
-
-      <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--paper-3)' }}>
-        <table className="w-full text-sm">
-          <thead style={{ background: 'var(--paper-2)' }}>
-            <tr className="text-left text-[11.5px] uppercase tracking-[0.08em] text-[color:var(--mid-gray)] border-b" style={{ borderColor: 'var(--paper-3)', fontFamily: 'var(--font-display)' }}>
-              <th className="py-2 px-3">Student</th>
-              <th className="py-2 px-3 text-center">Q1 Avg</th>
-              <th className="py-2 px-3 text-center">Q2 Avg</th>
-              <th className="py-2 px-3 text-center">Q3 Avg</th>
-              <th className="py-2 px-3 text-center">Q4 Avg</th>
-              <th className="py-2 px-3 text-center">Year Avg</th>
-              <th className="py-2 px-3">Proof</th>
-              <th className="py-2 px-3"></th>
+    <DashCard
+      flush
+      title="Quarterly grades"
+      icon={<Icon name="award" size={15} />}
+      description={<>Click <span className="font-semibold">Edit</span> on a student row to type quarterly averages, then <span className="font-semibold">Save</span> to finalize. Proof documents (Excel / Word / PDF) can be uploaded any time.</>}
+      action={<Tag tone="neutral">{students.length} student{students.length === 1 ? '' : 's'}</Tag>}
+    >
+      <div className="overflow-auto" style={{ maxHeight: 640 }}>
+        <table className="w-full text-sm" style={{ borderCollapse: 'collapse', minWidth: 820 }}>
+          <thead className="sticky top-0 z-10">
+            <tr>
+              <th className={`${TH} sticky left-0 z-10`} style={TH_STYLE}>Student</th>
+              <th className={`${TH} text-center`} style={TH_STYLE}>Q1 Avg</th>
+              <th className={`${TH} text-center`} style={TH_STYLE}>Q2 Avg</th>
+              <th className={`${TH} text-center`} style={TH_STYLE}>Q3 Avg</th>
+              <th className={`${TH} text-center`} style={TH_STYLE}>Q4 Avg</th>
+              <th className={`${TH} text-center`} style={{ ...TH_STYLE, color: 'var(--deep-teal)' }}>Year Avg</th>
+              <th className={TH} style={TH_STYLE}>Proof</th>
+              <th className={TH} style={TH_STYLE}><span className="sr-only">Actions</span></th>
             </tr>
           </thead>
           <tbody>
             {students.length === 0 && (
-              <tr><td colSpan={8} className="py-6 px-3 text-center text-[color:var(--mid-gray)]">No students yet.</td></tr>
+              <tr><td colSpan={8}><EmptyState icon="student" title="No students yet." hint="Students appear here once they are enrolled in a branch and grade you're assigned to." /></td></tr>
             )}
             {students.map(s => {
               const g = grades[s.id]
               const isEditing = editingId === s.id
+              const name = `${s.firstName} ${s.lastName}`
               return (
-                <tr key={s.id} className="border-b align-top" style={{ borderColor: 'var(--paper-3)' }}>
-                  <td className="py-2.5 px-3">
-                    <div className="font-semibold text-[color:var(--narra)]">{s.firstName} {s.lastName}</div>
-                    <div className="text-[11.5px] text-[color:var(--mid-gray)]">{s.level ? levelLabel(s.level) : '—'}</div>
+                <tr key={s.id} className={isEditing ? '' : TR} style={{ ...TR_STYLE, background: isEditing ? SUBTLE_BG : undefined }}>
+                  <td className={`${TD} sticky left-0`} style={{ background: isEditing ? SUBTLE_BG : '#fff', minWidth: 170 }}>
+                    <div className="font-semibold" style={{ color: 'var(--charcoal)' }}>{s.firstName} {s.lastName}</div>
+                    <div className="text-xs" style={{ color: 'var(--mid-gray)' }}>{s.level ? levelLabel(s.level) : '—'}</div>
+                    {isEditing && <div className="mt-1"><Tag tone="info">Editing</Tag></div>}
                     {savedFlash === s.id && (
-                      <div className="text-[11px] text-emerald-700 font-semibold mt-1">✓ Saved</div>
+                      <div className="mt-1"><StatusPill tone="success">Saved</StatusPill></div>
                     )}
                   </td>
-                  <QuarterCell value={isEditing ? draft?.q1 : g?.q1} editing={isEditing} onChange={v => setDraft(d => d ? { ...d, q1: v } : d)} />
-                  <QuarterCell value={isEditing ? draft?.q2 : g?.q2} editing={isEditing} onChange={v => setDraft(d => d ? { ...d, q2: v } : d)} />
-                  <QuarterCell value={isEditing ? draft?.q3 : g?.q3} editing={isEditing} onChange={v => setDraft(d => d ? { ...d, q3: v } : d)} />
-                  <QuarterCell value={isEditing ? draft?.q4 : g?.q4} editing={isEditing} onChange={v => setDraft(d => d ? { ...d, q4: v } : d)} />
-                  <QuarterCell value={isEditing ? draft?.yearAvg : g?.yearAvg} editing={isEditing} onChange={v => setDraft(d => d ? { ...d, yearAvg: v } : d)} highlight />
-                  <td className="py-2.5 px-3">
+                  <QuarterCell label={`Q1 average for ${name}`} value={isEditing ? draft?.q1 : g?.q1} editing={isEditing} onChange={v => setDraft(d => d ? { ...d, q1: v } : d)} />
+                  <QuarterCell label={`Q2 average for ${name}`} value={isEditing ? draft?.q2 : g?.q2} editing={isEditing} onChange={v => setDraft(d => d ? { ...d, q2: v } : d)} />
+                  <QuarterCell label={`Q3 average for ${name}`} value={isEditing ? draft?.q3 : g?.q3} editing={isEditing} onChange={v => setDraft(d => d ? { ...d, q3: v } : d)} />
+                  <QuarterCell label={`Q4 average for ${name}`} value={isEditing ? draft?.q4 : g?.q4} editing={isEditing} onChange={v => setDraft(d => d ? { ...d, q4: v } : d)} />
+                  <QuarterCell label={`Year average for ${name}`} value={isEditing ? draft?.yearAvg : g?.yearAvg} editing={isEditing} onChange={v => setDraft(d => d ? { ...d, yearAvg: v } : d)} highlight />
+                  <td className={TD}>
                     {g?.proofFileId ? (
-                      <div className="flex items-center gap-2">
-                        <button className="btn-secondary text-xs" onClick={() => viewProof(g)} title={g.proofFileName ?? ''}>View proof</button>
-                        <label className="text-xs px-2 py-1 rounded-md text-[color:var(--mid-gray)] hover:text-[color:var(--narra)] cursor-pointer underline-offset-2 hover:underline">
+                      <div className="flex items-center gap-1.5">
+                        <button type="button" className={BTN_SM} style={SECONDARY_STYLE} onClick={() => viewProof(g)} title={g.proofFileName ?? ''} aria-label={`View proof for ${name}`}><Icon name="eye" size={12} /> View proof</button>
+                        <label className={`${BTN_SM} ${FILE_FOCUS}`} style={{ color: 'var(--mid-gray)' }}>
                           Replace
                           <input type="file" className="sr-only" accept=".pdf,.doc,.docx,.xls,.xlsx,image/*" onChange={e => { const f = e.target.files?.[0]; if (f) handleProof(s, f); e.target.value = '' }} />
                         </label>
                       </div>
                     ) : (
-                      <label className="btn-secondary text-xs cursor-pointer inline-flex">
+                      <label className={`${BTN_SM} ${FILE_FOCUS}`} style={SECONDARY_STYLE}>
+                        <Icon name="upload" size={12} />
                         Upload proof
                         <input type="file" className="sr-only" accept=".pdf,.doc,.docx,.xls,.xlsx,image/*" onChange={e => { const f = e.target.files?.[0]; if (f) handleProof(s, f); e.target.value = '' }} />
                       </label>
                     )}
                   </td>
-                  <td className="py-2.5 px-3 whitespace-nowrap">
+                  <td className={`${TD} whitespace-nowrap`}>
                     {isEditing ? (
                       <div className="flex gap-1.5 justify-end">
-                        <button className="btn-secondary text-xs" onClick={cancelEditing}>Cancel</button>
-                        <button className="btn-primary text-xs" onClick={() => saveEditing(s)}>Save</button>
+                        <button type="button" className={BTN_SM} style={SECONDARY_STYLE} onClick={cancelEditing}>Cancel</button>
+                        <button type="button" className={`${BTN_SM} text-white`} style={{ ...PRIMARY_STYLE, color: '#fff' }} onClick={() => saveEditing(s)}>Save</button>
                       </div>
                     ) : (
-                      <button className="btn-secondary text-xs" onClick={() => startEditing(s)}>Edit</button>
+                      <div className="flex justify-end">
+                        <button type="button" className={BTN_SM} style={SECONDARY_STYLE} onClick={() => startEditing(s)} aria-label={`Edit grades for ${name}`}><Icon name="edit" size={12} /> Edit</button>
+                      </div>
                     )}
                   </td>
                 </tr>
@@ -181,26 +192,29 @@ export default function GradesPanel({ viewer }: Props) {
           </tbody>
         </table>
       </div>
-    </div>
+    </DashCard>
   )
 }
 
-function QuarterCell({ value, onChange, editing, highlight }: { value?: string; onChange: (v: string) => void; editing: boolean; highlight?: boolean }) {
+function QuarterCell({ value, onChange, editing, highlight, label }: { value?: string; onChange: (v: string) => void; editing: boolean; highlight?: boolean; label: string }) {
   if (!editing) {
     return (
-      <td className="py-2 px-2 text-center" style={{ background: highlight ? 'var(--sage-tint)' : undefined }}>
-        <span className="font-mono font-semibold text-[color:var(--ink)]">{value || '—'}</span>
+      <td className={`${TD} text-center`} style={{ background: highlight ? 'var(--sage-tint)' : undefined }}>
+        <span className={`tabular-nums text-[15px] ${highlight ? 'font-bold' : 'font-semibold'}`} style={{ color: value ? 'var(--charcoal)' : 'var(--mid-gray)', fontFamily: 'var(--font-display)' }}>
+          {value || <><span aria-hidden>—</span><span className="sr-only">Not entered</span></>}
+        </span>
       </td>
     )
   }
   return (
-    <td className="py-2 px-2 text-center" style={{ background: highlight ? 'var(--sage-tint)' : undefined }}>
+    <td className={`${TD} text-center`} style={{ background: highlight ? 'var(--sage-tint)' : undefined }}>
       <input
-        className="input"
-        style={{ width: 64, padding: '6px 6px', textAlign: 'center', fontWeight: 600 }}
+        className={`${CONTROL_SM} w-16 text-center font-semibold tabular-nums`}
+        style={CONTROL_STYLE}
         value={value ?? ''}
         onChange={e => onChange(e.target.value)}
         placeholder="—"
+        aria-label={label}
       />
     </td>
   )
