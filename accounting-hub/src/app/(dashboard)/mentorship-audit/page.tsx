@@ -11,7 +11,8 @@
  */
 
 import { useState, useEffect, useCallback } from 'react'
-import { AlertTriangle, CheckCircle2, Clock, RefreshCw } from 'lucide-react'
+import { RefreshCw, Users } from 'lucide-react'
+import { HR_PAGE_CLASS, HR_PAGE_STYLE, HrShimmerStyle, StatCard, hrBtn } from '@/components/ui/hr-look'
 
 interface AuditItem {
   id: string
@@ -29,6 +30,18 @@ interface AuditItem {
 interface Summary { total: number; billed: number; missing: number; unconverted: number }
 
 const BRANCH_LABEL: Record<string, string> = { SBEA: 'East Branch', SBGH: 'Greenhills Branch' }
+const BRANCH_PILLS = [
+  { value: 'all', label: 'Both branches' },
+  { value: 'SBEA', label: 'East Branch' },
+  { value: 'SBGH', label: 'Greenhills Branch' },
+]
+// Row edge + pill per audit state (same three states as before).
+const STATE_LOOK: Record<AuditItem['state'], { label: string; line: string; bg: string; fg: string; title?: string }> = {
+  billed:      { label: 'Billed', line: '#059669', bg: '#dcfce7', fg: '#166534' },
+  missing:     { label: 'Missing service', line: '#d97706', bg: '#fef3c7', fg: '#92400e', title: 'Order exists but has no Mentorship service — add it so payroll can tag the session' },
+  unconverted: { label: 'Not converted', line: '#DDE6CC', bg: '#f1f5f2', fg: '#55616A', title: 'No order created yet — a cashiering backlog rather than a billing miss' },
+}
+const TH = 'px-4 py-2.5 text-left text-[11px] font-bold uppercase tracking-[.4px] whitespace-nowrap'
 
 function firstOfMonth() {
   const d = new Date()
@@ -62,126 +75,121 @@ export default function MentorshipAuditPage() {
 
   const shown = onlyMissing ? items.filter(i => i.state === 'missing') : items
 
-  const card = (label: string, value: number, color: string, bg: string, Icon: typeof CheckCircle2, note: string) => (
-    <div className="rounded-xl p-4" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
-      <div className="flex items-center gap-2 mb-1">
-        <span className="rounded-lg p-1.5" style={{ background: bg }}><Icon size={14} style={{ color }} /></span>
-        <span className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>{label}</span>
-      </div>
-      <div className="text-2xl font-extrabold" style={{ color }}>{value}</div>
-      <div className="text-[11px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>{note}</div>
-    </div>
-  )
-
   return (
-    <div className="space-y-5">
-      <div>
-        <h1 className="text-xl font-bold" style={{ color: 'var(--charcoal)' }}>Mentorship Billing Audit</h1>
-        <p className="text-sm mt-1" style={{ color: 'var(--mid-gray)' }}>
+    <div className={HR_PAGE_CLASS} style={HR_PAGE_STYLE}>
+      <HrShimmerStyle />
+      <div className="min-w-0">
+        <h1 className="text-2xl font-bold leading-tight flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+          <Users size={22} style={{ color: 'var(--teal)' }} /> Mentorship Audit
+        </h1>
+        <p className="mt-1 text-[13px] max-w-3xl" style={{ color: 'var(--mid-gray)' }}>
           Sessions booked <strong>With Mentor</strong> in the Clinic Schedule, checked against whether a
           “Mentorship” service was actually billed. Payroll can only pay the mentor when it was.
         </p>
       </div>
 
-      <div className="flex flex-wrap items-end gap-3">
-        <div>
-          <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>From</label>
+      {/* Filters */}
+      <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 rounded-lg border" style={{ background: '#fcfdfa', borderColor: 'var(--light-gray)' }}>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {BRANCH_PILLS.map(b => (
+            <button key={b.value} onClick={() => setBranch(b.value)} aria-pressed={branch === b.value}
+              className="px-3.5 py-1.5 rounded-full border text-[13px] font-semibold whitespace-nowrap transition-colors"
+              style={branch === b.value
+                ? { background: 'var(--teal)', borderColor: 'var(--teal)', color: '#fff', fontFamily: 'var(--font-display)' }
+                : { background: '#fff', borderColor: 'var(--light-gray)', color: 'var(--mid-gray)', fontFamily: 'var(--font-display)' }}>{b.label}</button>
+          ))}
+        </div>
+        <span className="hidden sm:block w-px h-6 mx-1" style={{ background: 'var(--light-gray)' }} />
+        <label className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)' }}>
+          From
           <input type="date" value={from} onChange={e => setFrom(e.target.value)}
-            className="px-3 py-2 rounded-lg text-sm" style={{ border: '1px solid var(--light-gray)' }} />
-        </div>
-        <div>
-          <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>To</label>
-          <input type="date" value={to} onChange={e => setTo(e.target.value)}
-            className="px-3 py-2 rounded-lg text-sm" style={{ border: '1px solid var(--light-gray)' }} />
-        </div>
-        <div>
-          <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Branch</label>
-          <select value={branch} onChange={e => setBranch(e.target.value)}
-            className="px-3 py-2 rounded-lg text-sm" style={{ border: '1px solid var(--light-gray)', background: '#fff' }}>
-            <option value="all">Both branches</option>
-            <option value="SBEA">East Branch</option>
-            <option value="SBGH">Greenhills Branch</option>
-          </select>
-        </div>
-        <button onClick={load} disabled={loading}
-          className="px-4 py-2 rounded-lg text-sm font-semibold text-white flex items-center gap-2"
-          style={{ background: 'var(--teal)' }}>
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
-        </button>
-        <label className="flex items-center gap-2 text-sm ml-auto" style={{ color: 'var(--charcoal)' }}>
-          <input type="checkbox" checked={onlyMissing} onChange={e => setOnlyMissing(e.target.checked)} />
-          Show only unbilled
+            className="h-8 px-2 rounded-lg border text-xs font-normal normal-case tracking-normal bg-white" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }} />
         </label>
+        <label className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)' }}>
+          To
+          <input type="date" value={to} onChange={e => setTo(e.target.value)}
+            className="h-8 px-2 rounded-lg border text-xs font-normal normal-case tracking-normal bg-white" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }} />
+        </label>
+        <button onClick={load} disabled={loading} className={`${hrBtn.ghost} sm:ml-auto`} style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+          <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> Refresh
+        </button>
       </div>
 
       {error && (
-        <div className="rounded-lg px-4 py-3 text-sm" style={{ background: '#FEE2E2', color: '#B91C1C' }}>{error}</div>
+        <div className="px-4 py-2.5 rounded-lg border text-[13px]" style={{ background: '#fef2f2', borderColor: '#fecaca', color: '#b91c1c' }}>{error}</div>
       )}
 
-      {summary && (
-        <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(11rem, 1fr))' }}>
-          {card('Ticked With Mentor', summary.total, 'var(--charcoal)', 'var(--pale-teal, #E6F4F5)', Clock, 'sessions in range')}
-          {card('Mentorship billed', summary.billed, '#15803D', '#DCFCE7', CheckCircle2, 'service on the order')}
-          {card('Missing the service', summary.missing, '#B45309', '#FEF3C7', AlertTriangle, 'paid, but not tagged')}
-          {card('Not yet converted', summary.unconverted, 'var(--mid-gray)', '#F3F4F6', Clock, 'no order yet — backlog, not a miss')}
+      {/* Status cards — the same four counts as before; Ticked and Missing double as the list switch. */}
+      {(summary || loading) && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <StatCard loading={loading && !summary} label="Ticked With Mentor" value={String(summary?.total ?? 0)} sub="Sessions in range · click to list all"
+            tone="zero" accent={summary?.total ? { line: '#4A8073' } : undefined} active={!onlyMissing} activeSub="Listing every session below"
+            onClick={() => setOnlyMissing(false)} />
+          <StatCard loading={loading && !summary} label="Mentorship billed" value={String(summary?.billed ?? 0)} sub="Service on the order"
+            tone={summary?.billed ? 'green' : 'zero'} />
+          <StatCard loading={loading && !summary} label="Missing the service" value={String(summary?.missing ?? 0)} sub="Paid, but not tagged · click to list"
+            tone={summary?.missing ? 'amber' : 'zero'} active={onlyMissing} activeSub="Listing only these below"
+            onClick={() => setOnlyMissing(true)} />
+          <StatCard loading={loading && !summary} label="Not yet converted" value={String(summary?.unconverted ?? 0)} sub="No order yet — backlog, not a miss"
+            tone={summary?.unconverted ? 'blue' : 'zero'} />
         </div>
       )}
 
-      <div className="rounded-xl overflow-hidden" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
-        <div className="overflow-x-auto">
+      <div className="rounded-lg border bg-white overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+        <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-b" style={{ background: '#fcfdfa', borderColor: 'var(--light-gray)' }}>
+          <div className="inline-flex rounded-lg border p-0.5 bg-white" style={{ borderColor: 'var(--light-gray)' }} role="group" aria-label="Which sessions">
+            {([[true, 'Unbilled only'], [false, 'All sessions']] as const).map(([v, label]) => (
+              <button key={label} onClick={() => setOnlyMissing(v)} aria-pressed={onlyMissing === v}
+                className="h-7 px-3 rounded-md text-xs font-semibold transition-colors"
+                style={onlyMissing === v ? { background: 'var(--teal)', color: '#fff' } : { color: 'var(--mid-gray)' }}>{label}</button>
+            ))}
+          </div>
+          <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>{shown.length} of {items.length} session{items.length === 1 ? '' : 's'}</span>
+          <div className="ml-auto hidden md:flex items-center gap-3 text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+            {(['missing', 'billed', 'unconverted'] as const).map(k => (
+              <span key={k} className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: STATE_LOOK[k].line }} />{STATE_LOOK[k].label}</span>
+            ))}
+          </div>
+        </div>
+        <div className="overflow-x-auto relative">
           <table className="w-full text-sm" style={{ minWidth: '52rem' }}>
             <thead>
-              <tr style={{ background: 'var(--off-white, #FAFAF8)' }}>
+              <tr style={{ background: 'var(--hr-head)', color: 'var(--mid-gray)' }}>
                 {['Date', 'Time', 'Patient', 'Clinician', 'Dept', 'Branch', 'Order', 'Status'].map(h => (
-                  <th key={h} className="px-4 py-2.5 text-left text-xs font-bold"
-                    style={{ color: 'var(--mid-gray)' }}>{h}</th>
+                  <th key={h} className={TH}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={8} className="px-4 py-8 text-center text-sm" style={{ color: 'var(--mid-gray)' }}>Loading…</td></tr>
+                [0, 1, 2, 3].map(i => <tr key={i} className="border-t" style={{ borderColor: 'var(--hr-line)' }}><td colSpan={8} className="px-4 py-2.5"><div className="h-5 rounded hr-shimmer" /></td></tr>)
               ) : shown.length === 0 ? (
-                <tr><td colSpan={8} className="px-4 py-8 text-center text-sm" style={{ color: 'var(--mid-gray)' }}>
+                <tr><td colSpan={8} className="px-4 py-12 text-center text-[13px]" style={{ color: 'var(--mid-gray)' }}>
                   {onlyMissing
                     ? 'Nothing unbilled in this range — every mentorship session carries the service.'
                     : 'No sessions were booked With Mentor in this range.'}
                 </td></tr>
-              ) : shown.map(i => (
-                <tr key={i.id} className="border-t" style={{
-                  borderColor: 'var(--light-gray)',
-                  background: i.state === 'missing' ? '#FEF9C3' : undefined,
-                }}>
-                  <td className="px-4 py-2.5" style={{ color: 'var(--charcoal)' }}>{i.date}</td>
-                  <td className="px-4 py-2.5" style={{ color: 'var(--mid-gray)' }}>{i.time}</td>
-                  <td className="px-4 py-2.5 font-medium" style={{ color: 'var(--charcoal)' }}>{i.patientName}</td>
-                  <td className="px-4 py-2.5" style={{ color: 'var(--mid-gray)' }}>{i.clinician}</td>
-                  <td className="px-4 py-2.5" style={{ color: 'var(--mid-gray)' }}>{i.department}</td>
-                  <td className="px-4 py-2.5" style={{ color: 'var(--mid-gray)' }}>
-                    {i.branch ? (BRANCH_LABEL[i.branch] ?? i.branch) : '—'}
-                  </td>
-                  <td className="px-4 py-2.5" style={{ color: 'var(--mid-gray)' }}>
-                    {i.orderNumbers.length ? i.orderNumbers.join(', ') : '—'}
-                  </td>
-                  <td className="px-4 py-2.5">
-                    {i.state === 'billed' && (
-                      <span className="px-2 py-1 rounded-lg text-xs font-semibold" style={{ background: '#DCFCE7', color: '#166534' }}>Billed</span>
-                    )}
-                    {i.state === 'missing' && (
-                      <span className="px-2 py-1 rounded-lg text-xs font-bold" style={{ background: '#FDE047', color: '#854D0E' }}
-                        title="Order exists but has no Mentorship service — add it so payroll can tag the session">
-                        Missing service
-                      </span>
-                    )}
-                    {i.state === 'unconverted' && (
-                      <span className="px-2 py-1 rounded-lg text-xs font-semibold" style={{ background: '#F3F4F6', color: '#6B7280' }}
-                        title="No order created yet — a cashiering backlog rather than a billing miss">
-                        Not converted
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              ))}
+              ) : shown.map(i => {
+                const look = STATE_LOOK[i.state]
+                return (
+                  <tr key={i.id} className="border-t transition-colors hover:bg-[#fafcf6]" style={{ borderColor: 'var(--hr-line)' }}>
+                    <td className="px-4 py-2.5 whitespace-nowrap font-mono text-xs" style={{ color: 'var(--charcoal)', boxShadow: `inset 4px 0 0 ${look.line}` }}>{i.date}</td>
+                    <td className="px-4 py-2.5 whitespace-nowrap font-mono text-xs" style={{ color: 'var(--mid-gray)' }}>{i.time}</td>
+                    <td className="px-4 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>{i.patientName}</td>
+                    <td className="px-4 py-2.5" style={{ color: 'var(--mid-gray)' }}>{i.clinician}</td>
+                    <td className="px-4 py-2.5" style={{ color: 'var(--mid-gray)' }}>{i.department}</td>
+                    <td className="px-4 py-2.5 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>
+                      {i.branch ? (BRANCH_LABEL[i.branch] ?? i.branch) : '—'}
+                    </td>
+                    <td className="px-4 py-2.5 font-mono text-xs" style={{ color: 'var(--mid-gray)' }}>
+                      {i.orderNumbers.length ? i.orderNumbers.join(', ') : '—'}
+                    </td>
+                    <td className="px-4 py-2.5 whitespace-nowrap">
+                      <span className="inline-flex px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: look.bg, color: look.fg }} title={look.title}>{look.label}</span>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
