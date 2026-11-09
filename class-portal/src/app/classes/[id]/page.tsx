@@ -26,6 +26,15 @@ import {
 } from '@/lib/session'
 import { backendJson } from '@/lib/backend'
 import { Portal } from '@/components/Modal'
+import {
+  DashCard, KpiCard, KpiSkeleton, Skeleton, EmptyState, ErrorCard, Banner, StatusPill, Tag, Icon, Dialog, Avatar,
+  CARD_STYLE, SUBTLE_BG, FOCUS, DANGER, CONTROL, CONTROL_SM, CONTROL_STYLE, TEXTAREA, LABEL, LABEL_STYLE, FILE_FOCUS, TR_STYLE,
+  BTN_PRIMARY, BTN_SECONDARY, BTN_SM, BTN_DANGER_GHOST, PRIMARY_STYLE, SECONDARY_STYLE,
+  initials,
+} from '@/components/hub/ui'
+
+/** Wider than PAGE: the class dashboard runs two columns on desktop. */
+const CLASS_PAGE = 'max-w-[1200px] mx-auto space-y-5 min-w-0'
 
 /**
  * Open a blob in a new browser tab in a way that survives popup
@@ -134,7 +143,30 @@ export default function ClassDetailPage() {
 
   if (!auth) return null
   if (!klass) {
-    return <div className="max-w-4xl mx-auto"><div className="card-static">{busy ? 'Loading…' : err || 'Class not found.'}</div></div>
+    return (
+      <div className={CLASS_PAGE}>
+        {busy ? (
+          <div role="status" aria-label="Loading class" className="space-y-5">
+            <div className="rounded-xl p-4 sm:p-5 flex flex-col sm:flex-row gap-4" style={CARD_STYLE} aria-hidden>
+              <Skeleton className="w-full sm:w-[200px] aspect-[16/10] sm:aspect-auto sm:h-[130px]" />
+              <div className="flex-1 space-y-2.5">
+                <Skeleton className="h-3 w-24" />
+                <Skeleton className="h-6 w-1/2" />
+                <Skeleton className="h-3 w-2/3" />
+                <Skeleton className="h-3 w-1/3" />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 min-[440px]:grid-cols-3 gap-3"><KpiSkeleton count={3} /></div>
+          </div>
+        ) : err ? (
+          <ErrorCard title="Couldn’t open this class." hint={err} />
+        ) : (
+          <div className="rounded-xl" style={CARD_STYLE}>
+            <EmptyState icon="book" title="Class not found." hint="It may have been deleted, or you may not be on its roster." />
+          </div>
+        )}
+      </div>
+    )
   }
 
   const isTeacher = auth.role === 'TEACHER' && klass.teacherId === auth.userId
@@ -192,38 +224,30 @@ export default function ClassDetailPage() {
   const avgAttendancePct = markedTotal > 0 ? Math.round((presentTotal / markedTotal) * 100) : null
 
   return (
-    <div
-      className="animate-fade-up"
-      style={{
-        width: '100vw',
-        maxWidth: '100vw',
-        marginLeft: 'calc(50% - 50vw)',
-        marginRight: 'calc(50% - 50vw)',
-      }}
-    >
-      <div className="px-3 sm:px-5 max-w-7xl mx-auto space-y-4">
+    <div className={`${CLASS_PAGE} animate-fade-up`}>
+      <button type="button" className={BTN_SM} style={SECONDARY_STYLE} onClick={() => router.push('/classes')}>
+        <Icon name="arrowLeft" size={13} /> All classes
+      </button>
 
-      {/* ── Top row: 2/3 class-overview card (cover + meta + roster) +
-          1/3 KPI strip (classes completed · students · avg attendance).
-          Stacks vertically on < lg so mobile still reads cleanly. ── */}
-      <div className="grid lg:grid-cols-3 gap-4">
+      {/* ── Top row: class header (cover + meta + roster) on the left,
+          KPI tiles on the right. Stacks on < lg. ── */}
+      <div className="grid lg:grid-cols-3 gap-4 lg:gap-5 items-start">
 
-        {/* LEFT — overview card */}
-        <div className="lg:col-span-2 card-static p-0 overflow-hidden">
+        {/* LEFT — class header */}
+        <section className="lg:col-span-2 rounded-xl overflow-hidden min-w-0" style={CARD_STYLE} aria-label="Class details">
           <div className="flex flex-col sm:flex-row">
-            {/* Cover thumbnail — much smaller than the old hero strip
-                (200px wide on sm+, full-width on xs) so the meta + roster
-                can sit beside it without the photo dominating. */}
-            <div className="bg-[color:var(--paper-2)] relative w-full sm:w-[200px] aspect-[16/10] sm:aspect-auto sm:min-h-[140px] shrink-0">
+            <div className="relative w-full sm:w-[200px] aspect-[16/9] sm:aspect-auto sm:min-h-[150px] shrink-0" style={{ background: 'var(--paper-2)' }}>
               {photoUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={photoUrl} alt={klass.name} className="w-full h-full object-cover" />
               ) : (
-                <div className="w-full h-full flex items-center justify-center text-[color:var(--mid-gray)] text-[11.5px]" style={{ fontFamily: 'var(--font-display)' }}>No cover photo</div>
+                <div className="w-full h-full flex flex-col items-center justify-center gap-1 text-[11.5px]" style={{ color: 'var(--mid-gray)', fontFamily: 'var(--font-display)' }}>
+                  <Icon name="image" size={20} style={{ color: 'var(--light-gray)' }} />
+                  No cover photo
+                </div>
               )}
             </div>
-            <div className="px-4 py-3 sm:py-3.5 flex-1 min-w-0">
-              <button className="btn-secondary text-[11px] mb-2" onClick={() => router.push('/classes')}>← All classes</button>
+            <div className="px-4 py-4 sm:px-5 flex-1 min-w-0">
               <ClassMetaEditor
                 klass={klass}
                 canEdit={canEdit}
@@ -233,20 +257,21 @@ export default function ClassDetailPage() {
             </div>
           </div>
 
-          {/* Student roster — collapsible on tall pages, scroll-locked
-              above ~8 students so the card never grows past ~280px tall. */}
-          <div className="border-t px-4 py-3" style={{ borderColor: 'var(--paper-3)' }}>
-            <div className="text-[11px] font-bold uppercase tracking-[0.10em] text-[color:var(--bright-teal)] mb-2" style={{ fontFamily: 'var(--font-display)' }}>
-              Students ({roster.length})
-            </div>
+          {/* Student roster — scroll-locked above ~8 students so the
+              header never grows past ~300px tall. */}
+          <div className="px-4 sm:px-5 py-3.5" style={{ borderTop: '1px solid var(--light-gray)', background: SUBTLE_BG }}>
+            <h2 className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest mb-2" style={{ color: 'var(--mid-gray)', fontFamily: 'var(--font-display)', letterSpacing: '0.1em' }}>
+              <Icon name="users" size={13} style={{ color: 'var(--teal)' }} />
+              Students <span className="tabular-nums">({roster.length})</span>
+            </h2>
             {roster.length === 0 ? (
-              <p className="text-[12.5px] text-[color:var(--mid-gray)] py-1">No students enrolled yet.</p>
+              <p className="text-[13px] py-1" style={{ color: 'var(--mid-gray)' }}>No students enrolled yet.</p>
             ) : (
-              <ul className="space-y-0.5 text-[13px] max-h-[180px] overflow-y-auto pr-1">
+              <ul className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 max-h-[180px] overflow-y-auto pr-1">
                 {roster.map(s => (
-                  <li key={s.id} className="flex items-center gap-2 py-0.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[color:var(--moss)] shrink-0" />
-                    <span className="truncate font-medium text-[color:var(--narra)]">
+                  <li key={s.id} className="flex items-center gap-2 py-0.5 min-w-0">
+                    <Avatar text={initials(s.firstName, s.lastName)} size={24} />
+                    <span className="truncate text-[13px] font-medium" style={{ color: 'var(--charcoal)' }}>
                       {[s.firstName, s.lastName].filter(Boolean).join(' ') || s.email}
                     </span>
                   </li>
@@ -254,67 +279,74 @@ export default function ClassDetailPage() {
               </ul>
             )}
           </div>
-        </div>
+        </section>
 
-        {/* RIGHT — KPI strip. Stacks into a 3-col row on phones to stay
-            compact; switches to a single column on lg+ to align with
-            the taller overview card on its left. */}
-        <div className="card-static p-3 sm:p-4 grid grid-cols-3 lg:grid-cols-1 gap-3 lg:gap-4">
-          <KpiTile
+        {/* RIGHT — KPI tiles. 3 across on small screens, a column on lg+. */}
+        <div className="grid grid-cols-1 min-[440px]:grid-cols-3 lg:grid-cols-1 gap-3">
+          <KpiCard
             label="Classes completed"
+            icon={<Icon name="book" />}
             value={lessons.length}
-            hint={lessons.length === 1 ? 'day’s lesson logged' : 'day’s lessons logged'}
+            sub={lessons.length === 1 ? 'day’s lesson logged' : 'day’s lessons logged'}
           />
-          <KpiTile
+          <KpiCard
             label="Students"
+            icon={<Icon name="users" />}
+            accent="var(--slate)"
             value={roster.length}
-            hint={roster.length === 1 ? 'enrolled' : 'enrolled'}
+            sub={roster.length === 1 ? 'enrolled' : 'enrolled'}
           />
-          <KpiTile
+          <KpiCard
             label="Avg attendance"
+            icon={<Icon name="check" />}
+            accent="var(--sage)"
             value={avgAttendancePct === null ? '—' : `${avgAttendancePct}%`}
-            hint={avgAttendancePct === null ? 'no attendance yet' : 'across all lessons'}
+            sub={avgAttendancePct === null ? 'no attendance yet' : 'across all lessons'}
           />
         </div>
       </div>
 
-      {err && <div className="px-4 py-3 rounded-xl bg-rose-50 border border-rose-100 text-sm text-rose-800">{err}</div>}
+      {err && <Banner tone="error">{err}</Banner>}
 
       {/* ── Lower section: 2-column dashboard ──────────────────────
-            LEFT (3/5 on lg)  — Day's lessons widget. Scroll-locked
-                                so a 42-week / ~84-lesson list never
-                                pushes the right column off-screen.
-            RIGHT (2/5)       — Projects (top) and Activities (below)
-                                stacked. Compact card chrome to match
-                                the 21st.dev clean-dashboard look. */}
-      <div className="grid lg:grid-cols-5 gap-4">
+            LEFT (3/5 on lg)  — Day's lessons, scroll-locked so a long
+                                semester never pushes the right column
+                                off-screen.
+            RIGHT (2/5)       — Projects (top) and Activities (below). */}
+      <div className="grid lg:grid-cols-5 gap-4 lg:gap-5 items-start">
 
         {/* LEFT — Day's lessons */}
-        <section className="lg:col-span-3 card-static p-0 flex flex-col overflow-hidden">
-          <div className="px-4 py-3 sm:px-5 sm:py-3.5 border-b flex items-start justify-between gap-3 flex-wrap" style={{ borderColor: 'var(--paper-3)' }}>
-            <div className="min-w-0">
-              <div className="text-[10.5px] font-bold uppercase tracking-[0.10em] text-[color:var(--bright-teal)]" style={{ fontFamily: 'var(--font-display)' }}>
-                Day&apos;s lessons
-              </div>
-              <div className="text-[12px] text-[color:var(--mid-gray)] mt-0.5">
-                {canEdit ? 'Add a lesson, take attendance, mark grades, collect proofs.' : 'Posted lessons appear here.'}
-                <span className="ml-1 text-[color:var(--moss)] font-semibold">{lessons.length}</span>
-              </div>
-            </div>
-            {canEdit && (
-              <button className="btn-primary text-[11px] shrink-0" onClick={() => setEditingLesson('new')}>+ Add Day&apos;s Lesson</button>
-            )}
-          </div>
-
+        <DashCard
+          flush
+          className="lg:col-span-3"
+          title={<>Day&apos;s lessons <Tag tone="brand">{lessons.length}</Tag></>}
+          icon={<Icon name="calendar" size={15} />}
+          description={canEdit ? 'Add a lesson, take attendance, mark grades, collect proofs.' : 'Posted lessons appear here.'}
+          action={canEdit && (
+            <button type="button" className={BTN_PRIMARY} style={PRIMARY_STYLE} onClick={() => setEditingLesson('new')}>
+              <Icon name="plus" size={15} /> Add day&apos;s lesson
+            </button>
+          )}
+        >
           {/* Scrollable feed — capped at ~70vh so the right column's
               cards stay reachable even on a packed semester. */}
-          <div className="overflow-y-auto px-3 py-3 sm:px-4" style={{ maxHeight: '70vh' }}>
+          <div className="overflow-y-auto p-3 sm:p-4" style={{ maxHeight: '70vh' }}>
             {busy && lessons.length === 0 ? (
-              <p className="text-sm text-[color:var(--mid-gray)] text-center py-6">Loading…</p>
+              <div role="status" aria-label="Loading lessons" className="space-y-2.5">
+                {Array.from({ length: 3 }).map((_, n) => (
+                  <div key={n} className="rounded-xl p-4 space-y-2" style={{ border: '1px solid var(--light-gray)' }} aria-hidden>
+                    <Skeleton className="h-3 w-40" />
+                    <Skeleton className="h-4 w-2/3" />
+                    <Skeleton className="h-3 w-1/3" />
+                  </div>
+                ))}
+              </div>
             ) : lessons.length === 0 ? (
-              <p className="text-sm text-[color:var(--mid-gray)] text-center py-8">
-                {canEdit ? 'No lessons yet. Click + Add Day’s Lesson to create the first one.' : 'No lessons posted yet.'}
-              </p>
+              <EmptyState
+                icon="calendar"
+                title={canEdit ? 'No lessons yet.' : 'No lessons posted yet.'}
+                hint={canEdit ? 'Click Add day’s lesson to create the first one.' : undefined}
+              />
             ) : (
               <ul className="space-y-2.5">
                 {lessons.map(l => (
@@ -337,10 +369,10 @@ export default function ClassDetailPage() {
               </ul>
             )}
           </div>
-        </section>
+        </DashCard>
 
         {/* RIGHT — Projects on top, Activities below */}
-        <div className="lg:col-span-2 flex flex-col gap-4 min-w-0">
+        <div className="lg:col-span-2 flex flex-col gap-4 lg:gap-5 min-w-0">
           <ProjectsSection
             classId={klass.id}
             roster={roster}
@@ -365,17 +397,10 @@ export default function ClassDetailPage() {
           isStudent={isStudent}
         />
       )}
-      </div>
     </div>
   )
 }
 
-/**
- * Compact KPI tile used in the class-detail dashboard sidebar.
- * One number, a short label above, and a one-line caption below.
- * Layout flips between row (mobile, 3 tiles across) and column (lg+)
- * by inheriting the parent grid's alignment.
- */
 /**
  * Inline editor for the class header meta (name, section, schedule
  * days, start/end times). Read-only by default; admins and the
@@ -458,47 +483,57 @@ function ClassMetaEditor({ klass, canEdit, teacherName, onUpdated }: {
   if (!editing) {
     return (
       <>
-        <div className="flex items-start gap-2 flex-wrap">
-          <h1 className="text-[20px] leading-tight text-[color:var(--deep-teal)] min-w-0">
-            {klass.name}{klass.section ? <span className="text-[color:var(--mid-gray)] font-normal"> · {klass.section}</span> : null}
+        <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
+          <Tag tone="brand">{levelLabel(klass.level)}</Tag>
+          <Tag>{branchLabel(klass.branch)}</Tag>
+        </div>
+        <div className="flex items-start justify-between gap-3">
+          <h1 className="text-[20px] sm:text-[22px] font-bold leading-tight min-w-0 break-words" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)', letterSpacing: 0 }}>
+            {klass.name}{klass.section ? <span className="font-normal" style={{ color: 'var(--mid-gray)' }}> · {klass.section}</span> : null}
           </h1>
           {canEdit && (
             <button
               type="button"
-              className="text-[10.5px] px-2 py-0.5 rounded border text-[color:var(--moss)] hover:bg-[color:var(--paper-2)] mt-1"
-              style={{ borderColor: 'var(--paper-3)', fontFamily: 'var(--font-display)' }}
+              className={`${BTN_SM} shrink-0`}
+              style={SECONDARY_STYLE}
               onClick={() => setEditing(true)}
-            >Edit</button>
+              aria-label="Edit class name and schedule"
+            ><Icon name="edit" size={12} /> Edit</button>
           )}
         </div>
-        <p className="text-[12px] text-[color:var(--mid-gray)] mt-1 leading-relaxed">
-          {levelLabel(klass.level)} · {branchLabel(klass.branch)}<br/>
-          Teacher: <span className="font-semibold text-[color:var(--narra)]">{teacherName}</span><br/>
-          Schedule: {dayShorts || '—'}{time ? ` · ${time}` : ''}
-        </p>
+        <dl className="mt-3 grid gap-1.5 text-[13px]">
+          <div className="flex items-start gap-2 min-w-0">
+            <dt className="flex items-center gap-1.5 w-[92px] shrink-0" style={{ color: 'var(--mid-gray)' }}><Icon name="teacher" size={13} style={{ color: 'var(--teal)' }} /> Teacher</dt>
+            <dd className="font-semibold min-w-0 break-words" style={{ color: 'var(--charcoal)' }}>{teacherName}</dd>
+          </div>
+          <div className="flex items-start gap-2 min-w-0">
+            <dt className="flex items-center gap-1.5 w-[92px] shrink-0" style={{ color: 'var(--mid-gray)' }}><Icon name="calendar" size={13} style={{ color: 'var(--teal)' }} /> Schedule</dt>
+            <dd className="min-w-0 break-words" style={{ color: 'var(--charcoal)' }}>{dayShorts || '—'}{time ? ` · ${time}` : ''}</dd>
+          </div>
+        </dl>
       </>
     )
   }
 
   return (
-    <div className="space-y-2">
-      <div className="text-[10px] font-bold uppercase tracking-[0.10em] text-[color:var(--bright-teal)]" style={{ fontFamily: 'var(--font-display)' }}>
+    <div className="space-y-3">
+      <p className="text-[10.5px] font-bold uppercase tracking-widest" style={{ color: 'var(--deep-teal)', fontFamily: 'var(--font-display)' }}>
         Editing class
-      </div>
-      {err && <div className="px-3 py-1.5 rounded bg-rose-50 border border-rose-100 text-[12px] text-rose-800">{err}</div>}
-      <div className="grid sm:grid-cols-[1fr_140px] gap-2">
+      </p>
+      {err && <Banner tone="error">{err}</Banner>}
+      <div className="grid sm:grid-cols-[1fr_140px] gap-2.5">
         <label className="block">
-          <span className="label text-[10.5px]">Class name</span>
-          <input className="input" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Math A" disabled={busy} />
+          <span className={LABEL} style={LABEL_STYLE}>Class name</span>
+          <input className={`${CONTROL} w-full`} style={CONTROL_STYLE} value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Math A" disabled={busy} />
         </label>
         <label className="block">
-          <span className="label text-[10.5px]">Section</span>
-          <input className="input" value={section} onChange={e => setSection(e.target.value)} placeholder="(optional)" disabled={busy} />
+          <span className={LABEL} style={LABEL_STYLE}>Section</span>
+          <input className={`${CONTROL} w-full`} style={CONTROL_STYLE} value={section} onChange={e => setSection(e.target.value)} placeholder="(optional)" disabled={busy} />
         </label>
       </div>
-      <div>
-        <span className="label text-[10.5px]">Days</span>
-        <div className="flex flex-wrap gap-1 mt-1">
+      <fieldset>
+        <legend className={LABEL} style={LABEL_STYLE}>Days</legend>
+        <div className="flex flex-wrap gap-1.5">
           {CLASS_DAY_OPTIONS.map(d => {
             const on = days.includes(d.value)
             return (
@@ -507,52 +542,31 @@ function ClassMetaEditor({ klass, canEdit, teacherName, onUpdated }: {
                 type="button"
                 onClick={() => toggleDay(d.value)}
                 disabled={busy}
-                className="text-[11px] px-2 py-1 rounded border transition-colors"
-                style={{
-                  borderColor: on ? 'var(--moss)' : 'var(--paper-3)',
-                  background: on ? 'var(--paper-2)' : 'transparent',
-                  color: on ? 'var(--moss)' : 'var(--mid-gray)',
-                  fontFamily: 'var(--font-display)',
-                }}
-              >{d.short}</button>
+                aria-pressed={on}
+                aria-label={d.label}
+                className={`inline-flex items-center gap-1 h-8 px-2.5 rounded-full text-xs font-semibold transition-colors disabled:opacity-60 ${FOCUS}`}
+                style={on
+                  ? { background: 'var(--deep-teal)', color: '#fff', border: '1px solid var(--deep-teal)' }
+                  : { background: '#fff', color: 'var(--charcoal)', border: '1px solid var(--light-gray)' }}
+              >{on && <Icon name="check" size={12} />}{d.short}</button>
             )
           })}
         </div>
-      </div>
-      <div className="grid grid-cols-2 gap-2">
+      </fieldset>
+      <div className="grid grid-cols-2 gap-2.5">
         <label className="block">
-          <span className="label text-[10.5px]">Start</span>
-          <input type="time" className="input" value={startTime} onChange={e => setStartTime(e.target.value)} disabled={busy} />
+          <span className={LABEL} style={LABEL_STYLE}>Start</span>
+          <input type="time" className={`${CONTROL} w-full`} style={CONTROL_STYLE} value={startTime} onChange={e => setStartTime(e.target.value)} disabled={busy} />
         </label>
         <label className="block">
-          <span className="label text-[10.5px]">End</span>
-          <input type="time" className="input" value={endTime} onChange={e => setEndTime(e.target.value)} disabled={busy} />
+          <span className={LABEL} style={LABEL_STYLE}>End</span>
+          <input type="time" className={`${CONTROL} w-full`} style={CONTROL_STYLE} value={endTime} onChange={e => setEndTime(e.target.value)} disabled={busy} />
         </label>
       </div>
       <div className="flex gap-2 pt-1">
-        <button type="button" className="btn-primary text-[11px]" onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save'}</button>
-        <button type="button" className="btn-secondary text-[11px]" onClick={cancel} disabled={busy}>Cancel</button>
+        <button type="button" className={BTN_PRIMARY} style={PRIMARY_STYLE} onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save'}</button>
+        <button type="button" className={BTN_SECONDARY} style={SECONDARY_STYLE} onClick={cancel} disabled={busy}>Cancel</button>
       </div>
-    </div>
-  )
-}
-
-function KpiTile({ label, value, hint }: {
-  label: string
-  value: string | number
-  hint?: string
-}) {
-  return (
-    <div className="rounded-xl border bg-[color:var(--paper)] px-3 py-2.5" style={{ borderColor: 'var(--paper-3)' }}>
-      <div className="text-[10px] font-bold uppercase tracking-[0.10em] text-[color:var(--bright-teal)] leading-tight" style={{ fontFamily: 'var(--font-display)' }}>
-        {label}
-      </div>
-      <div className="text-[26px] sm:text-[28px] leading-none font-semibold text-[color:var(--deep-teal)] mt-1.5" style={{ fontFamily: 'var(--font-display)' }}>
-        {value}
-      </div>
-      {hint && (
-        <div className="text-[10.5px] text-[color:var(--mid-gray)] mt-1">{hint}</div>
-      )}
     </div>
   )
 }
@@ -571,35 +585,43 @@ function LessonCard({ lesson, roster, viewerRole, viewerId, canEdit, onEdit, onD
   const myAttendance = viewerRole === 'STUDENT' && viewerId ? lesson.attendance[viewerId] : undefined
 
   return (
-    <li className="rounded-xl border p-4" style={{ borderColor: 'var(--paper-3)' }}>
-      <div className="flex items-start justify-between gap-3 flex-wrap">
+    <li className="rounded-xl p-4 transition-colors hover:bg-[#FBF9F5]" style={{ border: '1px solid var(--light-gray)' }}>
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-[10.5px] font-bold uppercase tracking-[0.12em] text-[color:var(--bright-teal)]" style={{ fontFamily: 'var(--font-display)' }}>
+          <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--deep-teal)', fontFamily: 'var(--font-display)' }}>
+            <Icon name="calendar" size={12} />
             {new Date(lesson.lessonDate).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-          </div>
-          <h3 className="text-[17px] leading-tight text-[color:var(--narra)] font-semibold mt-0.5" style={{ fontFamily: 'var(--font-display)' }}>{lesson.title}</h3>
+          </p>
+          <h3 className="text-[15px] leading-snug font-bold mt-1 break-words" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)', letterSpacing: 0 }}>{lesson.title}</h3>
           {lesson.description && (
-            <p className="text-[13px] text-[color:var(--ink)] mt-1 whitespace-pre-line">{lesson.description}</p>
+            <p className="text-[13px] mt-1 whitespace-pre-line break-words" style={{ color: 'var(--charcoal)' }}>{lesson.description}</p>
           )}
-          <div className="text-[11.5px] text-[color:var(--mid-gray)] mt-2">
+          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 mt-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>
             {viewerRole === 'STUDENT' ? (
               <>
-                Your attendance: <span className="font-semibold">{myAttendance ?? 'Not recorded'}</span>
-                {typeof myGrade === 'number' && lesson.gradeTotal && <> · Your grade: <span className="font-semibold">{myGrade}/{lesson.gradeTotal}</span></>}
-                {lesson.hasStudentOutput && <> · Student output collected</>}
+                <span className="inline-flex items-center gap-1.5">
+                  Your attendance:
+                  {myAttendance === 'PRESENT' ? <StatusPill tone="success">Present</StatusPill>
+                    : myAttendance === 'ABSENT' ? <StatusPill tone="error">Absent</StatusPill>
+                    : <StatusPill tone="neutral">{myAttendance ?? 'Not recorded'}</StatusPill>}
+                </span>
+                {typeof myGrade === 'number' && lesson.gradeTotal && <span>Your grade: <span className="font-semibold tabular-nums" style={{ color: 'var(--charcoal)' }}>{myGrade}/{lesson.gradeTotal}</span></span>}
+                {lesson.hasStudentOutput && <Tag tone="info">Student output collected</Tag>}
               </>
             ) : (
               <>
-                {presentIds.length}/{roster.length} present
-                {lesson.gradeTotal && <> · Graded out of {lesson.gradeTotal}</>}
-                {lesson.hasStudentOutput && <> · Outputs collected</>}
+                <span><span className="font-semibold tabular-nums" style={{ color: 'var(--charcoal)' }}>{presentIds.length}/{roster.length}</span> present</span>
+                {lesson.gradeTotal && <span>Graded out of <span className="tabular-nums">{lesson.gradeTotal}</span></span>}
+                {lesson.hasStudentOutput && <Tag tone="info">Outputs collected</Tag>}
               </>
             )}
           </div>
         </div>
-        <div className="flex gap-2 shrink-0">
-          <button className="btn-secondary text-xs" onClick={onEdit}>{canEdit ? 'Edit' : 'View'}</button>
-          {canEdit && <button className="text-xs px-2 py-1 rounded-md text-[color:var(--clay)] hover:bg-[color:var(--clay-tint)]" onClick={onDelete}>Delete</button>}
+        <div className="flex gap-1.5 shrink-0">
+          <button type="button" className={BTN_SM} style={SECONDARY_STYLE} onClick={onEdit}>
+            <Icon name={canEdit ? 'edit' : 'eye'} size={12} /> {canEdit ? 'Edit' : 'View'}
+          </button>
+          {canEdit && <button type="button" className={BTN_DANGER_GHOST} style={{ color: DANGER }} onClick={onDelete} aria-label={`Delete lesson ${lesson.title}`}><Icon name="trash" size={12} /> Delete</button>}
         </div>
       </div>
     </li>
@@ -757,56 +779,59 @@ function LessonEditor({ klass, roster, existing, onClose, onSaved, isStudent }: 
 
   return (
     <Portal>
-    <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm overflow-y-auto p-2 sm:p-4" onClick={onClose}>
-      <div className="max-w-6xl mx-auto my-2 sm:my-4 card-static min-h-[calc(100vh-1rem)] sm:min-h-[calc(100vh-2rem)]" onClick={e => e.stopPropagation()}>
-        <div className="flex items-start justify-between gap-3 mb-4">
-          <div>
-            <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)]" style={{ fontFamily: 'var(--font-display)' }}>
-              {existing ? 'Edit lesson' : 'Add day’s lesson'}
-            </div>
-            <h2 className="text-[20px] leading-tight text-[color:var(--deep-teal)]">{title || 'New lesson'}</h2>
-          </div>
-          <button className="btn-secondary text-xs" onClick={onClose}>Close</button>
-        </div>
-
-        {err && <div className="mb-3 px-4 py-3 rounded-xl bg-rose-50 border border-rose-100 text-sm text-rose-800">{err}</div>}
+    <Dialog
+      labelId="lesson-editor-title"
+      size="xl"
+      eyebrow={existing ? 'Edit lesson' : 'Add day’s lesson'}
+      title={title || 'New lesson'}
+      onClose={onClose}
+      footer={editable ? <>
+        <button type="button" className={BTN_SECONDARY} style={SECONDARY_STYLE} onClick={onClose} disabled={busy}>Cancel</button>
+        <button type="button" className={BTN_PRIMARY} style={PRIMARY_STYLE} onClick={save} disabled={busy}>{busy ? 'Saving…' : (existing ? 'Save changes' : 'Create lesson')}</button>
+      </> : undefined}
+    >
+        {err && <div className="mb-4"><Banner tone="error">{err}</Banner></div>}
 
         <Section title="Details">
           <div className="grid sm:grid-cols-2 gap-3">
             <label className="block">
-              <span className="label">Date</span>
-              <input type="date" className="input" value={lessonDate} onChange={e => setLessonDate(e.target.value)} disabled={!editable} />
-              <span className="text-[10.5px] text-[color:var(--mid-gray)]">Schedule: {CLASS_DAY_OPTIONS.filter(o => klass.scheduleDays.includes(o.value)).map(o => o.short).join(', ') || '—'}</span>
+              <span className={LABEL} style={LABEL_STYLE}>Date</span>
+              <input type="date" className={`${CONTROL} w-full`} style={CONTROL_STYLE} value={lessonDate} onChange={e => setLessonDate(e.target.value)} disabled={!editable} />
+              <span className="block text-[11px] mt-1" style={{ color: 'var(--mid-gray)' }}>Schedule: {CLASS_DAY_OPTIONS.filter(o => klass.scheduleDays.includes(o.value)).map(o => o.short).join(', ') || '—'}</span>
             </label>
             <label className="block">
-              <span className="label">Title</span>
-              <input className="input" value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Place values" disabled={!editable} />
+              <span className={LABEL} style={LABEL_STYLE}>Title</span>
+              <input className={`${CONTROL} w-full`} style={CONTROL_STYLE} value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Place values" disabled={!editable} />
             </label>
           </div>
           <label className="block mt-3">
-            <span className="label">Description</span>
-            <textarea className="input" rows={3} value={description ?? ''} onChange={e => setDescription(e.target.value)} disabled={!editable} />
+            <span className={LABEL} style={LABEL_STYLE}>Description</span>
+            <textarea className={TEXTAREA} style={CONTROL_STYLE} rows={3} value={description ?? ''} onChange={e => setDescription(e.target.value)} disabled={!editable} />
           </label>
         </Section>
 
         {lessonId && (
-          <Section title="Attachments (PDF / Word / Excel — multiple allowed)">
+          <Section title="Attachments" hint="PDF / Word / Excel — multiple allowed">
             {editable && (
-              <label className="btn-secondary text-xs cursor-pointer inline-block">
-                + Add files
+              <label className={`${BTN_SECONDARY} ${FILE_FOCUS}`} style={SECONDARY_STYLE}>
+                <Icon name="plus" size={14} /> Add files
                 <input type="file" className="sr-only" multiple accept=".pdf,.doc,.docx,.xls,.xlsx" onChange={handleAttachmentUpload} />
               </label>
             )}
             {attachments.length === 0 ? (
-              <p className="text-sm text-[color:var(--mid-gray)] py-2">No attachments yet.</p>
+              <p className="text-sm py-2" style={{ color: 'var(--mid-gray)' }}>No attachments yet.</p>
             ) : (
-              <ul className="space-y-1.5 mt-2">
-                {attachments.map(a => (
-                  <li key={a.id} className="flex items-center justify-between gap-2 text-sm">
-                    <span className="truncate"><span className="font-semibold text-[color:var(--narra)]">{a.fileName}</span> <span className="text-[color:var(--mid-gray)] text-[11px]">· {(a.fileSize / 1024).toFixed(0)} KB</span></span>
-                    <div className="flex gap-1.5 shrink-0">
-                      <button className="text-[10.5px] px-2 py-0.5 rounded border" style={{ borderColor: 'var(--paper-3)' }} onClick={() => openAttachment(a)}>View</button>
-                      {editable && <button className="text-[10.5px] px-2 py-0.5 rounded text-[color:var(--clay)] hover:bg-[color:var(--clay-tint)]" onClick={() => handleAttachmentDelete(a)}>Delete</button>}
+              <ul className="mt-2 rounded-xl overflow-hidden" style={{ border: '1px solid var(--light-gray)' }}>
+                {attachments.map((a, i) => (
+                  <li key={a.id} className="flex items-center justify-between gap-2 px-3 py-2 text-sm" style={i ? TR_STYLE : undefined}>
+                    <span className="flex items-center gap-2 min-w-0">
+                      <Icon name="file" size={14} style={{ color: 'var(--teal)' }} />
+                      <span className="truncate font-semibold" style={{ color: 'var(--charcoal)' }}>{a.fileName}</span>
+                      <span className="text-[11px] whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{(a.fileSize / 1024).toFixed(0)} KB</span>
+                    </span>
+                    <div className="flex gap-1 shrink-0">
+                      <button type="button" className={BTN_SM} style={SECONDARY_STYLE} onClick={() => openAttachment(a)} aria-label={`View ${a.fileName}`}>View</button>
+                      {editable && <button type="button" className={BTN_DANGER_GHOST} style={{ color: DANGER }} onClick={() => handleAttachmentDelete(a)} aria-label={`Delete ${a.fileName}`}>Delete</button>}
                     </div>
                   </li>
                 ))}
@@ -816,31 +841,36 @@ function LessonEditor({ klass, roster, existing, onClose, onSaved, isStudent }: 
         )}
 
         {!isStudent && (
-          <Section title="Attendance">
-            <ul className="space-y-1.5">
-              {roster.map(s => {
-                const v = attendance[s.id]
-                return (
-                  <li key={s.id} className="flex items-center justify-between gap-2 text-sm">
-                    <span className="truncate font-semibold text-[color:var(--narra)]">{[s.firstName, s.lastName].filter(Boolean).join(' ') || s.email}</span>
-                    <div className="flex gap-1.5 shrink-0">
-                      <button type="button" disabled={!editable} className={`text-[11px] px-2 py-0.5 rounded ${v === 'PRESENT' ? 'bg-[color:var(--moss)] text-white' : 'border text-[color:var(--moss)]'}`} style={{ borderColor: v === 'PRESENT' ? 'transparent' : 'var(--paper-3)' }} onClick={() => setStatus(s.id, 'PRESENT')}>Present</button>
-                      <button type="button" disabled={!editable} className={`text-[11px] px-2 py-0.5 rounded ${v === 'ABSENT' ? 'bg-[color:var(--clay)] text-white' : 'border text-[color:var(--clay)]'}`} style={{ borderColor: v === 'ABSENT' ? 'transparent' : 'var(--paper-3)' }} onClick={() => setStatus(s.id, 'ABSENT')}>Absent</button>
-                    </div>
-                  </li>
-                )
-              })}
-            </ul>
+          <Section title="Attendance" hint={`${presentIds.length} present · ${absentIds.length} absent · ${roster.length} on roster`}>
+            {roster.length === 0 ? (
+              <p className="text-sm py-1" style={{ color: 'var(--mid-gray)' }}>No students enrolled in this class yet.</p>
+            ) : (
+              <ul className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--light-gray)' }}>
+                {roster.map((s, i) => {
+                  const v = attendance[s.id]
+                  const name = [s.firstName, s.lastName].filter(Boolean).join(' ') || s.email
+                  return (
+                    <li key={s.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm" style={i ? TR_STYLE : undefined}>
+                      <span className="truncate font-semibold min-w-0" style={{ color: 'var(--charcoal)' }}>{name}</span>
+                      <div className="flex gap-1.5 shrink-0" role="group" aria-label={`Attendance for ${name}`}>
+                        <AttendanceToggle label="Present" tone="present" active={v === 'PRESENT'} disabled={!editable} onClick={() => setStatus(s.id, 'PRESENT')} />
+                        <AttendanceToggle label="Absent" tone="absent" active={v === 'ABSENT'} disabled={!editable} onClick={() => setStatus(s.id, 'ABSENT')} />
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
           </Section>
         )}
 
         {!isStudent && (
           <Section title="Class output / test">
-            <label className="inline-flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={hasOutput} onChange={e => setHasOutput(e.target.checked)} disabled={!editable} />
+            <label className="inline-flex items-center gap-2 text-sm font-semibold cursor-pointer" style={{ color: 'var(--charcoal)' }}>
+              <input type="checkbox" className="w-4 h-4 accent-[color:var(--deep-teal)]" checked={hasOutput} onChange={e => setHasOutput(e.target.checked)} disabled={!editable} />
               Has class output / test?
             </label>
-            <p className="text-[12px] text-[color:var(--mid-gray)] mt-1">
+            <p className="text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>
               Tick this if today&apos;s lesson produced a graded output or test. You can set a total score and grade each student below; optional per-student file uploads appear once the lesson is saved.
             </p>
             {hasOutput && (
@@ -848,36 +878,34 @@ function LessonEditor({ klass, roster, existing, onClose, onSaved, isStudent }: 
                 {/* One unified grade row per student:
                       [Student name]   [score input]/[total]   [Proof file button]
                     Total points input lives at the top of the section, so
-                    every row uses the same "/ X" denominator. Proof upload
-                    is disabled (with a "Save lesson first" tooltip) until
-                    the lesson row exists on the server — that's the only
-                    point at which the upload endpoint can attach blobs.
-                    Absent students render below with an extra makeup-date
-                    input on the same line. */}
+                    every row uses the same "/ X" denominator. Absent
+                    students render below with an extra makeup-date input
+                    on the same line. Rows wrap on phones. */}
                 <div className="mt-4">
                   <label className="block max-w-[160px]">
-                    <span className="label">Total points</span>
-                    <input type="number" className="input" value={gradeTotal} onChange={e => setGradeTotal(e.target.value)} placeholder="e.g. 100" disabled={!editable} />
+                    <span className={LABEL} style={LABEL_STYLE}>Total points</span>
+                    <input type="number" className={`${CONTROL} w-full`} style={CONTROL_STYLE} value={gradeTotal} onChange={e => setGradeTotal(e.target.value)} placeholder="e.g. 100" disabled={!editable} />
                   </label>
                   {/* Student rows render immediately on tick, even
                       before Total points is filled. The score input
                       uses `gradeTotal` as max when set, otherwise
-                      leaves it open. This way the teacher sees the
-                      full roster the moment they confirm there's a
-                      graded output, without having to remember to
-                      type a number first. */}
-                  <ul className="space-y-1.5 mt-3">
-                      {presentIds.map(sid => {
+                      leaves it open. */}
+                  <ul className="mt-3 rounded-xl overflow-hidden" style={{ border: '1px solid var(--light-gray)' }}>
+                      {presentIds.length === 0 && absentIds.length === 0 && (
+                        <li className="px-3 py-3 text-sm" style={{ color: 'var(--mid-gray)' }}>Mark attendance above to list students here.</li>
+                      )}
+                      {presentIds.map((sid, i) => {
                         const s = roster.find(r => r.id === sid)!
                         const g = grades[sid]
                         const out = outputs.find(o => o.studentId === sid)
                         const pending = pendingOutputs[sid]
+                        const name = [s.firstName, s.lastName].filter(Boolean).join(' ') || s.email
                         return (
-                          <li key={sid} className="grid grid-cols-[1fr_auto] gap-2 items-center text-sm">
-                            <span className="truncate font-semibold text-[color:var(--narra)]">{[s.firstName, s.lastName].filter(Boolean).join(' ') || s.email}</span>
-                            <span className="flex items-center gap-1.5 shrink-0">
-                              <input type="number" min={0} max={gradeTotal.trim() ? Number(gradeTotal) : undefined} className="input" style={{ width: 80 }} value={g?.score ?? ''} onChange={e => setGrade(sid, Number(e.target.value))} disabled={!editable} />
-                              <span className="text-[11.5px] text-[color:var(--mid-gray)]">/ {gradeTotal || '—'}</span>
+                          <li key={sid} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm" style={i ? TR_STYLE : undefined}>
+                            <span className="truncate font-semibold min-w-0" style={{ color: 'var(--charcoal)' }}>{name}</span>
+                            <span className="flex flex-wrap items-center gap-1.5 justify-end">
+                              <input type="number" min={0} max={gradeTotal.trim() ? Number(gradeTotal) : undefined} className={`${CONTROL_SM} w-20 text-center tabular-nums font-semibold`} style={CONTROL_STYLE} value={g?.score ?? ''} onChange={e => setGrade(sid, Number(e.target.value))} disabled={!editable} aria-label={`Score for ${name}`} />
+                              <span className="text-xs tabular-nums" style={{ color: 'var(--mid-gray)' }}>/ {gradeTotal || '—'}</span>
                               {editable && (
                                 <ProofPicker
                                   hasUpload={!!out || !!pending}
@@ -886,31 +914,30 @@ function LessonEditor({ klass, roster, existing, onClose, onSaved, isStudent }: 
                                 />
                               )}
                               {pending && (
-                                <span
-                                  className="text-[9px] font-bold uppercase tracking-[0.08em] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200"
-                                  title={`Will upload "${pending.name}" when you save the lesson.`}
-                                >Pending</span>
+                                <Tag tone="warn" title={`Will upload "${pending.name}" when you save the lesson.`}>Pending</Tag>
                               )}
-                              {out && lessonId && <button type="button" className="text-[10.5px] px-2 py-0.5 rounded border" style={{ borderColor: 'var(--paper-3)' }} onClick={() => viewOutput(sid)}>View</button>}
+                              {out && lessonId && <button type="button" className={BTN_SM} style={SECONDARY_STYLE} onClick={() => viewOutput(sid)} aria-label={`View proof for ${name}`}>View</button>}
                             </span>
                           </li>
                         )
                       })}
                       {absentIds.length > 0 && (
-                        <li className="mt-3 pt-3 border-t" style={{ borderColor: 'var(--paper-3)' }}>
-                          <div className="text-[10.5px] uppercase tracking-[0.08em] text-[color:var(--mid-gray)] font-bold mb-2" style={{ fontFamily: 'var(--font-display)' }}>Absent students — makeup grade + proof</div>
+                        <li className="px-3 py-2.5" style={{ ...(presentIds.length ? TR_STYLE : {}), background: SUBTLE_BG }}>
+                          <div className={`${LABEL} mb-2`} style={LABEL_STYLE}>Absent students — makeup grade + proof</div>
+                          <div className="space-y-2">
                           {absentIds.map(sid => {
                             const s = roster.find(r => r.id === sid)!
                             const g = grades[sid]
                             const out = outputs.find(o => o.studentId === sid)
                             const pending = pendingOutputs[sid]
+                            const name = [s.firstName, s.lastName].filter(Boolean).join(' ') || s.email
                             return (
-                              <div key={sid} className="grid grid-cols-[1fr_auto] gap-2 items-center text-sm py-0.5">
-                                <span className="truncate font-semibold text-[color:var(--narra)]">{[s.firstName, s.lastName].filter(Boolean).join(' ') || s.email}</span>
-                                <span className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
-                                  <input type="date" className="input" style={{ width: 140 }} value={g?.makeupDate ?? ''} onChange={e => setMakeup(sid, e.target.value)} disabled={!editable} title="Makeup date" />
-                                  <input type="number" min={0} max={gradeTotal.trim() ? Number(gradeTotal) : undefined} className="input" style={{ width: 80 }} value={g?.score ?? ''} onChange={e => setGrade(sid, Number(e.target.value))} disabled={!editable} />
-                                  <span className="text-[11.5px] text-[color:var(--mid-gray)]">/ {gradeTotal || '—'}</span>
+                              <div key={sid} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                                <span className="truncate font-semibold min-w-0" style={{ color: 'var(--charcoal)' }}>{name}</span>
+                                <span className="flex items-center gap-1.5 flex-wrap justify-end">
+                                  <input type="date" className={`${CONTROL_SM} w-[140px]`} style={CONTROL_STYLE} value={g?.makeupDate ?? ''} onChange={e => setMakeup(sid, e.target.value)} disabled={!editable} title="Makeup date" aria-label={`Makeup date for ${name}`} />
+                                  <input type="number" min={0} max={gradeTotal.trim() ? Number(gradeTotal) : undefined} className={`${CONTROL_SM} w-20 text-center tabular-nums font-semibold`} style={CONTROL_STYLE} value={g?.score ?? ''} onChange={e => setGrade(sid, Number(e.target.value))} disabled={!editable} aria-label={`Makeup score for ${name}`} />
+                                  <span className="text-xs tabular-nums" style={{ color: 'var(--mid-gray)' }}>/ {gradeTotal || '—'}</span>
                                   {editable && (
                                     <ProofPicker
                                       hasUpload={!!out || !!pending}
@@ -919,16 +946,14 @@ function LessonEditor({ klass, roster, existing, onClose, onSaved, isStudent }: 
                                     />
                                   )}
                                   {pending && (
-                                    <span
-                                      className="text-[9px] font-bold uppercase tracking-[0.08em] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200"
-                                      title={`Will upload "${pending.name}" when you save the lesson.`}
-                                    >Pending</span>
+                                    <Tag tone="warn" title={`Will upload "${pending.name}" when you save the lesson.`}>Pending</Tag>
                                   )}
-                                  {out && lessonId && <button type="button" className="text-[10.5px] px-2 py-0.5 rounded border" style={{ borderColor: 'var(--paper-3)' }} onClick={() => viewOutput(sid)}>View</button>}
+                                  {out && lessonId && <button type="button" className={BTN_SM} style={SECONDARY_STYLE} onClick={() => viewOutput(sid)} aria-label={`View proof for ${name}`}>View</button>}
                                 </span>
                               </div>
                             )
                           })}
+                          </div>
                         </li>
                       )}
                     </ul>
@@ -946,25 +971,46 @@ function LessonEditor({ klass, roster, existing, onClose, onSaved, isStudent }: 
         {lessonId && (
           <TestsSection lessonId={lessonId} roster={roster} canEdit={editable} viewerRole={isStudent ? 'STUDENT' : 'STAFF'} attendance={attendance} />
         )}
-
-        {editable && (
-          <div className="flex gap-2 justify-end mt-4 pt-3 border-t" style={{ borderColor: 'var(--paper-3)' }}>
-            <button className="btn-secondary text-xs" onClick={onClose} disabled={busy}>Cancel</button>
-            <button className="btn-primary text-xs" onClick={save} disabled={busy}>{busy ? 'Saving…' : (existing ? 'Save changes' : 'Create lesson')}</button>
-          </div>
-        )}
-      </div>
-    </div>
+    </Dialog>
     </Portal>
   )
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+/** Present / Absent button. The chosen one fills AND shows a check mark, so the state isn't colour alone. */
+function AttendanceToggle({ label, tone, active, disabled, onClick }: {
+  label: string
+  tone: 'present' | 'absent'
+  active: boolean
+  disabled: boolean
+  onClick: () => void
+}) {
+  const fill = tone === 'present' ? 'var(--deep-teal)' : DANGER
   return (
-    <div className="mt-5 pt-4 border-t first:border-t-0 first:mt-0 first:pt-0" style={{ borderColor: 'var(--paper-3)' }}>
-      <h3 className="text-[13px] font-bold uppercase tracking-[0.10em] text-[color:var(--bright-teal)] mb-3" style={{ fontFamily: 'var(--font-display)' }}>{title}</h3>
+    <button
+      type="button"
+      aria-pressed={active}
+      disabled={disabled}
+      onClick={onClick}
+      className={`inline-flex items-center gap-1 h-8 px-2.5 rounded-lg text-xs font-semibold transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${FOCUS}`}
+      style={active
+        ? { background: fill, color: '#fff', border: `1px solid ${fill}` }
+        : { background: '#fff', color: tone === 'present' ? 'var(--deep-teal)' : DANGER, border: '1px solid var(--light-gray)' }}
+    >
+      {active && <Icon name={tone === 'present' ? 'check' : 'x'} size={12} />}
+      {label}
+    </button>
+  )
+}
+
+function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <section className="mt-5 pt-5 first:mt-0 first:pt-0 first:border-t-0 border-t" style={{ borderColor: 'var(--light-gray)' }}>
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 mb-3">
+        <h3 className="text-[13px] font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)', letterSpacing: 0 }}>{title}</h3>
+        {hint && <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>{hint}</p>}
+      </div>
       {children}
-    </div>
+    </section>
   )
 }
 
@@ -990,16 +1036,17 @@ function ProofPicker({ hasUpload, disabledHint, onPick }: {
   if (disabledHint) {
     return (
       <span
-        className="btn-secondary text-[10.5px] inline-flex items-center opacity-50 cursor-not-allowed"
+        className={`${BTN_SM} opacity-50 cursor-not-allowed`}
         title={disabledHint}
-        style={{ width: 'auto' }}
+        style={SECONDARY_STYLE}
       >
         Proof
       </span>
     )
   }
   return (
-    <label className="btn-secondary text-[10.5px] cursor-pointer inline-flex items-center" style={{ width: 'auto' }}>
+    <label className={`${BTN_SM} ${FILE_FOCUS}`} style={SECONDARY_STYLE}>
+      <Icon name="upload" size={12} />
       {hasUpload ? 'Replace' : 'Proof'}
       <input type="file" className="sr-only" accept="image/*,.pdf" onChange={handle} />
     </label>
@@ -1075,24 +1122,30 @@ function TestsSection({ lessonId, roster, canEdit, viewerRole, attendance }: {
   return (
     <Section title="Tests / Exams">
       {canEdit && !adding && (
-        <button className="btn-secondary text-xs" onClick={() => setAdding(true)}>+ Add test / exam</button>
+        <button type="button" className={BTN_SECONDARY} style={SECONDARY_STYLE} onClick={() => setAdding(true)}><Icon name="plus" size={14} /> Add test / exam</button>
       )}
       {adding && (
-        <div className="rounded-xl border p-3 mt-2 space-y-2" style={{ borderColor: 'var(--paper-3)', background: 'var(--paper-2)' }}>
+        <div className="rounded-xl p-3 mt-2 space-y-2.5" style={{ border: '1px solid var(--light-gray)', background: SUBTLE_BG }}>
           <div className="grid sm:grid-cols-[1fr_120px] gap-2">
-            <input className="input" placeholder="Test / exam title" value={newTitle} onChange={e => setNewTitle(e.target.value)} />
-            <input className="input" type="number" placeholder="Total pts" value={newPoints} onChange={e => setNewPoints(e.target.value)} />
+            <label className="block">
+              <span className="sr-only">Test / exam title</span>
+              <input className={`${CONTROL} w-full`} style={CONTROL_STYLE} placeholder="Test / exam title" value={newTitle} onChange={e => setNewTitle(e.target.value)} />
+            </label>
+            <label className="block">
+              <span className="sr-only">Total points</span>
+              <input className={`${CONTROL} w-full`} style={CONTROL_STYLE} type="number" placeholder="Total pts" value={newPoints} onChange={e => setNewPoints(e.target.value)} />
+            </label>
           </div>
           <div className="flex gap-2 justify-end">
-            <button className="btn-secondary text-xs" onClick={() => { setAdding(false); setNewTitle(''); setNewPoints('') }}>Cancel</button>
-            <button className="btn-primary text-xs" onClick={add}>Add</button>
+            <button type="button" className={BTN_SECONDARY} style={SECONDARY_STYLE} onClick={() => { setAdding(false); setNewTitle(''); setNewPoints('') }}>Cancel</button>
+            <button type="button" className={BTN_PRIMARY} style={PRIMARY_STYLE} onClick={add}>Add</button>
           </div>
         </div>
       )}
       {busy && tests.length === 0 ? (
-        <p className="text-sm text-[color:var(--mid-gray)] py-3">Loading tests…</p>
+        <div className="space-y-2 py-3" role="status" aria-label="Loading tests"><Skeleton className="h-4 w-1/3" /><Skeleton className="h-3 w-1/2" /></div>
       ) : tests.length === 0 ? (
-        <p className="text-sm text-[color:var(--mid-gray)] py-3">No tests yet.</p>
+        <p className="text-sm py-3" style={{ color: 'var(--mid-gray)' }}>No tests yet.</p>
       ) : (
         <ul className="space-y-3 mt-3">
           {tests.map(t => (
@@ -1143,13 +1196,13 @@ function TestCard({ test, roster, attendance, canEdit, viewerRole, onChange, onD
   }
 
   return (
-    <li className="rounded-xl border p-3" style={{ borderColor: 'var(--paper-3)' }}>
+    <li className="rounded-xl p-3" style={{ border: '1px solid var(--light-gray)' }}>
       <div className="flex items-start justify-between gap-2 flex-wrap">
-        <div>
-          <div className="font-semibold text-[color:var(--narra)]">{test.title}</div>
-          <div className="text-[11.5px] text-[color:var(--mid-gray)]">Out of {test.totalPoints} points</div>
+        <div className="min-w-0">
+          <div className="font-semibold break-words" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>{test.title}</div>
+          <div className="text-xs" style={{ color: 'var(--mid-gray)' }}>Out of <span className="tabular-nums">{test.totalPoints}</span> points</div>
         </div>
-        {canEdit && <button className="text-[10.5px] px-2 py-0.5 rounded text-[color:var(--clay)] hover:bg-[color:var(--clay-tint)]" onClick={onDelete}>Delete</button>}
+        {canEdit && <button type="button" className={BTN_DANGER_GHOST} style={{ color: DANGER }} onClick={onDelete} aria-label={`Delete test ${test.title}`}><Icon name="trash" size={12} /> Delete</button>}
       </div>
       <ScoreList
         roster={roster}
@@ -1196,17 +1249,19 @@ function ScoreList({ roster, presentIds, absentIds, totalPoints, scores, setScor
       // Student should only ever see their own row when this list is
       // rendered. The caller already filters; nothing extra to do.
     }
+    const name = [s.firstName, s.lastName].filter(Boolean).join(' ') || s.email
     return (
-      <div key={s.id} className="grid grid-cols-[1fr_auto] gap-2 items-center text-sm py-1">
-        <span className="truncate font-semibold text-[color:var(--narra)]">{[s.firstName, s.lastName].filter(Boolean).join(' ') || s.email}</span>
-        <div className="flex items-center gap-1.5 shrink-0">
+      <div key={s.id} className="flex flex-wrap items-center justify-between gap-2 text-sm py-1.5">
+        <span className="truncate font-semibold min-w-0" style={{ color: 'var(--charcoal)' }}>{name}</span>
+        <div className="flex flex-wrap items-center gap-1.5 justify-end">
           {isAbsent && canEdit && (
-            <input type="date" className="input" style={{ width: 140 }} value={scores[s.id]?.makeupDate ?? ''} onChange={e => setMakeup(s.id, e.target.value)} onBlur={onScoreBlur} title={labelMakeup} />
+            <input type="date" className={`${CONTROL_SM} w-[140px]`} style={CONTROL_STYLE} value={scores[s.id]?.makeupDate ?? ''} onChange={e => setMakeup(s.id, e.target.value)} onBlur={onScoreBlur} title={labelMakeup} aria-label={`${labelMakeup} date for ${name}`} />
           )}
-          <input type="number" min={0} max={totalPoints} className="input" style={{ width: 70 }} value={scores[s.id]?.score ?? ''} onChange={e => setScore(s.id, Number(e.target.value))} onBlur={onScoreBlur} disabled={!canEdit} />
-          <span className="text-[11.5px] text-[color:var(--mid-gray)]">/ {totalPoints}</span>
+          <input type="number" min={0} max={totalPoints} className={`${CONTROL_SM} w-[70px] text-center tabular-nums font-semibold`} style={CONTROL_STYLE} value={scores[s.id]?.score ?? ''} onChange={e => setScore(s.id, Number(e.target.value))} onBlur={onScoreBlur} disabled={!canEdit} aria-label={`Score for ${name}`} />
+          <span className="text-xs tabular-nums" style={{ color: 'var(--mid-gray)' }}>/ {totalPoints}</span>
           {onUploadProof && (
-            <label className="btn-secondary text-[10.5px] cursor-pointer">
+            <label className={`${BTN_SM} ${FILE_FOCUS}`} style={SECONDARY_STYLE}>
+              <Icon name="upload" size={12} />
               Proof
               <input type="file" className="sr-only" accept="image/*,.pdf" onChange={async e => {
                 const f = e.target.files?.[0]; e.target.value = ''
@@ -1214,7 +1269,7 @@ function ScoreList({ roster, presentIds, absentIds, totalPoints, scores, setScor
               }} />
             </label>
           )}
-          <button className="text-[10.5px] px-2 py-0.5 rounded border" style={{ borderColor: 'var(--paper-3)' }} onClick={() => onViewProof(s.id)}>View</button>
+          <button type="button" className={BTN_SM} style={SECONDARY_STYLE} onClick={() => onViewProof(s.id)} aria-label={`View proof for ${name}`}>View</button>
         </div>
       </div>
     )
@@ -1223,11 +1278,11 @@ function ScoreList({ roster, presentIds, absentIds, totalPoints, scores, setScor
   // The component receives full roster lists from the parent because
   // teachers + admins see everyone; we filter at this seam.
   return (
-    <div className="mt-3">
+    <div className="mt-3 divide-y divide-[color:var(--light-gray)]">
       {presentIds.map(id => roster.find(s => s.id === id)).filter((s): s is StoredUser => !!s).map(s => rowForStudent(s, false))}
       {absentIds.length > 0 && (
         <>
-          <div className="text-[10.5px] uppercase tracking-[0.08em] text-[color:var(--mid-gray)] font-bold mt-3 mb-1" style={{ fontFamily: 'var(--font-display)' }}>Absent — makeup</div>
+          <div className={`${LABEL} pt-3 mb-0`} style={LABEL_STYLE}>Absent — makeup</div>
           {absentIds.map(id => roster.find(s => s.id === id)).filter((s): s is StoredUser => !!s).map(s => rowForStudent(s, true))}
         </>
       )}
@@ -1260,25 +1315,20 @@ function ProjectsSection({ classId, roster, canEdit, isStudent, viewerId }: {
   useEffect(() => { void load() }, [classId])
 
   return (
-    <div className="card-static">
-      <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
-        <div>
-          <h2 className="text-[18px] leading-tight">Projects</h2>
-          <p className="text-[12.5px] text-[color:var(--mid-gray)] mt-1">
-            {canEdit ? 'Standalone graded projects with deadlines and per-student proof uploads.' : 'Projects assigned to this class.'}
-          </p>
-        </div>
-        {canEdit && (
-          <button className="btn-primary text-xs" onClick={() => { setMode('edit'); setEditing('new') }}>+ Add Project</button>
-        )}
-      </div>
-
+    <DashCard
+      title="Projects"
+      icon={<Icon name="award" size={15} />}
+      description={canEdit ? 'Standalone graded projects with deadlines and per-student proof uploads.' : 'Projects assigned to this class.'}
+      action={canEdit && (
+        <button type="button" className={BTN_PRIMARY} style={PRIMARY_STYLE} onClick={() => { setMode('edit'); setEditing('new') }}><Icon name="plus" size={15} /> Add project</button>
+      )}
+    >
       {busy && projects.length === 0 ? (
-        <p className="text-sm text-[color:var(--mid-gray)] py-3">Loading…</p>
+        <div className="space-y-2" role="status" aria-label="Loading projects"><Skeleton className="h-4 w-1/2" /><Skeleton className="h-3 w-2/3" /></div>
       ) : projects.length === 0 ? (
-        <p className="text-sm text-[color:var(--mid-gray)] py-3">No projects yet.</p>
+        <EmptyState icon="award" title="No projects yet." />
       ) : (
-        <ul className="space-y-3">
+        <ul className="space-y-2.5">
           {projects.map(p => (
             <ProjectCard
               key={p.id}
@@ -1310,7 +1360,7 @@ function ProjectsSection({ classId, roster, canEdit, isStudent, viewerId }: {
           viewerId={viewerId}
         />
       )}
-    </div>
+    </DashCard>
   )
 }
 
@@ -1325,24 +1375,24 @@ function ProjectCard({ project, viewerIsStudent, viewerId, onView, onEdit, onDel
 }) {
   const myScore = viewerIsStudent && viewerId ? project.grades[viewerId]?.score : undefined
   return (
-    <li className="rounded-xl border p-3" style={{ borderColor: 'var(--paper-3)' }}>
+    <li className="rounded-xl p-3" style={{ border: '1px solid var(--light-gray)' }}>
       <div className="flex items-start justify-between gap-2 flex-wrap">
         <div className="min-w-0">
-          <h3 className="font-semibold text-[color:var(--narra)]">{project.title}</h3>
-          <p className="text-[11.5px] text-[color:var(--mid-gray)]">
-            Total: {project.totalScore} pts
-            {project.deadline ? ` · Due ${new Date(project.deadline).toLocaleDateString()}` : ''}
-            {viewerIsStudent && typeof myScore === 'number' ? ` · Your score: ${myScore}/${project.totalScore}` : ''}
+          <h3 className="text-sm font-bold break-words" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)', letterSpacing: 0 }}>{project.title}</h3>
+          <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>
+            <span>Total: <span className="tabular-nums">{project.totalScore}</span> pts</span>
+            {project.deadline ? <span className="inline-flex items-center gap-1"><Icon name="clock" size={12} /> Due {new Date(project.deadline).toLocaleDateString()}</span> : null}
+            {viewerIsStudent && typeof myScore === 'number' ? <span>Your score: <span className="font-semibold tabular-nums" style={{ color: 'var(--charcoal)' }}>{myScore}/{project.totalScore}</span></span> : null}
           </p>
-          {project.description && <p className="text-[13px] mt-1 whitespace-pre-line">{project.description}</p>}
+          {project.description && <p className="text-[13px] mt-1.5 whitespace-pre-line break-words" style={{ color: 'var(--charcoal)' }}>{project.description}</p>}
         </div>
         {/* View is always available so teachers can inspect a project
             without entering edit mode (and accidentally changing grades
             mid-class). Edit + Delete only when the viewer has rights. */}
-        <div className="flex gap-1.5 shrink-0">
-          <button className="btn-secondary text-xs" onClick={onView}>View</button>
-          {canEdit && <button className="btn-secondary text-xs" onClick={onEdit}>Edit</button>}
-          {canEdit && <button className="text-[10.5px] px-2 py-0.5 rounded text-[color:var(--clay)] hover:bg-[color:var(--clay-tint)]" onClick={onDelete}>Delete</button>}
+        <div className="flex gap-1 shrink-0">
+          <button type="button" className={BTN_SM} style={SECONDARY_STYLE} onClick={onView} aria-label={`View project ${project.title}`}><Icon name="eye" size={12} /> View</button>
+          {canEdit && <button type="button" className={BTN_SM} style={SECONDARY_STYLE} onClick={onEdit} aria-label={`Edit project ${project.title}`}><Icon name="edit" size={12} /> Edit</button>}
+          {canEdit && <button type="button" className={BTN_DANGER_GHOST} style={{ color: DANGER }} onClick={onDelete} aria-label={`Delete project ${project.title}`}><Icon name="trash" size={12} /> Delete</button>}
         </div>
       </div>
     </li>
@@ -1413,37 +1463,37 @@ function ProjectEditor({ classId, roster, existing, readOnly, onClose, onSaved, 
 
   return (
     <Portal>
-    <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm overflow-y-auto p-2 sm:p-4" onClick={onClose}>
-      <div className="max-w-6xl mx-auto my-2 sm:my-4 card-static min-h-[calc(100vh-1rem)] sm:min-h-[calc(100vh-2rem)]" onClick={e => e.stopPropagation()}>
-        <div className="flex items-start justify-between gap-3 mb-4">
-          <div>
-            <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)]" style={{ fontFamily: 'var(--font-display)' }}>
-              {readOnly ? 'View project' : existing ? 'Edit project' : 'Add project'}
-            </div>
-            <h2 className="text-[20px] leading-tight text-[color:var(--deep-teal)]">{title || 'New project'}</h2>
-          </div>
-          <button className="btn-secondary text-xs" onClick={onClose}>Close</button>
-        </div>
-        {err && <div className="mb-3 px-4 py-3 rounded-xl bg-rose-50 border border-rose-100 text-sm text-rose-800">{err}</div>}
+    <Dialog
+      labelId="project-editor-title"
+      size="xl"
+      eyebrow={readOnly ? 'View project' : existing ? 'Edit project' : 'Add project'}
+      title={title || 'New project'}
+      onClose={onClose}
+      footer={canEdit ? <>
+        <button type="button" className={BTN_SECONDARY} style={SECONDARY_STYLE} onClick={onClose} disabled={busy}>Cancel</button>
+        <button type="button" className={BTN_PRIMARY} style={PRIMARY_STYLE} onClick={save} disabled={busy}>{busy ? 'Saving…' : (existing ? 'Save changes' : 'Create project')}</button>
+      </> : undefined}
+    >
+        {err && <div className="mb-4"><Banner tone="error">{err}</Banner></div>}
 
         <Section title="Details">
           <div className="grid sm:grid-cols-[1fr_160px] gap-3">
             <label className="block">
-              <span className="label">Title</span>
-              <input className="input" value={title} onChange={e => setTitle(e.target.value)} disabled={!canEdit} />
+              <span className={LABEL} style={LABEL_STYLE}>Title</span>
+              <input className={`${CONTROL} w-full`} style={CONTROL_STYLE} value={title} onChange={e => setTitle(e.target.value)} disabled={!canEdit} />
             </label>
             <label className="block">
-              <span className="label">Total score</span>
-              <input type="number" className="input" value={totalScore} onChange={e => setTotalScore(e.target.value)} disabled={!canEdit} />
+              <span className={LABEL} style={LABEL_STYLE}>Total score</span>
+              <input type="number" className={`${CONTROL} w-full`} style={CONTROL_STYLE} value={totalScore} onChange={e => setTotalScore(e.target.value)} disabled={!canEdit} />
             </label>
           </div>
           <label className="block mt-3 max-w-[200px]">
-            <span className="label">Deadline (optional)</span>
-            <input type="date" className="input" value={deadline} onChange={e => setDeadline(e.target.value)} disabled={!canEdit} />
+            <span className={LABEL} style={LABEL_STYLE}>Deadline (optional)</span>
+            <input type="date" className={`${CONTROL} w-full`} style={CONTROL_STYLE} value={deadline} onChange={e => setDeadline(e.target.value)} disabled={!canEdit} />
           </label>
           <label className="block mt-3">
-            <span className="label">Description</span>
-            <textarea className="input" rows={3} value={description ?? ''} onChange={e => setDescription(e.target.value)} disabled={!canEdit} />
+            <span className={LABEL} style={LABEL_STYLE}>Description</span>
+            <textarea className={TEXTAREA} style={CONTROL_STYLE} rows={3} value={description ?? ''} onChange={e => setDescription(e.target.value)} disabled={!canEdit} />
           </label>
         </Section>
 
@@ -1455,23 +1505,26 @@ function ProjectEditor({ classId, roster, existing, readOnly, onClose, onSaved, 
             hint while the project is still a draft. */}
         <Section title={viewerIsStudent ? 'Your grade' : 'Grades + proof'}>
           {visibleStudents.length === 0 ? (
-            <p className="text-sm text-[color:var(--mid-gray)] py-3">
+            <p className="text-sm py-3" style={{ color: 'var(--mid-gray)' }}>
               {viewerIsStudent ? 'You are not on this roster.' : 'No students enrolled in this class yet.'}
             </p>
           ) : (
-            <ul className="space-y-1">
-              {visibleStudents.map(s => (
-                <div key={s.id} className="grid grid-cols-[1fr_auto] gap-2 items-center text-sm py-1">
-                  <span className="truncate font-semibold text-[color:var(--narra)]">{[s.firstName, s.lastName].filter(Boolean).join(' ') || s.email}</span>
-                  <div className="flex items-center gap-1.5 shrink-0">
+            <ul className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--light-gray)' }}>
+              {visibleStudents.map((s, i) => {
+                const name = [s.firstName, s.lastName].filter(Boolean).join(' ') || s.email
+                return (
+                <li key={s.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm" style={i ? TR_STYLE : undefined}>
+                  <span className="truncate font-semibold min-w-0" style={{ color: 'var(--charcoal)' }}>{name}</span>
+                  <div className="flex flex-wrap items-center gap-1.5 justify-end">
                     {canEdit && (
-                      <input type="date" className="input" style={{ width: 140 }} value={grades[s.id]?.makeupDate ?? ''} onChange={e => setMakeup(s.id, e.target.value)} onBlur={projectId ? save : undefined} title="Makeup date (optional)" />
+                      <input type="date" className={`${CONTROL_SM} w-[140px]`} style={CONTROL_STYLE} value={grades[s.id]?.makeupDate ?? ''} onChange={e => setMakeup(s.id, e.target.value)} onBlur={projectId ? save : undefined} title="Makeup date (optional)" aria-label={`Makeup date for ${name} (optional)`} />
                     )}
-                    <input type="number" min={0} max={Number(totalScore) || undefined} className="input" style={{ width: 70 }} value={grades[s.id]?.score ?? ''} onChange={e => setGrade(s.id, Number(e.target.value))} onBlur={projectId ? save : undefined} disabled={!canEdit} />
-                    <span className="text-[11.5px] text-[color:var(--mid-gray)]">/ {totalScore || '—'}</span>
+                    <input type="number" min={0} max={Number(totalScore) || undefined} className={`${CONTROL_SM} w-[70px] text-center tabular-nums font-semibold`} style={CONTROL_STYLE} value={grades[s.id]?.score ?? ''} onChange={e => setGrade(s.id, Number(e.target.value))} onBlur={projectId ? save : undefined} disabled={!canEdit} aria-label={`Score for ${name}`} />
+                    <span className="text-xs tabular-nums" style={{ color: 'var(--mid-gray)' }}>/ {totalScore || '—'}</span>
                     {/* Proof upload + View require a saved project row. */}
                     {canEdit && projectId && (
-                      <label className="btn-secondary text-[10.5px] cursor-pointer">
+                      <label className={`${BTN_SM} ${FILE_FOCUS}`} style={SECONDARY_STYLE}>
+                        <Icon name="upload" size={12} />
                         Proof
                         <input type="file" className="sr-only" accept="image/*,.pdf" onChange={async e => {
                           const f = e.target.files?.[0]; e.target.value = ''
@@ -1480,28 +1533,23 @@ function ProjectEditor({ classId, roster, existing, readOnly, onClose, onSaved, 
                       </label>
                     )}
                     {projectId && (
-                      <button className="text-[10.5px] px-2 py-0.5 rounded border" style={{ borderColor: 'var(--paper-3)' }} onClick={() => viewProof(s.id)}>View</button>
+                      <button type="button" className={BTN_SM} style={SECONDARY_STYLE} onClick={() => viewProof(s.id)} aria-label={`View proof for ${name}`}>View</button>
                     )}
                   </div>
-                </div>
-              ))}
+                </li>
+                )
+              })}
             </ul>
           )}
           {canEdit && !projectId && visibleStudents.length > 0 && (
-            <p className="text-[12px] text-[color:var(--mid-gray)] mt-3 italic">
-              Tip: scores save when the project is created. Click <span className="font-semibold">Create project</span> below — proof uploads become available right after.
-            </p>
+            <div className="mt-3">
+              <Banner tone="info">
+                Scores save when the project is created. Click <span className="font-semibold">Create project</span> below — proof uploads become available right after.
+              </Banner>
+            </div>
           )}
         </Section>
-
-        {canEdit && (
-          <div className="flex gap-2 justify-end mt-4 pt-3 border-t" style={{ borderColor: 'var(--paper-3)' }}>
-            <button className="btn-secondary text-xs" onClick={onClose} disabled={busy}>Cancel</button>
-            <button className="btn-primary text-xs" onClick={save} disabled={busy}>{busy ? 'Saving…' : (existing ? 'Save changes' : 'Create project')}</button>
-          </div>
-        )}
-      </div>
-    </div>
+    </Dialog>
     </Portal>
   )
 }
@@ -1524,25 +1572,20 @@ function ActivitiesSection({ classId, canEdit }: {
   useEffect(() => { void load() }, [classId])
 
   return (
-    <div className="card-static">
-      <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
-        <div>
-          <h2 className="text-[18px] leading-tight">Activities</h2>
-          <p className="text-[12.5px] text-[color:var(--mid-gray)] mt-1">
-            School events, field trips, IEP reviews, holidays — anything that&apos;s not a graded lesson. Upload a photo gallery so students and parents can see what happened.
-          </p>
-        </div>
-        {canEdit && (
-          <button className="btn-primary text-xs" onClick={() => { setMode('edit'); setEditing('new') }}>+ Add Activity</button>
-        )}
-      </div>
-
+    <DashCard
+      title="Activities"
+      icon={<Icon name="image" size={15} />}
+      description={<>School events, field trips, IEP reviews, holidays — anything that&apos;s not a graded lesson. Upload a photo gallery so students and parents can see what happened.</>}
+      action={canEdit && (
+        <button type="button" className={BTN_PRIMARY} style={PRIMARY_STYLE} onClick={() => { setMode('edit'); setEditing('new') }}><Icon name="plus" size={15} /> Add activity</button>
+      )}
+    >
       {busy && activities.length === 0 ? (
-        <p className="text-sm text-[color:var(--mid-gray)] py-3">Loading…</p>
+        <div className="space-y-2" role="status" aria-label="Loading activities"><Skeleton className="h-4 w-1/2" /><Skeleton className="h-3 w-2/3" /></div>
       ) : activities.length === 0 ? (
-        <p className="text-sm text-[color:var(--mid-gray)] py-3">No activities yet.</p>
+        <EmptyState icon="image" title="No activities yet." />
       ) : (
-        <ul className="space-y-3">
+        <ul className="space-y-2.5">
           {activities.map(a => (
             <ActivityCard
               key={a.id}
@@ -1576,7 +1619,7 @@ function ActivitiesSection({ classId, canEdit }: {
           onSaved={async () => { await load() }}
         />
       )}
-    </div>
+    </DashCard>
   )
 }
 
@@ -1596,32 +1639,29 @@ function ActivityCard({ activity, canEdit, onView, onEdit, onDelete }: {
     return from ?? to
   })()
   return (
-    <li className="rounded-xl border p-3" style={{ borderColor: 'var(--paper-3)' }}>
+    <li className="rounded-xl p-3" style={{ border: '1px solid var(--light-gray)' }}>
       <div className="flex items-start justify-between gap-2 flex-wrap">
         <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <h3 className="font-semibold text-[color:var(--narra)]">{activity.name}</h3>
-            {activity.type && (
-              <span className="text-[10.5px] uppercase tracking-[0.08em] px-2 py-0.5 rounded-full bg-[color:var(--paper-2)] text-[color:var(--mid-gray)] font-semibold" style={{ fontFamily: 'var(--font-display)' }}>
-                {activity.type}
-              </span>
-            )}
+            <h3 className="text-sm font-bold break-words" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)', letterSpacing: 0 }}>{activity.name}</h3>
+            {activity.type && <Tag>{activity.type}</Tag>}
           </div>
-          <p className="text-[11.5px] text-[color:var(--mid-gray)] mt-0.5">
-            {dateLine ?? 'No date set'} · {activity.photos.length} photo{activity.photos.length === 1 ? '' : 's'}
+          <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs mt-1" style={{ color: 'var(--mid-gray)' }}>
+            <span className="inline-flex items-center gap-1"><Icon name="calendar" size={12} /> {dateLine ?? 'No date set'}</span>
+            <span className="inline-flex items-center gap-1"><Icon name="image" size={12} /> <span className="tabular-nums">{activity.photos.length}</span> photo{activity.photos.length === 1 ? '' : 's'}</span>
           </p>
           {activity.description && (
-            <p className="text-[13px] mt-1 whitespace-pre-line">{activity.description}</p>
+            <p className="text-[13px] mt-1.5 whitespace-pre-line break-words" style={{ color: 'var(--charcoal)' }}>{activity.description}</p>
           )}
         </div>
         {/* Two buttons so the teacher can browse the photo gallery
             without entering edit mode. "+N more" thumbnail also routes
             to view, not edit. */}
-        <div className="flex gap-1.5 shrink-0">
-          <button className="btn-secondary text-xs" onClick={onView}>View</button>
-          {canEdit && <button className="btn-secondary text-xs" onClick={onEdit}>Edit</button>}
+        <div className="flex gap-1 shrink-0">
+          <button type="button" className={BTN_SM} style={SECONDARY_STYLE} onClick={onView} aria-label={`View activity ${activity.name}`}><Icon name="eye" size={12} /> View</button>
+          {canEdit && <button type="button" className={BTN_SM} style={SECONDARY_STYLE} onClick={onEdit} aria-label={`Edit activity ${activity.name}`}><Icon name="edit" size={12} /> Edit</button>}
           {canEdit && (
-            <button className="text-[10.5px] px-2 py-0.5 rounded text-[color:var(--clay)] hover:bg-[color:var(--clay-tint)]" onClick={onDelete}>Delete</button>
+            <button type="button" className={BTN_DANGER_GHOST} style={{ color: DANGER }} onClick={onDelete} aria-label={`Delete activity ${activity.name}`}><Icon name="trash" size={12} /> Delete</button>
           )}
         </div>
       </div>
@@ -1633,9 +1673,10 @@ function ActivityCard({ activity, canEdit, onView, onEdit, onDelete }: {
           {activity.photos.length > 6 && (
             <button
               type="button"
-              className="aspect-square rounded-lg bg-[color:var(--paper-2)] text-[color:var(--mid-gray)] text-xs font-semibold hover:bg-[color:var(--paper-3)]"
+              className={`aspect-square rounded-lg text-xs font-semibold hover:bg-[color:var(--paper-3)] ${FOCUS}`}
               onClick={onView}
-              style={{ fontFamily: 'var(--font-display)' }}
+              style={{ fontFamily: 'var(--font-display)', background: 'var(--paper-2)', color: 'var(--charcoal)' }}
+              aria-label={`View all ${activity.photos.length} photos`}
             >+{activity.photos.length - 6} more</button>
           )}
         </div>
@@ -1667,14 +1708,16 @@ function ActivityPhotoThumb({ activityId, photo }: { activityId: string; photo: 
     <button
       type="button"
       onClick={openFull}
-      className="aspect-square rounded-lg overflow-hidden bg-[color:var(--paper-2)] hover:opacity-90"
+      className={`block w-full aspect-square rounded-lg overflow-hidden hover:opacity-90 ${FOCUS}`}
+      style={{ background: 'var(--paper-2)' }}
       title={photo.fileName}
+      aria-label={`Open photo ${photo.fileName}`}
     >
       {url ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={url} alt={photo.fileName} className="w-full h-full object-cover" />
       ) : (
-        <div className="w-full h-full" />
+        <Skeleton className="w-full h-full rounded-none" />
       )}
     </button>
   )
@@ -1819,32 +1862,38 @@ function ActivityEditor({ classId, existing, canEdit, onClose, onSaved }: {
     })
   }
 
+  const photoDeleteBtn = `absolute top-1 right-1 w-7 h-7 inline-flex items-center justify-center rounded-full bg-black/60 text-white transition-opacity opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 ${FOCUS}`
+
   return (
     <Portal>
-    <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm overflow-y-auto p-2 sm:p-4" onClick={onClose}>
-      <div className="max-w-6xl mx-auto my-2 sm:my-4 card-static min-h-[calc(100vh-1rem)] sm:min-h-[calc(100vh-2rem)]" onClick={e => e.stopPropagation()}>
-        <div className="flex items-start justify-between gap-3 mb-4">
-          <div>
-            <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)]" style={{ fontFamily: 'var(--font-display)' }}>
-              {!canEdit && (existing || activityId) ? 'View activity' : (existing || activityId) ? 'Edit activity' : 'Add activity'}
-            </div>
-            <h2 className="text-[20px] leading-tight text-[color:var(--deep-teal)]">{name || 'New activity'}</h2>
-          </div>
-          <button className="btn-secondary text-xs" onClick={onClose}>Close</button>
-        </div>
-
-        {err && <div className="mb-3 px-4 py-3 rounded-xl bg-rose-50 border border-rose-100 text-sm text-rose-800">{err}</div>}
+    <Dialog
+      labelId="activity-editor-title"
+      size="xl"
+      eyebrow={!canEdit && (existing || activityId) ? 'View activity' : (existing || activityId) ? 'Edit activity' : 'Add activity'}
+      title={name || 'New activity'}
+      onClose={onClose}
+      footer={canEdit ? <>
+        <button type="button" className={BTN_SECONDARY} style={SECONDARY_STYLE} onClick={onClose} disabled={busy}>Cancel</button>
+        {/* Once `activityId` is set we've persisted the row at
+            least once — flip the label so a teacher returning to
+            edit fields after their initial save sees "Save
+            changes" instead of the original "Create activity". */}
+        <button type="button" className={BTN_PRIMARY} style={PRIMARY_STYLE} onClick={save} disabled={busy}>{busy ? 'Saving…' : (activityId ? 'Save changes' : 'Create activity')}</button>
+      </> : undefined}
+    >
+        {err && <div className="mb-4"><Banner tone="error">{err}</Banner></div>}
 
         <Section title="Details">
           <div className="grid sm:grid-cols-2 gap-3">
             <label className="block">
-              <span className="label">Name</span>
-              <input className="input" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Manila Ocean Park field trip" disabled={!canEdit} />
+              <span className={LABEL} style={LABEL_STYLE}>Name</span>
+              <input className={`${CONTROL} w-full`} style={CONTROL_STYLE} value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Manila Ocean Park field trip" disabled={!canEdit} />
             </label>
             <label className="block">
-              <span className="label">Type</span>
+              <span className={LABEL} style={LABEL_STYLE}>Type</span>
               <select
-                className="select"
+                className={`${CONTROL} w-full`}
+                style={CONTROL_STYLE}
                 value={showCustomType ? '__custom__' : (type ?? '')}
                 onChange={e => {
                   const v = e.target.value
@@ -1864,29 +1913,31 @@ function ActivityEditor({ classId, existing, canEdit, onClose, onSaved }: {
               </select>
               {showCustomType && (
                 <input
-                  className="input mt-2"
+                  className={`${CONTROL} w-full mt-2`}
+                  style={CONTROL_STYLE}
                   value={type}
                   onChange={e => setType(e.target.value)}
                   placeholder="e.g. Christmas concert rehearsal"
                   disabled={!canEdit}
+                  aria-label="Custom activity type"
                   autoFocus
                 />
               )}
             </label>
           </div>
-          <div className="grid sm:grid-cols-2 gap-3 mt-3">
+          <div className="grid grid-cols-2 gap-3 mt-3">
             <label className="block">
-              <span className="label">From</span>
-              <input type="date" className="input" value={fromDate} onChange={e => setFromDate(e.target.value)} disabled={!canEdit} />
+              <span className={LABEL} style={LABEL_STYLE}>From</span>
+              <input type="date" className={`${CONTROL} w-full`} style={CONTROL_STYLE} value={fromDate} onChange={e => setFromDate(e.target.value)} disabled={!canEdit} />
             </label>
             <label className="block">
-              <span className="label">To</span>
-              <input type="date" className="input" value={toDate} onChange={e => setToDate(e.target.value)} disabled={!canEdit} />
+              <span className={LABEL} style={LABEL_STYLE}>To</span>
+              <input type="date" className={`${CONTROL} w-full`} style={CONTROL_STYLE} value={toDate} onChange={e => setToDate(e.target.value)} disabled={!canEdit} />
             </label>
           </div>
           <label className="block mt-3">
-            <span className="label">Description</span>
-            <textarea className="input" rows={4} value={description ?? ''} onChange={e => setDescription(e.target.value)} disabled={!canEdit} />
+            <span className={LABEL} style={LABEL_STYLE}>Description</span>
+            <textarea className={TEXTAREA} style={CONTROL_STYLE} rows={4} value={description ?? ''} onChange={e => setDescription(e.target.value)} disabled={!canEdit} />
           </label>
         </Section>
 
@@ -1895,20 +1946,22 @@ function ActivityEditor({ classId, existing, canEdit, onClose, onSaved }: {
             (with blob-URL previews); they flush to the server the
             moment the user clicks Create activity. After save, the
             picker uploads immediately like before. */}
-        <Section title="Photo gallery">
+        <Section title="Photo gallery" hint={`${photos.length} uploaded${pendingFiles.length ? ` · ${pendingFiles.length} queued` : ''}`}>
           {canEdit && (
-            <label className="btn-secondary text-xs cursor-pointer inline-flex items-center" style={{ width: 'auto' }}>
-              + Add photos
+            <label className={`${BTN_SECONDARY} ${FILE_FOCUS}`} style={SECONDARY_STYLE}>
+              <Icon name="plus" size={14} /> Add photos
               <input type="file" className="sr-only" accept="image/*" multiple onChange={handleUpload} />
             </label>
           )}
           {canEdit && !activityId && pendingFiles.length > 0 && (
-            <p className="text-[12px] text-[color:var(--mid-gray)] mt-2 italic">
-              {pendingFiles.length} photo{pendingFiles.length === 1 ? '' : 's'} queued — will upload when you click <span className="font-semibold">Create activity</span>.
-            </p>
+            <div className="mt-3">
+              <Banner tone="info">
+                {pendingFiles.length} photo{pendingFiles.length === 1 ? '' : 's'} queued — will upload when you click <span className="font-semibold">Create activity</span>.
+              </Banner>
+            </div>
           )}
           {photos.length === 0 && pendingFiles.length === 0 ? (
-            <p className="text-sm text-[color:var(--mid-gray)] py-3">No photos yet.</p>
+            <p className="text-sm py-3" style={{ color: 'var(--mid-gray)' }}>No photos yet.</p>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 mt-3">
               {photos.map(p => (
@@ -1918,48 +1971,35 @@ function ActivityEditor({ classId, existing, canEdit, onClose, onSaved }: {
                     <button
                       type="button"
                       onClick={() => handleDeletePhoto(p)}
-                      className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/60 text-white text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                      className={photoDeleteBtn}
                       title="Delete photo"
-                    >×</button>
+                      aria-label={`Delete photo ${p.fileName}`}
+                    ><Icon name="x" size={14} /></button>
                   )}
                 </div>
               ))}
               {pendingFiles.map(p => (
-                <div key={p.localId} className="relative group aspect-square rounded-lg overflow-hidden border" style={{ borderColor: 'var(--paper-3)' }}>
+                <div key={p.localId} className="relative group aspect-square rounded-lg overflow-hidden" style={{ border: '1px solid var(--light-gray)' }}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={p.previewUrl} alt="" className="w-full h-full object-cover" />
                   {/* "Pending" badge so the user understands these
                       haven't yet been uploaded — flush happens on Save. */}
-                  <span
-                    className="absolute bottom-1 left-1 text-[9.5px] uppercase tracking-[0.08em] font-bold px-1.5 py-0.5 rounded"
-                    style={{ background: 'rgba(0,0,0,0.55)', color: '#fff', fontFamily: 'var(--font-display)' }}
-                  >Pending</span>
+                  <span className="absolute bottom-1 left-1"><Tag tone="warn">Pending</Tag></span>
                   {canEdit && (
                     <button
                       type="button"
                       onClick={() => handleDeletePending(p.localId)}
-                      className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/60 text-white text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                      className={photoDeleteBtn}
                       title="Remove from queue"
-                    >×</button>
+                      aria-label={`Remove ${p.file.name} from the upload queue`}
+                    ><Icon name="x" size={14} /></button>
                   )}
                 </div>
               ))}
             </div>
           )}
         </Section>
-
-        {canEdit && (
-          <div className="flex gap-2 justify-end mt-4 pt-3 border-t" style={{ borderColor: 'var(--paper-3)' }}>
-            <button className="btn-secondary text-xs" onClick={onClose} disabled={busy}>Cancel</button>
-            {/* Once `activityId` is set we've persisted the row at
-                least once — flip the label so a teacher returning to
-                edit fields after their initial save sees "Save
-                changes" instead of the original "Create activity". */}
-            <button className="btn-primary text-xs" onClick={save} disabled={busy}>{busy ? 'Saving…' : (activityId ? 'Save changes' : 'Create activity')}</button>
-          </div>
-        )}
-      </div>
-    </div>
+    </Dialog>
     </Portal>
   )
 }
