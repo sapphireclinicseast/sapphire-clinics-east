@@ -3,7 +3,11 @@
 import { useState, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { Lock, Eye, EyeOff, CheckCircle2, Loader2, Video, XCircle } from 'lucide-react'
+import { Eye, EyeOff, CheckCircle2, Loader2, XCircle } from 'lucide-react'
+import {
+  labelClass, labelStyle, inputClass, inputStyle, eyeButtonClass, errorClass,
+  primaryButtonClass, primaryButtonStyle, h2Style, helperClass,
+} from '../sign-in-look'
 
 function ResetPasswordForm() {
   const searchParams = useSearchParams()
@@ -18,13 +22,18 @@ function ResetPasswordForm() {
 
   if (!token) {
     return (
-      <div className="text-center">
-        <div className="w-14 h-14 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-4">
-          <XCircle className="w-7 h-7 text-red-500" />
+      <div className="flex flex-col items-center text-center gap-5 py-2">
+        <div
+          className="w-14 h-14 rounded-full flex items-center justify-center"
+          style={{ background: '#FEF2F2', border: '1.5px solid #FECACA' }}
+        >
+          <XCircle className="w-7 h-7" style={{ color: '#B42318' }} />
         </div>
-        <h2 className="text-lg font-bold text-[var(--charcoal)] mb-2">Invalid Link</h2>
-        <p className="text-[13px] text-[var(--mid-gray)] mb-6">This reset link is invalid or has expired.</p>
-        <Link href="/forgot-password" className="btn-primary w-full py-3 rounded-xl text-[15px]">
+        <div>
+          <h2 className="mb-1" style={h2Style}>Invalid Link</h2>
+          <p className={helperClass}>This reset link is invalid or has expired.</p>
+        </div>
+        <Link href="/forgot-password" className={primaryButtonClass} style={primaryButtonStyle}>
           Request New Link
         </Link>
       </div>
@@ -66,17 +75,22 @@ function ResetPasswordForm() {
 
   if (done) {
     return (
-      <div className="text-center">
-        <div className="w-14 h-14 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-4">
-          <CheckCircle2 className="w-7 h-7 text-green-500" />
+      <div className="flex flex-col items-center text-center gap-5 py-2">
+        <div
+          className="w-14 h-14 rounded-full flex items-center justify-center"
+          style={{ background: '#EEF5E8', border: '1.5px solid #CFE0BF' }}
+        >
+          <CheckCircle2 className="w-7 h-7" style={{ color: '#2F5A28' }} />
         </div>
-        <h2 className="text-lg font-bold text-[var(--charcoal)] mb-2" style={{ fontFamily: 'var(--font-display)' }}>
-          Password Reset!
-        </h2>
-        <p className="text-[13px] text-[var(--mid-gray)] mb-6">
-          Your password has been updated. You can now sign in.
-        </p>
-        <Link href="/login" className="btn-primary w-full py-3 rounded-xl text-[15px]">
+        <div>
+          <h2 className="mb-1" style={h2Style}>
+            Password Reset!
+          </h2>
+          <p className={helperClass}>
+            Your password has been updated. You can now sign in.
+          </p>
+        </div>
+        <Link href="/login" className={primaryButtonClass} style={primaryButtonStyle}>
           Sign In
         </Link>
       </div>
@@ -85,18 +99,16 @@ function ResetPasswordForm() {
 
   return (
     <>
-      <div className="text-center mb-6">
-        <h2 className="text-lg font-bold text-[var(--charcoal)]" style={{ fontFamily: 'var(--font-display)' }}>
-          Set New Password
-        </h2>
-        <p className="text-[13px] text-[var(--mid-gray)] mt-1">
-          Enter your new password below.
-        </p>
-      </div>
+      <h2 className="mb-1" style={h2Style}>
+        Set New Password
+      </h2>
+      <p className={`mb-6 ${helperClass}`}>
+        Enter your new password below.
+      </p>
 
-      <form onSubmit={handleSubmit} className="space-y-5">
+      <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label className="block text-[13px] font-semibold text-[var(--charcoal)] mb-2" style={{ fontFamily: 'var(--font-display)' }}>
+          <label className={labelClass} style={labelStyle}>
             New Password
           </label>
           <div className="relative">
@@ -107,21 +119,22 @@ function ResetPasswordForm() {
               required
               minLength={6}
               autoFocus
-              className="input pr-10"
+              className={inputClass}
+              style={{ ...inputStyle, paddingRight: 44 }}
               placeholder="Min 6 characters"
             />
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--mid-gray)] hover:text-[var(--charcoal)] transition-colors"
+              className={eyeButtonClass}
             >
-              {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
             </button>
           </div>
         </div>
 
         <div>
-          <label className="block text-[13px] font-semibold text-[var(--charcoal)] mb-2" style={{ fontFamily: 'var(--font-display)' }}>
+          <label className={labelClass} style={labelStyle}>
             Confirm Password
           </label>
           <input
@@ -129,19 +142,20 @@ function ResetPasswordForm() {
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
             required
-            className="input"
+            className={inputClass}
+            style={inputStyle}
             placeholder="Re-enter password"
           />
         </div>
 
         {error && (
-          <div className="bg-red-50 text-red-600 text-[13px] px-4 py-3 rounded-xl border border-red-100 animate-shake">
+          <p role="alert" className={errorClass}>
             {error}
-          </div>
+          </p>
         )}
 
-        <button type="submit" disabled={loading} className="btn-primary w-full py-3 rounded-xl text-[15px]">
-          {loading ? <Loader2 size={18} className="animate-spin" /> : <Lock size={18} />}
+        <button type="submit" disabled={loading} className={primaryButtonClass} style={primaryButtonStyle}>
+          {loading && <Loader2 size={16} className="animate-spin" />}
           Reset Password
         </button>
       </form>
@@ -151,33 +165,8 @@ function ResetPasswordForm() {
 
 export default function ResetPasswordPage() {
   return (
-    <div className="fixed inset-0 flex items-center justify-center px-4 overflow-hidden" style={{
-      background: [
-        'radial-gradient(1200px 380px at 50% 35%, rgba(244, 236, 221, 0.22), transparent 60%)',
-        'radial-gradient(820px 380px at 8% 0%, rgba(212, 145, 132, 0.55), transparent 60%)',
-        'radial-gradient(1100px 440px at 100% 110%, rgba(123, 152, 138, 0.55), transparent 65%)',
-        'linear-gradient(135deg, #cf9d88 0%, #c69849 38%, #8aa99d 72%, #4a8073 100%)',
-      ].join(', '),
-    }}>
-      <div className="absolute top-[-260px] right-[-180px] w-[560px] h-[560px] rounded-full pointer-events-none"
-           style={{ border: '1px solid rgba(244, 236, 221, 0.28)' }} />
-      <div className="absolute top-[-200px] right-[-300px] w-[760px] h-[760px] rounded-full pointer-events-none"
-           style={{ border: '1px solid rgba(244, 236, 221, 0.18)' }} />
-
-      <div className="w-full max-w-[400px] animate-gate">
-        <div className="flex justify-center mb-6">
-          <div className="w-[60px] h-[60px] rounded-full flex items-center justify-center"
-               style={{ background: 'linear-gradient(135deg, var(--narra), var(--moss))', boxShadow: '0 4px 20px rgba(15, 49, 56, 0.40)' }}>
-            <Video className="w-7 h-7 text-white" />
-          </div>
-        </div>
-
-        <div className="bg-white rounded-2xl p-10 shadow-[0_20px_60px_rgba(0,0,0,0.3)]">
-          <Suspense>
-            <ResetPasswordForm />
-          </Suspense>
-        </div>
-      </div>
-    </div>
+    <Suspense>
+      <ResetPasswordForm />
+    </Suspense>
   )
 }
