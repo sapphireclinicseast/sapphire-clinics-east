@@ -1102,7 +1102,7 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
                   const checked = workDays.includes(day)
                   return (
                     <label key={day} title={DAY_LABEL[day]}
-                      className="flex items-center justify-center h-9 rounded-lg text-xs font-semibold cursor-pointer select-none transition-colors focus-within:ring-2 focus-within:ring-offset-1"
+                      className="relative flex items-center justify-center h-9 rounded-lg text-xs font-semibold cursor-pointer select-none transition-colors focus-within:ring-2 focus-within:ring-offset-1"
                       style={checked
                         ? { background: 'var(--teal)', color: '#fff', border: '1px solid var(--teal)' }
                         : { background: '#fff', color: 'var(--charcoal)', border: '1px solid var(--light-gray)' }}>
@@ -1129,7 +1129,7 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
               <div className="flex flex-wrap items-center gap-2 mb-2.5">
                 <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>Working hours</p>
                 {/* Same checkbox as before, drawn as a switch. */}
-                <label className="ml-auto inline-flex items-center gap-2 cursor-pointer text-[11.5px] font-semibold select-none" style={{ color: 'var(--charcoal)' }}>
+                <label className="relative ml-auto inline-flex items-center gap-2 cursor-pointer text-[11.5px] font-semibold select-none" style={{ color: 'var(--charcoal)' }}>
                   <input
                     type="checkbox"
                     role="switch"
@@ -2054,7 +2054,7 @@ function SettingsTab({ initialData, onSave }: {
                     <div key={day} className="grid items-center gap-x-3 gap-y-1.5 py-2.5"
                       style={{ gridTemplateColumns: '7.5rem minmax(0,1fr)', borderBottom: '1px solid #EEF2F1' }}>
                       {/* Toggle — still a checkbox underneath, so `open` is set exactly as before. */}
-                      <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                      <label className="relative flex items-center gap-2.5 cursor-pointer select-none">
                         <input
                           type="checkbox"
                           role="switch"
