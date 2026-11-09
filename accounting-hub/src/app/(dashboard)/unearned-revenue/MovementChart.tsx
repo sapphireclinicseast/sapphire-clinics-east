@@ -9,8 +9,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { type MonthRow, MONTHS, monthLabel, peso, pesoCompact, pesoSigned } from './movement'
 
 export const RECEIVED_COLOR = '#4A8073' // --bright-teal
-export const RELEASED_COLOR = '#CF9D88' // --gold (Aura clay)
-export const BALANCE_COLOR = '#244952'  // --deep-teal
+export const RELEASED_COLOR = '#D9A35B' // soft amber (HR Hub look)
+export const BALANCE_COLOR = '#233038'  // HR Hub ink
 
 function niceStep(span: number): number {
   const raw = span / 4
@@ -93,20 +93,20 @@ export default function MovementChart({ rows, selected, onSelect }: {
         {/* gridlines + y labels */}
         {geo.grid.map(g => (
           <g key={g}>
-            <line x1={L} x2={width - R} y1={geo.y(g)} y2={geo.y(g)} stroke={g === 0 ? '#c9c2b6' : '#ece7de'} strokeWidth={1} />
-            <text x={L - 6} y={geo.y(g) + 3.5} textAnchor="end" fontSize={10} fill="#8A8278">{pesoCompact(g)}</text>
+            <line x1={L} x2={width - R} y1={geo.y(g)} y2={geo.y(g)} stroke={g === 0 ? '#C9D6B4' : '#E9EFDC'} strokeWidth={1} />
+            <text x={L - 6} y={geo.y(g) + 3.5} textAnchor="end" fontSize={10} fill="#8A9AA0">{pesoCompact(g)}</text>
           </g>
         ))}
 
         {/* selected / hovered month band */}
         {rows.map((r, i) => (r.key === selected || i === hover) ? (
           <rect key={`band-${r.key}`} x={L + slot * i} y={T} width={slot} height={innerH}
-            fill={r.key === selected ? '#EDF3D9' : '#f5f0e8'} />
+            fill={r.key === selected ? '#EDF3D9' : '#f4f7ec'} />
         ) : null)}
 
         {/* year dividers */}
         {yearStarts.filter(i => i > 0).map(i => (
-          <line key={`yr-${i}`} x1={L + slot * i} x2={L + slot * i} y1={T} y2={H - B + 4} stroke="#e3ddd1" strokeDasharray="3 3" />
+          <line key={`yr-${i}`} x1={L + slot * i} x2={L + slot * i} y1={T} y2={H - B + 4} stroke="#DDE6CC" strokeDasharray="3 3" />
         ))}
 
         {/* bars: received then released, side by side */}
@@ -130,19 +130,19 @@ export default function MovementChart({ rows, selected, onSelect }: {
         {/* x axis: months, then the year under its first month */}
         {rows.map((r, i) => showMonth(i) ? (
           <text key={`m-${r.key}`} x={cx(i)} y={H - B + 14} textAnchor="middle" fontSize={10}
-            fill={r.key === selected ? '#244952' : '#8A8278'} fontWeight={r.key === selected ? 700 : 400}>
+            fill={r.key === selected ? '#3C6A5F' : '#8A9AA0'} fontWeight={r.key === selected ? 700 : 400}>
             {MONTHS[parseInt(r.key.slice(5, 7), 10) - 1]}
           </text>
         ) : null)}
         {yearStarts.map(i => (
-          <text key={`y-${i}`} x={Math.max(L, L + slot * i + 2)} y={H - B + 29} fontSize={10.5} fontWeight={700} fill="#1A1A1A">
+          <text key={`y-${i}`} x={Math.max(L, L + slot * i + 2)} y={H - B + 29} fontSize={10.5} fontWeight={700} fill="#233038">
             {rows[i].key.slice(0, 4)}
           </text>
         ))}
       </svg>
 
       {tip && (
-        <div className="absolute z-10 pointer-events-none rounded-xl border px-3 py-2 text-xs shadow-sm"
+        <div className="absolute z-10 pointer-events-none rounded-lg border px-3 py-2 text-xs shadow-[0_4px_12px_rgba(0,0,0,0.08)]"
           style={{ left: tipLeft, top: 4, width: 180, background: 'white', borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
           <p className="font-semibold mb-1">{monthLabel(tip.key)}</p>
           <p className="flex justify-between gap-2"><span style={{ color: 'var(--mid-gray)' }}><Swatch c={RECEIVED_COLOR} />Received</span><span className="tabular-nums">{peso(tip.cr)}</span></p>
