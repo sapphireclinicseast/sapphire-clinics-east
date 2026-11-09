@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useState, type CSSProperties } from 'react'
 import { useRouter } from 'next/navigation'
 import { submitLearnerProfile } from '@/lib/api'
 import {
@@ -8,6 +8,10 @@ import {
   type LrnStatus, type GuardianOfRecord, type NameParts,
 } from '@/lib/session'
 import SignaturePad from '@/components/SignaturePad'
+import {
+  Banner, BTN_PRIMARY, BTN_SECONDARY, CARD_STYLE, CONTROL, CONTROL_STYLE, DashCard, FOCUS, Icon,
+  LABEL, LABEL_STYLE, PageHeader, PRIMARY_STYLE, SECONDARY_STYLE, Skeleton, SUBTLE_BG,
+} from '@/components/hub/ui'
 
 // All text inputs in this form auto-uppercase the value on every keystroke,
 // so what the parent sees on screen matches what is stored / printed later.
@@ -213,53 +217,48 @@ export default function EnrollPage() {
     }
   }
 
-  if (!ready) return null
+  if (!ready) return <EnrollSkeleton />
 
   return (
-    <div className="max-w-3xl mx-auto animate-fade-up">
+    <div className="max-w-3xl mx-auto animate-fade-up space-y-5 min-w-0">
       <StepBar step={2} />
 
-      <div className="card-static">
-        <h1 className="text-[26px] leading-tight text-[color:var(--deep-teal)] mb-1">Learner profile</h1>
-        <p className="text-sm text-[color:var(--mid-gray)] mb-6">
-          Enrolling for <span className="font-semibold text-[color:var(--narra)]">{levelLbl}</span>. All text is recorded in capital letters.
-        </p>
+      <PageHeader
+        eyebrow="Enrollment · Step 2 of 4"
+        title="Learner profile"
+        description={<>Enrolling for <span className="font-semibold" style={{ color: 'var(--deep-teal)' }}>{levelLbl}</span>. All text is recorded in capital letters. Fields marked * must be filled in.</>}
+      />
 
-        {err && (
-          <div className="mb-4 px-4 py-3 rounded-xl bg-rose-50 border border-rose-100 text-sm text-rose-800 animate-fade-in">
-            {err}
-          </div>
-        )}
-
-        <form className="space-y-5" onSubmit={handleSubmit}>
-          {/* School year + LRN */}
-          <Section title="School year & LRN">
-            <Field label="School year" required>
-              <div className="flex items-center gap-2">
-                <input required type="number" min={2000} max={2100} className="input"
+      <form className="space-y-5" onSubmit={handleSubmit}>
+        {/* School year + LRN */}
+        <DashCard title="School year & LRN" icon={<Icon name="calendar" size={16} />}>
+          <div className="space-y-4">
+            <Group label="School year" required>
+              <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 max-w-xs">
+                <input required type="number" min={2000} max={2100} className={INPUT} style={CONTROL_STYLE} aria-label="School year from"
                   value={schoolYearFrom} onChange={e => setSchoolYearFrom(e.target.value)}
-                  placeholder="2026" style={{ width: 110 }} />
-                <span className="text-sm text-[color:var(--mid-gray)]">to</span>
-                <input required type="number" min={2000} max={2100} className="input"
+                  placeholder="2026" />
+                <span className="text-sm" style={{ color: 'var(--mid-gray)' }}>to</span>
+                <input required type="number" min={2000} max={2100} className={INPUT} style={CONTROL_STYLE} aria-label="School year to"
                   value={schoolYearTo} onChange={e => setSchoolYearTo(e.target.value)}
-                  placeholder="2027" style={{ width: 110 }} />
+                  placeholder="2027" />
               </div>
-            </Field>
+            </Group>
 
-            <Field label="Learner status" required>
-              <div className="flex flex-wrap gap-x-5 gap-y-2">
+            <Group label="Learner status" required>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 {([
                   ['NO_LRN', 'No LRN'],
                   ['WITH_LRN', 'With LRN'],
                   ['RETURNING', 'Returning'],
                 ] as const).map(([v, lbl]) => (
-                  <label key={v} className="inline-flex items-center gap-2 text-sm text-[color:var(--ink)]">
-                    <input type="radio" name="lrnStatus" value={v} checked={lrnStatus === v} onChange={() => setLrnStatus(v)} />
+                  <Tile key={v} active={lrnStatus === v}>
+                    <input type="radio" name="lrnStatus" value={v} checked={lrnStatus === v} onChange={() => setLrnStatus(v)} className="sr-only" />
                     {lbl}
-                  </label>
+                  </Tile>
                 ))}
               </div>
-            </Field>
+            </Group>
 
             {lrnStatus === 'WITH_LRN' && (
               <Field label="Learner Reference No. (LRN)" required>
@@ -267,13 +266,15 @@ export default function EnrollPage() {
               </Field>
             )}
 
-            <Field label="PSA Birth Certificate No.">
+            <Field label="PSA Birth Certificate No." hint="Optional — you can add it later from your profile.">
               <UInput value={psaBirthCertNo} onValue={setPsaBirthCertNo} placeholder="e.g. 2017-1234567 (optional)" />
             </Field>
-          </Section>
+          </div>
+        </DashCard>
 
-          {/* Personal */}
-          <Section title="Student info">
+        {/* Personal */}
+        <DashCard title="Student info" icon={<Icon name="student" size={16} />}>
+          <div className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Field label="Full Last Name" required>
                 <UInput required value={lastName} onValue={setLastName} />
@@ -291,15 +292,17 @@ export default function EnrollPage() {
               </Field>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <Field label="Date of Birth" required>
-                <input required type="date" className="input" value={dob} onChange={e => setDob(e.target.value)} />
-              </Field>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <div className="col-span-2 sm:col-span-1 min-w-0">
+                <Field label="Date of Birth" required>
+                  <input required type="date" className={INPUT} style={CONTROL_STYLE} value={dob} onChange={e => setDob(e.target.value)} />
+                </Field>
+              </div>
               <Field label="Age (auto)">
-                <input className="input" value={age} readOnly tabIndex={-1} />
+                <input className={INPUT} style={LOCKED_STYLE} value={age} readOnly tabIndex={-1} />
               </Field>
               <Field label="Sex" required>
-                <select required className="select" value={sex} onChange={e => setSex(e.target.value as 'MALE' | 'FEMALE')}>
+                <select required className={INPUT} style={CONTROL_STYLE} value={sex} onChange={e => setSex(e.target.value as 'MALE' | 'FEMALE')}>
                   <option value="">—</option>
                   <option value="MALE">Male</option>
                   <option value="FEMALE">Female</option>
@@ -307,16 +310,16 @@ export default function EnrollPage() {
               </Field>
             </div>
 
-            <Field label="Belonging to any Indigenous Peoples (IP) Community / Indigenous Cultural Community?" required>
-              <div className="flex flex-wrap gap-x-5 gap-y-2">
+            <Group label="Belonging to any Indigenous Peoples (IP) Community / Indigenous Cultural Community?" required>
+              <div className="grid grid-cols-2 gap-2 max-w-xs">
                 {(['YES', 'NO'] as const).map(v => (
-                  <label key={v} className="inline-flex items-center gap-2 text-sm text-[color:var(--ink)]">
-                    <input type="radio" name="ipMember" value={v} checked={ipMember === v} onChange={() => setIpMember(v)} />
+                  <Tile key={v} active={ipMember === v}>
+                    <input type="radio" name="ipMember" value={v} checked={ipMember === v} onChange={() => setIpMember(v)} className="sr-only" />
                     {v === 'YES' ? 'Yes' : 'No'}
-                  </label>
+                  </Tile>
                 ))}
               </div>
-            </Field>
+            </Group>
             {ipMember === 'YES' && (
               <Field label="If yes, please specify" required>
                 <UInput required value={ipCommunity} onValue={setIpCommunity} placeholder="Community name" />
@@ -340,10 +343,12 @@ export default function EnrollPage() {
             <Field label="Diagnosis (if applicable)">
               <UInput value={diagnosis} onValue={setDiagnosis} placeholder="OPTIONAL" />
             </Field>
-          </Section>
+          </div>
+        </DashCard>
 
-          {/* Address */}
-          <Section title="Address" required>
+        {/* Address */}
+        <DashCard title="Address *" icon={<Icon name="building" size={16} />} description="Where the learner currently lives.">
+          <div className="space-y-4">
             <Field label="House Number and Street" required>
               <UInput required value={houseStreet} onValue={setHouseStreet} />
             </Field>
@@ -358,10 +363,13 @@ export default function EnrollPage() {
             <Field label="City / Municipality / Province / Country" required>
               <UInput required value={cityProvinceCountry} onValue={setCityProvinceCountry} placeholder="e.g. QUEZON CITY, METRO MANILA, PHILIPPINES" />
             </Field>
-          </Section>
+          </div>
+        </DashCard>
 
-          {/* Parents / Guardian */}
-          <Section title="Parent's / Guardian's information">
+        {/* Parents / Guardian */}
+        <DashCard title="Parent's / Guardian's information" icon={<Icon name="users" size={16} />}
+          description="Tick the box beside Father or Mother if they are the official guardian; otherwise fill in the guardian's name.">
+          <div className="space-y-5">
             <PersonNameRow
               label="Father's Name"
               required
@@ -374,6 +382,7 @@ export default function EnrollPage() {
             <Field label="Father's Occupation">
               <UInput value={fatherOccupation} onValue={setFatherOccupation} placeholder="OPTIONAL" />
             </Field>
+            <Divider />
             <PersonNameRow
               label="Mother's Maiden Name"
               required
@@ -386,6 +395,7 @@ export default function EnrollPage() {
             <Field label="Mother's Occupation">
               <UInput value={motherOccupation} onValue={setMotherOccupation} placeholder="OPTIONAL" />
             </Field>
+            <Divider />
             <PersonNameRow
               label="Guardian's Name"
               value={guardian}
@@ -393,7 +403,7 @@ export default function EnrollPage() {
               disabled={guardianFieldsDisabled}
               hint={guardianFieldsDisabled ? `Disabled — ${guardianOfRecord === 'FATHER' ? 'Father' : 'Mother'} is the official guardian.` : undefined}
             />
-
+            <Divider />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Field label="Telephone Number" required>
                 <UInput required value={telephone} onValue={setTelephone} placeholder="(02) XXXX XXXX" />
@@ -406,26 +416,28 @@ export default function EnrollPage() {
               {/* Email stays uppercased per the rule; backends usually normalise on store. */}
               <UInput required value={email} onValue={setEmail} placeholder="PARENT@EXAMPLE.COM" inputMode="email" />
             </Field>
-          </Section>
+          </div>
+        </DashCard>
 
-          {/* Returning / Transferee */}
-          <Section title="Returning learner or transferee?">
-            <Field label="Is the Student a returning learner or transferee?" required>
-              <div className="flex flex-wrap gap-x-5 gap-y-2">
+        {/* Returning / Transferee */}
+        <DashCard title="Returning learner or transferee?" icon={<Icon name="book" size={16} />}>
+          <div className="space-y-4">
+            <Group label="Is the Student a returning learner or transferee?" required>
+              <div className="grid grid-cols-2 gap-2 max-w-xs">
                 {(['YES', 'NO'] as const).map(v => (
-                  <label key={v} className="inline-flex items-center gap-2 text-sm text-[color:var(--ink)]">
-                    <input type="radio" name="isReturningOrTransferee" value={v} checked={isReturningOrTransferee === v} onChange={() => setIsReturningOrTransferee(v)} />
+                  <Tile key={v} active={isReturningOrTransferee === v}>
+                    <input type="radio" name="isReturningOrTransferee" value={v} checked={isReturningOrTransferee === v} onChange={() => setIsReturningOrTransferee(v)} className="sr-only" />
                     {v === 'YES' ? 'Yes' : 'No'}
-                  </label>
+                  </Tile>
                 ))}
               </div>
-            </Field>
+            </Group>
 
             {isReturningOrTransferee === 'YES' && (
-              <div className="space-y-3.5 pl-3 border-l-2" style={{ borderColor: 'var(--paper-3)' }}>
-                <div className="text-[11.5px] uppercase tracking-[0.12em] text-[color:var(--mid-gray)] font-semibold" style={{ fontFamily: 'var(--font-display)' }}>
+              <div className="space-y-3.5 rounded-xl p-3.5 sm:p-4 min-w-0" style={{ background: SUBTLE_BG, border: '1px solid var(--light-gray)' }}>
+                <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--deep-teal)', fontFamily: 'var(--font-display)' }}>
                   For Returning Learners (Balik-Aral) and Those Who Shall Transfer / Move In
-                </div>
+                </p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <Field label="Last Grade Level Completed" required>
                     <UInput required value={lastGradeCompleted} onValue={setLastGradeCompleted} />
@@ -447,60 +459,105 @@ export default function EnrollPage() {
                 </Field>
               </div>
             )}
-          </Section>
+          </div>
+        </DashCard>
 
-          {/* Certification + signature */}
-          <Section title="Certification">
-            <p className="text-[13.5px] text-[color:var(--ink)] leading-relaxed">
+        {/* Certification + signature */}
+        <DashCard title="Certification" icon={<Icon name="edit" size={16} />} description="Read the statement, then type your name and sign.">
+          <div className="space-y-4">
+            <p className="text-[13.5px] leading-relaxed rounded-xl px-3.5 py-3" style={{ color: 'var(--charcoal)', background: SUBTLE_BG, border: '1px solid var(--light-gray)' }}>
               I hereby certify that the above information given are true and correct to the best of my knowledge and I allow the Department of Education to use my child&apos;s details to create and/or update his/her learner profile in the Learner Information System. The information herein shall be treated as confidential in compliance with the Data Privacy Act of 2012.
             </p>
 
             <Field label="Signature Over Printed Name of Parent / Guardian" required>
               <UInput required value={certSignatureName} onValue={setCertSignatureName} placeholder="PARENT / GUARDIAN PRINTED NAME" />
             </Field>
-            <div>
-              <span className="label">Signature</span>
+            <Group label="Signature" required>
               <SignaturePad initialValue={certSignatureDataUrl} onChange={setCertSignatureDataUrl} />
+            </Group>
+            <div className="max-w-xs">
+              <Field label="Date">
+                <input className={INPUT} style={LOCKED_STYLE} value={new Date().toLocaleDateString()} readOnly tabIndex={-1} />
+              </Field>
             </div>
-            <Field label="Date">
-              <input className="input" value={new Date().toLocaleDateString()} readOnly tabIndex={-1} />
-            </Field>
-          </Section>
-
-          <div className="flex items-center gap-2 pt-2">
-            <button type="button" className="btn-secondary" onClick={() => router.push('/')}>← Back</button>
-            <button type="submit" disabled={busy} className="btn-primary flex-1">
-              {busy ? 'Saving…' : 'Continue to documents →'}
-            </button>
           </div>
-        </form>
-      </div>
+        </DashCard>
+
+        {err && <Banner tone="error">{err}</Banner>}
+
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" className={`${BTN_SECONDARY} max-sm:h-11`} style={SECONDARY_STYLE} onClick={() => router.push('/')}>
+            <Icon name="arrowLeft" size={14} /> Back
+          </button>
+          <button type="submit" disabled={busy} aria-busy={busy} className={`${BTN_PRIMARY} flex-1 min-w-[180px] max-sm:h-11`} style={PRIMARY_STYLE}>
+            {busy && <Spinner />}
+            {busy ? 'Saving…' : <>Continue to documents <Icon name="chevronRight" size={14} /></>}
+          </button>
+        </div>
+      </form>
     </div>
   )
 }
 
 /* ───────────────────────── reusable bits ───────────────────────── */
 
-function Section({ title, required, children }: { title: string; required?: boolean; children: React.ReactNode }) {
+/** Kit control, full width. On phones: 16px text (stops iOS zoom-on-focus) and a taller tap target. */
+const INPUT = `${CONTROL} w-full min-w-0 max-sm:h-11 max-sm:text-base`
+const LOCKED_STYLE: CSSProperties = { ...CONTROL_STYLE, background: SUBTLE_BG, color: 'var(--mid-gray)' }
+
+function Field({ label, required, hint, children }: { label: string; required?: boolean; hint?: string; children: React.ReactNode }) {
   return (
-    <fieldset className="space-y-3.5">
-      <legend className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)]" style={{ fontFamily: 'var(--font-display)' }}>
-        {title}{required ? ' *' : ''}
+    <label className="block min-w-0">
+      <span className={LABEL} style={LABEL_STYLE}>
+        {label}{required ? ' *' : ''}
+      </span>
+      {children}
+      {hint && <span className="block text-[11px] mt-1" style={{ color: 'var(--mid-gray)' }}>{hint}</span>}
+    </label>
+  )
+}
+
+/** Labelled group for a field made of several controls (radio tiles, two-part inputs, signature). */
+function Group({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
+  return (
+    <fieldset className="min-w-0">
+      <legend className={`${LABEL} leading-snug`} style={LABEL_STYLE}>
+        {label}{required ? ' *' : ''}
       </legend>
       {children}
     </fieldset>
   )
 }
 
-function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
+/**
+ * Selectable tile wrapping a visually hidden native radio. The radio keeps
+ * the field name, keyboard arrows and the "checked" announcement; the tile
+ * shows a filled radio mark and a heavier border so the choice never rests
+ * on colour alone.
+ */
+function Tile({ active, children }: { active: boolean; children: React.ReactNode }) {
   return (
-    <label className="block">
-      <span className="label">
-        {label}{required ? ' *' : ''}
+    <label
+      className={`flex items-center gap-2.5 min-w-0 rounded-xl px-3.5 h-11 text-sm font-semibold cursor-pointer transition-colors focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[color:var(--teal)] ${active ? '' : 'hover:bg-[color:var(--paper)]'}`}
+      style={active
+        ? { background: 'var(--moss-tint)', border: '1.5px solid var(--teal)', color: 'var(--deep-teal)', fontFamily: 'var(--font-display)' }
+        : { background: '#fff', border: '1.5px solid var(--light-gray)', color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}
+    >
+      <span aria-hidden className="w-4 h-4 rounded-full flex-shrink-0 flex items-center justify-center"
+        style={{ border: `1.5px solid ${active ? 'var(--deep-teal)' : 'var(--light-gray)'}`, background: '#fff' }}>
+        {active && <span className="w-2 h-2 rounded-full" style={{ background: 'var(--deep-teal)' }} />}
       </span>
       {children}
     </label>
   )
+}
+
+function Divider() {
+  return <hr aria-hidden style={{ border: 0, borderTop: '1px solid var(--light-gray)' }} />
+}
+
+function Spinner() {
+  return <span aria-hidden className="w-3.5 h-3.5 rounded-full border-2 border-current border-r-transparent animate-spin" />
 }
 
 /**
@@ -521,11 +578,11 @@ function UInput({ value, onValue, required, placeholder, inputMode, disabled }: 
       required={required}
       disabled={disabled}
       inputMode={inputMode}
-      className="input"
+      className={INPUT}
       value={value}
       placeholder={placeholder}
       onChange={e => onValue(e.target.value.toUpperCase())}
-      style={{ textTransform: 'uppercase' }}
+      style={{ ...CONTROL_STYLE, textTransform: 'uppercase' }}
     />
   )
 }
@@ -541,23 +598,34 @@ function PersonNameRow({ label, value, onChange, checkboxLabel, checked, onCheck
   disabled?: boolean
   hint?: string
 }) {
+  const labelId = useId()
   return (
-    <div>
-      <div className="flex items-center justify-between mb-1.5">
-        <span className="label !mb-0">{label}{required ? ' *' : ''}</span>
+    <div role="group" aria-labelledby={labelId} className="min-w-0">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 mb-1.5">
+        <span id={labelId} className={`${LABEL} !mb-0`} style={LABEL_STYLE}>{label}{required ? ' *' : ''}</span>
         {checkboxLabel && (
-          <label className="inline-flex items-center gap-2 text-[12px] text-[color:var(--mid-gray)]">
-            <input type="checkbox" checked={!!checked} onChange={e => onChecked?.(e.target.checked)} />
+          <label className="inline-flex items-center gap-2 text-xs cursor-pointer" style={{ color: 'var(--charcoal)' }}>
+            <input type="checkbox" className={`w-4 h-4 flex-shrink-0 rounded ${FOCUS}`} style={{ accentColor: 'var(--deep-teal)' }}
+              checked={!!checked} onChange={e => onChecked?.(e.target.checked)} />
             {checkboxLabel}
           </label>
         )}
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <UInput value={value.lastName}   onValue={v => onChange({ ...value, lastName: v })}   placeholder="LAST NAME"   required={required} disabled={disabled} />
-        <UInput value={value.firstName}  onValue={v => onChange({ ...value, firstName: v })}  placeholder="FIRST NAME"  required={required} disabled={disabled} />
-        <UInput value={value.middleName} onValue={v => onChange({ ...value, middleName: v })} placeholder="MIDDLE NAME" required={required} disabled={disabled} />
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
+        <label className="block min-w-0">
+          <span className="sr-only">{label}: </span><span className="block text-[11px] mb-0.5 sm:sr-only" style={{ color: 'var(--mid-gray)' }}>Last name</span>
+          <UInput value={value.lastName}   onValue={v => onChange({ ...value, lastName: v })}   placeholder="LAST NAME"   required={required} disabled={disabled} />
+        </label>
+        <label className="block min-w-0">
+          <span className="sr-only">{label}: </span><span className="block text-[11px] mb-0.5 sm:sr-only" style={{ color: 'var(--mid-gray)' }}>First name</span>
+          <UInput value={value.firstName}  onValue={v => onChange({ ...value, firstName: v })}  placeholder="FIRST NAME"  required={required} disabled={disabled} />
+        </label>
+        <label className="block min-w-0">
+          <span className="sr-only">{label}: </span><span className="block text-[11px] mb-0.5 sm:sr-only" style={{ color: 'var(--mid-gray)' }}>Middle name</span>
+          <UInput value={value.middleName} onValue={v => onChange({ ...value, middleName: v })} placeholder="MIDDLE NAME" required={required} disabled={disabled} />
+        </label>
       </div>
-      {hint && <p className="text-[11.5px] text-[color:var(--mid-gray)] mt-1.5">{hint}</p>}
+      {hint && <p className="text-[11.5px] mt-1.5" style={{ color: 'var(--mid-gray)' }}>{hint}</p>}
     </div>
   )
 }
@@ -569,11 +637,31 @@ function StepBar({ step }: { step: 1 | 2 | 3 | 4 }) {
     return 'step-dot'
   }
   return (
-    <div className="flex items-center justify-center gap-2 mb-6" aria-hidden>
+    <div className="flex items-center justify-center gap-2" aria-hidden>
       <span className={dot(1)} />
       <span className={dot(2)} />
       <span className={dot(3)} />
       <span className={dot(4)} />
+    </div>
+  )
+}
+
+/** Placeholder while the session + draft are read on mount. */
+function EnrollSkeleton() {
+  return (
+    <div className="max-w-3xl mx-auto space-y-5" role="status" aria-label="Loading learner profile">
+      <div className="space-y-2" aria-hidden>
+        <Skeleton className="h-3 w-40" />
+        <Skeleton className="h-6 w-56 max-w-full" />
+        <Skeleton className="h-3 w-72 max-w-full" />
+      </div>
+      {Array.from({ length: 2 }).map((_, n) => (
+        <div key={n} className="rounded-xl p-4 sm:p-5 space-y-3" style={CARD_STYLE} aria-hidden>
+          <Skeleton className="h-4 w-40" />
+          <Skeleton className="h-9 w-full" />
+          <Skeleton className="h-9 w-full" />
+        </div>
+      ))}
     </div>
   )
 }
