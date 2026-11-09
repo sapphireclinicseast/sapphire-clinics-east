@@ -134,8 +134,14 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
   return (
     <div className="space-y-5 min-w-0">
       {/* Identity card with headshot */}
-      <section className="rounded-xl p-4 sm:p-5 min-w-0" style={CARD_STYLE}>
-        <div className="flex items-start justify-between gap-5 flex-wrap">
+      <section className="@container rounded-xl p-4 sm:p-5 min-w-0" style={CARD_STYLE}>
+        {/* Identity on the left and tuition history filling the rest of the
+            row once the card itself is wide enough (a container query, so
+            the sidebar can't squeeze tuition into a sliver). This used to be
+            a wrapping flex row with tuition capped at 26rem: after a few
+            months of history it wrapped under the name, right-aligned, and
+            left the right half of the card empty. */}
+        <div className="grid gap-5 @3xl:grid-cols-[minmax(0,auto)_minmax(0,1fr)] @3xl:items-start">
           {/* Wraps on phones so the headshot, name and long emails never
               push the card wider than the screen. */}
           <div className="flex flex-wrap items-start gap-5 min-w-0">
@@ -158,9 +164,9 @@ export default function StudentDetail({ student: studentProp, viewerRole, onChan
               </div>
             </div>
           </div>
-          <div className="flex flex-col items-start sm:items-end gap-2.5 min-w-0 max-w-full">
-            <p className={LABEL} style={LABEL_STYLE}>Tuition</p>
-            <ul className="flex flex-wrap sm:justify-end gap-1.5 max-w-full sm:max-w-[26rem]" aria-label="Tuition payment status">
+          <div className="flex flex-col items-start gap-2.5 min-w-0 @3xl:pl-5 @3xl:border-l @3xl:border-[var(--light-gray)] @3xl:self-stretch">
+            <p className={`${LABEL} !mb-0`} style={LABEL_STYLE}>Tuition</p>
+            <ul className="flex flex-wrap gap-1.5 max-w-full" aria-label="Tuition payment status">
               {/* Every paid SY month except the current one, oldest→newest,
                   so the front desk sees a full month-by-month history
                   above the current-period badge — e.g.
