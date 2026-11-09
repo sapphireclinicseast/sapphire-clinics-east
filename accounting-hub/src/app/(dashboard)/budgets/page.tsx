@@ -7,6 +7,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useSession } from 'next-auth/react'
 import { AlertTriangle, Check, Info, LineChart, Loader2, Lock, Save, Target } from 'lucide-react'
+import { HR_PAGE_CLASS, HR_PAGE_STYLE, HrShimmerStyle, StatCard, hrBtn } from '@/components/ui/hr-look'
 import { PPE_CLASSIFICATION_LABELS, NON_DEPRECIATING_CLASSIFICATION_LABELS } from '@/lib/asset-classification'
 import {
   MS, buildLines, isDirty, monthEntries, netIncomeRow, seedInputs, totalRow, vsRows, vsTotals, yearTotal,
@@ -16,18 +17,24 @@ import { BudgetGrid, LockStrip, MON, PctOfBudget, Tile, Variance, VsTable, pesoS
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 const BRANCHES = [
-  { value: 'ALL', label: 'All Branches' },
-  { value: 'SANDBOX_EAST', label: 'Aura Health East' },
-  { value: 'SANDBOX_GREENHILLS', label: 'Aura Health Greenhills' },
-  { value: 'VERDANA_STORE', label: 'Verdana' },
-  { value: 'AURA_INSTITUTE', label: 'Aura Health Institute' },
+  { value: 'ALL', label: 'All Branches', short: 'All branches' },
+  { value: 'SANDBOX_EAST', label: 'Aura Health East', short: 'East' },
+  { value: 'SANDBOX_GREENHILLS', label: 'Aura Health Greenhills', short: 'Greenhills' },
+  { value: 'VERDANA_STORE', label: 'Verdana', short: 'Verdana' },
+  { value: 'AURA_INSTITUTE', label: 'Aura Health Institute', short: 'Institute' },
 ]
 const CAPEX_LABELS = { ...PPE_CLASSIFICATION_LABELS, ...NON_DEPRECIATING_CLASSIFICATION_LABELS }
 type Period = 'H1' | 'H2' | 'FY'
 const PERIOD_MONTHS: Record<Period, number[]> = { H1: [1, 2, 3, 4, 5, 6], H2: [7, 8, 9, 10, 11, 12], FY: MS }
 const card = { borderColor: 'var(--light-gray)', background: 'white' }
 const muted = { color: 'var(--mid-gray)' }
-const seg = (on: boolean) => (on ? { background: 'var(--teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' })
+const seg = (on: boolean) => (on ? { background: 'var(--teal)', color: '#fff' } : { color: 'var(--mid-gray)' })
+const segBtn = 'h-7 px-3 rounded-md text-xs font-semibold whitespace-nowrap transition-colors'
+const segWrap = 'inline-flex rounded-lg border p-0.5 bg-white'
+const pill = (on: boolean) => on
+  ? { background: 'var(--teal)', borderColor: 'var(--teal)', color: '#fff', fontFamily: 'var(--font-display)' }
+  : { background: '#fff', borderColor: 'var(--light-gray)', color: 'var(--mid-gray)', fontFamily: 'var(--font-display)' }
+const toolbar = { background: '#fcfdfa', borderColor: 'var(--light-gray)' }
 
 export default function BudgetsPage() {
   const { data: session } = useSession()
@@ -159,37 +166,49 @@ export default function BudgetsPage() {
   const margin = totals.rev.year ? (totals.net.year / totals.rev.year) * 100 : null
 
   return (
-    <div className="space-y-4">
-      {/* ── Title + controls ── */}
-      <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-10 h-10 shrink-0 rounded-xl flex items-center justify-center" style={{ background: 'var(--teal)' }}><Target size={20} className="text-white" /></div>
-          <div className="min-w-0">
-            <h1 className="text-2xl font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>Budget</h1>
-            <p className="text-xs mt-0.5 max-w-2xl" style={muted}>Enter the year&apos;s budget in Income-Statement format, then lock each month. Budget vs Actual is ready once a month is locked.</p>
-          </div>
+    <div className={HR_PAGE_CLASS} style={HR_PAGE_STYLE}>
+      <HrShimmerStyle />
+      {/* ── Title + branch / year ── */}
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold leading-tight flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+            <Target size={22} style={{ color: 'var(--teal)' }} /> Budget
+          </h1>
+          <p className="mt-1 text-[13px] max-w-3xl" style={muted}>Enter the year&apos;s budget in Income-Statement format, then lock each month. Budget vs Actual is ready once a month is locked.</p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: 'var(--light-gray)' }}>
-            <button onClick={() => setView('enter')} className="px-3.5 py-2 text-sm font-semibold" style={seg(view === 'enter')}>Enter budget</button>
-            <button onClick={() => setView('vs')} className="px-3.5 py-2 text-sm font-semibold flex items-center gap-1.5" style={seg(view === 'vs')}><LineChart size={14} /> Budget vs Actual</button>
-          </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {BRANCHES.map(b => (
+            <button key={b.value} onClick={() => { if (b.value !== branch) guard(() => setBranch(b.value))() }} aria-pressed={branch === b.value} title={b.label}
+              className="px-3.5 py-1.5 rounded-full border text-[13px] font-semibold whitespace-nowrap transition-colors" style={pill(branch === b.value)}>
+              {b.short}
+            </button>
+          ))}
+          <span className="w-px h-6 mx-1" style={{ background: 'var(--light-gray)' }} />
           <select value={year} aria-label="Year" onChange={e => { const y = parseInt(e.target.value); guard(() => setYear(y))() }}
-            className="px-3 py-2 rounded-xl border text-sm bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+            className="h-8 px-2.5 rounded-lg border text-[13px] font-semibold bg-white" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
             {[0, 1, 2, 3, 4].map(i => now.getFullYear() - i).map(y => <option key={y} value={y}>{y}</option>)}
-          </select>
-          <select value={branch} aria-label="Branch" onChange={e => { const b = e.target.value; guard(() => setBranch(b))() }}
-            className="px-3 py-2 rounded-xl border text-sm bg-white" style={{ borderColor: 'var(--light-gray)' }}>
-            {BRANCHES.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
           </select>
         </div>
       </div>
 
+      {/* ── Views ── */}
+      <div className="border-b-2" style={{ borderColor: 'var(--light-gray)' }}>
+        <div className="flex items-end gap-1 -mb-[2px] max-w-full overflow-x-auto" role="tablist">
+          {([['enter', 'Enter budget'], ['vs', 'Budget vs Actual']] as const).map(([v, l]) => (
+            <button key={v} onClick={() => setView(v)} role="tab" aria-selected={view === v}
+              className="flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-semibold border-b-2 whitespace-nowrap transition-colors hover:text-[var(--teal)]"
+              style={{ borderColor: view === v ? 'var(--teal)' : 'transparent', color: view === v ? 'var(--teal)' : 'var(--mid-gray)' }}>
+              {v === 'vs' && <LineChart size={14} />} {l}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {loadError && (
-        <div className="rounded-2xl border px-4 py-3 flex flex-wrap items-center gap-3" style={{ borderColor: '#fecaca', background: '#fef2f2', color: '#b91c1c' }}>
+        <div className="rounded-lg border px-4 py-3 flex flex-wrap items-center gap-3" style={{ borderColor: '#fecaca', background: '#fef2f2', color: '#b91c1c', borderLeft: '4px solid #dc2626' }}>
           <AlertTriangle size={18} />
-          <p className="text-sm flex-1 min-w-0">{loadError} The figures below may be incomplete.</p>
-          <button onClick={() => setReload(n => n + 1)} className="px-3 py-1.5 rounded-xl border text-sm font-medium bg-white" style={{ borderColor: '#fecaca' }}>Try again</button>
+          <p className="text-[13px] flex-1 min-w-0">{loadError} The figures below may be incomplete.</p>
+          <button onClick={() => setReload(n => n + 1)} className={hrBtn.ghost} style={{ borderColor: '#fecaca', color: '#b91c1c' }}>Try again</button>
         </div>
       )}
 
@@ -197,44 +216,45 @@ export default function BudgetsPage() {
         <>
           {/* ── Year at a glance ── */}
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-            <Tile label={`Revenue budget ${year}`} value={pesoSigned(totals.rev.year)} note={branchLabel} />
-            <Tile label="Cost & expenses" value={pesoSigned(totals.ce.year)} note="COGS + operating expenses" />
-            <Tile label="Net income" value={pesoSigned(totals.net.year)} note={margin == null ? '—' : `${margin.toFixed(1)}% of revenue`} tone="strong" />
-            <Tile label="Asset purchases" value={pesoSigned(totals.capex.year)} note="capex, outside net income" />
+            <StatCard compact label={`Revenue budget ${year}`} value={pesoSigned(totals.rev.year)} sub={branchLabel} accent={{ line: '#4A8073' }} />
+            <StatCard compact label="Cost & expenses" value={pesoSigned(totals.ce.year)} sub="COGS + operating expenses" accent={{ line: '#8A9AA0' }} />
+            <StatCard compact label="Net income" value={pesoSigned(totals.net.year)} sub={margin == null ? '—' : `${margin.toFixed(1)}% of revenue`}
+              accent={{ line: '#3C6A5F', bg: '#f4f8ea', fg: '#3C6A5F' }} />
+            <StatCard compact label="Asset purchases" value={pesoSigned(totals.capex.year)} sub="capex, outside net income" accent={{ line: '#2563eb' }} />
             <div className="col-span-2 lg:col-span-1">
-              <Tile label="Months locked" value={`${lockedMonths.length} of 12`} note={isRollup ? 'locked in every branch' : lockedMonths.length === 12 ? 'whole year locked' : lockedMonths.length ? 'locked months are read-only' : 'none yet'}>
+              <Tile label="Months locked" value={`${lockedMonths.length} of 12`} line={lockedMonths.length ? '#d97706' : 'var(--light-gray)'}
+                note={isRollup ? 'locked in every branch' : lockedMonths.length === 12 ? 'whole year locked' : lockedMonths.length ? 'locked months are read-only' : 'none yet'}>
                 <LockStrip locked={lockedSet} />
               </Tile>
             </div>
           </div>
 
           {isRollup && (
-            <div className="rounded-2xl border px-4 py-2.5 text-xs flex items-start gap-2" style={{ borderColor: 'var(--bright-teal)', background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
+            <div className="rounded-lg border px-4 py-2.5 text-xs flex items-start gap-2" style={{ borderColor: 'var(--light-gray)', borderLeft: '4px solid var(--teal)', background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
               <Info size={14} className="mt-px shrink-0" />
               <span>All Branches shows the <strong>total of every branch&apos;s budget</strong> and is read-only. Pick a branch above to enter amounts or lock months; a month shows as locked here once every branch has locked it.</span>
             </div>
           )}
 
           {/* ── The grid ── */}
-          <div className="rounded-2xl border overflow-hidden" style={card}>
-            <div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-4 py-2.5 border-b" style={{ borderColor: 'var(--light-gray)' }}>
+          <div className="rounded-lg border overflow-hidden" style={card}>
+            <div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-4 py-2.5 border-b" style={toolbar}>
               <div className="flex flex-wrap items-center gap-3">
-                <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: 'var(--light-gray)' }}>
+                <div className={segWrap} style={{ borderColor: 'var(--light-gray)' }}>
                   {([['H1', 'Jan – Jun'], ['H2', 'Jul – Dec'], ['FY', 'Full year']] as [Period, string][]).map(([p, l]) => (
-                    <button key={p} onClick={() => setPeriod(p)} className="px-3 py-1.5 text-xs font-semibold" style={seg(period === p)}>{l}</button>
+                    <button key={p} onClick={() => setPeriod(p)} aria-pressed={period === p} className={segBtn} style={seg(period === p)}>{l}</button>
                   ))}
                 </div>
-                <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none" style={{ color: 'var(--charcoal)' }}>
+                <label className="flex items-center gap-1.5 text-xs font-semibold cursor-pointer select-none" style={{ color: 'var(--mid-gray)' }}>
                   <input type="checkbox" checked={hideEmpty} onChange={e => setHideEmpty(e.target.checked)} /> Hide empty lines
                 </label>
               </div>
               {canEdit && (
                 <div className="flex items-center gap-2 ml-auto">
-                  {dirty ? <span className="text-xs font-medium flex items-center gap-1" style={{ color: '#b45309' }}><span className="w-1.5 h-1.5 rounded-full" style={{ background: '#d97706' }} />Unsaved changes</span>
-                    : msg === 'Saved' ? <span className="text-xs font-medium flex items-center gap-1" style={{ color: FAV }}><Check size={13} /> Saved</span> : null}
+                  {dirty ? <span className="text-xs font-semibold flex items-center gap-1 px-2 py-0.5 rounded-full" style={{ color: '#92400e', background: '#fef3c7' }}><span className="w-1.5 h-1.5 rounded-full" style={{ background: '#d97706' }} />Unsaved changes</span>
+                    : msg === 'Saved' ? <span className="text-xs font-semibold flex items-center gap-1 px-2 py-0.5 rounded-full" style={{ color: '#166534', background: '#dcfce7' }}><Check size={12} /> Saved</span> : null}
                   {msg && msg !== 'Saved' && <span className="text-xs" style={{ color: UNFAV }}>{msg}</span>}
-                  <button onClick={save} disabled={saving || !dirty}
-                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>
+                  <button onClick={save} disabled={saving || !dirty} className={hrBtn.primary} style={{ background: 'var(--teal)' }}>
                     {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Save all
                   </button>
                 </div>
@@ -282,14 +302,12 @@ export default function BudgetsPage() {
         // ── Budget vs Actual — one locked month, or the Full Year roll-up ──
         <>
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-xs font-semibold mr-1" style={muted}>Compare</span>
-            <button onClick={() => setVsMonth(0)} className="px-3 py-1.5 rounded-full text-xs font-semibold border flex items-center gap-1"
-              style={vsMonth === 0 ? { background: 'var(--teal)', color: '#fff', borderColor: 'var(--teal)' } : { background: '#fff', color: 'var(--charcoal)', borderColor: 'var(--light-gray)' }}>
+            <span className="text-[11px] font-bold uppercase tracking-[.4px] mr-1" style={muted}>Compare</span>
+            <button onClick={() => setVsMonth(0)} aria-pressed={vsMonth === 0} className="px-3 py-1.5 rounded-full text-xs font-semibold border flex items-center gap-1 transition-colors" style={pill(vsMonth === 0)}>
               <LineChart size={11} /> Full year {year}
             </button>
             {[...lockedMonths].sort((a, b) => a - b).map(m => (
-              <button key={m} onClick={() => setVsMonth(m)} className="px-3 py-1.5 rounded-full text-xs font-semibold border flex items-center gap-1"
-                style={vsMonth === m ? { background: 'var(--teal)', color: '#fff', borderColor: 'var(--teal)' } : { background: '#fff', color: 'var(--charcoal)', borderColor: 'var(--light-gray)' }}>
+              <button key={m} onClick={() => setVsMonth(m)} aria-pressed={vsMonth === m} className="px-3 py-1.5 rounded-full text-xs font-semibold border flex items-center gap-1 transition-colors" style={pill(vsMonth === m)}>
                 <Lock size={10} /> {MON[m - 1]}
               </button>
             ))}
@@ -303,10 +321,10 @@ export default function BudgetsPage() {
             <VsTile label="Asset purchases" b={vsT.capex.b} a={vsT.capex.a} ok={vsT.capex.a <= vsT.capex.b} />
           </div>
 
-          <div className="rounded-2xl border" style={card}>
-            <div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-4 py-2.5 border-b" style={{ borderColor: 'var(--light-gray)' }}>
-              <h2 className="text-sm font-semibold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>{vsHeading} · {branchLabel}</h2>
-              <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none" style={{ color: 'var(--charcoal)' }}>
+          <div className="rounded-lg border overflow-hidden" style={card}>
+            <div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-4 py-2.5 border-b" style={toolbar}>
+              <h2 className="text-sm font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>{vsHeading} · {branchLabel}</h2>
+              <label className="flex items-center gap-1.5 text-xs font-semibold cursor-pointer select-none" style={{ color: 'var(--mid-gray)' }}>
                 <input type="checkbox" checked={hideEmpty} onChange={e => setHideEmpty(e.target.checked)} /> Hide empty lines
               </label>
             </div>
@@ -336,24 +354,21 @@ export default function BudgetsPage() {
 
 function VsTile({ label, b, a, ok, strong }: { label: string; b: number; a: number; ok: boolean; strong?: boolean }) {
   return (
-    <Tile label={label} value={pesoSigned(a)} tone={strong ? 'strong' : undefined}
+    <Tile label={label} value={pesoSigned(a)} tone={strong ? 'strong' : undefined} line={ok ? '#059669' : '#dc2626'}
       note={<span className="flex flex-wrap items-center gap-x-2">
-        <span>budget {pesoSigned(b)}</span>
-        <span className="font-semibold"><Variance v={a - b} ok={ok} /></span>
+        <span>budget <span className="font-mono">{pesoSigned(b)}</span></span>
+        <span className="font-semibold font-mono"><Variance v={a - b} ok={ok} /></span>
         <PctOfBudget actual={a} budget={b} ok={ok} />
       </span>} />
   )
 }
 
 function LoadingState() {
-  const pulse = 'rounded-2xl border animate-pulse motion-reduce:animate-none'
-  const tone = { borderColor: 'var(--light-gray)', background: 'var(--off-white)' }
   return (
-    <div className="space-y-3" aria-busy="true">
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">{[0, 1, 2, 3, 4].map(i => <div key={i} className={`${pulse} h-[92px]`} style={tone} />)}</div>
-      <div className={`${pulse} h-[420px]`} style={tone} />
-      <p className="text-xs flex items-center gap-2" style={muted}><Loader2 size={14} className="animate-spin" /> Loading the budget…</p>
+    <div className="space-y-3" aria-busy="true" aria-label="Loading the budget">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">{[0, 1, 2, 3, 4].map(i => <StatCard key={i} loading label="" value="" sub="" />)}</div>
+      <div className="rounded-lg border h-[420px] hr-shimmer" style={{ borderColor: 'var(--light-gray)' }} />
+      <p className="text-xs" style={muted}>Loading the budget…</p>
     </div>
   )
 }
-
