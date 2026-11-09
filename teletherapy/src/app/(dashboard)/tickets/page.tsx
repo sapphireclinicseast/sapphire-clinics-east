@@ -5,7 +5,11 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
-import { LifeBuoy, Loader2, CheckCircle2, Clock, Paperclip, ChevronDown } from 'lucide-react'
+import { Loader2, CheckCircle2, Paperclip, ChevronDown, RotateCcw } from 'lucide-react'
+import {
+  BTN_PRIMARY, BTN_SM, CARD_STYLE, CONTROL_STYLE, EmptyState, LABEL, LABEL_STYLE, PAGE, PageHeader, PillTabs,
+  PRIMARY_STYLE, RowsSkeleton, SECONDARY_STYLE, StatusPill, SUBTLE_BG, TEXTAREA,
+} from '@/components/hub/ui'
 
 interface Ticket {
   id: string
@@ -71,75 +75,75 @@ export default function TicketsPage() {
   const openCount = tickets.filter((t) => t.status === 'OPEN').length
 
   return (
-    <div className="max-w-4xl mx-auto">
-      <div className="hero-gradient rounded-2xl px-8 py-8 mb-6 animate-fade-up">
-        <div className="relative z-10 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-white/15 flex items-center justify-center backdrop-blur-sm border border-white/20 shrink-0">
-            <LifeBuoy className="w-6 h-6 text-white" />
-          </div>
-          <div className="min-w-0">
-            <h1 className="text-xl font-bold text-white tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>Tickets</h1>
-            <p className="text-white/70 text-sm mt-1">Concerns raised by staff about the portal. {openCount} open.</p>
-          </div>
-        </div>
-      </div>
+    <div className={PAGE}>
+      <PageHeader
+        eyebrow="Admin"
+        title="Tickets"
+        description={<>Concerns raised by staff about the portal. <strong style={{ color: 'var(--charcoal)' }}>{openCount} open.</strong></>}
+      />
 
-      <div className="flex gap-1 mb-5 border-b border-[var(--light-gray)]">
-        {(['OPEN', 'RESOLVED', 'ALL'] as const).map((f) => (
-          <button key={f} onClick={() => setFilter(f)}
-            className={`px-4 py-2 text-[12.5px] font-semibold transition-colors ${filter === f ? 'text-[var(--deep-teal)] border-b-2 border-[var(--deep-teal)]' : 'text-[var(--mid-gray)] hover:text-[var(--charcoal)]'}`}
-            style={{ fontFamily: 'var(--font-display)' }}>
-            {f === 'OPEN' ? 'Open' : f === 'RESOLVED' ? 'Resolved' : 'All'}
-          </button>
-        ))}
-      </div>
+      <PillTabs
+        label="Filter tickets"
+        value={filter}
+        onChange={(id) => setFilter(id as 'OPEN' | 'RESOLVED' | 'ALL')}
+        tabs={[
+          { id: 'OPEN', label: 'Open', count: loading ? undefined : openCount },
+          { id: 'RESOLVED', label: 'Resolved' },
+          { id: 'ALL', label: 'All' },
+        ]}
+      />
 
       {loading ? (
-        <div className="flex items-center gap-2 justify-center py-16 text-[var(--mid-gray)]"><Loader2 className="animate-spin" size={18} /> Loading tickets…</div>
+        <div className="rounded-xl" style={CARD_STYLE}><RowsSkeleton rows={4} label="Loading tickets" /></div>
       ) : shown.length === 0 ? (
-        <div className="card-static text-center py-14 text-[13px] text-[var(--mid-gray)]">No {filter === 'ALL' ? '' : filter.toLowerCase()} tickets.</div>
+        <section className="rounded-xl" style={CARD_STYLE}>
+          <EmptyState icon="check" title={`No ${filter === 'ALL' ? '' : filter.toLowerCase() + ' '}tickets`} hint={filter === 'OPEN' ? 'Nothing waiting on you right now.' : undefined} />
+        </section>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-2.5">
           {shown.map((t) => {
             const open = expanded === t.id
             return (
-              <div key={t.id} className="card-static !p-0 overflow-hidden">
-                <button onClick={() => setExpanded(open ? null : t.id)} className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-[var(--off-white)]">
+              <div key={t.id} className="rounded-xl overflow-hidden" style={CARD_STYLE}>
+                <button onClick={() => setExpanded(open ? null : t.id)} aria-expanded={open}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-[#F8FAF2] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[color:var(--teal)]">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-[12px] font-bold text-[var(--deep-teal)]" style={{ fontFamily: 'var(--font-display)' }}>{t.ticketNumber}</span>
+                      <span className="text-xs font-bold" style={{ color: 'var(--deep-teal)', fontFamily: 'var(--font-display)', fontVariantNumeric: 'tabular-nums' }}>{t.ticketNumber}</span>
                       {t.status === 'RESOLVED'
-                        ? <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-[var(--moss)] bg-[var(--sage-tint)] px-2 py-0.5 rounded-full"><CheckCircle2 size={11} /> Resolved</span>
-                        : <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-[#9a6a1f] bg-[#fdf1d6] px-2 py-0.5 rounded-full"><Clock size={11} /> Open</span>}
-                      {t.attachmentPath && <Paperclip size={12} className="text-[var(--mid-gray)]" />}
+                        ? <StatusPill tone="success">Resolved</StatusPill>
+                        : <StatusPill tone="warn">Open</StatusPill>}
+                      {t.attachmentPath && <Paperclip size={12} style={{ color: 'var(--mid-gray)' }} aria-label="Has attachment" />}
                     </div>
-                    <p className="text-[13.5px] font-semibold text-[var(--charcoal)] truncate mt-0.5">{t.subject}</p>
-                    <p className="text-[11.5px] text-[var(--mid-gray)]">{t.raisedByName} · {BRANCH_LABEL[t.branch] ?? t.branch} · {new Date(t.createdAt).toLocaleString()}</p>
+                    <p className="text-[14px] font-semibold truncate mt-1" style={{ color: 'var(--charcoal)' }}>{t.subject}</p>
+                    <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>{t.raisedByName} · {BRANCH_LABEL[t.branch] ?? t.branch} · {new Date(t.createdAt).toLocaleString()}</p>
                   </div>
-                  <ChevronDown size={18} className={`text-[var(--mid-gray)] shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+                  <ChevronDown size={18} className={`shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} style={{ color: 'var(--mid-gray)' }} />
                 </button>
 
                 {open && (
-                  <div className="px-4 pb-4 border-t border-[var(--light-gray)] pt-3">
-                    <p className="text-[13px] text-[var(--charcoal)] whitespace-pre-wrap mb-3">{t.description}</p>
+                  <div className="px-4 pb-4 pt-3 space-y-3" style={{ borderTop: '1px solid var(--light-gray)' }}>
+                    <p className="text-[13px] leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere]" style={{ color: 'var(--charcoal)' }}>{t.description}</p>
                     {t.attachmentPath && (
-                      <a href={`/api/tickets/${t.id}/attachment`} target="_blank" rel="noreferrer" className="block mb-3">
+                      <a href={`/api/tickets/${t.id}/attachment`} target="_blank" rel="noreferrer" className="block w-fit max-w-full">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={`/api/tickets/${t.id}/attachment`} alt={t.attachmentName ?? 'attachment'} className="max-h-72 rounded-lg border border-[var(--light-gray)] bg-[var(--off-white)]" />
+                        <img src={`/api/tickets/${t.id}/attachment`} alt={t.attachmentName ?? 'attachment'} className="max-h-72 max-w-full rounded-lg" style={{ border: '1px solid var(--light-gray)', background: SUBTLE_BG }} />
                       </a>
                     )}
 
                     {t.status === 'RESOLVED' ? (
-                      <div className="rounded-lg bg-[var(--off-white)] border border-[var(--light-gray)] p-3">
-                        <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--moss)] mb-1">Resolution{t.resolvedByName ? ` · ${t.resolvedByName}` : ''}{t.resolvedAt ? ` · ${new Date(t.resolvedAt).toLocaleDateString()}` : ''}</p>
-                        <p className="text-[13px] text-[var(--charcoal)] whitespace-pre-wrap">{t.resolution}</p>
-                        <button onClick={() => resolve(t.id, true)} disabled={saving === t.id} className="mt-2 text-[12px] font-semibold text-[var(--mid-gray)] hover:underline">Reopen</button>
+                      <div className="rounded-lg p-3" style={{ background: SUBTLE_BG, border: '1px solid var(--light-gray)' }}>
+                        <p className={LABEL} style={{ ...LABEL_STYLE, color: 'var(--deep-teal)' }}>Resolution{t.resolvedByName ? ` · ${t.resolvedByName}` : ''}{t.resolvedAt ? ` · ${new Date(t.resolvedAt).toLocaleDateString()}` : ''}</p>
+                        <p className="text-[13px] leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere]" style={{ color: 'var(--charcoal)' }}>{t.resolution}</p>
+                        <button onClick={() => resolve(t.id, true)} disabled={saving === t.id} className={`${BTN_SM} mt-2.5`} style={SECONDARY_STYLE}>
+                          <RotateCcw size={12} aria-hidden /> Reopen
+                        </button>
                       </div>
                     ) : (
                       <div>
-                        <label className="block text-[11px] font-semibold uppercase tracking-wider text-[var(--charcoal)] mb-1">Resolution</label>
-                        <textarea value={draft[t.id] ?? ''} onChange={(e) => setDraft((d) => ({ ...d, [t.id]: e.target.value }))} rows={3} placeholder="How was this addressed? The staff member will see this." className="input text-[13px] resize-none mb-2" />
-                        <button onClick={() => resolve(t.id)} disabled={saving === t.id || !(draft[t.id] ?? '').trim()} className="btn-primary !py-2 !px-4 !text-[12.5px] !rounded-lg">
+                        <label htmlFor={`res-${t.id}`} className={LABEL} style={LABEL_STYLE}>Resolution</label>
+                        <textarea id={`res-${t.id}`} value={draft[t.id] ?? ''} onChange={(e) => setDraft((d) => ({ ...d, [t.id]: e.target.value }))} rows={3} placeholder="How was this addressed? The staff member will see this." className={`${TEXTAREA} resize-none mb-2.5`} style={CONTROL_STYLE} />
+                        <button onClick={() => resolve(t.id)} disabled={saving === t.id || !(draft[t.id] ?? '').trim()} className={BTN_PRIMARY} style={PRIMARY_STYLE}>
                           {saving === t.id ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />} Mark resolved
                         </button>
                       </div>
