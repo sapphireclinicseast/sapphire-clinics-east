@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Bell, X, CalendarClock } from 'lucide-react'
+import { Bell, CalendarClock } from 'lucide-react'
+import { HrNoticeModal, HrNoticeRow, hrNoticeBtn } from '@/components/ui/hr-look'
 
 interface Reminder {
   id: string
@@ -36,23 +37,9 @@ function useReminders() {
 
 function Row({ r }: { r: Reminder }) {
   return (
-    <div className="flex items-start justify-between gap-3 rounded-xl px-3 py-2.5" style={{ background: 'var(--off-white)' }}>
-      <div className="min-w-0">
-        <p className="text-sm font-semibold truncate" style={{ color: 'var(--charcoal)' }}>
-          {r.payee || r.description || r.accountTitle || 'Recurring expense'}
-        </p>
-        <p className="text-[11px] truncate" style={{ color: 'var(--mid-gray)' }}>
-          {r.branchLabel} · {freqLabel(r.frequency)}{r.accountTitle ? ` · ${r.accountTitle}` : ''} · ₱{peso(r.gross)}
-        </p>
-      </div>
-      <div className="text-right whitespace-nowrap">
-        <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold"
-          style={r.daysUntil <= 0 ? { background: '#fee2e2', color: '#b91c1c' } : { background: '#fef3c7', color: '#92400e' }}>
-          {dueText(r.daysUntil)}
-        </span>
-        <p className="text-[10px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>{r.nextDue}</p>
-      </div>
-    </div>
+    <HrNoticeRow title={r.payee || r.description || r.accountTitle || 'Recurring expense'}
+      detail={`${r.branchLabel} · ${freqLabel(r.frequency)}${r.accountTitle ? ` · ${r.accountTitle}` : ''} · ₱${peso(r.gross)}`}
+      pill={dueText(r.daysUntil)} pillTone={r.daysUntil <= 0 ? 'red' : 'amber'} meta={r.nextDue} />
   )
 }
 
@@ -86,29 +73,14 @@ export function ReminderPopup() {
   if (!open || !reminders || reminders.length === 0) return null
   const close = () => { try { sessionStorage.setItem('recurReminderSeen', '1') } catch { /* ignore */ } setOpen(false) }
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={close}>
-      <div className="bg-white rounded-2xl p-6 w-full max-w-md max-h-[85vh] overflow-auto" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-1">
-          <h2 className="text-lg font-bold flex items-center gap-2" style={{ color: 'var(--charcoal)' }}>
-            <Bell size={18} style={{ color: 'var(--teal)' }} /> Recurring expenses due soon
-          </h2>
-          <button onClick={close}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button>
-        </div>
-        <p className="text-xs mb-4" style={{ color: 'var(--mid-gray)' }}>
-          {reminders.length} recurring expense{reminders.length === 1 ? '' : 's'} need payment within the next 5 days.
-        </p>
-        <div className="space-y-2">
-          {reminders.map(r => <Row key={r.id} r={r} />)}
-        </div>
-        <div className="flex gap-2 mt-5">
-          <a href="/expenses" onClick={close} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white text-center" style={{ background: 'var(--teal)' }}>
-            Go to Expenses
-          </a>
-          <button onClick={close} className="px-4 py-2.5 rounded-xl text-sm font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
-            Got it
-          </button>
-        </div>
-      </div>
-    </div>
+    <HrNoticeModal icon={<Bell size={18} />} title="Recurring expenses due soon" onClose={close}
+      tone={reminders.some(r => r.daysUntil <= 0) ? 'red' : 'amber'}
+      subtitle={`${reminders.length} recurring expense${reminders.length === 1 ? '' : 's'} need payment within the next 5 days.`}
+      footer={<>
+        <a href="/expenses" onClick={close} className={`${hrNoticeBtn.primary} flex-1`} style={{ background: 'var(--teal)' }}>Go to Expenses</a>
+        <button onClick={close} className={hrNoticeBtn.ghost} style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Got it</button>
+      </>}>
+      {reminders.map(r => <Row key={r.id} r={r} />)}
+    </HrNoticeModal>
   )
 }

@@ -90,3 +90,37 @@ h1, h2, h3, h4, h5, h6 {
 @media (prefers-reduced-motion: reduce) {
   .focus-flash, .focus-flash > td, .focus-flash > th { animation-duration: 0.01s; background-color: rgba(250, 204, 21, 0.38); }
 }
+
+/* ── Pop-ups in the HR Hub look (Hannah, 11/09: "the popups should be restyled") ──
+   Every full-screen overlay re-points the hub's colour tokens to the HR palette, so a
+   pop-up matches the redesigned pages even when it renders outside a page root. The
+   white sheet of a centred / top-aligned pop-up gets the HR modal shape: 12px radius,
+   green-grey border, soft shadow. Side drawers (items-stretch) keep their own edges. */
+.fixed.inset-0 {
+  --off-white: #F6F8EE;
+  --light-gray: #DDE6CC;
+  --mid-gray: #55616A;
+  --charcoal: #233038;
+  --teal: #4A8073;
+  --deep-teal: #3C6A5F;
+  --pale-teal: #EDF3D9;
+  --hr-line: #E9EFDC;
+  --hr-faint: #8A9AA0;
+  --hr-head: #f8faf6;
+}
+.fixed.inset-0.items-center > .bg-white,
+.fixed.inset-0.items-start > .bg-white {
+  border-radius: 12px;
+  border: 1px solid #DDE6CC;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+}
+.fixed.inset-0.items-center > .bg-white h2,
+.fixed.inset-0.items-start > .bg-white h2 {
+  font-family: var(--font-display);
+  color: var(--charcoal);
+}
+.fixed.inset-0 > .bg-white :is(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]), select, textarea):focus {
+  outline: none;
+  border-color: var(--teal);
+  box-shadow: 0 0 0 3px rgba(74, 128, 115, 0.15);
+}
