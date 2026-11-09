@@ -32,6 +32,23 @@ interface Row {
   patientName: string
 }
 interface Replacement { id: string; name: string }
+/** The board's own data for this branch, for the "who is free then" hints. Display only. */
+interface BoardConfig { staffId: string; workDays: string[]; startTime: string; endTime: string }
+interface BoardSlot { staffId: string; dayOfWeek: string; startTime: string; endTime: string; disabled: boolean; isClass?: boolean; date?: string | null }
+type Fit = 'free' | 'booked' | 'off' | 'blocked'
+const FIT_NOTE: Record<Exclude<Fit, 'free'>, string> = {
+  booked: 'already has a patient then',
+  blocked: 'marked unavailable then',
+  off: 'not scheduled then',
+}
+
+/** Whole hours from start up to (not including) end: "10:00","11:00",… */
+function hoursIn(start: string, end: string): string[] {
+  const sh = Number(start.slice(0, 2)), eh = Number(end.slice(0, 2))
+  const out: string[] = []
+  for (let h = sh; h < eh; h++) out.push(`${String(h).padStart(2, '0')}:00`)
+  return out
+}
 
 const DAY_LABEL: Record<string, string> = {
   MON: 'Monday', TUE: 'Tuesday', WED: 'Wednesday', THU: 'Thursday',
@@ -101,7 +118,13 @@ function DepartedSkeleton() {
   )
 }
 
-export default function DepartedBookings({ branch }: { branch: string }) {
+export default function DepartedBookings({ branch, boardConfigs = [], boardSlots = [] }: {
+  branch: string
+  /** This branch's consultant schedules, as the board holds them. Display only. */
+  boardConfigs?: BoardConfig[]
+  /** This branch's weekly slots, as the board holds them. Display only. */
+  boardSlots?: BoardSlot[]
+}) {
   const [rows, setRows] = useState<Row[]>([])
   const [replacements, setReplacements] = useState<Record<string, Replacement[]>>({})
   const [loading, setLoading] = useState(true)
@@ -156,6 +179,35 @@ export default function DepartedBookings({ branch }: { branch: string }) {
     } finally {
       setMovingId(null)
     }
+  }
+
+  // Who could take a child at that day and hour, read from the board: free
+  // (scheduled, nobody in it), booked, marked unavailable, or not scheduled.
+  // Only a hint — Move still lets any consultant be chosen, as before.
+  const offered = new Map<string, Set<string>>()
+  for (const c of boardConfigs) {
+    const set = offered.get(c.staffId) ?? new Set<string>()
+    for (const d of c.workDays ?? []) for (const h of hoursIn(c.startTime, c.endTime)) set.add(`${d}|${h}`)
+    offered.set(c.staffId, set)
+  }
+  const taken = new Map<string, 'booked' | 'blocked'>()
+  for (const sl of boardSlots) {
+    if (sl.date) continue
+    const hrs = sl.isClass ? hoursIn(sl.startTime, sl.endTime) : [sl.startTime.slice(0, 5)]
+    for (const h of hrs) {
+      const k = `${sl.staffId}|${sl.dayOfWeek}|${h}`
+      if (sl.disabled) taken.set(k, 'blocked')
+      else if (!taken.has(k)) taken.set(k, 'booked')
+    }
+  }
+  const haveBoard = boardConfigs.length > 0
+  const fitOf = (staffId: string, day: string, start: string): Fit => {
+    const hour = `${start.slice(0, 2)}:00`
+    const t = taken.get(`${staffId}|${day}|${hour}`)
+    if (t) return t
+    // A child moved here a moment ago is not in the board data yet.
+    if (rows.some(r => moved[r.slotId] && picked[r.slotId] === staffId && r.dayOfWeek === day && r.startTime.slice(0, 2) === start.slice(0, 2))) return 'booked'
+    return offered.get(staffId)?.has(`${day}|${hour}`) ? 'free' : 'off'
   }
 
   if (loading) return <DepartedSkeleton />
@@ -360,8 +412,39 @@ export default function DepartedBookings({ branch }: { branch: string }) {
                             style={{ ...CONTROL_STYLE, minWidth: 200, maxWidth: '100%' }}
                           >
                             <option value="">Choose a consultant…</option>
-                            {options.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                            {haveBoard ? (() => {
+                              // Free first, so the obvious choice is at the top.
+                              const when = `${DAY_SHORT[r.dayOfWeek] ?? r.dayOfWeek} ${prettyTime(r.startTime)}`
+                              const by = (f: Fit) => options.filter(o => fitOf(o.id, r.dayOfWeek, r.startTime) === f)
+                              const free = by('free'), busy = [...by('booked'), ...by('blocked')], off = by('off')
+                              return (
+                                <>
+                                  {free.length > 0 && <optgroup label={`Free ${when}`}>{free.map(o => <option key={o.id} value={o.id}>{displayName(o.name)}</option>)}</optgroup>}
+                                  {busy.length > 0 && <optgroup label={`Busy ${when}`}>{busy.map(o => <option key={o.id} value={o.id}>{displayName(o.name)}</option>)}</optgroup>}
+                                  {off.length > 0 && <optgroup label={`Not scheduled ${when}`}>{off.map(o => <option key={o.id} value={o.id}>{displayName(o.name)}</option>)}</optgroup>}
+                                </>
+                              )
+                            })() : options.map(o => <option key={o.id} value={o.id}>{displayName(o.name)}</option>)}
                           </select>
+                          {haveBoard && !picked[r.slotId] && options.length > 0 && !options.some(o => fitOf(o.id, r.dayOfWeek, r.startTime) === 'free') && (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold" style={{ color: AMBER.fg }}
+                              title="No one in this department is scheduled and empty at this day and hour — the child may need a new time as well as a new consultant">
+                              <Clock size={12} aria-hidden /> No one free then
+                            </span>
+                          )}
+                          {haveBoard && picked[r.slotId] && (() => {
+                            const fit = fitOf(picked[r.slotId], r.dayOfWeek, r.startTime)
+                            return fit === 'free' ? (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-semibold" style={{ color: DONE.fg }}>
+                                <Check size={12} aria-hidden /> Free then
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-semibold" style={{ color: AMBER.fg }}
+                                title="You can still move them — this is only a heads-up">
+                                <AlertTriangle size={12} aria-hidden /> {FIT_NOTE[fit]}
+                              </span>
+                            )
+                          })()}
                           <button
                             type="button"
                             onClick={() => move(r)}
