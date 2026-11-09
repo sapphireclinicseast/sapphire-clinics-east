@@ -1,7 +1,10 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { X, Loader2, FileDown } from 'lucide-react'
+import { FileDown } from 'lucide-react'
+import {
+  BTN_PRIMARY, BTN_SECONDARY, Dialog, ErrorCard, GroupLabel, PRIMARY_STYLE, SECONDARY_STYLE, Skeleton, SUBTLE_BG,
+} from '@/components/hub/ui'
 import type { LearningProfileData } from '@/lib/learning-profile'
 import { AURA_HEALTH_REHAB_LOGO, ALAGA_LOGO } from '@/lib/brand-logos'
 
@@ -131,78 +134,85 @@ export default function InternProfileModal({ internId, onClose }: { internId: st
   const lp = data?.learningProfile
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 animate-fade-in" onClick={onClose}>
-      <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[88vh] overflow-y-auto p-6" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between gap-2 mb-4 pb-4 border-b border-[var(--light-gray)]">
-          <h2 className="font-bold text-[var(--charcoal)] text-[17px]" style={{ fontFamily: 'var(--font-display)' }}>
-            Intern Profile{data ? ` — ${data.intern.name}` : ''}
-          </h2>
-          <div className="flex items-center gap-2">
-            <button onClick={generatePDF} disabled={!data}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[var(--teal)] text-white text-[13px] font-semibold hover:opacity-90 disabled:opacity-50">
-              <FileDown size={15} /> Generate PDF
-            </button>
-            <button onClick={onClose} className="p-1.5 text-[var(--mid-gray)] hover:text-[var(--charcoal)]"><X size={18} /></button>
+    <Dialog
+      labelId="intern-profile-title"
+      size="lg"
+      eyebrow="Intern Profile"
+      title={data?.intern?.name ?? 'Intern Profile'}
+      onClose={onClose}
+      footer={
+        <>
+          <button type="button" onClick={onClose} className={BTN_SECONDARY} style={SECONDARY_STYLE}>Close</button>
+          <button onClick={generatePDF} disabled={!data} className={BTN_PRIMARY} style={PRIMARY_STYLE}>
+            <FileDown size={15} aria-hidden /> Generate PDF
+          </button>
+        </>
+      }
+    >
+      {loading ? (
+        <div className="space-y-4" aria-busy="true" role="status" aria-label="Loading profile">
+          <Skeleton className="h-3 w-32" />
+          <div className="flex gap-5 flex-col sm:flex-row">
+            <Skeleton className="w-28 h-28 rounded-lg" />
+            <div className="flex-1 space-y-2.5">
+              {[0, 1, 2, 3, 4].map((n) => <Skeleton key={n} className="h-3.5" style={{ width: `${90 - n * 10}%` }} />)}
+            </div>
           </div>
         </div>
-
-        {loading ? (
-          <div className="flex justify-center py-16"><Loader2 className="w-7 h-7 text-[var(--teal)] animate-spin" /></div>
-        ) : !data ? (
-          <p className="text-[13px] text-[var(--mid-gray)] py-8 text-center">Could not load this profile.</p>
-        ) : (
-          <div className="space-y-6">
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--teal)] mb-2">HR Information</p>
-              <div className="flex gap-5 flex-col sm:flex-row">
-                <div className="shrink-0">
-                  {data.photoUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={data.photoUrl} alt={`${data.intern.name} photo`} className="w-28 h-28 object-cover rounded-lg border border-[var(--light-gray)] bg-[var(--off-white)]" />
-                  ) : (
-                    <div className="w-28 h-28 rounded-lg bg-[var(--pale-teal)] flex items-center justify-center text-[var(--teal)] font-bold text-2xl border border-[var(--light-gray)]">
-                      {data.intern.name.split(' ').map((p) => p[0]).slice(0, 2).join('')}
-                    </div>
-                  )}
-                  <p className="text-[10px] text-center text-[var(--mid-gray)] mt-1">2×2 photo</p>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 flex-1 self-start">
-                  {hrRows(data).map(([k, v]) => (
-                    <div key={k} className="flex justify-between gap-3 border-b border-[var(--light-gray)]/60 py-1">
-                      <span className="text-[12.5px] font-semibold text-[var(--mid-gray)]">{k}</span>
-                      <span className="text-[12.5px] text-[var(--charcoal)] text-right">{v}</span>
-                    </div>
-                  ))}
-                </div>
+      ) : !data ? (
+        <ErrorCard title="Could not load this profile." />
+      ) : (
+        <div className="space-y-6">
+          <div className="space-y-2.5">
+            <GroupLabel>HR Information</GroupLabel>
+            <div className="flex gap-5 flex-col sm:flex-row">
+              <div className="shrink-0">
+                {data.photoUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={data.photoUrl} alt={`${data.intern.name} photo`} className="w-28 h-28 object-cover rounded-lg" style={{ border: '1px solid var(--light-gray)', background: SUBTLE_BG }} />
+                ) : (
+                  <div className="w-28 h-28 rounded-lg flex items-center justify-center font-bold text-2xl" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)', border: '1px solid var(--light-gray)', fontFamily: 'var(--font-display)' }}>
+                    {data.intern.name.split(' ').map((p) => p[0]).slice(0, 2).join('')}
+                  </div>
+                )}
+                <p className="text-[10px] text-center mt-1" style={{ color: 'var(--mid-gray)' }}>2×2 photo</p>
               </div>
-            </div>
-
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--teal)] mb-2">Learning Outcomes &amp; Preferences</p>
-              {!lp ? (
-                <p className="text-[13px] text-[var(--mid-gray)] italic">Not submitted by the intern yet.</p>
-              ) : (
-                <div className="space-y-3">
-                  {([
-                    ['Expectations for the clinical rotation', lp.outcomes?.expectations],
-                    ['Most looking forward to learning', lp.outcomes?.lookingForward],
-                    ['Wants to improve on', lp.outcomes?.improve],
-                    ['Learns best by', list(lp.learnBest, lp.learnBestOther)],
-                    ['Preferred feedback', list(lp.feedback, lp.feedbackOther)],
-                    ['Prepares for duty by', list(lp.prep)],
-                    ['Challenges in learning', lp.challenges],
-                  ] as [string, string | undefined][]).map(([k, v]) => (
-                    <div key={k}>
-                      <p className="text-[12px] font-semibold text-[var(--mid-gray)] mb-0.5">{k}</p>
-                      <p className="text-[13px] text-[var(--charcoal)] whitespace-pre-wrap">{v?.trim() || <span className="italic text-[var(--mid-gray)]">—</span>}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
+              <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 flex-1 sm:self-start min-w-0">
+                {hrRows(data).map(([k, v]) => (
+                  <div key={k} className="flex justify-between gap-3 py-1.5 min-w-0" style={{ borderBottom: '1px solid var(--light-gray)' }}>
+                    <dt className="text-[12.5px] font-semibold shrink-0" style={{ color: 'var(--mid-gray)' }}>{k}</dt>
+                    <dd className="text-[12.5px] text-right min-w-0 [overflow-wrap:anywhere]" style={{ color: 'var(--charcoal)' }}>{v}</dd>
+                  </div>
+                ))}
+              </dl>
             </div>
           </div>
-        )}
-      </div>
-    </div>
+
+          <div className="space-y-2.5">
+            <GroupLabel>Learning Outcomes &amp; Preferences</GroupLabel>
+            {!lp ? (
+              <p className="text-[13px] italic" style={{ color: 'var(--mid-gray)' }}>Not submitted by the intern yet.</p>
+            ) : (
+              <div className="space-y-3">
+                {([
+                  ['Expectations for the clinical rotation', lp.outcomes?.expectations],
+                  ['Most looking forward to learning', lp.outcomes?.lookingForward],
+                  ['Wants to improve on', lp.outcomes?.improve],
+                  ['Learns best by', list(lp.learnBest, lp.learnBestOther)],
+                  ['Preferred feedback', list(lp.feedback, lp.feedbackOther)],
+                  ['Prepares for duty by', list(lp.prep)],
+                  ['Challenges in learning', lp.challenges],
+                ] as [string, string | undefined][]).map(([k, v]) => (
+                  <div key={k}>
+                    <p className="text-[12px] font-semibold mb-0.5" style={{ color: 'var(--mid-gray)' }}>{k}</p>
+                    <p className="text-[13px] whitespace-pre-wrap leading-relaxed" style={{ color: 'var(--charcoal)' }}>{v?.trim() || <span className="italic" style={{ color: 'var(--mid-gray)' }}>—</span>}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </Dialog>
   )
 }
