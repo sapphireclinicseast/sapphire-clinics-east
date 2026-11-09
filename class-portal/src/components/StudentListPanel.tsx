@@ -9,13 +9,18 @@ import {
   paymentStatusFor, currentPeriodPaymentStatusFor, inferPaymentPlanFor,
   hydrateFrontDeskPayments,
   uploadDocumentBlob,
-  levelLabel, branchShortLabel,
+  levelLabel, branchShortLabel, getHeadshotFor,
   type StoredUser, type EnrollmentLevel, type Branch, type WaiverRecord,
   type PaymentPlan,
 } from '@/lib/session'
 import { downloadWaiverPdf, generateWaiverPdf } from '@/lib/waiver-pdf'
 import StudentDetail from './StudentDetail'
 import SignaturePad from './SignaturePad'
+import {
+  Avatar, BTN_PRIMARY, BTN_SECONDARY, BTN_SM, CONTROL, CONTROL_STYLE, DashCard, EmptyState, Icon,
+  LABEL, LABEL_STYLE, MODAL_BACKDROP, PRIMARY_STYLE, RowsSkeleton, SECONDARY_STYLE, StatusPill, Tag,
+  TH_STYLE, displayName, initials, type Tone,
+} from '@/components/hub/ui'
 
 interface Props {
   viewer: { role: 'TEACHER' | 'ADMIN'; userId?: string; email: string; name?: string }
@@ -75,6 +80,10 @@ export default function StudentListPanel({ viewer, viewerBranch }: Props) {
   // paymentStatusFor(s.id) call in the row map.
   const [paymentsRev, setPaymentsRev] = useState(0)
   void paymentsRev
+  // Display only: true once the first server hydrate below has finished,
+  // so an empty list shows a skeleton instead of "No students yet" while
+  // a fresh device is still loading.
+  const [loaded, setLoaded] = useState(false)
 
   function refresh() {
     // Disabled accounts (the main admin marked the student as no longer
@@ -134,7 +143,7 @@ export default function StudentListPanel({ viewer, viewerBranch }: Props) {
       hydrateUsers().catch(() => null),
       hydrateAssignments().catch(() => null),
       syncLocalWaiversToServer().catch(() => null),
-    ]).then(() => { if (!cancelled) refresh() })
+    ]).then(() => { if (!cancelled) { refresh(); setLoaded(true) } })
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewer.role, viewer.userId, viewerBranch])
@@ -245,46 +254,57 @@ export default function StudentListPanel({ viewer, viewerBranch }: Props) {
     }
   }
 
+  const query = filter.trim()
+  const selectedName = selected
+    ? (displayName([selected.firstName, selected.lastName].filter(Boolean).join(' ')) || selected.email)
+    : ''
+
   return (
     <>
-      <div className="card-static">
-        <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
-          <div>
-            <h2 className="text-[18px] leading-tight">Students</h2>
-            <p className="text-[12.5px] text-[color:var(--mid-gray)] mt-1">
-              {viewer.role === 'TEACHER' ? 'Students assigned to your grade level(s).' : 'All enrolled students.'}
-            </p>
-          </div>
-          <input
-            className="input"
-            value={filter}
-            onChange={e => setFilter(e.target.value)}
-            placeholder="Search by name or email"
-            style={{ width: 240 }}
-          />
+      <DashCard
+        flush
+        title="Students"
+        icon={<Icon name="student" size={15} />}
+        description={viewer.role === 'TEACHER' ? 'Students assigned to your grade level(s).' : 'All enrolled students.'}
+        action={(loaded || students.length > 0) ? (
+          <span className="text-xs font-semibold tabular-nums" style={{ color: 'var(--mid-gray)' }} aria-live="polite">
+            {query ? `${filtered.length} of ${students.length} students` : `${students.length} student${students.length === 1 ? '' : 's'}`}
+          </span>
+        ) : undefined}
+      >
+        {/* Toolbar: the panel's one filter is the name / email search. */}
+        <div className="px-4 sm:px-5 py-3 flex flex-wrap items-center gap-3" style={{ borderBottom: '1px solid var(--light-gray)' }}>
+          <label className="relative block w-full sm:max-w-[360px]">
+            <span className="sr-only">Search students by name or email</span>
+            <Icon name="search" size={14} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mid-gray)' }} />
+            <input
+              className={`${CONTROL} w-full pl-8`}
+              style={CONTROL_STYLE}
+              value={filter}
+              onChange={e => setFilter(e.target.value)}
+              placeholder="Search by name or email"
+            />
+          </label>
         </div>
 
-        <div className="overflow-auto rounded-xl border" style={{ maxHeight: 480, borderColor: 'var(--paper-3)' }}>
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 z-10" style={{ background: 'var(--paper)' }}>
-              <tr className="text-left text-[11.5px] uppercase tracking-[0.08em] text-[color:var(--mid-gray)] border-b" style={{ borderColor: 'var(--paper-3)', fontFamily: 'var(--font-display)' }}>
-                <th className="py-2 px-3">Name</th>
-                <th className="py-2 px-3">Email</th>
-                <th className="py-2 px-3">Level</th>
-                <th className="py-2 px-3">Branch</th>
-                <th className="py-2 px-3">Plan</th>
-                <th className="py-2 px-3">Enrolled</th>
-                <th className="py-2 px-3">Payment</th>
-                <th className="py-2 px-3"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.length === 0 && (
-                <tr><td colSpan={8} className="py-6 px-3 text-center text-[color:var(--mid-gray)]">
-                  {students.length === 0 ? 'No students yet.' : 'No students match this search.'}
-                </td></tr>
-              )}
-              {filtered.map(s => {
+        {!loaded && students.length === 0 ? (
+          <RowsSkeleton rows={5} label="Loading students" />
+        ) : filtered.length === 0 ? (
+          students.length === 0
+            ? <EmptyState icon="student" title="No students yet." hint={viewer.role === 'TEACHER' ? 'Students enrolled in your grade level(s) will show here.' : 'Enrolled students will show here.'} />
+            : <EmptyState icon="search" title="No students match this search." hint="Try part of a first name, last name or email." />
+        ) : (
+          <div className="overflow-y-auto overflow-x-hidden" style={{ maxHeight: 480 }}>
+            {/* Column heads, wide screens only; phones get a stacked list. */}
+            <div aria-hidden className={`hidden md:grid ${ROW_GRID} px-4 sm:px-5 py-2.5 sticky top-0 z-10 text-[11px] font-semibold uppercase tracking-wider`} style={TH_STYLE}>
+              <span>Student</span>
+              <span>Level · Branch · Plan</span>
+              <span>Enrolled</span>
+              <span>Payment</span>
+              <span />
+            </div>
+            <ul>
+              {filtered.map((s, n) => {
                 // Current-period-aware: PAID only when the student's
                 // current installment is settled. DUE = plan on file
                 // but this month's / this half's payment hasn't landed
@@ -297,101 +317,113 @@ export default function StudentListPanel({ viewer, viewerBranch }: Props) {
                 // a cue to ask the parent which cadence they picked.
                 const plan: PaymentPlan | undefined = inferPaymentPlanFor(s.id)
                 const planLabel = plan === 'ANNUAL' ? 'Annual' : plan === 'BIANNUAL' ? 'Bi-annual' : plan === 'MONTHLY' ? 'Monthly' : '—'
-                const planStyle = plan === 'ANNUAL'
-                  ? { background: '#d1fae5', color: '#065f46' }        // sage — one-shot lump
-                  : plan === 'BIANNUAL'
-                    ? { background: '#e0e7ff', color: '#3730a3' }      // indigo — twice a year
-                    : plan === 'MONTHLY'
-                      ? { background: '#fed7aa', color: '#9a3412' }    // amber — monthly cadence
-                      : { background: 'var(--paper-2)', color: 'var(--mid-gray)' }
+                const planTitle =
+                  plan === 'MONTHLY'  ? 'Monthly — charge every 5th of the month' :
+                  plan === 'BIANNUAL' ? 'Bi-annual — charge every 5th of June + 5th of December' :
+                  plan === 'ANNUAL'   ? 'Annual — one lump sum, due 5th of June' :
+                                        'No plan on file yet — parent hasn\'t recorded a payment. Ask which plan they picked.'
+                const name = displayName([s.firstName, s.lastName].filter(Boolean).join(' ')) || '—'
+                const enrolled = new Date(s.createdAt).toLocaleDateString()
                 return (
-                  <tr key={s.id} className="border-b hover:bg-[color:var(--paper-2)] cursor-pointer" style={{ borderColor: 'var(--paper-3)' }} onClick={() => setSelected(s)}>
-                    <td className="py-2.5 px-3 font-semibold text-[color:var(--narra)]">{[s.firstName, s.lastName].filter(Boolean).join(' ') || '—'}</td>
-                    <td className="py-2.5 px-3 text-[12.5px]">{s.email}</td>
-                    <td className="py-2.5 px-3 text-[12.5px]">{s.level ? levelLabel(s.level) : '—'}</td>
-                    <td className="py-2.5 px-3 text-[12.5px]">
-                      <span className="badge" style={{ background: s.branch === 'EAST' ? '#dbeafe' : s.branch === 'GREENHILLS' ? '#fef3c7' : 'var(--paper-2)', color: s.branch === 'EAST' ? '#1e40af' : s.branch === 'GREENHILLS' ? '#92400e' : 'var(--mid-gray)' }}>
-                        {branchLabel}
+                  <li key={s.id} style={{ borderTop: n ? '1px solid var(--light-gray)' : undefined }}>
+                    <button
+                      type="button"
+                      onClick={() => setSelected(s)}
+                      className={`w-full text-left grid grid-cols-[minmax(0,1fr)_auto] ${ROW_GRID} gap-x-3 gap-y-2 items-center px-4 sm:px-5 py-3 transition-colors hover:bg-[#FBF9F5] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[color:var(--teal)]`}
+                    >
+                      {/* Who */}
+                      <span className="flex items-center gap-3 min-w-0">
+                        <StudentAvatar student={s} />
+                        <span className="min-w-0">
+                          <span className="block text-sm font-semibold leading-snug [overflow-wrap:anywhere]" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>{name}</span>
+                          <span className="block text-xs leading-snug [overflow-wrap:anywhere]" style={{ color: 'var(--mid-gray)' }}>{s.email}</span>
+                        </span>
                       </span>
-                    </td>
-                    <td className="py-2.5 px-3 text-[12.5px]">
-                      <span
-                        className="badge"
-                        style={planStyle}
-                        title={
-                          plan === 'MONTHLY'  ? 'Monthly — charge every 5th of the month' :
-                          plan === 'BIANNUAL' ? 'Bi-annual — charge every 5th of June + 5th of December' :
-                          plan === 'ANNUAL'   ? 'Annual — one lump sum, due 5th of June' :
-                                                'No plan on file yet — parent hasn\'t recorded a payment. Ask which plan they picked.'
-                        }
-                      >
-                        {planLabel}
+                      {/* Level / branch / plan. On phones this row also carries the enrolled date. */}
+                      <span className="order-3 md:order-none col-span-2 md:col-span-1 flex flex-wrap items-center gap-1.5 min-w-0">
+                        <Tag tone="brand">{s.level ? levelLabel(s.level) : '—'}</Tag>
+                        <Tag tone="info">{branchLabel}</Tag>
+                        <Tag tone="neutral" title={planTitle}>{plan ? planLabel : 'No plan'}</Tag>
+                        <span className="md:hidden text-[11px]" style={{ color: 'var(--mid-gray)' }}>Enrolled {enrolled}</span>
                       </span>
-                    </td>
-                    <td className="py-2.5 px-3 text-[12.5px] text-[color:var(--mid-gray)]">{new Date(s.createdAt).toLocaleDateString()}</td>
-                    <td className="py-2.5 px-3">
-                      <PaymentStatusBadge status={ps} />
-                    </td>
-                    <td className="py-2.5 px-3 text-right">
-                      <span className="btn-secondary text-xs" style={{ pointerEvents: 'none' }}>View →</span>
-                    </td>
-                  </tr>
+                      <span className="hidden md:block text-xs tabular-nums" style={{ color: 'var(--mid-gray)' }}>{enrolled}</span>
+                      <span className="order-2 md:order-none justify-self-end md:justify-self-start">
+                        <PaymentStatusBadge status={ps} />
+                      </span>
+                      <Icon name="chevronRight" size={16} className="hidden md:block" style={{ color: 'var(--mid-gray)' }} />
+                    </button>
+                  </li>
                 )
               })}
-            </tbody>
-          </table>
-        </div>
-      </div>
+            </ul>
+          </div>
+        )}
+      </DashCard>
 
       {/* Detail popup — portaled to body so animate-fade-up ancestors don't trap fixed positioning */}
       {selected && mounted && createPortal(
         <div
-          className="fixed inset-0 z-[100] bg-black/50 backdrop-blur-sm flex items-start sm:items-center justify-center p-3 sm:p-6 animate-fade-in"
+          className="fixed inset-0 z-[100] flex items-start sm:items-center justify-center p-3 sm:p-6 animate-fade-in"
+          style={MODAL_BACKDROP}
           onClick={() => setSelected(null)}
         >
           <div
-            className="bg-[color:var(--paper)] rounded-2xl shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="student-detail-title"
+            className="rounded-xl shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden min-w-0"
+            style={{ background: 'var(--paper)' }}
             onClick={e => e.stopPropagation()}
           >
-            <div
-              className="flex items-center justify-between gap-3 px-5 py-3 border-b sticky top-0 z-10"
-              style={{ background: 'var(--paper)', borderColor: 'var(--paper-3)' }}
+            <header
+              className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-4 sm:px-5 py-3"
+              style={{ background: '#fff', borderBottom: '1px solid var(--light-gray)' }}
             >
-              <div className="flex items-center gap-2 min-w-0">
-                <button className="btn-secondary text-xs whitespace-nowrap" onClick={() => setSelected(null)}>← Back to list</button>
-                <span className="text-[13px] text-[color:var(--mid-gray)] truncate hidden sm:inline">
-                  {[selected.firstName, selected.lastName].filter(Boolean).join(' ') || selected.email}
-                </span>
+              <div className="flex items-center gap-3 min-w-0 flex-1">
+                <button type="button" className={BTN_SM} style={SECONDARY_STYLE} onClick={() => setSelected(null)}>
+                  <Icon name="arrowLeft" size={13} /> Back to list
+                </button>
+                <div className="min-w-0">
+                  <p className="text-[10.5px] font-bold uppercase tracking-widest leading-none mb-1 hidden sm:block" style={{ color: 'var(--deep-teal)', fontFamily: 'var(--font-display)' }}>Student profile</p>
+                  <h2 id="student-detail-title" className="text-[14px] font-bold leading-tight truncate tracking-normal" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>
+                    {selectedName}
+                  </h2>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 {viewer.role === 'TEACHER' && waiver && !waiver.witnessSig && (
-                  <button className="btn-cta text-xs whitespace-nowrap" onClick={() => setWitnessOpen(true)}>Sign as witness</button>
+                  <button type="button" className={`${BTN_SM} text-white hover:opacity-90`} style={PRIMARY_STYLE} onClick={() => setWitnessOpen(true)}>
+                    <Icon name="edit" size={13} /> Sign as witness
+                  </button>
                 )}
                 {viewer.role === 'TEACHER' && waiver?.witnessSig && (
-                  <span className="badge badge-paid whitespace-nowrap">Waiver witness signed</span>
+                  <StatusPill tone="success">Waiver witness signed</StatusPill>
                 )}
                 {viewer.role === 'ADMIN' && waiver && !waiver.sceiAckSig && (
                   <button
-                    className="btn-cta text-xs whitespace-nowrap"
+                    type="button"
+                    className={`${BTN_SM} text-white hover:opacity-90`}
+                    style={PRIMARY_STYLE}
                     onClick={() => setSceiAckOpen(true)}
                     title="Sign the 'Sapphire Clinics East, Inc. — Acknowledged & Received' block. Either main admin or a branch admin can sign — one signature is enough."
-                  >Sign as SCEI</button>
+                  ><Icon name="edit" size={13} /> Sign as SCEI</button>
                 )}
                 {viewer.role === 'ADMIN' && waiver?.sceiAckSig && (
-                  <span className="badge badge-paid whitespace-nowrap" title={`Signed by ${waiver.sceiAckSig.signerEmail ?? 'admin'} on ${new Date(waiver.sceiAckSig.signedAt).toLocaleDateString()}`}>SCEI countersigned</span>
+                  <StatusPill tone="success" title={`Signed by ${waiver.sceiAckSig.signerEmail ?? 'admin'} on ${new Date(waiver.sceiAckSig.signedAt).toLocaleDateString()}`}>SCEI countersigned</StatusPill>
                 )}
                 <button
                   type="button"
                   aria-label="Close"
                   onClick={() => setSelected(null)}
-                  className="w-8 h-8 rounded-full flex items-center justify-center text-[color:var(--mid-gray)] hover:bg-[color:var(--paper-2)] hover:text-[color:var(--narra)] text-lg leading-none"
+                  className="w-8 h-8 -mr-1.5 inline-flex items-center justify-center rounded-lg hover:bg-[color:var(--paper)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--teal)]"
+                  style={{ color: 'var(--mid-gray)' }}
                 >
-                  ×
+                  <Icon name="x" size={16} />
                 </button>
               </div>
-            </div>
+            </header>
 
-            <div className="flex-1 overflow-y-auto px-4 sm:px-5 py-4 space-y-4">
+            <div className="flex-1 overflow-y-auto px-3 sm:px-5 py-4 space-y-4 min-w-0">
               <StudentDetail
                 student={selected}
                 viewerRole={viewer.role}
@@ -422,32 +454,71 @@ export default function StudentListPanel({ viewer, viewerBranch }: Props) {
   )
 }
 
+/** Student / Level · Branch · Plan / Enrolled / Payment / chevron, from md up. */
+const ROW_GRID = 'md:grid-cols-[minmax(0,1fr)_minmax(0,15rem)_6.5rem_8.5rem_1rem] md:gap-x-4'
+
+/** The 1x1 headshot cached on this device, else initials. */
+function StudentAvatar({ student }: { student: StoredUser }) {
+  const shot = getHeadshotFor(student.id)
+  if (shot?.dataUrl) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src={shot.dataUrl} alt="" aria-hidden className="w-9 h-9 rounded-full object-cover flex-shrink-0" style={{ border: '1px solid var(--light-gray)' }} />
+    )
+  }
+  const text = (student.firstName || student.lastName)
+    ? initials(student.firstName, student.lastName)
+    : (student.email.trim()[0] ?? '?').toUpperCase()
+  return <Avatar text={text} size={36} />
+}
+
+const PAYMENT_STATUS: Record<'PAID' | 'DUE' | 'PENDING' | 'NONE', { tone: Tone; label: string; title?: string }> = {
+  PAID:    { tone: 'success', label: 'Paid' },
+  DUE:     { tone: 'warn',    label: 'Due', title: 'Current installment not yet paid — charge this student.' },
+  PENDING: { tone: 'info',    label: 'Pending' },
+  NONE:    { tone: 'neutral', label: 'No payment yet' },
+}
+
 function PaymentStatusBadge({ status }: { status: 'PAID' | 'DUE' | 'PENDING' | 'NONE' }) {
-  if (status === 'PAID')    return <span className="badge badge-paid">Paid</span>
-  if (status === 'DUE')     return <span className="badge" style={{ background: '#fed7aa', color: '#9a3412' }} title="Current installment not yet paid — charge this student.">Due</span>
-  if (status === 'PENDING') return <span className="badge badge-pending">Pending</span>
-  return <span className="badge badge-pending">No payment yet</span>
+  const p = PAYMENT_STATUS[status]
+  return <StatusPill tone={p.tone} title={p.title}>{p.label}</StatusPill>
+}
+
+function SignatureFields({ idPrefix, name, setName, setSig }: { idPrefix: string; name: string; setName: (v: string) => void; setSig: (v: string) => void }) {
+  return (
+    <div className="space-y-4">
+      <div>
+        <label htmlFor={`${idPrefix}-name`} className={LABEL} style={LABEL_STYLE}>Printed name</label>
+        <input id={`${idPrefix}-name`} className={`${CONTROL} w-full`} style={CONTROL_STYLE} value={name} onChange={e => setName(e.target.value)} />
+      </div>
+      <div>
+        <span className={LABEL} style={LABEL_STYLE}>Signature</span>
+        <SignaturePad onChange={setSig} height={150} />
+      </div>
+    </div>
+  )
+}
+
+function SignFooter({ onCancel, onSign }: { onCancel: () => void; onSign: () => void }) {
+  return (
+    <div className="flex flex-wrap gap-2 justify-end">
+      <button type="button" className={BTN_SECONDARY} style={SECONDARY_STYLE} onClick={onCancel}>Cancel</button>
+      <button type="button" className={BTN_PRIMARY} style={PRIMARY_STYLE} onClick={onSign}>Sign &amp; regenerate PDF</button>
+    </div>
+  )
 }
 
 function WitnessForm({ onCancel, onSign, defaultName }: { onCancel: () => void; onSign: (name: string, sig: string) => void; defaultName?: string }) {
   const [name, setName] = useState(defaultName ?? '')
   const [sig, setSig] = useState('')
   return (
-    <div className="card-static mt-4">
-      <h3 className="text-[16px] leading-tight mb-3">Witness signature (assigned SCEI teacher)</h3>
-      <label className="block mb-3">
-        <span className="label">Printed name</span>
-        <input className="input" value={name} onChange={e => setName(e.target.value)} />
-      </label>
-      <div>
-        <span className="label">Signature</span>
-        <SignaturePad onChange={setSig} height={150} />
-      </div>
-      <div className="flex gap-2 justify-end mt-3">
-        <button type="button" className="btn-secondary text-xs" onClick={onCancel}>Cancel</button>
-        <button type="button" className="btn-primary text-xs" onClick={() => onSign(name, sig)}>Sign &amp; regenerate PDF</button>
-      </div>
-    </div>
+    <DashCard
+      title="Witness signature (assigned SCEI teacher)"
+      icon={<Icon name="edit" size={15} />}
+      footer={<SignFooter onCancel={onCancel} onSign={() => onSign(name, sig)} />}
+    >
+      <SignatureFields idPrefix="witness" name={name} setName={setName} setSig={setSig} />
+    </DashCard>
   )
 }
 
@@ -455,23 +526,13 @@ function SceiAckForm({ onCancel, onSign, defaultName }: { onCancel: () => void; 
   const [name, setName] = useState(defaultName ?? '')
   const [sig, setSig] = useState('')
   return (
-    <div className="card-static mt-4">
-      <h3 className="text-[16px] leading-tight mb-1">Sapphire Clinics East, Inc. — Acknowledged &amp; Received</h3>
-      <p className="text-[12.5px] text-[color:var(--mid-gray)] mb-3">
-        Either the main admin or a branch admin can sign — one signature is enough. The PDF is regenerated and pushed to the admission tracker.
-      </p>
-      <label className="block mb-3">
-        <span className="label">Printed name</span>
-        <input className="input" value={name} onChange={e => setName(e.target.value)} />
-      </label>
-      <div>
-        <span className="label">Signature</span>
-        <SignaturePad onChange={setSig} height={150} />
-      </div>
-      <div className="flex gap-2 justify-end mt-3">
-        <button type="button" className="btn-secondary text-xs" onClick={onCancel}>Cancel</button>
-        <button type="button" className="btn-primary text-xs" onClick={() => onSign(name, sig)}>Sign &amp; regenerate PDF</button>
-      </div>
-    </div>
+    <DashCard
+      title={<>Sapphire Clinics East, Inc. — Acknowledged &amp; Received</>}
+      icon={<Icon name="shield" size={15} />}
+      description="Either the main admin or a branch admin can sign — one signature is enough. The PDF is regenerated and pushed to the admission tracker."
+      footer={<SignFooter onCancel={onCancel} onSign={() => onSign(name, sig)} />}
+    >
+      <SignatureFields idPrefix="scei-ack" name={name} setName={setName} setSig={setSig} />
+    </DashCard>
   )
 }
