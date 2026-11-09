@@ -93,7 +93,7 @@ export default function WeeklyAccomplishmentsTab({ cutoffPeriod, branch }: { cut
         </p>
       </div>
 
-      <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+      <div className="rounded-lg border p-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
         <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
           <div>
             <h2 className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>Weekly Accomplishments</h2>
@@ -135,7 +135,7 @@ export default function WeeklyAccomplishmentsTab({ cutoffPeriod, branch }: { cut
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
-                  <tr style={{ color: 'var(--mid-gray)' }} className="text-left">
+                  <tr style={{ background: 'var(--hr-head)', color: 'var(--mid-gray)' }} className="hr-th text-left">
                     <th className="py-2 pr-3 font-semibold">Employee</th>
                     <th className="py-2 pr-3 font-semibold">Branch</th>
                     <th className="py-2 pr-3 font-semibold">Weeks in this cutoff</th>

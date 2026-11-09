@@ -2322,13 +2322,13 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
   return (
     <div className="space-y-5">
       {/* Sub-tabs */}
-      <div className="flex flex-wrap gap-1">
+      <div className="flex gap-1.5 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible sm:pb-0" role="tablist" aria-label="Employee sections">
         {SUB_TABS.map(t => (
-          <button key={t.key} onClick={() => setSubTab(t.key)}
-            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-medium transition-all hover:bg-gray-100 active:scale-[0.97]"
+          <button key={t.key} onClick={() => setSubTab(t.key)} role="tab" aria-selected={subTab === t.key}
+            className="flex-shrink-0 flex items-center gap-1.5 h-8 px-3 rounded-full border text-xs font-semibold whitespace-nowrap transition-colors hover:border-[var(--teal)]"
             style={subTab === t.key
-              ? { background: 'var(--pale-teal)', color: 'var(--deep-teal)', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }
-              : { color: 'var(--mid-gray)' }}>
+              ? { background: 'var(--teal)', borderColor: 'var(--teal)', color: '#fff' }
+              : { background: '#fff', borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
             <t.icon size={14} /> {t.label}
           </button>
         ))}
@@ -2348,14 +2348,14 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
       {subTab === 'list' && (
         <div className="space-y-3">
           {/* Controls */}
-          <div className="flex items-center flex-wrap gap-2">
+          <div className="flex items-center flex-wrap gap-2 rounded-lg border px-4 py-2.5" style={{ borderColor: 'var(--light-gray)', background: '#fcfdfa' }}>
             <div className="relative flex-1 min-w-[180px]">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--hr-faint)' }} />
               <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search employees..."
-                className="w-full pl-9 pr-3 py-2.5 rounded-xl border text-xs transition-colors focus:outline-none focus:ring-2 focus:ring-teal-200" style={{ borderColor: 'var(--light-gray)' }} />
+                className="w-full h-8 pl-8 pr-3 rounded-lg border text-xs bg-white transition-colors focus:outline-none focus:border-[var(--teal)]" style={{ borderColor: 'var(--light-gray)' }} />
             </div>
             <select value={deptFilter} onChange={e => setDeptFilter(e.target.value)}
-              className="px-3 py-2.5 rounded-xl border text-xs cursor-pointer hover:border-gray-400 transition-colors" style={{ borderColor: 'var(--light-gray)' }}>
+              className="h-8 px-2.5 rounded-lg border text-xs bg-white cursor-pointer transition-colors focus:outline-none focus:border-[var(--teal)]" style={{ borderColor: 'var(--light-gray)' }}>
               {EMP_DEPARTMENTS.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
             </select>
             {canWrite && (
@@ -2388,7 +2388,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
             <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--light-gray)' }}>
               <table className="w-full text-xs">
                 <thead>
-                  <tr style={{ background: 'var(--off-white)' }}>
+                  <tr className="hr-th" style={{ background: 'var(--hr-head)' }}>
                     {canWrite && (
                       <th className="text-center px-2 py-2.5">
                         <input type="checkbox" checked={filteredEmployees.length > 0 && selectedEmployeeIds.size === filteredEmployees.length}
@@ -3178,7 +3178,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
           <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--light-gray)' }}>
             <table className="w-full text-xs">
               <thead>
-                <tr style={{ background: 'var(--off-white)' }}>
+                <tr className="hr-th" style={{ background: 'var(--hr-head)' }}>
                   <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Employee</th>
                   <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Type</th>
                   <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Dates</th>
@@ -3477,7 +3477,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
             ) : (
               <table className="w-full text-xs">
                 <thead>
-                  <tr style={{ background: 'var(--off-white)' }}>
+                  <tr className="hr-th" style={{ background: 'var(--hr-head)' }}>
                     <th className="text-left px-4 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>File</th>
                     <th className="text-left px-4 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>Date</th>
                     <th className="text-left px-4 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>Branch</th>
@@ -3652,7 +3652,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
           <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--light-gray)' }}>
             <table className="w-full text-xs">
               <thead>
-                <tr style={{ background: 'var(--off-white)' }}>
+                <tr className="hr-th" style={{ background: 'var(--hr-head)' }}>
                   <SortTh field="tkEmp" className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Employee</SortTh>
                   <SortTh field="tkDate" className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Date</SortTh>
                   <SortTh field="tkIn" className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Time In</SortTh>
@@ -3969,7 +3969,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
           <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--light-gray)' }}>
             <table className="w-full text-xs">
               <thead>
-                <tr style={{ background: 'var(--off-white)' }}>
+                <tr className="hr-th" style={{ background: 'var(--hr-head)' }}>
                   {canWrite && (
                     <th className="text-center px-2 py-2.5">
                       <input type="checkbox" checked={filteredEmployees.length > 0 && selectedBenefitEmpIds.size === filteredEmployees.length}
@@ -4115,7 +4115,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
         <div className="space-y-4">
 
           {/* ── Leave Quotas ── */}
-          <div className="rounded-2xl border p-4 space-y-3" style={{ borderColor: 'var(--light-gray)' }}>
+          <div className="rounded-lg border p-4 space-y-3" style={{ borderColor: 'var(--light-gray)' }}>
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div>
                 <p className="text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>Leave Quotas (days per year)</p>
@@ -4189,7 +4189,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
               <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--light-gray)' }}>
                 <table className="w-full text-xs" style={{ minWidth: '900px' }}>
                   <thead>
-                    <tr style={{ background: 'var(--off-white)' }}>
+                    <tr className="hr-th" style={{ background: 'var(--hr-head)' }}>
                       <th className="text-left px-3 py-2.5 font-semibold sticky left-0 z-10" style={{ color: 'var(--charcoal)', background: 'var(--off-white)', minWidth: '160px' }}>Employee</th>
                       {LEAVE_TYPES.map(lt => (
                         <th key={lt.value} className="text-center px-2 py-2.5 font-semibold" style={{ color: 'var(--charcoal)', minWidth: '80px' }}>
@@ -4413,7 +4413,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
               <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--light-gray)' }}>
                 <table className="w-full text-xs">
                   <thead>
-                    <tr style={{ background: 'var(--off-white)' }}>
+                    <tr className="hr-th" style={{ background: 'var(--hr-head)' }}>
                       {canWrite && (
                         <th className="text-center px-2 py-2.5">
                           <input type="checkbox" checked={adjRows.length > 0 && selectedAdjEmpIds.size === adjRows.length}
@@ -4703,7 +4703,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
           <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--light-gray)' }}>
             <table className="w-full text-xs">
               <thead>
-                <tr style={{ background: 'var(--off-white)' }}>
+                <tr className="hr-th" style={{ background: 'var(--hr-head)' }}>
                   <SortTh field="holDate" className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Date</SortTh>
                   <SortTh field="holName" className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Holiday</SortTh>
                   <SortTh field="holType" className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Type</SortTh>
@@ -4962,7 +4962,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
           <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--light-gray)' }}>
             <table className="w-full text-xs">
               <thead>
-                <tr style={{ background: 'var(--off-white)' }}>
+                <tr className="hr-th" style={{ background: 'var(--hr-head)' }}>
                   <SortTh field="psEmp" className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Employee</SortTh>
                   <SortTh field="psDays" className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Days</SortTh>
                   <SortTh field="psBasic" className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Basic</SortTh>
@@ -5362,7 +5362,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
               <div className="rounded-xl overflow-hidden border" style={{ borderColor: 'var(--light-gray)' }}>
                 <table className="w-full text-xs">
                   <thead>
-                    <tr style={{ background: 'var(--off-white)' }}>
+                    <tr className="hr-th" style={{ background: 'var(--hr-head)' }}>
                       <th className="text-left px-4 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Employee</th>
                       <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Dept</th>
                       <th className="text-center px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Late Count</th>
@@ -5534,7 +5534,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
                 ) : (
                   <table className="w-full text-xs">
                     <thead>
-                      <tr style={{ background: 'var(--off-white)' }}>
+                      <tr className="hr-th" style={{ background: 'var(--hr-head)' }}>
                         <th className="text-left px-3 py-2 font-semibold rounded-tl-lg" style={{ color: 'var(--charcoal)' }}>Date</th>
 
                         {/* ── Days Worked ── */}
@@ -5784,7 +5784,7 @@ export default function EmployeePayroll({ canWrite, branch: parentBranch, cutoff
 
               <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
                 <table className="w-full text-xs">
-                  <thead><tr style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
+                  <thead><tr className="hr-th" style={{ background: 'var(--hr-head)', color: 'var(--mid-gray)' }}>
                     <th className="px-3 py-2 text-left font-semibold uppercase">Loan</th>
                     <th className="px-3 py-2 text-right font-semibold uppercase">Per Cutoff</th>
                     <th className="px-3 py-2 text-right font-semibold uppercase">Balance</th>

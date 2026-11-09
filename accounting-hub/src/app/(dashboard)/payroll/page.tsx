@@ -22,6 +22,7 @@ import PfPriceCheck from './PfPriceCheck'
 import { overPrice, type OverPrice, type PricedService } from '@/lib/payroll/pf-price'
 import { redBlockMessage, zeroUnitPays as zeroUnitPaysOf } from '@/lib/payroll/unit-pay-gaps'
 import PayrollHistoryTab from './PayrollHistoryTab'
+import { HR_PAGE_CLASS, HR_PAGE_STYLE, HrShimmerStyle, hrBtn } from '@/components/ui/hr-look'
 
 const toNum = (v: unknown) => Number(v) || 0
 
@@ -2771,84 +2772,83 @@ export default function PayrollPage() {
      RENDER
      ══════════════════════════════════════════════════════════════ */
   return (
-    <div className="space-y-6">
+    <div className={`${HR_PAGE_CLASS} hr-payroll`} style={HR_PAGE_STYLE}>
+      <HrShimmerStyle />
+      {/* HR table headers for the plain (neutral) header rows on this page — coloured alert headers keep their own look. */}
+      <style>{`.hr-payroll .hr-th>th{font-size:11px!important;font-weight:700!important;text-transform:uppercase;letter-spacing:.4px;color:var(--mid-gray)!important}`}</style>
       {/* Header */}
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
-            <BadgeDollarSign size={28} style={{ color: 'var(--teal)' }} /> Payroll
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold leading-tight flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+            <BadgeDollarSign size={22} style={{ color: 'var(--teal)' }} /> Payroll
           </h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--mid-gray)' }}>Consultant and employee compensation management</p>
+          <p className="mt-1 text-[13px] max-w-3xl" style={{ color: 'var(--mid-gray)' }}>Consultant and employee compensation: rates and pay rules, cutoff payroll and payslips, salaries payable and history.</p>
         </div>
-        <button onClick={openSettings}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-xl border text-sm font-medium mt-1 shrink-0"
-          style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+        <button onClick={openSettings} className={`${hrBtn.outline} shrink-0`} style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
           <Settings size={15} /> Payroll Settings
         </button>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-wrap items-end gap-3">
-        <div>
-          <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Branch</label>
-          <select value={branch} onChange={e => setBranch(e.target.value)}
-            className="px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
-            {BRANCHES.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
-          </select>
+      {/* Filters: branch + cutoff */}
+      <div className="rounded-lg border px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-2.5" style={{ borderColor: 'var(--light-gray)', background: '#fcfdfa' }}>
+        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Branch">
+          {BRANCHES.map(b => (
+            <button key={b.value} onClick={() => setBranch(b.value)} aria-pressed={branch === b.value}
+              className="px-3.5 py-1.5 rounded-full border text-[13px] font-semibold whitespace-nowrap transition-colors"
+              style={branch === b.value
+                ? { background: 'var(--teal)', borderColor: 'var(--teal)', color: '#fff', fontFamily: 'var(--font-display)' }
+                : { background: '#fff', borderColor: 'var(--light-gray)', color: 'var(--mid-gray)', fontFamily: 'var(--font-display)' }}>{b.label}</button>
+          ))}
         </div>
-        <div>
-          <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Month</label>
-          <select value={cutoffMonth} onChange={e => setCutoffMonth(parseInt(e.target.value))}
-            className="px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
-            {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-          </select>
+        <span className="hidden lg:block w-px h-6" style={{ background: 'var(--light-gray)' }} />
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)' }}>
+            Month
+            <select value={cutoffMonth} onChange={e => setCutoffMonth(parseInt(e.target.value))}
+              className="h-8 px-2.5 rounded-lg border text-xs font-medium normal-case tracking-normal bg-white outline-none focus:border-[var(--teal)]" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+              {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+            </select>
+          </label>
+          <label className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)' }}>
+            Year
+            <select value={cutoffYear} onChange={e => setCutoffYear(parseInt(e.target.value))}
+              className="h-8 px-2.5 rounded-lg border text-xs font-medium normal-case tracking-normal bg-white outline-none focus:border-[var(--teal)]" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+              {[2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+          </label>
+          <label className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)' }}>
+            Cutoff
+            <select value={cutoffHalf} onChange={e => setCutoffHalf(parseInt(e.target.value))}
+              className="h-8 px-2.5 rounded-lg border text-xs font-medium normal-case tracking-normal bg-white outline-none focus:border-[var(--teal)]" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+              <option value={1}>1st Cutoff</option>
+              <option value={2}>2nd Cutoff</option>
+            </select>
+          </label>
         </div>
-        <div>
-          <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Year</label>
-          <select value={cutoffYear} onChange={e => setCutoffYear(parseInt(e.target.value))}
-            className="px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
-            {[2025, 2026, 2027].map(y => <option key={y} value={y}>{y}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Cutoff</label>
-          <select value={cutoffHalf} onChange={e => setCutoffHalf(parseInt(e.target.value))}
-            className="px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
-            <option value={1}>1st Cutoff</option>
-            <option value={2}>2nd Cutoff</option>
-          </select>
-        </div>
-        <div className="flex flex-col px-3 py-2 rounded-xl text-sm font-medium" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
+        <div className="flex flex-col px-3 py-1.5 rounded-lg text-xs font-semibold lg:ml-auto" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
           <span>{getCutoffLabel(cutoffPeriod)}</span>
-          <span className="text-xs font-normal opacity-70">{getCustomCutoffLabel(payrollSettings, cutoffYear, cutoffMonth, cutoffHalf)}</span>
+          <span className="text-[11px] font-normal opacity-80">{getCustomCutoffLabel(payrollSettings, cutoffYear, cutoffMonth, cutoffHalf)}</span>
         </div>
       </div>
 
-      {/* Main Tabs */}
-      <div className="flex gap-2">
-        {(['consultants', 'employees'] as const).map(t => (
-          <button key={t} onClick={() => setMainTab(t)}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium capitalize transition-colors"
-            style={mainTab === t ? { background: 'var(--teal)', color: 'white' } : { background: 'var(--off-white)', color: 'var(--charcoal)' }}>
-            <Users size={16} /> {t}
-          </button>
-        ))}
-        {/* 'Benefits Payable' moved to its own left-nav section (/benefits-payable). */}
-        {(['salaries-payable', 'payroll-settings'] as const).map(t => {
-          const labels: Record<string, string> = { 'salaries-payable': 'Salaries Payable', 'payroll-settings': 'Payroll Settings' }
-          return (
-            <button key={t} onClick={() => setMainTab(t)}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-colors"
-              style={mainTab === t ? { background: 'var(--teal)', color: 'white' } : { background: 'var(--off-white)', color: 'var(--charcoal)' }}>
-              <Receipt size={16} /> {labels[t]}
+      {/* Main Tabs — one row, swipes sideways on narrow screens */}
+      {/* 'Benefits Payable' moved to its own left-nav section (/benefits-payable). */}
+      <div className="border-b-2" style={{ borderColor: 'var(--light-gray)' }}>
+        <div className="flex items-end -mb-[2px] max-w-full overflow-x-auto" role="tablist" aria-label="Payroll sections">
+          {([
+            { key: 'consultants' as const, label: 'Consultants', icon: Users },
+            { key: 'employees' as const, label: 'Employees', icon: Users },
+            { key: 'salaries-payable' as const, label: 'Salaries Payable', icon: Receipt },
+            { key: 'payroll-settings' as const, label: 'Payroll Settings', icon: Receipt },
+            { key: 'payroll-history' as const, label: 'Payroll History', icon: TrendingUp },
+          ]).map(t => (
+            <button key={t.key} onClick={() => setMainTab(t.key)} role="tab" aria-selected={mainTab === t.key}
+              className="flex items-center gap-1.5 px-3.5 py-2.5 border-b-2 text-[13px] font-semibold whitespace-nowrap transition-colors hover:text-[var(--teal)]"
+              style={{ fontFamily: 'var(--font-display)', borderColor: mainTab === t.key ? 'var(--teal)' : 'transparent', color: mainTab === t.key ? 'var(--teal)' : 'var(--mid-gray)' }}>
+              <t.icon size={15} /> {t.label}
             </button>
-          )
-        })}
-        <button onClick={() => setMainTab('payroll-history')}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-colors"
-          style={mainTab === 'payroll-history' ? { background: 'var(--teal)', color: 'white' } : { background: 'var(--off-white)', color: 'var(--charcoal)' }}>
-          <TrendingUp size={16} /> Payroll History
-        </button>
+          ))}
+        </div>
       </div>
 
       {mainTab === 'payroll-history' && (
@@ -2934,10 +2934,10 @@ export default function PayrollPage() {
 
               return (
                 <div className="space-y-3">
-                  <div className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+                  <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
                     <table className="w-full text-sm">
                       <thead>
-                        <tr style={{ background: 'var(--off-white)' }}>
+                        <tr className="hr-th" style={{ background: 'var(--hr-head)' }}>
                           <th className="px-4 py-3 w-10">
                             <input type="checkbox"
                               checked={allUnremitted.length > 0 && allUnremitted.every(e => selectedTaxIds.includes(e.payrollEntryId))}
@@ -3028,10 +3028,10 @@ export default function PayrollPage() {
           {taxPayments.length > 0 && (
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: 'var(--mid-gray)' }}>Payment History</p>
-              <div className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+              <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
                 <table className="w-full text-sm">
                   <thead>
-                    <tr style={{ background: 'var(--off-white)' }}>
+                    <tr className="hr-th" style={{ background: 'var(--hr-head)' }}>
                       <th className="text-left px-4 py-3 font-semibold text-xs" style={{ color: 'var(--charcoal)' }}>Payment Date</th>
                       <th className="text-left px-4 py-3 font-semibold text-xs" style={{ color: 'var(--charcoal)' }}>From Account</th>
                       <th className="text-center px-4 py-3 font-semibold text-xs" style={{ color: 'var(--charcoal)' }}>Payslips</th>
@@ -3234,7 +3234,7 @@ export default function PayrollPage() {
       {mainTab === 'consultants' && (
         <>
           {/* Sub-tabs */}
-          <div className="flex gap-2 border-b pb-2" style={{ borderColor: 'var(--light-gray)' }}>
+          <div className="flex gap-1.5 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible sm:pb-0" role="tablist" aria-label="Consultant sections">
             {[
               { key: 'list' as const, label: 'Consultant List', icon: Users },
               { key: 'unit-pay' as const, label: 'Unit Pay Settings', icon: Settings },
@@ -3248,9 +3248,9 @@ export default function PayrollPage() {
               { key: 'hmo-pf' as const, label: 'HMO PF Adjustments', icon: TrendingDown },
               { key: 'pf-price' as const, label: 'PF Above Price', icon: AlertOctagon },
             ].map(t => (
-              <button key={t.key} onClick={() => { setSubTab(t.key); setIeprSearch(''); setIeprExpanded(new Set()) }}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors"
-                style={subTab === t.key ? { background: 'var(--pale-teal)', color: 'var(--deep-teal)' } : { color: t.key === 'hmo-pf' && hmoPfCount > 0 ? '#b45309' : t.key === 'pf-price' && pfPriceCount > 0 ? '#b91c1c' : 'var(--mid-gray)' }}>
+              <button key={t.key} onClick={() => { setSubTab(t.key); setIeprSearch(''); setIeprExpanded(new Set()) }} role="tab" aria-selected={subTab === t.key}
+                className="flex-shrink-0 flex items-center gap-1.5 h-8 px-3 rounded-full border text-xs font-semibold whitespace-nowrap transition-colors hover:border-[var(--teal)]"
+                style={subTab === t.key ? { background: 'var(--teal)', borderColor: 'var(--teal)', color: '#fff' } : { background: '#fff', borderColor: 'var(--light-gray)', color: t.key === 'hmo-pf' && hmoPfCount > 0 ? '#b45309' : t.key === 'pf-price' && pfPriceCount > 0 ? '#b91c1c' : 'var(--mid-gray)' }}>
                 <t.icon size={14} /> {t.label}
                 {t.key === 'hmo-pf' && hmoPfCount > 0 && (
                   <span className="ml-0.5 px-1.5 rounded-full text-[10px] font-bold text-white" style={{ background: '#dc2626' }}>{hmoPfCount}</span>
@@ -3292,21 +3292,21 @@ export default function PayrollPage() {
 
           {subTab === 'list' && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
+              <div className="flex items-center justify-between flex-wrap gap-2 rounded-lg border px-4 py-2.5" style={{ borderColor: 'var(--light-gray)', background: '#fcfdfa' }}>
+                <div className="flex items-center gap-2 flex-wrap">
                   <div className="relative">
-                    <Search size={14} className="absolute left-3 top-2.5" style={{ color: 'var(--mid-gray)' }} />
+                    <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--hr-faint)' }} />
                     <input value={cSearch} onChange={e => setCSearch(e.target.value)} placeholder="Search clinicians..."
-                      className="pl-9 pr-3 py-2 rounded-xl border text-sm outline-none w-60" style={{ borderColor: 'var(--light-gray)' }} />
+                      className="h-8 pl-8 pr-3 rounded-lg border text-xs bg-white outline-none w-60 max-w-full focus:border-[var(--teal)]" style={{ borderColor: 'var(--light-gray)' }} />
                   </div>
                   <select value={cDeptFilter} onChange={e => setCDeptFilter(e.target.value)}
-                    className="px-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }}>
+                    className="h-8 px-2.5 rounded-lg border text-xs bg-white outline-none focus:border-[var(--teal)]" style={{ borderColor: 'var(--light-gray)' }}>
                     {DEPARTMENTS.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
                   </select>
                 </div>
                 {canWrite && (
                   <button onClick={syncConsultants} disabled={syncing}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium text-white disabled:opacity-50"
+                    className={hrBtn.primary}
                     style={{ background: 'var(--teal)' }}>
                     {syncing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
                     Sync from Clinician Database
@@ -3315,8 +3315,8 @@ export default function PayrollPage() {
               </div>
 
               {canWrite && (
-                <div className="flex items-center gap-3 px-4 py-3 rounded-xl border" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
-                  <span className="text-xs font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>Bulk Set Rate:</span>
+                <div className="flex items-center flex-wrap gap-3 px-4 py-2.5 rounded-lg border" style={{ borderColor: 'var(--light-gray)', background: '#fcfdfa' }}>
+                  <span className="text-[11px] font-bold uppercase tracking-[.4px] whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>Bulk set rate</span>
                   <select value={bulkDept} onChange={e => { setBulkDept(e.target.value); setBulkUnitPayId(''); setBulkResult(null) }}
                     className="px-3 py-1.5 rounded-lg border text-xs outline-none" style={{ borderColor: 'var(--light-gray)' }}>
                     <option value="">Select Department</option>
@@ -3346,10 +3346,10 @@ export default function PayrollPage() {
                 </div>
               )}
 
-              <div className="rounded-2xl border overflow-x-auto" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+              <div className="rounded-lg border overflow-x-auto" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
                 <table className="w-full text-sm min-w-[1200px]">
                   <thead>
-                    <tr style={{ background: 'var(--off-white)' }}>
+                    <tr className="hr-th" style={{ background: 'var(--hr-head)' }}>
                       <th className="w-8 px-4 py-3" />
                       <th className="text-left px-4 py-3 font-semibold cursor-pointer select-none" style={{ color: 'var(--charcoal)' }} onClick={() => toggleCSort('name')}>
                         <span className="flex items-center gap-1">Name <CSortIcon field="name" /></span>
@@ -3788,7 +3788,7 @@ export default function PayrollPage() {
                 {incentiveRules.length === 0 ? (
                   <p className="text-sm italic py-4 text-center" style={{ color: 'var(--mid-gray)' }}>No incentive rules yet.</p>
                 ) : (
-                  <div className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+                  <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
                     <table className="w-full text-sm">
                       <thead>
                         <tr style={{ background: 'var(--pale-teal)' }}>
@@ -4241,7 +4241,7 @@ export default function PayrollPage() {
                   <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--light-gray)' }}>
                     <table className="w-full text-xs">
                       <thead>
-                        <tr style={{ background: 'var(--off-white)' }}>
+                        <tr className="hr-th" style={{ background: 'var(--hr-head)' }}>
                           <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Consultant</th>
                           <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Allowance</th>
                           <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Type</th>
@@ -4413,7 +4413,7 @@ export default function PayrollPage() {
               <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--light-gray)' }}>
                 <table className="w-full text-xs">
                   <thead>
-                    <tr style={{ background: 'var(--off-white)' }}>
+                    <tr className="hr-th" style={{ background: 'var(--hr-head)' }}>
                       {canWrite && (
                         <th className="text-center px-2 py-2.5">
                           <input type="checkbox"
@@ -4652,7 +4652,7 @@ export default function PayrollPage() {
                         <div className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
                           <table className="w-full text-xs">
                             <thead>
-                              <tr style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
+                              <tr className="hr-th" style={{ background: 'var(--hr-head)', color: 'var(--mid-gray)' }}>
                                 <th className="px-4 py-2 text-left font-medium">Patient</th>
                                 <th className="px-4 py-2 text-left font-medium">Date Uploaded</th>
                                 <th className="px-4 py-2 text-left font-medium">File</th>
@@ -4780,7 +4780,7 @@ export default function PayrollPage() {
               <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--light-gray)' }}>
                 <table className="w-full text-xs">
                   <thead>
-                    <tr style={{ background: 'var(--off-white)' }}>
+                    <tr className="hr-th" style={{ background: 'var(--hr-head)' }}>
                       <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Name</th>
                       <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Branch</th>
                       <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Department</th>
@@ -4982,7 +4982,7 @@ export default function PayrollPage() {
                     <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--light-gray)' }}>
                       <table className="w-full text-xs">
                         <thead>
-                          <tr style={{ background: 'var(--off-white)' }}>
+                          <tr className="hr-th" style={{ background: 'var(--hr-head)' }}>
                             <th className="text-left px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Consultant</th>
                             <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Unit Pay</th>
                             <th className="text-right px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>Retainer</th>
@@ -5128,7 +5128,7 @@ export default function PayrollPage() {
                                           <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
                                             <table className="w-full text-xs">
                                               <thead>
-                                                <tr style={{ background: 'var(--off-white)' }}>
+                                                <tr className="hr-th" style={{ background: 'var(--hr-head)' }}>
                                                   {['Item', 'Rate', 'Qty', 'Amount'].map(h => (
                                                     <th key={h} className="px-3 py-2 text-left font-semibold" style={{ color: 'var(--mid-gray)' }}>{h}</th>
                                                   ))}
@@ -5879,18 +5879,18 @@ export default function PayrollPage() {
           </div>
 
           {/* Subtabs */}
-          <div className="flex gap-1 p-1 rounded-xl" style={{ background: 'var(--off-white)', width: 'fit-content' }}>
+          <div className="inline-flex gap-0.5 p-0.5 rounded-lg border bg-white" style={{ borderColor: 'var(--light-gray)' }} role="tablist" aria-label="Payee type">
             {(['employees', 'consultants'] as const).map(t => {
               // Ticks survive switching tabs, so each tab carries its own count —
               // otherwise a selection on the other side would be invisible.
               const n = (t === 'employees' ? selectedEmpSalPayableIds : selectedSalaryPayableIds).length
               return (
-              <button key={t} onClick={() => setSalPayableSubTab(t)}
-                className="px-4 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5"
-                style={salPayableSubTab === t ? { background: 'white', color: 'var(--deep-teal)', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' } : { color: 'var(--mid-gray)' }}>
+              <button key={t} onClick={() => setSalPayableSubTab(t)} role="tab" aria-selected={salPayableSubTab === t}
+                className="h-7 px-3.5 rounded-md text-xs font-semibold transition-colors flex items-center gap-1.5"
+                style={salPayableSubTab === t ? { background: 'var(--teal)', color: '#fff' } : { color: 'var(--mid-gray)' }}>
                 {t === 'employees' ? 'Employees' : 'Consultants'}
                 {n > 0 && (
-                  <span className="px-1.5 rounded-full text-[10px] font-bold" style={{ background: 'var(--teal)', color: 'white' }}>{n}</span>
+                  <span className="px-1.5 rounded-full text-[10px] font-bold" style={salPayableSubTab === t ? { background: '#fff', color: 'var(--deep-teal)' } : { background: 'var(--teal)', color: 'white' }}>{n}</span>
                 )}
               </button>
               )
@@ -5963,7 +5963,7 @@ export default function PayrollPage() {
             <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--light-gray)' }}>
               <table className="w-full text-xs">
                 <thead>
-                  <tr style={{ background: 'var(--off-white)' }}>
+                  <tr className="hr-th" style={{ background: 'var(--hr-head)' }}>
                     <th className="px-3 py-2.5 w-10">
                       <input type="checkbox"
                         checked={unremitted.length > 0 && unremitted.every(p => activeSelected.includes(p.id))}
@@ -6111,7 +6111,7 @@ export default function PayrollPage() {
               )}
               <div className="space-y-3">
                 {shownPayments.map(sp => (
-                  <div key={sp.id} className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+                  <div key={sp.id} className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
                     <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
                       <div className="flex flex-wrap items-center gap-4">
                         <span className="text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>
@@ -6200,7 +6200,7 @@ export default function PayrollPage() {
             <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--light-gray)' }}>
               <table className="w-full text-xs">
                 <thead>
-                  <tr style={{ background: 'var(--off-white)' }}>
+                  <tr className="hr-th" style={{ background: 'var(--hr-head)' }}>
                     <th className="px-3 py-2.5 w-10">
                       <input type="checkbox"
                         checked={benUnremitted.length > 0 && benUnremitted.every(p => selectedBenefitPayableIds.includes(p.id))}

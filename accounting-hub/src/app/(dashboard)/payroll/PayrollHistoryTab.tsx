@@ -1,8 +1,9 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { TrendingUp, TrendingDown, Loader2, Download, BarChart3 } from 'lucide-react'
+import { Loader2, Download, BarChart3 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
+import { StatCard, hrBtn } from '@/components/ui/hr-look'
 import { downloadXlsx } from '@/lib/export'
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -181,19 +182,19 @@ export default function PayrollHistoryTab({ branch }: { branch: string }) {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: 'var(--light-gray)' }}>
+          <div className="inline-flex gap-0.5 p-0.5 rounded-lg border bg-white" style={{ borderColor: 'var(--light-gray)' }}>
             {[12, 24].map(c => (
-              <button key={c} onClick={() => setCutoffs(c)}
-                className="px-3 py-2 text-xs font-semibold transition-colors"
-                style={cutoffs === c ? { background: 'var(--teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' }}>
+              <button key={c} onClick={() => setCutoffs(c)} aria-pressed={cutoffs === c}
+                className="h-7 px-3 rounded-md text-xs font-semibold transition-colors"
+                style={cutoffs === c ? { background: 'var(--teal)', color: '#fff' } : { color: 'var(--mid-gray)' }}>
                 Last {c}
               </button>
             ))}
           </div>
           <button onClick={downloadExcel} disabled={!rows.length}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium disabled:opacity-50"
+            className={hrBtn.ghost}
             style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
-            <Download size={15} /> Excel
+            <Download size={14} /> Excel
           </button>
         </div>
       </div>
@@ -205,7 +206,7 @@ export default function PayrollHistoryTab({ branch }: { branch: string }) {
       ) : error ? (
         <div className="rounded-xl border px-4 py-3 text-sm" style={{ borderColor: '#fecaca', background: '#fef2f2', color: '#b91c1c' }}>{error}</div>
       ) : rows.length === 0 ? (
-        <div className="rounded-2xl border px-4 py-12 text-center" style={{ borderColor: 'var(--light-gray)', background: 'white', color: 'var(--mid-gray)' }}>
+        <div className="rounded-lg border px-4 py-12 text-center" style={{ borderColor: 'var(--light-gray)', background: 'white', color: 'var(--mid-gray)' }}>
           <BarChart3 size={32} className="mx-auto mb-2 opacity-40" />
           <p>No finalized payroll yet for this branch.</p>
           <p className="text-xs mt-1">Once a cutoff is locked/finalized, it appears here.</p>
@@ -214,41 +215,29 @@ export default function PayrollHistoryTab({ branch }: { branch: string }) {
         <>
           {/* Stat tiles */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
-              <p className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Latest cutoff payroll</p>
-              <p className="text-xl font-bold mt-1" style={{ color: 'var(--charcoal)' }}>{latest ? formatCurrency(latest.totalGross) : '—'}</p>
-              <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>{latest ? cutoffLabel(latest.cutoffPeriod) : ''}</p>
-            </div>
-            <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
-              <p className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Change vs previous cutoff</p>
-              {latestDelta == null ? (
-                <p className="text-xl font-bold mt-1" style={{ color: 'var(--mid-gray)' }}>—</p>
-              ) : (
-                <p className="text-xl font-bold mt-1 flex items-center gap-1" style={{ color: latestDelta > 0 ? '#b91c1c' : latestDelta < 0 ? '#166534' : 'var(--mid-gray)' }}>
-                  {latestDelta > 0 ? <TrendingUp size={18} /> : latestDelta < 0 ? <TrendingDown size={18} /> : null}
-                  {latestDelta > 0 ? '+' : ''}{formatCurrency(latestDelta)}
-                  {latestDeltaPct != null && <span className="text-sm font-semibold">({latestDeltaPct > 0 ? '+' : ''}{latestDeltaPct.toFixed(1)}%)</span>}
-                </p>
-              )}
-            </div>
-            <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
-              <p className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Payroll % of sales (latest)</p>
-              <p className="text-xl font-bold mt-1" style={{ color: 'var(--charcoal)' }}>{latest?.payrollPctOfSales != null ? latest.payrollPctOfSales.toFixed(1) + '%' : '—'}</p>
-              <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>{latest ? `Sales ${formatCurrency(latest.sales)}` : ''}</p>
-            </div>
+            <StatCard compact label="Latest cutoff payroll" value={latest ? formatCurrency(latest.totalGross) : '—'}
+              sub={latest ? cutoffLabel(latest.cutoffPeriod) : ''} accent={{ line: '#4A8073' }} />
+            <StatCard compact label="Change vs previous cutoff"
+              value={latestDelta == null ? '—' : `${latestDelta > 0 ? '+' : ''}${formatCurrency(latestDelta)}`}
+              sub={latestDelta == null ? 'Needs two finalized cutoffs'
+                : `${latestDeltaPct != null ? `${latestDeltaPct > 0 ? '+' : ''}${latestDeltaPct.toFixed(1)}% · ` : ''}${latestDelta > 0 ? 'payroll went up' : latestDelta < 0 ? 'payroll went down' : 'no change'}`}
+              tone="zero"
+              accent={latestDelta == null || latestDelta === 0 ? undefined : latestDelta > 0 ? { line: '#dc2626', fg: '#b91c1c' } : { line: '#059669', fg: '#166534' }} />
+            <StatCard compact label="Payroll % of sales (latest)" value={latest?.payrollPctOfSales != null ? latest.payrollPctOfSales.toFixed(1) + '%' : '—'}
+              sub={latest ? `Sales ${formatCurrency(latest.sales)}` : ''} accent={{ line: '#2563eb' }} />
           </div>
 
           {/* Chart */}
-          <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+          <div className="rounded-lg border p-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
             <TrendChart rows={rows} />
           </div>
 
           {/* Table */}
-          <div className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+          <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr style={{ background: 'var(--off-white)' }}>
+                  <tr className="hr-th" style={{ background: 'var(--hr-head)' }}>
                     <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Cutoff</th>
                     <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Dates</th>
                     <th className="text-right px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Consultants</th>

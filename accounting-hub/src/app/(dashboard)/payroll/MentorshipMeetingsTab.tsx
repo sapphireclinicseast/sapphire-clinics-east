@@ -94,7 +94,7 @@ export default function MentorshipMeetingsTab({
   }
 
   return (
-    <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+    <div className="rounded-lg border p-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
       <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
         <div>
           <h2 className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>Mentorship Meetings</h2>
@@ -145,7 +145,7 @@ export default function MentorshipMeetingsTab({
         <div className="overflow-x-auto mt-2">
           <table className="w-full text-xs">
             <thead>
-              <tr style={{ borderBottom: '1px solid var(--light-gray)', background: 'var(--off-white)' }}>
+              <tr className="hr-th" style={{ borderBottom: '1px solid var(--light-gray)', background: 'var(--hr-head)' }}>
                 <th className="px-3 py-2 text-left font-semibold" style={{ color: 'var(--charcoal)' }}>Include</th>
                 <th className="px-3 py-2 text-left font-semibold" style={{ color: 'var(--charcoal)' }}>Date</th>
                 <th className="px-3 py-2 text-left font-semibold" style={{ color: 'var(--charcoal)' }}>Title</th>

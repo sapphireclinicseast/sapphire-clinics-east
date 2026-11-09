@@ -398,11 +398,11 @@ export default function SpecialPayRuns({ canWrite, branch, cutoffMonth, cutoffYe
     <div className="space-y-4">
       {/* Type tabs + pay month */}
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="flex flex-wrap gap-1">
+        <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Special pay run type">
           {TABS.map(t => (
-            <button key={t.key} onClick={() => { setTab(t.key); setError(''); setNotice('') }}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold border transition-all"
-              style={tab === t.key ? { background: 'var(--deep-teal)', color: '#fff', borderColor: 'var(--deep-teal)' } : { color: 'var(--mid-gray)', borderColor: 'var(--light-gray)' }}>
+            <button key={t.key} onClick={() => { setTab(t.key); setError(''); setNotice('') }} role="tab" aria-selected={tab === t.key}
+              className="flex items-center gap-1.5 h-8 px-3 rounded-full text-xs font-semibold border whitespace-nowrap transition-colors hover:border-[var(--teal)]"
+              style={tab === t.key ? { background: 'var(--teal)', color: '#fff', borderColor: 'var(--teal)' } : { background: '#fff', color: 'var(--mid-gray)', borderColor: 'var(--light-gray)' }}>
               <t.icon size={13} /> {t.label}
             </button>
           ))}
@@ -521,7 +521,7 @@ export default function SpecialPayRuns({ canWrite, branch, cutoffMonth, cutoffYe
           {t13.length > 0 && (
             <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--light-gray)' }}>
               <table className="w-full text-xs">
-                <thead><tr style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
+                <thead><tr className="hr-th" style={{ background: 'var(--hr-head)', color: 'var(--mid-gray)' }}>
                   {['', 'Employee', 'Branch', 'Cutoffs', 'Basic salary earned', "Add'l basic pay", '13th month accrued', 'Already paid', pick ? `This payout (${trancheText(pick, pick.count)})` : 'Amount to pay', 'Taxable', 'Withholding tax', 'Status'].map(h => <th key={h} className="px-3 py-2 text-left font-semibold whitespace-nowrap">{h}</th>)}
                 </tr></thead>
                 <tbody>
@@ -739,7 +739,7 @@ export default function SpecialPayRuns({ canWrite, branch, cutoffMonth, cutoffYe
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
-                  <thead><tr style={{ color: 'var(--mid-gray)' }}>{['Employee', 'Gross', 'Tax-exempt', 'Taxable', 'Tax withheld', 'Deductions', 'Net pay', 'Status', ''].map(h => <th key={h} className="px-3 py-2 text-left font-semibold whitespace-nowrap">{h}</th>)}</tr></thead>
+                  <thead><tr className="hr-th" style={{ background: 'var(--hr-head)', color: 'var(--mid-gray)' }}>{['Employee', 'Gross', 'Tax-exempt', 'Taxable', 'Tax withheld', 'Deductions', 'Net pay', 'Status', ''].map(h => <th key={h} className="px-3 py-2 text-left font-semibold whitespace-nowrap">{h}</th>)}</tr></thead>
                   <tbody>
                     {g.runs.map(r => (
                       <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
