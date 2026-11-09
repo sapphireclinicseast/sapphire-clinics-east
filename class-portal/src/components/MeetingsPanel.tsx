@@ -20,6 +20,13 @@ import {
   getUsers, hydrateUsers, teacherAssignedPairs,
   type MeetingRecord, type StoredUser, type AuthSession, type Branch, type EnrollmentLevel,
 } from '@/lib/session'
+import { Portal } from '@/components/Modal'
+import {
+  PageHeader, DashCard, RowsSkeleton, EmptyState, Banner, StatusPill, Tag, Avatar, Icon, Dialog,
+  displayName, initials,
+  CONTROL, CONTROL_STYLE, TEXTAREA, LABEL, LABEL_STYLE, DANGER,
+  BTN_PRIMARY, BTN_SECONDARY, BTN_SM, BTN_DANGER_GHOST, PRIMARY_STYLE, SECONDARY_STYLE,
+} from '@/components/hub/ui'
 
 interface Props {
   viewer: AuthSession
@@ -40,6 +47,11 @@ function localInputToIso(s: string): string | null {
   const d = new Date(s)
   if (!Number.isFinite(d.getTime())) return null
   return d.toISOString()
+}
+/** Two-letter avatar text from a single display-name string. */
+function nameInitials(name: string): string {
+  const parts = displayName(name).split(/[\s,]+/).filter(Boolean)
+  return ((parts[0]?.[0] ?? '') + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase() || '?'
 }
 function nowLocalInput(): string {
   return isoToLocalInput(new Date(Date.now() + 5 * 60_000).toISOString())
@@ -175,162 +187,288 @@ export default function MeetingsPanel({ viewer, viewerBranch }: Props) {
 
   const cancelledCount = meetings.filter(m => m.cancelledAt).length
 
-  return (
-    <div className="space-y-6">
-      <div className="card-static">
-        <div className="flex items-start justify-between gap-4 flex-wrap">
-          <div>
-            <h2 className="text-[18px] leading-tight">Meetings</h2>
-            <p className="text-[12.5px] text-[color:var(--mid-gray)] mt-1 max-w-2xl">
-              Video meetings hosted on <span className="font-semibold">meet.sapphireclinicseast.org</span>.
-              Anyone with the link joins straight into the room; the in-meeting toolbar offers
-              <span className="font-semibold"> Cloud Record</span> (server-side, saved to the meet app),
-              <span className="font-semibold"> Broadcast</span> (host only), and a
-              <span className="font-semibold"> Whiteboard</span>. Tag students to keep the meeting visible on
-              their own portal.
-            </p>
+  // Display grouping only: a meeting sits under "Upcoming" until its end
+  // time passes, then moves to "Past". Soonest first / most recent first.
+  // Nothing here changes which meetings are listed or what they link to.
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 60_000)
+    return () => clearInterval(t)
+  }, [])
+  const { upcoming, past } = useMemo(() => {
+    const up: MeetingRecord[] = []
+    const done: MeetingRecord[] = []
+    for (const m of filteredMeetings) {
+      const end = new Date(m.endsAt).getTime()
+      if (Number.isFinite(end) && end < now) done.push(m); else up.push(m)
+    }
+    const at = (m: MeetingRecord) => new Date(m.scheduledAt).getTime() || 0
+    up.sort((a, b) => at(a) - at(b))
+    done.sort((a, b) => at(b) - at(a))
+    return { upcoming: up, past: done }
+  }, [filteredMeetings, now])
+
+  function renderRow(m: MeetingRecord) {
+    const scheduled = new Date(m.scheduledAt)
+    const ends = new Date(m.endsAt)
+    const isCancelled = !!m.cancelledAt
+    const isMine = viewer.role !== 'STUDENT' && m.teacherId === viewer.userId
+    const canCancel = !isCancelled && (isMine || viewer.role === 'ADMIN' || viewer.role === 'BRANCH_ADMIN')
+    const joinLink = viewer.role === 'STUDENT' ? m.guestLink : (m.hostLink ?? m.guestLink)
+
+    const startMs = scheduled.getTime()
+    const endMs = ends.getTime()
+    const isPast = Number.isFinite(endMs) && endMs < now
+    const isLive = !isPast && Number.isFinite(startMs) && startMs <= now
+    const timeOpts: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit' }
+    const dateLabel = scheduled.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+    const timeLabel = scheduled.toLocaleTimeString(undefined, timeOpts)
+      + (Number.isFinite(endMs) ? ` – ${ends.toLocaleTimeString(undefined, timeOpts)}` : '')
+    const muted = isCancelled || isPast
+    const tagged = m.participants.map(p => displayName(p.studentName))
+
+    return (
+      <li key={m.id} className="px-4 sm:px-5 py-4 flex gap-3 sm:gap-4" style={{ borderTop: '1px solid var(--light-gray)' }}>
+        {/* Calendar tile — the full date is spelled out in text beside it. */}
+        <div aria-hidden className={`w-12 sm:w-14 flex-shrink-0 rounded-lg overflow-hidden text-center self-start ${isCancelled ? 'opacity-55' : ''}`}
+          style={{ border: '1px solid var(--light-gray)', background: '#fff', fontFamily: 'var(--font-display)' }}>
+          <div className="text-[10px] font-bold uppercase tracking-widest py-0.5"
+            style={muted ? { background: 'var(--paper-2)', color: 'var(--mid-gray)' } : { background: 'var(--deep-teal)', color: '#fff' }}>
+            {scheduled.toLocaleDateString(undefined, { month: 'short' })}
           </div>
-          {canCreate && (
-            <button className="btn-primary text-xs" onClick={() => setShowCreate(true)}>+ New meeting</button>
-          )}
+          <div className="text-xl sm:text-[22px] font-bold leading-none py-1.5" style={{ color: muted ? 'var(--mid-gray)' : 'var(--charcoal)', fontVariantNumeric: 'tabular-nums' }}>
+            {scheduled.getDate()}
+          </div>
         </div>
 
-        {err && <div className="mt-4 px-4 py-3 rounded-xl bg-rose-50 border border-rose-100 text-sm text-rose-800">{err}</div>}
-        {info && <div className="mt-4 px-4 py-3 rounded-xl bg-emerald-50 border border-emerald-100 text-sm text-emerald-800 break-words">{info}</div>}
+        <div className="min-w-0 flex-1 flex flex-col lg:flex-row lg:items-start gap-3">
+          <div className={`min-w-0 flex-1 ${isCancelled ? 'opacity-70' : ''}`}>
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <h3 className="text-[14.5px] font-bold leading-snug break-words" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+                {m.title}
+              </h3>
+              {isCancelled
+                ? <StatusPill tone="error">Cancelled</StatusPill>
+                : isLive
+                  ? <StatusPill tone="success">In progress</StatusPill>
+                  : isPast
+                    ? <StatusPill tone="neutral">Ended</StatusPill>
+                    : <StatusPill tone="info">Scheduled</StatusPill>}
+              {isMine && <Tag tone="brand">You’re hosting</Tag>}
+            </div>
 
-        <div className="flex flex-wrap items-end gap-3 mt-5">
-          <label className="block flex-1 min-w-[240px]">
-            <span className="label">Search</span>
+            <p className="mt-1 flex items-start gap-1.5 text-[12.5px]" style={{ color: 'var(--charcoal)' }}>
+              <Icon name="clock" size={13} className="mt-0.5" style={{ color: 'var(--mid-gray)' }} />
+              <span className="min-w-0 break-words"><span className="font-semibold">{dateLabel}</span> · {timeLabel}</span>
+            </p>
+
+            {m.notes && <p className="mt-1 text-[12px] leading-relaxed break-words" style={{ color: 'var(--mid-gray)' }}>{m.notes}</p>}
+
+            <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-2 text-[12px]" style={{ color: 'var(--mid-gray)' }}>
+              <span className="inline-flex items-center gap-1.5 min-w-0">
+                <Avatar text={nameInitials(m.teacherName)} size={24} />
+                <span className="min-w-0 break-words">Host: <span className="font-semibold" style={{ color: 'var(--charcoal)' }}>{displayName(m.teacherName)}</span></span>
+              </span>
+              <span className="inline-flex items-center gap-1.5 min-w-0" title={m.participants.map(p => p.studentName).join(', ') || undefined}>
+                {m.participants.length === 0 ? (
+                  <><Icon name="users" size={14} /> <span>Everyone with the link</span></>
+                ) : (
+                  <>
+                    <span className="flex items-center flex-shrink-0">
+                      {m.participants.slice(0, 3).map((p, i) => (
+                        <span key={p.id} className={`rounded-full ring-2 ring-white ${i ? '-ml-1.5' : ''}`}>
+                          <Avatar text={nameInitials(p.studentName)} size={22} />
+                        </span>
+                      ))}
+                    </span>
+                    <span className="min-w-0 break-words">
+                      {m.participants.length} student{m.participants.length === 1 ? '' : 's'}
+                      <span className="hidden sm:inline">: {tagged.slice(0, 2).join(', ')}{tagged.length > 2 ? ` +${tagged.length - 2} more` : ''}</span>
+                    </span>
+                  </>
+                )}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 lg:justify-end lg:max-w-[300px]">
+            {joinLink ? (
+              <>
+                <a href={joinLink} target="_blank" rel="noopener noreferrer"
+                  className={isPast ? BTN_SM : BTN_PRIMARY}
+                  style={isPast ? SECONDARY_STYLE : PRIMARY_STYLE}>
+                  <Icon name="external" size={isPast ? 12 : 14} />
+                  {isPast ? 'Open meeting' : 'Join meeting'}
+                  <span className="sr-only"> (opens in a new tab)</span>
+                </a>
+                {/* Students see just a Guest link — they don't need
+                    the host token. Staff (teacher/admin/branch admin)
+                    see both so they can share the guest link with
+                    parents/students and keep the host link private.
+                    Host unlocks Broadcast + moderator controls; Cloud
+                    Record is available from ANY link once inside the
+                    meeting. */}
+                {viewer.role === 'STUDENT' ? (
+                  m.guestLink && <button
+                    type="button"
+                    className={BTN_SM}
+                    style={SECONDARY_STYLE}
+                    title="Guest link — join the meeting and use Cloud Record from the toolbar."
+                    onClick={() => void copyToClipboard(m.guestLink!, 'Guest link')}
+                  ><Icon name="users" size={12} /> Copy guest link</button>
+                ) : (
+                  <>
+                    {m.hostLink && (
+                      <button
+                        type="button"
+                        className={BTN_SM}
+                        style={{ ...SECONDARY_STYLE, color: 'var(--deep-teal)' }}
+                        title="Host link (KEEP PRIVATE): join as moderator — unlocks Broadcast + Cloud Record + Whiteboard controls."
+                        onClick={() => void copyToClipboard(m.hostLink!, 'Host link (keep private)')}
+                      ><Icon name="shield" size={12} /> Copy host link</button>
+                    )}
+                    {m.guestLink && (
+                      <button
+                        type="button"
+                        className={BTN_SM}
+                        style={SECONDARY_STYLE}
+                        title="Guest link — safe to share with students/parents. They can Cloud Record from inside the meeting."
+                        onClick={() => void copyToClipboard(m.guestLink!, 'Guest link (share with students)')}
+                      ><Icon name="users" size={12} /> Copy guest link</button>
+                    )}
+                  </>
+                )}
+              </>
+            ) : (
+              <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>{isCancelled ? 'No join link — cancelled' : 'No join link'}</span>
+            )}
+            {canCancel && (
+              <button
+                type="button"
+                className={BTN_SM}
+                style={{ color: 'var(--mid-gray)' }}
+                title="Mark as cancelled — keeps the row in history but hides join buttons."
+                onClick={() => void handleCancel(m)}
+              ><Icon name="x" size={12} /> Cancel</button>
+            )}
+            {/* Delete is available on active AND cancelled rows,
+                so a teacher who cancelled by mistake or wants to
+                scrub a row entirely can. Same role gate as
+                cancel (creator + admin) — enforced server-side. */}
+            {(isMine || viewer.role === 'ADMIN' || viewer.role === 'BRANCH_ADMIN') && (
+              <button
+                type="button"
+                className={BTN_DANGER_GHOST}
+                style={{ color: DANGER }}
+                title="Permanently delete this meeting from the class portal."
+                onClick={() => void handleDelete(m)}
+              ><Icon name="trash" size={12} /> Delete</button>
+            )}
+          </div>
+        </div>
+      </li>
+    )
+  }
+
+  return (
+    <>
+      <PageHeader
+        eyebrow="Aura Academy · Meetings"
+        title="Meetings"
+        description={<>Video meetings hosted on <span className="font-semibold">meet.sapphireclinicseast.org</span>. Anyone with the link joins straight into the room.</>}
+        actions={canCreate && (
+          <button type="button" className={BTN_PRIMARY} style={PRIMARY_STYLE} onClick={() => setShowCreate(true)}>
+            <Icon name="plus" size={15} /> New meeting
+          </button>
+        )}
+      />
+
+      {err && <Banner tone="error">{err}</Banner>}
+      {info && <Banner tone="success">{info}</Banner>}
+
+      <div className="flex flex-wrap items-end gap-x-4 gap-y-2">
+        <label className="block flex-1 min-w-0 basis-[240px]">
+          <span className={LABEL} style={LABEL_STYLE}>Search</span>
+          <span className="relative block">
+            <Icon name="search" size={14} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mid-gray)' }} />
             <input
-              className="input"
+              type="search"
+              className={`${CONTROL} w-full pl-9`}
+              style={CONTROL_STYLE}
               placeholder="Title, teacher, tagged student, or date"
               value={search}
               onChange={e => setSearch(e.target.value)}
             />
+          </span>
+        </label>
+        {cancelledCount > 0 && (
+          <label className="inline-flex items-center gap-2 h-9 text-sm" style={{ color: 'var(--charcoal)' }}>
+            <input type="checkbox" className="w-4 h-4" style={{ accentColor: 'var(--deep-teal)' }} checked={showCancelled} onChange={e => setShowCancelled(e.target.checked)} />
+            Show cancelled ({cancelledCount})
           </label>
-          {cancelledCount > 0 && (
-            <label className="inline-flex items-center gap-2 text-sm text-[color:var(--ink)] pb-2">
-              <input type="checkbox" checked={showCancelled} onChange={e => setShowCancelled(e.target.checked)} />
-              Show cancelled ({cancelledCount})
-            </label>
-          )}
-        </div>
-
-        <div className="overflow-auto mt-3 rounded-xl border" style={{ borderColor: 'var(--paper-3)' }}>
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 z-10" style={{ background: 'var(--paper)' }}>
-              <tr className="text-left text-[11.5px] uppercase tracking-[0.08em] text-[color:var(--mid-gray)] border-b" style={{ borderColor: 'var(--paper-3)', fontFamily: 'var(--font-display)' }}>
-                <th className="py-2 px-3">Title</th>
-                <th className="py-2 px-3">Scheduled</th>
-                <th className="py-2 px-3">Teacher</th>
-                <th className="py-2 px-3">Tagged</th>
-                <th className="py-2 px-3">Link</th>
-                <th className="py-2 px-3"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading && <tr><td colSpan={6} className="py-6 px-3 text-center text-[color:var(--mid-gray)]">Loading meetings…</td></tr>}
-              {!loading && meetings.length === 0 && (
-                <tr><td colSpan={6} className="py-6 px-3 text-center text-[color:var(--mid-gray)]">
-                  {canCreate ? 'No meetings yet. Click + New meeting to create one.' : "You haven't been tagged into any meetings yet."}
-                </td></tr>
-              )}
-              {!loading && meetings.length > 0 && filteredMeetings.length === 0 && (
-                <tr><td colSpan={6} className="py-6 px-3 text-center text-[color:var(--mid-gray)]">
-                  No meetings match this search{!showCancelled && cancelledCount > 0 ? ' — try Show cancelled if you\'re looking for a cancelled one' : ''}.
-                </td></tr>
-              )}
-              {filteredMeetings.map(m => {
-                const scheduled = new Date(m.scheduledAt)
-                const isCancelled = !!m.cancelledAt
-                const isMine = viewer.role !== 'STUDENT' && m.teacherId === viewer.userId
-                const canCancel = !isCancelled && (isMine || viewer.role === 'ADMIN' || viewer.role === 'BRANCH_ADMIN')
-                const joinLink = viewer.role === 'STUDENT' ? m.guestLink : (m.hostLink ?? m.guestLink)
-                return (
-                  <tr key={m.id} className={`border-b hover:bg-[color:var(--paper-2)] ${isCancelled ? 'opacity-55' : ''}`} style={{ borderColor: 'var(--paper-3)' }}>
-                    <td className="py-2.5 px-3">
-                      <div className="font-semibold">{m.title}</div>
-                      {m.notes && <div className="text-[11.5px] text-[color:var(--mid-gray)]">{m.notes}</div>}
-                      {isCancelled && <span className="ml-0 mt-1 inline-block text-[9px] font-bold uppercase tracking-[0.08em] px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 border border-rose-200">Cancelled</span>}
-                    </td>
-                    <td className="py-2.5 px-3 whitespace-nowrap text-[12.5px]">
-                      {scheduled.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-                      <div className="text-[11px] text-[color:var(--mid-gray)]">{scheduled.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}</div>
-                    </td>
-                    <td className="py-2.5 px-3 text-[12.5px]">{m.teacherName}</td>
-                    <td className="py-2.5 px-3 text-[12.5px]">
-                      {m.participants.length === 0 ? <span className="text-[color:var(--mid-gray)]">— everyone with link</span> : (
-                        <span title={m.participants.map(p => p.studentName).join(', ')}>{m.participants.length} student{m.participants.length === 1 ? '' : 's'}</span>
-                      )}
-                    </td>
-                    <td className="py-2.5 px-3 text-[12.5px] whitespace-nowrap">
-                      {joinLink ? (
-                        <div className="flex flex-col items-start gap-1">
-                          <a href={joinLink} target="_blank" rel="noopener noreferrer" className="text-[color:var(--bright-teal)] underline">Open meeting</a>
-                          {/* Students see just a Guest link — they don't need
-                              the host token. Staff (teacher/admin/branch admin)
-                              see both so they can share the guest link with
-                              parents/students and keep the host link private.
-                              Host unlocks Broadcast + moderator controls; Cloud
-                              Record is available from ANY link once inside the
-                              meeting. */}
-                          {viewer.role === 'STUDENT' ? (
-                            m.guestLink && <button
-                              type="button"
-                              className="text-[10.5px] px-1.5 py-0.5 rounded bg-[color:var(--paper-2)] hover:bg-[color:var(--paper-3)]"
-                              title="Guest link — join the meeting and use Cloud Record from the toolbar."
-                              onClick={() => void copyToClipboard(m.guestLink!, 'Guest link')}
-                            >Copy guest link</button>
-                          ) : (
-                            <div className="flex flex-wrap items-center gap-1">
-                              {m.hostLink && (
-                                <button
-                                  type="button"
-                                  className="text-[10.5px] px-1.5 py-0.5 rounded bg-[color:var(--sage-tint)] hover:bg-[color:var(--sage)] text-[color:var(--deep-teal)] font-semibold"
-                                  title="Host link (KEEP PRIVATE): join as moderator — unlocks Broadcast + Cloud Record + Whiteboard controls."
-                                  onClick={() => void copyToClipboard(m.hostLink!, 'Host link (keep private)')}
-                                >🎥 Copy host link</button>
-                              )}
-                              {m.guestLink && (
-                                <button
-                                  type="button"
-                                  className="text-[10.5px] px-1.5 py-0.5 rounded bg-[color:var(--paper-2)] hover:bg-[color:var(--paper-3)]"
-                                  title="Guest link — safe to share with students/parents. They can Cloud Record from inside the meeting."
-                                  onClick={() => void copyToClipboard(m.guestLink!, 'Guest link (share with students)')}
-                                >Copy guest link</button>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      ) : <span className="text-[color:var(--mid-gray)]">—</span>}
-                    </td>
-                    <td className="py-2.5 px-3 text-right whitespace-nowrap">
-                      {canCancel && (
-                        <button
-                          className="text-xs px-2 py-1 rounded-md text-[color:var(--mid-gray)] hover:bg-[color:var(--paper-2)]"
-                          title="Mark as cancelled — keeps the row in history but hides join buttons."
-                          onClick={() => void handleCancel(m)}
-                        >Cancel</button>
-                      )}
-                      {/* Delete is available on active AND cancelled rows,
-                          so a teacher who cancelled by mistake or wants to
-                          scrub a row entirely can. Same role gate as
-                          cancel (creator + admin) — enforced server-side. */}
-                      {(isMine || viewer.role === 'ADMIN' || viewer.role === 'BRANCH_ADMIN') && (
-                        <button
-                          className="text-xs px-2 py-1 rounded-md text-[color:var(--clay)] hover:bg-[color:var(--clay-tint)] ml-1"
-                          title="Permanently delete this meeting from the class portal."
-                          onClick={() => void handleDelete(m)}
-                        >Delete</button>
-                      )}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
+        )}
       </div>
+
+      {loading ? (
+        <DashCard title="Meetings" icon={<Icon name="calendar" size={15} />} flush>
+          <RowsSkeleton rows={3} label="Loading meetings" />
+        </DashCard>
+      ) : meetings.length === 0 ? (
+        <DashCard title="Meetings" icon={<Icon name="calendar" size={15} />} flush>
+          <EmptyState
+            icon="calendar"
+            title="No meetings scheduled"
+            hint={canCreate ? 'Click New meeting to create one.' : "You haven't been tagged into any meetings yet."}
+          />
+        </DashCard>
+      ) : filteredMeetings.length === 0 ? (
+        <DashCard title="Meetings" icon={<Icon name="calendar" size={15} />} flush>
+          <EmptyState
+            icon="search"
+            title="No meetings match this search"
+            hint={!showCancelled && cancelledCount > 0 ? 'Try Show cancelled if you’re looking for a cancelled one.' : 'Try a title, teacher, student name, or date like “aug 30”.'}
+          />
+        </DashCard>
+      ) : (
+        <>
+          <DashCard
+            title="Upcoming"
+            description="Soonest first. Join opens the room in a new tab."
+            icon={<Icon name="calendar" size={15} />}
+            action={<Tag tone="brand">{upcoming.length} meeting{upcoming.length === 1 ? '' : 's'}</Tag>}
+            flush
+          >
+            {upcoming.length === 0 ? (
+              <EmptyState icon="calendar" title="No meetings scheduled" hint={canCreate ? 'Click New meeting to schedule the next one.' : 'New meetings you’re tagged into will show here.'} />
+            ) : (
+              <ul className="-mt-px">{upcoming.map(renderRow)}</ul>
+            )}
+          </DashCard>
+
+          {past.length > 0 && (
+            <DashCard
+              title="Past meetings"
+              description="Most recent first."
+              icon={<Icon name="clock" size={15} />}
+              action={<Tag>{past.length}</Tag>}
+              flush
+            >
+              <ul className="-mt-px">{past.map(renderRow)}</ul>
+            </DashCard>
+          )}
+        </>
+      )}
+
+      <p className="flex items-start gap-2 text-xs leading-relaxed px-0.5" style={{ color: 'var(--mid-gray)' }}>
+        <Icon name="info" size={14} className="mt-0.5" />
+        <span>
+          In the meeting toolbar:
+          <span className="font-semibold"> Cloud Record</span> (server-side, saved to the meet app),
+          <span className="font-semibold"> Broadcast</span> (host only), and a
+          <span className="font-semibold"> Whiteboard</span>. Tag students to keep the meeting visible on
+          their own portal.
+        </span>
+      </p>
 
       {showCreate && canCreate && (
         <CreateMeetingModal
@@ -346,7 +484,7 @@ export default function MeetingsPanel({ viewer, viewerBranch }: Props) {
           onError={setErr}
         />
       )}
-    </div>
+    </>
   )
 }
 
@@ -394,34 +532,36 @@ function CreateMeetingModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm overflow-y-auto p-3 sm:p-4 flex items-start justify-center"
-      onClick={() => !busy && onClose()}
+    <Portal>
+    <Dialog
+      labelId="meeting-create-title"
+      eyebrow="New meeting · meet.sapphireclinicseast.org"
+      title="Schedule a video meeting"
+      onClose={() => { if (!busy) onClose() }}
+      footer={<>
+        <button type="button" className={BTN_SECONDARY} style={SECONDARY_STYLE} onClick={onClose} disabled={busy}>Cancel</button>
+        <button type="button" className={BTN_PRIMARY} style={PRIMARY_STYLE} onClick={() => void submit()} disabled={busy}>{busy ? 'Creating…' : 'Create meeting'}</button>
+      </>}
     >
-      <div className="card-static w-full max-w-lg mt-6 sm:mt-12" onClick={e => e.stopPropagation()}>
-        <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)] mb-1" style={{ fontFamily: 'var(--font-display)' }}>
-          New meeting · meet.sapphireclinicseast.org
-        </div>
-        <h3 className="text-[18px] leading-tight mb-4">Schedule a video meeting</h3>
-
-        <label className="block mb-3">
-          <span className="label">Title</span>
-          <input className="input" value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Grade 1 Math review" disabled={busy} />
+      <div className="space-y-4">
+        <label className="block">
+          <span className={LABEL} style={LABEL_STYLE}>Title</span>
+          <input className={`${CONTROL} w-full`} style={CONTROL_STYLE} value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Grade 1 Math review" disabled={busy} />
         </label>
 
-        <label className="block mb-3">
-          <span className="label">Notes (optional)</span>
-          <textarea className="input" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Anything students should know before joining" rows={2} disabled={busy} />
+        <label className="block">
+          <span className={LABEL} style={LABEL_STYLE}>Notes (optional)</span>
+          <textarea className={TEXTAREA} style={CONTROL_STYLE} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Anything students should know before joining" rows={2} disabled={busy} />
         </label>
 
-        <div className="grid grid-cols-2 gap-3 mb-3">
-          <label className="block">
-            <span className="label">Starts at</span>
-            <input type="datetime-local" className="input" value={scheduledAt} onChange={e => setScheduledAt(e.target.value)} disabled={busy} />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <label className="block min-w-0">
+            <span className={LABEL} style={LABEL_STYLE}>Starts at</span>
+            <input type="datetime-local" className={`${CONTROL} w-full min-w-0`} style={CONTROL_STYLE} value={scheduledAt} onChange={e => setScheduledAt(e.target.value)} disabled={busy} />
           </label>
-          <label className="block">
-            <span className="label">Duration</span>
-            <select className="select" value={durationMin} onChange={e => setDurationMin(Number(e.target.value))} disabled={busy}>
+          <label className="block min-w-0">
+            <span className={LABEL} style={LABEL_STYLE}>Duration</span>
+            <select className={`${CONTROL} w-full`} style={CONTROL_STYLE} value={durationMin} onChange={e => setDurationMin(Number(e.target.value))} disabled={busy}>
               <option value={30}>30 minutes</option>
               <option value={45}>45 minutes</option>
               <option value={60}>1 hour</option>
@@ -432,37 +572,38 @@ function CreateMeetingModal({
           </label>
         </div>
 
-        <div className="block mb-3">
-          <span className="label">Tag students (optional)</span>
-          <p className="text-[10.5px] text-[color:var(--mid-gray)] mb-2">
+        <fieldset className="min-w-0">
+          <legend className={LABEL} style={LABEL_STYLE}>
+            Tag students (optional){participantIds.size > 0 ? ` — ${participantIds.size} selected` : ''}
+          </legend>
+          <p className="text-xs mb-2" style={{ color: 'var(--mid-gray)' }}>
             Tagged students see this meeting on their own class portal. Leave empty to share the link manually.
           </p>
-          <div className="max-h-56 overflow-auto rounded-lg border p-2 space-y-1" style={{ borderColor: 'var(--paper-3)' }}>
+          <div className="max-h-56 overflow-auto rounded-lg p-1" style={{ border: '1px solid var(--light-gray)' }}>
             {eligibleStudents.length === 0 ? (
-              <div className="text-[12px] text-[color:var(--mid-gray)] px-2 py-3 text-center">No eligible students in your assigned classes.</div>
+              <EmptyState icon="users" title="No eligible students" hint="No eligible students in your assigned classes." />
             ) : eligibleStudents.map(s => {
               const name = [s.firstName, s.lastName].filter(Boolean).join(' ') || s.email
               return (
-                <label key={s.id} className="flex items-center gap-2 px-2 py-1 hover:bg-[color:var(--paper-2)] rounded text-[12.5px]">
+                <label key={s.id} className="flex items-center gap-2.5 px-2 py-1.5 rounded-md text-[13px] cursor-pointer hover:bg-[color:var(--paper)]">
                   <input
                     type="checkbox"
+                    className="w-4 h-4 flex-shrink-0"
+                    style={{ accentColor: 'var(--deep-teal)' }}
                     checked={participantIds.has(s.id)}
                     onChange={() => toggle(s.id)}
                     disabled={busy}
                   />
-                  <span className="flex-1">{name}</span>
-                  <span className="text-[11px] text-[color:var(--mid-gray)]">{s.branch ?? ''}{s.level ? ` · ${s.level}` : ''}</span>
+                  <Avatar text={initials(s.firstName, s.lastName)} size={24} />
+                  <span className="flex-1 min-w-0 truncate" style={{ color: 'var(--charcoal)' }}>{displayName(name)}</span>
+                  <span className="text-[11px] whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{s.branch ?? ''}{s.level ? ` · ${s.level}` : ''}</span>
                 </label>
               )
             })}
           </div>
-        </div>
-
-        <div className="flex gap-2 justify-end">
-          <button className="btn-secondary text-xs" onClick={onClose} disabled={busy}>Cancel</button>
-          <button className="btn-primary text-xs" onClick={() => void submit()} disabled={busy}>{busy ? 'Creating…' : 'Create meeting'}</button>
-        </div>
+        </fieldset>
       </div>
-    </div>
+    </Dialog>
+    </Portal>
   )
 }
