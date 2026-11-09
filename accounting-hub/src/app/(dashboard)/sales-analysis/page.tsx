@@ -3,7 +3,8 @@
 import { useState, useCallback, useMemo, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 import { userBranchScope } from '@/lib/branch-scope'
-import { TrendingUp, Filter, Loader2, BarChart3, Building2, CreditCard, Wallet, Users, ChevronUp, ChevronDown } from 'lucide-react'
+import { TrendingUp, Loader2, BarChart3, Building2, CreditCard, Wallet, Users, ChevronUp, ChevronDown } from 'lucide-react'
+import { HR_PAGE_CLASS, HR_PAGE_STYLE, HrShimmerStyle, StatCard, hrBtn } from '@/components/ui/hr-look'
 import { formatCurrency } from '@/lib/utils'
 
 /* ── types ── */
@@ -64,16 +65,17 @@ function SortableTable({ rows, columns, initialKey, totalLabel, totalCols }: {
     else { setSortKey(k); setDir('desc') }
   }
 
-  if (rows.length === 0) return <div className="px-3 py-6 text-center text-sm" style={{ color: 'var(--mid-gray)' }}>No data for this period.</div>
+  if (rows.length === 0) return <div className="px-4 py-10 text-center text-[13px]" style={{ color: 'var(--mid-gray)' }}>No data for this period.</div>
 
   return (
     <table className="w-full text-sm">
       <thead>
-        <tr style={{ color: 'var(--mid-gray)' }}>
+        <tr style={{ background: 'var(--hr-head)', color: 'var(--mid-gray)' }}>
           {columns.map(c => (
             <th key={c.key}
               onClick={() => toggle(c.key)}
-              className={`px-3 py-2 text-xs font-semibold uppercase cursor-pointer select-none hover:text-[var(--teal)] ${c.align === 'right' ? 'text-right' : 'text-left'}`}>
+              aria-sort={sortKey === c.key ? (dir === 'asc' ? 'ascending' : 'descending') : undefined}
+              className={`px-4 py-2.5 text-[11px] font-bold uppercase tracking-[.4px] cursor-pointer select-none whitespace-nowrap hover:text-[var(--teal)] ${c.align === 'right' ? 'text-right' : 'text-left'}`}>
               <span className={`inline-flex items-center gap-0.5 ${c.align === 'right' ? 'flex-row-reverse' : ''}`}>
                 {c.label}
                 {sortKey === c.key && (dir === 'asc' ? <ChevronUp size={11} /> : <ChevronDown size={11} />)}
@@ -84,10 +86,10 @@ function SortableTable({ rows, columns, initialKey, totalLabel, totalCols }: {
       </thead>
       <tbody>
         {sorted.map((row, i) => (
-          <tr key={i} style={{ borderTop: '1px solid var(--light-gray)' }}>
+          <tr key={i} className="transition-colors hover:bg-[#fafcf6]" style={{ borderTop: '1px solid var(--hr-line)' }}>
             {columns.map(c => (
-              <td key={c.key} className={`px-3 py-2 ${c.align === 'right' ? 'text-right' : 'text-left'} ${c.numeric ? 'font-mono' : ''}`}
-                style={{ color: c.align === 'right' ? 'var(--charcoal)' : 'var(--charcoal)' }}>
+              <td key={c.key} className={`px-4 py-2 ${c.align === 'right' ? 'text-right whitespace-nowrap' : 'text-left'} ${c.numeric ? 'font-mono' : ''}`}
+                style={{ color: 'var(--charcoal)' }}>
                 {c.fmt ? c.fmt(row[c.key]) : row[c.key]}
               </td>
             ))}
@@ -96,9 +98,10 @@ function SortableTable({ rows, columns, initialKey, totalLabel, totalCols }: {
       </tbody>
       {totalLabel && totalCols && (
         <tfoot>
-          <tr style={{ borderTop: '2px solid var(--light-gray)', background: 'var(--off-white)' }}>
+          <tr style={{ borderTop: '2px solid var(--light-gray)', background: 'var(--hr-head)' }}>
             {columns.map((c, i) => (
-              <td key={c.key} className={`px-3 py-2 text-xs font-bold ${c.align === 'right' ? 'text-right' : 'text-left'}`} style={{ color: 'var(--charcoal)' }}>
+              <td key={c.key} className={`px-4 py-2.5 ${i === 0 ? 'text-[11px] font-bold uppercase tracking-[.4px]' : 'font-mono font-bold whitespace-nowrap'} ${c.align === 'right' ? 'text-right' : 'text-left'}`}
+                style={{ color: i === 0 ? 'var(--mid-gray)' : 'var(--charcoal)' }}>
                 {i === 0 ? totalLabel : (totalCols[c.key] ?? '')}
               </td>
             ))}
@@ -109,25 +112,15 @@ function SortableTable({ rows, columns, initialKey, totalLabel, totalCols }: {
   )
 }
 
-function Kpi({ label, value, sub, accent }: { label: string; value: string; sub?: string; accent?: boolean }) {
-  return (
-    <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: accent ? 'var(--off-white)' : 'white' }}>
-      <p className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: 'var(--mid-gray)' }}>{label}</p>
-      <p className="text-2xl font-bold" style={{ color: accent ? 'var(--deep-teal)' : 'var(--charcoal)' }}>{value}</p>
-      {sub && <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>{sub}</p>}
-    </div>
-  )
-}
-
 function Section({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-2xl border" style={{ borderColor: 'var(--light-gray)' }}>
+    <div className="rounded-lg border bg-white overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
       <div className="flex items-center gap-2 px-4 py-3 border-b" style={{ borderColor: 'var(--light-gray)' }}>
-        <span style={{ color: 'var(--teal)' }}>{icon}</span>
-        <span className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>{title}</span>
-        <span className="text-[10px] ml-auto" style={{ color: 'var(--mid-gray)' }}>Click a column to sort ↕</span>
+        <span className="flex-none w-7 h-7 rounded-[8px] flex items-center justify-center" style={{ background: 'var(--pale-teal)', color: 'var(--teal)' }}>{icon}</span>
+        <span className="text-sm font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>{title}</span>
+        <span className="hidden sm:inline text-[11px] ml-auto" style={{ color: 'var(--hr-faint)' }}>Click a column to sort</span>
       </div>
-      <div className="p-2">{children}</div>
+      <div className="overflow-x-auto relative">{children}</div>
     </div>
   )
 }
@@ -174,64 +167,70 @@ export default function SalesAnalysisPage() {
   const moneyCol = (v: string | number) => formatCurrency(Number(v))
   const branchLabel = branch !== 'ALL' ? ` · ${BRANCHES.find(b => b.value === branch)?.label || branch}` : ''
 
+  const branchOptions = scope.enum ? BRANCHES.filter(b => b.value === scope.enum) : BRANCHES
+
   return (
-    <div className="p-6 max-w-7xl mx-auto">
-      <div className="flex items-center gap-3 mb-6">
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'var(--teal)' }}>
-          <TrendingUp size={20} className="text-white" />
-        </div>
-        <div>
-          <h1 className="text-xl font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>Sales Analysis</h1>
-          <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>Sales by branch, department, payment method & unearned revenue</p>
-        </div>
+    <div className={HR_PAGE_CLASS} style={HR_PAGE_STYLE}>
+      <HrShimmerStyle />
+      <div className="min-w-0">
+        <h1 className="text-2xl font-bold leading-tight flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+          <TrendingUp size={22} style={{ color: 'var(--teal)' }} /> Sales Analysis
+        </h1>
+        <p className="mt-1 text-[13px] max-w-3xl" style={{ color: 'var(--mid-gray)' }}>Sales by branch, department, payment method &amp; unearned revenue</p>
       </div>
 
       {/* Filters */}
-      <div className="rounded-2xl border p-4 mb-6" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
-        <div className="flex items-center gap-2 mb-3">
-          <Filter size={14} style={{ color: 'var(--mid-gray)' }} />
-          <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--mid-gray)' }}>Filters</span>
+      <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 rounded-lg border" style={{ background: '#fcfdfa', borderColor: 'var(--light-gray)' }}>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {branchOptions.map(b => (
+            <button key={b.value} onClick={() => setBranch(b.value)} aria-pressed={branch === b.value}
+              className="px-3.5 py-1.5 rounded-full border text-[13px] font-semibold whitespace-nowrap transition-colors"
+              style={branch === b.value
+                ? { background: 'var(--teal)', borderColor: 'var(--teal)', color: '#fff', fontFamily: 'var(--font-display)' }
+                : { background: '#fff', borderColor: 'var(--light-gray)', color: 'var(--mid-gray)', fontFamily: 'var(--font-display)' }}>{b.label}</button>
+          ))}
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 items-end">
-          <div>
-            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Branch</label>
-            <select value={branch} onChange={e => setBranch(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm outline-none bg-white" style={{ borderColor: 'var(--light-gray)' }}>
-              {(scope.enum ? BRANCHES.filter(b => b.value === scope.enum) : BRANCHES).map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Date From</label>
-            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm outline-none bg-white" style={{ borderColor: 'var(--light-gray)' }} />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Date To</label>
-            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm outline-none bg-white" style={{ borderColor: 'var(--light-gray)' }} />
-          </div>
-          <button onClick={fetchData} disabled={loading} className="flex items-center justify-center gap-2 px-5 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>
-            {loading ? <Loader2 size={14} className="animate-spin" /> : <BarChart3 size={14} />}
-            {loading ? 'Loading...' : 'Generate'}
-          </button>
-        </div>
+        <span className="hidden sm:block w-px h-6 mx-1" style={{ background: 'var(--light-gray)' }} />
+        <label className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)' }}>
+          From
+          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-8 px-2 rounded-lg border text-xs font-normal normal-case tracking-normal bg-white" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }} />
+        </label>
+        <label className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)' }}>
+          To
+          <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="h-8 px-2 rounded-lg border text-xs font-normal normal-case tracking-normal bg-white" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }} />
+        </label>
+        <button onClick={fetchData} disabled={loading} className={`${hrBtn.primary} sm:ml-auto`} style={{ background: 'var(--teal)' }}>
+          {loading ? <Loader2 size={14} className="animate-spin" /> : <BarChart3 size={14} />}
+          {loading ? 'Loading…' : 'Generate'}
+        </button>
       </div>
 
-      {error && <div className="mb-4 px-4 py-3 rounded-xl text-sm bg-red-50 text-red-700">{error}</div>}
+      {error && <div className="px-4 py-2.5 rounded-lg border text-[13px]" style={{ background: '#fef2f2', borderColor: '#fecaca', color: '#b91c1c' }}>{error}</div>}
 
       {!data && !loading && (
-        <div className="text-center py-20" style={{ color: 'var(--mid-gray)' }}>
-          <TrendingUp size={40} className="mx-auto mb-3 opacity-30" />
-          <p className="text-sm">Set your date range and click <strong>Generate</strong>.</p>
+        <div className="rounded-lg border bg-white text-center py-16 px-4" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+          <TrendingUp size={36} className="mx-auto mb-3 opacity-30" />
+          <p className="text-[13px]">Set your date range and click <strong>Generate</strong>.</p>
+        </div>
+      )}
+
+      {loading && !data && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {[0, 1, 2, 3].map(i => <StatCard key={i} loading label="" value="" sub="" />)}
         </div>
       )}
 
       {data && (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-            <Kpi label="Gross Sales" value={formatCurrency(data.summary.grossSales)} sub={`${data.summary.orderCount.toLocaleString()} order${data.summary.orderCount !== 1 ? 's' : ''}`} />
-            <Kpi label="Net Sales" value={formatCurrency(data.summary.netSales)} sub="Gross less discounts" accent />
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <StatCard compact label="Gross sales" value={formatCurrency(data.summary.grossSales)} sub="Earned sales in range" accent={{ line: '#4A8073' }} />
+            <StatCard compact label="Net sales" value={formatCurrency(data.summary.netSales)} sub="Gross less discounts" tone={data.summary.netSales ? 'green' : 'zero'} />
+            <StatCard label="Orders" value={data.summary.orderCount.toLocaleString()} sub={`order${data.summary.orderCount !== 1 ? 's' : ''} behind the gross`} tone="zero" accent={data.summary.orderCount ? { line: '#2563eb' } : undefined} />
+            <StatCard compact label="Unearned (wallets)" value={formatCurrency(data.totalUnearned)} sub="Current balance · excl. HMO/GL" tone="zero" accent={data.totalUnearned ? { line: '#d97706' } : undefined} />
           </div>
-          <p className="text-xs mb-6" style={{ color: 'var(--mid-gray)' }}>{dateFrom} to {dateTo}{branchLabel}. Earned sales only — excludes voided/returned and unearned-revenue orders (VIP cards, prepaid reloads, downpayments, packages, advances).</p>
+          <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>{dateFrom} to {dateTo}{branchLabel}. Earned sales only — excludes voided/returned and unearned-revenue orders (VIP cards, prepaid reloads, downpayments, packages, advances).</p>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
             {/* Per department */}
             <Section icon={<Building2 size={16} />} title="Gross Sales by Department">
               <SortableTable
@@ -291,24 +290,24 @@ export default function SalesAnalysisPage() {
                 totalCols={{ amount: formatCurrency(data.summary.grossSales), pct: '100.0%' }}
               />
               {(data.unknownOrders?.length ?? 0) > 0 && (
-                <div className="mt-2">
-                  <button onClick={() => setShowUnknown(v => !v)} className="text-xs font-semibold" style={{ color: 'var(--teal)' }}>
+                <div className="px-4 py-2.5 border-t" style={{ borderColor: 'var(--hr-line)' }}>
+                  <button onClick={() => setShowUnknown(v => !v)} className="text-xs font-semibold hover:underline" style={{ color: 'var(--teal)' }}>
                     {showUnknown ? '▾ Hide' : '▸ Show'} the {data.unknownOrders!.length} “Unknown” order{data.unknownOrders!.length > 1 ? 's' : ''}
                   </button>
                   {showUnknown && (
-                    <div className="mt-2 rounded-xl border overflow-auto" style={{ borderColor: 'var(--light-gray)', maxHeight: '340px' }}>
+                    <div className="mt-2 rounded-lg border overflow-auto relative" style={{ borderColor: 'var(--light-gray)', maxHeight: '340px' }}>
                       <table className="w-full text-xs">
-                        <thead className="sticky top-0" style={{ background: 'var(--off-white)' }}><tr className="text-left" style={{ color: 'var(--mid-gray)' }}>
-                          {['Order #', 'Date', 'Type', 'Patient / Customer', 'Gross', 'Why unknown'].map(h => <th key={h} className="px-2.5 py-2 font-semibold whitespace-nowrap">{h}</th>)}
+                        <thead className="sticky top-0" style={{ background: 'var(--hr-head)' }}><tr className="text-left" style={{ color: 'var(--mid-gray)' }}>
+                          {['Order #', 'Date', 'Type', 'Patient / Customer', 'Gross', 'Why unknown'].map(h => <th key={h} className={`px-2.5 py-2 text-[11px] font-bold uppercase tracking-[.4px] whitespace-nowrap ${h === 'Gross' ? 'text-right' : ''}`}>{h}</th>)}
                         </tr></thead>
                         <tbody>
                           {data.unknownOrders!.map(o => (
-                            <tr key={o.orderNumber} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
+                            <tr key={o.orderNumber} className="border-t" style={{ borderColor: 'var(--hr-line)' }}>
                               <td className="px-2.5 py-1.5 font-mono">{o.orderNumber}</td>
-                              <td className="px-2.5 py-1.5" style={{ color: 'var(--mid-gray)' }}>{o.date}</td>
+                              <td className="px-2.5 py-1.5 font-mono whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{o.date}</td>
                               <td className="px-2.5 py-1.5">{o.orderType === 'PRODUCT' ? 'Product' : 'Service'}</td>
                               <td className="px-2.5 py-1.5" style={{ color: 'var(--charcoal)' }}>{o.patientName}</td>
-                              <td className="px-2.5 py-1.5 text-right font-semibold">{formatCurrency(o.gross)}</td>
+                              <td className="px-2.5 py-1.5 text-right font-mono font-semibold whitespace-nowrap">{formatCurrency(o.gross)}</td>
                               <td className="px-2.5 py-1.5" style={{ color: 'var(--mid-gray)' }}>{o.reason}</td>
                             </tr>
                           ))}
@@ -335,8 +334,8 @@ export default function SalesAnalysisPage() {
               />
             </Section>
           </div>
-          <p className="text-[10px] mt-2" style={{ color: 'var(--mid-gray)' }}>Unearned revenue is a current wallet-balance snapshot (date range not applied); HMO &amp; GL wallets are excluded as they are Accounts Receivable.</p>
-          <p className="text-[10px] mt-1" style={{ color: 'var(--mid-gray)' }}>Age is computed from the patient&apos;s date of birth (marketing hub) at the order date. &quot;Unknown&quot; = orders with no linked patient or no recorded DOB (e.g. walk-in product sales).{!data.ageDataAvailable && ' ⚠ Patient data was unavailable — ages may be incomplete.'}</p>
+          <p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>Unearned revenue is a current wallet-balance snapshot (date range not applied); HMO &amp; GL wallets are excluded as they are Accounts Receivable.</p>
+          <p className="text-[11px] -mt-2" style={{ color: 'var(--mid-gray)' }}>Age is computed from the patient&apos;s date of birth (marketing hub) at the order date. &quot;Unknown&quot; = orders with no linked patient or no recorded DOB (e.g. walk-in product sales).{!data.ageDataAvailable && ' ⚠ Patient data was unavailable — ages may be incomplete.'}</p>
         </>
       )}
     </div>
