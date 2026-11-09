@@ -1,7 +1,7 @@
 'use client'
 
 import { Fragment, useEffect, useState, useRef, useCallback } from 'react'
-import { ChevronDown, Plus, X, Settings2, Ban, Search, Users, CalendarCheck, CalendarPlus, Percent, BarChart3, Info, Lock, Loader2, Clock, Rows3, Rows4, ChevronsDownUp, ChevronsUpDown, GraduationCap, UserCheck, AlertTriangle, MapPin, Video, Home } from 'lucide-react'
+import { ChevronDown, Plus, X, Settings2, Ban, Search, Users, CalendarCheck, CalendarPlus, Percent, BarChart3, Info, Lock, Loader2, Clock, Rows3, Rows4, ChevronsDownUp, ChevronsUpDown, GraduationCap, UserCheck, AlertTriangle, MapPin, Video, Home, Building2 } from 'lucide-react'
 import { DashCard, KpiCard, Skeleton, EmptyState, DeptChip, CARD_STYLE } from '../patients/dashboard/ui'
 import {
   CONTROL, CONTROL_SM, CONTROL_STYLE, LABEL, BTN_PRIMARY, BTN_SECONDARY, BTN_SM, SUBTLE_BG, TEAL_HEX, DECK_CSS,
@@ -10,7 +10,7 @@ import {
 import PatientRequestsPanel from './PatientRequestsPanel'
 import { DAY_KEYS, DAY_LABEL, DAY_SHORT, sortDays } from '@/lib/decking-days'
 import SlotLoaPanel, { type LoaLite } from './SlotLoaPanel'
-import { DECK_SECTIONS, DECK_GROUPS, inSection, arrangementFor, servesSectionAnywhere, slotInSection, isDualTagged, soleDeliveryMode, DELIVERY_MODES, type DeckSection } from '@/lib/work-arrangement'
+import { DECK_SECTIONS, DECK_GROUPS, inSection, arrangementFor, servesSectionAnywhere, slotInSection, isDualTagged, soleDeliveryMode, sectionsFor, DELIVERY_MODES, type DeckSection } from '@/lib/work-arrangement'
 import DeckingPerDay, { PerDaySkeleton } from './DeckingPerDay'
 import SpedClassBoard from './SpedClassBoard'
 import InterdepartmentBoard from './InterdepartmentBoard'
@@ -66,6 +66,14 @@ const ONEOFF_FG   = '#BE185D'
 // Homecare accents: the brand teal, so it never reads as a pay type.
 const HOMECARE_FG     = TEAL_HEX
 const HOMECARE_BORDER = '#B9DAD6'
+// The three services, for the All board's tags. Neutral ink with an icon each,
+// so none of them can be read as a pay type.
+const MODE_META: Record<string, { label: string; Icon: typeof Home }> = {
+  onsite:      { label: 'On-site',     Icon: Building2 },
+  teletherapy: { label: 'Teletherapy', Icon: Video },
+  homecare:    { label: 'Homecare',    Icon: Home },
+}
+const MODE_BY_KEY: Record<string, string> = { ONSITE: 'onsite', TELETHERAPY: 'teletherapy', HOMECARE: 'homecare' }
 
 // Board-only display rules (DECK_CSS in ./ui is shared with the SPED board).
 // The hour label darkens on row hover so the eye can follow a row across a
@@ -876,6 +884,16 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
               {nameText}
             </h3>
             <DeptChip code={staff.department} color={TEAL_HEX} />
+            {/* All board only: which services this consultant gives here. */}
+            {!sectionMode && sectionsFor(arrangementFor(staff, activeBranch)).map(sec => {
+              const m = MODE_META[sec]
+              return m ? (
+                <span key={sec} className="inline-flex items-center gap-1 text-[10.5px] font-semibold px-1.5 py-0.5 rounded-md leading-none"
+                  style={{ background: '#fff', color: '#475569', border: '1px solid var(--light-gray)' }}>
+                  <m.Icon size={10} aria-hidden /> {m.label}
+                </span>
+              ) : null
+            })}
             {/* A teletherapy consultant based at the other branch. Says so
                 plainly — front desk are otherwise booking someone they have
                 never seen on this board with nothing explaining why she is
@@ -1646,7 +1664,15 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
                                 return (
                                   <div key={s2.id} className="dk-booked flex items-center gap-1 pl-1.5 pr-1 min-w-0"
                                     style={{ background: st.bg, color: st.fg, borderLeft: `3px solid ${st.border}`, borderRadius: CELL_RADIUS, minHeight: lineH }}>
-                                    <span className="flex-1 min-w-0 truncate text-[11.5px] font-semibold leading-tight" title={`${fullName} · ${st.label} · ${where}`}>
+                                    {/* On All, where every service shares one grid, a
+                                        teletherapy or homecare session carries its icon.
+                                        On-site is the default and stays unmarked. */}
+                                    {!sectionMode && (s2.deliveryMode === 'TELETHERAPY' || s2.deliveryMode === 'HOMECARE') && (() => {
+                                      const m = MODE_META[MODE_BY_KEY[s2.deliveryMode]]
+                                      return <m.Icon size={11} className="flex-shrink-0" aria-label={m.label} />
+                                    })()}
+                                    <span className="flex-1 min-w-0 truncate text-[11.5px] font-semibold leading-tight"
+                                      title={`${fullName} · ${st.label}${!sectionMode && s2.deliveryMode && MODE_BY_KEY[s2.deliveryMode] ? ` · ${MODE_META[MODE_BY_KEY[s2.deliveryMode]].label}` : ''} · ${where}`}>
                                       {shortName}
                                     </span>
                                     {/* Payment type drives who gets chased for
@@ -2668,11 +2694,56 @@ export default function DeckingClient({ role }: { role: string }) {
                 numbers, same derivation; All simply has no arrangement filter,
                 so this totals every mode of delivery at once. */}
             {isMainAdmin && activeSection === 'all' && !boardLoading && !staffError && !dataError && (
-              <div style={{ maxWidth: 560 }}>
+              <div className="grid gap-4 items-start lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
                 <SlotSummaryCard
                   summary={slotSummary}
                   title={<>{branchName} &middot; {activeDept} &middot; all modes of delivery</>}
                 />
+                {/* Who gives which service, and the sessions booked under each.
+                    Display only — counted from the same roster and slots the
+                    board draws. A session saved without a service counts under
+                    its consultant's services, as on those boards. */}
+                {(() => {
+                  const rows = (['onsite', 'teletherapy', 'homecare'] as DeckSection[]).map(sec => {
+                    const people = filteredStaff.filter(st => sectionsFor(staffArrangement.get(st.id)).includes(sec)).length
+                    const booked = filteredStaff.reduce((n, st) => n + (slotsByStaff.get(st.id) ?? [])
+                      .filter(sl => sl.patient && !sl.disabled && slotInSection(sl.deliveryMode, staffArrangement.get(st.id), sec)).length, 0)
+                    return { sec, people, booked }
+                  })
+                  const maxBooked = Math.max(1, ...rows.map(r => r.booked))
+                  // Sessions, not grid cells: the Capacity card counts cells, so
+                  // the two are not compared. Overlap only arises from
+                  // unclassified sessions of multi-service consultants.
+                  const sessions = filteredStaff.reduce((n, st) => n + (slotsByStaff.get(st.id) ?? []).filter(sl => sl.patient && !sl.disabled).length, 0)
+                  return (
+                    <DashCard title="By service" icon={<Users size={15} />} description={<>{branchName} &middot; {activeDept}</>}>
+                      <ul className="flex flex-col gap-3">
+                        {rows.map(r => {
+                          const m = MODE_META[r.sec]
+                          return (
+                            <li key={r.sec}>
+                              <div className="flex items-center gap-2 text-[12.5px]">
+                                <m.Icon size={13} aria-hidden style={{ color: TEAL_HEX }} />
+                                <span className="font-semibold" style={{ color: 'var(--charcoal)' }}>{m.label}</span>
+                                <span className="ml-auto tabular-nums" style={{ color: 'var(--mid-gray)' }}>
+                                  {r.people} consultant{r.people === 1 ? '' : 's'} &middot; <strong style={{ color: 'var(--charcoal)' }}>{r.booked}</strong> session{r.booked === 1 ? '' : 's'}
+                                </span>
+                              </div>
+                              <div className="mt-1.5 h-1.5 rounded-full overflow-hidden" style={{ background: '#EEF2F1' }}>
+                                <div className="h-full rounded-full" style={{ width: `${(r.booked / maxBooked) * 100}%`, background: TEAL_HEX, opacity: r.booked ? 1 : 0 }} />
+                              </div>
+                            </li>
+                          )
+                        })}
+                      </ul>
+                      {rows.reduce((n, r) => n + r.booked, 0) > sessions && (
+                        <p className="mt-3 text-[11px] leading-relaxed" style={{ color: 'var(--mid-gray)' }}>
+                          Some sessions were saved without a service by consultants who give more than one, so they count under each.
+                        </p>
+                      )}
+                    </DashCard>
+                  )
+                })()}
               </div>
             )}
             {/* Teletherapy: one board drawing consultants from both branches,
