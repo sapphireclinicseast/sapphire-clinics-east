@@ -40,7 +40,9 @@ const PAY_UI: Record<Pay, { label: string; fg: string; bg: string; bar: string }
 
 // Over-booked is a warning, so it gets the one non-teal accent on the screen —
 // always paired with an icon and words, never colour alone.
-const WARN = { fg: '#991B1B', bg: '#FEF2F2', border: '#FECACA' }
+// Amber, not red: a session outside its consultant's hours is a schedule to
+// tidy, not an emergency, and red on every card stopped meaning anything.
+const WARN = { fg: '#92400E', bg: '#FFFBEB', border: '#FDE68A' }
 const MUTED = '#CBD5E1'
 const RULE = '#EEF2F1'
 
@@ -112,13 +114,17 @@ function pct(n: number, of: number): number {
 }
 
 export default function DeckingPerDay({
-  slots, departments, branchName, capacity = {},
+  slots, departments, branchName, capacity = {}, hours,
 }: {
   slots: PerDaySlot[]
   departments: string[]
   branchName: string
   /** department → day → hours the consultants offered. Capacity, not bookings. */
   capacity?: Record<string, Record<string, number>>
+  /** department → day → grid HOURS, counted the way the board's Capacity card
+   *  counts cells. When given, every bookable / open / filled / unavailable
+   *  figure uses it, and "outside" is sessions on an unscheduled hour. */
+  hours?: Record<string, Record<string, { booked: number; open: number; blocked: number; outside: number }>>
 }) {
   // Disabled slots are switched-off time, not sessions — counting them would
   // inflate the very number the target is set against.
@@ -186,21 +192,30 @@ export default function DeckingPerDay({
   // Departments with capacity but nothing decked still belong on the capacity
   // tables — an empty department is exactly what a cross-sell conversation
   // needs to see.
-  const capacityDepts = knownDepts.filter(d => capacity[d] && Object.keys(capacity[d]).length > 0)
+  const capacityDepts = hours
+    ? knownDepts.filter(d => hours[d] && Object.keys(hours[d]).length > 0)
+      .concat(Object.keys(hours).filter(d => !knownDepts.includes(d)).sort())
+    : knownDepts.filter(d => capacity[d] && Object.keys(capacity[d]).length > 0)
+  const hrs = (dept: string, day: string) => hours?.[dept]?.[day]
   const capOf = (dept: string, day: string) => capacity[dept]?.[day] ?? 0
   const deckedOf = (dept: string, day: string) => countsByDept.get(dept)?.get(day) ?? 0
-  const blockedOf = (dept: string, day: string) => blockedByDept.get(dept)?.get(day) ?? 0
+  const blockedOf = (dept: string, day: string) =>
+    hours ? (hrs(dept, day)?.blocked ?? 0) : (blockedByDept.get(dept)?.get(day) ?? 0)
+  /** Booked grid hours (a shared hour or a class block hour counts once). */
+  const bookedHoursOf = (dept: string, day: string) =>
+    hours ? (hrs(dept, day)?.booked ?? 0) : deckedOf(dept, day)
   // Bookable hours: what the consultants offered, minus what is marked
   // unavailable. This — not the raw offered hours — is the capacity every
   // figure on this screen is measured against. Floored at zero: an unavailable
   // row on a day that is no longer a work day must not make capacity negative.
   const bookableOf = (dept: string, day: string) =>
-    Math.max(0, capOf(dept, day) - blockedOf(dept, day))
+    hours ? (hrs(dept, day)?.booked ?? 0) + (hrs(dept, day)?.open ?? 0)
+      : Math.max(0, capOf(dept, day) - blockedOf(dept, day))
   // Floored at zero: more decked than capacity means the config was narrowed
   // after the sessions were booked, and a negative "available" would read as a
   // data error rather than the over-booking it is.
   const availOf = (dept: string, day: string) =>
-    Math.max(0, bookableOf(dept, day) - deckedOf(dept, day))
+    hours ? (hrs(dept, day)?.open ?? 0) : Math.max(0, bookableOf(dept, day) - deckedOf(dept, day))
   // How far past the bookable hours a day is decked. Without this the floor at
   // zero hides the difference between "exactly full" and "over-booked by two",
   // and those call for opposite actions — one is healthy, the other means the
@@ -208,7 +223,7 @@ export default function DeckingPerDay({
   // doing, so every capacity figure for them is understated. Unavailable hours
   // are not bookings, so they never count towards it.
   const overOf = (dept: string, day: string) =>
-    Math.max(0, deckedOf(dept, day) - bookableOf(dept, day))
+    hours ? (hrs(dept, day)?.outside ?? 0) : Math.max(0, deckedOf(dept, day) - bookableOf(dept, day))
 
   const rows = knownDepts.filter(d => countsByDept.has(d))
   const dayTotal = (day: string) =>
@@ -228,19 +243,21 @@ export default function DeckingPerDay({
     const open = sumCap(availOf, d.key)
     const bookable = sumCap(bookableOf, d.key)
     const over = sumCap(overOf, d.key)
-    const unavailable = knownDepts.reduce((n, dept) => n + blockedOf(dept, d.key), 0)
+    const unavailable = (hours ? capacityDepts : knownDepts).reduce((n, dept) => n + blockedOf(dept, d.key), 0)
+    const bookedHours = sumCap(bookedHoursOf, d.key)
     return {
-      ...d, decked, open, bookable, over, unavailable,
+      ...d, decked, open, bookable, over, unavailable, bookedHours,
       filled: dayFilled(d.key),
       pay: payByDay.get(d.key) ?? { CASH: 0, HMO: 0, GL: 0 },
-      // Same formula as the board: booked ÷ (booked + open).
-      fillPct: pct(decked, decked + open),
+      // Same formula as the board: booked ÷ (booked + open), in hours.
+      fillPct: pct(hours ? bookedHours : decked, (hours ? bookedHours : decked) + open),
       runs: decked > 0 || bookable > 0,
     }
   })
   const weekOpen = perDay.reduce((n, d) => n + d.open, 0)
   const weekUnavailable = perDay.reduce((n, d) => n + d.unavailable, 0)
-  const weekFillBase = weekTotal + weekOpen
+  const weekBookedHours = hours ? perDay.reduce((n, d) => n + d.bookedHours, 0) : weekTotal
+  const weekFillBase = weekBookedHours + weekOpen
   const runningDays = perDay.filter(d => d.runs)
   const busiestDay = weekTotal > 0
     ? perDay.reduce((best, d) => (d.decked > best.decked ? d : best), perDay[0])
@@ -268,14 +285,23 @@ export default function DeckingPerDay({
           value={quietestDay ? quietestDay.label : '—'}
           sub={quietestDay ? `${quietestDay.decked} decked` : 'needs two working days'} />
         <KpiCard label="Bookable hours filled" icon={<Gauge size={15} />}
-          value={weekFillBase > 0 ? `${pct(weekTotal, weekFillBase)}%` : '—'}
+          value={weekFillBase > 0 ? `${pct(weekBookedHours, weekFillBase)}%` : '—'}
           sub={weekFillBase > 0
-            ? <>{weekTotal} of {weekFillBase}{weekUnavailable > 0 ? <> &middot; {weekUnavailable} unavailable excluded</> : null}</>
+            ? <>{weekBookedHours} of {weekFillBase} hours{weekUnavailable > 0 ? <> &middot; {weekUnavailable} unavailable excluded</> : null}</>
             : 'no bookable hours configured'} />
+        {hours ? (
+          <KpiCard label="Outside schedule" icon={<AlertTriangle size={15} />}
+            accent={overDays.length > 0 ? WARN.fg : 'var(--teal)'}
+            value={<span style={{ color: overDays.length > 0 ? WARN.fg : undefined }}>{overDays.reduce((n, d) => n + d.over, 0)}</span>}
+            sub={overDays.length > 0
+              ? <>sessions on unscheduled hours &middot; {overDays.map(d => d.short).join(', ')}</>
+              : 'every session is within its consultant’s hours'} />
+        ) : (
         <KpiCard label="Over-booked days" icon={<AlertTriangle size={15} />}
           accent={overDays.length > 0 ? WARN.fg : 'var(--teal)'}
           value={<span style={{ color: overDays.length > 0 ? WARN.fg : undefined }}>{overDays.length}</span>}
           sub={overDays.length > 0 ? overDays.map(d => d.short).join(', ') : 'none this week'} />
+        )}
       </div>
 
       {/* ── Week strip ── */}
@@ -287,7 +313,7 @@ export default function DeckingPerDay({
       >
         <ol className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5" aria-label="Decked sessions by day">
           {perDay.map(d => (
-            <DayCard key={d.key} day={d} busiest={busiestDay?.key === d.key && d.decked > 0} />
+            <DayCard key={d.key} day={d} busiest={busiestDay?.key === d.key && d.decked > 0} inHours={!!hours} />
           ))}
         </ol>
       </DashCard>
@@ -411,11 +437,14 @@ export default function DeckingPerDay({
 
       <CapacityTable
         title={`Open hours per day — ${branchName}`}
-        blurb="Bookable hours minus what is already decked — what is still open to book. The percentage is open ÷ bookable."
+        blurb={hours
+          ? 'Bookable hours with nobody in them yet — what is still open to book. The percentage is open ÷ bookable. A shared hour or a class block counts as one booked hour, as on the board.'
+          : 'Bookable hours minus what is already decked — what is still open to book. The percentage is open ÷ bookable.'}
         depts={capacityDepts}
         valueOf={availOf}
         outOf={bookableOf}
         overOf={overOf}
+        overWord={hours ? 'outside' : 'over'}
       />
     </div>
   )
@@ -470,13 +499,17 @@ function PayLegend({ pay, total }: { pay: Record<Pay, number>; total: number }) 
 interface DaySummary {
   key: string; label: string; short: string
   decked: number; filled: number; open: number; bookable: number; over: number; unavailable: number
+  bookedHours?: number
   pay: Record<Pay, number>; fillPct: number; runs: boolean
 }
 
-function DayCard({ day, busiest }: { day: DaySummary; busiest: boolean }) {
+function DayCard({ day, busiest, inHours = false }: { day: DaySummary; busiest: boolean; inHours?: boolean }) {
   const { decked, open, over, unavailable, pay, fillPct, runs } = day
-  const border = over > 0 ? WARN.border : busiest ? '#9ED0D7' : 'var(--light-gray)'
-  const bg = over > 0 ? '#FFFBFB' : busiest ? '#F3FAFB' : '#fff'
+  const base = inHours ? (day.bookedHours ?? 0) + open : decked + open
+  // Busiest keeps its accent; an outside-hours note is a badge, not a tint —
+  // a whole row of tinted cards read as a week of alarms.
+  const border = busiest ? '#9ED0D7' : !inHours && over > 0 ? WARN.border : 'var(--light-gray)'
+  const bg = busiest ? '#F3FAFB' : !inHours && over > 0 ? '#FFFBFB' : '#fff'
   return (
     <li className="rounded-xl px-3 py-3 min-w-0 flex flex-col gap-2" style={{ border: `1px solid ${border}`, background: bg }}>
       <div className="flex items-center justify-between gap-1 min-w-0">
@@ -484,9 +517,15 @@ function DayCard({ day, busiest }: { day: DaySummary; busiest: boolean }) {
           {day.short}
         </span>
         {over > 0 ? (
+          inHours ? (
+            <Badge fg={WARN.fg} bg={WARN.bg} icon={<AlertTriangle size={10} />} title={`${over} session${over === 1 ? '' : 's'} on ${day.label} at an hour the consultant is not scheduled for — check their Configure days and hours`}>
+              {over} outside
+            </Badge>
+          ) : (
           <Badge fg={WARN.fg} bg={WARN.bg} icon={<AlertTriangle size={10} />} title={`${over} more decked than the bookable hours on ${day.label}`}>
             +{over} over
           </Badge>
+          )
         ) : busiest ? (
           <Badge fg="#0F5C67" bg="#DCEFF2" icon={<TrendingUp size={10} />}>Busiest</Badge>
         ) : !runs ? (
@@ -523,7 +562,7 @@ function DayCard({ day, busiest }: { day: DaySummary; busiest: boolean }) {
 
       {/* Fill against the bookable hours only — booked ÷ (booked + open). */}
       <div className="mt-auto pt-2" style={{ borderTop: `1px solid ${RULE}` }}>
-        {decked + open > 0 ? (
+        {base > 0 ? (
           <>
             <div className="flex items-baseline justify-between gap-1 text-[11px]">
               <span style={{ color: 'var(--mid-gray)' }}>Filled</span>
@@ -534,7 +573,7 @@ function DayCard({ day, busiest }: { day: DaySummary; busiest: boolean }) {
               <div style={{ width: `${fillPct}%`, height: '100%', background: '#1A7B8A' }} />
             </div>
             <p className="mt-1 text-[10px] tabular-nums leading-tight" style={{ color: 'var(--mid-gray)' }}>
-              {open} open{unavailable > 0 ? <> &middot; {unavailable} unavail.</> : null}
+              {open} open{inHours ? ' hrs' : ''}{unavailable > 0 ? <> &middot; {unavailable} unavail.</> : null}
             </p>
           </>
         ) : (
@@ -558,11 +597,11 @@ function Badge({ children, fg, bg, icon, title }: { children: ReactNode; fg: str
 }
 
 /** Over-booked marker for a table cell: words and an icon, not colour alone. */
-function OverTag({ over, bold = false }: { over: number; bold?: boolean }) {
+function OverTag({ over, bold = false, word = 'over' }: { over: number; bold?: boolean; word?: string }) {
   return (
     <div className="inline-flex items-center gap-0.5 mt-0.5" style={{ fontSize: '0.64rem', color: WARN.fg, fontWeight: bold ? 800 : 700, lineHeight: 1.3 }}
-      title={`${over} more decked than the bookable hours on this day`}>
-      <AlertTriangle size={9} aria-hidden /> {over} over
+      title={word === 'over' ? `${over} more decked than the bookable hours on this day` : `${over} session${over === 1 ? '' : 's'} at an hour the consultant is not scheduled for`}>
+      <AlertTriangle size={9} aria-hidden /> {over} {word}
     </div>
   )
 }
@@ -583,7 +622,7 @@ function SubNote({ children, strong = false }: { children: ReactNode; strong?: b
  * places for a day-order or totals bug to appear in.
  */
 function CapacityTable({
-  title, blurb, depts, valueOf, outOf, overOf, unavailableOf,
+  title, blurb, depts, valueOf, outOf, overOf, unavailableOf, overWord = 'over',
 }: {
   title: string
   blurb: string
@@ -591,6 +630,7 @@ function CapacityTable({
   valueOf: (dept: string, day: string) => number
   /** Hours decked beyond what was bookable, shown instead of a bare zero. */
   overOf?: (dept: string, day: string) => number
+  overWord?: string
   /**
    * Denominator for the percentage under each cell. Given for the open table
    * so a number can be read as a share — 6 open slots means something
@@ -659,7 +699,7 @@ function CapacityTable({
                         {/* Over-booked days say so. A floored 0 with "0%" reads
                             as "full", which is a different situation. */}
                         {over > 0 ? (
-                          <div><OverTag over={over} /></div>
+                          <div><OverTag over={over} word={overWord} /></div>
                         ) : outOf && base > 0 ? (
                           /* No percentage when nothing was bookable that day —
                              0 of 0 is not 0%, it is "the clinic was shut". */
@@ -696,7 +736,7 @@ function CapacityTable({
                   <td key={d.key} style={{ ...TD_BASE, background: TOTAL_BG, fontWeight: 800, color: n === 0 ? MUTED : 'var(--charcoal)', borderBottom: 'none' }}>
                     {n === 0 && base === 0 && !over && !u ? '—' : n}
                     {over > 0 ? (
-                      <div><OverTag over={over} bold /></div>
+                      <div><OverTag over={over} bold word={overWord} /></div>
                     ) : outOf && base > 0 ? (
                       <SubNote strong>{pct(n, base)}%</SubNote>
                     ) : null}

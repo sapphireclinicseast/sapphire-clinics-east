@@ -2387,6 +2387,73 @@ export default function DeckingClient({ role }: { role: string }) {
     return cap
   })()
 
+  // Per Day, measured in grid HOURS — the same cells the boards draw and the
+  // Capacity card counts. Per Day used to set session ROWS against offered
+  // hours: a SPED class (many children in one block), two patients sharing an
+  // hour, interns and one-off dates all added rows without adding hours, so
+  // nearly every day read "over-booked" beside 70% filled. Here a cell holding
+  // three children is one booked hour, unavailable is its own bucket and never
+  // capacity, and "outside" counts only real sessions on an hour their
+  // consultant is not scheduled for (the schedule was narrowed after booking).
+  // Interns are left out, as from perDayCapacity. Off-the-hour custom slots
+  // sit outside the grid on the board too, so they are not counted either way.
+  const perDayHours = (() => {
+    type H = { booked: number; open: number; blocked: number; outside: number }
+    const out: Record<string, Record<string, H>> = {}
+    const at = (dept: string, day: string): H => {
+      out[dept] ??= {}
+      return (out[dept][day] ??= { booked: 0, open: 0, blocked: 0, outside: 0 })
+    }
+    const byStaff = new Map<string, DeckingSlot[]>()
+    for (const sl of slots) {
+      if (sl.date) continue                    // one-offs are not the weekly pattern
+      const arr = byStaff.get(sl.staffId) ?? []
+      arr.push(sl)
+      byStaff.set(sl.staffId, arr)
+    }
+    // Every schedule a consultant has here — the general one and any service's
+    // own days — so a teletherapy Thursday is offered time, not "outside".
+    const cfgsByStaff = new Map<string, TherapistConfig[]>()
+    for (const c of configs) cfgsByStaff.set(c.staffId, [...(cfgsByStaff.get(c.staffId) ?? []), c])
+    for (const st of staff) {
+      if (isIntern(st)) continue
+      if (!(st.branch === activeBranch || (st.extraBranches ?? []).includes(activeBranch))) continue
+      const offered = new Set<string>()
+      for (const c of cfgsByStaff.get(st.id) ?? []) {
+        for (const d of ((c.workDays as string[]) ?? [])) {
+          for (const h of generateHourlySlots(c.startTime, c.endTime)) offered.add(`${d}|${h}`)
+        }
+      }
+      const cells = new Map<string, { disabled: boolean; taken: boolean }>()
+      const mark = (day: string, hour: string, disabled: boolean) => {
+        const k = `${day}|${hour}`
+        const c = cells.get(k) ?? { disabled: false, taken: false }
+        if (disabled) c.disabled = true; else c.taken = true
+        cells.set(k, c)
+      }
+      for (const sl of byStaff.get(st.id) ?? []) {
+        if (sl.isClass) {
+          // A class block covers every hour it spans.
+          for (const h of generateHourlySlots(sl.startTime, sl.endTime)) mark(sl.dayOfWeek, h, sl.disabled)
+          continue
+        }
+        if (!/:00$/.test(sl.startTime)) continue   // custom slot, not a grid hour
+        mark(sl.dayOfWeek, sl.startTime, sl.disabled)
+        if (!sl.disabled && !offered.has(`${sl.dayOfWeek}|${sl.startTime}`)) {
+          at(st.department, sl.dayOfWeek).outside++
+        }
+      }
+      for (const k of offered) {
+        const c = cells.get(k)
+        const h = at(st.department, k.slice(0, k.indexOf('|')))
+        if (c?.disabled) h.blocked++            // same precedence as the cell
+        else if (c?.taken) h.booked++
+        else h.open++
+      }
+    }
+    return out
+  })()
+
   const slotSummary = (() => {
     let total = 0, booked = 0, blocked = 0
     // How the booked hours are being paid for. Counted per booked CELL rather
@@ -2996,6 +3063,7 @@ export default function DeckingClient({ role }: { role: string }) {
                 departments={perDayDepts}
                 branchName={branchName}
                 capacity={perDayCapacity}
+                hours={perDayHours}
               />
             ) : filteredStaff.length === 0 ? (
               <div className="rounded-xl pb-2" style={CARD_STYLE}>
