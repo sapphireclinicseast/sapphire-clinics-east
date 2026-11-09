@@ -18,7 +18,7 @@
 
 import { useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
-import { X, Plus, CalendarDays, Users, GraduationCap, AlertTriangle, Ban } from 'lucide-react'
+import { X, Plus, CalendarDays, Users, GraduationCap, AlertTriangle, Ban, ChevronDown } from 'lucide-react'
 
 // Sunday → Saturday, shared with the rest of the module.
 import { DAYS } from '@/lib/decking-days'
@@ -429,6 +429,12 @@ export default function SpedClassBoard({
   // ── Shared pieces ──────────────────────────────────────────────────────────
   const TIME_COL = 112
   const DAY_COL_MIN = 136               // below this the grid scrolls sideways
+  // Days that run a class get the room; days with none shrink, so class cards
+  // stop truncating every name to "Abarca, …" beside four empty columns.
+  // Display only — every day still has its "+ Add class".
+  const busyDays = new Set(DAYS.filter(d => blocks.some(b => groupsIn(d.key, b).length > 0)).map(d => d.key))
+  const dayWeight = (key: string) => (busyDays.size === 0 || busyDays.has(key) ? 1.7 : 0.75)
+  const weightTotal = DAYS.reduce((n, d) => n + dayWeight(d.key), 0)
   const thBase: CSSProperties = {
     position: 'sticky', top: 0, background: HEAD_BG, padding: '0.45rem 0.6rem',
     borderRight: `1px solid ${GRID_LINE}`, borderBottom: '1px solid var(--light-gray)',
@@ -583,7 +589,7 @@ export default function SpedClassBoard({
           }}>
             <colgroup>
               <col style={{ width: TIME_COL }} />
-              {DAYS.map(d => <col key={d.key} />)}
+              {DAYS.map(d => <col key={d.key} style={{ width: `${(dayWeight(d.key) / weightTotal) * 100}%` }} />)}
             </colgroup>
             <thead>
               <tr>
@@ -594,7 +600,8 @@ export default function SpedClassBoard({
                   Time
                 </th>
                 {DAYS.map(d => (
-                  <th key={d.key} scope="col" style={{ ...thBase, zIndex: 2, textAlign: 'center', fontSize: '0.74rem', fontWeight: 700, color: 'var(--charcoal)' }}>
+                  <th key={d.key} scope="col" style={{ ...thBase, zIndex: 2, textAlign: 'center', fontSize: '0.74rem', fontWeight: 700, color: busyDays.size === 0 || busyDays.has(d.key) ? 'var(--charcoal)' : 'var(--mid-gray)' }}
+                    title={busyDays.size > 0 && !busyDays.has(d.key) ? `${d.label} · no classes yet` : d.label}>
                     <span className="hidden sm:inline">{d.label}</span>
                     <span className="sm:hidden">{d.short}</span>
                   </th>
@@ -653,41 +660,39 @@ export default function SpedClassBoard({
                                   }}>
                                   <div className="flex items-center gap-1.5 min-w-0">
                                     <Avatar text={t ? initials(t.firstName, t.lastName) : '?'} size={22} />
-                                    <div className="min-w-0 flex-1">
-                                      <p className="truncate text-[11.5px] font-bold leading-tight" style={{ color: CLASS_FG }}
-                                        title={`${teacherName(g.staffId)} · ${g.kids.length} child${g.kids.length === 1 ? '' : 'ren'}`}>
-                                        {teacherLabel(g.staffId)}
-                                      </p>
-                                      <p className="truncate text-[10px] leading-tight" style={{ color: CLASS_SUB }}>
-                                        {t ? `${displayName(t.lastName)}’s class` : 'Class'}
-                                      </p>
-                                    </div>
+                                    {/* The teacher's name IS the control that moves
+                                        the whole group (it used to show twice: once
+                                        as a title, once in a dropdown below). Every
+                                        class child added before the board tracked
+                                        teachers landed on the first consultant on
+                                        the roster, so the common correction is a
+                                        whole card at once — not one child at a time. */}
+                                    <label className="relative min-w-0 flex-1 flex items-center"
+                                      title={`${teacherName(g.staffId)} · ${childCount} ${childCount === 1 ? 'child' : 'children'} — change to move the whole class to another teacher`}>
+                                      <select
+                                        value={g.staffId} disabled={busy}
+                                        onChange={e => reassign(g.kids, e.target.value)}
+                                        aria-label={`Teacher for ${teacherLabel(g.staffId)}'s class on ${where} — change to move the class`}
+                                        className="dk-btn w-full min-w-0 truncate rounded-md text-[11.5px] font-bold leading-tight hover:bg-white/70 hover:border-[#D9C8F0]"
+                                        style={{
+                                          appearance: 'none', WebkitAppearance: 'none', background: 'transparent', border: '1px solid transparent',
+                                          color: CLASS_FG, padding: '2px 16px 2px 3px', cursor: busy ? 'not-allowed' : 'pointer',
+                                        }}>
+                                        {!staff.some(x => x.id === g.staffId) && (
+                                          <option value={g.staffId}>{teacherName(g.staffId)}</option>
+                                        )}
+                                        {staff.map(x => (
+                                          <option key={x.id} value={x.id}>{personLabel(x)}</option>
+                                        ))}
+                                      </select>
+                                      <ChevronDown size={11} aria-hidden className="pointer-events-none absolute right-1" style={{ color: CLASS_SUB }} />
+                                    </label>
                                     <span className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none tabular-nums flex-shrink-0"
                                       style={{ background: '#fff', color: CLASS_SUB, border: `1px solid ${CLASS_BORDER}` }}
                                       title={`${childCount} ${childCount === 1 ? 'child' : 'children'} in this class`}>
                                       <Users size={9} aria-hidden /> {childCount}
                                     </span>
                                   </div>
-
-                                  {/* Moves the whole group. Every class child added
-                                      before the board tracked teachers landed on
-                                      the first consultant on the roster, so the
-                                      common correction is a whole card at once —
-                                      not one child at a time. */}
-                                  <select
-                                    value={g.staffId} disabled={busy}
-                                    onChange={e => reassign(g.kids, e.target.value)}
-                                    title="Move this group to another teacher"
-                                    aria-label={`Move ${teacherLabel(g.staffId)}'s class on ${where} to another teacher`}
-                                    className={`${CONTROL_SM} w-full mt-1.5`}
-                                    style={{ ...CONTROL_STYLE, height: 26, fontSize: 11, paddingLeft: 6, paddingRight: 4, color: CLASS_SUB, cursor: busy ? 'not-allowed' : 'pointer' }}>
-                                    {!staff.some(x => x.id === g.staffId) && (
-                                      <option value={g.staffId}>{teacherName(g.staffId)}</option>
-                                    )}
-                                    {staff.map(x => (
-                                      <option key={x.id} value={x.id}>{personLabel(x)}</option>
-                                    ))}
-                                  </select>
 
                                   <div className="flex flex-col gap-1 mt-1.5">
                                     {g.kids.map(sl => {
