@@ -4,13 +4,14 @@ import { useState, useCallback, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 import { userBranchScope, canViewAllBranchesSI } from '@/lib/branch-scope'
 import {
-  Receipt, Download, Printer, Loader2, Filter, FileText,
+  Receipt, Download, Printer, Loader2, FileText,
   CheckCircle2, XCircle, X, Search,
 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { downloadXlsx } from '@/lib/export'
 import { parseMonitoringRemark } from '@/lib/si-monitoring'
 import { applySortFilter, SortFilterHead, type SortCol } from '@/components/SortFilterHead'
+import { HR_PAGE_CLASS, HR_PAGE_STYLE, HrShimmerStyle, StatCard, hrBtn } from '@/components/ui/hr-look'
 
 /* ─────────────────────────────────────────────
    TYPES
@@ -42,6 +43,24 @@ const BRANCHES = [
   { value: 'VERDANA_STORE', label: 'Verdana Store' },
   { value: 'AURA_INSTITUTE', label: 'Aura Health Institute' },
 ]
+
+/* ── HR Hub look helpers (layout only) ── */
+// SortFilterHead is shared; this page gives its header the HR look via the `ss-grid` class.
+const SS_GRID_CSS = `.ss-grid thead th{background:var(--hr-head)!important;border-color:var(--hr-line)!important}.ss-grid thead th>button{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--mid-gray)}.ss-grid thead th input{background:#fff;border-color:var(--light-gray)}`
+const pill = (active: boolean) => active
+  ? { background: 'var(--teal)', borderColor: 'var(--teal)', color: '#fff', fontFamily: 'var(--font-display)' }
+  : { background: '#fff', borderColor: 'var(--light-gray)', color: 'var(--mid-gray)', fontFamily: 'var(--font-display)' }
+const PILL = 'px-3.5 py-1.5 rounded-full border text-[13px] font-semibold whitespace-nowrap transition-colors'
+const SEG = 'h-7 px-3 rounded-md text-xs font-semibold transition-colors whitespace-nowrap'
+const segStyle = (active: boolean) => active ? { background: 'var(--teal)', color: '#fff' } : { color: 'var(--mid-gray)' }
+const TOOLBAR = 'flex flex-wrap items-center gap-2 px-4 py-2.5 rounded-lg border'
+const TOOLBAR_STYLE = { background: '#fcfdfa', borderColor: 'var(--light-gray)' }
+const LABEL_INLINE = 'flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[.4px]'
+const INPUT_SM = 'h-8 px-2 rounded-lg border text-xs font-normal normal-case tracking-normal bg-white'
+const CARD = 'rounded-lg border bg-white overflow-hidden'
+const CARD_HEAD = 'flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 border-b'
+const CARD_HEAD_STYLE = { background: '#fcfdfa', borderColor: 'var(--light-gray)' }
+const TH = 'px-4 py-2.5 text-[11px] font-bold uppercase tracking-[.4px] whitespace-nowrap'
 
 /* ─────────────────────────────────────────────
    HELPERS
@@ -189,41 +208,35 @@ function ReportTable({
     w.print()
   }
 
+  const invoiced = accentClass.includes('emerald')
+  const edge = invoiced ? '#059669' : '#d97706'
   return (
-    <div className="mb-10">
+    <div className={CARD} style={{ borderColor: 'var(--light-gray)' }}>
       {/* Section header */}
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <span className={`text-sm font-bold ${accentClass}`}>{title}</span>
-          <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
+      <div className={CARD_HEAD} style={{ ...CARD_HEAD_STYLE, boxShadow: `inset 4px 0 0 ${edge}` }}>
+        <div className="flex items-center gap-2 min-w-0 pl-1">
+          <span className={`text-sm font-bold ${accentClass}`} style={{ fontFamily: 'var(--font-display)' }}>{title}</span>
+          <span className="text-[11px] px-2 py-0.5 rounded-full font-bold" style={{ background: invoiced ? '#dcfce7' : '#fef3c7', color: invoiced ? '#166534' : '#92400e' }}>
             {filtering ? `${displayRows.length} of ${rows.length}` : rows.length} line{(filtering ? displayRows.length : rows.length) !== 1 ? 's' : ''}
           </span>
         </div>
         <div className="flex items-center gap-2 print:hidden">
-          <button
-            onClick={() => downloadExcel(displayRows, csvFilename)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border"
-            style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}
-          >
+          <button onClick={() => downloadExcel(displayRows, csvFilename)} className={hrBtn.ghost} style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
             <Download size={13} /> Export Excel
           </button>
-          <button
-            onClick={handlePrint}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white"
-            style={{ background: 'var(--teal)' }}
-          >
+          <button onClick={handlePrint} className={`${hrBtn.ghost} text-white`} style={{ background: 'var(--teal)', borderColor: 'var(--teal)' }}>
             <Printer size={13} /> Print / PDF
           </button>
         </div>
       </div>
 
       {rows.length === 0 ? (
-        <div className="rounded-2xl border px-6 py-8 text-center text-sm" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+        <div className="px-6 py-10 text-center text-[13px]" style={{ color: 'var(--mid-gray)' }}>
           No transactions found for this category.
         </div>
       ) : (
         <>
-          <div className="overflow-x-auto rounded-2xl border" style={{ borderColor: 'var(--light-gray)' }}>
+          <div className="overflow-x-auto relative ss-grid">
             <div id={printId}>
               <table className="w-full text-sm">
                 <SortFilterHead
@@ -236,15 +249,15 @@ function ReportTable({
                 />
                 <tbody>
                   {displayRows.length === 0 && (
-                    <tr><td colSpan={8} className="px-4 py-8 text-center text-sm" style={{ color: 'var(--mid-gray)' }}>No rows match the current filters.</td></tr>
+                    <tr><td colSpan={8} className="px-4 py-10 text-center text-[13px]" style={{ color: 'var(--mid-gray)' }}>No rows match the current filters.</td></tr>
                   )}
                   {displayRows.map((row, i) => (
-                    <tr key={i} style={{ borderBottom: '1px solid var(--light-gray)', background: row.migrated ? '#fffbeb' : row.ar ? '#eff6ff' : undefined }} className="hover:bg-gray-50"
+                    <tr key={i} className="transition-colors hover:bg-[#fafcf6]" style={{ borderBottom: '1px solid var(--hr-line)', background: row.migrated ? '#fffbeb' : row.ar ? '#eff6ff' : undefined }}
                       title={row.migrated ? 'Migrated from the manual SI monitoring workbook (pre-hub invoice — no POS order)' : row.ar ? 'HMO / AR collection issued a Sales Invoice on payment (Accounts Receivable → Record Payment — no POS order)' : undefined}>
-                      <td className="px-4 py-3" style={{ color: 'var(--mid-gray)' }}>{row.date}</td>
-                      <td className="px-4 py-3 font-mono text-xs" style={{ color: 'var(--charcoal)' }}>{row.migrated || row.ar ? '—' : `#${row.orderNumber}`}</td>
-                      <td className="px-4 py-3 font-medium" style={{ color: 'var(--charcoal)' }}>{row.patientName}</td>
-                      <td className="px-4 py-3" style={{ color: 'var(--charcoal)' }}>
+                      <td className="px-4 py-2.5 whitespace-nowrap font-mono text-xs" style={{ color: 'var(--mid-gray)', boxShadow: row.migrated ? 'inset 4px 0 0 #d97706' : row.ar ? 'inset 4px 0 0 #2563eb' : undefined }}>{row.date}</td>
+                      <td className="px-4 py-2.5 font-mono text-xs whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{row.migrated || row.ar ? '—' : `#${row.orderNumber}`}</td>
+                      <td className="px-4 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>{row.patientName}</td>
+                      <td className="px-4 py-2.5" style={{ color: 'var(--charcoal)' }}>
                         <span className="flex items-center gap-1">
                           {row.serviceAvailed}
                           {row.itemIssuedOfficialInvoice && (
@@ -254,43 +267,43 @@ function ReportTable({
                           )}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-center" style={{ color: 'var(--charcoal)' }}>{row.quantity}</td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-2.5 text-center font-mono" style={{ color: 'var(--charcoal)' }}>{row.quantity}</td>
+                      <td className="px-4 py-2.5">
                         {row.salesInvoiceNumber ? (
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${badgeClass}`}>
+                          <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold font-mono ${badgeClass}`}>
                             {row.salesInvoiceNumber}
                           </span>
                         ) : onConvert && row.orderId && !row.migrated ? (
                           <button
                             onClick={() => onConvert(row)}
-                            className="px-2.5 py-1 rounded-lg text-[11px] font-semibold border whitespace-nowrap print:hidden"
-                            style={{ borderColor: '#fbbf24', color: '#92400e', background: '#fffbeb' }}
+                            className="px-2.5 py-1 rounded-lg text-[11px] font-semibold border whitespace-nowrap print:hidden transition-colors hover:bg-[#fef3c7]"
+                            style={{ borderColor: '#fcd34d', color: '#92400e', background: '#fffbeb' }}
                             title={`Issue a Sales Invoice to order #${row.orderNumber}`}
                           >
                             Convert to have SI
                           </button>
                         ) : (
-                          <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>—</span>
+                          <span className="text-xs" style={{ color: 'var(--hr-faint)' }}>—</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-right font-medium" style={{ color: 'var(--charcoal)' }}>
+                      <td className="px-4 py-2.5 text-right font-mono whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>
                         {formatCurrency(row.grossAmount)}
                       </td>
-                      <td className="px-4 py-3 text-right font-semibold" style={{ color: 'var(--deep-teal)' }}>
+                      <td className="px-4 py-2.5 text-right font-mono font-bold whitespace-nowrap" style={{ color: 'var(--deep-teal)' }}>
                         {formatCurrency(row.netAmount)}
                       </td>
                     </tr>
                   ))}
                 </tbody>
                 <tfoot>
-                  <tr style={{ background: 'var(--off-white)', borderTop: '2px solid var(--light-gray)' }}>
-                    <td colSpan={6} className="px-4 py-3 text-sm font-bold" style={{ color: 'var(--charcoal)' }}>
-                      SUBTOTAL ({displayRows.length} line{displayRows.length !== 1 ? 's' : ''})
+                  <tr style={{ background: 'var(--hr-head)', borderTop: '2px solid var(--light-gray)' }}>
+                    <td colSpan={6} className="px-4 py-2.5 text-[11px] font-bold uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)' }}>
+                      Subtotal ({displayRows.length} line{displayRows.length !== 1 ? 's' : ''})
                     </td>
-                    <td className="px-4 py-3 text-right text-sm font-bold" style={{ color: 'var(--charcoal)' }}>
+                    <td className="px-4 py-2.5 text-right font-mono font-bold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>
                       {formatCurrency(totalGross)}
                     </td>
-                    <td className="px-4 py-3 text-right text-sm font-bold" style={{ color: 'var(--deep-teal)' }}>
+                    <td className="px-4 py-2.5 text-right font-mono font-bold whitespace-nowrap" style={{ color: 'var(--deep-teal)' }}>
                       {formatCurrency(totalNet)}
                     </td>
                   </tr>
@@ -299,20 +312,14 @@ function ReportTable({
             </div>
           </div>
 
-          {/* Summary cards */}
-          <div className="mt-3 grid grid-cols-3 gap-3 print:hidden">
-            <div className="rounded-xl border p-3" style={{ borderColor: 'var(--light-gray)' }}>
-              <p className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: 'var(--mid-gray)' }}>Lines</p>
-              <p className="text-xl font-bold" style={{ color: 'var(--charcoal)' }}>{displayRows.length}</p>
-            </div>
-            <div className="rounded-xl border p-3" style={{ borderColor: 'var(--light-gray)' }}>
-              <p className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: 'var(--mid-gray)' }}>Gross Amount</p>
-              <p className="text-xl font-bold" style={{ color: 'var(--charcoal)' }}>{formatCurrency(totalGross)}</p>
-            </div>
-            <div className="rounded-xl border p-3" style={{ borderColor: 'var(--light-gray)' }}>
-              <p className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: 'var(--mid-gray)' }}>Net Amount</p>
-              <p className="text-xl font-bold" style={{ color: 'var(--deep-teal)' }}>{formatCurrency(totalNet)}</p>
-            </div>
+          {/* Summary strip — lines, gross and net of what is shown (column filters apply) */}
+          <div className="grid grid-cols-3 border-t print:hidden" style={{ borderColor: 'var(--light-gray)', background: '#fcfdfa' }}>
+            {([['Lines', String(displayRows.length), 'var(--charcoal)'], ['Gross amount', formatCurrency(totalGross), 'var(--charcoal)'], ['Net amount', formatCurrency(totalNet), 'var(--deep-teal)']] as const).map(([k, v, c], i) => (
+              <div key={k} className={`px-4 py-2.5 min-w-0 ${i ? 'border-l' : ''}`} style={{ borderColor: 'var(--hr-line)' }}>
+                <p className="text-[11px] font-bold uppercase tracking-[.4px] truncate" style={{ color: 'var(--mid-gray)' }}>{k}</p>
+                <p className="text-[15px] sm:text-base font-extrabold tabular-nums truncate" style={{ color: c, fontFamily: 'var(--font-display)' }} title={v}>{v}</p>
+              </div>
+            ))}
           </div>
         </>
       )}
@@ -402,31 +409,32 @@ export default function SalesSummaryPage() {
   )
   const showBoth = showWithInvoice && showWithoutInvoice
 
+  const branchOptions = scope.enum ? BRANCHES.filter(b => b.value === scope.enum) : BRANCHES
+  const sumOf = (rs: SalesSummaryRow[], k: 'grossAmount' | 'netAmount') => rs.reduce((t, r) => t + r[k], 0)
+
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <div className={HR_PAGE_CLASS} style={HR_PAGE_STYLE}>
+      <HrShimmerStyle />
+      <style>{SS_GRID_CSS}</style>
       {/* ── Header ── */}
-      <div className="flex items-center justify-between mb-6 print:hidden">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'var(--teal)' }}>
-            <Receipt size={20} className="text-white" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
-              Sales Summary
-            </h1>
-            <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
-              Transaction-level sales report with invoice tracking
-            </p>
-          </div>
-        </div>
+      <div className="min-w-0 print:hidden">
+        <h1 className="text-2xl font-bold leading-tight flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+          <Receipt size={22} style={{ color: 'var(--teal)' }} /> Sales Summary
+        </h1>
+        <p className="mt-1 text-[13px] max-w-3xl" style={{ color: 'var(--mid-gray)' }}>
+          Transaction-level sales report with invoice tracking
+        </p>
       </div>
 
       {/* ── Subtabs ── */}
-      <div className="flex items-center gap-1 border-b mb-6 print:hidden" style={{ borderColor: 'var(--light-gray)' }}>
-        {([['summary', 'Summary'], ['with-si', 'With SI'], ['target', 'Sales Target']] as const).map(([v, label]) => (
-          <button key={v} onClick={() => setView(v)} className="px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors"
-            style={{ borderColor: view === v ? 'var(--teal)' : 'transparent', color: view === v ? 'var(--teal)' : 'var(--mid-gray)' }}>{label}</button>
-        ))}
+      <div className="border-b-2 print:hidden" style={{ borderColor: 'var(--light-gray)' }}>
+        <div className="flex items-end gap-1 -mb-[2px] max-w-full overflow-x-auto" role="tablist" aria-label="Sales Summary sections">
+          {([['summary', 'Summary'], ['with-si', 'With SI'], ['target', 'Sales Target']] as const).map(([v, label]) => (
+            <button key={v} onClick={() => setView(v)} role="tab" aria-selected={view === v}
+              className="px-4 py-2.5 text-[13px] font-semibold border-b-2 whitespace-nowrap transition-colors hover:text-[var(--teal)]"
+              style={{ fontFamily: 'var(--font-display)', borderColor: view === v ? 'var(--teal)' : 'transparent', color: view === v ? 'var(--teal)' : 'var(--mid-gray)' }}>{label}</button>
+          ))}
+        </div>
       </div>
 
       {view === 'with-si' && <WithSiTab branch={branch !== 'ALL' ? branch : (scope.enum || 'SANDBOX_EAST')} scopeEnum={scope.enum} canViewAll={canViewAllBranchesSI(role)} />}
@@ -434,123 +442,85 @@ export default function SalesSummaryPage() {
 
       {view === 'summary' && (<>
       {/* ── Filters ── */}
-      <div className="rounded-2xl border p-4 mb-6 print:hidden" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
-        <div className="flex items-center gap-2 mb-3">
-          <Filter size={14} style={{ color: 'var(--mid-gray)' }} />
-          <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--mid-gray)' }}>Filters</span>
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-3">
-          <div>
-            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Branch</label>
-            <select
-              value={branch}
-              onChange={e => setBranch(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl border text-sm outline-none bg-white"
-              style={{ borderColor: 'var(--light-gray)' }}
-            >
-              {(scope.enum ? BRANCHES.filter(b => b.value === scope.enum) : BRANCHES).map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Date From</label>
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={e => setDateFrom(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl border text-sm outline-none bg-white"
-              style={{ borderColor: 'var(--light-gray)' }}
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>Date To</label>
-            <input
-              type="date"
-              value={dateTo}
-              onChange={e => setDateTo(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl border text-sm outline-none bg-white"
-              style={{ borderColor: 'var(--light-gray)' }}
-            />
-          </div>
-        </div>
-
-        {/* Report type selection */}
-        <div className="mb-3">
-          <label className="block text-xs font-semibold mb-2" style={{ color: 'var(--mid-gray)' }}>Include Reports</label>
-          <div className="flex flex-wrap gap-3">
-            <label
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 cursor-pointer transition-colors select-none ${showWithInvoice ? 'border-emerald-400 bg-emerald-50' : 'border-gray-200 bg-white'}`}
-            >
-              <input
-                type="checkbox"
-                checked={showWithInvoice}
-                onChange={e => setShowWithInvoice(e.target.checked)}
-                className="w-4 h-4 accent-emerald-600"
-              />
-              <CheckCircle2 size={16} className={showWithInvoice ? 'text-emerald-600' : 'text-gray-300'} />
-              <span className={`text-sm font-semibold ${showWithInvoice ? 'text-emerald-800' : 'text-gray-400'}`}>
-                With Official Sales Invoice
-              </span>
+      <div className={`${CARD} print:hidden`} style={{ borderColor: 'var(--light-gray)' }}>
+        <div>
+          <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b" style={{ borderColor: 'var(--light-gray)', background: '#fcfdfa' }}>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {branchOptions.map(b => (
+                <button key={b.value} onClick={() => setBranch(b.value)} aria-pressed={branch === b.value} className={PILL} style={pill(branch === b.value)}>{b.label}</button>
+              ))}
+            </div>
+            <span className="hidden sm:block w-px h-6 mx-1" style={{ background: 'var(--light-gray)' }} />
+            <label className={LABEL_INLINE} style={{ color: 'var(--mid-gray)' }}>
+              From
+              <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className={INPUT_SM} style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }} />
             </label>
-            <label
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border-2 cursor-pointer transition-colors select-none ${showWithoutInvoice ? 'border-amber-400 bg-amber-50' : 'border-gray-200 bg-white'}`}
-            >
-              <input
-                type="checkbox"
-                checked={showWithoutInvoice}
-                onChange={e => setShowWithoutInvoice(e.target.checked)}
-                className="w-4 h-4 accent-amber-500"
-              />
-              <XCircle size={16} className={showWithoutInvoice ? 'text-amber-500' : 'text-gray-300'} />
-              <span className={`text-sm font-semibold ${showWithoutInvoice ? 'text-amber-800' : 'text-gray-400'}`}>
-                Without Sales Invoice
-              </span>
+            <label className={LABEL_INLINE} style={{ color: 'var(--mid-gray)' }}>
+              To
+              <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className={INPUT_SM} style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }} />
             </label>
           </div>
-          {!showWithInvoice && !showWithoutInvoice && (
-            <p className="mt-2 text-xs text-red-500">Please select at least one report type.</p>
-          )}
-        </div>
 
-        <button
-          onClick={fetchData}
-          disabled={loading || (!showWithInvoice && !showWithoutInvoice)}
-          className="flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
-          style={{ background: 'var(--teal)' }}
-        >
-          {loading ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
-          {loading ? 'Loading...' : 'Generate Report'}
-        </button>
+          {/* Report type selection */}
+          <div className="flex flex-wrap items-center gap-2 px-4 py-3">
+            <span className="text-[11px] font-bold uppercase tracking-[.4px] mr-1" style={{ color: 'var(--mid-gray)' }}>Include</span>
+            <label className="flex items-center gap-2 h-9 px-3 rounded-lg border cursor-pointer transition-colors select-none"
+              style={showWithInvoice ? { borderColor: '#6ee7b7', background: '#ecfdf5' } : { borderColor: 'var(--light-gray)', background: '#fff' }}>
+              <input type="checkbox" checked={showWithInvoice} onChange={e => setShowWithInvoice(e.target.checked)} className="w-4 h-4 accent-emerald-600" />
+              <CheckCircle2 size={15} className={showWithInvoice ? 'text-emerald-600' : 'text-gray-300'} />
+              <span className="text-[13px] font-semibold" style={{ color: showWithInvoice ? '#065f46' : 'var(--hr-faint)' }}>With Official Sales Invoice</span>
+            </label>
+            <label className="flex items-center gap-2 h-9 px-3 rounded-lg border cursor-pointer transition-colors select-none"
+              style={showWithoutInvoice ? { borderColor: '#fcd34d', background: '#fffbeb' } : { borderColor: 'var(--light-gray)', background: '#fff' }}>
+              <input type="checkbox" checked={showWithoutInvoice} onChange={e => setShowWithoutInvoice(e.target.checked)} className="w-4 h-4 accent-amber-500" />
+              <XCircle size={15} className={showWithoutInvoice ? 'text-amber-500' : 'text-gray-300'} />
+              <span className="text-[13px] font-semibold" style={{ color: showWithoutInvoice ? '#92400e' : 'var(--hr-faint)' }}>Without Sales Invoice</span>
+            </label>
+            <button
+              onClick={fetchData}
+              disabled={loading || (!showWithInvoice && !showWithoutInvoice)}
+              className={`${hrBtn.primary} sm:ml-auto`}
+              style={{ background: 'var(--teal)' }}
+            >
+              {loading ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
+              {loading ? 'Loading…' : 'Generate Report'}
+            </button>
+            {!showWithInvoice && !showWithoutInvoice && (
+              <p className="w-full text-xs" style={{ color: '#b91c1c' }}>Please select at least one report type.</p>
+            )}
+          </div>
+        </div>
       </div>
 
       {error && (
-        <div className="mb-4 px-4 py-3 rounded-xl text-sm bg-red-50 text-red-700">{error}</div>
+        <div className="px-4 py-2.5 rounded-lg border text-[13px]" style={{ background: '#fef2f2', borderColor: '#fecaca', color: '#b91c1c' }}>{error}</div>
+      )}
+
+      {loading && !fetched && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {[0, 1, 2, 3].map(i => <StatCard key={i} loading label="" value="" sub="" />)}
+        </div>
       )}
 
       {/* ── Results ── */}
       {fetched && (
         <>
-          {/* Grand total bar when both reports showing */}
-          {showBoth && (
-            <div className="flex items-center justify-between rounded-2xl px-5 py-3 mb-5 print:hidden"
-              style={{ background: 'var(--charcoal)' }}>
-              <span className="text-sm font-semibold text-white">
-                Combined Total — {dateLabel}{branchLabel}
-              </span>
-              <div className="flex items-center gap-6">
-                <div className="text-right">
-                  <p className="text-[10px] uppercase tracking-wide text-white/50">Gross</p>
-                  <p className="text-base font-bold text-white">{formatCurrency(combinedGross)}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-[10px] uppercase tracking-wide text-white/50">Net</p>
-                  <p className="text-base font-bold" style={{ color: 'var(--teal)' }}>{formatCurrency(combinedNet)}</p>
-                </div>
-              </div>
-            </div>
-          )}
+          {/* Totals: the combined figure (both reports ticked) and each report on its own */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 print:hidden">
+            <StatCard compact label={showBoth ? 'Combined gross' : 'Gross'} value={formatCurrency(combinedGross)}
+              sub={`${dateLabel}${branchLabel}`} accent={{ line: '#4A8073' }} />
+            <StatCard compact label={showBoth ? 'Combined net' : 'Net'} value={formatCurrency(combinedNet)}
+              sub="Gross less discounts" tone={combinedNet ? 'green' : 'zero'} />
+            <StatCard compact label="With Official SI" value={showWithInvoice ? formatCurrency(sumOf(invoicedRows, 'grossAmount')) : '—'}
+              sub={showWithInvoice ? `${invoicedRows.length} line${invoicedRows.length !== 1 ? 's' : ''} · net ${formatCurrency(sumOf(invoicedRows, 'netAmount'))}` : 'Not included'}
+              tone="zero" accent={showWithInvoice && invoicedRows.length ? { line: '#059669' } : undefined} />
+            <StatCard compact label="Without Sales Invoice" value={showWithoutInvoice ? formatCurrency(sumOf(nonInvoicedRows, 'grossAmount')) : '—'}
+              sub={showWithoutInvoice ? `${nonInvoicedRows.length} line${nonInvoicedRows.length !== 1 ? 's' : ''} · net ${formatCurrency(sumOf(nonInvoicedRows, 'netAmount'))}` : 'Not included'}
+              tone={showWithoutInvoice && nonInvoicedRows.length ? 'amber' : 'zero'} />
+          </div>
 
           {!hasData && (
-            <div className="text-center py-16 text-sm" style={{ color: 'var(--mid-gray)' }}>
+            <div className="rounded-lg border bg-white text-center py-14 text-[13px]" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
               No transactions found for the selected filters.
             </div>
           )}
@@ -585,9 +555,9 @@ export default function SalesSummaryPage() {
       )}
 
       {!fetched && !loading && (
-        <div className="text-center py-20" style={{ color: 'var(--mid-gray)' }}>
-          <Receipt size={40} className="mx-auto mb-3 opacity-30" />
-          <p className="text-sm">Set your filters, choose report types, and click <strong>Generate Report</strong>.</p>
+        <div className="rounded-lg border bg-white text-center py-16 px-4" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+          <Receipt size={36} className="mx-auto mb-3 opacity-30" />
+          <p className="text-[13px]">Set your filters, choose report types, and click <strong>Generate Report</strong>.</p>
         </div>
       )}
       </>)}
@@ -646,7 +616,7 @@ function ConvertSiModal({ row, onClose, onSaved }: { row: SalesSummaryRow; onClo
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-xl border p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-1">
           <h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>Convert to have Sales Invoice</h2>
           <button onClick={onClose}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button>
@@ -657,11 +627,11 @@ function ConvertSiModal({ row, onClose, onSaved }: { row: SalesSummaryRow; onClo
 
         <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Date of declaration</label>
         <input type="date" value={declaredDate} onChange={e => setDeclaredDate(e.target.value)}
-          className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }} />
+          className="w-full px-3 py-2 rounded-lg border text-sm mb-3 bg-white" style={{ borderColor: 'var(--light-gray)' }} />
 
         <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--charcoal)' }}>Sales Invoice number</label>
         <input value={siNumber} onChange={e => setSiNumber(e.target.value)} placeholder={loadingNext ? 'Finding next number…' : 'e.g. 0042'}
-          className="w-full px-3 py-2 rounded-xl border text-sm font-mono mb-1" style={{ borderColor: 'var(--light-gray)' }} />
+          className="w-full px-3 py-2 rounded-lg border text-sm font-mono mb-1 bg-white" style={{ borderColor: 'var(--light-gray)' }} />
         <p className="text-[11px] mb-4" style={{ color: 'var(--mid-gray)' }}>
           {loadingNext ? 'Looking up the series…'
             : suggested ? <>Auto-filled with the next number in the series{currentMax ? <> (highest in use: <span className="font-mono">{currentMax}</span>)</> : null}. Override it to reuse a cancelled SI number.</>
@@ -671,8 +641,8 @@ function ConvertSiModal({ row, onClose, onSaved }: { row: SalesSummaryRow; onClo
         {err && <p className="text-xs mb-3" style={{ color: '#dc2626' }}>{err}</p>}
 
         <div className="flex gap-2">
-          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Cancel</button>
-          <button onClick={save} disabled={busy || loadingNext} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 flex items-center justify-center gap-2" style={{ background: 'var(--teal)' }}>
+          <button onClick={onClose} className={`${hrBtn.outline} flex-1 justify-center`} style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Cancel</button>
+          <button onClick={save} disabled={busy || loadingNext} className={`${hrBtn.primary} flex-1 justify-center`} style={{ background: 'var(--teal)' }}>
             {busy && <Loader2 size={15} className="animate-spin" />} Declare with SI
           </button>
         </div>
@@ -972,10 +942,10 @@ function WithSiTab({ branch: initialBranch, scopeEnum, canViewAll }: { branch: s
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2 flex-wrap">
+      <div className={TOOLBAR} style={TOOLBAR_STYLE}>
         {(!scopeEnum || canViewAll) && (
-          <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: 'var(--light-gray)' }}>
-            {WITHSI_BRANCHES.map(b => <button key={b.value} onClick={() => setBranch(b.value)} className="px-4 py-2 text-xs font-semibold" style={branch === b.value ? { background: 'var(--teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' }}>{b.label}</button>)}
+          <div className="flex flex-wrap items-center gap-1.5">
+            {WITHSI_BRANCHES.map(b => <button key={b.value} onClick={() => setBranch(b.value)} aria-pressed={branch === b.value} className={PILL} style={pill(branch === b.value)}>{b.label}</button>)}
           </div>
         )}
         {readOnly && (
@@ -983,14 +953,14 @@ function WithSiTab({ branch: initialBranch, scopeEnum, canViewAll }: { branch: s
             Viewing {BRANCH_SHORT[branch] || branch} · read-only — you can flag SIs only in {BRANCH_SHORT[scopeEnum || ''] || scopeEnum}
           </span>
         )}
-        <label className="text-xs" style={{ color: 'var(--mid-gray)' }}>From <input type="date" value={from} onChange={e => setFrom(e.target.value)} className="ml-1 px-2 py-1.5 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} /></label>
-        <label className="text-xs" style={{ color: 'var(--mid-gray)' }}>To <input type="date" value={to} onChange={e => setTo(e.target.value)} className="ml-1 px-2 py-1.5 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} /></label>
-        <div className="relative ml-auto">
-          <button onClick={() => { setXlFrom(from); setXlTo(to); setXlOpen(o => !o) }} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-white" style={{ background: 'var(--teal)' }}>
+        <label className={LABEL_INLINE} style={{ color: 'var(--mid-gray)' }}>From <input type="date" value={from} onChange={e => setFrom(e.target.value)} className={INPUT_SM} style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }} /></label>
+        <label className={LABEL_INLINE} style={{ color: 'var(--mid-gray)' }}>To <input type="date" value={to} onChange={e => setTo(e.target.value)} className={INPUT_SM} style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }} /></label>
+        <div className="relative sm:ml-auto">
+          <button onClick={() => { setXlFrom(from); setXlTo(to); setXlOpen(o => !o) }} className={hrBtn.primary} style={{ background: 'var(--teal)' }}>
             <Download size={14} /> Generate Excel
           </button>
           {xlOpen && (
-            <div className="absolute right-0 mt-2 w-80 rounded-2xl border bg-white shadow-xl p-4 z-30 space-y-3" style={{ borderColor: 'var(--light-gray)' }}>
+            <div className="absolute right-0 mt-2 w-[min(20rem,calc(100vw-2rem))] rounded-xl border bg-white p-4 z-30 space-y-3" style={{ borderColor: 'var(--light-gray)', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
               <p className="text-xs font-semibold" style={{ color: 'var(--charcoal)' }}>Download the SI book as Excel</p>
               <p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>Two sheets: <strong>Sales Invoices</strong> and <strong>Flagged Sales Invoices</strong> (plus any entries outside the SI sequence).</p>
               <div className="space-y-1.5 text-xs">
@@ -1006,23 +976,25 @@ function WithSiTab({ branch: initialBranch, scopeEnum, canViewAll }: { branch: s
               )}
               {xlScope === 'declared' && <p className="text-[10px]" style={{ color: 'var(--mid-gray)' }}>Rows without a declared date are placed by their actual date, the same way the book attributes them.</p>}
               <div className="flex gap-2 justify-end">
-                <button onClick={() => setXlOpen(false)} className="px-3 py-1.5 rounded-lg text-xs border" style={{ borderColor: 'var(--light-gray)' }}>Cancel</button>
-                <button onClick={generateExcel} disabled={xlBusy} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>{xlBusy ? 'Preparing…' : 'Download .xlsx'}</button>
+                <button onClick={() => setXlOpen(false)} className={hrBtn.ghost} style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Cancel</button>
+                <button onClick={generateExcel} disabled={xlBusy} className={`${hrBtn.ghost} text-white`} style={{ background: 'var(--teal)', borderColor: 'var(--teal)' }}>{xlBusy ? 'Preparing…' : 'Download .xlsx'}</button>
               </div>
             </div>
           )}
         </div>
       </div>
 
-      {loading ? <div className="py-10 text-center"><Loader2 size={18} className="inline animate-spin" style={{ color: 'var(--teal)' }} /></div> : data && (<>
-        <div className="grid grid-cols-3 gap-3">
-          <div className="rounded-2xl border p-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}><p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>VAT (Products)</p><p className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>₱{peso(data.totals.vat)}</p></div>
-          <div className="rounded-2xl border p-3" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}><p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>Non-VAT (Services)</p><p className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>₱{peso(data.totals.nonVat)}</p></div>
-          <div className="rounded-2xl border p-3" style={{ borderColor: 'var(--deep-teal)', background: 'var(--pale-teal)' }}><p className="text-[11px]" style={{ color: 'var(--deep-teal)' }}>{data.totals.count} SI order(s)</p><p className="text-lg font-bold" style={{ color: 'var(--deep-teal)' }}>₱{peso(data.totals.vat + data.totals.nonVat)}</p></div>
+      {loading ? (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">{[0, 1, 2].map(i => <StatCard key={i} loading label="" value="" sub="" />)}</div>
+      ) : data && (<>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <StatCard compact label="VAT (Products)" value={`₱${peso(data.totals.vat)}`} sub="Products with a Sales Invoice" tone="zero" accent={data.totals.vat ? { line: '#2563eb' } : undefined} />
+          <StatCard compact label="Non-VAT (Services)" value={`₱${peso(data.totals.nonVat)}`} sub="Services with a Sales Invoice" tone="zero" accent={data.totals.nonVat ? { line: '#4A8073' } : undefined} />
+          <StatCard compact label={`${data.totals.count} SI order(s)`} value={`₱${peso(data.totals.vat + data.totals.nonVat)}`} sub="VAT + Non-VAT" tone={data.totals.count ? 'green' : 'zero'} />
         </div>
 
         {(data.outliers?.length || 0) > 0 && (
-          <div className="rounded-xl border px-4 py-3 text-xs" style={{ borderColor: '#fde68a', background: '#fffbeb', color: '#92400e' }}>
+          <div className="rounded-lg border px-4 py-3 text-xs" style={{ borderColor: '#fde68a', background: '#fffbeb', color: '#92400e', boxShadow: 'inset 4px 0 0 #d97706' }}>
             <strong>{data.outliers!.length} entr{data.outliers!.length === 1 ? 'y' : 'ies'} outside the SI sequence</strong> — the number in the SI field
             looks like a different series (e.g. a bank reference), so it is excluded from the VAT totals and the missing-number scan.
             Fix the record so it joins the sequence:{' '}
@@ -1030,7 +1002,7 @@ function WithSiTab({ branch: initialBranch, scopeEnum, canViewAll }: { branch: s
           </div>
         )}
         {(data.gapsTruncated || 0) > 0 && (
-          <div className="rounded-xl border px-4 py-3 text-xs" style={{ borderColor: '#fecaca', background: '#fef2f2', color: '#b91c1c' }}>
+          <div className="rounded-lg border px-4 py-3 text-xs" style={{ borderColor: '#fecaca', background: '#fef2f2', color: '#b91c1c', boxShadow: 'inset 4px 0 0 #dc2626' }}>
             The missing-number list was cut off at 2,000 — {data.gapsTruncated!.toLocaleString()} more numbers are absent from the sequence.
             That span is too wide to be booklet gaps; check the SI numbers at the edges of the range.
           </div>
@@ -1038,10 +1010,10 @@ function WithSiTab({ branch: initialBranch, scopeEnum, canViewAll }: { branch: s
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
           {/* LEFT — Sales Invoices */}
-          <div className="rounded-2xl border bg-white overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
-            <div className="flex items-center justify-between px-3 py-2.5 border-b" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
-              <p className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>Sales Invoices <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>· {leftFiltering ? `${displayLeft.length} of ${leftItems.length}` : leftItems.length}</span></p>
-              <div className="flex items-center gap-2">
+          <div className={CARD} style={{ borderColor: 'var(--light-gray)' }}>
+            <div className={CARD_HEAD} style={CARD_HEAD_STYLE}>
+              <p className="text-sm font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>Sales Invoices <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>· {leftFiltering ? `${displayLeft.length} of ${leftItems.length}` : leftItems.length}</span></p>
+              <div className="flex flex-wrap items-center gap-2">
                 {undated.length > 0 && (
                   <button onClick={() => setUndatedOnly(v => !v)}
                     className="px-2.5 py-1 rounded-full text-[11px] font-semibold border"
@@ -1055,10 +1027,10 @@ function WithSiTab({ branch: initialBranch, scopeEnum, canViewAll }: { branch: s
                 {colWidths && (
                   <button onClick={resetColWidths} className="px-2.5 py-1 rounded-full text-[11px] font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }} title="Restore automatic column widths">Reset widths</button>
                 )}
-                <p className="text-sm font-bold" style={{ color: 'var(--deep-teal)' }}>₱{peso(leftTotal)}</p>
+                <p className="text-sm font-bold font-mono" style={{ color: 'var(--deep-teal)' }}>₱{peso(leftTotal)}</p>
               </div>
             </div>
-            <div className="overflow-auto" style={{ maxHeight: '68vh' }}>
+            <div className="overflow-auto relative ss-grid" style={{ maxHeight: '68vh' }}>
               <table className="text-sm" style={colWidths ? { tableLayout: 'fixed', width: Object.values(colWidths).reduce((s, w) => s + w, 0) } : { width: '100%' }}>
                 <SortFilterHead
                   cols={LEFT_COLS}
@@ -1080,8 +1052,8 @@ function WithSiTab({ branch: initialBranch, scopeEnum, canViewAll }: { branch: s
                     const indep = shared?.flag?.status === 'INDEPENDENT'
                     const sharedUnresolved = !!shared && !indep
                     return (
-                      <tr key={`${it.kind}-${it.si}-${it.order?.id || ''}`} className="border-t" style={{ borderColor: 'var(--light-gray)', background: sharedUnresolved ? '#fef2f2' : isResolved ? resolvedBg : undefined }}>
-                        <td className="px-3 py-2 font-mono" style={{ color: sharedUnresolved ? '#b91c1c' : 'var(--charcoal)', fontWeight: shared ? 800 : 600 }}>
+                      <tr key={`${it.kind}-${it.si}-${it.order?.id || ''}`} className="border-t" style={{ borderColor: 'var(--hr-line)', background: sharedUnresolved ? '#fef2f2' : isResolved ? resolvedBg : undefined }}>
+                        <td className="px-3 py-2 font-mono" style={{ color: sharedUnresolved ? '#b91c1c' : 'var(--charcoal)', fontWeight: shared ? 800 : 600, boxShadow: sharedUnresolved ? 'inset 4px 0 0 #dc2626' : isResolved ? 'inset 4px 0 0 #d97706' : undefined }}>
                           {it.si}
                           {shared && (indep
                             ? <><span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold align-middle" style={{ background: '#dcfce7', color: '#166534' }} title={`Confirmed independent of ${usedByLabel(shared.usedBy)}`}>independent · also in {usedByLabel(shared.usedBy)}</span>{!readOnly && <button onClick={() => clearFlag(shared.siNumber)} className="ml-1 underline text-[10px] align-middle" style={{ color: 'var(--mid-gray)' }}>undo</button>}</>
@@ -1098,7 +1070,7 @@ function WithSiTab({ branch: initialBranch, scopeEnum, canViewAll }: { branch: s
                           {b && <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: b.bg, color: b.c }}>{b.t}</span>}
                           {isResolved && !readOnly && <button onClick={() => clearFlag(it.si)} className="ml-1.5 underline text-[10px]" style={{ color: 'var(--mid-gray)' }}>undo</button>}
                         </td>
-                        <td className="px-3 py-2 text-right whitespace-nowrap" style={{ color: it.amount ? 'var(--charcoal)' : 'var(--light-gray)' }}>{it.amount ? `₱${peso(it.amount)}` : '—'}</td>
+                        <td className="px-3 py-2 text-right whitespace-nowrap font-mono" style={{ color: it.amount ? 'var(--charcoal)' : 'var(--hr-faint)' }}>{it.amount ? `₱${peso(it.amount)}` : '—'}</td>
                       </tr>
                     )
                   })}
@@ -1109,10 +1081,10 @@ function WithSiTab({ branch: initialBranch, scopeEnum, canViewAll }: { branch: s
           </div>
 
           {/* RIGHT — Flagged Sales Invoices */}
-          <div className="rounded-2xl border overflow-hidden" style={{ borderColor: resolvedBorder, background: resolvedBg }}>
-            <div className="flex items-center justify-between px-3 py-2.5 border-b" style={{ borderColor: resolvedBorder }}>
-              <div>
-                <p className="text-sm font-bold" style={{ color: '#92400e' }}>Flagged Sales Invoices <span className="font-normal">· {flagQNorm ? `${displayRight.length} of ${rightItems.length}` : rightItems.length} need action</span></p>
+          <div className="rounded-lg border overflow-hidden" style={{ borderColor: resolvedBorder, background: resolvedBg, boxShadow: 'inset 4px 0 0 #d97706' }}>
+            <div className="flex items-center justify-between gap-2 px-4 py-2.5 border-b" style={{ borderColor: resolvedBorder }}>
+              <div className="min-w-0">
+                <p className="text-sm font-bold" style={{ color: '#92400e', fontFamily: 'var(--font-display)' }}>Flagged Sales Invoices <span className="font-normal">· {flagQNorm ? `${displayRight.length} of ${rightItems.length}` : rightItems.length} need action</span></p>
                 {(crossUsed.length > 0 || crossDups.length > 0) && (
                   <p className="text-[11px]" style={{ color: '#92400e' }}>
                     {crossUsed.length > 0 && <>{crossUsed.length} used by another branch</>}
@@ -1121,18 +1093,18 @@ function WithSiTab({ branch: initialBranch, scopeEnum, canViewAll }: { branch: s
                   </p>
                 )}
               </div>
-              {rightTotal > 0 && <p className="text-sm font-bold" style={{ color: '#92400e' }}>₱{peso(rightTotal)}</p>}
+              {rightTotal > 0 && <p className="text-sm font-bold font-mono" style={{ color: '#92400e' }}>₱{peso(rightTotal)}</p>}
             </div>
             {hasAnyRight && (
-              <div className="px-3 pt-3">
-                <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg border bg-white" style={{ borderColor: resolvedBorder }}>
+              <div className="px-4 pt-3">
+                <div className="flex items-center gap-1.5 h-8 px-2.5 rounded-lg border bg-white" style={{ borderColor: resolvedBorder }}>
                   <Search size={12} style={{ color: '#92400e' }} />
                   <input value={flagQ} onChange={e => setFlagQ(e.target.value)} placeholder="Search SI number, branch, or “missing” / “duplicate”…" className="flex-1 text-xs outline-none bg-transparent" />
                   {flagQ && <button onClick={() => setFlagQ('')} aria-label="Clear search"><X size={12} style={{ color: '#92400e' }} /></button>}
                 </div>
               </div>
             )}
-            <div className="overflow-auto p-3 space-y-1.5" style={{ maxHeight: '68vh' }}>
+            <div className="overflow-auto px-4 py-3 space-y-1.5" style={{ maxHeight: '68vh' }}>
               {!hasAnyRight ? (
                 <p className="text-xs text-center py-8" style={{ color: '#92400e' }}>No unresolved flags — every Sales Invoice number is accounted for. 🎉</p>
               ) : (<>
@@ -1288,6 +1260,12 @@ function SharedSiCard({ c, localRow, readOnly, onIndependent, onRenumber }: {
   )
 }
 
+// HR stat-card shell for the Sales Target figures (one card holds an inline target editor,
+// so these are hand-built instead of StatCard). Same values as before.
+const TARGET_CARD = 'min-w-0 rounded-lg border px-3 sm:px-4 py-3'
+const TARGET_LABEL = 'text-[11.5px] font-semibold uppercase tracking-[.4px] truncate'
+const TARGET_VALUE = 'text-[19px] sm:text-2xl font-extrabold leading-tight tabular-nums'
+
 function SalesTargetTab({ branch: initialBranch, scopeEnum, canEditTarget }: { branch: string; scopeEnum: string | null; canEditTarget: boolean }) {
   const now = new Date()
   const [branch, setBranch] = useState(initialBranch)
@@ -1372,36 +1350,37 @@ function SalesTargetTab({ branch: initialBranch, scopeEnum, canEditTarget }: { b
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2 flex-wrap">
+      <div className={TOOLBAR} style={TOOLBAR_STYLE}>
         {!scopeEnum && (
-          <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: 'var(--light-gray)' }}>
-            {WITHSI_BRANCHES.map(b => <button key={b.value} onClick={() => setBranch(b.value)} className="px-4 py-2 text-xs font-semibold" style={branch === b.value ? { background: 'var(--teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' }}>{b.label}</button>)}
+          <div className="flex flex-wrap items-center gap-1.5">
+            {WITHSI_BRANCHES.map(b => <button key={b.value} onClick={() => setBranch(b.value)} aria-pressed={branch === b.value} className={PILL} style={pill(branch === b.value)}>{b.label}</button>)}
           </div>
         )}
-        <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: 'var(--light-gray)' }}>
+        <div className="inline-flex rounded-lg border p-0.5 bg-white" style={{ borderColor: 'var(--light-gray)' }} role="group" aria-label="Period">
           {([['month', 'Month'], ['quarter', 'Quarter'], ['annual', 'Annual']] as const).map(([v, label]) => (
-            <button key={v} onClick={() => setMode(v)} className="px-4 py-2 text-xs font-semibold" style={mode === v ? { background: 'var(--teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' }}>{label}</button>
+            <button key={v} onClick={() => setMode(v)} aria-pressed={mode === v} className={SEG} style={segStyle(mode === v)}>{label}</button>
           ))}
         </div>
         {mode === 'month' && (
-          <select value={month} onChange={e => setMonth(parseInt(e.target.value))} className="px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }}>{MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}</select>
+          <select value={month} onChange={e => setMonth(parseInt(e.target.value))} aria-label="Month" className={INPUT_SM} style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>{MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}</select>
         )}
         {mode === 'quarter' && (
-          <select value={quarter} onChange={e => setQuarter(parseInt(e.target.value))} className="px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }}>{[1, 2, 3, 4].map(q => <option key={q} value={q}>Q{q} ({MONTHS[(q - 1) * 3].slice(0, 3)}–{MONTHS[q * 3 - 1].slice(0, 3)})</option>)}</select>
+          <select value={quarter} onChange={e => setQuarter(parseInt(e.target.value))} aria-label="Quarter" className={INPUT_SM} style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>{[1, 2, 3, 4].map(q => <option key={q} value={q}>Q{q} ({MONTHS[(q - 1) * 3].slice(0, 3)}–{MONTHS[q * 3 - 1].slice(0, 3)})</option>)}</select>
         )}
-        <select value={year} onChange={e => setYear(parseInt(e.target.value))} className="px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }}>{[0, 1, 2, 3, 4].map(i => now.getFullYear() - i).map(y => <option key={y} value={y}>{y}</option>)}</select>
-        <button onClick={exportExcel} disabled={!d}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border disabled:opacity-50"
-          style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+        <select value={year} onChange={e => setYear(parseInt(e.target.value))} aria-label="Year" className={INPUT_SM} style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>{[0, 1, 2, 3, 4].map(i => now.getFullYear() - i).map(y => <option key={y} value={y}>{y}</option>)}</select>
+        <button onClick={exportExcel} disabled={!d} className={`${hrBtn.ghost} sm:ml-auto`} style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
           <Download size={14} /> Download Excel
         </button>
       </div>
 
+      {!d && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">{[0, 1, 2].map(i => <StatCard key={i} loading label="" value="" sub="" />)}</div>
+      )}
       {d && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
-            <p className="text-xs mb-1" style={{ color: 'var(--mid-gray)' }}>Sales with SI — {periodLabel}</p>
-            <p className="text-2xl font-bold" style={{ color: 'var(--charcoal)' }}>₱{peso(d.salesWithSI)}</p>
+          <div className={TARGET_CARD} style={{ background: '#fff', borderColor: 'var(--light-gray)', borderLeft: '4px solid #4A8073' }}>
+            <p className={TARGET_LABEL} style={{ color: 'var(--mid-gray)' }}>Sales with SI — {periodLabel}</p>
+            <p className={TARGET_VALUE} style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>₱{peso(d.salesWithSI)}</p>
             <p className="text-[11px] mt-1" style={{ color: 'var(--mid-gray)' }}>
               Totaled from orders with a Sales Invoice
               {(d.migrated?.count || 0) > 0 && <> + {d.migrated!.count} migrated workbook SI{d.migrated!.count !== 1 ? 's' : ''} (₱{peso(d.migrated!.amount)})</>}
@@ -1412,30 +1391,30 @@ function SalesTargetTab({ branch: initialBranch, scopeEnum, canEditTarget }: { b
               </p>
             )}
           </div>
-          <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
-            <p className="text-xs mb-1" style={{ color: 'var(--mid-gray)' }}>Target sales with SI</p>
+          <div className={TARGET_CARD} style={{ background: '#fff', borderColor: 'var(--light-gray)', borderLeft: `4px solid ${d.target > 0 ? '#2563eb' : '#DDE6CC'}` }}>
+            <p className={TARGET_LABEL} style={{ color: 'var(--mid-gray)' }}>Target sales with SI</p>
             {mode === 'month' && canEditTarget ? (
               d.target > 0 && !editingTarget ? (
                 <div className="flex items-center gap-2">
-                  <p className="text-2xl font-bold" style={{ color: 'var(--charcoal)' }}>₱{peso(d.target)}</p>
+                  <p className={TARGET_VALUE} style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>₱{peso(d.target)}</p>
                   <button onClick={() => { setTargetInput(String(d.target)); setEditingTarget(true) }}
-                    className="px-2.5 py-1 rounded-lg text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                    className={hrBtn.ghost} style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
                     Edit
                   </button>
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
-                  <input value={targetInput} onChange={e => setTargetInput(e.target.value)} inputMode="decimal" placeholder="0.00" className="w-32 px-2 py-1.5 rounded-lg border text-lg font-bold font-mono" style={{ borderColor: 'var(--light-gray)' }} />
-                  <button onClick={save} disabled={busy} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>{busy ? '…' : 'Save'}</button>
+                  <input value={targetInput} onChange={e => setTargetInput(e.target.value)} inputMode="decimal" placeholder="0.00" aria-label="Monthly target" className="w-32 h-9 px-2 rounded-lg border text-lg font-bold font-mono bg-white" style={{ borderColor: 'var(--light-gray)' }} />
+                  <button onClick={save} disabled={busy} className={`${hrBtn.ghost} text-white`} style={{ background: 'var(--teal)', borderColor: 'var(--teal)' }}>{busy ? '…' : 'Save'}</button>
                   {d.target > 0 && (
                     <button onClick={() => setEditingTarget(false)} disabled={busy}
-                      className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border disabled:opacity-50" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+                      className={hrBtn.ghost} style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
                       Cancel
                     </button>
                   )}
                 </div>
               )
-            ) : <p className="text-2xl font-bold" style={{ color: 'var(--charcoal)' }}>₱{peso(d.target)}</p>}
+            ) : <p className={TARGET_VALUE} style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>₱{peso(d.target)}</p>}
             <p className="text-[11px] mt-1" style={{ color: 'var(--mid-gray)' }}>
               {mode !== 'month' ? 'Sum of the monthly targets — encode targets in Month view'
                 : !canEditTarget ? 'Set by Admin/Accountant/Bookkeeper'
@@ -1443,10 +1422,12 @@ function SalesTargetTab({ branch: initialBranch, scopeEnum, canEditTarget }: { b
                     : 'Encode the monthly target'}
             </p>
           </div>
-          <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--deep-teal)', background: 'var(--pale-teal)' }}>
-            <p className="text-xs mb-1" style={{ color: 'var(--deep-teal)' }}>Difference (Target − Sales)</p>
-            <p className="text-2xl font-bold" style={{ color: d.difference > 0 ? '#b45309' : '#166534' }}>₱{peso(d.difference)}</p>
-            <p className="text-[11px] mt-1" style={{ color: 'var(--deep-teal)' }}>{d.difference > 0 ? 'Below target' : 'Target met'} — updates as SI orders are added/edited</p>
+          <div className={TARGET_CARD} style={d.difference > 0
+            ? { background: '#fffbeb', borderColor: 'var(--light-gray)', borderLeft: '4px solid #d97706' }
+            : { background: '#fff', borderColor: 'var(--light-gray)', borderLeft: '4px solid #059669' }}>
+            <p className={TARGET_LABEL} style={{ color: 'var(--mid-gray)' }}>Difference (Target − Sales)</p>
+            <p className={TARGET_VALUE} style={{ color: d.difference > 0 ? '#b45309' : '#047857', fontFamily: 'var(--font-display)' }}>₱{peso(d.difference)}</p>
+            <p className="text-[11px] mt-1" style={{ color: 'var(--mid-gray)' }}>{d.difference > 0 ? 'Below target' : 'Target met'} — updates as SI orders are added/edited</p>
           </div>
         </div>
       )}
@@ -1458,38 +1439,40 @@ function SalesTargetTab({ branch: initialBranch, scopeEnum, canEditTarget }: { b
       {/* Quarter / Annual: read-only per-month breakdown so the totals above are
           auditable against the Month view (targets stay encoded per month). */}
       {mode !== 'month' && d?.months && (
-        <div className="rounded-2xl border bg-white overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
-          <div className="px-4 py-2.5 border-b" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
-            <p className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>Monthly breakdown — {periodLabel}</p>
+        <div className={CARD} style={{ borderColor: 'var(--light-gray)' }}>
+          <div className={CARD_HEAD} style={CARD_HEAD_STYLE}>
+            <p className="text-sm font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>Monthly breakdown — {periodLabel}</p>
           </div>
-          <table className="w-full text-sm">
-            <thead>
-              <tr style={{ background: 'var(--off-white)' }}>
-                <th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--mid-gray)' }}>Month</th>
-                <th className="px-4 py-2 text-right text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--mid-gray)' }}>Sales with SI</th>
-                <th className="px-4 py-2 text-right text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--mid-gray)' }}>Target</th>
-                <th className="px-4 py-2 text-right text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--mid-gray)' }}>Difference (Target − Sales)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {d.months.map(m => (
-                <tr key={m.month} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
-                  <td className="px-4 py-2 font-medium" style={{ color: 'var(--charcoal)' }}>{MONTHS[m.month - 1]}</td>
-                  <td className="px-4 py-2 text-right" style={{ color: 'var(--charcoal)' }}>₱{peso(m.salesWithSI)}</td>
-                  <td className="px-4 py-2 text-right" style={{ color: 'var(--charcoal)' }}>₱{peso(m.target)}</td>
-                  <td className="px-4 py-2 text-right font-semibold" style={{ color: m.target - m.salesWithSI > 0 ? '#b45309' : '#166534' }}>₱{peso(m.target - m.salesWithSI)}</td>
+          <div className="overflow-x-auto relative">
+            <table className="w-full text-sm">
+              <thead>
+                <tr style={{ background: 'var(--hr-head)', color: 'var(--mid-gray)' }}>
+                  <th className={`${TH} text-left`}>Month</th>
+                  <th className={`${TH} text-right`}>Sales with SI</th>
+                  <th className={`${TH} text-right`}>Target</th>
+                  <th className={`${TH} text-right`}>Difference (Target − Sales)</th>
                 </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr style={{ background: 'var(--off-white)', borderTop: '2px solid var(--light-gray)' }}>
-                <td className="px-4 py-2.5 font-bold" style={{ color: 'var(--charcoal)' }}>TOTAL</td>
-                <td className="px-4 py-2.5 text-right font-bold" style={{ color: 'var(--charcoal)' }}>₱{peso(d.salesWithSI)}</td>
-                <td className="px-4 py-2.5 text-right font-bold" style={{ color: 'var(--charcoal)' }}>₱{peso(d.target)}</td>
-                <td className="px-4 py-2.5 text-right font-bold" style={{ color: d.difference > 0 ? '#b45309' : '#166534' }}>₱{peso(d.difference)}</td>
-              </tr>
-            </tfoot>
-          </table>
+              </thead>
+              <tbody>
+                {d.months.map(m => (
+                  <tr key={m.month} className="border-t transition-colors hover:bg-[#fafcf6]" style={{ borderColor: 'var(--hr-line)' }}>
+                    <td className="px-4 py-2 font-semibold" style={{ color: 'var(--charcoal)', boxShadow: `inset 4px 0 0 ${m.target - m.salesWithSI > 0 ? '#d97706' : '#059669'}` }}>{MONTHS[m.month - 1]}</td>
+                    <td className="px-4 py-2 text-right font-mono whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>₱{peso(m.salesWithSI)}</td>
+                    <td className="px-4 py-2 text-right font-mono whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>₱{peso(m.target)}</td>
+                    <td className="px-4 py-2 text-right font-mono font-bold whitespace-nowrap" style={{ color: m.target - m.salesWithSI > 0 ? '#b45309' : '#047857' }}>₱{peso(m.target - m.salesWithSI)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr style={{ background: 'var(--hr-head)', borderTop: '2px solid var(--light-gray)' }}>
+                  <td className="px-4 py-2.5 text-[11px] font-bold uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)' }}>Total</td>
+                  <td className="px-4 py-2.5 text-right font-mono font-bold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>₱{peso(d.salesWithSI)}</td>
+                  <td className="px-4 py-2.5 text-right font-mono font-bold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>₱{peso(d.target)}</td>
+                  <td className="px-4 py-2.5 text-right font-mono font-bold whitespace-nowrap" style={{ color: d.difference > 0 ? '#b45309' : '#047857' }}>₱{peso(d.difference)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
         </div>
       )}
     </div>
@@ -1565,17 +1548,17 @@ function MonthSalesInvoices({ branch, year, month, monthLabel, onChanged }: {
     : { t: 'Remarks', bg: '#fef3c7', c: '#92400e' }
 
   return (
-    <div className="rounded-2xl border bg-white overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
-      <div className="flex items-center justify-between px-3 py-2.5 border-b" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
-        <p className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>
+    <div className={CARD} style={{ borderColor: 'var(--light-gray)' }}>
+      <div className={CARD_HEAD} style={CARD_HEAD_STYLE}>
+        <p className="text-sm font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>
           Sales Invoices — {monthLabel}{' '}
           <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>
             · {filtering ? `${display.length} of ${leftItems.length}` : leftItems.length}
           </span>
         </p>
-        <p className="text-sm font-bold" style={{ color: 'var(--deep-teal)' }}>₱{peso(total)}</p>
+        <p className="text-sm font-bold font-mono" style={{ color: 'var(--deep-teal)' }}>₱{peso(total)}</p>
       </div>
-      <div className="overflow-auto" style={{ maxHeight: '60vh' }}>
+      <div className="overflow-auto relative ss-grid" style={{ maxHeight: '60vh' }}>
         <table className="w-full text-sm">
           <SortFilterHead
             cols={LEFT_COLS}
@@ -1586,20 +1569,20 @@ function MonthSalesInvoices({ branch, year, month, monthLabel, onChanged }: {
             onFilter={(k, v) => setFilters(f => ({ ...f, [k]: v }))}
           />
           <tbody>
-            {loading && <tr><td colSpan={5} className="text-center py-8 text-sm" style={{ color: 'var(--mid-gray)' }}>Loading…</td></tr>}
+            {loading && [0, 1, 2].map(i => <tr key={i} className="border-t" style={{ borderColor: 'var(--hr-line)' }}><td colSpan={5} className="px-4 py-2.5"><div className="h-5 rounded hr-shimmer" /></td></tr>)}
             {!loading && display.map(it => {
               const isResolved = it.kind !== 'si'
               const b = isResolved ? chip(it.kind) : null
               return (
-                <tr key={`${it.kind}-${it.si}-${it.order?.id || ''}`} className="border-t" style={{ borderColor: 'var(--light-gray)', background: isResolved ? resolvedBg : undefined }}>
-                  <td className="px-3 py-2 font-mono font-semibold" style={{ color: 'var(--charcoal)' }}>{it.si}</td>
+                <tr key={`${it.kind}-${it.si}-${it.order?.id || ''}`} className="border-t" style={{ borderColor: 'var(--hr-line)', background: isResolved ? resolvedBg : undefined }}>
+                  <td className="px-3 py-2 font-mono font-semibold" style={{ color: 'var(--charcoal)', boxShadow: isResolved ? 'inset 4px 0 0 #d97706' : undefined }}>{it.si}</td>
                   <td className="px-3 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>{it.order?.date || it.mDate || '—'}</td>
                   <DeclaredDateCell item={it} branch={branch} onSaved={() => { load(); onChanged() }} />
                   <td className="px-3 py-2 text-xs" style={{ color: 'var(--charcoal)' }} title={it.remarks || undefined}>
                     {it.order ? it.order.patientName : <span style={{ color: it.mCustomer ? 'var(--charcoal)' : 'var(--mid-gray)' }}>{it.mCustomer || it.remarks || '—'}</span>}
                     {b && <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: b.bg, color: b.c }}>{b.t}</span>}
                   </td>
-                  <td className="px-3 py-2 text-right whitespace-nowrap" style={{ color: it.amount ? 'var(--charcoal)' : 'var(--light-gray)' }}>{it.amount ? `₱${peso(it.amount)}` : '—'}</td>
+                  <td className="px-3 py-2 text-right whitespace-nowrap font-mono" style={{ color: it.amount ? 'var(--charcoal)' : 'var(--hr-faint)' }}>{it.amount ? `₱${peso(it.amount)}` : '—'}</td>
                 </tr>
               )
             })}
@@ -1607,7 +1590,7 @@ function MonthSalesInvoices({ branch, year, month, monthLabel, onChanged }: {
           </tbody>
         </table>
       </div>
-      <p className="px-3 py-2 text-[11px] border-t" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+      <p className="px-4 py-2.5 text-[11px] border-t" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)', background: '#fcfdfa' }}>
         Dated by declared date when one is set, otherwise the actual date — the same rule as the Sales-with-SI figure above.
         AR/HMO collection SIs are listed here (as in With SI) but are not part of that figure, so the two totals can differ.
         Editing a Declared Date moves the SI between book months and refreshes the figures.
