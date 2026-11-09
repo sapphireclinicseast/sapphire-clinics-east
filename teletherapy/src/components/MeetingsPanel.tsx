@@ -7,7 +7,10 @@
 // published availability, or just create a link with ticked invitees.
 
 import { useCallback, useEffect, useState } from 'react'
-import { Video, Calendar, Clock, Users, Trash2, Loader2 } from 'lucide-react'
+import { Video, Calendar, Clock, Users, Trash2 } from 'lucide-react'
+import {
+  BTN_PRIMARY, BTN_SM, CARD_STYLE, EmptyState, PRIMARY_STYLE, PillTabs, RowsSkeleton, StatusPill,
+} from '@/components/hub/ui'
 
 interface Meeting {
   id: string
@@ -70,57 +73,64 @@ export default function MeetingsPanel({
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-[15px] font-bold text-[var(--charcoal)] flex items-center gap-2" style={{ fontFamily: 'var(--font-display)' }}>
-          <Video size={18} className="text-[var(--teal)]" /> {title}
+        <h2 className="text-[15px] font-bold flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+          <Video size={17} style={{ color: 'var(--teal)' }} aria-hidden /> {title}
         </h2>
-        <p className="text-[12px] text-[var(--mid-gray)]">Everyone invited can join and record. Use <strong>Set a Meeting</strong> to schedule one.</p>
+        <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>Everyone invited can join and record. Use <strong>Set a Meeting</strong> to schedule one.</p>
       </div>
 
       {meetings === null ? (
-        <p className="text-[13px] text-[var(--mid-gray)] flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> Loading…</p>
+        <div className="rounded-xl" style={CARD_STYLE}><RowsSkeleton rows={3} label="Loading meetings" /></div>
       ) : (
         <>
-          <div className="flex gap-1 p-1 rounded-lg bg-[var(--off-white)] border border-[var(--light-gray)] w-fit mb-1">
-            {(['upcoming', 'past'] as const).map((v) => (
-              <button key={v} onClick={() => setView(v)} className={`px-3 py-1.5 rounded-md text-[12px] font-semibold transition-colors ${view === v ? 'bg-white text-[var(--teal)] shadow-sm' : 'text-[var(--mid-gray)] hover:text-[var(--charcoal)]'}`}>
-                {v === 'upcoming' ? `Upcoming (${upcoming.length})` : `Past (${past.length})`}
-              </button>
-            ))}
-          </div>
+          <PillTabs
+            label="Meeting schedule"
+            size="sm"
+            value={view}
+            onChange={(id) => setView(id as 'upcoming' | 'past')}
+            tabs={[
+              { id: 'upcoming', label: 'Upcoming', count: upcoming.length },
+              { id: 'past', label: 'Past', count: past.length },
+            ]}
+          />
           {shown.length === 0 ? (
-            <div className="card-static text-center py-10">
-              <Video size={26} className="text-[var(--light-gray)] mx-auto mb-2" />
-              <p className="text-[13px] text-[var(--mid-gray)]">{view === 'upcoming' ? 'No upcoming meetings. Use “Set a Meeting” to schedule one.' : 'No past meetings yet.'}</p>
-            </div>
+            <section className="rounded-xl" style={CARD_STYLE}>
+              <EmptyState
+                icon="calendar"
+                title={view === 'upcoming' ? 'No upcoming meetings' : 'No past meetings yet'}
+                hint={view === 'upcoming' ? 'Use “Set a Meeting” to schedule one.' : undefined}
+              />
+            </section>
           ) : (
-            <div className="space-y-2">
-              {shown.map((m) => (
-            <div key={m.id} className="card-static !p-4 flex flex-wrap items-center gap-3">
-              <div className="flex-1 min-w-0">
-                <div className="text-[14px] font-semibold text-[var(--charcoal)] flex items-center gap-2">
+            <ul className="rounded-xl overflow-hidden" style={CARD_STYLE}>
+              {shown.map((m, i) => (
+            <li key={m.id} className="px-4 py-3.5 flex flex-wrap items-center gap-x-4 gap-y-2.5" style={i ? { borderTop: '1px solid var(--light-gray)' } : undefined}>
+              <div className="flex-1 min-w-[200px]">
+                <div className="text-[14px] font-semibold flex flex-wrap items-center gap-2" style={{ color: 'var(--charcoal)' }}>
                   {m.title || 'Supervision meeting'}
                   {m.paidAt && (
-                    <span title={`Mentorship fee processed in payroll${m.paidCutoffLabel ? ` · ${m.paidCutoffLabel}` : ''}`}
-                      className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200">
+                    <StatusPill tone="success" title={`Mentorship fee processed in payroll${m.paidCutoffLabel ? ` · ${m.paidCutoffLabel}` : ''}`}>
                       Paid
-                    </span>
+                    </StatusPill>
                   )}
                 </div>
-                <div className="text-[12px] text-[var(--mid-gray)] flex items-center gap-3 mt-0.5 flex-wrap">
-                  <span className="inline-flex items-center gap-1"><Calendar size={12} />{fmtDate(m.date)}</span>
-                  <span className="inline-flex items-center gap-1"><Clock size={12} />{m.timeLabel}</span>
+                <div className="text-xs flex items-center gap-3 mt-1 flex-wrap" style={{ color: 'var(--mid-gray)' }}>
+                  <span className="inline-flex items-center gap-1"><Calendar size={12} aria-hidden />{fmtDate(m.date)}</span>
+                  <span className="inline-flex items-center gap-1"><Clock size={12} aria-hidden />{m.timeLabel}</span>
                 </div>
-                <div className="text-[11px] text-[var(--mid-gray)] mt-1 truncate"><Users size={11} className="inline mr-1" />{m.inviteeNames.length ? `${m.inviteeNames.join(', ')} · ` : ''}by {m.createdByName}</div>
+                <div className="text-[11px] mt-1 truncate" style={{ color: 'var(--mid-gray)' }}><Users size={11} className="inline mr-1" aria-hidden />{m.inviteeNames.length ? `${m.inviteeNames.join(', ')} · ` : ''}by {m.createdByName}</div>
               </div>
-              <a href={m.meetLink} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 bg-[var(--teal)] text-white text-[13px] font-semibold px-4 py-2 rounded-xl hover:opacity-90 transition-opacity">
-                <Video size={15} /> Join
-              </a>
-              {m.createdByAccountId === currentAccountId && (
-                <button onClick={() => cancel(m.id)} title="Cancel meeting" className="text-[var(--mid-gray)] hover:text-red-600 p-1"><Trash2 size={16} /></button>
-              )}
-            </div>
+              <div className="flex items-center gap-1.5">
+                <a href={m.meetLink} target="_blank" rel="noopener noreferrer" className={BTN_PRIMARY} style={PRIMARY_STYLE}>
+                  <Video size={15} aria-hidden /> Join
+                </a>
+                {m.createdByAccountId === currentAccountId && (
+                  <button onClick={() => cancel(m.id)} title="Cancel meeting" aria-label="Cancel meeting" className={`${BTN_SM} hover:!bg-red-50 hover:!text-[#B42318]`} style={{ color: 'var(--mid-gray)' }}><Trash2 size={15} /></button>
+                )}
+              </div>
+            </li>
               ))}
-            </div>
+            </ul>
           )}
         </>
       )}
