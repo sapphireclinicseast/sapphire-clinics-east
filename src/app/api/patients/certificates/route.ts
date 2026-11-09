@@ -85,17 +85,25 @@ export async function POST(req: NextRequest) {
   const therapist = await pick(body.therapistSignatoryId)
   const manager = await pick(body.managerSignatoryId)
 
+  // The attending therapist may be somebody who is not on the signatory list
+  // at all — usually the clinician who actually ran the sessions. The dialog
+  // sends their name, and the certificate prints it over a clear rule, exactly
+  // as it already does for a signatory who has uploaded no e-signature. A
+  // signatory id still wins, because that is the one that carries a signature.
+  const therapistName = therapist?.name ?? String(body.therapistName ?? '').trim().slice(0, 120)
+  const managerName = manager?.name ?? String(body.managerName ?? '').trim().slice(0, 120)
+
   let pdf: Buffer
   try {
     pdf = await buildDischargeCertificate({
       patientName,
       service,
       awardedOn,
-      therapistName: therapist?.name ?? '',
+      therapistName,
       // A signature missing from disk prints the name and a clear rule rather
       // than failing — see readStored().
       therapistSignature: await readStored(SIG_DIR, therapist?.signaturePath),
-      managerName: manager?.name ?? '',
+      managerName,
       managerSignature: await readStored(SIG_DIR, manager?.signaturePath),
     })
   } catch (err) {
@@ -120,8 +128,8 @@ export async function POST(req: NextRequest) {
       service,
       dischargeDate: new Date(`${dischargeDate}T00:00:00.000Z`),
       awardedOn,
-      therapistName: therapist?.name ?? '',
-      managerName: manager?.name ?? '',
+      therapistName,
+      managerName,
       filePath,
       issuedByName: user?.name || user?.email || '',
     },

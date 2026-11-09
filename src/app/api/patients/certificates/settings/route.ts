@@ -24,18 +24,66 @@ const SERVICES = [
   'Medicine',
 ] as const
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const session = await auth()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  // With a patient, the dialog also gets that patient's OWN clinicians and the
+  // branch they are seen at. Without one, this is just the settings screen.
+  const patientId = (new URL(req.url).searchParams.get('patientId') ?? '').trim()
 
   const [signatories, staff] = await Promise.all([
     prisma.certificateSignatory.findMany({ orderBy: { name: 'asc' } }),
     prisma.staff.findMany({
       where: { active: true },
-      select: { id: true, firstName: true, lastName: true, jobTitle: true, department: true },
+      select: {
+        id: true, firstName: true, lastName: true, jobTitle: true, department: true,
+        branch: true, extraBranches: true,
+      },
       orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
     }),
   ])
+
+  // Who has actually treated this patient, most recently seen first.
+  //
+  // This is the fix for "his therapist's name does not come out": the dropdown
+  // only ever offered the curated signatory list, and the person who ran the
+  // sessions is usually not on it. They are the single most likely answer to
+  // "attending therapist", so they are offered first and by name.
+  let clinicians: { id: string; name: string; jobTitle: string; department: string; sessions: number; lastSeen: string }[] = []
+  let patientBranch = ''
+  if (patientId) {
+    const pt = await prisma.patient.findUnique({ where: { id: patientId }, select: { branches: true } })
+    // Patient.branches uses SANDBOX_EAST / SANDBOX_GREENHILLS; Staff.branch uses
+    // SBEA / SBGH. They are the same two clinics under two spellings.
+    const first = (pt?.branches ?? [])[0] ?? ''
+    patientBranch = String(first).includes('GREENHILLS') ? 'SBGH' : String(first) ? 'SBEA' : ''
+
+    const sessions = await prisma.schedule.findMany({
+      where: { patientId },
+      select: { staffId: true, date: true },
+      orderBy: { date: 'desc' },
+      take: 500,
+    })
+    const seen = new Map<string, { n: number; last: Date }>()
+    for (const s of sessions) {
+      const prev = seen.get(s.staffId)
+      seen.set(s.staffId, { n: (prev?.n ?? 0) + 1, last: prev?.last ?? s.date })
+    }
+    const byId = new Map(staff.map(s => [s.id, s]))
+    clinicians = [...seen.entries()]
+      .map(([id, v]) => {
+        const st = byId.get(id)
+        return st ? {
+          id,
+          name: `${st.firstName ?? ''} ${st.lastName ?? ''}`.replace(/\s+/g, ' ').trim(),
+          jobTitle: st.jobTitle ?? '', department: st.department ?? '',
+          sessions: v.n, lastSeen: v.last.toISOString().slice(0, 10),
+        } : null
+      })
+      .filter((x): x is NonNullable<typeof x> => !!x && !!x.name)
+      .sort((a, b) => b.lastSeen.localeCompare(a.lastSeen) || b.sessions - a.sessions)
+  }
 
   return NextResponse.json({
     // hasSignature rather than the stored filename: the browser never needs a
@@ -45,6 +93,7 @@ export async function GET() {
       name: s.name,
       role: s.role,
       staffId: s.staffId ?? '',
+      branch: s.branch ?? 'ALL',
       hasSignature: !!s.signaturePath,
       updatedAt: s.updatedAt,
     })),
@@ -54,7 +103,12 @@ export async function GET() {
       name: `${s.firstName ?? ''} ${s.lastName ?? ''}`.replace(/\s+/g, ' ').trim(),
       jobTitle: s.jobTitle ?? '',
       department: s.department ?? '',
+      // Interbranch staff work at both, so the branch filter has to read the
+      // extras too or half the roster disappears from one clinic's list.
+      branches: [s.branch, ...(s.extraBranches ?? [])].filter(Boolean),
     })).filter((s) => s.name),
+    clinicians,
+    patientBranch,
   })
 }
 
@@ -63,6 +117,7 @@ interface IncomingSignatory {
   name?: string
   role?: string
   staffId?: string
+  branch?: string
 }
 
 export async function PUT(req: NextRequest) {
@@ -84,6 +139,7 @@ export async function PUT(req: NextRequest) {
     if (!name) continue                                   // a nameless signatory prints nothing
     const role = raw.role === 'manager' ? 'manager' : 'therapist'
     const staffId = String(raw.staffId ?? '').trim() || null
+    const branch = ['SBEA', 'SBGH'].includes(String(raw.branch)) ? String(raw.branch) : 'ALL'
     const id = typeof raw.id === 'string' && byId.has(raw.id) ? raw.id : null
 
     if (id) {
@@ -91,11 +147,11 @@ export async function PUT(req: NextRequest) {
       // signaturePath is deliberately untouched: the browser never sends it,
       // and renaming somebody must not drop their signature.
       await prisma.certificateSignatory.update({
-        where: { id }, data: { name, role, staffId },
+        where: { id }, data: { name, role, staffId, branch },
       })
     } else {
       const created = await prisma.certificateSignatory.create({
-        data: { name, role, staffId },
+        data: { name, role, staffId, branch },
       })
       kept.add(created.id)
     }
