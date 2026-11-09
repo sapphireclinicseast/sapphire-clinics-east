@@ -1,7 +1,7 @@
 'use client'
 
 import { Fragment, useEffect, useState, useRef, useCallback } from 'react'
-import { ChevronDown, Plus, X, Settings2, Ban, Search, Users, CalendarCheck, CalendarPlus, Percent, BarChart3, Info, Lock, Loader2, Clock, Rows3, Rows4, ChevronsDownUp, ChevronsUpDown, GraduationCap, UserCheck, AlertTriangle, MapPin, Video } from 'lucide-react'
+import { ChevronDown, Plus, X, Settings2, Ban, Search, Users, CalendarCheck, CalendarPlus, Percent, BarChart3, Info, Lock, Loader2, Clock, Rows3, Rows4, ChevronsDownUp, ChevronsUpDown, GraduationCap, UserCheck, AlertTriangle, MapPin, Video, Home } from 'lucide-react'
 import { DashCard, KpiCard, Skeleton, EmptyState, DeptChip, CARD_STYLE } from '../patients/dashboard/ui'
 import {
   CONTROL, CONTROL_SM, CONTROL_STYLE, LABEL, BTN_PRIMARY, BTN_SECONDARY, BTN_SM, SUBTLE_BG, TEAL_HEX, DECK_CSS,
@@ -63,6 +63,9 @@ const CELL_RADIUS = 6            // one radius for open, booked and unavailable 
 const OFF_BORDER  = '#DDE3E7'
 const OFF_FG      = '#66717D'
 const ONEOFF_FG   = '#BE185D'
+// Homecare accents: the brand teal, so it never reads as a pay type.
+const HOMECARE_FG     = TEAL_HEX
+const HOMECARE_BORDER = '#B9DAD6'
 
 // Board-only display rules (DECK_CSS in ./ui is shared with the SPED board).
 // The hour label darkens on row hover so the eye can follow a row across a
@@ -589,7 +592,10 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
   onDatedChanged?: () => void
   onAddDated?: (data: { staffId: string; patientId: string | null; dayOfWeek: string; startTime: string; endTime: string; branch: string; department: string; notes: string | null; date?: string | null }) => Promise<void>
 }) {
-  const [configOpen, setConfigOpen] = useState(!config)
+  // Homecare starts with the form closed: most consultants on that board
+  // have no home-visit days, and an open form on every card buried the few
+  // who do. Everywhere else it opens as before when nothing is set.
+  const [configOpen, setConfigOpen] = useState(!config && sectionMode !== 'HOMECARE')
   // Optimistic: the grid is scanned constantly, and a colour that lags a click
   // by a round-trip reads as the click not registering. Reverted on failure.
   const [payOverride, setPayOverride] = useState<Record<string, PayType>>({})
@@ -1145,6 +1151,28 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
 
       {/* No config yet */}
       {showBody && !config && !configOpen && (
+        sectionMode === 'HOMECARE' ? (
+          /* Homecare: most consultants have no home-visit days, so the
+             schedule form starts closed (see configOpen) and this one line
+             stands in for it, with the button that opens it. */
+          <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
+            <p className="flex items-center gap-2 min-w-0">
+              <Home size={14} className="flex-shrink-0" aria-hidden style={{ color: HOMECARE_FG }} />
+              <span>No home-visit days set for {branchLabel(activeBranch) ?? activeBranch}.</span>
+            </p>
+            <button type="button" onClick={toggleConfig} className={BTN_SM}
+              style={{ background: '#fff', border: `1px solid ${HOMECARE_BORDER}`, color: HOMECARE_FG }}>
+              <Settings2 size={12} aria-hidden /> Set homecare days
+            </button>
+            {onAddDated && (
+              <button type="button" onClick={() => setShowDatedModal(true)} className={BTN_SM}
+                title="Hours for one named date only — never repeats"
+                style={{ background: '#fff', border: '1px dashed #F9A8D4', color: ONEOFF_FG }}>
+                <CalendarPlus size={12} aria-hidden /> One-off date
+              </button>
+            )}
+          </div>
+        ) : (
         <div className="flex items-start justify-center gap-2 px-4 py-5 text-xs" style={{ color: 'var(--mid-gray)' }}>
           <CalendarPlus size={14} className="flex-shrink-0 mt-px" aria-hidden />
           <p className="max-w-md leading-relaxed">
@@ -1152,6 +1180,7 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
             who only comes in now and then, add a <strong style={{ color: ONEOFF_FG }}>one-off date</strong> below without one.
           </p>
         </div>
+        )
       )}
 
       {/* No work days configured */}
@@ -1176,7 +1205,7 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
       {/* With a weekly grid and no one-offs yet, the strip is just its add
           button, which then lives in the card footer beside "Custom slot"
           rather than putting an empty band above every grid. */}
-      {showBody && (datedSlots.length > 0 || (onAddDated && !hasGrid)) && (() => {
+      {showBody && (datedSlots.length > 0 || (onAddDated && !hasGrid && !(sectionMode === 'HOMECARE' && !config))) && (() => {
         // Display only: sorted by date and split into coming / past against
         // the browser's local day, so the next visit is always at the top.
         const today = localDayKey(new Date())
@@ -2681,6 +2710,35 @@ export default function DeckingClient({ role }: { role: string }) {
                 </div>
               )
             })()}
+            {/* Homecare: home visits run from one branch, so the board is
+                that branch's. Says what it is and how many are set up, since
+                most consultants here have no home-visit days yet. */}
+            {activeSection === 'homecare' && !boardLoading && !staffError && !dataError && filteredStaff.length > 0 && (
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl px-4 py-3" style={{ background: '#F2F8F7', border: `1px solid ${HOMECARE_BORDER}` }}>
+                <span aria-hidden className="inline-flex items-center justify-center w-9 h-9 rounded-lg flex-shrink-0" style={{ background: '#fff', color: HOMECARE_FG, border: `1px solid ${HOMECARE_BORDER}` }}>
+                  <Home size={17} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>
+                    Homecare board
+                  </p>
+                  <p className="text-[12.5px] leading-relaxed" style={{ color: '#3E5A55' }}>
+                    Therapists visiting patients at home from {branchName}. A consultant&apos;s homecare days can be set separately from their clinic days; until then they follow their general schedule.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold tabular-nums" style={{ background: '#fff', color: 'var(--charcoal)', border: '1px solid var(--light-gray)' }}>
+                    <Users size={11} aria-hidden style={{ color: HOMECARE_FG }} /> {filteredStaff.length} consultant{filteredStaff.length === 1 ? '' : 's'}
+                  </span>
+                  <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold tabular-nums"
+                    style={staffDecked > 0
+                      ? { background: '#fff', color: HOMECARE_FG, border: `1px solid ${HOMECARE_BORDER}` }
+                      : { background: '#FFFBEB', color: '#92400E', border: '1px solid #FDE68A' }}>
+                    <CalendarCheck size={11} aria-hidden /> {staffDecked} with a schedule
+                  </span>
+                </div>
+              </div>
+            )}
             {viewingOtherBranch && activeSection !== 'teletherapy' && (
               <div className="flex items-start gap-2 rounded-xl px-3.5 py-2.5"
                 style={{
@@ -2768,7 +2826,7 @@ export default function DeckingClient({ role }: { role: string }) {
                 <div className="pt-10 flex justify-center" aria-hidden>
                   <span className="rounded-full flex items-center justify-center"
                     style={{ width: 44, height: 44, background: 'var(--pale-teal)', color: 'var(--teal)' }}>
-                    {nameFilter ? <Search size={19} /> : activeSection === 'teletherapy' ? <Video size={19} /> : <Users size={19} />}
+                    {nameFilter ? <Search size={19} /> : activeSection === 'teletherapy' ? <Video size={19} /> : activeSection === 'homecare' ? <Home size={19} /> : <Users size={19} />}
                   </span>
                 </div>
                 {/* On Teletherapy the roster is "tagged for teletherapy, either
@@ -2776,15 +2834,19 @@ export default function DeckingClient({ role }: { role: string }) {
                     who already exist. Say what actually puts someone here. */}
                 <EmptyState
                   title={nameFilter
-                    ? `No ${activeDept} staff match “${nameFilter}”${activeSection === 'teletherapy' ? ' on teletherapy' : ` in ${branchName}`}`
+                    ? `No ${activeDept} staff match “${nameFilter}”${activeSection === 'teletherapy' ? ' on teletherapy' : activeSection === 'homecare' ? ` on homecare in ${branchName}` : ` in ${branchName}`}`
                     : activeSection === 'teletherapy'
                       ? `No ${activeDept} consultants do teletherapy yet`
-                      : `No ${activeDept} staff in ${branchName}`}
+                      : activeSection === 'homecare'
+                        ? `No ${activeDept} consultants do homecare at ${branchName} yet`
+                        : `No ${activeDept} staff in ${branchName}`}
                   hint={nameFilter
                     ? 'Try a different name, or clear the filter.'
                     : activeSection === 'teletherapy'
                       ? 'A consultant appears here once their Work Arrangement in HR includes Teletherapy, at either branch. Or pick another department.'
-                      : 'Add staff in the Staff Module first, or pick another department.'}
+                      : activeSection === 'homecare'
+                        ? `A consultant appears here once their ${branchName} Work Arrangement in HR includes Homecare. Or pick another department.`
+                        : 'Add staff in the Staff Module first, or pick another department.'}
                 />
                 {nameFilter && (
                   <div className="-mt-8 pb-8 text-center">
