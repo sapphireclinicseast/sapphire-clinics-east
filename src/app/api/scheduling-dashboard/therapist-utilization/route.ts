@@ -181,7 +181,21 @@ export async function GET(req: NextRequest) {
 
   const therapistMap = new Map<string, TherapistData>()
 
-  for (const cfg of configs) {
+  // One schedule per consultant per branch, as the capacity snapshot does.
+  //
+  // A consultant holds one config per SERVICE plus a general one that applies
+  // to any service they have not set days for. The general row is a FALLBACK —
+  // "a row with a mode OVERRIDES the general one for that service" — so
+  // counting both inflates the hours they are measured against, and a
+  // therapist cut to two hours keeps being judged on four.
+  const hasSpecific = new Set(
+    configs.filter(c => c.deliveryMode !== null).map(c => `${c.staffId}||${c.branch}`),
+  )
+  const effectiveConfigs = configs.filter(c =>
+    c.deliveryMode !== null || !hasSpecific.has(`${c.staffId}||${c.branch}`),
+  )
+
+  for (const cfg of effectiveConfigs) {
     const workDays = cfg.workDays as string[]
     const byDay = activeTimeslotsByStaff.get(cfg.staffId)
 

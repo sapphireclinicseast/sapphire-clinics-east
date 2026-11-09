@@ -42,7 +42,7 @@ export async function computeDeckingSnapshot(): Promise<SnapshotRow[]> {
       // time, not sellable capacity, and counting them would inflate every
       // utilisation figure built on this snapshot.
       where: { OR: [{ staff: { employmentType: null } }, { staff: { employmentType: { not: 'intern' } } }] },
-      select: { staffId: true, workDays: true, startTime: true, endTime: true, branch: true, department: true },
+      select: { staffId: true, workDays: true, startTime: true, endTime: true, branch: true, department: true, deliveryMode: true },
     }),
     prisma.deckingSlot.findMany({
       // Recurring slots only: this is a snapshot of the WEEKLY pattern, and a
@@ -84,8 +84,30 @@ export async function computeDeckingSnapshot(): Promise<SnapshotRow[]> {
   // remote session in the same hour, so the union of the cells is the real
   // figure, and it still picks up a teletherapy Tuesday that no other row
   // mentions.
+  // ── One schedule per consultant per branch ────────────────────────────────
+  //
+  // A consultant holds one config per SERVICE, plus a general one that applies
+  // to any service they have not set days for. The general row is a FALLBACK,
+  // not an addition — the schema says as much: "a row with a mode OVERRIDES
+  // the general one for that service".
+  //
+  // This loop counted them all. Thirty-one consultants hold more than one, so
+  // capacity was the union of every schedule they had ever been given on that
+  // branch: ROYO counted as four hours on a Sunday she had been cut to two
+  // that morning, because an April row still said 10 to 2.
+  //
+  // Service-specific rows are still summed WITH EACH OTHER — someone working
+  // on-site on Monday and teletherapy on Thursday genuinely offers both — but
+  // the general row is used only when no service-specific one exists.
+  const bySpecific = new Set(
+    configs.filter(c => c.deliveryMode !== null).map(c => `${c.staffId}||${c.branch}`),
+  )
+  const effective = configs.filter(c =>
+    c.deliveryMode !== null || !bySpecific.has(`${c.staffId}||${c.branch}`),
+  )
+
   const cellsOffered = new Map<string, Set<string>>()   // "branch||dept" → "DAY|HH:MM"
-  for (const cfg of configs) {
+  for (const cfg of effective) {
     if (!employed.has(cfg.staffId)) continue
     const dept = cfg.department || deptOfStaff.get(cfg.staffId) || 'UNKNOWN'
     const k = key(cfg.branch, dept)
