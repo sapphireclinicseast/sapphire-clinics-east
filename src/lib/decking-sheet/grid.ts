@@ -50,6 +50,8 @@ export interface SheetSlot {
   staffId: string
   dayOfWeek: string
   startTime: string
+  /** Needed for one-offs, which are not whole hours. */
+  endTime: string
   disabled: boolean
   paymentType: string | null
   hmoProvider: string | null
@@ -133,6 +135,24 @@ export function hourLabel(h: number): string {
   return `${tw(h)} - ${tw(h + 1)} ${m(h + 1)}`
 }
 export const hhmm = (h: number) => `${String(h).padStart(2, '0')}:00`
+
+/**
+ * "09:00 – 09:30" for a one-off.
+ *
+ * The weekly grid is hourly by construction, so hourLabel() serves it. A dated
+ * slot is not: a doctor giving the clinic 9 to 12 for six patients makes six
+ * half-hours, and labelling those by the hour they start in would print
+ * "9 - 10 AM" three times over.
+ */
+export function spanLabel(startTime: string, endTime: string): string {
+  const pretty = (t: string) => {
+    const [h, m] = t.split(':').map(Number)
+    const tw = h % 12 === 0 ? 12 : h % 12
+    const ap = h % 24 < 12 ? 'AM' : 'PM'
+    return m ? `${tw}:${String(m).padStart(2, '0')} ${ap}` : `${tw} ${ap}`
+  }
+  return `${pretty(startTime)} – ${pretty(endTime)}`
+}
 
 export interface Grid {
   rows: { values: Cell[] }[]
@@ -413,7 +433,7 @@ export function buildGrid(
           if (!slot) return
 
           if (line === 'name') {
-            put(0, cell(hourLabel(parseInt(slot.startTime.slice(0, 2), 10)), { textFormat: { bold: true, fontSize: 9 } }))
+            put(0, cell(spanLabel(slot.startTime, slot.endTime), { textFormat: { bold: true, fontSize: 9 } }))
             merges.push({ startRowIndex: top + r, endRowIndex: top + r + ROWS_PER_HOUR, startColumnIndex: base, endColumnIndex: base + 1 })
           } else {
             put(0, cell(''))
