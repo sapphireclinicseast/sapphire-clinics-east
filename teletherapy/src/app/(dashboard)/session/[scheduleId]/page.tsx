@@ -43,6 +43,11 @@ import SPEDNoteForm, { type SPEDFormData } from '@/components/SPEDNoteForm'
 import SPEDNoteDisplay from '@/components/SPEDNoteDisplay'
 import PTNoteForm, { type PTFormData } from '@/components/PTNoteForm'
 import PTNoteDisplay from '@/components/PTNoteDisplay'
+import {
+  Avatar, Banner, Dialog, EmptyState, Skeleton, StatusPill, type Tone,
+  BTN_DANGER_GHOST, BTN_PRIMARY, BTN_SECONDARY, BTN_SM, CARD_STYLE, DANGER, FOCUS,
+  LABEL, LABEL_STYLE, PRIMARY_STYLE, SECONDARY_STYLE, SUBTLE_BG,
+} from '@/components/hub/ui'
 import { isPastNoteWindow, NOTE_WINDOW_MONTHS } from '@/lib/note-age-lock'
 import { MAX_UPLOAD_MB } from '@/lib/upload-limit'
 
@@ -908,20 +913,27 @@ export default function SessionDetailPage() {
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 gap-3">
-        <Loader2 className="w-8 h-8 text-[var(--teal)] animate-spin" />
-        <p className="text-sm text-[var(--mid-gray)]">Loading session...</p>
+      <div className="max-w-3xl mx-auto space-y-5" role="status" aria-label="Loading session">
+        <Skeleton className="h-4 w-36" />
+        <div className="rounded-xl p-5 flex items-center gap-4" style={CARD_STYLE}>
+          <Skeleton className="w-14 h-14 rounded-full" />
+          <div className="flex-1 space-y-2"><Skeleton className="h-5 w-48" /><Skeleton className="h-3.5 w-64" /></div>
+        </div>
+        <Skeleton className="h-24 rounded-xl" />
+        <Skeleton className="h-48 rounded-xl" />
       </div>
     )
   }
 
   if (!session) {
     return (
-      <div className="card-static text-center py-16 max-w-lg mx-auto animate-fade-up">
-        <p className="text-[var(--mid-gray)] font-medium">Session not found</p>
-        <button onClick={() => router.push('/')} className="mt-3 text-[var(--teal)] text-sm hover:underline">
-          Back to Dashboard
-        </button>
+      <div className="rounded-xl max-w-lg mx-auto" style={CARD_STYLE}>
+        <EmptyState icon="calendar" title="Session not found" hint="It may have been cancelled or moved." />
+        <div className="pb-6 text-center">
+          <button type="button" onClick={() => router.push('/')} className={BTN_SECONDARY} style={SECONDARY_STYLE}>
+            <ArrowLeft size={14} /> Back to Dashboard
+          </button>
+        </div>
       </div>
     )
   }
@@ -937,233 +949,195 @@ export default function SessionDetailPage() {
   const readOnly = permaLocked || ageLocked
   const patientName = session.patient ? `${session.patient.firstName} ${session.patient.lastName}` : 'Walk-in Patient'
 
+  const bookingTone: Tone = session.status === 'CONFIRMED' ? 'success' : session.status === 'PENDING' ? 'warn' : 'error'
+
   return (
-    <div className="max-w-3xl mx-auto">
-      {toast && <div className="toast">{toast}</div>}
+    <div className="max-w-3xl mx-auto min-w-0">
+      {toast && <div className="toast" role="status">{toast}</div>}
 
       {/* Clear Form Prompt — when psych user switches to Upload/QR with existing form data */}
       {showClearFormPrompt && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center animate-fade-up">
-          <div className="bg-white rounded-2xl p-6 max-w-sm mx-4 shadow-2xl">
-            <h3 className="text-base font-bold text-[var(--charcoal)] mb-3" style={{ fontFamily: 'var(--font-display)' }}>
-              Existing Notes Detected
-            </h3>
-            <p className="text-[13px] text-[var(--mid-gray)] mb-5 leading-relaxed">
-              This session already has filled-up form notes. Would you like to clear the form data and replace with uploads only, or keep the form data and just add attachments?
-            </p>
-            <div className="flex flex-col gap-2">
-              <button
-                onClick={() => handleClearFormChoice(false)}
-                className="w-full py-2.5 rounded-xl text-[13px] font-semibold bg-[var(--teal)] text-white hover:opacity-90 transition-opacity"
-              >
-                Keep form data & add attachments
-              </button>
-              <button
-                onClick={() => handleClearFormChoice(true)}
-                className="w-full py-2.5 rounded-xl text-[13px] font-semibold bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition-colors"
-              >
-                Clear form data (upload only)
-              </button>
-              <button
-                onClick={() => { setShowClearFormPrompt(false); setClearFormTarget(null) }}
-                className="w-full py-2 rounded-xl text-[12px] text-[var(--mid-gray)] hover:text-[var(--charcoal)] transition-colors"
-              >
-                Cancel
-              </button>
-            </div>
+        <Dialog
+          labelId="ss-clear-form"
+          eyebrow="Existing notes detected"
+          title="Keep the form data?"
+          description="This session already has filled-up form notes. Clear the form data and replace it with uploads only, or keep the form data and just add attachments."
+          onClose={() => { setShowClearFormPrompt(false); setClearFormTarget(null) }}
+        >
+          <div className="flex flex-col gap-2">
+            <button type="button" onClick={() => handleClearFormChoice(false)} className={`${BTN_PRIMARY} w-full !h-10`} style={PRIMARY_STYLE}>
+              Keep form data &amp; add attachments
+            </button>
+            <button type="button" onClick={() => handleClearFormChoice(true)} className={`${BTN_SECONDARY} w-full !h-10`} style={{ ...SECONDARY_STYLE, color: DANGER, borderColor: '#FECACA' }}>
+              Clear form data (upload only)
+            </button>
+            <button type="button" onClick={() => { setShowClearFormPrompt(false); setClearFormTarget(null) }} className={`${BTN_SM} w-full justify-center`} style={{ color: 'var(--mid-gray)' }}>
+              Cancel
+            </button>
           </div>
-        </div>
+        </Dialog>
       )}
 
       {/* QR Capture Received Popup */}
       {captureReceived && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center animate-fade-up" onClick={() => setCaptureReceived(null)}>
-          <div className="bg-white rounded-2xl p-8 max-w-sm mx-4 text-center shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <CheckCircle2 size={36} className="text-green-600" />
-            </div>
-            <h3 className="text-lg font-bold text-[var(--charcoal)] mb-2" style={{ fontFamily: 'var(--font-display)' }}>
-              Photo Received!
-            </h3>
-            <p className="text-[13px] text-[var(--mid-gray)] mb-1">
+        <Dialog labelId="ss-capture" eyebrow="QR capture" title="Photo received" onClose={() => setCaptureReceived(null)}>
+          <div className="text-center">
+            <span className="inline-flex w-14 h-14 rounded-2xl items-center justify-center mb-3" style={{ background: '#EEF5E8', color: '#2F5A28' }}>
+              <CheckCircle2 size={28} />
+            </span>
+            <p className="text-[13px]" style={{ color: 'var(--mid-gray)' }}>
               The captured photo has been successfully attached to this session.
             </p>
-            <p className="text-[12px] text-[var(--teal)] font-medium mb-5 truncate">
-              {captureReceived}
-            </p>
-            <button
-              onClick={() => setCaptureReceived(null)}
-              className="btn-primary py-2.5 px-8 rounded-xl text-[13px]"
-            >
+            <p className="text-[12px] font-medium mt-1 mb-5 truncate" style={{ color: 'var(--teal)' }}>{captureReceived}</p>
+            <button type="button" onClick={() => setCaptureReceived(null)} className={`${BTN_PRIMARY} px-8`} style={PRIMARY_STYLE}>
               Got it
             </button>
           </div>
-        </div>
+        </Dialog>
       )}
 
       {/* Back */}
-      <button
-        onClick={() => router.push('/')}
-        className="flex items-center gap-1.5 text-[13px] text-[var(--mid-gray)] hover:text-[var(--teal)] mb-6 transition-colors font-medium"
-      >
-        <ArrowLeft size={16} />
+      <button type="button" onClick={() => router.push('/')} className={`${BTN_SM} -ml-2 mb-4`} style={{ color: 'var(--mid-gray)' }}>
+        <ArrowLeft size={14} />
         Back to Dashboard
       </button>
 
-      {/* Patient info hero */}
-      <div className="hero-gradient rounded-2xl p-6 mb-6 animate-fade-up">
-        <div className="relative z-10 flex items-center gap-4">
-          <div className="w-14 h-14 rounded-full bg-white/15 flex items-center justify-center text-white font-bold text-lg backdrop-blur-sm border border-white/20">
-            {session.patient ? `${session.patient.firstName[0]}${session.patient.lastName[0]}` : 'W'}
-          </div>
-          <div className="flex-1">
-            <h1 className="text-xl font-bold text-white">{patientName}</h1>
+      {/* Session header: patient + booking status, then the session facts */}
+      <section className="rounded-xl mb-5" style={CARD_STYLE}>
+        <div className="px-4 sm:px-5 py-4 flex items-center gap-4">
+          <Avatar text={session.patient ? `${session.patient.firstName[0]}${session.patient.lastName[0]}` : 'W'} size={52} />
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-widest mb-0.5" style={{ color: 'var(--deep-teal)', fontFamily: 'var(--font-display)' }}>Session</p>
+            <h1 className="text-[20px] sm:text-[22px] font-bold leading-tight break-words" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>{patientName}</h1>
             {session.patient?.email && (
-              <p className="text-white/60 text-sm mt-0.5">{session.patient.email}</p>
+              <p className="text-[13px] mt-0.5 break-all" style={{ color: 'var(--mid-gray)' }}>{session.patient.email}</p>
             )}
           </div>
-          <span className={`badge ${session.status === 'CONFIRMED' ? 'badge-confirmed' : session.status === 'PENDING' ? 'badge-pending' : 'badge-cancelled'}`}>
-            {session.status}
-          </span>
+          <StatusPill tone={bookingTone}>{session.status.charAt(0) + session.status.slice(1).toLowerCase()}</StatusPill>
         </div>
-      </div>
-
-      {/* Details grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-        {[
-          { icon: Calendar, label: 'Date', value: formatDate(session.date) },
-          { icon: Clock, label: 'Time', value: `${formatTime(session.startTime)} – ${formatTime(session.endTime)}` },
-          { icon: FileText, label: 'Type', value: session.sessionType },
-          // "Clinician" stays the supervisor — the therapist whose card this
-          // was booked under — whether or not an intern is assigned.
-          { icon: Stethoscope, label: session.internStaff ? 'Supervisor' : 'Clinician', value: `${session.staff.lastName} (${session.staff.department})` },
-          ...(session.internStaff
-            ? [{ icon: GraduationCap, label: 'Intern', value: `${session.internStaff.firstName} ${session.internStaff.lastName}` }]
-            : []),
-        ].map((item, i) => (
-          <div key={item.label} className={`card-static !p-4 animate-fade-up stagger-${i + 1}`}>
-            <div className="flex items-center gap-1.5 mb-1">
-              <item.icon size={13} className="text-[var(--teal)]" />
-              <p className="text-[11px] text-[var(--mid-gray)] uppercase font-semibold tracking-wider">{item.label}</p>
+        <dl className="grid grid-cols-2 sm:grid-cols-4 rounded-b-xl" style={{ borderTop: '1px solid var(--light-gray)', background: SUBTLE_BG }}>
+          {[
+            { icon: Calendar, label: 'Date', value: formatDate(session.date) },
+            { icon: Clock, label: 'Time', value: `${formatTime(session.startTime)} – ${formatTime(session.endTime)}` },
+            { icon: FileText, label: 'Type', value: session.sessionType },
+            // "Clinician" stays the supervisor — the therapist whose card this
+            // was booked under — whether or not an intern is assigned.
+            { icon: Stethoscope, label: session.internStaff ? 'Supervisor' : 'Clinician', value: `${session.staff.lastName} (${session.staff.department})` },
+            ...(session.internStaff
+              ? [{ icon: GraduationCap, label: 'Intern', value: `${session.internStaff.firstName} ${session.internStaff.lastName}` }]
+              : []),
+          ].map((item) => (
+            <div key={item.label} className="px-4 sm:px-5 py-3 min-w-0">
+              <dt className="flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)', fontFamily: 'var(--font-display)' }}>
+                <item.icon size={12} style={{ color: 'var(--teal)' }} />
+                {item.label}
+              </dt>
+              <dd className="text-[13px] font-semibold mt-0.5 break-words" style={{ color: 'var(--charcoal)' }}>{item.value}</dd>
             </div>
-            <p className="text-[13px] font-semibold text-[var(--charcoal)]">{item.value}</p>
-          </div>
-        ))}
-      </div>
+          ))}
+        </dl>
+      </section>
 
       {/* Meet link */}
       {session.meetLink && (
-        <div className="mb-6 animate-fade-up stagger-5">
-          <a
-            href={session.meetLink}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="btn-primary w-full py-3.5 rounded-xl text-[15px]"
-          >
-            <Video size={20} />
-            Join Online Meet Link
-          </a>
-        </div>
+        <a
+          href={session.meetLink}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={`${BTN_PRIMARY} w-full !h-11 !text-[15px] mb-5`}
+          style={PRIMARY_STYLE}
+        >
+          <Video size={18} />
+          Join Online Meet Link
+        </a>
       )}
 
       {/* Documentation window notice — a session past the window is read-only
           until the clinician deliberately re-opens it. The permanent
           endorsement freeze is handled separately and is never re-openable. */}
       {ageLocked && (
-        <div className="card-static mb-6 animate-fade-up border-l-4 !border-l-amber-500">
-          <div className="flex items-start gap-3">
-            <Lock size={18} className="text-amber-600 mt-0.5 flex-shrink-0" />
-            <div className="flex-1">
-              <p className="font-semibold text-[var(--charcoal)] text-[14px]">Notes are read-only</p>
-              <p className="text-[12.5px] text-[var(--mid-gray)] mt-0.5">
-                This session is more than {NOTE_WINDOW_MONTHS} months old. Documentation closes
-                automatically after that so notes aren&apos;t written or changed long after the fact.
-              </p>
-              <button
-                onClick={() => toggleNoteLock(true)}
-                disabled={submitting}
-                className="mt-3 flex items-center gap-1.5 text-[13px] text-[var(--teal)] hover:text-[var(--deep-teal)] font-semibold transition-colors disabled:opacity-50"
-              >
-                <Unlock size={14} />
-                Enable editing
-              </button>
-            </div>
-          </div>
+        <div className="mb-5">
+          <Banner tone="warn">
+            <p className="font-semibold">Notes are read-only</p>
+            <p className="mt-0.5">
+              {`This session is more than ${NOTE_WINDOW_MONTHS} months old. Documentation closes automatically after that so notes aren't written or changed long after the fact.`}
+            </p>
+            <button
+              type="button"
+              onClick={() => toggleNoteLock(true)}
+              disabled={submitting}
+              className={`${BTN_SM} mt-2.5`}
+              style={{ ...SECONDARY_STYLE, color: 'var(--teal)' }}
+            >
+              <Unlock size={13} />
+              Enable editing
+            </button>
+          </Banner>
         </div>
       )}
 
       {reopened && (
-        <div className="card-static mb-6 animate-fade-up border-l-4 !border-l-[var(--teal)]">
-          <div className="flex items-start gap-3">
-            <Unlock size={18} className="text-[var(--teal)] mt-0.5 flex-shrink-0" />
-            <div className="flex-1">
-              <p className="font-semibold text-[var(--charcoal)] text-[14px]">Editing re-enabled</p>
-              <p className="text-[12.5px] text-[var(--mid-gray)] mt-0.5">
-                This session is past the {NOTE_WINDOW_MONTHS}-month window but was re-opened on{' '}
-                {new Date(session.noteUnlockedAt!).toLocaleDateString()}.
-              </p>
-              <button
-                onClick={() => toggleNoteLock(false)}
-                disabled={submitting}
-                className="mt-3 flex items-center gap-1.5 text-[13px] text-[var(--mid-gray)] hover:text-[var(--charcoal)] font-semibold transition-colors disabled:opacity-50"
-              >
-                <Lock size={14} />
-                Lock again
-              </button>
-            </div>
-          </div>
+        <div className="mb-5">
+          <Banner tone="info">
+            <p className="font-semibold">Editing re-enabled</p>
+            <p className="mt-0.5">
+              This session is past the {NOTE_WINDOW_MONTHS}-month window but was re-opened on{' '}
+              {new Date(session.noteUnlockedAt!).toLocaleDateString()}.
+            </p>
+            <button
+              type="button"
+              onClick={() => toggleNoteLock(false)}
+              disabled={submitting}
+              className={`${BTN_SM} mt-2.5`}
+              style={{ ...SECONDARY_STYLE, color: 'var(--mid-gray)' }}
+            >
+              <Lock size={13} />
+              Lock again
+            </button>
+          </Banner>
         </div>
       )}
 
       {permaLocked && (
-        <div className="card-static mb-6 animate-fade-up border-l-4 !border-l-[var(--mid-gray)]">
-          <div className="flex items-start gap-3">
-            <Lock size={18} className="text-[var(--mid-gray)] mt-0.5 flex-shrink-0" />
-            <div className="flex-1">
-              <p className="font-semibold text-[var(--charcoal)] text-[14px]">Note signed</p>
-              <p className="text-[12.5px] text-[var(--mid-gray)] mt-0.5">
-                Notes are frozen once the author is endorsed or discharged off the patient, and
-                cannot be re-opened.
-              </p>
-            </div>
-          </div>
+        <div className="mb-5">
+          <Banner tone="info">
+            <p className="font-semibold">Note signed</p>
+            <p className="mt-0.5">
+              Notes are frozen once the author is endorsed or discharged off the patient, and
+              cannot be re-opened.
+            </p>
+          </Banner>
         </div>
       )}
 
       {/* Existing note display */}
       {hasNote && actionMode !== 'edit' && (
-        <div className="card-static mb-6 animate-fade-up stagger-5">
-          <div className="flex items-center justify-between mb-4 pb-4 border-b border-[var(--light-gray)]">
+        <section className="rounded-xl mb-5" style={CARD_STYLE}>
+          <header className="px-4 sm:px-5 pt-4 pb-3 flex flex-wrap items-center justify-between gap-2" style={{ borderBottom: '1px solid var(--light-gray)' }}>
             <div className="flex items-center gap-2">
               {session.sessionNote!.status === 'COMPLETED' ? (
-                <CheckCircle2 size={20} className="text-green-500" />
+                <CheckCircle2 size={18} style={{ color: '#2F5A28' }} />
               ) : (
-                <XCircle size={20} className="text-red-500" />
+                <XCircle size={18} style={{ color: DANGER }} />
               )}
-              <h2 className="font-bold text-[var(--charcoal)]" style={{ fontFamily: 'var(--font-display)' }}>
+              <h2 className="text-[15px] font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
                 Session {session.sessionNote!.status === 'COMPLETED' ? 'Completed' : 'Discontinued'}
               </h2>
             </div>
             {!readOnly && (
-              <div className="flex items-center gap-4">
-              <button
-                onClick={startEdit}
-                className="flex items-center gap-1.5 text-[13px] text-[var(--teal)] hover:text-[var(--deep-teal)] font-medium transition-colors"
-              >
-                <Pencil size={14} />
-                Edit
-              </button>
-              <button
-                onClick={handleDeleteNote}
-                disabled={deletingNote}
-                className="flex items-center gap-1.5 text-[13px] text-red-500 hover:text-red-700 font-medium transition-colors disabled:opacity-50"
-              >
-                {deletingNote ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                Delete note
-              </button>
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={startEdit} className={BTN_SM} style={{ ...SECONDARY_STYLE, color: 'var(--teal)' }}>
+                  <Pencil size={13} />
+                  Edit
+                </button>
+                <button type="button" onClick={handleDeleteNote} disabled={deletingNote} className={BTN_DANGER_GHOST} style={{ color: DANGER }}>
+                  {deletingNote ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                  Delete note
+                </button>
               </div>
             )}
-          </div>
+          </header>
+          <div className="p-4 sm:p-5">
 
           {/* Psychology / MD confidentiality: "Show to Others" toggle. Private
               by default; ticking shares the note with other departments in the
@@ -1189,12 +1163,13 @@ export default function SessionDetailPage() {
           {/* Attachments — show FIRST so they're always visible */}
           {session.sessionNote!.attachments && (session.sessionNote!.attachments as any[]).length > 0 && (
             <div className="mb-4">
-              <p className="text-[11px] text-[var(--mid-gray)] uppercase font-semibold tracking-wider mb-1.5">Attachments</p>
+              <p className={LABEL} style={LABEL_STYLE}>Attachments</p>
               <div className="flex flex-wrap gap-2">
                 {(session.sessionNote!.attachments as any[]).map((att: any, i: number) => (
                   <a key={i} href={`/api/upload/${att.filePath}`} target="_blank"
-                     className="flex items-center gap-1.5 text-[13px] text-[var(--teal)] bg-[var(--pale-teal)] px-3 py-2 rounded-xl hover:bg-[var(--teal)] hover:text-white transition-colors font-medium">
-                    <Paperclip size={14} />
+                     className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12.5px] font-semibold transition-colors hover:bg-white ${FOCUS}`}
+                     style={{ background: SUBTLE_BG, border: '1px solid var(--light-gray)', color: 'var(--teal)' }}>
+                    <Paperclip size={13} />
                     {att.fileName}
                   </a>
                 ))}
@@ -1224,8 +1199,8 @@ export default function SessionDetailPage() {
             } catch {}
             return (
               <div className="mb-4">
-                <p className="text-[11px] text-[var(--mid-gray)] uppercase font-semibold tracking-wider mb-1.5">Notes</p>
-                <div className="text-sm whitespace-pre-wrap bg-[var(--off-white)] p-4 rounded-xl border border-[var(--light-gray)]">
+                <p className={LABEL} style={LABEL_STYLE}>Notes</p>
+                <div className="text-sm whitespace-pre-wrap p-4 rounded-xl" style={{ background: SUBTLE_BG, border: '1px solid var(--light-gray)' }}>
                   {session.sessionNote!.notes}
                 </div>
               </div>
@@ -1234,8 +1209,8 @@ export default function SessionDetailPage() {
 
           {session.sessionNote!.discontinuedRemarks && (
             <div className="mb-4">
-              <p className="text-[11px] text-[var(--mid-gray)] uppercase font-semibold tracking-wider mb-1.5">Reason</p>
-              <div className="text-sm whitespace-pre-wrap bg-red-50 p-4 rounded-xl border border-red-100 text-red-800">
+              <p className={LABEL} style={LABEL_STYLE}>Reason</p>
+              <div className="text-sm whitespace-pre-wrap p-4 rounded-xl" style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#991B1B' }}>
                 {session.sessionNote!.discontinuedRemarks}
               </div>
             </div>
@@ -1245,8 +1220,8 @@ export default function SessionDetailPage() {
 
           {/* No notes and no attachments indicator */}
           {!session.sessionNote!.notes && (!session.sessionNote!.attachments || (session.sessionNote!.attachments as any[]).length === 0) && (
-            <div className="mb-4 text-center py-6 bg-[var(--off-white)] rounded-xl border border-[var(--light-gray)]">
-              <p className="text-[var(--mid-gray)] text-sm">No notes or attachments yet. Click Edit to add.</p>
+            <div className="mb-4 rounded-xl" style={{ background: SUBTLE_BG, border: '1px solid var(--light-gray)' }}>
+              <EmptyState icon="file" title="No notes or attachments yet." hint="Click Edit to add." />
             </div>
           )}
 
@@ -1255,8 +1230,8 @@ export default function SessionDetailPage() {
               uploaded IE document, which attaches the actual report. The notes
               email here has no attachment, so we direct the consultant instead. */}
           {session.sessionNote!.status === 'COMPLETED' && session.patient?.email && !isPsychDept && session.sessionNote!.isInitialEvaluation && (
-            <div className="pt-4 border-t border-[var(--light-gray)]">
-              <p className="text-sm text-[var(--mid-gray)] flex items-start gap-2">
+            <div className="pt-4" style={{ borderTop: '1px solid var(--light-gray)' }}>
+              <p className="text-sm flex items-start gap-2" style={{ color: 'var(--mid-gray)' }}>
                 <Mail size={15} className="mt-0.5 shrink-0" />
                 <span>This is an Initial Evaluation. To send it to the patient, use <strong>“Send Email to Patient”</strong> on the uploaded IE document — that email includes the report as an attachment.</span>
               </p>
@@ -1266,19 +1241,20 @@ export default function SessionDetailPage() {
           {/* Send notes email — hidden for Psychology (internal only), for IE
               (see above), and for interns (only the supervisor sends). */}
           {session.sessionNote!.status === 'COMPLETED' && session.patient?.email && !isPsychDept && !session.sessionNote!.isInitialEvaluation && authSession?.user?.accountType === 'INTERN' && (
-            <div className="pt-4 border-t border-[var(--light-gray)]">
-              <p className="text-sm text-[var(--mid-gray)] italic flex items-center gap-2"><Mail size={15} /> Only your supervisor can send this note to the patient.</p>
+            <div className="pt-4" style={{ borderTop: '1px solid var(--light-gray)' }}>
+              <p className="text-sm italic flex items-center gap-2" style={{ color: 'var(--mid-gray)' }}><Mail size={15} /> Only your supervisor can send this note to the patient.</p>
             </div>
           )}
           {session.sessionNote!.status === 'COMPLETED' && session.patient?.email && !isPsychDept && !session.sessionNote!.isInitialEvaluation && authSession?.user?.accountType !== 'INTERN' && (
-            <div className="pt-4 border-t border-[var(--light-gray)]">
+            <div className="pt-4" style={{ borderTop: '1px solid var(--light-gray)' }}>
               {session.sessionNote!.emailSentAt && (
-                <p className="text-sm text-green-600 flex items-center gap-2 font-medium mb-3">
+                <p className="text-sm flex items-center gap-2 font-medium mb-3" style={{ color: '#2F5A28' }}>
                   <Mail size={15} />
                   Sent to {session.sessionNote!.emailSentTo} on {new Date(session.sessionNote!.emailSentAt).toLocaleDateString()}
                 </p>
               )}
               <button
+                type="button"
                 onClick={() => {
                   if (session.sessionNote!.emailSentAt) {
                     if (confirm('This email was already sent. Do you want to resend it to the patient?')) {
@@ -1295,36 +1271,38 @@ export default function SessionDetailPage() {
                   }
                 }}
                 disabled={sendingEmail}
-                className="btn-primary w-full py-3 rounded-xl"
+                className={`${BTN_PRIMARY} w-full !h-11`}
+                style={PRIMARY_STYLE}
               >
                 {sendingEmail ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
                 {session.sessionNote!.emailSentAt ? 'Resend Notes to Patient\'s Email' : 'Send Notes to Patient\'s Email'}
               </button>
             </div>
           )}
-        </div>
+          </div>
+        </section>
       )}
 
       {/* Edit form — Psychology structured notes (with toggle) */}
       {actionMode === 'edit' && session.sessionNote && isPsychDept && psychEditUseForm && (
-        <div className="card-static mb-6 animate-gate">
-          <h2 className="font-bold text-[var(--charcoal)] mb-4 flex items-center gap-2 pb-4 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
+        <div className="rounded-xl p-4 sm:p-5 mb-5 bg-white border border-[var(--light-gray)]">
+          <h2 className="text-[15px] font-bold text-[var(--charcoal)] mb-4 flex items-center gap-2 pb-3 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
             <Pencil size={20} className="text-[var(--teal)]" />
             Edit Session Notes
           </h2>
 
           {/* Mode toggle */}
-          <div className="flex rounded-xl overflow-hidden border border-[var(--light-gray)] mb-5">
+          <div className="flex gap-1 p-1 rounded-xl bg-[var(--pale-teal)] mb-5">
             <button
               onClick={() => setPsychEditUseForm(true)}
-              className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--teal)] text-white"
+              className="flex-1 py-2 rounded-lg text-[13px] font-semibold bg-white text-[var(--deep-teal)] shadow-sm"
             >
               <FileText size={14} className="inline mr-1.5 -mt-0.5" />
               Use Form
             </button>
             <button
               onClick={() => handlePsychSwitchToUpload('edit')}
-              className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--off-white)] text-[var(--mid-gray)] hover:bg-gray-100 transition-colors"
+              className="flex-1 py-2 rounded-lg text-[13px] font-semibold text-[var(--mid-gray)] hover:bg-black/[0.04] transition-colors"
             >
               <Upload size={14} className="inline mr-1.5 -mt-0.5" />
               Upload / QR
@@ -1347,24 +1325,24 @@ export default function SessionDetailPage() {
 
       {/* Edit form — OT structured notes (with toggle) */}
       {actionMode === 'edit' && session.sessionNote && isOTDept && psychEditUseForm && (
-        <div className="card-static mb-6 animate-gate">
-          <h2 className="font-bold text-[var(--charcoal)] mb-4 flex items-center gap-2 pb-4 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
+        <div className="rounded-xl p-4 sm:p-5 mb-5 bg-white border border-[var(--light-gray)]">
+          <h2 className="text-[15px] font-bold text-[var(--charcoal)] mb-4 flex items-center gap-2 pb-3 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
             <Pencil size={20} className="text-[var(--teal)]" />
             Edit Session Notes — OT
           </h2>
 
           {/* Mode toggle */}
-          <div className="flex rounded-xl overflow-hidden border border-[var(--light-gray)] mb-5">
+          <div className="flex gap-1 p-1 rounded-xl bg-[var(--pale-teal)] mb-5">
             <button
               onClick={() => setPsychEditUseForm(true)}
-              className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--teal)] text-white"
+              className="flex-1 py-2 rounded-lg text-[13px] font-semibold bg-white text-[var(--deep-teal)] shadow-sm"
             >
               <FileText size={14} className="inline mr-1.5 -mt-0.5" />
               Use Form
             </button>
             <button
               onClick={() => handlePsychSwitchToUpload('edit')}
-              className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--off-white)] text-[var(--mid-gray)] hover:bg-gray-100 transition-colors"
+              className="flex-1 py-2 rounded-lg text-[13px] font-semibold text-[var(--mid-gray)] hover:bg-black/[0.04] transition-colors"
             >
               <Upload size={14} className="inline mr-1.5 -mt-0.5" />
               Upload / QR
@@ -1405,21 +1383,21 @@ export default function SessionDetailPage() {
 
       {/* Edit form — SLP structured notes (with toggle) */}
       {actionMode === 'edit' && session.sessionNote && isSLPDept && psychEditUseForm && (
-        <div className="card-static mb-6 animate-gate">
-          <h2 className="font-bold text-[var(--charcoal)] mb-4 flex items-center gap-2 pb-4 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
+        <div className="rounded-xl p-4 sm:p-5 mb-5 bg-white border border-[var(--light-gray)]">
+          <h2 className="text-[15px] font-bold text-[var(--charcoal)] mb-4 flex items-center gap-2 pb-3 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
             <Pencil size={20} className="text-[var(--teal)]" />
             Edit Session Notes — SLP
           </h2>
 
           {/* Mode toggle */}
-          <div className="flex rounded-xl overflow-hidden border border-[var(--light-gray)] mb-5">
+          <div className="flex gap-1 p-1 rounded-xl bg-[var(--pale-teal)] mb-5">
             <button onClick={() => setPsychEditUseForm(true)}
-              className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--teal)] text-white">
+              className="flex-1 py-2 rounded-lg text-[13px] font-semibold bg-white text-[var(--deep-teal)] shadow-sm">
               <FileText size={14} className="inline mr-1.5 -mt-0.5" />
               Use Form
             </button>
             <button onClick={() => handlePsychSwitchToUpload('edit')}
-              className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--off-white)] text-[var(--mid-gray)] hover:bg-gray-100 transition-colors">
+              className="flex-1 py-2 rounded-lg text-[13px] font-semibold text-[var(--mid-gray)] hover:bg-black/[0.04] transition-colors">
               <Upload size={14} className="inline mr-1.5 -mt-0.5" />
               Upload / QR
             </button>
@@ -1459,14 +1437,14 @@ export default function SessionDetailPage() {
 
       {/* Edit form — SPED structured notes (with 3-way toggle) */}
       {actionMode === 'edit' && session.sessionNote && isSPEDDept && psychEditUseForm && (
-        <div className="card-static mb-6 animate-gate">
-          <h2 className="font-bold text-[var(--charcoal)] mb-4 flex items-center gap-2 pb-4 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
+        <div className="rounded-xl p-4 sm:p-5 mb-5 bg-white border border-[var(--light-gray)]">
+          <h2 className="text-[15px] font-bold text-[var(--charcoal)] mb-4 flex items-center gap-2 pb-3 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
             <Pencil size={20} className="text-[var(--teal)]" />
             Edit Session Notes — SPED
           </h2>
 
           {/* 3-way toggle */}
-          <div className="flex rounded-xl overflow-hidden border border-[var(--light-gray)] mb-5">
+          <div className="flex gap-1 p-1 rounded-xl bg-[var(--pale-teal)] mb-5">
             <button onClick={() => { setPsychEditUseForm(true); setSPEDFormVariant('SPED16') }}
               className={`flex-1 py-2.5 text-[13px] font-semibold transition-colors ${psychEditUseForm && spedFormVariant === 'SPED16' ? 'bg-purple-600 text-white' : 'bg-[var(--off-white)] text-[var(--mid-gray)] hover:bg-gray-100'}`}>
               SPED16
@@ -1476,7 +1454,7 @@ export default function SessionDetailPage() {
               SPED18
             </button>
             <button onClick={() => handlePsychSwitchToUpload('edit')}
-              className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--off-white)] text-[var(--mid-gray)] hover:bg-gray-100 transition-colors">
+              className="flex-1 py-2 rounded-lg text-[13px] font-semibold text-[var(--mid-gray)] hover:bg-black/[0.04] transition-colors">
               <Upload size={14} className="inline mr-1.5 -mt-0.5" />
               Upload / QR
             </button>
@@ -1517,19 +1495,19 @@ export default function SessionDetailPage() {
 
       {/* Edit form — PT structured notes */}
       {actionMode === 'edit' && session.sessionNote && isPTDept && psychEditUseForm && (
-        <div className="card-static mb-6 animate-gate">
-          <h2 className="font-bold text-[var(--charcoal)] mb-4 flex items-center gap-2 pb-4 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
+        <div className="rounded-xl p-4 sm:p-5 mb-5 bg-white border border-[var(--light-gray)]">
+          <h2 className="text-[15px] font-bold text-[var(--charcoal)] mb-4 flex items-center gap-2 pb-3 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
             <Pencil size={20} className="text-[var(--teal)]" />
             Edit Session Notes — PT
           </h2>
 
-          <div className="flex rounded-xl overflow-hidden border border-[var(--light-gray)] mb-5">
+          <div className="flex gap-1 p-1 rounded-xl bg-[var(--pale-teal)] mb-5">
             <button onClick={() => setPsychEditUseForm(true)}
               className={`flex-1 py-2.5 text-[13px] font-semibold transition-colors ${psychEditUseForm ? 'bg-blue-600 text-white' : 'bg-[var(--off-white)] text-[var(--mid-gray)] hover:bg-gray-100'}`}>
               <FileText size={14} className="inline mr-1.5 -mt-0.5" /> Use Form
             </button>
             <button onClick={() => handlePsychSwitchToUpload('edit')}
-              className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--off-white)] text-[var(--mid-gray)] hover:bg-gray-100 transition-colors">
+              className="flex-1 py-2 rounded-lg text-[13px] font-semibold text-[var(--mid-gray)] hover:bg-black/[0.04] transition-colors">
               <Upload size={14} className="inline mr-1.5 -mt-0.5" /> Upload / QR
             </button>
           </div>
@@ -1568,25 +1546,25 @@ export default function SessionDetailPage() {
 
       {/* Edit form — Generic notes (or structured form depts in upload mode) */}
       {actionMode === 'edit' && session.sessionNote && (!hasStructuredForm || !psychEditUseForm) && (
-        <div className="card-static mb-6 animate-gate">
-          <h2 className="font-bold text-[var(--charcoal)] mb-5 flex items-center gap-2 pb-4 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
+        <div className="rounded-xl p-4 sm:p-5 mb-5 bg-white border border-[var(--light-gray)]">
+          <h2 className="text-[15px] font-bold text-[var(--charcoal)] mb-4 flex items-center gap-2 pb-3 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
             <Pencil size={20} className="text-[var(--teal)]" />
             Edit {session.sessionNote.status === 'COMPLETED' ? 'Session Notes' : 'Discontinuation Remarks'}
           </h2>
 
           {/* Structured form toggle — so they can switch back to form */}
           {hasStructuredForm && session.sessionNote.status === 'COMPLETED' && (
-            <div className="flex rounded-xl overflow-hidden border border-[var(--light-gray)] mb-5">
+            <div className="flex gap-1 p-1 rounded-xl bg-[var(--pale-teal)] mb-5">
               <button
                 onClick={() => setPsychEditUseForm(true)}
-                className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--off-white)] text-[var(--mid-gray)] hover:bg-gray-100 transition-colors"
+                className="flex-1 py-2 rounded-lg text-[13px] font-semibold text-[var(--mid-gray)] hover:bg-black/[0.04] transition-colors"
               >
                 <FileText size={14} className="inline mr-1.5 -mt-0.5" />
                 Use Form
               </button>
               <button
                 onClick={() => setPsychEditUseForm(false)}
-                className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--teal)] text-white"
+                className="flex-1 py-2 rounded-lg text-[13px] font-semibold bg-white text-[var(--deep-teal)] shadow-sm"
               >
                 <Upload size={14} className="inline mr-1.5 -mt-0.5" />
                 Upload / QR
@@ -1678,11 +1656,11 @@ export default function SessionDetailPage() {
 
           <div className="flex gap-3">
             <button onClick={handleEdit} disabled={submitting}
-              className="btn-primary flex-1 py-3 rounded-xl">
+              className={`${BTN_PRIMARY} flex-1 !h-11`} style={PRIMARY_STYLE}>
               {submitting ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
               Save Changes
             </button>
-            <button onClick={() => { setActionMode(null); setFiles([]); setNotes(''); setRemarks(''); { setQrUrl(null); if (qrPollRef.current) clearInterval(qrPollRef.current) } }} className="btn-secondary px-6 rounded-xl">Cancel</button>
+            <button onClick={() => { setActionMode(null); setFiles([]); setNotes(''); setRemarks(''); { setQrUrl(null); if (qrPollRef.current) clearInterval(qrPollRef.current) } }} className={`${BTN_SECONDARY} !h-11 px-6`} style={SECONDARY_STYLE}>Cancel</button>
           </div>
         </div>
       )}
@@ -1690,11 +1668,11 @@ export default function SessionDetailPage() {
       {/* Action buttons */}
       {!hasNote && actionMode === null && !readOnly && (
         <div className="flex gap-3 animate-fade-up stagger-6">
-          <button onClick={() => setActionMode('complete')} className="btn-primary flex-1 py-3.5 rounded-xl text-[15px] !bg-gradient-to-r !from-green-600 !to-green-700 !shadow-[0_2px_8px_rgba(22,163,74,0.3)]">
+          <button onClick={() => setActionMode('complete')} className={`${BTN_PRIMARY} flex-1 !h-12 !text-[15px] !rounded-xl`} style={{ background: '#2F7A4A' }}>
             <CheckCircle2 size={20} />
             Completed
           </button>
-          <button onClick={() => setActionMode('discontinue')} className="btn-danger flex-1 py-3.5 rounded-xl text-[15px]">
+          <button onClick={() => setActionMode('discontinue')} className={`${BTN_PRIMARY} flex-1 !h-12 !text-[15px] !rounded-xl`} style={{ background: DANGER }}>
             <XCircle size={20} />
             Discontinued
           </button>
@@ -1703,8 +1681,8 @@ export default function SessionDetailPage() {
 
       {/* IE Flag Gate — for PT/OT/SLP/SPED only, shown after clicking Complete */}
       {actionMode === 'complete' && supportsIEFlag && ieMode === 'PENDING' && session.patient && (
-        <div className="card-static animate-gate mb-6">
-          <h2 className="font-bold text-[var(--charcoal)] mb-2 flex items-center gap-2" style={{ fontFamily: 'var(--font-display)' }}>
+        <div className="rounded-xl p-4 sm:p-5 mb-5 bg-white border border-[var(--light-gray)]">
+          <h2 className="text-[15px] font-bold text-[var(--charcoal)] mb-2 flex items-center gap-2" style={{ fontFamily: 'var(--font-display)' }}>
             <CheckCircle2 size={20} className="text-green-500" />
             Complete Session
           </h2>
@@ -1748,8 +1726,8 @@ export default function SessionDetailPage() {
 
       {/* Initial Evaluation upload form (when user chose IE for PT/OT/SLP/SPED) */}
       {actionMode === 'complete' && supportsIEFlag && ieMode === 'INITIAL_EVAL' && session.patient && (
-        <div className="card-static animate-gate mb-6">
-          <h2 className="font-bold text-[var(--charcoal)] mb-4 flex items-center gap-2 pb-4 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
+        <div className="rounded-xl p-4 sm:p-5 mb-5 bg-white border border-[var(--light-gray)]">
+          <h2 className="text-[15px] font-bold text-[var(--charcoal)] mb-4 flex items-center gap-2 pb-3 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
             <ClipboardList size={20} style={{ color: '#cf9d88' }} />
             Upload Initial Evaluation Report
           </h2>
@@ -1830,14 +1808,14 @@ export default function SessionDetailPage() {
                 setSubmitting(false)
               }}
               disabled={submitting || !ieFile}
-              className="btn-primary flex-1 py-3 rounded-xl !bg-gradient-to-r !from-[#cf9d88] !to-[#c69849]"
+              className={`${BTN_PRIMARY} flex-1 !h-11`} style={PRIMARY_STYLE}
             >
               {submitting ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
               Save IE & Complete Session
             </button>
             <button
               onClick={() => { setIEMode('DAILY_NOTES'); setIEFile(null); setIEDescription('') }}
-              className="btn-secondary px-6 rounded-xl"
+              className={`${BTN_SECONDARY} !h-11 px-6`} style={SECONDARY_STYLE}
               title="Switch to the regular Daily Notes form instead"
             >
               <FileText size={14} className="-ml-1 mr-1" />
@@ -1877,8 +1855,8 @@ export default function SessionDetailPage() {
           form AND attach voice notes / video / photos / files in one completion.
           These stage into files[] and the form's own Save uploads them. */}
       {actionMode === 'complete' && hasStructuredForm && psychUseForm && (isPsychDept || ieMode === 'DAILY_NOTES') && (
-        <div className="card-static mb-6 animate-gate">
-          <h2 className="font-bold text-[var(--charcoal)] mb-1.5 flex items-center gap-2" style={{ fontFamily: 'var(--font-display)' }}>
+        <div className="rounded-xl p-4 sm:p-5 mb-5 bg-white border border-[var(--light-gray)]">
+          <h2 className="text-[15px] font-bold text-[var(--charcoal)] mb-1.5 flex items-center gap-2" style={{ fontFamily: 'var(--font-display)' }}>
             <Paperclip size={18} className="text-[var(--teal)]" />
             Attachments <span className="text-[12px] font-medium text-[var(--mid-gray)]">(optional)</span>
           </h2>
@@ -1893,31 +1871,31 @@ export default function SessionDetailPage() {
 
       {/* Complete form */}
       {actionMode === 'complete' && isPsychDept && session.patient && psychUseForm && (
-        <div className="card-static animate-gate">
-          <h2 className="font-bold text-[var(--charcoal)] mb-4 flex items-center gap-2 pb-4 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
+        <div className="rounded-xl p-4 sm:p-5 mb-5 bg-white border border-[var(--light-gray)]">
+          <h2 className="text-[15px] font-bold text-[var(--charcoal)] mb-4 flex items-center gap-2 pb-3 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
             <CheckCircle2 size={20} className="text-green-500" />
             Complete Session — Psychology
           </h2>
 
           {/* Mode toggle: Form vs Upload/QR */}
-          <div className="flex rounded-xl overflow-hidden border border-[var(--light-gray)] mb-5">
+          <div className="flex gap-1 p-1 rounded-xl bg-[var(--pale-teal)] mb-5">
             <button
               onClick={() => setPsychUseForm(true)}
-              className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--teal)] text-white"
+              className="flex-1 py-2 rounded-lg text-[13px] font-semibold bg-white text-[var(--deep-teal)] shadow-sm"
             >
               <FileText size={14} className="inline mr-1.5 -mt-0.5" />
               Use Form
             </button>
             <button
               onClick={() => handlePsychSwitchToUpload('complete')}
-              className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--off-white)] text-[var(--mid-gray)] hover:bg-gray-100 transition-colors"
+              className="flex-1 py-2 rounded-lg text-[13px] font-semibold text-[var(--mid-gray)] hover:bg-black/[0.04] transition-colors"
             >
               <Upload size={14} className="inline mr-1.5 -mt-0.5" />
               Upload / QR
             </button>
             <button
               onClick={() => openAttachOthers('complete')}
-              className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--off-white)] text-[var(--mid-gray)] hover:bg-gray-100 transition-colors"
+              className="flex-1 py-2 rounded-lg text-[13px] font-semibold text-[var(--mid-gray)] hover:bg-black/[0.04] transition-colors"
             >
               <Paperclip size={14} className="inline mr-1.5 -mt-0.5" />
               Attach Others
@@ -1956,31 +1934,31 @@ export default function SessionDetailPage() {
 
       {/* OT Complete form */}
       {actionMode === 'complete' && isOTDept && session.patient && psychUseForm && ieMode === 'DAILY_NOTES' && (
-        <div className="card-static animate-gate">
-          <h2 className="font-bold text-[var(--charcoal)] mb-4 flex items-center gap-2 pb-4 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
+        <div className="rounded-xl p-4 sm:p-5 mb-5 bg-white border border-[var(--light-gray)]">
+          <h2 className="text-[15px] font-bold text-[var(--charcoal)] mb-4 flex items-center gap-2 pb-3 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
             <CheckCircle2 size={20} className="text-green-500" />
             Complete Session — OT Daily Notes
           </h2>
 
           {/* Mode toggle: Form vs Upload/QR */}
-          <div className="flex rounded-xl overflow-hidden border border-[var(--light-gray)] mb-5">
+          <div className="flex gap-1 p-1 rounded-xl bg-[var(--pale-teal)] mb-5">
             <button
               onClick={() => setPsychUseForm(true)}
-              className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--teal)] text-white"
+              className="flex-1 py-2 rounded-lg text-[13px] font-semibold bg-white text-[var(--deep-teal)] shadow-sm"
             >
               <FileText size={14} className="inline mr-1.5 -mt-0.5" />
               Use Form
             </button>
             <button
               onClick={() => handlePsychSwitchToUpload('complete')}
-              className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--off-white)] text-[var(--mid-gray)] hover:bg-gray-100 transition-colors"
+              className="flex-1 py-2 rounded-lg text-[13px] font-semibold text-[var(--mid-gray)] hover:bg-black/[0.04] transition-colors"
             >
               <Upload size={14} className="inline mr-1.5 -mt-0.5" />
               Upload / QR
             </button>
             <button
               onClick={() => openAttachOthers('complete')}
-              className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--off-white)] text-[var(--mid-gray)] hover:bg-gray-100 transition-colors"
+              className="flex-1 py-2 rounded-lg text-[13px] font-semibold text-[var(--mid-gray)] hover:bg-black/[0.04] transition-colors"
             >
               <Paperclip size={14} className="inline mr-1.5 -mt-0.5" />
               Attach Others
@@ -2020,26 +1998,26 @@ export default function SessionDetailPage() {
 
       {/* SLP Complete form */}
       {actionMode === 'complete' && isSLPDept && session.patient && psychUseForm && ieMode === 'DAILY_NOTES' && (
-        <div className="card-static animate-gate">
-          <h2 className="font-bold text-[var(--charcoal)] mb-4 flex items-center gap-2 pb-4 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
+        <div className="rounded-xl p-4 sm:p-5 mb-5 bg-white border border-[var(--light-gray)]">
+          <h2 className="text-[15px] font-bold text-[var(--charcoal)] mb-4 flex items-center gap-2 pb-3 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
             <CheckCircle2 size={20} className="text-green-500" />
             Complete Session — SLP Daily Notes
           </h2>
 
           {/* Mode toggle: Form vs Upload/QR */}
-          <div className="flex rounded-xl overflow-hidden border border-[var(--light-gray)] mb-5">
+          <div className="flex gap-1 p-1 rounded-xl bg-[var(--pale-teal)] mb-5">
             <button onClick={() => setPsychUseForm(true)}
-              className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--teal)] text-white">
+              className="flex-1 py-2 rounded-lg text-[13px] font-semibold bg-white text-[var(--deep-teal)] shadow-sm">
               <FileText size={14} className="inline mr-1.5 -mt-0.5" />
               Use Form
             </button>
             <button onClick={() => handlePsychSwitchToUpload('complete')}
-              className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--off-white)] text-[var(--mid-gray)] hover:bg-gray-100 transition-colors">
+              className="flex-1 py-2 rounded-lg text-[13px] font-semibold text-[var(--mid-gray)] hover:bg-black/[0.04] transition-colors">
               <Upload size={14} className="inline mr-1.5 -mt-0.5" />
               Upload / QR
             </button>
             <button onClick={() => openAttachOthers('complete')}
-              className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--off-white)] text-[var(--mid-gray)] hover:bg-gray-100 transition-colors">
+              className="flex-1 py-2 rounded-lg text-[13px] font-semibold text-[var(--mid-gray)] hover:bg-black/[0.04] transition-colors">
               <Paperclip size={14} className="inline mr-1.5 -mt-0.5" />
               Attach Others
             </button>
@@ -2078,14 +2056,14 @@ export default function SessionDetailPage() {
 
       {/* SPED Complete form — with 3-way toggle */}
       {actionMode === 'complete' && isSPEDDept && session.patient && psychUseForm && ieMode === 'DAILY_NOTES' && (
-        <div className="card-static animate-gate">
-          <h2 className="font-bold text-[var(--charcoal)] mb-4 flex items-center gap-2 pb-4 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
+        <div className="rounded-xl p-4 sm:p-5 mb-5 bg-white border border-[var(--light-gray)]">
+          <h2 className="text-[15px] font-bold text-[var(--charcoal)] mb-4 flex items-center gap-2 pb-3 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
             <CheckCircle2 size={20} className="text-green-500" />
             Complete Session — SPED
           </h2>
 
           {/* 3-way toggle: SPED16 / SPED18 / Upload/QR */}
-          <div className="flex rounded-xl overflow-hidden border border-[var(--light-gray)] mb-5">
+          <div className="flex gap-1 p-1 rounded-xl bg-[var(--pale-teal)] mb-5">
             <button onClick={() => { setPsychUseForm(true); setSPEDFormVariant('SPED16') }}
               className={`flex-1 py-2.5 text-[13px] font-semibold transition-colors ${psychUseForm && spedFormVariant === 'SPED16' ? 'bg-purple-600 text-white' : 'bg-[var(--off-white)] text-[var(--mid-gray)] hover:bg-gray-100'}`}>
               SPED16
@@ -2095,12 +2073,12 @@ export default function SessionDetailPage() {
               SPED18
             </button>
             <button onClick={() => handlePsychSwitchToUpload('complete')}
-              className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--off-white)] text-[var(--mid-gray)] hover:bg-gray-100 transition-colors">
+              className="flex-1 py-2 rounded-lg text-[13px] font-semibold text-[var(--mid-gray)] hover:bg-black/[0.04] transition-colors">
               <Upload size={14} className="inline mr-1.5 -mt-0.5" />
               Upload / QR
             </button>
             <button onClick={() => openAttachOthers('complete')}
-              className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--off-white)] text-[var(--mid-gray)] hover:bg-gray-100 transition-colors">
+              className="flex-1 py-2 rounded-lg text-[13px] font-semibold text-[var(--mid-gray)] hover:bg-black/[0.04] transition-colors">
               <Paperclip size={14} className="inline mr-1.5 -mt-0.5" />
               Attach Others
             </button>
@@ -2140,23 +2118,23 @@ export default function SessionDetailPage() {
 
       {/* PT Complete form */}
       {actionMode === 'complete' && isPTDept && session.patient && psychUseForm && ieMode === 'DAILY_NOTES' && (
-        <div className="card-static animate-gate">
-          <h2 className="font-bold text-[var(--charcoal)] mb-4 flex items-center gap-2 pb-4 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
+        <div className="rounded-xl p-4 sm:p-5 mb-5 bg-white border border-[var(--light-gray)]">
+          <h2 className="text-[15px] font-bold text-[var(--charcoal)] mb-4 flex items-center gap-2 pb-3 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
             <CheckCircle2 size={20} className="text-green-500" />
             Complete Session — PT Session Notes
           </h2>
 
-          <div className="flex rounded-xl overflow-hidden border border-[var(--light-gray)] mb-5">
+          <div className="flex gap-1 p-1 rounded-xl bg-[var(--pale-teal)] mb-5">
             <button onClick={() => setPsychUseForm(true)}
               className={`flex-1 py-2.5 text-[13px] font-semibold transition-colors ${psychUseForm ? 'bg-blue-600 text-white' : 'bg-[var(--off-white)] text-[var(--mid-gray)] hover:bg-gray-100'}`}>
               <FileText size={14} className="inline mr-1.5 -mt-0.5" /> Use Form
             </button>
             <button onClick={() => handlePsychSwitchToUpload('complete')}
-              className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--off-white)] text-[var(--mid-gray)] hover:bg-gray-100 transition-colors">
+              className="flex-1 py-2 rounded-lg text-[13px] font-semibold text-[var(--mid-gray)] hover:bg-black/[0.04] transition-colors">
               <Upload size={14} className="inline mr-1.5 -mt-0.5" /> Upload / QR
             </button>
             <button onClick={() => openAttachOthers('complete')}
-              className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--off-white)] text-[var(--mid-gray)] hover:bg-gray-100 transition-colors">
+              className="flex-1 py-2 rounded-lg text-[13px] font-semibold text-[var(--mid-gray)] hover:bg-black/[0.04] transition-colors">
               <Paperclip size={14} className="inline mr-1.5 -mt-0.5" /> Attach Others
             </button>
           </div>
@@ -2194,18 +2172,18 @@ export default function SessionDetailPage() {
 
       {/* Upload/QR/Write mode — shown for non-structured-form depts OR structured-form depts when they chose Upload mode */}
       {actionMode === 'complete' && (!hasStructuredForm || !psychUseForm) && (!supportsIEFlag || ieMode === 'DAILY_NOTES') && (
-        <div className="card-static animate-gate">
-          <h2 className="font-bold text-[var(--charcoal)] mb-5 flex items-center gap-2 pb-4 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
+        <div className="rounded-xl p-4 sm:p-5 mb-5 bg-white border border-[var(--light-gray)]">
+          <h2 className="text-[15px] font-bold text-[var(--charcoal)] mb-4 flex items-center gap-2 pb-3 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
             <CheckCircle2 size={20} className="text-green-500" />
             Complete Session
           </h2>
 
           {/* Mode tabs: Use Form (structured depts only) · Upload / QR · Attach Others */}
-          <div className="flex rounded-xl overflow-hidden border border-[var(--light-gray)] mb-5">
+          <div className="flex gap-1 p-1 rounded-xl bg-[var(--pale-teal)] mb-5">
             {hasStructuredForm && (
               <button
                 onClick={() => setPsychUseForm(true)}
-                className="flex-1 py-2.5 text-[13px] font-semibold bg-[var(--off-white)] text-[var(--mid-gray)] hover:bg-gray-100 transition-colors"
+                className="flex-1 py-2 rounded-lg text-[13px] font-semibold text-[var(--mid-gray)] hover:bg-black/[0.04] transition-colors"
               >
                 <FileText size={14} className="inline mr-1.5 -mt-0.5" />
                 Use Form
@@ -2323,19 +2301,19 @@ export default function SessionDetailPage() {
 
           <div className="flex gap-3">
             <button onClick={handleComplete} disabled={submitting || (!hasStructuredForm && !notes.trim() && files.length === 0)}
-              className="btn-primary flex-1 py-3 rounded-xl !bg-gradient-to-r !from-green-600 !to-green-700 !shadow-[0_2px_8px_rgba(22,163,74,0.3)]">
+              className={`${BTN_PRIMARY} flex-1 !h-11`} style={{ background: '#2F7A4A' }}>
               {submitting ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
               {uploadProgress !== null ? `Uploading… ${uploadProgress}%` : 'Save & Complete'}
             </button>
-            <button onClick={() => { setActionMode(null); setFiles([]); setNotes(''); { setQrUrl(null); if (qrPollRef.current) clearInterval(qrPollRef.current) } }} className="btn-secondary px-6 rounded-xl">Cancel</button>
+            <button onClick={() => { setActionMode(null); setFiles([]); setNotes(''); { setQrUrl(null); if (qrPollRef.current) clearInterval(qrPollRef.current) } }} className={`${BTN_SECONDARY} !h-11 px-6`} style={SECONDARY_STYLE}>Cancel</button>
           </div>
         </div>
       )}
 
       {/* Discontinue form */}
       {actionMode === 'discontinue' && (
-        <div className="card-static animate-gate">
-          <h2 className="font-bold text-[var(--charcoal)] mb-5 flex items-center gap-2 pb-4 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
+        <div className="rounded-xl p-4 sm:p-5 mb-5 bg-white border border-[var(--light-gray)]">
+          <h2 className="text-[15px] font-bold text-[var(--charcoal)] mb-4 flex items-center gap-2 pb-3 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
             <XCircle size={20} className="text-red-500" />
             Discontinue Session
           </h2>
@@ -2350,11 +2328,11 @@ export default function SessionDetailPage() {
           </div>
 
           <div className="flex gap-3">
-            <button onClick={handleDiscontinue} disabled={submitting || !remarks.trim()} className="btn-danger flex-1 py-3 rounded-xl">
+            <button onClick={handleDiscontinue} disabled={submitting || !remarks.trim()} className={`${BTN_PRIMARY} flex-1 !h-11`} style={{ background: DANGER }}>
               {submitting ? <Loader2 size={16} className="animate-spin" /> : <XCircle size={16} />}
               Confirm Discontinuation
             </button>
-            <button onClick={() => { setActionMode(null); setRemarks('') }} className="btn-secondary px-6 rounded-xl">Cancel</button>
+            <button onClick={() => { setActionMode(null); setRemarks('') }} className={`${BTN_SECONDARY} !h-11 px-6`} style={SECONDARY_STYLE}>Cancel</button>
           </div>
         </div>
       )}

@@ -11,7 +11,6 @@ import {
   Paperclip,
   Calendar,
   Clock,
-  Stethoscope,
   ArrowRightLeft,
   UserX,
   Trash2,
@@ -20,9 +19,6 @@ import {
   ChevronUp,
   FileText,
   Pencil,
-  ExternalLink,
-  Info,
-  ShieldAlert,
   UserCheck,
   Eye,
   Lock,
@@ -38,6 +34,11 @@ import SPEDNoteDisplay from '@/components/SPEDNoteDisplay'
 import PTNoteDisplay from '@/components/PTNoteDisplay'
 import PatientWidgets from '@/components/PatientWidgets'
 import PatientUploads from '@/components/PatientUploads'
+import {
+  Avatar, Banner, Dialog, EmptyState, KpiCard, PillTabs, Skeleton, StatusPill, Tag,
+  BTN_DANGER_GHOST, BTN_PRIMARY, BTN_SECONDARY, BTN_SM, CARD_STYLE, CONTROL, CONTROL_STYLE,
+  DANGER, FOCUS, LABEL, LABEL_STYLE, PRIMARY_STYLE, SECONDARY_STYLE, SUBTLE_BG, TEXTAREA,
+} from '@/components/hub/ui'
 import { NOTE_WINDOW_MONTHS } from '@/lib/note-age-lock'
 
 interface PatientDetail {
@@ -127,7 +128,7 @@ function renderNoteBody(notes: string | null | undefined) {
     if (parsed.formType === 'PT_SESSION_NOTES') return <PTNoteDisplay data={parsed} />
   } catch { /* not JSON — render as plain text below */ }
   return (
-    <div className="text-sm whitespace-pre-wrap bg-[var(--off-white)] p-3 rounded-lg border border-[var(--light-gray)]">{notes}</div>
+    <div className="text-sm whitespace-pre-wrap p-3 rounded-lg" style={{ background: SUBTLE_BG, border: '1px solid var(--light-gray)' }}>{notes}</div>
   )
 }
 
@@ -363,22 +364,32 @@ export default function PatientDetailPage() {
     setTimeout(() => setToast(null), 4000)
   }
 
+
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 gap-3">
-        <Loader2 className="w-8 h-8 text-[var(--teal)] animate-spin" />
-        <p className="text-sm text-[var(--mid-gray)]">Loading patient...</p>
+      <div className="max-w-[1240px] mx-auto space-y-5" role="status" aria-label="Loading patient">
+        <Skeleton className="h-4 w-32" />
+        <div className="rounded-xl p-5 flex items-center gap-4" style={CARD_STYLE}>
+          <Skeleton className="w-14 h-14 rounded-full" />
+          <div className="flex-1 space-y-2"><Skeleton className="h-5 w-48" /><Skeleton className="h-3.5 w-72" /></div>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {[0, 1, 2, 3].map(i => <Skeleton key={i} className="h-20 rounded-xl" />)}
+        </div>
+        <Skeleton className="h-64 rounded-xl" />
       </div>
     )
   }
 
   if (!patient) {
     return (
-      <div className="card-static text-center py-16 max-w-lg mx-auto">
-        <p className="text-[var(--mid-gray)] font-medium">Patient not found</p>
-        <button onClick={() => router.push('/patients')} className="mt-3 text-[var(--teal)] text-sm hover:underline">
-          Back to Patients
-        </button>
+      <div className="rounded-xl max-w-lg mx-auto" style={CARD_STYLE}>
+        <EmptyState icon="users" title="Patient not found" hint="They may have been removed, or you no longer have access." />
+        <div className="pb-6 text-center">
+          <button type="button" onClick={() => router.push('/patients')} className={BTN_SECONDARY} style={SECONDARY_STYLE}>
+            <ArrowLeft size={14} /> Back to Patients
+          </button>
+        </div>
       </div>
     )
   }
@@ -386,6 +397,8 @@ export default function PatientDetailPage() {
   const patientName = `${patient.firstName} ${patient.lastName}`
   const completedCount = sessions.filter((s) => s.sessionNote?.status === 'COMPLETED').length
   const totalCount = sessions.length
+  const discontinuedCount = sessions.filter((s) => s.sessionNote?.status === 'DISCONTINUED').length
+  const pendingCount = sessions.filter((s) => !s.sessionNote).length
 
   // Interdisciplinary = the patient also sees other departments. Only then do
   // we split the page into tabs. The department list is the union of every
@@ -399,226 +412,229 @@ export default function PatientDetailPage() {
   // The own-documents sidebar belongs to the "own" view; hide it on the other tab.
   const showSidebar = activeTab === 'own'
 
+  // Session-history date filter (same maths as before, computed once).
+  const histFrom = filterFrom ? new Date(filterFrom).getTime() : -Infinity
+  const histTo = filterTo ? new Date(filterTo).getTime() + 86400000 : Infinity
+  const visibleSessions = sessions.filter(s => {
+    const t = new Date(s.date).getTime()
+    return t >= histFrom && t < histTo
+  })
+
+  // The caller's relationship to this patient, as a pill.
+  const relationPill = assignmentStatus === 'DISCHARGED'
+    ? <StatusPill tone="error">Discharged</StatusPill>
+    : readOnly
+      ? <StatusPill tone="neutral">Read-only</StatusPill>
+      : <StatusPill tone="success">Active</StatusPill>
+
   return (
-    <div className="max-w-7xl mx-auto">
-      {toast && <div className="toast">{toast}</div>}
+    <div className="max-w-[1240px] mx-auto space-y-5 min-w-0">
+      {toast && <div className="toast" role="status">{toast}</div>}
 
       {/* Back */}
       <button
+        type="button"
         onClick={() => router.push('/patients')}
-        className="flex items-center gap-1.5 text-[13px] text-[var(--mid-gray)] hover:text-[var(--teal)] mb-6 transition-colors font-medium"
+        className={`${BTN_SM} -ml-2`}
+        style={{ color: 'var(--mid-gray)' }}
       >
-        <ArrowLeft size={16} />
+        <ArrowLeft size={14} />
         Back to Patients
       </button>
 
       <div className={cn(
-        'grid grid-cols-1 gap-6',
-        showSidebar && 'lg:grid-cols-[1fr_320px]',
+        'grid grid-cols-1 gap-5',
+        showSidebar && 'lg:grid-cols-[minmax(0,1fr)_320px]',
         // Whole-page muted state when this clinician no longer owns the
-        // patient. Slight desaturation + lower opacity makes it visually
-        // obvious without preventing reading.
-        readOnly && 'grayscale-[0.4] opacity-90'
+        // patient. Slight desaturation makes it visually obvious without
+        // preventing reading.
+        readOnly && 'grayscale-[0.4]'
       )}>
-        <div className="min-w-0">
+        <div className="min-w-0 space-y-5">
 
       {/* Patient header */}
-      <div className={cn(
-        'rounded-2xl p-6 mb-6 animate-fade-up',
-        readOnly
-          ? 'bg-[var(--paper-2)] border border-[var(--paper-3)]'
-          : 'hero-gradient'
-      )}>
-        <div className="relative z-10 flex items-center gap-4">
-          <div className={cn(
-            'w-14 h-14 rounded-full flex items-center justify-center font-bold text-lg backdrop-blur-sm border',
-            readOnly
-              ? 'bg-[var(--paper-3)] text-[var(--mid-gray)] border-[var(--paper-3)]'
-              : 'bg-white/15 text-white border-white/20'
-          )}>
-            {patient.firstName[0]}{patient.lastName[0]}
+      <section className="rounded-xl" style={CARD_STYLE}>
+        <div className="px-4 sm:px-5 py-4 flex flex-wrap items-center gap-4">
+          <span className={readOnly ? 'opacity-60' : ''}><Avatar text={`${patient.firstName[0]}${patient.lastName[0]}`} size={52} /></span>
+          <div className="flex-1 min-w-[200px]">
+            <p className="text-xs font-semibold uppercase tracking-widest mb-0.5" style={{ color: 'var(--deep-teal)', fontFamily: 'var(--font-display)' }}>Patient</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-[22px] sm:text-2xl font-bold leading-tight break-words" style={{ fontFamily: 'var(--font-display)', color: readOnly ? 'var(--mid-gray)' : 'var(--charcoal)' }}>
+                {patientName}
+              </h1>
+              {relationPill}
+            </div>
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1 text-[13px]" style={{ color: 'var(--mid-gray)' }}>
+              <Tag tone="brand">{patient.patientType}</Tag>
+              {patient.diagnosis && <span className="break-words">{patient.diagnosis}</span>}
+              {patient.email && <><span aria-hidden>·</span><span className="break-all">{patient.email}</span></>}
+              {otherServices.map((d) => <span key={d} title={`Also seen by ${d}`}><Tag tone="neutral">{d}</Tag></span>)}
+            </div>
           </div>
-          <div className="flex-1 min-w-0">
-            <h1 className={cn(
-              'text-xl font-bold break-words',
-              readOnly ? 'text-[var(--mid-gray)]' : 'text-white'
-            )}>{patientName}</h1>
-            <p className={cn(
-              'text-sm mt-0.5 break-words',
-              readOnly ? 'text-[var(--mid-gray)]/80' : 'text-white/60'
-            )}>
-              {patient.patientType} {patient.diagnosis ? `· ${patient.diagnosis}` : ''}
-              {patient.email ? ` · ${patient.email}` : ''}
-            </p>
-          </div>
+
+          {/* Actions. Three mutually exclusive states based on the
+              requester's OWN PatientAssignment row (admin and clinician
+              share this logic — admins never go read-only, but they DO
+              accumulate their own DISCHARGED row when they click
+              Discharged on a patient, and need a way back from that):
+                • assignmentStatus === 'DISCHARGED' → Re-admit only
+                  (POST /api/patients/[id]/readmit flips the caller's own
+                  DISCHARGED row back to ACTIVE).
+                • !readOnly (active owner OR admin without a discharged
+                  row) → Endorse + Discharge.
+                • read-only (DEACTIVATED / legacy ENDORSED) → no actions.
+              assignmentStatus is checked first so an admin who already
+              discharged the patient sees Re-admit instead of being able
+              to discharge twice. */}
+          {assignmentStatus === 'DISCHARGED' ? (
+            <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+              <button
+                type="button"
+                onClick={handleReadmit}
+                disabled={readmitting}
+                className={`${BTN_PRIMARY} flex-1 sm:flex-none`}
+                style={PRIMARY_STYLE}
+                title="Re-admit this patient as active"
+              >
+                {readmitting ? <Loader2 size={15} className="animate-spin" /> : <UserCheck size={15} />}
+                Re-admit
+              </button>
+            </div>
+          ) : !readOnly ? (
+            <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+              <button type="button" onClick={loadEndorseStaff} className={`${BTN_SECONDARY} flex-1 sm:flex-none`} style={{ ...SECONDARY_STYLE, color: '#8A5A1F' }}>
+                <ArrowRightLeft size={15} />
+                Endorse to
+              </button>
+              <button type="button" onClick={() => setShowDischarge(true)} className={`${BTN_SECONDARY} flex-1 sm:flex-none`} style={{ ...SECONDARY_STYLE, color: DANGER }}>
+                <UserX size={15} />
+                Discharged
+              </button>
+            </div>
+          ) : null}
         </div>
-      </div>
+
+        {/* Admin-only "wipe everything clinical for this patient". Visible
+            regardless of readOnly (admins are never read-only) so it shows
+            on Active, Deactivated, Endorsed and Discharged patients alike.
+            The destructive cascade lives behind a typed-name confirm. */}
+        {isAdmin && (
+          <div className="px-4 sm:px-5 py-2.5 flex flex-wrap items-center justify-between gap-2 rounded-b-xl"
+            style={{ borderTop: '1px solid var(--light-gray)', background: SUBTLE_BG }}>
+            <span className="text-[11.5px] inline-flex items-center gap-1.5" style={{ color: 'var(--mid-gray)' }}>
+              <ShieldX size={13} /> Admin tools
+            </span>
+            <button
+              type="button"
+              onClick={() => setShowAdminWipe(true)}
+              className={BTN_DANGER_GHOST}
+              style={{ color: DANGER }}
+              title="Admin only — delete all session notes and documents for this patient"
+            >
+              <ShieldX size={13} />
+              Delete all clinical data for this patient
+            </button>
+          </div>
+        )}
+      </section>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 gap-3 mb-6">
-        <div className="card-static !p-4 animate-fade-up stagger-1">
-          <p className="text-[11px] text-[var(--mid-gray)] uppercase font-semibold tracking-wider mb-1">Total Sessions</p>
-          <p className="text-2xl font-bold text-[var(--charcoal)]">{totalCount}</p>
-        </div>
-        <div className="card-static !p-4 animate-fade-up stagger-2">
-          <p className="text-[11px] text-[var(--mid-gray)] uppercase font-semibold tracking-wider mb-1">Completed</p>
-          <p className="text-2xl font-bold text-green-600">{completedCount}</p>
-        </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <KpiCard label="Total Sessions" value={totalCount} sub="Confirmed sessions" icon={<Calendar size={15} />} />
+        <KpiCard label="Completed" value={completedCount} sub={totalCount ? `${Math.round((completedCount / totalCount) * 100)}% have notes` : 'No sessions yet'} accent="var(--moss)" icon={<CheckCircle2 size={15} />} />
+        <KpiCard label="Pending notes" value={pendingCount} sub={pendingCount ? 'No note yet' : 'All documented'} accent={pendingCount ? '#8C6A2D' : 'var(--moss)'} icon={<Clock size={15} />} />
+        <KpiCard label="Discontinued" value={discontinuedCount} sub="With remarks" accent="var(--clay)" icon={<XCircle size={15} />} />
       </div>
 
-      {/* Read-only banner — visible whenever this clinician no longer
-          owns the patient (endorsed away or discharged). The patient
-          and their notes are still visible for continuity of care, but
-          we hide the write-action buttons. */}
+      {/* Read-only banner — visible whenever this clinician no longer owns
+          the patient (endorsed away or discharged). The patient and their
+          notes are still visible for continuity of care, but the write
+          actions are hidden. */}
       {readOnly && (
-        <div className="card-static !p-4 mb-4 animate-fade-up stagger-3 border-l-4 border-[var(--mid-gray)] bg-[var(--paper-2)]/40">
-          <p className="text-[13px] font-semibold text-[var(--narra)] mb-1 flex items-center gap-2">
-            <ShieldAlert size={15} className="text-[var(--mid-gray)]" />
-            Read-only — you don&rsquo;t currently own this patient
-          </p>
-          <p className="text-[12px] text-[var(--mid-gray)] leading-relaxed">
-            {assignmentStatus === 'DISCHARGED'
-              ? 'This patient was discharged. You can review past sessions and notes, but cannot edit them. Re-admit if the patient returns to your care.'
-              : 'You endorsed this patient to another clinician. You can still view all sessions and notes (yours and theirs going forward) for continuity of care, but cannot make new edits unless they endorse the patient back to you.'}
-          </p>
-        </div>
+        <Banner tone="warn">
+          <span className="font-semibold">Read-only — you don&rsquo;t currently own this patient.</span>{' '}
+          {assignmentStatus === 'DISCHARGED'
+            ? 'This patient was discharged. You can review past sessions and notes, but cannot edit them. Re-admit if the patient returns to your care.'
+            : 'You endorsed this patient to another clinician. You can still view all sessions and notes (yours and theirs going forward) for continuity of care, but cannot make new edits unless they endorse the patient back to you.'}
+        </Banner>
       )}
 
-      {/* Action buttons.
-          Three mutually exclusive states based on the requester's
-          OWN PatientAssignment row (admin and clinician share this
-          logic — admins never go read-only, but they DO accumulate
-          their own DISCHARGED row when they click Discharged on a
-          patient, and need a way back from that):
-            • assignmentStatus === 'DISCHARGED' → show Re-admit only.
-              Hits POST /api/patients/[id]/readmit which finds the
-              caller's own DISCHARGED row and flips it back to ACTIVE.
-            • !readOnly (active owner OR admin without a discharged
-              row)           → show Endorse + Discharge.
-            • read-only (DEACTIVATED / legacy ENDORSED for clinicians)
-                            → show no actions.
-          assignmentStatus is checked first so an admin who already
-          discharged the patient sees Re-admit instead of being able
-          to discharge twice. */}
-      {assignmentStatus === 'DISCHARGED' ? (
-        <div className="flex gap-3 mb-6 animate-fade-up stagger-3">
-          <button
-            onClick={handleReadmit}
-            disabled={readmitting}
-            className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[14px] font-semibold bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 transition-colors disabled:opacity-50"
-            title="Re-admit this patient as active"
-          >
-            {readmitting ? <Loader2 size={18} className="animate-spin" /> : <UserCheck size={18} />}
-            Re-admit
-          </button>
-        </div>
-      ) : !readOnly ? (
-        <div className="flex gap-3 mb-6 animate-fade-up stagger-3">
-          <button
-            onClick={loadEndorseStaff}
-            className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[14px] font-semibold bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors"
-          >
-            <ArrowRightLeft size={18} />
-            Endorse to
-          </button>
-          <button
-            onClick={() => setShowDischarge(true)}
-            className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[14px] font-semibold bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition-colors"
-          >
-            <UserX size={18} />
-            Discharged
-          </button>
-        </div>
-      ) : null}
-
-      {/* Admin-only "wipe everything clinical for this patient".
-          Visible regardless of readOnly state (admins are never
-          read-only) so the button shows up on Active, Deactivated,
-          Endorsed and Discharged patients alike — useful for cleanup
-          on accidentally-created records or legitimate data removal
-          requests. The destructive cascade lives behind a typed-name
-          confirm modal so a misclick can't trigger it. */}
-      {isAdmin && (
-        <div className="mb-6 animate-fade-up stagger-3">
-          <button
-            onClick={() => setShowAdminWipe(true)}
-            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-[12px] font-semibold bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 transition-colors"
-            title="Admin only — delete all session notes and documents for this patient"
-          >
-            <ShieldX size={14} />
-            Admin: Delete all clinical data for this patient
-          </button>
-        </div>
-      )}
-
-      {/* Endorse modal */}
+      {/* Endorse dialog */}
       {showEndorse && (
-        <div className="card-static mb-6 animate-gate">
-          <h3 className="font-bold text-[var(--charcoal)] mb-4 flex items-center gap-2" style={{ fontFamily: 'var(--font-display)' }}>
-            <ArrowRightLeft size={18} className="text-amber-600" />
-            Endorse Patient
-          </h3>
-          <p className="text-sm text-[var(--mid-gray)] mb-4">
-            Select a clinician from the same department. All past session notes will be accessible to them.
-          </p>
+        <Dialog
+          labelId="pp-endorse"
+          eyebrow="Endorse patient"
+          title={`Endorse ${patientName}`}
+          description="Select a clinician from the same department. All past session notes will be accessible to them."
+          onClose={() => { setShowEndorse(false); setSelectedStaff('') }}
+          footer={
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => { setShowEndorse(false); setSelectedStaff('') }} className={BTN_SECONDARY} style={SECONDARY_STYLE}>Cancel</button>
+              <button type="button" onClick={handleEndorse} disabled={endorsing || !selectedStaff} className={BTN_PRIMARY} style={PRIMARY_STYLE}>
+                {endorsing ? <Loader2 size={15} className="animate-spin" /> : <ArrowRightLeft size={15} />}
+                Confirm Endorsement
+              </button>
+            </div>
+          }
+        >
           {endorseStaff.length === 0 ? (
-            <p className="text-sm text-[var(--mid-gray)] italic">No other clinicians found in your department.</p>
+            <p className="text-sm italic" style={{ color: 'var(--mid-gray)' }}>No other clinicians found in your department.</p>
           ) : (
-            <select
-              value={selectedStaff}
-              onChange={(e) => setSelectedStaff(e.target.value)}
-              className="input !rounded-xl mb-4"
-            >
-              <option value="">Select clinician...</option>
-              {endorseStaff.map((s) => (
-                <option key={s.accountId} value={s.accountId}>
-                  {s.name} ({s.department}) - {s.branch}
-                </option>
-              ))}
-            </select>
+            <div>
+              <label htmlFor="pp-endorse-to" className={LABEL} style={LABEL_STYLE}>Endorse to</label>
+              <select
+                id="pp-endorse-to"
+                value={selectedStaff}
+                onChange={(e) => setSelectedStaff(e.target.value)}
+                className={`${CONTROL} w-full h-10`}
+                style={CONTROL_STYLE}
+              >
+                <option value="">Select clinician...</option>
+                {endorseStaff.map((s) => (
+                  <option key={s.accountId} value={s.accountId}>
+                    {s.name} ({s.department}) - {s.branch}
+                  </option>
+                ))}
+              </select>
+            </div>
           )}
-          <div className="flex gap-3">
-            <button onClick={handleEndorse} disabled={endorsing || !selectedStaff}
-              className="btn-primary flex-1 py-2.5 rounded-xl !bg-amber-600 !shadow-[0_2px_8px_rgba(217,119,6,0.3)]">
-              {endorsing ? <Loader2 size={16} className="animate-spin" /> : <ArrowRightLeft size={16} />}
-              Confirm Endorsement
-            </button>
-            <button onClick={() => { setShowEndorse(false); setSelectedStaff('') }} className="btn-secondary px-5 rounded-xl">Cancel</button>
-          </div>
-        </div>
+        </Dialog>
       )}
 
-      {/* Discharge modal */}
+      {/* Discharge dialog */}
       {showDischarge && (
-        <div className="card-static mb-6 animate-gate">
-          <h3 className="font-bold text-[var(--charcoal)] mb-4 flex items-center gap-2" style={{ fontFamily: 'var(--font-display)' }}>
-            <UserX size={18} className="text-red-500" />
-            Discharge Patient
-          </h3>
-          <div className="mb-4">
-            <label className="block text-[13px] font-semibold text-[var(--charcoal)] mb-2">
-              Remarks <span className="text-red-500">*</span>
-            </label>
-            <textarea
-              value={dischargeRemarks}
-              onChange={(e) => setDischargeRemarks(e.target.value)}
-              rows={4}
-              placeholder="Reason for discharge..."
-              className="input resize-y !rounded-xl"
-              autoFocus
-            />
-          </div>
-          <div className="flex gap-3">
-            <button onClick={handleDischarge} disabled={discharging || !dischargeRemarks.trim()} className="btn-danger flex-1 py-2.5 rounded-xl">
-              {discharging ? <Loader2 size={16} className="animate-spin" /> : <UserX size={16} />}
-              Confirm Discharge
-            </button>
-            <button onClick={() => { setShowDischarge(false); setDischargeRemarks('') }} className="btn-secondary px-5 rounded-xl">Cancel</button>
-          </div>
-        </div>
+        <Dialog
+          labelId="pp-discharge"
+          eyebrow="Discharge patient"
+          title={`Discharge ${patientName}`}
+          onClose={() => { setShowDischarge(false); setDischargeRemarks('') }}
+          footer={
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => { setShowDischarge(false); setDischargeRemarks('') }} className={BTN_SECONDARY} style={SECONDARY_STYLE}>Cancel</button>
+              <button type="button" onClick={handleDischarge} disabled={discharging || !dischargeRemarks.trim()} className={BTN_PRIMARY} style={{ background: DANGER }}>
+                {discharging ? <Loader2 size={15} className="animate-spin" /> : <UserX size={15} />}
+                Confirm Discharge
+              </button>
+            </div>
+          }
+        >
+          <label htmlFor="pp-discharge-remarks" className={LABEL} style={LABEL_STYLE}>
+            Remarks <span style={{ color: DANGER }}>*</span>
+          </label>
+          <textarea
+            id="pp-discharge-remarks"
+            value={dischargeRemarks}
+            onChange={(e) => setDischargeRemarks(e.target.value)}
+            rows={4}
+            placeholder="Reason for discharge..."
+            className={`${TEXTAREA} resize-y`}
+            style={CONTROL_STYLE}
+            autoFocus
+          />
+        </Dialog>
       )}
 
-      {/* Admin wipe modal — type-the-name confirmation */}
+      {/* Admin wipe dialog — type-the-name confirmation */}
       {showAdminWipe && patient && (() => {
         // Local helpers: same normalization the server uses, so the
         // disabled state matches what the server would accept.
@@ -626,102 +642,71 @@ export default function PatientDetailPage() {
         const expected = normalize(`${patient.firstName} ${patient.lastName}`)
         const matches = normalize(adminWipeNameInput) === expected
         return (
-          <div className="card-static mb-6 animate-gate border-red-300 !bg-red-50/40">
-            <h3 className="font-bold text-red-700 mb-2 flex items-center gap-2" style={{ fontFamily: 'var(--font-display)' }}>
-              <ShieldX size={18} />
-              Delete all clinical data for this patient
-            </h3>
-            <p className="text-[13px] text-red-700/90 mb-1">
-              This permanently removes <strong>every session note</strong>, <strong>Initial Evaluation</strong>, <strong>Progress Report</strong>, <strong>Other Document</strong> and all attached files for{' '}
-              <strong>{patient.firstName} {patient.lastName}</strong>.
-            </p>
-            <p className="text-[12px] text-red-700/80 mb-4">
-              The patient record and schedule history are kept. This action is admin-only and cannot be undone.
-            </p>
-            <div className="mb-4">
-              <label className="block text-[12px] font-semibold text-red-700 mb-1.5">
-                Type the patient&apos;s full name to confirm:
-              </label>
-              <input
-                type="text"
-                value={adminWipeNameInput}
-                onChange={(e) => setAdminWipeNameInput(e.target.value)}
-                placeholder={`${patient.firstName} ${patient.lastName}`}
-                className="input !rounded-xl !border-red-300 focus:!border-red-500"
-                autoFocus
-                autoComplete="off"
-                spellCheck={false}
-              />
+          <Dialog
+            labelId="pp-admin-wipe"
+            eyebrow="Admin only"
+            title="Delete all clinical data for this patient"
+            onClose={() => { setShowAdminWipe(false); setAdminWipeNameInput('') }}
+            footer={
+              <div className="flex justify-end gap-2">
+                <button type="button" onClick={() => { setShowAdminWipe(false); setAdminWipeNameInput('') }} className={BTN_SECONDARY} style={SECONDARY_STYLE}>Cancel</button>
+                <button type="button" onClick={handleAdminWipe} disabled={adminWiping || !matches} className={BTN_PRIMARY} style={{ background: DANGER }}>
+                  {adminWiping ? <Loader2 size={15} className="animate-spin" /> : <ShieldX size={15} />}
+                  Permanently delete
+                </button>
+              </div>
+            }
+          >
+            <div className="space-y-3">
+              <Banner tone="error">
+                This permanently removes <strong>every session note</strong>, <strong>Initial Evaluation</strong>, <strong>Progress Report</strong>, <strong>Other Document</strong> and all attached files for{' '}
+                <strong>{patient.firstName} {patient.lastName}</strong>. The patient record and schedule history are kept. This action is admin-only and cannot be undone.
+              </Banner>
+              <div>
+                <label htmlFor="pp-wipe-name" className={LABEL} style={LABEL_STYLE}>
+                  Type the patient&apos;s full name to confirm
+                </label>
+                <input
+                  id="pp-wipe-name"
+                  type="text"
+                  value={adminWipeNameInput}
+                  onChange={(e) => setAdminWipeNameInput(e.target.value)}
+                  placeholder={`${patient.firstName} ${patient.lastName}`}
+                  className={`${CONTROL} w-full h-10`}
+                  style={{ ...CONTROL_STYLE, borderColor: matches ? '#9FC08A' : '#FECACA' }}
+                  autoFocus
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+              </div>
             </div>
-            <div className="flex gap-3">
-              <button
-                onClick={handleAdminWipe}
-                disabled={adminWiping || !matches}
-                className="btn-danger flex-1 py-2.5 rounded-xl"
-              >
-                {adminWiping ? <Loader2 size={16} className="animate-spin" /> : <ShieldX size={16} />}
-                Permanently delete
-              </button>
-              <button
-                onClick={() => { setShowAdminWipe(false); setAdminWipeNameInput('') }}
-                className="btn-secondary px-5 rounded-xl"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
+          </Dialog>
         )
       })()}
 
       {/* Tab switcher: own notes, other-department records (interdisciplinary
           patients only), and patient uploads. Always shown so Patient Uploads
-          is a first-class tab for every patient, next to the others. */}
-      <div className="mb-6 flex gap-2 p-1 rounded-xl bg-[var(--off-white)] border border-[var(--light-gray)] animate-fade-up">
-        <button
-          onClick={() => setActiveTab('own')}
-          className={cn(
-            'flex-1 px-4 py-2.5 rounded-lg text-[13px] font-semibold transition-colors',
-            activeTab === 'own' ? 'bg-white text-[var(--teal)] shadow-sm' : 'text-[var(--mid-gray)] hover:text-[var(--charcoal)]',
-          )}
-        >
-          Own Session Notes
-        </button>
-        {isInterdisciplinary && (
-          <button
-            onClick={() => setActiveTab('other')}
-            className={cn(
-              'flex-1 px-4 py-2.5 rounded-lg text-[13px] font-semibold transition-colors flex items-center justify-center gap-2',
-              activeTab === 'other' ? 'bg-white text-[var(--narra)] shadow-sm' : 'text-[var(--mid-gray)] hover:text-[var(--charcoal)]',
-            )}
-          >
-            Records from Other Departments
-            {otherDeptSessions.length + otherDeptDocuments.length > 0 && (
-              <span className="text-[10px] font-bold text-white bg-[var(--narra)] px-1.5 py-0.5 rounded-full">{otherDeptSessions.length + otherDeptDocuments.length}</span>
-            )}
-          </button>
-        )}
-        <button
-          onClick={() => setActiveTab('uploads')}
-          className={cn(
-            'flex-1 px-4 py-2.5 rounded-lg text-[13px] font-semibold transition-colors flex items-center justify-center gap-2',
-            activeTab === 'uploads' ? 'bg-white text-[var(--narra)] shadow-sm' : 'text-[var(--mid-gray)] hover:text-[var(--charcoal)]',
-          )}
-        >
-          <Inbox size={15} />
-          Patient Uploads
-        </button>
-      </div>
+          is a first-class tab for every patient. */}
+      <PillTabs
+        label="Patient records"
+        value={activeTab}
+        onChange={(id) => setActiveTab(id as 'own' | 'other' | 'uploads')}
+        tabs={[
+          { id: 'own', label: 'Own Session Notes', count: sessions.length },
+          ...(isInterdisciplinary
+            ? [{ id: 'other', label: 'Records from Other Departments', count: otherDeptSessions.length + otherDeptDocuments.length }]
+            : []),
+          { id: 'uploads', label: <span className="inline-flex items-center gap-1.5"><Inbox size={13} /> Patient Uploads</span> },
+        ]}
+      />
 
       {/* OTHER tab — per-department, read-only records (notes + IE / Progress
           Reports / uploads). One accordion per department the patient sees. */}
       {isInterdisciplinary && activeTab === 'other' && (
-        <div className="mb-6 animate-fade-up space-y-3">
-          <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 flex gap-2.5">
-            <ShieldAlert size={18} className="text-blue-600 shrink-0 mt-0.5" />
-            <p className="text-[12.5px] text-blue-700 leading-relaxed">
-              <span className="font-semibold">Interdisciplinary case.</span> These are the other departments’ read-only records — you can view but not edit them. Open a department to see its notes and documents, and coordinate with the professional for interprofessional collaboration.
-            </p>
-          </div>
+        <div className="space-y-3">
+          <Banner tone="info">
+            <span className="font-semibold">Interdisciplinary case.</span> These are the other departments’ read-only records — you can view but not edit them. Open a department to see its notes and documents, and coordinate with the professional for interprofessional collaboration.
+          </Banner>
 
           {otherDepts.map((dep) => {
             const notes = otherDeptSessions.filter((s) => s.staff.department === dep)
@@ -729,50 +714,54 @@ export default function PatientDetailPage() {
             const pros = otherDeptStaff.filter((p) => p.department === dep).map((p) => p.name)
             const open = openDept === dep
             return (
-              <div key={dep} className="rounded-xl border border-[var(--light-gray)] bg-white overflow-hidden">
+              <section key={dep} className="rounded-xl" style={CARD_STYLE}>
                 <button
+                  type="button"
                   onClick={() => setOpenDept(open ? null : dep)}
-                  className="w-full flex items-center justify-between gap-2 px-4 py-3 text-left hover:bg-[var(--off-white)]"
+                  aria-expanded={open}
+                  className={`w-full flex items-center justify-between gap-2 px-4 py-3 text-left rounded-xl transition-colors hover:bg-[#F8FAF2] ${FOCUS}`}
                 >
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-[11px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-md bg-[var(--pale-teal)] text-[var(--teal)]">{dep}</span>
-                    {pros.length > 0 && <span className="text-[12.5px] font-semibold text-[var(--charcoal)]">{pros.join(', ')}</span>}
-                    <span className="text-[11px] text-[var(--mid-gray)]">{notes.length} note{notes.length === 1 ? '' : 's'} · {docs.length} document{docs.length === 1 ? '' : 's'}</span>
+                  <div className="flex items-center gap-2 flex-wrap min-w-0">
+                    <Tag tone="brand">{dep}</Tag>
+                    {pros.length > 0 && <span className="text-[13px] font-semibold" style={{ color: 'var(--charcoal)' }}>{pros.join(', ')}</span>}
+                    <span className="text-[11.5px]" style={{ color: 'var(--mid-gray)' }}>{notes.length} note{notes.length === 1 ? '' : 's'} · {docs.length} document{docs.length === 1 ? '' : 's'}</span>
                   </div>
-                  {open ? <ChevronUp size={18} className="text-[var(--mid-gray)]" /> : <ChevronDown size={18} className="text-[var(--mid-gray)]" />}
+                  {open ? <ChevronUp size={18} style={{ color: 'var(--mid-gray)' }} /> : <ChevronDown size={18} style={{ color: 'var(--mid-gray)' }} />}
                 </button>
                 {open && (
-                  <div className="px-3 pb-3 space-y-2.5 border-t border-[var(--light-gray)]">
+                  <div className="px-3 pb-3 space-y-2.5" style={{ borderTop: '1px solid var(--light-gray)' }}>
                     {notes.length === 0 && docs.length === 0 && (
-                      <p className="text-[12.5px] text-[var(--mid-gray)] italic px-1 py-3">No notes or documents yet for this department.</p>
+                      <p className="text-[12.5px] italic px-1 py-3" style={{ color: 'var(--mid-gray)' }}>No notes or documents yet for this department.</p>
                     )}
 
                     {notes.length > 0 && (
                       <>
-                        <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--mid-gray)] pt-3 px-1">Session Notes ({notes.length}) — pick a day</p>
+                        <p className="text-[11px] font-semibold uppercase tracking-wider pt-3 px-1" style={{ color: 'var(--mid-gray)', fontFamily: 'var(--font-display)' }}>Session Notes ({notes.length}) — pick a day</p>
                         {notes.map((s) => {
                           const noteOpen = openNoteId === s.id
                           return (
-                            <div key={s.id} className="rounded-lg border border-[var(--light-gray)] bg-white overflow-hidden">
+                            <div key={s.id} className="rounded-lg overflow-hidden" style={{ border: '1px solid var(--light-gray)', background: '#fff' }}>
                               <button
+                                type="button"
                                 onClick={() => setOpenNoteId(noteOpen ? null : s.id)}
-                                className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left hover:bg-[var(--off-white)]"
+                                aria-expanded={noteOpen}
+                                className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left transition-colors hover:bg-[#F8FAF2] ${FOCUS}`}
                               >
                                 <div className="flex items-center gap-2 flex-wrap">
-                                  <Calendar size={13} className="text-[var(--mid-gray)] shrink-0" />
-                                  <span className="text-[12.5px] font-semibold text-[var(--charcoal)]">{s.date}</span>
-                                  {s.sessionType && <span className="text-[11px] text-[var(--mid-gray)]">{s.sessionType}</span>}
+                                  <Calendar size={13} className="shrink-0" style={{ color: 'var(--mid-gray)' }} />
+                                  <span className="text-[12.5px] font-semibold tabular-nums" style={{ color: 'var(--charcoal)' }}>{s.date}</span>
+                                  {s.sessionType && <span className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>{s.sessionType}</span>}
                                 </div>
-                                {noteOpen ? <ChevronUp size={16} className="text-[var(--mid-gray)] shrink-0" /> : <ChevronDown size={16} className="text-[var(--mid-gray)] shrink-0" />}
+                                {noteOpen ? <ChevronUp size={16} className="shrink-0" style={{ color: 'var(--mid-gray)' }} /> : <ChevronDown size={16} className="shrink-0" style={{ color: 'var(--mid-gray)' }} />}
                               </button>
                               {noteOpen && (
-                                <div className="px-3 pb-3 pt-2 border-t border-[var(--light-gray)]">
-                                  <p className="text-[11px] text-[var(--mid-gray)] mb-2">by {s.staff.firstName} {s.staff.lastName}</p>
+                                <div className="px-3 pb-3 pt-2" style={{ borderTop: '1px solid var(--light-gray)' }}>
+                                  <p className="text-[11px] mb-2" style={{ color: 'var(--mid-gray)' }}>by {s.staff.firstName} {s.staff.lastName}</p>
                                   {s.sessionNote?.notes
                                     ? renderNoteBody(s.sessionNote.notes)
                                     : s.sessionNote?.discontinuedRemarks
-                                      ? <p className="text-[13px] text-[var(--mid-gray)] italic">Discontinued: {s.sessionNote.discontinuedRemarks}</p>
-                                      : <p className="text-[13px] text-[var(--mid-gray)] italic">No note content.</p>}
+                                      ? <p className="text-[13px] italic" style={{ color: 'var(--mid-gray)' }}>Discontinued: {s.sessionNote.discontinuedRemarks}</p>
+                                      : <p className="text-[13px] italic" style={{ color: 'var(--mid-gray)' }}>No note content.</p>}
                                 </div>
                               )}
                             </div>
@@ -783,22 +772,23 @@ export default function PatientDetailPage() {
 
                     {docs.length > 0 && (
                       <>
-                        <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--mid-gray)] pt-3 px-1">Documents — Initial Evaluations, Progress Reports &amp; Uploads</p>
+                        <p className="text-[11px] font-semibold uppercase tracking-wider pt-3 px-1" style={{ color: 'var(--mid-gray)', fontFamily: 'var(--font-display)' }}>Documents — Initial Evaluations, Progress Reports &amp; Uploads</p>
                         {docs.map((d) => (
-                          <div key={d.id} className="rounded-xl border border-[var(--light-gray)] bg-white p-4">
-                            <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+                          <div key={d.id} className="rounded-lg p-3.5" style={{ border: '1px solid var(--light-gray)', background: '#fff' }}>
+                            <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
                               <div className="flex items-center gap-2 flex-wrap">
-                                <span className="text-[11px] font-semibold text-[var(--narra)]">{DOC_TYPE_LABEL[d.documentType] ?? d.documentType}</span>
-                                {d.uploaderName && <span className="text-[12.5px] font-semibold text-[var(--charcoal)]">{d.uploaderName}</span>}
+                                <Tag tone="info">{DOC_TYPE_LABEL[d.documentType] ?? d.documentType}</Tag>
+                                {d.uploaderName && <span className="text-[12.5px] font-semibold" style={{ color: 'var(--charcoal)' }}>{d.uploaderName}</span>}
                               </div>
-                              <span className="text-[11.5px] text-[var(--mid-gray)]">{new Date(d.createdAt).toLocaleDateString()}</span>
+                              <span className="text-[11.5px] tabular-nums" style={{ color: 'var(--mid-gray)' }}>{new Date(d.createdAt).toLocaleDateString()}</span>
                             </div>
-                            {d.description && <p className="text-[12.5px] text-[var(--mid-gray)] mb-2">{d.description}</p>}
+                            {d.description && <p className="text-[12.5px] mb-2" style={{ color: 'var(--mid-gray)' }}>{d.description}</p>}
                             <a
                               href={`/api/upload/${d.filePath}`}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-[var(--teal)] hover:underline"
+                              className={`inline-flex items-center gap-1.5 text-[13px] font-semibold rounded hover:underline ${FOCUS}`}
+                              style={{ color: 'var(--teal)' }}
                             >
                               <FileText size={14} />
                               {d.fileName}
@@ -809,324 +799,282 @@ export default function PatientDetailPage() {
                     )}
                   </div>
                 )}
-              </div>
+              </section>
             )
           })}
         </div>
       )}
 
-      {/* OWN tab — the clinician's own session history + note-making. Always
-          shown for single-department patients; the "own" tab for the rest. */}
       {/* UPLOADS tab — patient-submitted PWD/Senior ID + home-practice media. */}
       {activeTab === 'uploads' && (
-        <div className="mb-6 animate-fade-up">
-          <PatientUploads
-            patientId={patient.id}
-            pwdIdUrl={patient.pwdIdUrl}
-            pwdSeniorId={patient.pwdSeniorId}
-          />
-        </div>
+        <PatientUploads
+          patientId={patient.id}
+          pwdIdUrl={patient.pwdIdUrl}
+          pwdSeniorId={patient.pwdSeniorId}
+        />
       )}
 
+      {/* OWN tab — the clinician's own session history + note-making. */}
       {activeTab === 'own' && (
-      <div className="animate-fade-up stagger-4">
-        <button
-          type="button"
-          onClick={() => setHistoryOpen(!historyOpen)}
-          className="w-full flex items-center gap-2 mb-4 group"
-        >
-          <FileText size={18} className="text-[var(--teal)]" />
-          <h2 className="font-bold text-[var(--charcoal)] flex items-center gap-2" style={{ fontFamily: 'var(--font-display)' }}>
-            Session History
-            <span className="inline-flex items-center justify-center min-w-[22px] h-5 px-1.5 rounded-full bg-[var(--teal)] text-white text-[10px] font-bold">
-              {(() => {
-                const from = filterFrom ? new Date(filterFrom).getTime() : -Infinity
-                const to = filterTo ? new Date(filterTo).getTime() + 86400000 : Infinity
-                return sessions.filter(s => {
-                  const t = new Date(s.date).getTime()
-                  return t >= from && t < to
-                }).length
-              })()}
+      <section className="rounded-xl min-w-0" style={CARD_STYLE}>
+        <header className="px-4 sm:px-5 pt-4 pb-3 flex flex-wrap items-center justify-between gap-3" style={{ borderBottom: historyOpen ? '1px solid var(--light-gray)' : undefined }}>
+          <button
+            type="button"
+            onClick={() => setHistoryOpen(!historyOpen)}
+            aria-expanded={historyOpen}
+            className={`flex items-center gap-2 rounded-md ${FOCUS}`}
+          >
+            <FileText size={16} style={{ color: 'var(--teal)' }} />
+            <h2 className="text-[14px] font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>Session History</h2>
+            <span className="text-[12px] font-semibold tabular-nums" style={{ color: 'var(--mid-gray)' }}>
+              {visibleSessions.length}{visibleSessions.length !== sessions.length ? ` of ${sessions.length}` : ''}
             </span>
-          </h2>
-          <div className="ml-auto text-[var(--mid-gray)] group-hover:text-[var(--teal)] transition-colors">
-            {historyOpen ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-          </div>
-        </button>
+            {historyOpen ? <ChevronUp size={16} style={{ color: 'var(--mid-gray)' }} /> : <ChevronDown size={16} style={{ color: 'var(--mid-gray)' }} />}
+          </button>
+
+          {historyOpen && (
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="inline-flex items-center gap-1.5 text-[11.5px]" style={{ color: 'var(--mid-gray)' }}>
+                From
+                <input type="date" value={filterFrom} onChange={(e) => setFilterFrom(e.target.value)} className={`${CONTROL} !h-8 !text-xs`} style={CONTROL_STYLE} />
+              </label>
+              <label className="inline-flex items-center gap-1.5 text-[11.5px]" style={{ color: 'var(--mid-gray)' }}>
+                To
+                <input type="date" value={filterTo} onChange={(e) => setFilterTo(e.target.value)} className={`${CONTROL} !h-8 !text-xs`} style={CONTROL_STYLE} />
+              </label>
+              {(filterFrom || filterTo) && (
+                <button type="button" onClick={() => { setFilterFrom(''); setFilterTo('') }} className={BTN_SM} style={{ color: 'var(--mid-gray)' }}>
+                  <X size={12} /> Clear
+                </button>
+              )}
+            </div>
+          )}
+        </header>
 
         {historyOpen && (
-        <>
-        {/* Date range filter */}
-        <div className="card-static !p-3 mb-3 flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3">
-          <div className="flex items-center gap-1.5 text-[12px] font-semibold text-[var(--mid-gray)] uppercase tracking-wider shrink-0">
-            <Calendar size={13} />
-            Filter by date
-          </div>
-          <div className="flex flex-wrap items-center gap-2 flex-1 w-full">
-            <div className="flex items-center gap-1.5">
-              <label className="text-[11px] text-[var(--mid-gray)]">From</label>
-              <input
-                type="date"
-                value={filterFrom}
-                onChange={(e) => setFilterFrom(e.target.value)}
-                className="px-2 py-1 text-[12px] rounded-lg border border-[var(--light-gray)] bg-white"
-              />
-            </div>
-            <div className="flex items-center gap-1.5">
-              <label className="text-[11px] text-[var(--mid-gray)]">To</label>
-              <input
-                type="date"
-                value={filterTo}
-                onChange={(e) => setFilterTo(e.target.value)}
-                className="px-2 py-1 text-[12px] rounded-lg border border-[var(--light-gray)] bg-white"
-              />
-            </div>
-            {(filterFrom || filterTo) && (
-              <button
-                onClick={() => { setFilterFrom(''); setFilterTo('') }}
-                className="text-[11px] text-[var(--mid-gray)] hover:text-[var(--teal)] underline ml-auto"
-              >
-                Clear
-              </button>
-            )}
-          </div>
-        </div>
-
-        {sessions.length === 0 ? (
-          <div className="card-static text-center py-12">
-            <Calendar className="w-10 h-10 text-[var(--light-gray)] mx-auto mb-2" />
-            <p className="text-[var(--mid-gray)]">No confirmed sessions found</p>
-          </div>
+        sessions.length === 0 ? (
+          <EmptyState icon="calendar" title="No confirmed sessions found" />
+        ) : visibleSessions.length === 0 ? (
+          <EmptyState icon="search" title="No sessions in this date range" hint="Widen the dates or clear the filter." />
         ) : (
-          <div className="space-y-2">
-            {sessions.filter(s => {
-              const t = new Date(s.date).getTime()
-              const from = filterFrom ? new Date(filterFrom).getTime() : -Infinity
-              const to = filterTo ? new Date(filterTo).getTime() + 86400000 : Infinity
-              return t >= from && t < to
-            }).map((s) => {
+          <ul>
+            {visibleSessions.map((s, idx) => {
               const expanded = expandedSession === s.id
+              const notePill = s.sessionNote?.status === 'COMPLETED'
+                ? <StatusPill tone="success">Completed</StatusPill>
+                : s.sessionNote?.status === 'DISCONTINUED'
+                  ? <StatusPill tone="error">Discontinued</StatusPill>
+                  : <StatusPill tone="warn">Pending</StatusPill>
               return (
-                <div key={s.id} className="card-static !p-0 overflow-hidden">
+                <li key={s.id} style={{ borderTop: idx ? '1px solid var(--light-gray)' : undefined }}>
                   <button
+                    type="button"
                     onClick={() => setExpandedSession(expanded ? null : s.id)}
-                    className="w-full flex items-center gap-3 p-4 hover:bg-[var(--off-white)] transition-colors text-left"
+                    aria-expanded={expanded}
+                    className={`w-full flex items-center gap-3 px-4 sm:px-5 py-3.5 transition-colors text-left hover:bg-[#F8FAF2] ${FOCUS}`}
                   >
                     <div className="shrink-0">
                       {s.sessionNote?.status === 'COMPLETED' ? (
-                        <CheckCircle2 size={20} className="text-green-500" />
+                        <CheckCircle2 size={18} style={{ color: '#2F5A28' }} />
                       ) : s.sessionNote?.status === 'DISCONTINUED' ? (
-                        <XCircle size={20} className="text-red-500" />
+                        <XCircle size={18} style={{ color: DANGER }} />
                       ) : (
-                        <Clock size={20} className="text-[var(--mid-gray)]" />
+                        <Clock size={18} style={{ color: 'var(--mid-gray)' }} />
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className="text-[13px] font-semibold text-[var(--charcoal)]">
+                      <div className="flex flex-wrap items-baseline gap-x-2">
+                        <p className="text-[13.5px] font-semibold" style={{ color: 'var(--charcoal)' }}>
                           {formatDate(s.date)}
                         </p>
-                        <span className="text-[11px] text-[var(--mid-gray)]">
+                        <span className="text-[11.5px] tabular-nums" style={{ color: 'var(--mid-gray)' }}>
                           {formatTime(s.startTime)} – {formatTime(s.endTime)}
                         </span>
                       </div>
-                      <p className="text-[12px] text-[var(--mid-gray)]">
+                      <p className="text-[12px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>
                         {s.sessionType} · {s.staff.lastName} ({s.staff.department})
                       </p>
                     </div>
-                    {!s.sessionNote && (
-                      <span className="text-[11px] text-amber-600 font-medium mr-1">Pending</span>
-                    )}
-                    {expanded ? <ChevronUp size={16} className="text-[var(--mid-gray)]" /> : <ChevronDown size={16} className="text-[var(--mid-gray)]" />}
+                    <span className="hidden sm:inline-flex">{notePill}</span>
+                    {expanded ? <ChevronUp size={16} className="shrink-0" style={{ color: 'var(--mid-gray)' }} /> : <ChevronDown size={16} className="shrink-0" style={{ color: 'var(--mid-gray)' }} />}
                   </button>
 
                   {/* Expanded: no notes yet — show add-note buttons only when
                       this clinician owns the session (s.canEdit). A read-only
-                      viewer of the patient sees a passive line; a clinician
-                      who can see the session for continuity but didn't deliver
-                      it (different staff in same dept) sees nothing actionable. */}
+                      viewer sees a passive line; a clinician who can see the
+                      session for continuity but didn't deliver it sees nothing
+                      actionable. */}
                   {expanded && !s.sessionNote && (
-                    <div className="px-4 pb-4 pt-0 border-t border-[var(--light-gray)]">
-                      <div className="pt-3">
-                        {s.ageLocked ? (
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-[13px] text-[var(--mid-gray)] italic">
-                              No notes recorded. This session is over {NOTE_WINDOW_MONTHS} months old, so documentation is closed.
-                            </span>
+                    <div className="px-4 sm:px-5 pb-4 pt-3" style={{ borderTop: '1px solid var(--light-gray)', background: '#FCFDF8' }}>
+                      {s.ageLocked ? (
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="text-[13px] italic" style={{ color: 'var(--mid-gray)' }}>
+                            No notes recorded. This session is over {NOTE_WINDOW_MONTHS} months old, so documentation is closed.
+                          </span>
+                          <button type="button" onClick={() => router.push(`/session/${s.id}`)} className={BTN_SM} style={{ ...SECONDARY_STYLE, color: 'var(--teal)' }}>
+                            <Unlock size={13} />
+                            Enable editing
+                          </button>
+                        </div>
+                      ) : !s.canEdit ? (
+                        <p className="text-[13px] italic" style={{ color: 'var(--mid-gray)' }}>
+                          No notes recorded yet. Only {s.staff.firstName} {s.staff.lastName} can add notes for this session.
+                        </p>
+                      ) : (
+                        <>
+                          <p className="text-[13px] mb-3" style={{ color: 'var(--mid-gray)' }}>
+                            No notes recorded for this session. You can add notes now:
+                          </p>
+                          <div className="flex flex-wrap gap-2">
                             <button
-                              onClick={() => router.push(`/session/${s.id}`)}
-                              className="flex items-center gap-1.5 text-[12px] text-[var(--teal)] hover:underline font-medium transition-colors shrink-0"
+                              type="button"
+                              onClick={() => router.push(`/session/${s.id}?action=complete`)}
+                              className={`${BTN_PRIMARY} flex-1 sm:flex-none`}
+                              style={{ background: '#2F7A4A' }}
                             >
-                              <Unlock size={13} />
-                              Enable editing
+                              <CheckCircle2 size={15} />
+                              Completed
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => router.push(`/session/${s.id}?action=discontinue`)}
+                              className={`${BTN_PRIMARY} flex-1 sm:flex-none`}
+                              style={{ background: DANGER }}
+                            >
+                              <XCircle size={15} />
+                              Discontinued
                             </button>
                           </div>
-                        ) : !s.canEdit ? (
-                          <p className="text-[13px] text-[var(--mid-gray)] italic">
-                            No notes recorded yet. Only {s.staff.firstName} {s.staff.lastName} can add notes for this session.
-                          </p>
-                        ) : (
-                          <>
-                            <p className="text-[13px] text-[var(--mid-gray)] mb-3">
-                              No notes recorded for this session. You can add notes now:
-                            </p>
-                            <div className="flex gap-3">
-                              <button
-                                onClick={() => router.push(`/session/${s.id}?action=complete`)}
-                                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[13px] font-semibold bg-green-600 text-white hover:bg-green-700 transition-colors"
-                              >
-                                <CheckCircle2 size={16} />
-                                Completed
-                              </button>
-                              <button
-                                onClick={() => router.push(`/session/${s.id}?action=discontinue`)}
-                                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[13px] font-semibold bg-red-600 text-white hover:bg-red-700 transition-colors"
-                              >
-                                <XCircle size={16} />
-                                Discontinued
-                              </button>
-                            </div>
-                          </>
-                        )}
-                      </div>
+                        </>
+                      )}
                     </div>
                   )}
 
                   {/* Expanded notes */}
                   {expanded && s.sessionNote && (
-                    <div className="px-4 pb-4 pt-0 border-t border-[var(--light-gray)]">
-                      <div className="pt-3">
-                        {s.sessionNote.notes && (() => {
-                          try {
-                            const parsed = JSON.parse(s.sessionNote.notes!)
-                            if (parsed.formType?.startsWith('PSYCH_')) {
-                              return <div className="mb-3"><PsychologyNoteDisplay data={parsed} /></div>
-                            }
-                            if (parsed.formType === 'OT_DAILY_NOTES') {
-                              return <div className="mb-3"><OTNoteDisplay data={parsed} /></div>
-                            }
-                            if (parsed.formType === 'SLP_DAILY_NOTES') {
-                              return <div className="mb-3"><SLPNoteDisplay data={parsed} /></div>
-                            }
-                            if (parsed.formType === 'SPED16' || parsed.formType === 'SPED18') {
-                              return <div className="mb-3"><SPEDNoteDisplay data={parsed} /></div>
-                            }
-                            if (parsed.formType === 'PT_SESSION_NOTES') {
-                              return <div className="mb-3"><PTNoteDisplay data={parsed} /></div>
-                            }
-                          } catch {}
-                          return (
-                            <div className="mb-3">
-                              <p className="text-[11px] text-[var(--mid-gray)] uppercase font-semibold tracking-wider mb-1">Notes</p>
-                              <div className="text-sm whitespace-pre-wrap bg-[var(--off-white)] p-3 rounded-lg border border-[var(--light-gray)]">
-                                {s.sessionNote.notes}
+                    <div className="px-4 sm:px-5 pb-4 pt-3" style={{ borderTop: '1px solid var(--light-gray)', background: '#FCFDF8' }}>
+                      {s.sessionNote.notes && (() => {
+                        try {
+                          const parsed = JSON.parse(s.sessionNote.notes!)
+                          if (parsed.formType?.startsWith('PSYCH_')) {
+                            return <div className="mb-3"><PsychologyNoteDisplay data={parsed} /></div>
+                          }
+                          if (parsed.formType === 'OT_DAILY_NOTES') {
+                            return <div className="mb-3"><OTNoteDisplay data={parsed} /></div>
+                          }
+                          if (parsed.formType === 'SLP_DAILY_NOTES') {
+                            return <div className="mb-3"><SLPNoteDisplay data={parsed} /></div>
+                          }
+                          if (parsed.formType === 'SPED16' || parsed.formType === 'SPED18') {
+                            return <div className="mb-3"><SPEDNoteDisplay data={parsed} /></div>
+                          }
+                          if (parsed.formType === 'PT_SESSION_NOTES') {
+                            return <div className="mb-3"><PTNoteDisplay data={parsed} /></div>
+                          }
+                        } catch {}
+                        return (
+                          <div className="mb-3">
+                            <p className={LABEL} style={LABEL_STYLE}>Notes</p>
+                            <div className="text-sm whitespace-pre-wrap p-3 rounded-lg" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
+                              {s.sessionNote.notes}
+                            </div>
+                          </div>
+                        )
+                      })()}
+
+                      {s.sessionNote.discontinuedRemarks && (
+                        <div className="mb-3">
+                          <p className={LABEL} style={LABEL_STYLE}>Reason</p>
+                          <div className="text-sm whitespace-pre-wrap p-3 rounded-lg" style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: '#991B1B' }}>
+                            {s.sessionNote.discontinuedRemarks}
+                          </div>
+                        </div>
+                      )}
+
+                      {s.sessionNote.attachments && (s.sessionNote.attachments as any[]).length > 0 && (
+                        <div className="mb-3">
+                          <p className={LABEL} style={LABEL_STYLE}>Attachments</p>
+                          <div className="space-y-1.5">
+                            {(s.sessionNote.attachments as any[]).map((att: any, i: number) => (
+                              <div key={i} className="flex items-center justify-between px-3 py-2 rounded-lg" style={{ background: '#fff', border: '1px solid var(--light-gray)' }}>
+                                <a href={`/api/upload/${att.filePath}`} target="_blank"
+                                   className={`flex items-center gap-1.5 text-[12.5px] font-medium truncate rounded hover:underline ${FOCUS}`} style={{ color: 'var(--teal)' }}>
+                                  <Paperclip size={12} />
+                                  {att.fileName}
+                                </a>
+                                {s.canEdit && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteAttachment(s.id, i)}
+                                    className={`shrink-0 ml-2 w-7 h-7 rounded-md flex items-center justify-center transition-colors hover:bg-red-50 ${FOCUS}`}
+                                    style={{ color: 'var(--mid-gray)' }}
+                                    title="Delete attachment"
+                                    aria-label={`Delete attachment ${att.fileName}`}
+                                  >
+                                    <X size={14} />
+                                  </button>
+                                )}
                               </div>
-                            </div>
-                          )
-                        })()}
+                            ))}
+                          </div>
+                        </div>
+                      )}
 
-                        {s.sessionNote.discontinuedRemarks && (
-                          <div className="mb-3">
-                            <p className="text-[11px] text-[var(--mid-gray)] uppercase font-semibold tracking-wider mb-1">Reason</p>
-                            <div className="text-sm whitespace-pre-wrap bg-red-50 p-3 rounded-lg border border-red-100 text-red-800">
-                              {s.sessionNote.discontinuedRemarks}
-                            </div>
-                          </div>
-                        )}
-
-                        {s.sessionNote.attachments && (s.sessionNote.attachments as any[]).length > 0 && (
-                          <div className="mb-3">
-                            <p className="text-[11px] text-[var(--mid-gray)] uppercase font-semibold tracking-wider mb-1">Attachments</p>
-                            <div className="space-y-1.5">
-                              {(s.sessionNote.attachments as any[]).map((att: any, i: number) => (
-                                <div key={i} className="flex items-center justify-between bg-[var(--off-white)] px-3 py-2 rounded-lg border border-[var(--light-gray)]">
-                                  <a href={`/api/upload/${att.filePath}`} target="_blank"
-                                     className="flex items-center gap-1.5 text-[12px] text-[var(--teal)] hover:underline font-medium truncate">
-                                    <Paperclip size={12} />
-                                    {att.fileName}
-                                  </a>
-                                  {s.canEdit && (
-                                    <button
-                                      onClick={() => handleDeleteAttachment(s.id, i)}
-                                      className="text-[var(--mid-gray)] hover:text-red-500 shrink-0 ml-2 p-0.5"
-                                      title="Delete attachment"
-                                    >
-                                      <X size={14} />
-                                    </button>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Actions — only the clinician who delivered the
-                            session can edit/delete its note, and only while
-                            it isn't locked. Locked notes (frozen at the
-                            moment the author was endorsed/discharged off
-                            the patient) are read-only forever, even if the
-                            patient is endorsed BACK to the original author.
-                            Two distinct read-only footers help the viewer
-                            understand WHY edit isn't available. */}
-                        {s.canEdit ? (
-                          <div className="pt-3 border-t border-[var(--light-gray)] flex items-center justify-between">
-                            <button
-                              onClick={() => router.push(`/session/${s.id}?edit=true`)}
-                              className="flex items-center gap-1.5 text-[12px] text-[var(--teal)] hover:underline font-medium transition-colors"
-                            >
-                              <Pencil size={13} />
-                              Edit notes
-                            </button>
-                            <button
-                              onClick={() => handleDeleteNote(s.id)}
-                              className="flex items-center gap-1.5 text-[12px] text-red-500 hover:text-red-700 font-medium transition-colors"
-                            >
-                              <Trash2 size={13} />
-                              Delete note
-                            </button>
-                          </div>
-                        ) : s.ageLocked && !s.sessionNote.lockedAt ? (
-                          <div className="pt-3 border-t border-[var(--light-gray)] flex items-center justify-between gap-2">
-                            <span className="flex items-center gap-2 text-[11px] text-[var(--mid-gray)] italic">
-                              <Lock size={12} />
-                              Read-only — over {NOTE_WINDOW_MONTHS} months old.
-                            </span>
-                            <button
-                              onClick={() => router.push(`/session/${s.id}`)}
-                              className="flex items-center gap-1.5 text-[12px] text-[var(--teal)] hover:underline font-medium transition-colors shrink-0"
-                            >
-                              <Unlock size={13} />
-                              Enable editing
-                            </button>
-                          </div>
-                        ) : s.sessionNote.lockedAt ? (
-                          <div className="pt-3 border-t border-[var(--light-gray)] flex items-center gap-2 text-[11px] text-[var(--mid-gray)] italic">
+                      {/* Actions — only the clinician who delivered the session
+                          can edit/delete its note, and only while it isn't
+                          locked. Locked notes (frozen at the moment the author
+                          was endorsed/discharged off the patient) are read-only
+                          forever, even if the patient is endorsed BACK to the
+                          original author. Distinct read-only footers explain
+                          WHY edit isn't available. */}
+                      {s.canEdit ? (
+                        <div className="pt-3 flex flex-wrap items-center justify-between gap-2" style={{ borderTop: '1px solid var(--light-gray)' }}>
+                          <button type="button" onClick={() => router.push(`/session/${s.id}?edit=true`)} className={BTN_SM} style={{ ...SECONDARY_STYLE, color: 'var(--teal)' }}>
+                            <Pencil size={13} />
+                            Edit notes
+                          </button>
+                          <button type="button" onClick={() => handleDeleteNote(s.id)} className={BTN_DANGER_GHOST} style={{ color: DANGER }}>
+                            <Trash2 size={13} />
+                            Delete note
+                          </button>
+                        </div>
+                      ) : s.ageLocked && !s.sessionNote.lockedAt ? (
+                        <div className="pt-3 flex flex-wrap items-center justify-between gap-2" style={{ borderTop: '1px solid var(--light-gray)' }}>
+                          <span className="flex items-center gap-2 text-[11.5px] italic" style={{ color: 'var(--mid-gray)' }}>
                             <Lock size={12} />
-                            Locked — signed by {s.staff.firstName} {s.staff.lastName}. Notes are frozen at endorsement and cannot be edited.
-                          </div>
-                        ) : (
-                          <div className="pt-3 border-t border-[var(--light-gray)] flex items-center gap-2 text-[11px] text-[var(--mid-gray)] italic">
-                            <Eye size={12} />
-                            View only — signed by {s.staff.firstName} {s.staff.lastName}.
-                          </div>
-                        )}
-                      </div>
+                            Read-only — over {NOTE_WINDOW_MONTHS} months old.
+                          </span>
+                          <button type="button" onClick={() => router.push(`/session/${s.id}`)} className={BTN_SM} style={{ ...SECONDARY_STYLE, color: 'var(--teal)' }}>
+                            <Unlock size={13} />
+                            Enable editing
+                          </button>
+                        </div>
+                      ) : s.sessionNote.lockedAt ? (
+                        <div className="pt-3 flex items-center gap-2 text-[11.5px] italic" style={{ borderTop: '1px solid var(--light-gray)', color: 'var(--mid-gray)' }}>
+                          <Lock size={12} />
+                          Locked — signed by {s.staff.firstName} {s.staff.lastName}. Notes are frozen at endorsement and cannot be edited.
+                        </div>
+                      ) : (
+                        <div className="pt-3 flex items-center gap-2 text-[11.5px] italic" style={{ borderTop: '1px solid var(--light-gray)', color: 'var(--mid-gray)' }}>
+                          <Eye size={12} />
+                          View only — signed by {s.staff.firstName} {s.staff.lastName}.
+                        </div>
+                      )}
                     </div>
                   )}
-                </div>
+                </li>
               )
             })}
-          </div>
+          </ul>
+        )
         )}
-        </>
-        )}
-      </div>
+      </section>
       )}
         </div>
 
         {/* Right sidebar: Patient Widgets — own documents, part of the "own" view. */}
         {showSidebar && (
-        <aside className="lg:sticky lg:top-4 lg:self-start space-y-3">
+        <aside className="lg:sticky lg:top-0 lg:self-start space-y-3 min-w-0">
           <PatientWidgets patient={patient} canManage={!readOnly} />
         </aside>
         )}
