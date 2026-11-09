@@ -30,13 +30,13 @@ export default function PublicHeader() {
       <div className="max-w-5xl mx-auto px-3 sm:px-5 py-2.5 sm:py-3 flex items-center justify-between gap-2">
         <a href="/" className={`flex items-center gap-2 sm:gap-2.5 leading-tight min-w-0 rounded-lg ${FOCUS}`}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/aura-mark.png" alt="Aura Health Rehab" width={56} height={28} className="h-7 sm:h-8 w-auto shrink-0" />
+          <img src="/aura-mark.png" alt="Aura Client Portal" width={56} height={28} className="h-7 sm:h-8 w-auto shrink-0" />
           <span className="hidden sm:flex flex-col min-w-0">
             <span className="text-[color:var(--narra)] font-semibold text-[16px] tracking-tight truncate" style={{ fontFamily: 'var(--font-display)' }}>
-              Aura Health Rehab
+              Aura
             </span>
             <span className="text-[10.5px] text-[color:var(--mid-gray)] uppercase tracking-[0.16em]" style={{ fontFamily: 'var(--font-display)' }}>
-              Patient Portal
+              Client Portal
             </span>
           </span>
         </a>
