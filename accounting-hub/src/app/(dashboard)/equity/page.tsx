@@ -6,6 +6,7 @@ import { useResizableColumns, ResizableColgroup, ColResizeHandle } from '@/compo
 import { redirect } from 'next/navigation'
 import { PieChart, Plus, Loader2, X, Eye, Trash2, Pencil, RotateCcw } from 'lucide-react'
 import { applySortFilter, type SortCol } from '@/components/SortFilterHead'
+import { HR_PAGE_CLASS, HR_PAGE_STYLE, HrShimmerStyle, StatCard, hrBtn } from '@/components/ui/hr-look'
 
 // Shares bought back or sold on to another holder are shown net, so sorting
 // and filtering follow the figure on screen rather than the original subscription.
@@ -97,12 +98,39 @@ interface EquityAcct { id: string; accountNumber: string; accountTitle: string }
 interface Figures { totalCapitalization: number; totalShares: number; treasuryShares: number; authorizedShares: number; authorizedCommonShares: number | null; authorizedFounderShares: number | null; activeShareholders: number; activeCommonShareholders?: number; activePreferredShareholders?: number; incorporationDate?: string | null; secRegistrationNo?: string | null }
 
 const EQUITY_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
+type EquityTab = 'common' | 'preferred' | 'dividends' | 'certificates' | 'gis'
+
+// ── HR Hub look helpers (this page only) ──
+const HR_TH = 'px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-[.4px] whitespace-nowrap'
+const HR_TH_STYLE = { background: 'var(--hr-head)', color: 'var(--mid-gray)' } as const
+/** Shimmer placeholder rows while a table loads. */
+function ShimmerRows({ cols, rows = 4 }: { cols: number; rows?: number }) {
+  return <>{Array.from({ length: rows }, (_, i) => <tr key={i} className="border-t" style={{ borderColor: 'var(--hr-line)' }}><td colSpan={cols} className="px-4 py-2.5"><div className="h-5 rounded hr-shimmer" /></td></tr>)}</>
+}
+/** White HR card with a header row (title, optional count and description, actions on the right). */
+function HrCard({ title, count, desc, actions, children, flush }: { title: React.ReactNode; count?: number | string; desc?: React.ReactNode; actions?: React.ReactNode; children: React.ReactNode; flush?: boolean }) {
+  return (
+    <div className="rounded-lg border bg-white overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 border-b" style={{ borderColor: 'var(--light-gray)' }}>
+        <div className="min-w-0 mr-auto">
+          <h2 className="text-[15px] font-bold flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+            {title}
+            {count != null && <span className="px-1.5 rounded-full text-[11px] font-bold" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>{count}</span>}
+          </h2>
+          {desc && <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>{desc}</p>}
+        </div>
+        {actions}
+      </div>
+      <div className={flush ? '' : 'p-4'}>{children}</div>
+    </div>
+  )
+}
 
 export default function EquityPage() {
   const { data: session, status } = useSession()
   const role = session?.user?.role
   const isAdmin = role === 'ADMIN'
-  const [tab, setTab] = useState<'common' | 'preferred' | 'dividends' | 'certificates' | 'gis'>('common')
+  const [tab, setTab] = useState<EquityTab>('common')
   const commonTableRef = useRef<HTMLTableElement>(null)
   const commonRz = useResizableColumns('equity-common-list', commonTableRef)
   const [data, setData] = useState<{ rows: CommonRow[]; shareholders: Shareholder[]; figures: Figures } | null>(null)
@@ -317,18 +345,35 @@ export default function EquityPage() {
   const overTotal = (fig?.totalShares ?? 0) > authTotal
   if (status === 'unauthenticated') redirect('/login')
   if (status === 'authenticated' && !EQUITY_ROLES.includes(role as string)) {
-    return <div className="p-8 text-center text-gray-500">Equity is restricted to Admin, Accountant, and Bookkeeper roles.</div>
+    return (
+      <div className={HR_PAGE_CLASS} style={HR_PAGE_STYLE}>
+        <div className="rounded-lg border bg-white px-4 py-10 text-center text-[13px]" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Equity is restricted to Admin, Accountant, and Bookkeeper roles.</div>
+      </div>
+    )
   }
+  const authOf = fig?.authorizedShares ?? 20000000
+  const pctLabel = (n: number) => pctOfAuth(n, authOf).replace(/^ \((.*)\)$/, '$1') || '—'
+  const tabs = (isAdmin
+    ? [['common', 'Common Shares'], ['preferred', 'Preferred Shares'], ['dividends', 'Dividend Release History'], ['certificates', 'Certificates'], ['gis', 'GIS Summary']]
+    : [['preferred', 'Preferred Shares'], ['dividends', 'Dividend Release History']]) as [EquityTab, string][]
+  const holderCount = groupedCommon.length
   return (
-    <div className="p-6 max-w-screen-2xl mx-auto space-y-5">
-      <div className="flex items-center gap-3">
-        <PieChart size={24} className="text-teal-600" />
-        <h1 className="text-2xl font-semibold text-gray-900">Equity</h1>
+    <div className={HR_PAGE_CLASS} style={HR_PAGE_STYLE}>
+      <HrShimmerStyle />
+      <div className="min-w-0">
+        <h1 className="text-2xl font-bold leading-tight flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+          <PieChart size={22} style={{ color: 'var(--teal)' }} /> Equity
+        </h1>
+        <p className="mt-1 text-[13px] max-w-3xl" style={{ color: 'var(--mid-gray)' }}>
+          {isAdmin
+            ? 'The share registry: who holds what, the capitalization it adds up to, dividend releases, stock certificates and the GIS capital structure.'
+            : 'Preferred shares and their dividend releases.'}
+        </p>
       </div>
 
       {(overTotal || overCommon || overFounder) && (
-        <div className="rounded-xl border p-3 text-sm flex items-start gap-2" style={{ borderColor: '#fecaca', background: '#fef2f2', color: '#b91c1c' }}>
-          <span className="font-bold whitespace-nowrap">⚠ Over authorized:</span>
+        <div className="rounded-lg border px-4 py-2.5 text-[13px] flex items-start gap-2" style={{ borderColor: '#fecaca', borderLeft: '4px solid #dc2626', background: '#fef2f2', color: '#b91c1c' }}>
+          <span className="font-bold whitespace-nowrap">Over authorized:</span>
           <span>
             {overTotal && <>Outstanding shares {(fig?.totalShares || 0).toLocaleString('en-PH')} exceed total authorized {authTotal.toLocaleString('en-PH')}. </>}
             {overCommon && <>Common {commonClassShares.toLocaleString('en-PH')} exceeds its authorized limit {authCommon!.toLocaleString('en-PH')}. </>}
@@ -339,116 +384,121 @@ export default function EquityPage() {
 
       {/* Top figures — org-wide equity totals (admin only) */}
       {isAdmin && (
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'var(--pale-teal)' }}>
-          <p className="text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>Total Capitalization</p>
-          <p className="text-2xl font-bold" style={{ color: 'var(--deep-teal)' }}>{wholePeso(fig?.totalCapitalization || 0)}</p>
-        </div>
-        <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Authorized Shares</p>
-            {!editAuth && <button onClick={() => { setAuthInput(String(fig?.authorizedShares ?? 20000000)); setAuthCommonInput(fig?.authorizedCommonShares != null ? String(fig.authorizedCommonShares) : ''); setAuthFounderInput(fig?.authorizedFounderShares != null ? String(fig.authorizedFounderShares) : ''); setIncDateInput(fig?.incorporationDate || ''); setSecRegInput(fig?.secRegistrationNo || ''); setEditAuth(true) }} className="p-1 rounded hover:bg-gray-100" title="Edit authorized shares"><Pencil size={13} className="text-blue-500" /></button>}
+      <div className="grid grid-cols-1 min-[440px]:grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatCard compact loading={loading} label="Total capitalization" value={wholePeso(fig?.totalCapitalization || 0)}
+          sub="Outstanding common & founders shares" accent={{ line: '#4A8073', bg: '#f4f8ea', fg: '#3C6A5F' }} />
+        <StatCard compact loading={loading} label="Total number of shares" value={wholeNum(fig?.totalShares || 0)}
+          sub={`Outstanding · ${pctLabel(fig?.totalShares || 0)} of authorized`}
+          tone={overTotal ? 'red' : 'zero'} accent={overTotal ? undefined : { line: '#4A8073' }} />
+        <StatCard compact loading={loading} label="Total treasury shares" value={wholeNum(fig?.treasuryShares || 0)}
+          sub={`Available for sale · ${pctLabel(fig?.treasuryShares || 0)} of authorized`} tone={(fig?.treasuryShares || 0) > 0 ? 'red' : 'zero'} />
+        <StatCard compact loading={loading} label="Active shareholders" value={(fig?.activeShareholders || 0).toLocaleString('en-PH')}
+          sub={`${(fig?.activeCommonShareholders ?? 0).toLocaleString('en-PH')} common / founders · ${(fig?.activePreferredShareholders ?? 0).toLocaleString('en-PH')} preferred`}
+          accent={{ line: '#7c3aed' }} />
+
+        {/* Authorized shares — editable in place */}
+        {loading ? <StatCard label="" value="" sub="" loading /> : (
+        <div className="min-w-0 rounded-lg border bg-white px-3 sm:px-4 py-3" style={{ borderColor: 'var(--light-gray)', borderLeft: '4px solid var(--light-gray)' }}>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[11.5px] font-semibold uppercase tracking-[.4px] truncate" style={{ color: 'var(--mid-gray)' }}>Authorized shares</p>
+            {!editAuth && <button onClick={() => { setAuthInput(String(fig?.authorizedShares ?? 20000000)); setAuthCommonInput(fig?.authorizedCommonShares != null ? String(fig.authorizedCommonShares) : ''); setAuthFounderInput(fig?.authorizedFounderShares != null ? String(fig.authorizedFounderShares) : ''); setIncDateInput(fig?.incorporationDate || ''); setSecRegInput(fig?.secRegistrationNo || ''); setEditAuth(true) }} className="p-1 -my-1 rounded hover:bg-[var(--pale-teal)]" title="Edit authorized shares" aria-label="Edit authorized shares"><Pencil size={13} style={{ color: 'var(--teal)' }} /></button>}
           </div>
           {editAuth ? (
             <div className="space-y-1.5 mt-1">
               <div className="flex items-center gap-1.5">
                 <input autoFocus value={authInput} onChange={e => setAuthInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') saveAuth(); if (e.key === 'Escape') setEditAuth(false) }} placeholder="Total authorized"
-                  className="w-full px-2 py-1 rounded-lg border text-lg font-bold" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }} inputMode="numeric" />
-                <button onClick={saveAuth} disabled={savingAuth} className="px-2 py-1 rounded-lg text-white text-xs font-semibold disabled:opacity-50" style={{ background: 'var(--teal)' }}>{savingAuth ? <Loader2 size={13} className="animate-spin" /> : 'Save'}</button>
-                <button onClick={() => setEditAuth(false)} className="p-1 rounded hover:bg-gray-100"><X size={14} className="text-gray-400" /></button>
+                  className="w-full min-w-0 px-2 py-1 rounded-lg border text-base font-bold font-mono" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }} inputMode="numeric" />
+                <button onClick={saveAuth} disabled={savingAuth} className="px-2.5 py-1 rounded-lg text-white text-xs font-semibold disabled:opacity-50" style={{ background: 'var(--teal)' }}>{savingAuth ? <Loader2 size={13} className="animate-spin" /> : 'Save'}</button>
+                <button onClick={() => setEditAuth(false)} className="p-1 rounded hover:bg-[var(--pale-teal)]" aria-label="Cancel"><X size={14} style={{ color: 'var(--mid-gray)' }} /></button>
+              </div>
+              {([['Common', authCommonInput, setAuthCommonInput], ['Founders', authFounderInput, setAuthFounderInput]] as const).map(([lbl, v, set]) => (
+                <div key={lbl} className="flex items-center gap-1.5">
+                  <span className="text-[10px] w-14 shrink-0 font-semibold" style={{ color: 'var(--mid-gray)' }}>{lbl}</span>
+                  <input value={v} onChange={e => set(e.target.value)} placeholder="no sub-limit" className="w-full min-w-0 px-2 py-1 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} inputMode="numeric" />
+                </div>
+              ))}
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] w-14 shrink-0 font-semibold" style={{ color: 'var(--mid-gray)' }}>Inc. date</span>
+                <input type="date" value={incDateInput} onChange={e => setIncDateInput(e.target.value)} className="w-full min-w-0 px-2 py-1 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} />
               </div>
               <div className="flex items-center gap-1.5">
-                <span className="text-[10px] w-14 shrink-0" style={{ color: 'var(--mid-gray)' }}>Common</span>
-                <input value={authCommonInput} onChange={e => setAuthCommonInput(e.target.value)} placeholder="no sub-limit" className="w-full px-2 py-1 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} inputMode="numeric" />
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-[10px] w-14 shrink-0" style={{ color: 'var(--mid-gray)' }}>Founders</span>
-                <input value={authFounderInput} onChange={e => setAuthFounderInput(e.target.value)} placeholder="no sub-limit" className="w-full px-2 py-1 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} inputMode="numeric" />
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-[10px] w-14 shrink-0" style={{ color: 'var(--mid-gray)' }}>Inc. date</span>
-                <input type="date" value={incDateInput} onChange={e => setIncDateInput(e.target.value)} className="w-full px-2 py-1 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} />
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-[10px] w-14 shrink-0" style={{ color: 'var(--mid-gray)' }}>SEC Reg.</span>
-                <input value={secRegInput} onChange={e => setSecRegInput(e.target.value)} placeholder="e.g. 2024050012345-67" className="w-full px-2 py-1 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} />
+                <span className="text-[10px] w-14 shrink-0 font-semibold" style={{ color: 'var(--mid-gray)' }}>SEC Reg.</span>
+                <input value={secRegInput} onChange={e => setSecRegInput(e.target.value)} placeholder="e.g. 2024050012345-67" className="w-full min-w-0 px-2 py-1 rounded-lg border text-xs" style={{ borderColor: 'var(--light-gray)' }} />
               </div>
             </div>
           ) : (
             <>
-              <p className="text-2xl font-bold" style={{ color: 'var(--charcoal)' }}>{(fig?.authorizedShares ?? 20000000).toLocaleString('en-PH')}</p>
-              {(fig?.authorizedCommonShares != null || fig?.authorizedFounderShares != null) && (
-                <p className="text-[11px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>
-                  Common: {fig?.authorizedCommonShares != null ? fig.authorizedCommonShares.toLocaleString('en-PH') : '—'} · Founders: {fig?.authorizedFounderShares != null ? fig.authorizedFounderShares.toLocaleString('en-PH') : '—'}
-                </p>
-              )}
+              <p className="text-[17px] sm:text-xl font-extrabold leading-tight tabular-nums truncate" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>{(fig?.authorizedShares ?? 20000000).toLocaleString('en-PH')}</p>
+              <p className="text-xs truncate" style={{ color: 'var(--mid-gray)' }}
+                title={[fig?.authorizedCommonShares != null || fig?.authorizedFounderShares != null ? `Common: ${fig?.authorizedCommonShares != null ? fig.authorizedCommonShares.toLocaleString('en-PH') : '—'} · Founders: ${fig?.authorizedFounderShares != null ? fig.authorizedFounderShares.toLocaleString('en-PH') : '—'}` : '', fig?.secRegistrationNo ? `SEC Reg. ${fig.secRegistrationNo}` : '', fig?.incorporationDate ? `Incorporated ${fig.incorporationDate}` : ''].filter(Boolean).join(' · ') || undefined}>
+                {(fig?.authorizedCommonShares != null || fig?.authorizedFounderShares != null)
+                  ? <>Common: {fig?.authorizedCommonShares != null ? fig.authorizedCommonShares.toLocaleString('en-PH') : '—'} · Founders: {fig?.authorizedFounderShares != null ? fig.authorizedFounderShares.toLocaleString('en-PH') : '—'}</>
+                  : 'No common / founders split set'}
+              </p>
               {(fig?.secRegistrationNo || fig?.incorporationDate) && (
-                <p className="text-[11px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+                <p className="text-[11px] truncate" style={{ color: 'var(--mid-gray)' }}>
                   {fig?.secRegistrationNo ? `SEC Reg. ${fig.secRegistrationNo}` : ''}{fig?.secRegistrationNo && fig?.incorporationDate ? ' · ' : ''}{fig?.incorporationDate ? `Incorporated ${new Date(fig.incorporationDate + 'T00:00:00').toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })}` : ''}
                 </p>
               )}
             </>
           )}
         </div>
-        <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
-          <p className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Total Number of Shares <span className="font-normal text-gray-400">(outstanding)</span></p>
-          <p className="text-2xl font-bold" style={{ color: 'var(--charcoal)' }}>{wholeNum(fig?.totalShares || 0)}<span className="text-sm font-semibold" style={{ color: 'var(--mid-gray)' }}>{pctOfAuth(fig?.totalShares || 0, (fig?.authorizedShares ?? 20000000))}</span></p>
-        </div>
-        <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
-          <p className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Total Common Shares <span className="font-normal text-gray-400">(outstanding)</span></p>
-          <p className="text-2xl font-bold" style={{ color: 'var(--charcoal)' }}>{wholeNum(commonClassShares)}<span className="text-sm font-semibold" style={{ color: 'var(--mid-gray)' }}>{pctOfAuth(commonClassShares, (fig?.authorizedShares ?? 20000000))}</span></p>
-          {fig?.authorizedCommonShares != null && (
-            <p className="text-[11px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>of {fig.authorizedCommonShares.toLocaleString('en-PH')} max per SEC{fig.authorizedCommonShares > 0 ? ` (${((commonClassShares / fig.authorizedCommonShares) * 100).toLocaleString('en-PH', { maximumFractionDigits: 2 })}% used)` : ''}</p>
-          )}
-        </div>
-        <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
-          <p className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Total Founders Shares <span className="font-normal text-gray-400">(outstanding)</span></p>
-          <p className="text-2xl font-bold" style={{ color: 'var(--charcoal)' }}>{wholeNum(foundersShares)}<span className="text-sm font-semibold" style={{ color: 'var(--mid-gray)' }}>{pctOfAuth(foundersShares, (fig?.authorizedShares ?? 20000000))}</span></p>
-          {fig?.authorizedFounderShares != null && (
-            <p className="text-[11px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>of {fig.authorizedFounderShares.toLocaleString('en-PH')} max per SEC{fig.authorizedFounderShares > 0 ? ` (${((foundersShares / fig.authorizedFounderShares) * 100).toLocaleString('en-PH', { maximumFractionDigits: 2 })}% used)` : ''}</p>
-          )}
-        </div>
-        <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: '#fef2f2' }}>
-          <p className="text-xs font-semibold" style={{ color: '#b91c1c' }}>Total Treasury Shares <span className="font-normal" style={{ color: '#d4a0a0' }}>(available for sale)</span></p>
-          <p className="text-2xl font-bold" style={{ color: '#b91c1c' }}>{wholeNum(fig?.treasuryShares || 0)}<span className="text-sm font-semibold" style={{ color: '#d4a0a0' }}>{pctOfAuth(fig?.treasuryShares || 0, (fig?.authorizedShares ?? 20000000))}</span></p>
-        </div>
-        <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
-          <p className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Active Shareholders <span className="font-normal text-gray-400">(holding outstanding shares)</span></p>
-          <p className="text-2xl font-bold" style={{ color: 'var(--charcoal)' }}>{(fig?.activeShareholders || 0).toLocaleString('en-PH')}</p>
-          <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>
-            <span className="font-semibold" style={{ color: 'var(--deep-teal)' }}>{(fig?.activeCommonShareholders ?? 0).toLocaleString('en-PH')}</span> common / founders
-            {' '}· <span className="font-semibold" style={{ color: '#7c3aed' }}>{(fig?.activePreferredShareholders ?? 0).toLocaleString('en-PH')}</span> preferred
-          </p>
-        </div>
+        )}
+        <StatCard compact loading={loading} label="Total common shares" value={wholeNum(commonClassShares)}
+          sub={fig?.authorizedCommonShares != null
+            ? `Outstanding · of ${fig.authorizedCommonShares.toLocaleString('en-PH')} max per SEC${fig.authorizedCommonShares > 0 ? ` (${((commonClassShares / fig.authorizedCommonShares) * 100).toLocaleString('en-PH', { maximumFractionDigits: 2 })}% used)` : ''}`
+            : `Outstanding · ${pctLabel(commonClassShares)} of authorized`}
+          tone={overCommon ? 'red' : 'zero'} accent={overCommon ? undefined : { line: '#2563eb' }} />
+        <StatCard compact loading={loading} label="Total founders shares" value={wholeNum(foundersShares)}
+          sub={fig?.authorizedFounderShares != null
+            ? `Outstanding · of ${fig.authorizedFounderShares.toLocaleString('en-PH')} max per SEC${fig.authorizedFounderShares > 0 ? ` (${((foundersShares / fig.authorizedFounderShares) * 100).toLocaleString('en-PH', { maximumFractionDigits: 2 })}% used)` : ''}`
+            : `Outstanding · ${pctLabel(foundersShares)} of authorized`}
+          tone={overFounder ? 'red' : 'zero'} accent={overFounder ? undefined : { line: '#0f766e' }} />
       </div>
       )}
 
-      {/* Tabs — accountants/bookkeepers only see Preferred Shares */}
-      <div className="flex items-center gap-1 border-b" style={{ borderColor: 'var(--light-gray)' }}>
-        {(isAdmin ? [['common', 'Common Shares'], ['preferred', 'Preferred Shares'], ['dividends', 'Dividend Release History'], ['certificates', 'Certificates'], ['gis', 'GIS Summary']] : [['preferred', 'Preferred Shares'], ['dividends', 'Dividend Release History']]).map(([v, label]) => (
-          <button key={v} onClick={() => setTab(v as 'common' | 'preferred' | 'dividends' | 'certificates' | 'gis')} className="px-4 py-2.5 text-sm font-medium border-b-2 -mb-px"
-            style={{ borderColor: effectiveTab === v ? 'var(--teal)' : 'transparent', color: effectiveTab === v ? 'var(--teal)' : 'var(--mid-gray)' }}>{label}</button>
-        ))}
+      {/* Tabs — accountants/bookkeepers only see Preferred Shares + dividends */}
+      <div className="border-b-2" style={{ borderColor: 'var(--light-gray)' }}>
+        <div className="flex items-end gap-1 -mb-[2px] max-w-full overflow-x-auto" role="tablist" aria-label="Equity sections">
+          {tabs.map(([v, label]) => (
+            <button key={v} onClick={() => setTab(v)} role="tab" aria-selected={effectiveTab === v}
+              className="px-4 py-2.5 text-[13px] font-semibold border-b-2 whitespace-nowrap transition-colors hover:text-[var(--teal)]"
+              style={{ fontFamily: 'var(--font-display)', borderColor: effectiveTab === v ? 'var(--teal)' : 'transparent', color: effectiveTab === v ? 'var(--teal)' : 'var(--mid-gray)' }}>{label}</button>
+          ))}
+        </div>
       </div>
 
       {effectiveTab === 'common' && (
-        <div className="space-y-3">
-          <div className="flex justify-end items-center gap-3">
-            <label className="flex items-center gap-1.5 text-xs font-medium cursor-pointer select-none" style={{ color: 'var(--mid-gray)' }}
+        <div className="rounded-lg border bg-white overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 border-b" style={{ borderColor: 'var(--light-gray)' }}>
+            <div className="min-w-0 mr-auto">
+              <h2 className="text-[15px] font-bold flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+                Common &amp; founders shareholders
+                {!loading && <span className="px-1.5 rounded-full text-[11px] font-bold" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>{holderCount}</span>}
+              </h2>
+              <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>One line per person · click a line to see each holding, its buybacks and transfers.</p>
+            </div>
+            <label className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border bg-white text-xs font-semibold cursor-pointer select-none" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}
               title="Hide holdings whose shares are all sold or bought back, and rescinded ones">
               <input type="checkbox" checked={hideRetired} onChange={toggleHideRetired} />
-              Hide retired shareholders
+              Hide retired
             </label>
             <DownloadMenu onDownload={exportCommon} size="md" />
-            <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}><Plus size={15} /> Add Common Shareholder</button>
+            <button onClick={() => setShowAdd(true)} className={hrBtn.primary} style={{ background: 'var(--teal)' }}><Plus size={15} /> Add common shareholder</button>
           </div>
-          <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+          {cs.activeFilters > 0 && (
+            <div className="flex items-center gap-2 px-4 py-2 border-b text-xs" style={{ borderColor: 'var(--light-gray)', background: '#fcfdfa', color: 'var(--mid-gray)' }}>
+              {cs.activeFilters} column filter{cs.activeFilters === 1 ? '' : 's'} on
+              <button onClick={() => cs.setFilters({})} className="font-semibold hover:underline" style={{ color: 'var(--teal)' }}>Clear</button>
+            </div>
+          )}
+          <div className="overflow-auto">
             <table ref={commonTableRef} className="w-full text-xs" style={commonRz.tableStyle}>
               <ResizableColgroup rz={commonRz} />
               <SortHead cols={COMMON_COLS} sortKey={cs.sortKey} sortDir={cs.sortDir} filters={cs.filters}
                 onToggleSort={k => cs.toggleSort(k, COMMON_NUMERIC)} onFilter={cs.setFilter} rz={commonRz} />
               <tbody>
-                {loading ? <tr><td colSpan={17} className="text-center py-10 text-gray-400"><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
+                {loading ? <ShimmerRows cols={17} />
                 : groupedCommon.map(g => {
                   const shId = g[0].shareholderId
                   const open = openShareholders.has(shId)
@@ -463,54 +513,54 @@ export default function EquityPage() {
                   const rescindedCount = g.length - liveRows.length
                   return (
                   <Fragment key={shId}>
-                  <tr className="border-t cursor-pointer hover:bg-gray-50" style={{ borderColor: 'var(--light-gray)', background: open ? 'var(--off-white)' : undefined }}
-                    onClick={() => toggleShareholder(shId)}>
-                    <td className="px-3 py-2 font-mono font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{open ? '▾' : '▸'} {g[0].shNumber}</td>
-                    <td className="px-3 py-2 font-semibold" style={{ color: 'var(--charcoal)', overflow: 'hidden', wordBreak: 'break-word' }}>
+                  <tr className="border-t cursor-pointer transition-colors hover:bg-[#fafcf6]" style={{ borderColor: 'var(--hr-line)', background: open ? '#f4f8ea' : undefined }}
+                    onClick={() => toggleShareholder(shId)} aria-expanded={open}>
+                    <td className="px-3 py-2.5 font-mono font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)', boxShadow: open ? 'inset 4px 0 0 var(--teal)' : undefined }}><span style={{ color: 'var(--teal)' }}>{open ? '▾' : '▸'}</span> {g[0].shNumber}</td>
+                    <td className="px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)', overflow: 'hidden', wordBreak: 'break-word' }}>
                       {g[0].name}
                       <span className="ml-1.5 font-normal text-[10px]" style={{ color: 'var(--mid-gray)' }}>{g.length} holding{g.length !== 1 ? 's' : ''}</span>
-                      {rescindedCount > 0 && <span className="ml-1 text-[10px] px-1 rounded whitespace-nowrap font-semibold" style={{ background: '#e5e7eb', color: '#374151' }}>{rescindedCount} rescinded</span>}
+                      {rescindedCount > 0 && <span className="ml-1 text-[10px] px-1.5 py-px rounded-full whitespace-nowrap font-semibold" style={{ background: '#e5e7eb', color: '#374151' }}>{rescindedCount} rescinded</span>}
                     </td>
-                    <td className="px-3 py-2" style={{ color: 'var(--mid-gray)', overflow: 'hidden' }}>{classes.length === 1 ? classes[0] : classes.length ? `${classes.length} classes` : '—'}</td>
-                    <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{dates.length > 1 ? `${dates[0]} …` : (dates[0] || '—')}</td>
-                    <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{g.filter(r => r.stockCertNumber).length || '—'}</td>
-                    <td className="px-3 py-2 text-right font-semibold whitespace-nowrap">{totalNet.toLocaleString('en-PH')}</td>
-                    <td className="px-3 py-2 text-right" style={{ color: 'var(--mid-gray)' }}>—</td>
-                    <td className="px-3 py-2 text-right" style={{ color: 'var(--mid-gray)' }}>—</td>
-                    <td className="px-3 py-2 text-right" style={{ color: 'var(--mid-gray)' }}>—</td>
-                    <td className="px-3 py-2 text-right font-semibold whitespace-nowrap">{peso(totalCap)}</td>
-                    <td className="px-3 py-2 text-right font-semibold">{stakeCur.toFixed(3)}%</td>
-                    <td className="px-3 py-2 text-right" style={{ color: 'var(--mid-gray)' }}>{stakeTot.toFixed(3)}%</td>
-                    <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>—</td>
-                    <td className="px-3 py-2">{buybackTotal > 0 ? <span className="inline-block px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#fee2e2', color: '#b91c1c' }}>Yes · {buybackTotal.toLocaleString('en-PH')}</span> : 'No'}</td>
-                    <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>—</td>
-                    <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>—</td>
-                    <td className="px-3 py-2 text-right text-[10px] whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{open ? 'Hide' : 'Details'}</td>
+                    <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)', overflow: 'hidden' }}>{classes.length === 1 ? classes[0] : classes.length ? `${classes.length} classes` : '—'}</td>
+                    <td className="px-3 py-2.5 whitespace-nowrap font-mono" style={{ color: 'var(--mid-gray)' }}>{dates.length > 1 ? `${dates[0]} …` : (dates[0] || '—')}</td>
+                    <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{g.filter(r => r.stockCertNumber).length || '—'}</td>
+                    <td className="px-3 py-2.5 text-right font-mono font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>{totalNet.toLocaleString('en-PH')}</td>
+                    <td className="px-3 py-2.5 text-right" style={{ color: 'var(--hr-faint)' }}>—</td>
+                    <td className="px-3 py-2.5 text-right" style={{ color: 'var(--hr-faint)' }}>—</td>
+                    <td className="px-3 py-2.5 text-right" style={{ color: 'var(--hr-faint)' }}>—</td>
+                    <td className="px-3 py-2.5 text-right font-mono font-bold whitespace-nowrap" style={{ color: 'var(--deep-teal)' }}>{peso(totalCap)}</td>
+                    <td className="px-3 py-2.5 text-right font-mono font-semibold" style={{ color: 'var(--charcoal)' }}>{stakeCur.toFixed(3)}%</td>
+                    <td className="px-3 py-2.5 text-right font-mono" style={{ color: 'var(--mid-gray)' }}>{stakeTot.toFixed(3)}%</td>
+                    <td className="px-3 py-2.5" style={{ color: 'var(--hr-faint)' }}>—</td>
+                    <td className="px-3 py-2.5">{buybackTotal > 0 ? <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap" style={{ background: '#fee2e2', color: '#991b1b' }}>Yes · {buybackTotal.toLocaleString('en-PH')}</span> : <span style={{ color: 'var(--mid-gray)' }}>No</span>}</td>
+                    <td className="px-3 py-2.5" style={{ color: 'var(--hr-faint)' }}>—</td>
+                    <td className="px-3 py-2.5" style={{ color: 'var(--hr-faint)' }}>—</td>
+                    <td className="px-3 py-2.5 text-right text-[11px] font-semibold whitespace-nowrap" style={{ color: 'var(--teal)' }}>{open ? 'Hide' : 'Details'}</td>
                   </tr>
                   {open && g.map(r => (
-                  <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)', background: r.rescinded ? '#f3f4f6' : r.retired || r.boughtBack ? '#fef2f2' : '#fbfbfa', opacity: r.rescinded ? 0.6 : undefined }}>
-                    <td className="px-3 py-2 font-mono" style={{ color: r.retired ? '#b91c1c' : 'var(--mid-gray)' }}>↳ {r.shNumber}</td>
-                    <td className="px-3 py-2" style={{ color: r.retired ? '#b91c1c' : 'var(--charcoal)', overflow: 'hidden', wordBreak: 'break-word' }}>{r.name}{r.rescinded && <span className="ml-1 text-[10px] px-1 rounded whitespace-nowrap font-semibold" style={{ background: '#e5e7eb', color: '#374151' }} title="Mutually rescinded — treated as if never issued; excluded from every figure and from the financial statements">Rescinded</span>}{r.retired && !r.rescinded && <span className="ml-1 text-[10px] px-1 rounded whitespace-nowrap font-semibold" style={{ background: '#fee2e2', color: '#b91c1c' }} title="All shares in this holding have been sold or bought back">Retired</span>}{r.acquiredViaTransfer ? <span className="ml-1 text-[10px] px-1 rounded whitespace-nowrap" style={{ background: '#e0e7ff', color: '#3730a3' }} title={`Shares bought from ${r.transferFromShNumber || ''} ${r.transferFromName || 'another shareholder'} — no company cash involved`}>Bought from {r.transferFromName || 'transfer'}</span> : r.agreementType === 'DEED_OF_ASSIGNMENT' && <span className="ml-1 text-[10px] px-1 rounded whitespace-nowrap" style={{ background: '#e0e7ff', color: '#3730a3' }}>Deed</span>}{(r.soldFromTreasury || r.agreementType === 'TREASURY') && <span className="ml-1 text-[10px] px-1 rounded whitespace-nowrap" style={{ background: '#fef3c7', color: '#92400e' }} title="Shares reissued from treasury (bought-back) stock">Treasury</span>}</td>
+                  <tr key={r.id} className="border-t" style={{ borderColor: 'var(--hr-line)', background: r.rescinded ? '#f3f4f6' : r.retired || r.boughtBack ? '#fef7f7' : '#fcfdfa', opacity: r.rescinded ? 0.6 : undefined }}>
+                    <td className="px-3 py-2 font-mono" style={{ color: r.retired ? '#b91c1c' : 'var(--mid-gray)', boxShadow: `inset 4px 0 0 ${r.rescinded ? '#9ca3af' : r.retired || r.boughtBack ? '#dc2626' : 'var(--teal)'}` }}>↳ {r.shNumber}</td>
+                    <td className="px-3 py-2" style={{ color: r.retired ? '#b91c1c' : 'var(--charcoal)', overflow: 'hidden', wordBreak: 'break-word' }}>{r.name}{r.rescinded && <span className="ml-1 text-[10px] px-1.5 py-px rounded-full whitespace-nowrap font-semibold" style={{ background: '#e5e7eb', color: '#374151' }} title="Mutually rescinded — treated as if never issued; excluded from every figure and from the financial statements">Rescinded</span>}{r.retired && !r.rescinded && <span className="ml-1 text-[10px] px-1.5 py-px rounded-full whitespace-nowrap font-semibold" style={{ background: '#fee2e2', color: '#991b1b' }} title="All shares in this holding have been sold or bought back">Retired</span>}{r.acquiredViaTransfer ? <span className="ml-1 text-[10px] px-1.5 py-px rounded-full whitespace-nowrap font-semibold" style={{ background: '#e0e7ff', color: '#3730a3' }} title={`Shares bought from ${r.transferFromShNumber || ''} ${r.transferFromName || 'another shareholder'} — no company cash involved`}>Bought from {r.transferFromName || 'transfer'}</span> : r.agreementType === 'DEED_OF_ASSIGNMENT' && <span className="ml-1 text-[10px] px-1.5 py-px rounded-full whitespace-nowrap font-semibold" style={{ background: '#e0e7ff', color: '#3730a3' }}>Deed</span>}{(r.soldFromTreasury || r.agreementType === 'TREASURY') && <span className="ml-1 text-[10px] px-1.5 py-px rounded-full whitespace-nowrap font-semibold" style={{ background: '#fef3c7', color: '#92400e' }} title="Shares reissued from treasury (bought-back) stock">Treasury</span>}</td>
                     <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{r.shareClass || '—'}</td>
-                    <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{String(r.dateAcquired).slice(0, 10)}</td>
+                    <td className="px-3 py-2 font-mono" style={{ color: 'var(--mid-gray)' }}>{String(r.dateAcquired).slice(0, 10)}</td>
                     <td className="px-3 py-2 font-mono" style={{ color: 'var(--mid-gray)' }}>{r.stockCertNumber || '—'}</td>
-                    <td className="px-3 py-2 text-right" style={{ overflow: 'hidden' }}>{(r.buybackShares > 0 || (r.transferredShares || 0) > 0)
-                      ? <><span className="whitespace-nowrap">{netShares(r).toLocaleString('en-PH')}</span><span className="block text-[10px] font-normal" style={{ color: 'var(--mid-gray)', wordBreak: 'break-word' }}>(Previously {r.numberOfShares.toLocaleString('en-PH')}{r.buybackShares > 0 ? ` — ${r.buybackShares.toLocaleString('en-PH')} bought back` : ''}{(r.transferredShares || 0) > 0 ? ` — ${r.transferredShares.toLocaleString('en-PH')} sold to ${[...new Set(r.transfers.map(t => t.toName))].join(', ')}` : ''})</span></>
+                    <td className="px-3 py-2 text-right font-mono" style={{ overflow: 'hidden', color: 'var(--charcoal)' }}>{(r.buybackShares > 0 || (r.transferredShares || 0) > 0)
+                      ? <><span className="whitespace-nowrap">{netShares(r).toLocaleString('en-PH')}</span><span className="block text-[10px] font-normal font-sans" style={{ color: 'var(--mid-gray)', wordBreak: 'break-word' }}>(Previously {r.numberOfShares.toLocaleString('en-PH')}{r.buybackShares > 0 ? ` — ${r.buybackShares.toLocaleString('en-PH')} bought back` : ''}{(r.transferredShares || 0) > 0 ? ` — ${r.transferredShares.toLocaleString('en-PH')} sold to ${[...new Set(r.transfers.map(t => t.toName))].join(', ')}` : ''})</span></>
                       : <span className="whitespace-nowrap">{r.numberOfShares.toLocaleString('en-PH')}</span>}</td>
-                    <td className="px-3 py-2 text-right">{peso(r.truePar)}</td>
-                    <td className="px-3 py-2 text-right">{peso(r.apic)}</td>
-                    <td className="px-3 py-2 text-right font-semibold">{peso(r.pricePerShare)}</td>
-                    <td className="px-3 py-2 text-right font-semibold" style={{ overflow: 'hidden' }}>{(r.buybackShares > 0 || (r.transferredShares || 0) > 0)
-                      ? <><span className="whitespace-nowrap">{peso(netShares(r) * r.pricePerShare)}</span><span className="block text-[10px] font-normal" style={{ color: 'var(--mid-gray)', wordBreak: 'break-word' }}>(Previously {peso(r.totalCapitalization)} but shares {r.buybackShares > 0 && (r.transferredShares || 0) > 0 ? 'bought back / sold' : r.buybackShares > 0 ? 'bought back' : 'sold'})</span></>
+                    <td className="px-3 py-2 text-right font-mono" style={{ color: 'var(--charcoal)' }}>{peso(r.truePar)}</td>
+                    <td className="px-3 py-2 text-right font-mono" style={{ color: 'var(--charcoal)' }}>{peso(r.apic)}</td>
+                    <td className="px-3 py-2 text-right font-mono font-semibold" style={{ color: 'var(--charcoal)' }}>{peso(r.pricePerShare)}</td>
+                    <td className="px-3 py-2 text-right font-mono font-semibold" style={{ overflow: 'hidden', color: 'var(--charcoal)' }}>{(r.buybackShares > 0 || (r.transferredShares || 0) > 0)
+                      ? <><span className="whitespace-nowrap">{peso(netShares(r) * r.pricePerShare)}</span><span className="block text-[10px] font-normal font-sans" style={{ color: 'var(--mid-gray)', wordBreak: 'break-word' }}>(Previously {peso(r.totalCapitalization)} but shares {r.buybackShares > 0 && (r.transferredShares || 0) > 0 ? 'bought back / sold' : r.buybackShares > 0 ? 'bought back' : 'sold'})</span></>
                       : <span className="whitespace-nowrap">{peso(r.totalCapitalization)}</span>}</td>
-                    <td className="px-3 py-2 text-right">{r.equityStakeCurrent.toFixed(3)}%</td>
-                    <td className="px-3 py-2 text-right" style={{ color: 'var(--mid-gray)' }}>{r.equityStakeTotal.toFixed(3)}%</td>
+                    <td className="px-3 py-2 text-right font-mono" style={{ color: 'var(--charcoal)' }}>{r.equityStakeCurrent.toFixed(3)}%</td>
+                    <td className="px-3 py-2 text-right font-mono" style={{ color: 'var(--mid-gray)' }}>{r.equityStakeTotal.toFixed(3)}%</td>
                     <td className="px-3 py-2" style={{ color: 'var(--mid-gray)', overflow: 'hidden', wordBreak: 'break-word' }} title={bankLabel(r.bankAccountId)}>{bankLabel(r.bankAccountId)}</td>
-                    <td className="px-3 py-2" style={{ overflow: 'hidden' }}>{r.boughtBack ? <span className="inline-block px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#fee2e2', color: '#b91c1c', wordBreak: 'break-word', maxWidth: '100%' }} title={r.buybacks.map(b => `${String(b.date).slice(0, 10)}: ${b.shares.toLocaleString('en-PH')} @ ${peso(b.price)}`).join('\n')}>Yes · {r.buybackShares.toLocaleString('en-PH')}{r.buybacks.length > 1 ? ` (${r.buybacks.length}×)` : ''}</span> : 'No'}</td>
+                    <td className="px-3 py-2" style={{ overflow: 'hidden' }}>{r.boughtBack ? <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#fee2e2', color: '#991b1b', wordBreak: 'break-word', maxWidth: '100%' }} title={r.buybacks.map(b => `${String(b.date).slice(0, 10)}: ${b.shares.toLocaleString('en-PH')} @ ${peso(b.price)}`).join('\n')}>Yes · {r.buybackShares.toLocaleString('en-PH')}{r.buybacks.length > 1 ? ` (${r.buybacks.length}×)` : ''}</span> : <span style={{ color: 'var(--mid-gray)' }}>No</span>}</td>
                     <td className="px-3 py-2">
                       <span className="inline-flex gap-1.5">
                         {(r.validIdUrls || []).map((u) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" title="Valid ID" style={{ color: 'var(--teal)' }}><Eye size={12} /></a>)}
-                        {(!r.validIdUrls || r.validIdUrls.length === 0) && <span style={{ color: 'var(--mid-gray)' }}>—</span>}
+                        {(!r.validIdUrls || r.validIdUrls.length === 0) && <span style={{ color: 'var(--hr-faint)' }}>—</span>}
                       </span>
                     </td>
                     <td className="px-3 py-2">
@@ -519,8 +569,8 @@ export default function EquityPage() {
                       </span>
                     </td>
                     <td className="px-3 py-2 text-right whitespace-nowrap">
-                      <button onClick={() => setEdit(r)} className="p-1 rounded hover:bg-blue-50"><Pencil size={13} className="text-blue-500" /></button>
-                      <button onClick={() => del(r)} className="p-1 rounded hover:bg-red-50"><Trash2 size={13} className="text-red-400" /></button>
+                      <button onClick={() => setEdit(r)} className="p-1 rounded hover:bg-[var(--pale-teal)]" title="Edit holding" aria-label={`Edit ${r.shNumber}`}><Pencil size={13} style={{ color: 'var(--teal)' }} /></button>
+                      <button onClick={() => del(r)} className="p-1 rounded hover:bg-red-50" title="Delete holding" aria-label={`Delete ${r.shNumber}`}><Trash2 size={13} className="text-red-500" /></button>
                     </td>
                   </tr>
                   ))}
@@ -528,9 +578,9 @@ export default function EquityPage() {
                   )
                 })}
                 {!loading && commonRows.length === 0 && (
-                  <tr><td colSpan={17} className="text-center py-10 text-gray-400">
+                  <tr><td colSpan={17} className="text-center py-12 text-[13px]" style={{ color: 'var(--mid-gray)' }}>
                     {(data?.rows || []).length === 0 ? 'No common shareholders yet.'
-                      : <>No rows match these filters. <button onClick={() => cs.setFilters({})} className="underline" style={{ color: 'var(--teal)' }}>Clear filters</button></>}
+                      : <>No rows match these filters. <button onClick={() => cs.setFilters({})} className="font-semibold hover:underline" style={{ color: 'var(--teal)' }}>Clear filters</button></>}
                   </td></tr>
                 )}
               </tbody>
@@ -650,7 +700,7 @@ function CommonModal({ row, rows, authCommon, authFounder, shareholders, banks, 
   const lbl = 'block text-xs font-semibold mb-1'
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 overflow-y-auto" onClick={onClose}>
-      <div className="bg-white rounded-2xl p-6 w-full max-w-3xl my-8" onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-xl border shadow-xl p-6 w-full max-w-3xl my-8" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4"><h2 className="text-lg font-bold text-gray-900">{row ? `Edit ${row.shNumber}` : 'Add Common Shareholder'}</h2><button onClick={onClose}><X size={18} className="text-gray-500" /></button></div>
         {overLimit && (
           <div className="mb-3 rounded-xl border p-2.5 text-xs" style={{ borderColor: '#fecaca', background: '#fef2f2', color: '#b91c1c' }}>
@@ -1430,66 +1480,68 @@ function PreferredTab({ banks, equityAccts, assetAccts = [], onChanged, canWrite
       downloadPdf({ title: 'Preferred Shareholders', subtitle, headers, rows: body, landscape: true })
     }
   }
+  const retiredPref = fig?.retiredPreferredShares || 0
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'var(--pale-teal)' }}>
-          <p className="text-xs font-semibold" style={{ color: 'var(--deep-teal)' }}>Preferred Capitalization</p>
-          <p className="text-2xl font-bold" style={{ color: 'var(--deep-teal)' }}>{peso(fig?.preferredCapitalization || 0)}</p>
-        </div>
-        <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
-          <p className="text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>Total Preferred Shares</p>
-          <p className="text-2xl font-bold" style={{ color: 'var(--charcoal)' }}>{(fig?.preferredShares || 0).toLocaleString('en-PH')}</p>
-        </div>
-        <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
-          <p className="text-xs font-semibold" style={{ color: '#b91c1c' }}>Retired Preferred Shares</p>
-          <p className="text-2xl font-bold" style={{ color: '#b91c1c' }}>{(fig?.retiredPreferredShares || 0).toLocaleString('en-PH')}</p>
-        </div>
+        <StatCard compact loading={loading} label="Preferred capitalization" value={peso(fig?.preferredCapitalization || 0)}
+          sub={`${rows.length} preferred holding${rows.length === 1 ? '' : 's'}`} accent={{ line: '#4A8073', bg: '#f4f8ea', fg: '#3C6A5F' }} />
+        <StatCard compact loading={loading} label="Total preferred shares" value={(fig?.preferredShares || 0).toLocaleString('en-PH')}
+          sub="Issued preferred shares" accent={{ line: '#7c3aed' }} />
+        <StatCard compact loading={loading} label="Retired preferred shares" value={retiredPref.toLocaleString('en-PH')}
+          sub={retiredPref > 0 ? 'Bought back or sold on' : 'None retired'} tone={retiredPref > 0 ? 'red' : 'zero'} />
       </div>
-      <div className="flex justify-end gap-2">
-        <DownloadMenu onDownload={exportPreferred} size="md" />
-        {canWrite && <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}><Plus size={15} /> Add Preferred Shareholder</button>}
-      </div>
-      <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+      <HrCard flush title="Preferred shareholders" count={loading ? undefined : prefRows.length}
+        desc="Interest, maturity and payout schedule per holding."
+        actions={<>
+          {ps.activeFilters > 0 && <button onClick={() => ps.setFilters({})} className={hrBtn.ghost} style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Clear {ps.activeFilters} filter{ps.activeFilters === 1 ? '' : 's'}</button>}
+          <DownloadMenu onDownload={exportPreferred} size="md" />
+          {canWrite && <button onClick={() => setShowAdd(true)} className={hrBtn.primary} style={{ background: 'var(--teal)' }}><Plus size={15} /> Add preferred shareholder</button>}
+        </>}>
+      <div className="overflow-auto">
         <table ref={prefTableRef} className="w-full text-xs" style={prefRz.tableStyle}>
           <ResizableColgroup rz={prefRz} />
           <SortHead cols={PREFERRED_COLS} sortKey={ps.sortKey} sortDir={ps.sortDir} filters={ps.filters}
             onToggleSort={k => ps.toggleSort(k, PREFERRED_NUMERIC)} onFilter={ps.setFilter} rz={prefRz} />
           <tbody>
-          {loading ? <tr><td colSpan={16} className="text-center py-10 text-gray-400"><Loader2 size={16} className="inline animate-spin" /> Loading…</td></tr>
-          : prefRows.map(r => (
-            <tr key={r.id} className="border-t" style={{ borderColor: 'var(--light-gray)', opacity: (r.netShares ?? (r.numberOfShares - r.retiredShares)) <= 1e-9 && r.numberOfShares > 0 ? 0.6 : 1 }}>
-              <td className="px-3 py-2 font-mono font-semibold">{r.shNumber}</td>
-              <td className="px-3 py-2">{r.name}
-                {(r.netShares ?? (r.numberOfShares - r.retiredShares)) <= 1e-9 && r.numberOfShares > 0 && (
-                  <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap" style={{ background: '#fee2e2', color: '#b91c1c' }}>{(r.soldShares || 0) > 0 ? 'All sold' : 'Retired'}</span>
+          {loading ? <ShimmerRows cols={16} />
+          : prefRows.map(r => {
+            const gone = (r.netShares ?? (r.numberOfShares - r.retiredShares)) <= 1e-9 && r.numberOfShares > 0
+            return (
+            <tr key={r.id} className="border-t transition-colors hover:bg-[#fafcf6]" style={{ borderColor: 'var(--hr-line)', opacity: gone ? 0.6 : 1 }}>
+              <td className="px-3 py-2.5 font-mono font-semibold whitespace-nowrap" style={{ color: 'var(--charcoal)', boxShadow: `inset 4px 0 0 ${gone ? '#dc2626' : '#7c3aed'}` }}>{r.shNumber}</td>
+              <td className="px-3 py-2.5 font-semibold" style={{ color: 'var(--charcoal)' }}>{r.name}
+                {gone && (
+                  <span className="ml-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap" style={{ background: '#fee2e2', color: '#991b1b' }}>{(r.soldShares || 0) > 0 ? 'All sold' : 'Retired'}</span>
                 )}
-                {r.viaTransferFrom && <span className="ml-1.5 text-[10px]" style={{ color: 'var(--mid-gray)' }}>via {r.viaTransferFrom}</span>}
+                {r.viaTransferFrom && <span className="ml-1.5 text-[10px] font-normal" style={{ color: 'var(--mid-gray)' }}>via {r.viaTransferFrom}</span>}
               </td>
-              <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{r.shareClass || '—'}</td>
-              <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{String(r.dateAcquired).slice(0, 10)}</td>
-              <td className="px-3 py-2 text-right">{r.numberOfShares.toLocaleString('en-PH')}</td>
-              <td className="px-3 py-2 text-right">{peso(r.truePar)}</td>
-              <td className="px-3 py-2 text-right">{peso(r.apic)}</td>
-              <td className="px-3 py-2 text-right font-semibold">{peso(r.pricePerShare)}</td>
-              <td className="px-3 py-2 text-right font-semibold">{peso(r.totalCapitalization)}</td>
-              <td className="px-3 py-2 text-right">{r.equityStake.toFixed(2)}%</td>
-              <td className="px-3 py-2 text-right">{r.annualInterest != null ? `${r.annualInterest}%` : '—'}</td>
-              <td className="px-3 py-2">{r.maturityYears ? `${r.maturityYears}y${r.buybackPrice ? ` @ ${peso(r.buybackPrice)}` : ''}` : '—'}</td>
-              <td className="px-3 py-2">{r.payoutSchedule ? `${r.payoutSchedule.toLowerCase()}${r.payoutStartMonth ? ` from ${MONTHS[r.payoutStartMonth - 1]} ${r.payoutStartYear}` : ''}` : '—'}</td>
-              <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{bankLabel(r.bankAccountId)}</td>
-              <td className="px-3 py-2"><span className="inline-flex gap-1.5">{(r.validIdUrls || []).map((u) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" title="Valid ID" style={{ color: 'var(--teal)' }}><Eye size={12} /></a>)}{(!r.validIdUrls || r.validIdUrls.length === 0) && <span style={{ color: 'var(--mid-gray)' }}>—</span>}</span></td>
-              <td className="px-3 py-2 text-right whitespace-nowrap">{canWrite && <><button onClick={() => setEdit(r)} className="p-1 rounded hover:bg-blue-50"><Pencil size={13} className="text-blue-500" /></button><button onClick={() => del(r)} className="p-1 rounded hover:bg-red-50"><Trash2 size={13} className="text-red-400" /></button></>}</td>
+              <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{r.shareClass || '—'}</td>
+              <td className="px-3 py-2.5 font-mono whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{String(r.dateAcquired).slice(0, 10)}</td>
+              <td className="px-3 py-2.5 text-right font-mono" style={{ color: 'var(--charcoal)' }}>{r.numberOfShares.toLocaleString('en-PH')}</td>
+              <td className="px-3 py-2.5 text-right font-mono" style={{ color: 'var(--charcoal)' }}>{peso(r.truePar)}</td>
+              <td className="px-3 py-2.5 text-right font-mono" style={{ color: 'var(--charcoal)' }}>{peso(r.apic)}</td>
+              <td className="px-3 py-2.5 text-right font-mono font-semibold" style={{ color: 'var(--charcoal)' }}>{peso(r.pricePerShare)}</td>
+              <td className="px-3 py-2.5 text-right font-mono font-bold whitespace-nowrap" style={{ color: 'var(--deep-teal)' }}>{peso(r.totalCapitalization)}</td>
+              <td className="px-3 py-2.5 text-right font-mono" style={{ color: 'var(--charcoal)' }}>{r.equityStake.toFixed(2)}%</td>
+              <td className="px-3 py-2.5 text-right font-mono" style={{ color: 'var(--charcoal)' }}>{r.annualInterest != null ? `${r.annualInterest}%` : '—'}</td>
+              <td className="px-3 py-2.5" style={{ color: 'var(--charcoal)' }}>{r.maturityYears ? `${r.maturityYears}y${r.buybackPrice ? ` @ ${peso(r.buybackPrice)}` : ''}` : '—'}</td>
+              <td className="px-3 py-2.5" style={{ color: 'var(--charcoal)' }}>{r.payoutSchedule ? `${r.payoutSchedule.toLowerCase()}${r.payoutStartMonth ? ` from ${MONTHS[r.payoutStartMonth - 1]} ${r.payoutStartYear}` : ''}` : '—'}</td>
+              <td className="px-3 py-2.5" style={{ color: 'var(--mid-gray)' }}>{bankLabel(r.bankAccountId)}</td>
+              <td className="px-3 py-2.5"><span className="inline-flex gap-1.5">{(r.validIdUrls || []).map((u) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" title="Valid ID" style={{ color: 'var(--teal)' }}><Eye size={12} /></a>)}{(!r.validIdUrls || r.validIdUrls.length === 0) && <span style={{ color: 'var(--hr-faint)' }}>—</span>}</span></td>
+              <td className="px-3 py-2.5 text-right whitespace-nowrap">{canWrite && <><button onClick={() => setEdit(r)} className="p-1 rounded hover:bg-[var(--pale-teal)]" title="Edit holding" aria-label={`Edit ${r.shNumber}`}><Pencil size={13} style={{ color: 'var(--teal)' }} /></button><button onClick={() => del(r)} className="p-1 rounded hover:bg-red-50" title="Delete holding" aria-label={`Delete ${r.shNumber}`}><Trash2 size={13} className="text-red-500" /></button></>}</td>
             </tr>
-          ))}
+            )
+          })}
           {!loading && prefRows.length === 0 && (
-            <tr><td colSpan={16} className="text-center py-10 text-gray-400">
+            <tr><td colSpan={16} className="text-center py-12 text-[13px]" style={{ color: 'var(--mid-gray)' }}>
               {rows.length === 0 ? 'No preferred shareholders yet.'
-                : <>No rows match these filters. <button onClick={() => ps.setFilters({})} className="underline" style={{ color: 'var(--teal)' }}>Clear filters</button></>}
+                : <>No rows match these filters. <button onClick={() => ps.setFilters({})} className="font-semibold hover:underline" style={{ color: 'var(--teal)' }}>Clear filters</button></>}
             </td></tr>
           )}
         </tbody></table>
       </div>
+      </HrCard>
       {(showAdd || edit) && <PreferredModal row={edit} shareholders={shareholders} banks={banks} equityAccts={equityAccts} assetAccts={assetAccts} onClose={() => { setShowAdd(false); setEdit(null) }} onSaved={() => { setShowAdd(false); setEdit(null); load(); onChanged() }} onReload={() => { load(); onChanged() }} />}
     </div>
   )
@@ -1527,7 +1579,7 @@ function PreferredModal({ row, shareholders, banks, equityAccts, assetAccts = []
   const inp = 'w-full px-3 py-2 rounded-xl border text-sm'; const lbl = 'block text-xs font-semibold mb-1'; const bc = { borderColor: 'var(--light-gray)' }; const mg = { color: 'var(--mid-gray)' }
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 overflow-y-auto" onClick={onClose}>
-      <div className="bg-white rounded-2xl p-6 w-full max-w-3xl my-8" onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-xl border shadow-xl p-6 w-full max-w-3xl my-8" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4"><h2 className="text-lg font-bold text-gray-900">{row ? `Edit ${row.shNumber}` : 'Add Preferred Shareholder'}</h2><button onClick={onClose}><X size={18} className="text-gray-500" /></button></div>
         {!row && <div className="mb-3"><label className={lbl} style={mg}>Existing shareholder <span className="font-normal text-gray-400">(reuse their SH number)</span></label><select value={f.shareholderId} onChange={e => pickSh(e.target.value)} className={inp} style={bc}><option value="">— New shareholder —</option>{shareholders.map(s => <option key={s.id} value={s.id}>{s.shNumber} — {s.name}</option>)}</select></div>}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -1641,31 +1693,43 @@ function DividendTab({ banks, equityAccts, isAdmin }: { banks: Bank[]; equityAcc
   useEffect(() => { load() }, [load])
   const del = async (r: DivRelease) => { if (!confirm(`Delete the ${String(r.date).slice(0, 10)} dividend release? Its journal entry is reversed and the payout table removed.`)) return; await fetch(`/api/equity/dividends?id=${r.id}`, { method: 'DELETE' }); load() }
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       {isAdmin && (
-      <div className="flex items-center justify-between">
-        <div className="flex gap-1">{(['common', 'preferred'] as const).map(v => <button key={v} onClick={() => setSub(v)} className="px-3 py-1.5 rounded-lg text-xs font-semibold" style={sub === v ? { background: 'var(--teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)', border: '1px solid var(--light-gray)' }}>{v === 'common' ? 'Common' : 'Preferred'}</button>)}</div>
-        {sub === 'common' && <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}><Plus size={15} /> Add Dividend Release</button>}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="inline-flex rounded-lg border p-0.5 bg-white" style={{ borderColor: 'var(--light-gray)' }} role="group" aria-label="Dividend type">
+          {(['common', 'preferred'] as const).map(v => (
+            <button key={v} onClick={() => setSub(v)} aria-pressed={sub === v}
+              className="h-8 px-4 rounded-md text-xs font-semibold transition-colors"
+              style={sub === v ? { background: 'var(--teal)', color: '#fff' } : { color: 'var(--mid-gray)' }}>{v === 'common' ? 'Common' : 'Preferred'}</button>
+          ))}
+        </div>
+        {sub === 'common' && <button onClick={() => setShowAdd(true)} className={hrBtn.primary} style={{ background: 'var(--teal)' }}><Plus size={15} /> Add dividend release</button>}
       </div>
       )}
       {effSub === 'common' ? (
-        <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
-          <table className="w-full text-xs"><thead><tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>{['Date', 'Type', 'Per Share', 'Total Paid', 'Status', 'Emailed', ''].map(h => <th key={h} className="px-3 py-2.5 font-semibold">{h}</th>)}</tr></thead><tbody>
-            {loading ? <tr><td colSpan={7} className="text-center py-10 text-gray-400"><Loader2 size={16} className="inline animate-spin" /></td></tr>
-            : releases.map(r => (
-              <tr key={r.id} className="border-t hover:bg-gray-50 cursor-pointer" style={{ borderColor: 'var(--light-gray)' }} onClick={() => setOpen(r)}>
-                <td className="px-3 py-2">{String(r.date).slice(0, 10)}</td>
-                <td className="px-3 py-2">{r.dividendType === 'SPECIAL' ? 'Special' : 'Regular'}</td>
-                <td className="px-3 py-2 text-right">{peso(r.dividendAmount)}</td>
-                <td className="px-3 py-2 text-right font-semibold">{peso(r.totalAmountPaid)}</td>
-                <td className="px-3 py-2"><span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={r.status === 'FINALIZED' ? { background: '#dcfce7', color: '#166534' } : { background: '#fef9c3', color: '#854d0e' }}>{r.status === 'FINALIZED' ? 'Finalized' : 'Draft'}</span></td>
-                <td className="px-3 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>{r.items.filter(i => i.emailedAt).length}/{r.items.length}</td>
-                <td className="px-3 py-2 text-right whitespace-nowrap"><span className="mr-2 font-semibold" style={{ color: 'var(--teal)' }}>Open →</span><button onClick={(e) => { e.stopPropagation(); del(r) }} className="p-1 rounded hover:bg-red-50" title="Delete release"><Trash2 size={13} className="text-red-400" /></button></td>
+        <HrCard flush title="Common dividend releases" count={loading ? undefined : releases.length}
+          desc="Draft a release, finalize it to build each shareholder's payout, then email the notices.">
+        <div className="overflow-auto">
+          <table className="w-full text-xs"><thead><tr>{['Date', 'Type', 'Per share', 'Total paid', 'Status', 'Emailed', ''].map((h, k) => <th key={h || k} className={`${HR_TH} ${k === 2 || k === 3 ? 'text-right' : ''}`} style={HR_TH_STYLE}>{h}</th>)}</tr></thead><tbody>
+            {loading ? <ShimmerRows cols={7} rows={3} />
+            : releases.map(r => {
+              const fin = r.status === 'FINALIZED'
+              return (
+              <tr key={r.id} className="border-t cursor-pointer transition-colors hover:bg-[#fafcf6]" style={{ borderColor: 'var(--hr-line)' }} onClick={() => setOpen(r)}>
+                <td className="px-3 py-2.5 font-mono whitespace-nowrap" style={{ color: 'var(--charcoal)', boxShadow: `inset 4px 0 0 ${fin ? '#059669' : '#d97706'}` }}>{String(r.date).slice(0, 10)}</td>
+                <td className="px-3 py-2.5" style={{ color: 'var(--charcoal)' }}>{r.dividendType === 'SPECIAL' ? 'Special' : 'Regular'}</td>
+                <td className="px-3 py-2.5 text-right font-mono" style={{ color: 'var(--charcoal)' }}>{peso(r.dividendAmount)}</td>
+                <td className="px-3 py-2.5 text-right font-mono font-bold" style={{ color: 'var(--deep-teal)' }}>{peso(r.totalAmountPaid)}</td>
+                <td className="px-3 py-2.5"><span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={fin ? { background: '#dcfce7', color: '#166534' } : { background: '#fef3c7', color: '#92400e' }}>{fin ? 'Finalized' : 'Draft'}</span></td>
+                <td className="px-3 py-2.5 font-mono" style={{ color: 'var(--mid-gray)' }}>{r.items.filter(i => i.emailedAt).length}/{r.items.length}</td>
+                <td className="px-3 py-2.5 text-right whitespace-nowrap"><span className="mr-2 text-[11px] font-semibold" style={{ color: 'var(--teal)' }}>Open →</span><button onClick={(e) => { e.stopPropagation(); del(r) }} className="p-1 rounded hover:bg-red-50" title="Delete release" aria-label="Delete release"><Trash2 size={13} className="text-red-500" /></button></td>
               </tr>
-            ))}
-            {!loading && releases.length === 0 && <tr><td colSpan={7} className="text-center py-10 text-gray-400">No dividend releases yet.</td></tr>}
+              )
+            })}
+            {!loading && releases.length === 0 && <tr><td colSpan={7} className="text-center py-12 text-[13px]" style={{ color: 'var(--mid-gray)' }}>No dividend releases yet.</td></tr>}
           </tbody></table>
         </div>
+        </HrCard>
       ) : <PreferredDividendSection banks={banks} equityAccts={equityAccts} />}
       {showAdd && <AddDividendModal onClose={() => setShowAdd(false)} onSaved={(id) => { setShowAdd(false); load().then(() => { }); fetch(`/api/equity/dividends`).then(r => r.json()).then(j => { const rel = (j.releases || []).find((x: DivRelease) => x.id === id); if (rel) setOpen(rel) }) }} />}
       {open && <DividendDetail release={open} banks={banks} equityAccts={equityAccts} totalCommon={totalCommon} onClose={() => setOpen(null)} onChanged={load} />}
@@ -1687,7 +1751,7 @@ function AddDividendModal({ onClose, onSaved }: { onClose: () => void; onSaved: 
   const inp = 'w-full px-3 py-2 rounded-xl border text-sm'; const bc = { borderColor: 'var(--light-gray)' }; const mg = { color: 'var(--mid-gray)' }; const lbl = 'block text-xs font-semibold mb-1'
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-xl border shadow-xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4"><h2 className="text-lg font-bold text-gray-900">Add Dividend Release</h2><button onClick={onClose}><X size={18} className="text-gray-500" /></button></div>
         <div className="space-y-3">
           <div><label className={lbl} style={mg}>Date</label><input type="date" value={date} onChange={e => setDate(e.target.value)} className={inp} style={bc} /></div>
@@ -1737,7 +1801,7 @@ function DividendDetail({ release, banks, equityAccts, totalCommon, onClose, onC
   const inp = 'w-full px-3 py-2 rounded-xl border text-sm'; const bc = { borderColor: 'var(--light-gray)' }; const mg = { color: 'var(--mid-gray)' }; const lbl = 'block text-xs font-semibold mb-1'
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 overflow-y-auto" onClick={onClose}>
-      <div className="bg-white rounded-2xl p-6 w-full max-w-3xl my-8" onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-xl border shadow-xl p-6 w-full max-w-3xl my-8" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-1"><h2 className="text-lg font-bold text-gray-900">Dividend Release · {String(r.date).slice(0, 10)} <span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={finalized ? { background: '#dcfce7', color: '#166534' } : { background: '#fef9c3', color: '#854d0e' }}>{finalized ? 'Finalized' : 'Draft'}</span></h2><button onClick={onClose}><X size={18} className="text-gray-500" /></button></div>
         <p className="text-xs mb-3" style={mg}>{r.dividendType === 'SPECIAL' ? 'Special' : 'Regular'} · {peso(r.dividendAmount)}/share · {totalCommon.toLocaleString('en-PH')} common shares → total {peso(r.dividendAmount * (finalized ? 0 : totalCommon) + r.totalAmountPaid)}</p>
         {!finalized ? (
@@ -1813,42 +1877,45 @@ function PreferredDividendSection({ banks, equityAccts }: { banks: Bank[]; equit
   const selectedCells = rows.flatMap((r: any) => months.filter(m => r.cells[m] && !r.cells[m].paid && selected.has(cellKey(r.shareholderId, m))).map(m => ({ shareholderId: r.shareholderId, name: r.name, month: m, amount: Number(r.cells[m].amount), quarterKey: r.cells[m].quarterKey })))
   const selectedTotal = selectedCells.reduce((s: number, c: any) => s + c.amount, 0)
 
+  const paidTotal = releases.reduce((sum: number, r: any) => sum + Number(r.totalAmountPaid || 0), 0)
+  const yearStepper = (
+    <div className="inline-flex items-center rounded-lg border bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+      <button onClick={() => setYear(y => y - 1)} className="h-8 px-2.5 text-xs font-semibold rounded-l-lg hover:bg-[var(--pale-teal)]" style={{ color: 'var(--mid-gray)' }} aria-label="Previous year">◀</button>
+      <span className="px-2 text-[13px] font-bold font-mono" style={{ color: 'var(--charcoal)' }}>{year}</span>
+      <button onClick={() => setYear(y => y + 1)} className="h-8 px-2.5 text-xs font-semibold rounded-r-lg hover:bg-[var(--pale-teal)]" style={{ color: 'var(--mid-gray)' }} aria-label="Next year">▶</button>
+    </div>
+  )
   return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-2 flex-wrap">
-        <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--teal)' }}><Plus size={15} /> Record dividend manually</button>
-        <div className="flex items-center gap-1 ml-auto">
-          <button onClick={() => setYear(y => y - 1)} className="px-2 py-1 rounded-lg text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>◀</button>
-          <span className="px-2 text-sm font-bold" style={{ color: 'var(--charcoal)' }}>{year}</span>
-          <button onClick={() => setYear(y => y + 1)} className="px-2 py-1 rounded-lg text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>▶</button>
-        </div>
-      </div>
-
+    <div className="space-y-4">
       {selected.size > 0 && (
-        <div className="rounded-xl border p-3 flex items-center justify-between gap-3 sticky top-0 z-10" style={{ borderColor: 'var(--teal)', background: 'var(--pale-teal)' }}>
-          <div className="text-sm" style={{ color: 'var(--deep-teal)' }}><strong>{selectedCells.length} dividend{selectedCells.length === 1 ? '' : 's'} selected</strong> · total <strong>{peso(selectedTotal)}</strong></div>
+        <div className="rounded-lg border px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 sticky top-0 z-10" style={{ borderColor: 'var(--light-gray)', borderLeft: '4px solid var(--teal)', background: 'var(--pale-teal)' }}>
+          <div className="text-xs" style={{ color: 'var(--charcoal)' }}><strong>{selectedCells.length} dividend{selectedCells.length === 1 ? '' : 's'} selected</strong> · total <strong className="font-mono" style={{ color: 'var(--deep-teal)' }}>{peso(selectedTotal)}</strong></div>
           <div className="flex gap-2">
-            <button onClick={() => setSelected(new Set())} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Clear</button>
-            <button onClick={() => setBatchOpen(true)} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white" style={{ background: 'var(--teal)' }}>Record {selectedCells.length} selected</button>
+            <button onClick={() => setSelected(new Set())} className={hrBtn.ghost} style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Clear</button>
+            <button onClick={() => setBatchOpen(true)} className={hrBtn.primary} style={{ background: 'var(--teal)' }}>Record {selectedCells.length} selected</button>
           </div>
         </div>
       )}
 
-      <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Projected preferred dividends by month. Tick the amounts you&apos;ll include in a payment, then <strong>Record selected</strong> — you can skip anyone. Green = already released.</p>
-
       {/* Shareholder × month projection matrix */}
-      <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
-        <table className="w-full text-xs" style={{ minWidth: '900px' }}><thead><tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
-          <th className="px-3 py-2.5 font-semibold whitespace-nowrap sticky left-0" style={{ background: 'var(--off-white)', minWidth: 200 }}>Shareholder</th>
-          {months.map(m => <th key={m} className="px-2 py-2.5 font-semibold text-right whitespace-nowrap">{m}/{year}</th>)}
+      <HrCard flush title={`Projected preferred dividends · ${year}`}
+        desc={<>Tick the amounts you&apos;ll include in a payment, then <strong>Record selected</strong> — you can skip anyone. Green = already released.</>}
+        actions={<>
+          {yearStepper}
+          <button onClick={() => setShowAdd(true)} className={hrBtn.primary} style={{ background: 'var(--teal)' }}><Plus size={15} /> Record dividend manually</button>
+        </>}>
+      <div className="overflow-auto">
+        <table className="w-full text-xs" style={{ minWidth: '900px' }}><thead><tr>
+          <th className={`${HR_TH} sticky left-0 z-[1]`} style={{ ...HR_TH_STYLE, minWidth: 200 }}>Shareholder</th>
+          {months.map(m => <th key={m} className={`${HR_TH} text-right`} style={HR_TH_STYLE}>{m}/{year}</th>)}
         </tr></thead><tbody>
-          {loading ? <tr><td colSpan={13} className="text-center py-10 text-gray-400"><Loader2 size={16} className="inline animate-spin" /></td></tr>
+          {loading ? <ShimmerRows cols={13} rows={3} />
             : rows.map((r: any) => (
-              <tr key={r.shareholderId} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
-                <td className="px-3 py-2 sticky left-0 bg-white" style={{ color: 'var(--charcoal)' }}>{r.name}{!r.email && <span className="ml-1 text-[10px]" style={{ color: '#b91c1c' }}>(no email)</span>}</td>
+              <tr key={r.shareholderId} className="border-t" style={{ borderColor: 'var(--hr-line)' }}>
+                <td className="px-3 py-2 sticky left-0 bg-white font-semibold" style={{ color: 'var(--charcoal)' }}>{r.name}{!r.email && <span className="ml-1 text-[10px] font-normal" style={{ color: '#b91c1c' }}>(no email)</span>}</td>
                 {months.map(m => {
                   const c = r.cells[m]
-                  if (!c) return <td key={m} className="px-2 py-2 text-right text-gray-300">·</td>
+                  if (!c) return <td key={m} className="px-2 py-2 text-right" style={{ color: 'var(--light-gray)' }}>·</td>
                   const on = selected.has(cellKey(r.shareholderId, m))
                   return (
                     <td key={m} className="px-2 py-2 text-right whitespace-nowrap" style={{ background: c.paid ? '#dcfce7' : on ? 'var(--pale-teal)' : undefined }}>
@@ -1858,7 +1925,7 @@ function PreferredDividendSection({ banks, equityAccts }: { banks: Bank[]; equit
                         {c.paid && c.paidItem && (
                           <button type="button" onClick={(e) => { e.preventDefault(); undoItem(r, c) }}
                             title="Undo this dividend payment — the release's journal entry is reduced (or reversed when it was the only payment)"
-                            className="p-0.5 rounded hover:bg-red-50"><RotateCcw size={10} className="text-red-400" /></button>
+                            className="p-0.5 rounded hover:bg-red-50"><RotateCcw size={10} className="text-red-500" /></button>
                         )}
                       </label>
                     </td>
@@ -1866,32 +1933,36 @@ function PreferredDividendSection({ banks, equityAccts }: { banks: Bank[]; equit
                 })}
               </tr>
             ))}
-          {!loading && rows.length === 0 && <tr><td colSpan={13} className="text-center py-10 text-gray-400">No projected preferred dividends in {year}. Set a payout schedule on the preferred shares, or change the year.</td></tr>}
+          {!loading && rows.length === 0 && <tr><td colSpan={13} className="text-center py-12 text-[13px]" style={{ color: 'var(--mid-gray)' }}>No projected preferred dividends in {year}. Set a payout schedule on the preferred shares, or change the year.</td></tr>}
         </tbody>
-        {rows.length > 0 && <tfoot><tr className="border-t-2 font-bold" style={{ borderColor: 'var(--teal)', background: 'var(--off-white)' }}>
-          <td className="px-3 py-2 sticky left-0" style={{ background: 'var(--off-white)', color: 'var(--charcoal)' }}>TOTAL <span className="font-normal" style={{ color: 'var(--mid-gray)' }}>({peso(grandTotal)})</span></td>
-          {months.map(m => { const t = colTotal(m); return <td key={m} className="px-2 py-2 text-right font-mono" style={{ color: t > 0 ? 'var(--deep-teal)' : 'var(--light-gray)' }}>{t > 0 ? t.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '·'}</td> })}
+        {rows.length > 0 && <tfoot><tr className="border-t-2 font-bold" style={{ borderColor: 'var(--light-gray)', background: 'var(--hr-head)' }}>
+          <td className="px-3 py-2.5 sticky left-0 text-[11px] uppercase tracking-[.4px]" style={{ background: 'var(--hr-head)', color: 'var(--mid-gray)' }}>Total <span className="font-mono normal-case tracking-normal" style={{ color: 'var(--deep-teal)' }}>{peso(grandTotal)}</span></td>
+          {months.map(m => { const t = colTotal(m); return <td key={m} className="px-2 py-2.5 text-right font-mono" style={{ color: t > 0 ? 'var(--deep-teal)' : 'var(--light-gray)' }}>{t > 0 ? t.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '·'}</td> })}
         </tr></tfoot>}
         </table>
       </div>
+      </HrCard>
 
       {/* Recorded releases */}
-      <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
-        <table className="w-full text-xs"><thead><tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>{['Date', 'Quarter', 'Shareholders', 'Total Paid', 'Emailed', ''].map(h => <th key={h} className="px-3 py-2.5 font-semibold">{h}</th>)}</tr></thead><tbody>
-          {loading ? <tr><td colSpan={6} className="text-center py-10 text-gray-400"><Loader2 size={16} className="inline animate-spin" /></td></tr>
+      <HrCard flush title="Recorded preferred releases" count={loading ? undefined : releases.length}
+        desc={loading || releases.length === 0 ? undefined : <>Paid so far <strong className="font-mono" style={{ color: 'var(--deep-teal)' }}>{peso(paidTotal)}</strong></>}>
+      <div className="overflow-auto">
+        <table className="w-full text-xs"><thead><tr>{['Date', 'Quarter', 'Shareholders', 'Total paid', 'Emailed', ''].map((h, k) => <th key={h || k} className={`${HR_TH} ${k === 2 || k === 3 ? 'text-right' : ''}`} style={HR_TH_STYLE}>{h}</th>)}</tr></thead><tbody>
+          {loading ? <ShimmerRows cols={6} rows={3} />
             : releases.map((r: any) => (
-              <tr key={r.id} className="border-t hover:bg-gray-50" style={{ borderColor: 'var(--light-gray)' }}>
-                <td className="px-3 py-2 cursor-pointer" onClick={() => setOpen(r)}>{String(r.date).slice(0, 10)}</td>
-                <td className="px-3 py-2 cursor-pointer" onClick={() => setOpen(r)}>{r.periodLabel}</td>
-                <td className="px-3 py-2 text-right cursor-pointer" onClick={() => setOpen(r)}>{r.items.length}</td>
-                <td className="px-3 py-2 text-right font-semibold cursor-pointer" onClick={() => setOpen(r)}>{peso(r.totalAmountPaid)}</td>
-                <td className="px-3 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>{r.items.filter((i: any) => i.emailedAt).length}/{r.items.length}</td>
-                <td className="px-3 py-2 text-right whitespace-nowrap"><button onClick={() => setOpen(r)} className="text-[11px] font-semibold mr-2" style={{ color: 'var(--teal)' }}>Open →</button><button onClick={() => del(r)} className="p-1 rounded hover:bg-red-50"><Trash2 size={13} className="text-red-400" /></button></td>
+              <tr key={r.id} className="border-t transition-colors hover:bg-[#fafcf6]" style={{ borderColor: 'var(--hr-line)' }}>
+                <td className="px-3 py-2.5 cursor-pointer font-mono whitespace-nowrap" style={{ color: 'var(--charcoal)', boxShadow: 'inset 4px 0 0 #059669' }} onClick={() => setOpen(r)}>{String(r.date).slice(0, 10)}</td>
+                <td className="px-3 py-2.5 cursor-pointer" style={{ color: 'var(--charcoal)' }} onClick={() => setOpen(r)}>{r.periodLabel}</td>
+                <td className="px-3 py-2.5 text-right cursor-pointer font-mono" style={{ color: 'var(--charcoal)' }} onClick={() => setOpen(r)}>{r.items.length}</td>
+                <td className="px-3 py-2.5 text-right font-mono font-bold cursor-pointer" style={{ color: 'var(--deep-teal)' }} onClick={() => setOpen(r)}>{peso(r.totalAmountPaid)}</td>
+                <td className="px-3 py-2.5 font-mono" style={{ color: 'var(--mid-gray)' }}>{r.items.filter((i: any) => i.emailedAt).length}/{r.items.length}</td>
+                <td className="px-3 py-2.5 text-right whitespace-nowrap"><button onClick={() => setOpen(r)} className="text-[11px] font-semibold mr-2 hover:underline" style={{ color: 'var(--teal)' }}>Open →</button><button onClick={() => del(r)} className="p-1 rounded hover:bg-red-50" title="Delete release" aria-label="Delete release"><Trash2 size={13} className="text-red-500" /></button></td>
               </tr>
             ))}
-          {!loading && releases.length === 0 && <tr><td colSpan={6} className="text-center py-6 text-gray-400">No dividends recorded yet.</td></tr>}
+          {!loading && releases.length === 0 && <tr><td colSpan={6} className="text-center py-10 text-[13px]" style={{ color: 'var(--mid-gray)' }}>No dividends recorded yet.</td></tr>}
         </tbody></table>
       </div>
+      </HrCard>
 
       {showAdd && <AddPreferredDividendModal shareholders={data?.shareholders || []} banks={banks} equityAccts={equityAccts} onClose={() => setShowAdd(false)} onSaved={() => { setShowAdd(false); load() }} />}
       {batchOpen && <BatchPreferredDividendModal cells={selectedCells} banks={banks} equityAccts={equityAccts} onClose={() => setBatchOpen(false)} onSaved={() => { setBatchOpen(false); setSelected(new Set()); load() }} />}
@@ -1933,7 +2004,7 @@ function BatchPreferredDividendModal({ cells, banks, equityAccts, onClose, onSav
   const inp = 'w-full px-3 py-2 rounded-xl border text-sm'; const bc = { borderColor: 'var(--light-gray)' }; const mg = { color: 'var(--mid-gray)' }; const lbl = 'block text-xs font-semibold mb-1'
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 overflow-y-auto" onClick={onClose}>
-      <div className="bg-white rounded-2xl p-6 w-full max-w-lg my-8" onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-xl border shadow-xl p-6 w-full max-w-lg my-8" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4"><h2 className="text-lg font-bold text-gray-900">Record {cells.length} Preferred Dividend{cells.length === 1 ? '' : 's'}</h2><button onClick={onClose}><X size={18} className="text-gray-500" /></button></div>
         <div className="rounded-xl border overflow-auto mb-3" style={{ borderColor: 'var(--light-gray)', maxHeight: 200 }}>
           <table className="w-full text-xs"><tbody>
@@ -1988,7 +2059,7 @@ function AddPreferredDividendModal({ shareholders, banks, equityAccts, onClose, 
   const inp = 'w-full px-3 py-2 rounded-xl border text-sm'; const bc = { borderColor: 'var(--light-gray)' }; const mg = { color: 'var(--mid-gray)' }; const lbl = 'block text-xs font-semibold mb-1'
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 overflow-y-auto" onClick={onClose}>
-      <div className="bg-white rounded-2xl p-6 w-full max-w-2xl my-8" onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-xl border shadow-xl p-6 w-full max-w-2xl my-8" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-1"><h2 className="text-lg font-bold text-gray-900">Add Preferred Dividend Release · <span style={{ color: 'var(--teal)' }}>{qLabel}</span>{isPast && <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full align-middle" style={{ background: '#fef9c3', color: '#854d0e' }}>past quarter</span>}</h2><button onClick={onClose}><X size={18} className="text-gray-500" /></button></div>
         <p className="text-xs mb-4" style={mg}>Pick any quarter (including past ones) to backfill history. Amounts default to each shareholder&apos;s current quarterly dividend — edit them to match what was actually paid.</p>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
@@ -2039,7 +2110,7 @@ function PreferredDividendDetail({ release, onClose, onChanged }: { release: any
   const mg = { color: 'var(--mid-gray)' }
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 overflow-y-auto" onClick={onClose}>
-      <div className="bg-white rounded-2xl p-6 w-full max-w-3xl my-8" onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-xl border shadow-xl p-6 w-full max-w-3xl my-8" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-1"><h2 className="text-lg font-bold text-gray-900">Preferred Dividend · {r.periodLabel} <span className="text-xs font-normal" style={mg}>({String(r.date).slice(0, 10)})</span></h2><button onClick={onClose}><X size={18} className="text-gray-500" /></button></div>
         <p className="text-xs mb-3" style={mg}>{r.items.length} shareholder{r.items.length === 1 ? '' : 's'} · total {peso(r.totalAmountPaid)}</p>
         <div className="flex items-center gap-2 mb-3 flex-wrap"><span className="text-xs" style={mg}>Proof of deposit:</span>{proofUrls.map((u, i) => <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="text-xs inline-flex items-center gap-1" style={{ color: 'var(--teal)' }}><Eye size={12} /> {i + 1}</a>)}<ScanUpload compact section="equity" prefix={`PREFDIV-${String(r.date).slice(0, 10)}-PROOF`} existingCount={proofUrls.length} label="Add proof" onUploaded={u => saveProof([...proofUrls, u])} /></div>
@@ -2066,7 +2137,6 @@ function PreferredDividendDetail({ release, onClose, onChanged }: { release: any
 // Sortable, filterable header. The shared SortFilterHead cannot be used on these
 // tables: their columns are user-resizable, and the drag handle has to stay in
 // the header cell. Same interaction, same helper doing the sorting.
-type RzLike = { /* ResizableColgroup handle bag */ } | null
 function SortHead({ cols, sortKey, sortDir, filters, onToggleSort, onFilter, rz, trailing = true }: {
   cols: SortCol[]; sortKey: string; sortDir: 'asc' | 'desc'; filters: Record<string, string>
   onToggleSort: (k: string) => void; onFilter: (k: string, v: string) => void
@@ -2075,22 +2145,23 @@ function SortHead({ cols, sortKey, sortDir, filters, onToggleSort, onFilter, rz,
 }) {
   return (
     <thead>
-      <tr className="text-left" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
+      <tr className="text-left" style={HR_TH_STYLE}>
         {cols.map((c, i) => (
-          <th key={c.key} className="px-3 py-2 font-semibold whitespace-nowrap relative align-top">
-            <button onClick={() => onToggleSort(c.key)} className="flex items-center gap-1">
+          <th key={c.key} className="px-3 py-2 whitespace-nowrap relative align-top" style={HR_TH_STYLE}>
+            <button onClick={() => onToggleSort(c.key)} className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-[.4px] hover:text-[var(--teal)]"
+              style={{ color: sortKey === c.key ? 'var(--deep-teal)' : 'var(--mid-gray)' }}>
               {c.label}
               <span style={{ color: sortKey === c.key ? 'var(--teal)' : 'var(--light-gray)' }}>
                 {sortKey === c.key ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}
               </span>
             </button>
             <input value={filters[c.key] || ''} onChange={e => onFilter(c.key, e.target.value)} placeholder="filter…"
-              className="mt-1 w-full min-w-[60px] px-1.5 py-0.5 rounded border text-[10px] font-normal"
+              className="mt-1 w-full min-w-[60px] px-1.5 py-0.5 rounded-md border bg-white text-[10px] font-normal focus:outline-none focus:border-[var(--teal)]"
               style={{ borderColor: 'var(--light-gray)' }} />
             {rz && <ColResizeHandle rz={rz} index={i} />}
           </th>
         ))}
-        {trailing && <th className="px-3 py-2" />}
+        {trailing && <th className="px-3 py-2" style={HR_TH_STYLE} />}
       </tr>
     </thead>
   )
@@ -2130,26 +2201,26 @@ function CertificatesTab() {
   useEffect(() => {
     fetch('/api/equity/certificates').then(r => r.json()).then(setData).catch(() => setData(null)).finally(() => setLoading(false))
   }, [])
-  if (loading) return <p className="py-10 text-center text-sm text-gray-400"><Loader2 size={16} className="inline animate-spin" /> Loading certificates…</p>
-  if (!data) return <p className="py-10 text-center text-sm text-gray-400">Could not load the certificate registry.</p>
+  if (loading) return <div className="space-y-3">{[0, 1].map(i => <div key={i} className="h-40 rounded-lg border hr-shimmer" style={{ borderColor: 'var(--light-gray)' }} />)}</div>
+  if (!data) return <div className="rounded-lg border bg-white py-10 text-center text-[13px]" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>Could not load the certificate registry.</div>
 
   const fmtSeq = (code: string, q: number) => `${code}-${String(q).padStart(4, '0')}`
-  const STATUS_STYLE: Record<CertRow['status'], { bg: string; fg: string }> = {
-    ACTIVE: { bg: '#dcfce7', fg: '#166534' },
-    RETIRED: { bg: '#fee2e2', fg: '#b91c1c' },
-    RESCINDED: { bg: '#e5e7eb', fg: '#374151' },
+  const STATUS_STYLE: Record<CertRow['status'], { bg: string; fg: string; line: string }> = {
+    ACTIVE: { bg: '#dcfce7', fg: '#166534', line: '#059669' },
+    RETIRED: { bg: '#fee2e2', fg: '#991b1b', line: '#dc2626' },
+    RESCINDED: { bg: '#e5e7eb', fg: '#374151', line: '#9ca3af' },
   }
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {(data.uncertifiedCommon > 0 || data.uncertifiedPreferred > 0) && (
-        <div className="rounded-xl border px-4 py-3 text-xs" style={{ borderColor: '#fed7aa', background: '#fff7ed', color: '#9a3412' }}>
+        <div className="rounded-lg border px-4 py-2.5 text-xs" style={{ borderColor: '#fde68a', borderLeft: '4px solid #d97706', background: '#fffbeb', color: '#92400e' }}>
           <strong>Holdings without a certificate number:</strong> {data.uncertifiedCommon} common/founders and {data.uncertifiedPreferred} preferred active holding{data.uncertifiedCommon + data.uncertifiedPreferred !== 1 ? 's' : ''} have no cert on record — set them on the holding (edit ✎) so this registry stays complete.
         </div>
       )}
       {data.series.map(sr => (
-        <div key={sr.code} className="rounded-2xl border bg-white overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
-          <div className="px-4 py-3 flex flex-wrap items-center gap-2 border-b" style={{ borderColor: 'var(--light-gray)', background: 'var(--off-white)' }}>
-            <h3 className="text-sm font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>{sr.label}</h3>
+        <div key={sr.code} className="rounded-lg border bg-white overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+          <div className="px-4 py-3 flex flex-wrap items-center gap-2 border-b" style={{ borderColor: 'var(--light-gray)' }}>
+            <h3 className="text-[15px] font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>{sr.label}</h3>
             <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>{sr.count} certificate{sr.count !== 1 ? 's' : ''} · highest {sr.code}-{String(sr.maxSeq).padStart(4, '0')}</span>
             <span className="text-[11px] px-2 py-0.5 rounded-full font-bold font-mono" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}
               title="Put this number on the next certificate issued in this series — skipped numbers below the highest are not reused">
@@ -2172,30 +2243,30 @@ function CertificatesTab() {
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
-              <thead><tr className="text-left" style={{ color: 'var(--mid-gray)' }}>
-                <th className="px-4 py-2 font-semibold whitespace-nowrap">Cert No.</th>
-                <th className="px-3 py-2 font-semibold whitespace-nowrap">Holder</th>
-                <th className="px-3 py-2 font-semibold">Class</th>
-                <th className="px-3 py-2 font-semibold text-right whitespace-nowrap">Shares (net)</th>
-                <th className="px-3 py-2 font-semibold whitespace-nowrap">Date</th>
-                <th className="px-3 py-2 font-semibold">How acquired</th>
-                <th className="px-3 py-2 font-semibold">Status</th>
+              <thead><tr>
+                <th className={HR_TH} style={HR_TH_STYLE}>Cert no.</th>
+                <th className={HR_TH} style={HR_TH_STYLE}>Holder</th>
+                <th className={HR_TH} style={HR_TH_STYLE}>Class</th>
+                <th className={`${HR_TH} text-right`} style={HR_TH_STYLE}>Shares (net)</th>
+                <th className={HR_TH} style={HR_TH_STYLE}>Date</th>
+                <th className={HR_TH} style={HR_TH_STYLE}>How acquired</th>
+                <th className={HR_TH} style={HR_TH_STYLE}>Status</th>
               </tr></thead>
               <tbody>
                 {sr.certs.map((c, i) => {
                   const dup = c.seq != null && sr.duplicates.includes(c.seq)
                   const st = STATUS_STYLE[c.status]
                   return (
-                    <tr key={c.certNo + c.shNumber + i} className="border-t" style={{ borderColor: 'var(--light-gray)', background: dup ? '#fef2f2' : undefined }}>
-                      <td className="px-4 py-2 font-mono font-semibold whitespace-nowrap" style={{ color: dup ? '#b91c1c' : 'var(--deep-teal)' }}>
+                    <tr key={c.certNo + c.shNumber + i} className="border-t transition-colors hover:bg-[#fafcf6]" style={{ borderColor: 'var(--hr-line)', background: dup ? '#fef7f7' : undefined }}>
+                      <td className="px-3 py-2.5 font-mono font-semibold whitespace-nowrap" style={{ color: dup ? '#b91c1c' : 'var(--deep-teal)', boxShadow: `inset 4px 0 0 ${dup ? '#dc2626' : st.line}` }}>
                         {c.certNo}{dup && <span className="ml-1 text-[10px] font-sans font-semibold" style={{ color: '#b91c1c' }}>duplicate</span>}
                       </td>
-                      <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--charcoal)' }}><span className="font-mono" style={{ color: 'var(--mid-gray)' }}>{c.shNumber}</span> {c.holder}</td>
+                      <td className="px-3 py-2.5 whitespace-nowrap font-semibold" style={{ color: 'var(--charcoal)' }}><span className="font-mono font-normal" style={{ color: 'var(--mid-gray)' }}>{c.shNumber}</span> {c.holder}</td>
                       <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{c.shareClass || '—'}</td>
-                      <td className="px-3 py-2 text-right whitespace-nowrap">{c.netShares.toLocaleString('en-PH')}{c.netShares !== c.shares && <span className="block text-[10px]" style={{ color: 'var(--mid-gray)' }}>of {c.shares.toLocaleString('en-PH')}</span>}</td>
-                      <td className="px-3 py-2 whitespace-nowrap" style={{ color: 'var(--mid-gray)' }}>{String(c.dateAcquired).slice(0, 10)}</td>
+                      <td className="px-3 py-2.5 text-right whitespace-nowrap font-mono" style={{ color: 'var(--charcoal)' }}>{c.netShares.toLocaleString('en-PH')}{c.netShares !== c.shares && <span className="block text-[10px]" style={{ color: 'var(--mid-gray)' }}>of {c.shares.toLocaleString('en-PH')}</span>}</td>
+                      <td className="px-3 py-2.5 whitespace-nowrap font-mono" style={{ color: 'var(--mid-gray)' }}>{String(c.dateAcquired).slice(0, 10)}</td>
                       <td className="px-3 py-2" style={{ color: 'var(--mid-gray)' }}>{c.viaTransferFrom ? `Transfer from ${c.viaTransferFrom}` : 'Original issuance'}</td>
-                      <td className="px-3 py-2"><span className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: st.bg, color: st.fg }}>{c.status.charAt(0) + c.status.slice(1).toLowerCase()}</span></td>
+                      <td className="px-3 py-2.5"><span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: st.bg, color: st.fg }}>{c.status.charAt(0) + c.status.slice(1).toLowerCase()}</span></td>
                     </tr>
                   )
                 })}
@@ -2285,8 +2356,8 @@ function GisSummaryTab({ rows, shareholders, figures, onChanged }: {
   const hasOther = buckets.PH.OTHER.shares + buckets.F.OTHER.shares > 0
 
   const cellCls = 'border px-2.5 py-1.5'
-  const cell = { borderColor: 'var(--light-gray)' }
-  const headCell = { ...cell, background: 'var(--off-white)', color: 'var(--mid-gray)' }
+  const cell = { borderColor: 'var(--hr-line)' }
+  const headCell = { ...cell, background: 'var(--hr-head)', color: 'var(--mid-gray)' }
   const secHead = (t: string) => (
     <tr><td colSpan={6} className={`${cellCls} font-bold text-[11px] tracking-wider`} style={{ ...cell, background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>{t}</td></tr>
   )
@@ -2322,20 +2393,20 @@ function GisSummaryTab({ rows, shareholders, figures, onChanged }: {
   }
 
   const capTable = (title: string) => (
-    <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
-      <div className="px-4 py-3 border-b" style={{ background: 'var(--off-white)', borderColor: 'var(--light-gray)' }}>
-        <h3 className="text-sm font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>{title}</h3>
+    <div className="rounded-lg border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+      <div className="px-4 py-3 border-b" style={{ borderColor: 'var(--light-gray)' }}>
+        <h3 className="text-[15px] font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>{title}</h3>
       </div>
       <table className="w-full text-xs" style={{ borderCollapse: 'collapse' }}>
         <thead>
           <tr>
-            <th className={`${cellCls} text-left`} style={headCell}>NATIONALITY</th>
-            <th className={`${cellCls} text-center`} style={headCell}>NO. OF STOCKHOLDERS</th>
-            <th className={`${cellCls} text-left`} style={headCell}>TYPE OF SHARES</th>
-            <th className={`${cellCls} text-right`} style={headCell}>NUMBER OF SHARES</th>
-            <th className={`${cellCls} text-right`} style={headCell}>PAR/STATED VALUE</th>
-            <th className={`${cellCls} text-right`} style={headCell}>AMOUNT (PhP)</th>
-            <th className={`${cellCls} text-right`} style={headCell}>% OF OWNERSHIP</th>
+            <th className={`${cellCls} text-left text-[11px] font-bold tracking-[.4px]`} style={headCell}>NATIONALITY</th>
+            <th className={`${cellCls} text-center text-[11px] font-bold tracking-[.4px]`} style={headCell}>NO. OF STOCKHOLDERS</th>
+            <th className={`${cellCls} text-left text-[11px] font-bold tracking-[.4px]`} style={headCell}>TYPE OF SHARES</th>
+            <th className={`${cellCls} text-right text-[11px] font-bold tracking-[.4px]`} style={headCell}>NUMBER OF SHARES</th>
+            <th className={`${cellCls} text-right text-[11px] font-bold tracking-[.4px]`} style={headCell}>PAR/STATED VALUE</th>
+            <th className={`${cellCls} text-right text-[11px] font-bold tracking-[.4px]`} style={headCell}>AMOUNT (PhP)</th>
+            <th className={`${cellCls} text-right text-[11px] font-bold tracking-[.4px]`} style={headCell}>% OF OWNERSHIP</th>
           </tr>
         </thead>
         <tbody>
@@ -2384,32 +2455,31 @@ function GisSummaryTab({ rows, shareholders, figures, onChanged }: {
   return (
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>GIS Summary</h2>
-          <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>
+        <div className="min-w-0">
+          <h2 className="text-[17px] font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>GIS Summary</h2>
+          <p className="text-xs max-w-3xl" style={{ color: 'var(--mid-gray)' }}>
             The share registry arranged like the SEC General Information Sheet&apos;s Capital Structure page, for line-by-line comparison with the filed GIS.
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => setShowNat(v => !v)}
-            className="px-3 py-2 rounded-xl text-sm font-semibold border" style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+          <button onClick={() => setShowNat(v => !v)} aria-pressed={showNat}
+            className={hrBtn.outline} style={{ borderColor: 'var(--light-gray)', color: showNat ? 'var(--deep-teal)' : 'var(--mid-gray)' }}>
             {showNat ? 'Hide nationalities' : 'Edit nationalities'}
           </button>
-          <button onClick={exportXlsx}
-            className="px-3 py-2 rounded-xl text-sm font-semibold border" style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
+          <button onClick={exportXlsx} className={hrBtn.outline} style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>
             Download Excel
           </button>
         </div>
       </div>
 
       {showNat && (
-        <div className="rounded-2xl border bg-white p-4" style={{ borderColor: 'var(--light-gray)' }}>
+        <div className="rounded-lg border bg-white p-4" style={{ borderColor: 'var(--light-gray)', borderLeft: '4px solid var(--teal)' }}>
           <p className="text-xs font-semibold mb-2" style={{ color: 'var(--charcoal)' }}>
             Shareholder nationality — tick the foreign ones; everyone else counts as Filipino.
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
             {shareholders.map(sh => (
-              <label key={sh.id} className="flex items-center gap-2 text-sm px-2 py-1 rounded-lg hover:bg-gray-50 cursor-pointer">
+              <label key={sh.id} className="flex items-center gap-2 text-[13px] px-2 py-1 rounded-lg hover:bg-[#fafcf6] cursor-pointer">
                 <input type="checkbox" checked={!!sh.isForeign} disabled={savingId === sh.id}
                   onChange={e => setForeign(sh, e.target.checked)} />
                 <span style={{ color: 'var(--charcoal)' }}>{sh.shNumber} — {sh.name}</span>
@@ -2421,17 +2491,17 @@ function GisSummaryTab({ rows, shareholders, figures, onChanged }: {
       )}
 
       {/* AUTHORIZED CAPITAL STOCK */}
-      <div className="rounded-2xl border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
-        <div className="px-4 py-3 border-b" style={{ background: 'var(--off-white)', borderColor: 'var(--light-gray)' }}>
-          <h3 className="text-sm font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>AUTHORIZED CAPITAL STOCK</h3>
+      <div className="rounded-lg border overflow-auto bg-white" style={{ borderColor: 'var(--light-gray)' }}>
+        <div className="px-4 py-3 border-b" style={{ borderColor: 'var(--light-gray)' }}>
+          <h3 className="text-[15px] font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>AUTHORIZED CAPITAL STOCK</h3>
         </div>
         <table className="w-full text-xs" style={{ borderCollapse: 'collapse' }}>
           <thead>
             <tr>
-              <th className={`${cellCls} text-left`} style={headCell}>TYPE OF SHARES</th>
-              <th className={`${cellCls} text-right`} style={headCell}>NUMBER OF SHARES</th>
-              <th className={`${cellCls} text-right`} style={headCell}>PAR/STATED VALUE</th>
-              <th className={`${cellCls} text-right`} style={headCell}>AMOUNT (PhP)</th>
+              <th className={`${cellCls} text-left text-[11px] font-bold tracking-[.4px]`} style={headCell}>TYPE OF SHARES</th>
+              <th className={`${cellCls} text-right text-[11px] font-bold tracking-[.4px]`} style={headCell}>NUMBER OF SHARES</th>
+              <th className={`${cellCls} text-right text-[11px] font-bold tracking-[.4px]`} style={headCell}>PAR/STATED VALUE</th>
+              <th className={`${cellCls} text-right text-[11px] font-bold tracking-[.4px]`} style={headCell}>AMOUNT (PhP)</th>
             </tr>
           </thead>
           <tbody>
@@ -2468,7 +2538,7 @@ function GisSummaryTab({ rows, shareholders, figures, onChanged }: {
       {capTable('SUBSCRIBED CAPITAL')}
       {capTable('PAID-UP CAPITAL')}
 
-      <div className="rounded-xl px-4 py-3 text-[11px] space-y-1" style={{ background: 'var(--off-white)', color: 'var(--mid-gray)' }}>
+      <div className="rounded-lg border px-4 py-3 text-[11px] space-y-1" style={{ background: '#fcfdfa', borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
         <p>• Subscribed = outstanding shares (net of buybacks and onward transfers; rescinded holdings excluded). Unissued/treasury shares are not part of subscribed capital.</p>
         <p>• Paid-up mirrors subscribed: the registry treats issued shares as fully paid. Receivable-backed subscriptions are not netted out here.</p>
         <p>• Amounts are shares × each holding&apos;s par (no APIC), so they will not match Total Capitalization. % of ownership is shares ÷ authorized ({auth ? n0(auth) : '—'}).</p>
