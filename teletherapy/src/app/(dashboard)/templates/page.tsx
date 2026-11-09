@@ -17,6 +17,10 @@ import {
   PinOff,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import {
+  DashCard, EmptyState, ErrorCard, PageHeader, PillTabs, Skeleton, Tag,
+  BTN_PRIMARY, BTN_SM, CARD_STYLE, CONTROL, CONTROL_STYLE, FOCUS, PAGE, PRIMARY_STYLE, SECONDARY_STYLE,
+} from '@/components/hub/ui'
 
 interface Template {
   id: string
@@ -187,124 +191,112 @@ export default function TemplatesPage() {
 
   const totalCount = visibleTemplates.length + visibleTests.length
 
+  const tabs = [
+    { id: 'all', label: <span className="inline-flex items-center gap-1.5"><ClipboardList size={13} /> All</span> },
+    { id: 'pinned', label: <span className="inline-flex items-center gap-1.5"><Pin size={13} /> Pinned</span> },
+    ...(seesAllDepts
+      ? techDepts.map((d) => ({ id: d, label: <span className="inline-flex items-center gap-1.5"><Stethoscope size={13} /> {DEPT_TAB_LABEL[d] ?? d}</span> }))
+      : [{ id: 'technical', label: <span className="inline-flex items-center gap-1.5"><Stethoscope size={13} /> Technical Department</span> }]),
+    { id: 'admin', label: <span className="inline-flex items-center gap-1.5"><Briefcase size={13} /> Admin/Operations</span> },
+    { id: 'hr', label: <span className="inline-flex items-center gap-1.5"><UserCog size={13} /> HR</span> },
+  ]
+
   return (
-    <div className="max-w-5xl mx-auto">
+    <div className={`${PAGE} !max-w-[1000px]`}>
+      <PageHeader
+        eyebrow="Resources"
+        title="Templates & Forms"
+        description="Operational forms, clinical templates, and standardized tests scoped to your department."
+      />
 
-      {/* Hero */}
-      <div className="hero-gradient rounded-2xl px-8 py-8 mb-6 animate-fade-up">
-        <div className="relative z-10 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-white/15 flex items-center justify-center backdrop-blur-sm border border-white/20">
-            <FileText className="w-6 h-6 text-white" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <h1 className="text-xl font-bold text-white tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
-              Templates &amp; Forms
-            </h1>
-            <p className="text-white/70 text-sm mt-1">
-              Operational forms, clinical templates, and standardized tests scoped to your department.
-            </p>
-          </div>
+      {/* Filters + search */}
+      <section className="rounded-xl p-3 sm:p-4 space-y-3 min-w-0" style={CARD_STYLE}>
+        <div className="overflow-x-auto -mx-1 px-1">
+          <PillTabs label="Template category" value={filter} onChange={setFilter} tabs={tabs} />
         </div>
-      </div>
-
-      {/* Filter bar */}
-      <div className="flex flex-wrap items-center gap-2 mb-4 animate-fade-up stagger-1">
-        <FilterButton active={filter === 'all'} onClick={() => setFilter('all')} icon={<ClipboardList size={13} />} label="All" />
-        <FilterButton active={filter === 'pinned'} onClick={() => setFilter('pinned')} icon={<Pin size={13} />} label="Pinned" />
-        {seesAllDepts ? (
-          techDepts.map((d) => (
-            <FilterButton key={d} active={filter === d} onClick={() => setFilter(d)} icon={<Stethoscope size={13} />} label={DEPT_TAB_LABEL[d] ?? d} />
-          ))
-        ) : (
-          <FilterButton active={filter === 'technical'} onClick={() => setFilter('technical')} icon={<Stethoscope size={13} />} label="Technical Department" />
+        <div className="relative">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mid-gray)' }} />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by template name, number, or description…"
+            aria-label="Search templates"
+            className={`${CONTROL} w-full h-10 pl-9 pr-9`}
+            style={CONTROL_STYLE}
+          />
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch('')}
+              className={`absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-md flex items-center justify-center hover:bg-[var(--off-white)] ${FOCUS}`}
+              style={{ color: 'var(--mid-gray)' }}
+              title="Clear search"
+              aria-label="Clear search"
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
+        {!loading && !error && data && (
+          <p className="text-[11.5px] px-0.5" style={{ color: 'var(--mid-gray)' }}>
+            {visibleTemplates.length} template{visibleTemplates.length === 1 ? '' : 's'}
+            {visibleTests.length > 0 && <> · {visibleTests.length} standardized test{visibleTests.length === 1 ? '' : 's'}</>}
+          </p>
         )}
-        <FilterButton active={filter === 'admin'} onClick={() => setFilter('admin')} icon={<Briefcase size={13} />} label="Admin/Operations" />
-        <FilterButton active={filter === 'hr'} onClick={() => setFilter('hr')} icon={<UserCog size={13} />} label="HR" />
-      </div>
-
-      {/* Search */}
-      <div className="relative mb-5 animate-fade-up stagger-2">
-        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--mid-gray)]" />
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by template name, number, or description…"
-          className="input !pl-9 text-[13px]"
-        />
-        {search && (
-          <button
-            type="button"
-            onClick={() => setSearch('')}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--mid-gray)] hover:text-[var(--charcoal)]"
-            title="Clear search"
-          >
-            <X size={14} />
-          </button>
-        )}
-      </div>
+      </section>
 
       {/* Body */}
       {loading ? (
-        <div className="flex flex-col items-center justify-center py-20 gap-3">
-          <Loader2 className="w-7 h-7 text-[var(--moss)] animate-spin" />
-          <p className="text-sm text-[var(--mid-gray)]">Loading templates…</p>
+        <div className="space-y-3" role="status" aria-label="Loading templates">
+          {[0, 1, 2, 3].map(i => <Skeleton key={i} className="h-20 rounded-xl" />)}
         </div>
       ) : error ? (
-        <div className="card-static text-center py-12 animate-fade-up">
-          <p className="text-[13px] text-[var(--clay)] font-semibold">{error}</p>
-          <button onClick={fetchTemplates} className="mt-3 text-[12px] font-semibold text-[var(--moss)] hover:underline">Try again</button>
-        </div>
+        <ErrorCard title="Could not load templates" hint={error} onRetry={fetchTemplates} />
       ) : !data || totalCount === 0 ? (
-        <div className="card-static text-center py-14 animate-fade-up">
-          <div className="w-14 h-14 rounded-2xl bg-[var(--paper-2)] flex items-center justify-center mx-auto mb-3">
-            <FileText size={22} className="text-[var(--mid-gray)]" />
-          </div>
-          <p className="text-[13px] text-[var(--narra)] font-semibold mb-1">No templates match.</p>
-          <p className="text-[12px] text-[var(--mid-gray)] max-w-sm mx-auto">
-            {search ? `Nothing for "${search}".` : 'Try a different filter.'}
-          </p>
+        <div className="rounded-xl" style={CARD_STYLE}>
+          <EmptyState
+            icon={search ? 'search' : 'file'}
+            title="No templates match."
+            hint={search ? `Nothing for "${search}".` : 'Try a different filter.'}
+          />
         </div>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-5">
           {grouped.map(([dept, items]) => (
-            <section key={dept} className="animate-fade-up">
-              <div className="flex items-center gap-3 mb-3">
-                <span className="badge bg-[var(--moss)] text-white !text-[10px]">
-                  {dept}
-                </span>
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--mid-gray)]">
-                  {items.length} template{items.length === 1 ? '' : 's'}
-                </span>
-              </div>
-              <div className="space-y-2">
-                {items.map((t) => (
+            <DashCard
+              key={dept}
+              title={<>{dept}<span className="ml-1.5 text-[12px] font-semibold tabular-nums" style={{ color: 'var(--mid-gray)' }}>{items.length}</span></>}
+              icon={<FileText size={16} />}
+              flush
+            >
+              <ul>
+                {items.map((t, i) => (
                   <TemplateRow
                     key={t.id}
                     t={t}
+                    first={i === 0}
                     pinned={isPinned(t)}
                     pinning={pinningId === t.id}
                     onTogglePin={() => togglePin(t)}
                   />
                 ))}
-              </div>
-            </section>
+              </ul>
+            </DashCard>
           ))}
 
           {visibleTests.length > 0 && (
-            <section className="animate-fade-up">
-              <div className="flex items-center gap-3 mb-3">
-                <span className="badge bg-[var(--clay)] text-white !text-[10px]">Standardized Tests</span>
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--mid-gray)]">
-                  {visibleTests.length} test{visibleTests.length === 1 ? '' : 's'}
-                </span>
-              </div>
-              <div className="space-y-2">
-                {visibleTests.map((t) => (
-                  <TestRow key={t.id} t={t} />
+            <DashCard
+              title={<>Standardized Tests<span className="ml-1.5 text-[12px] font-semibold tabular-nums" style={{ color: 'var(--mid-gray)' }}>{visibleTests.length}</span></>}
+              icon={<ClipboardList size={16} />}
+              flush
+            >
+              <ul>
+                {visibleTests.map((t, i) => (
+                  <TestRow key={t.id} t={t} first={i === 0} />
                 ))}
-              </div>
-            </section>
+              </ul>
+            </DashCard>
           )}
         </div>
       )}
@@ -312,141 +304,93 @@ export default function TemplatesPage() {
   )
 }
 
-function FilterButton({ active, onClick, icon, label }: {
-  active: boolean; onClick: () => void; icon: React.ReactNode; label: string
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={cn(
-        'inline-flex items-center gap-1.5 text-[12px] font-semibold px-3 py-2 rounded-lg border transition-colors',
-        active
-          ? 'bg-[var(--narra)] text-[var(--paper)] border-[var(--narra)]'
-          : 'bg-white text-[var(--narra)] border-[var(--paper-3)] hover:bg-[var(--paper-2)]',
-      )}
-    >
-      {icon}
-      {label}
-    </button>
-  )
-}
-
-function TemplateRow({ t, pinned, pinning, onTogglePin }: {
+function TemplateRow({ t, first, pinned, pinning, onTogglePin }: {
   t: Template
+  first: boolean
   pinned: boolean
   pinning: boolean
   onTogglePin: () => void
 }) {
-  // Online form templates (Google Form / external link) get a Sun-tinted
-  // card + ribbon to make them stand out. Internal-only templates go
-  // grey + muted because clinicians can see they exist but can't
-  // download them.
+  // Online form templates (Google Form / external link) get a warm tint and
+  // a left rule so they stand out. Internal-only templates go muted because
+  // clinicians can see they exist but can't download them.
   const hasOnlineForm = !!(t.formLink || t.link)
   const isInternal = t.internalOnly
+  const online = hasOnlineForm && !isInternal
   return (
-    <div
-      className={cn(
-        'card-static !p-4 flex flex-col sm:flex-row sm:items-center gap-3 transition-colors',
-        hasOnlineForm && !isInternal && 'border-2 border-[var(--sun)] bg-[var(--sun-tint)]/30 shadow-[0_2px_12px_rgba(198,152,73,0.12)]',
-        isInternal && 'bg-[var(--paper-2)] border-[var(--paper-3)] opacity-70',
-      )}
+    <li
+      className="px-4 sm:px-5 py-3.5 flex flex-col sm:flex-row sm:items-center gap-3"
+      style={{
+        borderTop: first ? undefined : '1px solid var(--light-gray)',
+        ...(online ? { background: 'rgba(198,152,73,0.07)', boxShadow: 'inset 3px 0 0 var(--sun)' } : null),
+        ...(isInternal ? { background: '#F8FAF2' } : null),
+      }}
     >
-      {/* Left rail: prominent template number + pin toggle, both immediately visible. */}
-      <div className="flex sm:flex-col items-center gap-2 sm:w-[88px] sm:shrink-0">
-        {t.templateNo && (
-          <div
-            className={cn(
-              'w-full px-2 py-2 rounded-xl text-center font-bold tracking-wider text-[12px] leading-tight',
-              hasOnlineForm && !isInternal
-                ? 'bg-[var(--sun)] text-white'
-                : isInternal
-                  ? 'bg-[var(--paper-3)] text-[var(--mid-gray)]'
-                  : 'bg-[var(--narra)] text-[var(--paper)]',
-            )}
-            style={{ fontFamily: 'var(--font-display)' }}
-            title={`Template ${t.templateNo}`}
-          >
-            {t.templateNo}
-          </div>
-        )}
-        <button
-          type="button"
-          onClick={onTogglePin}
-          disabled={pinning}
-          className={cn(
-            'inline-flex items-center justify-center w-8 h-8 rounded-lg transition-colors disabled:opacity-50',
-            pinned
-              ? 'bg-[var(--clay-tint)] text-[var(--clay)] hover:bg-[var(--clay)] hover:text-white'
-              : 'text-[var(--mid-gray)] hover:bg-[var(--paper-2)]',
-          )}
-          title={pinned ? 'Unpin from your Pinned tab' : 'Pin to your Pinned tab'}
-          aria-label={pinned ? 'Unpin' : 'Pin'}
-        >
-          {pinning ? (
-            <Loader2 size={14} className="animate-spin" />
-          ) : pinned ? (
-            <Pin size={14} fill="currentColor" />
-          ) : (
-            <PinOff size={14} />
-          )}
-        </button>
-      </div>
-
-      <div className="flex items-start gap-3 flex-1 min-w-0">
-        <div
-          className={cn(
-            'w-10 h-10 rounded-xl flex items-center justify-center shrink-0',
-            hasOnlineForm && !isInternal
-              ? 'bg-[var(--sun)] text-white'
-              : isInternal
-                ? 'bg-[var(--paper-3)] text-[var(--mid-gray)]'
-                : 'bg-[var(--sage-tint)] text-[var(--moss)]',
-          )}
-        >
-          <FileText size={18} />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-            <p
-              className={cn(
-                'font-bold text-[14px]',
-                isInternal ? 'text-[var(--mid-gray)]' : 'text-[var(--narra)]',
-              )}
-              style={{ fontFamily: 'var(--font-display)' }}
+      <div className={cn('flex items-start gap-3 flex-1 min-w-0', isInternal && 'opacity-70')}>
+        {/* Template number + pin toggle, side by side. */}
+        <div className="flex flex-col items-center gap-1.5 shrink-0 w-[76px]">
+          {t.templateNo ? (
+            <span
+              className="w-full px-1.5 py-1.5 rounded-lg text-center font-bold tracking-wider text-[11.5px] leading-tight break-words"
+              style={{
+                fontFamily: 'var(--font-display)',
+                ...(online
+                  ? { background: 'var(--sun)', color: '#fff' }
+                  : isInternal
+                    ? { background: 'var(--paper-3)', color: 'var(--mid-gray)' }
+                    : { background: 'var(--pale-teal)', color: 'var(--deep-teal)' }),
+              }}
+              title={`Template ${t.templateNo}`}
             >
+              {t.templateNo}
+            </span>
+          ) : (
+            <span className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ background: 'var(--pale-teal)', color: 'var(--teal)' }}>
+              <FileText size={17} />
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={onTogglePin}
+            disabled={pinning}
+            className={cn(
+              `inline-flex items-center gap-1 h-7 px-2 rounded-md text-[11px] font-semibold transition-colors disabled:opacity-50 ${FOCUS}`,
+              pinned ? 'hover:opacity-90' : 'hover:bg-[var(--off-white)]',
+            )}
+            style={pinned ? { background: 'var(--clay-tint)', color: '#8A5A3C' } : { color: 'var(--mid-gray)' }}
+            title={pinned ? 'Unpin from your Pinned tab' : 'Pin to your Pinned tab'}
+            aria-label={pinned ? 'Unpin' : 'Pin'}
+            aria-pressed={pinned}
+          >
+            {pinning ? (
+              <Loader2 size={12} className="animate-spin" />
+            ) : pinned ? (
+              <Pin size={12} fill="currentColor" />
+            ) : (
+              <PinOff size={12} />
+            )}
+            {pinned ? 'Pinned' : 'Pin'}
+          </button>
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+            <p className="font-semibold text-[14px] mr-0.5" style={{ fontFamily: 'var(--font-display)', color: isInternal ? 'var(--mid-gray)' : 'var(--charcoal)' }}>
               {t.templateName}
             </p>
-            {t.versionNumber && (
-              <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-[var(--paper-2)] text-[var(--mid-gray)] border border-[var(--paper-3)]">
-                v{t.versionNumber}
-              </span>
-            )}
-            {hasOnlineForm && !isInternal && (
-              <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-[var(--sun)] text-[var(--ink)]">
-                <ExternalLink size={10} />
-                Online Form
-              </span>
-            )}
-            {isInternal && (
-              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-[var(--mid-gray)] text-white">
-                Internal Only
-              </span>
-            )}
+            {t.versionNumber && <Tag tone="neutral">v{t.versionNumber}</Tag>}
+            {online && <Tag tone="warn">Online form</Tag>}
+            {isInternal && <Tag tone="neutral">Internal only</Tag>}
           </div>
           {t.description && (
-            <p
-              className={cn(
-                'text-[12px] leading-relaxed line-clamp-2',
-                isInternal ? 'text-[var(--mid-gray)]/80' : 'text-[var(--mid-gray)]',
-              )}
-            >
+            <p className="text-[12.5px] leading-relaxed line-clamp-2" style={{ color: 'var(--mid-gray)' }}>
               {t.description}
             </p>
           )}
         </div>
       </div>
 
-      <div className="flex items-center justify-end gap-2 sm:shrink-0 flex-wrap">
+      <div className="flex items-center justify-end gap-1.5 sm:shrink-0 flex-wrap">
         {/* For internal-only templates the API blanks out the URLs for
             non-admins, so the buttons just won't render. */}
         {t.formLink && (
@@ -454,7 +398,8 @@ function TemplateRow({ t, pinned, pinning, onTogglePin }: {
             href={t.formLink}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 text-[12px] font-bold px-4 py-2 rounded-lg bg-[var(--sun)] text-[var(--ink)] hover:bg-[#b3852f] hover:text-white transition-colors shadow-sm"
+            className={BTN_PRIMARY}
+            style={{ background: '#8C6A2D' }}
             title="Open online form (Google Forms)"
           >
             <ExternalLink size={13} />
@@ -462,68 +407,46 @@ function TemplateRow({ t, pinned, pinning, onTogglePin }: {
           </a>
         )}
         {t.link && (
-          <a
-            href={t.link}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 text-[12px] font-semibold px-3 py-1.5 rounded-lg bg-[var(--sun)] text-[var(--ink)] hover:bg-[#b3852f] hover:text-white transition-colors"
-            title="Open link"
-          >
+          <a href={t.link} target="_blank" rel="noopener noreferrer" className={BTN_SM} style={{ ...SECONDARY_STYLE, color: '#8C6A2D' }} title="Open link">
             <ExternalLink size={13} />
             Open
           </a>
         )}
         {t.pdfUrl && (
-          <a
-            href={t.pdfUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 text-[12px] font-semibold px-3 py-1.5 rounded-lg border border-[var(--paper-3)] text-[var(--narra)] hover:bg-[var(--paper-2)] transition-colors"
-            title="Open PDF in new tab"
-          >
-            <Eye size={14} />
+          <a href={t.pdfUrl} target="_blank" rel="noopener noreferrer" className={BTN_SM} style={{ ...SECONDARY_STYLE, color: 'var(--deep-teal)' }} title="Open PDF in new tab">
+            <Eye size={13} />
             PDF
           </a>
         )}
         {t.docxUrl && (
-          <a
-            href={t.docxUrl}
-            download
-            className="inline-flex items-center gap-1.5 text-[12px] font-semibold px-3 py-1.5 rounded-lg bg-[var(--moss)] text-white hover:bg-[var(--narra)] transition-colors"
-            title="Download Word document"
-          >
-            <Download size={14} />
+          <a href={t.docxUrl} download className={`${BTN_SM} text-white`} style={PRIMARY_STYLE} title="Download Word document">
+            <Download size={13} />
             DOCX
           </a>
         )}
       </div>
-    </div>
+    </li>
   )
 }
 
-function TestRow({ t }: { t: StdTest }) {
+function TestRow({ t, first }: { t: StdTest; first: boolean }) {
   return (
-    <div className="card-static !p-4 flex items-center gap-3">
-      <div className="w-10 h-10 rounded-xl bg-[var(--clay-tint)] text-[var(--clay)] flex items-center justify-center shrink-0">
-        <ClipboardList size={18} />
-      </div>
+    <li className="px-4 sm:px-5 py-3.5 flex items-center gap-3" style={{ borderTop: first ? undefined : '1px solid var(--light-gray)' }}>
+      <span className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ background: 'var(--clay-tint)', color: '#8A5A3C' }}>
+        <ClipboardList size={17} />
+      </span>
       <div className="flex-1 min-w-0">
-        <p className="font-bold text-[14px] text-[var(--narra)]" style={{ fontFamily: 'var(--font-display)' }}>
+        <p className="font-semibold text-[14px]" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
           {t.name}
         </p>
-        <p className="text-[11px] text-[var(--mid-gray)]">{t.department}</p>
+        <p className="text-[11.5px]" style={{ color: 'var(--mid-gray)' }}>{t.department}</p>
       </div>
       {t.pdfUrl && (
-        <a
-          href={t.pdfUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1.5 text-[12px] font-semibold px-3 py-1.5 rounded-lg border border-[var(--paper-3)] text-[var(--narra)] hover:bg-[var(--paper-2)] transition-colors"
-        >
-          <Eye size={14} />
+        <a href={t.pdfUrl} target="_blank" rel="noopener noreferrer" className={BTN_SM} style={{ ...SECONDARY_STYLE, color: 'var(--deep-teal)' }}>
+          <Eye size={13} />
           PDF
         </a>
       )}
-    </div>
+    </li>
   )
 }
