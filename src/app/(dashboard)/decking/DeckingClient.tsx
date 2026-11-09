@@ -341,11 +341,19 @@ function PatientCellSearch({ current, onSelect, onClear, onClose }: {
   const [open, setOpen] = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  /** Where to draw the results, in viewport coordinates. */
+  const [menuAt, setMenuAt] = useState<{ left: number; top: number; width: number } | null>(null)
+  const measure = () => {
+    const r = inputRef.current?.getBoundingClientRect()
+    if (r) setMenuAt({ left: r.left, top: r.bottom + 4, width: Math.max(r.width, 220) })
+  }
 
-  useEffect(() => { inputRef.current?.focus() }, [])
+  useEffect(() => { inputRef.current?.focus(); measure() // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   function handleInput(val: string) {
     setQuery(val)
+    measure()
     if (timer.current) clearTimeout(timer.current)
     if (val.length < 2) { setResults([]); setOpen(false); return }
     timer.current = setTimeout(async () => {
@@ -374,7 +382,15 @@ function PatientCellSearch({ current, onSelect, onClear, onClose }: {
         )}
       </div>
       {open && (
-        <div style={{ position: 'absolute', zIndex: 50, background: '#fff', border: '1px solid var(--light-gray)', borderRadius: '0.5rem', boxShadow: '0 8px 24px rgba(15,23,42,0.14)', top: 'calc(100% + 4px)', left: 0, right: 0, minWidth: 200, maxHeight: '200px', overflowY: 'auto', padding: 3 }}>
+        /* FIXED, measured from the input, not absolute inside it.
+           Absolute worked while this only ever appeared in a grid cell. It is
+           now used inside the one-off day window too, whose body scrolls — and
+           a scroll container clips an absolutely positioned child, so the
+           results were found and then hidden. From the desk that reads as "it
+           will not let me book". Third place in this module to need the same
+           fix; the other two were the SPED class search and the filter
+           popover. */
+        <div style={{ position: 'fixed', zIndex: 300, background: '#fff', border: '1px solid var(--light-gray)', borderRadius: '0.5rem', boxShadow: '0 10px 28px rgba(15,23,42,0.2)', left: menuAt?.left ?? 0, top: menuAt?.top ?? 0, width: menuAt?.width ?? 240, maxHeight: '220px', overflowY: 'auto', padding: 3 }}>
           {results.length === 0 ? (
             /* Display only: the search already ran and found nobody. */
             <p style={{ padding: '0.45rem 0.6rem', fontSize: '0.72rem', color: 'var(--mid-gray)' }}>No patients match.</p>
