@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 import { formatDateTime } from '@/lib/utils'
 import Pagination from '@/components/ui/Pagination'
+import { HR_PAGE_CLASS, HR_PAGE_STYLE, HrShimmerStyle, StatCard, hrBtn } from '@/components/ui/hr-look'
 
 interface User {
   id: string
@@ -74,6 +75,27 @@ const BRANCH_LABELS: Record<string, string> = {
   VERDANA_STORE: 'Verdana Store',
 }
 
+// Display-only grouping of roles for the summary cards (access rules live in the API / sidebar).
+// Every user falls in exactly one group: deactivated first, then by role.
+type UserGroup = 'finance' | 'branch' | 'reports' | 'off'
+const GROUP_ROLES: Record<Exclude<UserGroup, 'off'>, string[]> = {
+  finance: ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER', 'VIEWER'],
+  branch: ['AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN', 'AHEA_FRONTDESK', 'AHGH_FRONTDESK', 'PAYROLL_OFFICER', 'HMO_OFFICER'],
+  reports: ['MEDREP', 'INVESTOR'],
+}
+const GROUP_META: Record<UserGroup, { label: string; sub: string; line: string }> = {
+  finance: { label: 'Finance team', sub: 'Admin, accountant, bookkeeper, viewer', line: '#4A8073' },
+  branch: { label: 'Branch staff & officers', sub: 'Branch admins, front desk, payroll, HMO', line: '#2563eb' },
+  reports: { label: 'Reports only', sub: 'Medical reps and investors', line: '#8A9AA0' },
+  off: { label: 'Deactivated', sub: 'Cannot sign in · records kept', line: '#dc2626' },
+}
+const userGroup = (u: { role: string; disabled?: boolean }): UserGroup =>
+  u.disabled ? 'off'
+  : GROUP_ROLES.finance.includes(u.role) ? 'finance'
+  : GROUP_ROLES.reports.includes(u.role) ? 'reports'
+  : 'branch'
+const TH = 'text-left px-4 py-2.5 text-[11px] font-bold uppercase tracking-[.4px] whitespace-nowrap text-[var(--mid-gray)]'
+
 export default function UsersPage() {
   const { data: session, status } = useSession()
   const [users, setUsers] = useState<User[]>([])
@@ -86,6 +108,7 @@ export default function UsersPage() {
   const [usrPage, setUsrPage] = useState(1)
   const [usrPageSize, setUsrPageSize] = useState(25)
   const [saving, setSaving] = useState(false)
+  const [groupFilter, setGroupFilter] = useState<UserGroup | ''>('')
 
   // Form fields
   const [formName, setFormName] = useState('')
@@ -205,9 +228,12 @@ export default function UsersPage() {
 
   const filteredUsers = users.filter(
     (u) =>
-      u.name.toLowerCase().includes(search.toLowerCase()) ||
-      u.email.toLowerCase().includes(search.toLowerCase())
+      (!groupFilter || userGroup(u) === groupFilter) &&
+      (u.name.toLowerCase().includes(search.toLowerCase()) ||
+      u.email.toLowerCase().includes(search.toLowerCase()))
   )
+  const groupCount = (g: UserGroup) => users.filter(u => userGroup(u) === g).length
+  const pickGroup = (g: UserGroup) => { setGroupFilter(f => (f === g ? '' : g)); setUsrPage(1) }
   const paginatedUsers = filteredUsers.slice((usrPage - 1) * usrPageSize, usrPage * usrPageSize)
 
   if (status !== 'authenticated' && loading) {
@@ -219,90 +245,108 @@ export default function UsersPage() {
   }
 
   return (
-    <div>
+    <div className={HR_PAGE_CLASS} style={HR_PAGE_STYLE}>
+      <HrShimmerStyle />
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-        <div>
-          <h1
-            className="text-2xl font-bold"
-            style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}
-          >
-            Users
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold leading-tight flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+            <UsersIcon size={22} style={{ color: 'var(--teal)' }} /> Users
           </h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--mid-gray)' }}>
-            Manage user accounts and role-based access
+          <p className="mt-1 text-[13px] max-w-3xl" style={{ color: 'var(--mid-gray)' }}>
+            Hub sign-ins and the role that decides what each person can open. Deactivating keeps a user&apos;s records and audit trail.
           </p>
         </div>
-        <button
-          onClick={openCreateModal}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold transition-opacity hover:opacity-90"
-          style={{ background: 'var(--teal)' }}
-        >
-          <Plus size={18} />
-          Add User
+        <button onClick={openCreateModal} className={hrBtn.primary} style={{ background: 'var(--teal)' }}>
+          <Plus size={15} /> Add user
         </button>
       </div>
 
-      {/* Search */}
-      <div className="relative mb-4 max-w-sm">
-        <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--mid-gray)' }} />
-        <input
-          type="text"
-          placeholder="Search users..."
-          value={search}
-          onChange={(e) => { setSearch(e.target.value); setUsrPage(1) }}
-          className="w-full pl-10 pr-4 py-2.5 rounded-xl border text-sm outline-none"
-          style={{ borderColor: 'var(--light-gray)', background: 'white' }}
-        />
+      {/* Summary cards — each user is in exactly one; click to show only that group */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {(['finance', 'branch', 'reports', 'off'] as UserGroup[]).map(g => {
+          const n = groupCount(g)
+          const m = GROUP_META[g]
+          return (
+            <StatCard key={g} loading={loading} label={m.label} value={String(n)} sub={m.sub}
+              tone={n === 0 ? 'zero' : g === 'off' ? 'red' : 'zero'} accent={n && g !== 'off' ? { line: m.line } : undefined}
+              active={groupFilter === g} onClick={() => pickGroup(g)} />
+          )
+        })}
       </div>
 
       {/* Error */}
       {error && !modalOpen && (
-        <div className="mb-4 p-3 rounded-lg text-sm bg-red-50 text-red-600">{error}</div>
+        <div className="px-4 py-2.5 rounded-lg border text-[13px]" style={{ background: '#fef2f2', borderColor: '#fecaca', color: '#b91c1c' }}>{error}</div>
       )}
 
-      {/* HR Branches Registry sync */}
-      <HrBranchesCard />
-
       {/* Table */}
-      <div className="rounded-2xl border overflow-hidden" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+      <div className="rounded-lg border bg-white overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+        <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-b" style={{ background: '#fcfdfa', borderColor: 'var(--light-gray)' }}>
+          <div className="relative flex-1 min-w-[180px] max-w-sm">
+            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--hr-faint)' }} />
+            <input
+              type="text"
+              aria-label="Search users"
+              placeholder="Search name or email…"
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setUsrPage(1) }}
+              className="w-full h-8 pl-8 pr-3 rounded-lg border text-xs bg-white outline-none focus:border-[var(--teal)]"
+              style={{ borderColor: 'var(--light-gray)' }}
+            />
+          </div>
+          {groupFilter && (
+            <button onClick={() => { setGroupFilter(''); setUsrPage(1) }} className="inline-flex items-center gap-1 h-7 px-2.5 rounded-full text-[11px] font-semibold"
+              style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
+              {GROUP_META[groupFilter].label} <X size={12} />
+            </button>
+          )}
+          <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>{loading ? 'Loading…' : `${filteredUsers.length} of ${users.length}`}</span>
+          <div className="ml-auto hidden md:flex items-center gap-3 text-[11px]" style={{ color: 'var(--mid-gray)' }}>
+            {(['finance', 'branch', 'reports', 'off'] as UserGroup[]).map(g => (
+              <span key={g} className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: GROUP_META[g].line }} />{GROUP_META[g].label}</span>
+            ))}
+          </div>
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr style={{ background: 'var(--off-white)' }}>
-                <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Name</th>
-                <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Email</th>
-                <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Role</th>
-                <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Branch</th>
-                <th className="text-left px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Last Login</th>
-                <th className="text-right px-4 py-3 font-semibold" style={{ color: 'var(--charcoal)' }}>Actions</th>
+              <tr style={{ background: 'var(--hr-head)' }}>
+                <th className={TH}>Name</th>
+                <th className={TH}>Email</th>
+                <th className={TH}>Role</th>
+                <th className={TH}>Branch</th>
+                <th className={TH}>Last login</th>
+                <th className={`${TH} text-right`}>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {filteredUsers.length === 0 ? (
+              {loading ? (
+                [0, 1, 2, 3, 4].map(i => <tr key={i} className="border-t" style={{ borderColor: 'var(--hr-line)' }}><td colSpan={6} className="px-4 py-2.5"><div className="h-5 rounded hr-shimmer" /></td></tr>)
+              ) : filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center" style={{ color: 'var(--mid-gray)' }}>
-                    <UsersIcon size={32} className="mx-auto mb-2 opacity-40" />
-                    <p>No users found</p>
+                  <td colSpan={6} className="px-4 py-12 text-center text-[13px]" style={{ color: 'var(--mid-gray)' }}>
+                    <UsersIcon size={28} className="mx-auto mb-2 opacity-40" />
+                    <p>{users.length === 0 ? 'No users yet.' : 'No users match this filter.'}</p>
                   </td>
                 </tr>
               ) : (
                 paginatedUsers.map((user) => (
                   <tr
                     key={user.id}
-                    className="border-t hover:bg-gray-50/50 transition-colors"
-                    style={{ borderColor: 'var(--light-gray)' }}
+                    className="border-t transition-colors hover:bg-[#fafcf6]"
+                    style={{ borderColor: 'var(--hr-line)' }}
                   >
-                    <td className="px-4 py-3 font-medium" style={{ color: 'var(--charcoal)' }}>
+                    <td className="px-4 py-2.5 font-semibold" style={{ color: user.disabled ? 'var(--mid-gray)' : 'var(--charcoal)', boxShadow: `inset 4px 0 0 ${GROUP_META[userGroup(user)].line}` }}>
                       {user.name}
-                      {user.disabled && <span className="ml-2 px-2 py-0.5 rounded-md text-[10px] font-semibold" style={{ background: '#fee2e2', color: '#b91c1c' }}>Deactivated</span>}
+                      {user.disabled && <span className="ml-2 inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold align-middle" style={{ background: '#fee2e2', color: '#991b1b' }}>Deactivated</span>}
                     </td>
-                    <td className="px-4 py-3" style={{ color: 'var(--mid-gray)' }}>
+                    <td className="px-4 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>
                       {user.email}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-2.5 whitespace-nowrap">
                       <span
-                        className="px-2 py-1 rounded-md text-xs font-medium"
+                        className="inline-flex px-2 py-0.5 rounded-full text-[11px] font-semibold"
                         style={
                           user.role === 'ADMIN'
                             ? { background: '#fef3c7', color: '#92400e' }
@@ -312,35 +356,36 @@ export default function UsersPage() {
                         {ROLE_LABELS[user.role] || user.role}
                       </span>
                     </td>
-                    <td className="px-4 py-3" style={{ color: 'var(--mid-gray)' }}>
+                    <td className="px-4 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>
                       {(() => {
                         const bs = user.branches?.length ? user.branches : (user.branch && user.branch !== 'ALL' ? [user.branch] : [])
                         if (bs.length === 0) return 'All branches'
                         return (
                           <span className="flex flex-wrap gap-1">
-                            {bs.map(b => <span key={b} className="px-1.5 py-0.5 rounded-full text-[10px] font-medium" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>{BRANCH_LABELS[b] || b}</span>)}
+                            {bs.map(b => <span key={b} className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: '#f1f5f2', color: 'var(--mid-gray)' }}>{BRANCH_LABELS[b] || b}</span>)}
                           </span>
                         )
                       })()}
                     </td>
-                    <td className="px-4 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>
+                    <td className="px-4 py-2.5 text-xs whitespace-nowrap font-mono" style={{ color: user.lastLoginAt ? 'var(--mid-gray)' : 'var(--hr-faint)' }}>
                       {user.lastLoginAt ? formatDateTime(user.lastLoginAt) : 'Never'}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-2.5">
                       <div className="flex items-center justify-end gap-1">
                         <button
                           onClick={() => openEditModal(user)}
-                          className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                          className="p-1.5 rounded-md hover:bg-[var(--pale-teal)] transition-colors"
                           title="Edit"
+                          aria-label={`Edit ${user.name}`}
                         >
-                          <Pencil size={15} style={{ color: 'var(--teal)' }} />
+                          <Pencil size={14} style={{ color: 'var(--teal)' }} />
                         </button>
                         {user.id !== session?.user?.id && (
                           user.disabled ? (
                             <button
                               onClick={() => handleReactivate(user.id)}
-                              className="px-2 py-1 rounded-lg hover:bg-green-50 transition-colors text-xs font-semibold"
-                              style={{ color: '#166534' }}
+                              className={hrBtn.ghost}
+                              style={{ borderColor: '#bbf7d0', color: '#166534' }}
                               title="Reactivate"
                             >
                               Reactivate
@@ -348,10 +393,11 @@ export default function UsersPage() {
                           ) : (
                             <button
                               onClick={() => setDeleteConfirm(user.id)}
-                              className="p-2 rounded-lg hover:bg-red-50 transition-colors"
+                              className="p-1.5 rounded-md hover:bg-red-50 transition-colors"
                               title="Deactivate"
+                              aria-label={`Deactivate ${user.name}`}
                             >
-                              <Trash2 size={15} className="text-red-500" />
+                              <Trash2 size={14} className="text-red-500" />
                             </button>
                           )
                         )}
@@ -363,18 +409,23 @@ export default function UsersPage() {
             </tbody>
           </table>
         </div>
-        {filteredUsers.length > 0 && (
-          <Pagination totalItems={filteredUsers.length} page={usrPage} pageSize={usrPageSize}
-            onPageChange={setUsrPage} onPageSizeChange={setUsrPageSize} />
+        {!loading && filteredUsers.length > 0 && (
+          <div className="border-t" style={{ borderColor: 'var(--hr-line)' }}>
+            <Pagination totalItems={filteredUsers.length} page={usrPage} pageSize={usrPageSize}
+              onPageChange={setUsrPage} onPageSizeChange={setUsrPageSize} />
+          </div>
         )}
       </div>
+
+      {/* HR Branches Registry sync */}
+      <HrBranchesCard />
 
       {/* Delete confirmation */}
       {deleteConfirm && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-xl">
-            <h3 className="text-lg font-bold mb-2" style={{ color: 'var(--charcoal)' }}>
-              Deactivate User
+          <div className="bg-white rounded-xl border p-6 max-w-sm w-full shadow-xl">
+            <h3 className="text-[17px] font-bold mb-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+              Deactivate user
             </h3>
             <p className="text-sm mb-6" style={{ color: 'var(--mid-gray)' }}>
               This deactivates the account — the user can no longer log in, but their records and audit trail are preserved. You can reactivate them later.
@@ -382,14 +433,14 @@ export default function UsersPage() {
             <div className="flex gap-3 justify-end">
               <button
                 onClick={() => setDeleteConfirm(null)}
-                className="px-4 py-2 rounded-lg text-sm border"
-                style={{ borderColor: 'var(--light-gray)' }}
+                className={hrBtn.outline}
+                style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}
               >
                 Cancel
               </button>
               <button
                 onClick={() => handleDelete(deleteConfirm)}
-                className="px-4 py-2 rounded-lg text-sm text-white bg-red-500 hover:bg-red-600"
+                className="inline-flex items-center h-9 px-4 rounded-lg text-[13px] font-semibold text-white bg-red-600 hover:bg-red-700"
               >
                 Deactivate
               </button>
@@ -401,21 +452,21 @@ export default function UsersPage() {
       {/* Create/Edit Modal */}
       {modalOpen && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-xl">
+          <div className="bg-white rounded-xl border p-6 max-w-md w-full shadow-xl">
             <div className="flex items-center justify-between mb-5">
               <h3
-                className="text-lg font-bold"
+                className="text-[17px] font-bold"
                 style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}
               >
-                {editingUser ? 'Edit User' : 'Create User'}
+                {editingUser ? 'Edit user' : 'Add user'}
               </h3>
-              <button onClick={() => setModalOpen(false)} className="p-1 hover:bg-gray-100 rounded-lg">
+              <button onClick={() => setModalOpen(false)} aria-label="Close" className="p-1 hover:bg-[var(--pale-teal)] rounded-md">
                 <X size={20} style={{ color: 'var(--mid-gray)' }} />
               </button>
             </div>
 
             {error && (
-              <div className="mb-4 p-3 rounded-lg text-sm bg-red-50 text-red-600">{error}</div>
+              <div className="mb-4 px-3 py-2.5 rounded-lg border text-[13px]" style={{ background: '#fef2f2', borderColor: '#fecaca', color: '#b91c1c' }}>{error}</div>
             )}
 
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -428,7 +479,7 @@ export default function UsersPage() {
                   value={formName}
                   onChange={(e) => setFormName(e.target.value)}
                   required
-                  className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
+                  className="w-full px-3 py-2.5 rounded-lg border text-sm outline-none"
                   style={{ borderColor: 'var(--light-gray)' }}
                 />
               </div>
@@ -442,7 +493,7 @@ export default function UsersPage() {
                   value={formEmail}
                   onChange={(e) => setFormEmail(e.target.value)}
                   required
-                  className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
+                  className="w-full px-3 py-2.5 rounded-lg border text-sm outline-none"
                   style={{ borderColor: 'var(--light-gray)' }}
                 />
               </div>
@@ -457,7 +508,7 @@ export default function UsersPage() {
                   onChange={(e) => setFormPassword(e.target.value)}
                   required={!editingUser}
                   minLength={8}
-                  className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
+                  className="w-full px-3 py-2.5 rounded-lg border text-sm outline-none"
                   style={{ borderColor: 'var(--light-gray)' }}
                   placeholder={editingUser ? 'Leave blank to keep current' : 'Minimum 8 characters'}
                 />
@@ -470,7 +521,7 @@ export default function UsersPage() {
                 <select
                   value={formRole}
                   onChange={(e) => setFormRole(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl border text-sm outline-none"
+                  className="w-full px-3 py-2.5 rounded-lg border text-sm outline-none"
                   style={{ borderColor: 'var(--light-gray)' }}
                 >
                   {ROLE_OPTIONS.map((r) => (
@@ -487,7 +538,7 @@ export default function UsersPage() {
                   {BRANCH_OPTIONS.filter(b => b.value !== 'ALL').map((b) => {
                     const on = formBranches.includes(b.value)
                     return (
-                      <label key={b.value} className="flex items-center gap-2 px-3 py-2 rounded-xl border text-sm cursor-pointer select-none" style={{ borderColor: on ? 'var(--teal)' : 'var(--light-gray)', background: on ? 'var(--pale-teal)' : 'white' }}>
+                      <label key={b.value} className="flex items-center gap-2 px-3 py-2 rounded-lg border text-sm cursor-pointer select-none" style={{ borderColor: on ? 'var(--teal)' : 'var(--light-gray)', background: on ? 'var(--pale-teal)' : 'white' }}>
                         <input type="checkbox" checked={on} onChange={() => setFormBranches(prev => prev.includes(b.value) ? prev.filter(x => x !== b.value) : [...prev, b.value])} className="w-4 h-4 accent-teal-600" />
                         {b.label}
                       </label>
@@ -503,7 +554,7 @@ export default function UsersPage() {
                 <button
                   type="button"
                   onClick={() => setModalOpen(false)}
-                  className="flex-1 py-2.5 rounded-xl border text-sm font-medium"
+                  className="flex-1 py-2.5 rounded-lg border bg-white text-sm font-semibold transition-colors hover:border-[var(--teal)] hover:text-[var(--teal)]"
                   style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}
                 >
                   Cancel
@@ -511,10 +562,10 @@ export default function UsersPage() {
                 <button
                   type="submit"
                   disabled={saving}
-                  className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold disabled:opacity-50"
+                  className="flex-1 py-2.5 rounded-lg text-white text-sm font-semibold transition-colors hover:bg-[var(--deep-teal)] disabled:opacity-50"
                   style={{ background: 'var(--teal)' }}
                 >
-                  {saving ? 'Saving...' : editingUser ? 'Update User' : 'Create User'}
+                  {saving ? 'Saving…' : editingUser ? 'Update user' : 'Create user'}
                 </button>
               </div>
             </form>
@@ -583,43 +634,43 @@ function HrBranchesCard() {
   }
 
   return (
-    <div className="rounded-2xl border p-4 mb-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
-      <div className="flex items-center justify-between gap-3 mb-1">
-        <div className="flex items-center gap-2">
-          <Building2 size={16} style={{ color: 'var(--teal)' }} />
-          <span className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>Branches Registry</span>
+    <div className="rounded-lg border bg-white overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
+      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b" style={{ borderColor: 'var(--hr-line)' }}>
+        <div className="min-w-0">
+          <h2 className="text-sm font-bold flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+            <Building2 size={15} style={{ color: 'var(--teal)' }} /> Branches registry
+            {!loading && <span className="px-1.5 rounded-full text-[11px] font-bold" style={{ background: '#f1f5f2', color: 'var(--mid-gray)' }}>{branches.length}</span>}
+          </h2>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>Synced from the HR Platform — edit branch details there, not here.</p>
         </div>
-        <button
-          onClick={handleSync}
-          disabled={syncing}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-60"
-          style={{ background: 'var(--teal)' }}
-        >
+        <button onClick={handleSync} disabled={syncing} className={hrBtn.ghost} style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
           <RefreshCw size={12} className={syncing ? 'animate-spin' : ''} />
-          {syncing ? 'Syncing…' : 'Sync Branches'}
+          {syncing ? 'Syncing…' : 'Sync branches'}
         </button>
       </div>
-      <p className="text-xs mb-2" style={{ color: 'var(--mid-gray)' }}>
-        Synced from HR Platform — edit branch details there, not here.
-      </p>
-      {syncMsg && <p className="text-xs mb-2" style={{ color: 'var(--mid-gray)' }}>{syncMsg}</p>}
-      {loading ? (
-        <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>Loading…</p>
-      ) : branches.length === 0 ? (
-        <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>No branches synced yet.</p>
-      ) : (
-        <div className="flex flex-wrap gap-2">
-          {branches.map(b => (
-            <span
-              key={b.id}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs"
-              style={{ background: b.active ? '#EAF6F4' : '#F3F4F6', color: b.active ? 'var(--charcoal)' : 'var(--mid-gray)' }}
-            >
-              <strong>{b.shortCode}</strong> {b.name}
-            </span>
-          ))}
-        </div>
-      )}
+      <div className="px-4 py-3">
+        {syncMsg && <p className="text-xs mb-2" style={{ color: syncMsg.startsWith('Sync failed') ? '#b91c1c' : 'var(--mid-gray)' }}>{syncMsg}</p>}
+        {loading ? (
+          <div className="flex flex-wrap gap-2">{[0, 1, 2, 3].map(i => <span key={i} className="h-7 w-40 rounded-full hr-shimmer" />)}</div>
+        ) : branches.length === 0 ? (
+          <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>No branches synced yet.</p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {branches.map(b => (
+              <span
+                key={b.id}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs"
+                style={b.active
+                  ? { background: 'var(--pale-teal)', borderColor: '#d6e4c0', color: 'var(--charcoal)' }
+                  : { background: '#f5f6f3', borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}
+                title={b.active ? 'Active' : 'Inactive'}
+              >
+                <strong className="font-bold">{b.shortCode}</strong> {b.name}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
