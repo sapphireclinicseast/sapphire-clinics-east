@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { getHeadshotFor, saveHeadshot } from '@/lib/session'
 import { backendOrigin, getToken } from '@/lib/backend'
+import { Banner, BTN_SECONDARY, FILE_FOCUS, Icon, SECONDARY_STYLE } from '@/components/hub/ui'
 
 interface Props {
   studentId: string
@@ -14,6 +15,7 @@ const MAX_DATA_URL_LEN = 700_000 // ~500 KB raw — keeps localStorage manageabl
 export default function HeadshotEditor({ studentId, editable = true }: Props) {
   const [dataUrl, setDataUrl] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
+  const hintId = useId()
 
   useEffect(() => {
     // 1) Instant render from this device's local cache, if any.
@@ -79,31 +81,31 @@ export default function HeadshotEditor({ studentId, editable = true }: Props) {
   }
 
   return (
-    <div className="flex items-center gap-4">
+    <div className="flex flex-wrap items-center gap-4 min-w-0">
       <div
-        className="rounded-full overflow-hidden border-2 shrink-0"
-        style={{ width: 88, height: 88, borderColor: 'var(--paper-3)', background: 'var(--paper-2)' }}
+        className="rounded-full overflow-hidden shrink-0"
+        style={{ width: 88, height: 88, border: '1px solid var(--light-gray)', background: 'var(--pale-teal)' }}
       >
         {dataUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={dataUrl} alt="Student headshot" className="w-full h-full object-cover" />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-[color:var(--mid-gray)] text-2xl">👤</div>
+          <div role="img" aria-label="No headshot yet" className="w-full h-full flex items-center justify-center" style={{ color: 'var(--deep-teal)' }}>
+            <Icon name="student" size={34} />
+          </div>
         )}
       </div>
       {editable && (
-        <div className="flex flex-col gap-1">
-          <label className="btn-secondary cursor-pointer inline-flex items-center gap-2" style={{ width: 'auto' }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-              <polyline points="17 8 12 3 7 8"/>
-              <line x1="12" y1="3" x2="12" y2="15"/>
-            </svg>
+        <div className="flex flex-col items-start gap-1.5 min-w-0">
+          {/* The file input is visually hidden; FILE_FOCUS rings the
+              label when the input has keyboard focus. */}
+          <label className={`${BTN_SECONDARY} ${FILE_FOCUS}`} style={SECONDARY_STYLE}>
+            <Icon name="upload" size={14} />
             {dataUrl ? 'Replace headshot' : 'Upload headshot'}
-            <input type="file" accept="image/*" onChange={onFile} className="sr-only" />
+            <input type="file" accept="image/*" onChange={onFile} className="sr-only" aria-describedby={hintId} />
           </label>
-          {err && <span className="text-[11.5px] text-rose-700">{err}</span>}
-          <span className="text-[10.5px] text-[color:var(--mid-gray)]" style={{ fontFamily: 'var(--font-display)' }}>PNG or JPG · max ~500 KB</span>
+          <span id={hintId} className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>PNG or JPG · max ~500 KB</span>
+          {err && <Banner tone="error">{err}</Banner>}
         </div>
       )}
     </div>
