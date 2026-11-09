@@ -2948,7 +2948,9 @@ export default function DeckingClient({ role }: { role: string }) {
                     from the clinicians above because they are not clinicians:
                     these hours are supervised teaching time and are excluded
                     from public availability, utilisation and capacity. */}
-                {internStaff.length > 0 && (
+                {/* Not on Homecare: interns are supervised in clinic and do not
+                    make home visits. */}
+                {internStaff.length > 0 && activeSection !== 'homecare' && (
                   <section className="mt-6 rounded-xl overflow-hidden" style={CARD_STYLE} aria-label={`Interns — ${activeDept}`}>
                     <div className="flex flex-wrap items-start gap-3 px-4 py-3" style={{ borderBottom: '1px solid var(--light-gray)', background: '#FAFAFF' }}>
                       <span className="inline-flex items-center justify-center w-9 h-9 rounded-lg flex-shrink-0" style={{ background: '#EEF0FF', color: '#4338CA' }}>
