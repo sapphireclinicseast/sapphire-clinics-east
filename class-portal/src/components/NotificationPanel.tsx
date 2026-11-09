@@ -14,7 +14,7 @@ import {
   PageHeader, DashCard, Banner, StatusPill, Tag, Icon, RowsSkeleton, EmptyState,
   CONTROL, CONTROL_STYLE, LABEL, LABEL_STYLE, FILE_FOCUS, FOCUS, SUBTLE_BG,
   BTN_PRIMARY, BTN_SECONDARY, BTN_SM, BTN_DANGER_GHOST, PRIMARY_STYLE, SECONDARY_STYLE,
-  TH, TH_STYLE, TD, TR, TR_STYLE, DANGER,
+  TH, TH_STYLE, TD, TR, TR_STYLE, DANGER, MODAL_BACKDROP, Avatar,
 } from '@/components/hub/ui'
 
 const ALL_LEVELS: EnrollmentLevel[] = ['NURSERY', 'KINDER', 'GRADE_1', 'GRADE_2', 'GRADE_3', 'GRADE_4', 'GRADE_5', 'GRADE_6', 'GRADE_7', 'GRADE_8', 'GRADE_9', 'GRADE_10', 'GRADE_11', 'GRADE_12']
@@ -504,6 +504,19 @@ function AnnouncementModal({ announcement: a, viewer, onClose, onDelete, onSent 
   const [mounted, setMounted] = useState(false)
   useEffect(() => { setMounted(true) }, [])
 
+  // Esc closes, and the page underneath stops scrolling while the reader
+  // is open (otherwise the wheel scrolls the list behind the backdrop).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      document.body.style.overflow = prevOverflow
+    }
+  }, [onClose])
+
   useEffect(() => {
     if (!a.hasPoster) return
     let cancelled = false
@@ -582,40 +595,54 @@ function AnnouncementModal({ announcement: a, viewer, onClose, onDelete, onSent 
   // which was trapping the modal inside the right-of-sidebar area with
   // dead space below. Rendering through document.body puts `fixed
   // inset-0` back on the viewport.
+  const posted = new Date(a.createdAt)
+  const postedLabel = Number.isNaN(posted.getTime()) ? a.createdAt : posted.toLocaleString('en-PH', {
+    timeZone: 'Asia/Manila', weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit',
+  })
+  const authorInitials = (a.authorName || a.authorEmail || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]?.toUpperCase() ?? '').join('') || '?'
+
   return createPortal(
     <div
-      className="fixed inset-0 z-50 bg-white overflow-y-auto overflow-x-hidden"
+      className="fixed inset-0 z-50 overflow-y-auto overflow-x-hidden px-3 py-4 sm:px-6 sm:py-10"
+      style={MODAL_BACKDROP}
       onClick={onClose}
     >
-      {/* Full-bleed modal: no backdrop gutter, no rounded card edge,
-          no border — the announcement occupies the entire viewport,
-          edge to edge, so the body is the only thing the reader sees.
-          The header and action bar use the kit's Dialog chrome (sticky,
-          hairline rules) so it reads as part of the same system. When a
-          poster is attached we still render poster + body side-by-side. */}
+      {/* A centred reading card on a dimmed backdrop. It used to be a
+          full-bleed white sheet: on a wide screen the 72ch body sat flush
+          left with half the window empty beside it. The card is as wide as
+          the content needs — one reading column, or poster + text side by
+          side when there is a poster. Header and action bar stay sticky. */}
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby={labelId}
-        className="w-full min-h-screen bg-white flex flex-col"
+        className={`relative w-full ${a.hasPoster ? 'max-w-5xl' : 'max-w-[760px]'} mx-auto rounded-2xl bg-white flex flex-col min-w-0`}
+        style={{ boxShadow: '0 24px 64px -24px rgba(20,40,36,0.45), 0 2px 6px rgba(20,40,36,0.08)' }}
         onClick={e => e.stopPropagation()}
       >
-        <header className="sticky top-0 z-10 bg-white px-4 sm:px-8 pt-4 pb-3 flex items-start justify-between gap-3" style={{ borderBottom: '1px solid var(--light-gray)' }}>
+        <header className="sticky top-0 z-10 bg-white rounded-t-2xl px-5 sm:px-8 pt-5 pb-4 flex items-start justify-between gap-3" style={{ borderBottom: '1px solid var(--light-gray)' }}>
           <div className="min-w-0">
-            <p className="text-[10.5px] font-bold uppercase tracking-widest" style={{ color: 'var(--deep-teal)', fontFamily: 'var(--font-display)' }}>
-              Announcement
-            </p>
-            <h2 id={labelId} className="text-[18px] sm:text-[22px] font-bold leading-tight mt-1 break-words" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>{a.title}</h2>
-            <p className="text-[11.5px] mt-1 break-words" style={{ color: 'var(--mid-gray)' }}>
-              {a.authorName} · <span className="uppercase tracking-[0.08em]">{a.authorRole}</span> · <time dateTime={a.createdAt}>{new Date(a.createdAt).toLocaleString()}</time>
-            </p>
+            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10.5px] font-bold uppercase tracking-widest"
+              style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)', fontFamily: 'var(--font-display)' }}>
+              <Icon name="info" size={12} /> Announcement
+            </span>
+            <h2 id={labelId} className="text-[18px] sm:text-[21px] font-bold leading-snug mt-2.5 break-words" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>{a.title}</h2>
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-2.5 text-[12px]" style={{ color: 'var(--mid-gray)' }}>
+              <Avatar text={authorInitials} size={24} />
+              <span className="font-semibold" style={{ color: 'var(--charcoal)' }}>{a.authorName}</span>
+              <Tag tone="neutral">{a.authorRole}</Tag>
+              <span aria-hidden>·</span>
+              <time dateTime={a.createdAt}>{postedLabel}</time>
+            </div>
           </div>
-          <button type="button" className={BTN_SECONDARY} style={SECONDARY_STYLE} onClick={onClose}>
-            <Icon name="x" size={14} /> Close
+          <button type="button" onClick={onClose} aria-label="Close announcement" title="Close (Esc)"
+            className={`flex-shrink-0 w-9 h-9 -mr-2 -mt-1 rounded-lg flex items-center justify-center transition-colors hover:bg-[color:var(--paper)] ${FOCUS}`}
+            style={{ color: 'var(--mid-gray)' }}>
+            <Icon name="x" size={18} />
           </button>
         </header>
 
-        <div className="flex-1 px-4 sm:px-8 py-5 min-w-0">
+        <div className="flex-1 px-5 sm:px-8 py-6 min-w-0">
           {/* Audience chips — only the sender's view needs these. Students
               already see only announcements targeting their own grade level,
               so showing a 2-row GRADE_1 … GRADE_12 + TEACHERS chip bar just
@@ -682,24 +709,24 @@ function AnnouncementModal({ announcement: a, viewer, onClose, onDelete, onSent 
                 survive. Server also sanitizes before storage; this is
                 defense in depth. */}
             <div
-              className="rt-body text-[14.5px] text-[color:var(--ink)] leading-relaxed min-w-0 break-words max-w-[72ch]"
+              className="rt-body text-[15px] text-[color:var(--ink)] leading-[1.7] min-w-0 break-words max-w-[68ch]"
               dangerouslySetInnerHTML={{ __html: renderAnnouncementBodyHtml(a.body) }}
             />
             <style>{`
-              .rt-body p { margin: 0 0 0.6em; }
+              .rt-body p { margin: 0 0 0.9em; }
               .rt-body p:last-child { margin-bottom: 0; }
               /* Tailwind's preflight resets list-style on ul/ol, so bullets
                  and numbers never render. Put them back explicitly. */
-              .rt-body ul { list-style: disc outside; margin: 0.4em 0 0.4em 1.4em; padding-left: 0.2em; }
-              .rt-body ol { list-style: decimal outside; margin: 0.4em 0 0.4em 1.4em; padding-left: 0.2em; }
-              .rt-body li { margin: 0.15em 0; }
+              .rt-body ul { list-style: disc outside; margin: 0.4em 0 0.9em 1.4em; padding-left: 0.2em; }
+              .rt-body ol { list-style: decimal outside; margin: 0.4em 0 0.9em 1.4em; padding-left: 0.2em; }
+              .rt-body li { margin: 0.25em 0; padding-left: 0.15em; }
               .rt-body a { color: var(--sage); text-decoration: underline; }
             `}</style>
           </div>
         </div>
 
         {(canSendEmail || canDelete) && (
-          <div className="sticky bottom-0 px-4 sm:px-8 py-3 flex flex-wrap items-center gap-3 justify-between" style={{ borderTop: '1px solid var(--light-gray)', background: SUBTLE_BG }}>
+          <div className="sticky bottom-0 rounded-b-2xl px-5 sm:px-8 py-3 flex flex-wrap items-center gap-3 justify-between" style={{ borderTop: '1px solid var(--light-gray)', background: SUBTLE_BG }}>
             <div className="flex flex-wrap items-center gap-2 text-[11.5px] min-w-0" style={{ color: 'var(--mid-gray)' }}>
               {a.emailedAt
                 ? <>
