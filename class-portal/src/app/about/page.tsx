@@ -33,7 +33,7 @@ const HIGHLIGHT_STYLE: CSSProperties = { background: '#FBF3E8', color: '#7A4E21'
 export default function AboutPage() {
   return (
     <div className="max-w-[1100px] mx-auto space-y-5 min-w-0 animate-fade-up">
-      <PageHeader
+      <PageHeader size="lg"
         eyebrow="About Aura Academy"
         title={<>A small class<br/>with big care.</>}
         description={<>We&apos;re an in-clinic school program designed around the way young learners thrive — close attention, predictable routines, and a graded class that meets the standards of the Department of Education.</>}

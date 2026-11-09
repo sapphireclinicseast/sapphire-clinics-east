@@ -99,11 +99,13 @@ export function Icon({ name, size = 16, className = '', style }: { name: IconNam
 
 // ── Page structure ───────────────────────────────────────────────────────────
 /** Eyebrow + title + one-line description on the left, page actions on the right. */
-export function PageHeader({ eyebrow, title, description, actions }: {
+export function PageHeader({ eyebrow, title, description, actions, size = 'md' }: {
   eyebrow?: ReactNode
   title: ReactNode
   description?: ReactNode
   actions?: ReactNode
+  /** 'lg' for public pages, where the heading is the page's headline. */
+  size?: 'md' | 'lg'
 }) {
   return (
     <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
@@ -111,10 +113,11 @@ export function PageHeader({ eyebrow, title, description, actions }: {
         {eyebrow && (
           <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: 'var(--deep-teal)', fontFamily: 'var(--font-display)' }}>{eyebrow}</p>
         )}
-        <h1 className="text-[22px] sm:text-2xl font-bold leading-tight" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+        <h1 className={size === 'lg' ? 'text-[30px] sm:text-[40px] font-bold leading-[1.08] tracking-tight' : 'text-[22px] sm:text-2xl font-bold leading-tight'}
+          style={{ fontFamily: 'var(--font-display)', color: size === 'lg' ? 'var(--deep-teal)' : 'var(--charcoal)' }}>
           {title}
         </h1>
-        {description && <p className="text-sm mt-1 max-w-2xl break-words" style={{ color: 'var(--mid-gray)' }}>{description}</p>}
+        {description && <p className={`${size === 'lg' ? 'text-[15px] mt-3 leading-relaxed' : 'text-sm mt-1'} max-w-2xl break-words`} style={{ color: 'var(--mid-gray)' }}>{description}</p>}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
     </div>
