@@ -10,6 +10,20 @@
 // is that each value gets its own cell, so each can be validated.
 
 export const ROWS_PER_HOUR = 3        // name, payment, remark
+/**
+ * Departments that run group hours get a second patient line of their own.
+ *
+ * SPED classes and OT pairs routinely put two children with one therapist, and
+ * the "+ name" convention on the notes line asks front desk to remember a
+ * syntax. A real dropdown cannot share a cell with free text, so the second
+ * patient gets its own line — and its own PAYMENT line, because inheriting the
+ * first child's arrangement would quietly misbill an HMO case as cash.
+ *
+ * Only these two: five lines per hour everywhere would cost every board a
+ * third of its height to serve a case that does not arise there.
+ */
+export const PAIRED_DEPARTMENTS = new Set(['SPED', 'OT'])
+export const PAIRED_ROWS_PER_HOUR = 5 // name, payment, name 2, payment 2, remark
 export const SAFE_COL = 26            // column AA — front desk's own space
 /**
  * What an empty notes line says.
@@ -96,7 +110,7 @@ export interface CellRef {
   /** YYYY-MM-DD for a one-off, empty for the weekly pattern. */
   date: string
   /** Which of the three lines this is. */
-  line: 'name' | 'pay' | 'remark'
+  line: 'name' | 'pay' | 'name2' | 'pay2' | 'remark'
   /** The value this sync wrote. The next pull compares against it. */
   wrote: string
 }
@@ -118,6 +132,7 @@ const OFF_BG = '#EDEFF1'
 const HATCH_URL = `${process.env.NEXTAUTH_URL?.replace(/\/$/, '') || 'https://operations.sapphireclinicseast.org'}/api/public/hatch.png`
 const PAY_BG = '#E4EEF9'
 const REMARK_BG = '#FBF3E2'
+const PAIR_BG = '#F4F1FB'   // the second child of a paired hour
 
 const BORDER = {
   top: { style: 'SOLID', color: rgb('#D0D7DE') },
@@ -211,8 +226,11 @@ export function remarkFor(occupants: SheetSlot[], blocked: SheetSlot | undefined
 }
 
 export function buildGrid(
-  { staff, slots, dated = [] }: { staff: SheetStaff[]; slots: SheetSlot[]; dated?: SheetSlot[] },
+  { staff, slots, dated = [], paired = false }:
+    { staff: SheetStaff[]; slots: SheetSlot[]; dated?: SheetSlot[]; paired?: boolean },
 ): Grid | null {
+  // Five lines where two children share an hour, three everywhere else.
+  const perHour = paired ? PAIRED_ROWS_PER_HOUR : ROWS_PER_HOUR
   const live = staff.filter(s => (s.workDays ?? []).length > 0 && hoursBetween(s.startTime, s.endTime).length > 0)
   if (live.length === 0) return null
 
@@ -260,7 +278,7 @@ export function buildGrid(
 
   for (let b = 0; b < blocks.length; b += perBand) {
     const band = blocks.slice(b, b + perBand)
-    const bandRows = 2 + AXIS.length * ROWS_PER_HOUR
+    const bandRows = 2 + AXIS.length * perHour
     const top = rows.length
 
     for (let r = 0; r < bandRows; r++) {
@@ -287,14 +305,17 @@ export function buildGrid(
         }
 
         const idx = r - 2
-        const hourIdx = Math.floor(idx / ROWS_PER_HOUR)
-        const line: CellRef['line'] = idx % ROWS_PER_HOUR === 0 ? 'name' : idx % ROWS_PER_HOUR === 1 ? 'pay' : 'remark'
+        const hourIdx = Math.floor(idx / perHour)
+        const within = idx % perHour
+        const line: CellRef['line'] = paired
+          ? (['name', 'pay', 'name2', 'pay2', 'remark'] as const)[within]
+          : (['name', 'pay', 'remark'] as const)[within]
         if (hourIdx >= AXIS.length) return
         const h = AXIS[hourIdx]
 
         if (line === 'name') {
           put(0, cell(hourLabel(h), { textFormat: { bold: true, fontSize: 9 } }))
-          merges.push({ startRowIndex: top + r, endRowIndex: top + r + ROWS_PER_HOUR, startColumnIndex: base, endColumnIndex: base + 1 })
+          merges.push({ startRowIndex: top + r, endRowIndex: top + r + perHour, startColumnIndex: base, endColumnIndex: base + 1 })
         } else {
           put(0, cell(''))
         }
@@ -334,10 +355,22 @@ export function buildGrid(
           const pay = blocked || !occupants[0] ? '' : payLabel(occupants[0].paymentType, occupants[0].hmoProvider)
           const remark = remarkFor(occupants, blocked)
 
-          const value = line === 'name' ? name : line === 'pay' ? pay : remark
+          // The second child of a paired hour. Their own payment line, because
+          // inheriting the first child's arrangement would misbill an HMO case
+          // as cash — a guess the clinic pays for.
+          const name2 = paired && !blocked && occupants[1] ? String(occupants[1].patient).toUpperCase() : ''
+          const pay2 = paired && !blocked && occupants[1]
+            ? payLabel(occupants[1].paymentType, occupants[1].hmoProvider) : ''
+
+          const value = line === 'name' ? name
+            : line === 'pay' ? pay
+            : line === 'name2' ? name2
+            : line === 'pay2' ? pay2
+            : remark
           cells.push({ row: top + r, col: base + c, staffId: blk.st.id, dayOfWeek: day.key, startTime: hhmm(h), date: '', line, wrote: value })
 
-          if (line !== 'remark') validate.push({ row: top + r, col: base + c, kind: line })
+          if (line === 'name' || line === 'name2') validate.push({ row: top + r, col: base + c, kind: 'name' })
+          else if (line === 'pay' || line === 'pay2') validate.push({ row: top + r, col: base + c, kind: 'pay' })
 
           // Editable is decided per SLOT, and a blocked hour is not one.
           //
@@ -349,7 +382,7 @@ export function buildGrid(
           if (line === 'name' && !blocked) {
             editable.push({
               startRowIndex: top + r,
-              endRowIndex: top + r + ROWS_PER_HOUR,
+              endRowIndex: top + r + perHour,
               startColumnIndex: base + c,
               endColumnIndex: base + c + 1,
             })
@@ -359,10 +392,14 @@ export function buildGrid(
             put(c, remark
               ? cell(remark, { backgroundColor: rgb(REMARK_BG), textFormat: { fontSize: 8, italic: true, foregroundColor: rgb('#6B7280') } })
               : cell(FREE_TEXT_HINT, { backgroundColor: rgb(REMARK_BG), textFormat: { fontSize: 8, italic: true, foregroundColor: rgb('#B3AFA4') } }))
-          } else if (line === 'pay') {
+          } else if (line === 'pay' || line === 'pay2') {
             // Coloured by the CATEGORY, so "HMO – INTELLICARE" is amber like
             // any other HMO rather than falling back to the cash green.
-            put(c, cell(pay, { backgroundColor: rgb(PAY_BG), textFormat: { bold: true, fontSize: 8, foregroundColor: rgb(pay.startsWith('HMO') ? INK.HMO : INK[pay as keyof typeof INK] ?? INK.CASH) } }))
+            const v = line === 'pay' ? pay : pay2
+            put(c, cell(v, { backgroundColor: rgb(PAY_BG), textFormat: { bold: true, fontSize: 8, foregroundColor: rgb(v.startsWith('HMO') ? INK.HMO : INK[v as keyof typeof INK] ?? INK.CASH) } }))
+          } else if (line === 'name2') {
+            // Tinted, so a pair reads as a pair and not as two separate hours.
+            put(c, cell(name2, { backgroundColor: rgb(PAIR_BG), textFormat: { bold: true, fontSize: 9 } }))
           } else {
             put(c, name === BLOCKED || name === BREAK
               ? cell(name, { textFormat: { bold: true, fontSize: 9, foregroundColor: rgb(INK.NA) } })
