@@ -35,7 +35,7 @@ export default function PendingQueueWidget({ branch }: PendingQueueWidgetProps) 
 
   if (loading) {
     return (
-      <div className="rounded-2xl border p-5" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
+      <div className="rounded-lg border p-4" style={{ borderColor: 'var(--light-gray)', background: 'white' }}>
         <div className="flex items-center gap-2 mb-3">
           <Clock size={18} style={{ color: 'var(--teal)' }} />
           <h3 className="font-semibold text-sm" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
@@ -48,11 +48,11 @@ export default function PendingQueueWidget({ branch }: PendingQueueWidgetProps) 
   }
 
   return (
-    <div className="rounded-2xl border p-5" style={{ borderColor: pending.length > 0 ? 'var(--gold-light)' : 'var(--light-gray)', background: pending.length > 0 ? '#F9F2EB' : 'white' }}>
+    <div className="rounded-lg border p-4" style={{ borderColor: 'var(--light-gray)', borderLeft: `4px solid ${pending.length > 0 ? '#d97706' : '#059669'}`, background: pending.length > 0 ? '#fffbeb' : 'white' }}>
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           {pending.length > 0 ? (
-            <AlertCircle size={18} style={{ color: 'var(--gold)' }} />
+            <AlertCircle size={18} style={{ color: '#b45309' }} />
           ) : (
             <Clock size={18} style={{ color: 'var(--teal)' }} />
           )}
@@ -60,12 +60,12 @@ export default function PendingQueueWidget({ branch }: PendingQueueWidgetProps) 
             Pending Queue
           </h3>
           {pending.length > 0 && (
-            <span className="px-2 py-0.5 rounded-full text-xs font-bold" style={{ background: 'var(--gold)', color: 'white' }}>
+            <span className="px-2 py-0.5 rounded-full text-xs font-bold" style={{ background: '#fef3c7', color: '#92400e' }}>
               {pending.length}
             </span>
           )}
         </div>
-        <Link href="/pos" className="flex items-center gap-1 text-xs font-medium hover:underline" style={{ color: 'var(--gold)' }}>
+        <Link href="/pos" className="flex items-center gap-1 text-xs font-semibold hover:underline" style={{ color: 'var(--teal)' }}>
           Go to POS <ArrowRight size={14} />
         </Link>
       </div>

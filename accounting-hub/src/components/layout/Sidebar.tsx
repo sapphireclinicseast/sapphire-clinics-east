@@ -65,19 +65,19 @@ const PAYROLL_ACCESS = [...FULL_ACCESS, 'PAYROLL_OFFICER']
 // Products & Sales Analysis: main admin + branch admins + viewer (NOT accountant/bookkeeper).
 const ANALYSIS_ACCESS = ['ADMIN', 'VIEWER', 'AHEA_ADMIN', 'AHGH_ADMIN', 'VERDANA_ADMIN']
 
-interface NavItem {
+export interface NavItem {
   href: string
   icon: React.ElementType
   label: string
   roles?: string[] // If set, only these roles see this item. If unset, visible to all.
 }
 
-interface NavSection {
+export interface NavSection {
   label: string
   items: NavItem[]
 }
 
-const NAV_SECTIONS: NavSection[] = [
+export const NAV_SECTIONS: NavSection[] = [
   {
     label: 'Overview',
     items: [

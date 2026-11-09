@@ -61,10 +61,10 @@ export function ReminderCard() {
   const reminders = useReminders()
   if (!reminders || reminders.length === 0) return null
   return (
-    <div className="rounded-2xl border bg-white p-5 mb-6" style={{ borderColor: 'var(--light-gray)' }}>
+    <div className="rounded-lg border bg-white p-4" style={{ borderColor: 'var(--light-gray)', borderLeft: '4px solid #d97706' }}>
       <div className="flex items-center gap-2 mb-3">
-        <CalendarClock size={18} style={{ color: 'var(--teal)' }} />
-        <h2 className="text-base font-bold" style={{ color: 'var(--charcoal)' }}>Recurring expense reminders</h2>
+        <CalendarClock size={16} style={{ color: '#b45309' }} />
+        <h2 className="text-sm font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>Recurring expense reminders</h2>
         <span className="ml-1 px-2 py-0.5 rounded-full text-xs font-semibold" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>{reminders.length}</span>
       </div>
       <div className="space-y-2">

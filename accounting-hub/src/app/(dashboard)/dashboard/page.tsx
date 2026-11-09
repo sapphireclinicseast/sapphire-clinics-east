@@ -1,103 +1,31 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import {
-  BookOpen,
-  Wallet,
-  Package,
-  ShoppingCart,
-  BadgeDollarSign,
-  ArrowLeftRight,
-  BarChart3,
-  Target,
-  Users,
-  Stethoscope,
-} from 'lucide-react'
+import { BookOpen } from 'lucide-react'
 import { auth } from '@/lib/auth'
 import PendingQueueWidget from '@/components/dashboard/PendingQueueWidget'
 import { ReminderCard } from '@/components/dashboard/RecurringReminders'
+import ModuleDirectory from '@/components/dashboard/ModuleDirectory'
+import { HR_PAGE_CLASS, HR_PAGE_STYLE } from '@/components/ui/hr-tokens'
 
 const FRONT_DESK_ROLES = ['AHEA_FRONTDESK', 'AHGH_FRONTDESK']
 
-const ALL_MODULES = [
-  {
-    href: '/chart-of-accounts',
-    icon: BookOpen,
-    title: 'Chart of Accounts',
-    description: 'Manage account categories, types, and balances',
-    status: 'active' as const,
-  },
-  {
-    href: '/petty-cash',
-    icon: Wallet,
-    title: 'Petty Cash Recording',
-    description: 'Track and record petty cash transactions',
-    status: 'coming-soon' as const,
-  },
-  {
-    href: '/inventory',
-    icon: Package,
-    title: 'Inventory & Procurement',
-    description: 'Manage stock levels and purchase orders',
-    status: 'active' as const,
-  },
-  {
-    href: '/pos',
-    icon: ShoppingCart,
-    title: 'Point of Sale',
-    description: 'Process sales transactions',
-    status: 'active' as const,
-    frontDesk: true,
-  },
-  {
-    href: '/payroll',
-    icon: BadgeDollarSign,
-    title: 'Payroll',
-    description: 'Employee salary management and processing',
-    status: 'active' as const,
-  },
-  {
-    href: '/bank-reconciliation',
-    icon: ArrowLeftRight,
-    title: 'Bank Reconciliation',
-    description: 'Match bank statements with accounting records',
-    status: 'coming-soon' as const,
-  },
-  {
-    href: '/reports',
-    icon: BarChart3,
-    title: 'Reports',
-    description: 'Financial reports and analytics',
-    status: 'active' as const,
-  },
-  {
-    href: '/budgets',
-    icon: Target,
-    title: 'Budgets',
-    description: 'Budget planning, allocation, and tracking',
-    status: 'coming-soon' as const,
-  },
-  {
-    href: '/services',
-    icon: Stethoscope,
-    title: 'Services',
-    description: 'View and manage clinic services',
-    status: 'active' as const,
-    frontDesk: true,
-  },
-  {
-    href: '/users',
-    icon: Users,
-    title: 'Users',
-    description: 'User management and role-based access control',
-    status: 'active' as const,
-    adminOnly: true,
-  },
-]
+const ROLE_LABELS: Record<string, string> = {
+  ADMIN: 'Admin', ACCOUNTANT: 'Accountant', BOOKKEEPER: 'Bookkeeper', VIEWER: 'Viewer',
+  AHEA_ADMIN: 'East admin', AHGH_ADMIN: 'Greenhills admin', VERDANA_ADMIN: 'Verdana admin',
+  AHEA_FRONTDESK: 'East front desk', AHGH_FRONTDESK: 'Greenhills front desk', PAYROLL_OFFICER: 'Payroll officer',
+}
+const BRANCH_LABELS: Record<string, string> = {
+  ALL: 'All branches',
+  SANDBOX_EAST: 'Aura East', SBEA: 'Aura East', AHEA: 'Aura East',
+  SANDBOX_GREENHILLS: 'Aura Greenhills', SBGH: 'Aura Greenhills', AHGH: 'Aura Greenhills',
+  VERDANA_STORE: 'Verdana', VERDANA: 'Verdana', AURA_INSTITUTE: 'Aura Health Institute', AHI: 'Aura Health Institute',
+}
+
+const chip = 'inline-flex items-center gap-1.5 max-w-[260px] px-2.5 py-[3px] rounded-full border bg-white text-xs font-semibold whitespace-nowrap overflow-hidden text-ellipsis'
 
 export default async function DashboardPage() {
   const session = await auth()
   const role = session?.user?.role || ''
-  const isAdmin = role === 'ADMIN'
   const isFrontDesk = FRONT_DESK_ROLES.includes(role)
   const isHmoOfficer = role === 'HMO_OFFICER'
 
@@ -107,84 +35,53 @@ export default async function DashboardPage() {
   if (role === 'MEDREP') redirect('/reports')
   if (role === 'INVESTOR') redirect('/reports')
 
-  // Front desk users only see Services + POS (active, clickable)
-  const visibleModules = isFrontDesk
-    ? ALL_MODULES.filter((m) => m.frontDesk)
-    : ALL_MODULES.filter((m) => !m.adminOnly || isAdmin)
+  // Greeting and date in Manila time.
+  const now = new Date()
+  const today = new Intl.DateTimeFormat('en-PH', { timeZone: 'Asia/Manila', weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }).format(now)
+  const hour = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Manila', hour: '2-digit', hourCycle: 'h23' }).format(now))
+  const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
+  const firstName = session?.user?.name?.split(' ')[0] || ''
+  const branchCode = session?.user?.branch || ''
+  const branchLabel = BRANCH_LABELS[branchCode] || 'Sapphire Clinics East, Inc.'
+  const roleLabel = ROLE_LABELS[role]
 
   return (
-    <div>
-      <div className="mb-6">
-        <h1
-          className="text-2xl font-bold"
-          style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}
-        >
-          Welcome back, {session?.user?.name?.split(' ')[0]}
-        </h1>
-        <p className="text-sm mt-1" style={{ color: 'var(--mid-gray)' }}>
-          SAPPHIRE Accounting Hub — Module Overview
-        </p>
-      </div>
+    <div className={HR_PAGE_CLASS} style={HR_PAGE_STYLE}>
+      {/* Welcome (HR Hub dashboard header) */}
+      <section aria-label="Welcome" className="flex flex-wrap sm:flex-nowrap items-center gap-3 sm:gap-4 rounded-xl border px-4 sm:px-5 py-4"
+        style={{ background: 'linear-gradient(100deg, #EDF3D9 0%, #ffffff 58%)', borderColor: 'var(--light-gray)' }}>
+        {/* Aura Health Rehab arch logomark */}
+        <svg width="72" height="38" viewBox="0 0 220 116" role="img" aria-label="Aura Health Rehab" className="hidden sm:block flex-none">
+          <path d="M10,110 A100,100 0 0 1 210,110 L188,110 A78,78 0 0 0 32,110 Z" fill="#296354" />
+          <path d="M38,110 A72,72 0 0 1 182,110 L160,110 A50,50 0 0 0 60,110 Z" fill="#8EAF74" />
+          <path d="M66,110 A44,44 0 0 1 154,110 L132,110 A22,22 0 0 0 88,110 Z" fill="#6E8E8E" />
+        </svg>
+        <div className="flex-1 min-w-0">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-semibold" style={{ color: 'var(--mid-gray)' }}>
+            <span>{today}</span>
+            <span aria-hidden="true" className="w-[3px] h-[3px] rounded-full" style={{ background: 'var(--hr-faint)' }} />
+            <span>{branchLabel}</span>
+          </div>
+          <h1 className="mt-0.5 mb-1 text-[19px] sm:text-[22px] font-bold leading-tight" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+            {greeting}{firstName ? `, ${firstName}` : ''}
+          </h1>
+          <p className="text-[13px]" style={{ color: 'var(--mid-gray)' }}>SAPPHIRE Accounting Hub · open a module below or from the sidebar.</p>
+        </div>
+        <div className="flex flex-wrap sm:flex-col items-center sm:items-end gap-1.5 w-full sm:w-auto">
+          {roleLabel && <span className={chip} style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>{roleLabel}</span>}
+          <Link href="/handbook" className={`${chip} transition-colors hover:border-[var(--teal)] hover:text-[var(--teal)]`} style={{ borderColor: 'var(--light-gray)', color: 'var(--mid-gray)' }}>
+            <BookOpen size={12} /> Handbook
+          </Link>
+        </div>
+      </section>
 
       {/* Recurring expense reminders — shown to admins/accountants per branch scope */}
       <ReminderCard />
 
       {/* Pending Queue Widget — shown to front desk users */}
-      {isFrontDesk && (
-        <div className="mb-6">
-          <PendingQueueWidget branch={session?.user?.branch} />
-        </div>
-      )}
+      {isFrontDesk && <PendingQueueWidget branch={session?.user?.branch} />}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-        {visibleModules.map((mod) => {
-          const Icon = mod.icon
-          return (
-            <Link
-              key={mod.href}
-              href={mod.href}
-              className="group rounded-2xl border p-5 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5"
-              style={{
-                background: 'white',
-                borderColor: 'var(--light-gray)',
-              }}
-            >
-              <div className="flex items-start justify-between mb-4">
-                <div
-                  className="w-12 h-12 rounded-xl flex items-center justify-center transition-colors"
-                  style={{ background: 'var(--pale-teal)' }}
-                >
-                  <Icon
-                    size={24}
-                    style={{ color: 'var(--teal)' }}
-                    className="transition-colors"
-                  />
-                </div>
-                <span
-                  className="px-2.5 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wider"
-                  style={
-                    mod.status === 'active'
-                      ? { background: '#dcfce7', color: '#166534' }
-                      : { background: 'var(--pale-teal)', color: 'var(--deep-teal)' }
-                  }
-                >
-                  {mod.status === 'active' ? 'Active' : 'Coming Soon'}
-                </span>
-              </div>
-
-              <h3
-                className="font-semibold text-base mb-1"
-                style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}
-              >
-                {mod.title}
-              </h3>
-              <p className="text-sm leading-relaxed" style={{ color: 'var(--mid-gray)' }}>
-                {mod.description}
-              </p>
-            </Link>
-          )
-        })}
-      </div>
+      <ModuleDirectory role={role} />
     </div>
   )
 }
