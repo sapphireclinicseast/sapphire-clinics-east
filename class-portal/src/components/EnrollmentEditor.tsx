@@ -7,6 +7,11 @@ import {
   type EnrollmentDraft, type StoredUser,
   type EnrollmentLevel, type LrnStatus, type GuardianOfRecord, type NameParts,
 } from '@/lib/session'
+import { Portal } from './Modal'
+import {
+  Banner, BTN_PRIMARY, BTN_SECONDARY, CONTROL, CONTROL_STYLE, Dialog, GroupLabel, LABEL, LABEL_STYLE,
+  PRIMARY_STYLE, SECONDARY_STYLE, displayName,
+} from '@/components/hub/ui'
 
 interface Props {
   student: StoredUser
@@ -60,28 +65,34 @@ export default function EnrollmentEditor({ student, onClose, onSaved, headerLabe
   const guardianFieldsDisabled = draft.guardianOfRecord === 'FATHER' || draft.guardianOfRecord === 'MOTHER'
 
   return (
-    <div className="fixed inset-0 z-[60] bg-black/40 backdrop-blur-sm overflow-y-auto p-4 animate-fade-in" onClick={onClose}>
-      <div className="max-w-3xl mx-auto my-4 card-static" onClick={e => e.stopPropagation()}>
-        <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
-          <div>
-            <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)]" style={{ fontFamily: 'var(--font-display)' }}>{headerLabel ?? 'Admin · edit enrollment'}</div>
-            <h2 className="text-[22px] leading-tight text-[color:var(--deep-teal)]">{student.firstName} {student.lastName}</h2>
-            <p className="text-sm text-[color:var(--mid-gray)]">{student.email} · enrolled in {student.level ? levelLabel(student.level) : '—'}</p>
-          </div>
-          <button className="btn-secondary text-xs" onClick={onClose}>Cancel</button>
-        </div>
+    // Portaled to <body> so a transformed ancestor (animate-fade-up on
+    // /profile) can't trap the fixed overlay; the z-[110] wrapper keeps
+    // it above the Students list popup (z-[100]) when opened from there.
+    <Portal>
+    <div className="relative z-[110]">
+    <Dialog
+      labelId="enrollment-editor-title"
+      size="lg"
+      eyebrow={headerLabel ?? 'Admin · edit enrollment'}
+      title={displayName(`${student.firstName ?? ''} ${student.lastName ?? ''}`.trim()) || student.email}
+      description={<span className="[overflow-wrap:anywhere]">{student.email} · enrolled in {student.level ? levelLabel(student.level) : '—'}</span>}
+      onClose={onClose}
+      footer={<>
+        <button type="button" className={BTN_SECONDARY} style={SECONDARY_STYLE} onClick={onClose}>Close</button>
+        <button type="button" disabled={busy} className={BTN_PRIMARY} style={PRIMARY_STYLE} onClick={save}>{busy ? 'Saving…' : 'Save changes'}</button>
+      </>}
+    >
+        {err && <div className="mb-4"><Banner tone="error">{err}</Banner></div>}
+        {info && <div className="mb-4"><Banner tone="success">{info}</Banner></div>}
 
-        {err && <div className="mb-3 px-4 py-3 rounded-xl bg-rose-50 border border-rose-100 text-sm text-rose-800">{err}</div>}
-        {info && <div className="mb-3 px-4 py-3 rounded-xl bg-emerald-50 border border-emerald-100 text-sm text-emerald-800">{info}</div>}
-
-        <div className="space-y-5">
+        <div className="space-y-6">
           <Section title="School year & LRN">
             <Grid2>
               <Field label="School year (from)"><Input value={draft.schoolYearFrom ?? ''} onChange={v => patch('schoolYearFrom', v)} placeholder="2026" /></Field>
               <Field label="School year (to)"><Input value={draft.schoolYearTo ?? ''} onChange={v => patch('schoolYearTo', v)} placeholder="2027" /></Field>
             </Grid2>
             <Field label="LRN status">
-              <select className="select" value={draft.lrnStatus ?? ''} onChange={e => patch('lrnStatus', (e.target.value || undefined) as LrnStatus | undefined)}>
+              <select className={SELECT} style={CONTROL_STYLE} value={draft.lrnStatus ?? ''} onChange={e => patch('lrnStatus', (e.target.value || undefined) as LrnStatus | undefined)}>
                 <option value="">—</option>
                 <option value="NO_LRN">No LRN</option>
                 <option value="WITH_LRN">With LRN</option>
@@ -104,10 +115,10 @@ export default function EnrollmentEditor({ student, onClose, onSaved, headerLabe
               <Field label="Extension name"><Upper value={draft.extensionName ?? ''} onChange={v => patch('extensionName', v)} placeholder="JR, III, …" /></Field>
             </Grid2>
             <Grid3>
-              <Field label="Date of birth"><input type="date" className="input" value={draft.dob ?? ''} onChange={e => patch('dob', e.target.value)} /></Field>
+              <Field label="Date of birth"><input type="date" className={SELECT} style={CONTROL_STYLE} value={draft.dob ?? ''} onChange={e => patch('dob', e.target.value)} /></Field>
               <Field label="Age (auto)"><Input value={draft.dob ? ageFromDob(draft.dob) : ''} readOnly /></Field>
               <Field label="Sex">
-                <select className="select" value={draft.sex ?? ''} onChange={e => patch('sex', (e.target.value || undefined) as 'MALE' | 'FEMALE' | undefined)}>
+                <select className={SELECT} style={CONTROL_STYLE} value={draft.sex ?? ''} onChange={e => patch('sex', (e.target.value || undefined) as 'MALE' | 'FEMALE' | undefined)}>
                   <option value="">—</option>
                   <option value="MALE">Male</option>
                   <option value="FEMALE">Female</option>
@@ -116,7 +127,7 @@ export default function EnrollmentEditor({ student, onClose, onSaved, headerLabe
             </Grid3>
             <Grid2>
               <Field label="IP / ICC community?">
-                <select className="select" value={draft.ipMember ?? ''} onChange={e => patch('ipMember', (e.target.value || undefined) as 'YES' | 'NO' | undefined)}>
+                <select className={SELECT} style={CONTROL_STYLE} value={draft.ipMember ?? ''} onChange={e => patch('ipMember', (e.target.value || undefined) as 'YES' | 'NO' | undefined)}>
                   <option value="">—</option>
                   <option value="YES">Yes</option>
                   <option value="NO">No</option>
@@ -145,22 +156,22 @@ export default function EnrollmentEditor({ student, onClose, onSaved, headerLabe
           <Section title="Parent / Guardian">
             <SubHead>Father&apos;s Name (Last, First, Middle)</SubHead>
             <Grid3>
-              <Upper value={draft.father?.lastName ?? ''} onChange={v => patchName('father', 'lastName', v)} placeholder="LAST NAME" />
-              <Upper value={draft.father?.firstName ?? ''} onChange={v => patchName('father', 'firstName', v)} placeholder="FIRST NAME" />
-              <Upper value={draft.father?.middleName ?? ''} onChange={v => patchName('father', 'middleName', v)} placeholder="MIDDLE NAME" />
+              <Upper value={draft.father?.lastName ?? ''} onChange={v => patchName('father', 'lastName', v)} label="Father's last name" placeholder="LAST NAME" />
+              <Upper value={draft.father?.firstName ?? ''} onChange={v => patchName('father', 'firstName', v)} label="Father's first name" placeholder="FIRST NAME" />
+              <Upper value={draft.father?.middleName ?? ''} onChange={v => patchName('father', 'middleName', v)} label="Father's middle name" placeholder="MIDDLE NAME" />
             </Grid3>
             <Field label="Father&apos;s occupation"><Upper value={draft.fatherOccupation ?? ''} onChange={v => patch('fatherOccupation', v)} /></Field>
 
             <SubHead>Mother&apos;s Maiden Name (Last, First, Middle)</SubHead>
             <Grid3>
-              <Upper value={draft.mother?.lastName ?? ''} onChange={v => patchName('mother', 'lastName', v)} placeholder="LAST NAME" />
-              <Upper value={draft.mother?.firstName ?? ''} onChange={v => patchName('mother', 'firstName', v)} placeholder="FIRST NAME" />
-              <Upper value={draft.mother?.middleName ?? ''} onChange={v => patchName('mother', 'middleName', v)} placeholder="MIDDLE NAME" />
+              <Upper value={draft.mother?.lastName ?? ''} onChange={v => patchName('mother', 'lastName', v)} label="Mother's last name" placeholder="LAST NAME" />
+              <Upper value={draft.mother?.firstName ?? ''} onChange={v => patchName('mother', 'firstName', v)} label="Mother's first name" placeholder="FIRST NAME" />
+              <Upper value={draft.mother?.middleName ?? ''} onChange={v => patchName('mother', 'middleName', v)} label="Mother's middle name" placeholder="MIDDLE NAME" />
             </Grid3>
             <Field label="Mother&apos;s occupation"><Upper value={draft.motherOccupation ?? ''} onChange={v => patch('motherOccupation', v)} /></Field>
 
             <Field label="Official guardian">
-              <select className="select" value={draft.guardianOfRecord ?? 'OTHER'} onChange={e => patch('guardianOfRecord', e.target.value as GuardianOfRecord)}>
+              <select className={SELECT} style={CONTROL_STYLE} value={draft.guardianOfRecord ?? 'OTHER'} onChange={e => patch('guardianOfRecord', e.target.value as GuardianOfRecord)}>
                 <option value="FATHER">Father</option>
                 <option value="MOTHER">Mother</option>
                 <option value="OTHER">Other (fill below)</option>
@@ -170,9 +181,9 @@ export default function EnrollmentEditor({ student, onClose, onSaved, headerLabe
               <>
                 <SubHead>Guardian&apos;s Name (Last, First, Middle)</SubHead>
                 <Grid3>
-                  <Upper value={draft.guardian?.lastName ?? ''} onChange={v => patchName('guardian', 'lastName', v)} placeholder="LAST NAME" />
-                  <Upper value={draft.guardian?.firstName ?? ''} onChange={v => patchName('guardian', 'firstName', v)} placeholder="FIRST NAME" />
-                  <Upper value={draft.guardian?.middleName ?? ''} onChange={v => patchName('guardian', 'middleName', v)} placeholder="MIDDLE NAME" />
+                  <Upper value={draft.guardian?.lastName ?? ''} onChange={v => patchName('guardian', 'lastName', v)} label="Guardian's last name" placeholder="LAST NAME" />
+                  <Upper value={draft.guardian?.firstName ?? ''} onChange={v => patchName('guardian', 'firstName', v)} label="Guardian's first name" placeholder="FIRST NAME" />
+                  <Upper value={draft.guardian?.middleName ?? ''} onChange={v => patchName('guardian', 'middleName', v)} label="Guardian's middle name" placeholder="MIDDLE NAME" />
                 </Grid3>
               </>
             )}
@@ -185,7 +196,7 @@ export default function EnrollmentEditor({ student, onClose, onSaved, headerLabe
 
           <Section title="Returning learner / transferee">
             <Field label="Is the student a returning learner or transferee?">
-              <select className="select" value={draft.isReturningOrTransferee ?? 'NO'} onChange={e => patch('isReturningOrTransferee', e.target.value as 'YES' | 'NO')}>
+              <select className={SELECT} style={CONTROL_STYLE} value={draft.isReturningOrTransferee ?? 'NO'} onChange={e => patch('isReturningOrTransferee', e.target.value as 'YES' | 'NO')}>
                 <option value="NO">No</option>
                 <option value="YES">Yes</option>
               </select>
@@ -207,43 +218,43 @@ export default function EnrollmentEditor({ student, onClose, onSaved, headerLabe
 
           <Section title="Class program">
             <Field label="Enrolled grade level">
-              <select className="select" value={draft.level ?? student.level ?? 'KINDER'} onChange={e => patch('level', e.target.value as EnrollmentLevel)}>
+              <select className={SELECT} style={CONTROL_STYLE} value={draft.level ?? student.level ?? 'KINDER'} onChange={e => patch('level', e.target.value as EnrollmentLevel)}>
                 {ALL_LEVELS.map(l => <option key={l} value={l}>{levelLabel(l)}</option>)}
               </select>
             </Field>
           </Section>
         </div>
-
-        <div className="flex justify-end gap-2 mt-6">
-          <button type="button" className="btn-secondary" onClick={onClose}>Close</button>
-          <button type="button" disabled={busy} className="btn-primary" onClick={save}>{busy ? 'Saving…' : 'Save changes'}</button>
-        </div>
-      </div>
+    </Dialog>
     </div>
+    </Portal>
   )
 }
 
 /* ───────── tiny UI helpers (kept local so we don't add another file) ───────── */
 
+const SELECT = `${CONTROL} w-full`
+
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="space-y-3">
-      <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-[color:var(--bright-teal)]" style={{ fontFamily: 'var(--font-display)' }}>{title}</div>
+    <section className="space-y-3 min-w-0">
+      <div className="pb-2" style={{ borderBottom: '1px solid var(--light-gray)' }}><GroupLabel>{title}</GroupLabel></div>
       {children}
-    </div>
+    </section>
   )
 }
 function SubHead({ children }: { children: React.ReactNode }) {
-  return <div className="text-[11px] uppercase tracking-[0.12em] text-[color:var(--mid-gray)] font-semibold" style={{ fontFamily: 'var(--font-display)' }}>{children}</div>
+  return <div className="text-[12px] font-bold pt-1" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>{children}</div>
 }
 function Grid2({ children }: { children: React.ReactNode }) { return <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">{children}</div> }
 function Grid3({ children }: { children: React.ReactNode }) { return <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">{children}</div> }
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return <label className="block"><span className="label">{label}</span>{children}</label>
+  return <label className="block min-w-0"><span className={LABEL} style={LABEL_STYLE}>{label}</span>{children}</label>
 }
 function Input({ value, onChange, readOnly, placeholder }: { value: string; onChange?: (v: string) => void; readOnly?: boolean; placeholder?: string }) {
-  return <input className="input" value={value} onChange={onChange ? e => onChange(e.target.value) : undefined} readOnly={readOnly} placeholder={placeholder} />
+  return <input className={`${CONTROL} w-full`} style={readOnly ? { ...CONTROL_STYLE, background: '#FAF7F1' } : CONTROL_STYLE} value={value} onChange={onChange ? e => onChange(e.target.value) : undefined} readOnly={readOnly} placeholder={placeholder} />
 }
-function Upper({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
-  return <input className="input" value={value} onChange={e => onChange(e.target.value.toUpperCase())} placeholder={placeholder} style={{ textTransform: 'uppercase' }} />
+/** `label` is the accessible name for the name-part boxes that sit under
+ *  a SubHead instead of their own visible label. */
+function Upper({ value, onChange, placeholder, label }: { value: string; onChange: (v: string) => void; placeholder?: string; label?: string }) {
+  return <input className={`${CONTROL} w-full`} aria-label={label} value={value} onChange={e => onChange(e.target.value.toUpperCase())} placeholder={placeholder} style={{ ...CONTROL_STYLE, textTransform: 'uppercase' }} />
 }
