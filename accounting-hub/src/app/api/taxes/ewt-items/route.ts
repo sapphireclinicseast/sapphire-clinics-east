@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { sweepNoSiEwtToOtherIncome } from '@/lib/accounting/ewt-income'
 import { netOfVat } from '@/lib/vat'
+import { adjustmentItems } from '@/lib/taxes/ewt-adjustments'
 
 const SWEEP_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 
@@ -51,7 +52,7 @@ export async function GET(req: Request) {
     select: { id: true, pcvNumber: true, requestor: true, description: true, vatable: true, vatPortion: true, grossAmount: true, ewtRate: true, paidAt: true, date: true, branchAllocations: true, rfpBranchMap: true, ewtRemittedBranches: true },
   })
 
-  const items = [
+  const items: Record<string, unknown>[] = [
     ...consultants.map(e => {
       // Tax base = the amount actually SUBJECTED to withholding, not the whole
       // gross pay (Hannah, 2026-10-22). Untaxed adjustments — e.g. a signing
@@ -102,5 +103,11 @@ export async function GET(req: Request) {
       }]
     }),
   ]
+  // Overdeclared adjustments: +additional in the month it was overdeclared,
+  // −the same in the month it is offset from. Read failures (e.g. the table
+  // not created yet) leave the list as it was.
+  const adjustments = await prisma.ewtAdjustment.findMany({ where: { payrollBranch } })
+    .catch(e => { console.error('EWT adjustments read failed', e); return [] })
+  items.push(...adjustments.flatMap(adjustmentItems))
   return NextResponse.json({ items })
 }

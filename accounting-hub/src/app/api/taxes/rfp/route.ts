@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { undoEwtIncomeDeclarations } from '@/lib/accounting/ewt-income'
 import { netOfVat } from '@/lib/vat'
+import { parseAdjItemId, adjItemId, ymLabel } from '@/lib/taxes/ewt-adjustments'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 // Payroll branch codes → petty-cash branch keys (so tax RFP numbers stay
@@ -70,7 +71,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
   }
   try {
-    const { taxType, payrollBranch, ids, consultantIds, expenseIds, amount, period, manualSeq, otherFees } = await req.json()
+    const { taxType, payrollBranch, ids, consultantIds, expenseIds, adjustmentIds, amount, period, manualSeq, otherFees } = await req.json()
     const moduleName = TAX_MODULE[taxType]
     if (!moduleName) return NextResponse.json({ error: 'Invalid taxType' }, { status: 400 })
     if (!['WC', 'EWT', 'VAT', 'IT'].includes(taxType)) return NextResponse.json({ error: `${taxType} RFP not yet supported` }, { status: 400 })
@@ -110,7 +111,9 @@ export async function POST(req: Request) {
         const rawEids: string[] = Array.isArray(expenseIds) ? expenseIds : []
         const plainEids = rawEids.filter(x => !String(x).includes('::'))
         const ceoEids = [...new Set(rawEids.filter(x => String(x).includes('::')).map(x => String(x).split('::')[0]))]
-        if (cids.length === 0 && rawEids.length === 0) throw new Error('Select at least one entry')
+        // Overdeclared adjustments: "adj:<id>:over" (+) / "adj:<id>:offset" (−).
+        const adjLegs = (Array.isArray(adjustmentIds) ? adjustmentIds : []).map((x: string) => parseAdjItemId(x)).filter((x): x is NonNullable<ReturnType<typeof parseAdjItemId>> => !!x)
+        if (cids.length === 0 && rawEids.length === 0 && adjLegs.length === 0) throw new Error('Select at least one entry')
         const cons = cids.length ? await tx.payrollEntry.findMany({
           where: { id: { in: cids }, branch: payrollBranch, status: 'LOCKED', taxRemitted: false, taxAmount: { gt: 0 } },
           include: { consultant: { select: { name: true } } },
@@ -121,7 +124,10 @@ export async function POST(req: Request) {
         const ceoRaw = ceoEids.length ? await tx.pettyCashEntry.findMany({ where: { id: { in: ceoEids }, branch: 'CEO', hasEwt: true } }) : []
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const ceoEntries = ceoRaw.filter((e: any) => !((e.ewtRemittedBranches && typeof e.ewtRemittedBranches === 'object' ? e.ewtRemittedBranches as Record<string, boolean> : {})[pcBranch]))
-        if (cons.length === 0 && exps.length === 0 && ceoEntries.length === 0) throw new Error('No eligible unremitted EWT items found')
+        const adjRows = adjLegs.length ? await tx.ewtAdjustment.findMany({ where: { id: { in: [...new Set(adjLegs.map(l => l.id))] }, payrollBranch } }) : []
+        const adjById = new Map(adjRows.map(a => [a.id, a]))
+        const adjPicked = adjLegs.filter(l => { const a = adjById.get(l.id); return a && !(l.leg === 'over' ? a.overRemitted : a.offsetRemitted) })
+        if (cons.length === 0 && exps.length === 0 && ceoEntries.length === 0 && adjPicked.length === 0) throw new Error('No eligible unremitted EWT items found')
         // Items sitting on Other Income come back OFF it the moment they are
         // ticked for remittance: their auto-declarations reverse (7220 → 4070)
         // so the BIR payment settles a liability, not income. CEO branch
@@ -138,8 +144,22 @@ export async function POST(req: Request) {
           const net = netOfVat(e, g); const rate = e.ewtRate || 0; const when = e.paidAt || e.date
           return [{ id: `${e.id}::${pcBranch}`, source: 'EXPENSE', name: `${e.requestor || e.pcvNumber} (CEO)`, period: when ? new Date(when).toISOString().slice(0, 10) : '', base: net, rate, ewt: net * (rate / 100) }]
         })
-        items = [...consItems, ...expItems, ...ceoItems]
+        const adjItems = adjPicked.map(l => {
+          const a = adjById.get(l.id)!
+          const amt = Math.round(Number(a.amount) * 100) / 100
+          return l.leg === 'over'
+            ? { id: adjItemId(a.id, 'over'), source: 'ADJUSTMENT', name: a.payeeName, period: `${ymLabel(a.overMonth)} · overdeclared`, base: 0, rate: null, ewt: amt }
+            : { id: adjItemId(a.id, 'offset'), source: 'ADJUSTMENT', name: a.payeeName, period: `${ymLabel(a.offsetMonth)} · offset of ${ymLabel(a.overMonth)}`, base: 0, rate: null, ewt: -amt }
+        })
+        items = [...consItems, ...expItems, ...ceoItems, ...adjItems]
+        // An offset can only reduce a remittance, never turn it into a refund.
+        const ewtSum = Math.round(items.reduce((s2, i) => s2 + i.ewt, 0) * 100) / 100
+        if (ewtSum <= 0) throw new Error(`The offsets ticked (₱${(-adjItems.filter(i => i.ewt < 0).reduce((s2, i) => s2 + i.ewt, 0)).toLocaleString('en-PH', { minimumFractionDigits: 2 })}) are more than the EWT ticked with them. Tick more of that month's EWT, or move the offset to a later month.`)
         markRemitted = async () => {
+          const overIds = adjPicked.filter(l => l.leg === 'over').map(l => l.id)
+          const offsetIds = adjPicked.filter(l => l.leg === 'offset').map(l => l.id)
+          if (overIds.length) await tx.ewtAdjustment.updateMany({ where: { id: { in: overIds } }, data: { overRemitted: true } })
+          if (offsetIds.length) await tx.ewtAdjustment.updateMany({ where: { id: { in: offsetIds } }, data: { offsetRemitted: true } })
           if (cons.length) await tx.payrollEntry.updateMany({ where: { id: { in: cons.map(c => c.id) } }, data: { taxRemitted: true } })
           if (exps.length) await tx.pettyCashEntry.updateMany({ where: { id: { in: exps.map(x => x.id) } }, data: { ewtRemitted: true } })
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -252,6 +272,12 @@ export async function DELETE(req: Request) {
         const expIds = allExpIds.filter(x => !x.includes('::'))
         const ceoExpIds = allExpIds.filter(x => x.includes('::')) // "<entryId>::<branch>"
         if (consIds.length) await tx.payrollEntry.updateMany({ where: { id: { in: consIds } }, data: { taxRemitted: false } })
+        // Overdeclared adjustments: put each half back to unremitted.
+        const adjLegs = metaItems.filter(i => i.source === 'ADJUSTMENT').map(i => parseAdjItemId(String(i.id))).filter((x): x is NonNullable<ReturnType<typeof parseAdjItemId>> => !!x)
+        const overIds = adjLegs.filter(l => l.leg === 'over').map(l => l.id)
+        const offsetIds = adjLegs.filter(l => l.leg === 'offset').map(l => l.id)
+        if (overIds.length) await tx.ewtAdjustment.updateMany({ where: { id: { in: overIds } }, data: { overRemitted: false } })
+        if (offsetIds.length) await tx.ewtAdjustment.updateMany({ where: { id: { in: offsetIds } }, data: { offsetRemitted: false } })
         if (expIds.length) await tx.pettyCashEntry.updateMany({ where: { id: { in: expIds } }, data: { ewtRemitted: false } })
         // Revert per-branch remittance for CEO allocations.
         for (const composite of ceoExpIds) {

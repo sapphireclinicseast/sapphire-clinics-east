@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { computeLedgerStatements } from '@/lib/reports/v2/engine'
 import { netOfVat, vatOf } from '@/lib/vat'
+import { adjustmentNetForMonths } from '@/lib/taxes/ewt-adjustments'
 
 const VAT_RATE = 0.12
 const CORP_RATE = 0.20
@@ -57,6 +58,10 @@ export async function GET() {
     if (wym === ym) ewtMonth += ewt
     if (w >= qStart && w < qEnd) ewtQuarter += ewt
   }
+  // Overdeclared adjustments: + in the overdeclared month, − in the offset month.
+  const ewtAdj = await prisma.ewtAdjustment.findMany({ select: { overMonth: true, offsetMonth: true, amount: true } }).catch(() => [])
+  ewtMonth += adjustmentNetForMonths(ewtAdj, m => m === ym)
+  ewtQuarter += adjustmentNetForMonths(ewtAdj, inQuarterYm)
 
   // ── 2550Q: current-quarter output VAT − input VAT (all branches), before carryover ──
   const orders = await prisma.order.findMany({

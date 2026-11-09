@@ -2029,6 +2029,29 @@ model WcComputationOverride {
 // flow (Taxes → Expanded Withholding). Links each item to the exact journal
 // entry holding its share so a declaration can be undone per item. EWT that
 // was genuinely remitted to BIR has no row here and can never be "undone".
+// Taxes → Expanded Withholding: tax overdeclared for a payee in one month
+// (e.g. 80,500 keyed for 8,050) and taken back from a later month's remittance.
+// The additional raises overMonth's EWT to what was filed; the same amount
+// comes off offsetMonth's. Each half is remitted (ticked into an EWT RFP) on
+// its own. No ledger effect of its own.
+model EwtAdjustment {
+  id             String   @id @default(cuid())
+  payrollBranch  String // SBEA | SBGH | VERDANA
+  payeeName      String
+  overMonth      String // "YYYY-MM" — month the tax was overdeclared
+  offsetMonth    String // "YYYY-MM" — month the additional is deducted from
+  amount         Decimal // the additional (overdeclared) tax, > 0
+  note           String?
+  overRemitted   Boolean  @default(false)
+  offsetRemitted Boolean  @default(false)
+  createdById    String
+  createdByName  String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([payrollBranch])
+}
+
 model EwtIncomeDeclaration {
   id               String   @id @default(cuid())
   journalEntryId   String

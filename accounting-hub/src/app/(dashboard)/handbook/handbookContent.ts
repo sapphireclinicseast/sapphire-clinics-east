@@ -618,6 +618,7 @@ export const SECTIONS: Section[] = [
         `**Guide & Summary** — deadlines and quick links (a banner warns of anything due within 5 days).`,
         `**Withholding on Compensation (1601-C)** · **Expanded Withholding (0619E / 1601EQ)** · **Business Tax (2550Q)** · **Income Tax (1702Q)** — each has a computation panel.`,
         `**RFP** — every tax RFP in one list. **Taxes Paid** — a month grid of paid vs pending. **Taxes Report** — the paid-tax report with Filing status.`,
+        `**Overdeclared adjustment** (Expanded Withholding) — when a person's tax was declared too high, enter the additional against the month it was declared and pick a later month to offset it from. The declared month's EWT goes up by that amount (to match what was filed) and the offset month's goes down by the same. Each half can be ticked into an EWT RFP; neither is on the QAP or the 2307.`,
       ] },
       { k: 'sub', t: 'Remit a tax' },
       { k: 'steps', items: [

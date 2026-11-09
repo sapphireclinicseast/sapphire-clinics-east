@@ -1091,6 +1091,24 @@ CREATE INDEX IF NOT EXISTS "HmoDirectory_moaValidUntil_idx" ON "HmoDirectory"("m
 ALTER TABLE "APItem" ADD COLUMN IF NOT EXISTS "currency" TEXT NOT NULL DEFAULT 'PHP';
 ALTER TABLE "APItem" ADD COLUMN IF NOT EXISTS "foreignAmount" DECIMAL(65,30);
 ALTER TABLE "APItem" ADD COLUMN IF NOT EXISTS "fxRate" DECIMAL(65,30);
+-- Taxes → Expanded Withholding: overdeclared EWT and the month it is offset from.
+CREATE TABLE IF NOT EXISTS "EwtAdjustment" (
+  "id"             TEXT NOT NULL,
+  "payrollBranch"  TEXT NOT NULL,
+  "payeeName"      TEXT NOT NULL,
+  "overMonth"      TEXT NOT NULL,
+  "offsetMonth"    TEXT NOT NULL,
+  "amount"         DECIMAL(65,30) NOT NULL,
+  "note"           TEXT,
+  "overRemitted"   BOOLEAN NOT NULL DEFAULT false,
+  "offsetRemitted" BOOLEAN NOT NULL DEFAULT false,
+  "createdById"    TEXT NOT NULL,
+  "createdByName"  TEXT,
+  "createdAt"      TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt"      TIMESTAMP(3) NOT NULL,
+  CONSTRAINT "EwtAdjustment_pkey" PRIMARY KEY ("id")
+);
+CREATE INDEX IF NOT EXISTS "EwtAdjustment_payrollBranch_idx" ON "EwtAdjustment"("payrollBranch");
 SQL
 
 echo "Redeploy complete."

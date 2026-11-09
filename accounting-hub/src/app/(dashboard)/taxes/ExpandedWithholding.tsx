@@ -2,13 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
-import { Loader2, Download, CheckCircle2, Trash2, RefreshCw, X, Eye, Pencil, FileText, Calculator, ChevronDown, ChevronRight } from 'lucide-react'
+import { Loader2, Download, CheckCircle2, Trash2, RefreshCw, X, Eye, Pencil, FileText, Calculator, ChevronDown, ChevronRight, Undo2 } from 'lucide-react'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { SortFilterHead, applySortFilter } from '@/components/SortFilterHead'
 import { BillingVoucherModal } from '@/components/BillingVoucherModal'
 import { taxRfpLines, type BVLine , type RfpMemoParts } from '@/lib/billing-voucher'
 import { useRfpOtherFees, RfpOtherFeesSection, type CleanRfpFee } from '@/components/RfpOtherFees'
+import { NameCombobox } from '@/components/NameCombobox'
 
 const WRITE_ROLES = ['ADMIN', 'ACCOUNTANT', 'BOOKKEEPER']
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -16,8 +17,14 @@ const BRANCHES = [{ value: 'SBEA', label: 'East' }, { value: 'SBGH', label: 'Gre
 const BRANCH_FULL: Record<string, string> = { SBEA: 'Aura Health Rehab — East', SBGH: 'Aura Health Rehab — Greenhills', VERDANA: 'Verdana Store' }
 const peso = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const num = (v: string | number) => (typeof v === 'number' ? v : parseFloat(v) || 0)
+// Signed peso for adjustment rows: offsets show as −₱…
+const speso = (n: number) => `${n < 0 ? '−' : ''}₱${peso(Math.abs(n))}`
+const ymText = (ym: string) => { const m = /^(\d{4})-(\d{2})$/.exec(ym); return m ? `${MONTHS[parseInt(m[2], 10) - 1]} ${m[1]}` : ym }
 
-interface Item { id: string; source: 'CONSULTANT' | 'EXPENSE'; name: string; ref: string; ym: string; periodLabel: string; base: number; rate: number | null; ewt: number; remitted: boolean; onIncome?: boolean }
+// ADJUSTMENT = one half of an overdeclared-EWT adjustment (lib/taxes/ewt-adjustments):
+// leg 'over' (+) in the overdeclared month, leg 'offset' (−) in the offset month.
+interface AdjInfo { id: string; overMonth: string; offsetMonth: string; amount: number; note: string | null; overRemitted: boolean; offsetRemitted: boolean }
+interface Item { id: string; source: 'CONSULTANT' | 'EXPENSE' | 'ADJUSTMENT'; name: string; ref: string; ym: string; periodLabel: string; base: number; rate: number | null; ewt: number; remitted: boolean; onIncome?: boolean; leg?: 'over' | 'offset'; adj?: AdjInfo }
 interface MetaItem { id: string; source: string; name: string; period: string; base: number; rate: number | null; ewt: number }
 interface TaxRfp { id: string; refNumber: string; grossTotal: string | number; status: string; paidAt: string | null; paymentMethod: string | null; checkNumber: string | null; transferRef: string | null; proofUrl: string | null; meta: { taxType: string; payrollBranch: string; items: MetaItem[]; otherFees?: CleanRfpFee[]; feesTotal?: number } | null; createdAt: string }
 
@@ -39,6 +46,8 @@ export default function ExpandedWithholding() {
   const [showRfpModal, setShowRfpModal] = useState(false)
   const [showOtherIncome, setShowOtherIncome] = useState(false)
   const [showBulkNoSi, setShowBulkNoSi] = useState(false)
+  // Overdeclared-EWT adjustment dialog: null = closed; `adj` set = editing.
+  const [adjDialog, setAdjDialog] = useState<{ payeeName: string; overMonth: string; adj?: AdjInfo } | null>(null)
   const [siStatus, setSiStatus] = useState<Record<string, string>>({}) // `${ym}|${NAME}` → Submitted|Pending|No SI
   const [tinMap, setTinMap] = useState<Record<string, string>>({}) // normName → TIN (from HR Hub staff profile)
   const [syncing, setSyncing] = useState(false)
@@ -96,7 +105,7 @@ export default function ExpandedWithholding() {
     { key: 'si', label: 'SI (HR Hub)' }, { key: 'status', label: 'Status' },
   ]
   const colGet = useCallback((e: Item, k: string): string | number =>
-    k === 'source' ? (e.source === 'CONSULTANT' ? 'Consultant' : 'Expense')
+    k === 'source' ? (e.source === 'CONSULTANT' ? 'Consultant' : e.source === 'ADJUSTMENT' ? 'Adjustment' : 'Expense')
       : k === 'name' ? e.name : k === 'period' ? e.periodLabel : k === 'base' ? e.base
       : k === 'rate' ? (e.rate ?? 0) : k === 'ewt' ? e.ewt
       : k === 'si' ? (e.source === 'CONSULTANT' ? (siStatus[`${e.ym}|${e.name.toUpperCase().replace(/\s+/g, ' ').trim()}`] || '') : 'n/a')
@@ -155,7 +164,7 @@ export default function ExpandedWithholding() {
       startY: 30,
       head: [['Source', 'Payee', 'Period', 'Tax Base', 'EWT %', 'EWT Amount']],
       body: [
-        ...its.map(i => [i.source === 'CONSULTANT' ? 'Consultant' : 'Expense', i.name, i.period, peso(i.base), i.rate != null ? `${i.rate}%` : '', peso(i.ewt)] as string[]),
+        ...its.map(i => [i.source === 'CONSULTANT' ? 'Consultant' : i.source === 'ADJUSTMENT' ? 'Adjustment' : 'Expense', i.name, i.period, i.source === 'ADJUSTMENT' ? '' : peso(i.base), i.rate != null ? `${i.rate}%` : '', i.ewt < 0 ? `(${peso(-i.ewt)})` : peso(i.ewt)] as string[]),
         ...fees.map(f => ['Other Fee', f.description || f.requestor || 'Fee', '', '', '', peso(f.grossAmount)]),
       ],
       foot: [['', '', '', '', 'TOTAL', peso(its.reduce((s, i) => s + i.ewt, 0) + fees.reduce((s, f) => s + f.grossAmount, 0))]],
@@ -174,9 +183,10 @@ export default function ExpandedWithholding() {
       const chosen = shown.filter(e => selected.has(e.id))
       const consultantIds = chosen.filter(e => e.source === 'CONSULTANT').map(e => e.id)
       const expenseIds = chosen.filter(e => e.source === 'EXPENSE').map(e => e.id)
+      const adjustmentIds = chosen.filter(e => e.source === 'ADJUSTMENT').map(e => e.id)
       const res = await fetch('/api/taxes/rfp', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ taxType: 'EWT', payrollBranch: branch, consultantIds, expenseIds, manualSeq: manualSeq.trim() || undefined, otherFees: otherFees.cleaned() }),
+        body: JSON.stringify({ taxType: 'EWT', payrollBranch: branch, consultantIds, expenseIds, adjustmentIds, manualSeq: manualSeq.trim() || undefined, otherFees: otherFees.cleaned() }),
       })
       const data = await res.json()
       if (!res.ok) { alert(data.error || 'Failed to create RFP'); return }
@@ -199,7 +209,16 @@ export default function ExpandedWithholding() {
     await Promise.all([fetchItems(), fetchRfps()])
   }
 
-  const srcBadge = (s: string) => s === 'CONSULTANT' ? { background: '#ede9fe', color: '#6d28d9', text: 'Consultant' } : { background: '#e0f2fe', color: '#075985', text: 'Expense' }
+  const srcBadge = (s: string) => s === 'CONSULTANT' ? { background: '#ede9fe', color: '#6d28d9', text: 'Consultant' }
+    : s === 'ADJUSTMENT' ? { background: '#fef3c7', color: '#92400e', text: 'Adjustment' }
+    : { background: '#e0f2fe', color: '#075985', text: 'Expense' }
+  const removeAdj = async (a: AdjInfo, name: string) => {
+    if (!confirm(`Remove the overdeclared adjustment for ${name} (₱${peso(a.amount)}, ${ymText(a.overMonth)} → offset from ${ymText(a.offsetMonth)})?`)) return
+    const r = await fetch(`/api/taxes/ewt-adjustments?id=${a.id}`, { method: 'DELETE' })
+    if (!r.ok) { alert((await r.json().catch(() => ({}))).error || 'Failed to remove'); return }
+    setSelected(new Set()); await fetchItems()
+  }
+  const payeeNames = useMemo(() => [...new Set(items.filter(i => i.source !== 'ADJUSTMENT').map(i => i.name.replace(/\s+/g, ' ').trim()))].sort((a, b) => a.localeCompare(b)), [items])
 
   return (
     <div className="space-y-4">
@@ -230,11 +249,20 @@ export default function ExpandedWithholding() {
               Bulk: declare no-SI EWT…
             </button>
           )}
+          {canWrite && (
+            <button onClick={() => setAdjDialog({ payeeName: '', overMonth: month ? `${year}-${month}` : '' })} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border"
+              title="Tax overdeclared for a person: add the additional to the month it was declared and take it back from a later month"
+              style={{ borderColor: '#b45309', color: '#b45309' }}>
+              <Undo2 size={13} /> Overdeclared adjustment…
+            </button>
+          )}
         </div>
         {canWrite && selected.size > 0 && (
           <div className="flex items-center gap-2">
-            <button onClick={() => { otherFees.loadTemplate(branch); setShowRfpModal(true) }} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: '#c44b00' }}>Generate EWT RFP ({selected.size}) · ₱{peso(selectedTotal)}</button>
-            <button onClick={() => setShowOtherIncome(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: '#6d28d9' }}>Declare as Other Income</button>
+            <button onClick={() => { otherFees.loadTemplate(branch); setShowRfpModal(true) }} disabled={selectedTotal <= 0}
+              title={selectedTotal <= 0 ? 'The offsets ticked are more than the EWT ticked with them — tick more of that month\'s EWT' : undefined}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: '#c44b00' }}>Generate EWT RFP ({selected.size}) · {speso(selectedTotal)}</button>
+            <button onClick={() => setShowOtherIncome(true)} disabled={!shown.some(e => selected.has(e.id) && e.source !== 'ADJUSTMENT')} title="Adjustments are never declared as income" className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: '#6d28d9' }}>Declare as Other Income</button>
           </div>
         )}
       </div>
@@ -258,11 +286,22 @@ export default function ExpandedWithholding() {
                 <tr key={e.id} className="border-t" style={{ borderColor: 'var(--light-gray)' }}>
                   <td className="px-4 py-2.5">{canWrite && !e.remitted && <input type="checkbox" checked={selected.has(e.id)} onChange={() => toggleOne(e.id)} />}</td>
                   <td className="px-4 py-2.5"><span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: b.background, color: b.color }}>{b.text}</span></td>
-                  <td className="px-4 py-2.5 font-medium" style={{ color: 'var(--charcoal)' }}>{e.name}<div className="text-[11px] font-mono" style={{ color: 'var(--mid-gray)' }}>{e.ref}</div></td>
+                  <td className="px-4 py-2.5 font-medium" style={{ color: 'var(--charcoal)' }}>
+                    <span className="inline-flex items-center gap-1.5">{e.name}
+                      {canWrite && e.source === 'CONSULTANT' && (
+                        <button onClick={() => setAdjDialog({ payeeName: e.name, overMonth: e.ym })} title={`Overdeclared ${e.name}'s tax for ${ymText(e.ym)}? Add an adjustment`} className="p-0.5 rounded hover:bg-amber-50"><Undo2 size={12} style={{ color: '#b45309' }} /></button>
+                      )}
+                      {canWrite && e.adj && !e.adj.overRemitted && !e.adj.offsetRemitted && (<>
+                        <button onClick={() => setAdjDialog({ payeeName: e.name, overMonth: e.adj!.overMonth, adj: e.adj })} title="Edit this adjustment" className="p-0.5 rounded hover:bg-gray-100"><Pencil size={12} style={{ color: 'var(--mid-gray)' }} /></button>
+                        <button onClick={() => removeAdj(e.adj!, e.name)} title="Remove this adjustment (both months)" className="p-0.5 rounded hover:bg-red-50"><Trash2 size={12} style={{ color: '#b91c1c' }} /></button>
+                      </>)}
+                    </span>
+                    <div className={`text-[11px] ${e.source === 'ADJUSTMENT' ? '' : 'font-mono'}`} style={{ color: e.source === 'ADJUSTMENT' ? '#92400e' : 'var(--mid-gray)' }}>{e.ref}{e.adj?.note ? ` — ${e.adj.note}` : ''}</div>
+                  </td>
                   <td className="px-4 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>{e.periodLabel}</td>
-                  <td className="px-4 py-2.5 text-right text-xs" style={{ color: 'var(--charcoal)' }}>₱{peso(e.base)}</td>
+                  <td className="px-4 py-2.5 text-right text-xs" style={{ color: 'var(--charcoal)' }}>{e.source === 'ADJUSTMENT' ? <span style={{ color: 'var(--light-gray)' }}>—</span> : `₱${peso(e.base)}`}</td>
                   <td className="px-4 py-2.5 text-center text-xs" style={{ color: 'var(--mid-gray)' }}>{e.rate != null ? `${e.rate}%` : ''}</td>
-                  <td className="px-4 py-2.5 text-right font-semibold text-xs" style={{ color: '#c44b00' }}>₱{peso(e.ewt)}</td>
+                  <td className="px-4 py-2.5 text-right font-semibold text-xs" style={{ color: e.ewt < 0 ? '#166534' : '#c44b00' }}>{speso(e.ewt)}</td>
                   <td className="px-4 py-2.5">{e.source === 'CONSULTANT' ? (() => { const st = siOf(e); const sty = st === 'Submitted' ? { background: '#dcfce7', color: '#166534' } : st === 'No SI' ? { background: '#e5e7eb', color: '#374151' } : st === 'Pending' ? { background: '#fef3c7', color: '#92400e' } : null; return sty ? <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" style={sty}>{st}</span> : <span className="text-[11px]" style={{ color: 'var(--light-gray)' }}>—</span> })() : <span className="text-[11px]" style={{ color: 'var(--light-gray)' }}>n/a</span>}</td>
                   <td className="px-4 py-2.5"><span className="px-2 py-0.5 rounded-full text-[11px] font-semibold" title={e.remitted ? undefined : e.onIncome ? 'Recognised as Other Income (7220) automatically — ticking it for a remittance RFP reverses that and moves it back to 4070 for the BIR payment' : undefined} style={e.remitted ? { background: '#dcfce7', color: '#166534' } : e.onIncome ? { background: '#e0e7ff', color: '#3730a3' } : { background: '#fef3c7', color: '#92400e' }}>{e.remitted ? 'In RFP / Remitted' : e.onIncome ? 'On income (7220)' : 'Unremitted'}</span></td>
                 </tr>
@@ -316,6 +355,10 @@ export default function ExpandedWithholding() {
       )}
       {payTarget && <RecordPaidModal rfp={payTarget} onClose={() => setPayTarget(null)} onSaved={async () => { setPayTarget(null); await fetchRfps() }} />}
       {bv && <BillingVoucherModal refNumber={bv.refNumber} date={bv.date} lines={bv.lines} branch={bv.branch} payment={bv.payment} onClose={() => setBv(null)} />}
+      {adjDialog && (
+        <EwtAdjustmentModal branch={branch} branchName={BRANCHES.find(b => b.value === branch)?.label || branch} init={adjDialog} payeeNames={payeeNames} items={items}
+          onClose={() => setAdjDialog(null)} onSaved={async () => { setAdjDialog(null); setSelected(new Set()); await fetchItems() }} />
+      )}
       {showBulkNoSi && (
         <BulkNoSiModal onClose={() => setShowBulkNoSi(false)} onDone={() => { setShowBulkNoSi(false); setSelected(new Set()); fetchItems(); fetchRfps() }} />
       )}
@@ -333,6 +376,14 @@ export default function ExpandedWithholding() {
 // ─── 0619-E / 1601-EQ computation panel ────────────────────────────────────
 type EwtForm = '0619E' | '1601EQ'
 const QUARTER_LABEL = ['Q1 (Jan–Mar)', 'Q2 (Apr–Jun)', 'Q3 (Jul–Sep)', 'Q4 (Oct–Dec)']
+
+// One label/amount line of the computation panel.
+const Line = ({ label, sub, value, strong, highlight, indent }: { label: string; sub?: string; value: number; strong?: boolean; highlight?: boolean; indent?: boolean }) => (
+  <div className="flex items-center justify-between px-3 py-1.5 text-xs" style={{ background: highlight ? '#fffbeb' : undefined, borderTop: strong ? '1px solid var(--light-gray)' : undefined }}>
+    <span style={{ paddingLeft: indent ? 16 : 0, color: strong ? 'var(--charcoal)' : 'var(--mid-gray)', fontWeight: strong ? 700 : 400 }}>{label}{sub && <span className="ml-1" style={{ color: 'var(--mid-gray)', fontWeight: 400 }}>· {sub}</span>}</span>
+    <span className="font-mono tabular-nums" style={{ color: 'var(--charcoal)', fontWeight: strong ? 700 : 500 }}>{speso(value)}</span>
+  </div>
+)
 
 function EwtComputationPanel({ items, year, month, branch, tinMap }: { items: Item[]; year: string; month: string; branch: string; tinMap: Record<string, string> }) {
   const [open, setOpen] = useState(true)
@@ -352,11 +403,15 @@ function EwtComputationPanel({ items, year, month, branch, tinMap }: { items: It
   const monthItems = useMemo(() => items.filter(it => inYear(it) && it.ym.slice(5, 7) === selMonth), [items, year, selMonth]) // eslint-disable-line react-hooks/exhaustive-deps
   const quarterItems = useMemo(() => items.filter(it => inYear(it) && qMonthNums.includes(parseInt(it.ym.slice(5, 7)))), [items, year, q]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 0619-E (monthly)
+  // 0619-E (monthly). Overdeclared adjustments move the amount to remit but
+  // are not withholding: no tax base, no rate group, not on the QAP.
+  const isAdj = (i: Item) => i.source === 'ADJUSTMENT'
   const mEwt = sum(monthItems, i => i.ewt), mBase = sum(monthItems, i => i.base)
+  const mAdjOver = sum(monthItems.filter(i => isAdj(i) && i.ewt > 0), i => i.ewt)
+  const mAdjOffset = sum(monthItems.filter(i => isAdj(i) && i.ewt < 0), i => i.ewt)
   const byRate = useMemo(() => {
     const m = new Map<number, { base: number; ewt: number; n: number }>()
-    monthItems.forEach(i => { const k = i.rate ?? 0; const g = m.get(k) || { base: 0, ewt: 0, n: 0 }; g.base += i.base; g.ewt += i.ewt; g.n++; m.set(k, g) })
+    monthItems.filter(i => i.source !== 'ADJUSTMENT').forEach(i => { const k = i.rate ?? 0; const g = m.get(k) || { base: 0, ewt: 0, n: 0 }; g.base += i.base; g.ewt += i.ewt; g.n++; m.set(k, g) })
     return [...m.entries()].sort((a, b) => a[0] - b[0])
   }, [monthItems])
   const mConsult = sum(monthItems.filter(i => i.source === 'CONSULTANT'), i => i.ewt)
@@ -364,21 +419,18 @@ function EwtComputationPanel({ items, year, month, branch, tinMap }: { items: It
 
   // 1601-EQ (quarterly)
   const qEwt = sum(quarterItems, i => i.ewt)
+  const qAdjItems = quarterItems.filter(isAdj)
+  const qAdj = sum(qAdjItems, i => i.ewt)
+  const qWithheld = r2(qEwt - qAdj)
   const firstTwo = [qMonthNums[0], qMonthNums[1]]
   const remittedM1M2 = sum(quarterItems.filter(i => firstTwo.includes(parseInt(i.ym.slice(5, 7))) && i.remitted), i => i.ewt)
   const stillDue = r2(qEwt - remittedM1M2)
   const alphalist = useMemo(() => {
     const m = new Map<string, { name: string; base: number; ewt: number; rates: Set<number>; n: number }>()
-    quarterItems.forEach(i => { const g = m.get(i.name) || { name: i.name, base: 0, ewt: 0, rates: new Set<number>(), n: 0 }; g.base += i.base; g.ewt += i.ewt; if (i.rate != null) g.rates.add(i.rate); g.n++; m.set(i.name, g) })
+    quarterItems.filter(i => i.source !== 'ADJUSTMENT').forEach(i => { const g = m.get(i.name) || { name: i.name, base: 0, ewt: 0, rates: new Set<number>(), n: 0 }; g.base += i.base; g.ewt += i.ewt; if (i.rate != null) g.rates.add(i.rate); g.n++; m.set(i.name, g) })
     return [...m.values()].sort((a, b) => b.ewt - a.ewt)
   }, [quarterItems])
 
-  const Line = ({ label, sub, value, strong, highlight, indent }: { label: string; sub?: string; value: number; strong?: boolean; highlight?: boolean; indent?: boolean }) => (
-    <div className="flex items-center justify-between px-3 py-1.5 text-xs" style={{ background: highlight ? '#fffbeb' : undefined, borderTop: strong ? '1px solid var(--light-gray)' : undefined }}>
-      <span style={{ paddingLeft: indent ? 16 : 0, color: strong ? 'var(--charcoal)' : 'var(--mid-gray)', fontWeight: strong ? 700 : 400 }}>{label}{sub && <span className="ml-1" style={{ color: 'var(--mid-gray)', fontWeight: 400 }}>· {sub}</span>}</span>
-      <span className="font-mono tabular-nums" style={{ color: 'var(--charcoal)', fontWeight: strong ? 700 : 500 }}>₱{peso(value)}</span>
-    </div>
-  )
 
   return (
     <div className="rounded-2xl border bg-white overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
@@ -411,6 +463,8 @@ function EwtComputationPanel({ items, year, month, branch, tinMap }: { items: It
                   <Line label="Total tax base" value={mBase} />
                   <Line label="Consultant professional fees" value={mConsult} indent />
                   <Line label="Expense withholding (rent, services, etc.)" value={mExpense} indent />
+                  {mAdjOver !== 0 && <Line label="add: overdeclared (additional declared)" value={mAdjOver} indent />}
+                  {mAdjOffset !== 0 && <Line label="less: offset of earlier overdeclarations" value={mAdjOffset} indent />}
                   <Line label="Total EWT to Remit" value={mEwt} strong highlight />
                 </div>
                 <div className="rounded-xl border overflow-hidden h-fit" style={{ borderColor: 'var(--light-gray)' }}>
@@ -433,7 +487,8 @@ function EwtComputationPanel({ items, year, month, branch, tinMap }: { items: It
               <div className="grid md:grid-cols-2 gap-4">
                 <div className="rounded-xl border overflow-hidden h-fit" style={{ borderColor: 'var(--light-gray)' }}>
                   <div className="px-3 py-2 text-xs font-bold" style={{ background: 'var(--deep-teal)', color: '#fff' }}>Tax Still Due — {QUARTER_LABEL[q - 1]} {year}</div>
-                  <Line label="Total EWT — quarter" sub={`${MONTHS[qMonthNums[0] - 1]}–${MONTHS[qMonthNums[2] - 1]}`} value={qEwt} />
+                  <Line label={qAdj !== 0 ? 'Total EWT withheld — quarter' : 'Total EWT — quarter'} sub={`${MONTHS[qMonthNums[0] - 1]}–${MONTHS[qMonthNums[2] - 1]}`} value={qAdj !== 0 ? qWithheld : qEwt} />
+                  {qAdj !== 0 && <Line label="add/less: overdeclared adjustments (net)" value={qAdj} indent />}
                   <Line label={`less: remitted via 0619-E (${MONTHS[qMonthNums[0] - 1]} & ${MONTHS[qMonthNums[1] - 1]})`} value={remittedM1M2} indent />
                   <Line label="Tax Still Due (remit with 1601-EQ)" value={stillDue} strong highlight />
                 </div>
@@ -441,7 +496,7 @@ function EwtComputationPanel({ items, year, month, branch, tinMap }: { items: It
                   <div className="px-3 py-2 text-xs font-bold" style={{ background: 'var(--off-white)', color: 'var(--charcoal)' }}>Quarter at a glance</div>
                   <Line label="Payees" value={alphalist.length} />
                   <Line label="Total tax base" value={sum(quarterItems, i => i.base)} />
-                  <Line label="Total EWT withheld" value={qEwt} />
+                  <Line label="Total EWT withheld" value={qWithheld} />
                 </div>
               </div>
 
@@ -472,6 +527,12 @@ function EwtComputationPanel({ items, year, month, branch, tinMap }: { items: It
                     )})}
                   </tbody>
                 </table>
+                {qAdjItems.length > 0 && (
+                  <div className="px-3 py-2 text-[11px] border-t" style={{ borderColor: 'var(--light-gray)', color: '#92400e', background: '#fffbeb' }}>
+                    Overdeclared adjustments this quarter (not on the QAP — they change what is remitted, not what was withheld):{' '}
+                    {qAdjItems.map(i => `${i.name} ${speso(i.ewt)} (${i.periodLabel})`).join(' · ')}
+                  </div>
+                )}
               </div>
             </>
           )}
@@ -697,6 +758,125 @@ function BulkNoSiModal({ onClose, onDone }: { onClose: () => void; onDone: () =>
             toDeclare.length > 0 ? `Declare ₱${peso(declareAmt)} as ${chosen ? chosen.accountNumber : 'Other Income'}` : '',
             toUndo.length > 0 ? `Undo ₱${peso(undoAmt)}` : '',
           ].filter(Boolean).join(' · ') || 'Nothing to apply'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ─── Overdeclared EWT adjustment ───────────────────────────────────────────
+// Hannah 2026-11-09: tax overdeclared for a person → input the additional in
+// the month it was declared, and pick the month it is offset from.
+const ymAdd = (ym: string, n: number) => { const [y, m] = ym.split('-').map(Number); const d = new Date(Date.UTC(y, m - 1 + n, 1)); return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}` }
+const thisYm = () => { const d = new Date(Date.now() + 8 * 3600_000); return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}` }
+
+function MonthPick({ value, onChange, years }: { value: string; onChange: (ym: string) => void; years: string[] }) {
+  const [y, m] = value ? value.split('-') : ['', '']
+  const sel = 'px-3 py-2 rounded-xl border text-sm'
+  return (
+    <div className="flex gap-2">
+      <select value={m} onChange={e => onChange(`${y || years[0]}-${e.target.value}`)} className={`${sel} flex-1`} style={{ borderColor: 'var(--light-gray)' }}>
+        <option value="" disabled>Month</option>
+        {MONTHS.map((mm, i) => <option key={mm} value={String(i + 1).padStart(2, '0')}>{mm}</option>)}
+      </select>
+      <select value={y} onChange={e => onChange(`${e.target.value}-${m || '01'}`)} className={sel} style={{ borderColor: 'var(--light-gray)' }}>
+        <option value="" disabled>Year</option>
+        {years.map(yy => <option key={yy} value={yy}>{yy}</option>)}
+      </select>
+    </div>
+  )
+}
+
+function EwtAdjustmentModal({ branch, branchName, init, payeeNames, items, onClose, onSaved }: {
+  branch: string; branchName: string
+  init: { payeeName: string; overMonth: string; adj?: AdjInfo }
+  payeeNames: string[]; items: Item[]
+  onClose: () => void; onSaved: () => void
+}) {
+  const editing = init.adj
+  const [payee, setPayee] = useState(init.payeeName)
+  const [overMonth, setOverMonth] = useState(init.overMonth)
+  const [offsetMonth, setOffsetMonth] = useState(() => {
+    if (editing) return editing.offsetMonth
+    const now = thisYm()
+    return init.overMonth && now <= init.overMonth ? ymAdd(init.overMonth, 1) : now
+  })
+  const [amount, setAmount] = useState(editing ? String(editing.amount) : '')
+  const [declared, setDeclared] = useState('')
+  const [note, setNote] = useState(editing?.note || '')
+  const [busy, setBusy] = useState(false)
+  const nowY = new Date().getFullYear()
+  const years = [String(nowY + 1), String(nowY), String(nowY - 1), String(nowY - 2)]
+  const nn = (s: string) => s.toUpperCase().replace(/\s+/g, ' ').trim()
+
+  // What the hub has as this person's EWT for the overdeclared month (withholding only).
+  const hubEwt = useMemo(() => {
+    if (!payee.trim() || !overMonth) return null
+    const mine = items.filter(i => i.source !== 'ADJUSTMENT' && i.ym === overMonth && nn(i.name) === nn(payee))
+    return mine.length ? { ewt: Math.round(mine.reduce((s, i) => s + i.ewt, 0) * 100) / 100, n: mine.length } : null
+  }, [items, payee, overMonth])
+  const amt = Math.round((parseFloat(amount) || 0) * 100) / 100
+  const fromDeclared = (v: string) => {
+    setDeclared(v)
+    const d = parseFloat(v)
+    if (hubEwt && d > hubEwt.ewt) setAmount(String(Math.round((d - hubEwt.ewt) * 100) / 100))
+  }
+  const offsetOk = !!overMonth && !!offsetMonth && offsetMonth > overMonth
+  const canSave = payee.trim() && overMonth && offsetOk && amt > 0 && !busy
+
+  const save = async () => {
+    setBusy(true)
+    try {
+      const body = { id: editing?.id, payrollBranch: branch, payeeName: payee, overMonth, offsetMonth, amount: amt, note: note.trim() || null }
+      const r = await fetch('/api/taxes/ewt-adjustments', { method: editing ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      if (!r.ok) { alert((await r.json().catch(() => ({}))).error || 'Failed to save'); return }
+      onSaved()
+    } finally { setBusy(false) }
+  }
+
+  const lbl = 'block text-xs font-semibold mb-1'
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="text-lg font-bold" style={{ color: 'var(--charcoal)' }}>{editing ? 'Edit' : 'Add'} overdeclared adjustment</h2>
+          <button onClick={onClose}><X size={18} style={{ color: 'var(--mid-gray)' }} /></button>
+        </div>
+        <p className="text-xs mb-4" style={{ color: 'var(--mid-gray)' }}>{branchName} · tax declared too high for a person. The additional is added to the month it was declared (so that month shows what was filed) and taken back from the month you pick.</p>
+
+        <label className={lbl} style={{ color: 'var(--charcoal)' }}>Payee</label>
+        <NameCombobox value={payee} onChange={setPayee} options={payeeNames} maxOptions={payeeNames.length} placeholder="Type or pick a name" className="w-full px-3 py-2 rounded-xl border text-sm mb-3" style={{ borderColor: 'var(--light-gray)' }} />
+
+        <label className={lbl} style={{ color: 'var(--charcoal)' }}>Month the tax was overdeclared</label>
+        <div className="mb-1"><MonthPick value={overMonth} onChange={setOverMonth} years={years} /></div>
+        <p className="text-[11px] mb-3" style={{ color: 'var(--mid-gray)' }}>
+          {hubEwt ? <>Hub EWT for {payee.trim()} in {ymText(overMonth)}: <strong>₱{peso(hubEwt.ewt)}</strong>{hubEwt.n > 1 ? ` (${hubEwt.n} items)` : ''}.</>
+            : payee.trim() && overMonth ? <>No EWT in the hub for {payee.trim()} in {ymText(overMonth)}.</> : ' '}
+        </p>
+
+        <div className="grid grid-cols-2 gap-3 mb-1">
+          <div>
+            <label className={lbl} style={{ color: 'var(--charcoal)' }}>Additional (overdeclared) tax</label>
+            <input value={amount} onChange={e => { setAmount(e.target.value.replace(/[^0-9.]/g, '')); setDeclared('') }} inputMode="decimal" placeholder="0.00" className="w-full px-3 py-2 rounded-xl border text-sm" style={{ borderColor: 'var(--light-gray)' }} />
+          </div>
+          <div>
+            <label className={lbl} style={{ color: 'var(--mid-gray)' }}>…or the amount you declared</label>
+            <input value={declared} onChange={e => fromDeclared(e.target.value.replace(/[^0-9.]/g, ''))} disabled={!hubEwt} inputMode="decimal" placeholder={hubEwt ? 'e.g. 4025.00' : 'needs a hub EWT'} title={hubEwt ? 'The additional is worked out as declared − hub EWT' : 'Pick a payee and month that have EWT in the hub'} className="w-full px-3 py-2 rounded-xl border text-sm disabled:opacity-40" style={{ borderColor: 'var(--light-gray)' }} />
+          </div>
+        </div>
+        <p className="text-[11px] mb-3" style={{ color: 'var(--mid-gray)' }}>{hubEwt && amt > 0 ? <>Declared for {ymText(overMonth)}: ₱{peso(hubEwt.ewt)} + ₱{peso(amt)} = <strong>₱{peso(hubEwt.ewt + amt)}</strong></> : ' '}</p>
+
+        <label className={lbl} style={{ color: 'var(--charcoal)' }}>Offset it from (month)</label>
+        <div className="mb-1"><MonthPick value={offsetMonth} onChange={setOffsetMonth} years={years} /></div>
+        <p className="text-[11px] mb-3" style={{ color: offsetOk || !overMonth ? 'var(--mid-gray)' : '#b91c1c' }}>
+          {!overMonth ? ' ' : offsetOk ? <>{ymText(offsetMonth)}&apos;s EWT to remit goes down by <strong>₱{peso(amt)}</strong>.</> : `Pick a month after ${ymText(overMonth)}.`}
+        </p>
+
+        <label className={lbl} style={{ color: 'var(--charcoal)' }}>Note (optional)</label>
+        <input value={note} onChange={e => setNote(e.target.value)} placeholder="e.g. 0619-E keyed 80,500 instead of 8,050" className="w-full px-3 py-2 rounded-xl border text-sm mb-4" style={{ borderColor: 'var(--light-gray)' }} />
+
+        <button onClick={save} disabled={!canSave} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50" style={{ background: 'var(--teal)' }}>
+          {busy ? <Loader2 size={15} className="inline animate-spin" /> : editing ? 'Save changes' : `Add · +₱${peso(amt)} ${overMonth ? ymText(overMonth) : ''} / −₱${peso(amt)} ${offsetOk ? ymText(offsetMonth) : ''}`}
         </button>
       </div>
     </div>
