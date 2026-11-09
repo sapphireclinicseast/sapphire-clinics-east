@@ -5,6 +5,12 @@
 // creates the account and returns a same-tab handoff URL.
 
 import { useState } from 'react'
+import {
+  Banner, Icon, CONTROL, CONTROL_STYLE, LABEL, LABEL_STYLE, BTN_PRIMARY, PRIMARY_STYLE, FOCUS, SUBTLE_BG,
+} from '@/components/hub/ui'
+
+// Kit controls one size up, as on the Class Portal sign-in.
+const INPUT = `${CONTROL} w-full !h-11 !rounded-xl`
 
 const TERMS_VERSION = '2026-08-28'
 
@@ -49,27 +55,37 @@ export default function ProviderSignup() {
 
   return (
     <div className="animate-fade-up mx-auto max-w-lg">
-      <a href="/signin/provider" className="mb-3 inline-block text-[12px] text-[color:var(--moss)] hover:underline">← Sign in instead</a>
-      <div className="card-static">
-        <h1 className="text-[24px] leading-tight text-[color:var(--deep-teal)]">Create a provider account</h1>
-        <p className="mb-5 mt-1 text-sm text-[color:var(--mid-gray)]">For Aura Health therapists &amp; staff.</p>
-        {err && <div className="mb-4 rounded-xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm text-rose-800">{err}</div>}
+      <a href="/signin/provider" className={`mb-3 inline-flex items-center gap-1 text-[13px] font-semibold rounded hover:underline ${FOCUS}`} style={{ color: 'var(--teal)', fontFamily: 'var(--font-display)' }}>
+        <Icon name="arrowLeft" size={14} /> Sign in instead
+      </a>
+      <div
+        className="rounded-[18px] px-5 py-8 sm:px-10 sm:py-10"
+        style={{ background: '#fff', border: '1px solid var(--light-gray)', boxShadow: '0 2px 12px rgba(25,72,80,0.06)' }}
+      >
+        <div className="mb-6">
+          <div className="text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ fontFamily: 'var(--font-display)', color: 'var(--teal)' }}>
+            Providers
+          </div>
+          <h1 className="text-[24px] sm:text-[26px] font-bold leading-tight tracking-tight" style={{ fontFamily: 'var(--font-display)', color: 'var(--deep-teal)' }}>Create a provider account</h1>
+          <p className="mt-1.5 text-sm" style={{ color: 'var(--mid-gray)' }}>For Aura Health therapists &amp; staff.</p>
+        </div>
+        {err && <div className="mb-4 animate-fade-in"><Banner tone="error">{err}</Banner></div>}
 
-        <form onSubmit={submit} className="space-y-3">
+        <form onSubmit={submit} className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="First name" required value={f.firstName} onChange={(v) => set('firstName', v)} />
             <Field label="Last name" required value={f.lastName} onChange={(v) => set('lastName', v)} />
             <Field label="Email" type="email" required value={f.email} onChange={(v) => set('email', v)} />
             <Field label="Cellphone no." value={f.phone} onChange={(v) => set('phone', v)} />
-            <div>
-              <div className="label">Profession <span className="text-[color:var(--clay)]">*</span></div>
-              <select className="select" value={f.department} onChange={(e) => set('department', e.target.value)}>
+            <div className="min-w-0">
+              <label htmlFor="ps-department" className={LABEL} style={LABEL_STYLE}>Profession <span style={{ color: 'var(--clay)' }}>*</span></label>
+              <select id="ps-department" className={INPUT} style={CONTROL_STYLE} value={f.department} onChange={(e) => set('department', e.target.value)}>
                 {DEPARTMENTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
               </select>
             </div>
-            <div>
-              <div className="label">Branch <span className="text-[color:var(--clay)]">*</span></div>
-              <select className="select" value={f.branch} onChange={(e) => set('branch', e.target.value)}>
+            <div className="min-w-0">
+              <label htmlFor="ps-branch" className={LABEL} style={LABEL_STYLE}>Branch <span style={{ color: 'var(--clay)' }}>*</span></label>
+              <select id="ps-branch" className={INPUT} style={CONTROL_STYLE} value={f.branch} onChange={(e) => set('branch', e.target.value)}>
                 <option value="SBEA">Aura Health East (AHEA)</option>
                 <option value="SBGH">Aura Health Greenhills (AHGH)</option>
               </select>
@@ -82,20 +98,20 @@ export default function ProviderSignup() {
 
           {/* Terms of Agreement & Data Privacy consent */}
           <div className="mt-2">
-            <div className="label">Terms of Agreement &amp; Data Privacy Consent</div>
-            <div className="max-h-44 overflow-y-auto rounded-xl border border-[color:var(--paper-3)] bg-[color:var(--paper-2)]/50 p-3 text-[12px] leading-relaxed text-[color:var(--narra)]">
+            <div className={LABEL} style={LABEL_STYLE}>Terms of Agreement &amp; Data Privacy Consent</div>
+            <div tabIndex={0} aria-label="Terms of Agreement and Data Privacy Consent" className={`max-h-44 overflow-y-auto rounded-xl p-3 text-[12px] leading-relaxed ${FOCUS}`} style={{ background: SUBTLE_BG, border: '1px solid var(--light-gray)', color: 'var(--charcoal)' }}>
               <p className="mb-2">By creating a provider account with Aura Health Rehab / Sapphire Clinics East Incorporated (&quot;the Clinic&quot;), you agree:</p>
               <p className="mb-2"><strong>1. Collection and use of your information.</strong> You consent to the Clinic collecting and processing the personal information you provide (name, contact details, professional credentials, and login information) to create and manage your provider account, verify your identity and qualifications, coordinate patient care, and comply with legal obligations — under the Data Privacy Act of 2012 (RA 10173) and the Clinic&apos;s Privacy Policy. You may request access to, correction of, or deletion of your information, subject to applicable law and retention requirements.</p>
               <p className="mb-2"><strong>2. Access to patient information — limited to your patients.</strong> You will access, view, use, and disclose patient personal and health information only for patients assigned to you or otherwise under your direct professional care, and only for legitimate care purposes. You will not attempt to access, and will not access, the records of any patient who is not assigned to you. You will keep all patient information strictly confidential. Patient health information is sensitive personal information under the Data Privacy Act; unauthorized access, use, or disclosure may lead to account termination and civil, criminal, or administrative liability.</p>
               <p><strong>3. Account responsibility.</strong> You are responsible for keeping your login credentials confidential and for all activity under your account, and will notify the Clinic immediately of any unauthorized use. The Clinic may verify, suspend, or deactivate your account at any time.</p>
             </div>
-            <label className="mt-2 flex items-start gap-2.5 text-[13px] text-[color:var(--narra)]">
-              <input type="checkbox" className="mt-0.5 h-4 w-4 accent-[color:var(--moss)]" checked={agree} onChange={(e) => setAgree(e.target.checked)} />
+            <label className="mt-3 flex items-start gap-2.5 text-[13px] cursor-pointer" style={{ color: 'var(--charcoal)' }}>
+              <input type="checkbox" className="mt-0.5 h-4 w-4 accent-[color:var(--teal)]" checked={agree} onChange={(e) => setAgree(e.target.checked)} />
               <span>I have read and agree to the Terms of Agreement and consent to the processing of my personal information as described above.</span>
             </label>
           </div>
 
-          <button className="btn-primary mt-2 w-full" disabled={busy}>{busy ? 'Creating account…' : 'Create account'}</button>
+          <button className={`${BTN_PRIMARY} w-full !h-11 !rounded-xl mt-2`} style={PRIMARY_STYLE} disabled={busy}>{busy ? 'Creating account…' : 'Create account'}</button>
         </form>
       </div>
     </div>
@@ -106,9 +122,9 @@ function Field({ label, value, onChange, type = 'text', required, placeholder }:
   label: string; value: string; onChange: (v: string) => void; type?: string; required?: boolean; placeholder?: string
 }) {
   return (
-    <div>
-      <div className="label">{label} {required && <span className="text-[color:var(--clay)]">*</span>}</div>
-      <input type={type} className="input" value={value} placeholder={placeholder} required={required} onChange={(e) => onChange(e.target.value)} />
-    </div>
+    <label className="block min-w-0">
+      <span className={LABEL} style={LABEL_STYLE}>{label} {required && <span style={{ color: 'var(--clay)' }}>*</span>}</span>
+      <input type={type} className={INPUT} style={CONTROL_STYLE} value={value} placeholder={placeholder} required={required} onChange={(e) => onChange(e.target.value)} />
+    </label>
   )
 }

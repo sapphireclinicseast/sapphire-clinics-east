@@ -113,107 +113,64 @@ body {
   animation: spotlight 2s ease 0.75s 1 forwards;
 }
 
-/* ─── Card (Paper-on-paper) ──────────────────────────────────── */
+/* ─── Card ────────────────────────────────────────────────────
+   Legacy classes, aligned with the hub kit (components/hub/ui.tsx):
+   white, 1px --light-gray border, 12px radius (rounded-xl), no shadow,
+   16px padding on phones / 20px from sm — the same box as DashCard. */
 .card {
   background: #fff;
-  border-radius: 18px;
-  border: 1px solid var(--paper-3);
-  padding: 28px;
-  box-shadow: 0 2px 12px rgba(25, 72, 80, 0.06);
-  transition: transform 0.25s ease-out, box-shadow 0.25s ease-out, border-color 0.25s ease-out;
+  border-radius: 12px;
+  border: 1px solid var(--light-gray);
+  padding: 16px;
+  transition: border-color 0.2s ease-out, background-color 0.2s ease-out;
 }
-.card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 12px 32px rgba(25, 72, 80, 0.12);
-  border-color: rgba(123, 152, 138, 0.35);
-}
+.card:hover { border-color: var(--sage); }
 .card-static {
   background: #fff;
-  border-radius: 18px;
-  border: 1px solid var(--paper-3);
-  padding: 20px; /* tighter on phones */
-  box-shadow: 0 2px 12px rgba(25, 72, 80, 0.06);
+  border-radius: 12px;
+  border: 1px solid var(--light-gray);
+  padding: 16px;
 }
 @media (min-width: 640px) {
-  .card-static { padding: 28px; }
+  .card, .card-static { padding: 20px; }
 }
 
-/* ─── Buttons ────────────────────────────────────────────────── */
-/* Primary uses Narra — the dominant brand colour, calmest read on Paper. */
-.btn-primary {
+/* ─── Buttons ────────────────────────────────────────────────
+   Same box as the kit's BTN_PRIMARY / BTN_SECONDARY: 36px tall, 8px
+   radius, 14px semibold, opacity hover, teal focus ring. Primary is
+   --deep-teal (Narra); CTA keeps Clay for the single key action. */
+.btn-primary, .btn-cta, .btn-secondary {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  background: var(--narra);
-  color: #fff;
-  font-family: var(--font-display);
-  font-weight: 600;
+  gap: 6px;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 8px;
+  font-family: inherit;
   font-size: 14px;
-  letter-spacing: 0.02em;
-  padding: 12px 24px;
-  border-radius: 12px;
-  border: none;
-  cursor: pointer;
-  transition: all 0.2s ease-out;
-  box-shadow: 0 2px 10px rgba(25, 72, 80, 0.25);
-}
-.btn-primary:hover:not(:disabled) {
-  background: var(--moss);
-  box-shadow: 0 6px 20px rgba(25, 72, 80, 0.35);
-  transform: translateY(-1px);
-}
-.btn-primary:active:not(:disabled) { transform: scale(0.97); }
-.btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
-
-/* CTA uses Clay — the 5% accent. Reserved for the *single* key action. */
-.btn-cta {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  background: var(--clay);
-  color: #fff;
-  font-family: var(--font-display);
   font-weight: 600;
-  font-size: 14px;
-  letter-spacing: 0.02em;
-  padding: 12px 24px;
-  border-radius: 12px;
-  border: none;
+  line-height: 1;
+  white-space: nowrap;
   cursor: pointer;
-  transition: all 0.2s ease-out;
-  box-shadow: 0 2px 10px rgba(198, 128, 119, 0.30);
+  transition: opacity 0.15s ease-out, background-color 0.15s ease-out;
 }
-.btn-cta:hover:not(:disabled) {
-  background: #A06157;
-  box-shadow: 0 6px 20px rgba(198, 128, 119, 0.40);
-  transform: translateY(-1px);
-}
-.btn-cta:active:not(:disabled) { transform: scale(0.97); }
-.btn-cta:disabled { opacity: 0.45; cursor: not-allowed; }
-
+.btn-primary { background: var(--deep-teal); color: #fff; border: none; }
+.btn-cta     { background: var(--clay); color: #fff; border: none; }
+.btn-primary:hover:not(:disabled),
+.btn-cta:hover:not(:disabled) { opacity: 0.9; }
 .btn-secondary {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
+  padding: 0 12px;
   background: #fff;
-  color: var(--narra);
-  font-family: var(--font-display);
-  font-weight: 500;
-  font-size: 14px;
-  padding: 11px 22px;
-  border-radius: 12px;
-  border: 1.5px solid var(--paper-3);
-  cursor: pointer;
-  transition: all 0.2s ease-out;
+  color: var(--charcoal);
+  border: 1px solid var(--light-gray);
 }
-.btn-secondary:hover:not(:disabled) {
-  border-color: var(--sage);
-  background: var(--paper-2);
+.btn-secondary:hover:not(:disabled) { background: var(--paper); }
+.btn-primary:disabled, .btn-cta:disabled, .btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-primary:focus-visible, .btn-cta:focus-visible, .btn-secondary:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
 }
-.btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* ─── Pills (toggle) ─────────────────────────────────────────── */
 .pill {
@@ -265,63 +222,70 @@ body {
 .badge-cancelled   { background: var(--paper-2); color: var(--mid-gray); border: 1px solid var(--paper-3); }
 .badge-teletherapy { background: var(--sage-tint); color: var(--narra); border: 1px solid rgba(123, 152, 138, 0.3); }
 
-/* ─── Inputs ─────────────────────────────────────────────────── */
+/* ─── Inputs ─────────────────────────────────────────────────
+   Same box as the kit's CONTROL: 36px tall (padding, not a fixed height,
+   so a textarea.input still grows), 8px radius, 1px --light-gray border,
+   teal border + 3px ring on focus. .label matches the kit's LABEL. */
 .input, .select {
   width: 100%;
-  padding: 11px 16px;
-  border-radius: 12px;
-  border: 1.5px solid var(--paper-3);
+  min-height: 36px;
+  padding: 7px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--light-gray);
   font-size: 14px;
+  line-height: 20px;
   font-family: var(--font-body);
-  color: var(--ink);
+  color: var(--charcoal);
   background: #fff;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition: border-color 0.15s, box-shadow 0.15s;
   outline: none;
 }
 .input:focus, .select:focus {
-  border-color: var(--sage);
-  box-shadow: 0 0 0 3px rgba(123, 152, 138, 0.18);
+  border-color: var(--teal);
+  box-shadow: 0 0 0 3px rgba(74, 128, 115, 0.18);
 }
+.input:disabled, .select:disabled { opacity: 0.6; cursor: not-allowed; }
 .input::placeholder { color: var(--mid-gray); }
 
-/* File upload input — matches .input frame with a pill "Choose file" button */
+/* File upload input — the .input frame with a pale-teal "Choose file" button */
 .input-file {
   width: 100%;
-  padding: 8px 10px;
-  border-radius: 12px;
-  border: 1.5px solid var(--paper-3);
+  padding: 5px 6px;
+  border-radius: 8px;
+  border: 1px solid var(--light-gray);
   font-size: 13px;
   font-family: var(--font-body);
   color: var(--mid-gray);
   background: #fff;
   cursor: pointer;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
-.input-file:focus { outline: none; border-color: var(--sage); box-shadow: 0 0 0 3px rgba(123, 152, 138, 0.18); }
+.input-file:focus { outline: none; border-color: var(--teal); box-shadow: 0 0 0 3px rgba(74, 128, 115, 0.18); }
 .input-file::file-selector-button {
-  margin-right: 12px;
-  padding: 7px 14px;
-  border-radius: 9px;
+  margin-right: 10px;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 6px;
   border: 0;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   font-family: var(--font-display);
   color: var(--deep-teal);
   background: var(--pale-teal);
   cursor: pointer;
-  transition: background 0.2s, color 0.2s;
+  transition: background 0.15s, color 0.15s;
 }
 .input-file:hover::file-selector-button { background: var(--teal); color: #fff; }
 
 .label {
   display: block;
   font-family: var(--font-display);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--mid-gray);
-  margin-bottom: 7px;
+  margin-bottom: 4px;
 }
 
 /* ─── Hero gradient — Aura coral → sage ─────────────────────────

@@ -9,5 +9,9 @@ import { useRouter } from 'next/navigation'
 export default function HomecareAdminRedirect() {
   const router = useRouter()
   useEffect(() => { router.replace('/admin') }, [router])
-  return <div className="p-8 text-sm text-[color:var(--mid-gray)]">Redirecting to the admin console…</div>
+  return (
+    <div role="status" className="py-20 text-center text-sm" style={{ color: 'var(--mid-gray)' }}>
+      Redirecting to the admin console…
+    </div>
+  )
 }

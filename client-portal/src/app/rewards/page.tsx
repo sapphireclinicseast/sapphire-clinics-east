@@ -1,30 +1,24 @@
 'use client'
 
 import RewardsPanel from '@/components/RewardsPanel'
+import { PAGE, PageHeader, DashCard, Icon, TH, TH_STYLE, TD } from '@/components/hub/ui'
 
 export default function RewardsPage() {
   return (
-    <div className="grid md:grid-cols-5 gap-8 md:gap-10 items-start animate-fade-up">
-      {/* Hero + card guide */}
-      <section className="md:col-span-2 space-y-5">
-        <div className="hero-gradient rounded-3xl p-7 md:p-8 relative">
-          <div className="relative z-10">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/15 backdrop-blur-sm text-[11px] uppercase tracking-[0.12em] mb-5" style={{ fontFamily: 'var(--font-display)' }}>
-              <span className="w-1.5 h-1.5 rounded-full bg-[color:var(--sun)]"></span>
-              Reward Points
-            </div>
-            <h1 className="text-[32px] md:text-[38px] leading-[1.05] mb-3">
-              Your VIP or Prepaid Card.
-            </h1>
-            <p className="text-white/80 text-[14.5px] leading-relaxed">
-              Check your points and unlock member perks with an Aura Health Rehab card.
-            </p>
-          </div>
-        </div>
+    <div className={`${PAGE} animate-fade-up`}>
+      <PageHeader
+        size="lg"
+        eyebrow="Reward Points"
+        title="Your VIP or Prepaid Card."
+        description="Check your points and unlock member perks with an Aura Health Rehab card."
+      />
 
+      <div className="grid md:grid-cols-5 gap-5 items-start">
+      {/* Card guide */}
+      <section className="md:col-span-2 space-y-5 min-w-0">
         {/* VIP Membership Card */}
-        <div className="card-static">
-          <div className="rounded-2xl border border-black/5 bg-white shadow-md p-4">
+        <DashCard title="VIP Membership Card" icon={<Icon name="award" size={16} />}>
+          <div className="rounded-xl border border-black/5 bg-white shadow-md p-4">
             <div className="flex items-start justify-between">
               <svg viewBox="-100 -100 200 200" width="24" height="24" aria-hidden="true">
                 <polygon fill="none" stroke="#244952" strokeWidth="6" points="0,-88 88,0 0,88 -88,0" />
@@ -48,30 +42,35 @@ export default function RewardsPage() {
             </div>
           </div>
 
-          <h3 className="text-[18px] leading-tight mt-4">VIP Membership Card</h3>
-          <p className="text-[13px] text-[color:var(--mid-gray)] leading-relaxed mt-1.5">
+          <p className="text-[13px] text-[color:var(--mid-gray)] leading-relaxed mt-4">
             An exclusive, tiered membership. Members enjoy service discounts that grow with their tier — plus reward points on every visit.
           </p>
-          <div className="mt-3 rounded-xl overflow-hidden border border-[color:var(--paper-3)] text-[12px]">
-            <div className="grid grid-cols-[1fr_auto_auto] bg-[color:var(--paper-2)] text-[10px] uppercase tracking-wide text-[color:var(--mid-gray)] font-semibold" style={{ fontFamily: 'var(--font-display)' }}>
-              <div className="px-3 py-1.5">Tier</div>
-              <div className="px-3 py-1.5 text-right whitespace-nowrap">Therapy</div>
-              <div className="px-3 py-1.5 text-right whitespace-nowrap">MD · Psych</div>
-            </div>
-            {[['Silver', '25%', '5%'], ['Gold', 'up to 30%', 'up to 10%'], ['Platinum', 'up to 50%', 'up to 15%']].map((r) => (
-              <div key={r[0]} className="grid grid-cols-[1fr_auto_auto] border-t border-[color:var(--paper-3)]">
-                <div className="px-3 py-1.5 font-semibold text-[color:var(--narra)]">{r[0]}</div>
-                <div className="px-3 py-1.5 text-right whitespace-nowrap">{r[1]}</div>
-                <div className="px-3 py-1.5 text-right whitespace-nowrap">{r[2]}</div>
-              </div>
-            ))}
+          <div className="mt-3 rounded-lg overflow-x-auto" style={{ border: '1px solid var(--light-gray)' }}>
+            <table className="w-full text-[12.5px]">
+              <thead>
+                <tr>
+                  <th scope="col" className={TH} style={TH_STYLE}>Tier</th>
+                  <th scope="col" className={`${TH} !text-right`} style={TH_STYLE}>Therapy</th>
+                  <th scope="col" className={`${TH} !text-right`} style={TH_STYLE}>MD · Psych</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[['Silver', '25%', '5%'], ['Gold', 'up to 30%', 'up to 10%'], ['Platinum', 'up to 50%', 'up to 15%']].map((r) => (
+                  <tr key={r[0]} style={{ borderTop: '1px solid var(--light-gray)' }}>
+                    <td className={`${TD} !py-2 font-semibold`} style={{ color: 'var(--charcoal)' }}>{r[0]}</td>
+                    <td className={`${TD} !py-2 text-right whitespace-nowrap`}>{r[1]}</td>
+                    <td className={`${TD} !py-2 text-right whitespace-nowrap`}>{r[2]}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-          <p className="text-[10.5px] text-[color:var(--mid-gray)] mt-2">Therapy = OT · PT · SLP · SPED. Exact discount depends on your card level.</p>
-        </div>
+          <p className="text-[11px] text-[color:var(--mid-gray)] mt-2">Therapy = OT · PT · SLP · SPED. Exact discount depends on your card level.</p>
+        </DashCard>
 
         {/* Reloadable Prepaid Card */}
-        <div className="card-static">
-          <div className="rounded-2xl border border-black/5 bg-white shadow-md p-4">
+        <DashCard title="Reloadable Prepaid Card" icon={<Icon name="wallet" size={16} />}>
+          <div className="rounded-xl border border-black/5 bg-white shadow-md p-4">
             <div className="flex items-start justify-between">
               <svg viewBox="0 0 104 56" width="42" height="23" aria-hidden="true">
                 <path d="M6 52 A46 46 0 0 1 98 52" fill="none" stroke="#2c5545" strokeWidth="11" />
@@ -96,17 +95,17 @@ export default function RewardsPage() {
             </div>
           </div>
 
-          <h3 className="text-[18px] leading-tight mt-4">Reloadable Prepaid Card</h3>
-          <p className="text-[13px] text-[color:var(--mid-gray)] leading-relaxed mt-1.5">
+          <p className="text-[13px] text-[color:var(--mid-gray)] leading-relaxed mt-4">
             A reloadable stored-value card. Load it in <strong className="text-[color:var(--narra)]">₱500</strong> increments to pay for services and products — and earn <strong className="text-[color:var(--narra)]">1 reward point for every ₱100</strong> you spend, redeemable for exclusive rewards and merchandise.
           </p>
-        </div>
+        </DashCard>
       </section>
 
       {/* Lookup + result + where to spend */}
-      <section className="md:col-span-3 animate-fade-up stagger-2">
+      <section className="md:col-span-3 min-w-0 animate-fade-up stagger-2">
         <RewardsPanel />
       </section>
+      </div>
     </div>
   )
 }

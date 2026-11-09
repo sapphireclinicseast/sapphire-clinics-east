@@ -5,10 +5,15 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { getSession } from '@/lib/session'
 import { branchLabel } from '@/lib/branch-label'
 import { listTherapists, listAvailableSlots, type AvailableSlot, type Therapist, type SlotChoice } from '@/lib/api'
+import { BookingSteps } from '@/components/booking/BookingSteps'
+import {
+  PAGE, PageHeader, DashCard, Banner, Tag, Avatar, Skeleton, Icon,
+  BTN_PRIMARY, BTN_SECONDARY, BTN_SM, PRIMARY_STYLE, SECONDARY_STYLE, CONTROL_STYLE, SUBTLE_BG, FOCUS,
+} from '@/components/hub/ui'
 
 export default function BookSlotsPageWrapper() {
   return (
-    <Suspense fallback={<div className="text-sm text-[color:var(--mid-gray)]">Loading…</div>}>
+    <Suspense fallback={<div className="text-sm" style={{ color: 'var(--mid-gray)' }}>Loading…</div>}>
       <BookSlotsPage />
     </Suspense>
   )
@@ -118,7 +123,6 @@ function BookSlotsPage() {
     department === 'REHABILITATION_MEDICINE'
   const clinicianWord = isDoctorDept ? 'doctor' : 'therapist'
   const ClinicianWord = isDoctorDept ? 'Doctor' : 'Therapist'
-  const CLINICIAN_WORD = ClinicianWord.toUpperCase()
 
   const daysOfWeek = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart])
 
@@ -168,262 +172,203 @@ function BookSlotsPage() {
   }
 
   return (
-    <div className="animate-fade-up">
-      <StepHeader active={2} />
+    <div className={`${PAGE} animate-fade-up`}>
+      <BookingSteps steps={['Service', 'Slot', 'Confirm']} active={2} />
 
-      <div className="card-static">
-        <div className="flex flex-wrap items-start justify-between gap-4 mb-5">
-          <div>
-            <h1 className="text-[28px] text-[color:var(--deep-teal)] leading-tight">Pick your {clinicianWord} and slots</h1>
-            <p className="text-sm text-[color:var(--mid-gray)] mt-1 flex items-center gap-2 flex-wrap">
-              <span className="px-2 py-0.5 rounded-md bg-[color:var(--pale-teal)] text-[color:var(--deep-teal)] text-xs font-semibold" style={{ fontFamily: 'var(--font-display)' }}>{branchLabel(branch)}</span>
-              <span className="px-2 py-0.5 rounded-md bg-[color:var(--pale-teal)] text-[color:var(--deep-teal)] text-xs font-semibold" style={{ fontFamily: 'var(--font-display)' }}>{department.replace(/_/g, ' ')}</span>
-              <span className="text-[color:var(--mid-gray)]">Choose up to 3 possible time slots — the front desk confirms one.</span>
-            </p>
+      <PageHeader
+        eyebrow="Book an appointment"
+        title={`Pick your ${clinicianWord} and slots`}
+        description={
+          <span className="flex items-center gap-2 flex-wrap">
+            <Tag tone="brand">{branchLabel(branch)}</Tag>
+            <Tag tone="brand">{department.replace(/_/g, ' ')}</Tag>
+            <span>Choose up to 3 possible time slots — the front desk confirms one.</span>
+          </span>
+        }
+      />
+
+      {err && <Banner tone="error">{err}</Banner>}
+
+      {/* Clinician selector — labelled "Doctor" for MD-track services */}
+      <DashCard title={ClinicianWord} description={`Choose a ${clinicianWord} to see their open slots.`} icon={<Icon name="users" size={16} />}>
+        {loadingTherapists ? (
+          <div className="flex flex-wrap gap-2" role="status" aria-label={`Loading ${clinicianWord}s`}>
+            {[0, 1, 2].map((n) => <Skeleton key={n} className="h-14 w-48 rounded-xl" />)}
           </div>
-        </div>
-
-        {err && <div className="px-4 py-3 rounded-xl bg-rose-50 border border-rose-100 text-sm text-rose-800 mb-4">{err}</div>}
-
-        {/* Clinician selector — labelled "Doctor" for MD-track services */}
-        <div className="mb-6">
-          <div className="label">{CLINICIAN_WORD}</div>
-          {loadingTherapists ? (
-            <div className="text-sm text-[color:var(--mid-gray)]">Loading {clinicianWord}s…</div>
-          ) : therapists.length === 0 ? (
-            <div className="text-sm text-[color:var(--mid-gray)] italic">No {clinicianWord}s available for this service yet.</div>
-          ) : (
-            <div className="flex gap-2 flex-wrap">
-              {therapists.map((t) => {
-                const active = selectedTherapist?.id === t.id
-                const sexLabel = t.sex === 'M' ? '♂ Male' : t.sex === 'F' ? '♀ Female' : '— Unspecified'
-                return (
-                  <button
-                    key={t.id}
-                    onClick={() => { setSelectedTherapist(t); setPicks([]) }}
-                    className={`inline-flex items-center gap-3 px-4 py-2.5 rounded-2xl border-[1.5px] transition-all ${
-                      active
-                        ? 'bg-gradient-to-br from-[color:var(--teal)] to-[color:var(--deep-teal)] border-transparent text-white shadow-[0_4px_14px_rgba(46,94,90,0.3)]'
-                        : 'bg-white border-[color:var(--light-gray)] hover:border-[color:var(--bright-teal)]'
-                    }`}
-                    style={{ fontFamily: 'var(--font-display)' }}
-                  >
-                    <span className={`inline-flex items-center justify-center w-10 h-10 rounded-full text-sm font-semibold ${active ? 'bg-white/20 text-white' : 'bg-[color:var(--pale-teal)] text-[color:var(--deep-teal)]'}`}>
-                      {t.initials}
+        ) : therapists.length === 0 ? (
+          <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>No {clinicianWord}s available for this service yet.</p>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            {therapists.map((t) => {
+              const active = selectedTherapist?.id === t.id
+              const sexLabel = t.sex === 'M' ? '♂ Male' : t.sex === 'F' ? '♀ Female' : '— Unspecified'
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => { setSelectedTherapist(t); setPicks([]) }}
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-colors min-w-0 ${active ? '' : 'hover:bg-[color:var(--paper)]'} ${FOCUS}`}
+                  style={active
+                    ? { background: 'var(--moss-tint)', border: '1.5px solid var(--teal)' }
+                    : { background: '#fff', border: '1.5px solid var(--light-gray)' }}
+                >
+                  <Avatar text={t.initials} size={38} />
+                  <span className="flex flex-col items-start leading-tight min-w-0 flex-1">
+                    {/* Job title is the headline (e.g. "Developmental Pediatrician")
+                        when present — otherwise fall back to the dept-derived word
+                        so we never repeat the initials we just rendered in the avatar. */}
+                    <span className="text-[13px] font-semibold truncate max-w-full" style={{ fontFamily: 'var(--font-display)', color: active ? 'var(--deep-teal)' : 'var(--charcoal)' }}>
+                      {t.jobTitle ?? ClinicianWord}
                     </span>
-                    <span className="flex flex-col items-start leading-tight text-left">
-                      {/* Job title is the headline (e.g. "Developmental Pediatrician")
-                          when present — otherwise fall back to the dept-derived word
-                          so we never repeat the initials we just rendered in the avatar. */}
-                      <span className="text-[13px] font-semibold">
-                        {t.jobTitle ?? ClinicianWord}
-                      </span>
-                      <span className={`text-[11px] ${active ? 'text-white/80' : 'text-[color:var(--mid-gray)]'}`}>
-                        {sexLabel}
-                      </span>
-                      {!t.hasSchedule && (
-                        <span className={`text-[10px] italic mt-0.5 ${active ? 'text-white/70' : 'text-[color:var(--clay)]'}`}>
-                          Schedule not yet set
-                        </span>
-                      )}
+                    <span className="text-[11px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+                      {sexLabel}
                     </span>
-                  </button>
-                )
-              })}
+                    {!t.hasSchedule && (
+                      <span className="mt-1"><Tag tone="warn">Schedule not yet set</Tag></span>
+                    )}
+                  </span>
+                  <span aria-hidden className="w-4 h-4 rounded-full flex-shrink-0 flex items-center justify-center"
+                    style={{ border: `1.5px solid ${active ? 'var(--deep-teal)' : 'var(--light-gray)'}`, background: '#fff' }}>
+                    {active && <span className="w-2 h-2 rounded-full" style={{ background: 'var(--deep-teal)' }} />}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </DashCard>
+
+      {/* Weekly calendar — only when a therapist is selected */}
+      {selectedTherapist && (
+        <DashCard
+          title={`Week of ${fmtRange(weekStart, addDays(weekStart, 6))}`}
+          description="Tap a time to add it to your choices; tap again to remove it."
+          icon={<Icon name="calendar" size={16} />}
+        >
+          <div className="flex items-center gap-1.5 mb-4">
+            <button type="button" className={BTN_SM} style={SECONDARY_STYLE} onClick={() => setWeekStart(addDays(weekStart, -7))}>← Prev</button>
+            <button type="button" className={BTN_SM} style={SECONDARY_STYLE} onClick={() => setWeekStart(startOfWeek(new Date()))}>This week</button>
+            <button type="button" className={BTN_SM} style={SECONDARY_STYLE} onClick={() => setWeekStart(addDays(weekStart, 7))}>Next →</button>
+          </div>
+
+          {!selectedTherapist.hasSchedule && (
+            <div className="mb-4">
+              <Banner tone="warn">
+                <strong>{selectedTherapist.jobTitle ?? selectedTherapist.initials}</strong> hasn&apos;t set up their schedule yet. Please pick another {clinicianWord}, or contact the clinic to request an appointment with them directly.
+              </Banner>
             </div>
           )}
-        </div>
 
-        {/* Weekly calendar — only when a therapist is selected */}
-        {selectedTherapist && (
-          <>
-            {!selectedTherapist.hasSchedule && (
-              <div className="mb-3 px-4 py-3 rounded-xl bg-[color:var(--sun-tint)] border border-[color:var(--paper-3)] text-sm text-[color:var(--narra)]">
-                <strong>{selectedTherapist.jobTitle ?? selectedTherapist.initials}</strong> hasn&apos;t set up their schedule yet. Please pick another {clinicianWord}, or contact the clinic to request an appointment with them directly.
-              </div>
-            )}
-            <div className="flex items-center justify-between mb-3">
-              <div className="label !mb-0">Week of {fmtRange(weekStart, addDays(weekStart, 6))}</div>
-              <div className="flex items-center gap-1.5" style={{ fontFamily: 'var(--font-display)' }}>
-                <button className="btn-secondary !py-1.5 !px-3 !text-[12.5px]" onClick={() => setWeekStart(addDays(weekStart, -7))}>← Prev</button>
-                <button className="btn-secondary !py-1.5 !px-3 !text-[12.5px]" onClick={() => setWeekStart(startOfWeek(new Date()))}>This week</button>
-                <button className="btn-secondary !py-1.5 !px-3 !text-[12.5px]" onClick={() => setWeekStart(addDays(weekStart, 7))}>Next →</button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-2.5">
-              {daysOfWeek.map((d, i) => {
-                const key = fmtYMD(d)
-                const list = byDay.get(key) ?? []
-                const today = isToday(d)
-                return (
-                  <div key={key} className={`day-col animate-fade-up stagger-${Math.min(i+1,7)} ${today ? 'ring-2 ring-[color:var(--gold)] ring-offset-2 ring-offset-[color:var(--off-white)]' : ''}`}>
-                    <div className="day-col-header flex items-center justify-between">
-                      <span>{fmtWeekday(d)}</span>
-                      <span className={today ? 'text-[color:var(--gold)] font-bold' : ''}>{fmtDay(d)}</span>
-                    </div>
-                    <div className="space-y-1.5">
-                      {loadingSlots && <div className="h-6 rounded bg-[color:var(--pale-teal)] animate-pulse"></div>}
-                      {!loadingSlots && list.length === 0 && (
-                        <div className="slot-empty">No slots</div>
-                      )}
-                      {list.map((s, idx) => {
-                        const pIdx = pickIndex(s)
-                        const isPicked = pIdx !== -1
-                        return (
-                          <button
-                            key={`${s.startTime}-${idx}`}
-                            onClick={() => togglePick(s)}
-                            className={`slot-tile-min w-full ${isPicked ? 'slot-tile-picked' : ''}`}
-                            style={{ fontFamily: 'ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif' }}
-                          >
-                            <span className="slot-tile-time-min">{s.startTime}</span>
-                            {isPicked && (
-                              <span className={`pick-ribbon ${pIdx === 0 ? 'bg-emerald-600' : pIdx === 1 ? 'bg-amber-500' : 'bg-slate-500'}`}>
-                                {pIdx === 0 ? '1st' : pIdx === 1 ? '2nd' : '3rd'}
-                              </span>
-                            )}
-                          </button>
-                        )
-                      })}
-                    </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2">
+            {daysOfWeek.map((d, i) => {
+              const key = fmtYMD(d)
+              const list = byDay.get(key) ?? []
+              const today = isToday(d)
+              return (
+                <div key={key}
+                  className={`rounded-xl p-2.5 min-w-0 animate-fade-up stagger-${Math.min(i+1,7)}`}
+                  style={{ background: today ? 'var(--moss-tint)' : SUBTLE_BG, border: `1px solid ${today ? 'var(--sage)' : 'var(--light-gray)'}` }}>
+                  <div className="flex items-center justify-between pb-2 mb-2 text-[11px] font-semibold uppercase tracking-wider"
+                    style={{ fontFamily: 'var(--font-display)', color: 'var(--mid-gray)', borderBottom: '1px dashed var(--light-gray)' }}>
+                    <span>{fmtWeekday(d)}</span>
+                    <span style={today ? { color: 'var(--deep-teal)' } : undefined}>{fmtDay(d)}</span>
                   </div>
-                )
-              })}
-            </div>
-          </>
+                  {today && (
+                    <div className="-mt-1 mb-2 text-[10px] font-bold uppercase tracking-wider" style={{ fontFamily: 'var(--font-display)', color: 'var(--deep-teal)' }}>Today</div>
+                  )}
+                  <div className="space-y-1.5">
+                    {loadingSlots && <Skeleton className="h-8 rounded-lg" />}
+                    {!loadingSlots && list.length === 0 && (
+                      <div className="text-[11px] py-1" style={{ color: 'var(--mid-gray)' }}>No slots</div>
+                    )}
+                    {list.map((s, idx) => {
+                      const pIdx = pickIndex(s)
+                      const isPicked = pIdx !== -1
+                      return (
+                        <button
+                          key={`${s.startTime}-${idx}`}
+                          type="button"
+                          aria-pressed={isPicked}
+                          onClick={() => togglePick(s)}
+                          className={`w-full h-9 px-2.5 flex items-center justify-between gap-1.5 rounded-lg text-[13px] font-semibold tabular-nums transition-colors ${isPicked ? '' : 'hover:bg-[color:var(--pale-teal)]'} ${FOCUS}`}
+                          style={isPicked
+                            ? { background: '#fff', border: '1.5px solid var(--teal)', color: 'var(--deep-teal)', boxShadow: '0 0 0 3px rgba(74,128,115,0.14)' }
+                            : { ...CONTROL_STYLE, color: 'var(--deep-teal)' }}
+                        >
+                          <span>{s.startTime}</span>
+                          {isPicked && <RankChip rank={pIdx} />}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-4 text-[11px]" style={{ fontFamily: 'var(--font-display)', color: 'var(--mid-gray)' }}>
+            <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: 'var(--moss-tint)', border: '1px solid var(--sage)' }} />Today</span>
+            <span className="inline-flex items-center gap-1.5"><RankChip rank={0} /> 1st choice</span>
+            <span className="inline-flex items-center gap-1.5"><RankChip rank={1} /> 2nd</span>
+            <span className="inline-flex items-center gap-1.5"><RankChip rank={2} /> 3rd</span>
+          </div>
+        </DashCard>
+      )}
+
+      {/* Picks summary + CTA */}
+      <DashCard
+        title={`Your choices (${picks.length}/3)`}
+        description="The front desk confirms one of these, in your order of preference."
+        icon={<Icon name="clock" size={16} />}
+        action={picks.length > 0 ? (
+          <button type="button" className={BTN_SM} style={{ ...SECONDARY_STYLE, color: 'var(--mid-gray)' }} onClick={clearPicks}>Clear</button>
+        ) : undefined}
+      >
+        {picks.length === 0 ? (
+          <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>
+            Click time slots above to add them. You can reorder your preferences.
+          </p>
+        ) : (
+          <ul className="space-y-1.5">
+            {picks.map((p, i) => (
+              <li key={`${p.date}-${p.startTime}`} className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg" style={{ background: SUBTLE_BG, border: '1px solid var(--light-gray)' }}>
+                <div className="flex items-center gap-2.5 text-sm min-w-0">
+                  <RankChip rank={i} />
+                  <span className="tabular-nums truncate" style={{ color: 'var(--charcoal)' }}>
+                    {p.date} · {p.startTime}–{p.endTime}
+                  </span>
+                </div>
+                <div className="flex gap-1 shrink-0">
+                  <button type="button" disabled={i === 0} onClick={() => reorder(i, -1)} aria-label="Move up" className={`${BTN_SM} !w-8 !px-0`} style={SECONDARY_STYLE}>↑</button>
+                  <button type="button" disabled={i === picks.length - 1} onClick={() => reorder(i, 1)} aria-label="Move down" className={`${BTN_SM} !w-8 !px-0`} style={SECONDARY_STYLE}>↓</button>
+                  <button type="button" onClick={() => setPicks((prev) => prev.filter((_, k) => k !== i))} aria-label="Remove" className={`${BTN_SM} !w-8 !px-0`} style={SECONDARY_STYLE}><Icon name="x" size={14} /></button>
+                </div>
+              </li>
+            ))}
+          </ul>
         )}
 
-        {/* Picks summary + CTA */}
-        <div className="mt-6 rounded-2xl border border-[color:var(--light-gray)] bg-gradient-to-br from-white to-[color:var(--pale-teal)] p-4">
-          <div className="flex items-center justify-between mb-2">
-            <div className="label !mb-0">Your choices ({picks.length}/3)</div>
-            {picks.length > 0 && (
-              <button className="text-[11px] text-[color:var(--mid-gray)] underline" onClick={clearPicks} style={{ fontFamily: 'var(--font-display)' }}>Clear</button>
-            )}
-          </div>
-          {picks.length === 0 ? (
-            <p className="text-sm text-[color:var(--mid-gray)] italic" style={{ fontFamily: 'var(--font-display)' }}>
-              Click time slots above to add them. You can reorder your preferences.
-            </p>
-          ) : (
-            <ul className="space-y-1.5">
-              {picks.map((p, i) => (
-                <li key={`${p.date}-${p.startTime}`} className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-white border border-[color:var(--light-gray)]">
-                  <div className="flex items-center gap-2.5 text-sm">
-                    <span className={`pick-ribbon static !ml-0 ${i === 0 ? 'bg-emerald-600' : i === 1 ? 'bg-amber-500' : 'bg-slate-500'}`}>
-                      {i === 0 ? '1st' : i === 1 ? '2nd' : '3rd'}
-                    </span>
-                    <span style={{ fontFamily: 'ui-sans-serif, system-ui, sans-serif' }}>
-                      {p.date} · {p.startTime}–{p.endTime}
-                    </span>
-                  </div>
-                  <div className="flex gap-1" style={{ fontFamily: 'var(--font-display)' }}>
-                    <button disabled={i === 0} onClick={() => reorder(i, -1)} className="w-7 h-7 rounded border text-xs disabled:opacity-30">↑</button>
-                    <button disabled={i === picks.length - 1} onClick={() => reorder(i, 1)} className="w-7 h-7 rounded border text-xs disabled:opacity-30">↓</button>
-                    <button onClick={() => setPicks((prev) => prev.filter((_, k) => k !== i))} className="w-7 h-7 rounded border text-xs">✕</button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
-        <div className="flex justify-between items-center mt-6">
-          <button className="btn-secondary" onClick={() => router.push('/book')}>← Change service</button>
-          <button className="btn-cta" disabled={picks.length === 0} onClick={proceed}>
-            Continue → Confirm ({picks.length} {picks.length === 1 ? 'choice' : 'choices'})
+        <div className="flex flex-col-reverse sm:flex-row sm:justify-between sm:items-center gap-2 mt-5 pt-4" style={{ borderTop: '1px solid var(--light-gray)' }}>
+          <button type="button" className={`${BTN_SECONDARY} max-sm:h-11`} style={SECONDARY_STYLE} onClick={() => router.push('/book')}>← Change service</button>
+          <button type="button" className={`${BTN_PRIMARY} max-sm:h-11`} style={PRIMARY_STYLE} disabled={picks.length === 0} onClick={proceed}>
+            Continue — Confirm ({picks.length} {picks.length === 1 ? 'choice' : 'choices'})
+            <Icon name="chevronRight" size={16} />
           </button>
         </div>
-
-        <div className="flex items-center gap-2 mt-4 text-[11.5px] text-[color:var(--mid-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
-          <Legend color="bg-[color:var(--gold)]" label="Today" />
-          <span className="mx-1">·</span>
-          <Legend color="bg-emerald-600" label="1st choice" />
-          <Legend color="bg-amber-500" label="2nd" />
-          <Legend color="bg-slate-500" label="3rd" />
-        </div>
-      </div>
-
-      <style jsx>{`
-        .slot-tile-min {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 6px;
-          padding: 7px 10px;
-          border-radius: 8px;
-          border: 1.5px solid var(--light-gray);
-          background: white;
-          cursor: pointer;
-          transition: all 0.15s ease-out;
-          font-size: 13px;
-          font-weight: 500;
-          color: var(--charcoal);
-          width: 100%;
-          letter-spacing: 0.01em;
-        }
-        .slot-tile-min:hover {
-          border-color: var(--teal);
-          background: var(--pale-teal);
-        }
-        .slot-tile-time-min {
-          font-weight: 500;
-          color: var(--deep-teal);
-          letter-spacing: 0;
-        }
-        .slot-tile-picked {
-          border-color: var(--gold);
-          background: linear-gradient(135deg, rgba(237, 104, 35, 0.07), rgba(255, 162, 53, 0.05));
-          box-shadow: 0 2px 8px rgba(237, 104, 35, 0.15);
-        }
-        .pick-ribbon {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          padding: 2px 7px;
-          border-radius: 999px;
-          font-family: var(--font-display);
-          font-size: 9.5px;
-          font-weight: 700;
-          color: white;
-          letter-spacing: 0.04em;
-        }
-        .slot-empty {
-          font-family: var(--font-display);
-          font-size: 11px;
-          color: var(--mid-gray);
-          font-style: italic;
-          padding: 4px 0;
-        }
-      `}</style>
+      </DashCard>
     </div>
   )
 }
 
-function Legend({ color, label }: { color: string; label: string }) {
-  return <span className="inline-flex items-center gap-1.5"><span className={`w-2 h-2 rounded-full ${color}`}></span>{label}</span>
-}
-
-function StepHeader({ active }: { active: 1 | 2 | 3 }) {
-  const steps = ['Service', 'Slot', 'Confirm']
+/** "1st" / "2nd" / "3rd" preference marker. The words carry the rank; the
+ *  three shades just help the eye match a slot to its row below. */
+function RankChip({ rank }: { rank: number }) {
+  const bg = rank === 0 ? 'var(--deep-teal)' : rank === 1 ? 'var(--teal)' : 'var(--mid-gray)'
   return (
-    <div className="flex items-center gap-3 mb-6" style={{ fontFamily: 'var(--font-display)' }}>
-      {steps.map((label, i) => {
-        const n = (i + 1) as 1 | 2 | 3
-        const state = n === active ? 'active' : n < active ? 'done' : 'todo'
-        return (
-          <div key={label} className="flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              <span className={`step-dot ${state === 'active' ? 'step-dot-active' : state === 'done' ? 'step-dot-done' : ''}`}></span>
-              <span className={`text-[11.5px] uppercase tracking-[0.12em] ${state === 'active' ? 'text-[color:var(--gold)] font-semibold' : state === 'done' ? 'text-[color:var(--teal)]' : 'text-[color:var(--mid-gray)]'}`}>
-                {n}. {label}
-              </span>
-            </div>
-            {i < steps.length - 1 && <span className="w-6 h-px bg-[color:var(--light-gray)]"></span>}
-          </div>
-        )
-      })}
-    </div>
+    <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-full text-[9.5px] font-bold leading-none text-white"
+      style={{ background: bg, fontFamily: 'var(--font-display)' }}>
+      {rank === 0 ? '1st' : rank === 1 ? '2nd' : '3rd'}
+    </span>
   )
 }

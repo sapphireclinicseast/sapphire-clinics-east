@@ -5,6 +5,11 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { getSession } from '@/lib/session'
 import { TELE_CATALOG, checkoutUrlFor, pwdNet, type TeleDept } from '@/lib/tele-services'
 import { branchLabel } from '@/lib/branch-label'
+import { BookingSteps } from '@/components/booking/BookingSteps'
+import {
+  PageHeader, DashCard, Banner, Tag, Icon,
+  BTN_PRIMARY, BTN_SECONDARY, PRIMARY_STYLE, SECONDARY_STYLE, SUBTLE_BG, TR,
+} from '@/components/hub/ui'
 
 const DEPT_LABELS: Record<TeleDept, string> = {
   OT: 'Occupational Therapy',
@@ -17,7 +22,7 @@ function peso(n: number) {
 
 export default function BookTeletherapyPage() {
   return (
-    <Suspense fallback={<div className="text-sm text-[color:var(--mid-gray)]">Loading…</div>}>
+    <Suspense fallback={<div className="text-sm" style={{ color: 'var(--mid-gray)' }}>Loading…</div>}>
       <BookTeletherapyInner />
     </Suspense>
   )
@@ -77,12 +82,11 @@ function BookTeletherapyInner() {
 
   if (!dept) {
     return (
-      <div className="animate-fade-up max-w-2xl">
-        <div className="card-static">
-          <h1 className="text-[24px] text-[color:var(--narra)]">Service not available online</h1>
-          <p className="text-sm text-[color:var(--mid-gray)] mt-2">This service is booked through the front desk.</p>
-          <button onClick={() => router.push('/book')} className="btn-secondary mt-5">← Back to services</button>
-        </div>
+      <div className="max-w-2xl mx-auto space-y-5 min-w-0 animate-fade-up">
+        <DashCard title="Service not available online" icon={<Icon name="info" size={16} />}>
+          <p className="text-sm" style={{ color: 'var(--mid-gray)' }}>This service is booked through the front desk.</p>
+          <button type="button" onClick={() => router.push('/book')} className={`${BTN_SECONDARY} mt-4`} style={SECONDARY_STYLE}>← Back to services</button>
+        </DashCard>
       </div>
     )
   }
@@ -90,119 +94,84 @@ function BookTeletherapyInner() {
   const groups = TELE_CATALOG[dept]
 
   return (
-    <div className="animate-fade-up max-w-3xl">
-      <StepHeader active={2} />
+    <div className="max-w-3xl mx-auto space-y-5 min-w-0 animate-fade-up">
+      <BookingSteps steps={['Service', 'Payment']} active={2} />
 
-      <div className="card-static">
-        <div className="flex items-start justify-between gap-3 flex-wrap">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-[9px] font-bold uppercase tracking-[0.08em] px-1.5 py-0.5 rounded bg-[color:var(--pale-teal)] text-[color:var(--teal)]">
-                Teletherapy
-              </span>
-              <span className="text-[11px] uppercase tracking-[0.1em] text-[color:var(--mid-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
-                {branchName}
-              </span>
-            </div>
-            <h1 className="text-[28px] leading-tight text-[color:var(--narra)]">{DEPT_LABELS[dept]}</h1>
-            <p className="text-sm text-[color:var(--mid-gray)] mt-1">
-              Choose a service type below and proceed to secure payment. Sessions are delivered online.
-            </p>
-          </div>
-          <button onClick={() => router.push('/book')} className="btn-secondary shrink-0">← Back</button>
-        </div>
+      <PageHeader
+        eyebrow={<span className="inline-flex items-center gap-2 flex-wrap"><Tag tone="brand">Teletherapy</Tag>{branchName}</span>}
+        title={DEPT_LABELS[dept]}
+        description="Choose a service type below and proceed to secure payment. Sessions are delivered online."
+        actions={
+          <button type="button" onClick={() => router.push('/book')} className={BTN_SECONDARY} style={SECONDARY_STYLE}>← Back</button>
+        }
+      />
 
-        {/* PWD / Senior voucher note */}
-        <div className="mt-5 flex items-start gap-2.5 text-[12px] text-[color:var(--mid-gray)] px-3.5 py-3 rounded-xl bg-[color:var(--paper-2)] border border-[color:var(--paper-3)]" style={{ fontFamily: 'var(--font-display)' }}>
-          <span className="mt-1 w-1.5 h-1.5 rounded-full bg-[color:var(--moss)] shrink-0"></span>
-          <span>
-            Prices show the regular rate and the net rate with a 20% PWD / Senior Citizen discount.
-            A voucher is available with frontdesk for the PWD discount after validation of ID.
-          </span>
-        </div>
+      {/* PWD / Senior voucher note */}
+      <Banner tone="info">
+        Prices show the regular rate and the net rate with a 20% PWD / Senior Citizen discount.
+        A voucher is available with frontdesk for the PWD discount after validation of ID.
+      </Banner>
 
-        <div className="mt-6 space-y-7">
-          {groups.map((g) => (
-            <section key={g.label}>
-              <div className="label !mb-2">{g.label}</div>
-              <div className="flex flex-col gap-2.5">
-                {g.items.map((item) => {
-                  const url = checkoutUrlFor(branch, dept, item.id)
-                  const net = pwdNet(item.gross)
-                  return (
-                    <div
-                      key={item.id}
-                      className="rounded-xl border border-[color:var(--paper-3)] bg-white px-3.5 py-2.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 hover:border-[color:var(--sage)] hover:shadow-[0_4px_14px_rgba(27,63,56,0.06)] transition-all"
-                    >
-                      <div className="min-w-0 sm:flex-1">
-                        <div className="text-[14px] font-semibold text-[color:var(--narra)] leading-tight sm:truncate" title={item.name}>{item.name}</div>
-                        {item.note && (
-                          <div className="text-[11px] text-[color:var(--mid-gray)] mt-0.5 leading-none" style={{ fontFamily: 'var(--font-display)' }}>{item.note}</div>
-                        )}
-                      </div>
+      {groups.map((g) => (
+        <DashCard key={g.label} title={g.label} flush>
+          <ul>
+            {g.items.map((item, idx) => {
+              const url = checkoutUrlFor(branch, dept, item.id)
+              const net = pwdNet(item.gross)
+              return (
+                <li
+                  key={item.id}
+                  className={`${TR} px-4 sm:px-5 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3`}
+                  style={idx ? { borderTop: '1px solid var(--light-gray)' } : undefined}
+                >
+                  <div className="min-w-0 sm:flex-1">
+                    <div className="text-sm font-semibold leading-snug sm:truncate" style={{ color: 'var(--charcoal)' }} title={item.name}>{item.name}</div>
+                    {item.note && (
+                      <div className="text-[11px] mt-0.5 leading-snug" style={{ color: 'var(--mid-gray)' }}>{item.note}</div>
+                    )}
+                  </div>
 
-                      <div className="flex items-center gap-2.5 shrink-0">
-                        <div className="text-right leading-none" style={{ fontFamily: 'var(--font-display)' }}>
-                          <div className="text-[9px] uppercase tracking-[0.08em] text-[color:var(--mid-gray)] mb-0.5">Regular</div>
-                          <div className="text-[14px] font-semibold text-[color:var(--narra)] tabular-nums">{peso(item.gross)}</div>
-                        </div>
-                        <div className="text-right leading-none rounded-lg bg-[color:var(--paper-2)] px-2.5 py-1.5" style={{ fontFamily: 'var(--font-display)' }}>
-                          <div className="text-[9px] uppercase tracking-[0.08em] text-[color:var(--moss)] mb-0.5">PWD / Senior</div>
-                          <div className="text-[14px] font-semibold text-[color:var(--moss)] tabular-nums">{peso(net)}</div>
-                        </div>
-
-                        {url ? (
-                          <button
-                            onClick={() => handleBookAndPay(item, dept)}
-                            className="btn-cta shrink-0 !px-4 !py-2 !text-[13px]"
-                          >
-                            Book &amp; Pay
-                          </button>
-                        ) : (
-                          <button
-                            disabled
-                            title="Payment link coming soon"
-                            className="btn-cta shrink-0 opacity-50 cursor-not-allowed !px-4 !py-2 !text-[13px]"
-                          >
-                            Coming soon
-                          </button>
-                        )}
-                      </div>
+                  <div className="flex items-center gap-2.5 shrink-0">
+                    <div className="text-right leading-none" style={{ fontFamily: 'var(--font-display)' }}>
+                      <div className="text-[9.5px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--mid-gray)' }}>Regular</div>
+                      <div className="text-sm font-semibold tabular-nums" style={{ color: 'var(--charcoal)' }}>{peso(item.gross)}</div>
                     </div>
-                  )
-                })}
-              </div>
-            </section>
-          ))}
-        </div>
+                    <div className="text-right leading-none rounded-lg px-2.5 py-1.5" style={{ fontFamily: 'var(--font-display)', background: SUBTLE_BG, border: '1px solid var(--light-gray)' }}>
+                      <div className="text-[9.5px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--teal)' }}>PWD / Senior</div>
+                      <div className="text-sm font-semibold tabular-nums" style={{ color: 'var(--deep-teal)' }}>{peso(net)}</div>
+                    </div>
 
-        <p className="text-[11.5px] text-[color:var(--mid-gray)] mt-7 text-center" style={{ fontFamily: 'var(--font-display)' }}>
-          After payment, the front desk will contact you to schedule your teletherapy session and send a secure meeting link.
-        </p>
-      </div>
-    </div>
-  )
-}
+                    {url ? (
+                      <button
+                        type="button"
+                        onClick={() => handleBookAndPay(item, dept)}
+                        className={`${BTN_PRIMARY} shrink-0 ml-auto sm:ml-0`}
+                        style={PRIMARY_STYLE}
+                      >
+                        Book &amp; Pay
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled
+                        title="Payment link coming soon"
+                        className={`${BTN_PRIMARY} shrink-0 ml-auto sm:ml-0`}
+                        style={PRIMARY_STYLE}
+                      >
+                        Coming soon
+                      </button>
+                    )}
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+        </DashCard>
+      ))}
 
-function StepHeader({ active }: { active: 1 | 2 }) {
-  const steps = ['Service', 'Payment']
-  return (
-    <div className="flex items-center gap-3 mb-6" style={{ fontFamily: 'var(--font-display)' }}>
-      {steps.map((label, i) => {
-        const n = (i + 1) as 1 | 2
-        const state = n === active ? 'active' : n < active ? 'done' : 'todo'
-        return (
-          <div key={label} className="flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              <span className={`step-dot ${state === 'active' ? 'step-dot-active' : state === 'done' ? 'step-dot-done' : ''}`}></span>
-              <span className={`text-[11.5px] uppercase tracking-[0.12em] ${state === 'active' ? 'text-[color:var(--clay)] font-semibold' : state === 'done' ? 'text-[color:var(--moss)]' : 'text-[color:var(--mid-gray)]'}`}>
-                {n}. {label}
-              </span>
-            </div>
-            {i < steps.length - 1 && <span className="w-6 h-px bg-[color:var(--paper-3)]"></span>}
-          </div>
-        )
-      })}
+      <p className="text-xs text-center" style={{ color: 'var(--mid-gray)' }}>
+        After payment, the front desk will contact you to schedule your teletherapy session and send a secure meeting link.
+      </p>
     </div>
   )
 }
