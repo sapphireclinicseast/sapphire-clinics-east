@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useState, useRef, useCallback } from 'react'
-import { ChevronDown, Plus, X, Settings2, Ban, Search, Users, CalendarCheck, CalendarPlus, Percent, BarChart3, Info, Lock, Loader2, Clock, Rows3, Rows4, ChevronsDownUp, ChevronsUpDown, GraduationCap, UserCheck, AlertTriangle } from 'lucide-react'
+import { Fragment, useEffect, useState, useRef, useCallback } from 'react'
+import { ChevronDown, Plus, X, Settings2, Ban, Search, Users, CalendarCheck, CalendarPlus, Percent, BarChart3, Info, Lock, Loader2, Clock, Rows3, Rows4, ChevronsDownUp, ChevronsUpDown, GraduationCap, UserCheck, AlertTriangle, MapPin, Video } from 'lucide-react'
 import { DashCard, KpiCard, Skeleton, EmptyState, DeptChip, CARD_STYLE } from '../patients/dashboard/ui'
 import {
   CONTROL, CONTROL_SM, CONTROL_STYLE, LABEL, BTN_PRIMARY, BTN_SECONDARY, BTN_SM, SUBTLE_BG, TEAL_HEX, DECK_CSS,
@@ -222,6 +222,11 @@ function relativeDayLabel(dayKey: string, todayKey: string): string {
   if (diff > 1 && diff <= 14) return `In ${diff} days`
   if (diff < -1 && diff >= -14) return `${-diff} days ago`
   return ''
+}
+
+/** "Greenhills" from SBGH / SANDBOX_GREENHILLS — branchLabel without "Branch". Display only. */
+function shortBranch(code?: string | null): string {
+  return (branchLabel(code) || code || '').replace(/ Branch$/, '')
 }
 
 function addHour(time: string): string {
@@ -869,10 +874,12 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
                 plainly — front desk are otherwise booking someone they have
                 never seen on this board with nothing explaining why she is
                 here, or which branch to coordinate with. */}
+            {/* Slate-blue rather than purple: purple is HMO on this board. */}
             {!isHomeBranch && (
-              <span className="inline-block text-[10px] font-bold px-1.5 py-0.5 rounded leading-none uppercase tracking-wide"
-                style={{ background: '#EFE4FA', color: '#5B2A86' }}>
-                {branchLabel(staff.branch) ?? staff.branch}
+              <span className="inline-flex items-center gap-1 text-[10.5px] font-semibold px-1.5 py-0.5 rounded-md leading-none"
+                title={`Based at ${branchLabel(staff.branch) ?? staff.branch} — coordinate with that branch`}
+                style={{ background: '#EEF2F7', color: '#334E68', border: '1px solid #D5DEE8' }}>
+                <MapPin size={10} aria-hidden /> {shortBranch(staff.branch)}-based
               </span>
             )}
           </div>
@@ -2639,7 +2646,42 @@ export default function DeckingClient({ role }: { role: string }) {
                 />
               </div>
             )}
-            {viewingOtherBranch && (
+            {/* Teletherapy: one board drawing consultants from both branches,
+                bookable from either. Says so up front, with who is from where,
+                instead of a banner that only appeared on the other branch. */}
+            {activeSection === 'teletherapy' && !boardLoading && !staffError && !dataError && (() => {
+              const isHere = (st: StaffMember) => st.branch === activeBranch || (st.extraBranches ?? []).includes(activeBranch)
+              const here = filteredStaff.filter(isHere).length
+              const away = filteredStaff.length - here
+              const awayBranches = Array.from(new Set(filteredStaff.filter(st => !isHere(st)).map(st => shortBranch(st.branch))))
+              return (
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl px-4 py-3" style={{ background: '#F2F8FB', border: '1px solid #CFE3EC' }}>
+                  <span aria-hidden className="inline-flex items-center justify-center w-9 h-9 rounded-lg flex-shrink-0" style={{ background: '#fff', color: TEAL_HEX, border: '1px solid #CFE3EC' }}>
+                    <Video size={17} />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-bold" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>
+                      Teletherapy board
+                    </p>
+                    <p className="text-[12.5px] leading-relaxed" style={{ color: '#3E5566' }}>
+                      Remote sessions with consultants from both branches. Bookable from either branch
+                      {viewingOtherBranch ? <> &mdash; you&apos;re viewing <strong>{branchName}</strong>, and it&apos;s still editable.</> : '.'}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold tabular-nums" style={{ background: '#fff', color: 'var(--charcoal)', border: '1px solid var(--light-gray)' }}>
+                      <MapPin size={11} aria-hidden style={{ color: TEAL_HEX }} /> {here} {shortBranch(activeBranch)}-based
+                    </span>
+                    {away > 0 && (
+                      <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold tabular-nums" style={{ background: '#EEF2F7', color: '#334E68', border: '1px solid #D5DEE8' }}>
+                        <MapPin size={11} aria-hidden /> {away} {awayBranches.join(' / ') || 'other branch'}-based
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )
+            })()}
+            {viewingOtherBranch && activeSection !== 'teletherapy' && (
               <div className="flex items-start gap-2 rounded-xl px-3.5 py-2.5"
                 style={{
                   background: readOnlyHere ? SUBTLE_BG : '#E6F2F4',
@@ -2726,12 +2768,23 @@ export default function DeckingClient({ role }: { role: string }) {
                 <div className="pt-10 flex justify-center" aria-hidden>
                   <span className="rounded-full flex items-center justify-center"
                     style={{ width: 44, height: 44, background: 'var(--pale-teal)', color: 'var(--teal)' }}>
-                    {nameFilter ? <Search size={19} /> : <Users size={19} />}
+                    {nameFilter ? <Search size={19} /> : activeSection === 'teletherapy' ? <Video size={19} /> : <Users size={19} />}
                   </span>
                 </div>
+                {/* On Teletherapy the roster is "tagged for teletherapy, either
+                    branch", so "no staff in East Branch" sent people to add staff
+                    who already exist. Say what actually puts someone here. */}
                 <EmptyState
-                  title={nameFilter ? `No ${activeDept} staff match “${nameFilter}” in ${branchName}` : `No ${activeDept} staff in ${branchName}`}
-                  hint={nameFilter ? 'Try a different name, or clear the filter.' : 'Add staff in the Staff Module first, or pick another department.'}
+                  title={nameFilter
+                    ? `No ${activeDept} staff match “${nameFilter}”${activeSection === 'teletherapy' ? ' on teletherapy' : ` in ${branchName}`}`
+                    : activeSection === 'teletherapy'
+                      ? `No ${activeDept} consultants do teletherapy yet`
+                      : `No ${activeDept} staff in ${branchName}`}
+                  hint={nameFilter
+                    ? 'Try a different name, or clear the filter.'
+                    : activeSection === 'teletherapy'
+                      ? 'A consultant appears here once their Work Arrangement in HR includes Teletherapy, at either branch. Or pick another department.'
+                      : 'Add staff in the Staff Module first, or pick another department.'}
                 />
                 {nameFilter && (
                   <div className="-mt-8 pb-8 text-center">
@@ -2783,9 +2836,27 @@ export default function DeckingClient({ role }: { role: string }) {
                   </div>
                 </div>
                 <div className={`flex flex-col ${density === 'compact' ? 'gap-2' : 'gap-3'}`}>
-                  {filteredStaff.map(s => (
+                  {/* Teletherapy mixes both branches: this branch's consultants
+                      first, then the other branch's under a divider, so it is
+                      obvious who to coordinate with. Order only — every card
+                      is the same card. Elsewhere the list is unchanged. */}
+                  {(() => {
+                    const isHere = (st: StaffMember) => st.branch === activeBranch || (st.extraBranches ?? []).includes(activeBranch)
+                    const grouped = activeSection === 'teletherapy'
+                      ? [...filteredStaff.filter(isHere), ...filteredStaff.filter(st => !isHere(st))]
+                      : filteredStaff
+                    const firstAway = activeSection === 'teletherapy' ? grouped.findIndex(st => !isHere(st)) : -1
+                    return grouped.map((s, i) => (
+                    <Fragment key={s.id}>
+                    {i === firstAway && (
+                      <div className="flex items-center gap-2 pt-1" role="separator" aria-label="From the other branch">
+                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider" style={{ color: '#334E68' }}>
+                          <MapPin size={11} aria-hidden /> From {Array.from(new Set(grouped.slice(i).map(st => shortBranch(st.branch)))).join(' / ')}
+                        </span>
+                        <span className="flex-1 h-px" style={{ background: '#D5DEE8' }} />
+                      </div>
+                    )}
                     <TherapistRow
-                      key={s.id}
                       staff={s}
                       activeBranch={activeBranch}
                       sectionMode={sectionMode}
@@ -2805,7 +2876,9 @@ export default function DeckingClient({ role }: { role: string }) {
                       onAddDated={handleSaveSlot}
                       showCapacity={isMainAdmin}
                     />
-                  ))}
+                    </Fragment>
+                    ))
+                  })()}
                 </div>
 
                 {/* ── Interns ──────────────────────────────────────────────
