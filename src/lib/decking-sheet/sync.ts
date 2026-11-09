@@ -45,7 +45,7 @@ const PATIENTS_TAB = '_patients'
 
 export interface SyncReport {
   branch: string
-  pushed: { tab: string; staff: number; rows: number }[]
+  pushed: { tab: string; staff: number; rows: number; kept?: number }[]
   applied: { tab: string; cell: string; what: string }[]
   conflicts: { tab: string; cell: string; sheet: string; hub: string }[]
   unknownPatients: string[]
@@ -352,13 +352,69 @@ async function blankTab(api: sheets_v4.Sheets, spreadsheetId: string, tab: strin
   return true
 }
 
+/**
+ * Write a tab — WITHOUT overwriting anything front desk typed since the last
+ * push.
+ *
+ * Every run pulls all the tabs, then rewrites all the tabs from the hub. Those
+ * two steps are tens of seconds apart, and the push rewrites every cell. So
+ * anything typed inside that window was read by nobody and then overwritten by
+ * the hub's idea of the cell — a name entered at the wrong moment simply
+ * vanished, every five minutes, on any tab. That is the "it refreshes and
+ * deletes them" the desk was seeing, and it is why the names that disappeared
+ * looked random: it was a race, not a department or a kind of entry.
+ *
+ * `lastWrote` is what the map says this sync last put in each cell. Before
+ * writing, the tab is read back: where the cell still holds what we wrote, the
+ * hub's value goes in as before; where it does NOT, somebody has typed, so the
+ * cell is left exactly as they typed it and the map keeps the OLD snapshot —
+ * which is precisely what makes the next pull see a change and apply it.
+ *
+ * The cost is one extra read per tab. The alternative is a guaranteed loss
+ * window on every run.
+ */
 async function pushTab(
   api: sheets_v4.Sheets, spreadsheetId: string, tab: string, grid: Grid, patientRows: number,
   payOptions: string[], robot: string,
+  lastWrote?: Map<string, string>,
 ) {
   const need = grid.rows.length + 60
   const { id: sheetId, rowCount } = await tabId(api, spreadsheetId, tab, SAFE_COL + 8, need)
   const span = Math.max(rowCount, need)
+
+  // ── Anything typed since the last push is kept, not overwritten ──────────
+  let preserved = 0
+  if (lastWrote?.size) {
+    const live = await api.spreadsheets.values.get({
+      spreadsheetId, range: `'${tab}'!A1:Z${span}`, valueRenderOption: 'UNFORMATTED_VALUE',
+    }).catch(() => null)
+    const rows = (live?.data.values ?? []) as string[][]
+    // Every prompt the free-text line has ever shown counts as empty, or
+    // replacing the prompt text would look like an edit on every single cell.
+    const norm = (v: unknown) => {
+      const t = String(v ?? '').trim()
+      return FREE_TEXT_HINTS.includes(t) ? '' : t
+    }
+    for (const c of grid.cells) {
+      const mine = lastWrote.get(`${c.row}|${c.col}`)
+      if (mine === undefined) continue              // a cell this sync has not written before
+      const now = norm(rows[c.row]?.[c.col])
+      if (now === norm(mine)) continue              // untouched since we wrote it
+      // Already agrees with what we are about to write — which is what an edit
+      // the pull just consumed looks like. Writing it normally records the NEW
+      // snapshot; preserving it here instead would keep the stale one and make
+      // the next pull read a settled cell as a fresh change, then refuse it as
+      // a conflict because the hub had moved to match.
+      if (now === norm(c.wrote)) continue
+      // Somebody typed here between the pull and now. Leave their text exactly
+      // as it stands, and keep the OLD snapshot in the map so the next pull
+      // still sees sheet ≠ snapshot and carries it into the hub.
+      const cell = grid.rows[c.row]?.values?.[c.col] as { userEnteredValue?: unknown } | undefined
+      if (cell) cell.userEnteredValue = now ? { stringValue: now } : {}
+      c.wrote = mine
+      preserved++
+    }
+  }
 
   await api.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: [
     { updateSheetProperties: { properties: { sheetId, gridProperties: { rowCount: span, columnCount: SAFE_COL + 8 } }, fields: 'gridProperties.rowCount,gridProperties.columnCount' } },
@@ -515,7 +571,7 @@ async function pushTab(
   } } })
   await api.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: post } })
 
-  return { sheetId, rows: grid.rows.length }
+  return { sheetId, rows: grid.rows.length, preserved }
 }
 
 async function pushPatients(api: sheets_v4.Sheets, spreadsheetId: string, names: string[]) {
@@ -862,15 +918,30 @@ export async function syncBranch(branch: string, spreadsheetId: string): Promise
   const names = await loadPatientNames(branch)
   const patientRows = await pushPatients(api, spreadsheetId, names)
 
+  // What this sync last wrote into each cell, per tab. Read once, before any
+  // tab is rewritten, so pushTab can tell a cell it wrote from a cell somebody
+  // has since typed into — see pushTab.
+  const lastWrote = new Map<string, Map<string, string>>()
+  try {
+    const prev = await api.spreadsheets.values.get({ spreadsheetId, range: `${MAP_TAB}!A2:J` })
+    for (const r of prev.data.values ?? []) {
+      if (!r || r.length < 7) continue
+      const t = String(r[0])
+      const m = lastWrote.get(t) ?? new Map<string, string>()
+      m.set(`${Number(r[1])}|${Number(r[2])}`, String(r[7] ?? ''))
+      lastWrote.set(t, m)
+    }
+  } catch { /* no map yet — first push writes everything, which is correct */ }
+
   const mapEntries: (CellRef & { tab: string })[] = []
   for (const dept of DEPARTMENTS) {
     try {
       const { staff, slots, dated } = await loadDepartment(branch, dept)
       const grid = buildGrid({ staff, slots, dated, paired: PAIRED_DEPARTMENTS.has(dept) })
       if (!grid) continue
-      const res = await pushTab(api, spreadsheetId, dept, grid, patientRows, payOptions, client.identity)
+      const res = await pushTab(api, spreadsheetId, dept, grid, patientRows, payOptions, client.identity, lastWrote.get(dept))
       for (const c of grid.cells) mapEntries.push({ ...c, tab: dept })
-      report.pushed.push({ tab: dept, staff: grid.staffCount, rows: res.rows })
+      report.pushed.push({ tab: dept, staff: grid.staffCount, rows: res.rows, kept: res.preserved })
 
       // The interns of this department, on a tab of their own.
       const interns = await loadInterns(branch, dept)
@@ -885,9 +956,9 @@ export async function syncBranch(branch: string, spreadsheetId: string): Promise
         const iGrid = buildGrid({ ...interns, paired: PAIRED_DEPARTMENTS.has(dept) })
         if (iGrid) {
           const iTab = `${dept} INTERNS`
-          const iRes = await pushTab(api, spreadsheetId, iTab, iGrid, patientRows, payOptions, client.identity)
+          const iRes = await pushTab(api, spreadsheetId, iTab, iGrid, patientRows, payOptions, client.identity, lastWrote.get(iTab))
           for (const c of iGrid.cells) mapEntries.push({ ...c, tab: iTab })
-          report.pushed.push({ tab: iTab, staff: iGrid.staffCount, rows: iRes.rows })
+          report.pushed.push({ tab: iTab, staff: iGrid.staffCount, rows: iRes.rows, kept: iRes.preserved })
         }
       }
     } catch (e) {
