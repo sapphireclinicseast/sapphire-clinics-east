@@ -3,6 +3,10 @@
 import { useEffect, useState } from 'react'
 import { BookOpen, Eye, Layers, Lock } from 'lucide-react'
 import ManualViewer, { type ManualMeta } from './ManualViewer'
+import {
+  EmptyState, ErrorCard, PageHeader, Skeleton, Tag,
+  CARD_STYLE, CONTROL, CONTROL_STYLE, FOCUS, PAGE, SUBTLE_BG,
+} from '@/components/hub/ui'
 
 function formatSize(bytes: number): string {
   if (!bytes) return ''
@@ -20,13 +24,13 @@ function ManualCover({ id }: { id: string }) {
   const [status, setStatus] = useState<'loading' | 'ok' | 'error'>('loading')
 
   return (
-    <div className="relative w-12 h-16 rounded-lg overflow-hidden shrink-0 border border-[var(--light-gray)] bg-white shadow-[0_2px_8px_rgba(15,49,56,0.08)]">
+    <div className="relative w-14 h-[76px] rounded-md overflow-hidden shrink-0 bg-white" style={{ border: '1px solid var(--light-gray)', boxShadow: '0 2px 8px rgba(36,73,82,0.08)' }}>
       {status !== 'ok' && (
         <div
           className="absolute inset-0 flex items-center justify-center"
-          style={{ background: 'linear-gradient(135deg, var(--teal), var(--bright-teal))' }}
+          style={{ background: 'var(--pale-teal)' }}
         >
-          <BookOpen className="text-white" size={20} />
+          <BookOpen style={{ color: 'var(--teal)' }} size={20} />
         </div>
       )}
       {status !== 'error' && (
@@ -50,6 +54,7 @@ export default function ManualsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [active, setActive] = useState<ManualMeta | null>(null)
+  const [search, setSearch] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -70,59 +75,72 @@ export default function ManualsPage() {
     }
   }, [])
 
+  const q = search.trim().toLowerCase()
+  const shown = q
+    ? manuals.filter((m) => `${m.name} ${m.version ?? ''} ${m.departments.join(' ')}`.toLowerCase().includes(q))
+    : manuals
+
   return (
-    <div className="max-w-5xl mx-auto">
-      {/* Header */}
-      <div className="mb-6">
-        <h1
-          className="text-[22px] font-bold text-[var(--charcoal)] flex items-center gap-2.5"
-          style={{ fontFamily: 'var(--font-display)' }}
-        >
-          <BookOpen className="text-[var(--teal)]" size={22} />
-          Manuals
-        </h1>
-        <p className="text-[13px] text-[var(--charcoal)]/60 mt-1">
-          Department manuals you can read here. View-only — these cannot be downloaded.
-        </p>
-      </div>
+    <div className={`${PAGE} !max-w-[1000px]`}>
+      <PageHeader
+        eyebrow="Resources"
+        title="Manuals"
+        description="Department manuals you can read here. View-only — these cannot be downloaded."
+        actions={
+          <span className="inline-flex items-center gap-1.5 text-[12px] font-semibold px-2.5 py-1 rounded-full" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
+            <Lock size={12} /> View-only
+          </span>
+        }
+      />
+
+      {/* Search — only worth showing once there's more than a handful. */}
+      {!loading && !error && manuals.length > 4 && (
+        <input
+          type="search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search manuals by name or department…"
+          aria-label="Search manuals"
+          className={`${CONTROL} w-full h-10`}
+          style={CONTROL_STYLE}
+        />
+      )}
 
       {loading && (
-        <div className="grid sm:grid-cols-2 gap-4">
-          {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="h-28 rounded-2xl bg-[var(--light-gray)]/40 animate-pulse" />
-          ))}
+        <div className="grid sm:grid-cols-2 gap-4" role="status" aria-label="Loading manuals">
+          {[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-36 rounded-xl" />)}
         </div>
       )}
 
-      {!loading && error && (
-        <div className="rounded-2xl border border-red-200 bg-red-50 p-5 text-[13px] text-red-700">
-          {error}
-        </div>
-      )}
+      {!loading && error && <ErrorCard title="Could not load manuals" hint={error} />}
 
       {!loading && !error && manuals.length === 0 && (
-        <div className="rounded-2xl border border-[var(--light-gray)] bg-white p-10 text-center">
-          <BookOpen className="mx-auto mb-3 text-[var(--charcoal)]/30" size={40} />
-          <p className="text-[14px] font-semibold text-[var(--charcoal)]">No manuals available yet</p>
-          <p className="text-[12px] text-[var(--charcoal)]/50 mt-1">
-            Manuals published for your department will appear here.
-          </p>
+        <div className="rounded-xl" style={CARD_STYLE}>
+          <EmptyState icon="book" title="No manuals available yet" hint="Manuals published for your department will appear here." />
         </div>
       )}
 
-      {!loading && !error && manuals.length > 0 && (
+      {!loading && !error && manuals.length > 0 && shown.length === 0 && (
+        <div className="rounded-xl" style={CARD_STYLE}>
+          <EmptyState icon="search" title={`No manuals match "${search}".`} hint="Try a different name or department." />
+        </div>
+      )}
+
+      {!loading && !error && shown.length > 0 && (
         <div className="grid sm:grid-cols-2 gap-4">
-          {manuals.map((m) => (
+          {shown.map((m) => (
             <button
               key={m.id}
+              type="button"
               onClick={() => setActive(m)}
-              className="group text-left rounded-2xl border border-[var(--light-gray)] bg-white p-5 hover:shadow-[0_8px_24px_rgba(15,49,56,0.10)] hover:border-[var(--teal)]/40 transition-all"
+              className={`group text-left rounded-xl flex flex-col min-w-0 transition-[border-color,box-shadow] hover:shadow-[0_8px_24px_-12px_rgba(36,73,82,0.28)] hover:border-[var(--teal)] ${FOCUS}`}
+              style={CARD_STYLE}
             >
-              <div className="flex items-start gap-3">
+              <div className="p-4 sm:p-5 flex items-start gap-3.5 flex-1">
                 <ManualCover id={m.id} />
                 <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-[14px] text-[var(--charcoal)] leading-snug">{m.name}</p>
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-[11px] text-[var(--charcoal)]/55">
+                  <p className="font-semibold text-[14.5px] leading-snug" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>{m.name}</p>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-[11.5px]" style={{ color: 'var(--mid-gray)' }}>
                     {m.version && <span>v{m.version}</span>}
                     <span className="inline-flex items-center gap-1">
                       <Layers size={12} /> {m.pageCount} page{m.pageCount === 1 ? '' : 's'}
@@ -131,23 +149,16 @@ export default function ManualsPage() {
                   </div>
                   {m.departments.length > 0 && (
                     <div className="flex flex-wrap gap-1.5 mt-2.5">
-                      {m.departments.map((d) => (
-                        <span
-                          key={d}
-                          className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[var(--teal)]/10 text-[var(--teal)]"
-                        >
-                          {d}
-                        </span>
-                      ))}
+                      {m.departments.map((d) => <Tag key={d} tone="brand">{d}</Tag>)}
                     </div>
                   )}
                 </div>
               </div>
-              <div className="mt-4 flex items-center justify-between">
-                <span className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-[var(--teal)] group-hover:gap-2.5 transition-all">
+              <div className="px-4 sm:px-5 py-2.5 flex items-center justify-between rounded-b-xl" style={{ borderTop: '1px solid var(--light-gray)', background: SUBTLE_BG }}>
+                <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold transition-all group-hover:gap-2.5" style={{ color: 'var(--teal)' }}>
                   <Eye size={14} /> Read manual
                 </span>
-                <span className="inline-flex items-center gap-1 text-[10px] text-[var(--charcoal)]/40">
+                <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: 'var(--mid-gray)' }}>
                   <Lock size={11} /> View-only
                 </span>
               </div>
