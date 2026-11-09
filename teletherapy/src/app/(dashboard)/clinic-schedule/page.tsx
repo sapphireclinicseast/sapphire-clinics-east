@@ -2,18 +2,13 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import {
-  CalendarDays,
   ChevronLeft,
   ChevronRight,
-  Loader2,
   Users as UsersIcon,
   CheckCircle2,
   Activity,
   Video,
   ExternalLink,
-  Calendar as CalendarIcon,
-  Clock,
-  X as XIcon,
   Cake,
   MapPin,
   Stethoscope,
@@ -24,6 +19,10 @@ import { useSession } from 'next-auth/react'
 import { cn } from '@/lib/utils'
 import { useBranchSwitcher } from '@/components/BranchSwitcher'
 import SessionTrends from '@/components/SessionTrends'
+import {
+  Avatar, Dialog, EmptyState, Icon, KpiCard, PageHeader, PillTabs, Skeleton,
+  BTN_SECONDARY, CARD_STYLE, FOCUS, PAGE, SECONDARY_STYLE, SUBTLE_BG,
+} from '@/components/hub/ui'
 
 type ViewMode = 'day' | 'week' | 'month'
 
@@ -193,42 +192,20 @@ export default function ClinicSchedulePage() {
       : `${MONTHS[anchor.getUTCMonth()]} ${anchor.getUTCFullYear()}`
 
   return (
-    <div className="max-w-6xl mx-auto">
-
-      {/* Hero */}
-      <div className="hero-gradient rounded-2xl px-8 py-8 mb-6 animate-fade-up">
-        <div className="relative z-10 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-white/15 flex items-center justify-center backdrop-blur-sm border border-white/20">
-            <CalendarDays className="w-6 h-6 text-white" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold text-white tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
-              Clinic Schedule
-            </h1>
-            <p className="text-white/70 text-sm mt-1">
-              Your sessions across all branches you work in.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Admin-only: switch between the personal calendar and org-wide session trends */}
-      {isAdmin && (
-        <div className="mb-6 inline-flex rounded-xl border border-gray-200 bg-gray-50 p-1">
-          {(['calendar', 'trends'] as const).map((t) => (
-            <button
-              key={t}
-              onClick={() => setAdminTab(t)}
-              className={cn(
-                'rounded-lg px-4 py-1.5 text-sm font-medium transition-colors',
-                adminTab === t ? 'bg-white text-teal-700 shadow-sm' : 'text-gray-500 hover:text-gray-700',
-              )}
-            >
-              {t === 'calendar' ? 'Calendar' : 'Session Trends'}
-            </button>
-          ))}
-        </div>
-      )}
+    <div className={`${PAGE} !max-w-[1240px]`}>
+      <PageHeader
+        eyebrow="Clinical"
+        title="Clinic Schedule"
+        description="Your sessions across all branches you work in."
+        actions={isAdmin ? (
+          <PillTabs
+            label="Clinic Schedule view"
+            value={adminTab}
+            onChange={(id) => setAdminTab(id as 'calendar' | 'trends')}
+            tabs={[{ id: 'calendar', label: 'Calendar' }, { id: 'trends', label: 'Session Trends' }]}
+          />
+        ) : undefined}
+      />
 
       {isAdmin && adminTab === 'trends' ? (
         <SessionTrends />
@@ -236,83 +213,69 @@ export default function ClinicSchedulePage() {
       <>
 
       {/* Summary cards — lifetime totals (since the very start) */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
-        <SummaryCard
-          icon={<CheckCircle2 size={18} />}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <KpiCard
+          icon={<CheckCircle2 size={16} />}
           label="Confirmed Sessions"
           value={summary.confirmedSessions}
-          stagger="stagger-1"
-          accent="moss"
-          subtext="Lifetime Total"
+          accent="var(--moss)"
+          sub="Lifetime total"
         />
-        <SummaryCard
-          icon={<UsersIcon size={18} />}
+        <KpiCard
+          icon={<UsersIcon size={16} />}
           label="Unique Patients"
           value={summary.uniquePatients}
-          stagger="stagger-2"
-          accent="clay"
-          subtext="Lifetime Total"
+          accent="var(--clay)"
+          sub="Lifetime total"
         />
-        <SummaryCard
-          icon={<Activity size={18} />}
+        <KpiCard
+          icon={<Activity size={16} />}
           label="Avg Patients / Day"
           value={summary.avgPatientsPerDay}
-          stagger="stagger-3"
-          accent="sun"
-          subtext={`Lifetime · ${summary.activeDays} Active Day${summary.activeDays === 1 ? '' : 's'}`}
+          accent="#8C6A2D"
+          sub={`Lifetime · ${summary.activeDays} active day${summary.activeDays === 1 ? '' : 's'}`}
         />
       </div>
 
-      {/* Toolbar */}
-      <div className="card-static !py-3 !px-4 mb-4 flex flex-wrap items-center gap-3 justify-between animate-fade-up stagger-3">
-        <div className="flex items-center gap-1.5">
-          <button onClick={() => navigate(-1)} className="p-1.5 rounded-lg text-[var(--mid-gray)] hover:bg-[var(--paper-2)] hover:text-[var(--narra)] transition-colors" title="Previous">
-            <ChevronLeft size={18} />
-          </button>
-          <button onClick={goToday} className="text-[12px] font-semibold px-3 py-1.5 rounded-lg text-[var(--narra)] hover:bg-[var(--paper-2)] transition-colors">
-            Today
-          </button>
-          <button onClick={() => navigate(1)} className="p-1.5 rounded-lg text-[var(--mid-gray)] hover:bg-[var(--paper-2)] hover:text-[var(--narra)] transition-colors" title="Next">
-            <ChevronRight size={18} />
-          </button>
-          <span className="ml-2 text-[14px] font-semibold text-[var(--narra)]" style={{ fontFamily: 'var(--font-display)' }}>
-            {headerLabel}
-          </span>
-        </div>
-
-        <div className="inline-flex rounded-lg bg-[var(--paper-2)] p-1">
-          {(['day', 'week', 'month'] as const).map((v) => (
-            <button
-              key={v}
-              onClick={() => setView(v)}
-              className={cn(
-                'px-3 py-1 text-[12px] font-semibold rounded-md transition-all capitalize',
-                view === v
-                  ? 'bg-[var(--narra)] text-[var(--paper)] shadow-sm'
-                  : 'text-[var(--mid-gray)] hover:text-[var(--narra)]'
-              )}
-            >
-              {v}
+      {/* Toolbar + legend */}
+      <section className="rounded-xl" style={CARD_STYLE}>
+        <div className="px-3 sm:px-4 py-3 flex flex-wrap items-center gap-3 justify-between">
+          <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+            <button type="button" onClick={() => navigate(-1)} className={`${BTN_SECONDARY} !px-2`} style={SECONDARY_STYLE} aria-label={`Previous ${view}`} title="Previous">
+              <ChevronLeft size={16} />
             </button>
-          ))}
+            <button type="button" onClick={goToday} className={BTN_SECONDARY} style={{ ...SECONDARY_STYLE, color: 'var(--deep-teal)' }}>
+              Today
+            </button>
+            <button type="button" onClick={() => navigate(1)} className={`${BTN_SECONDARY} !px-2`} style={SECONDARY_STYLE} aria-label={`Next ${view}`} title="Next">
+              <ChevronRight size={16} />
+            </button>
+            <span className="basis-full sm:basis-auto sm:ml-1.5 text-[14px] sm:text-[15px] font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }} aria-live="polite">
+              {headerLabel}
+            </span>
+          </div>
+          <PillTabs
+            label="Calendar range"
+            size="sm"
+            value={view}
+            onChange={(id) => setView(id as ViewMode)}
+            tabs={[{ id: 'day', label: 'Day' }, { id: 'week', label: 'Week' }, { id: 'month', label: 'Month' }]}
+          />
         </div>
-      </div>
-
-      {/* Status legend — explains the colored chips in week/day views */}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-4 px-1 text-[11px] text-[var(--mid-gray)]">
-        <span className="font-semibold uppercase tracking-wider text-[var(--narra)]">Legend:</span>
-        <LegendDot status="CONFIRMED" label="Confirmed" />
-        <LegendDot status="PENDING" label="Pending" />
-        <LegendDot status="COMPLETED" label="Completed" />
-        <LegendDot status="CANCELLED" label="Cancelled" />
-        <LegendDot status="RESCHEDULED" label="Rescheduled" />
-      </div>
+        {/* Status legend — explains the coloured chips */}
+        <div className="px-3 sm:px-4 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11.5px] rounded-b-xl"
+          style={{ borderTop: '1px solid var(--light-gray)', background: SUBTLE_BG, color: 'var(--mid-gray)' }}>
+          <span className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ fontFamily: 'var(--font-display)' }}>Status</span>
+          <LegendDot status="CONFIRMED" label="Confirmed" />
+          <LegendDot status="PENDING" label="Pending" />
+          <LegendDot status="COMPLETED" label="Completed" />
+          <LegendDot status="CANCELLED" label="Cancelled" />
+          <LegendDot status="RESCHEDULED" label="Rescheduled" />
+        </div>
+      </section>
 
       {loading ? (
-        <div className="flex flex-col items-center justify-center py-20 gap-3">
-          <Loader2 className="w-7 h-7 text-[var(--moss)] animate-spin" />
-          <p className="text-sm text-[var(--mid-gray)]">Loading schedule...</p>
-        </div>
+        <CalendarSkeleton view={view} />
       ) : view === 'day' ? (
         <DayView day={isoDay(anchor)} items={byDay.get(isoDay(anchor)) ?? []} onPatientClick={setProfilePatient} />
       ) : view === 'week' ? (
@@ -346,30 +309,20 @@ export default function ClinicSchedulePage() {
   )
 }
 
-function SummaryCard({
-  icon, label, value, stagger, accent, subtext,
-}: {
-  icon: React.ReactNode
-  label: string
-  value: number | string
-  stagger: string
-  accent: 'moss' | 'clay' | 'sun'
-  subtext?: string
-}) {
-  const ringColor = accent === 'moss' ? 'var(--sage-tint)' : accent === 'clay' ? 'var(--clay-tint)' : 'var(--sun-tint)'
-  const fgColor = accent === 'moss' ? 'var(--moss)' : accent === 'clay' ? 'var(--clay)' : '#7a5e1c'
-  return (
-    <div className={cn('card-static !p-4 animate-fade-up', stagger)}>
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: ringColor, color: fgColor }}>
-          {icon}
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--mid-gray)]">{label}</p>
-          <p className="text-[22px] font-bold text-[var(--narra)] leading-tight" style={{ fontFamily: 'var(--font-display)' }}>{value}</p>
-          {subtext && <p className="text-[11px] text-[var(--mid-gray)] mt-0.5">{subtext}</p>}
-        </div>
+function CalendarSkeleton({ view }: { view: ViewMode }) {
+  if (view === 'day') {
+    return (
+      <div className="rounded-xl p-4 space-y-3" style={CARD_STYLE} role="status" aria-label="Loading schedule">
+        {[0, 1, 2].map(i => <Skeleton key={i} className="h-14 w-full" />)}
       </div>
+    )
+  }
+  const cells = view === 'week' ? 7 : 35
+  return (
+    <div className={`grid gap-2 ${view === 'week' ? 'grid-cols-1 md:grid-cols-7' : 'grid-cols-7'}`} role="status" aria-label="Loading schedule">
+      {Array.from({ length: cells }).map((_, i) => (
+        <Skeleton key={i} className={view === 'week' ? 'h-40 rounded-xl' : 'h-24 rounded-lg'} />
+      ))}
     </div>
   )
 }
@@ -379,18 +332,17 @@ function DayView({ day, items, onPatientClick }: {
 }) {
   if (items.length === 0) {
     return (
-      <div className="card-static text-center py-14 animate-fade-up">
-        <CalendarIcon size={28} className="text-[var(--paper-3)] mx-auto mb-2" />
-        <p className="text-[13px] text-[var(--mid-gray)] font-medium">No sessions scheduled for this day.</p>
+      <div className="rounded-xl" style={CARD_STYLE}>
+        <EmptyState icon="calendar" title="No sessions scheduled for this day." hint={fmtDate(day)} />
       </div>
     )
   }
   return (
-    <div className="space-y-2 animate-fade-up">
+    <ul className="rounded-xl" style={CARD_STYLE}>
       {items.map((s, i) => (
-        <ScheduleRow key={s.id} item={s} delay={i} onPatientClick={onPatientClick} />
+        <ScheduleRow key={s.id} item={s} first={i === 0} onPatientClick={onPatientClick} />
       ))}
-    </div>
+    </ul>
   )
 }
 
@@ -400,7 +352,7 @@ function WeekView({ start, byDay, onPatientClick }: {
   const days = Array.from({ length: 7 }, (_, i) => addDays(start, i))
   const todayISO = isoDay(new Date())
   return (
-    <div className="grid grid-cols-1 md:grid-cols-7 gap-2 animate-fade-up">
+    <div className="grid grid-cols-1 md:grid-cols-7 gap-2">
       {days.map((d) => {
         const iso = isoDay(d)
         const items = byDay.get(iso) ?? []
@@ -408,21 +360,19 @@ function WeekView({ start, byDay, onPatientClick }: {
         return (
           <div
             key={iso}
-            className={cn(
-              'card-static !p-3 min-h-[160px] flex flex-col',
-              isToday && 'ring-2 ring-[var(--moss)]/40'
-            )}
+            className="rounded-xl p-2.5 md:min-h-[160px] flex flex-col min-w-0"
+            style={{ ...CARD_STYLE, ...(isToday ? { borderColor: 'var(--moss)', boxShadow: '0 0 0 2px rgba(74,128,115,0.22)' } : null) }}
           >
-            <div className="flex items-baseline justify-between mb-2 pb-2 border-b border-[var(--paper-3)]">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--mid-gray)]">
-                {DOW_SHORT[d.getUTCDay()]}
+            <div className="flex items-baseline justify-between mb-2 pb-2" style={{ borderBottom: '1px solid var(--light-gray)' }}>
+              <p className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: isToday ? 'var(--deep-teal)' : 'var(--mid-gray)', fontFamily: 'var(--font-display)' }}>
+                {DOW_SHORT[d.getUTCDay()]}{isToday && <span className="sr-only"> (today)</span>}
               </p>
-              <p className={cn('text-[16px] font-bold', isToday ? 'text-[var(--clay)]' : 'text-[var(--narra)]')} style={{ fontFamily: 'var(--font-display)' }}>
+              <p className="text-[16px] font-bold tabular-nums" style={{ fontFamily: 'var(--font-display)', color: isToday ? 'var(--deep-teal)' : 'var(--charcoal)' }}>
                 {d.getUTCDate()}
               </p>
             </div>
             {items.length === 0 ? (
-              <p className="text-[11px] text-[var(--paper-3)] mt-1">—</p>
+              <p className="text-[11px] mt-1" style={{ color: 'var(--light-gray)' }} aria-label="No sessions">—</p>
             ) : (
               <div className="space-y-1.5 flex-1">
                 {items.map((s) => (
@@ -448,113 +398,118 @@ function MonthView({ anchor, byDay, onDayClick, onPatientClick, onShowMore }: {
   const cells = Array.from({ length: 42 }, (_, i) => addDays(start, i))
   const todayISO = isoDay(new Date())
   return (
-    <div className="card-static !p-3 animate-fade-up">
-      <div className="grid grid-cols-7 gap-1 mb-1">
-        {DOW_SHORT.map((d) => (
-          <div key={d} className="text-center text-[10px] font-semibold uppercase tracking-wider text-[var(--mid-gray)] py-1.5">
-            {d}
-          </div>
-        ))}
-      </div>
-      <div className="grid grid-cols-7 gap-1">
-        {cells.map((d) => {
-          const iso = isoDay(d)
-          const items = byDay.get(iso) ?? []
-          const isCurrentMonth = d.getUTCMonth() === anchor.getUTCMonth()
-          const isToday = iso === todayISO
-          return (
-            <div
-              key={iso}
-              className={cn(
-                'min-h-[110px] p-1.5 rounded-lg border flex flex-col',
-                isCurrentMonth ? 'bg-white border-[var(--paper-3)]' : 'bg-[var(--paper-2)]/40 border-transparent',
-                isToday && 'ring-2 ring-[var(--moss)]/50'
-              )}
-            >
-              <button
-                type="button"
-                onClick={() => onDayClick(iso)}
-                className="text-left mb-1 hover:opacity-80 transition-opacity"
-                title="Open day view"
-              >
-                <span className={cn(
-                  'text-[12px] font-semibold',
-                  isToday ? 'text-[var(--clay)]' : isCurrentMonth ? 'text-[var(--narra)]' : 'text-[var(--paper-3)]'
-                )}>
-                  {d.getUTCDate()}
-                </span>
-              </button>
-              {items.length > 0 && (
-                <div className="space-y-0.5 flex-1 overflow-hidden">
-                  {items.slice(0, 3).map((s) => (
-                    <MonthChip key={s.id} item={s} onPatientClick={onPatientClick} />
-                  ))}
-                  {items.length > 3 && (
-                    <button
-                      type="button"
-                      onClick={() => onShowMore(iso)}
-                      className="text-[9.5px] text-[var(--moss)] font-semibold hover:underline w-full text-left"
-                      title="Show all sessions for this day"
-                    >
-                      +{items.length - 3} more…
-                    </button>
-                  )}
-                </div>
-              )}
+    <div className="rounded-xl p-2 sm:p-3 overflow-x-auto" style={CARD_STYLE}>
+      <div className="min-w-[560px]">
+        <div className="grid grid-cols-7 gap-1 mb-1">
+          {DOW_SHORT.map((d) => (
+            <div key={d} className="text-center text-[10.5px] font-semibold uppercase tracking-wider py-1.5" style={{ color: 'var(--mid-gray)', fontFamily: 'var(--font-display)' }}>
+              {d}
             </div>
-          )
-        })}
+          ))}
+        </div>
+        <div className="grid grid-cols-7 gap-1">
+          {cells.map((d) => {
+            const iso = isoDay(d)
+            const items = byDay.get(iso) ?? []
+            const isCurrentMonth = d.getUTCMonth() === anchor.getUTCMonth()
+            const isToday = iso === todayISO
+            return (
+              <div
+                key={iso}
+                className="min-h-[104px] p-1.5 rounded-lg flex flex-col min-w-0"
+                style={{
+                  background: isCurrentMonth ? '#fff' : SUBTLE_BG,
+                  border: `1px solid ${isToday ? 'var(--moss)' : isCurrentMonth ? 'var(--light-gray)' : 'transparent'}`,
+                  ...(isToday ? { boxShadow: '0 0 0 2px rgba(74,128,115,0.22)' } : null),
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => onDayClick(iso)}
+                  className={`self-start mb-1 w-6 h-6 rounded-md text-[12px] font-semibold tabular-nums transition-colors hover:bg-[var(--off-white)] ${FOCUS}`}
+                  style={isToday
+                    ? { background: 'var(--deep-teal)', color: '#fff' }
+                    : { color: isCurrentMonth ? 'var(--charcoal)' : 'var(--mid-gray)' }}
+                  title="Open day view"
+                  aria-label={`Open ${fmtDate(iso)}`}
+                >
+                  {d.getUTCDate()}
+                </button>
+                {items.length > 0 && (
+                  <div className="space-y-0.5 flex-1 overflow-hidden">
+                    {items.slice(0, 3).map((s) => (
+                      <MonthChip key={s.id} item={s} onPatientClick={onPatientClick} />
+                    ))}
+                    {items.length > 3 && (
+                      <button
+                        type="button"
+                        onClick={() => onShowMore(iso)}
+                        className={`text-[10px] font-semibold hover:underline w-full text-left rounded ${FOCUS}`}
+                        style={{ color: 'var(--teal)' }}
+                        title="Show all sessions for this day"
+                      >
+                        +{items.length - 3} more…
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
       </div>
     </div>
   )
 }
 
-function ScheduleRow({ item, delay, onPatientClick }: {
-  item: ScheduleItem; delay: number; onPatientClick: (p: PatientInfo) => void
+function StatusBadge({ status, small = false }: { status: string; small?: boolean }) {
+  return (
+    <span className={cn(`${small ? 'text-[9.5px] px-1.5' : 'text-[10.5px] px-2'} font-semibold py-0.5 rounded-full whitespace-nowrap`, statusClass(status))}>
+      {status.charAt(0) + status.slice(1).toLowerCase()}
+    </span>
+  )
+}
+
+function ScheduleRow({ item, first, onPatientClick }: {
+  item: ScheduleItem; first: boolean; onPatientClick: (p: PatientInfo) => void
 }) {
   const hasPatient = !!item.patient
   const patientLabel = hasPatient ? `${item.patient!.lastName}, ${item.patient!.firstName}` : '— No patient assigned —'
   return (
-    <div
-      className={cn('card-static !p-3 animate-fade-up flex items-start gap-3', `stagger-${Math.min(delay + 1, 10)}`)}
-    >
-      <div className="w-12 shrink-0 text-center">
-        <p className="text-[12px] font-bold text-[var(--narra)]" style={{ fontFamily: 'var(--font-display)' }}>
+    <li className="px-4 sm:px-5 py-3.5 flex items-start gap-3.5" style={{ borderTop: first ? undefined : '1px solid var(--light-gray)' }}>
+      <div className="w-14 shrink-0 rounded-lg py-1.5 text-center" style={{ background: SUBTLE_BG, border: '1px solid var(--light-gray)' }}>
+        <p className="text-[13px] font-bold leading-tight tabular-nums" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
           {fmtTime12h(item.startTime).replace(/ (AM|PM)/, '')}
         </p>
-        <p className="text-[10px] text-[var(--mid-gray)] uppercase">{fmtTime12h(item.startTime).slice(-2)}</p>
+        <p className="text-[10px] uppercase font-semibold" style={{ color: 'var(--mid-gray)' }}>{fmtTime12h(item.startTime).slice(-2)}</p>
       </div>
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+        <div className="flex items-center gap-2 mb-1 flex-wrap">
           {hasPatient ? (
             <button
               type="button"
               onClick={() => onPatientClick(item.patient!)}
-              className="font-semibold text-[14px] text-[var(--narra)] hover:text-[var(--clay)] hover:underline transition-colors"
+              className={`font-semibold text-[14.5px] text-left rounded hover:underline ${FOCUS}`}
+              style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}
               title="View patient profile"
             >
               {patientLabel}
             </button>
           ) : (
-            <span className="font-semibold text-[14px] text-[var(--mid-gray)] italic">{patientLabel}</span>
+            <span className="font-semibold text-[14px] italic" style={{ color: 'var(--mid-gray)' }}>{patientLabel}</span>
           )}
-          <span className={cn('text-[10px] font-semibold px-2 py-0.5 rounded-full border', statusClass(item.status))}>
-            {item.status}
-          </span>
+          <StatusBadge status={item.status} />
         </div>
-        <div className="flex items-center gap-3 text-[11px] text-[var(--mid-gray)]">
-          <span className="flex items-center gap-1"><Clock size={11} /> {fmtTime12h(item.startTime)} – {fmtTime12h(item.endTime)}</span>
-          <span>·</span>
+        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[12px]" style={{ color: 'var(--mid-gray)' }}>
+          <span className="inline-flex items-center gap-1 tabular-nums"><Icon name="clock" size={12} /> {fmtTime12h(item.startTime)} – {fmtTime12h(item.endTime)}</span>
+          <span aria-hidden>·</span>
           <span>{item.sessionType}</span>
-          <span>·</span>
-          <span className="opacity-70">{item.staff.department} · {item.staff.branch}</span>
+          <span aria-hidden>·</span>
+          <span>{item.staff.department} · {item.staff.branch}</span>
           {item.intern && (
-            <>
-              <span>·</span>
-              <span className="inline-flex items-center gap-1 font-semibold text-[var(--clay)]" title="Assigned intern">
-                <GraduationCap size={11} /> {item.intern.firstName} {item.intern.lastName}
-              </span>
-            </>
+            <span className="inline-flex items-center gap-1 font-semibold" style={{ color: '#8A5A3C' }} title="Assigned intern">
+              <GraduationCap size={12} /> {item.intern.firstName} {item.intern.lastName}
+            </span>
           )}
         </div>
       </div>
@@ -563,13 +518,14 @@ function ScheduleRow({ item, delay, onPatientClick }: {
           href={item.meetLink}
           target="_blank"
           rel="noopener noreferrer"
-          className="shrink-0 inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1.5 rounded-lg bg-[var(--moss)] text-[var(--paper)] hover:bg-[var(--narra)] transition-colors"
+          className={`shrink-0 inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12px] font-semibold text-white transition-opacity hover:opacity-90 ${FOCUS}`}
+          style={{ background: 'var(--deep-teal)' }}
           title="Join virtual session"
         >
-          <Video size={12} /> Join <ExternalLink size={10} />
+          <Video size={13} /> Join <ExternalLink size={11} />
         </a>
       )}
-    </div>
+    </li>
   )
 }
 
@@ -583,13 +539,13 @@ function CompactScheduleChip({ item, onPatientClick }: {
       type={item.patient ? 'button' : undefined}
       onClick={item.patient ? () => onPatientClick(item.patient!) : undefined}
       className={cn(
-        'w-full text-left text-[10.5px] leading-tight px-1.5 py-1 rounded border block',
+        'w-full text-left text-[10.5px] leading-tight px-2 py-1.5 rounded-md border block',
         statusClass(item.status),
-        item.patient && 'hover:opacity-90 cursor-pointer'
+        item.patient && `hover:opacity-90 cursor-pointer ${FOCUS}`
       )}
-      title={item.patient ? 'View patient profile' : undefined}
+      title={item.patient ? `${item.status.charAt(0) + item.status.slice(1).toLowerCase()} · View patient profile` : item.status}
     >
-      <p className="font-semibold truncate">{fmtTime12h(item.startTime)}</p>
+      <p className="font-semibold truncate tabular-nums">{fmtTime12h(item.startTime)}</p>
       <p className="truncate opacity-90">{patient}</p>
     </Wrapper>
   )
@@ -608,9 +564,9 @@ function MonthChip({ item, onPatientClick }: {
       className={cn(
         'w-full text-left text-[9.5px] leading-snug px-1 py-0.5 rounded border block truncate',
         statusClass(item.status),
-        item.patient && 'hover:opacity-90 cursor-pointer'
+        item.patient && `hover:opacity-90 cursor-pointer ${FOCUS}`
       )}
-      title={item.patient ? 'View patient profile' : undefined}
+      title={item.patient ? `${item.status.charAt(0) + item.status.slice(1).toLowerCase()} · View patient profile` : item.status}
     >
       <span className="font-semibold">{time}</span>
       <span className="opacity-90"> · {patient}</span>
@@ -640,7 +596,6 @@ function PatientProfileModal({ patient, onClose }: { patient: PatientInfo; onClo
   const fullName = `${patient.firstName} ${patient.lastName}`
   const initials = `${patient.firstName[0] ?? ''}${patient.lastName[0] ?? ''}`.toUpperCase()
   const fields: { icon: React.ReactNode; label: string; value: string }[] = [
-    { icon: <UserIcon size={14} />, label: 'Full Name', value: fullName },
     { icon: <Cake size={14} />, label: 'Date of Birth', value: fmtDob(patient.dob) },
     { icon: <Cake size={14} />, label: 'Age', value: calcAge(patient.dob) },
     { icon: <UserIcon size={14} />, label: 'Sex', value: patient.sex || '—' },
@@ -650,54 +605,33 @@ function PatientProfileModal({ patient, onClose }: { patient: PatientInfo; onClo
   ]
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in"
-      onClick={onClose}
+    <Dialog
+      labelId="cs-patient-profile"
+      eyebrow="Patient profile"
+      title={<span className="inline-flex items-center gap-2.5"><Avatar text={initials} size={32} /> {fullName}</span>}
+      onClose={onClose}
     >
-      <div
-        className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-gate"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="hero-gradient px-5 py-5 flex items-center gap-3">
-          <div className="w-12 h-12 rounded-full bg-white/15 backdrop-blur-sm border border-white/20 flex items-center justify-center text-white font-bold text-[14px]">
-            {initials}
-          </div>
-          <div className="flex-1 min-w-0">
-            <h2 className="text-[17px] font-bold text-white tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
-              {fullName}
-            </h2>
-            <p className="text-white/70 text-[11px]">Patient Profile</p>
-          </div>
-          <button
-            onClick={onClose}
-            className="text-white/70 hover:text-white p-1 rounded-md hover:bg-white/10 transition-colors"
-            title="Close"
-          >
-            <XIcon size={18} />
-          </button>
-        </div>
-        <div className="p-5 space-y-3">
-          {fields.map((f) => (
-            <div key={f.label} className="flex items-start gap-3 pb-2.5 border-b border-[var(--paper-3)] last:border-0 last:pb-0">
-              <div className="w-7 h-7 rounded-md bg-[var(--paper-2)] text-[var(--moss)] flex items-center justify-center shrink-0">
-                {f.icon}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--mid-gray)]">{f.label}</p>
-                <p className="text-[14px] font-medium text-[var(--narra)] break-words">{f.value}</p>
-              </div>
+      <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-5 gap-y-3.5">
+        {fields.map((f) => (
+          <div key={f.label} className={`flex items-start gap-2.5 min-w-0 ${f.label === 'Diagnosis' ? 'sm:col-span-2' : ''}`}>
+            <span className="w-7 h-7 rounded-md flex items-center justify-center shrink-0" style={{ background: 'var(--pale-teal)', color: 'var(--teal)' }}>
+              {f.icon}
+            </span>
+            <div className="min-w-0">
+              <dt className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)', fontFamily: 'var(--font-display)' }}>{f.label}</dt>
+              <dd className="text-[14px] font-medium break-words" style={{ color: 'var(--charcoal)' }}>{f.value}</dd>
             </div>
-          ))}
-        </div>
-      </div>
-    </div>
+          </div>
+        ))}
+      </dl>
+    </Dialog>
   )
 }
 
 function LegendDot({ status, label }: { status: string; label: string }) {
   return (
     <span className="inline-flex items-center gap-1.5">
-      <span className={cn('inline-block w-3 h-3 rounded-sm', statusClass(status))} />
+      <span className={cn('inline-block w-3 h-3 rounded-sm', statusClass(status))} aria-hidden />
       <span>{label}</span>
     </span>
   )
@@ -712,74 +646,52 @@ function DayMorePopup({ day, items, onClose, onPatientClick }: {
   onPatientClick: (p: PatientInfo) => void
 }) {
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in"
-      onClick={onClose}
+    <Dialog
+      labelId="cs-day-more"
+      eyebrow={`${items.length} session${items.length === 1 ? '' : 's'}`}
+      title={fmtDate(day)}
+      onClose={onClose}
     >
-      <div
-        className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-gate"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="hero-gradient px-5 py-4 flex items-center gap-3">
-          <CalendarIcon size={18} className="text-white shrink-0" />
-          <div className="flex-1 min-w-0">
-            <h2 className="text-[15px] font-bold text-white tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>
-              {fmtDate(day)}
-            </h2>
-            <p className="text-white/70 text-[11px]">{items.length} session{items.length === 1 ? '' : 's'}</p>
-          </div>
-          <button
-            onClick={onClose}
-            className="text-white/70 hover:text-white p-1 rounded-md hover:bg-white/10 transition-colors"
-            title="Close"
-          >
-            <XIcon size={18} />
-          </button>
-        </div>
-        <div className="p-3 max-h-[60vh] overflow-y-auto space-y-1.5">
-          {items.length === 0 ? (
-            <p className="text-[12px] text-[var(--mid-gray)] italic text-center py-6">No sessions.</p>
-          ) : (
-            items.map((s) => (
-              <DayMoreRow key={s.id} item={s} onPatientClick={onPatientClick} />
-            ))
-          )}
-        </div>
-      </div>
-    </div>
+      {items.length === 0 ? (
+        <EmptyState icon="calendar" title="No sessions." />
+      ) : (
+        <ul className="rounded-xl" style={CARD_STYLE}>
+          {items.map((s, i) => (
+            <DayMoreRow key={s.id} item={s} first={i === 0} onPatientClick={onPatientClick} />
+          ))}
+        </ul>
+      )}
+    </Dialog>
   )
 }
 
-function DayMoreRow({ item, onPatientClick }: { item: ScheduleItem; onPatientClick: (p: PatientInfo) => void }) {
+function DayMoreRow({ item, first, onPatientClick }: { item: ScheduleItem; first: boolean; onPatientClick: (p: PatientInfo) => void }) {
   const hasPatient = !!item.patient
   const patientLabel = hasPatient ? `${item.patient!.lastName}, ${item.patient!.firstName}` : 'No patient assigned'
   return (
-    <div className="flex items-center gap-2 p-2 rounded-lg border border-[var(--paper-3)] bg-white">
-      <div className="w-14 shrink-0 text-center">
-        <p className="text-[11px] font-bold text-[var(--narra)]" style={{ fontFamily: 'var(--font-display)' }}>
-          {fmtTime12h(item.startTime)}
-        </p>
-      </div>
+    <li className="flex items-center gap-2.5 px-3 py-2.5" style={{ borderTop: first ? undefined : '1px solid var(--light-gray)' }}>
+      <span className="w-16 shrink-0 text-[12px] font-bold tabular-nums" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+        {fmtTime12h(item.startTime)}
+      </span>
       <div className="flex-1 min-w-0">
         {hasPatient ? (
           <button
             type="button"
             onClick={() => onPatientClick(item.patient!)}
-            className="font-semibold text-[13px] text-[var(--narra)] hover:text-[var(--clay)] hover:underline transition-colors text-left"
+            className={`font-semibold text-[13px] text-left rounded hover:underline ${FOCUS}`}
+            style={{ color: 'var(--charcoal)' }}
             title="View patient profile"
           >
             {patientLabel}
           </button>
         ) : (
-          <span className="text-[13px] text-[var(--mid-gray)] italic">{patientLabel}</span>
+          <span className="text-[13px] italic" style={{ color: 'var(--mid-gray)' }}>{patientLabel}</span>
         )}
-        <p className="text-[10.5px] text-[var(--mid-gray)] truncate">
+        <p className="text-[11px] truncate" style={{ color: 'var(--mid-gray)' }}>
           {item.sessionType} · {item.staff.department} · {item.staff.branch}
         </p>
       </div>
-      <span className={cn('text-[9.5px] font-semibold px-2 py-0.5 rounded-full shrink-0', statusClass(item.status))}>
-        {item.status}
-      </span>
-    </div>
+      <StatusBadge status={item.status} small />
+    </li>
   )
 }
