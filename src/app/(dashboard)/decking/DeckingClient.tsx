@@ -206,6 +206,24 @@ function formatTime(t: string): string {
   return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`
 }
 
+/** "YYYY-MM-DD" of a moment in the browser's own day (not UTC). Display only. */
+function localDayKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+/** "Today", "Tomorrow", "In 5 days", "Yesterday", "3 days ago" — or '' beyond
+ *  a fortnight either way, where the date itself says enough. Display only. */
+function relativeDayLabel(dayKey: string, todayKey: string): string {
+  const diff = Math.round((Date.parse(`${dayKey}T00:00:00Z`) - Date.parse(`${todayKey}T00:00:00Z`)) / 86_400_000)
+  if (!Number.isFinite(diff)) return ''
+  if (diff === 0) return 'Today'
+  if (diff === 1) return 'Tomorrow'
+  if (diff === -1) return 'Yesterday'
+  if (diff > 1 && diff <= 14) return `In ${diff} days`
+  if (diff < -1 && diff >= -14) return `${-diff} days ago`
+  return ''
+}
+
 function addHour(time: string): string {
   const [h, m] = time.split(':').map(Number)
   return `${String(h + 1).padStart(2, '0')}:${String(m).padStart(2, '0')}`
@@ -577,6 +595,8 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
   const [addingCell, setAddingCell] = useState<{ dayOfWeek: string; startTime: string } | null>(null)
   const [showCustomModal, setShowCustomModal] = useState(false)
   const [showDatedModal, setShowDatedModal] = useState(false)
+  // Past one-offs are folded away so the coming ones lead. Display only.
+  const [showPastDated, setShowPastDated] = useState(false)
   // A one-off needs a real date and an hour; the weekday is derived from the
   // date rather than asked for, because the two must agree — the grid is drawn
   // by weekday and a mismatch would render the slot on the wrong column.
@@ -1052,53 +1072,129 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
       {/* With a weekly grid and no one-offs yet, the strip is just its add
           button, which then lives in the card footer beside "Custom slot"
           rather than putting an empty band above every grid. */}
-      {showBody && (datedSlots.length > 0 || (onAddDated && !hasGrid)) && (
-        <div className="px-4 py-2.5" style={{ borderTop: '1px solid var(--light-gray)', background: '#FFFBFD' }}>
-          <div className="flex flex-wrap items-center gap-2 mb-1.5">
-            <CalendarPlus size={13} style={{ color: ONEOFF_FG }} aria-hidden />
-            <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: ONEOFF_FG }}>
-              One-off dates
-              {datedSlots.length > 0 && <span className="tabular-nums font-normal"> · {datedSlots.length}</span>}
-            </p>
+      {showBody && (datedSlots.length > 0 || (onAddDated && !hasGrid)) && (() => {
+        // Display only: sorted by date and split into coming / past against
+        // the browser's local day, so the next visit is always at the top.
+        const today = localDayKey(new Date())
+        const sorted = [...datedSlots].sort((a, b) =>
+          String(a.date).slice(0, 10).localeCompare(String(b.date).slice(0, 10)) || String(a.startTime).localeCompare(String(b.startTime)))
+        const upcoming = sorted.filter(sl => String(sl.date).slice(0, 10) >= today)
+        const past = sorted.filter(sl => String(sl.date).slice(0, 10) < today).reverse()
+        const renderRow = (sl: DeckingSlot, isPast: boolean) => {
+          const key = String(sl.date).slice(0, 10)
+          const d = new Date(`${key}T00:00:00Z`)
+          const when = d.toLocaleDateString('en-PH', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
+          const rel = relativeDayLabel(key, today)
+          const who = sl.patient ? personLabel(sl.patient) : 'Open'
+          return (
+            <li key={sl.id}
+              title={`${when} · ${formatTime(sl.startTime)} – ${formatTime(sl.endTime)} · ${who}`}
+              className="flex items-center gap-3 rounded-lg pl-1.5 pr-1.5 py-1.5 min-w-0"
+              style={{ background: '#fff', border: '1px solid #F6D5E5', opacity: isPast ? 0.62 : 1 }}>
+              {/* Calendar tile: month over day number. */}
+              <span aria-hidden className="flex-shrink-0 flex flex-col items-center justify-center rounded-md overflow-hidden"
+                style={{ width: 40, border: '1px solid #F9C4DE', background: '#fff' }}>
+                <span className="w-full text-center text-[9px] font-bold uppercase leading-[14px] text-white" style={{ background: isPast ? '#9CA3AF' : ONEOFF_FG, letterSpacing: '0.06em' }}>
+                  {d.toLocaleDateString('en-PH', { month: 'short', timeZone: 'UTC' })}
+                </span>
+                <span className="text-[15px] font-bold leading-[22px] tabular-nums" style={{ color: 'var(--charcoal)' }}>
+                  {d.getUTCDate()}
+                </span>
+              </span>
+              <span className="flex-1 min-w-0">
+                <span className="flex flex-wrap items-baseline gap-x-2">
+                  <span className="text-[13px] font-semibold" style={{ color: 'var(--charcoal)' }}>
+                    {d.toLocaleDateString('en-PH', { weekday: 'short', timeZone: 'UTC' })}
+                  </span>
+                  <span className="text-[12px] tabular-nums" style={{ color: 'var(--charcoal)' }}>
+                    {formatTime(sl.startTime)} – {formatTime(sl.endTime)}
+                  </span>
+                  {rel && (
+                    <span className="rounded-full px-1.5 py-px text-[10px] font-semibold"
+                      style={rel === 'Today'
+                        ? { background: ONEOFF_FG, color: '#fff' }
+                        : { background: '#FDF2F8', color: '#9D174D' }}>
+                      {rel}
+                    </span>
+                  )}
+                </span>
+                <span className="mt-0.5 flex items-center gap-1.5 min-w-0">
+                  {sl.patient ? (
+                    <>
+                      <Avatar text={initials(sl.patient.firstName, sl.patient.lastName)} size={18} />
+                      <span className="truncate text-[12px]" style={{ color: 'var(--charcoal)' }}>{personLabel(sl.patient)}</span>
+                    </>
+                  ) : (
+                    <span className="inline-flex items-center rounded px-1.5 py-px text-[10.5px] font-semibold"
+                      style={{ background: OPEN_BG, color: OPEN_FG, border: `1px solid ${OPEN_BORDER}` }}>
+                      Open
+                    </span>
+                  )}
+                </span>
+              </span>
+              <button type="button" onClick={() => onDeleteSlot(sl.id)}
+                title={`Remove the one-off on ${when}`}
+                aria-label={`Remove the one-off on ${when}`}
+                className="dk-btn flex-shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-md transition-colors hover:bg-red-50"
+                style={{ color: '#DC2626' }}>
+                <X size={14} />
+              </button>
+            </li>
+          )
+        }
+        return (
+        <div className="px-4 py-3" style={{ borderTop: '1px solid var(--light-gray)', background: '#FFFBFD' }}>
+          <div className="flex flex-wrap items-center gap-2 mb-2">
+            <span aria-hidden className="inline-flex items-center justify-center w-6 h-6 rounded-md flex-shrink-0" style={{ background: '#FDF2F8', color: ONEOFF_FG }}>
+              <CalendarPlus size={13} />
+            </span>
+            <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: ONEOFF_FG }}>One-off dates</p>
+            {datedSlots.length > 0 && (
+              <span className="rounded-full px-1.5 py-px text-[10px] font-semibold tabular-nums" style={{ background: '#fff', color: '#9D174D', border: '1px solid #F9C4DE' }}>
+                {upcoming.length > 0 ? `${upcoming.length} coming` : 'none coming'}{past.length > 0 ? ` · ${past.length} past` : ''}
+              </span>
+            )}
             {onAddDated && (
               <button type="button" onClick={() => setShowDatedModal(true)}
-                className="inline-flex items-center gap-1 h-6 text-[11px] font-semibold rounded-md px-2 transition-colors hover:bg-pink-50"
+                className="ml-auto inline-flex items-center gap-1 h-7 text-[11px] font-semibold rounded-md px-2.5 transition-colors hover:bg-pink-50"
                 style={{ border: '1px dashed #F9A8D4', color: ONEOFF_FG, background: '#fff' }}>
-                <Plus size={11} aria-hidden /> Add a date
+                <Plus size={12} aria-hidden /> Add a date
               </button>
             )}
           </div>
           {datedSlots.length === 0 ? (
-            <p className="text-[11px]" style={{ color: 'var(--mid-gray)' }}>
-              None. Hours added here apply to that date only and never repeat.
+            <p className="text-[11.5px] leading-relaxed" style={{ color: 'var(--mid-gray)' }}>
+              None yet. Hours added here apply to that date only and never repeat.
             </p>
           ) : (
-            <div className="flex flex-wrap gap-1.5">
-              {datedSlots.map(sl => {
-                const when = new Date(String(sl.date)).toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' })
-                const who = sl.patient ? personLabel(sl.patient) : 'Open'
-                return (
-                  <span key={sl.id}
-                    title={`${when} · ${formatTime(sl.startTime)} – ${formatTime(sl.endTime)} · ${who}`}
-                    className="inline-flex items-center gap-1.5 rounded-md pl-2 pr-1 h-7 text-[11px] max-w-full"
-                    style={{ background: '#FDF2F8', border: '1px solid #F9C4DE', color: '#9D174D' }}>
-                    <strong className="whitespace-nowrap">{new Date(String(sl.date)).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', timeZone: 'UTC' })}</strong>
-                    <span className="whitespace-nowrap tabular-nums">{formatTime(sl.startTime)}</span>
-                    <span className="truncate" style={sl.patient ? undefined : { fontStyle: 'italic', opacity: 0.8 }}>
-                      {sl.patient ? `· ${sl.patient.lastName}, ${sl.patient.firstName[0]}.` : '· open'}
-                    </span>
-                    <button type="button" onClick={() => onDeleteSlot(sl.id)} title="Remove this date"
-                      aria-label={`Remove the one-off on ${when}`}
-                      className="dk-btn dk-icon-btn rounded p-0.5 flex-shrink-0">
-                      <X size={11} />
-                    </button>
-                  </span>
-                )
-              })}
-            </div>
+            <>
+              {upcoming.length > 0 ? (
+                <ul className="grid gap-1.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))' }}>
+                  {upcoming.map(sl => renderRow(sl, false))}
+                </ul>
+              ) : (
+                <p className="text-[11.5px]" style={{ color: 'var(--mid-gray)' }}>No dates coming up.</p>
+              )}
+              {past.length > 0 && (
+                <div className="mt-2">
+                  <button type="button" onClick={() => setShowPastDated(v => !v)} aria-expanded={showPastDated}
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold rounded px-1 py-0.5 hover:underline"
+                    style={{ color: 'var(--mid-gray)' }}>
+                    <ChevronDown size={12} aria-hidden style={{ transform: showPastDated ? 'rotate(180deg)' : undefined, transition: 'transform 150ms' }} />
+                    {showPastDated ? 'Hide' : 'Show'} {past.length} past date{past.length === 1 ? '' : 's'}
+                  </button>
+                  {showPastDated && (
+                    <ul className="mt-1.5 grid gap-1.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))' }}>
+                      {past.map(sl => renderRow(sl, true))}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </>
           )}
         </div>
-      )}
+        )
+      })()}
 
       {showDatedModal && (
         <div onClick={() => setShowDatedModal(false)}
@@ -1145,12 +1241,44 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
               </div>
               {/* Read back what will be saved — the weekday is derived from
                   the date the same way the save below derives it. */}
-              {datedForm.date && (
-                <p className="col-span-2 text-xs tabular-nums" style={{ color: 'var(--mid-gray)' }}>
-                  <strong style={{ color: 'var(--charcoal)' }}>
-                    {DAY_LABEL[DAYS[new Date(`${datedForm.date}T00:00:00Z`).getUTCDay()]] ?? ''}
-                  </strong>
-                  {' · '}{formatTime(datedForm.startTime)} – {formatTime(addHour(datedForm.startTime))}
+              {datedForm.date ? (() => {
+                const d = new Date(`${datedForm.date}T00:00:00Z`)
+                const todayKey = localDayKey(new Date())
+                const rel = relativeDayLabel(datedForm.date, todayKey)
+                const isPast = datedForm.date < todayKey
+                // Display only: flags a date+hour this consultant already has.
+                const clash = datedSlots.some(sl => String(sl.date).slice(0, 10) === datedForm.date && sl.startTime === datedForm.startTime)
+                return (
+                  <div className="col-span-2 flex flex-col gap-1.5" aria-live="polite">
+                    <div className="rounded-lg px-3 py-2 text-xs tabular-nums" style={{ background: SUBTLE_BG, border: '1px solid var(--light-gray)', color: 'var(--charcoal)' }}>
+                      <p className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                        <CalendarCheck size={12} aria-hidden style={{ color: ONEOFF_FG }} />
+                        <strong>
+                          {DAY_LABEL[DAYS[d.getUTCDay()]] ?? ''}, {d.toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}
+                        </strong>
+                        {rel && (
+                          <span className="rounded-full px-1.5 py-px text-[10px] font-semibold" style={{ background: '#FDF2F8', color: '#9D174D' }}>{rel}</span>
+                        )}
+                      </p>
+                      <p className="mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+                        {formatTime(datedForm.startTime)} – {formatTime(addHour(datedForm.startTime))} &middot; 1 hour, open for booking
+                      </p>
+                    </div>
+                    {isPast && (
+                      <p className="flex items-center gap-1.5 text-xs rounded-lg px-3 py-1.5" style={{ background: '#FFFBEB', color: '#92400E', border: '1px solid #FDE68A' }}>
+                        <AlertTriangle size={12} aria-hidden /> This date has already passed.
+                      </p>
+                    )}
+                    {clash && (
+                      <p className="flex items-center gap-1.5 text-xs rounded-lg px-3 py-1.5" style={{ background: '#FFFBEB', color: '#92400E', border: '1px solid #FDE68A' }}>
+                        <AlertTriangle size={12} aria-hidden /> {staff.firstName} already has a one-off at this date and hour.
+                      </p>
+                    )}
+                  </div>
+                )
+              })() : (
+                <p className="col-span-2 text-xs" style={{ color: 'var(--mid-gray)' }}>
+                  Pick the date they&apos;re coming in. Each one-off is a single one-hour slot; add another for each extra hour.
                 </p>
               )}
             </div>
@@ -1186,7 +1314,9 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
                   }}
                   className={BTN_PRIMARY}
                   style={{ background: ONEOFF_FG }}>
-                  {datedSaving ? 'Adding…' : 'Add this date'}
+                  {datedSaving
+                    ? <><Loader2 size={14} className="animate-spin" aria-hidden /> Adding…</>
+                    : <><Plus size={14} aria-hidden /> Add this date</>}
                 </button>
             </div>
           </div>
