@@ -323,10 +323,21 @@ function PatientCellSearch({ current, onSelect, onClear, onClose }: {
 }
 
 // ─── Custom Slot Modal ────────────────────────────────────────────────────────
-function CustomSlotModal({ staff, activeBranch, workDays, onClose, onSave }: {
+/** "45 min", "1 hr", "1 hr 30 min" — length of a custom slot. Display only. */
+function fmtDuration(min: number): string {
+  if (!Number.isFinite(min) || min <= 0) return ''
+  const h = Math.floor(min / 60), m = min % 60
+  if (!h) return `${m} min`
+  return `${h} hr${m ? ` ${m} min` : ''}`
+}
+
+function CustomSlotModal({ staff, activeBranch, workDays, hourlyStarts = [], onClose, onSave }: {
   staff: StaffMember
   activeBranch: string
   workDays: string[]
+  /** Start times the weekly grid already draws as rows. Display only — used
+   *  to say where a slot starting on one of them will appear. */
+  hourlyStarts?: string[]
   onClose: () => void
   onSave: (data: { staffId: string; patientId: string | null; dayOfWeek: string; startTime: string; endTime: string; branch: string; department: string; notes: string | null }) => Promise<void>
 }) {
@@ -364,6 +375,14 @@ function CustomSlotModal({ staff, activeBranch, workDays, onClose, onSave }: {
   const fieldClass = `${CONTROL} w-full`
   const labelStyle: React.CSSProperties = { color: 'var(--mid-gray)' }
 
+  // Display-only read-outs of what will be saved. An end at or before the
+  // start can never be a real session, so it is flagged and Add is held back.
+  const dayOptions = workDays.length > 0 ? workDays : DAYS
+  const bothTimes = !!startTime && !!endTime
+  const minutes = bothTimes ? hhmmToMin(endTime) - hhmmToMin(startTime) : NaN
+  const badRange = bothTimes && !(minutes > 0)
+  const landsOnGrid = !!startTime && hourlyStarts.includes(startTime)
+
   return (
     <div role="dialog" aria-modal="true" aria-labelledby={`custom-slot-${staff.id}`}
       onKeyDown={e => { if (e.key === 'Escape') onClose() }}
@@ -387,59 +406,130 @@ function CustomSlotModal({ staff, activeBranch, workDays, onClose, onSave }: {
         </div>
 
         <div className="grid grid-cols-2 gap-3 px-5 py-4">
-          <div className="col-span-2">
-            <label className={LABEL} style={labelStyle} htmlFor={`cs-day-${staff.id}`}>Day</label>
-            <select id={`cs-day-${staff.id}`} className={fieldClass} style={inputStyle} value={dayOfWeek} onChange={e => setDayOfWeek(e.target.value)}>
-              {(workDays.length > 0 ? workDays : DAYS).map(d => (
-                <option key={d} value={d}>{DAY_LABEL[d]}</option>
-              ))}
-            </select>
-          </div>
+          <fieldset className="col-span-2 min-w-0">
+            <legend className={LABEL} style={labelStyle}>Day</legend>
+            {/* Same choices as the old dropdown, laid out so the week is visible at a glance. */}
+            <div role="radiogroup" aria-label="Day" className="flex flex-wrap gap-1.5">
+              {dayOptions.map(d => {
+                const on = d === dayOfWeek
+                return (
+                  <button key={d} type="button" role="radio" aria-checked={on}
+                    onClick={() => setDayOfWeek(d)}
+                    title={DAY_LABEL[d]}
+                    className="h-8 min-w-[2.75rem] px-2.5 rounded-lg text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2"
+                    style={on
+                      ? { background: 'var(--teal)', color: '#fff', border: '1px solid var(--teal)' }
+                      : { background: '#fff', color: 'var(--charcoal)', border: '1px solid var(--light-gray)' }}>
+                    {DAY_SHORT[d] || d}
+                  </button>
+                )
+              })}
+            </div>
+          </fieldset>
           <div>
             <label className={LABEL} style={labelStyle} htmlFor={`cs-start-${staff.id}`}>Start time</label>
             <input id={`cs-start-${staff.id}`} type="time" step="900" className={fieldClass} style={inputStyle} value={startTime} onChange={e => setStartTime(e.target.value)} />
           </div>
           <div>
             <label className={LABEL} style={labelStyle} htmlFor={`cs-end-${staff.id}`}>End time</label>
-            <input id={`cs-end-${staff.id}`} type="time" step="900" className={fieldClass} style={inputStyle} value={endTime} onChange={e => setEndTime(e.target.value)} />
+            <input id={`cs-end-${staff.id}`} type="time" step="900" className={fieldClass}
+              style={{ ...inputStyle, ...(badRange ? { borderColor: '#DC2626' } : {}) }}
+              aria-invalid={badRange || undefined}
+              aria-describedby={`cs-summary-${staff.id}`}
+              value={endTime} onChange={e => setEndTime(e.target.value)} />
           </div>
+
+          {/* What will be saved, read back in words. */}
+          <div id={`cs-summary-${staff.id}`} className="col-span-2" aria-live="polite">
+            {badRange ? (
+              <p className="flex items-center gap-1.5 text-xs font-medium rounded-lg px-3 py-2" style={{ background: '#FEF2F2', color: '#B91C1C', border: '1px solid #FECACA' }}>
+                <AlertTriangle size={13} aria-hidden /> End time must be after the start time.
+              </p>
+            ) : bothTimes ? (
+              <div className="rounded-lg px-3 py-2 text-xs" style={{ background: 'var(--pale-teal)', color: 'var(--charcoal)', border: '1px solid var(--light-gray)' }}>
+                <p className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                  <Clock size={12} aria-hidden style={{ color: 'var(--teal)' }} />
+                  <span className="font-semibold">Every {DAY_LABEL[dayOfWeek] || dayOfWeek}</span>
+                  <span aria-hidden style={{ color: 'var(--mid-gray)' }}>&middot;</span>
+                  <span className="tabular-nums">{formatTime(startTime)} – {formatTime(endTime)}</span>
+                  <span className="rounded-full px-1.5 py-px text-[10px] font-semibold tabular-nums" style={{ background: '#fff', color: 'var(--teal)', border: '1px solid var(--light-gray)' }}>
+                    {fmtDuration(minutes)}
+                  </span>
+                </p>
+                {landsOnGrid && (
+                  <p className="mt-1" style={{ color: 'var(--mid-gray)' }}>
+                    Starts on the hour, so it will show in the weekly grid&apos;s {formatTime(startTime)} row rather than the custom slots list.
+                  </p>
+                )}
+              </div>
+            ) : (
+              <p className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+                Pick a start and end time. Any 15-minute step works, e.g. 9:30 – 10:15.
+              </p>
+            )}
+          </div>
+
           <div className="col-span-2 relative">
-            <label className={LABEL} style={labelStyle} htmlFor={`cs-patient-${staff.id}`}>Patient (optional)</label>
-            <input
-              id={`cs-patient-${staff.id}`}
-              className={fieldClass}
-              style={inputStyle}
-              placeholder="Search patient name…"
-              value={query}
-              onChange={e => handlePatientInput(e.target.value)}
-              onBlur={() => setTimeout(() => setShowResults(false), 200)}
-              autoComplete="off"
-            />
-            {showResults && results.length > 0 && (
-              <div style={{ position: 'absolute', zIndex: 60, background: '#fff', border: '1px solid var(--light-gray)', borderRadius: '0.5rem', boxShadow: '0 8px 24px rgba(15,23,42,0.14)', top: 'calc(100% + 4px)', left: 0, right: 0, maxHeight: '200px', overflowY: 'auto', padding: 3 }}>
-                {results.map(p => (
+            <label className={LABEL} style={labelStyle} htmlFor={`cs-patient-${staff.id}`}>Patient <span className="normal-case font-normal tracking-normal">(optional)</span></label>
+            {patient ? (
+              // Chosen: shown as a chip so it is clear the pick took.
+              <div className="flex items-center gap-2 h-9 pl-1.5 pr-1 rounded-lg" style={{ border: '1px solid var(--teal)', background: 'var(--pale-teal)' }}>
+                <Avatar text={initials(patient.firstName, patient.lastName)} size={24} />
+                <span className="flex-1 min-w-0 truncate text-sm font-medium" style={{ color: 'var(--charcoal)' }} title={personLabel(patient)}>
+                  {personLabel(patient)}
+                </span>
+                <button type="button" aria-label="Change patient" title="Change patient"
+                  onClick={() => handlePatientInput('')}
+                  className="dk-icon-btn inline-flex items-center justify-center w-7 h-7 rounded-md" style={{ color: 'var(--mid-gray)' }}>
+                  <X size={14} />
+                </button>
+              </div>
+            ) : (
+              <div className="relative">
+                <Search size={14} aria-hidden className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mid-gray)' }} />
+                <input
+                  id={`cs-patient-${staff.id}`}
+                  className={`${fieldClass} pl-8`}
+                  style={inputStyle}
+                  placeholder="Search patient name…"
+                  value={query}
+                  onChange={e => handlePatientInput(e.target.value)}
+                  onBlur={() => setTimeout(() => setShowResults(false), 200)}
+                  autoComplete="off"
+                />
+              </div>
+            )}
+            {!patient && showResults && (
+              <div style={{ position: 'absolute', zIndex: 60, background: '#fff', border: '1px solid var(--light-gray)', borderRadius: '0.5rem', boxShadow: '0 8px 24px rgba(15,23,42,0.14)', top: 'calc(100% + 4px)', left: 0, right: 0, maxHeight: '220px', overflowY: 'auto', padding: 4 }}>
+                {results.length === 0 ? (
+                  <p className="px-2.5 py-2 text-xs" style={{ color: 'var(--mid-gray)' }}>No patients match.</p>
+                ) : results.map(p => (
                   <button key={p.id} type="button"
-                    className="hover:bg-gray-50"
+                    className="hover:bg-gray-50 flex items-center gap-2"
                     title={personLabel(p)}
-                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '0.45rem 0.6rem', fontSize: '0.8rem', cursor: 'pointer', borderRadius: 5, color: 'var(--charcoal)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                    style={{ width: '100%', textAlign: 'left', padding: '0.4rem 0.5rem', fontSize: '0.8rem', cursor: 'pointer', borderRadius: 6, color: 'var(--charcoal)' }}
                     onMouseDown={() => { setPatient(p); setQuery(`${p.lastName}, ${p.firstName}`); setShowResults(false) }}>
-                    {personLabel(p)}
+                    <Avatar text={initials(p.firstName, p.lastName)} size={22} />
+                    <span className="truncate">{personLabel(p)}</span>
                   </button>
                 ))}
               </div>
             )}
+            {!patient && (
+              <p className="mt-1 text-[11px]" style={{ color: 'var(--mid-gray)' }}>Leave empty to keep the slot open.</p>
+            )}
           </div>
           <div className="col-span-2">
-            <label className={LABEL} style={labelStyle} htmlFor={`cs-notes-${staff.id}`}>Notes (optional)</label>
+            <label className={LABEL} style={labelStyle} htmlFor={`cs-notes-${staff.id}`}>Notes <span className="normal-case font-normal tracking-normal">(optional)</span></label>
             <input id={`cs-notes-${staff.id}`} className={fieldClass} style={inputStyle} placeholder="e.g. Group session, home program…" value={notes} onChange={e => setNotes(e.target.value)} />
           </div>
         </div>
 
         <div className="flex justify-end gap-2 px-5 py-3" style={{ borderTop: '1px solid var(--light-gray)', background: SUBTLE_BG, borderRadius: '0 0 0.75rem 0.75rem' }}>
           <button type="button" onClick={onClose} className={BTN_SECONDARY} style={CONTROL_STYLE}>Cancel</button>
-          <button type="button" onClick={handleSave} disabled={saving || !dayOfWeek || !startTime || !endTime}
+          <button type="button" onClick={handleSave} disabled={saving || !dayOfWeek || !startTime || !endTime || badRange}
             className={BTN_PRIMARY} style={{ background: 'var(--teal)' }}>
-            {saving ? 'Saving…' : 'Add slot'}
+            {saving ? <><Loader2 size={14} className="animate-spin" aria-hidden /> Saving…</> : <><Plus size={14} aria-hidden /> Add slot</>}
           </button>
         </div>
       </div>
@@ -1330,45 +1420,86 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
               so the row (and its remove button) stays on screen on a phone. */}
           {customSlots.length > 0 && (
             <div style={{ borderTop: '1px solid var(--light-gray)' }}>
-              <p className="px-4 pt-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--mid-gray)' }}>
-                Custom slots <span className="tabular-nums font-normal">· {customSlots.length}</span>
-              </p>
-              <ul>
+              <div className="flex items-center gap-2 px-4 pt-3 pb-2">
+                <span aria-hidden className="inline-flex items-center justify-center w-6 h-6 rounded-md flex-shrink-0" style={{ background: 'var(--pale-teal)', color: 'var(--teal)' }}>
+                  <Clock size={13} />
+                </span>
+                <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--charcoal)' }}>Custom slots</p>
+                <span className="rounded-full px-1.5 py-px text-[10px] font-semibold tabular-nums" style={{ background: SUBTLE_BG, color: 'var(--mid-gray)', border: '1px solid var(--light-gray)' }}>
+                  {customSlots.length}
+                </span>
+                <span className="hidden sm:inline text-[11px]" style={{ color: 'var(--mid-gray)' }}>&middot; weekly, at times off the hour</span>
+              </div>
+              <ul className="px-3 pb-3 flex flex-col gap-1.5">
                 {[...customSlots]
                   .sort((x, y) => (DAY_KEYS.indexOf(x.dayOfWeek) - DAY_KEYS.indexOf(y.dayOfWeek)) || String(x.startTime).localeCompare(String(y.startTime)))
-                  .map(slot => (
-                  <li key={slot.id} className="px-4 py-2 transition-colors hover:bg-gray-50/70" style={{ borderTop: '1px solid #EEF2F1' }}>
-                    {/* One row per custom slot: the whole slot is laid out
-                        across the row. */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', minWidth: 0 }}>
+                  .map(slot => {
+                    const len = fmtDuration(hhmmToMin(slot.endTime) - hhmmToMin(slot.startTime))
+                    const pay = slot.patient && !slot.disabled ? PAY_STYLE[payOf(slot)] : null
+                    return (
+                  <li key={slot.id} className="group rounded-lg px-2.5 py-2 transition-colors hover:bg-gray-50/80" style={{ border: '1px solid #EEF2F1', background: '#fff' }}>
+                    {/* One row per custom slot: day, time, who, notes, remove.
+                        Wraps on a phone with the remove button kept at the end. */}
+                    <div className="flex items-center gap-x-3 gap-y-1.5 flex-wrap min-w-0">
                       <span
                         title={DAY_LABEL[slot.dayOfWeek] || slot.dayOfWeek}
-                        style={{ flex: '0 0 auto', minWidth: '2.6rem', textAlign: 'center', fontSize: '0.68rem', fontWeight: 700, color: 'var(--teal)', background: 'var(--pale-teal)', border: '1px solid var(--light-gray)', borderRadius: '999px', padding: '0.1rem 0.5rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}
+                        className="flex-shrink-0 inline-flex items-center justify-center rounded-md text-[10.5px] font-bold uppercase"
+                        style={{ minWidth: '2.6rem', height: '1.6rem', padding: '0 0.45rem', letterSpacing: '0.04em', color: 'var(--teal)', background: 'var(--pale-teal)' }}
                       >
                         {DAY_SHORT[slot.dayOfWeek] || slot.dayOfWeek}
                       </span>
-                      <span style={{ flex: '0 0 auto', fontSize: '0.78rem', fontWeight: 600, color: 'var(--charcoal)', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
-                        {formatTime(slot.startTime)} – {formatTime(slot.endTime)}
+                      <span className="flex-shrink-0 inline-flex items-baseline gap-1.5 whitespace-nowrap">
+                        <span className="text-[13px] font-semibold tabular-nums" style={{ color: 'var(--charcoal)' }}>
+                          {formatTime(slot.startTime)} – {formatTime(slot.endTime)}
+                        </span>
+                        {len && <span className="text-[11px] tabular-nums" style={{ color: 'var(--mid-gray)' }}>{len}</span>}
                       </span>
-                      <span
-                        title={slot.patient ? personLabel(slot.patient) : undefined}
-                        style={{ flex: '1 1 auto', minWidth: 0, fontSize: '0.78rem', color: slot.patient ? 'var(--charcoal)' : 'var(--mid-gray)', fontStyle: slot.patient ? 'normal' : 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {slot.patient ? personLabel(slot.patient) : 'No patient'}
-                        {slot.notes && <span style={{ marginLeft: '0.5rem', fontSize: '0.72rem', color: 'var(--mid-gray)', fontStyle: 'normal' }}>· {slot.notes}</span>}
+                      <span className="flex-1 min-w-[10rem] flex items-center gap-2">
+                        {slot.disabled ? (
+                          <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold"
+                            style={{ background: OFF_HATCH, color: OFF_FG, border: `1px solid ${OFF_BORDER}` }}>
+                            <Ban size={11} aria-hidden /> Unavailable
+                          </span>
+                        ) : slot.patient ? (
+                          <>
+                            <Avatar text={initials(slot.patient.firstName, slot.patient.lastName)} size={22} />
+                            <span className="truncate text-[13px] font-medium" style={{ color: 'var(--charcoal)' }} title={personLabel(slot.patient)}>
+                              {personLabel(slot.patient)}
+                            </span>
+                            {pay && (
+                              <span className="flex-shrink-0 rounded px-1.5 py-px text-[10px] font-bold uppercase"
+                                title={`Payment type: ${pay.label}`}
+                                style={{ background: pay.bg, color: pay.fg, border: `1px solid ${pay.border}`, letterSpacing: '0.03em' }}>
+                                {pay.label}
+                              </span>
+                            )}
+                          </>
+                        ) : (
+                          <span className="inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold"
+                            style={{ background: OPEN_BG, color: OPEN_FG, border: `1px solid ${OPEN_BORDER}` }}>
+                            Open
+                          </span>
+                        )}
+                        {slot.notes && (
+                          <span className="truncate text-[11.5px]" style={{ color: 'var(--mid-gray)' }} title={slot.notes}>
+                            &middot; {slot.notes}
+                          </span>
+                        )}
                       </span>
                       <button
                         type="button"
                         onClick={() => onDeleteSlot(slot.id)}
-                        className="dk-icon-btn dk-btn"
-                        style={{ flex: '0 0 auto', marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '1.75rem', height: '1.75rem', borderRadius: '0.4rem', cursor: 'pointer', color: '#DC2626' }}
-                        title="Remove custom slot"
-                        aria-label="Remove custom slot"
+                        className="dk-btn flex-shrink-0 ml-auto inline-flex items-center justify-center w-7 h-7 rounded-md transition-colors hover:bg-red-50 focus-visible:outline-2"
+                        style={{ color: '#DC2626' }}
+                        title={`Remove the ${DAY_LABEL[slot.dayOfWeek] || slot.dayOfWeek} ${formatTime(slot.startTime)} custom slot`}
+                        aria-label={`Remove the ${DAY_LABEL[slot.dayOfWeek] || slot.dayOfWeek} ${formatTime(slot.startTime)} custom slot`}
                       >
                         <X size={14} />
                       </button>
                     </div>
                   </li>
-                ))}
+                    )
+                  })}
               </ul>
             </div>
           )}
@@ -1398,6 +1529,7 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
           staff={staff}
           activeBranch={activeBranch}
           workDays={configuredDays}
+          hourlyStarts={timeSlots}
           onClose={() => setShowCustomModal(false)}
           onSave={async data => {
             await onSaveSlot(data)
