@@ -2807,10 +2807,15 @@ model CertificateSignatory {
   name          String
   /// "therapist" (Attending Therapist) or "manager" (Clinic Manager).
   role          String
+  /// "ALL" | "SBEA" | "SBGH". One roster served both clinics, so East's dialog
+  /// offered Greenhills' clinic manager and the other way round. "ALL" keeps
+  /// somebody visible at every branch, which is what every existing row means.
+  branch        String   @default("ALL")
   /// Relative to the uploads volume; null when none has been uploaded.
   signaturePath String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @default(now()) @updatedAt
 
   @@index([role])
+  @@index([branch])
 }

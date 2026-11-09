@@ -12,7 +12,7 @@
 // authenticated; the files it serves are deliberately not reachable through
 // the public /api/uploads route (see lib/certificate-files.ts).
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Award, Loader2, Trash2, Settings, Plus, X } from 'lucide-react'
 
 const API = '/api/patients/certificates'
@@ -35,15 +35,34 @@ interface Signatory {
   name: string
   role: 'therapist' | 'manager' | string
   staffId: string
+  /** "ALL" | "SBEA" | "SBGH" — which clinic's dialog offers this person. */
+  branch: string
   hasSignature: boolean
 }
 
-interface StaffOption { id: string; name: string; jobTitle: string; department: string }
+interface StaffOption {
+  id: string; name: string; jobTitle: string; department: string
+  /** Every branch they work at, primary first. */
+  branches?: string[]
+}
+
+/** Someone who has actually treated this patient. */
+interface Clinician {
+  id: string; name: string; jobTitle: string; department: string
+  sessions: number; lastSeen: string
+}
 
 interface Settings {
   signatories: Signatory[]
   services: string[]
   staff: StaffOption[]
+  /** Present only when the settings were fetched for a particular patient. */
+  clinicians?: Clinician[]
+  patientBranch?: string
+}
+
+const BRANCH_LABEL: Record<string, string> = {
+  ALL: 'Both branches', SBEA: 'East', SBGH: 'Greenhills',
 }
 
 function fmt(iso: string): string {
@@ -280,15 +299,19 @@ function IssueDialog({
   const [name, setName] = useState(`${patient.firstName ?? ''} ${patient.lastName ?? ''}`.replace(/\s+/g, ' ').trim())
   const [service, setService] = useState('')
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
-  const [therapistId, setTherapistId] = useState('')
+  // Either a signatory (carries an e-signature) or a plain name — see
+  // TherapistPicker.
+  const [therapist, setTherapist] = useState<{ signatoryId: string; name: string }>({ signatoryId: '', name: '' })
   const [managerId, setManagerId] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
   useEffect(() => {
-    fetch(`${API}/settings`, { cache: 'no-store' })
+    // With the patient id, the settings also come back with that patient's own
+    // clinicians and the branch they are seen at.
+    fetch(`${API}/settings?patientId=${encodeURIComponent(patient.id)}`, { cache: 'no-store' })
       .then(jsonOrThrow).then(setSettings).catch((e) => setErr((e as Error).message))
-  }, [])
+  }, [patient.id])
 
   async function submit() {
     setErr(null)
@@ -306,7 +329,9 @@ function IssueDialog({
           patientName: name.trim(),
           service,
           dischargeDate: date,
-          therapistSignatoryId: therapistId || null,
+          therapistSignatoryId: therapist.signatoryId || null,
+          // Sent when the chosen person is not on the signatory list.
+          therapistName: therapist.signatoryId ? undefined : (therapist.name || undefined),
           managerSignatoryId: managerId || null,
         }),
       }).then(jsonOrThrow)
@@ -321,8 +346,17 @@ function IssueDialog({
     }
   }
 
+  // Signatories this branch actually uses. "ALL" is everybody's, which is what
+  // every row meant before branches existed.
+  const branch = settings?.patientBranch ?? ''
   const options = (role: string) =>
-    (settings?.signatories ?? []).filter((s) => s.role === role)
+    (settings?.signatories ?? [])
+      .filter((s) => s.role === role)
+      .filter((s) => !branch || !s.branch || s.branch === 'ALL' || s.branch === branch)
+
+  // The roster for the type-ahead, scoped the same way.
+  const branchStaff = (settings?.staff ?? [])
+    .filter((st) => !branch || !st.branches?.length || st.branches.includes(branch))
 
   return (
     <Modal title="Discharge Certificate" onClose={onClose} width={480}>
@@ -342,8 +376,15 @@ function IssueDialog({
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={inputStyle} />
       </Field>
 
-      <Field label="Attending therapist">
-        <SignatorySelect value={therapistId} onChange={setTherapistId} options={options('therapist')} />
+      <Field label="Attending therapist"
+        hint="Starts with the clinicians who have actually seen this patient. Type to search the rest of the roster.">
+        <TherapistPicker
+          value={therapist}
+          onChange={setTherapist}
+          signatories={options('therapist')}
+          clinicians={settings?.clinicians ?? []}
+          staff={branchStaff}
+        />
       </Field>
 
       <Field label="Clinic manager">
@@ -370,6 +411,146 @@ function IssueDialog({
         </button>
       </div>
     </Modal>
+  )
+}
+
+/**
+ * Pick the attending therapist by typing their name.
+ *
+ * The old control was a plain <select> over the curated signatory list, which
+ * is why "his therapist's name does not come out": the person who actually ran
+ * the sessions is rarely on that list, and there was no way to name anyone
+ * else. This offers, in order of how likely each is to be the answer:
+ *
+ *   1. the clinicians who have treated THIS patient, most recently seen first
+ *   2. the configured signatories for this branch — these carry e-signatures
+ *   3. everyone else on the branch's roster
+ *
+ * Picking a signatory keeps their uploaded signature. Picking anybody else
+ * prints their name over a clear rule, which is what an unsigned certificate
+ * already does, so no option here produces a broken document.
+ */
+function TherapistPicker({
+  value, onChange, signatories, clinicians, staff,
+}: {
+  value: { signatoryId: string; name: string }
+  onChange: (v: { signatoryId: string; name: string }) => void
+  signatories: Signatory[]
+  clinicians: Clinician[]
+  staff: StaffOption[]
+}) {
+  const [query, setQuery] = useState('')
+  const [open, setOpen] = useState(false)
+  const boxRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const away = (e: PointerEvent) => {
+      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false)
+    }
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('pointerdown', away)
+    document.addEventListener('keydown', key)
+    return () => {
+      document.removeEventListener('pointerdown', away)
+      document.removeEventListener('keydown', key)
+    }
+  }, [])
+
+  const q = query.trim().toLowerCase()
+  const hit = (t: string) => !q || t.toLowerCase().includes(q)
+
+  // A clinician who is also a signatory is shown once, as the signatory, so
+  // choosing them keeps their e-signature.
+  const sigByStaff = new Map(signatories.filter(s => s.staffId).map(s => [s.staffId, s]))
+  const sigNames = new Set(signatories.map(s => s.name.toLowerCase()))
+
+  const groups: { label: string; items: { key: string; signatoryId: string; name: string; meta: string; signed: boolean }[] }[] = [
+    {
+      label: 'Has treated this patient',
+      items: clinicians.filter(c => hit(c.name) || hit(c.jobTitle)).map(c => {
+        const sig = sigByStaff.get(c.id)
+        return {
+          key: `c-${c.id}`,
+          signatoryId: sig?.id ?? '',
+          name: sig?.name ?? c.name,
+          meta: `${c.jobTitle || c.department} · ${c.sessions} session${c.sessions === 1 ? '' : 's'}, last ${c.lastSeen}`,
+          signed: !!sig?.hasSignature,
+        }
+      }),
+    },
+    {
+      label: 'Signatories',
+      items: signatories
+        .filter(s => !clinicians.some(c => c.id === s.staffId))
+        .filter(s => hit(s.name))
+        .map(s => ({ key: `s-${s.id}`, signatoryId: s.id, name: s.name, meta: BRANCH_LABEL[s.branch] ?? '', signed: s.hasSignature })),
+    },
+    {
+      label: 'All staff',
+      items: !q ? [] : staff
+        .filter(st => !clinicians.some(c => c.id === st.id) && !sigNames.has(st.name.toLowerCase()))
+        .filter(st => hit(st.name) || hit(st.jobTitle))
+        .slice(0, 25)
+        .map(st => ({ key: `t-${st.id}`, signatoryId: '', name: st.name, meta: st.jobTitle || st.department, signed: false })),
+    },
+  ].filter(g => g.items.length > 0)
+
+  const chosen = value.signatoryId
+    ? signatories.find(s => s.id === value.signatoryId)?.name ?? value.name
+    : value.name
+
+  return (
+    <div ref={boxRef} style={{ position: 'relative' }}>
+      <input
+        value={open ? query : chosen}
+        placeholder="Type a name to search…"
+        onFocus={() => { setQuery(''); setOpen(true) }}
+        onChange={(e) => { setQuery(e.target.value); setOpen(true) }}
+        style={inputStyle}
+        autoComplete="off"
+      />
+      {!!chosen && !open && (
+        <button type="button" onClick={() => onChange({ signatoryId: '', name: '' })}
+          title="Clear" aria-label="Clear the attending therapist"
+          style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#9CA3AF' }}>
+          <X size={14} />
+        </button>
+      )}
+      {open && (
+        <div style={{
+          position: 'absolute', zIndex: 60, top: 'calc(100% + 4px)', left: 0, right: 0,
+          background: '#fff', border: '1px solid var(--light-gray)', borderRadius: 8,
+          boxShadow: '0 10px 28px rgba(15,23,42,0.18)', maxHeight: 260, overflowY: 'auto', padding: 4,
+        }}>
+          <button type="button" onMouseDown={() => { onChange({ signatoryId: '', name: '' }); setOpen(false) }}
+            style={{ display: 'block', width: '100%', textAlign: 'left', padding: '0.4rem 0.6rem', fontSize: '0.78rem', borderRadius: 6, cursor: 'pointer', color: 'var(--mid-gray)' }}>
+            — none —
+          </button>
+          {groups.length === 0 && (
+            <p style={{ padding: '0.5rem 0.6rem', fontSize: '0.75rem', color: 'var(--mid-gray)' }}>
+              Nobody matches &ldquo;{query}&rdquo;.
+            </p>
+          )}
+          {groups.map(g => (
+            <div key={g.label}>
+              <p style={{ padding: '0.35rem 0.6rem 0.15rem', fontSize: '0.62rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#9CA3AF' }}>
+                {g.label}
+              </p>
+              {g.items.map(it => (
+                <button key={it.key} type="button" className="hover:bg-gray-50"
+                  onMouseDown={() => { onChange({ signatoryId: it.signatoryId, name: it.name }); setOpen(false) }}
+                  style={{ display: 'block', width: '100%', textAlign: 'left', padding: '0.4rem 0.6rem', borderRadius: 6, cursor: 'pointer' }}>
+                  <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--charcoal)' }}>
+                    {it.name}{it.signed ? '' : <span style={{ color: '#9CA3AF' }}>  (no e-signature)</span>}
+                  </span>
+                  {it.meta && <span style={{ display: 'block', fontSize: '0.68rem', color: '#9CA3AF' }}>{it.meta}</span>}
+                </button>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -438,7 +619,7 @@ function SettingsDialog({ onClose }: { onClose: () => void }) {
       await fetch(`${API}/settings`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ signatories: rows }),
+        body: JSON.stringify({ signatories: rows }),   // branch travels with each row
       }).then(jsonOrThrow)
       // Re-read so new rows come back with their server-side ids, which is
       // what a signature upload needs.
@@ -508,6 +689,17 @@ function SettingsDialog({ onClose }: { onClose: () => void }) {
               <option value="manager">Clinic Manager</option>
             </select>
 
+            {/* Which clinic offers this person. One shared roster meant East's
+                dialog listed Greenhills' clinic manager and the other way
+                round. */}
+            <select value={r.branch ?? 'ALL'} onChange={(e) => patch(i, { branch: e.target.value })}
+              title="Which branch's certificates this person signs"
+              style={{ ...inputStyle, flex: '0 0 135px', fontSize: '0.78rem' }}>
+              <option value="ALL">Both branches</option>
+              <option value="SBEA">East only</option>
+              <option value="SBGH">Greenhills only</option>
+            </select>
+
             <div className="flex items-center gap-2 flex-shrink-0">
               {r.id && r.hasSignature ? (
                 <>
@@ -548,7 +740,7 @@ function SettingsDialog({ onClose }: { onClose: () => void }) {
       </div>
 
       <button
-        onClick={() => setRows((rs) => [...rs, { id: '', name: '', role: 'therapist', staffId: '', hasSignature: false }])}
+        onClick={() => setRows((rs) => [...rs, { id: '', name: '', role: 'therapist', staffId: '', branch: 'ALL', hasSignature: false }])}
         className="mt-3 px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1"
         style={{ background: '#fff', border: '1px solid var(--light-gray)', color: 'var(--mid-gray)' }}>
         <Plus size={12} /> Add signatory
