@@ -14,14 +14,55 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   FileText, Search, Plus, Trash2, Loader2, Download, Upload, Settings as SettingsIcon,
-  X, PenLine, Eraser, Building2, Package, Stethoscope, AlertCircle, Check,
+  X, PenLine, Eraser, Building2, Package, Stethoscope, AlertCircle, Check, FileSignature,
 } from 'lucide-react'
 import {
   QUOTATION_BRANCHES, VALIDITY_OPTIONS, DOWNPAYMENT_OPTIONS, priceQuotation, formatPeso,
   type DiscountKind, type QuotationLineInput,
 } from '@/lib/quotations/pricing'
+import { HR_PAGE_CLASS, HR_PAGE_STYLE, HrShimmerStyle, StatCard, hrBtn } from '@/components/ui/hr-look'
 
 type Tab = 'new' | 'saved' | 'settings'
+
+/* ── HR Hub look: shared bits for the three tabs ─────────────────── */
+const CARD = 'rounded-lg border bg-white'
+const BORDER: React.CSSProperties = { borderColor: 'var(--light-gray)' }
+const LINE: React.CSSProperties = { borderColor: 'var(--hr-line)' }
+const FIELD_LABEL = 'block text-[11px] font-bold uppercase tracking-[.4px] mb-1'
+const FIELD = 'w-full h-9 px-3 rounded-lg border bg-white text-[13px] outline-none transition-shadow focus:border-[var(--teal)] focus:shadow-[0_0_0_3px_rgba(74,128,115,0.12)]'
+const TH = 'px-3 py-2 border-b text-[11px] font-bold uppercase tracking-[.5px] whitespace-nowrap'
+const TH_STYLE: React.CSSProperties = { color: 'var(--mid-gray)', background: 'var(--hr-head)', borderColor: 'var(--light-gray)' }
+const seg = (on: boolean): React.CSSProperties => (on ? { background: 'var(--teal)', color: '#fff' } : { background: '#fff', color: 'var(--mid-gray)' })
+const KIND_PILL = {
+  SERVICE: { background: 'var(--pale-teal)', color: 'var(--teal)' },
+  PRODUCT: { background: '#eff6ff', color: '#1d4ed8' },
+} as const
+/** Short branch names for cards and pills; the full letterhead name stays in the pickers. */
+const BRANCH_SHORT: Record<string, string> = { AHEA: 'East', AHGH: 'Greenhills', VERDANA: 'Verdana', INSTITUTE: 'Institute' }
+
+/** Section header inside a white card: title, optional count, one-line help. */
+function CardHead({ title, count, help, children }: { title: string; count?: string; help?: string; children?: React.ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2 px-4 pt-3.5 pb-3">
+      <div className="min-w-0">
+        <h2 className="text-[15px] font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+          {title}
+          {count && <span className="ml-1.5 text-xs font-semibold" style={{ color: 'var(--mid-gray)', fontFamily: 'var(--font-body)' }}>{count}</span>}
+        </h2>
+        {help && <p className="text-xs mt-0.5" style={{ color: 'var(--mid-gray)' }}>{help}</p>}
+      </div>
+      {children}
+    </div>
+  )
+}
+
+function ErrorNote({ text }: { text: string }) {
+  return (
+    <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg border text-[13px]" style={{ background: '#fef2f2', borderColor: '#fecaca', borderLeft: '4px solid #dc2626', color: '#991b1b' }}>
+      <AlertCircle size={15} className="mt-0.5 shrink-0" /><span>{text}</span>
+    </div>
+  )
+}
 
 interface ServiceResult {
   id: string
@@ -176,14 +217,14 @@ function SignaturePad({ onChange }: { onChange: (dataUrl: string | null) => void
         onPointerMove={move}
         onPointerUp={end}
         onPointerLeave={end}
-        className="w-full rounded-xl border bg-white touch-none"
-        style={{ height: 120, borderColor: 'var(--light-gray)', cursor: 'crosshair' }}
+        className="w-full rounded-lg border bg-white touch-none"
+        style={{ height: 120, borderColor: 'var(--light-gray)', borderStyle: hasInk ? 'solid' : 'dashed', cursor: 'crosshair' }}
       />
       <div className="flex items-center justify-between mt-1.5">
-        <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+        <span className="text-xs font-semibold" style={{ color: hasInk ? '#047857' : 'var(--hr-faint)' }}>
           {hasInk ? 'Signature captured' : 'Sign inside the box'}
         </span>
-        <button type="button" onClick={clear} className="flex items-center gap-1 text-xs hover:underline" style={{ color: 'var(--mid-gray)' }}>
+        <button type="button" onClick={clear} className="flex items-center gap-1 text-xs font-semibold hover:text-[var(--teal)]" style={{ color: 'var(--mid-gray)' }}>
           <Eraser size={12} /> Clear
         </button>
       </div>
@@ -199,40 +240,36 @@ export default function QuotationsPage() {
   const [tab, setTab] = useState<Tab>('new')
 
   return (
-    <div className="max-w-[1500px] mx-auto">
-      <div className="mb-5">
-        <h1 className="text-2xl font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
-          Quotations
+    <div className={HR_PAGE_CLASS} style={HR_PAGE_STYLE}>
+      <HrShimmerStyle />
+      <div className="min-w-0">
+        <h1 className="text-2xl font-bold leading-tight flex items-center gap-2" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+          <FileSignature size={22} style={{ color: 'var(--teal)' }} /> Quotations
         </h1>
-        <p className="text-sm mt-1" style={{ color: 'var(--mid-gray)' }}>
+        <p className="mt-1 text-[13px] max-w-2xl" style={{ color: 'var(--mid-gray)' }}>
           Build a quotation from your services and products, and generate it on the branch letterhead.
         </p>
       </div>
 
-      <div className="flex gap-1 mb-5 p-1 rounded-xl w-fit" style={{ background: 'var(--light-gray)' }}>
-        {([
-          { key: 'new', label: 'New Quotation', icon: FileText },
-          { key: 'saved', label: 'Saved', icon: Check },
-          { key: 'settings', label: 'Settings', icon: SettingsIcon },
-        ] as { key: Tab; label: string; icon: typeof FileText }[]).map(t => {
-          const Icon = t.icon
-          const active = tab === t.key
-          return (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all"
-              style={{
-                background: active ? 'white' : 'transparent',
-                color: active ? 'var(--teal)' : 'var(--mid-gray)',
-                boxShadow: active ? '0 1px 3px rgba(0,0,0,0.1)' : undefined,
-              }}
-            >
-              <Icon size={15} />
-              {t.label}
-            </button>
-          )
-        })}
+      {/* Tabs: one row, swipes sideways on narrow screens */}
+      <div className="border-b-2" style={{ borderColor: 'var(--light-gray)' }}>
+        <div className="flex items-end -mb-[2px] max-w-full overflow-x-auto" role="tablist">
+          {([
+            { key: 'new', label: 'New quotation', icon: FileText },
+            { key: 'saved', label: 'Saved', icon: Check },
+            { key: 'settings', label: 'Settings', icon: SettingsIcon },
+          ] as { key: Tab; label: string; icon: typeof FileText }[]).map(t => {
+            const Icon = t.icon
+            const active = tab === t.key
+            return (
+              <button key={t.key} onClick={() => setTab(t.key)} role="tab" aria-selected={active}
+                className="flex items-center gap-1.5 px-3.5 py-2.5 border-b-2 text-[13px] font-semibold whitespace-nowrap transition-colors hover:text-[var(--teal)]"
+                style={{ fontFamily: 'var(--font-display)', borderColor: active ? 'var(--teal)' : 'transparent', color: active ? 'var(--teal)' : 'var(--mid-gray)' }}>
+                <Icon size={14} /> {t.label}
+              </button>
+            )
+          })}
+        </div>
       </div>
 
       {tab === 'new' && <MakerTab />}
@@ -418,30 +455,32 @@ function MakerTab() {
     }
   }
 
-  const label = 'block text-xs font-medium mb-1.5'
-  const input = 'w-full px-3 py-2.5 rounded-xl border text-sm outline-none'
-  const box: React.CSSProperties = { borderColor: 'var(--light-gray)' }
-  const card = 'rounded-2xl border p-5 bg-white'
+  const label = FIELD_LABEL
+  const input = FIELD
+  const box: React.CSSProperties = BORDER
+  const labelStyle: React.CSSProperties = { color: 'var(--mid-gray)' }
 
   if (done) {
     return (
-      <div className={card} style={box}>
-        <div className="flex items-center gap-2 mb-2">
-          <Check size={18} style={{ color: 'var(--teal)' }} />
-          <h2 className="font-semibold" style={{ color: 'var(--charcoal)' }}>Quotation {done.quotationNumber} saved</h2>
+      <div className={`${CARD} px-4 sm:px-5 py-4 max-w-2xl`} style={{ ...box, borderLeft: '4px solid #059669' }}>
+        <div className="flex items-center gap-2 mb-1">
+          <span className="w-7 h-7 rounded-full flex items-center justify-center shrink-0" style={{ background: '#dcfce7' }}>
+            <Check size={16} style={{ color: '#047857' }} />
+          </span>
+          <h2 className="text-[15px] font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>
+            Quotation <span className="font-mono">{done.quotationNumber}</span> saved
+          </h2>
         </div>
-        <p className="text-sm mb-4" style={{ color: 'var(--mid-gray)' }}>
+        <p className="text-[13px] mb-4" style={{ color: 'var(--mid-gray)' }}>
           Download it as a Word file on the branch letterhead, or start another one.
         </p>
-        <div className="flex gap-2">
-          <a href={`/api/quotations/${done.id}/docx`}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-white"
-            style={{ background: 'var(--teal)' }}>
+        <div className="flex flex-wrap gap-2">
+          <a href={`/api/quotations/${done.id}/docx`} className={hrBtn.primary} style={{ background: 'var(--teal)' }}>
             <Download size={15} /> Download .docx
           </a>
           <button onClick={() => { setDone(null); setLines([]); setRecipientName(''); setContactPerson(''); setRecipientEmail(''); setRecipientPhone(''); setRemarks('') }}
-            className="px-4 py-2.5 rounded-xl text-sm font-medium border" style={box}>
-            New quotation
+            className={hrBtn.outline} style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+            <Plus size={15} /> New quotation
           </button>
         </div>
       </div>
@@ -449,26 +488,27 @@ function MakerTab() {
   }
 
   return (
-    <div className="grid gap-4" style={{ gridTemplateColumns: 'minmax(0,1fr) 340px' }}>
+    <div className="grid gap-4 grid-cols-1 xl:grid-cols-[minmax(0,1fr)_340px] items-start">
       {/* ── Left: items ─────────────────────────────────── */}
-      <div className="space-y-4">
-        <div className={card} style={box}>
-          <div className="flex flex-wrap items-end gap-3 mb-4">
-            <div className="flex-1 min-w-[220px]">
-              <label className={label} style={{ color: 'var(--charcoal)' }}>Branch</label>
+      <div className="space-y-4 min-w-0">
+        <section className={CARD} style={box}>
+          <CardHead title="Add items" help={mode === 'SERVICE' ? 'Services priced at the branch’s current rate.' : 'Products come from the Verdana store.'} />
+          <div className="flex flex-wrap items-end gap-2 px-4 py-2.5 border-y" style={{ background: '#fcfdfa', borderColor: 'var(--light-gray)' }}>
+            <div className="flex-1 min-w-[200px]">
+              <label className={label} style={labelStyle}>Branch</label>
               <div className="relative">
-                <Building2 size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--mid-gray)' }} />
+                <Building2 size={15} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--hr-faint)' }} />
                 <select value={branch} onChange={e => { setBranch(e.target.value); setLines([]) }}
                   className={input + ' pl-9 appearance-none cursor-pointer'} style={box}>
                   {QUOTATION_BRANCHES.map(b => <option key={b.key} value={b.key}>{b.label}</option>)}
                 </select>
               </div>
             </div>
-            <div className="flex rounded-xl overflow-hidden border" style={box}>
+            <div className="flex rounded-lg border overflow-hidden" style={box}>
               {(['SERVICE', 'PRODUCT'] as const).map(m => (
-                <button key={m} onClick={() => { setMode(m); setQuery('') }}
-                  className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium"
-                  style={{ background: mode === m ? 'var(--teal)' : 'white', color: mode === m ? 'white' : 'var(--charcoal)' }}>
+                <button key={m} onClick={() => { setMode(m); setQuery('') }} aria-pressed={mode === m}
+                  className="flex items-center gap-1.5 h-9 px-3.5 text-xs font-semibold whitespace-nowrap"
+                  style={seg(mode === m)}>
                   {m === 'SERVICE' ? <Stethoscope size={14} /> : <Package size={14} />}
                   {m === 'SERVICE' ? 'Services' : 'Products'}
                 </button>
@@ -476,105 +516,110 @@ function MakerTab() {
             </div>
           </div>
 
-          <div className="relative">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--mid-gray)' }} />
-            <input value={query} onChange={e => setQuery(e.target.value)}
-              placeholder={mode === 'SERVICE' ? 'Search services for this branch…' : 'Search Verdana products by name or SKU…'}
-              className={input + ' pl-9'} style={box} />
-            {searching && <Loader2 size={15} className="animate-spin absolute right-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--teal)' }} />}
-          </div>
+          <div className="px-4 py-3">
+            <label className="flex items-center gap-1.5 h-9 px-3 w-full rounded-lg border bg-white focus-within:border-[var(--teal)] focus-within:shadow-[0_0_0_3px_rgba(74,128,115,0.12)]"
+              style={{ borderColor: 'var(--light-gray)', color: 'var(--hr-faint)' }}>
+              <Search size={15} className="flex-shrink-0" />
+              <input value={query} onChange={e => setQuery(e.target.value)}
+                placeholder={mode === 'SERVICE' ? 'Search services for this branch…' : 'Search Verdana products by name or SKU…'}
+                className="flex-1 min-w-0 bg-transparent outline-none text-[13px]" style={{ color: 'var(--charcoal)' }} />
+              {searching && <Loader2 size={15} className="animate-spin flex-shrink-0" style={{ color: 'var(--teal)' }} />}
+              {!searching && query && <button type="button" onClick={() => setQuery('')} title="Clear search"><X size={14} /></button>}
+            </label>
 
-          {query.trim().length >= 2 && (
-            <div className="mt-2 rounded-xl border max-h-64 overflow-y-auto" style={box}>
-              {mode === 'SERVICE' ? (
-                services.length === 0 ? <p className="px-3 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>No services match.</p>
-                  : services.map(s => (
-                    <button key={s.id} onClick={() => addService(s)}
-                      className="w-full flex items-center justify-between gap-3 px-3 py-2.5 text-left hover:bg-gray-50 border-b last:border-0" style={box}>
-                      <span className="min-w-0">
-                        <span className="block text-sm truncate" style={{ color: 'var(--charcoal)' }}>{s.name}</span>
-                        <span className="block text-xs" style={{ color: 'var(--mid-gray)' }}>{s.department} · {s.branch}</span>
-                      </span>
-                      <span className="flex items-center gap-2 shrink-0">
-                        <span className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>{formatPeso(effectiveServicePrice(s, serviceBranch))}</span>
-                        <Plus size={14} style={{ color: 'var(--teal)' }} />
-                      </span>
-                    </button>
-                  ))
-              ) : (
-                products.length === 0 ? <p className="px-3 py-3 text-xs" style={{ color: 'var(--mid-gray)' }}>No products match.</p>
-                  : products.map(p => (
-                    <button key={p.id} onClick={() => addProduct(p)}
-                      className="w-full flex items-center justify-between gap-3 px-3 py-2.5 text-left hover:bg-gray-50 border-b last:border-0" style={box}>
-                      <span className="flex items-center gap-2 min-w-0">
-                        {p.imageUrl
-                          // eslint-disable-next-line @next/next/no-img-element
-                          ? <img src={p.imageUrl} alt="" className="w-8 h-8 rounded object-cover shrink-0" />
-                          : <span className="w-8 h-8 rounded shrink-0" style={{ background: 'var(--off-white)' }} />}
+            {query.trim().length >= 2 && (
+              <div className="mt-2 rounded-lg border max-h-64 overflow-y-auto" style={box}>
+                {mode === 'SERVICE' ? (
+                  services.length === 0 ? <p className="px-3 py-3 text-xs" style={{ color: 'var(--hr-faint)' }}>{searching ? 'Searching…' : 'No services match.'}</p>
+                    : services.map(s => (
+                      <button key={s.id} onClick={() => addService(s)}
+                        className="w-full flex items-center justify-between gap-3 px-3 py-2.5 text-left hover:bg-[#f3f8ea] border-b last:border-0" style={LINE}>
                         <span className="min-w-0">
-                          <span className="block text-sm truncate" style={{ color: 'var(--charcoal)' }}>{p.name}</span>
-                          <span className="block text-xs font-mono" style={{ color: 'var(--mid-gray)' }}>{p.sku}</span>
+                          <span className="block text-[13px] font-semibold truncate" style={{ color: 'var(--charcoal)' }}>{s.name}</span>
+                          <span className="block text-[11.5px]" style={{ color: 'var(--mid-gray)' }}>{s.department} · {s.branch}</span>
                         </span>
-                      </span>
-                      <span className="flex items-center gap-2 shrink-0">
-                        <span className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>{formatPeso(num(p.sellingPrice))}</span>
-                        <Plus size={14} style={{ color: 'var(--teal)' }} />
-                      </span>
-                    </button>
-                  ))
-              )}
-            </div>
-          )}
-        </div>
+                        <span className="flex items-center gap-2 shrink-0">
+                          <span className="text-[13px] font-semibold tabular-nums" style={{ color: 'var(--charcoal)' }}>{formatPeso(effectiveServicePrice(s, serviceBranch))}</span>
+                          <span className="w-6 h-6 rounded-md flex items-center justify-center" style={{ background: 'var(--pale-teal)' }}><Plus size={13} style={{ color: 'var(--teal)' }} /></span>
+                        </span>
+                      </button>
+                    ))
+                ) : (
+                  products.length === 0 ? <p className="px-3 py-3 text-xs" style={{ color: 'var(--hr-faint)' }}>{searching ? 'Searching…' : 'No products match.'}</p>
+                    : products.map(p => (
+                      <button key={p.id} onClick={() => addProduct(p)}
+                        className="w-full flex items-center justify-between gap-3 px-3 py-2.5 text-left hover:bg-[#f3f8ea] border-b last:border-0" style={LINE}>
+                        <span className="flex items-center gap-2 min-w-0">
+                          {p.imageUrl
+                            // eslint-disable-next-line @next/next/no-img-element
+                            ? <img src={p.imageUrl} alt="" className="w-8 h-8 rounded-md object-cover shrink-0" />
+                            : <span className="w-8 h-8 rounded-md shrink-0 flex items-center justify-center" style={{ background: 'var(--off-white)' }}><Package size={14} style={{ color: 'var(--hr-faint)' }} /></span>}
+                          <span className="min-w-0">
+                            <span className="block text-[13px] font-semibold truncate" style={{ color: 'var(--charcoal)' }}>{p.name}</span>
+                            <span className="block text-[11.5px] font-mono" style={{ color: 'var(--mid-gray)' }}>{p.sku}</span>
+                          </span>
+                        </span>
+                        <span className="flex items-center gap-2 shrink-0">
+                          <span className="text-[13px] font-semibold tabular-nums" style={{ color: 'var(--charcoal)' }}>{formatPeso(num(p.sellingPrice))}</span>
+                          <span className="w-6 h-6 rounded-md flex items-center justify-center" style={{ background: 'var(--pale-teal)' }}><Plus size={13} style={{ color: 'var(--teal)' }} /></span>
+                        </span>
+                      </button>
+                    ))
+                )}
+              </div>
+            )}
+          </div>
+        </section>
 
         {/* Lines */}
-        <div className={card} style={box}>
-          <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--charcoal)' }}>
-            Items ({lines.length})
-          </h3>
+        <section className={CARD} style={box}>
+          <CardHead title="Items" count={String(lines.length)} help="Set a discount per line, or one for everything below." />
           {lines.length === 0 ? (
-            <p className="text-sm py-6 text-center" style={{ color: 'var(--mid-gray)' }}>
-              Search above to add services or products.
-            </p>
+            <div className="mx-4 mb-4 rounded-lg border border-dashed px-4 py-8 text-center" style={box}>
+              <Search size={18} className="mx-auto mb-1.5" style={{ color: 'var(--hr-faint)' }} />
+              <p className="text-[13px]" style={{ color: 'var(--mid-gray)' }}>Search above to add services or products.</p>
+            </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
+            <div className="overflow-x-auto border-t" style={box}>
+              <table className="w-full text-xs" style={{ borderCollapse: 'separate', borderSpacing: 0, minWidth: 640 }}>
                 <thead>
-                  <tr style={{ background: 'var(--off-white)' }}>
-                    <th className="text-left px-2 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>Item</th>
-                    <th className="text-right px-2 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>Gross</th>
-                    <th className="text-left px-2 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>Line discount</th>
-                    <th className="text-right px-2 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>Discounted</th>
-                    <th className="text-center px-2 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>Qty</th>
-                    <th className="text-right px-2 py-2 font-semibold" style={{ color: 'var(--charcoal)' }}>Total</th>
-                    <th />
+                  <tr>
+                    <th className={`${TH} text-left`} style={TH_STYLE}>Item</th>
+                    <th className={`${TH} text-right`} style={TH_STYLE}>Gross</th>
+                    <th className={`${TH} text-left`} style={TH_STYLE}>Line discount</th>
+                    <th className={`${TH} text-right`} style={TH_STYLE}>Discounted</th>
+                    <th className={`${TH} text-center`} style={TH_STYLE}>Qty</th>
+                    <th className={`${TH} text-right`} style={TH_STYLE}>Total</th>
+                    <th className={TH} style={TH_STYLE} />
                   </tr>
                 </thead>
                 <tbody>
                   {totals.lines.map((priced, i) => {
                     const l = lines[i]
+                    const td = 'px-3 py-2.5 border-b align-middle'
                     return (
-                      <tr key={l.key} className="border-b" style={box}>
-                        <td className="px-2 py-2">
+                      <tr key={l.key} className="hover:bg-[#fafbf7]">
+                        <td className={td} style={LINE}>
                           <div className="flex items-center gap-2">
                             {l.kind === 'PRODUCT' && l.imageUrl && (
                               // eslint-disable-next-line @next/next/no-img-element
-                              <img src={l.imageUrl} alt="" className="w-7 h-7 rounded object-cover" />
+                              <img src={l.imageUrl} alt="" className="w-7 h-7 rounded-md object-cover" />
                             )}
-                            <div>
-                              <span className="block" style={{ color: 'var(--charcoal)' }}>{l.name}</span>
-                              <span className="block" style={{ color: 'var(--mid-gray)' }}>
-                                {l.kind === 'SERVICE' ? l.department : l.sku}
+                            <div className="min-w-0">
+                              <span className="block font-semibold" style={{ color: 'var(--charcoal)' }}>{l.name}</span>
+                              <span className="flex items-center gap-1.5 mt-0.5">
+                                <span className="px-1.5 py-px rounded text-[10px] font-bold uppercase tracking-[.3px]" style={KIND_PILL[l.kind]}>{l.kind === 'SERVICE' ? 'Service' : 'Product'}</span>
+                                <span className={l.kind === 'PRODUCT' ? 'font-mono' : undefined} style={{ color: 'var(--mid-gray)' }}>{l.kind === 'SERVICE' ? l.department : l.sku}</span>
                               </span>
                             </div>
                           </div>
                         </td>
-                        <td className="px-2 py-2 text-right" style={{ color: 'var(--charcoal)' }}>{formatPeso(l.grossPrice)}</td>
-                        <td className="px-2 py-2">
+                        <td className={`${td} text-right tabular-nums whitespace-nowrap`} style={{ ...LINE, color: 'var(--charcoal)' }}>{formatPeso(l.grossPrice)}</td>
+                        <td className={td} style={LINE}>
                           <div className="flex items-center gap-1">
                             <select value={l.lineDiscountType || 'NONE'}
                               onChange={e => update(l.key, { lineDiscountType: e.target.value as DiscountKind })}
-                              className="px-1.5 py-1 rounded-lg border text-xs outline-none" style={box}>
+                              className="h-7 px-1.5 rounded-md border bg-white text-xs outline-none focus:border-[var(--teal)]" style={box}>
                               <option value="NONE">—</option>
                               <option value="PERCENT">%</option>
                               <option value="AMOUNT">₱</option>
@@ -582,25 +627,25 @@ function MakerTab() {
                             {l.lineDiscountType && l.lineDiscountType !== 'NONE' && (
                               <input type="number" min="0" step="0.01" value={l.lineDiscountValue ?? ''}
                                 onChange={e => update(l.key, { lineDiscountValue: parseFloat(e.target.value) || 0 })}
-                                className="w-16 px-1.5 py-1 rounded-lg border text-xs outline-none" style={box} />
+                                className="w-16 h-7 px-1.5 rounded-md border bg-white text-xs outline-none focus:border-[var(--teal)]" style={box} />
                             )}
                           </div>
                         </td>
-                        <td className="px-2 py-2 text-right" style={{ color: priced.discountedPrice != null ? 'var(--teal)' : 'var(--mid-gray)' }}>
+                        <td className={`${td} text-right tabular-nums whitespace-nowrap`} style={{ ...LINE, color: priced.discountedPrice != null ? 'var(--teal)' : 'var(--hr-faint)' }}>
                           {priced.discountedPrice != null ? formatPeso(priced.discountedPrice) : '—'}
                           {priced.discountLabel && (
-                            <span className="block" style={{ color: 'var(--mid-gray)' }}>{priced.discountLabel}</span>
+                            <span className="block text-[11px]" style={{ color: 'var(--mid-gray)' }}>{priced.discountLabel}</span>
                           )}
                         </td>
-                        <td className="px-2 py-2 text-center">
+                        <td className={`${td} text-center`} style={LINE}>
                           <input type="number" min="1" value={l.quantity}
                             onChange={e => update(l.key, { quantity: Math.max(1, parseInt(e.target.value) || 1) })}
-                            className="w-14 px-1.5 py-1 rounded-lg border text-xs text-center outline-none" style={box} />
+                            className="w-14 h-7 px-1.5 rounded-md border bg-white text-xs text-center outline-none focus:border-[var(--teal)]" style={box} />
                         </td>
-                        <td className="px-2 py-2 text-right font-semibold" style={{ color: 'var(--charcoal)' }}>{formatPeso(priced.lineTotal)}</td>
-                        <td className="px-1 py-2">
-                          <button onClick={() => setLines(prev => prev.filter(x => x.key !== l.key))} className="p-1 rounded hover:bg-red-50">
-                            <Trash2 size={13} className="text-red-500" />
+                        <td className={`${td} text-right font-bold tabular-nums whitespace-nowrap`} style={{ ...LINE, color: 'var(--charcoal)' }}>{formatPeso(priced.lineTotal)}</td>
+                        <td className="px-2 py-2.5 border-b text-right" style={LINE}>
+                          <button onClick={() => setLines(prev => prev.filter(x => x.key !== l.key))} className="p-1.5 rounded-lg hover:bg-red-50" title="Remove this line">
+                            <Trash2 size={13} style={{ color: '#dc2626' }} />
                           </button>
                         </td>
                       </tr>
@@ -612,88 +657,100 @@ function MakerTab() {
           )}
 
           {/* Discount switches */}
-          <div className="mt-4 space-y-2">
-            <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: 'var(--charcoal)' }}>
-              <input type="checkbox" checked={usePwdRate} onChange={e => setUsePwdRate(e.target.checked)} />
+          <div className="px-4 py-3 space-y-2 border-t" style={{ background: '#fcfdfa', borderColor: 'var(--light-gray)' }}>
+            <label className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[13px] font-semibold cursor-pointer" style={{ color: 'var(--charcoal)' }}>
+              <input type="checkbox" className="accent-[var(--teal)]" checked={usePwdRate} onChange={e => setUsePwdRate(e.target.checked)} />
               Use PWD rate for all
-              <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>
+              <span className="text-xs font-normal" style={{ color: 'var(--mid-gray)' }}>
                 (services without a PWD rate stay at gross)
               </span>
             </label>
             <div className="flex flex-wrap items-center gap-2">
-              <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: 'var(--charcoal)' }}>
-                <input type="checkbox" checked={useGlobalDiscount} onChange={e => setUseGlobalDiscount(e.target.checked)} />
+              <label className="flex items-center gap-2 text-[13px] font-semibold cursor-pointer" style={{ color: 'var(--charcoal)' }}>
+                <input type="checkbox" className="accent-[var(--teal)]" checked={useGlobalDiscount} onChange={e => setUseGlobalDiscount(e.target.checked)} />
                 Special discount for all
               </label>
               {useGlobalDiscount && (
                 <>
                   <select value={globalDiscountType} onChange={e => setGlobalDiscountType(e.target.value as DiscountKind)}
-                    className="px-2 py-1.5 rounded-lg border text-xs outline-none" style={box}>
+                    className="h-8 px-2 rounded-lg border bg-white text-xs outline-none focus:border-[var(--teal)]" style={box}>
                     <option value="PERCENT">% off</option>
                     <option value="AMOUNT">₱ off</option>
                   </select>
                   <input type="number" min="0" step="0.01" value={globalDiscountValue}
                     onChange={e => setGlobalDiscountValue(e.target.value)} placeholder="0"
-                    className="w-24 px-2 py-1.5 rounded-lg border text-xs outline-none" style={box} />
+                    className="w-24 h-8 px-2 rounded-lg border bg-white text-xs outline-none focus:border-[var(--teal)]" style={box} />
                   <span className="text-xs" style={{ color: 'var(--mid-gray)' }}>applies to lines without their own discount</span>
                 </>
               )}
             </div>
           </div>
 
-          <div className="mt-4 pt-3 border-t flex items-center justify-between" style={box}>
-            <span className="text-sm" style={{ color: 'var(--mid-gray)' }}>
-              Gross {formatPeso(totals.subtotalGross)}
-              {totals.totalDiscount > 0 && <> · Discount −{formatPeso(totals.totalDiscount)}</>}
-            </span>
-            <span className="text-lg font-bold" style={{ color: 'var(--teal)' }}>
-              Grand Total {formatPeso(totals.grandTotal)}
-            </span>
+          {/* Totals */}
+          <div className="px-4 py-3 border-t flex flex-wrap items-end justify-between gap-x-4 gap-y-2 rounded-b-lg" style={box}>
+            <div className="flex flex-wrap gap-x-5 gap-y-1">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)' }}>Gross</p>
+                <p className="text-[15px] font-semibold tabular-nums" style={{ color: 'var(--charcoal)' }}>{formatPeso(totals.subtotalGross)}</p>
+              </div>
+              {totals.totalDiscount > 0 && (
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)' }}>Discount</p>
+                  <p className="text-[15px] font-semibold tabular-nums" style={{ color: '#b45309' }}>−{formatPeso(totals.totalDiscount)}</p>
+                </div>
+              )}
+            </div>
+            <div className="text-right">
+              <p className="text-[11px] font-bold uppercase tracking-[.4px]" style={{ color: 'var(--mid-gray)' }}>Grand total</p>
+              <p className="text-2xl font-extrabold leading-tight tabular-nums" style={{ fontFamily: 'var(--font-display)', color: 'var(--teal)' }}>
+                {formatPeso(totals.grandTotal)}
+              </p>
+            </div>
           </div>
-        </div>
+        </section>
       </div>
 
       {/* ── Right: details ──────────────────────────────── */}
-      <div className="space-y-4">
-        <div className={card} style={box}>
-          <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--charcoal)' }}>Quotation for</h3>
-          <div className="space-y-3">
+      <div className="space-y-4 min-w-0">
+        <section className={CARD} style={box}>
+          <CardHead title="Quotation for" />
+          <div className="space-y-3 px-4 pb-4">
             <div>
-              <label className={label} style={{ color: 'var(--charcoal)' }}>Name / Company</label>
+              <label className={label} style={labelStyle}>Name / Company</label>
               <input value={recipientName} onChange={e => setRecipientName(e.target.value)} className={input} style={box} />
             </div>
             <div>
-              <label className={label} style={{ color: 'var(--charcoal)' }}>Contact person</label>
+              <label className={label} style={labelStyle}>Contact person</label>
               <input value={contactPerson} onChange={e => setContactPerson(e.target.value)} className={input} style={box} />
             </div>
             <div>
-              <label className={label} style={{ color: 'var(--charcoal)' }}>Email address</label>
+              <label className={label} style={labelStyle}>Email address</label>
               <input type="email" value={recipientEmail} onChange={e => setRecipientEmail(e.target.value)} className={input} style={box} />
             </div>
             <div>
-              <label className={label} style={{ color: 'var(--charcoal)' }}>Contact number</label>
+              <label className={label} style={labelStyle}>Contact number</label>
               <input value={recipientPhone} onChange={e => setRecipientPhone(e.target.value)} className={input} style={box} />
             </div>
             <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className={label} style={{ color: 'var(--charcoal)' }}>Date prepared</label>
-                <input type="date" value={datePrepared} onChange={e => setDatePrepared(e.target.value)} className={input} style={box} />
+              <div className="min-w-0">
+                <label className={label} style={labelStyle}>Date prepared</label>
+                <input type="date" value={datePrepared} onChange={e => setDatePrepared(e.target.value)} className={input + ' px-2'} style={box} />
               </div>
-              <div>
-                <label className={label} style={{ color: 'var(--charcoal)' }}>Valid for</label>
+              <div className="min-w-0">
+                <label className={label} style={labelStyle}>Valid for</label>
                 <select value={validityDays} onChange={e => setValidityDays(parseInt(e.target.value))} className={input} style={box}>
                   {VALIDITY_OPTIONS.map(d => <option key={d} value={d}>{d} days</option>)}
                 </select>
               </div>
             </div>
           </div>
-        </div>
+        </section>
 
-        <div className={card} style={box}>
-          <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--charcoal)' }}>Payment</h3>
-          <div className="space-y-3">
+        <section className={CARD} style={box}>
+          <CardHead title="Payment" />
+          <div className="space-y-3 px-4 pb-4">
             <div>
-              <label className={label} style={{ color: 'var(--charcoal)' }}>Downpayment</label>
+              <label className={label} style={labelStyle}>Downpayment</label>
               <select value={downpaymentPercent}
                 onChange={e => setDownpaymentPercent(e.target.value === '' ? '' : parseInt(e.target.value))}
                 className={input} style={box}>
@@ -701,14 +758,14 @@ function MakerTab() {
                 {DOWNPAYMENT_OPTIONS.map(d => <option key={d} value={d}>{d}%</option>)}
               </select>
               {downpaymentPercent !== '' && totals.grandTotal > 0 && (
-                <p className="text-xs mt-1.5" style={{ color: 'var(--mid-gray)' }}>
-                  {formatPeso(totals.grandTotal * (downpaymentPercent / 100))} now ·{' '}
+                <p className="text-xs mt-1.5 tabular-nums" style={{ color: 'var(--mid-gray)' }}>
+                  <span className="font-semibold" style={{ color: 'var(--charcoal)' }}>{formatPeso(totals.grandTotal * (downpaymentPercent / 100))}</span> now ·{' '}
                   {formatPeso(totals.grandTotal - totals.grandTotal * (downpaymentPercent / 100))} balance
                 </p>
               )}
             </div>
             <div>
-              <label className={label} style={{ color: 'var(--charcoal)' }}>Deposit to</label>
+              <label className={label} style={labelStyle}>Deposit to</label>
               <select value={bankAccountId} onChange={e => setBankAccountId(e.target.value)} className={input} style={box}>
                 <option value="">— Not specified —</option>
                 {bankAccounts.map(a => (
@@ -721,40 +778,42 @@ function MakerTab() {
                 const a = bankAccounts.find(x => x.id === bankAccountId)
                 return a ? (
                   <p className="text-xs mt-1.5" style={{ color: 'var(--mid-gray)' }}>
-                    {a.bankName ? `${a.bankName} · ` : ''}{a.accountTitle} · {a.accountNumber}
+                    {a.bankName ? `${a.bankName} · ` : ''}{a.accountTitle} · <span className="font-mono">{a.accountNumber}</span>
                   </p>
                 ) : null
               })()}
             </div>
           </div>
-        </div>
+        </section>
 
-        <div className={card} style={box}>
-          <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--charcoal)' }}>Remarks</h3>
-          <textarea value={remarks} onChange={e => setRemarks(e.target.value)} rows={4}
-            placeholder="Any special terms, inclusions or notes for this client."
-            className={input + ' resize-y'} style={box} />
-        </div>
+        <section className={CARD} style={box}>
+          <CardHead title="Remarks" />
+          <div className="px-4 pb-4">
+            <textarea value={remarks} onChange={e => setRemarks(e.target.value)} rows={4}
+              placeholder="Any special terms, inclusions or notes for this client."
+              className="w-full px-3 py-2 rounded-lg border bg-white text-[13px] outline-none resize-y focus:border-[var(--teal)] focus:shadow-[0_0_0_3px_rgba(74,128,115,0.12)]" style={box} />
+          </div>
+        </section>
 
-        <div className={card} style={box}>
-          <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--charcoal)' }}>Prepared by</h3>
-          <div className="space-y-3">
+        <section className={CARD} style={box}>
+          <CardHead title="Prepared by" />
+          <div className="space-y-3 px-4 pb-4">
             <div>
-              <label className={label} style={{ color: 'var(--charcoal)' }}>Name</label>
+              <label className={label} style={labelStyle}>Name</label>
               <input value={preparedByName} onChange={e => setPreparedByName(e.target.value)} className={input} style={box} />
             </div>
             <div>
-              <label className={label} style={{ color: 'var(--charcoal)' }}>Position</label>
+              <label className={label} style={labelStyle}>Position</label>
               <input value={preparedByPosition} onChange={e => setPreparedByPosition(e.target.value)} className={input} style={box} />
             </div>
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className={label + ' mb-0'} style={{ color: 'var(--charcoal)' }}>Signature</label>
+                <label className={label + ' mb-0'} style={labelStyle}>Signature</label>
                 <div className="flex rounded-lg overflow-hidden border" style={box}>
                   {(['draw', 'upload'] as const).map(m => (
-                    <button key={m} type="button" onClick={() => setSigMode(m)}
-                      className="px-2 py-1 text-xs font-medium"
-                      style={{ background: sigMode === m ? 'var(--teal)' : 'white', color: sigMode === m ? 'white' : 'var(--mid-gray)' }}>
+                    <button key={m} type="button" onClick={() => setSigMode(m)} aria-pressed={sigMode === m}
+                      className="h-7 px-2.5 text-xs font-semibold"
+                      style={seg(sigMode === m)}>
                       {m === 'draw' ? <span className="flex items-center gap-1"><PenLine size={11} /> Draw</span> : <span className="flex items-center gap-1"><Upload size={11} /> Upload</span>}
                     </button>
                   ))}
@@ -775,7 +834,7 @@ function MakerTab() {
                       if (res.ok) setSigUploadUrl(data.url)
                       else setError(data.error || 'Upload failed')
                     }}
-                    className="w-full text-xs" />
+                    className="w-full text-xs file:mr-2 file:h-8 file:px-3 file:rounded-lg file:border file:border-[var(--light-gray)] file:bg-white file:text-xs file:font-semibold file:text-[var(--charcoal)]" />
                   {sigUploadUrl && (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={sigUploadUrl} alt="Signature" className="mt-2 max-h-16 object-contain" />
@@ -784,17 +843,12 @@ function MakerTab() {
               )}
             </div>
           </div>
-        </div>
+        </section>
 
-        {error && (
-          <div className="flex items-start gap-2 p-3 rounded-xl text-sm" style={{ background: '#fef2f2', color: '#991b1b' }}>
-            <AlertCircle size={15} className="mt-0.5 shrink-0" />
-            <span>{error}</span>
-          </div>
-        )}
+        {error && <ErrorNote text={error} />}
 
         <button onClick={handleSave} disabled={saving}
-          className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
+          className={`${hrBtn.primary} w-full justify-center h-11 text-sm`}
           style={{ background: 'var(--teal)' }}>
           {saving ? <Loader2 size={16} className="animate-spin" /> : <FileText size={16} />}
           Save & generate
@@ -812,6 +866,8 @@ function SavedTab() {
   const [rows, setRows] = useState<SavedQuotation[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+  // Quick filter from the branch cards — client-side, over the list already loaded.
+  const [branchFilter, setBranchFilter] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -832,57 +888,111 @@ function SavedTab() {
     load()
   }
 
+  const byBranch = useMemo(() => QUOTATION_BRANCHES.map(b => {
+    const mine = rows.filter(q => q.branch === b.key)
+    return { key: b.key as string, label: b.label as string, n: mine.length, total: mine.reduce((s, q) => s + num(q.grandTotal), 0) }
+  }), [rows])
+  const shown = branchFilter ? rows.filter(q => q.branch === branchFilter) : rows
+  const filterLabel = BRANCH_SHORT[branchFilter] || branchFilter
+  const firstLoad = loading && rows.length === 0
+
   return (
-    <div className="rounded-2xl border bg-white overflow-hidden" style={{ borderColor: 'var(--light-gray)' }}>
-      <div className="p-4 border-b" style={{ borderColor: 'var(--light-gray)' }}>
-        <div className="relative max-w-sm">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--mid-gray)' }} />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by number or recipient…"
-            className="w-full pl-9 pr-3 py-2 rounded-xl border text-sm outline-none" style={{ borderColor: 'var(--light-gray)' }} />
-        </div>
+    <div className="space-y-4">
+      {/* Cards (also quick filters) */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {byBranch.map(b => (
+          <StatCard key={b.key} loading={firstLoad} label={BRANCH_SHORT[b.key] || b.key} value={b.n.toLocaleString()}
+            sub={`${formatPeso(b.total)} quoted`} compact
+            {...(b.n > 0 ? { accent: { line: 'var(--teal)' } } : { tone: 'zero' as const })}
+            active={branchFilter === b.key}
+            onClick={() => setBranchFilter(f => (f === b.key ? '' : b.key))}
+            title={`Show only ${b.label} quotations`} />
+        ))}
       </div>
 
-      {loading ? (
-        <div className="flex justify-center py-12"><Loader2 className="animate-spin" size={20} style={{ color: 'var(--teal)' }} /></div>
-      ) : rows.length === 0 ? (
-        <p className="text-sm text-center py-12" style={{ color: 'var(--mid-gray)' }}>No quotations yet.</p>
-      ) : (
-        <table className="w-full text-sm">
-          <thead>
-            <tr style={{ background: 'var(--off-white)' }}>
-              {['Number', 'Branch', 'For', 'Date', 'Items', 'Total', ''].map((h, i) => (
-                <th key={h || i} className={`px-4 py-2.5 font-semibold text-xs ${i >= 4 && i < 6 ? 'text-right' : 'text-left'}`} style={{ color: 'var(--charcoal)' }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map(q => (
-              <tr key={q.id} className="border-b" style={{ borderColor: 'var(--light-gray)' }}>
-                <td className="px-4 py-2.5 font-mono text-xs" style={{ color: 'var(--charcoal)' }}>{q.quotationNumber}</td>
-                <td className="px-4 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>
-                  {QUOTATION_BRANCHES.find(b => b.key === q.branch)?.label || q.branch}
-                </td>
-                <td className="px-4 py-2.5" style={{ color: 'var(--charcoal)' }}>{q.recipientName}</td>
-                <td className="px-4 py-2.5 text-xs" style={{ color: 'var(--mid-gray)' }}>
-                  {new Date(q.datePrepared).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })}
-                </td>
-                <td className="px-4 py-2.5 text-right text-xs" style={{ color: 'var(--mid-gray)' }}>{q._count?.items ?? 0}</td>
-                <td className="px-4 py-2.5 text-right font-semibold" style={{ color: 'var(--charcoal)' }}>{formatPeso(num(q.grandTotal))}</td>
-                <td className="px-4 py-2.5">
-                  <div className="flex items-center justify-end gap-1">
-                    <a href={`/api/quotations/${q.id}/docx`} className="p-1.5 rounded-lg hover:bg-gray-100" title="Download .docx">
-                      <Download size={15} style={{ color: 'var(--teal)' }} />
-                    </a>
-                    <button onClick={() => remove(q.id)} className="p-1.5 rounded-lg hover:bg-red-50" title="Delete">
-                      <Trash2 size={15} className="text-red-500" />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <section className={CARD} style={BORDER}>
+        <CardHead title="Saved quotations"
+          count={loading ? '' : `${shown.length.toLocaleString()}${shown.length !== rows.length ? ` of ${rows.length.toLocaleString()}` : ''}`}
+          help="Newest first. Download the Word file again, or delete one you no longer need." />
+
+        {/* Toolbar */}
+        <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-y" style={{ background: '#fcfdfa', borderColor: 'var(--light-gray)' }}>
+          <label className="flex items-center gap-1.5 h-9 px-3 w-full sm:w-72 rounded-lg border bg-white focus-within:border-[var(--teal)] focus-within:shadow-[0_0_0_3px_rgba(74,128,115,0.12)]"
+            style={{ borderColor: 'var(--light-gray)', color: 'var(--hr-faint)' }}>
+            <Search size={15} className="flex-shrink-0" />
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by number or recipient…"
+              className="flex-1 min-w-0 bg-transparent outline-none text-[13px]" style={{ color: 'var(--charcoal)' }} />
+            {search && <button onClick={() => setSearch('')} title="Clear search"><X size={14} /></button>}
+          </label>
+          {branchFilter && (
+            <button onClick={() => setBranchFilter('')} title="Show every branch"
+              className="inline-flex items-center gap-1 h-8 px-3 rounded-full border text-xs font-semibold"
+              style={{ background: 'var(--teal)', borderColor: 'var(--teal)', color: '#fff' }}>
+              {filterLabel} <X size={12} />
+            </button>
+          )}
+        </div>
+
+        {loading ? (
+          <div className="p-4 space-y-2" aria-busy="true">
+            {Array.from({ length: 5 }, (_, i) => <div key={i} className="h-10 rounded-md hr-shimmer" />)}
+          </div>
+        ) : shown.length === 0 ? (
+          <div className="px-4 py-12 text-center">
+            <FileText size={20} className="mx-auto mb-1.5" style={{ color: 'var(--hr-faint)' }} />
+            <p className="text-[13px]" style={{ color: 'var(--mid-gray)' }}>
+              {branchFilter && rows.length > 0 ? `No ${filterLabel} quotations in this list.` : search ? 'No quotations match your search.' : 'No quotations yet.'}
+            </p>
+            {branchFilter && rows.length > 0 && (
+              <button onClick={() => setBranchFilter('')} className={`${hrBtn.outline} mt-3`} style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}>Show every branch</button>
+            )}
+          </div>
+        ) : (
+          <div className="overflow-x-auto rounded-b-lg">
+            <table className="w-full text-[13px]" style={{ borderCollapse: 'separate', borderSpacing: 0, minWidth: 680 }}>
+              <thead>
+                <tr>
+                  {['Number', 'Branch', 'For', 'Date', 'Items', 'Total', ''].map((h, i) => (
+                    <th key={h || i} className={`${TH} ${i >= 4 && i < 6 ? 'text-right' : 'text-left'}`} style={TH_STYLE}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {shown.map(q => {
+                  const td = 'px-3 py-2.5 border-b'
+                  return (
+                    <tr key={q.id} className="hover:bg-[#fafbf7]">
+                      <td className={`${td} font-mono text-xs font-semibold whitespace-nowrap`} style={{ ...LINE, color: 'var(--charcoal)' }}>{q.quotationNumber}</td>
+                      <td className={td} style={LINE}>
+                        <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap" style={{ background: 'var(--pale-teal)', color: 'var(--teal)' }}
+                          title={QUOTATION_BRANCHES.find(b => b.key === q.branch)?.label || q.branch}>
+                          {BRANCH_SHORT[q.branch] || q.branch}
+                        </span>
+                      </td>
+                      <td className={td} style={{ ...LINE, color: 'var(--charcoal)' }}>{q.recipientName}</td>
+                      <td className={`${td} text-xs whitespace-nowrap`} style={{ ...LINE, color: 'var(--mid-gray)' }}>
+                        {new Date(q.datePrepared).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })}
+                      </td>
+                      <td className={`${td} text-right text-xs tabular-nums`} style={{ ...LINE, color: 'var(--mid-gray)' }}>{q._count?.items ?? 0}</td>
+                      <td className={`${td} text-right font-bold tabular-nums whitespace-nowrap`} style={{ ...LINE, color: 'var(--charcoal)' }}>{formatPeso(num(q.grandTotal))}</td>
+                      <td className="px-2 py-2 border-b" style={LINE}>
+                        <div className="flex items-center justify-end gap-1">
+                          <a href={`/api/quotations/${q.id}/docx`} className="p-1.5 rounded-lg hover:bg-[var(--pale-teal)]" title="Download .docx">
+                            <Download size={15} style={{ color: 'var(--teal)' }} />
+                          </a>
+                          <button onClick={() => remove(q.id)} className="p-1.5 rounded-lg hover:bg-red-50" title="Delete">
+                            <Trash2 size={15} style={{ color: '#dc2626' }} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
     </div>
   )
 }
@@ -940,52 +1050,54 @@ function SettingsTab() {
     load()
   }
 
+  const uploaded = QUOTATION_BRANCHES.filter(b => templates.some(t => t.branch === b.key)).length
+
   return (
-    <div className="rounded-2xl border bg-white p-5 max-w-3xl" style={{ borderColor: 'var(--light-gray)' }}>
-      <h3 className="text-sm font-semibold" style={{ color: 'var(--charcoal)' }}>Quotation templates</h3>
-      <p className="text-xs mt-1 mb-4" style={{ color: 'var(--mid-gray)' }}>
-        Upload the .docx letterhead each branch should use. Generation keeps the file&apos;s header, footer and artwork
-        exactly as designed and writes the quotation into the body — so whatever page setup the template has is what you get.
-      </p>
+    <section className={`${CARD} max-w-3xl`} style={BORDER}>
+      <CardHead title="Quotation templates" count={loading ? '' : `${uploaded} of ${QUOTATION_BRANCHES.length} uploaded`}
+        help="Upload the .docx letterhead each branch should use. Generation keeps the file’s header, footer and artwork exactly as designed and writes the quotation into the body — so whatever page setup the template has is what you get." />
 
-      {error && (
-        <div className="flex items-start gap-2 p-3 mb-3 rounded-xl text-sm" style={{ background: '#fef2f2', color: '#991b1b' }}>
-          <AlertCircle size={15} className="mt-0.5 shrink-0" /><span>{error}</span>
-        </div>
-      )}
+      <div className="px-4 pb-4 space-y-2">
+        {error && <ErrorNote text={error} />}
 
-      {loading ? (
-        <div className="flex justify-center py-8"><Loader2 className="animate-spin" size={18} style={{ color: 'var(--teal)' }} /></div>
-      ) : (
-        <div className="space-y-2">
-          {QUOTATION_BRANCHES.map(b => {
+        {loading ? (
+          Array.from({ length: QUOTATION_BRANCHES.length }, (_, i) => <div key={i} className="h-[58px] rounded-lg hr-shimmer" />)
+        ) : (
+          QUOTATION_BRANCHES.map(b => {
             const t = templates.find(x => x.branch === b.key)
             return (
-              <div key={b.key} className="flex items-center justify-between gap-3 p-3 rounded-xl border" style={{ borderColor: 'var(--light-gray)' }}>
-                <div className="min-w-0">
-                  <p className="text-sm font-medium" style={{ color: 'var(--charcoal)' }}>{b.label}</p>
-                  <p className="text-xs truncate" style={{ color: t ? 'var(--teal)' : 'var(--mid-gray)' }}>
-                    {t ? `${t.fileName} · updated ${new Date(t.updatedAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}` : 'No template uploaded'}
+              <div key={b.key} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-3 py-2.5 rounded-lg border"
+                style={{ borderColor: 'var(--light-gray)', borderLeft: `4px solid ${t ? '#059669' : '#d97706'}`, background: t ? '#fff' : '#fffbeb' }}>
+                <div className="min-w-0 flex-1">
+                  <p className="flex flex-wrap items-center gap-2 text-[13px] font-semibold" style={{ color: 'var(--charcoal)' }}>
+                    {b.label}
+                    <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold"
+                      style={t ? { background: '#dcfce7', color: '#166534' } : { background: '#fef3c7', color: '#92400e' }}>
+                      {t ? 'Uploaded' : 'No template'}
+                    </span>
+                  </p>
+                  <p className="text-xs truncate mt-0.5" style={{ color: 'var(--mid-gray)' }} title={t?.fileName}>
+                    {t ? `${t.fileName} · updated ${new Date(t.updatedAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}` : 'Quotations for this branch cannot be generated yet'}
                   </p>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <label className="flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-medium cursor-pointer hover:bg-gray-50" style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <label className={`${hrBtn.ghost} cursor-pointer`} style={{ borderColor: 'var(--light-gray)', color: 'var(--charcoal)' }}>
                     {busy === b.key ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
                     {t ? 'Replace' : 'Upload .docx'}
                     <input type="file" accept=".docx" className="hidden"
                       onChange={e => { const f = e.target.files?.[0]; if (f) upload(b.key, f); e.target.value = '' }} />
                   </label>
                   {t && (
-                    <button onClick={() => remove(b.key)} className="p-2 rounded-xl hover:bg-red-50" title="Remove template">
-                      <X size={14} className="text-red-500" />
+                    <button onClick={() => remove(b.key)} className="p-2 rounded-lg hover:bg-red-50" title="Remove template">
+                      <X size={14} style={{ color: '#dc2626' }} />
                     </button>
                   )}
                 </div>
               </div>
             )
-          })}
-        </div>
-      )}
-    </div>
+          })
+        )}
+      </div>
+    </section>
   )
 }
