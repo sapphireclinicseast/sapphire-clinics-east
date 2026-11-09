@@ -298,7 +298,7 @@ export default function AuthSidebar() {
         <img src="/aura-academy-mark-192.png" alt="" className="h-8 w-8 object-contain" />
       </span>
       <span className="flex flex-col leading-tight min-w-0">
-        <span className="text-white truncate" style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '0.9rem', letterSpacing: '0.05em' }}>Aura Academy</span>
+        <span className="text-white truncate" style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '0.9rem', letterSpacing: '0.05em' }}>Aura</span>
         <span className="uppercase" style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: '0.6rem', letterSpacing: '0.2em', color: 'var(--scei-mint)' }}>Class Portal</span>
       </span>
     </span>
@@ -417,7 +417,7 @@ export default function AuthSidebar() {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/aura-academy-mark-192.png" alt="" className="h-7 w-7 object-contain shrink-0" />
           <span className="flex flex-col leading-tight min-w-0">
-            <span className="text-[13px] font-bold truncate" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>Aura Academy</span>
+            <span className="text-[13px] font-bold truncate" style={{ fontFamily: 'var(--font-display)', color: 'var(--charcoal)' }}>Aura</span>
             <span className="text-[9.5px] font-semibold uppercase tracking-[0.16em]" style={{ fontFamily: 'var(--font-display)', color: 'var(--deep-teal)' }}>Class Portal</span>
           </span>
         </span>

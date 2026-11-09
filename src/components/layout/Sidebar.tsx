@@ -1,7 +1,6 @@
 'use client'
 
 import Link from 'next/link'
-import Image from 'next/image'
 import { usePathname } from 'next/navigation'
 import { useState } from 'react'
 import {
@@ -174,13 +173,16 @@ export default function Sidebar({ onClose, role = 'MARKETING_ADMIN' }: { onClose
     >
       {/* Logo */}
       <div className="flex items-center gap-3 px-5 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-        <Image src="/brand/mark-white-transparent.png" alt="SCEI" width={36} height={36} style={{ objectFit: 'contain' }} className="flex-shrink-0" />
+        <span className="w-9 h-9 rounded-lg bg-white flex items-center justify-center flex-shrink-0">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/brand/scei-mark.png" alt="SCEI" className="w-7 h-7 object-contain" />
+        </span>
         <div className="flex-1">
           <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '0.9rem', color: '#fff', letterSpacing: '0.05em' }}>
             SCEI
           </div>
           <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: '0.6rem', color: '#CBDAB5', letterSpacing: '0.2em', textTransform: 'uppercase' }}>
-            Operations Hub
+            Operations Portal
           </div>
         </div>
         {onClose && (
@@ -265,7 +267,7 @@ export default function Sidebar({ onClose, role = 'MARKETING_ADMIN' }: { onClose
       {/* Bottom */}
       <div className="px-4 py-3 text-xs" style={{ borderTop: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.45)', fontFamily: 'var(--font-body)' }}>
         <span style={{ color: '#CBDAB5', fontWeight: 600 }}>SCEI</span>
-        {' · '}Operations Hub
+        {' · '}Operations Portal
         <br />
         Internal Use Only
       </div>

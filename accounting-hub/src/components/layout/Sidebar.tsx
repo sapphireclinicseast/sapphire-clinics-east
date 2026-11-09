@@ -184,15 +184,11 @@ export default function Sidebar({ userRole, open, onClose, collapsed = false }: 
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-5 border-b border-white/[0.08]">
           <div className="flex items-center gap-3">
-            {/* Aura Health Rehab arch logomark */}
-            <svg width="46" height="25" viewBox="0 0 220 116" role="img" aria-label="Aura Health Rehab" className="shrink-0">
-              <path d="M10,110 A100,100 0 0 1 210,110 L188,110 A78,78 0 0 0 32,110 Z" fill="#296354"/>
-              <path d="M32,110 A78,78 0 0 1 188,110 L182,110 A72,72 0 0 0 38,110 Z" fill="#ffffff"/>
-              <path d="M38,110 A72,72 0 0 1 182,110 L160,110 A50,50 0 0 0 60,110 Z" fill="#8EAF74"/>
-              <path d="M60,110 A50,50 0 0 1 160,110 L154,110 A44,44 0 0 0 66,110 Z" fill="#ffffff"/>
-              <path d="M66,110 A44,44 0 0 1 154,110 L132,110 A22,22 0 0 0 88,110 Z" fill="#6E8E8E"/>
-              <path d="M88,110 A22,22 0 0 1 132,110 Z" fill="#ffffff"/>
-            </svg>
+            {/* SCEI mark in a white tile — same header as every staff-facing portal */}
+            <span className="w-9 h-9 rounded-lg bg-white flex items-center justify-center shrink-0">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/brand/scei-mark.png" alt="SCEI" className="w-7 h-7 object-contain" />
+            </span>
             <div>
               <h1
                 className="text-white"
@@ -201,7 +197,7 @@ export default function Sidebar({ userRole, open, onClose, collapsed = false }: 
                 SCEI
               </h1>
               <p className="uppercase" style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: '0.6rem', letterSpacing: '0.2em', color: '#CBDAB5' }}>
-                Accounting Hub
+                Accounting Portal
               </p>
             </div>
           </div>
@@ -262,7 +258,7 @@ export default function Sidebar({ userRole, open, onClose, collapsed = false }: 
         {/* Footer */}
         <div className="px-5 py-4 border-t border-white/[0.08]">
           <p className="text-xs text-center" style={{ color: 'rgba(255,255,255,0.45)', fontFamily: 'var(--font-body)' }}>
-            <span style={{ color: '#CBDAB5', fontWeight: 600 }}>SCEI</span> · Accounting Hub
+            <span style={{ color: '#CBDAB5', fontWeight: 600 }}>SCEI</span> · Accounting Portal
           </p>
         </div>
       </aside>
