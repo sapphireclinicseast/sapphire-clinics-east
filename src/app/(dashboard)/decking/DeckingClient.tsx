@@ -556,7 +556,7 @@ function CustomSlotModal({ staff, activeBranch, workDays, hourlyStarts = [], onC
 }
 
 // ─── Therapist Row ─────────────────────────────────────────────────────────────
-function TherapistRow({ staff, activeBranch, sectionMode, config, slots, defaultHours, onSaveConfig, onClearServiceConfig, onSaveSlot, onDeleteSlot, onOpenLoa, density = 'comfortable', collapsed = false, onToggleCollapse, datedSlots = [], onAddDated, showCapacity = true }: {
+function TherapistRow({ staff, activeBranch, sectionMode, config, slots, defaultHours, onSaveConfig, onClearServiceConfig, onSaveSlot, onDeleteSlot, onOpenLoa, density = 'comfortable', collapsed = false, onToggleCollapse, datedSlots = [], onAddDated, onDatedChanged, showCapacity = true }: {
   staff: StaffMember
   /** "x of y booked" meter in the card header — main admin only. Display only. */
   showCapacity?: boolean
@@ -580,6 +580,8 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
   onOpenLoa?: (slot: DeckingSlot) => void
   /** This consultant's one-off dates — hours given for a named day only. */
   datedSlots?: DeckingSlot[]
+  /** Called after a one-off is booked or cleared, so the board reloads. */
+  onDatedChanged?: () => void
   onAddDated?: (data: { staffId: string; patientId: string | null; dayOfWeek: string; startTime: string; endTime: string; branch: string; department: string; notes: string | null; date?: string | null }) => Promise<void>
 }) {
   const [configOpen, setConfigOpen] = useState(!config)
@@ -595,6 +597,8 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
   const [addingCell, setAddingCell] = useState<{ dayOfWeek: string; startTime: string } | null>(null)
   const [showCustomModal, setShowCustomModal] = useState(false)
   const [showDatedModal, setShowDatedModal] = useState(false)
+  /** Which one-off is having its patient set, if any. */
+  const [fillingDated, setFillingDated] = useState<string | null>(null)
   // Past one-offs are folded away so the coming ones lead. Display only.
   const [showPastDated, setShowPastDated] = useState(false)
   // A one-off needs a real date and an hour; the weekday is derived from the
@@ -1211,7 +1215,16 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
                     </span>
                   )}
                 </span>
-                <span className="mt-0.5 flex items-center gap-1.5 min-w-0">
+                {/* The way into the booking. A one-off is created EMPTY by
+                    definition — the date is agreed before anybody is in it —
+                    and this row offered only a delete button, so an hour the
+                    clinic had been given could never be used. The weekly grid
+                    has cells to click; this is the equivalent. */}
+                <button type="button" onClick={() => setFillingDated(sl.id)}
+                  title={sl.patient ? `Change who is booked on ${when}` : `Book a patient on ${when}`}
+                  aria-label={sl.patient ? `Change who is booked on ${when}` : `Book a patient on ${when}`}
+                  className="dk-btn mt-0.5 flex items-center gap-1.5 min-w-0 rounded px-0.5 text-left hover:bg-pink-50"
+                  style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
                   {sl.patient ? (
                     <>
                       <Avatar text={initials(sl.patient.firstName, sl.patient.lastName)} size={18} />
@@ -1220,10 +1233,10 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
                   ) : (
                     <span className="inline-flex items-center rounded px-1.5 py-px text-[10.5px] font-semibold"
                       style={{ background: OPEN_BG, color: OPEN_FG, border: `1px solid ${OPEN_BORDER}` }}>
-                      Open
+                      Open — book someone
                     </span>
                   )}
-                </span>
+                </button>
               </span>
               <button type="button" onClick={() => onDeleteSlot(sl.id)}
                 title={`Remove the one-off on ${when}`}
@@ -1255,6 +1268,28 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
               </button>
             )}
           </div>
+          {fillingDated && (
+            <div className="mb-2" style={{ maxWidth: 320 }}>
+              <PatientCellSearch
+                current={datedSlots.find(x => x.id === fillingDated)?.patient ?? null}
+                onClose={() => setFillingDated(null)}
+                onClear={async () => {
+                  await fetch('/api/decking/slots', {
+                    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: fillingDated, patientId: null }),
+                  })
+                  setFillingDated(null); onDatedChanged?.()
+                }}
+                onSelect={async (pt) => {
+                  await fetch('/api/decking/slots', {
+                    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: fillingDated, patientId: pt.id }),
+                  })
+                  setFillingDated(null); onDatedChanged?.()
+                }}
+              />
+            </div>
+          )}
           {datedSlots.length === 0 ? (
             <p className="text-[11.5px] leading-relaxed" style={{ color: 'var(--mid-gray)' }}>
               None yet. Hours added here apply to that date only and never repeat.
@@ -2766,6 +2801,7 @@ export default function DeckingClient({ role }: { role: string }) {
                       collapsed={collapsed.has(s.id)}
                       onToggleCollapse={() => toggleCollapsed(s.id)}
                       datedSlots={datedByStaff.get(s.id) ?? []}
+                      onDatedChanged={() => loadBranchData(activeBranch)}
                       onAddDated={handleSaveSlot}
                       showCapacity={isMainAdmin}
                     />

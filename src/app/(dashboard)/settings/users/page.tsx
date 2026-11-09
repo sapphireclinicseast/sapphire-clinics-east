@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
+import { roleLabel } from '@/lib/role-labels'
 import type { ReactNode } from 'react'
 import { Users, Plus, Trash2, ShieldCheck, X, Pencil, Check, Building2, Eye, UserPlus, Info } from 'lucide-react'
 import { CARD_STYLE, KpiCard, Skeleton, EmptyState } from '../../patients/dashboard/ui'
@@ -10,21 +11,7 @@ import {
   fmtDate, relTime,
 } from '../ui'
 
-const ROLE_LABELS: Record<string, string> = {
-  ADMIN: 'Admin',
-  MARKETING_ADMIN: 'Marketing Admin',
-  AHEA_ADMIN: 'AHEA Admin',
-  AHGH_ADMIN: 'AHGH Admin',
-  VERDANA_ADMIN: 'Verdana Admin',
-  AHEA_FRONT_DESK: 'AHEA Front Desk',
-  AHGH_FRONT_DESK: 'AHGH Front Desk',
-  INVESTOR: 'Investor (read-only)',
-  MEDREP: 'Medical Representative',
-}
-
-function roleLabel(role: string) {
-  return ROLE_LABELS[role] ?? role
-}
+// Labels live in lib/role-labels so Settings and the top bar cannot disagree.
 
 // Same options, values and wording as before — rendered once for both forms.
 const ROLE_OPTIONS: { value: string; label: string }[] = [
