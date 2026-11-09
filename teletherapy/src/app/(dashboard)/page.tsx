@@ -156,8 +156,11 @@ export default function DashboardPage() {
             ) : (
               <ul>
                 {sessions.map((s, i) => {
+                  // Note pill: red until the note is written, green once it's
+                  // done; amber for a discontinued note so it can't be mistaken
+                  // for a missing one.
                   const noteTone: Tone | null = s.sessionNote
-                    ? (s.sessionNote.status === 'COMPLETED' ? 'success' : 'error')
+                    ? (s.sessionNote.status === 'COMPLETED' ? 'success' : 'warn')
                     : null
                   return (
                     <li key={s.id} style={{ borderTop: i ? '1px solid var(--light-gray)' : undefined }}>
@@ -196,14 +199,14 @@ export default function DashboardPage() {
                             <StatusPill tone={STATUS_TONE[s.status] ?? 'warn'}>{titleCase(s.status)}</StatusPill>
                             {noteTone
                               ? <StatusPill tone={noteTone}>{s.sessionNote!.status === 'COMPLETED' ? 'Note done' : 'Discontinued'}</StatusPill>
-                              : <StatusPill tone="neutral">No note yet</StatusPill>}
+                              : <StatusPill tone="error">No note yet</StatusPill>}
                           </div>
                         </div>
                         <div className="hidden sm:flex flex-col items-end gap-1.5 flex-shrink-0">
                           <StatusPill tone={STATUS_TONE[s.status] ?? 'warn'}>{titleCase(s.status)}</StatusPill>
                           {noteTone
                             ? <StatusPill tone={noteTone}>{s.sessionNote!.status === 'COMPLETED' ? 'Note done' : 'Discontinued'}</StatusPill>
-                            : <StatusPill tone="neutral">No note yet</StatusPill>}
+                            : <StatusPill tone="error">No note yet</StatusPill>}
                         </div>
                         <ChevronRight size={16} className="flex-shrink-0 transition-transform group-hover:translate-x-0.5" style={{ color: 'var(--mid-gray)' }} />
                       </button>
