@@ -657,6 +657,8 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
   const [showDatedModal, setShowDatedModal] = useState(false)
   /** Which one-off is having its patient set, if any. */
   const [fillingDated, setFillingDated] = useState<string | null>(null)
+  /** Which date's slots are open in the window, if any. */
+  const [openDatedDate, setOpenDatedDate] = useState<string | null>(null)
   // Past one-offs are folded away so the coming ones lead. Display only.
   const [showPastDated, setShowPastDated] = useState(false)
   // A one-off needs a real date and an hour; the weekday is derived from the
@@ -1446,28 +1448,17 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
                                 {mine.filter(x => x.patient).length} booked
                               </span>
                             </div>
-                            <ul className="grid gap-1" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))' }}>
-                              {mine.map(sl => (
-                                <li key={sl.id} className="flex items-center gap-1.5 rounded-md px-1.5 py-1 min-w-0"
-                                  style={{ background: '#FFFBFD', border: '1px solid #F9DCE9' }}>
-                                  <span className="text-[11.5px] tabular-nums whitespace-nowrap" style={{ color: 'var(--charcoal)' }}>
-                                    {formatTime(sl.startTime)}–{formatTime(sl.endTime)}
-                                  </span>
-                                  <button type="button" onClick={() => setFillingDated(sl.id)}
-                                    title={sl.patient ? 'Change who is booked' : 'Book a patient into this slot'}
-                                    className="dk-btn truncate flex-1 text-left rounded px-1"
-                                    style={{ background: 'none', border: 'none', cursor: 'pointer', font: 'inherit', fontSize: '11.5px',
-                                      color: sl.patient ? 'var(--charcoal)' : OPEN_FG }}>
-                                    {sl.patient ? personLabel(sl.patient) : 'book someone'}
-                                  </button>
-                                  <button type="button" onClick={() => onDeleteSlot(sl.id)}
-                                    title="Remove this slot" aria-label="Remove this slot"
-                                    className="dk-btn dk-icon-btn rounded p-0.5 flex-shrink-0" style={{ color: '#DC2626' }}>
-                                    <X size={11} />
-                                  </button>
-                                </li>
-                              ))}
-                            </ul>
+                            {/* The hours live in a window, not here. A doctor
+                                giving the clinic a day in half-hours is
+                                sixteen rows, and several such doctors would
+                                bury the board they sit under. The tile says
+                                what the day holds; the window is where it is
+                                filled in, a row per slot like the grid. */}
+                            <button type="button" onClick={() => setOpenDatedDate(dateKey)}
+                              className="dk-btn text-[11.5px] font-semibold rounded-md px-2 py-1"
+                              style={{ border: `1px solid ${ONEOFF_FG}`, color: ONEOFF_FG, background: '#fff' }}>
+                              Open the day &rarr;
+                            </button>
                           </div>
                         </div>
                       )
@@ -1494,6 +1485,102 @@ function TherapistRow({ staff, activeBranch, sectionMode, config, slots, default
             </>
           )}
         </div>
+        )
+      })()}
+
+      {/* ── One day's slots ──────────────────────────────────────────────
+          A row per slot, read and filled the same way a grid cell is: the
+          time, who is in it, how they pay. Opened from the date tile so a
+          doctor's whole day is one line on the board until somebody needs it. */}
+      {openDatedDate && (() => {
+        const mine = datedSlots
+          .filter(sl => String(sl.date).slice(0, 10) === openDatedDate)
+          .sort((a, b) => a.startTime.localeCompare(b.startTime))
+        const d = new Date(`${openDatedDate}T00:00:00Z`)
+        const booked = mine.filter(x => x.patient).length
+        return (
+          <div onClick={() => { setOpenDatedDate(null); setFillingDated(null) }}
+            style={{ position: 'fixed', inset: 0, zIndex: 120, background: 'rgba(15,23,42,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+            <div onClick={e => e.stopPropagation()} className="rounded-2xl flex flex-col"
+              style={{ background: '#fff', width: '100%', maxWidth: 520, maxHeight: '86vh', boxShadow: '0 20px 60px rgba(15,23,42,0.25)' }}>
+              <div className="px-5 py-3.5 flex items-start gap-3" style={{ borderBottom: '1px solid var(--light-gray)' }}>
+                <span aria-hidden className="flex-shrink-0 flex flex-col items-center justify-center rounded-md overflow-hidden"
+                  style={{ width: 44, border: `1px solid ${'#F9C4DE'}` }}>
+                  <span className="w-full text-center text-[9px] font-bold uppercase leading-[14px] text-white" style={{ background: ONEOFF_FG }}>
+                    {d.toLocaleDateString('en-PH', { month: 'short', timeZone: 'UTC' })}
+                  </span>
+                  <span className="text-[16px] font-bold leading-[24px] tabular-nums" style={{ color: 'var(--charcoal)' }}>{d.getUTCDate()}</span>
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold" style={{ color: 'var(--charcoal)' }}>
+                    {d.toLocaleDateString('en-PH', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })}
+                  </p>
+                  <p className="text-[11px] mt-0.5" style={{ color: 'var(--mid-gray)' }}>
+                    {staff.lastName}, {staff.firstName} &middot; {mine.length} slot{mine.length === 1 ? '' : 's'} &middot; {booked} booked
+                  </p>
+                </div>
+                <button type="button" onClick={() => { setOpenDatedDate(null); setFillingDated(null) }}
+                  className="dk-btn dk-icon-btn rounded p-1" aria-label="Close"><X size={16} /></button>
+              </div>
+
+              <div className="px-3 py-2 overflow-y-auto">
+                {mine.map(sl => {
+                  const pay = (sl.paymentType ?? 'CASH').toUpperCase() as PayType
+                  const style = PAY_STYLE[pay] ?? PAY_STYLE.CASH
+                  return (
+                    <div key={sl.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg"
+                      style={{ borderBottom: '1px solid var(--light-gray)' }}>
+                      <span className="text-[12px] font-semibold tabular-nums whitespace-nowrap" style={{ width: 118, color: 'var(--charcoal)' }}>
+                        {formatTime(sl.startTime)}–{formatTime(sl.endTime)}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        {fillingDated === sl.id ? (
+                          <PatientCellSearch
+                            current={sl.patient}
+                            onClose={() => setFillingDated(null)}
+                            onClear={async () => {
+                              await fetch('/api/decking/slots', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: sl.id, patientId: null }) })
+                              setFillingDated(null); onDatedChanged?.()
+                            }}
+                            onSelect={async (pt) => {
+                              await fetch('/api/decking/slots', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: sl.id, patientId: pt.id }) })
+                              setFillingDated(null); onDatedChanged?.()
+                            }}
+                          />
+                        ) : (
+                          <button type="button" onClick={() => setFillingDated(sl.id)}
+                            className="dk-btn w-full text-left truncate rounded px-1.5 py-1 text-[12px]"
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: sl.patient ? 'var(--charcoal)' : OPEN_FG }}>
+                            {sl.patient ? personLabel(sl.patient) : 'Open — book someone'}
+                          </button>
+                        )}
+                      </div>
+                      {sl.patient && (
+                        /* Cycles the same way a grid cell does, so the two
+                           boards cannot mean different things by the word. */
+                        <button type="button"
+                          onClick={async () => {
+                            const next = PAY_TYPES[(PAY_TYPES.indexOf(pay) + 1) % PAY_TYPES.length]
+                            await fetch('/api/decking/slots', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: sl.id, paymentType: next }) })
+                            onDatedChanged?.()
+                          }}
+                          title="Change how this session is paid for"
+                          className="dk-btn rounded px-1.5 py-0.5 text-[10px] font-bold flex-shrink-0"
+                          style={{ background: style.bg, color: style.fg, border: `1px solid ${style.border}` }}>
+                          {style.label}
+                        </button>
+                      )}
+                      <button type="button" onClick={() => onDeleteSlot(sl.id)}
+                        title="Remove this slot" aria-label="Remove this slot"
+                        className="dk-btn dk-icon-btn rounded p-0.5 flex-shrink-0" style={{ color: '#DC2626' }}>
+                        <X size={12} />
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
         )
       })()}
 
