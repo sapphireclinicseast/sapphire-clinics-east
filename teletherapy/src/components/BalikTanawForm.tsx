@@ -2,10 +2,14 @@
 
 // Intern "Balik-Tanaw" weekly reflection form. Used both as the standalone
 // /balik-tanaw page and as a tab inside the Internship section (pass
-// showHero={false} to skip the page hero when embedded).
+// showHero={false} to skip the page header when embedded).
 
-import { useEffect, useState } from 'react'
-import { NotebookPen, Loader2, CheckCircle2, Clock, PenLine } from 'lucide-react'
+import { useEffect, useState, type ReactNode } from 'react'
+import { Loader2, CheckCircle2, PenLine } from 'lucide-react'
+import {
+  BTN_PRIMARY, CARD_STYLE, CONTROL, CONTROL_STYLE, DANGER, DashCard, EmptyState, GroupLabel, LABEL, LABEL_STYLE,
+  PAGE, PageHeader, PRIMARY_STYLE, RowsSkeleton, Skeleton, StatusPill, TEXTAREA,
+} from '@/components/hub/ui'
 
 interface Entry {
   id: string
@@ -80,90 +84,83 @@ export default function BalikTanawForm({ showHero = true }: { showHero?: boolean
     setSubmitting(false)
   }
 
+  // Standalone page: kit page column + header. Embedded: just the content.
+  const wrap = (body: ReactNode) => showHero ? (
+    <div className={PAGE}>
+      <PageHeader eyebrow="Internship" title="Balik-Tanaw" description={`Your weekly reflection${department ? ` · ${department}` : ''}`} />
+      {body}
+    </div>
+  ) : <div className="space-y-5 min-w-0">{body}</div>
+
   if (loading) {
-    return <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 text-[var(--teal)] animate-spin" /></div>
+    return wrap(
+      <section className="rounded-xl overflow-hidden" style={CARD_STYLE} aria-busy="true">
+        <div className="px-4 sm:px-5 pt-4 pb-3"><Skeleton className="h-4 w-40" /></div>
+        <RowsSkeleton rows={3} label="Loading Balik-Tanaw" />
+      </section>
+    )
   }
 
-  return (
-    <div className="max-w-3xl mx-auto">
-      {toast && <div className="toast">{toast}</div>}
-
-      {showHero && (
-        <div className="hero-gradient rounded-2xl px-8 py-8 mb-8">
-          <h1 className="text-xl font-bold text-white tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>Balik-Tanaw</h1>
-          <p className="text-white/60 text-sm mt-1">Your weekly reflection{department ? ` · ${department}` : ''}</p>
-        </div>
-      )}
+  return wrap(
+    <>
+      {toast && <div className="toast" role="status">{toast}</div>}
 
       {questions.length === 0 ? (
-        <div className="card-static text-center py-14">
-          <NotebookPen size={28} className="text-[var(--mid-gray)] mx-auto mb-3" />
-          <p className="font-semibold text-[var(--charcoal)] mb-1" style={{ fontFamily: 'var(--font-display)' }}>Reflection questions coming soon</p>
-          <p className="text-[13px] text-[var(--mid-gray)]">The Balik-Tanaw questions for your department are being set up.</p>
-        </div>
+        <section className="rounded-xl" style={CARD_STYLE}>
+          <EmptyState icon="book" title="Reflection questions coming soon" hint="The Balik-Tanaw questions for your department are being set up." />
+        </section>
       ) : (
-        <div className="card-static mb-8">
-          <h2 className="font-bold text-[var(--charcoal)] mb-4 flex items-center gap-2 pb-4 border-b border-[var(--light-gray)]" style={{ fontFamily: 'var(--font-display)' }}>
-            <PenLine size={18} className="text-[var(--teal)]" /> New reflection
-          </h2>
+        <DashCard title="New reflection" icon={<PenLine size={16} aria-hidden />}>
+          <label htmlFor="bt-week" className={LABEL} style={LABEL_STYLE}>Week</label>
+          <input id="bt-week" value={periodLabel} onChange={(e) => setPeriodLabel(e.target.value)} className={`${CONTROL} w-full`} style={CONTROL_STYLE} placeholder="Week of…" />
 
-          <label className="block text-[13px] font-semibold text-[var(--charcoal)] mb-2" style={{ fontFamily: 'var(--font-display)' }}>Week</label>
-          <input value={periodLabel} onChange={(e) => setPeriodLabel(e.target.value)} className="input mb-5" placeholder="Week of…" />
-
-          <div className="space-y-5">
+          <div className="space-y-5 mt-5">
             {questions.map((q, i) => (
               <div key={i}>
-                <label className="block text-[13px] font-semibold text-[var(--charcoal)] mb-2 leading-relaxed">{i + 1}. {q}</label>
-                <textarea value={answers[i] ?? ''} onChange={(e) => setAnswers((prev) => { const n = [...prev]; n[i] = e.target.value; return n })}
-                  rows={4} className="input resize-y !rounded-xl" placeholder="Your reflection…" />
+                <label htmlFor={`bt-q${i}`} className="block text-[13px] font-semibold mb-1.5 leading-relaxed" style={{ color: 'var(--charcoal)' }}>{i + 1}. {q}</label>
+                <textarea id={`bt-q${i}`} value={answers[i] ?? ''} onChange={(e) => setAnswers((prev) => { const n = [...prev]; n[i] = e.target.value; return n })}
+                  rows={4} className={`${TEXTAREA} resize-y`} style={CONTROL_STYLE} placeholder="Your reflection…" />
               </div>
             ))}
           </div>
 
-          <div className="mt-6 pt-5 border-t border-[var(--light-gray)]">
-            <label className="block text-[13px] font-semibold text-[var(--charcoal)] mb-2" style={{ fontFamily: 'var(--font-display)' }}>Intern&apos;s Signature <span className="text-red-500">*</span></label>
-            <input value={signName} onChange={(e) => setSignName(e.target.value)} className="input mb-1" placeholder="Type your full name to sign" />
-            <p className="text-[11px] text-[var(--mid-gray)] mb-4">Your Coordinating Teacher will sign after reading this in their portal.</p>
-            <button onClick={submit} disabled={submitting}
-              className="btn-primary w-full py-3 rounded-xl !bg-gradient-to-r !from-green-600 !to-green-700">
+          <div className="mt-6 pt-5" style={{ borderTop: '1px solid var(--light-gray)' }}>
+            <label htmlFor="bt-sign" className={LABEL} style={LABEL_STYLE}>Intern&apos;s Signature <span aria-hidden style={{ color: DANGER }}>*</span></label>
+            <input id="bt-sign" value={signName} onChange={(e) => setSignName(e.target.value)} className={`${CONTROL} w-full`} style={CONTROL_STYLE} placeholder="Type your full name to sign" aria-required="true" />
+            <p className="text-[11px] mt-1 mb-4" style={{ color: 'var(--mid-gray)' }}>Your Coordinating Teacher will sign after reading this in their portal.</p>
+            <button onClick={submit} disabled={submitting} className={`${BTN_PRIMARY} w-full h-10`} style={PRIMARY_STYLE}>
               {submitting ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />} Submit Balik-Tanaw
             </button>
           </div>
-        </div>
+        </DashCard>
       )}
 
       {entries.length > 0 && (
-        <div className="mb-8">
-          <h2 className="font-bold text-[var(--charcoal)] mb-3 text-[15px]" style={{ fontFamily: 'var(--font-display)' }}>Past reflections ({entries.length})</h2>
-          <div className="space-y-3">
-            {entries.map((e) => (
-              <div key={e.id} className="card-static">
-                <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
-                  <span className="font-semibold text-[var(--charcoal)] text-[14px]">{e.periodLabel}</span>
-                  {e.supervisorSignedName ? (
-                    <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full">
-                      <CheckCircle2 size={12} /> Signed by {e.supervisorSignedName}
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
-                      <Clock size={12} /> Awaiting supervisor&apos;s signature
-                    </span>
-                  )}
-                </div>
-                <div className="space-y-3">
-                  {e.answers.map((a, i) => (
-                    <div key={i}>
-                      <p className="text-[12px] font-semibold text-[var(--mid-gray)] mb-1">{i + 1}. {a.question}</p>
-                      <p className="text-[13px] text-[var(--charcoal)] whitespace-pre-wrap">{a.answer || <span className="italic text-[var(--mid-gray)]">—</span>}</p>
-                    </div>
-                  ))}
-                </div>
-                <p className="text-[11px] text-[var(--mid-gray)] mt-3 pt-3 border-t border-[var(--light-gray)]">Intern&apos;s signature: <span className="font-semibold text-[var(--charcoal)]">{e.internSignedName}</span></p>
+        <div className="space-y-3">
+          <GroupLabel>Past reflections ({entries.length})</GroupLabel>
+          {entries.map((e) => (
+            <section key={e.id} className="rounded-xl p-4 sm:p-5" style={CARD_STYLE}>
+              <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+                <span className="font-bold text-[14px]" style={{ color: 'var(--charcoal)', fontFamily: 'var(--font-display)' }}>{e.periodLabel}</span>
+                {e.supervisorSignedName ? (
+                  <StatusPill tone="success">Signed by {e.supervisorSignedName}</StatusPill>
+                ) : (
+                  <StatusPill tone="warn">Awaiting supervisor&apos;s signature</StatusPill>
+                )}
               </div>
-            ))}
-          </div>
+              <div className="space-y-3">
+                {e.answers.map((a, i) => (
+                  <div key={i}>
+                    <p className="text-[12px] font-semibold mb-1" style={{ color: 'var(--mid-gray)' }}>{i + 1}. {a.question}</p>
+                    <p className="text-[13px] whitespace-pre-wrap leading-relaxed" style={{ color: 'var(--charcoal)' }}>{a.answer || <span className="italic" style={{ color: 'var(--mid-gray)' }}>—</span>}</p>
+                  </div>
+                ))}
+              </div>
+              <p className="text-[11px] mt-3 pt-3" style={{ color: 'var(--mid-gray)', borderTop: '1px solid var(--light-gray)' }}>Intern&apos;s signature: <span className="font-semibold" style={{ color: 'var(--charcoal)' }}>{e.internSignedName}</span></p>
+            </section>
+          ))}
         </div>
       )}
-    </div>
+    </>
   )
 }

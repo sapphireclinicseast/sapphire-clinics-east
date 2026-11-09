@@ -1,15 +1,20 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { useSession } from 'next-auth/react'
-import { UserCog, Loader2, CheckCircle2, Clock, Calendar, Paperclip, Upload, FileText, ChevronDown, ChevronUp, ArrowUpDown, Trash2, Info, IdCard, Ban, Power, Lock } from 'lucide-react'
-import { cn } from '@/lib/utils'
-import { LEARN_BEST_OPTIONS, FEEDBACK_OPTIONS, PREP_OPTIONS, type LearningProfileData } from '@/lib/learning-profile'
+import { Loader2, CheckCircle2, Calendar, Paperclip, Upload, FileText, ChevronDown, ChevronUp, ArrowUpDown, Trash2, IdCard, Power } from 'lucide-react'
+import { type LearningProfileData } from '@/lib/learning-profile'
 import InternProfileModal from '@/components/InternProfileModal'
 import MeetingsHub from '@/components/MeetingsHub'
 import NoteBody from '@/components/NoteBody'
 import LearningOutcomesForm from '@/components/LearningOutcomesForm'
 import BalikTanawForm from '@/components/BalikTanawForm'
+import {
+  Avatar, Banner, BTN_DANGER_GHOST, BTN_PRIMARY, BTN_SECONDARY, BTN_SM, CARD_STYLE, CONTROL, CONTROL_STYLE,
+  DashCard, DANGER, EmptyState, FILE_FOCUS, FOCUS, LABEL, LABEL_STYLE, PAGE, PageHeader, PillTabs,
+  PRIMARY_STYLE, RowsSkeleton, SECONDARY_STYLE, Skeleton, StatusPill, SUBTLE_BG, TD, TEXTAREA, TH, TH_STYLE,
+  TR_STYLE,
+} from '@/components/hub/ui'
 
 interface Intern { id: string; name: string; department: string; branch: string; startMonth: string | null; endMonth: string | null; hasAccount?: boolean; accountActive?: boolean | null; rotationLapsed?: boolean }
 interface GradeInfo { grade: string; note: string | null; fileName: string | null; filePath: string | null; gradedByName: string | null; updatedAt: string }
@@ -52,32 +57,60 @@ const SCALE_4PT: { score: string; interp: string }[] = [
 ]
 const SCALE_MAP: Record<string, string> = Object.fromEntries(SCALE_4PT.map((r) => [r.score, r.interp]))
 
+// ── Local presentational helpers (page-only; not in the shared kit) ──
+/** Row-button hover used by the accordion lists. */
+const ROW_BTN = `w-full flex items-center justify-between gap-3 text-left transition-colors hover:bg-[#F8FAF2] ${FOCUS}`
+const MUTED = { color: 'var(--mid-gray)' } as const
+const INK = { color: 'var(--charcoal)' } as const
+
+function Chevron({ open, size = 16 }: { open: boolean; size?: number }) {
+  return open
+    ? <ChevronUp size={size} aria-hidden style={MUTED} className="shrink-0" />
+    : <ChevronDown size={size} aria-hidden style={MUTED} className="shrink-0" />
+}
+
+/** Intro line above a tab's content. */
+function TabIntro({ children }: { children: ReactNode }) {
+  return <p className="text-[13px] leading-relaxed px-0.5" style={MUTED}>{children}</p>
+}
+
+function ProgressBar({ progress }: { progress: number }) {
+  return (
+    <div>
+      <div className="flex items-center justify-between text-[11px] font-semibold mb-1" style={MUTED}><span>Uploading…</span><span className="tabular-nums">{progress}%</span></div>
+      <div className="h-2 rounded-full overflow-hidden" style={{ background: 'var(--light-gray)' }}>
+        <div className="h-full transition-[width] duration-200" style={{ width: `${progress}%`, background: 'var(--teal)' }} />
+      </div>
+    </div>
+  )
+}
+
 function FourPointRubric() {
   const [open, setOpen] = useState(false)
   return (
-    <div className="card-static !p-0 overflow-hidden mb-3">
-      <button onClick={() => setOpen((v) => !v)} className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-[var(--off-white)] transition-colors">
-        <span className="text-[13px] font-bold text-[var(--charcoal)]">The 4-Point Scale — grading rubric</span>
-        {open ? <ChevronUp size={16} className="text-[var(--mid-gray)]" /> : <ChevronDown size={16} className="text-[var(--mid-gray)]" />}
+    <section className="rounded-xl overflow-hidden" style={CARD_STYLE}>
+      <button onClick={() => setOpen((v) => !v)} aria-expanded={open} className={`${ROW_BTN} px-4 sm:px-5 py-3`}>
+        <span className="text-[14px] font-bold" style={{ ...INK, fontFamily: 'var(--font-display)' }}>The 4-Point Scale — grading rubric</span>
+        <Chevron open={open} />
       </button>
       {open && (
-        <div className="px-4 pb-4">
-          <p className="text-[12px] text-[var(--mid-gray)] mb-3 leading-relaxed">
+        <div className="px-4 sm:px-5 pb-4 pt-3" style={{ borderTop: '1px solid var(--light-gray)' }}>
+          <p className="text-[12px] mb-3 leading-relaxed" style={MUTED}>
             Each criterion is scored 1–4. Assign intermediate scores in increments of 0.25 where performance falls between two adjacent levels.
           </p>
-          <div className="overflow-x-auto">
-            <table className="w-full text-[12px] border-collapse">
+          <div className="overflow-x-auto rounded-lg" style={{ border: '1px solid var(--light-gray)' }}>
+            <table className="w-full text-[12.5px] border-collapse">
               <thead>
-                <tr className="bg-[var(--narra)] text-white text-left">
-                  <th className="px-3 py-2 font-semibold">Score</th>
-                  <th className="px-3 py-2 font-semibold">Interpretation</th>
+                <tr>
+                  <th scope="col" className={TH} style={TH_STYLE}>Score</th>
+                  <th scope="col" className={TH} style={TH_STYLE}>Interpretation</th>
                 </tr>
               </thead>
               <tbody>
                 {SCALE_4PT.map((r, idx) => (
-                  <tr key={r.score} className={idx % 2 ? 'bg-[var(--off-white)]' : 'bg-white'}>
-                    <td className="px-3 py-2 font-bold text-[var(--charcoal)] whitespace-nowrap align-top">{r.score}</td>
-                    <td className="px-3 py-2 text-[var(--charcoal)]">{r.interp}</td>
+                  <tr key={r.score} style={idx ? TR_STYLE : undefined}>
+                    <td className={`${TD} font-bold whitespace-nowrap tabular-nums`} style={INK}>{r.score}</td>
+                    <td className={TD} style={INK}>{r.interp}</td>
                   </tr>
                 ))}
               </tbody>
@@ -85,7 +118,7 @@ function FourPointRubric() {
           </div>
         </div>
       )}
-    </div>
+    </section>
   )
 }
 
@@ -118,60 +151,54 @@ function GradeCard({ intern, existing, onSaved, onToast }: { intern: Intern; exi
     setTimeout(() => setProgress(null), 600)
   }
 
+  const gid = `grade-${intern.id}`
   return (
-    <div className="card-static">
-      <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
-        <div>
-          <p className="font-semibold text-[var(--charcoal)] text-[14px]">{intern.name}</p>
-          <p className="text-[12px] text-[var(--mid-gray)]">{intern.department} · {intern.branch}</p>
-        </div>
-        {existing?.updatedAt && (
-          <span className="text-[11px] text-[var(--mid-gray)]">Last graded {new Date(existing.updatedAt).toLocaleDateString()}{existing.gradedByName ? ` · ${existing.gradedByName}` : ''}</span>
-        )}
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div>
-          <label className="block text-[12px] font-semibold text-[var(--charcoal)] mb-1.5">Grade (4-point scale)</label>
-          <select value={grade} onChange={(e) => setGrade(e.target.value)} className="input">
+    <DashCard
+      title={intern.name}
+      description={`${intern.department} · ${intern.branch}`}
+      action={existing?.updatedAt ? (
+        <span className="text-[11px]" style={MUTED}>Last graded {new Date(existing.updatedAt).toLocaleDateString()}{existing.gradedByName ? ` · ${existing.gradedByName}` : ''}</span>
+      ) : undefined}
+    >
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="min-w-0">
+          <label htmlFor={`${gid}-score`} className={LABEL} style={LABEL_STYLE}>Grade (4-point scale)</label>
+          <select id={`${gid}-score`} value={grade} onChange={(e) => setGrade(e.target.value)} className={`${CONTROL} w-full`} style={CONTROL_STYLE}>
             <option value="">Select score…</option>
             {SCALE_4PT.map((r) => <option key={r.score} value={r.score}>{r.score}</option>)}
           </select>
-          {grade && SCALE_MAP[grade] && <p className="text-[11px] text-[var(--mid-gray)] mt-1 leading-snug">{SCALE_MAP[grade]}</p>}
+          {grade && SCALE_MAP[grade] && <p className="text-[11px] mt-1 leading-snug" style={MUTED}>{SCALE_MAP[grade]}</p>}
         </div>
-        <div>
-          <label className="block text-[12px] font-semibold text-[var(--charcoal)] mb-1.5">Computation file (optional)</label>
-          <div className="flex items-center gap-2">
-            <label className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-[var(--light-gray)] text-[13px] font-semibold text-[var(--mid-gray)] hover:border-[var(--teal)] hover:text-[var(--teal)] cursor-pointer transition-colors whitespace-nowrap">
-              <Upload size={14} /> {file ? 'Change' : 'Attach'} file
-              <input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx" className="hidden"
+        <div className="min-w-0">
+          <p className={LABEL} style={LABEL_STYLE}>Computation file (optional)</p>
+          <div className="flex items-center gap-2 min-w-0">
+            <label className={`${BTN_SECONDARY} ${FILE_FOCUS}`} style={SECONDARY_STYLE}>
+              <Upload size={14} aria-hidden /> {file ? 'Change' : 'Attach'} file
+              <input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx" className="sr-only"
                 onChange={(e) => setFile(e.target.files?.[0] ?? null)} onClick={(e) => { (e.currentTarget as HTMLInputElement).value = '' }} />
             </label>
             {file ? (
-              <span className="text-[12px] text-[var(--charcoal)] truncate flex items-center gap-1"><Paperclip size={12} className="text-[var(--teal)]" />{file.name}</span>
+              <span className="text-[12px] truncate flex items-center gap-1 min-w-0" style={INK}><Paperclip size={12} aria-hidden className="shrink-0" style={{ color: 'var(--teal)' }} /><span className="truncate">{file.name}</span></span>
             ) : existing?.filePath ? (
-              <a href={`/api/upload/${existing.filePath}`} target="_blank" rel="noopener noreferrer" className="text-[12px] text-[var(--teal)] hover:underline truncate flex items-center gap-1"><FileText size={12} />{existing.fileName ?? 'file'}</a>
+              <a href={`/api/upload/${existing.filePath}`} target="_blank" rel="noopener noreferrer" className="text-[12px] font-semibold hover:underline truncate flex items-center gap-1 min-w-0" style={{ color: 'var(--teal)' }}><FileText size={12} aria-hidden className="shrink-0" /><span className="truncate">{existing.fileName ?? 'file'}</span></a>
             ) : null}
           </div>
         </div>
       </div>
 
-      <div className="mt-3">
-        <label className="block text-[12px] font-semibold text-[var(--charcoal)] mb-1.5">Note (optional)</label>
-        <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} className="input resize-y !rounded-xl" placeholder="Remarks…" />
+      <div className="mt-4">
+        <label htmlFor={`${gid}-note`} className={LABEL} style={LABEL_STYLE}>Note (optional)</label>
+        <textarea id={`${gid}-note`} value={note} onChange={(e) => setNote(e.target.value)} rows={2} className={`${TEXTAREA} resize-y`} style={CONTROL_STYLE} placeholder="Remarks…" />
       </div>
 
-      {progress !== null && (
-        <div className="mt-3">
-          <div className="flex items-center justify-between text-[11px] font-semibold text-[var(--mid-gray)] mb-1"><span>Uploading…</span><span className="tabular-nums">{progress}%</span></div>
-          <div className="h-2 rounded-full bg-[var(--light-gray)] overflow-hidden"><div className="h-full bg-[var(--teal)] transition-[width] duration-200" style={{ width: `${progress}%` }} /></div>
-        </div>
-      )}
+      {progress !== null && <div className="mt-3"><ProgressBar progress={progress} /></div>}
 
-      <button onClick={save} disabled={saving} className="btn-primary mt-4 px-5 py-2.5 rounded-xl text-[13px]">
-        {saving ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />} {progress !== null ? `Uploading… ${progress}%` : (existing ? 'Update grade' : 'Save grade')}
-      </button>
-    </div>
+      <div className="mt-4 flex justify-end">
+        <button onClick={save} disabled={saving} className={BTN_PRIMARY} style={PRIMARY_STYLE}>
+          {saving ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />} {progress !== null ? `Uploading… ${progress}%` : (existing ? 'Update grade' : 'Save grade')}
+        </button>
+      </div>
+    </DashCard>
   )
 }
 interface BT {
@@ -192,19 +219,21 @@ function weekSortTs(label: string, fallbackIso: string): number {
 function LearningProfileView({ data }: { data: LearningProfileData }) {
   const chips = (arr: string[], other?: string) => {
     const all = [...(arr ?? []), ...(other?.trim() ? [`Others: ${other.trim()}`] : [])]
-    return all.length ? all.map((c, i) => <span key={i} className="inline-block text-[12px] bg-[var(--pale-teal)] text-[var(--deep-teal)] px-2 py-0.5 rounded-full mr-1.5 mb-1.5">{c}</span>) : <span className="text-[12px] italic text-[var(--mid-gray)]">—</span>
+    return all.length
+      ? <div className="flex flex-wrap gap-1.5">{all.map((c, i) => <span key={i} className="inline-block text-[12px] px-2 py-0.5 rounded-md" style={{ background: '#fff', color: 'var(--deep-teal)', border: '1px solid var(--light-gray)' }}>{c}</span>)}</div>
+      : <span className="text-[12px] italic" style={MUTED}>—</span>
   }
   const line = (label: string, val?: string) => (
-    <div><p className="text-[12px] font-semibold text-[var(--mid-gray)] mb-0.5">{label}</p><p className="text-[13px] text-[var(--charcoal)] whitespace-pre-wrap">{val?.trim() || <span className="italic text-[var(--mid-gray)]">—</span>}</p></div>
+    <div><p className={LABEL} style={LABEL_STYLE}>{label}</p><p className="text-[13px] whitespace-pre-wrap leading-relaxed" style={INK}>{val?.trim() || <span className="italic" style={MUTED}>—</span>}</p></div>
   )
   return (
-    <div className="space-y-3 pt-1">
+    <div className="space-y-4">
       {line('Expectations for the rotation', data.outcomes?.expectations)}
       {line('Most looking forward to learning', data.outcomes?.lookingForward)}
       {line('Wants to improve on', data.outcomes?.improve)}
-      <div><p className="text-[12px] font-semibold text-[var(--mid-gray)] mb-1">Learns best by</p>{chips(data.learnBest, data.learnBestOther)}</div>
-      <div><p className="text-[12px] font-semibold text-[var(--mid-gray)] mb-1">Preferred feedback</p>{chips(data.feedback, data.feedbackOther)}</div>
-      <div><p className="text-[12px] font-semibold text-[var(--mid-gray)] mb-1">Prepares for duty by</p>{chips(data.prep)}</div>
+      <div><p className={LABEL} style={LABEL_STYLE}>Learns best by</p>{chips(data.learnBest, data.learnBestOther)}</div>
+      <div><p className={LABEL} style={LABEL_STYLE}>Preferred feedback</p>{chips(data.feedback, data.feedbackOther)}</div>
+      <div><p className={LABEL} style={LABEL_STYLE}>Prepares for duty by</p>{chips(data.prep)}</div>
       {line('Challenges in learning', data.challenges)}
     </div>
   )
@@ -245,56 +274,60 @@ function DocumentsPanel({ docs, myAccountId, isAdmin, onChanged, onToast }: {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 flex gap-2.5">
-        <Info size={18} className="text-blue-600 shrink-0 mt-0.5" />
-        <p className="text-[12.5px] text-blue-700 leading-relaxed">
-          Upload only documents <span className="font-semibold">specific to the internship</span> (e.g. supervision guides). Please do <span className="font-semibold">not duplicate</span> template forms already available in the <span className="font-semibold">Templates &amp; Forms</span> section. These are shared with supervisors in your department.
-        </p>
-      </div>
+    <div className="space-y-5">
+      <Banner tone="info">
+        Upload only documents <span className="font-semibold">specific to the internship</span> (e.g. supervision guides). Please do <span className="font-semibold">not duplicate</span> template forms already available in the <span className="font-semibold">Templates &amp; Forms</span> section. These are shared with supervisors in your department.
+      </Banner>
 
-      <div className="card-static">
-        <h3 className="font-bold text-[var(--charcoal)] mb-3 text-[14px]" style={{ fontFamily: 'var(--font-display)' }}>Upload a document</h3>
-        <input value={title} onChange={(e) => setTitle(e.target.value)} className="input mb-2" placeholder="Title (e.g. PT Internship Supervision Guide)" />
-        <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} className="input resize-y !rounded-xl mb-2" placeholder="Description (optional)" />
-        <div className="flex items-center gap-2 mb-3">
-          <label className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-[var(--light-gray)] text-[13px] font-semibold text-[var(--mid-gray)] hover:border-[var(--teal)] hover:text-[var(--teal)] cursor-pointer transition-colors whitespace-nowrap">
-            <Upload size={14} /> {file ? 'Change' : 'Attach'} file
-            <input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx" className="hidden" onChange={(e) => setFile(e.target.files?.[0] ?? null)} onClick={(e) => { (e.currentTarget as HTMLInputElement).value = '' }} />
-          </label>
-          {file && <span className="text-[12px] text-[var(--charcoal)] truncate flex items-center gap-1"><Paperclip size={12} className="text-[var(--teal)]" />{file.name}</span>}
-        </div>
-        {progress !== null && (
-          <div className="mb-3">
-            <div className="flex items-center justify-between text-[11px] font-semibold text-[var(--mid-gray)] mb-1"><span>Uploading…</span><span className="tabular-nums">{progress}%</span></div>
-            <div className="h-2 rounded-full bg-[var(--light-gray)] overflow-hidden"><div className="h-full bg-[var(--teal)] transition-[width] duration-200" style={{ width: `${progress}%` }} /></div>
+      <DashCard title="Upload a document" icon={<Upload size={16} aria-hidden />}>
+        <div className="space-y-3">
+          <div>
+            <label htmlFor="isd-title" className={LABEL} style={LABEL_STYLE}>Title</label>
+            <input id="isd-title" value={title} onChange={(e) => setTitle(e.target.value)} className={`${CONTROL} w-full`} style={CONTROL_STYLE} placeholder="Title (e.g. PT Internship Supervision Guide)" />
           </div>
-        )}
-        <button onClick={upload} disabled={saving} className="btn-primary px-5 py-2.5 rounded-xl text-[13px]">
-          {saving ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />} {progress !== null ? `Uploading… ${progress}%` : 'Upload'}
-        </button>
-      </div>
-
-      {docs.length === 0 ? (
-        <div className="card-static text-center py-10 text-[13px] text-[var(--mid-gray)]">No internship documents yet.</div>
-      ) : (
-        <div className="space-y-2">
-          {docs.map((d) => (
-            <div key={d.id} className="card-static flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <a href={`/api/upload/${d.filePath}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-[14px] font-semibold text-[var(--teal)] hover:underline">
-                  <FileText size={15} className="shrink-0" /> {d.title}
-                </a>
-                {d.description && <p className="text-[12.5px] text-[var(--mid-gray)] mt-0.5">{d.description}</p>}
-                <p className="text-[11px] text-[var(--mid-gray)] mt-1">Uploaded by <span className="font-semibold text-[var(--charcoal)]">{d.uploadedByName}</span> · {new Date(d.createdAt).toLocaleDateString()}</p>
-              </div>
-              {(isAdmin || d.uploadedByAccountId === myAccountId) && (
-                <button onClick={() => remove(d.id)} className="text-[var(--mid-gray)] hover:text-red-500 shrink-0" title="Remove"><Trash2 size={16} /></button>
-              )}
-            </div>
-          ))}
+          <div>
+            <label htmlFor="isd-desc" className={LABEL} style={LABEL_STYLE}>Description</label>
+            <textarea id="isd-desc" value={description} onChange={(e) => setDescription(e.target.value)} rows={2} className={`${TEXTAREA} resize-y`} style={CONTROL_STYLE} placeholder="Description (optional)" />
+          </div>
+          <div className="flex items-center gap-2 min-w-0">
+            <label className={`${BTN_SECONDARY} ${FILE_FOCUS}`} style={SECONDARY_STYLE}>
+              <Upload size={14} aria-hidden /> {file ? 'Change' : 'Attach'} file
+              <input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx" className="sr-only" onChange={(e) => setFile(e.target.files?.[0] ?? null)} onClick={(e) => { (e.currentTarget as HTMLInputElement).value = '' }} />
+            </label>
+            {file && <span className="text-[12px] truncate flex items-center gap-1 min-w-0" style={INK}><Paperclip size={12} aria-hidden className="shrink-0" style={{ color: 'var(--teal)' }} /><span className="truncate">{file.name}</span></span>}
+          </div>
+          {progress !== null && <ProgressBar progress={progress} />}
         </div>
-      )}
+        <div className="mt-4 flex justify-end">
+          <button onClick={upload} disabled={saving} className={BTN_PRIMARY} style={PRIMARY_STYLE}>
+            {saving ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />} {progress !== null ? `Uploading… ${progress}%` : 'Upload'}
+          </button>
+        </div>
+      </DashCard>
+
+      <DashCard title="Internship documents" icon={<FileText size={16} aria-hidden />} flush
+        action={docs.length > 0 ? <span className="text-[11px] tabular-nums" style={MUTED}>{docs.length}</span> : undefined}>
+        {docs.length === 0 ? (
+          <EmptyState icon="file" title="No internship documents yet." />
+        ) : (
+          <ul>
+            {docs.map((d, idx) => (
+              <li key={d.id} className="flex items-start justify-between gap-3 px-4 sm:px-5 py-3.5" style={idx ? TR_STYLE : undefined}>
+                <div className="min-w-0">
+                  <a href={`/api/upload/${d.filePath}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-[14px] font-semibold hover:underline [overflow-wrap:anywhere]" style={{ color: 'var(--deep-teal)' }}>
+                    <FileText size={15} aria-hidden className="shrink-0" style={{ color: 'var(--teal)' }} /> {d.title}
+                  </a>
+                  {d.description && <p className="text-[12.5px] mt-0.5 [overflow-wrap:anywhere]" style={MUTED}>{d.description}</p>}
+                  <p className="text-[11px] mt-1" style={MUTED}>Uploaded by <span className="font-semibold" style={INK}>{d.uploadedByName}</span> · {new Date(d.createdAt).toLocaleDateString()}</p>
+                </div>
+                {(isAdmin || d.uploadedByAccountId === myAccountId) && (
+                  <button onClick={() => remove(d.id)} className={`${BTN_DANGER_GHOST} shrink-0`} style={{ color: DANGER }} title="Remove" aria-label={`Remove ${d.title}`}><Trash2 size={15} aria-hidden /></button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </DashCard>
     </div>
   )
 }
@@ -315,6 +348,11 @@ interface InternNote {
   createdAt: string
   updatedAt: string
 }
+
+const HEADER = { eyebrow: 'Programs', title: 'Internship', description: 'Interns decked to you, their Balik-Tanaw, and grades' }
+
+/** Same two-letter initials the page always showed (first letter of the first two words). */
+const nameInitials = (name: string) => name.split(' ').map((p) => p[0]).slice(0, 2).join('')
 
 export default function InternSupervisionPage() {
   const [loading, setLoading] = useState(true)
@@ -438,132 +476,135 @@ export default function InternSupervisionPage() {
   }
 
   if (loading) {
-    return <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 text-[var(--teal)] animate-spin" /></div>
+    return (
+      <div className={PAGE} aria-busy="true">
+        <PageHeader {...HEADER} />
+        <Skeleton className="h-10 w-full max-w-xl rounded-xl" />
+        <section className="rounded-xl overflow-hidden" style={CARD_STYLE}>
+          <RowsSkeleton rows={4} label="Loading internship" />
+        </section>
+      </div>
+    )
   }
 
   // Non-participants (not a tagged supervisor, INTERN account, or admin) never
   // see this section — even by direct URL.
   if (authStatus === 'authenticated' && !canParticipate) {
     return (
-      <div className="max-w-4xl mx-auto">
-        <div className="card-static text-center py-16">
-          <Lock size={28} className="text-[var(--mid-gray)] mx-auto mb-3" />
-          <p className="font-semibold text-[var(--charcoal)] mb-1" style={{ fontFamily: 'var(--font-display)' }}>Internship isn&apos;t available for your account</p>
-          <p className="text-[13px] text-[var(--mid-gray)]">This section is only for internship supervisors and interns. If you should have access, ask HR to tag you in Staff Profiles.</p>
-        </div>
+      <div className={PAGE}>
+        <PageHeader eyebrow={HEADER.eyebrow} title={HEADER.title} />
+        <section className="rounded-xl" style={CARD_STYLE}>
+          <EmptyState
+            icon="shield"
+            title="Internship isn't available for your account"
+            hint="This section is only for internship supervisors and interns. If you should have access, ask HR to tag you in Staff Profiles."
+          />
+        </section>
       </div>
     )
   }
 
   const isActiveSupervisor = interns.length > 0
 
+  // Tabs — supervisor tabs are gated; Meetings is available to everyone
+  // (interns get invited to meetings too).
+  const tabList = ([
+    ...(isActiveSupervisor ? [['interns', 'List of Interns']] as [Tab, string][] : []),
+    ...(canSeeAllInterns ? [['all-interns', 'All Interns']] as [Tab, string][] : []),
+    ...((isActiveSupervisor || canSeeAllInterns) ? [['balik-tanaw', 'Balik-Tanaw'], ['grades', 'Grades'], ['documents', 'Documents'], ['learning', 'Learning Profiles']] as [Tab, string][] : []),
+    ...((isIntern && !(isActiveSupervisor || canSeeAllInterns)) ? [['my-learning', 'Learning Outcomes'], ['my-balik', 'Balik-Tanaw']] as [Tab, string][] : []),
+    ['meeting', 'Meetings'],
+  ] as [Tab, string][])
+
   return (
-    <div className="max-w-4xl mx-auto">
-      {toast && <div className="toast">{toast}</div>}
+    <div className={PAGE}>
+      {toast && <div className="toast" role="status">{toast}</div>}
       {profileFor && <InternProfileModal internId={profileFor} onClose={() => setProfileFor(null)} />}
 
-      <div className="hero-gradient rounded-2xl px-8 py-8 mb-8">
-        <h1 className="text-xl font-bold text-white tracking-tight" style={{ fontFamily: 'var(--font-display)' }}>Internship</h1>
-        <p className="text-white/60 text-sm mt-1">Interns decked to you, their Balik-Tanaw, and grades</p>
-      </div>
+      <PageHeader {...HEADER} />
 
-      <>
-          {/* Tabs — supervisor tabs are gated; Meetings is available to
-              everyone (interns get invited to meetings too). */}
-          <div className="flex flex-wrap gap-2 p-1 rounded-xl bg-[var(--off-white)] border border-[var(--light-gray)] mb-6">
-            {([
-              ...(isActiveSupervisor ? [['interns', 'List of Interns']] as [Tab, string][] : []),
-              ...(canSeeAllInterns ? [['all-interns', 'All Interns']] as [Tab, string][] : []),
-              ...((isActiveSupervisor || canSeeAllInterns) ? [['balik-tanaw', 'Balik-Tanaw'], ['grades', 'Grades'], ['documents', 'Documents'], ['learning', 'Learning Profiles']] as [Tab, string][] : []),
-              ...((isIntern && !(isActiveSupervisor || canSeeAllInterns)) ? [['my-learning', 'Learning Outcomes'], ['my-balik', 'Balik-Tanaw']] as [Tab, string][] : []),
-              ['meeting', 'Meetings'],
-            ] as [Tab, string][]).map(([t, label]) => (
-              <button key={t} onClick={() => { setTab(t); if (t === 'all-interns') loadAllInterns() }}
-                className={cn('flex-1 min-w-[110px] px-3 py-2.5 rounded-lg text-[13px] font-semibold transition-colors',
-                  tab === t ? 'bg-white text-[var(--teal)] shadow-sm' : 'text-[var(--mid-gray)] hover:text-[var(--charcoal)]')}>
-                {label}
-              </button>
-            ))}
-          </div>
+      <PillTabs
+        label="Internship sections"
+        value={tab}
+        onChange={(id) => { const t = id as Tab; setTab(t); if (t === 'all-interns') loadAllInterns() }}
+        tabs={tabList.map(([t, label]) => ({ id: t, label }))}
+      />
 
-          {tab === 'meeting' && <MeetingsHub context="INTERNSHIP" canSetAvailability={isActiveSupervisor || canSeeAllInterns} />}
+      {tab === 'meeting' && <MeetingsHub context="INTERNSHIP" canSetAvailability={isActiveSupervisor || canSeeAllInterns} />}
 
-          {/* Intern-facing forms (moved here from the standalone pages) */}
-          {tab === 'my-learning' && <LearningOutcomesForm showHero={false} />}
-          {tab === 'my-balik' && <BalikTanawForm showHero={false} />}
+      {/* Intern-facing forms (moved here from the standalone pages) */}
+      {tab === 'my-learning' && <LearningOutcomesForm showHero={false} />}
+      {tab === 'my-balik' && <BalikTanawForm showHero={false} />}
 
-          {!isActiveSupervisor && !canSeeAllInterns && tab !== 'meeting' && tab !== 'my-learning' && tab !== 'my-balik' && (
-            <div className="card-static text-center py-16">
-              <div className="w-14 h-14 rounded-full bg-[var(--pale-teal)] flex items-center justify-center mx-auto mb-4">
-                <UserCog size={24} className="text-[var(--teal)]" />
-              </div>
-              <p className="font-semibold text-[var(--charcoal)] mb-1" style={{ fontFamily: 'var(--font-display)' }}>No interns assigned</p>
-              <p className="text-[13px] text-[var(--mid-gray)] max-w-md mx-auto leading-relaxed">
-                Only clinicians with an active supervision will have content here. When interns are decked to you in the
-                Operations Hub, they&apos;ll appear here with their Balik-Tanaw reflections and grading.
-              </p>
-            </div>
-          )}
+      {!isActiveSupervisor && !canSeeAllInterns && tab !== 'meeting' && tab !== 'my-learning' && tab !== 'my-balik' && (
+        <section className="rounded-xl" style={CARD_STYLE}>
+          <EmptyState
+            icon="users"
+            title="No interns assigned"
+            hint={<>Only clinicians with an active supervision will have content here. When interns are decked to you in the Operations Hub, they&apos;ll appear here with their Balik-Tanaw reflections and grading.</>}
+          />
+        </section>
+      )}
 
-          {tab === 'all-interns' && (
-            <div className="space-y-3">
-              <p className="text-[12px] text-[var(--mid-gray)] mb-1">{isAdmin ? 'Every intern org-wide' : 'Every intern in your department'} — Clinical Internship Supervisor view. Open an intern to read every note they&apos;ve written, not just sessions decked to you.</p>
-              {allInternsLoading ? (
-                <div className="flex justify-center py-10"><Loader2 size={22} className="animate-spin text-[var(--teal)]" /></div>
-              ) : (allInterns ?? []).length === 0 ? (
-                <div className="card-static text-center py-12 text-[13px] text-[var(--mid-gray)]">No interns found.</div>
-              ) : (
-                (allInterns ?? []).map((i) => {
+      {tab === 'all-interns' && (
+        <>
+          <TabIntro>{isAdmin ? 'Every intern org-wide' : 'Every intern in your department'} — Clinical Internship Supervisor view. Open an intern to read every note they&apos;ve written, not just sessions decked to you.</TabIntro>
+          <section className="rounded-xl overflow-hidden" style={CARD_STYLE}>
+            {allInternsLoading ? (
+              <RowsSkeleton rows={4} label="Loading interns" />
+            ) : (allInterns ?? []).length === 0 ? (
+              <EmptyState icon="users" title="No interns found." />
+            ) : (
+              <ul>
+                {(allInterns ?? []).map((i, idx) => {
                   const open = notesForIntern === i.id
                   const notes = notesByIntern[i.id]
                   return (
-                    <div key={i.id} className="rounded-xl border border-[var(--light-gray)] bg-white overflow-hidden">
-                      <button onClick={() => toggleNotes(i.id)}
-                        className="w-full flex items-center justify-between gap-3 flex-wrap px-4 py-3 text-left hover:bg-[var(--off-white)]">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-[var(--pale-teal)] flex items-center justify-center font-bold text-[var(--teal)] text-[13px]">
-                            {i.name.split(' ').map((p) => p[0]).slice(0, 2).join('')}
-                          </div>
-                          <div>
-                            <p className="font-semibold text-[var(--charcoal)] text-[14px]">{i.name}</p>
-                            <p className="text-[12px] text-[var(--mid-gray)]">{i.department} · {i.branch}</p>
-                          </div>
-                        </div>
-                        <span className="flex items-center gap-2">
-                          {notesLoading === i.id && <Loader2 size={14} className="animate-spin text-[var(--mid-gray)]" />}
-                          {notes && <span className="text-[11px] text-[var(--mid-gray)]">{notes.length} note{notes.length === 1 ? '' : 's'}</span>}
-                          {open ? <ChevronUp size={18} className="text-[var(--mid-gray)]" /> : <ChevronDown size={18} className="text-[var(--mid-gray)]" />}
+                    <li key={i.id} style={idx ? TR_STYLE : undefined}>
+                      <button onClick={() => toggleNotes(i.id)} aria-expanded={open}
+                        className={`${ROW_BTN} px-4 sm:px-5 py-3`}>
+                        <span className="flex items-center gap-3 min-w-0">
+                          <Avatar text={nameInitials(i.name)} size={36} />
+                          <span className="min-w-0">
+                            <span className="block font-semibold text-[14px] truncate" style={INK}>{i.name}</span>
+                            <span className="block text-[12px] truncate" style={MUTED}>{i.department} · {i.branch}</span>
+                          </span>
+                        </span>
+                        <span className="flex items-center gap-2 shrink-0">
+                          {notesLoading === i.id && <Loader2 size={14} className="animate-spin" style={MUTED} />}
+                          {notes && <span className="text-[11px] tabular-nums" style={MUTED}>{notes.length} note{notes.length === 1 ? '' : 's'}</span>}
+                          <Chevron open={open} size={18} />
                         </span>
                       </button>
                       {open && (
-                        <div className="border-t border-[var(--light-gray)] p-2 space-y-2">
+                        <div className="p-3 sm:px-5 space-y-2" style={{ borderTop: '1px solid var(--light-gray)', background: SUBTLE_BG }}>
                           {notes && notes.length === 0 && (
-                            <p className="text-[12px] text-[var(--mid-gray)] px-2 py-3">No session notes yet.</p>
+                            <p className="text-[12px] px-1 py-2" style={MUTED}>No session notes yet.</p>
                           )}
                           {(notes ?? []).map((n) => {
                             const nOpen = openNote === n.id
                             return (
-                              <div key={n.id} className="rounded-lg border border-[var(--light-gray)] bg-white overflow-hidden">
-                                <button onClick={() => setOpenNote(nOpen ? null : n.id)}
-                                  className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left hover:bg-[var(--off-white)]">
-                                  <span className="flex items-center gap-2 flex-wrap">
-                                    <FileText size={14} className="text-[var(--teal)]" />
-                                    <span className="font-semibold text-[var(--charcoal)] text-[13.5px]">{new Date(n.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
-                                    <span className="text-[12px] text-[var(--mid-gray)]">{n.patientName}</span>
-                                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-[var(--pale-teal)] text-[var(--teal)]">{n.status}</span>
-                                    {n.lockedAt && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">Locked</span>}
+                              <div key={n.id} className="rounded-lg overflow-hidden" style={CARD_STYLE}>
+                                <button onClick={() => setOpenNote(nOpen ? null : n.id)} aria-expanded={nOpen}
+                                  className={`${ROW_BTN} px-3 py-2.5`}>
+                                  <span className="flex items-center gap-2 flex-wrap min-w-0">
+                                    <FileText size={14} aria-hidden style={{ color: 'var(--teal)' }} />
+                                    <span className="font-semibold text-[13.5px]" style={INK}>{new Date(n.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                                    <span className="text-[12px]" style={MUTED}>{n.patientName}</span>
+                                    <StatusPill tone="info">{n.status}</StatusPill>
+                                    {n.lockedAt && <StatusPill tone="warn">Locked</StatusPill>}
                                   </span>
-                                  {nOpen ? <ChevronUp size={16} className="text-[var(--mid-gray)]" /> : <ChevronDown size={16} className="text-[var(--mid-gray)]" />}
+                                  <Chevron open={nOpen} />
                                 </button>
                                 {nOpen && (
-                                  <div className="px-3 pb-3 border-t border-[var(--light-gray)] pt-3 space-y-2">
-                                    {n.notes ? <NoteBody notes={n.notes} /> : <p className="text-[13px] italic text-[var(--mid-gray)]">No note text.</p>}
+                                  <div className="px-3 pb-3 pt-3 space-y-2" style={{ borderTop: '1px solid var(--light-gray)' }}>
+                                    {n.notes ? <NoteBody notes={n.notes} /> : <p className="text-[13px] italic" style={MUTED}>No note text.</p>}
                                     {n.discontinuedRemarks && (
-                                      <p className="text-[12px] text-[var(--mid-gray)]"><span className="font-semibold">Discontinued remarks:</span> {n.discontinuedRemarks}</p>
+                                      <p className="text-[12px]" style={MUTED}><span className="font-semibold">Discontinued remarks:</span> {n.discontinuedRemarks}</p>
                                     )}
-                                    <p className="text-[11px] text-[var(--mid-gray)]">Supervising clinician: <span className="font-semibold text-[var(--charcoal)]">{n.supervisorName}</span></p>
+                                    <p className="text-[11px]" style={MUTED}>Supervising clinician: <span className="font-semibold" style={INK}>{n.supervisorName}</span></p>
                                     {n.editHistory && n.editHistory.length > 0 && (
-                                      <p className="text-[11px] text-[var(--mid-gray)]">
+                                      <p className="text-[11px]" style={MUTED}>
                                         {n.editHistory.map((e, idx) => (
                                           <span key={idx}>{idx > 0 ? ' · ' : ''}{e.name} {e.action} {new Date(e.at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
                                         ))}
@@ -576,182 +617,188 @@ export default function InternSupervisionPage() {
                           })}
                         </div>
                       )}
-                    </div>
+                    </li>
                   )
-                })
-              )}
-            </div>
-          )}
+                })}
+              </ul>
+            )}
+          </section>
+        </>
+      )}
 
-          {tab === 'interns' && (
-            <div className="space-y-3">
-              {interns.map((i) => (
-                <div key={i.id} className="card-static flex items-center justify-between gap-3 flex-wrap">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-[var(--pale-teal)] flex items-center justify-center font-bold text-[var(--teal)] text-[13px]">
-                      {i.name.split(' ').map((p) => p[0]).slice(0, 2).join('')}
-                    </div>
-                    <div>
-                      <p className="font-semibold text-[var(--charcoal)] text-[14px]">{i.name}</p>
-                      <p className="text-[12px] text-[var(--mid-gray)]">{i.department} · {i.branch}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <span className="flex items-center gap-1.5 text-[12px] text-[var(--mid-gray)]">
-                      <Calendar size={13} />
-                      {i.startMonth || '—'} to {i.endMonth || '—'}
-                    </span>
-                    {i.hasAccount && i.accountActive === false && (
-                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-red-700 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full"><Ban size={11} /> Access disabled</span>
-                    )}
-                    {i.hasAccount && i.accountActive === false && (
-                      <button onClick={() => enableAccess(i.id)} disabled={enabling === i.id}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--teal)] text-white text-[12.5px] font-semibold hover:opacity-90 disabled:opacity-50">
-                        {enabling === i.id ? <Loader2 size={13} className="animate-spin" /> : <Power size={13} />} Enable Access
-                      </button>
-                    )}
-                    <button onClick={() => setProfileFor(i.id)}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--teal)]/30 text-[var(--teal)] text-[12.5px] font-semibold hover:bg-[var(--teal)]/5 transition-colors">
-                      <IdCard size={14} /> Intern Profile
-                    </button>
+      {tab === 'interns' && (
+        <section className="rounded-xl overflow-hidden" style={CARD_STYLE}>
+          <ul>
+            {interns.map((i, idx) => (
+              <li key={i.id} className="flex items-center justify-between gap-3 flex-wrap px-4 sm:px-5 py-3.5" style={idx ? TR_STYLE : undefined}>
+                <div className="flex items-center gap-3 min-w-0">
+                  <Avatar text={nameInitials(i.name)} size={36} />
+                  <div className="min-w-0">
+                    <p className="font-semibold text-[14px] truncate" style={INK}>{i.name}</p>
+                    <p className="text-[12px] truncate" style={MUTED}>{i.department} · {i.branch}</p>
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
-
-          {tab === 'balik-tanaw' && (
-            bt.length === 0 ? (
-              <div className="card-static text-center py-12 text-[13px] text-[var(--mid-gray)]">No Balik-Tanaw reflections submitted yet.</div>
-            ) : (
-              <>
-                <div className="flex justify-end mb-3">
-                  <button onClick={() => setBtSort((s) => (s === 'desc' ? 'asc' : 'desc'))}
-                    className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-[var(--mid-gray)] hover:text-[var(--teal)] border border-[var(--light-gray)] rounded-lg px-3 py-1.5 transition-colors">
-                    <ArrowUpDown size={13} /> {btSort === 'desc' ? 'Newest first' : 'Oldest first'}
+                <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+                  <span className="flex items-center gap-1.5 text-[12px] tabular-nums" style={MUTED}>
+                    <Calendar size={13} aria-hidden />
+                    {i.startMonth || '—'} to {i.endMonth || '—'}
+                  </span>
+                  {i.hasAccount && i.accountActive === false && (
+                    <StatusPill tone="error">Access disabled</StatusPill>
+                  )}
+                  {i.hasAccount && i.accountActive === false && (
+                    <button onClick={() => enableAccess(i.id)} disabled={enabling === i.id}
+                      className={`${BTN_SM} text-white hover:opacity-90`} style={PRIMARY_STYLE}>
+                      {enabling === i.id ? <Loader2 size={13} className="animate-spin" /> : <Power size={13} />} Enable Access
+                    </button>
+                  )}
+                  <button onClick={() => setProfileFor(i.id)} className={BTN_SM} style={{ ...SECONDARY_STYLE, color: 'var(--deep-teal)' }}>
+                    <IdCard size={14} aria-hidden /> Intern Profile
                   </button>
                 </div>
-                <div className="space-y-2">
-                  {(() => {
-                    const map = new Map<string, BT[]>()
-                    for (const e of bt) { const arr = map.get(e.periodLabel) ?? []; arr.push(e); map.set(e.periodLabel, arr) }
-                    const weeks = [...map.entries()].map(([label, entries]) => ({
-                      label,
-                      entries: [...entries].sort((a, b) => a.internName.localeCompare(b.internName)),
-                      ts: weekSortTs(label, entries[0]?.createdAt ?? entries[0]?.internSignedAt ?? ''),
-                      signed: entries.filter((e) => e.supervisorSignedName).length,
-                    }))
-                    weeks.sort((a, b) => (btSort === 'desc' ? b.ts - a.ts : a.ts - b.ts))
-                    return weeks.map((w) => {
-                      const wOpen = openWeek === w.label
-                      const allSigned = w.signed === w.entries.length
-                      return (
-                        <div key={w.label} className="rounded-xl border border-[var(--light-gray)] bg-white overflow-hidden">
-                          <button onClick={() => setOpenWeek(wOpen ? null : w.label)}
-                            className="w-full flex items-center justify-between gap-2 px-4 py-3 text-left hover:bg-[var(--off-white)]">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <Calendar size={14} className="text-[var(--teal)]" />
-                              <span className="font-semibold text-[var(--charcoal)] text-[14px]">{w.label}</span>
-                              <span className="text-[11px] text-[var(--mid-gray)]">{w.entries.length} intern{w.entries.length === 1 ? '' : 's'}</span>
-                              <span className={cn('text-[10px] font-bold px-1.5 py-0.5 rounded-full', allSigned ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-amber-50 text-amber-700 border border-amber-200')}>{w.signed}/{w.entries.length} signed</span>
-                            </div>
-                            {wOpen ? <ChevronUp size={18} className="text-[var(--mid-gray)]" /> : <ChevronDown size={18} className="text-[var(--mid-gray)]" />}
-                          </button>
-                          {wOpen && (
-                            <div className="border-t border-[var(--light-gray)] p-2 space-y-2">
-                              {w.entries.map((e) => {
-                                const eOpen = openEntry === e.id
-                                return (
-                                  <div key={e.id} className="rounded-lg border border-[var(--light-gray)] bg-white overflow-hidden">
-                                    <button onClick={() => setOpenEntry(eOpen ? null : e.id)}
-                                      className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left hover:bg-[var(--off-white)]">
-                                      <span className="flex items-center gap-2 flex-wrap">
-                                        <span className="font-semibold text-[var(--charcoal)] text-[13.5px]">{e.internName}</span>
-                                        {e.supervisorSignedName ? (
-                                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-green-700 bg-green-50 border border-green-200 px-1.5 py-0.5 rounded-full"><CheckCircle2 size={11} /> Signed</span>
-                                        ) : (
-                                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full"><Clock size={11} /> Not signed</span>
-                                        )}
-                                      </span>
-                                      {eOpen ? <ChevronUp size={16} className="text-[var(--mid-gray)]" /> : <ChevronDown size={16} className="text-[var(--mid-gray)]" />}
-                                    </button>
-                                    {eOpen && (
-                                      <div className="px-3 pb-3 border-t border-[var(--light-gray)] pt-3 space-y-3">
-                                        {e.answers.map((a, i) => (
-                                          <div key={i}>
-                                            <p className="text-[12px] font-semibold text-[var(--mid-gray)] mb-1">{i + 1}. {a.question}</p>
-                                            <p className="text-[13px] text-[var(--charcoal)] whitespace-pre-wrap">{a.answer || <span className="italic text-[var(--mid-gray)]">—</span>}</p>
-                                          </div>
-                                        ))}
-                                        <div className="flex items-center justify-between gap-2 pt-3 border-t border-[var(--light-gray)] flex-wrap">
-                                          <p className="text-[11px] text-[var(--mid-gray)]">Intern's signature: <span className="font-semibold text-[var(--charcoal)]">{e.internSignedName}</span>
-                                            {e.supervisorSignedName && <> · CT: <span className="font-semibold text-[var(--charcoal)]">{e.supervisorSignedName}</span></>}
-                                          </p>
-                                          {!e.supervisorSignedName && (
-                                            <button onClick={() => sign(e.id)} disabled={signing === e.id}
-                                              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[var(--teal)] text-white text-[13px] font-semibold hover:opacity-90 disabled:opacity-50">
-                                              {signing === e.id ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />} Sign as Coordinating Teacher
-                                            </button>
-                                          )}
-                                        </div>
-                                      </div>
-                                    )}
-                                  </div>
-                                )
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })
-                  })()}
-                </div>
-              </>
-            )
-          )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
-          {tab === 'grades' && (
-            <div className="space-y-3">
-              <p className="text-[12px] text-[var(--mid-gray)] mb-1">Encode each intern's grade on the 4-point scale (1.00–4.00, 0.25 increments) and attach a computation file (Excel, PDF, or Word).</p>
-              <FourPointRubric />
-              {interns.map((i) => (
-                <GradeCard key={i.id} intern={i} existing={grades[i.id]} onSaved={load} onToast={showToast} />
-              ))}
+      {tab === 'balik-tanaw' && (
+        bt.length === 0 ? (
+          <section className="rounded-xl" style={CARD_STYLE}>
+            <EmptyState icon="book" title="No Balik-Tanaw reflections submitted yet." />
+          </section>
+        ) : (
+          <>
+            <div className="flex justify-end">
+              <button onClick={() => setBtSort((s) => (s === 'desc' ? 'asc' : 'desc'))} className={BTN_SM} style={SECONDARY_STYLE}>
+                <ArrowUpDown size={13} aria-hidden /> {btSort === 'desc' ? 'Newest first' : 'Oldest first'}
+              </button>
             </div>
-          )}
+            <section className="rounded-xl overflow-hidden" style={CARD_STYLE}>
+              <ul>
+                {(() => {
+                  const map = new Map<string, BT[]>()
+                  for (const e of bt) { const arr = map.get(e.periodLabel) ?? []; arr.push(e); map.set(e.periodLabel, arr) }
+                  const weeks = [...map.entries()].map(([label, entries]) => ({
+                    label,
+                    entries: [...entries].sort((a, b) => a.internName.localeCompare(b.internName)),
+                    ts: weekSortTs(label, entries[0]?.createdAt ?? entries[0]?.internSignedAt ?? ''),
+                    signed: entries.filter((e) => e.supervisorSignedName).length,
+                  }))
+                  weeks.sort((a, b) => (btSort === 'desc' ? b.ts - a.ts : a.ts - b.ts))
+                  return weeks.map((w, wIdx) => {
+                    const wOpen = openWeek === w.label
+                    const allSigned = w.signed === w.entries.length
+                    return (
+                      <li key={w.label} style={wIdx ? TR_STYLE : undefined}>
+                        <button onClick={() => setOpenWeek(wOpen ? null : w.label)} aria-expanded={wOpen}
+                          className={`${ROW_BTN} px-4 sm:px-5 py-3`}>
+                          <span className="flex items-center gap-2 flex-wrap min-w-0">
+                            <Calendar size={14} aria-hidden style={{ color: 'var(--teal)' }} />
+                            <span className="font-semibold text-[14px]" style={INK}>{w.label}</span>
+                            <span className="text-[11px]" style={MUTED}>{w.entries.length} intern{w.entries.length === 1 ? '' : 's'}</span>
+                            <StatusPill tone={allSigned ? 'success' : 'warn'}>{w.signed}/{w.entries.length} signed</StatusPill>
+                          </span>
+                          <Chevron open={wOpen} size={18} />
+                        </button>
+                        {wOpen && (
+                          <div className="p-3 sm:px-5 space-y-2" style={{ borderTop: '1px solid var(--light-gray)', background: SUBTLE_BG }}>
+                            {w.entries.map((e) => {
+                              const eOpen = openEntry === e.id
+                              return (
+                                <div key={e.id} className="rounded-lg overflow-hidden" style={CARD_STYLE}>
+                                  <button onClick={() => setOpenEntry(eOpen ? null : e.id)} aria-expanded={eOpen}
+                                    className={`${ROW_BTN} px-3 py-2.5`}>
+                                    <span className="flex items-center gap-2 flex-wrap min-w-0">
+                                      <span className="font-semibold text-[13.5px]" style={INK}>{e.internName}</span>
+                                      {e.supervisorSignedName ? (
+                                        <StatusPill tone="success">Signed</StatusPill>
+                                      ) : (
+                                        <StatusPill tone="warn">Not signed</StatusPill>
+                                      )}
+                                    </span>
+                                    <Chevron open={eOpen} />
+                                  </button>
+                                  {eOpen && (
+                                    <div className="px-3 pb-3 pt-3 space-y-3" style={{ borderTop: '1px solid var(--light-gray)' }}>
+                                      {e.answers.map((a, i) => (
+                                        <div key={i}>
+                                          <p className="text-[12px] font-semibold mb-1" style={MUTED}>{i + 1}. {a.question}</p>
+                                          <p className="text-[13px] whitespace-pre-wrap leading-relaxed" style={INK}>{a.answer || <span className="italic" style={MUTED}>—</span>}</p>
+                                        </div>
+                                      ))}
+                                      <div className="flex items-center justify-between gap-2 pt-3 flex-wrap" style={{ borderTop: '1px solid var(--light-gray)' }}>
+                                        <p className="text-[11px]" style={MUTED}>Intern&apos;s signature: <span className="font-semibold" style={INK}>{e.internSignedName}</span>
+                                          {e.supervisorSignedName && <> · CT: <span className="font-semibold" style={INK}>{e.supervisorSignedName}</span></>}
+                                        </p>
+                                        {!e.supervisorSignedName && (
+                                          <button onClick={() => sign(e.id)} disabled={signing === e.id} className={BTN_PRIMARY} style={PRIMARY_STYLE}>
+                                            {signing === e.id ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />} Sign as Coordinating Teacher
+                                          </button>
+                                        )}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </li>
+                    )
+                  })
+                })()}
+              </ul>
+            </section>
+          </>
+        )
+      )}
 
-          {tab === 'documents' && (
-            <DocumentsPanel docs={docs} myAccountId={myAccountId} isAdmin={isAdmin} onChanged={load} onToast={showToast} />
-          )}
+      {tab === 'grades' && (
+        <>
+          <TabIntro>Encode each intern&apos;s grade on the 4-point scale (1.00–4.00, 0.25 increments) and attach a computation file (Excel, PDF, or Word).</TabIntro>
+          <FourPointRubric />
+          {interns.map((i) => (
+            <GradeCard key={i.id} intern={i} existing={grades[i.id]} onSaved={load} onToast={showToast} />
+          ))}
+        </>
+      )}
 
-          {tab === 'learning' && (
-            <div className="space-y-2">
-              <p className="text-[12px] text-[var(--mid-gray)] mb-1">Each intern's Learning Outcomes &amp; Preferences (self-submitted).</p>
-              {interns.map((i) => {
+      {tab === 'documents' && (
+        <DocumentsPanel docs={docs} myAccountId={myAccountId} isAdmin={isAdmin} onChanged={load} onToast={showToast} />
+      )}
+
+      {tab === 'learning' && (
+        <>
+          <TabIntro>Each intern&apos;s Learning Outcomes &amp; Preferences (self-submitted).</TabIntro>
+          <section className="rounded-xl overflow-hidden" style={CARD_STYLE}>
+            <ul>
+              {interns.map((i, idx) => {
                 const prof = profiles[i.id]
                 const open = openProfile === i.id
                 return (
-                  <div key={i.id} className="rounded-xl border border-[var(--light-gray)] bg-white overflow-hidden">
-                    <button onClick={() => setOpenProfile(open ? null : i.id)} disabled={!prof}
-                      className="w-full flex items-center justify-between gap-2 px-4 py-3 text-left hover:bg-[var(--off-white)] disabled:cursor-default">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-semibold text-[var(--charcoal)] text-[14px]">{i.name}</span>
-                        <span className="text-[11px] text-[var(--mid-gray)]">{i.department}</span>
-                        {!prof && <span className="text-[10px] italic text-[var(--mid-gray)]">not submitted yet</span>}
-                      </div>
-                      {prof && (open ? <ChevronUp size={18} className="text-[var(--mid-gray)]" /> : <ChevronDown size={18} className="text-[var(--mid-gray)]" />)}
+                  <li key={i.id} style={idx ? TR_STYLE : undefined}>
+                    <button onClick={() => setOpenProfile(open ? null : i.id)} disabled={!prof} aria-expanded={prof ? open : undefined}
+                      className={`${ROW_BTN} px-4 sm:px-5 py-3 disabled:cursor-default disabled:hover:bg-transparent`}>
+                      <span className="flex items-center gap-2 flex-wrap min-w-0">
+                        <span className="font-semibold text-[14px]" style={INK}>{i.name}</span>
+                        <span className="text-[11px]" style={MUTED}>{i.department}</span>
+                        {!prof && <StatusPill tone="neutral">Not submitted yet</StatusPill>}
+                      </span>
+                      {prof && <Chevron open={open} size={18} />}
                     </button>
                     {open && prof && (
-                      <div className="px-4 pb-4 border-t border-[var(--light-gray)]">
+                      <div className="px-4 sm:px-5 py-4" style={{ borderTop: '1px solid var(--light-gray)', background: SUBTLE_BG }}>
                         <LearningProfileView data={prof.data} />
                       </div>
                     )}
-                  </div>
+                  </li>
                 )
               })}
-            </div>
-          )}
+            </ul>
+          </section>
         </>
+      )}
     </div>
   )
 }
