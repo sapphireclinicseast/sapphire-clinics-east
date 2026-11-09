@@ -379,30 +379,31 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
       fontFamily: 'var(--font-manrope), "Helvetica Neue", system-ui, -apple-system, sans-serif',
       color: BRAND.ink,
     }}>
-      {/* ── Header — the Client Portal hero gradient ── */}
+      {/* ── Header — light top bar, like the Client Portal's ── */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '0.75rem 2rem',
-        background: HERO_BG,
-        color: '#fff',
+        background: BRAND.paper,
+        borderBottom: `1px solid ${BRAND.paper3}`,
+        color: BRAND.narra,
         flexShrink: 0,
         position: 'relative',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          {/* Aura Health Rehab mark — light (cream) symbol only; the branch
-              wordmark sits beside it. Light-on-dark on the teal masthead. */}
-          <Image src="/aura-health-mark-light.png" alt="Aura Health Rehab" width={120} height={120} priority
-            style={{ objectFit: 'contain', height: '3.4rem', width: 'auto', flexShrink: 0 }} />
+          {/* Aura Health Rehab rainbow mark in colour — same as the Client
+              Portal's top bar; the branch name sits beside it. */}
+          <Image src="/brand/mark-rainbow-narra-512.png" alt="Aura Health Rehab" width={120} height={120} priority
+            style={{ objectFit: 'contain', height: '3rem', width: 'auto', flexShrink: 0 }} />
           <div>
             <p style={{
               fontFamily: 'var(--font-montserrat), "Helvetica Neue", system-ui, sans-serif',
-              fontSize: '1.5rem', fontWeight: 700, color: '#fff',
+              fontSize: '1.5rem', fontWeight: 700, color: BRAND.narra,
               lineHeight: 1.1, letterSpacing: '-0.02em',
             }}>
               {clinicName}
             </p>
             <p style={{
-              fontSize: '0.85rem', color: 'rgba(255,255,255,0.8)',
+              fontSize: '0.85rem', color: BRAND.mid,
               letterSpacing: '0.02em',
             }}>Patient Queue — Today</p>
           </div>
@@ -410,10 +411,10 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
         <div style={{ textAlign: 'right' }}>
           <p style={{
             fontFamily: 'var(--font-manrope), "Helvetica Neue", system-ui, sans-serif',
-            fontSize: '2rem', fontWeight: 700, color: '#fff',
+            fontSize: '2rem', fontWeight: 700, color: BRAND.narra,
             lineHeight: 1, fontVariantNumeric: 'tabular-nums',
           }}>{clock}</p>
-          <p style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.8)', marginTop: '0.15rem' }}>{dateLabel}</p>
+          <p style={{ fontSize: '0.8rem', color: BRAND.mid, marginTop: '0.15rem' }}>{dateLabel}</p>
         </div>
       </div>
 
@@ -908,23 +909,49 @@ export default function QueueDisplay({ branch, clinicName }: { branch: string; c
         </div>
       </div>
 
-      {/* ── Footer — quiet paper bar ──── */}
+      {/* ── Motto ribbon — scrolls like a news ticker. Two identical halves
+          slide by exactly one half, so the loop is seamless. ── */}
+      <style>{`
+        @keyframes queue-ticker { from { transform: translateX(0) } to { transform: translateX(-50%) } }
+        @media (prefers-reduced-motion: reduce) { .queue-ticker-track { animation: none !important } }
+      `}</style>
       <div style={{
-        padding: '0.4rem 2rem', flexShrink: 0,
-        background: BRAND.paper2,
-        borderTop: `1px solid ${BRAND.paper3}`,
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        flexShrink: 0, display: 'flex', alignItems: 'stretch',
+        background: BRAND.narra, color: '#fff',
+        borderTop: `3px solid ${BRAND.sun}`,
+        height: '2.6rem', overflow: 'hidden',
       }}>
-        <p style={{ fontSize: '0.7rem', color: BRAND.mid, letterSpacing: '0.02em' }}>
-          Aura Health Rehab — Patient Queue Display · For internal use only
-        </p>
-        <p style={{
-          fontFamily: 'var(--font-manrope), "Helvetica Neue", system-ui, sans-serif',
-          fontSize: '0.7rem', color: BRAND.mid,
-          fontVariantNumeric: 'tabular-nums',
+        <div style={{ flex: 1, overflow: 'hidden', position: 'relative', display: 'flex', alignItems: 'center' }}>
+          <div className="queue-ticker-track" aria-label="Feeling Seen. Finding Footing. Moving Forward." style={{
+            display: 'flex', width: 'max-content', whiteSpace: 'nowrap',
+            animation: 'queue-ticker 40s linear infinite',
+          }}>
+            {[0, 1].map(half => (
+              <div key={half} aria-hidden={half === 1} style={{ display: 'flex' }}>
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <span key={i} style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '1.5rem', paddingRight: '1.5rem',
+                    fontFamily: 'var(--font-montserrat), "Helvetica Neue", system-ui, sans-serif',
+                    fontSize: '1.05rem', fontWeight: 600, letterSpacing: '0.02em',
+                  }}>
+                    Feeling Seen. Finding Footing. Moving Forward.
+                    <span aria-hidden style={{ width: '0.45rem', height: '0.45rem', borderRadius: '50%', background: BRAND.sun, display: 'inline-block' }} />
+                  </span>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+        {/* Last-updated stays visible at the right end of the ribbon. */}
+        <div style={{
+          flexShrink: 0, display: 'flex', alignItems: 'center',
+          padding: '0 1.25rem', background: BRAND.narraDeep,
+          fontSize: '0.75rem', color: 'rgba(255,255,255,0.75)',
+          fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
+          boxShadow: '-12px 0 16px -8px rgba(0,0,0,0.35)',
         }}>
-          Last updated: {lastRefresh || '—'} · Auto-refreshes every 30 seconds
-        </p>
+          Updated {lastRefresh || '—'}
+        </div>
       </div>
     </div>
   )
