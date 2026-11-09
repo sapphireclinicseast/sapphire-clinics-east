@@ -3,7 +3,58 @@
 import { useState } from 'react'
 import { signIn } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
-import { Eye, EyeOff, Lock, Mail } from 'lucide-react'
+import { Eye, EyeOff } from 'lucide-react'
+
+// ── SCEI staff sign-in look ──────────────────────────────────────────────────
+// Shared by every staff-facing hub (Operations, HR, Accounting, Staff Portal):
+// Aura gradient backdrop, white card with the three colour brand marks, hub
+// name, uppercase labels, narra primary button. Hex values on purpose — each
+// app's CSS variables differ, the sign-in screens must not.
+const C = {
+  narra: '#244952', moss: '#4A8073', ink: '#1A1A1A', muted: '#667085',
+  line: '#D9E1CC', focusRing: 'rgba(74,128,115,0.18)',
+  errBg: '#FEF2F2', errLine: '#FECACA', errText: '#B42318',
+  infoBg: '#F6F8EE',
+}
+const inputStyle: React.CSSProperties = {
+  background: '#fff',
+  border: `1px solid ${C.line}`,
+  color: C.ink,
+  fontFamily: 'var(--font-body)',
+}
+const inputClass = 'w-full h-11 px-3.5 rounded-lg text-sm outline-none transition-[border-color,box-shadow]'
+
+function onFocus(e: React.FocusEvent<HTMLInputElement>) {
+  e.currentTarget.style.borderColor = C.moss
+  e.currentTarget.style.boxShadow = `0 0 0 3px ${C.focusRing}`
+}
+function onBlur(e: React.FocusEvent<HTMLInputElement>) {
+  e.currentTarget.style.borderColor = C.line
+  e.currentTarget.style.boxShadow = 'none'
+}
+const labelStyle: React.CSSProperties = {
+  color: C.muted,
+  display: 'block',
+  fontFamily: 'var(--font-display)',
+  fontSize: '0.6875rem',
+  fontWeight: 600,
+  letterSpacing: '0.08em',
+  textTransform: 'uppercase',
+  marginBottom: 6,
+}
+const errorStyle: React.CSSProperties = { background: C.errBg, border: `1px solid ${C.errLine}`, color: C.errText }
+const infoStyle: React.CSSProperties = { background: C.infoBg, border: `1px solid ${C.line}`, color: C.narra }
+const primaryBtn = (disabled: boolean): React.CSSProperties => ({
+  background: C.narra,
+  opacity: disabled ? 0.55 : 1,
+  color: '#fff',
+  fontFamily: 'var(--font-display)',
+  cursor: disabled ? 'not-allowed' : 'pointer',
+})
+const primaryBtnClass = 'w-full h-11 rounded-lg font-semibold text-sm transition-opacity hover:opacity-90'
+const linkBtnClass = 'w-full text-sm text-center transition-opacity hover:opacity-80'
+const h2Style: React.CSSProperties = { fontFamily: 'var(--font-display)', fontSize: '1.125rem', fontWeight: 700, color: C.ink }
+const logoStyle: React.CSSProperties = { height: 50, width: 'auto', objectFit: 'contain' }
 
 export default function LoginPage() {
   const router = useRouter()
@@ -86,193 +137,267 @@ export default function LoginPage() {
 
   return (
     <div
-      className="min-h-screen flex items-center justify-center px-4"
-      style={{ background: 'radial-gradient(1200px 380px at 50% 35%, rgba(244, 236, 221, 0.22), transparent 60%), radial-gradient(820px 380px at 8% 0%, rgba(212, 145, 132, 0.55), transparent 60%), radial-gradient(1100px 440px at 100% 110%, rgba(123, 152, 138, 0.55), transparent 65%), linear-gradient(135deg, #D49184 0%, #C9A28F 38%, #9CB1A2 72%, #7B988A 100%)' }}
+      className="min-h-screen flex items-center justify-center relative overflow-hidden"
+      style={{
+        // Aura backdrop — coral top-left → cream halo → soft sage bottom-right
+        background: [
+          'radial-gradient(1200px 380px at 50% 35%, rgba(244, 236, 221, 0.22), transparent 60%)',
+          'radial-gradient(820px 380px at 8% 0%, rgba(212, 145, 132, 0.55), transparent 60%)',
+          'radial-gradient(1100px 440px at 100% 110%, rgba(123, 152, 138, 0.55), transparent 65%)',
+          'linear-gradient(135deg, #D49184 0%, #C9A28F 38%, #9CB1A2 72%, #7B988A 100%)',
+        ].join(', '),
+      }}
     >
+      {/* Sand-outlined orbital rings — echoing the Aura creative */}
       <div
-        className="w-full max-w-md rounded-2xl p-8 shadow-2xl"
-        style={{ background: 'white' }}
-      >
-        {/* Logos / Header */}
-        <div className="text-center mb-8">
-          <div className="flex items-end justify-center gap-5 mb-4">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/login-scei.png" alt="Sapphire Clinics East Inc." className="h-14 w-auto object-contain" />
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/login-aura.png" alt="Aura Health Rehab" className="h-14 w-auto object-contain" />
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/login-verdana.png" alt="Verdana Rehab Solutions" className="h-14 w-auto object-contain" />
+        className="absolute pointer-events-none"
+        style={{
+          top: -260, right: -180, width: 560, height: 560,
+          border: '1px solid rgba(244, 236, 221, 0.28)',
+          borderRadius: '50%',
+        }}
+      />
+      <div
+        className="absolute pointer-events-none"
+        style={{
+          top: -200, right: -300, width: 760, height: 760,
+          border: '1px solid rgba(244, 236, 221, 0.18)',
+          borderRadius: '50%',
+        }}
+      />
+
+      {/* Main card */}
+      <div className="relative z-10 w-full max-w-[420px] mx-4 my-10">
+        <div
+          className="rounded-2xl px-6 py-8 sm:px-9 sm:py-9 bg-white"
+          style={{ boxShadow: '0 30px 70px -24px rgba(36,73,82,0.45), 0 2px 6px rgba(36,73,82,0.08)' }}
+        >
+          {/* Brand header — identical on every staff hub */}
+          <div className="flex flex-col items-center text-center mb-7">
+            <div className="flex items-center justify-center gap-4">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/login-scei.png" alt="Sapphire Clinics East Inc." style={logoStyle} />
+              <span aria-hidden style={{ width: 1, height: 36, background: C.line }} />
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/login-aura.png" alt="Aura Health Rehab" style={logoStyle} />
+              <span aria-hidden style={{ width: 1, height: 36, background: C.line }} />
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/login-verdana.png" alt="Verdana Rehab Solutions" style={logoStyle} />
+            </div>
+            <h1 className="mt-5" style={{ fontFamily: 'var(--font-display)', fontSize: '1.375rem', fontWeight: 700, color: C.narra, letterSpacing: '-0.01em' }}>
+              Accounting Hub
+            </h1>
+            <p className="mt-0.5 text-[13px]" style={{ color: C.muted }}>Sapphire Clinics East, Inc.</p>
           </div>
-          <p className="text-sm" style={{ color: 'var(--mid-gray)', fontFamily: 'var(--font-display)', fontWeight: 300 }}>
-            Accounting Hub
-          </p>
+
+          {/* ── Sign in ────────────────────────────────────────────────── */}
+          {forgotMode === 'login' && (
+            <form onSubmit={handleLogin} className="space-y-4">
+              {forgotMessage && (
+                <div role="status" className="text-sm rounded-lg px-4 py-2.5" style={infoStyle}>
+                  {forgotMessage}
+                </div>
+              )}
+
+              <div>
+                <label htmlFor="login-email" style={labelStyle}>Email</label>
+                <input
+                  id="login-email"
+                  type="email"
+                  placeholder="you@sapphireclinicseast.org"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  className={inputClass}
+                  style={inputStyle}
+                  onFocus={onFocus}
+                  onBlur={onBlur}
+                />
+              </div>
+
+              <div>
+                <label htmlFor="login-password" style={labelStyle}>Password</label>
+                <div className="relative">
+                  <input
+                    id="login-password"
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    className={inputClass}
+                    style={{ ...inputStyle, paddingRight: 44 }}
+                    onFocus={onFocus}
+                    onBlur={onBlur}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1"
+                    style={{ color: C.muted }}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                  </button>
+                </div>
+                <div className="flex justify-end mt-1.5">
+                  <button
+                    type="button"
+                    onClick={() => { setForgotMode('forgot'); setError(''); setForgotMessage('') }}
+                    className="text-[12.5px] font-medium transition-opacity hover:opacity-80"
+                    style={{ color: C.moss }}
+                  >
+                    Forgot password?
+                  </button>
+                </div>
+              </div>
+
+              {error && (
+                <p role="alert" className="text-sm rounded-lg px-4 py-2.5" style={errorStyle}>
+                  {error}
+                </p>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading}
+                className={`${primaryBtnClass} mt-2`}
+                style={primaryBtn(loading)}
+              >
+                {loading ? 'Signing in...' : 'Sign In'}
+              </button>
+            </form>
+          )}
+
+          {/* ── Forgot password — enter email ──────────────────────────── */}
+          {forgotMode === 'forgot' && (
+            <>
+              <h2 className="mb-1" style={h2Style}>
+                Reset Password
+              </h2>
+              <p className="mb-6 text-sm leading-relaxed" style={{ color: C.muted }}>
+                Enter your email to receive a reset code.
+              </p>
+
+              <form onSubmit={handleForgot} className="space-y-4">
+                <div>
+                  <label htmlFor="forgot-email" style={labelStyle}>Email</label>
+                  <input
+                    id="forgot-email"
+                    type="email"
+                    placeholder="you@sapphireclinicseast.org"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    className={inputClass}
+                    style={inputStyle}
+                    onFocus={onFocus}
+                    onBlur={onBlur}
+                  />
+                </div>
+
+                {error && (
+                  <p role="alert" className="text-sm rounded-lg px-4 py-2.5" style={errorStyle}>
+                    {error}
+                  </p>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className={primaryBtnClass}
+                  style={primaryBtn(loading)}
+                >
+                  {loading ? 'Sending...' : 'Send Reset Code'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => { setForgotMode('login'); setError('') }}
+                  className={linkBtnClass}
+                  style={{ color: C.moss }}
+                >
+                  Back to Sign In
+                </button>
+              </form>
+            </>
+          )}
+
+          {/* ── Reset password — enter code + new password ─────────────── */}
+          {forgotMode === 'reset' && (
+            <>
+              <h2 className="mb-1" style={h2Style}>
+                Enter Reset Code
+              </h2>
+              <p className="mb-6 text-sm leading-relaxed" style={{ color: C.muted }}>
+                Enter the code sent to your email and your new password.
+              </p>
+
+              <form onSubmit={handleReset} className="space-y-4">
+                <div>
+                  <label htmlFor="reset-code" style={labelStyle}>6-Digit Code</label>
+                  <input
+                    id="reset-code"
+                    type="text"
+                    placeholder="000000"
+                    value={resetCode}
+                    onChange={(e) => setResetCode(e.target.value)}
+                    required
+                    className={inputClass}
+                    style={{ ...inputStyle, letterSpacing: '0.25em', fontSize: '1.1rem', textAlign: 'center' }}
+                    maxLength={6}
+                    onFocus={onFocus}
+                    onBlur={onBlur}
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="reset-password" style={labelStyle}>New Password</label>
+                  <input
+                    id="reset-password"
+                    type="password"
+                    placeholder="At least 8 characters"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    required
+                    minLength={8}
+                    className={inputClass}
+                    style={inputStyle}
+                    onFocus={onFocus}
+                    onBlur={onBlur}
+                  />
+                </div>
+
+                {error && (
+                  <p role="alert" className="text-sm rounded-lg px-4 py-2.5" style={errorStyle}>
+                    {error}
+                  </p>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className={primaryBtnClass}
+                  style={primaryBtn(loading)}
+                >
+                  {loading ? 'Resetting...' : 'Reset Password'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => { setForgotMode('login'); setError('') }}
+                  className={linkBtnClass}
+                  style={{ color: C.moss }}
+                >
+                  Back to Sign In
+                </button>
+              </form>
+            </>
+          )}
         </div>
 
-        {/* Login Form */}
-        {forgotMode === 'login' && (
-          <form onSubmit={handleLogin} className="space-y-4">
-            {forgotMessage && (
-              <div className="p-3 rounded-lg text-sm" style={{ background: 'var(--pale-teal)', color: 'var(--deep-teal)' }}>
-                {forgotMessage}
-              </div>
-            )}
-            {error && (
-              <div className="p-3 rounded-lg text-sm bg-red-50 text-red-600">
-                {error}
-              </div>
-            )}
-
-            <div className="relative">
-              <Mail size={18} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--mid-gray)' }} />
-              <input
-                type="email"
-                placeholder="Email address"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                className="w-full pl-10 pr-4 py-3 rounded-xl border text-sm outline-none transition-colors"
-                style={{ borderColor: 'var(--light-gray)', fontFamily: 'var(--font-body)' }}
-              />
-            </div>
-
-            <div className="relative">
-              <Lock size={18} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--mid-gray)' }} />
-              <input
-                type={showPassword ? 'text' : 'password'}
-                placeholder="Password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                className="w-full pl-10 pr-10 py-3 rounded-xl border text-sm outline-none transition-colors"
-                style={{ borderColor: 'var(--light-gray)', fontFamily: 'var(--font-body)' }}
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2"
-                style={{ color: 'var(--mid-gray)' }}
-              >
-                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-              </button>
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-3 rounded-xl text-white font-semibold text-sm transition-opacity disabled:opacity-50"
-              style={{ background: 'var(--teal)', fontFamily: 'var(--font-display)' }}
-            >
-              {loading ? 'Signing in...' : 'Sign In'}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => { setForgotMode('forgot'); setError(''); setForgotMessage('') }}
-              className="w-full text-sm py-2 transition-colors"
-              style={{ color: 'var(--teal)' }}
-            >
-              Forgot password?
-            </button>
-          </form>
-        )}
-
-        {/* Forgot Password Form */}
-        {forgotMode === 'forgot' && (
-          <form onSubmit={handleForgot} className="space-y-4">
-            <p className="text-sm text-center" style={{ color: 'var(--mid-gray)' }}>
-              Enter your email to receive a reset code.
-            </p>
-            {error && (
-              <div className="p-3 rounded-lg text-sm bg-red-50 text-red-600">{error}</div>
-            )}
-
-            <div className="relative">
-              <Mail size={18} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--mid-gray)' }} />
-              <input
-                type="email"
-                placeholder="Email address"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                className="w-full pl-10 pr-4 py-3 rounded-xl border text-sm outline-none"
-                style={{ borderColor: 'var(--light-gray)' }}
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-3 rounded-xl text-white font-semibold text-sm disabled:opacity-50"
-              style={{ background: 'var(--teal)' }}
-            >
-              {loading ? 'Sending...' : 'Send Reset Code'}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => { setForgotMode('login'); setError('') }}
-              className="w-full text-sm py-2"
-              style={{ color: 'var(--teal)' }}
-            >
-              Back to login
-            </button>
-          </form>
-        )}
-
-        {/* Reset Password Form */}
-        {forgotMode === 'reset' && (
-          <form onSubmit={handleReset} className="space-y-4">
-            <p className="text-sm text-center" style={{ color: 'var(--mid-gray)' }}>
-              Enter the code sent to your email and your new password.
-            </p>
-            {error && (
-              <div className="p-3 rounded-lg text-sm bg-red-50 text-red-600">{error}</div>
-            )}
-
-            <input
-              type="text"
-              placeholder="6-digit code"
-              value={resetCode}
-              onChange={(e) => setResetCode(e.target.value)}
-              required
-              className="w-full px-4 py-3 rounded-xl border text-sm outline-none text-center tracking-widest"
-              style={{ borderColor: 'var(--light-gray)' }}
-              maxLength={6}
-            />
-
-            <input
-              type="password"
-              placeholder="New password (min 8 characters)"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              required
-              minLength={8}
-              className="w-full px-4 py-3 rounded-xl border text-sm outline-none"
-              style={{ borderColor: 'var(--light-gray)' }}
-            />
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-3 rounded-xl text-white font-semibold text-sm disabled:opacity-50"
-              style={{ background: 'var(--teal)' }}
-            >
-              {loading ? 'Resetting...' : 'Reset Password'}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => { setForgotMode('login'); setError('') }}
-              className="w-full text-sm py-2"
-              style={{ color: 'var(--teal)' }}
-            >
-              Back to login
-            </button>
-          </form>
-        )}
-
-        <p className="text-center text-xs mt-6" style={{ color: 'var(--mid-gray)' }}>
-          Internal access only — SCEI Accounting Staff
+        <p className="text-center mt-6 text-xs" style={{ color: 'rgba(255,255,255,0.85)' }}>
+          Internal access only · Sapphire Clinics East staff
         </p>
       </div>
     </div>
